@@ -4,7 +4,9 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DB_FILE = path.join(__dirname, 'db.json');
+// Usa /data se existir (volume persistente Railway), senão usa __dirname
+const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
+const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // ── CORS: permite file://, localhost, etc. ──
 app.use((req, res, next) => {
