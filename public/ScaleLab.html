@@ -2379,9 +2379,11 @@ async function syncFromServer(){
     if(Object.keys(data).length > 0){
       Object.entries(data).forEach(([k,v])=>{ localStorage.setItem(k, JSON.stringify(v)); });
       tasks = g('tasks',[]);
+      criativos = g('criativos',[]);
       if(typeof cur !== 'undefined'){
         if(cur==='task') renderTasks();
         if(cur==='dashboard') renderDash();
+        if(cur==='criativos') renderCriativos();
       }
       // Re-render task detail modal if open
       if(typeof taskDetalheId !== 'undefined' && taskDetalheId){
@@ -3420,16 +3422,23 @@ function abrirRemessaPorUrl(){
   const remessaId = params.get('remessa');
   if(!remessaId) return;
   const id = parseInt(remessaId);
-  // Recarrega criativos do localStorage (já sincronizado do servidor)
-  criativos = g('criativos', []);
-  const c = criativos.find(x=>x.id===id);
-  if(!c){
-    notif('⚠️ Remessa não encontrada.');
-    return;
+
+  // Tenta abrir — se ainda não carregou, tenta novamente em até 5s
+  let tentativas = 0;
+  function tentar(){
+    criativos = g('criativos', []);
+    const c = criativos.find(x=>x.id===id);
+    if(c){
+      goTo('criativos');
+      setTimeout(()=>{ editCriativo(id); }, 400);
+    } else if(tentativas < 10){
+      tentativas++;
+      setTimeout(tentar, 500);
+    } else {
+      notif('⚠️ Remessa não encontrada. Verifique se está logado na conta correta.');
+    }
   }
-  // Navega para criativos e abre o modal de edição
-  goTo('criativos');
-  setTimeout(()=>{ editCriativo(id); }, 400);
+  tentar();
 }
 
 let _editCriId = null;
