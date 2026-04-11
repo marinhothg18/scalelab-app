@@ -2213,6 +2213,24 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 </div>
 </div>
 
+<!-- MODAL LINK REMESSA -->
+<div class="modal-overlay" id="modal-link-remessa">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">🔗 Link da Remessa</div>
+      <button class="modal-close" onclick="closeModal('modal-link-remessa')">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px;">Compartilhe esse link. Quem abrir vai direto pra essa remessa após o login.</p>
+    <div style="display:flex;gap:8px;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:16px;">
+      <span id="modal-link-url" style="font-size:12px;color:var(--accent);flex:1;word-break:break-all;"></span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="copiarLinkModal()">📋 Copiar link</button>
+      <button class="btn btn-ghost" style="flex:1;" onclick="window.open(document.getElementById('modal-link-url').textContent,'_blank')">↗ Abrir link</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL FLOWS -->
 <div class="modal-overlay" id="modal-flows">
 <div class="modal" style="max-width:500px;">
@@ -2348,7 +2366,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
 <script>
 // ── BACKEND SYNC ──
-const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3001' : '';
+const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
 const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows'];
 let _lastSync = 0;
 let _syncInterval = null;
@@ -3374,11 +3392,27 @@ function copiarLinkRemessa(id){
     ? 'https://scalelab-web-production.up.railway.app/ScaleLab.html'
     : window.location.origin + window.location.pathname;
   const link = base + '?remessa=' + id;
-  navigator.clipboard.writeText(link).then(()=>{
-    notif('🔗 Link copiado! Cole em qualquer lugar.');
-  }).catch(()=>{
-    prompt('Copie o link abaixo:', link);
-  });
+  document.getElementById('modal-link-url').textContent = link;
+  openModal('modal-link-remessa');
+}
+
+function copiarLinkModal(){
+  const link = document.getElementById('modal-link-url').textContent;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(link).then(()=>notif('✅ Link copiado!')).catch(()=>_fallbackCopy(link));
+  } else {
+    _fallbackCopy(link);
+  }
+}
+
+function _fallbackCopy(text){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta);
+  ta.select(); document.execCommand('copy');
+  document.body.removeChild(ta);
+  notif('✅ Link copiado!');
 }
 
 function abrirRemessaPorUrl(){
@@ -4413,12 +4447,9 @@ function populateTaskFilters(){
   // Update oferta dropdown without triggering another renderTasks (avoid infinite loop)
   const selOferta=document.getElementById('task-oferta-filter');
   if(selOferta){
-    if(!nichoAtual){
-      selOferta.innerHTML='<option value="">Todas as ofertas</option>';
-    } else {
-      const ofs=getOfertasV2().filter(o=>o.nichoId===nichoAtual);
-      selOferta.innerHTML='<option value="">Todas as ofertas</option>'+ofs.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
-    }
+    const ofertaAtual=selOferta.value;
+    const ofs=nichoAtual ? getOfertasV2().filter(o=>o.nichoId===nichoAtual) : getOfertasV2();
+    selOferta.innerHTML='<option value="">Todas as ofertas</option>'+ofs.map(o=>`<option value="${o.id}" ${ofertaAtual===o.id?'selected':''}>${o.nome}</option>`).join('');
   }
 }
 
@@ -4427,13 +4458,9 @@ function onNichoFilterChange(){
   taskNichoFilter=nichoId;
   const selOferta=document.getElementById('task-oferta-filter');
   if(!selOferta)return;
-  if(!nichoId){
-    selOferta.innerHTML='<option value="">Todas as ofertas</option>';
-    taskOfertaV2Filter='';
-  } else {
-    const ofertas=getOfertasV2().filter(o=>o.nichoId===nichoId);
-    selOferta.innerHTML='<option value="">Todas as ofertas</option>'+ofertas.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
-  }
+  const ofs2 = nichoId ? getOfertasV2().filter(o=>o.nichoId===nichoId) : getOfertasV2();
+  selOferta.innerHTML='<option value="">Todas as ofertas</option>'+ofs2.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
+  if(!nichoId) taskOfertaV2Filter='';
   renderTasks();
 }
 
