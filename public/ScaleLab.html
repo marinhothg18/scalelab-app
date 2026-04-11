@@ -847,6 +847,39 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
     <!-- CRIATIVOS -->
     <div class="page" id="page-criativos">
+      <!-- Filtros criativos -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
+        <select class="fs" id="cri-filter-nicho" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:140px;">
+          <option value="">Todos os nichos</option>
+        </select>
+        <select class="fs" id="cri-filter-oferta" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:150px;">
+          <option value="">Todas as ofertas</option>
+        </select>
+        <select class="fs" id="cri-filter-mes" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:130px;">
+          <option value="">Todos os meses</option>
+          <option value="01">Janeiro</option>
+          <option value="02">Fevereiro</option>
+          <option value="03">Março</option>
+          <option value="04">Abril</option>
+          <option value="05">Maio</option>
+          <option value="06">Junho</option>
+          <option value="07">Julho</option>
+          <option value="08">Agosto</option>
+          <option value="09">Setembro</option>
+          <option value="10">Outubro</option>
+          <option value="11">Novembro</option>
+          <option value="12">Dezembro</option>
+        </select>
+        <select class="fs" id="cri-filter-semana" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:130px;">
+          <option value="">Todas as semanas</option>
+          <option value="1">Semana 1</option>
+          <option value="2">Semana 2</option>
+          <option value="3">Semana 3</option>
+          <option value="4">Semana 4</option>
+        </select>
+        <button class="btn btn-ghost" onclick="limparFiltrosCri()" style="font-size:12px;padding:6px 12px;">✕ Limpar</button>
+        <span id="cri-count" style="font-size:12px;color:var(--text2);margin-left:auto;"></span>
+      </div>
       <div id="criativos-list"></div>
     </div>
 
@@ -1292,6 +1325,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="ads-tab" id="cfg-tab-ofertas-cfg" onclick="switchCfgTab('ofertas-cfg',this)">📦 Ofertas</button>
         <button class="ads-tab" id="cfg-tab-checklists" onclick="switchCfgTab('checklists',this)">✅ Checklists</button>
         <button class="ads-tab" id="cfg-tab-apis" onclick="switchCfgTab('apis',this)">🔌 APIs</button>
+        <button class="ads-tab" id="cfg-tab-criativos-cfg" onclick="switchCfgTab('criativos-cfg',this)">🎨 Criativos</button>
       </div>
 
       <!-- TAB: GERAL -->
@@ -1412,6 +1446,19 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             <div style="font-size:12px;color:var(--text2);">Mais integrações em breve (Meta Ads, Google Ads, TikTok Ads...)</div>
           </div>
 
+        </div>
+      </div>
+
+      <!-- TAB: CRIATIVOS -->
+      <div id="cfg-panel-criativos-cfg" style="display:none;max-width:600px;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🎨 Status dos Criativos</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:16px;">Gerencie os status disponíveis ao criar ou editar um documento criativo.</div>
+          <div id="cri-status-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;"></div>
+          <div style="display:flex;gap:8px;">
+            <input class="fi" id="cri-status-new" placeholder="Novo status (ex: Em gravação)" style="flex:1;">
+            <button class="btn btn-primary" onclick="addCriStatus()" style="padding:8px 16px;">+ Adicionar</button>
+          </div>
         </div>
       </div>
 
@@ -1810,40 +1857,90 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <div class="modal">
   <div class="modal-header">
     <div class="modal-title">Novo Documento Criativo</div>
-    <button class="modal-close" onclick="closeModal('modal-criativo')">✕</button>
+    <button class="modal-close" onclick="_editCriId=null;document.querySelector('#modal-criativo .modal-title').textContent='Novo Documento Criativo';closeModal('modal-criativo')">✕</button>
   </div>
   <div class="fg" style="margin-bottom:12px;">
-    <label class="fl">Remessa</label>
-    <div style="display:flex;gap:6px;">
-      <select class="fs" id="c-remessa" style="flex:1;"><option value="">Selecione uma remessa</option></select>
-      <button class="btn btn-ghost" style="padding:6px 10px;" onclick="addRemessa()">+</button>
+    <label class="fl">Nome da Remessa</label>
+    <input class="fi" id="c-remessa" placeholder="Ex: Remessa 1 — Abril">
+  </div>
+  <div class="fg" style="margin-bottom:12px;">
+    <label class="fl">Status</label>
+    <select class="fs" id="c-status">
+      <option>Enviado para gravação</option>
+      <option>Em gravação</option>
+      <option>Edição</option>
+      <option>Aprovado</option>
+      <option>No Ar</option>
+      <option>Pausado</option>
+    </select>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div class="fg">
+      <label class="fl">Nicho</label>
+      <select class="fs" id="c-nicho"><option value="">Selecione o nicho</option></select>
     </div>
+    <div class="fg">
+      <label class="fl">Oferta</label>
+      <select class="fs" id="c-oferta"><option value="">Selecione a oferta</option></select>
+    </div>
+    <div class="fg">
+      <label class="fl">Mês</label>
+      <select class="fs" id="c-mes">
+        <option value="">Selecione o mês</option>
+        <option value="01">Janeiro</option><option value="02">Fevereiro</option>
+        <option value="03">Março</option><option value="04">Abril</option>
+        <option value="05">Maio</option><option value="06">Junho</option>
+        <option value="07">Julho</option><option value="08">Agosto</option>
+        <option value="09">Setembro</option><option value="10">Outubro</option>
+        <option value="11">Novembro</option><option value="12">Dezembro</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label class="fl">Semana</label>
+      <select class="fs" id="c-semana">
+        <option value="">Selecione a semana</option>
+        <option value="1">Semana 1</option>
+        <option value="2">Semana 2</option>
+        <option value="3">Semana 3</option>
+        <option value="4">Semana 4</option>
+      </select>
+    </div>
+  </div>
+  <div class="fg" style="margin-bottom:12px;">
+    <label class="fl">Link (Docs / Roteiro)</label>
+    <input class="fi" id="c-docs" placeholder="https://docs.google.com/...">
   </div>
   <div class="fg" style="margin-bottom:12px;">
     <label class="fl">Link (pasta do Drive)</label>
     <input class="fi" id="c-drive" placeholder="https://drive.google.com/...">
   </div>
-  <div class="form-sep">Atribuição de fases do Kanban</div>
-  <div class="kanban-grid">
-    <div class="fg"><label class="fl">Análise 1</label><select class="fs" id="c-an1"><option>Selecionar membro</option></select></div>
-    <div class="fg"><label class="fl">Edição</label><select class="fs" id="c-edi"><option>Selecionar membro</option></select></div>
-    <div class="fg"><label class="fl">Análise 2</label><select class="fs" id="c-an2"><option>Selecionar membro</option></select></div>
-    <div class="fg"><label class="fl">Subir</label><select class="fs" id="c-sub"><option>Selecionar membro</option></select></div>
-    <div class="fg"><label class="fl">No Ar</label><select class="fs" id="c-ar"><option>Selecionar membro</option></select></div>
+  <div class="form-sep">Responsáveis</div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+    <div class="fg">
+      <label class="fl">✍️ Copy responsável</label>
+      <select class="fs" id="c-copy"><option value="">Selecionar copy</option></select>
+    </div>
+    <div class="fg">
+      <label class="fl">✂️ Editor responsável</label>
+      <select class="fs" id="c-edi"><option value="">Selecionar editor</option></select>
+    </div>
+    <div class="fg">
+      <label class="fl">🔍 Revisor do material</label>
+      <select class="fs" id="c-rev"><option value="">Selecionar revisor</option></select>
+    </div>
+    <div class="fg">
+      <label class="fl">🚀 Gestor que vai subir</label>
+      <select class="fs" id="c-sub"><option value="">Selecionar gestor</option></select>
+    </div>
   </div>
   <div id="anuncios-container">
     <div class="ad-section">
       <div class="ad-section-title">Anúncio 1</div>
       <div style="padding:12px;">
-        <div class="form-grid">
-          <div class="fg"><label class="fl">Nome do Ad</label><input class="fi ad-nome" placeholder="Nome do anúncio"></div>
-          <div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option>Enviado para gravação</option><option>Em gravação</option><option>Edição</option><option>Aprovado</option><option>No Ar</option><option>Pausado</option></select></div>
-          <div class="fg form-full"><label class="fl">Copywriter</label><select class="fs ad-copy"><option>Selecione</option></select></div>
-        </div>
         <div class="form-grid-3">
           <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
           <div class="fg"><label class="fl">Validação</label>
-            <div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span id="valid-label">Não</span></div>
+            <div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div>
           </div>
           <div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" placeholder="0.00"></div>
         </div>
@@ -1854,13 +1951,19 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div class="fg"><label class="fl">CIC (R$)</label><input class="fi ad-cic" type="number" placeholder="0.00"></div>
           <div class="fg"><label class="fl">Conv. Checkout (%)</label><input class="fi ad-conv" type="number" placeholder="0.00"></div>
         </div>
-        <div class="fg"><label class="fl">Texto</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div>
+        <div class="form-grid-3" style="margin-top:4px;">
+          <div class="fg"><label class="fl">💰 Valor Investido (R$)</label><input class="fi ad-investido" type="number" placeholder="0.00"></div>
+          <div class="fg"><label class="fl">🛒 Qtd. Vendas</label><input class="fi ad-vendas" type="number" placeholder="0"></div>
+          <div class="fg"><label class="fl">📈 Retorno (R$)</label><input class="fi ad-retorno" type="number" placeholder="0.00"></div>
+        </div>
+        <div class="fg" style="margin-top:4px;"><label class="fl">🔗 Link do anúncio</label><input class="fi ad-link" type="url" placeholder="https://..."></div>
+        <div class="fg" style="margin-top:4px;"><label class="fl">Texto do anúncio</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div>
       </div>
     </div>
   </div>
   <button class="btn btn-ghost" style="width:100%;margin-bottom:14px;justify-content:center;" onclick="addAnuncio()">+ Criar novo anúncio</button>
   <div class="modal-footer">
-    <button class="btn btn-ghost" onclick="closeModal('modal-criativo')">Cancelar</button>
+    <button class="btn btn-ghost" onclick="_editCriId=null;document.querySelector('#modal-criativo .modal-title').textContent='Novo Documento Criativo';closeModal('modal-criativo')">Cancelar</button>
     <button class="btn btn-primary" onclick="salvarCriativo()">Salvar documento</button>
   </div>
 </div>
@@ -3069,11 +3172,6 @@ function addAnuncio(){
   d.className='ad-section';d.style.marginTop='10px';
   d.innerHTML=`<div class="ad-section-title">Anúncio ${adCount} <button onclick="this.closest('.ad-section').remove()" class="icon-btn" style="font-size:12px;">✕</button></div>
   <div style="padding:12px;">
-    <div class="form-grid">
-      <div class="fg"><label class="fl">Nome do Ad</label><input class="fi ad-nome" placeholder="Nome do anúncio"></div>
-      <div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option>Enviado para gravação</option><option>Em gravação</option><option>Edição</option><option>Aprovado</option><option>No Ar</option><option>Pausado</option></select></div>
-      <div class="fg form-full"><label class="fl">Copywriter</label><select class="fs ad-copy"><option>Selecione</option></select></div>
-    </div>
     <div class="form-grid-3">
       <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
       <div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div>
@@ -3086,7 +3184,13 @@ function addAnuncio(){
       <div class="fg"><label class="fl">CIC (R$)</label><input class="fi ad-cic" type="number" placeholder="0.00"></div>
       <div class="fg"><label class="fl">Conv. Checkout (%)</label><input class="fi ad-conv" type="number" placeholder="0.00"></div>
     </div>
-    <div class="fg"><label class="fl">Texto</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div>
+    <div class="form-grid-3" style="margin-top:4px;">
+      <div class="fg"><label class="fl">💰 Valor Investido (R$)</label><input class="fi ad-investido" type="number" placeholder="0.00"></div>
+      <div class="fg"><label class="fl">🛒 Qtd. Vendas</label><input class="fi ad-vendas" type="number" placeholder="0"></div>
+      <div class="fg"><label class="fl">📈 Retorno (R$)</label><input class="fi ad-retorno" type="number" placeholder="0.00"></div>
+    </div>
+    <div class="fg" style="margin-top:4px;"><label class="fl">🔗 Link do anúncio</label><input class="fi ad-link" type="url" placeholder="https://..."></div>
+    <div class="fg" style="margin-top:4px;"><label class="fl">Texto do anúncio</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div>
   </div>`;
   c.appendChild(d);
 }
@@ -3094,13 +3198,32 @@ function addRemessa(){const n=prompt('Nome da remessa:');if(n){remessas.push(n);
 function populateRemessas(){
   const sel=document.getElementById('c-remessa');
   sel.innerHTML='<option value="">Selecione uma remessa</option>'+remessas.map(r=>`<option>${r}</option>`).join('');
+  // Popula dropdowns de membros
+  const usuarios=getUsuarios().filter(u=>u.ativo!==false);
+  // Popula nicho e oferta
+  const nichos=g('sl_nichos',[]);
+  const ofertas=g('sl_ofertas_v2',[]);
+  const nichoEl=document.getElementById('c-nicho');
+  if(nichoEl) nichoEl.innerHTML='<option value="">Selecione o nicho</option>'+nichos.map(n=>`<option value="${n.id}">${n.nome}</option>`).join('');
+  const ofertaEl=document.getElementById('c-oferta');
+  if(ofertaEl) ofertaEl.innerHTML='<option value="">Selecione a oferta</option>'+ofertas.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
+
+  const memOpts='<option value="">Selecionar membro</option>'+usuarios.map(u=>`<option value="${u.nome}">${u.nome} (${u.cargo})</option>`).join('');
+  ['c-copy','c-edi','c-rev','c-sub'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=memOpts;
+  });
+  // Popula copywriter no primeiro anúncio
+  document.querySelectorAll('.ad-copy').forEach(el=>{
+    el.innerHTML='<option value="">Selecione</option>'+usuarios.map(u=>`<option value="${u.nome}">${u.nome}</option>`).join('');
+  });
+  // Popula status do criativo
+  populateCriStatusSelects();
 }
 function openRemessas(){const n=prompt('Adicionar remessa:');if(n){remessas.push(n);s('remessas',remessas);notif('Remessa adicionada!');}}
 function openFormatos(){alert('Gerencie os formatos dos criativos.');}
 function salvarCriativo(){
   const ads=[...document.querySelectorAll('#anuncios-container .ad-section')].map(sec=>({
-    nome:sec.querySelector('.ad-nome').value,
-    status:sec.querySelector('.ad-status').value,
     formato:sec.querySelector('.ad-formato').value,
     validado:sec.querySelector('.ad-valid').classList.contains('on'),
     hook:sec.querySelector('.ad-hook').value,
@@ -3109,39 +3232,134 @@ function salvarCriativo(){
     cpc:sec.querySelector('.ad-cpc').value,
     cic:sec.querySelector('.ad-cic').value,
     conv:sec.querySelector('.ad-conv').value,
+    investido:sec.querySelector('.ad-investido').value,
+    vendas:sec.querySelector('.ad-vendas').value,
+    retorno:sec.querySelector('.ad-retorno').value,
+    link:sec.querySelector('.ad-link').value,
     texto:sec.querySelector('.ad-texto').value
   }));
-  const st=ads[0]?.status||'Gravação';
-  const c={id:Date.now(),remessa:document.getElementById('c-remessa').value||'Sem remessa',drive:document.getElementById('c-drive').value,status:st,ads,criado:new Date().toLocaleDateString('pt-BR')};
-  criativos.push(c);s('criativos',criativos);
-  closeModal('modal-criativo');notif('Documento criado com sucesso!');
+  const st=document.getElementById('c-status')?.value||ads[0]?.status||'Gravação';
+  const c={
+    id:Date.now(),
+    remessa:document.getElementById('c-remessa').value||'Sem remessa',
+    nichoId:document.getElementById('c-nicho').value,
+    nichoNome:(document.getElementById('c-nicho').selectedOptions[0]?.text||''),
+    ofertaId:document.getElementById('c-oferta').value,
+    ofertaNome:(document.getElementById('c-oferta').selectedOptions[0]?.text||''),
+    mes:document.getElementById('c-mes').value,
+    semana:document.getElementById('c-semana').value,
+    docs:document.getElementById('c-docs').value,
+    drive:document.getElementById('c-drive').value,
+    copy:document.getElementById('c-copy').value,
+    editor:document.getElementById('c-edi').value,
+    revisor:document.getElementById('c-rev').value,
+    gestor:document.getElementById('c-sub').value,
+    status:st,ads,
+    criado:new Date().toLocaleDateString('pt-BR')
+  };
+  if(_editCriId){
+    criativos = criativos.map(x=>x.id===_editCriId ? {...c, id:_editCriId, criado:x.criado} : x);
+    _editCriId = null;
+    notif('Documento atualizado!');
+  } else {
+    criativos.push(c);
+    notif('Documento criado com sucesso!');
+  }
+  s('criativos',criativos);
+  // Reset título do modal
+  document.querySelector('#modal-criativo .modal-title').textContent='Novo Documento Criativo';
+  document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]').textContent='Salvar documento';
+  closeModal('modal-criativo');
   adCount=1;
-  document.getElementById('anuncios-container').innerHTML=`<div class="ad-section"><div class="ad-section-title">Anúncio 1</div><div style="padding:12px;"><div class="form-grid"><div class="fg"><label class="fl">Nome do Ad</label><input class="fi ad-nome" placeholder="Nome do anúncio"></div><div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option>Enviado para gravação</option><option>Em gravação</option><option>Edição</option><option>Aprovado</option><option>No Ar</option><option>Pausado</option></select></div><div class="fg form-full"><label class="fl">Copywriter</label><select class="fs ad-copy"><option>Selecione</option></select></div></div><div class="form-grid-3"><div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div><div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div><div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" placeholder="0.00"></div></div><div class="form-grid-3"><div class="fg"><label class="fl">Hold Rate (%)</label><input class="fi ad-hold" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CPM (R$)</label><input class="fi ad-cpm" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CPC (R$)</label><input class="fi ad-cpc" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CIC (R$)</label><input class="fi ad-cic" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">Conv. Checkout (%)</label><input class="fi ad-conv" type="number" placeholder="0.00"></div></div><div class="fg"><label class="fl">Texto</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div></div></div>`;
+  document.getElementById('anuncios-container').innerHTML=`<div class="ad-section"><div class="ad-section-title">Anúncio 1</div><div style="padding:12px;"><div class="form-grid"><div class="fg form-full"><label class="fl">Nome do Ad</label><input class="fi ad-nome" placeholder="Nome do anúncio"></div><div class="fg form-full"><label class="fl">Copywriter</label><select class="fs ad-copy"><option>Selecione</option></select></div></div><div class="form-grid-3"><div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div><div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div><div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" placeholder="0.00"></div></div><div class="form-grid-3"><div class="fg"><label class="fl">Hold Rate (%)</label><input class="fi ad-hold" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CPM (R$)</label><input class="fi ad-cpm" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CPC (R$)</label><input class="fi ad-cpc" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CIC (R$)</label><input class="fi ad-cic" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">Conv. Checkout (%)</label><input class="fi ad-conv" type="number" placeholder="0.00"></div></div><div class="fg"><label class="fl">Texto</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div></div></div>`;
   renderCriativos();
 }
+function limparFiltrosCri(){
+  ['cri-filter-nicho','cri-filter-oferta','cri-filter-mes','cri-filter-semana'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  renderCriativos();
+}
+
+function _semanaDoMes(dataStr){
+  // dataStr = "DD/MM/YYYY"
+  if(!dataStr) return null;
+  const parts=dataStr.split('/');
+  if(parts.length<3) return null;
+  const dia=parseInt(parts[0]);
+  return Math.ceil(dia/7);
+}
+
 function renderCriativos(){
   const el=document.getElementById('criativos-list');
-  if(!criativos.length){el.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Nenhum documento encontrado.</div></div>';return;}
-  el.innerHTML=criativos.slice().reverse().map(c=>`
+
+  // Popula filtros de nicho e oferta dinamicamente
+  const nichos=g('sl_nichos',[]);
+  const ofertas=g('sl_ofertas_v2',[]);
+  const nichoSel=document.getElementById('cri-filter-nicho');
+  const ofertaSel=document.getElementById('cri-filter-oferta');
+  if(nichoSel){
+    const cur=nichoSel.value;
+    nichoSel.innerHTML='<option value="">Todos os nichos</option>'+nichos.map(n=>`<option value="${n.id}">${n.nome}</option>`).join('');
+    nichoSel.value=cur;
+  }
+  if(ofertaSel){
+    const cur=ofertaSel.value;
+    ofertaSel.innerHTML='<option value="">Todas as ofertas</option>'+ofertas.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
+    ofertaSel.value=cur;
+  }
+
+  // Lê filtros
+  const fNicho=(document.getElementById('cri-filter-nicho')||{}).value||'';
+  const fOferta=(document.getElementById('cri-filter-oferta')||{}).value||'';
+  const fMes=(document.getElementById('cri-filter-mes')||{}).value||'';
+  const fSemana=(document.getElementById('cri-filter-semana')||{}).value||'';
+
+  let filtered=criativos.slice().reverse();
+  if(fNicho) filtered=filtered.filter(c=>c.nichoId===fNicho);
+  if(fOferta) filtered=filtered.filter(c=>c.ofertaId===fOferta);
+  if(fMes) filtered=filtered.filter(c=>{
+    if(!c.criado) return false;
+    const parts=c.criado.split('/');
+    return parts[1]===fMes;
+  });
+  if(fSemana) filtered=filtered.filter(c=>String(_semanaDoMes(c.criado))===fSemana);
+
+  const countEl=document.getElementById('cri-count');
+  if(countEl) countEl.textContent=filtered.length+' documento(s)';
+
+  if(!filtered.length){el.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Nenhum documento encontrado.</div></div>';return;}
+  el.innerHTML=filtered.map(c=>`
   <div class="cri-card">
     <div class="cri-header">
       <div>
         <div class="cri-title" style="display:flex;align-items:center;gap:8px;">${c.remessa||'Sem remessa'} <span class="badge ${stCores[c.status||'Gravação']||'b-orange'}" style="font-size:10px;">${c.status||'Gravação'}</span></div>
-        <div class="cri-meta">${c.ads?.length||1} anúncio(s) · ${c.ads?.filter(a=>a.validado).length||0} validado(s) · ${c.criado||''} · próximo: <b>${equipe[PIPELINE[PIPELINE.indexOf(c.status||'Gravação')+1]]||'—'}</b></div>
+        <div class="cri-meta">${c.ads?.length||1} anúncio(s) · ${c.ads?.filter(a=>a.validado).length||0} validado(s) · ${c.criado||''}${c.nichoNome?' · '+c.nichoNome:''}${c.ofertaNome?' · '+c.ofertaNome:''}${c.semana?' · Sem. '+c.semana:''}</div>
+        <div style="display:flex;gap:12px;margin-top:4px;flex-wrap:wrap;">
+          ${c.copy?`<span style="font-size:11px;color:var(--text2);">✍️ Copy: <b style="color:var(--text)">${c.copy}</b></span>`:''}
+          ${c.editor?`<span style="font-size:11px;color:var(--text2);">✂️ Editor: <b style="color:var(--text)">${c.editor}</b></span>`:''}
+          ${c.revisor?`<span style="font-size:11px;color:var(--text2);">🔍 Revisor: <b style="color:var(--text)">${c.revisor}</b></span>`:''}
+          ${c.gestor?`<span style="font-size:11px;color:var(--text2);">🚀 Gestor: <b style="color:var(--text)">${c.gestor}</b></span>`:''}
+        </div>
       </div>
       <div class="cri-actions" style="gap:6px;">
+        ${c.docs?`<a href="${c.docs}" target="_blank" class="icon-btn" title="Abrir Docs">📄</a>`:''}
         ${c.drive?`<a href="${c.drive}" target="_blank" class="icon-btn" title="Abrir Drive">🔗</a>`:''}
         ${PIPELINE.indexOf(c.status||'Gravação')>0?`<button class="icon-btn" onclick="voltarStatus(${c.id})" title="Voltar etapa" style="font-size:12px;">◀</button>`:''}
         ${PIPELINE.indexOf(c.status||'Gravação')<PIPELINE.length-1?`<button class="btn btn-primary" onclick="avancarStatus(${c.id})" style="font-size:11px;padding:4px 10px;">Avançar ▶</button>`:`<span class="badge b-green">✅ No Ar</span>`}
+        <button class="icon-btn" onclick="copiarLinkRemessa(${c.id})" title="Copiar link da remessa">🔗</button>
+        <button class="icon-btn" onclick="editCriativo(${c.id})" title="Editar remessa">✏️</button>
         <button class="icon-btn" onclick="delCriativo(${c.id})">🗑</button>
       </div>
     </div>
     ${(c.ads||[]).map((a,ai)=>`
     <div class="ad-grid" style="position:relative;">
-      <div class="ad-cell"><div class="ad-cell-label">Nome</div><div class="ad-cell-val">${a.nome||'—'}</div></div>
-      <div class="ad-cell"><div class="ad-cell-label">Status</div><div class="ad-cell-val"><span class="badge ${stCores[a.status]||'b-blue'}">${a.status||'—'}</span></div></div>
       <div class="ad-cell"><div class="ad-cell-label">Formato</div><div class="ad-cell-val">${a.formato||'—'}</div></div>
       <div class="ad-cell"><div class="ad-cell-label">Hook Rate</div><div class="ad-cell-val">${fmtP(a.hook)}</div></div>
+      <div class="ad-cell"><div class="ad-cell-label">💰 Investido</div><div class="ad-cell-val">${a.investido?'R$ '+parseFloat(a.investido).toFixed(2):'—'}</div></div>
+      <div class="ad-cell"><div class="ad-cell-label">🛒 Vendas</div><div class="ad-cell-val">${a.vendas||'—'}</div></div>
+      <div class="ad-cell"><div class="ad-cell-label">📈 Retorno</div><div class="ad-cell-val">${a.retorno?'R$ '+parseFloat(a.retorno).toFixed(2):'—'}</div></div>
+      ${a.link?`<div class="ad-cell"><div class="ad-cell-label">🔗 Link</div><div class="ad-cell-val"><a href="${a.link}" target="_blank" style="color:var(--accent);">Abrir</a></div></div>`:''}
       <div class="ad-cell" style="display:flex;align-items:center;gap:10px;border-right:none;">
         <button onclick="toggleValidarAd(${c.id},${ai})" style="border:none;border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;background:${a.validado?'#16a34a':'var(--bg3)'};color:${a.validado?'#fff':'var(--text2)'};">${a.validado?'✅ Validado':'☐ Validar'}</button>
         ${a.validado?`<span style="font-size:10px;color:var(--green);">Aprovado</span>`:''}
@@ -3150,6 +3368,105 @@ function renderCriativos(){
   </div>`).join('');
 }
 function delCriativo(id){if(!confirm('Remover?'))return;criativos=criativos.filter(c=>c.id!==id);s('criativos',criativos);renderCriativos();}
+
+function copiarLinkRemessa(id){
+  const base = window.location.protocol==='file:'
+    ? 'https://scalelab-web-production.up.railway.app/ScaleLab.html'
+    : window.location.origin + window.location.pathname;
+  const link = base + '?remessa=' + id;
+  navigator.clipboard.writeText(link).then(()=>{
+    notif('🔗 Link copiado! Cole em qualquer lugar.');
+  }).catch(()=>{
+    prompt('Copie o link abaixo:', link);
+  });
+}
+
+function abrirRemessaPorUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const remessaId = params.get('remessa');
+  if(!remessaId) return;
+  const id = parseInt(remessaId);
+  // Recarrega criativos do localStorage (já sincronizado do servidor)
+  criativos = g('criativos', []);
+  const c = criativos.find(x=>x.id===id);
+  if(!c){
+    notif('⚠️ Remessa não encontrada.');
+    return;
+  }
+  // Navega para criativos e abre o modal de edição
+  goTo('criativos');
+  setTimeout(()=>{ editCriativo(id); }, 400);
+}
+
+let _editCriId = null;
+
+function editCriativo(id){
+  const c = criativos.find(x=>x.id===id);
+  if(!c) return;
+  _editCriId = id;
+
+  // Abre modal e popula todos os campos
+  populateRemessas();
+  openModal('modal-criativo');
+
+  // Cabeçalho do modal
+  document.querySelector('#modal-criativo .modal-title').textContent = 'Editar Documento Criativo';
+  document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]').textContent = '💾 Salvar alterações';
+
+  // Campos principais
+  setTimeout(()=>{
+    const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+    set('c-remessa', c.remessa);
+    set('c-status',  c.status);
+    set('c-nicho',   c.nichoId);
+    set('c-oferta',  c.ofertaId);
+    set('c-mes',     c.mes);
+    set('c-semana',  c.semana);
+    set('c-docs',    c.docs);
+    set('c-drive',   c.drive);
+    set('c-copy',    c.copy);
+    set('c-edi',     c.editor);
+    set('c-rev',     c.revisor);
+    set('c-sub',     c.gestor);
+
+    // Anúncios
+    const container = document.getElementById('anuncios-container');
+    container.innerHTML = '';
+    adCount = 0;
+    (c.ads||[]).forEach((a, idx)=>{
+      adCount++;
+      const d = document.createElement('div');
+      d.className='ad-section';
+      if(idx>0) d.style.marginTop='10px';
+      d.innerHTML=`<div class="ad-section-title">Anúncio ${adCount} <button onclick="this.closest('.ad-section').remove()" class="icon-btn" style="font-size:12px;">✕</button></div>
+      <div style="padding:12px;">
+        <div class="form-grid-3">
+          <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
+          <div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid${a.validado?' on':''}" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div>
+          <div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" value="${a.hook||0}"></div>
+        </div>
+        <div class="form-grid-3">
+          <div class="fg"><label class="fl">Hold Rate (%)</label><input class="fi ad-hold" type="number" value="${a.hold||0}"></div>
+          <div class="fg"><label class="fl">CPM (R$)</label><input class="fi ad-cpm" type="number" value="${a.cpm||0}"></div>
+          <div class="fg"><label class="fl">CPC (R$)</label><input class="fi ad-cpc" type="number" value="${a.cpc||0}"></div>
+          <div class="fg"><label class="fl">CIC (R$)</label><input class="fi ad-cic" type="number" value="${a.cic||0}"></div>
+          <div class="fg"><label class="fl">Conv. Checkout (%)</label><input class="fi ad-conv" type="number" value="${a.conv||0}"></div>
+        </div>
+        <div class="form-grid-3" style="margin-top:4px;">
+          <div class="fg"><label class="fl">💰 Valor Investido (R$)</label><input class="fi ad-investido" type="number" value="${a.investido||0}"></div>
+          <div class="fg"><label class="fl">🛒 Qtd. Vendas</label><input class="fi ad-vendas" type="number" value="${a.vendas||0}"></div>
+          <div class="fg"><label class="fl">📈 Retorno (R$)</label><input class="fi ad-retorno" type="number" value="${a.retorno||0}"></div>
+        </div>
+        <div class="fg" style="margin-top:4px;"><label class="fl">🔗 Link do anúncio</label><input class="fi ad-link" type="url" value="${a.link||''}"></div>
+        <div class="fg" style="margin-top:4px;"><label class="fl">Texto do anúncio</label><textarea class="ft ad-texto">${a.texto||''}</textarea></div>
+      </div>`;
+      container.appendChild(d);
+      // Set formato
+      const fmtSel = d.querySelector('.ad-formato');
+      if(fmtSel) fmtSel.value = a.formato||'Selecione';
+    });
+  }, 50);
+}
 
 function toggleValidarAd(crId,adIdx){
   const c=criativos.find(x=>x.id===crId);
@@ -3509,7 +3826,7 @@ function viewEdu(id){
 
 // CONFIG
 function switchCfgTab(tab, btn){
-  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis'].forEach(t=>{
+  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','criativos-cfg'].forEach(t=>{
     const panel = document.getElementById('cfg-panel-'+t);
     if(panel) panel.style.display = t===tab ? (t==='geral'?'grid':'block') : 'none';
     const tabBtn = document.getElementById('cfg-tab-'+t);
@@ -3519,6 +3836,7 @@ function switchCfgTab(tab, btn){
   if(tab==='nichos') renderNichos();
   if(tab==='ofertas-cfg') renderOfertasCfg();
   if(tab==='checklists') renderChecklistsCfg();
+  if(tab==='criativos-cfg') renderCriStatusList();
   if(tab==='apis'){
     const k = localStorage.getItem('rt_api_key')||'';
     const inp = document.getElementById('ads-api-key-input');
@@ -3531,6 +3849,49 @@ function switchCfgTab(tab, btn){
 function toggleRtKeyVis(){
   const inp = document.getElementById('ads-api-key-input');
   if(inp) inp.type = inp.type==='password' ? 'text' : 'password';
+}
+
+// ── STATUS CRIATIVOS CONFIG ──
+function getCriStatus(){
+  const saved = g('cri_status', null);
+  if(saved && saved.length) return saved;
+  return ['Enviado para gravação','Em gravação','Edição','Aprovado','No Ar','Pausado'];
+}
+
+function renderCriStatusList(){
+  const statuses = getCriStatus();
+  const el = document.getElementById('cri-status-list');
+  if(!el) return;
+  el.innerHTML = statuses.map((st,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+      <span style="flex:1;font-size:13px;">${st}</span>
+      <button onclick="delCriStatus(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:15px;" title="Remover">✕</button>
+    </div>`).join('');
+}
+
+function addCriStatus(){
+  const inp = document.getElementById('cri-status-new');
+  const val = inp.value.trim(); if(!val) return;
+  const statuses = getCriStatus();
+  statuses.push(val);
+  s('cri_status', statuses);
+  inp.value='';
+  renderCriStatusList();
+  notif('Status adicionado!');
+}
+
+function delCriStatus(i){
+  const statuses = getCriStatus();
+  statuses.splice(i,1);
+  s('cri_status', statuses);
+  renderCriStatusList();
+}
+
+function populateCriStatusSelects(){
+  const statuses = getCriStatus();
+  const opts = statuses.map(st=>`<option>${st}</option>`).join('');
+  document.getElementById('c-status').innerHTML = opts;
+  document.querySelectorAll('.ad-status').forEach(el=>{ el.innerHTML=opts; });
 }
 
 function loadCfg(){
@@ -5267,7 +5628,10 @@ function _loginOk(user){
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
   // Sync data from backend then render
-  syncFromServer().then(()=>renderTasks());
+  syncFromServer().then(()=>{
+    renderTasks();
+    abrirRemessaPorUrl();
+  });
   _startSync();
 }
 
@@ -5956,6 +6320,7 @@ window.onload=()=>{
     document.getElementById('login-screen').classList.add('hidden');
     restoreSession();
     _startSync();
+    setTimeout(abrirRemessaPorUrl, 500);
   }
   // focus email field if login screen visible
   const emailFld=document.getElementById('login-email');
