@@ -8741,35 +8741,35 @@ async function loadAdsMetrics(){
     // First pass: build raw ad list
     const rawAds = Object.values(convAdMap).filter(a => a.vendas>0 || a.ics>0);
 
-    // Fallback: campaign-level cost map for proportional distribution
-    const campCostMap = {};
-    adsCampanhasData.forEach(c => { if(c._name) campCostMap[c._name] = (c.cost||0); });
-    const campRevMap = {};
-    rawAds.forEach(a => {
-      const c = a._camp||'';
-      if(!campRevMap[c]) campRevMap[c] = 0;
-      campRevMap[c] += (a.revenue||0);
+    // Extract short AD code from any string (e.g. "AD848" from "TGLv5-C7-E4-AD848-H398-B267")
+    function extractAdCode(str){
+      const m = String(str||'').match(/\bAD[-\s]?(\d+(?:[.\-]\d+)*)/i);
+      return m ? 'AD'+m[1].replace(/[-\s]/g,'') : null;
+    }
+
+    // Build cost map keyed by short AD code (e.g. "AD848") from campaign-level data
+    // Each campaign in RedTrack corresponds to one ad → campaign cost = ad cost
+    const adCostByCode = {};
+    adsCampanhasData.forEach(c => {
+      const code = extractAdCode(c._name);
+      if(code) adCostByCode[code] = (adCostByCode[code]||0) + (c.cost||0);
     });
+    console.log('[ScaleLab] adCostByCode:', adCostByCode);
 
     adsAnunciosData = rawAds.map(a => {
       const adName = (a._name||'').trim();
-      // 1) Try direct ad-level cost from sub4 report
-      let adCost = adCostMap[adName] || 0;
-      // 2) Fallback: proportional from campaign cost
-      if(!adCost){
-        const campName   = a._camp||'';
-        const campCost   = campCostMap[campName]||0;
-        const campRevTot = campRevMap[campName]||0;
-        const campAds    = rawAds.filter(x=>x._camp===campName).length||1;
-        adCost = (campCost>0 && campRevTot>0 && a.revenue>0)
-          ? campCost * (a.revenue / campRevTot)
-          : campCost>0 ? campCost / campAds : 0;
-      }
+      // 1) Try direct match via short AD code extracted from campaign names
+      const code = extractAdCode(adName) || extractAdCode(a._camp);
+      let adCost = (code && adCostByCode[code]) ? adCostByCode[code] : 0;
+      // 2) Try direct name match from sub4 report (group_by=sub4 if it ever works)
+      if(!adCost) adCost = adCostMap[adName] || 0;
+      // 3) Last resort: exact campaign name match
+      if(!adCost && a._camp) adCost = adsCampanhasData.find(c=>c._name===a._camp)?.cost || 0;
       return {
         ...a,
         total_revenue: a.revenue,
         cost: adCost,
-        cpa: a.vendas>0 ? a.revenue/a.vendas : 0,
+        cpa: a.vendas>0 && adCost>0 ? adCost/a.vendas : 0,
       };
     });
 
