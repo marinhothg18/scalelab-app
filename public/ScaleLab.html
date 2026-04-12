@@ -8704,12 +8704,19 @@ async function loadAdsMetrics(){
 
     // Build per-anuncio data from ALL conversions (only source with ad-level breakdown)
     const convAdMap = {}; // keyed by sub4 (ad name)
+    const adRtCampMap = {}; // sub4 → Set of rt_campaign values (exact campaign titles)
     allConvItems.forEach(c=>{
       const ad = c.sub4 || c.rt_ad || '';
       if(!ad || ad==='undefined' || ad==='null') return;
       if(!convAdMap[ad]) convAdMap[ad] = { _name:ad, _camp:'', vendas:0, ics:0, revenue:0 };
       const camp = c.sub6 || c.rt_campaign || '';
       if(camp && !convAdMap[ad]._camp) convAdMap[ad]._camp = camp;
+      // Also collect rt_campaign (exact campaign title in RedTrack) for direct cost matching
+      const rtCamp = c.rt_campaign || c.campaign_name || '';
+      if(rtCamp){
+        if(!adRtCampMap[ad]) adRtCampMap[ad] = new Set();
+        adRtCampMap[ad].add(rtCamp);
+      }
       const isDup = c.duplicate_status===2;
       if(c.status==='approved' && !isDup){
         convAdMap[ad].vendas++;
@@ -8718,6 +8725,7 @@ async function loadAdsMetrics(){
         convAdMap[ad].ics++;
       }
     });
+    console.log('[ScaleLab] adRtCampMap sample:', Object.entries(adRtCampMap).slice(0,3).map(([k,v])=>[k,[...v]]));
 
     // Build cost map from group_by=sub4 report (ad-level cost)
     // RedTrack may return array directly OR {data:[...], total:{...}}
@@ -8756,15 +8764,38 @@ async function loadAdsMetrics(){
     });
     console.log('[ScaleLab] adCostByCode:', adCostByCode);
 
+    // Build campaign cost lookup by title
+    const campCostByTitle = {};
+    adsCampanhasData.forEach(c => { if(c._name) campCostByTitle[c._name] = c.cost||0; });
+
     adsAnunciosData = rawAds.map(a => {
       const adName = (a._name||'').trim();
-      // 1) Try direct match via short AD code extracted from campaign names
-      const code = extractAdCode(adName) || extractAdCode(a._camp);
-      let adCost = (code && adCostByCode[code]) ? adCostByCode[code] : 0;
-      // 2) Try direct name match from sub4 report (group_by=sub4 if it ever works)
+      let adCost = 0;
+
+      // 1) Best: match via rt_campaign (exact campaign title from conversions → campaign cost)
+      const rtCamps = adRtCampMap[adName];
+      if(rtCamps){
+        for(const rtCamp of rtCamps){
+          if(campCostByTitle[rtCamp]){ adCost = campCostByTitle[rtCamp]; break; }
+        }
+      }
+
+      // 2) Try AD code extracted from campaign name (e.g. "AD848" in campaign title)
+      if(!adCost){
+        const code = extractAdCode(adName) || extractAdCode(a._camp);
+        if(code && adCostByCode[code]) adCost = adCostByCode[code];
+      }
+
+      // 3) Try sub4 = campaign title exactly
+      if(!adCost) adCost = campCostByTitle[adName] || 0;
+
+      // 4) sub6/_camp exact match
+      if(!adCost && a._camp) adCost = campCostByTitle[a._camp] || 0;
+
+      // 5) sub4 report fallback
       if(!adCost) adCost = adCostMap[adName] || 0;
-      // 3) Last resort: exact campaign name match
-      if(!adCost && a._camp) adCost = adsCampanhasData.find(c=>c._name===a._camp)?.cost || 0;
+
+      console.log('[ScaleLab] ad:', adName, '→ cost:', adCost, 'rtCamps:', rtCamps?[...rtCamps]:[]);
       return {
         ...a,
         total_revenue: a.revenue,
