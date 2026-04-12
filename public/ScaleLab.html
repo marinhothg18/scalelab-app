@@ -8764,38 +8764,60 @@ async function loadAdsMetrics(){
     });
     console.log('[ScaleLab] adCostByCode:', adCostByCode);
 
-    // Build campaign cost lookup by title
-    const campCostByTitle = {};
-    adsCampanhasData.forEach(c => { if(c._name) campCostByTitle[c._name] = c.cost||0; });
+    // Normalize string for comparison: unify dashes, trim, lowercase
+    function normStr(s){ return String(s||'').replace(/[\u2013\u2014\u2212]/g,'-').replace(/\s+/g,' ').trim().toLowerCase(); }
+
+    // Build normalized campaign cost lookup by title
+    const campCostByNorm = {};
+    adsCampanhasData.forEach(c => {
+      if(c._name) campCostByNorm[normStr(c._name)] = { cost: c.cost||0, title: c._name };
+    });
+
+    // For each campaign, collect which ads appear in it (to distribute cost proportionally)
+    // campAdRevenueMap: { normCampName → { adName → revenue } }
+    const campAdRevenueMap = {};
+    rawAds.forEach(a => {
+      const rtCamps = adRtCampMap[a._name] || new Set();
+      rtCamps.forEach(rc => {
+        const norm = normStr(rc);
+        if(!campAdRevenueMap[norm]) campAdRevenueMap[norm] = {};
+        campAdRevenueMap[norm][a._name] = (campAdRevenueMap[norm][a._name]||0) + (a.revenue||0);
+      });
+    });
 
     adsAnunciosData = rawAds.map(a => {
       const adName = (a._name||'').trim();
       let adCost = 0;
 
-      // 1) Best: match via rt_campaign (exact campaign title from conversions → campaign cost)
+      // 1) Match via rt_campaign → campaign cost, distributed proportionally among ads sharing that campaign
       const rtCamps = adRtCampMap[adName];
       if(rtCamps){
         for(const rtCamp of rtCamps){
-          if(campCostByTitle[rtCamp]){ adCost = campCostByTitle[rtCamp]; break; }
+          const norm = normStr(rtCamp);
+          const campEntry = campCostByNorm[norm];
+          if(campEntry && campEntry.cost > 0){
+            // Distribute proportionally by revenue share among all ads in this campaign
+            const adsInCamp = campAdRevenueMap[norm] || {};
+            const totalRev = Object.values(adsInCamp).reduce((s,v)=>s+v,0);
+            const myRev = adsInCamp[adName] || 0;
+            const share = totalRev>0 ? myRev/totalRev : 1/Math.max(Object.keys(adsInCamp).length,1);
+            adCost += campEntry.cost * share;
+          }
         }
       }
 
-      // 2) Try AD code extracted from campaign name (e.g. "AD848" in campaign title)
+      // 2) Try AD code match from campaign names
       if(!adCost){
         const code = extractAdCode(adName) || extractAdCode(a._camp);
         if(code && adCostByCode[code]) adCost = adCostByCode[code];
       }
 
-      // 3) Try sub4 = campaign title exactly
-      if(!adCost) adCost = campCostByTitle[adName] || 0;
+      // 3) Exact sub4 = campaign title match (normalized)
+      if(!adCost){ const e = campCostByNorm[normStr(adName)]; if(e) adCost = e.cost; }
 
-      // 4) sub6/_camp exact match
-      if(!adCost && a._camp) adCost = campCostByTitle[a._camp] || 0;
-
-      // 5) sub4 report fallback
+      // 4) sub4 report fallback
       if(!adCost) adCost = adCostMap[adName] || 0;
 
-      console.log('[ScaleLab] ad:', adName, '→ cost:', adCost, 'rtCamps:', rtCamps?[...rtCamps]:[]);
       return {
         ...a,
         total_revenue: a.revenue,
