@@ -3877,15 +3877,29 @@ function pdSelSemana(bkId, semId){
   renderProgDemanda();
 }
 
+function pdInitMeses(){
+  var bk = getBacklogs();
+  if(bk.length > 0) return; // já tem dados
+  var meses = ['Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  for(var i=0;i<meses.length;i++){
+    var b = {id:Date.now()+i, nome:meses[i]+' | 2026', semanas:[]};
+    for(var s=1;s<=4;s++){
+      b.semanas.push({id:Date.now()+i*10+s, nome:'Semana '+s, macro:{ofertas:[]}, micro:{}});
+    }
+    bk.push(b);
+  }
+  saveBacklogs(bk);
+}
+
 function renderProgDemanda(){
   var el = document.getElementById('gestao-content');
   if(!el) return;
+  pdInitMeses();
   var bk = getBacklogs();
   var html = '<div style="display:flex;gap:20px;min-height:calc(100vh - 160px);">';
 
   // Sidebar backlogs
   html += '<div style="min-width:190px;max-width:190px;flex-shrink:0;">';
-  html += '<button class="btn btn-primary" style="width:100%;font-size:12px;margin-bottom:14px;" onclick="pdAddBacklog()">+ Novo Backlog</button>';
   for(var bi=0;bi<bk.length;bi++){
     var b = bk[bi];
     var open = _pdSelBacklog === b.id;
@@ -3900,7 +3914,6 @@ function renderProgDemanda(){
         var smAct = _pdSelSemana === sm.id;
         html += '<div onclick="pdSelSemana('+b.id+','+sm.id+')" style="padding:6px 10px 6px 24px;cursor:pointer;font-size:12px;border-radius:6px;margin-top:2px;background:'+(smAct?'var(--bg3)':'transparent')+';color:'+(smAct?'var(--text)':'var(--text2)')+';font-weight:'+(smAct?'600':'400')+';">⚙ '+sm.nome+'</div>';
       }
-      html += '<div onclick="pdAddSemana('+b.id+')" style="padding:6px 10px 6px 24px;cursor:pointer;font-size:11px;color:var(--text2);margin-top:2px;">+ Nova semana</div>';
     }
     html += '</div>';
   }
@@ -3908,6 +3921,7 @@ function renderProgDemanda(){
 
   // Main content
   html += '<div style="flex:1;min-width:0;">';
+  html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary" style="font-size:12px;" onclick="pdAddBacklog()">+ Novo Backlog</button></div>';
   if(_pdSelSemana){
     if(_pdView==='cronograma') html += renderPdCronograma();
     else if(_pdView==='macro') html += renderPdMacro();
