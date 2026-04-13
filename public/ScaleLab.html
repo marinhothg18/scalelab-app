@@ -4164,7 +4164,10 @@ function renderPdMicro(){
   h += '<span onclick="_pdView=\'cronograma\';renderProgDemanda();" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Voltar</span>';
   h += '<select onchange="_pdView=this.value;renderProgDemanda();" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;"><option value="macro">Macro</option><option value="micro" selected>Micro</option></select>';
   h += '</div>';
-  h += '<div style="font-size:28px;font-weight:800;margin-bottom:6px;">Micro da Semana</div>';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">';
+  h += '<div style="font-size:28px;font-weight:800;">Micro da Semana</div>';
+  h += '<button onclick="pdSaveAll()" style="background:#22C55E;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">💾 Salvar</button>';
+  h += '</div>';
   h += '<div style="font-size:14px;color:var(--text2);margin-bottom:24px;">Cronograma detalhado por dia</div>';
   // Barra de busca + Filtros + Equipe
   h += '<div style="display:flex;gap:12px;margin-bottom:28px;align-items:center;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 18px;">';
@@ -4247,6 +4250,9 @@ function renderPdMicro(){
               h += '<input type="checkbox" '+(dm.done?'checked':'')+' onchange="pdToggleDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">';
               h += '<input value="'+(dm.texto||'').replace(/"/g,'&quot;')+'" onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'texto\',this.value)" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);outline:none;">';
               h += '<span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:700;white-space:nowrap;">'+(dm.oferta||'Avulsa')+'</span>';
+              // Link button
+              var dmLink = (dm.link||'').replace(/"/g,'&quot;');
+              h += '<span onclick="pdEditLink(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')" style="cursor:pointer;font-size:14px;color:'+(dm.link?'var(--accent)':'#9CA3AF')+';flex-shrink:0;" title="'+(dm.link||'Adicionar link')+'">🔗</span>';
               h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'de\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);cursor:pointer;">';
               for(var dsi=0;dsi<PD_DIAS_SHORT.length;dsi++){
                 h += '<option value="'+PD_DIAS_SHORT[dsi]+'"'+(dm.de===PD_DIAS_SHORT[dsi]?' selected':'')+'>'+PD_DIAS_SHORT[dsi]+'</option>';
@@ -4322,6 +4328,18 @@ function pdToggleDemanda(diaKey, setorId, pessoa, idx){
   var sem = _pdGetSemana();
   var dm = sem.micro[diaKey][setorId][pessoa][idx];
   if(dm){ dm.done = !dm.done; _pdSaveSemana(sem); }
+}
+
+function pdEditLink(diaKey, setorId, pessoa, idx){
+  var sem = _pdGetSemana();
+  if(!sem) return;
+  var dm = sem.micro[diaKey][setorId][pessoa][idx];
+  var link = prompt('Cole o link:', dm.link||'');
+  if(link===null) return;
+  dm.link = link.trim();
+  _pdSaveSemana(sem);
+  if(dm.link) window.open(dm.link,'_blank');
+  renderProgDemanda();
 }
 
 function pdDelDemanda(diaKey, setorId, pessoa, idx){
