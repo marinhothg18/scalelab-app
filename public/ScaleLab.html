@@ -3982,6 +3982,38 @@ function renderPdCronograma(){
 }
 
 // ── MACRO ──
+var PD_PRIORIDADES = [{id:'',label:'Sem prioridade',cor:'transparent'},{id:'baixa',label:'Baixa',cor:'#3B82F6'},{id:'media',label:'Mídia',cor:'#FBBF24'},{id:'alta',label:'Alta',cor:'#EF4444'}];
+
+function _macroItemText(item){ return typeof item==='string'?item:(item.texto||''); }
+function _macroItemPrio(item){ return typeof item==='string'?'':(item.prioridade||''); }
+
+function renderMacroSection(oi, campo, items, label){
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+  h += '<span style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.5px;">'+label+'</span>';
+  h += '</div>';
+  h += '<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:14px;">';
+  for(var i=0;i<items.length;i++){
+    var txt = _macroItemText(items[i]).replace(/"/g,'&quot;');
+    var prio = _macroItemPrio(items[i]);
+    var prioCor = (PD_PRIORIDADES.find(function(p){return p.id===prio;})||{}).cor||'transparent';
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">';
+    h += '<span style="font-size:8px;color:'+prioCor+';">●</span>';
+    h += '<input value="'+txt+'" onchange="pdUpdateMacroItem('+oi+',\''+campo+'\','+i+',this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;">';
+    // Priority dropdown
+    h += '<select onchange="pdSetMacroPrio('+oi+',\''+campo+'\','+i+',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:10px;color:var(--text2);cursor:pointer;">';
+    for(var pri=0;pri<PD_PRIORIDADES.length;pri++){
+      var p = PD_PRIORIDADES[pri];
+      h += '<option value="'+p.id+'"'+(prio===p.id?' selected':'')+'>'+p.label+'</option>';
+    }
+    h += '</select>';
+    h += '<button onclick="pdDelMacroItem('+oi+',\''+campo+'\','+i+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;">✕</button>';
+    h += '</div>';
+  }
+  h += '<input placeholder="Adicionar item..." onkeydown="if(event.key===\'Enter\'){pdAddMacroItem('+oi+',\''+campo+'\',this.value);this.value=\'\';}" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;box-sizing:border-box;margin-top:4px;">';
+  h += '</div>';
+  return h;
+}
+
 function renderPdMacro(){
   var sem = _pdGetSemana();
   if(!sem) return '';
@@ -3998,24 +4030,9 @@ function renderPdMacro(){
     var of_ = ofertas[oi];
     h += '<div style="border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><span style="font-size:16px;font-weight:700;">'+of_.nome+'</span><button onclick="pdDelOferta('+oi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;">🗑</button></div>';
-    // Pendências
-    h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:8px;letter-spacing:.5px;">Pendências</div>';
-    h += '<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:14px;">';
-    var pends = of_.pendencias || [];
-    for(var pi=0;pi<pends.length;pi++){
-      h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><input value="'+pends[pi].replace(/"/g,'&quot;')+'" onchange="pdUpdateMacroItem('+oi+',\'pendencias\','+pi+',this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;"><button onclick="pdDelMacroItem('+oi+',\'pendencias\','+pi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;">✕</button></div>';
-    }
-    h += '<input placeholder="Adicionar item..." onkeydown="if(event.key===\'Enter\'){pdAddMacroItem('+oi+',\'pendencias\',this.value);this.value=\'\';}" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;box-sizing:border-box;margin-top:4px;">';
+    h += renderMacroSection(oi, 'pendencias', of_.pendencias||[], 'Pendências');
+    h += renderMacroSection(oi, 'plano', of_.plano||[], 'Plano da Semana');
     h += '</div>';
-    // Plano da semana
-    h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:8px;letter-spacing:.5px;">Plano da Semana</div>';
-    h += '<div style="background:var(--bg2);border-radius:10px;padding:12px;">';
-    var plano = of_.plano || [];
-    for(var pli=0;pli<plano.length;pli++){
-      h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><input value="'+plano[pli].replace(/"/g,'&quot;')+'" onchange="pdUpdateMacroItem('+oi+',\'plano\','+pli+',this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;"><button onclick="pdDelMacroItem('+oi+',\'plano\','+pli+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;">✕</button></div>';
-    }
-    h += '<input placeholder="Adicionar item..." onkeydown="if(event.key===\'Enter\'){pdAddMacroItem('+oi+',\'plano\',this.value);this.value=\'\';}" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;box-sizing:border-box;margin-top:4px;">';
-    h += '</div></div>';
   }
 
   h += '<button onclick="pdAddOferta()" class="btn" style="border:2px dashed var(--border);background:transparent;color:var(--text2);width:100%;padding:14px;font-size:13px;border-radius:12px;cursor:pointer;">+ Adicionar Oferta</button>';
@@ -4040,14 +4057,24 @@ function pdDelOferta(oi){
 function pdAddMacroItem(oi, campo, val){
   if(!val.trim()) return;
   var sem = _pdGetSemana();
-  sem.macro.ofertas[oi][campo].push(val.trim());
+  sem.macro.ofertas[oi][campo].push({texto:val.trim(), prioridade:''});
   _pdSaveSemana(sem);
   renderProgDemanda();
 }
 function pdUpdateMacroItem(oi, campo, idx, val){
   var sem = _pdGetSemana();
-  sem.macro.ofertas[oi][campo][idx] = val;
+  var item = sem.macro.ofertas[oi][campo][idx];
+  if(typeof item==='string') sem.macro.ofertas[oi][campo][idx] = {texto:val, prioridade:''};
+  else item.texto = val;
   _pdSaveSemana(sem);
+}
+function pdSetMacroPrio(oi, campo, idx, prio){
+  var sem = _pdGetSemana();
+  var item = sem.macro.ofertas[oi][campo][idx];
+  if(typeof item==='string') sem.macro.ofertas[oi][campo][idx] = {texto:item, prioridade:prio};
+  else item.prioridade = prio;
+  _pdSaveSemana(sem);
+  renderProgDemanda();
 }
 function pdDelMacroItem(oi, campo, idx){
   var sem = _pdGetSemana();
@@ -4067,6 +4094,12 @@ function renderPdMicro(){
   h += '</div>';
   h += '<div style="font-size:22px;font-weight:800;margin-bottom:4px;">Micro da Semana</div>';
   h += '<div style="font-size:13px;color:var(--text2);margin-bottom:20px;">Cronograma detalhado por dia</div>';
+  // Barra de busca + Filtros + Equipe
+  h += '<div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap;">';
+  h += '<div style="flex:1;min-width:200px;position:relative;"><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text2);">🔍</span><input id="pd-micro-busca" placeholder="Buscar demanda..." style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px 10px 36px;font-size:13px;color:var(--text);outline:none;"></div>';
+  h += '<button style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">🔽 Filtros</button>';
+  h += '<button onclick="pdOpenEquipe()" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">👥 Equipe</button>';
+  h += '</div>';
 
   for(var di=0;di<PD_DIAS.length;di++){
     var dia = PD_DIAS[di];
@@ -4144,13 +4177,24 @@ function renderPdMicro(){
 }
 
 function pdAddPessoa(diaKey, setorId){
-  var nome = prompt('Nome da pessoa:');
-  if(!nome) return;
+  var colabs = getColabs().filter(function(c){ return c.setor===setorId; });
+  var opcoes = colabs.map(function(c){ return c.nome; });
+  if(!opcoes.length){
+    var nome = prompt('Nome da pessoa (ou cadastre na Equipe):');
+    if(!nome) return;
+    opcoes = [nome];
+  } else {
+    var sel = prompt('Colaboradores do setor:\n'+opcoes.map(function(n,i){return (i+1)+'. '+n;}).join('\n')+'\n\nDigite o número ou um nome novo:');
+    if(!sel) return;
+    var num = parseInt(sel);
+    if(num>0 && num<=opcoes.length) opcoes = [opcoes[num-1]];
+    else opcoes = [sel.trim()];
+  }
   var sem = _pdGetSemana();
   if(!sem.micro) sem.micro = {};
   if(!sem.micro[diaKey]) sem.micro[diaKey] = {};
   if(!sem.micro[diaKey][setorId]) sem.micro[diaKey][setorId] = {};
-  if(!sem.micro[diaKey][setorId][nome]) sem.micro[diaKey][setorId][nome] = [];
+  if(!sem.micro[diaKey][setorId][opcoes[0]]) sem.micro[diaKey][setorId][opcoes[0]] = [];
   _pdSaveSemana(sem);
   renderProgDemanda();
 }
@@ -4183,6 +4227,66 @@ function pdDelDemanda(diaKey, setorId, pessoa, idx){
   sem.micro[diaKey][setorId][pessoa].splice(idx,1);
   _pdSaveSemana(sem);
   renderProgDemanda();
+}
+
+// ── COLABORADORES ──
+function getColabs(){ return g('sl_colaboradores',[]); }
+function saveColabs(arr){ s('sl_colaboradores',arr); syncKey('sl_colaboradores'); }
+
+function pdOpenEquipe(){
+  var colabs = getColabs();
+  var h = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)pdCloseEquipe()">';
+  h += '<div style="background:var(--bg);border-radius:16px;padding:24px;width:440px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;"><span style="font-size:16px;font-weight:700;">Gerenciar Colaboradores</span><button onclick="pdCloseEquipe()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text2);">✕</button></div>';
+  // Add form
+  h += '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">';
+  h += '<input id="colab-nome" placeholder="Nome" style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);outline:none;">';
+  h += '<select id="colab-setor" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;">';
+  for(var csi=0;csi<PD_SETORES.length;csi++){
+    h += '<option value="'+PD_SETORES[csi].id+'">'+PD_SETORES[csi].label+'</option>';
+  }
+  h += '</select>';
+  h += '<button onclick="pdAddColab()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</button>';
+  h += '</div>';
+  // List
+  for(var cli=0;cli<colabs.length;cli++){
+    var cl = colabs[cli];
+    var setorLabel = (PD_SETORES.find(function(s){ return s.id===cl.setor; })||{}).label||cl.setor;
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border);">';
+    h += '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:13px;font-weight:600;">'+cl.nome+'</span><span style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--text2);">'+setorLabel+'</span></div>';
+    h += '<button onclick="pdDelColab('+cli+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;">🗑</button>';
+    h += '</div>';
+  }
+  if(!colabs.length) h += '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px;">Nenhum colaborador. Adicione acima.</div>';
+  h += '</div></div>';
+  var wrap = document.createElement('div');
+  wrap.id = 'pd-equipe-modal';
+  wrap.innerHTML = h;
+  document.body.appendChild(wrap);
+}
+
+function pdCloseEquipe(){
+  var el = document.getElementById('pd-equipe-modal');
+  if(el) el.remove();
+}
+
+function pdAddColab(){
+  var nome = document.getElementById('colab-nome').value.trim();
+  var setor = document.getElementById('colab-setor').value;
+  if(!nome){ alert('Digite o nome'); return; }
+  var colabs = getColabs();
+  colabs.push({nome:nome, setor:setor});
+  saveColabs(colabs);
+  pdCloseEquipe();
+  pdOpenEquipe();
+}
+
+function pdDelColab(idx){
+  var colabs = getColabs();
+  colabs.splice(idx,1);
+  saveColabs(colabs);
+  pdCloseEquipe();
+  pdOpenEquipe();
 }
 
 // ── CONTROLE DE CONTINGÊNCIA ──
