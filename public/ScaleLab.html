@@ -4097,7 +4097,30 @@ function renderPdMicro(){
   // Barra de busca + Filtros + Equipe
   h += '<div style="display:flex;gap:12px;margin-bottom:28px;align-items:center;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 18px;">';
   h += '<div style="flex:1;min-width:200px;position:relative;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--text2);">🔍</span><input id="pd-micro-busca" placeholder="Buscar demanda..." style="width:100%;box-sizing:border-box;background:transparent;border:none;padding:8px 14px 8px 38px;font-size:14px;color:var(--text);outline:none;"></div>';
-  h += '<button style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:14px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:500;">🔽 Filtros</button>';
+  h += '<div style="position:relative;"><button onclick="var dd=document.getElementById(\'pd-filtros-dd\');dd.style.display=dd.style.display===\'block\'?\'none\':\'block\';" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:14px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:500;">🔽 Filtros</button>';
+  h += '<div id="pd-filtros-dd" style="display:none;position:absolute;top:48px;right:0;background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;width:220px;box-shadow:0 10px 40px rgba(0,0,0,.12);z-index:100;color:#1F2937;">';
+  // Setor
+  h += '<div style="margin-bottom:14px;"><div style="font-size:12px;font-weight:600;margin-bottom:6px;">Setor</div>';
+  h += '<select id="pd-f-setor" onchange="pdApplyFilters()" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:13px;color:#1F2937;cursor:pointer;">';
+  h += '<option value="">Todos</option>';
+  for(var fsi3=0;fsi3<PD_SETORES.length;fsi3++) h += '<option value="'+PD_SETORES[fsi3].id+'">'+PD_SETORES[fsi3].label+'</option>';
+  h += '</select></div>';
+  // Status
+  h += '<div style="margin-bottom:14px;"><div style="font-size:12px;font-weight:600;margin-bottom:6px;">Status</div>';
+  h += '<select id="pd-f-status" onchange="pdApplyFilters()" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:13px;color:#1F2937;cursor:pointer;">';
+  h += '<option value="">Todos</option><option value="Pendente">Pendente</option><option value="Concluído">Concluído</option></select></div>';
+  // Projeto
+  h += '<div style="margin-bottom:14px;"><div style="font-size:12px;font-weight:600;margin-bottom:6px;">Projeto</div>';
+  h += '<select id="pd-f-projeto" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:13px;color:#1F2937;cursor:pointer;">';
+  h += '<option value="">Todos</option></select></div>';
+  // Colaborador
+  h += '<div><div style="font-size:12px;font-weight:600;margin-bottom:6px;">Colaborador</div>';
+  h += '<select id="pd-f-colab" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:13px;color:#1F2937;cursor:pointer;">';
+  h += '<option value="">Todos</option>';
+  var fColabs = getColabs();
+  for(var fci=0;fci<fColabs.length;fci++) h += '<option value="'+fColabs[fci].nome+'">'+fColabs[fci].nome+'</option>';
+  h += '</select></div>';
+  h += '</div></div>';
   h += '<button onclick="pdOpenEquipe()" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:14px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:500;">👥 Equipe</button>';
   h += '</div>';
 
