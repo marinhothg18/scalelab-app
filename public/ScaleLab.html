@@ -3909,31 +3909,7 @@ function renderProgDemanda(){
   if(!el) return;
   pdInitMeses();
   var bk = getBacklogs();
-  var html = '<div style="display:flex;gap:20px;min-height:calc(100vh - 160px);">';
-
-  // Sidebar backlogs
-  html += '<div style="min-width:190px;max-width:190px;flex-shrink:0;">';
-  for(var bi=0;bi<bk.length;bi++){
-    var b = bk[bi];
-    var open = _pdSelBacklog === b.id;
-    html += '<div style="margin-bottom:6px;">';
-    html += '<div onclick="pdToggleBacklog('+b.id+')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;background:'+(open?'var(--accent)':'var(--bg2)')+';color:'+(open?'#fff':'var(--text)')+';border:1px solid '+(open?'var(--accent)':'var(--border)')+';transition:all .15s;">';
-    html += '<span>📅 '+b.nome+'</span>';
-    html += '<span style="font-size:10px;">'+(open?'▼':'›')+'</span>';
-    html += '</div>';
-    if(open){
-      for(var si=0;si<b.semanas.length;si++){
-        var sm = b.semanas[si];
-        var smAct = _pdSelSemana === sm.id;
-        html += '<div onclick="pdSelSemana('+b.id+','+sm.id+')" style="padding:6px 10px 6px 24px;cursor:pointer;font-size:12px;border-radius:6px;margin-top:2px;background:'+(smAct?'var(--bg3)':'transparent')+';color:'+(smAct?'var(--text)':'var(--text2)')+';font-weight:'+(smAct?'600':'400')+';">⚙ '+sm.nome+'</div>';
-      }
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-
-  // Main content
-  html += '<div style="flex:1;min-width:0;">';
+  var html = '<div style="min-height:calc(100vh - 160px);">';
   // Filtros Mês + Semana + Novo Backlog
   html += '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;align-items:center;">';
   html += '<select id="pd-filtro-mes" onchange="pdFiltroMes(this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer;">';
@@ -3962,9 +3938,9 @@ function renderProgDemanda(){
     else if(_pdView==='macro') html += renderPdMacro();
     else if(_pdView==='micro') html += renderPdMicro();
   } else {
-    html += '<div style="text-align:center;padding:60px 20px;color:var(--text2);font-size:13px;">Selecione uma semana para ver o cronograma.</div>';
+    html += '<div style="text-align:center;padding:60px 20px;color:var(--text2);font-size:13px;">Selecione um mês e semana nos filtros acima.</div>';
   }
-  html += '</div></div>';
+  html += '</div>';
   el.innerHTML = html;
 }
 
