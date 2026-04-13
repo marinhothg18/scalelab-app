@@ -3732,11 +3732,23 @@ function renderTrafegoSidebar(){
 function renderTrafegoContent(){
   const el = document.getElementById('trafego-content');
   if(!el) return;
+  // Move page-roi content into trafego area when selected
+  const roiPage = document.getElementById('page-roi');
   if(_trafegoTab === 'contingencia'){
+    if(roiPage) roiPage.style.display = 'none';
     el.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:16px;">🛡️ Controle de Contingência</div><div style="color:var(--text2);font-size:13px;">Em breve — conteúdo será adicionado aqui.</div>';
   } else if(_trafegoTab === 'roi'){
-    el.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:16px;">💰 Controle de ROI</div><div style="color:var(--text2);font-size:13px;">Em breve — conteúdo será adicionado aqui.</div>';
+    // Embed the ROI page content inside trafego-content
+    el.innerHTML = '';
+    if(roiPage){
+      roiPage.style.display = 'block';
+      roiPage.classList.remove('active');
+      roiPage.style.position = 'static';
+      el.appendChild(roiPage);
+      renderRoi();
+    }
   } else {
+    if(roiPage) roiPage.style.display = 'none';
     el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text2);font-size:13px;">Selecione uma categoria na barra lateral.</div>';
   }
 }
