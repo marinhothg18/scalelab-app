@@ -966,7 +966,13 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
     <!-- GESTÃO -->
     <div class="page" id="page-gestao">
-      <div id="gestao-content" style="min-height:calc(100vh - 120px);"></div>
+      <div style="display:flex;gap:20px;min-height:calc(100vh - 120px);">
+        <div style="min-width:200px;max-width:200px;flex-shrink:0;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:10px;letter-spacing:.5px;">Filtrar por tipo</div>
+          <div id="gestao-tipo-filtros"></div>
+        </div>
+        <div style="flex:1;min-width:0;" id="gestao-content"></div>
+      </div>
     </div>
 
     <!-- TRÁFEGO -->
@@ -3806,7 +3812,9 @@ function renderGestaoSidebar(){
 }
 
 function renderGestaoContent(){
-  renderProgDemanda();
+  var el = document.getElementById('gestao-content');
+  if(!el) return;
+  if(_gestaoTab === 'prog_demanda'){ renderProgDemanda(); }
 }
 
 // ── PROGRAMAÇÃO DE DEMANDA ──
