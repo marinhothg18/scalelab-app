@@ -674,6 +674,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
       Gestão
     </div>
+    <div class="nav-item" onclick="goTo('infra')">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      Infra
+    </div>
     <div class="nav-item" onclick="goTo('adlibrary')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       Ad Library
@@ -962,6 +966,17 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
       <!-- VIEW WEEKLY DE CRIATIVO -->
       <div id="rd-view-weekly" style="display:none;"></div>
+    </div>
+
+    <!-- INFRA -->
+    <div class="page" id="page-infra">
+      <div style="display:flex;gap:20px;min-height:calc(100vh - 120px);">
+        <div style="min-width:200px;max-width:200px;flex-shrink:0;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:10px;letter-spacing:.5px;">Filtrar por tipo</div>
+          <div id="infra-tipo-filtros"></div>
+        </div>
+        <div style="flex:1;min-width:0;" id="infra-content"></div>
+      </div>
     </div>
 
     <!-- GESTÃO -->
@@ -3179,7 +3194,8 @@ const titles={
   notificacoes:{t:'Notificações',s:''},configuracoes:{t:'Configurações',s:''},
   adsmetrics:{t:'Métricas de Ads',s:'Performance de campanhas via RedTrack'},
   rituais:{t:'Rituais',s:'Rotinas e processos recorrentes da equipe.'},
-  gestao:{t:'Gestão',s:'Gestão e programação de demandas.'}
+  gestao:{t:'Gestão',s:'Gestão e programação de demandas.'},
+  infra:{t:'Infra',s:'Infraestrutura e controle de testes.'}
 };
 const addBtns={
   criativos:()=>{populateRemessas();openModal('modal-criativo');},
@@ -3231,6 +3247,7 @@ function goTo(id){
   if(id==='adsmetrics')renderAdsMetrics();
   if(id==='rituais')renderRituais();
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
+  if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
   // Mobile: atualiza título e bottom nav
   const titleEl=document.getElementById('mobile-section-title');
@@ -4416,6 +4433,30 @@ function pdDelColab(idx){
   saveColabs(colabs);
   pdCloseEquipe();
   pdOpenEquipe();
+}
+
+// ── INFRA ──
+var _infraTab = 'controle_testes';
+var INFRA_TABS = [
+  { id:'controle_testes', label:'Controle de Testes', icon:'🧪', color:'#8B5CF6' }
+];
+
+function renderInfraSidebar(){
+  var el = document.getElementById('infra-tipo-filtros');
+  if(!el) return;
+  el.innerHTML = INFRA_TABS.map(function(t){
+    var active = _infraTab === t.id;
+    var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+t.color+';margin-right:8px;flex-shrink:0;"></span>';
+    return '<div onclick="_infraTab=\''+t.id+'\';renderInfraSidebar();renderInfraContent();" style="display:flex;align-items:center;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(active?'700':'500')+';color:'+(active?'#fff':'var(--text2)')+';background:'+(active?'var(--accent)':'transparent')+';transition:all .15s;">'+dot+t.icon+' '+t.label+'</div>';
+  }).join('');
+}
+
+function renderInfraContent(){
+  var el = document.getElementById('infra-content');
+  if(!el) return;
+  if(_infraTab === 'controle_testes'){
+    el.innerHTML = '<div style="font-size:18px;font-weight:700;margin-bottom:16px;">🧪 Controle de Testes</div><div style="color:var(--text2);font-size:13px;">Em breve — conteúdo será adicionado aqui.</div>';
+  }
 }
 
 // ── CONTROLE DE CONTINGÊNCIA ──
