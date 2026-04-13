@@ -3820,7 +3820,7 @@ function renderGestaoContent(){
 // ── PROGRAMAÇÃO DE DEMANDA ──
 var MESES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 var PD_SETORES = [
-  {id:'copia',label:'Cópia',cor:'#CFFAFE'},
+  {id:'copia',label:'Copy',cor:'#CFFAFE'},
   {id:'edicao',label:'Edição',cor:'#D1FAE5'},
   {id:'infra',label:'Infra',cor:'#BFDBFE'},
   {id:'trafego',label:'Tráfego',cor:'#E9D5FF'}
@@ -4235,29 +4235,37 @@ function saveColabs(arr){ s('sl_colaboradores',arr); syncKey('sl_colaboradores')
 
 function pdOpenEquipe(){
   var colabs = getColabs();
-  var h = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)pdCloseEquipe()">';
-  h += '<div style="background:var(--bg);border-radius:16px;padding:24px;width:440px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">';
-  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;"><span style="font-size:16px;font-weight:700;">Gerenciar Colaboradores</span><button onclick="pdCloseEquipe()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text2);">✕</button></div>';
+  var h = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)pdCloseEquipe()">';
+  h += '<div style="background:#fff;border-radius:16px;padding:28px;width:440px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15);color:#1F2937;">';
+  // Header
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+  h += '<span style="font-size:17px;font-weight:700;color:#111827;">Gerenciar Colaboradores</span>';
+  h += '<button onclick="pdCloseEquipe()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;line-height:1;">✕</button>';
+  h += '</div>';
   // Add form
-  h += '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">';
-  h += '<input id="colab-nome" placeholder="Nome" style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);outline:none;">';
-  h += '<select id="colab-setor" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;">';
+  h += '<div style="display:flex;gap:8px;margin-bottom:20px;align-items:center;">';
+  h += '<input id="colab-nome" placeholder="Nome" style="flex:1;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#111827;outline:none;">';
+  h += '<select id="colab-setor" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#6B7280;cursor:pointer;min-width:100px;">';
+  h += '<option value="" disabled selected>Setor</option>';
   for(var csi=0;csi<PD_SETORES.length;csi++){
     h += '<option value="'+PD_SETORES[csi].id+'">'+PD_SETORES[csi].label+'</option>';
   }
   h += '</select>';
-  h += '<button onclick="pdAddColab()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</button>';
+  h += '<button onclick="pdAddColab()" style="background:#3B82F6;color:#fff;border:none;border-radius:10px;width:40px;height:40px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>';
   h += '</div>';
   // List
   for(var cli=0;cli<colabs.length;cli++){
     var cl = colabs[cli];
     var setorLabel = (PD_SETORES.find(function(s){ return s.id===cl.setor; })||{}).label||cl.setor;
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border);">';
-    h += '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:13px;font-weight:600;">'+cl.nome+'</span><span style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--text2);">'+setorLabel+'</span></div>';
-    h += '<button onclick="pdDelColab('+cli+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;">🗑</button>';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #F3F4F6;">';
+    h += '<div style="display:flex;align-items:center;gap:10px;">';
+    h += '<span style="font-size:14px;font-weight:500;color:#111827;">'+cl.nome+'</span>';
+    h += '<span style="background:#F3F4F6;border-radius:6px;padding:3px 10px;font-size:12px;color:#4B5563;font-weight:500;">'+setorLabel+'</span>';
+    h += '</div>';
+    h += '<button onclick="pdDelColab('+cli+')" style="background:none;border:none;cursor:pointer;color:#EF4444;font-size:16px;padding:4px;" title="Remover">👤‍✕</button>';
     h += '</div>';
   }
-  if(!colabs.length) h += '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px;">Nenhum colaborador. Adicione acima.</div>';
+  if(!colabs.length) h += '<div style="text-align:center;padding:24px;color:#9CA3AF;font-size:13px;">Nenhum colaborador. Adicione acima.</div>';
   h += '</div></div>';
   var wrap = document.createElement('div');
   wrap.id = 'pd-equipe-modal';
@@ -4274,6 +4282,7 @@ function pdAddColab(){
   var nome = document.getElementById('colab-nome').value.trim();
   var setor = document.getElementById('colab-setor').value;
   if(!nome){ alert('Digite o nome'); return; }
+  if(!setor){ alert('Selecione o setor'); return; }
   var colabs = getColabs();
   colabs.push({nome:nome, setor:setor});
   saveColabs(colabs);
