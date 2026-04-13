@@ -3735,7 +3735,8 @@ function renderTrafegoContent(){
   const roiPage = document.getElementById('page-roi');
   if(_trafegoTab === 'contingencia'){
     if(roiPage) { roiPage.style.cssText = ''; roiPage.classList.remove('active'); }
-    el.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:16px;">🛡️ Controle de Contingência</div><div style="color:var(--text2);font-size:13px;">Em breve — conteúdo será adicionado aqui.</div>';
+    el.innerHTML = '<div id="contingencia-container"></div>';
+    renderContingencia();
   } else if(_trafegoTab === 'roi'){
     el.innerHTML = '<div id="trafego-roi-embed"></div>';
     const embed = document.getElementById('trafego-roi-embed');
@@ -3748,6 +3749,129 @@ function renderTrafegoContent(){
     if(roiPage) { roiPage.style.cssText = ''; roiPage.classList.remove('active'); }
     el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text2);font-size:13px;">Selecione uma categoria na barra lateral.</div>';
   }
+}
+
+// ── CONTROLE DE CONTINGÊNCIA ──
+const CONTA_STATUS = ['Escalada','Rodando','Aquecimento','Desativada'];
+const CONTA_STATUS_COR = {Escalada:'#22C55E',Rodando:'#3B82F6',Aquecimento:'#F97316',Desativada:'#6B7280'};
+const CONTA_PROCESSO = ['CBO','BIDCAP','Processo Aquecimento'];
+
+function getContas(){ return g('sl_contingencia',[]); }
+function saveContas(arr){ s('sl_contingencia',arr); syncKey('sl_contingencia'); }
+function syncKey(k){ const API_BASE=localStorage.getItem('sl_api_base')||''; if(API_BASE) fetch(API_BASE+'/api/store/'+k,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(g(k))}); }
+
+function addConta(){
+  const contas = getContas();
+  contas.push({id:Date.now(), status:'Aquecimento', processo:'CBO', perfil:'', oferta:'', nome:'', cartao:'', link1:'', link2:''});
+  saveContas(contas);
+  renderContingencia();
+}
+
+function delConta(id){
+  if(!confirm('Excluir esta conta?')) return;
+  const contas = getContas().filter(c=>c.id!==id);
+  saveContas(contas);
+  renderContingencia();
+}
+
+function updateConta(id, campo, valor){
+  const contas = getContas();
+  const c = contas.find(x=>x.id===id);
+  if(c){ c[campo]=valor; saveContas(contas); }
+  if(campo==='status') renderContingencia();
+}
+
+function renderContingencia(){
+  const el = document.getElementById('contingencia-container');
+  if(!el) return;
+  const contas = getContas();
+
+  // Contadores
+  const counts = {Rodando:0, Escalada:0, Aquecimento:0, Zerada:0, Desativada:0};
+  contas.forEach(c=>{ if(counts[c.status]!==undefined) counts[c.status]++; });
+
+  // Cards de resumo
+  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">';
+  html += '<div style="font-size:18px;font-weight:700;">🛡️ Controle de Contingência</div>';
+  html += '<button class="btn btn-primary" style="font-size:12px;" onclick="addConta()">+ Adicionar Conta</button>';
+  html += '</div>';
+
+  // Summary cards
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px;">';
+  var cardData = [
+    {label:'Rodando',cor:'#3B82F6',val:counts.Rodando},
+    {label:'Escalada',cor:'#22C55E',val:counts.Escalada},
+    {label:'Aquecimento',cor:'#F97316',val:counts.Aquecimento},
+    {label:'Desativada',cor:'#6B7280',val:counts.Desativada}
+  ];
+  for(var ci=0;ci<cardData.length;ci++){
+    var cd = cardData[ci];
+    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;">';
+    html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:'+cd.cor+';letter-spacing:.5px;margin-bottom:4px;">'+cd.label+'</div>';
+    html += '<div style="font-size:24px;font-weight:800;color:var(--text);">'+cd.val+'</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Tabela
+  html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+  html += '<thead><tr style="border-bottom:2px solid var(--border);">';
+  var cols = ['Status da Conta','Processo Aquecimento','Nome do Perfil','Oferta','Nome da Conta','Cartão','Link Rodando 01','Link Rodando 02',''];
+  for(var hi=0;hi<cols.length;hi++){
+    html += '<th style="text-align:left;padding:10px 8px;color:var(--text2);font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">'+cols[hi]+'</th>';
+  }
+  html += '</tr></thead><tbody>';
+
+  if(!contas.length){
+    html += '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text2);">Nenhuma conta cadastrada. Clique em "+ Adicionar Conta".</td></tr>';
+  } else {
+    for(var ri=0;ri<contas.length;ri++){
+      var c = contas[ri];
+      var bg = ri%2===0?'':'background:rgba(255,255,255,.02);';
+      var statusCor = CONTA_STATUS_COR[c.status]||'#6B7280';
+
+      html += '<tr style="border-bottom:1px solid var(--border);'+bg+'">';
+
+      // Status select com cor
+      html += '<td style="padding:6px 4px;"><select onchange="updateConta('+c.id+',\'status\',this.value)" style="background:'+statusCor+';color:#fff;border:none;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;width:100%;">';
+      for(var si=0;si<CONTA_STATUS.length;si++){
+        html += '<option value="'+CONTA_STATUS[si]+'"'+(c.status===CONTA_STATUS[si]?' selected':'')+'>'+CONTA_STATUS[si].toUpperCase()+'</option>';
+      }
+      html += '</select></td>';
+
+      // Processo select com cor
+      var procCor = c.processo==='CBO'?'#EF4444':c.processo==='BIDCAP'?'#8B5CF6':'#F97316';
+      html += '<td style="padding:6px 4px;"><select onchange="updateConta('+c.id+',\'processo\',this.value)" style="background:'+procCor+';color:#fff;border:none;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;width:100%;">';
+      for(var pi=0;pi<CONTA_PROCESSO.length;pi++){
+        html += '<option value="'+CONTA_PROCESSO[pi]+'"'+(c.processo===CONTA_PROCESSO[pi]?' selected':'')+'>'+CONTA_PROCESSO[pi].toUpperCase()+'</option>';
+      }
+      html += '</select></td>';
+
+      // Texto inputs
+      html += '<td style="padding:6px 4px;"><input value="'+(c.perfil||'').replace(/"/g,'&quot;')+'" onchange="updateConta('+c.id+',\'perfil\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);width:100%;box-sizing:border-box;outline:none;" placeholder="Nome do perfil"></td>';
+
+      // Oferta select
+      html += '<td style="padding:6px 4px;"><input value="'+(c.oferta||'').replace(/"/g,'&quot;')+'" onchange="updateConta('+c.id+',\'oferta\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);width:90px;box-sizing:border-box;outline:none;" placeholder="Oferta"></td>';
+
+      html += '<td style="padding:6px 4px;"><input value="'+(c.nome||'').replace(/"/g,'&quot;')+'" onchange="updateConta('+c.id+',\'nome\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);width:80px;box-sizing:border-box;outline:none;" placeholder="Nome"></td>';
+
+      html += '<td style="padding:6px 4px;"><input value="'+(c.cartao||'').replace(/"/g,'&quot;')+'" onchange="updateConta('+c.id+',\'cartao\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);width:80px;box-sizing:border-box;outline:none;" placeholder="Cartão"></td>';
+
+      // Links
+      var l1 = (c.link1||'').replace(/"/g,'&quot;');
+      var l2 = (c.link2||'').replace(/"/g,'&quot;');
+      html += '<td style="padding:6px 4px;"><input value="'+l1+'" onchange="updateConta('+c.id+',\'link1\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--accent);width:140px;box-sizing:border-box;outline:none;" placeholder="https://..."></td>';
+
+      html += '<td style="padding:6px 4px;"><input value="'+l2+'" onchange="updateConta('+c.id+',\'link2\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--accent);width:140px;box-sizing:border-box;outline:none;" placeholder="https://..."></td>';
+
+      // Delete
+      html += '<td style="padding:6px 4px;text-align:center;"><button onclick="delConta('+c.id+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;padding:4px;" title="Excluir">🗑</button></td>';
+
+      html += '</tr>';
+    }
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
 }
 
 function renderMetricas(){
