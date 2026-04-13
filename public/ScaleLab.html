@@ -4092,13 +4092,13 @@ function renderPdMicro(){
   h += '<span onclick="_pdView=\'cronograma\';renderProgDemanda();" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Voltar</span>';
   h += '<select onchange="_pdView=this.value;renderProgDemanda();" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;"><option value="macro">Macro</option><option value="micro" selected>Micro</option></select>';
   h += '</div>';
-  h += '<div style="font-size:22px;font-weight:800;margin-bottom:4px;">Micro da Semana</div>';
-  h += '<div style="font-size:13px;color:var(--text2);margin-bottom:20px;">Cronograma detalhado por dia</div>';
+  h += '<div style="font-size:28px;font-weight:800;margin-bottom:6px;">Micro da Semana</div>';
+  h += '<div style="font-size:14px;color:var(--text2);margin-bottom:24px;">Cronograma detalhado por dia</div>';
   // Barra de busca + Filtros + Equipe
-  h += '<div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap;">';
-  h += '<div style="flex:1;min-width:200px;position:relative;"><span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--text2);">🔍</span><input id="pd-micro-busca" placeholder="Buscar demanda..." style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px 10px 36px;font-size:13px;color:var(--text);outline:none;"></div>';
-  h += '<button style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">🔽 Filtros</button>';
-  h += '<button onclick="pdOpenEquipe()" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:13px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;">👥 Equipe</button>';
+  h += '<div style="display:flex;gap:12px;margin-bottom:28px;align-items:center;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 18px;">';
+  h += '<div style="flex:1;min-width:200px;position:relative;"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--text2);">🔍</span><input id="pd-micro-busca" placeholder="Buscar demanda..." style="width:100%;box-sizing:border-box;background:transparent;border:none;padding:8px 14px 8px 38px;font-size:14px;color:var(--text);outline:none;"></div>';
+  h += '<button style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:14px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:500;">🔽 Filtros</button>';
+  h += '<button onclick="pdOpenEquipe()" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:14px;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:500;">👥 Equipe</button>';
   h += '</div>';
 
   for(var di=0;di<PD_DIAS.length;di++){
@@ -4109,12 +4109,12 @@ function renderPdMicro(){
     for(var sk in diaData){ var sp = diaData[sk]||{}; for(var pk in sp){ totalDem += (sp[pk]||[]).length; } }
     var diaAberto = _pdMicroDiaAberto === diaKey;
 
-    h += '<div style="border:1px solid var(--border);border-radius:12px;margin-bottom:8px;overflow:hidden;">';
-    h += '<div onclick="_pdMicroDiaAberto=(_pdMicroDiaAberto===\''+diaKey+'\'?null:\''+diaKey+'\');_pdMicroSetorAberto=null;renderProgDemanda();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;font-size:14px;font-weight:700;background:var(--bg2);">';
+    h += '<div style="border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden;">';
+    h += '<div onclick="_pdMicroDiaAberto=(_pdMicroDiaAberto===\''+diaKey+'\'?null:\''+diaKey+'\');_pdMicroSetorAberto=null;renderProgDemanda();" style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;cursor:pointer;font-size:18px;font-weight:700;background:var(--bg2);">';
     h += '<span>'+dia+'</span>';
-    h += '<span style="display:flex;align-items:center;gap:8px;">';
-    if(totalDem>0) h += '<span style="background:var(--accent);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">'+totalDem+'</span>';
-    h += '<span style="font-size:12px;color:var(--text2);">'+(diaAberto?'▼':'›')+'</span></span>';
+    h += '<span style="display:flex;align-items:center;gap:10px;">';
+    if(totalDem>0) h += '<span style="background:#111827;color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">'+totalDem+'</span>';
+    h += '<span style="font-size:14px;color:var(--text2);">'+(diaAberto?'▼':'›')+'</span></span>';
     h += '</div>';
 
     if(diaAberto){
@@ -4125,9 +4125,9 @@ function renderPdMicro(){
         var setorDem = 0;
         for(var pk2 in setorData) setorDem += (setorData[pk2]||[]).length;
 
-        h += '<div onclick="_pdMicroSetorAberto=(_pdMicroSetorAberto===\''+setor.id+'\'?null:\''+setor.id+'\');renderProgDemanda();" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer;font-size:13px;font-weight:600;background:'+setor.cor+';color:#1F2937;">';
+        h += '<div onclick="_pdMicroSetorAberto=(_pdMicroSetorAberto===\''+setor.id+'\'?null:\''+setor.id+'\');renderProgDemanda();" style="display:flex;align-items:center;justify-content:space-between;padding:12px 22px;cursor:pointer;font-size:15px;font-weight:600;background:'+setor.cor+';color:#1F2937;border-radius:10px;margin:6px 10px;">';
         h += '<span>'+setor.label+'</span>';
-        h += '<span style="font-size:11px;">'+(setorAberto?'▼':'›')+'</span>';
+        h += '<span style="font-size:13px;">'+(setorAberto?'▼':'›')+'</span>';
         h += '</div>';
 
         if(setorAberto){
@@ -4139,37 +4139,38 @@ function renderPdMicro(){
           // Add people that have existing demands (even if removed from Equipe)
           for(var pk3 in setorData) pessoasSet[pk3] = true;
           var pessoas = Object.keys(pessoasSet);
-          h += '<div style="padding:12px 16px;">';
+          h += '<div style="padding:16px 22px;">';
           for(var pi2=0;pi2<pessoas.length;pi2++){
             var pessoa = pessoas[pi2];
             var demandas = setorData[pessoa] || [];
-            h += '<div style="margin-bottom:14px;">';
-            h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">'+pessoa+'</div>';
+            h += '<div style="margin-bottom:18px;border:1px solid var(--border);border-radius:12px;padding:18px 20px;">';
+            h += '<div style="font-size:15px;font-weight:700;margin-bottom:12px;">'+pessoa+'</div>';
             for(var dmi=0;dmi<demandas.length;dmi++){
               var dm = demandas[dmi];
               var statusCor = dm.status==='Concluído'?'#22C55E':'#F97316';
-              h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">';
-              h += '<input type="checkbox" '+(dm.done?'checked':'')+' onchange="pdToggleDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')">';
-              h += '<input value="'+(dm.texto||'').replace(/"/g,'&quot;')+'" onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'texto\',this.value)" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);outline:none;">';
-              h += '<span style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">'+(dm.oferta||'—')+'</span>';
-              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'de\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--text);cursor:pointer;">';
+              h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">';
+              h += '<input type="checkbox" '+(dm.done?'checked':'')+' onchange="pdToggleDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">';
+              h += '<input value="'+(dm.texto||'').replace(/"/g,'&quot;')+'" onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'texto\',this.value)" style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);outline:none;">';
+              h += '<span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:700;white-space:nowrap;">'+(dm.oferta||'Avulsa')+'</span>';
+              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'de\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);cursor:pointer;">';
               for(var dsi=0;dsi<PD_DIAS_SHORT.length;dsi++){
                 h += '<option value="'+PD_DIAS_SHORT[dsi]+'"'+(dm.de===PD_DIAS_SHORT[dsi]?' selected':'')+'>'+PD_DIAS_SHORT[dsi]+'</option>';
               }
-              h += '</select><span style="font-size:10px;color:var(--text2);">→</span>';
-              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'ate\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--text);cursor:pointer;">';
+              h += '</select><span style="font-size:12px;color:var(--text2);">→</span>';
+              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'ate\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--text);cursor:pointer;">';
               for(var dsi2=0;dsi2<PD_DIAS_SHORT.length;dsi2++){
                 h += '<option value="'+PD_DIAS_SHORT[dsi2]+'"'+(dm.ate===PD_DIAS_SHORT[dsi2]?' selected':'')+'>'+PD_DIAS_SHORT[dsi2]+'</option>';
               }
               h += '</select>';
-              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'status\',this.value)" style="background:'+statusCor+';color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;">';
+              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'status\',this.value)" style="background:'+statusCor+';color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">';
               h += '<option value="Pendente"'+(dm.status==='Pendente'?' selected':'')+'>Pendente</option>';
               h += '<option value="Concluído"'+(dm.status==='Concluído'?' selected':'')+'>Concluído</option>';
               h += '</select>';
-              h += '<button onclick="pdDelDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:11px;">✕</button>';
+              h += '<span style="font-size:14px;color:var(--text2);cursor:pointer;">+</span>';
+              h += '<button onclick="pdDelDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;">✕</button>';
               h += '</div>';
             }
-            h += '<div onclick="pdAddDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\')" style="cursor:pointer;font-size:11px;color:var(--text2);margin-top:4px;">+ Nova demanda</div>';
+            h += '<div onclick="pdAddDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\')" style="cursor:pointer;font-size:13px;color:var(--text2);margin-top:8px;padding:6px 0;">+ Nova demanda</div>';
             h += '</div>';
           }
           if(!pessoas.length) h += '<div style="color:var(--text2);font-size:12px;padding:8px 0;">Cadastre colaboradores em "👥 Equipe" para este setor.</div>';
