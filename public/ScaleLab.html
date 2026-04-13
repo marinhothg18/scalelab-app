@@ -3892,14 +3892,20 @@ function pdInitMeses(){
 }
 
 function pdFiltroMes(val){
-  _pdSelBacklog = val ? parseInt(val) : null;
+  _pdSelBacklog = val ? Number(val) : null;
   _pdSelSemana = null;
   _pdView = 'cronograma';
+  // Auto-select first semana
+  if(_pdSelBacklog){
+    var bk = getBacklogs();
+    var b = bk.find(function(x){ return x.id==_pdSelBacklog; });
+    if(b && b.semanas.length) _pdSelSemana = b.semanas[0].id;
+  }
   renderProgDemanda();
 }
 
 function pdFiltroSemana(val){
-  _pdSelSemana = val ? parseInt(val) : null;
+  _pdSelSemana = val ? Number(val) : null;
   _pdView = 'cronograma';
   renderProgDemanda();
 }
@@ -3946,18 +3952,27 @@ function renderProgDemanda(){
 
 function _pdGetSemana(){
   var bk = getBacklogs();
-  var b = bk.find(function(x){ return x.id===_pdSelBacklog; });
-  if(!b) return null;
-  return b.semanas.find(function(x){ return x.id===_pdSelSemana; });
+  // Use == instead of === to handle string/number mismatch
+  var b = bk.find(function(x){ return x.id==_pdSelBacklog; });
+  if(!b){ console.warn('[PD] backlog not found:', _pdSelBacklog); return null; }
+  var sem = b.semanas.find(function(x){ return x.id==_pdSelSemana; });
+  if(!sem) console.warn('[PD] semana not found:', _pdSelSemana);
+  return sem;
 }
 
 function _pdSaveSemana(sem){
+  if(!sem){ console.warn('[PD] save called with null sem'); return; }
   var bk = getBacklogs();
-  var b = bk.find(function(x){ return x.id===_pdSelBacklog; });
-  if(!b) return;
-  var idx = b.semanas.findIndex(function(x){ return x.id===_pdSelSemana; });
-  if(idx>=0) b.semanas[idx] = sem;
-  saveBacklogs(bk);
+  var b = bk.find(function(x){ return x.id==_pdSelBacklog; });
+  if(!b){ console.warn('[PD] save: backlog not found'); return; }
+  var idx = b.semanas.findIndex(function(x){ return x.id==_pdSelSemana; });
+  if(idx>=0){
+    b.semanas[idx] = sem;
+    saveBacklogs(bk);
+    console.log('[PD] saved semana', _pdSelSemana);
+  } else {
+    console.warn('[PD] save: semana index not found');
+  }
 }
 
 function renderPdCronograma(){
@@ -4053,6 +4068,7 @@ function pdAddOferta(){
   var nome = prompt('Nome da oferta:');
   if(!nome) return;
   var sem = _pdGetSemana();
+  if(!sem){ alert('Selecione um mês e semana primeiro.'); return; }
   if(!sem.macro) sem.macro = {ofertas:[]};
   sem.macro.ofertas.push({nome:nome, pendencias:[], plano:[]});
   _pdSaveSemana(sem);
@@ -4088,6 +4104,7 @@ function pdSetMacroPrio(oi, campo, idx, prio){
 }
 function pdOpenNota(oi, campo, idx){
   var sem = _pdGetSemana();
+  if(!sem || !sem.macro || !sem.macro.ofertas[oi]) return;
   var item = sem.macro.ofertas[oi][campo][idx];
   var nota = typeof item==='string' ? '' : (item.nota||'');
   var h = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)this.parentElement.remove()">';
