@@ -140,7 +140,19 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 }
 
 /* SIDEBAR */
-.sidebar { width:220px; min-height:100vh; background:var(--sidebar-bg); border-right:1px solid var(--border); display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:100; }
+.sidebar { width:220px; min-height:100vh; background:var(--sidebar-bg); border-right:1px solid var(--border); display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:100; transition:width .25s ease, transform .25s ease; overflow:hidden; }
+.sidebar.collapsed { width:58px; }
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .nav-item span,
+.sidebar.collapsed .sidebar-bot span,
+.sidebar.collapsed .sidebar-bot div { display:none; }
+.sidebar.collapsed .nav-item { justify-content:center; padding:10px 0; font-size:0; }
+.sidebar.collapsed .nav-item .nav-svg { margin:0; }
+.sidebar.collapsed .nav { padding:6px 8px; }
+.sidebar.collapsed .logo { justify-content:center; padding:20px 8px 18px; }
+.sidebar.collapsed .logo > div:first-child { gap:0; }
+.sidebar.collapsed #theme-toggle { display:none; }
+.sidebar.collapsed .sidebar-bot { padding:8px; align-items:center; }
 .logo { padding:20px 16px 18px; display:flex; align-items:center; gap:10px; }
 .logo-icon { width:34px; height:34px; background:var(--accent-grad); border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:900; color:#fff; box-shadow:0 2px 14px rgba(56,189,248,.4); }
 .logo-text { font-weight:800; font-size:16px; color:var(--text); letter-spacing:-.2px; }
@@ -159,7 +171,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .active-sf .nav-svg, .active-view .nav-svg { opacity:1 !important; }
 
 /* MAIN */
-.main { margin-left:210px; flex:1; }
+.main { margin-left:210px; flex:1; transition:margin-left .25s ease; }
+.sidebar.collapsed ~ .main { margin-left:58px; }
 .topbar { background:rgba(14,12,26,.9); border-bottom:1px solid var(--border); padding:12px 22px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; backdrop-filter:blur(12px); }
 .light-mode .topbar { background: rgba(255,255,255,.92); }
 .page-title { font-size:17px; font-weight:700; }
@@ -613,10 +626,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
   </button>
 </div>
 
-<aside class="sidebar">
+<aside class="sidebar" id="main-sidebar">
   <div class="logo" style="display:flex;align-items:center;justify-content:space-between;padding-right:10px;">
     <div style="display:flex;align-items:center;gap:10px;">
-      <div class="logo-icon">∞</div>
+      <div class="logo-icon" onclick="toggleSidebar()" style="cursor:pointer;" title="Abrir/Fechar menu">∞</div>
       <span class="logo-text">Axcend</span>
     </div>
     <button id="theme-toggle" onclick="toggleTheme()" title="Alternar tema" style="background:none;border:none;cursor:pointer;color:var(--text2);padding:4px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:color .2s;" onmouseenter="this.style.color='var(--text)'" onmouseleave="this.style.color='var(--text2)'">
@@ -3100,6 +3113,20 @@ let msgs = g('msgs',[]);
 let cfg = g('cfg',{projeto:'Meu Projeto',nome:'Usuário'});
 let ofertas = g('ofertas',['Produto Principal']);
 let remessas = g('remessas',['Remessa 1']);
+
+// ── SIDEBAR TOGGLE ──
+function toggleSidebar(){
+  const sb = document.getElementById('main-sidebar');
+  if(sb) sb.classList.toggle('collapsed');
+  localStorage.setItem('sl_sidebar_collapsed', sb.classList.contains('collapsed')?'1':'0');
+}
+// Restore sidebar state
+(function(){
+  if(localStorage.getItem('sl_sidebar_collapsed')==='1'){
+    const sb = document.getElementById('main-sidebar');
+    if(sb) sb.classList.add('collapsed');
+  }
+})();
 
 // ── THEME TOGGLE ──
 function toggleTheme(){
