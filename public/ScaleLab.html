@@ -8688,6 +8688,7 @@ async function loadAdsMetrics(){
 
     // Flatten campaigns: merge title + stat fields into a single object
     adsCampanhasData = (Array.isArray(campsWithStats)?campsWithStats:[]).map(c=>({
+      _id:           String(c.id || ''),
       _name:         c.title || ('Campanha '+c.id),
       clicks:        c.stat?.clicks        || 0,
       lp_views:      c.stat?.lp_views      || 0,
@@ -8704,18 +8705,19 @@ async function loadAdsMetrics(){
 
     // Build per-anuncio data from ALL conversions (only source with ad-level breakdown)
     const convAdMap = {}; // keyed by sub4 (ad name)
-    const adRtCampMap = {}; // sub4 → Set of rt_campaign values (exact campaign titles)
+    // campId → { adName → revenue }  (to distribute campaign cost by revenue share)
+    const campIdAdRevMap = {};
     allConvItems.forEach(c=>{
       const ad = c.sub4 || c.rt_ad || '';
       if(!ad || ad==='undefined' || ad==='null') return;
       if(!convAdMap[ad]) convAdMap[ad] = { _name:ad, _camp:'', vendas:0, ics:0, revenue:0 };
       const camp = c.sub6 || c.rt_campaign || '';
       if(camp && !convAdMap[ad]._camp) convAdMap[ad]._camp = camp;
-      // Also collect rt_campaign (exact campaign title in RedTrack) for direct cost matching
-      const rtCamp = c.rt_campaign || c.campaign_name || '';
-      if(rtCamp){
-        if(!adRtCampMap[ad]) adRtCampMap[ad] = new Set();
-        adRtCampMap[ad].add(rtCamp);
+      // Capture campaign_id to link conversion → campaign cost
+      const campId = String(c.campaign_id || c.rt_campaign_id || c.camp_id || '');
+      if(campId){
+        if(!campIdAdRevMap[campId]) campIdAdRevMap[campId] = {};
+        campIdAdRevMap[campId][ad] = (campIdAdRevMap[campId][ad]||0) + (c.payout||0);
       }
       const isDup = c.duplicate_status===2;
       if(c.status==='approved' && !isDup){
@@ -8725,7 +8727,7 @@ async function loadAdsMetrics(){
         convAdMap[ad].ics++;
       }
     });
-    console.log('[ScaleLab] adRtCampMap sample:', Object.entries(adRtCampMap).slice(0,3).map(([k,v])=>[k,[...v]]));
+    console.log('[ScaleLab] campIdAdRevMap keys:', Object.keys(campIdAdRevMap).slice(0,5));
 
     // Build cost map from group_by=sub4 report (ad-level cost)
     // RedTrack may return array directly OR {data:[...], total:{...}}
@@ -8765,58 +8767,31 @@ async function loadAdsMetrics(){
     console.log('[ScaleLab] campanhas (primeiras 5):', adsCampanhasData.slice(0,5).map(c=>({name:c._name, cost:c.cost})));
     console.log('[ScaleLab] adCostByCode:', adCostByCode);
 
-    // Normalize string for comparison: unify dashes, trim, lowercase
-    function normStr(s){ return String(s||'').replace(/[\u2013\u2014\u2212]/g,'-').replace(/\s+/g,' ').trim().toLowerCase(); }
-
-    // Build normalized campaign cost lookup by title
-    const campCostByNorm = {};
-    adsCampanhasData.forEach(c => {
-      if(c._name) campCostByNorm[normStr(c._name)] = { cost: c.cost||0, title: c._name };
-    });
-
-    // For each campaign, collect which ads appear in it (to distribute cost proportionally)
-    // campAdRevenueMap: { normCampName → { adName → revenue } }
-    const campAdRevenueMap = {};
-    rawAds.forEach(a => {
-      const rtCamps = adRtCampMap[a._name] || new Set();
-      rtCamps.forEach(rc => {
-        const norm = normStr(rc);
-        if(!campAdRevenueMap[norm]) campAdRevenueMap[norm] = {};
-        campAdRevenueMap[norm][a._name] = (campAdRevenueMap[norm][a._name]||0) + (a.revenue||0);
-      });
-    });
+    // Build campaign cost lookup by ID
+    const campCostById = {};
+    adsCampanhasData.forEach(c => { if(c._id) campCostById[c._id] = c.cost||0; });
 
     adsAnunciosData = rawAds.map(a => {
       const adName = (a._name||'').trim();
       let adCost = 0;
 
-      // 1) Match via rt_campaign → campaign cost, distributed proportionally among ads sharing that campaign
-      const rtCamps = adRtCampMap[adName];
-      if(rtCamps){
-        for(const rtCamp of rtCamps){
-          const norm = normStr(rtCamp);
-          const campEntry = campCostByNorm[norm];
-          if(campEntry && campEntry.cost > 0){
-            // Distribute proportionally by revenue share among all ads in this campaign
-            const adsInCamp = campAdRevenueMap[norm] || {};
-            const totalRev = Object.values(adsInCamp).reduce((s,v)=>s+v,0);
-            const myRev = adsInCamp[adName] || 0;
-            const share = totalRev>0 ? myRev/totalRev : 1/Math.max(Object.keys(adsInCamp).length,1);
-            adCost += campEntry.cost * share;
-          }
+      // 1) Best: match via campaign_id from conversions → campaign cost, distributed by revenue share
+      for(const [campId, adsRev] of Object.entries(campIdAdRevMap)){
+        if(adsRev[adName] !== undefined && campCostById[campId]){
+          const totalRev = Object.values(adsRev).reduce((s,v)=>s+v,0);
+          const myRev    = adsRev[adName] || 0;
+          const share    = totalRev>0 ? myRev/totalRev : 1/Math.max(Object.keys(adsRev).length,1);
+          adCost += campCostById[campId] * share;
         }
       }
 
-      // 2) Try AD code match from campaign names
+      // 2) Fallback: AD code extracted from campaign name
       if(!adCost){
         const code = extractAdCode(adName) || extractAdCode(a._camp);
         if(code && adCostByCode[code]) adCost = adCostByCode[code];
       }
 
-      // 3) Exact sub4 = campaign title match (normalized)
-      if(!adCost){ const e = campCostByNorm[normStr(adName)]; if(e) adCost = e.cost; }
-
-      // 4) sub4 report fallback
+      // 3) sub4 report fallback
       if(!adCost) adCost = adCostMap[adName] || 0;
 
       return {
@@ -8827,14 +8802,14 @@ async function loadAdsMetrics(){
       };
     });
 
-    // DEBUG TEMPORÁRIO: mostra nomes das campanhas e rtCamps na tela
+    // DEBUG TEMPORÁRIO: mostra IDs das campanhas e campIdAdRevMap na tela
     const dbgEl = document.getElementById('ads-error');
     if(dbgEl){
-      const campNames = adsCampanhasData.slice(0,3).map(c=>`• CAMP: "${c._name}" | cost:${c.cost}`).join('\n');
-      const rtSample = Object.entries(adRtCampMap).slice(0,2).map(([ad,s])=>`• AD: "${ad}"\n  rtCamp: "${[...s][0]}"`).join('\n');
+      const campNames = adsCampanhasData.slice(0,3).map(c=>`• ID:${c._id} | "${c._name}" | cost:${c.cost}`).join('\n');
+      const idSample  = Object.entries(campIdAdRevMap).slice(0,3).map(([id,ads])=>`• campId:${id} → ads:[${Object.keys(ads).map(a=>a.replace(/.*AD/i,'AD').split(/[-\s]/)[0]).join(',')}]`).join('\n');
       dbgEl.style.display='block';
       dbgEl.style.whiteSpace='pre';
-      dbgEl.innerHTML = '<b>DEBUG — remova depois</b>\n\nCAMPANHAS:\n'+campNames+'\n\nRT_CAMPAIGN MAP:\n'+rtSample;
+      dbgEl.innerHTML = '<b>DEBUG</b>\n\nCAMPANHAS (id|nome|custo):\n'+campNames+'\n\ncampIdAdRevMap:\n'+idSample;
     }
 
     // KPIs come from campaigns data (more reliable totals), but use trueApproved for conversions
