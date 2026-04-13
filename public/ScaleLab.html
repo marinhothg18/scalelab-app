@@ -3796,13 +3796,13 @@ function renderTrafegoContent(){
 }
 
 // ── GESTÃO ──
-let _gestaoTab = 'prog_demanda';
-const GESTAO_TABS = [
+var _gestaoTab = 'prog_demanda';
+var GESTAO_TABS = [
   { id:'prog_demanda', label:'Programação de Demanda', icon:'📋', color:'#8B5CF6' }
 ];
 
 function renderGestaoSidebar(){
-  const el = document.getElementById('gestao-tipo-filtros');
+  var el = document.getElementById('gestao-tipo-filtros');
   if(!el) return;
   el.innerHTML = GESTAO_TABS.map(function(t){
     var active = _gestaoTab === t.id;
@@ -3814,9 +3814,350 @@ function renderGestaoSidebar(){
 function renderGestaoContent(){
   var el = document.getElementById('gestao-content');
   if(!el) return;
-  if(_gestaoTab === 'prog_demanda'){
-    el.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:16px;">📋 Programação de Demanda</div><div style="color:var(--text2);font-size:13px;">Em breve — conteúdo será adicionado aqui.</div>';
+  if(_gestaoTab === 'prog_demanda'){ renderProgDemanda(); }
+}
+
+// ── PROGRAMAÇÃO DE DEMANDA ──
+var MESES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+var PD_SETORES = [
+  {id:'copia',label:'Cópia',cor:'#CFFAFE'},
+  {id:'edicao',label:'Edição',cor:'#D1FAE5'},
+  {id:'infra',label:'Infra',cor:'#BFDBFE'},
+  {id:'trafego',label:'Tráfego',cor:'#E9D5FF'}
+];
+var PD_DIAS = ['Segunda','Terça','Quarta','Quinta','Sexta','Sab/Dom'];
+var PD_DIAS_SHORT = ['SEG','TER','QUA','QUI','SEX','S/D'];
+var _pdSelBacklog = null;
+var _pdSelSemana = null;
+var _pdView = 'cronograma'; // cronograma | macro | micro
+var _pdMicroDiaAberto = null;
+var _pdMicroSetorAberto = null;
+
+function getBacklogs(){ return g('sl_backlogs',[]); }
+function saveBacklogs(arr){ s('sl_backlogs',arr); syncKey('sl_backlogs'); }
+
+function pdAddBacklog(){
+  var nome = prompt('Nome do backlog (ex: Abril | 2026):');
+  if(!nome) return;
+  var bk = getBacklogs();
+  bk.unshift({id:Date.now(), nome:nome, semanas:[]});
+  saveBacklogs(bk);
+  renderProgDemanda();
+}
+
+function pdDelBacklog(id){
+  if(!confirm('Excluir este backlog?')) return;
+  var bk = getBacklogs().filter(function(b){ return b.id!==id; });
+  saveBacklogs(bk);
+  if(_pdSelBacklog===id){_pdSelBacklog=null;_pdSelSemana=null;}
+  renderProgDemanda();
+}
+
+function pdToggleBacklog(id){
+  _pdSelBacklog = _pdSelBacklog===id ? null : id;
+  _pdSelSemana = null;
+  _pdView = 'cronograma';
+  renderProgDemanda();
+}
+
+function pdAddSemana(bkId){
+  var bk = getBacklogs();
+  var b = bk.find(function(x){ return x.id===bkId; });
+  if(!b) return;
+  var num = b.semanas.length + 1;
+  b.semanas.push({id:Date.now(), nome:'Semana '+num, macro:{ofertas:[]}, micro:{}});
+  saveBacklogs(bk);
+  renderProgDemanda();
+}
+
+function pdSelSemana(bkId, semId){
+  _pdSelBacklog = bkId;
+  _pdSelSemana = semId;
+  _pdView = 'cronograma';
+  renderProgDemanda();
+}
+
+function renderProgDemanda(){
+  var el = document.getElementById('gestao-content');
+  if(!el) return;
+  var bk = getBacklogs();
+  var html = '<div style="display:flex;gap:20px;min-height:calc(100vh - 160px);">';
+
+  // Sidebar backlogs
+  html += '<div style="min-width:190px;max-width:190px;flex-shrink:0;">';
+  html += '<button class="btn btn-primary" style="width:100%;font-size:12px;margin-bottom:14px;" onclick="pdAddBacklog()">+ Novo Backlog</button>';
+  for(var bi=0;bi<bk.length;bi++){
+    var b = bk[bi];
+    var open = _pdSelBacklog === b.id;
+    html += '<div style="margin-bottom:6px;">';
+    html += '<div onclick="pdToggleBacklog('+b.id+')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;background:'+(open?'var(--accent)':'var(--bg2)')+';color:'+(open?'#fff':'var(--text)')+';border:1px solid '+(open?'var(--accent)':'var(--border)')+';transition:all .15s;">';
+    html += '<span>📅 '+b.nome+'</span>';
+    html += '<span style="font-size:10px;">'+(open?'▼':'›')+'</span>';
+    html += '</div>';
+    if(open){
+      for(var si=0;si<b.semanas.length;si++){
+        var sm = b.semanas[si];
+        var smAct = _pdSelSemana === sm.id;
+        html += '<div onclick="pdSelSemana('+b.id+','+sm.id+')" style="padding:6px 10px 6px 24px;cursor:pointer;font-size:12px;border-radius:6px;margin-top:2px;background:'+(smAct?'var(--bg3)':'transparent')+';color:'+(smAct?'var(--text)':'var(--text2)')+';font-weight:'+(smAct?'600':'400')+';">⚙ '+sm.nome+'</div>';
+      }
+      html += '<div onclick="pdAddSemana('+b.id+')" style="padding:6px 10px 6px 24px;cursor:pointer;font-size:11px;color:var(--text2);margin-top:2px;">+ Nova semana</div>';
+    }
+    html += '</div>';
   }
+  html += '</div>';
+
+  // Main content
+  html += '<div style="flex:1;min-width:0;">';
+  if(_pdSelSemana){
+    if(_pdView==='cronograma') html += renderPdCronograma();
+    else if(_pdView==='macro') html += renderPdMacro();
+    else if(_pdView==='micro') html += renderPdMicro();
+  } else {
+    html += '<div style="text-align:center;padding:60px 20px;color:var(--text2);font-size:13px;">Selecione uma semana para ver o cronograma.</div>';
+  }
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function _pdGetSemana(){
+  var bk = getBacklogs();
+  var b = bk.find(function(x){ return x.id===_pdSelBacklog; });
+  if(!b) return null;
+  return b.semanas.find(function(x){ return x.id===_pdSelSemana; });
+}
+
+function _pdSaveSemana(sem){
+  var bk = getBacklogs();
+  var b = bk.find(function(x){ return x.id===_pdSelBacklog; });
+  if(!b) return;
+  var idx = b.semanas.findIndex(function(x){ return x.id===_pdSelSemana; });
+  if(idx>=0) b.semanas[idx] = sem;
+  saveBacklogs(bk);
+}
+
+function renderPdCronograma(){
+  var h = '<div style="text-align:center;padding:40px 20px;">';
+  h += '<div style="font-size:28px;font-weight:800;margin-bottom:8px;">Cronograma da Semana</div>';
+  h += '<div style="font-size:14px;color:var(--text2);margin-bottom:30px;">Escolha como visualizar</div>';
+  h += '<div style="display:flex;gap:20px;justify-content:center;">';
+  // Macro card
+  h += '<div onclick="_pdView=\'macro\';renderProgDemanda();" style="cursor:pointer;border:2px solid var(--border);border-radius:16px;padding:30px 40px;text-align:center;transition:all .2s;min-width:180px;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+  h += '<div style="font-size:36px;margin-bottom:10px;">📋</div>';
+  h += '<div style="font-size:18px;font-weight:700;">Macro</div>';
+  h += '<div style="font-size:12px;color:var(--text2);margin-top:4px;">Planejamento geral</div>';
+  h += '</div>';
+  // Micro card
+  h += '<div onclick="_pdView=\'micro\';renderProgDemanda();" style="cursor:pointer;border:2px solid var(--border);border-radius:16px;padding:30px 40px;text-align:center;transition:all .2s;min-width:180px;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+  h += '<div style="font-size:36px;margin-bottom:10px;">📅</div>';
+  h += '<div style="font-size:18px;font-weight:700;">Micro</div>';
+  h += '<div style="font-size:12px;color:var(--text2);margin-top:4px;">Demandas detalhadas</div>';
+  h += '</div>';
+  h += '</div></div>';
+  return h;
+}
+
+// ── MACRO ──
+function renderPdMacro(){
+  var sem = _pdGetSemana();
+  if(!sem) return '';
+  if(!sem.macro) sem.macro = {ofertas:[]};
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">';
+  h += '<span onclick="_pdView=\'cronograma\';renderProgDemanda();" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Voltar</span>';
+  h += '<select onchange="_pdView=this.value;renderProgDemanda();" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;"><option value="macro" selected>Macro</option><option value="micro">Micro</option></select>';
+  h += '</div>';
+  h += '<div style="font-size:22px;font-weight:800;margin-bottom:4px;">Macro da Semana</div>';
+  h += '<div style="font-size:13px;color:var(--text2);margin-bottom:24px;">Planejamento e pendências</div>';
+
+  var ofertas = sem.macro.ofertas || [];
+  for(var oi=0;oi<ofertas.length;oi++){
+    var of_ = ofertas[oi];
+    h += '<div style="border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><span style="font-size:16px;font-weight:700;">'+of_.nome+'</span><button onclick="pdDelOferta('+oi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;">🗑</button></div>';
+    // Pendências
+    h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:8px;letter-spacing:.5px;">Pendências</div>';
+    h += '<div style="background:var(--bg2);border-radius:10px;padding:12px;margin-bottom:14px;">';
+    var pends = of_.pendencias || [];
+    for(var pi=0;pi<pends.length;pi++){
+      h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><input value="'+pends[pi].replace(/"/g,'&quot;')+'" onchange="pdUpdateMacroItem('+oi+',\'pendencias\','+pi+',this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;"><button onclick="pdDelMacroItem('+oi+',\'pendencias\','+pi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;">✕</button></div>';
+    }
+    h += '<input placeholder="Adicionar item..." onkeydown="if(event.key===\'Enter\'){pdAddMacroItem('+oi+',\'pendencias\',this.value);this.value=\'\';}" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;box-sizing:border-box;margin-top:4px;">';
+    h += '</div>';
+    // Plano da semana
+    h += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:8px;letter-spacing:.5px;">Plano da Semana</div>';
+    h += '<div style="background:var(--bg2);border-radius:10px;padding:12px;">';
+    var plano = of_.plano || [];
+    for(var pli=0;pli<plano.length;pli++){
+      h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><input value="'+plano[pli].replace(/"/g,'&quot;')+'" onchange="pdUpdateMacroItem('+oi+',\'plano\','+pli+',this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;"><button onclick="pdDelMacroItem('+oi+',\'plano\','+pli+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;">✕</button></div>';
+    }
+    h += '<input placeholder="Adicionar item..." onkeydown="if(event.key===\'Enter\'){pdAddMacroItem('+oi+',\'plano\',this.value);this.value=\'\';}" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);outline:none;box-sizing:border-box;margin-top:4px;">';
+    h += '</div></div>';
+  }
+
+  h += '<button onclick="pdAddOferta()" class="btn" style="border:2px dashed var(--border);background:transparent;color:var(--text2);width:100%;padding:14px;font-size:13px;border-radius:12px;cursor:pointer;">+ Adicionar Oferta</button>';
+  return h;
+}
+
+function pdAddOferta(){
+  var nome = prompt('Nome da oferta:');
+  if(!nome) return;
+  var sem = _pdGetSemana();
+  if(!sem.macro) sem.macro = {ofertas:[]};
+  sem.macro.ofertas.push({nome:nome, pendencias:[], plano:[]});
+  _pdSaveSemana(sem);
+  renderProgDemanda();
+}
+function pdDelOferta(oi){
+  var sem = _pdGetSemana();
+  sem.macro.ofertas.splice(oi,1);
+  _pdSaveSemana(sem);
+  renderProgDemanda();
+}
+function pdAddMacroItem(oi, campo, val){
+  if(!val.trim()) return;
+  var sem = _pdGetSemana();
+  sem.macro.ofertas[oi][campo].push(val.trim());
+  _pdSaveSemana(sem);
+  renderProgDemanda();
+}
+function pdUpdateMacroItem(oi, campo, idx, val){
+  var sem = _pdGetSemana();
+  sem.macro.ofertas[oi][campo][idx] = val;
+  _pdSaveSemana(sem);
+}
+function pdDelMacroItem(oi, campo, idx){
+  var sem = _pdGetSemana();
+  sem.macro.ofertas[oi][campo].splice(idx,1);
+  _pdSaveSemana(sem);
+  renderProgDemanda();
+}
+
+// ── MICRO ──
+function renderPdMicro(){
+  var sem = _pdGetSemana();
+  if(!sem) return '';
+  if(!sem.micro) sem.micro = {};
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">';
+  h += '<span onclick="_pdView=\'cronograma\';renderProgDemanda();" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Voltar</span>';
+  h += '<select onchange="_pdView=this.value;renderProgDemanda();" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;"><option value="macro">Macro</option><option value="micro" selected>Micro</option></select>';
+  h += '</div>';
+  h += '<div style="font-size:22px;font-weight:800;margin-bottom:4px;">Micro da Semana</div>';
+  h += '<div style="font-size:13px;color:var(--text2);margin-bottom:20px;">Cronograma detalhado por dia</div>';
+
+  for(var di=0;di<PD_DIAS.length;di++){
+    var dia = PD_DIAS[di];
+    var diaKey = dia.toLowerCase().replace('/','_');
+    var diaData = sem.micro[diaKey] || {};
+    var totalDem = 0;
+    for(var sk in diaData){ var sp = diaData[sk]||{}; for(var pk in sp){ totalDem += (sp[pk]||[]).length; } }
+    var diaAberto = _pdMicroDiaAberto === diaKey;
+
+    h += '<div style="border:1px solid var(--border);border-radius:12px;margin-bottom:8px;overflow:hidden;">';
+    h += '<div onclick="_pdMicroDiaAberto=(_pdMicroDiaAberto===\''+diaKey+'\'?null:\''+diaKey+'\');_pdMicroSetorAberto=null;renderProgDemanda();" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;font-size:14px;font-weight:700;background:var(--bg2);">';
+    h += '<span>'+dia+'</span>';
+    h += '<span style="display:flex;align-items:center;gap:8px;">';
+    if(totalDem>0) h += '<span style="background:var(--accent);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">'+totalDem+'</span>';
+    h += '<span style="font-size:12px;color:var(--text2);">'+(diaAberto?'▼':'›')+'</span></span>';
+    h += '</div>';
+
+    if(diaAberto){
+      for(var sti=0;sti<PD_SETORES.length;sti++){
+        var setor = PD_SETORES[sti];
+        var setorData = diaData[setor.id] || {};
+        var setorAberto = _pdMicroSetorAberto === setor.id;
+        var setorDem = 0;
+        for(var pk2 in setorData) setorDem += (setorData[pk2]||[]).length;
+
+        h += '<div onclick="_pdMicroSetorAberto=(_pdMicroSetorAberto===\''+setor.id+'\'?null:\''+setor.id+'\');renderProgDemanda();" style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;cursor:pointer;font-size:13px;font-weight:600;background:'+setor.cor+';color:#1F2937;">';
+        h += '<span>'+setor.label+'</span>';
+        h += '<span style="font-size:11px;">'+(setorAberto?'▼':'›')+'</span>';
+        h += '</div>';
+
+        if(setorAberto){
+          var pessoas = Object.keys(setorData);
+          if(!pessoas.length) pessoas = [];
+          h += '<div style="padding:12px 16px;">';
+          for(var pi2=0;pi2<pessoas.length;pi2++){
+            var pessoa = pessoas[pi2];
+            var demandas = setorData[pessoa] || [];
+            h += '<div style="margin-bottom:14px;">';
+            h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">'+pessoa+'</div>';
+            for(var dmi=0;dmi<demandas.length;dmi++){
+              var dm = demandas[dmi];
+              var statusCor = dm.status==='Concluído'?'#22C55E':'#F97316';
+              h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">';
+              h += '<input type="checkbox" '+(dm.done?'checked':'')+' onchange="pdToggleDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')">';
+              h += '<input value="'+(dm.texto||'').replace(/"/g,'&quot;')+'" onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'texto\',this.value)" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);outline:none;">';
+              h += '<span style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">'+(dm.oferta||'—')+'</span>';
+              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'de\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--text);cursor:pointer;">';
+              for(var dsi=0;dsi<PD_DIAS_SHORT.length;dsi++){
+                h += '<option value="'+PD_DIAS_SHORT[dsi]+'"'+(dm.de===PD_DIAS_SHORT[dsi]?' selected':'')+'>'+PD_DIAS_SHORT[dsi]+'</option>';
+              }
+              h += '</select><span style="font-size:10px;color:var(--text2);">→</span>';
+              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'ate\',this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--text);cursor:pointer;">';
+              for(var dsi2=0;dsi2<PD_DIAS_SHORT.length;dsi2++){
+                h += '<option value="'+PD_DIAS_SHORT[dsi2]+'"'+(dm.ate===PD_DIAS_SHORT[dsi2]?' selected':'')+'>'+PD_DIAS_SHORT[dsi2]+'</option>';
+              }
+              h += '</select>';
+              h += '<select onchange="pdUpdateDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+',\'status\',this.value)" style="background:'+statusCor+';color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;">';
+              h += '<option value="Pendente"'+(dm.status==='Pendente'?' selected':'')+'>Pendente</option>';
+              h += '<option value="Concluído"'+(dm.status==='Concluído'?' selected':'')+'>Concluído</option>';
+              h += '</select>';
+              h += '<button onclick="pdDelDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\','+dmi+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:11px;">✕</button>';
+              h += '</div>';
+            }
+            h += '<div onclick="pdAddDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\')" style="cursor:pointer;font-size:11px;color:var(--text2);margin-top:4px;">+ Nova demanda</div>';
+            h += '</div>';
+          }
+          h += '<div onclick="pdAddPessoa(\''+diaKey+'\',\''+setor.id+'\')" style="cursor:pointer;font-size:11px;color:var(--accent);font-weight:600;margin-top:6px;">+ Adicionar pessoa</div>';
+          h += '</div>';
+        }
+      }
+    }
+    h += '</div>';
+  }
+  return h;
+}
+
+function pdAddPessoa(diaKey, setorId){
+  var nome = prompt('Nome da pessoa:');
+  if(!nome) return;
+  var sem = _pdGetSemana();
+  if(!sem.micro) sem.micro = {};
+  if(!sem.micro[diaKey]) sem.micro[diaKey] = {};
+  if(!sem.micro[diaKey][setorId]) sem.micro[diaKey][setorId] = {};
+  if(!sem.micro[diaKey][setorId][nome]) sem.micro[diaKey][setorId][nome] = [];
+  _pdSaveSemana(sem);
+  renderProgDemanda();
+}
+
+function pdAddDemanda(diaKey, setorId, pessoa){
+  var sem = _pdGetSemana();
+  if(!sem.micro[diaKey]) sem.micro[diaKey] = {};
+  if(!sem.micro[diaKey][setorId]) sem.micro[diaKey][setorId] = {};
+  if(!sem.micro[diaKey][setorId][pessoa]) sem.micro[diaKey][setorId][pessoa] = [];
+  sem.micro[diaKey][setorId][pessoa].push({texto:'',oferta:'',de:'SEG',ate:'SEG',status:'Pendente',done:false});
+  _pdSaveSemana(sem);
+  renderProgDemanda();
+}
+
+function pdUpdateDemanda(diaKey, setorId, pessoa, idx, campo, val){
+  var sem = _pdGetSemana();
+  var dm = sem.micro[diaKey][setorId][pessoa][idx];
+  if(dm){ dm[campo]=val; _pdSaveSemana(sem); }
+  if(campo==='status') renderProgDemanda();
+}
+
+function pdToggleDemanda(diaKey, setorId, pessoa, idx){
+  var sem = _pdGetSemana();
+  var dm = sem.micro[diaKey][setorId][pessoa][idx];
+  if(dm){ dm.done = !dm.done; _pdSaveSemana(sem); }
+}
+
+function pdDelDemanda(diaKey, setorId, pessoa, idx){
+  var sem = _pdGetSemana();
+  sem.micro[diaKey][setorId][pessoa].splice(idx,1);
+  _pdSaveSemana(sem);
+  renderProgDemanda();
 }
 
 // ── CONTROLE DE CONTINGÊNCIA ──
