@@ -8144,25 +8144,22 @@ function renderAdsMetrics(){
 
 function getAdsDates(){
   const today = new Date();
-  // Usa data local (Brasília) em vez de UTC, e ajusta -1 dia no from
-  // para compensar que RedTrack grava em horário dos EUA (até 5h atrás)
-  const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const dayBefore = d => { const x=new Date(d); x.setDate(x.getDate()-1); return x; };
-  if(adsFilter.preset==='today') return { from: fmtLocal(dayBefore(today)), to: fmtLocal(today) };
+  const fmt = d => d.toISOString().split('T')[0];
+  if(adsFilter.preset==='today') return { from: fmt(today), to: fmt(today) };
   if(adsFilter.preset==='yesterday'){
     const y=new Date(today); y.setDate(y.getDate()-1);
-    return { from: fmtLocal(dayBefore(y)), to: fmtLocal(y) };
+    return { from: fmt(y), to: fmt(y) };
   }
   if(adsFilter.preset==='7d'){
-    const s=new Date(today); s.setDate(s.getDate()-7);
-    return { from: fmtLocal(s), to: fmtLocal(today) };
+    const s=new Date(today); s.setDate(s.getDate()-6);
+    return { from: fmt(s), to: fmt(today) };
   }
   if(adsFilter.preset==='30d'){
-    const s=new Date(today); s.setDate(s.getDate()-30);
-    return { from: fmtLocal(s), to: fmtLocal(today) };
+    const s=new Date(today); s.setDate(s.getDate()-29);
+    return { from: fmt(s), to: fmt(today) };
   }
   if(adsFilter.preset==='month'){
-    return { from: fmtLocal(new Date(today.getFullYear(), today.getMonth(), 1)), to: fmtLocal(today) };
+    return { from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), to: fmt(today) };
   }
   return { from: adsFilter.from, to: adsFilter.to };
 }
