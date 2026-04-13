@@ -4015,7 +4015,7 @@ function renderMacroSection(oi, campo, items, label){
     h += '<div onclick="pdSetMacroPrio('+oi+',\''+campo+'\','+i+',\'alta\')" style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px;color:#1F2937;border-radius:6px;" onmouseover="this.style.background=\'#F3F4F6\'" onmouseout="this.style.background=\'transparent\'"><span style="color:#EF4444;font-size:10px;">●</span> Alta</div>';
     h += '<div onclick="pdSetMacroPrio('+oi+',\''+campo+'\','+i+',\'\')" style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px;color:#1F2937;border-radius:6px;" onmouseover="this.style.background=\'#F3F4F6\'" onmouseout="this.style.background=\'transparent\'">Sem prioridade</div>';
     h += '</div></div>';
-    h += '<span style="font-size:16px;color:#9CA3AF;cursor:pointer;" onclick="pdDelMacroItem('+oi+',\''+campo+'\','+i+')">+</span>';
+    h += '<span style="font-size:16px;color:#9CA3AF;cursor:pointer;" onclick="pdOpenNota('+oi+',\''+campo+'\','+i+')" title="Bloco de Notas">+</span>';
     h += '</div></div>';
   }
   h += '<input placeholder="Adicionar item..." onkeydown="if(event.key===\'Enter\'){pdAddMacroItem('+oi+',\''+campo+'\',this.value);this.value=\'\';}" style="width:100%;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;box-sizing:border-box;margin-top:8px;">';
@@ -4086,6 +4086,36 @@ function pdSetMacroPrio(oi, campo, idx, prio){
   _pdSaveSemana(sem);
   renderProgDemanda();
 }
+function pdOpenNota(oi, campo, idx){
+  var sem = _pdGetSemana();
+  var item = sem.macro.ofertas[oi][campo][idx];
+  var nota = typeof item==='string' ? '' : (item.nota||'');
+  var h = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)this.parentElement.remove()">';
+  h += '<div style="background:#fff;border-radius:16px;padding:28px;width:460px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.15);color:#1F2937;">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;"><span style="font-size:17px;font-weight:700;">Bloco de Notas</span><button onclick="this.closest(\'[style*=fixed]\').parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;">✕</button></div>';
+  h += '<textarea id="pd-nota-text" placeholder="Escreva sua nota..." style="width:100%;box-sizing:border-box;min-height:160px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;font-size:14px;color:#1F2937;outline:none;resize:vertical;font-family:inherit;">'+nota.replace(/</g,'&lt;')+'</textarea>';
+  h += '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">';
+  h += '<button onclick="this.closest(\'[style*=fixed]\').parentElement.remove()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Cancelar</button>';
+  h += '<button onclick="pdSaveNota('+oi+',\''+campo+'\','+idx+')" style="background:#1F2937;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;cursor:pointer;font-weight:600;">Salvar</button>';
+  h += '</div></div></div>';
+  var wrap = document.createElement('div');
+  wrap.id = 'pd-nota-modal';
+  wrap.innerHTML = h;
+  document.body.appendChild(wrap);
+}
+
+function pdSaveNota(oi, campo, idx){
+  var texto = document.getElementById('pd-nota-text').value;
+  var sem = _pdGetSemana();
+  var item = sem.macro.ofertas[oi][campo][idx];
+  if(typeof item==='string') sem.macro.ofertas[oi][campo][idx] = {texto:item, prioridade:'', nota:texto};
+  else item.nota = texto;
+  _pdSaveSemana(sem);
+  var modal = document.getElementById('pd-nota-modal');
+  if(modal) modal.remove();
+  renderProgDemanda();
+}
+
 function pdDelMacroItem(oi, campo, idx){
   var sem = _pdGetSemana();
   sem.macro.ofertas[oi][campo].splice(idx,1);
