@@ -3891,6 +3891,19 @@ function pdInitMeses(){
   saveBacklogs(bk);
 }
 
+function pdFiltroMes(val){
+  _pdSelBacklog = val ? parseInt(val) : null;
+  _pdSelSemana = null;
+  _pdView = 'cronograma';
+  renderProgDemanda();
+}
+
+function pdFiltroSemana(val){
+  _pdSelSemana = val ? parseInt(val) : null;
+  _pdView = 'cronograma';
+  renderProgDemanda();
+}
+
 function renderProgDemanda(){
   var el = document.getElementById('gestao-content');
   if(!el) return;
@@ -3921,7 +3934,29 @@ function renderProgDemanda(){
 
   // Main content
   html += '<div style="flex:1;min-width:0;">';
-  html += '<div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><button class="btn btn-primary" style="font-size:12px;" onclick="pdAddBacklog()">+ Novo Backlog</button></div>';
+  // Filtros Mês + Semana + Novo Backlog
+  html += '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;align-items:center;">';
+  html += '<select id="pd-filtro-mes" onchange="pdFiltroMes(this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer;">';
+  html += '<option value="">Todos os meses</option>';
+  for(var fmi=0;fmi<bk.length;fmi++){
+    html += '<option value="'+bk[fmi].id+'"'+(_pdSelBacklog===bk[fmi].id?' selected':'')+'>'+bk[fmi].nome+'</option>';
+  }
+  html += '</select>';
+  // Semana filter (only show if a month is selected)
+  if(_pdSelBacklog){
+    var selBk = bk.find(function(x){ return x.id===_pdSelBacklog; });
+    if(selBk){
+      html += '<select id="pd-filtro-semana" onchange="pdFiltroSemana(this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer;">';
+      html += '<option value="">Todas as semanas</option>';
+      for(var fsi=0;fsi<selBk.semanas.length;fsi++){
+        var fsm = selBk.semanas[fsi];
+        html += '<option value="'+fsm.id+'"'+(_pdSelSemana===fsm.id?' selected':'')+'>'+fsm.nome+'</option>';
+      }
+      html += '</select>';
+    }
+  }
+  html += '<button class="btn btn-primary" style="font-size:12px;" onclick="pdAddBacklog()">+ Novo Backlog</button>';
+  html += '</div>';
   if(_pdSelSemana){
     if(_pdView==='cronograma') html += renderPdCronograma();
     else if(_pdView==='macro') html += renderPdMacro();
