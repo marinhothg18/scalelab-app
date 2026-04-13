@@ -3752,9 +3752,11 @@ function renderTrafegoContent(){
 }
 
 // ── CONTROLE DE CONTINGÊNCIA ──
-const CONTA_STATUS = ['Escalada','Rodando','Aquecimento','Desativada'];
-const CONTA_STATUS_COR = {Escalada:'#22C55E',Rodando:'#3B82F6',Aquecimento:'#F97316',Desativada:'#6B7280'};
-const CONTA_PROCESSO = ['CBO','BIDCAP','Processo Aquecimento'];
+const CONTA_STATUS = ['Zerada','Aquecimento','Rodando','Escalada','Desativada','Standy By','BM Caiu'];
+const CONTA_STATUS_COR = {Zerada:'#FBBF24',Aquecimento:'#F97316',Rodando:'#3B82F6',Escalada:'#22C55E',Desativada:'#EF4444','Standy By':'#9CA3AF','BM Caiu':'#7C3AED'};
+const CONTA_PROCESSO = ['Nao Gastou','Engajamento','CBO','1 Camp 1.50.1','Processo Aquecimento'];
+const CONTA_GESTORES = ['Rafa','Lucca'];
+let _contaFiltroGestor = '';
 
 function getContas(){ return g('sl_contingencia',[]); }
 function saveContas(arr){ s('sl_contingencia',arr); syncKey('sl_contingencia'); }
@@ -3762,7 +3764,7 @@ function syncKey(k){ const API_BASE=localStorage.getItem('sl_api_base')||''; if(
 
 function addConta(){
   const contas = getContas();
-  contas.push({id:Date.now(), status:'Aquecimento', processo:'CBO', perfil:'', oferta:'', nome:'', cartao:'', link1:'', link2:''});
+  contas.push({id:Date.now(), status:'Aquecimento', processo:'Nao Gastou', gestor:'Rafa', perfil:'', oferta:'', nome:'', cartao:'', link1:'', link2:''});
   saveContas(contas);
   renderContingencia();
 }
@@ -3778,7 +3780,7 @@ function updateConta(id, campo, valor){
   const contas = getContas();
   const c = contas.find(x=>x.id===id);
   if(c){ c[campo]=valor; saveContas(contas); }
-  if(campo==='status') renderContingencia();
+  if(campo==='status'||campo==='gestor'||campo==='processo') renderContingencia();
 }
 
 function renderContingencia(){
@@ -3790,25 +3792,35 @@ function renderContingencia(){
   const counts = {Rodando:0, Escalada:0, Aquecimento:0, Zerada:0, Desativada:0};
   contas.forEach(c=>{ if(counts[c.status]!==undefined) counts[c.status]++; });
 
-  // Cards de resumo
-  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">';
+  // Header + filtro gestor + botão
+  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">';
   html += '<div style="font-size:18px;font-weight:700;">🛡️ Controle de Contingência</div>';
+  html += '<div style="display:flex;gap:8px;align-items:center;">';
+  html += '<select id="conta-filtro-gestor" onchange="_contaFiltroGestor=this.value;renderContingencia();" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer;">';
+  html += '<option value=""'+((_contaFiltroGestor===''?' selected':'')+'>Todos Gestores</option>');
+  for(var gi=0;gi<CONTA_GESTORES.length;gi++){
+    html += '<option value="'+CONTA_GESTORES[gi]+'"'+(_contaFiltroGestor===CONTA_GESTORES[gi]?' selected':'')+'>'+CONTA_GESTORES[gi]+'</option>';
+  }
+  html += '</select>';
   html += '<button class="btn btn-primary" style="font-size:12px;" onclick="addConta()">+ Adicionar Conta</button>';
-  html += '</div>';
+  html += '</div></div>';
+
+  // Filtrar por gestor
+  var contasFiltradas = _contaFiltroGestor ? contas.filter(function(c){ return c.gestor===_contaFiltroGestor; }) : contas;
+
+  // Contadores (usar filtradas)
+  var counts = {};
+  for(var si2=0;si2<CONTA_STATUS.length;si2++) counts[CONTA_STATUS[si2]]=0;
+  contasFiltradas.forEach(function(c){ if(counts[c.status]!==undefined) counts[c.status]++; });
 
   // Summary cards
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px;">';
-  var cardData = [
-    {label:'Rodando',cor:'#3B82F6',val:counts.Rodando},
-    {label:'Escalada',cor:'#22C55E',val:counts.Escalada},
-    {label:'Aquecimento',cor:'#F97316',val:counts.Aquecimento},
-    {label:'Desativada',cor:'#6B7280',val:counts.Desativada}
-  ];
-  for(var ci=0;ci<cardData.length;ci++){
-    var cd = cardData[ci];
-    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;text-align:center;">';
-    html += '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:'+cd.cor+';letter-spacing:.5px;margin-bottom:4px;">'+cd.label+'</div>';
-    html += '<div style="font-size:24px;font-weight:800;color:var(--text);">'+cd.val+'</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:20px;">';
+  for(var ci=0;ci<CONTA_STATUS.length;ci++){
+    var st = CONTA_STATUS[ci];
+    var cor = CONTA_STATUS_COR[st]||'#6B7280';
+    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;text-align:center;">';
+    html += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:'+cor+';letter-spacing:.5px;margin-bottom:4px;">'+st+'</div>';
+    html += '<div style="font-size:22px;font-weight:800;color:var(--text);">'+(counts[st]||0)+'</div>';
     html += '</div>';
   }
   html += '</div>';
@@ -3816,17 +3828,17 @@ function renderContingencia(){
   // Tabela
   html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
   html += '<thead><tr style="border-bottom:2px solid var(--border);">';
-  var cols = ['Status da Conta','Processo Aquecimento','Nome do Perfil','Oferta','Nome da Conta','Cartão','Link Rodando 01','Link Rodando 02',''];
+  var cols = ['Status da Conta','Processo Aquecimento','Gestor','Nome do Perfil','Oferta','Nome da Conta','Cartão','Link Rodando 01','Link Rodando 02',''];
   for(var hi=0;hi<cols.length;hi++){
     html += '<th style="text-align:left;padding:10px 8px;color:var(--text2);font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">'+cols[hi]+'</th>';
   }
   html += '</tr></thead><tbody>';
 
-  if(!contas.length){
-    html += '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text2);">Nenhuma conta cadastrada. Clique em "+ Adicionar Conta".</td></tr>';
+  if(!contasFiltradas.length){
+    html += '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text2);">Nenhuma conta cadastrada. Clique em "+ Adicionar Conta".</td></tr>';
   } else {
-    for(var ri=0;ri<contas.length;ri++){
-      var c = contas[ri];
+    for(var ri=0;ri<contasFiltradas.length;ri++){
+      var c = contasFiltradas[ri];
       var bg = ri%2===0?'':'background:rgba(255,255,255,.02);';
       var statusCor = CONTA_STATUS_COR[c.status]||'#6B7280';
 
@@ -3844,6 +3856,13 @@ function renderContingencia(){
       html += '<td style="padding:6px 4px;"><select onchange="updateConta('+c.id+',\'processo\',this.value)" style="background:'+procCor+';color:#fff;border:none;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;width:100%;">';
       for(var pi=0;pi<CONTA_PROCESSO.length;pi++){
         html += '<option value="'+CONTA_PROCESSO[pi]+'"'+(c.processo===CONTA_PROCESSO[pi]?' selected':'')+'>'+CONTA_PROCESSO[pi].toUpperCase()+'</option>';
+      }
+      html += '</select></td>';
+
+      // Gestor select
+      html += '<td style="padding:6px 4px;"><select onchange="updateConta('+c.id+',\'gestor\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);cursor:pointer;">';
+      for(var gsi=0;gsi<CONTA_GESTORES.length;gsi++){
+        html += '<option value="'+CONTA_GESTORES[gsi]+'"'+(c.gestor===CONTA_GESTORES[gsi]?' selected':'')+'>'+CONTA_GESTORES[gsi]+'</option>';
       }
       html += '</select></td>';
 
