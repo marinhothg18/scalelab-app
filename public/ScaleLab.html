@@ -4131,8 +4131,14 @@ function renderPdMicro(){
         h += '</div>';
 
         if(setorAberto){
-          var pessoas = Object.keys(setorData);
-          if(!pessoas.length) pessoas = [];
+          // Auto-populate from Equipe: merge collaborators with existing data
+          var colabs = getColabs().filter(function(c){ return c.setor===setor.id; });
+          var pessoasSet = {};
+          // Add people from collaborators first
+          for(var ci2=0;ci2<colabs.length;ci2++) pessoasSet[colabs[ci2].nome] = true;
+          // Add people that have existing demands (even if removed from Equipe)
+          for(var pk3 in setorData) pessoasSet[pk3] = true;
+          var pessoas = Object.keys(pessoasSet);
           h += '<div style="padding:12px 16px;">';
           for(var pi2=0;pi2<pessoas.length;pi2++){
             var pessoa = pessoas[pi2];
@@ -4166,7 +4172,7 @@ function renderPdMicro(){
             h += '<div onclick="pdAddDemanda(\''+diaKey+'\',\''+setor.id+'\',\''+pessoa+'\')" style="cursor:pointer;font-size:11px;color:var(--text2);margin-top:4px;">+ Nova demanda</div>';
             h += '</div>';
           }
-          h += '<div onclick="pdAddPessoa(\''+diaKey+'\',\''+setor.id+'\')" style="cursor:pointer;font-size:11px;color:var(--accent);font-weight:600;margin-top:6px;">+ Adicionar pessoa</div>';
+          if(!pessoas.length) h += '<div style="color:var(--text2);font-size:12px;padding:8px 0;">Cadastre colaboradores em "👥 Equipe" para este setor.</div>';
           h += '</div>';
         }
       }
