@@ -8827,6 +8827,16 @@ async function loadAdsMetrics(){
       };
     });
 
+    // DEBUG TEMPORÁRIO: mostra nomes das campanhas e rtCamps na tela
+    const dbgEl = document.getElementById('ads-error');
+    if(dbgEl){
+      const campNames = adsCampanhasData.slice(0,3).map(c=>`• CAMP: "${c._name}" | cost:${c.cost}`).join('\n');
+      const rtSample = Object.entries(adRtCampMap).slice(0,2).map(([ad,s])=>`• AD: "${ad}"\n  rtCamp: "${[...s][0]}"`).join('\n');
+      dbgEl.style.display='block';
+      dbgEl.style.whiteSpace='pre';
+      dbgEl.innerHTML = '<b>DEBUG — remova depois</b>\n\nCAMPANHAS:\n'+campNames+'\n\nRT_CAMPAIGN MAP:\n'+rtSample;
+    }
+
     // KPIs come from campaigns data (more reliable totals), but use trueApproved for conversions
     const kpiSource = adsCampanhasData.length ? adsCampanhasData : adsOfertasData;
     renderAdsKpis(kpiSource, trueApproved);
