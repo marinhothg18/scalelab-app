@@ -4819,9 +4819,26 @@ function renderControleTestes(){
         var kt = colTestes[kti];
         var ktNicho = nichos.find(function(x){ return x.id==kt.nichoId; });
         var ktOferta = ktNicho ? ktNicho.ofertas.find(function(x){ return x.id==kt.ofertaId; }) : null;
-        h += '<div onclick="ctOpenTeste('+kt.id+')" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px;cursor:pointer;">';
-        h += '<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;line-height:1.4;">'+(kt.nome||'').replace(/</g,'&lt;')+'</div>';
-        h += '<div style="font-size:12px;color:var(--text2);font-weight:500;">'+((ktNicho&&ktNicho.nome)||'')+(ktOferta?' · '+ktOferta.nome:'')+'</div>';
+        var ktDataFmt = kt.data ? new Date(kt.data).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}) : '—';
+        h += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px;">';
+        h += '<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;line-height:1.4;cursor:pointer;" onclick="ctOpenTeste('+kt.id+')">'+(kt.nome||'').replace(/</g,'&lt;')+'</div>';
+        h += '<div style="font-size:12px;color:var(--text2);font-weight:500;margin-bottom:12px;">'+((ktNicho&&ktNicho.nome)||'')+(ktOferta?' · '+ktOferta.nome:'')+'</div>';
+        // Links
+        h += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">';
+        (kt.linksPV||[]).forEach(function(l,i){
+          h += '<a href="'+l+'" target="_blank" style="color:#EF4444;text-decoration:none;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">🔗 PV '+(i+1)+'</a>';
+        });
+        if(kt.cloaker) h += '<a href="'+kt.cloaker+'" target="_blank" style="color:#38BDF8;text-decoration:none;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">🕵 Cloaker</a>';
+        if(kt.vsl) h += '<a href="'+kt.vsl+'" target="_blank" style="color:#A855F7;text-decoration:none;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;">🎬 VSL</a>';
+        h += '</div>';
+        // Footer: date + actions
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);">';
+        h += '<span style="font-size:11px;color:var(--text2);font-weight:500;">'+ktDataFmt+'</span>';
+        h += '<div style="display:flex;gap:10px;">';
+        h += '<span onclick="event.stopPropagation();ctOpenTeste('+kt.id+')" style="cursor:pointer;color:var(--text2);font-size:14px;" title="Editar">✏️</span>';
+        h += '<span onclick="event.stopPropagation();ctArquivarTeste('+kt.id+')" style="cursor:pointer;color:var(--text2);font-size:14px;" title="Arquivar">📦</span>';
+        h += '<span onclick="event.stopPropagation();ctDelTeste('+kt.id+')" style="cursor:pointer;color:var(--red);font-size:14px;" title="Excluir">🗑️</span>';
+        h += '</div></div>';
         h += '</div>';
       }
       h += '</div>';
