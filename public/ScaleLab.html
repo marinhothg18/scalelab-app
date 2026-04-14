@@ -9692,6 +9692,13 @@ function _loginOk(user){
   _applyNavPermissions(user.cargo);
   // PRIMEIRO puxa do servidor (pra não sobrescrever notificações novas), depois envia local
   syncAllFromServer().then(()=> pushAllToServer()).then(()=>{
+    // Se Diretoria e tiver rt_api_key local que não está no servidor, empurra agora
+    if(user.cargo==='Diretoria'){
+      var localKey = getRtApiKey();
+      if(localKey){
+        fetch(API_BASE+'/api/store/rt_api_key', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(localKey)}).catch(()=>{});
+      }
+    }
     renderTasks();
     try{ updateNotifBadge(); }catch(e){}
     abrirRemessaPorUrl();
