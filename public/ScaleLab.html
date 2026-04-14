@@ -2880,7 +2880,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -6622,17 +6622,41 @@ function abrirEditarDemanda(id){
   if(t.diretoria) togDir.classList.add('on'); else togDir.classList.remove('on');
 
   // Update modal title and button text
+  const _isDirEdit = currentUser&&currentUser.cargo==='Diretoria';
   const modalTitle = document.querySelector('#modal-task .modal-title');
-  if(modalTitle) modalTitle.textContent = 'Editar Demanda';
+  if(modalTitle) modalTitle.textContent = _isDirEdit ? 'Editar Demanda' : 'Visualizar Demanda';
   const saveBtn = document.querySelector('#modal-task .btn-salvar-task');
-  if(saveBtn) saveBtn.textContent = 'Salvar alterações';
+  if(saveBtn){
+    saveBtn.textContent = 'Salvar alterações';
+    saveBtn.style.display = _isDirEdit ? '' : 'none';
+  }
 
   // Mostrar chat lateral e expandir modal
   const inner = document.getElementById('modal-task-inner');
   if(inner) inner.style.maxWidth = '1200px';
   const chatPanel = document.getElementById('modal-task-chat-panel');
   if(chatPanel) chatPanel.style.display = 'flex';
-  // Reabilitar input do chat
+
+  // Bloquear edição dos campos do formulário pra não-Diretoria (só pode ver + usar chat)
+  const formEls = document.querySelectorAll('#modal-task .modal-body input, #modal-task .modal-body select, #modal-task .modal-body textarea');
+  formEls.forEach(function(el){
+    el.readOnly = !_isDirEdit;
+    el.disabled = !_isDirEdit && el.tagName==='SELECT';
+    if(!_isDirEdit){
+      el.style.cursor = 'default';
+      el.style.opacity = '.85';
+    } else {
+      el.style.cursor = '';
+      el.style.opacity = '';
+    }
+  });
+  // Ocultar botões de edição de checklist/fotos pra não-Diretoria
+  const photoBtn = document.querySelector('#modal-task .modal-body label[style*="dashed"]');
+  if(photoBtn) photoBtn.style.display = _isDirEdit ? '' : 'none';
+  const checklistToggle = document.getElementById('toggle-checklist');
+  if(checklistToggle) checklistToggle.style.pointerEvents = _isDirEdit ? '' : 'none';
+
+  // Reabilitar input do chat (sempre disponível)
   const mtcInput = document.getElementById('mtc-input');
   if(mtcInput){ mtcInput.disabled = false; mtcInput.placeholder = 'Comentar... (Enter para enviar)'; mtcInput.style.opacity = '1'; }
   const mtcAnexo = document.querySelector('#modal-task-chat-panel label');
