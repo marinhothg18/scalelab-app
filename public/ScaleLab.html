@@ -2880,16 +2880,34 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura'];
 let _lastSync = 0;
 let _syncInterval = null;
+
+// Helper para ler rt_api_key em qualquer formato (raw ou JSON stringified)
+function getRtApiKey(){
+  var raw = localStorage.getItem('rt_api_key') || '';
+  if(!raw) return '';
+  // Se começa com aspas, é JSON stringified
+  if(raw.charAt(0) === '"'){
+    try { return JSON.parse(raw); } catch(e) { return raw; }
+  }
+  return raw;
+}
 
 async function syncAllFromServer(){
   try{
     const res = await fetch(API_BASE+'/api/store', {signal: AbortSignal.timeout(8000)});
     if(!res.ok) return;
     const data = await res.json();
-    Object.entries(data).forEach(([k,v])=>{ localStorage.setItem(k, JSON.stringify(v)); });
+    Object.entries(data).forEach(([k,v])=>{
+      // rt_api_key é string raw, não JSON
+      if(k === 'rt_api_key' && typeof v === 'string'){
+        localStorage.setItem(k, v);
+      } else {
+        localStorage.setItem(k, JSON.stringify(v));
+      }
+    });
     tasks = g('tasks',[]);
     criativos = g('criativos',[]);
     _lastSync = Math.floor(Date.now()/1000);
@@ -2934,7 +2952,13 @@ async function pushAllToServer(){
     const val = localStorage.getItem(k);
     if(val === null) return Promise.resolve();
     try {
-      const parsed = JSON.parse(val);
+      // rt_api_key é salvo como string raw, não JSON
+      var parsed;
+      if(k === 'rt_api_key'){
+        parsed = getRtApiKey();
+      } else {
+        parsed = JSON.parse(val);
+      }
       return fetch(API_BASE+'/api/store/'+encodeURIComponent(k), {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
@@ -6029,7 +6053,7 @@ function switchCfgTab(tab, btn){
   if(tab==='checklists') renderChecklistsCfg();
   if(tab==='criativos-cfg') renderCriStatusList();
   if(tab==='apis'){
-    const k = localStorage.getItem('rt_api_key')||'';
+    const k = getRtApiKey();
     const inp = document.getElementById('ads-api-key-input');
     if(inp) inp.value = k;
     const st = document.getElementById('cfg-rt-status');
@@ -9732,13 +9756,15 @@ function saveAdsApiKey(){
   const k = document.getElementById('ads-api-key-input').value.trim();
   if(!k){ notif('Cole a API Key primeiro','#ef4444'); return; }
   localStorage.setItem('rt_api_key', k);
+  // Sincroniza a API key com o servidor pra todos os usuários com acesso terem
+  fetch(API_BASE+'/api/store/rt_api_key', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(k)}).catch(()=>{});
   const st = document.getElementById('cfg-rt-status');
   if(st) st.style.display = 'inline-block';
-  notif('API Key salva! Vá em Métricas de Ads e clique em Atualizar.');
+  notif('API Key salva e compartilhada com a equipe!');
 }
 
 function renderAdsMetrics(){
-  const key = localStorage.getItem('rt_api_key') || '';
+  const key = getRtApiKey();
   const inp = document.getElementById('ads-api-key-input');
   if(inp) inp.value = key;
   if(key) loadAdsMetrics();
@@ -9834,7 +9860,7 @@ function updateRtCountdown(){
 }
 
 async function loadRealtime(reset){
-  const key = localStorage.getItem('rt_api_key');
+  const key = getRtApiKey();
   if(!key) return;
   const today = new Date().toISOString().split('T')[0];
   try {
@@ -10250,7 +10276,7 @@ function editAdInvestimento(encKey){
 }
 
 async function loadAdsMetrics(){
-  const key = localStorage.getItem('rt_api_key');
+  const key = getRtApiKey();
   if(!key){ showAdsError('Configure a API Key do RedTrack acima.'); return; }
   const { from, to } = getAdsDates();
   const base = 'https://api.redtrack.io';
