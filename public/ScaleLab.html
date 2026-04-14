@@ -807,6 +807,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
               <select id="task-nicho-filter" onchange="onNichoFilterChange()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
                 <option value="">Todos os nichos</option>
               </select>
+              <!-- Botão Lixeira -->
+              <button onclick="abrirLixeiraTask()" title="Ver lixeira" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:15px;color:var(--text);outline:none;cursor:pointer;display:flex;align-items:center;gap:4px;">🗑️</button>
               <!-- Filtro Oferta cascata -->
               <select id="task-oferta-filter" onchange="renderTasks()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
                 <option value="">Todas as ofertas</option>
@@ -2526,7 +2528,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
 <!-- MODAL NOVA TAREFA -->
 <div class="modal-overlay" id="modal-task">
-  <div class="modal" id="modal-task-inner" style="max-width:540px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+  <div class="modal" id="modal-task-inner" style="max-width:900px;width:92vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
     <div class="modal-header" style="flex-shrink:0;">
       <span class="modal-title">Nova Demanda</span>
       <button class="modal-close" onclick="closeModal('modal-task')">✕</button>
@@ -7014,7 +7016,7 @@ function renderTasks(){
       </div>`;
     }
     return `
-  <div style="display:grid;grid-template-columns:2fr 140px 130px 100px 150px 90px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s;align-items:center;cursor:pointer;" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''" onclick="openTaskDetalhe(${t.id})">
+  <div style="display:grid;grid-template-columns:2fr 140px 130px 100px 150px 90px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s;align-items:center;cursor:pointer;" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''" onclick="editTask(${t.id})">
 
     <!-- Nome -->
     <div style="min-width:0;">
@@ -7179,10 +7181,94 @@ function arquivarTask(id){
   s('tasks',tasks); notif('Tarefa arquivada!'); renderTasks();
 }
 
+function editTask(id){ abrirEditarDemanda(id); }
+
 function delTask(id){
-  if(!confirm('Excluir tarefa?'))return;
-  tasks=tasks.filter(t=>t.id!==id);
-  s('tasks',tasks); renderTasks();
+  var t = tasks.find(function(x){ return x.id===id; });
+  if(!t) return;
+  // Popup de confirmação customizado
+  var wrap = document.createElement('div');
+  wrap.id = 'del-task-confirm';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:var(--bg);border-radius:16px;padding:28px 32px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--border);text-align:center;';
+  inner.innerHTML = '<div style="font-size:42px;margin-bottom:12px;">🗑️</div>'+
+    '<div style="font-size:17px;font-weight:700;margin-bottom:8px;">Deseja realmente apagar essa demanda?</div>'+
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:22px;word-break:break-word;">"'+(t.nome||'').replace(/</g,'&lt;')+'"</div>'+
+    '<div style="display:flex;gap:10px;justify-content:center;">'+
+    '<button id="del-no" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px 26px;font-size:14px;font-weight:600;cursor:pointer;">Não</button>'+
+    '<button id="del-yes" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:12px 26px;font-size:14px;font-weight:700;cursor:pointer;">Sim, apagar</button>'+
+    '</div>';
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+  document.getElementById('del-no').onclick = function(){ wrap.remove(); };
+  document.getElementById('del-yes').onclick = function(){
+    // Move para lixeira ao invés de excluir
+    var lixeira = g('tasks_lixeira',[]);
+    lixeira.unshift(Object.assign({}, t, {_deletedAt: Date.now()}));
+    s('tasks_lixeira', lixeira);
+    syncKey('tasks_lixeira');
+    tasks = tasks.filter(function(x){ return x.id!==id; });
+    s('tasks', tasks);
+    wrap.remove();
+    renderTasks();
+  };
+}
+
+function abrirLixeiraTask(){
+  var lixeira = g('tasks_lixeira',[]);
+  var wrap = document.createElement('div');
+  wrap.id = 'lixeira-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:var(--bg);border-radius:16px;padding:24px;width:640px;max-width:92vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--border);';
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+  h += '<div style="font-size:18px;font-weight:700;">🗑️ Lixeira ('+lixeira.length+')</div>';
+  h += '<button onclick="document.getElementById(\'lixeira-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text2);">✕</button>';
+  h += '</div>';
+  if(!lixeira.length){
+    h += '<div style="text-align:center;padding:40px;color:var(--text2);font-size:14px;">A lixeira está vazia.</div>';
+  } else {
+    for(var li=0;li<lixeira.length;li++){
+      var lt = lixeira[li];
+      var dataFmt = lt._deletedAt ? new Date(lt._deletedAt).toLocaleDateString('pt-BR') : '—';
+      h += '<div style="border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">';
+      h += '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px;">'+(lt.nome||'').replace(/</g,'&lt;')+'</div><div style="font-size:11px;color:var(--text2);">Apagado em '+dataFmt+'</div></div>';
+      h += '<div style="display:flex;gap:6px;">';
+      h += '<button onclick="restaurarTask('+lt.id+')" style="background:#22C55E;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">↩️ Restaurar</button>';
+      h += '<button onclick="excluirPermanente('+lt.id+')" style="background:#EF4444;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">🗑 Excluir</button>';
+      h += '</div></div>';
+    }
+  }
+  inner.innerHTML = h;
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+}
+
+function restaurarTask(id){
+  var lixeira = g('tasks_lixeira',[]);
+  var t = lixeira.find(function(x){ return x.id===id; });
+  if(!t) return;
+  delete t._deletedAt;
+  tasks.push(t);
+  s('tasks', tasks);
+  lixeira = lixeira.filter(function(x){ return x.id!==id; });
+  s('tasks_lixeira', lixeira);
+  var modal = document.getElementById('lixeira-modal');
+  if(modal) modal.remove();
+  renderTasks();
+  abrirLixeiraTask();
+}
+
+function excluirPermanente(id){
+  if(!confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')) return;
+  var lixeira = g('tasks_lixeira',[]).filter(function(x){ return x.id!==id; });
+  s('tasks_lixeira', lixeira);
+  var modal = document.getElementById('lixeira-modal');
+  if(modal) modal.remove();
+  abrirLixeiraTask();
 }
 
 function openTaskDetalhe(id){
