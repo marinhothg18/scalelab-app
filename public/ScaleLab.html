@@ -6649,7 +6649,42 @@ function abrirEditarDemanda(id){
       el.style.cursor = '';
       el.style.opacity = '';
     }
+    // Remover handlers de link antigos (caso reabra o modal)
+    el.onclick = null;
   });
+
+  // Para não-Diretoria: Link de entrega e Link de referência viram clicáveis
+  if(!_isDirEdit){
+    ['t-link','t-link-ref'].forEach(function(linkId){
+      var linkEl = document.getElementById(linkId);
+      if(linkEl && linkEl.value && linkEl.value.trim()){
+        linkEl.style.cursor = 'pointer';
+        linkEl.style.color = 'var(--accent)';
+        linkEl.style.textDecoration = 'underline';
+        linkEl.onclick = function(){
+          var url = this.value.trim();
+          if(url){
+            if(!url.match(/^https?:\/\//)) url = 'https://'+url;
+            window.open(url,'_blank');
+          }
+        };
+      } else if(linkEl){
+        linkEl.style.cursor = 'default';
+        linkEl.style.color = '';
+        linkEl.style.textDecoration = '';
+      }
+    });
+  } else {
+    // Resetar estilo pros Diretoria
+    ['t-link','t-link-ref'].forEach(function(linkId){
+      var linkEl = document.getElementById(linkId);
+      if(linkEl){
+        linkEl.style.cursor = '';
+        linkEl.style.color = '';
+        linkEl.style.textDecoration = '';
+      }
+    });
+  }
   // Ocultar botões de edição de checklist/fotos pra não-Diretoria
   const photoBtn = document.querySelector('#modal-task .modal-body label[style*="dashed"]');
   if(photoBtn) photoBtn.style.display = _isDirEdit ? '' : 'none';
