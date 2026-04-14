@@ -3248,6 +3248,7 @@ function goTo(id){
   if(id==='fila')renderFila();
   if(id==='adsmetrics')renderAdsMetrics();
   if(id==='rituais')renderRituais();
+  if(id==='notificacoes')renderNotificacoes();
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
@@ -5614,6 +5615,8 @@ function sendMsgDirect(inp){
   if(_chatAnexos.length){msg.arquivos=[..._chatAnexos]; _chatAnexos=[];}
   msgs.push(msg);
   s('msgs',msgs);
+  // Notificar menções no chat
+  if(t) notificarMencoes(t, 'mencao', 'Você foi mencionado no chat', msg.id);
   inp.value='';
   document.getElementById('chat-suggestions').style.display='none';
   renderChatAnexoPreview();
@@ -6686,6 +6689,10 @@ function enviarCmtModal(e){
   });
   s('tasks',tasks);
   fetch(API_BASE+'/api/store/tasks',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(tasks)}).catch(()=>{});
+  // Notificar menções no comentário
+  var taskRef = tasks.find(function(x){ return x.id===tid; });
+  var tituloNotif = taskRef ? ('Comentário em: '+taskRef.nome) : 'Novo comentário';
+  notificarMencoes(txt, 'mencao', tituloNotif, tid);
   inp.value='';
   renderModalChat(tid);
 }
@@ -6846,6 +6853,130 @@ function confirmarMudancaFase(){
   notif('Status atualizado!');
 }
 
+// ── SISTEMA DE NOTIFICAÇÕES ──
+function getNotifs(){ return g('sl_notifs', []); }
+function saveNotifs(arr){ s('sl_notifs', arr); syncKey('sl_notifs'); }
+
+function addNotif(destId, destNome, tipo, titulo, texto, refId){
+  if(!destId) return;
+  var notifs = getNotifs();
+  notifs.unshift({
+    id: Date.now()+Math.random(),
+    destId: destId,
+    destNome: destNome||'',
+    tipo: tipo, // 'demanda' | 'mencao' | 'comentario'
+    titulo: titulo||'',
+    texto: texto||'',
+    refId: refId||null,
+    lida: false,
+    criado: Date.now()
+  });
+  // Limita a 200 notificações por usuário pra não explodir
+  if(notifs.length > 500) notifs = notifs.slice(0,500);
+  saveNotifs(notifs);
+  updateNotifBadge();
+}
+
+function updateNotifBadge(){
+  var nav = document.querySelector('.sidebar-bot .nav-item');
+  if(!nav) return;
+  var myId = currentUser ? currentUser.id : null;
+  if(!myId) return;
+  var naoLidas = getNotifs().filter(function(n){ return n.destId===myId && !n.lida; }).length;
+  var existing = nav.querySelector('.notif-badge');
+  if(existing) existing.remove();
+  if(naoLidas > 0){
+    var badge = document.createElement('span');
+    badge.className = 'notif-badge';
+    badge.textContent = naoLidas > 99 ? '99+' : naoLidas;
+    badge.style.cssText = 'background:#EF4444;color:#fff;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;margin-left:auto;';
+    nav.appendChild(badge);
+  }
+}
+
+function detectarMencoes(texto){
+  // Captura @Nome (aceita letras, acentos, números, underscore, espaços múltiplos até encontrar outro @ ou fim)
+  var re = /@([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ0-9_ ]*?)(?=\s@|[,.!?\n]|$)/g;
+  var matches = [];
+  var m;
+  while((m = re.exec(texto)) !== null){
+    matches.push(m[1].trim());
+  }
+  return matches;
+}
+
+function notificarMencoes(texto, tipo, titulo, refId){
+  var mencoes = detectarMencoes(texto);
+  if(!mencoes.length) return;
+  var users = getUsuarios();
+  mencoes.forEach(function(nome){
+    // Match case-insensitive e parcial (primeiro nome)
+    var u = users.find(function(us){
+      return us.nome.toLowerCase()===nome.toLowerCase() ||
+             us.nome.toLowerCase().split(' ')[0]===nome.toLowerCase();
+    });
+    if(u){
+      addNotif(u.id, u.nome, 'mencao', titulo, 'Você foi mencionado: "'+texto.substring(0,100)+'"', refId);
+    }
+  });
+}
+
+function renderNotificacoes(){
+  var el = document.getElementById('page-notificacoes');
+  if(!el) return;
+  var myId = currentUser ? currentUser.id : null;
+  var todas = getNotifs();
+  var minhas = myId ? todas.filter(function(n){ return n.destId===myId; }) : [];
+
+  var h = '<div style="max-width:760px;">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+  h += '<div><div style="font-size:24px;font-weight:800;">🔔 Notificações</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">'+minhas.length+' notificação(ões)</div></div>';
+  if(minhas.some(function(n){ return !n.lida; })) h += '<button onclick="marcarTodasLidas()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:12px;color:var(--text);cursor:pointer;font-weight:600;">Marcar todas como lidas</button>';
+  h += '</div>';
+
+  if(!minhas.length){
+    h += '<div class="empty"><div class="empty-icon">🔔</div><div class="empty-text">Nenhuma notificação ainda.</div></div>';
+  } else {
+    for(var i=0;i<minhas.length;i++){
+      var n = minhas[i];
+      var icone = n.tipo==='mencao'?'💬':n.tipo==='demanda'?'📋':'🔔';
+      var corBg = n.lida ? 'var(--bg2)' : 'rgba(56,189,248,.08)';
+      var dataFmt = new Date(n.criado).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+      h += '<div onclick="marcarNotifLida('+n.id+')" style="background:'+corBg+';border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:10px;cursor:pointer;display:flex;gap:14px;align-items:flex-start;">';
+      h += '<div style="font-size:24px;flex-shrink:0;">'+icone+'</div>';
+      h += '<div style="flex:1;min-width:0;">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;">';
+      h += '<div style="font-size:14px;font-weight:700;color:var(--text);">'+(n.titulo||'').replace(/</g,'&lt;')+'</div>';
+      if(!n.lida) h += '<span style="background:#38BDF8;width:8px;height:8px;border-radius:50%;flex-shrink:0;"></span>';
+      h += '</div>';
+      h += '<div style="font-size:13px;color:var(--text2);margin-bottom:6px;">'+(n.texto||'').replace(/</g,'&lt;')+'</div>';
+      h += '<div style="font-size:11px;color:var(--text2);">'+dataFmt+'</div>';
+      h += '</div></div>';
+    }
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function marcarNotifLida(id){
+  var notifs = getNotifs();
+  var n = notifs.find(function(x){ return x.id===id; });
+  if(n) n.lida = true;
+  saveNotifs(notifs);
+  renderNotificacoes();
+  updateNotifBadge();
+}
+
+function marcarTodasLidas(){
+  var myId = currentUser ? currentUser.id : null;
+  if(!myId) return;
+  var notifs = getNotifs();
+  notifs.forEach(function(n){ if(n.destId===myId) n.lida = true; });
+  saveNotifs(notifs);
+  renderNotificacoes();
+  updateNotifBadge();
+}
+
 function salvarTask(){
   const editId = window._editingTaskId;
   const nome = (document.getElementById('t-nome').value||'').trim();
@@ -6879,6 +7010,8 @@ function salvarTask(){
 
   if(editId){
     // EDIT MODE — preserve existing checklist ticks if no new modelo selected
+    var oldTask = tasks.find(function(x){ return x.id===editId; });
+    var oldRespId = oldTask ? oldTask.respId : null;
     tasks = tasks.map(t => t.id === editId ? {
       ...t, nome, status, resp, respId, nichoId, nichoNome, ofertaId, ofertaNome,
       link, linkRef, desc,
@@ -6888,6 +7021,12 @@ function salvarTask(){
       checklist: checklist !== null ? checklist : t.checklist,
       fotos: fotos.length ? fotos : (t.fotos||[])
     } : t);
+    // Notificar se mudou o responsável
+    if(respId && respId !== oldRespId){
+      addNotif(respId, resp, 'demanda', 'Nova demanda atribuída', 'Você foi atribuído à demanda "'+nome+'"', editId);
+    }
+    // Notificar menções na descrição
+    if(desc) notificarMencoes(desc, 'mencao', 'Você foi mencionado em: '+nome, editId);
     window._editingTaskId = null;
     notif('Demanda atualizada!');
   } else {
@@ -6902,6 +7041,10 @@ function salvarTask(){
       arquivado: false, criado: new Date().toLocaleString('pt-BR'), cmts: []
     };
     tasks.push(t);
+    // Notificar responsável
+    if(respId) addNotif(respId, resp, 'demanda', 'Nova demanda atribuída', 'Você foi atribuído à demanda "'+nome+'"', t.id);
+    // Notificar menções na descrição
+    if(desc) notificarMencoes(desc, 'mencao', 'Você foi mencionado em: '+nome, t.id);
     notif('Demanda criada!');
   }
   window._taskFotos = [];
@@ -10245,6 +10388,7 @@ window.onload=()=>{
   if(emailFld&&!document.getElementById('login-screen').classList.contains('hidden'))emailFld.focus();
 
   renderDash();updateEduAutores();populateOfertas();
+  try{ updateNotifBadge(); }catch(e){}
 };
 </script>
 </body>
