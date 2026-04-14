@@ -847,7 +847,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
             <span id="rituais-count" style="font-size:13px;color:var(--text2);"></span>
-            <button class="btn btn-primary" onclick="abrirModalRitual()">+ Novo ritual</button>
+            <button id="btn-novo-ritual" class="btn btn-primary" onclick="abrirModalRitual()">+ Novo ritual</button>
           </div>
           <!-- Filtros rituais (Mês/Semana para todos; Nicho/Oferta só para Análise de dados) -->
           <div id="rituais-analise-filtros" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:18px;align-items:center;">
@@ -3222,16 +3222,22 @@ function goTo(id){
   // actions
   const ac=document.getElementById('top-actions');
   ac.innerHTML='';
-  if(id==='criativos'){
+  const _isDir = currentUser&&currentUser.cargo==='Diretoria';
+  if(id==='criativos' && _isDir){
     ac.innerHTML=`<button class="btn btn-ghost" onclick="openRemessas()">Gerenciar Remessas</button>
     <button class="btn btn-ghost" onclick="openFormatos()">Gerenciar Formatos</button>`;
   }
   if(addBtns[id]){
-    const b=document.createElement('button');
-    b.className='btn btn-primary';
-    b.innerHTML=(id==='criativos'?'📄 Criar documento':id==='metricas'?'+ Criar nova métrica':id==='swipe'?'+ Criar Swipe':'+ Adicionar conteúdo');
-    b.onclick=addBtns[id];
-    ac.appendChild(b);
+    // Criativos (Criar documento) — apenas Diretoria
+    if(id==='criativos' && !_isDir){
+      // não cria o botão
+    } else {
+      const b=document.createElement('button');
+      b.className='btn btn-primary';
+      b.innerHTML=(id==='criativos'?'📄 Criar documento':id==='metricas'?'+ Criar nova métrica':id==='swipe'?'+ Criar Swipe':'+ Adicionar conteúdo');
+      b.onclick=addBtns[id];
+      ac.appendChild(b);
+    }
   }
   cur=id;
   if(id==='dashboard')renderDash();
@@ -5271,6 +5277,7 @@ function renderCriativos(){
   if(countEl) countEl.textContent=filtered.length+' documento(s)';
 
   if(!filtered.length){el.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Nenhum documento encontrado.</div></div>';return;}
+  const isDir = currentUser&&currentUser.cargo==='Diretoria';
   el.innerHTML=filtered.map(c=>`
   <div class="cri-card">
     <div class="cri-header">
@@ -5294,7 +5301,7 @@ function renderCriativos(){
         ${PIPELINE.indexOf(c.status||'Gravação')<PIPELINE.length-1?`<button class="btn btn-primary" onclick="avancarStatus(${c.id})" style="font-size:11px;padding:4px 10px;">Avançar ▶</button>`:`<span class="badge b-green">✅ No Ar</span>`}
         <button class="icon-btn" onclick="copiarLinkRemessa(${c.id})" title="Copiar link da remessa">🔗</button>
         <button class="icon-btn" onclick="editCriativo(${c.id})" title="Editar remessa">✏️</button>
-        <button class="icon-btn" onclick="delCriativo(${c.id})">🗑</button>
+        ${isDir?`<button class="icon-btn" onclick="delCriativo(${c.id})">🗑</button>`:''}
       </div>
     </div>
     ${(c.ads||[]).map((a,ai)=>`
@@ -7675,8 +7682,8 @@ function renderRituais(){
       ${r.desc?`<div style="font-size:13px;color:var(--text);margin-top:8px;padding:10px;background:var(--bg3);border-radius:8px;">${r.desc}</div>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-shrink:0;">
-      <button onclick="event.stopPropagation();editarRitual(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">✏️</button>
-      <button onclick="event.stopPropagation();deletarRitual(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🗑</button>
+      ${isDiretoria?`<button onclick="event.stopPropagation();editarRitual(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">✏️</button>`:''}
+      ${isDiretoria?`<button onclick="event.stopPropagation();deletarRitual(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🗑</button>`:''}
     </div>
   </div>`;}).join('');
 }
@@ -9552,6 +9559,9 @@ function _applyNavPermissions(cargo){
   // Infra: bloqueado para Gestor de Tráfego, Copy, Editor, Spy (apenas Diretoria + Infra)
   const navInfra = document.getElementById('nav-infra');
   if(navInfra) navInfra.style.display = (cargo==='Diretoria'||cargo==='Infra') ? '' : 'none';
+  // Novo Ritual: apenas Diretoria
+  const btnNovoRit = document.getElementById('btn-novo-ritual');
+  if(btnNovoRit) btnNovoRit.style.display = cargo==='Diretoria' ? '' : 'none';
 }
 
 function _loginOk(user){
