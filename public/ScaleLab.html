@@ -2916,10 +2916,12 @@ async function syncAllFromServer(){
     Object.entries(data).forEach(([k,v])=>{
       // rt_api_key vem como objeto {value:"..."} — extrai e salva como string raw
       if(k === 'rt_api_key'){
-        if(v && typeof v === 'object' && v.value){
-          localStorage.setItem(k, v.value);
-        } else if(typeof v === 'string'){
-          localStorage.setItem(k, v);
+        var serverKey = '';
+        if(v && typeof v === 'object' && v.value) serverKey = v.value;
+        else if(typeof v === 'string') serverKey = v;
+        // Só sobrescreve local se servidor tiver uma key válida (não vazia)
+        if(serverKey && serverKey.length > 5){
+          localStorage.setItem(k, serverKey);
         }
       } else {
         localStorage.setItem(k, JSON.stringify(v));
