@@ -4452,11 +4452,385 @@ function renderInfraSidebar(){
 }
 
 function renderInfraContent(){
+  if(_infraTab === 'controle_testes'){ renderControleTestes(); }
+}
+
+// ── CONTROLE DE TESTES ──
+var _ctExpandedNicho = null;
+var _ctSelectedNicho = null;
+var _ctSelectedOferta = null;
+var _ctView = 'lista'; // lista | kanban
+var _ctTab = 'ativos'; // ativos | arquivados
+var _ctEditId = null;
+
+function getCtNichos(){
+  var n = g('sl_ct_nichos', null);
+  if(!n){
+    n = [
+      {id:1, nome:'DORES', ofertas:[]},
+      {id:2, nome:'MEMÓRIA', ofertas:[]},
+      {id:3, nome:'DIABETES', ofertas:[]},
+      {id:4, nome:'EMAGRECIMENTO', ofertas:[
+        {id:41, nome:'BurnSlim (Concorrente)'},
+        {id:42, nome:'Gelatina v8'},
+        {id:43, nome:'Concorrente (Chocolate)'},
+        {id:44, nome:'Gelatina v5'}
+      ]}
+    ];
+    s('sl_ct_nichos', n);
+  }
+  return n;
+}
+function saveCtNichos(arr){ s('sl_ct_nichos', arr); syncKey('sl_ct_nichos'); }
+function getCtTestes(){ return g('sl_ct_testes', []); }
+function saveCtTestes(arr){ s('sl_ct_testes', arr); syncKey('sl_ct_testes'); }
+
+function ctAddNicho(){
+  var nome = prompt('Nome do nicho:');
+  if(!nome) return;
+  var n = getCtNichos();
+  n.push({id:Date.now(), nome:nome.toUpperCase(), ofertas:[]});
+  saveCtNichos(n);
+  renderControleTestes();
+}
+
+function ctAddOferta(nichoId){
+  var nome = prompt('Nome da oferta:');
+  if(!nome) return;
+  var n = getCtNichos();
+  var nicho = n.find(function(x){ return x.id==nichoId; });
+  if(nicho){
+    nicho.ofertas.push({id:Date.now(), nome:nome});
+    saveCtNichos(n);
+    renderControleTestes();
+  }
+}
+
+function ctDelNicho(id){
+  if(!confirm('Excluir nicho e todas as ofertas?')) return;
+  var n = getCtNichos().filter(function(x){ return x.id!=id; });
+  saveCtNichos(n);
+  renderControleTestes();
+}
+
+function ctDelOferta(nichoId, ofertaId){
+  if(!confirm('Excluir oferta?')) return;
+  var n = getCtNichos();
+  var nicho = n.find(function(x){ return x.id==nichoId; });
+  if(nicho){
+    nicho.ofertas = nicho.ofertas.filter(function(o){ return o.id!=ofertaId; });
+    saveCtNichos(n);
+    renderControleTestes();
+  }
+}
+
+function ctToggleNicho(id){
+  _ctExpandedNicho = _ctExpandedNicho===id ? null : id;
+  renderControleTestes();
+}
+
+function ctSelOferta(nichoId, ofertaId){
+  _ctSelectedNicho = nichoId;
+  _ctSelectedOferta = ofertaId;
+  renderControleTestes();
+}
+
+function ctFiltraAll(){
+  _ctSelectedNicho = null;
+  _ctSelectedOferta = null;
+  renderControleTestes();
+}
+
+function ctOpenTeste(id){
+  _ctEditId = id || null;
+  var t = id ? getCtTestes().find(function(x){ return x.id==id; }) : null;
+  var nichos = getCtNichos();
+
+  var h = '<div id="ct-teste-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)ctCloseTeste()">';
+  h += '<div style="background:var(--bg);border-radius:16px;padding:28px;width:480px;max-width:90vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--border);">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;"><span style="font-size:18px;font-weight:700;">'+(t?'Editar Teste':'Novo Teste')+'</span><button onclick="ctCloseTeste()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text2);">✕</button></div>';
+
+  // Nicho + Oferta
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
+  h += '<div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Nicho</label>';
+  h += '<select id="ct-nicho" onchange="ctUpdateOfertas()" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);cursor:pointer;">';
+  h += '<option value="">Selecione</option>';
+  for(var ni=0;ni<nichos.length;ni++){
+    h += '<option value="'+nichos[ni].id+'"'+(t&&t.nichoId==nichos[ni].id?' selected':'')+'>'+nichos[ni].nome+'</option>';
+  }
+  h += '</select></div>';
+  h += '<div><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Oferta</label>';
+  h += '<select id="ct-oferta" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);cursor:pointer;"><option value="">Selecione</option></select></div>';
+  h += '</div>';
+
+  // Nome do Teste
+  h += '<div style="margin-bottom:14px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Nome do Teste</label>';
+  h += '<input id="ct-nome" value="'+((t&&t.nome)||'').replace(/"/g,'&quot;')+'" placeholder="Ex: Teste VSL Versão 3" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none;"></div>';
+
+  // Data
+  h += '<div style="margin-bottom:14px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Data</label>';
+  h += '<input id="ct-data" type="date" value="'+((t&&t.data)||'')+'" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none;"></div>';
+
+  // Links PV
+  h += '<div style="margin-bottom:14px;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);">Links da PV (Teste A/B)</label><button onclick="ctAddPvLink()" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--text);cursor:pointer;">+ Adicionar</button></div>';
+  h += '<div id="ct-pv-links">';
+  var pvs = (t&&t.linksPV)||[''];
+  if(!pvs.length) pvs = [''];
+  for(var pi=0;pi<pvs.length;pi++){
+    h += '<input class="ct-pv-input" value="'+(pvs[pi]||'').replace(/"/g,'&quot;')+'" placeholder="PV '+(pi+1)+': https://..." style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none;margin-bottom:6px;">';
+  }
+  h += '</div></div>';
+
+  // Link Cloaker
+  h += '<div style="margin-bottom:14px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Link do Cloaker</label>';
+  h += '<input id="ct-cloaker" value="'+((t&&t.cloaker)||'').replace(/"/g,'&quot;')+'" placeholder="https://..." style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none;"></div>';
+
+  // Pasta VSL
+  h += '<div style="margin-bottom:14px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Pasta VSL (Vturb)</label>';
+  h += '<input id="ct-vsl" value="'+((t&&t.vsl)||'').replace(/"/g,'&quot;')+'" placeholder="https://..." style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none;"></div>';
+
+  // Status
+  h += '<div style="margin-bottom:18px;"><label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px;">Status</label>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
+  var curStatus = (t&&t.status)||'A testar';
+  var statusOpts = [{id:'Ativo',cor:'#22C55E'},{id:'A testar',cor:'#F97316'},{id:'Desativado',cor:'#6B7280'}];
+  for(var soi=0;soi<statusOpts.length;soi++){
+    var so = statusOpts[soi];
+    var act = curStatus===so.id;
+    h += '<button class="ct-status-btn" data-status="'+so.id+'" onclick="document.querySelectorAll(\'.ct-status-btn\').forEach(function(b){b.style.background=\'var(--bg2)\';b.style.color=\'var(--text)\';b.style.borderColor=\'var(--border)\';});this.style.background=\''+so.cor+'\';this.style.color=\'#fff\';this.style.borderColor=\''+so.cor+'\';" style="background:'+(act?so.cor:'var(--bg2)')+';color:'+(act?'#fff':'var(--text)')+';border:1px solid '+(act?so.cor:'var(--border)')+';border-radius:8px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;">'+so.id+'</button>';
+  }
+  h += '</div></div>';
+
+  h += '<button onclick="ctSaveTeste()" style="width:100%;background:linear-gradient(135deg,#EF4444,#F97316);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;">'+(t?'Salvar Alterações':'Criar Teste')+'</button>';
+  h += '</div></div>';
+
+  var wrap = document.createElement('div');
+  wrap.innerHTML = h;
+  document.body.appendChild(wrap.firstChild);
+  ctUpdateOfertas();
+  if(t&&t.ofertaId) document.getElementById('ct-oferta').value = t.ofertaId;
+}
+
+function ctUpdateOfertas(){
+  var sel = document.getElementById('ct-nicho');
+  var ofSel = document.getElementById('ct-oferta');
+  if(!sel||!ofSel) return;
+  var nichoId = sel.value;
+  var nicho = getCtNichos().find(function(x){ return x.id==nichoId; });
+  var h = '<option value="">Selecione</option>';
+  if(nicho){
+    for(var oi=0;oi<nicho.ofertas.length;oi++){
+      h += '<option value="'+nicho.ofertas[oi].id+'">'+nicho.ofertas[oi].nome+'</option>';
+    }
+  }
+  ofSel.innerHTML = h;
+}
+
+function ctAddPvLink(){
+  var cont = document.getElementById('ct-pv-links');
+  var inputs = cont.querySelectorAll('.ct-pv-input');
+  var n = inputs.length + 1;
+  var inp = document.createElement('input');
+  inp.className = 'ct-pv-input';
+  inp.placeholder = 'PV '+n+': https://...';
+  inp.style.cssText = 'width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);outline:none;margin-bottom:6px;';
+  cont.appendChild(inp);
+}
+
+function ctCloseTeste(){
+  var el = document.getElementById('ct-teste-modal');
+  if(el) el.remove();
+}
+
+function ctSaveTeste(){
+  var nichoId = document.getElementById('ct-nicho').value;
+  var ofertaId = document.getElementById('ct-oferta').value;
+  var nome = document.getElementById('ct-nome').value.trim();
+  var data = document.getElementById('ct-data').value;
+  var cloaker = document.getElementById('ct-cloaker').value.trim();
+  var vsl = document.getElementById('ct-vsl').value.trim();
+  var linksPV = [];
+  document.querySelectorAll('.ct-pv-input').forEach(function(i){ if(i.value.trim()) linksPV.push(i.value.trim()); });
+  var statusBtn = document.querySelector('.ct-status-btn[style*="rgb(34, 197, 94)"], .ct-status-btn[style*="rgb(249, 115, 22)"], .ct-status-btn[style*="rgb(107, 114, 128)"]');
+  var status = statusBtn ? statusBtn.getAttribute('data-status') : 'A testar';
+
+  if(!nichoId || !ofertaId || !nome){ alert('Preencha Nicho, Oferta e Nome.'); return; }
+
+  var testes = getCtTestes();
+  if(_ctEditId){
+    var t = testes.find(function(x){ return x.id==_ctEditId; });
+    if(t){
+      t.nichoId=nichoId; t.ofertaId=ofertaId; t.nome=nome; t.data=data;
+      t.linksPV=linksPV; t.cloaker=cloaker; t.vsl=vsl; t.status=status;
+    }
+  } else {
+    testes.push({id:Date.now(), nichoId:nichoId, ofertaId:ofertaId, nome:nome, data:data, linksPV:linksPV, cloaker:cloaker, vsl:vsl, status:status, arquivado:false});
+  }
+  saveCtTestes(testes);
+  ctCloseTeste();
+  renderControleTestes();
+}
+
+function ctArquivarTeste(id){
+  var testes = getCtTestes();
+  var t = testes.find(function(x){ return x.id==id; });
+  if(t) t.arquivado = !t.arquivado;
+  saveCtTestes(testes);
+  renderControleTestes();
+}
+
+function ctDelTeste(id){
+  if(!confirm('Excluir este teste?')) return;
+  var testes = getCtTestes().filter(function(x){ return x.id!=id; });
+  saveCtTestes(testes);
+  renderControleTestes();
+}
+
+function ctToggleMenu(id){
+  var m = document.getElementById('ct-menu-'+id);
+  if(m) m.style.display = m.style.display==='block' ? 'none' : 'block';
+}
+
+function renderControleTestes(){
   var el = document.getElementById('infra-content');
   if(!el) return;
-  if(_infraTab === 'controle_testes'){
-    el.innerHTML = '<div style="font-size:18px;font-weight:700;margin-bottom:16px;">🧪 Controle de Testes</div><div style="color:var(--text2);font-size:13px;">Em breve — conteúdo será adicionado aqui.</div>';
+  var nichos = getCtNichos();
+  var testes = getCtTestes();
+
+  // Filter testes
+  var testesFilt = testes.filter(function(t){
+    if(_ctTab==='ativos' && t.arquivado) return false;
+    if(_ctTab==='arquivados' && !t.arquivado) return false;
+    if(_ctSelectedNicho && t.nichoId!=_ctSelectedNicho) return false;
+    if(_ctSelectedOferta && t.ofertaId!=_ctSelectedOferta) return false;
+    return true;
+  });
+
+  // Stats
+  var stats = { total: testes.length, ativas:0, desativadas:0, atestar:0 };
+  testes.forEach(function(t){
+    if(t.status==='Ativo') stats.ativas++;
+    else if(t.status==='Desativado') stats.desativadas++;
+    else if(t.status==='A testar') stats.atestar++;
+  });
+
+  var h = '<div style="display:flex;gap:20px;min-height:calc(100vh - 160px);">';
+  // Sidebar nichos
+  h += '<div style="min-width:220px;max-width:220px;flex-shrink:0;">';
+  h += '<button onclick="ctAddNicho()" class="btn btn-primary" style="width:100%;font-size:12px;margin-bottom:12px;">+ Adicionar Nicho</button>';
+  h += '<div onclick="ctFiltraAll()" style="padding:8px 12px;margin-bottom:6px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:'+(!_ctSelectedNicho?'#fff':'var(--text2)')+';background:'+(!_ctSelectedNicho?'var(--accent)':'transparent')+';">Todos</div>';
+  for(var ni=0;ni<nichos.length;ni++){
+    var nicho = nichos[ni];
+    var open = _ctExpandedNicho===nicho.id;
+    h += '<div style="margin-bottom:4px;">';
+    h += '<div onclick="ctToggleNicho('+nicho.id+')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text2);border-radius:6px;">';
+    h += '<span>'+nicho.nome+'</span>';
+    h += '<span style="font-size:10px;">'+(open?'▼':'›')+'</span>';
+    h += '</div>';
+    if(open){
+      for(var oi=0;oi<nicho.ofertas.length;oi++){
+        var of_ = nicho.ofertas[oi];
+        var ofSel = _ctSelectedOferta==of_.id;
+        h += '<div onclick="ctSelOferta('+nicho.id+','+of_.id+')" style="padding:6px 10px 6px 24px;margin-bottom:2px;border-radius:6px;cursor:pointer;font-size:12px;color:'+(ofSel?'#fff':'var(--text)')+';background:'+(ofSel?'var(--accent)':'transparent')+';display:flex;align-items:center;justify-content:space-between;">';
+        h += '<span>'+of_.nome+'</span>';
+        h += '<span onclick="event.stopPropagation();ctDelOferta('+nicho.id+','+of_.id+')" style="font-size:10px;color:var(--red);cursor:pointer;opacity:.6;">✕</span>';
+        h += '</div>';
+      }
+      h += '<button onclick="ctAddOferta('+nicho.id+')" style="margin-left:16px;margin-top:4px;background:linear-gradient(135deg,#EF4444,#F97316);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:10px;font-weight:700;cursor:pointer;">+ Adicionar Oferta</button>';
+    }
+    h += '</div>';
   }
+  h += '</div>';
+
+  // Main content
+  h += '<div style="flex:1;min-width:0;">';
+  // KPI cards
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">';
+  var kpis = [
+    {label:'Total de Campanhas', val:stats.total, cor:'#3B82F6', icon:'📊'},
+    {label:'Campanhas Ativas', val:stats.ativas, cor:'#22C55E', icon:'✅'},
+    {label:'Campanhas Desativadas', val:stats.desativadas, cor:'#EF4444', icon:'⛔'},
+    {label:'A testar', val:stats.atestar, cor:'#F97316', icon:'🧪'}
+  ];
+  for(var ki=0;ki<kpis.length;ki++){
+    var kp = kpis[ki];
+    h += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;">';
+    h += '<div><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:4px;">'+kp.label+'</div><div style="font-size:28px;font-weight:800;color:var(--text);">'+kp.val+'</div></div>';
+    h += '<div style="width:44px;height:44px;background:'+kp.cor+'22;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;">'+kp.icon+'</div>';
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // Header: Title + button
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">';
+  h += '<div style="display:flex;gap:10px;align-items:center;">';
+  h += '<div onclick="_ctTab=\'ativos\';renderControleTestes();" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:'+(_ctTab==='ativos'?'var(--accent)':'var(--bg2)')+';color:'+(_ctTab==='ativos'?'#fff':'var(--text2)')+';">Ativos</div>';
+  var countArq = testes.filter(function(t){ return t.arquivado; }).length;
+  h += '<div onclick="_ctTab=\'arquivados\';renderControleTestes();" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:'+(_ctTab==='arquivados'?'var(--accent)':'var(--bg2)')+';color:'+(_ctTab==='arquivados'?'#fff':'var(--text2)')+';">Arquivados ('+countArq+')</div>';
+  h += '</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;">';
+  h += '<div onclick="_ctView=\'lista\';renderControleTestes();" style="padding:8px 12px;border-radius:8px;cursor:pointer;background:'+(_ctView==='lista'?'var(--accent)':'var(--bg2)')+';color:'+(_ctView==='lista'?'#fff':'var(--text2)')+';font-size:14px;">☰</div>';
+  h += '<div onclick="_ctView=\'kanban\';renderControleTestes();" style="padding:8px 12px;border-radius:8px;cursor:pointer;background:'+(_ctView==='kanban'?'var(--accent)':'var(--bg2)')+';color:'+(_ctView==='kanban'?'#fff':'var(--text2)')+';font-size:14px;">⚏</div>';
+  h += '<button onclick="ctOpenTeste()" style="background:linear-gradient(135deg,#EF4444,#F97316);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">+ Novo Teste</button>';
+  h += '</div></div>';
+
+  if(_ctView==='lista'){
+    // Lista
+    h += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;">';
+    h += '<div style="display:grid;grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 0.8fr 40px;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.5px;">';
+    h += '<div>Nome / Oferta</div><div>Links da PV</div><div>Link Cloaker</div><div>VSL (Vturb)</div><div>Data</div><div>Status</div><div></div>';
+    h += '</div>';
+
+    if(!testesFilt.length){
+      h += '<div style="text-align:center;padding:50px 20px;color:var(--text2);font-size:13px;">Nenhum teste. Clique em "+ Novo Teste".</div>';
+    }
+    for(var ti=0;ti<testesFilt.length;ti++){
+      var t = testesFilt[ti];
+      var nicho = nichos.find(function(x){ return x.id==t.nichoId; });
+      var oferta = nicho ? nicho.ofertas.find(function(x){ return x.id==t.ofertaId; }) : null;
+      var statusCor = t.status==='Ativo'?'#22C55E':t.status==='Desativado'?'#6B7280':'#F97316';
+      var dataFmt = t.data ? new Date(t.data).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+      h += '<div style="display:grid;grid-template-columns:2.5fr 1fr 1fr 1fr 1fr 0.8fr 40px;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;">';
+      h += '<div><div style="font-weight:600;color:var(--text);margin-bottom:2px;">'+(t.nome||'').replace(/</g,'&lt;')+'</div><div style="font-size:10px;color:var(--text2);">'+((nicho&&nicho.nome)||'')+(oferta?' · '+oferta.nome:'')+'</div></div>';
+      h += '<div>'+(t.linksPV||[]).map(function(l,i){return '<a href="'+l+'" target="_blank" style="display:block;color:#EF4444;text-decoration:none;font-size:11px;">🔗 PV '+(i+1)+'</a>';}).join('')+'</div>';
+      h += '<div>'+(t.cloaker?'<a href="'+t.cloaker+'" target="_blank" style="color:#38BDF8;text-decoration:none;font-size:11px;">🕵 Acessar</a>':'—')+'</div>';
+      h += '<div>'+(t.vsl?'<a href="'+t.vsl+'" target="_blank" style="color:#A855F7;text-decoration:none;font-size:11px;">🎬 VSL</a>':'—')+'</div>';
+      h += '<div style="color:var(--text2);">'+dataFmt+'</div>';
+      h += '<div><span style="background:'+statusCor+'22;color:'+statusCor+';padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;">'+t.status+'</span></div>';
+      h += '<div style="position:relative;"><span onclick="ctToggleMenu('+t.id+')" style="cursor:pointer;color:var(--text2);font-size:18px;padding:4px 8px;">⋯</span>';
+      h += '<div id="ct-menu-'+t.id+'" style="display:none;position:absolute;right:0;top:28px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:50;min-width:130px;">';
+      h += '<div onclick="ctOpenTeste('+t.id+');ctToggleMenu('+t.id+');" style="padding:8px 12px;font-size:12px;cursor:pointer;border-radius:6px;color:var(--text);display:flex;align-items:center;gap:8px;">✏️ Editar</div>';
+      h += '<div onclick="ctArquivarTeste('+t.id+');" style="padding:8px 12px;font-size:12px;cursor:pointer;border-radius:6px;color:var(--text);display:flex;align-items:center;gap:8px;">📦 '+(t.arquivado?'Desarquivar':'Arquivar')+'</div>';
+      h += '<div onclick="ctDelTeste('+t.id+');" style="padding:8px 12px;font-size:12px;cursor:pointer;border-radius:6px;color:var(--red);display:flex;align-items:center;gap:8px;">🗑️ Excluir</div>';
+      h += '</div></div>';
+      h += '</div>';
+    }
+    h += '</div>';
+  } else {
+    // Kanban
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">';
+    var cols = [{id:'A testar',cor:'#F97316',label:'A TESTAR'},{id:'Ativo',cor:'#22C55E',label:'ATIVOS'},{id:'Desativado',cor:'#6B7280',label:'DESATIVADOS'}];
+    for(var ci=0;ci<cols.length;ci++){
+      var col = cols[ci];
+      var colTestes = testesFilt.filter(function(t){ return t.status===col.id; });
+      h += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px;">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:8px 12px;background:'+col.cor+'22;border-radius:8px;"><span style="font-size:12px;font-weight:700;color:'+col.cor+';">'+col.label+'</span><span style="font-size:11px;color:'+col.cor+';font-weight:700;">'+colTestes.length+'</span></div>';
+      for(var kti=0;kti<colTestes.length;kti++){
+        var kt = colTestes[kti];
+        var ktNicho = nichos.find(function(x){ return x.id==kt.nichoId; });
+        var ktOferta = ktNicho ? ktNicho.ofertas.find(function(x){ return x.id==kt.ofertaId; }) : null;
+        h += '<div onclick="ctOpenTeste('+kt.id+')" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;cursor:pointer;">';
+        h += '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">'+(kt.nome||'').replace(/</g,'&lt;')+'</div>';
+        h += '<div style="font-size:10px;color:var(--text2);">'+((ktNicho&&ktNicho.nome)||'')+(ktOferta?' · '+ktOferta.nome:'')+'</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  h += '</div></div>';
+  el.innerHTML = h;
 }
 
 // ── CONTROLE DE CONTINGÊNCIA ──
