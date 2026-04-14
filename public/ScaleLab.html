@@ -670,11 +670,11 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       Métricas de Ads
     </div>
-    <div class="nav-item" onclick="goTo('gestao')">
+    <div class="nav-item" id="nav-gestao" onclick="goTo('gestao')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
       Gestão
     </div>
-    <div class="nav-item" onclick="goTo('infra')">
+    <div class="nav-item" id="nav-infra" onclick="goTo('infra')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
       Infra
     </div>
@@ -7622,12 +7622,13 @@ function renderRituais(){
     }
   }
 
-  // Controle de acesso: Diretoria vê tudo, outros só veem onde são participantes
+  // Controle de acesso: Diretoria vê tudo, outros só veem onde são participantes marcados
   const meuNome = (currentUser&&currentUser.nome)||'';
   const isDiretoria = currentUser&&currentUser.cargo==='Diretoria';
   let lista = rituais.filter(r=>{
     if(isDiretoria) return true;
-    if(!r.participantes||!r.participantes.length) return true; // sem restrição
+    // Não-diretoria: precisa estar na lista de participantes
+    if(!r.participantes||!r.participantes.length) return false;
     return r.participantes.includes(meuNome);
   });
   if(ritualTipoFiltro) lista = lista.filter(r=>r.tipo===ritualTipoFiltro);
@@ -9545,6 +9546,12 @@ function _applyNavPermissions(cargo){
   if(arqSec) arqSec.style.display = cargo==='Diretoria' ? '' : 'none';
   const lixBtn = document.getElementById('btn-lixeira-tasks');
   if(lixBtn) lixBtn.style.display = cargo==='Diretoria' ? '' : 'none';
+  // Gestão: bloqueado para Gestor de Tráfego, Copy, Editor, Spy (apenas Diretoria + Infra)
+  const navGestao = document.getElementById('nav-gestao');
+  if(navGestao) navGestao.style.display = (cargo==='Diretoria'||cargo==='Infra') ? '' : 'none';
+  // Infra: bloqueado para Gestor de Tráfego, Copy, Editor, Spy (apenas Diretoria + Infra)
+  const navInfra = document.getElementById('nav-infra');
+  if(navInfra) navInfra.style.display = (cargo==='Diretoria'||cargo==='Infra') ? '' : 'none';
 }
 
 function _loginOk(user){
