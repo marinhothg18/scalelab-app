@@ -10285,6 +10285,8 @@ function editAdInvestimento(encKey){
 async function loadAdsMetrics(){
   const key = getRtApiKey();
   if(!key){ showAdsError('Configure a API Key do RedTrack acima.'); return; }
+  // Auto-sync da API key pro servidor (pra compartilhar com outros usuários com acesso)
+  fetch(API_BASE+'/api/store/rt_api_key', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(key)}).catch(()=>{});
   const { from, to } = getAdsDates();
   const base = 'https://api.redtrack.io';
   const loading = document.getElementById('ads-loading');
