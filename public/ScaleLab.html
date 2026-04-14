@@ -2884,15 +2884,28 @@ const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checkli
 let _lastSync = 0;
 let _syncInterval = null;
 
-// Helper para ler rt_api_key em qualquer formato (raw ou JSON stringified)
+// Helper para ler rt_api_key em qualquer formato (raw, JSON string, ou objeto {value})
 function getRtApiKey(){
   var raw = localStorage.getItem('rt_api_key') || '';
   if(!raw) return '';
-  // Se começa com aspas, é JSON stringified
+  // Se começa com { é objeto { value: "..." }
+  if(raw.charAt(0) === '{'){
+    try { var obj = JSON.parse(raw); return obj.value || ''; } catch(e) { return ''; }
+  }
+  // Se começa com aspas, é JSON string
   if(raw.charAt(0) === '"'){
     try { return JSON.parse(raw); } catch(e) { return raw; }
   }
   return raw;
+}
+// Helper para pushar a api key pro servidor (envolve em objeto pq Express rejeita strings puras)
+function pushRtApiKeyToServer(key){
+  if(!key) return Promise.resolve();
+  return fetch(API_BASE+'/api/store/rt_api_key', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({value: key})
+  }).catch(function(){});
 }
 
 async function syncAllFromServer(){
@@ -2901,9 +2914,13 @@ async function syncAllFromServer(){
     if(!res.ok) return;
     const data = await res.json();
     Object.entries(data).forEach(([k,v])=>{
-      // rt_api_key é string raw, não JSON
-      if(k === 'rt_api_key' && typeof v === 'string'){
-        localStorage.setItem(k, v);
+      // rt_api_key vem como objeto {value:"..."} — extrai e salva como string raw
+      if(k === 'rt_api_key'){
+        if(v && typeof v === 'object' && v.value){
+          localStorage.setItem(k, v.value);
+        } else if(typeof v === 'string'){
+          localStorage.setItem(k, v);
+        }
       } else {
         localStorage.setItem(k, JSON.stringify(v));
       }
@@ -2952,13 +2969,13 @@ async function pushAllToServer(){
     const val = localStorage.getItem(k);
     if(val === null) return Promise.resolve();
     try {
-      // rt_api_key é salvo como string raw, não JSON
-      var parsed;
+      // rt_api_key é string raw no localStorage — envolve em objeto pro servidor
       if(k === 'rt_api_key'){
-        parsed = getRtApiKey();
-      } else {
-        parsed = JSON.parse(val);
+        var keyVal = getRtApiKey();
+        if(!keyVal) return Promise.resolve();
+        return pushRtApiKeyToServer(keyVal);
       }
+      var parsed = JSON.parse(val);
       return fetch(API_BASE+'/api/store/'+encodeURIComponent(k), {
         method:'PUT',
         headers:{'Content-Type':'application/json'},
@@ -9695,9 +9712,7 @@ function _loginOk(user){
     // Se Diretoria e tiver rt_api_key local que não está no servidor, empurra agora
     if(user.cargo==='Diretoria'){
       var localKey = getRtApiKey();
-      if(localKey){
-        fetch(API_BASE+'/api/store/rt_api_key', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(localKey)}).catch(()=>{});
-      }
+      if(localKey) pushRtApiKeyToServer(localKey);
     }
     renderTasks();
     try{ updateNotifBadge(); }catch(e){}
@@ -9763,8 +9778,7 @@ function saveAdsApiKey(){
   const k = document.getElementById('ads-api-key-input').value.trim();
   if(!k){ notif('Cole a API Key primeiro','#ef4444'); return; }
   localStorage.setItem('rt_api_key', k);
-  // Sincroniza a API key com o servidor pra todos os usuários com acesso terem
-  fetch(API_BASE+'/api/store/rt_api_key', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(k)}).catch(()=>{});
+  pushRtApiKeyToServer(k);
   const st = document.getElementById('cfg-rt-status');
   if(st) st.style.display = 'inline-block';
   notif('API Key salva e compartilhada com a equipe!');
@@ -10286,7 +10300,7 @@ async function loadAdsMetrics(){
   const key = getRtApiKey();
   if(!key){ showAdsError('Configure a API Key do RedTrack acima.'); return; }
   // Auto-sync da API key pro servidor (pra compartilhar com outros usuários com acesso)
-  fetch(API_BASE+'/api/store/rt_api_key', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(key)}).catch(()=>{});
+  pushRtApiKeyToServer(key);
   const { from, to } = getAdsDates();
   const base = 'https://api.redtrack.io';
   const loading = document.getElementById('ads-loading');
