@@ -785,7 +785,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Filtrar por Status</div>
             <div id="task-status-filters" style="display:flex;flex-direction:column;gap:2px;"></div>
             <!-- Arquivados abaixo dos status -->
-            <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+            <div id="arquivados-section" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
               <div class="nav-item task-view" id="btn-arquivados" onclick="setTaskView('arquivados',this)">
                 <svg style="width:15px;height:15px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
                 Arquivados
@@ -808,7 +808,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
                 <option value="">Todos os nichos</option>
               </select>
               <!-- Botão Lixeira -->
-              <button onclick="abrirLixeiraTask()" title="Ver lixeira" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:15px;color:var(--text);outline:none;cursor:pointer;display:flex;align-items:center;gap:4px;">🗑️</button>
+              <button id="btn-lixeira-tasks" onclick="abrirLixeiraTask()" title="Ver lixeira" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:15px;color:var(--text);outline:none;cursor:pointer;display:flex;align-items:center;gap:4px;">🗑️</button>
               <!-- Filtro Oferta cascata -->
               <select id="task-oferta-filter" onchange="renderTasks()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
                 <option value="">Todas as ofertas</option>
@@ -7194,7 +7194,7 @@ function renderTasks(){
     <!-- Ações -->
     <div style="display:flex;gap:4px;justify-content:flex-end;" onclick="event.stopPropagation()">
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();abrirEditarDemanda(${t.id})" title="Editar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">✏️</button>` : ''}
-      <button onclick="event.stopPropagation();arquivarTask(${t.id})" title="Arquivar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">📦</button>
+      ${perms.isDiretoria ? `<button onclick="event.stopPropagation();arquivarTask(${t.id})" title="Arquivar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">📦</button>` : ''}
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();delTask(${t.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">🗑</button>` : ''}
     </div>
 
@@ -9540,6 +9540,11 @@ function _applyNavPermissions(cargo){
   // configuracoes: apenas Diretoria
   const configNav = document.querySelector('[onclick="goTo(\'configuracoes\')"]');
   if(configNav) configNav.style.display = cargo==='Diretoria' ? '' : 'none';
+  // Demandas: Arquivados sidebar e botão Lixeira — apenas Diretoria
+  const arqSec = document.getElementById('arquivados-section');
+  if(arqSec) arqSec.style.display = cargo==='Diretoria' ? '' : 'none';
+  const lixBtn = document.getElementById('btn-lixeira-tasks');
+  if(lixBtn) lixBtn.style.display = cargo==='Diretoria' ? '' : 'none';
 }
 
 function _loginOk(user){
