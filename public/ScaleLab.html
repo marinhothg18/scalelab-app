@@ -6923,23 +6923,35 @@ function confirmarMudancaFase(){
 function getNotifs(){ return g('sl_notifs', []); }
 function saveNotifs(arr){ s('sl_notifs', arr); syncKey('sl_notifs'); }
 
-function addNotif(destId, destNome, tipo, titulo, texto, refId){
+async function addNotif(destId, destNome, tipo, titulo, texto, refId){
   if(!destId) return;
-  var notifs = getNotifs();
-  notifs.unshift({
+  // Busca do servidor primeiro pra mergear (evita sobrescrever notificações de outros)
+  var serverNotifs = [];
+  try {
+    var r = await fetch(API_BASE+'/api/store', {signal: AbortSignal.timeout(3000)});
+    if(r.ok){
+      var data = await r.json();
+      serverNotifs = Array.isArray(data.sl_notifs) ? data.sl_notifs : [];
+    }
+  } catch(e){}
+  var localNotifs = getNotifs();
+  // Merge: usa a maior lista como base + adiciona a nova
+  var merged = serverNotifs.length >= localNotifs.length ? serverNotifs.slice() : localNotifs.slice();
+  // Evita duplicatas pelo id
+  var newNotif = {
     id: Date.now()+Math.random(),
     destId: destId,
     destNome: destNome||'',
-    tipo: tipo, // 'demanda' | 'mencao' | 'comentario'
+    tipo: tipo,
     titulo: titulo||'',
     texto: texto||'',
     refId: refId||null,
     lida: false,
     criado: Date.now()
-  });
-  // Limita a 200 notificações por usuário pra não explodir
-  if(notifs.length > 500) notifs = notifs.slice(0,500);
-  saveNotifs(notifs);
+  };
+  merged.unshift(newNotif);
+  if(merged.length > 500) merged = merged.slice(0,500);
+  saveNotifs(merged);
   updateNotifBadge();
 }
 
@@ -9631,9 +9643,10 @@ function _loginOk(user){
   document.getElementById('login-error').textContent='';
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
-  // Envia dados locais pro servidor, depois puxa tudo atualizado
-  pushAllToServer().then(()=> syncAllFromServer()).then(()=>{
+  // PRIMEIRO puxa do servidor (pra não sobrescrever notificações novas), depois envia local
+  syncAllFromServer().then(()=> pushAllToServer()).then(()=>{
     renderTasks();
+    try{ updateNotifBadge(); }catch(e){}
     abrirRemessaPorUrl();
     abrirArquivoPorUrl();
   });
