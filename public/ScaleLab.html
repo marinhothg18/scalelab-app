@@ -646,7 +646,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       Demandas
     </div>
-    <div class="nav-item" onclick="goTo('criativos')">
+    <div class="nav-item" id="nav-criativos" onclick="goTo('criativos')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 011.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
       Criativos
     </div>
@@ -658,7 +658,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       Chat
     </div>
-    <div class="nav-item" onclick="goTo('rituais')">
+    <div class="nav-item" id="nav-rituais" onclick="goTo('rituais')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
       Rituais
     </div>
@@ -678,7 +678,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
       Infra
     </div>
-    <div class="nav-item" onclick="goTo('adlibrary')">
+    <div class="nav-item" id="nav-adlibrary" onclick="goTo('adlibrary')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       Ad Library
     </div>
@@ -9607,32 +9607,55 @@ async function tentarLogin(){
 }
 
 function _applyNavPermissions(cargo){
-  // metricas: bloqueado para Editor
-  const navMetricas = document.getElementById('nav-metricas');
-  if(navMetricas) navMetricas.style.display = cargo==='Editor' ? 'none' : '';
-  // roi: bloqueado para Editor e Copy
-  const navRoi = document.getElementById('nav-roi');
-  if(navRoi) navRoi.style.display = (cargo==='Editor'||cargo==='Copy') ? 'none' : '';
-  // adsmetrics: bloqueado para Editor
-  const navAds = document.getElementById('nav-adsmetrics');
-  if(navAds) navAds.style.display = cargo==='Editor' ? 'none' : '';
-  // configuracoes: apenas Diretoria
+  var isDir = cargo==='Diretoria';
+  var isInfra = cargo==='Infra';
+  var isCopy = cargo==='Copy';
+  var isEditor = cargo==='Editor';
+  var isSpy = cargo==='Spy';
+  var isTrafego = cargo==='Gestor de Tráfego';
+
+  // Helper pra ocultar/mostrar
+  function setDisp(id, show){ var e = document.getElementById(id); if(e) e.style.display = show ? '' : 'none'; }
+
+  // Dashboard (sem id, todos veem)
+  // Demandas (sem id, todos veem)
+
+  // Criativos — bloqueado só pra Infra
+  setDisp('nav-criativos', !isInfra);
+
+  // Arquivos (sem id, todos veem)
+  // Chat (sem id, todos veem)
+
+  // Rituais — bloqueado pra Infra (eles só veem via marcação, mas se permissão só é infra não precisa)
+  setDisp('nav-rituais', !isInfra);
+
+  // Tráfego (nav-metricas) — bloqueado pra Editor, Copy, Infra
+  setDisp('nav-metricas', !(isEditor || isCopy || isInfra));
+
+  // Métricas de Ads — bloqueado pra Editor, Infra
+  setDisp('nav-adsmetrics', !(isEditor || isInfra));
+
+  // Gestão — apenas Diretoria
+  setDisp('nav-gestao', isDir);
+
+  // Infra — apenas Diretoria e Infra
+  setDisp('nav-infra', isDir || isInfra);
+
+  // Ad Library — bloqueado pra Infra
+  setDisp('nav-adlibrary', !isInfra);
+
+  // Educacional (sem id, todos veem)
+
+  // Configurações: apenas Diretoria
   const configNav = document.querySelector('[onclick="goTo(\'configuracoes\')"]');
-  if(configNav) configNav.style.display = cargo==='Diretoria' ? '' : 'none';
+  if(configNav) configNav.style.display = isDir ? '' : 'none';
+
   // Demandas: Arquivados sidebar e botão Lixeira — apenas Diretoria
-  const arqSec = document.getElementById('arquivados-section');
-  if(arqSec) arqSec.style.display = cargo==='Diretoria' ? '' : 'none';
-  const lixBtn = document.getElementById('btn-lixeira-tasks');
-  if(lixBtn) lixBtn.style.display = cargo==='Diretoria' ? '' : 'none';
-  // Gestão: bloqueado para Gestor de Tráfego, Copy, Editor, Spy (apenas Diretoria + Infra)
-  const navGestao = document.getElementById('nav-gestao');
-  if(navGestao) navGestao.style.display = (cargo==='Diretoria'||cargo==='Infra') ? '' : 'none';
-  // Infra: bloqueado para Gestor de Tráfego, Copy, Editor, Spy (apenas Diretoria + Infra)
-  const navInfra = document.getElementById('nav-infra');
-  if(navInfra) navInfra.style.display = (cargo==='Diretoria'||cargo==='Infra') ? '' : 'none';
+  setDisp('arquivados-section', isDir);
+  setDisp('btn-lixeira-tasks', isDir);
+
   // Novo Ritual: apenas Diretoria
-  const btnNovoRit = document.getElementById('btn-novo-ritual');
-  if(btnNovoRit) btnNovoRit.style.display = cargo==='Diretoria' ? '' : 'none';
+  setDisp('btn-novo-ritual', isDir);
 }
 
 function _loginOk(user){
