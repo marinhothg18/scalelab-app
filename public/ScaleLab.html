@@ -2880,7 +2880,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -4141,10 +4141,7 @@ function pdSaveAll(){
   if(!sem){ alert('Nenhuma semana selecionada.'); return; }
   _pdSaveSemana(sem);
   // Also sync to Railway
-  var API_BASE = localStorage.getItem('sl_api_base')||'';
-  if(API_BASE){
-    fetch(API_BASE+'/api/store/sl_backlogs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(g('sl_backlogs'))});
-  }
+  syncKey('sl_backlogs');
   alert('Salvo com sucesso!');
 }
 
@@ -4911,7 +4908,17 @@ let _contaFiltroGestor = '';
 
 function getContas(){ return g('sl_contingencia',[]); }
 function saveContas(arr){ s('sl_contingencia',arr); syncKey('sl_contingencia'); }
-function syncKey(k){ const API_BASE=localStorage.getItem('sl_api_base')||''; if(API_BASE) fetch(API_BASE+'/api/store/'+k,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(g(k))}); }
+function syncKey(k){
+  try {
+    var val = g(k);
+    if(val === undefined || val === null) return;
+    fetch(API_BASE+'/api/store/'+encodeURIComponent(k), {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(val)
+    }).catch(function(){});
+  } catch(e){}
+}
 
 function addConta(){
   const contas = getContas();
