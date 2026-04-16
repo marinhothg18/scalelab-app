@@ -5910,20 +5910,39 @@ function arqNavBack(level){
 }
 
 function arqAddItem(){
-  var nome = prompt('Nome do arquivo/link:');
-  if(!nome) return;
-  var url = prompt('Link (URL do Drive, site, etc):','https://');
-  if(!url) return;
-  var desc = prompt('Descrição curta (opcional):','');
-  var tipo = prompt('Tipo (Link, PDF, Imagem, Documento, Vídeo, Planilha):','Link');
+  var wrap = document.createElement('div');
+  wrap.id = 'arq-add-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:#fff;border-radius:16px;padding:28px 32px;width:480px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.2);color:#1F2937;';
+  inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;"><span style="font-size:18px;font-weight:700;">Adicionar Arquivo</span><button onclick="document.getElementById(\'arq-add-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;">✕</button></div>'
+    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Nome *</label><input id="arq-add-nome" placeholder="Ex: Roteiro Hook Variação 2" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
+    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Link (URL) *</label><input id="arq-add-url" placeholder="https://drive.google.com/..." style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
+    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Descrição</label><textarea id="arq-add-desc" placeholder="Descrição curta do arquivo..." rows="3" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;resize:vertical;"></textarea></div>'
+    + '<div style="margin-bottom:20px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Tipo</label><select id="arq-add-tipo" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;cursor:pointer;"><option value="Link">🔗 Link</option><option value="PDF">📄 PDF</option><option value="Documento">📝 Documento</option><option value="Imagem">🖼 Imagem</option><option value="Video">🎬 Vídeo</option><option value="Planilha">📊 Planilha</option><option value="Outro">📎 Outro</option></select></div>'
+    + '<div style="display:flex;gap:10px;justify-content:flex-end;"><button onclick="document.getElementById(\'arq-add-modal\').remove()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Cancelar</button><button onclick="arqSaveItem()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;cursor:pointer;font-weight:700;">Salvar</button></div>';
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+}
+
+function arqSaveItem(){
+  var nome = document.getElementById('arq-add-nome').value.trim();
+  var url = document.getElementById('arq-add-url').value.trim();
+  if(!nome){ alert('Digite o nome.'); return; }
+  if(!url){ alert('Cole o link.'); return; }
+  var desc = document.getElementById('arq-add-desc').value.trim();
+  var tipo = document.getElementById('arq-add-tipo').value;
   var proj = getArqProjetos();
   var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
   if(!p) return;
   if(!p.items) p.items = {};
   var key = _arqNav.setor + '|' + _arqNav.subpasta;
   if(!p.items[key]) p.items[key] = [];
-  p.items[key].push({id:Date.now(), nome:nome, url:url, desc:desc||'', tipo:tipo||'Link', data:new Date().toLocaleDateString('pt-BR')});
+  p.items[key].push({id:Date.now(), nome:nome, url:url, desc:desc, tipo:tipo, data:new Date().toLocaleDateString('pt-BR')});
   saveArqProjetos(proj);
+  var modal = document.getElementById('arq-add-modal');
+  if(modal) modal.remove();
   renderArquivos();
 }
 
