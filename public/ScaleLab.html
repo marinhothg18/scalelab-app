@@ -5790,15 +5790,13 @@ function editCriativo(id){
     var titleEl = document.querySelector('#modal-criativo .modal-title');
     if(titleEl) titleEl.textContent = 'Visualizar Documento Criativo';
   }
-  if(!_isDirCri){
-    setTimeout(_bloquearCriColab, 100);
-    setTimeout(_bloquearCriColab, 300);
-    setTimeout(_bloquearCriColab, 600);
-  }
-
   // Cabeçalho do modal
-  document.querySelector('#modal-criativo .modal-title').textContent = 'Editar Documento Criativo';
-  document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]').textContent = '💾 Salvar alterações';
+  document.querySelector('#modal-criativo .modal-title').textContent = _isDirCri ? 'Editar Documento Criativo' : 'Visualizar Documento Criativo';
+  var _saveBtnCri = document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]');
+  if(_saveBtnCri){
+    _saveBtnCri.textContent = '💾 Salvar alterações';
+    if(!_isDirCri) _saveBtnCri.style.display = 'none';
+  }
 
   // Campos principais
   setTimeout(()=>{
@@ -5853,7 +5851,14 @@ function editCriativo(id){
       const fmtSel = d.querySelector('.ad-formato');
       if(fmtSel) fmtSel.value = a.formato||'Selecione';
     });
+    // Bloquear campos pra colaboradores DEPOIS de popular tudo
+    if(!_isDirCri) _bloquearCriColab();
   }, 50);
+  // Backup: bloquear mais uma vez com delay maior
+  if(!_isDirCri){
+    setTimeout(_bloquearCriColab, 500);
+    setTimeout(_bloquearCriColab, 1000);
+  }
 }
 
 var AD_STATUS_LIST = ['Validado','A Testar','Testando','Rejeitado','A Analisar','Descartado','Pré-Escala'];
