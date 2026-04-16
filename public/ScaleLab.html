@@ -7584,8 +7584,28 @@ function _onTaskConcluida(id){
 }
 
 function arquivarTask(id){
-  tasks=tasks.map(t=>t.id===id?{...t,arquivado:true}:t);
-  s('tasks',tasks); notif('Tarefa arquivada!'); renderTasks();
+  var t = tasks.find(function(x){ return x.id===id; });
+  if(!t) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'arq-task-confirm';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:var(--bg);border-radius:16px;padding:28px 32px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.3);border:1px solid var(--border);text-align:center;';
+  inner.innerHTML = '<div style="font-size:42px;margin-bottom:12px;">📦</div>'+
+    '<div style="font-size:17px;font-weight:700;margin-bottom:8px;">Deseja realmente arquivar essa demanda?</div>'+
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:22px;word-break:break-word;">"'+(t.nome||'').replace(/</g,'&lt;')+'"</div>'+
+    '<div style="display:flex;gap:10px;justify-content:center;">'+
+    '<button id="arq-no" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:12px 26px;font-size:14px;font-weight:600;cursor:pointer;">Não</button>'+
+    '<button id="arq-yes" style="background:#F97316;color:#fff;border:none;border-radius:10px;padding:12px 26px;font-size:14px;font-weight:700;cursor:pointer;">Sim, arquivar</button>'+
+    '</div>';
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+  document.getElementById('arq-no').onclick = function(){ wrap.remove(); };
+  document.getElementById('arq-yes').onclick = function(){
+    tasks=tasks.map(function(x){ return x.id===id?Object.assign({},x,{arquivado:true}):x; });
+    s('tasks',tasks); wrap.remove(); notif('Tarefa arquivada!'); renderTasks();
+  };
 }
 
 function editTask(id){ abrirEditarDemanda(id); }
