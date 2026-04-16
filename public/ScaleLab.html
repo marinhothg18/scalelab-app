@@ -2198,8 +2198,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <div class="fg" style="margin-bottom:10px;"><label class="fl">📝 Nome do anúncio</label><input class="fi ad-nome" type="text" placeholder="Ex: AD848 - Hook Direto - VSL v5"></div>
         <div class="form-grid-3">
           <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
-          <div class="fg"><label class="fl">Validação</label>
-            <div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div>
+          <div class="fg"><label class="fl">Status</label>
+            <select class="fs ad-status"><option value="A Testar">A Testar</option><option value="Validado">Validado</option><option value="Testando">Testando</option><option value="Rejeitado">Rejeitado</option><option value="A Analisar">A Analisar</option><option value="Descartado">Descartado</option><option value="Pré-Escala">Pré-Escala</option></select>
           </div>
           <div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" placeholder="0.00"></div>
         </div>
@@ -5177,7 +5177,7 @@ function addAnuncio(){
     <div class="fg" style="margin-bottom:10px;"><label class="fl">📝 Nome do anúncio</label><input class="fi ad-nome" type="text" placeholder="Ex: AD848 - Hook Direto - VSL v5"></div>
     <div class="form-grid-3">
       <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
-      <div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div>
+      <div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option value="A Testar">A Testar</option><option value="Validado">Validado</option><option value="Testando">Testando</option><option value="Rejeitado">Rejeitado</option><option value="A Analisar">A Analisar</option><option value="Descartado">Descartado</option><option value="Pré-Escala">Pré-Escala</option></select></div>
       <div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" placeholder="0.00"></div>
     </div>
     <div class="form-grid-3">
@@ -5229,7 +5229,8 @@ function salvarCriativo(){
   const ads=[...document.querySelectorAll('#anuncios-container .ad-section')].map(sec=>({
     nome:sec.querySelector('.ad-nome')?.value||'',
     formato:sec.querySelector('.ad-formato').value,
-    validado:sec.querySelector('.ad-valid').classList.contains('on'),
+    adStatus:sec.querySelector('.ad-status')?.value||'A Testar',
+    validado:(sec.querySelector('.ad-status')?.value||'')==='Validado',
     hook:sec.querySelector('.ad-hook').value,
     hold:sec.querySelector('.ad-hold').value,
     cpm:sec.querySelector('.ad-cpm').value,
@@ -5533,7 +5534,7 @@ function editCriativo(id){
         <div class="fg" style="margin-bottom:10px;"><label class="fl">📝 Nome do anúncio</label><input class="fi ad-nome" type="text" placeholder="Ex: AD848 - Hook Direto - VSL v5" value="${(a.nome||'').replace(/"/g,'&quot;')}"></div>
         <div class="form-grid-3">
           <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
-          <div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid${a.validado?' on':''}" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div>
+          <div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option value="A Testar"${(a.adStatus||'A Testar')==='A Testar'?' selected':''}>A Testar</option><option value="Validado"${a.adStatus==='Validado'||a.validado?' selected':''}>Validado</option><option value="Testando"${a.adStatus==='Testando'?' selected':''}>Testando</option><option value="Rejeitado"${a.adStatus==='Rejeitado'?' selected':''}>Rejeitado</option><option value="A Analisar"${a.adStatus==='A Analisar'?' selected':''}>A Analisar</option><option value="Descartado"${a.adStatus==='Descartado'?' selected':''}>Descartado</option><option value="Pré-Escala"${a.adStatus==='Pré-Escala'?' selected':''}>Pré-Escala</option></select></div>
           <div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" value="${a.hook||0}"></div>
         </div>
         <div class="form-grid-3">
