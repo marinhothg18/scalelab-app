@@ -5376,18 +5376,30 @@ function renderCriativos(){
         ${isDir?`<button class="icon-btn" onclick="delCriativo(${c.id})">🗑</button>`:''}
       </div>
     </div>
-    ${(c.ads||[]).map((a,ai)=>`
-    <div class="ad-grid" style="position:relative;">
-      <div class="ad-cell"><div class="ad-cell-label">Formato</div><div class="ad-cell-val">${a.formato||'—'}</div></div>
-      <div class="ad-cell"><div class="ad-cell-label">Hook Rate</div><div class="ad-cell-val">${fmtP(a.hook)}</div></div>
-      <div class="ad-cell"><div class="ad-cell-label">💰 Investido</div><div class="ad-cell-val">${a.investido?'R$ '+parseFloat(a.investido).toFixed(2):'—'}</div></div>
-      <div class="ad-cell"><div class="ad-cell-label">🛒 Vendas</div><div class="ad-cell-val">${a.vendas||'—'}</div></div>
-      <div class="ad-cell"><div class="ad-cell-label">📈 Retorno</div><div class="ad-cell-val">${a.retorno?'R$ '+parseFloat(a.retorno).toFixed(2):'—'}</div></div>
-      ${a.link?`<div class="ad-cell"><div class="ad-cell-label">🔗 Link</div><div class="ad-cell-val"><a href="${a.link}" target="_blank" style="color:var(--accent);">Abrir</a></div></div>`:''}
-      <div class="ad-cell" style="display:flex;align-items:center;gap:10px;border-right:none;">
-        <button onclick="toggleValidarAd(${c.id},${ai})" style="border:none;border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;background:${a.validado?'#16a34a':'var(--bg3)'};color:${a.validado?'#fff':'var(--text2)'};">${a.validado?'✅ Validado':'☐ Validar'}</button>
-        ${a.validado?`<span style="font-size:10px;color:var(--green);">Aprovado</span>`:''}
+    <!-- Resumo de validação -->
+    <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:12px;font-weight:700;color:var(--green);">✅ ${(c.ads||[]).filter(a=>a.validado).length} validado(s)</span>
+        <span style="font-size:12px;font-weight:700;color:var(--text2);">·</span>
+        <span style="font-size:12px;font-weight:700;color:var(--red);">⏳ ${(c.ads||[]).filter(a=>!a.validado).length} não validado(s)</span>
       </div>
+    </div>
+    <!-- Responsáveis -->
+    <div style="display:flex;gap:16px;padding:10px 16px;flex-wrap:wrap;border-top:1px solid var(--border);">
+      ${c.copy?`<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#38BDF8;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${c.copy.charAt(0).toUpperCase()}</span><div><div style="font-size:10px;color:var(--text2);">Copy</div><div style="font-size:12px;font-weight:600;">${c.copy}</div></div></div>`:''}
+      ${c.editor?`<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#818CF8;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${c.editor.charAt(0).toUpperCase()}</span><div><div style="font-size:10px;color:var(--text2);">Editor</div><div style="font-size:12px;font-weight:600;">${c.editor}</div></div></div>`:''}
+      ${c.gestor?`<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#F97316;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${c.gestor.charAt(0).toUpperCase()}</span><div><div style="font-size:10px;color:var(--text2);">Gestor</div><div style="font-size:12px;font-weight:600;">${c.gestor}</div></div></div>`:''}
+      ${c.revisor?`<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#22C55E;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${c.revisor.charAt(0).toUpperCase()}</span><div><div style="font-size:10px;color:var(--text2);">Revisor</div><div style="font-size:12px;font-weight:600;">${c.revisor}</div></div></div>`:''}
+    </div>
+    <!-- Lista de anúncios simplificada -->
+    ${(c.ads||[]).map((a,ai)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:12px;font-weight:600;color:var(--text);">${a.nome||a.formato||'Anúncio '+(ai+1)}</span>
+        ${a.formato?`<span style="font-size:10px;color:var(--text2);background:var(--bg3);padding:2px 8px;border-radius:4px;">${a.formato}</span>`:''}
+        ${a.link?`<a href="${a.link}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;">🔗 Link</a>`:''}
+      </div>
+      <button onclick="toggleValidarAd(${c.id},${ai})" style="border:none;border-radius:7px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600;background:${a.validado?'#16a34a':'var(--bg3)'};color:${a.validado?'#fff':'var(--text2)'};">${a.validado?'✅ Validado':'☐ Validar'}</button>
     </div>`).join('')}
   </div>`).join('');
 }
