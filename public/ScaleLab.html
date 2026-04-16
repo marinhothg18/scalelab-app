@@ -322,6 +322,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .modal-overlay.open { display:flex; }
 .modal { background:var(--bg2); border:1px solid var(--border); border-radius:14px; width:92%; max-width:620px; max-height:90vh; overflow-y:auto; padding:22px; }
 .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+[contenteditable=true]:empty:before { content:attr(data-placeholder); color:var(--text2); pointer-events:none; }
 .modal-title { font-size:16px; font-weight:700; }
 .modal-close { background:var(--bg3); border:1px solid var(--border); color:var(--text2); width:28px; height:28px; border-radius:7px; cursor:pointer; font-size:15px; }
 .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
@@ -2602,22 +2603,43 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <input class="fi" id="t-link" type="url" placeholder="https://...">
         </div>
         <div class="fg form-full">
-          <label class="fl">Link de referência</label>
-          <input class="fi" id="t-link-ref" type="url" placeholder="https://...">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <label class="fl" style="margin:0;">Links de referência</label>
+            <button type="button" onclick="addLinkRef()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--text);cursor:pointer;">+ Adicionar link</button>
+          </div>
+          <div id="t-links-ref-list">
+            <div class="link-ref-row" style="display:flex;gap:8px;margin-bottom:6px;">
+              <input class="fi link-ref-nome" placeholder="Nome (ex: Copy de referência)" style="width:40%;">
+              <input class="fi link-ref-url" type="url" placeholder="https://..." style="flex:1;">
+            </div>
+          </div>
         </div>
-        <!-- Descrição -->
+        <!-- Descrição com toolbar -->
         <div class="fg form-full">
           <label class="fl">Descrição</label>
-          <textarea class="fi" id="t-desc" rows="6" placeholder="Detalhes da demanda..." style="resize:vertical;min-height:120px;"></textarea>
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            <div id="t-desc-toolbar" style="display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--bg3);flex-wrap:wrap;align-items:center;">
+              <button type="button" onclick="fmtDesc('bold')" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;font-weight:700;color:var(--text);" title="Negrito">B</button>
+              <button type="button" onclick="fmtDesc('italic')" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;font-style:italic;color:var(--text);" title="Itálico">I</button>
+              <button type="button" onclick="fmtDesc('underline')" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;text-decoration:underline;color:var(--text);" title="Sublinhado">U</button>
+              <button type="button" onclick="fmtDesc('strikeThrough')" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;text-decoration:line-through;color:var(--text);" title="Riscado">S</button>
+              <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
+              <button type="button" onclick="fmtDesc('insertUnorderedList')" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;color:var(--text);" title="Lista">☰</button>
+              <button type="button" onclick="fmtDesc('insertOrderedList')" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;color:var(--text);" title="Lista numerada">1.</button>
+              <span style="width:1px;height:18px;background:var(--border);margin:0 4px;"></span>
+              <button type="button" onclick="fmtDescLink()" style="background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px;color:var(--text);" title="Inserir link">🔗</button>
+            </div>
+            <div id="t-desc" contenteditable="true" style="padding:12px;min-height:140px;max-height:300px;overflow-y:auto;font-size:13px;color:var(--text);outline:none;line-height:1.6;" data-placeholder="Detalhes da demanda..."></div>
+          </div>
         </div>
-        <!-- Fotos -->
+        <!-- Fotos / Anexos -->
         <div class="fg form-full">
-          <label class="fl">📷 Fotos / Anexos</label>
+          <label class="fl">📎 Fotos / Anexos</label>
           <div id="t-fotos-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
           <label style="display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;color:var(--text2);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            Adicionar foto
-            <input type="file" accept="image/*" multiple style="display:none;" onchange="adicionarFotosTask(this)">
+            Adicionar foto ou arquivo
+            <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" multiple style="display:none;" onchange="adicionarFotosTask(this)">
           </label>
         </div>
         <!-- Checklist -->
@@ -6555,7 +6577,9 @@ function abrirNovaDemanda(){
   const selCl=document.getElementById('t-checklist-modelo');
   selCl.innerHTML='<option value="">Selecionar modelo de checklist</option>'+getChecklists().map(cl=>`<option value="${cl.id}">${cl.nome}</option>`).join('');
   // Reset fields
-  ['t-nome','t-link','t-link-ref','t-desc','t-inicio','t-data'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['t-nome','t-link','t-inicio','t-data'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  setLinksRef([{nome:'',url:''}]);
+  setDescHtml('');
   document.getElementById('t-status').value='BACKLOG';
   document.getElementById('toggle-diretoria').classList.remove('on');
   document.getElementById('toggle-checklist').classList.remove('on');
@@ -6591,6 +6615,69 @@ function abrirNovaDemanda(){
   const mtcAnexo = document.querySelector('#modal-task-chat-panel label');
   if(mtcAnexo) mtcAnexo.style.opacity = '0.4';
   openModal('modal-task');
+}
+
+// ── LINKS DE REFERÊNCIA MÚLTIPLOS ──
+function addLinkRef(){
+  var cont = document.getElementById('t-links-ref-list');
+  if(!cont) return;
+  var row = document.createElement('div');
+  row.className = 'link-ref-row';
+  row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
+  row.innerHTML = '<input class="fi link-ref-nome" placeholder="Nome (ex: VSL de referência)" style="width:40%;">'
+    + '<input class="fi link-ref-url" type="url" placeholder="https://..." style="flex:1;">'
+    + '<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;flex-shrink:0;">✕</button>';
+  cont.appendChild(row);
+}
+
+function getLinksRef(){
+  var rows = document.querySelectorAll('#t-links-ref-list .link-ref-row');
+  var links = [];
+  rows.forEach(function(r){
+    var nome = r.querySelector('.link-ref-nome').value.trim();
+    var url = r.querySelector('.link-ref-url').value.trim();
+    if(url) links.push({nome: nome||'Link', url: url});
+  });
+  return links;
+}
+
+function setLinksRef(links){
+  var cont = document.getElementById('t-links-ref-list');
+  if(!cont) return;
+  cont.innerHTML = '';
+  if(!links || !links.length) links = [{nome:'',url:''}];
+  links.forEach(function(l){
+    var row = document.createElement('div');
+    row.className = 'link-ref-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
+    var nomeVal = (l.nome||'').replace(/"/g,'&quot;');
+    var urlVal = (l.url||l||'').replace(/"/g,'&quot;');
+    // Compatibilidade: se l é string (formato antigo), usa como url
+    if(typeof l === 'string'){ urlVal = l.replace(/"/g,'&quot;'); nomeVal = ''; }
+    row.innerHTML = '<input class="fi link-ref-nome" value="'+nomeVal+'" placeholder="Nome (ex: Copy de referência)" style="width:40%;">'
+      + '<input class="fi link-ref-url" type="url" value="'+urlVal+'" placeholder="https://..." style="flex:1;">'
+      + '<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;flex-shrink:0;">✕</button>';
+    cont.appendChild(row);
+  });
+}
+
+// ── RICH TEXT DESCRIÇÃO ──
+function fmtDesc(cmd){
+  document.execCommand(cmd, false, null);
+  document.getElementById('t-desc').focus();
+}
+function fmtDescLink(){
+  var url = prompt('Cole o link:');
+  if(url) document.execCommand('createLink', false, url);
+  document.getElementById('t-desc').focus();
+}
+function getDescHtml(){
+  var el = document.getElementById('t-desc');
+  return el ? el.innerHTML : '';
+}
+function setDescHtml(html){
+  var el = document.getElementById('t-desc');
+  if(el) el.innerHTML = html || '';
 }
 
 function adicionarFotosTask(input){
@@ -6641,8 +6728,15 @@ function abrirEditarDemanda(id){
   document.getElementById('t-status').value = t.status || 'BACKLOG';
   selResp.value = t.respId || '';
   document.getElementById('t-link').value = t.link || '';
-  document.getElementById('t-link-ref') && (document.getElementById('t-link-ref').value = t.linkRef || '');
-  document.getElementById('t-desc').value = t.desc || '';
+  // Links de referência: usa novo formato se existir, senão fallback pro antigo
+  if(t.linksRef && t.linksRef.length){
+    setLinksRef(t.linksRef);
+  } else if(t.linkRef){
+    setLinksRef([{nome:'Link de referência', url:t.linkRef}]);
+  } else {
+    setLinksRef([{nome:'',url:''}]);
+  }
+  setDescHtml(t.desc || '');
   if(document.getElementById('t-inicio')) document.getElementById('t-inicio').value = t.inicio || '';
   if(document.getElementById('t-data')) document.getElementById('t-data').value = t.data || '';
 
@@ -7123,8 +7217,9 @@ function salvarTask(){
   const ofertaId = (document.getElementById('t-oferta-v2')||{}).value||'';
   const ofertaNome = ofertaId ? (ofertas.find(o=>o.id===ofertaId)||{}).nome||'' : '';
   const link = document.getElementById('t-link').value;
-  const linkRef = (document.getElementById('t-link-ref')||{}).value||'';
-  const desc = document.getElementById('t-desc').value;
+  const linksRef = getLinksRef();
+  const linkRef = linksRef.length ? linksRef[0].url : ''; // backward compat
+  const desc = getDescHtml();
   const inicio = (document.getElementById('t-inicio')||{}).value||'';
   const data = (document.getElementById('t-data')||{}).value||'';
   const diretoria = document.getElementById('toggle-diretoria').classList.contains('on');
@@ -7142,7 +7237,7 @@ function salvarTask(){
     var oldRespId = oldTask ? oldTask.respId : null;
     tasks = tasks.map(t => t.id === editId ? {
       ...t, nome, status, resp, respId, nichoId, nichoNome, ofertaId, ofertaNome,
-      link, linkRef, desc,
+      link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
       diretoria,
@@ -7162,7 +7257,7 @@ function salvarTask(){
     const t = {
       id: Date.now(),
       nome, status, resp, respId, nichoId, nichoNome, ofertaId, ofertaNome,
-      link, linkRef, desc,
+      link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
       diretoria, checklist, fotos,
