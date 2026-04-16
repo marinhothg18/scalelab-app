@@ -6830,11 +6830,38 @@ function abrirEditarDemanda(id){
       }
     });
   }
-  // Ocultar botões de edição de checklist/fotos pra não-Diretoria
+  // Ocultar botões de edição pra não-Diretoria
   const photoBtn = document.querySelector('#modal-task .modal-body label[style*="dashed"]');
   if(photoBtn) photoBtn.style.display = _isDirEdit ? '' : 'none';
   const checklistToggle = document.getElementById('toggle-checklist');
   if(checklistToggle) checklistToggle.style.pointerEvents = _isDirEdit ? '' : 'none';
+  // Bloquear descrição contenteditable
+  const descEl = document.getElementById('t-desc');
+  if(descEl) descEl.contentEditable = _isDirEdit ? 'true' : 'false';
+  // Ocultar toolbar da descrição
+  const descToolbar = document.getElementById('t-desc-toolbar');
+  if(descToolbar) descToolbar.style.display = _isDirEdit ? '' : 'none';
+  // Ocultar botão "+ Adicionar link" e botões ✕ dos links
+  var addLinkBtn = document.querySelector('#t-links-ref-list')?.parentElement?.querySelector('button');
+  if(addLinkBtn) addLinkBtn.style.display = _isDirEdit ? '' : 'none';
+  document.querySelectorAll('#t-links-ref-list .link-ref-row button').forEach(function(b){ b.style.display = _isDirEdit ? '' : 'none'; });
+  // Tornar links de referência clicáveis pra não-Diretoria
+  if(!_isDirEdit){
+    document.querySelectorAll('#t-links-ref-list .link-ref-url').forEach(function(inp){
+      if(inp.value && inp.value.trim()){
+        inp.style.cursor = 'pointer';
+        inp.style.color = 'var(--accent)';
+        inp.style.textDecoration = 'underline';
+        inp.onclick = function(){
+          var url = this.value.trim();
+          if(url){
+            if(!url.match(/^https?:\/\//)) url = 'https://'+url;
+            window.open(url,'_blank');
+          }
+        };
+      }
+    });
+  }
 
   // Reabilitar input do chat (sempre disponível)
   const mtcInput = document.getElementById('mtc-input');
