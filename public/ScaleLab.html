@@ -6015,14 +6015,114 @@ function _fallbackCopyArq(text){
 }
 
 function arqDelItem(itemId){
-  if(!confirm('Remover este item?')) return;
   var proj = getArqProjetos();
   var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
   if(!p) return;
   var key = _arqNav.setor + '|' + _arqNav.subpasta;
-  if(p.items && p.items[key]) p.items[key] = p.items[key].filter(function(i){ return i.id!=itemId; });
+  var items = (p.items && p.items[key]) || [];
+  var item = items.find(function(i){ return i.id==itemId; });
+  if(!item) return;
+  // Popup de confirmação
+  var wrap = document.createElement('div');
+  wrap.id = 'arq-del-confirm';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:#fff;border-radius:16px;padding:28px 32px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.2);color:#1F2937;text-align:center;';
+  inner.innerHTML = '<div style="font-size:42px;margin-bottom:12px;">🗑️</div>'
+    + '<div style="font-size:17px;font-weight:700;margin-bottom:8px;">Deseja realmente excluir?</div>'
+    + '<div style="font-size:13px;color:#6B7280;margin-bottom:22px;">"'+(item.nome||'').replace(/</g,'&lt;')+'"</div>'
+    + '<div style="display:flex;gap:10px;justify-content:center;">'
+    + '<button onclick="document.getElementById(\'arq-del-confirm\').remove()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:12px 26px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Não</button>'
+    + '<button onclick="arqConfirmDel('+itemId+')" style="background:#EF4444;color:#fff;border:none;border-radius:10px;padding:12px 26px;font-size:14px;cursor:pointer;font-weight:700;">Sim, excluir</button>'
+    + '</div>';
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+}
+
+function arqConfirmDel(itemId){
+  var proj = getArqProjetos();
+  var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+  if(!p) return;
+  var key = _arqNav.setor + '|' + _arqNav.subpasta;
+  // Mover pra lixeira
+  var items = (p.items && p.items[key]) || [];
+  var item = items.find(function(i){ return i.id==itemId; });
+  if(item){
+    var lixeira = g('sl_arq_lixeira',[]);
+    lixeira.unshift(Object.assign({}, item, {_deletedAt:Date.now(), _projeto:p.nome, _setor:_arqNav.setor, _subpasta:_arqNav.subpasta}));
+    s('sl_arq_lixeira', lixeira); syncKey('sl_arq_lixeira');
+  }
+  p.items[key] = items.filter(function(i){ return i.id!=itemId; });
   saveArqProjetos(proj);
+  var modal = document.getElementById('arq-del-confirm');
+  if(modal) modal.remove();
   renderArquivos();
+}
+
+function arqOpenLixeira(){
+  var lixeira = g('sl_arq_lixeira',[]);
+  var wrap = document.createElement('div');
+  wrap.id = 'arq-lixeira-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:#fff;border-radius:16px;padding:24px;width:640px;max-width:92vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);color:#1F2937;';
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+  h += '<div style="font-size:18px;font-weight:700;">🗑️ Lixeira de Arquivos ('+lixeira.length+')</div>';
+  h += '<button onclick="document.getElementById(\'arq-lixeira-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;">✕</button>';
+  h += '</div>';
+  if(!lixeira.length){
+    h += '<div style="text-align:center;padding:40px;color:#9CA3AF;font-size:14px;">A lixeira está vazia.</div>';
+  } else {
+    for(var li=0;li<lixeira.length;li++){
+      var lt = lixeira[li];
+      var dataFmt = lt._deletedAt ? new Date(lt._deletedAt).toLocaleDateString('pt-BR') : '—';
+      h += '<div style="border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">';
+      h += '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;margin-bottom:4px;">'+(lt.nome||'').replace(/</g,'&lt;')+'</div>';
+      h += '<div style="font-size:11px;color:#9CA3AF;">'+lt._projeto+' › '+lt._setor+' › '+lt._subpasta+' · Apagado em '+dataFmt+'</div></div>';
+      h += '<div style="display:flex;gap:6px;">';
+      h += '<button onclick="arqRestaurarItem('+lt.id+')" style="background:#22C55E;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">↩️ Restaurar</button>';
+      h += '<button onclick="arqExcluirPermanente('+lt.id+')" style="background:#EF4444;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">🗑 Excluir</button>';
+      h += '</div></div>';
+    }
+  }
+  inner.innerHTML = h;
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+}
+
+function arqRestaurarItem(id){
+  var lixeira = g('sl_arq_lixeira',[]);
+  var item = lixeira.find(function(x){ return x.id==id; });
+  if(!item) return;
+  // Restaurar no projeto original
+  var proj = getArqProjetos();
+  var p = proj.find(function(x){ return x.nome===item._projeto; });
+  if(p){
+    var key = item._setor+'|'+item._subpasta;
+    if(!p.items) p.items = {};
+    if(!p.items[key]) p.items[key] = [];
+    var clean = Object.assign({},item);
+    delete clean._deletedAt; delete clean._projeto; delete clean._setor; delete clean._subpasta;
+    p.items[key].push(clean);
+    saveArqProjetos(proj);
+  }
+  lixeira = lixeira.filter(function(x){ return x.id!=id; });
+  s('sl_arq_lixeira', lixeira); syncKey('sl_arq_lixeira');
+  var modal = document.getElementById('arq-lixeira-modal');
+  if(modal) modal.remove();
+  arqOpenLixeira();
+  renderArquivos();
+}
+
+function arqExcluirPermanente(id){
+  if(!confirm('Excluir permanentemente?')) return;
+  var lixeira = g('sl_arq_lixeira',[]).filter(function(x){ return x.id!=id; });
+  s('sl_arq_lixeira', lixeira); syncKey('sl_arq_lixeira');
+  var modal = document.getElementById('arq-lixeira-modal');
+  if(modal) modal.remove();
+  arqOpenLixeira();
 }
 
 function renderArquivos(){
@@ -6058,8 +6158,10 @@ function renderArquivos(){
   if(!_arqNav.projetoId){
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
     h += '<div style="font-size:24px;font-weight:800;">Projetos</div>';
+    h += '<div style="display:flex;gap:8px;">';
+    h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
     h += '<button onclick="arqAddProjeto()" class="btn btn-primary" style="font-size:13px;">+ Novo Projeto</button>';
-    h += '</div>';
+    h += '</div></div>';
     if(!proj.length){
       h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum projeto. Clique em "+ Novo Projeto".</div></div>';
     } else {
@@ -6122,8 +6224,10 @@ function renderArquivos(){
     var items = (pr3&&pr3.items&&pr3.items[itemKey]) ? pr3.items[itemKey] : [];
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
     h += '<div style="font-size:20px;font-weight:700;">📁 '+_arqNav.subpasta+'</div>';
+    h += '<div style="display:flex;gap:8px;">';
+    h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
     h += '<button onclick="arqAddItem()" class="btn btn-primary" style="font-size:13px;">+ Adicionar Arquivo</button>';
-    h += '</div>';
+    h += '</div></div>';
     if(!items.length){
       h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum arquivo nesta pasta.</div></div>';
     } else {
