@@ -5994,6 +5994,26 @@ function arqSaveItem(){
   renderArquivos();
 }
 
+function arqCopyLink(url){
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(url).then(function(){ notif('✅ Link copiado!'); }).catch(function(){
+      _fallbackCopyArq(url);
+    });
+  } else {
+    _fallbackCopyArq(url);
+  }
+}
+function _fallbackCopyArq(text){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  notif('✅ Link copiado!');
+}
+
 function arqDelItem(itemId){
   if(!confirm('Remover este item?')) return;
   var proj = getArqProjetos();
@@ -6123,6 +6143,7 @@ function renderArquivos(){
         h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:6px;">';
         if(item.url) h += '<a href="'+item.url+'" target="_blank" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">🔗 Abrir</a>';
         if(item.arquivo) h += '<a href="'+item.arquivo.base64+'" download="'+item.arquivo.nome+'" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">⬇ Baixar</a>';
+        if(item.url) h += '<button onclick="arqCopyLink(\''+item.url.replace(/'/g,"\\'")+'\')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;" title="Copiar link">📋</button>';
         h += '<button onclick="arqDelItem('+item.id+')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;">🗑</button>';
         h += '</div></div>';
       }
