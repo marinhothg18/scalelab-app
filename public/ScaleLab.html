@@ -5376,13 +5376,13 @@ function renderCriativos(){
         ${isDir?`<button class="icon-btn" onclick="delCriativo(${c.id})">🗑</button>`:''}
       </div>
     </div>
-    <!-- Resumo de validação -->
-    <div style="display:flex;align-items:center;gap:14px;padding:12px 16px;flex-wrap:wrap;">
-      <div style="display:flex;gap:8px;align-items:center;">
-        <span style="font-size:12px;font-weight:700;color:var(--green);">✅ ${(c.ads||[]).filter(a=>a.validado).length} validado(s)</span>
-        <span style="font-size:12px;font-weight:700;color:var(--text2);">·</span>
-        <span style="font-size:12px;font-weight:700;color:var(--red);">⏳ ${(c.ads||[]).filter(a=>!a.validado).length} não validado(s)</span>
-      </div>
+    <!-- Resumo de status -->
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;">
+      ${(function(){
+        var counts={};
+        (c.ads||[]).forEach(function(a){ var st=a.adStatus||(a.validado?'Validado':'A Testar'); counts[st]=(counts[st]||0)+1; });
+        return Object.entries(counts).map(function(e){ return '<span style="font-size:11px;font-weight:700;color:'+(AD_STATUS_COR[e[0]]||'#6B7280')+';background:'+(AD_STATUS_COR[e[0]]||'#6B7280')+'18;padding:3px 10px;border-radius:20px;">'+e[1]+' '+e[0]+'</span>'; }).join('');
+      })()}
     </div>
     <!-- Responsáveis -->
     <div style="display:flex;gap:16px;padding:10px 16px;flex-wrap:wrap;border-top:1px solid var(--border);">
@@ -5391,16 +5391,21 @@ function renderCriativos(){
       ${c.gestor?`<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#F97316;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${c.gestor.charAt(0).toUpperCase()}</span><div><div style="font-size:10px;color:var(--text2);">Gestor</div><div style="font-size:12px;font-weight:600;">${c.gestor}</div></div></div>`:''}
       ${c.revisor?`<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#22C55E;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">${c.revisor.charAt(0).toUpperCase()}</span><div><div style="font-size:10px;color:var(--text2);">Revisor</div><div style="font-size:12px;font-weight:600;">${c.revisor}</div></div></div>`:''}
     </div>
-    <!-- Lista de anúncios simplificada -->
-    ${(c.ads||[]).map((a,ai)=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);">
-      <div style="display:flex;align-items:center;gap:10px;">
+    <!-- Lista de anúncios com status -->
+    ${(c.ads||[]).map((a,ai)=>{
+      var adSt = a.adStatus || (a.validado ? 'Validado' : 'A Testar');
+      var adStCor = AD_STATUS_COR[adSt] || '#6B7280';
+      return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
         <span style="font-size:12px;font-weight:600;color:var(--text);">${a.nome||a.formato||'Anúncio '+(ai+1)}</span>
         ${a.formato?`<span style="font-size:10px;color:var(--text2);background:var(--bg3);padding:2px 8px;border-radius:4px;">${a.formato}</span>`:''}
         ${a.link?`<a href="${a.link}" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;">🔗 Link</a>`:''}
       </div>
-      <button onclick="toggleValidarAd(${c.id},${ai})" style="border:none;border-radius:7px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600;background:${a.validado?'#16a34a':'var(--bg3)'};color:${a.validado?'#fff':'var(--text2)'};">${a.validado?'✅ Validado':'☐ Validar'}</button>
-    </div>`).join('')}
+      <select onchange="setAdStatus(${c.id},${ai},this.value)" style="background:${adStCor};color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;">
+        ${AD_STATUS_LIST.map(function(st){ return '<option value="'+st+'"'+(adSt===st?' selected':'')+' style="background:#fff;color:#333;">'+st+'</option>'; }).join('')}
+      </select>
+    </div>`;}).join('')}
   </div>`).join('');
 }
 function abrirMenuStatusCri(e, id){
@@ -5554,16 +5559,30 @@ function editCriativo(id){
   }, 50);
 }
 
+var AD_STATUS_LIST = ['Validado','A Testar','Testando','Rejeitado','A Analisar','Descartado','Pré-Escala'];
+var AD_STATUS_COR = {Validado:'#22C55E','A Testar':'#3B82F6',Testando:'#F97316',Rejeitado:'#EF4444','A Analisar':'#8B5CF6',Descartado:'#6B7280','Pré-Escala':'#FBBF24'};
+
 function toggleValidarAd(crId,adIdx){
   const c=criativos.find(x=>x.id===crId);
   if(!c||!c.ads[adIdx])return;
   c.ads[adIdx].validado=!c.ads[adIdx].validado;
+  if(!c.ads[adIdx].adStatus) c.ads[adIdx].adStatus = c.ads[adIdx].validado ? 'Validado' : 'A Testar';
   const st=c.ads[adIdx].validado;
   s('criativos',criativos);
   notif(st?`✅ "${c.ads[adIdx].nome||'Ad'}" validado!`:`Ad removido da validação.`);
   if(st) chatBot(`✅ Ad <b>"${c.ads[adIdx].nome||'Ad '+adIdx}"</b> da remessa <b>${c.remessa}</b> foi validado por <b>${cfg.nome||'Você'}</b>.`);
   renderCriativos();
   renderDash();
+}
+
+function setAdStatus(crId, adIdx, status){
+  var c = criativos.find(function(x){ return x.id===crId; });
+  if(!c||!c.ads[adIdx]) return;
+  c.ads[adIdx].adStatus = status;
+  c.ads[adIdx].validado = (status === 'Validado');
+  s('criativos', criativos);
+  notif('Status alterado para: '+status);
+  renderCriativos();
 }
 
 // CHAT
