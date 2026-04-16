@@ -6650,10 +6650,15 @@ function setLinksRef(links){
     var row = document.createElement('div');
     row.className = 'link-ref-row';
     row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
-    var nomeVal = (l.nome||'').replace(/"/g,'&quot;');
-    var urlVal = (l.url||l||'').replace(/"/g,'&quot;');
-    // Compatibilidade: se l é string (formato antigo), usa como url
-    if(typeof l === 'string'){ urlVal = l.replace(/"/g,'&quot;'); nomeVal = ''; }
+    // Compatibilidade: se l é string (formato antigo), trata como url
+    var nomeVal, urlVal;
+    if(typeof l === 'string'){
+      nomeVal = '';
+      urlVal = l.replace(/"/g,'&quot;');
+    } else {
+      nomeVal = (l.nome||'').replace(/"/g,'&quot;');
+      urlVal = (l.url||'').replace(/"/g,'&quot;');
+    }
     row.innerHTML = '<input class="fi link-ref-nome" value="'+nomeVal+'" placeholder="Nome (ex: Copy de referência)" style="width:40%;">'
       + '<input class="fi link-ref-url" type="url" value="'+urlVal+'" placeholder="https://..." style="flex:1;">'
       + '<button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;flex-shrink:0;">✕</button>';
