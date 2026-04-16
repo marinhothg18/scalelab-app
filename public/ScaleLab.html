@@ -6599,21 +6599,17 @@ function abrirNovaDemanda(){
   if(inner) inner.style.maxWidth = '1200px';
   const chatPanel = document.getElementById('modal-task-chat-panel');
   if(chatPanel) chatPanel.style.display = 'flex';
-  window._mtcTaskId = null;
-  // Mostrar placeholder no chat
+  window._mtcTaskId = '_new_';
+  window._newTaskCmts = [];
+  // Chat ativo desde a criação
   const mtcMsgs = document.getElementById('mtc-msgs');
-  if(mtcMsgs) mtcMsgs.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--text2);text-align:center;padding:20px;">'
-    +'<div style="font-size:28px;">💬</div>'
-    +'<div style="font-size:12px;font-weight:600;">Comentários disponíveis após criar a demanda</div>'
-    +'<div style="font-size:11px;">Salve primeiro para começar a comentar</div>'
-    +'</div>';
+  if(mtcMsgs) mtcMsgs.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px;">Nenhum comentário ainda.</div>';
   const mtcCount = document.getElementById('mtc-count');
   if(mtcCount) mtcCount.textContent = '0';
-  // Desabilitar input até salvar
   const mtcInput = document.getElementById('mtc-input');
-  if(mtcInput){ mtcInput.disabled = true; mtcInput.placeholder = 'Crie a demanda primeiro...'; mtcInput.style.opacity = '0.5'; }
+  if(mtcInput){ mtcInput.disabled = false; mtcInput.placeholder = 'Comentar... (Enter para enviar)'; mtcInput.style.opacity = '1'; }
   const mtcAnexo = document.querySelector('#modal-task-chat-panel label');
-  if(mtcAnexo) mtcAnexo.style.opacity = '0.4';
+  if(mtcAnexo) mtcAnexo.style.opacity = '1';
   openModal('modal-task');
 }
 
@@ -6894,7 +6890,18 @@ function enviarCmtModal(e){
   const inp = document.getElementById('mtc-input');
   const txt = inp.value.trim(); if(!txt) return;
   const autor = (currentUser&&currentUser.nome)||cfg.nome||'Você';
-  const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const agora = new Date();
+  const hora = agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) + ' ' + agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  if(tid === '_new_'){
+    // Modo criação: salva nos comentários temporários
+    if(!window._newTaskCmts) window._newTaskCmts = [];
+    window._newTaskCmts.push({autor,texto:txt,hora});
+    inp.value='';
+    _renderNewTaskChat();
+    return;
+  }
+
   tasks = tasks.map(t=>{
     if(t.id===tid){
       const cmts = [...(t.cmts||[]),{autor,texto:txt,hora}];
@@ -6912,18 +6919,47 @@ function enviarCmtModal(e){
   renderModalChat(tid);
 }
 
+function _renderNewTaskChat(){
+  var cmts = window._newTaskCmts || [];
+  var el = document.getElementById('mtc-msgs');
+  var countEl = document.getElementById('mtc-count');
+  if(countEl) countEl.textContent = cmts.length;
+  if(!el) return;
+  var meuNome = (currentUser&&currentUser.nome)||'';
+  if(!cmts.length){
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px;">Nenhum comentário ainda.</div>';
+    return;
+  }
+  el.innerHTML = cmts.map(function(c){
+    var meu = meuNome && c.autor===meuNome;
+    var conteudo = '<span style="font-size:12px;">'+c.texto+'</span>';
+    return meu
+      ? '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;"><div style="font-size:10px;color:var(--text2);">'+c.hora+'</div><div style="background:var(--accent);color:#fff;padding:6px 10px;border-radius:12px 12px 2px 12px;max-width:90%;">'+conteudo+'</div></div>'
+      : '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;"><div style="font-size:10px;color:var(--text2);">'+c.autor+' · '+c.hora+'</div><div style="background:var(--bg3);color:var(--text);padding:6px 10px;border-radius:12px 12px 12px 2px;max-width:90%;border:1px solid var(--border);">'+conteudo+'</div></div>';
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
 function enviarArquivoChatModal(input){
   const tid = window._mtcTaskId;
   if(!tid) return;
   const files = Array.from(input.files);
   if(!files.length) return;
   const autor = (currentUser&&currentUser.nome)||cfg.nome||'Você';
-  const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const agora = new Date();
+  const hora = agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) + ' ' + agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   let done=0;
   files.forEach(file=>{
     const reader = new FileReader();
     reader.onload = e=>{
       const novoCmt = {autor,texto:'',hora,arquivo:{nome:file.name,base64:e.target.result}};
+      if(tid === '_new_'){
+        if(!window._newTaskCmts) window._newTaskCmts = [];
+        window._newTaskCmts.push(novoCmt);
+        done++;
+        if(done===files.length) _renderNewTaskChat();
+        return;
+      }
       tasks = tasks.map(t=>{
         if(t.id===tid){ return {...t,cmts:[...(t.cmts||[]),novoCmt]}; }
         return t;
@@ -7266,7 +7302,7 @@ function salvarTask(){
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
       diretoria, checklist, fotos,
-      arquivado: false, criado: new Date().toLocaleString('pt-BR'), cmts: []
+      arquivado: false, criado: new Date().toLocaleString('pt-BR'), cmts: window._newTaskCmts||[]
     };
     tasks.push(t);
     // Notificar responsável
