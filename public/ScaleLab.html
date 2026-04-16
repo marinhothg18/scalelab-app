@@ -1010,8 +1010,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
     <!-- CRIATIVOS -->
     <div class="page" id="page-criativos">
-      <!-- Filtros criativos -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
+      <!-- Filtros criativos (só aparece na tela de Remessas) -->
+      <div id="cri-filters-bar" style="display:none;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
         <select class="fs" id="cri-filter-nicho" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:140px;">
           <option value="">Todos os nichos</option>
         </select>
@@ -5307,6 +5307,9 @@ function criV2Back(level){
 function renderCriV2(){
   var el = document.getElementById('cri-v2');
   if(!el) return;
+  // Mostrar filtros só no nível 4 (Remessas)
+  var filtersBar = document.getElementById('cri-filters-bar');
+  if(filtersBar) filtersBar.style.display = (_criV2Nav.nicho && _criV2Nav.oferta && _criV2Nav.mes) ? 'flex' : 'none';
   var nichos = g('sl_nichos',[]);
   var ofertas = g('sl_ofertas_v2',[]);
   var h = '';
