@@ -5757,44 +5757,44 @@ function editCriativo(id){
 
   // Bloquear edição pra não-Diretoria
   var _isDirCri = currentUser&&currentUser.cargo==='Diretoria';
-  setTimeout(function(){
-    if(!_isDirCri){
-      // Bloquear só campos do TOPO (remessa info) — NÃO os anúncios
-      var idsBloquear = ['cri-nome','cri-status','cri-nicho','cri-oferta','cri-mes','cri-semana','cri-copy','cri-editor','cri-revisor','cri-gestor'];
-      idsBloquear.forEach(function(fid){
-        var el = document.getElementById(fid);
-        if(el){
-          if(el.tagName==='SELECT') el.disabled = true;
-          else el.readOnly = true;
-          el.style.opacity = '.7';
-          el.style.cursor = 'default';
-        }
-      });
-      // Links (docs/drive) ficam clicáveis
-      ['cri-docs','cri-drive'].forEach(function(fid){
-        var el = document.getElementById(fid);
-        if(el && el.value && el.value.trim()){
-          el.readOnly = true;
+  // Bloquear pra não-Diretoria — roda múltiplas vezes pra garantir
+  function _bloquearCriColab(){
+    if(_isDirCri) return;
+    var idsBloquear = ['cri-nome','cri-status','cri-nicho','cri-oferta','cri-mes','cri-semana','cri-copy','cri-editor','cri-revisor','cri-gestor'];
+    idsBloquear.forEach(function(fid){
+      var el = document.getElementById(fid);
+      if(el){
+        if(el.tagName==='SELECT'){ el.disabled = true; el.style.pointerEvents = 'none'; }
+        else el.readOnly = true;
+        el.style.opacity = '.7';
+        el.style.cursor = 'default';
+      }
+    });
+    ['cri-docs','cri-drive'].forEach(function(fid){
+      var el = document.getElementById(fid);
+      if(el){
+        el.readOnly = true;
+        if(el.value && el.value.trim()){
           el.style.cursor = 'pointer';
           el.style.color = 'var(--accent)';
           el.style.textDecoration = 'underline';
           el.onclick = function(){
             var url = this.value.trim();
-            if(url){
-              if(!url.match(/^https?:\/\//)) url = 'https://'+url;
-              window.open(url,'_blank');
-            }
+            if(url){ if(!url.match(/^https?:\/\//)) url = 'https://'+url; window.open(url,'_blank'); }
           };
         }
-      });
-      // Ocultar botão salvar principal
-      var saveBtn = document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]');
-      if(saveBtn) saveBtn.style.display = 'none';
-      // Atualizar título
-      var titleEl = document.querySelector('#modal-criativo .modal-title');
-      if(titleEl) titleEl.textContent = 'Visualizar Documento Criativo';
-    }
-  }, 200);
+      }
+    });
+    var saveBtn = document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]');
+    if(saveBtn) saveBtn.style.display = 'none';
+    var titleEl = document.querySelector('#modal-criativo .modal-title');
+    if(titleEl) titleEl.textContent = 'Visualizar Documento Criativo';
+  }
+  if(!_isDirCri){
+    setTimeout(_bloquearCriColab, 100);
+    setTimeout(_bloquearCriColab, 300);
+    setTimeout(_bloquearCriColab, 600);
+  }
 
   // Cabeçalho do modal
   document.querySelector('#modal-criativo .modal-title').textContent = 'Editar Documento Criativo';
