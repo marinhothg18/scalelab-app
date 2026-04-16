@@ -5372,38 +5372,37 @@ function renderCriV2(){
       h += '</div>';
     }
   }
-  // NÍVEL 3: Meses da oferta
+  // NÍVEL 3: Meses fixos (Janeiro a Dezembro)
   else if(!_criV2Nav.mes){
     var ofertaCri = criativos.filter(function(c){ return c.ofertaId===_criV2Nav.oferta; });
-    // Extrair meses únicos das remessas
-    var mesesSet = {};
+    var mesNomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    var ano = new Date().getFullYear();
+    // Contar remessas por mês
+    var mesCounts = {};
+    mesNomes.forEach(function(m){ mesCounts[m+' '+ano] = 0; });
     ofertaCri.forEach(function(c){
       if(c.criado){
         var parts = c.criado.split('/');
         if(parts.length>=3){
-          var mesNomes = {1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'};
           var mesNum = parseInt(parts[1]);
-          var ano = parts[2].split(' ')[0];
-          var key = mesNomes[mesNum]+' '+ano;
-          if(!mesesSet[key]) mesesSet[key] = {label:key, mes:parts[1], ano:ano, count:0};
-          mesesSet[key].count++;
+          var cAno = parts[2].split(' ')[0];
+          var key = mesNomes[mesNum-1]+' '+cAno;
+          if(mesCounts[key] !== undefined) mesCounts[key]++;
+          else mesCounts[key] = 1;
         }
       }
     });
-    var meses = Object.values(mesesSet);
     h += '<div style="font-size:20px;font-weight:700;margin-bottom:20px;">Meses</div>';
-    if(!meses.length){
-      h += '<div style="color:var(--text2);font-size:14px;">Nenhuma remessa nesta oferta.</div>';
-    } else {
-      for(var mi=0;mi<meses.length;mi++){
-        var m = meses[mi];
-        h += '<div onclick="_criV2Nav.mes=\''+m.label.replace(/'/g,"\\'")+'\';renderCriV2();" style="display:flex;align-items:center;gap:14px;padding:16px 20px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;cursor:pointer;background:var(--bg2);transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
-        h += '<span style="font-size:24px;">📅</span>';
-        h += '<span style="font-size:15px;font-weight:600;">'+m.label+'</span>';
-        h += '<span style="margin-left:auto;background:var(--accent);color:#fff;border-radius:20px;padding:2px 12px;font-size:12px;font-weight:700;">'+m.count+'</span>';
-        h += '<span style="color:var(--text2);font-size:14px;">›</span>';
-        h += '</div>';
-      }
+    for(var mi=0;mi<mesNomes.length;mi++){
+      var mLabel = mesNomes[mi]+' '+ano;
+      var mCount = mesCounts[mLabel] || 0;
+      h += '<div onclick="_criV2Nav.mes=\''+mLabel+'\';renderCriV2();" style="display:flex;align-items:center;gap:14px;padding:16px 20px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;cursor:pointer;background:var(--bg2);transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+      h += '<span style="font-size:24px;">📅</span>';
+      h += '<span style="font-size:15px;font-weight:600;">'+mLabel+'</span>';
+      if(mCount > 0) h += '<span style="margin-left:auto;background:var(--accent);color:#fff;border-radius:20px;padding:2px 12px;font-size:12px;font-weight:700;">'+mCount+'</span>';
+      else h += '<span style="margin-left:auto;color:var(--text2);font-size:12px;">0</span>';
+      h += '<span style="color:var(--text2);font-size:14px;">›</span>';
+      h += '</div>';
     }
   }
   // NÍVEL 4: Remessas do mês — usa o mesmo render da lista principal
