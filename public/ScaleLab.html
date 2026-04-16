@@ -5759,19 +5759,37 @@ function editCriativo(id){
   var _isDirCri = currentUser&&currentUser.cargo==='Diretoria';
   setTimeout(function(){
     if(!_isDirCri){
-      // Bloquear TODOS os inputs, selects e textareas do modal inteiro
-      document.querySelectorAll('#modal-criativo input, #modal-criativo select, #modal-criativo textarea').forEach(function(el){
-        if(el.tagName==='SELECT') el.disabled = true;
-        else el.readOnly = true;
-        el.style.opacity = '.7';
-        el.style.cursor = 'default';
+      // Bloquear só campos do TOPO (remessa info) — NÃO os anúncios
+      var idsBloquear = ['cri-nome','cri-status','cri-nicho','cri-oferta','cri-mes','cri-semana','cri-copy','cri-editor','cri-revisor','cri-gestor'];
+      idsBloquear.forEach(function(fid){
+        var el = document.getElementById(fid);
+        if(el){
+          if(el.tagName==='SELECT') el.disabled = true;
+          else el.readOnly = true;
+          el.style.opacity = '.7';
+          el.style.cursor = 'default';
+        }
       });
-      // Ocultar botões de ação (salvar, adicionar anúncio, remover anúncio)
+      // Links (docs/drive) ficam clicáveis
+      ['cri-docs','cri-drive'].forEach(function(fid){
+        var el = document.getElementById(fid);
+        if(el && el.value && el.value.trim()){
+          el.readOnly = true;
+          el.style.cursor = 'pointer';
+          el.style.color = 'var(--accent)';
+          el.style.textDecoration = 'underline';
+          el.onclick = function(){
+            var url = this.value.trim();
+            if(url){
+              if(!url.match(/^https?:\/\//)) url = 'https://'+url;
+              window.open(url,'_blank');
+            }
+          };
+        }
+      });
+      // Ocultar botão salvar principal
       var saveBtn = document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]');
       if(saveBtn) saveBtn.style.display = 'none';
-      document.querySelectorAll('#modal-criativo .icon-btn, #modal-criativo [onclick*="addAnuncio"]').forEach(function(b){ b.style.display = 'none'; });
-      // Ocultar botões ✕ de remover anúncio
-      document.querySelectorAll('#modal-criativo .ad-section-title .icon-btn, #modal-criativo .ad-section-title button').forEach(function(b){ b.style.display = 'none'; });
       // Atualizar título
       var titleEl = document.querySelector('#modal-criativo .modal-title');
       if(titleEl) titleEl.textContent = 'Visualizar Documento Criativo';
