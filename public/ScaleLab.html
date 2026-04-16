@@ -1055,6 +1055,19 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <option>Pronto pra subir</option>
           <option>Testando</option>
         </select>
+        <select class="fs" id="cri-filter-ad-status" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:140px;">
+          <option value="">Status do Ad</option>
+          <option value="Validado">Validado</option>
+          <option value="A Testar">A Testar</option>
+          <option value="Testando">Testando</option>
+          <option value="Rejeitado">Rejeitado</option>
+          <option value="A Analisar">A Analisar</option>
+          <option value="Descartado">Descartado</option>
+          <option value="Pré-Escala">Pré-Escala</option>
+        </select>
+        <select class="fs" id="cri-filter-pessoa" onchange="renderCriativos()" style="font-size:12px;padding:6px 10px;min-width:140px;">
+          <option value="">Todas as pessoas</option>
+        </select>
         <button class="btn btn-ghost" onclick="limparFiltrosCri()" style="font-size:12px;padding:6px 12px;">✕ Limpar</button>
         <span id="cri-count" style="font-size:12px;color:var(--text2);margin-left:auto;"></span>
       </div>
@@ -5280,7 +5293,7 @@ function salvarCriativo(){
   renderCriativos();
 }
 function limparFiltrosCri(){
-  ['cri-filter-nicho','cri-filter-oferta','cri-filter-mes','cri-filter-semana','cri-filter-data','cri-filter-status'].forEach(id=>{
+  ['cri-filter-nicho','cri-filter-oferta','cri-filter-mes','cri-filter-semana','cri-filter-data','cri-filter-status','cri-filter-ad-status','cri-filter-pessoa'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   renderCriativos();
@@ -5314,6 +5327,16 @@ function renderCriativos(){
     ofertaSel.value=cur;
   }
 
+  // Popula filtro de pessoas dinamicamente
+  var pessoaSel = document.getElementById('cri-filter-pessoa');
+  if(pessoaSel){
+    var curP = pessoaSel.value;
+    var pessoasSet = {};
+    criativos.forEach(function(c){ [c.copy,c.editor,c.gestor,c.revisor].forEach(function(p){ if(p) pessoasSet[p]=true; }); });
+    pessoaSel.innerHTML = '<option value="">Todas as pessoas</option>'+Object.keys(pessoasSet).sort().map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('');
+    pessoaSel.value = curP;
+  }
+
   // Lê filtros
   const fNicho=(document.getElementById('cri-filter-nicho')||{}).value||'';
   const fOferta=(document.getElementById('cri-filter-oferta')||{}).value||'';
@@ -5321,11 +5344,15 @@ function renderCriativos(){
   const fSemana=(document.getElementById('cri-filter-semana')||{}).value||'';
   const fData=(document.getElementById('cri-filter-data')||{}).value||'';
   const fStatus=(document.getElementById('cri-filter-status')||{}).value||'';
+  const fAdStatus=(document.getElementById('cri-filter-ad-status')||{}).value||'';
+  const fPessoa=(document.getElementById('cri-filter-pessoa')||{}).value||'';
 
   let filtered=criativos.slice().reverse();
   if(fNicho) filtered=filtered.filter(c=>c.nichoId===fNicho);
   if(fOferta) filtered=filtered.filter(c=>c.ofertaId===fOferta);
   if(fStatus) filtered=filtered.filter(c=>c.status===fStatus);
+  if(fPessoa) filtered=filtered.filter(c=>c.copy===fPessoa||c.editor===fPessoa||c.gestor===fPessoa||c.revisor===fPessoa);
+  if(fAdStatus) filtered=filtered.filter(c=>(c.ads||[]).some(function(a){ return (a.adStatus||(a.validado?'Validado':'A Testar'))===fAdStatus; }));
   if(fMes) filtered=filtered.filter(c=>{
     if(!c.criado) return false;
     const parts=c.criado.split('/');
