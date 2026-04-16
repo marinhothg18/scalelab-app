@@ -1116,9 +1116,9 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <div id="swipe-container"></div>
     </div>
 
-    <!-- ARQUIVOS -->
+    <!-- ARQUIVOS / CENTRAL DE ARQUIVOS -->
     <div class="page" id="page-arquivos">
-      <div id="arquivos-list"></div>
+      <div id="arquivos-central"></div>
     </div>
 
     <!-- EDUCACIONAL -->
@@ -5860,94 +5860,209 @@ function renderSwipe(){
 
 function delSwipe(id){if(!confirm('Remover este swipe?'))return;swipes=swipes.filter(sw=>sw.id!==id);s('swipes',swipes);renderSwipe();}
 
-// ARQUIVOS
-let arquivos = g('arquivos',[]);
+// ══ CENTRAL DE ARQUIVOS (por Projetos) ══
+var _arqNav = { projetoId:null, setor:null, subpasta:null };
+
+var ARQ_SETORES = [
+  {id:'copywriting', label:'01 - Copywriting', icon:'✍️'},
+  {id:'audiovisual', label:'02 - Audiovisual', icon:'🎬'},
+  {id:'design',      label:'03 - Design',      icon:'🎨'},
+  {id:'infra',       label:'04 - Infraestrutura', icon:'🔧'},
+  {id:'trafego',     label:'05 - Tráfego Pago', icon:'📈'}
+];
+
+var ARQ_SUBPASTAS = {
+  copywriting: ['00 - Pesquisa de Mercado','01 - Briefings','02 - Copies da Oferta','03 - Copies do Funil','04 - Copies de Criativos','05 - SmartAutoPlay','06 - Adivertorial'],
+  audiovisual: ['C1 - Expert-Avatar original','G2 - Criativos','G3 - Leads','G4 - Micro Leads','G5 - Upsell Editado','G6 - VSL Editado','G7 - Material Bruto','8 - Smartautoplay','G9 - FECHAMENTOS','Ofertas Concorrentes'],
+  design: ['Smart Auto Play'],
+  infra: ['Páginas','Estruturas','Links (ClickBank, CartPanda, RedTrack)'],
+  trafego: []
+};
+
+function getArqProjetos(){ return g('sl_arq_projetos',[]); }
+function saveArqProjetos(arr){ s('sl_arq_projetos',arr); syncKey('sl_arq_projetos'); }
+
+function arqAddProjeto(){
+  var nome = prompt('Nome do projeto:');
+  if(!nome) return;
+  var proj = getArqProjetos();
+  proj.push({id:Date.now(), nome:nome, items:{}});
+  saveArqProjetos(proj);
+  renderArquivos();
+}
+
+function arqDelProjeto(id){
+  if(!confirm('Excluir este projeto e todos os arquivos dentro?')) return;
+  var proj = getArqProjetos().filter(function(p){ return p.id!=id; });
+  saveArqProjetos(proj);
+  _arqNav = {projetoId:null,setor:null,subpasta:null};
+  renderArquivos();
+}
+
+function arqNavProjeto(id){ _arqNav = {projetoId:id, setor:null, subpasta:null}; renderArquivos(); }
+function arqNavSetor(setor){ _arqNav.setor = setor; _arqNav.subpasta = null; renderArquivos(); }
+function arqNavSubpasta(sub){ _arqNav.subpasta = sub; renderArquivos(); }
+function arqNavBack(level){
+  if(level==='home') _arqNav = {projetoId:null,setor:null,subpasta:null};
+  else if(level==='projeto'){ _arqNav.setor=null; _arqNav.subpasta=null; }
+  else if(level==='setor'){ _arqNav.subpasta=null; }
+  renderArquivos();
+}
+
+function arqAddItem(){
+  var nome = prompt('Nome do arquivo/link:');
+  if(!nome) return;
+  var url = prompt('Link (URL do Drive, site, etc):','https://');
+  if(!url) return;
+  var desc = prompt('Descrição curta (opcional):','');
+  var tipo = prompt('Tipo (Link, PDF, Imagem, Documento, Vídeo, Planilha):','Link');
+  var proj = getArqProjetos();
+  var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+  if(!p) return;
+  if(!p.items) p.items = {};
+  var key = _arqNav.setor + '|' + _arqNav.subpasta;
+  if(!p.items[key]) p.items[key] = [];
+  p.items[key].push({id:Date.now(), nome:nome, url:url, desc:desc||'', tipo:tipo||'Link', data:new Date().toLocaleDateString('pt-BR')});
+  saveArqProjetos(proj);
+  renderArquivos();
+}
+
+function arqDelItem(itemId){
+  if(!confirm('Remover este item?')) return;
+  var proj = getArqProjetos();
+  var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+  if(!p) return;
+  var key = _arqNav.setor + '|' + _arqNav.subpasta;
+  if(p.items && p.items[key]) p.items[key] = p.items[key].filter(function(i){ return i.id!=itemId; });
+  saveArqProjetos(proj);
+  renderArquivos();
+}
 
 function renderArquivos(){
-  arquivos = g('arquivos', []);
-  const el=document.getElementById('arquivos-list');
-  const searchVal=(document.getElementById('arq-search-inp')?.value||'').toLowerCase();
-  const catVal=document.getElementById('arq-cat-inp')?.value||'';
-  const fNicho=document.getElementById('arq-filter-nicho')?.value||'';
-  const fOferta=document.getElementById('arq-filter-oferta')?.value||'';
-  const fMes=document.getElementById('arq-filter-mes')?.value||'';
-  const fSemana=document.getElementById('arq-filter-semana')?.value||'';
-  const fData=document.getElementById('arq-filter-data')?.value||'';
+  var el = document.getElementById('arquivos-central');
+  if(!el) return;
+  var proj = getArqProjetos();
+  var tipoIcon = {PDF:'📄',Video:'🎬',Planilha:'📊',Imagem:'🖼',Documento:'📝',Link:'🔗',Outro:'📎'};
+  var tipoCor = {PDF:'#EF4444',Video:'#8B5CF6',Planilha:'#22C55E',Imagem:'#3B82F6',Documento:'#F97316',Link:'#3B82F6',Outro:'#FBBF24'};
+  var h = '';
 
-  let list=arquivos.filter(a=>{
-    if(catVal&&a.pasta!==catVal)return false;
-    if(searchVal&&!(a.nome+a.desc+a.pasta).toLowerCase().includes(searchVal))return false;
-    if(fNicho&&a.nichoId!==fNicho)return false;
-    if(fOferta&&a.ofertaId!==fOferta)return false;
-    if(fMes&&a.mes!==fMes)return false;
-    if(fSemana&&String(a.semana)!==fSemana)return false;
-    if(fData&&a.dataArq!==fData)return false;
-    return true;
-  });
+  // Breadcrumb
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;flex-wrap:wrap;">';
+  h += '<span onclick="arqNavBack(\'home\')" style="cursor:pointer;color:var(--accent);font-weight:600;">📁 Central de Arquivos</span>';
+  if(_arqNav.projetoId){
+    var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+    if(p){
+      h += '<span style="color:var(--text2);">›</span>';
+      h += '<span onclick="arqNavBack(\'projeto\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+p.nome+'</span>';
+    }
+    if(_arqNav.setor){
+      var setorObj = ARQ_SETORES.find(function(s){ return s.id===_arqNav.setor; });
+      h += '<span style="color:var(--text2);">›</span>';
+      h += '<span onclick="arqNavBack(\'setor\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+(setorObj?setorObj.label:_arqNav.setor)+'</span>';
+    }
+    if(_arqNav.subpasta){
+      h += '<span style="color:var(--text2);">›</span>';
+      h += '<span style="font-weight:600;color:var(--text);">'+_arqNav.subpasta+'</span>';
+    }
+  }
+  h += '</div>';
 
-  const pastas=[...new Set(arquivos.map(a=>a.pasta).filter(Boolean))];
-  const nichos=g('sl_nichos',[]);
-  const ofertas=g('sl_ofertas_v2',[]);
-  const nichoOpts=nichos.map(n=>`<option value="${n.id}" ${fNicho===n.id?'selected':''}>${n.nome}</option>`).join('');
-  const ofertaOpts=ofertas.filter(o=>!fNicho||o.nichoId===fNicho).map(o=>`<option value="${o.id}" ${fOferta===o.id?'selected':''}>${o.nome}</option>`).join('');
+  // NÍVEL 1: Lista de projetos
+  if(!_arqNav.projetoId){
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+    h += '<div style="font-size:24px;font-weight:800;">Projetos</div>';
+    h += '<button onclick="arqAddProjeto()" class="btn btn-primary" style="font-size:13px;">+ Novo Projeto</button>';
+    h += '</div>';
+    if(!proj.length){
+      h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum projeto. Clique em "+ Novo Projeto".</div></div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
+      for(var pi=0;pi<proj.length;pi++){
+        var pr = proj[pi];
+        // Contar items
+        var totalItems = 0;
+        if(pr.items) for(var k in pr.items) totalItems += (pr.items[k]||[]).length;
+        h += '<div onclick="arqNavProjeto('+pr.id+')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;cursor:pointer;transition:all .15s;text-align:center;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
+        h += '<div style="font-size:40px;margin-bottom:12px;">📂</div>';
+        h += '<div style="font-size:16px;font-weight:700;margin-bottom:6px;">'+pr.nome+'</div>';
+        h += '<div style="font-size:12px;color:var(--text2);">'+totalItems+' arquivo(s)</div>';
+        h += '<button onclick="event.stopPropagation();arqDelProjeto('+pr.id+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;margin-top:8px;opacity:.6;">🗑 Excluir</button>';
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+  }
+  // NÍVEL 2: Setores do projeto
+  else if(!_arqNav.setor){
+    var pr = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+    h += '<div style="font-size:20px;font-weight:700;margin-bottom:20px;">📂 '+(pr?pr.nome:'Projeto')+'</div>';
+    for(var si=0;si<ARQ_SETORES.length;si++){
+      var setor = ARQ_SETORES[si];
+      h += '<div onclick="arqNavSetor(\''+setor.id+'\')" style="display:flex;align-items:center;gap:14px;padding:16px 20px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;cursor:pointer;transition:all .15s;background:var(--bg2);" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+      h += '<span style="font-size:24px;">'+setor.icon+'</span>';
+      h += '<span style="font-size:15px;font-weight:600;">'+setor.label+'</span>';
+      h += '<span style="margin-left:auto;color:var(--text2);font-size:14px;">›</span>';
+      h += '</div>';
+    }
+  }
+  // NÍVEL 3: Subpastas do setor
+  else if(!_arqNav.subpasta){
+    var setorObj = ARQ_SETORES.find(function(s){ return s.id===_arqNav.setor; });
+    h += '<div style="font-size:20px;font-weight:700;margin-bottom:20px;">'+(setorObj?setorObj.icon+' '+setorObj.label:'Setor')+'</div>';
+    var subs = ARQ_SUBPASTAS[_arqNav.setor] || [];
+    if(!subs.length){
+      h += '<div style="color:var(--text2);font-size:14px;padding:30px 0;">Nenhuma subpasta definida para este setor.</div>';
+    }
+    for(var sbi=0;sbi<subs.length;sbi++){
+      var sub = subs[sbi];
+      // Contar items nessa subpasta
+      var pr2 = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+      var itemKey = _arqNav.setor+'|'+sub;
+      var subCount = (pr2&&pr2.items&&pr2.items[itemKey]) ? pr2.items[itemKey].length : 0;
+      h += '<div onclick="arqNavSubpasta(\''+sub.replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:14px;padding:14px 20px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:all .15s;background:var(--bg2);" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+      h += '<span style="font-size:20px;">📁</span>';
+      h += '<span style="font-size:14px;font-weight:600;">'+sub+'</span>';
+      h += '<span style="margin-left:auto;display:flex;align-items:center;gap:8px;">';
+      if(subCount) h += '<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">'+subCount+'</span>';
+      h += '<span style="color:var(--text2);font-size:14px;">›</span></span>';
+      h += '</div>';
+    }
+  }
+  // NÍVEL 4: Conteúdo da subpasta
+  else {
+    var pr3 = proj.find(function(x){ return x.id==_arqNav.projetoId; });
+    var itemKey = _arqNav.setor+'|'+_arqNav.subpasta;
+    var items = (pr3&&pr3.items&&pr3.items[itemKey]) ? pr3.items[itemKey] : [];
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+    h += '<div style="font-size:20px;font-weight:700;">📁 '+_arqNav.subpasta+'</div>';
+    h += '<button onclick="arqAddItem()" class="btn btn-primary" style="font-size:13px;">+ Adicionar Arquivo</button>';
+    h += '</div>';
+    if(!items.length){
+      h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum arquivo nesta pasta.</div></div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">';
+      for(var ii=0;ii<items.length;ii++){
+        var item = items[ii];
+        var ic = tipoIcon[item.tipo]||'📎';
+        var cor = tipoCor[item.tipo]||'#3B82F6';
+        h += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:8px;text-align:center;">';
+        h += '<div style="font-size:36px;">'+ic+'</div>';
+        h += '<div style="font-size:14px;font-weight:700;">'+item.nome+'</div>';
+        h += '<div style="display:flex;gap:6px;justify-content:center;">';
+        h += '<span style="background:'+cor+'22;color:'+cor+';padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">'+item.tipo+'</span>';
+        h += '</div>';
+        if(item.desc) h += '<div style="font-size:12px;color:var(--text2);">'+item.desc+'</div>';
+        h += '<div style="font-size:11px;color:var(--text2);">'+item.data+'</div>';
+        h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:6px;">';
+        if(item.url) h += '<a href="'+item.url+'" target="_blank" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">🔗 Abrir</a>';
+        h += '<button onclick="arqDelItem('+item.id+')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;">🗑</button>';
+        h += '</div></div>';
+      }
+      h += '</div>';
+    }
+  }
 
-  const tipoIcon={PDF:'📄',Video:'🎬',Planilha:'📊',Imagem:'🖼',Documento:'📝',Link:'🔗',Outro:'📎'};
-  const tipoCor={PDF:'b-red',Video:'b-purple',Planilha:'b-green',Imagem:'b-blue',Documento:'b-orange',Link:'b-blue',Outro:'b-yellow'};
-
-  el.innerHTML=`
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-      <select class="fs" id="arq-filter-nicho" style="font-size:12px;padding:6px 10px;" onchange="renderArquivos()">
-        <option value="">Todos os nichos</option>${nichoOpts}
-      </select>
-      <select class="fs" id="arq-filter-oferta" style="font-size:12px;padding:6px 10px;" onchange="renderArquivos()">
-        <option value="">Todas as ofertas</option>${ofertaOpts}
-      </select>
-      <select class="fs" id="arq-filter-mes" style="font-size:12px;padding:6px 10px;" onchange="renderArquivos()">
-        <option value="">Todos os meses</option>
-        <option value="01" ${fMes==='01'?'selected':''}>Janeiro</option><option value="02" ${fMes==='02'?'selected':''}>Fevereiro</option>
-        <option value="03" ${fMes==='03'?'selected':''}>Março</option><option value="04" ${fMes==='04'?'selected':''}>Abril</option>
-        <option value="05" ${fMes==='05'?'selected':''}>Maio</option><option value="06" ${fMes==='06'?'selected':''}>Junho</option>
-        <option value="07" ${fMes==='07'?'selected':''}>Julho</option><option value="08" ${fMes==='08'?'selected':''}>Agosto</option>
-        <option value="09" ${fMes==='09'?'selected':''}>Setembro</option><option value="10" ${fMes==='10'?'selected':''}>Outubro</option>
-        <option value="11" ${fMes==='11'?'selected':''}>Novembro</option><option value="12" ${fMes==='12'?'selected':''}>Dezembro</option>
-      </select>
-      <select class="fs" id="arq-filter-semana" style="font-size:12px;padding:6px 10px;" onchange="renderArquivos()">
-        <option value="">Todas as semanas</option>
-        <option value="1" ${fSemana==='1'?'selected':''}>Semana 1</option><option value="2" ${fSemana==='2'?'selected':''}>Semana 2</option>
-        <option value="3" ${fSemana==='3'?'selected':''}>Semana 3</option><option value="4" ${fSemana==='4'?'selected':''}>Semana 4</option>
-      </select>
-      <div style="position:relative;">
-        <svg style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:13px;height:13px;stroke:var(--text2);pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <input id="arq-filter-data" type="date" value="${fData}" onchange="renderArquivos()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px 6px 28px;font-size:12px;color:var(--text);outline:none;cursor:pointer;">
-      </div>
-      <button class="btn btn-ghost" onclick="limparFiltrosArq()" style="font-size:12px;padding:6px 12px;">✕ Limpar</button>
-      <button class="btn btn-primary" style="margin-left:auto;" onclick="popularArqModal();openModal('modal-arquivo')">+ Adicionar Arquivo</button>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
-      <input class="fi" id="arq-search-inp" placeholder="🔍 Buscar arquivo..." style="flex:1;min-width:160px;" value="${searchVal}" oninput="renderArquivos()">
-      <select class="fs" id="arq-cat-inp" style="width:160px;" onchange="renderArquivos()">
-        <option value="">Todas pastas</option>${pastas.map(p=>`<option ${catVal===p?'selected':''}>${p}</option>`).join('')}
-      </select>
-    </div>
-    ${!list.length?`<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum arquivo encontrado.</div></div>`:`
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
-      ${list.slice().reverse().map(a=>`
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;">
-          <div style="font-size:32px;text-align:center;padding:10px 0;">${tipoIcon[a.tipo]||'📎'}</div>
-          <div style="font-size:13px;font-weight:600;text-align:center;">${a.nome}</div>
-          <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
-            <span class="badge ${tipoCor[a.tipo]||'b-blue'}" style="font-size:10px;">${a.tipo}</span>
-            ${a.pasta?`<span class="badge b-orange" style="font-size:10px;">📁 ${a.pasta}</span>`:''}
-          </div>
-          ${a.desc?`<div style="font-size:11px;color:var(--text2);text-align:center;">${a.desc}</div>`:''}
-          <div style="font-size:10px;color:var(--text2);text-align:center;">${a.criado||''}</div>
-          <div style="display:flex;gap:6px;justify-content:center;margin-top:4px;">
-            ${a.url?`<a href="${a.url}" target="_blank" class="btn btn-primary" style="font-size:11px;padding:4px 12px;">🔗 Abrir</a>`:''}
-            <button class="icon-btn" onclick="copiarLinkArquivo(${a.id})" title="Copiar link do arquivo">🔗</button>
-            <button class="icon-btn" onclick="delArquivo(${a.id})">🗑</button>
-          </div>
-        </div>`).join('')}
-    </div>`}`;
+  el.innerHTML = h;
 }
 
 function delArquivo(id){
