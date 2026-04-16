@@ -5883,11 +5883,28 @@ function getArqProjetos(){ return g('sl_arq_projetos',[]); }
 function saveArqProjetos(arr){ s('sl_arq_projetos',arr); syncKey('sl_arq_projetos'); }
 
 function arqAddProjeto(){
-  var nome = prompt('Nome do projeto:');
-  if(!nome) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'arq-proj-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  wrap.onclick = function(e){ if(e.target===wrap) wrap.remove(); };
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:#fff;border-radius:16px;padding:28px 32px;width:440px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.2);color:#1F2937;';
+  inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;"><span style="font-size:18px;font-weight:700;">Novo Projeto</span><button onclick="document.getElementById(\'arq-proj-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;">✕</button></div>'
+    + '<div style="margin-bottom:20px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Nome do Projeto *</label><input id="arq-proj-nome" placeholder="Ex: Gelatina v5" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:14px;color:#1F2937;outline:none;"></div>'
+    + '<div style="display:flex;gap:10px;justify-content:flex-end;"><button onclick="document.getElementById(\'arq-proj-modal\').remove()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Cancelar</button><button onclick="arqSaveProjeto()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;cursor:pointer;font-weight:700;">Criar Projeto</button></div>';
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+  setTimeout(function(){ document.getElementById('arq-proj-nome').focus(); },100);
+}
+
+function arqSaveProjeto(){
+  var nome = document.getElementById('arq-proj-nome').value.trim();
+  if(!nome){ alert('Digite o nome do projeto.'); return; }
   var proj = getArqProjetos();
   proj.push({id:Date.now(), nome:nome, items:{}});
   saveArqProjetos(proj);
+  var modal = document.getElementById('arq-proj-modal');
+  if(modal) modal.remove();
   renderArquivos();
 }
 
@@ -5918,7 +5935,8 @@ function arqAddItem(){
   inner.style.cssText = 'background:#fff;border-radius:16px;padding:28px 32px;width:480px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.2);color:#1F2937;';
   inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;"><span style="font-size:18px;font-weight:700;">Adicionar Arquivo</span><button onclick="document.getElementById(\'arq-add-modal\').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;">✕</button></div>'
     + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Nome *</label><input id="arq-add-nome" placeholder="Ex: Roteiro Hook Variação 2" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
-    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Link (URL) *</label><input id="arq-add-url" placeholder="https://drive.google.com/..." style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
+    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Link (URL)</label><input id="arq-add-url" placeholder="https://drive.google.com/..." style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
+    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Ou subir arquivo (PDF, Vídeo, Imagem...)</label><label style="display:inline-flex;align-items:center;gap:8px;background:#F9FAFB;border:1px dashed #E5E7EB;border-radius:10px;padding:10px 16px;cursor:pointer;font-size:13px;color:#6B7280;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Escolher arquivo<input type="file" id="arq-add-file" accept="application/pdf,video/*,image/*,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none;" onchange="arqFileSelected(this)"></label><span id="arq-add-file-name" style="font-size:11px;color:#6B7280;margin-left:8px;"></span></div>'
     + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Descrição</label><textarea id="arq-add-desc" placeholder="Descrição curta do arquivo..." rows="3" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;resize:vertical;"></textarea></div>'
     + '<div style="margin-bottom:20px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Tipo</label><select id="arq-add-tipo" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;cursor:pointer;"><option value="Link">🔗 Link</option><option value="PDF">📄 PDF</option><option value="Documento">📝 Documento</option><option value="Imagem">🖼 Imagem</option><option value="Video">🎬 Vídeo</option><option value="Planilha">📊 Planilha</option><option value="Outro">📎 Outro</option></select></div>'
     + '<div style="display:flex;gap:10px;justify-content:flex-end;"><button onclick="document.getElementById(\'arq-add-modal\').remove()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Cancelar</button><button onclick="arqSaveItem()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;cursor:pointer;font-weight:700;">Salvar</button></div>';
@@ -5926,11 +5944,37 @@ function arqAddItem(){
   document.body.appendChild(wrap);
 }
 
+var _arqFileBase64 = null;
+var _arqFileName = '';
+
+function arqFileSelected(input){
+  var file = input.files[0];
+  if(!file) return;
+  _arqFileName = file.name;
+  document.getElementById('arq-add-file-name').textContent = file.name;
+  // Auto-detect type
+  var tipo = 'Outro';
+  if(file.type.includes('pdf')) tipo = 'PDF';
+  else if(file.type.includes('video')) tipo = 'Video';
+  else if(file.type.includes('image')) tipo = 'Imagem';
+  else if(file.name.match(/\.(doc|docx)$/i)) tipo = 'Documento';
+  else if(file.name.match(/\.(xls|xlsx)$/i)) tipo = 'Planilha';
+  document.getElementById('arq-add-tipo').value = tipo;
+  // Auto-fill name if empty
+  if(!document.getElementById('arq-add-nome').value.trim()){
+    document.getElementById('arq-add-nome').value = file.name;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e){ _arqFileBase64 = e.target.result; };
+  reader.readAsDataURL(file);
+}
+
 function arqSaveItem(){
   var nome = document.getElementById('arq-add-nome').value.trim();
   var url = document.getElementById('arq-add-url').value.trim();
+  var fileData = _arqFileBase64;
   if(!nome){ alert('Digite o nome.'); return; }
-  if(!url){ alert('Cole o link.'); return; }
+  if(!url && !fileData){ alert('Cole um link ou suba um arquivo.'); return; }
   var desc = document.getElementById('arq-add-desc').value.trim();
   var tipo = document.getElementById('arq-add-tipo').value;
   var proj = getArqProjetos();
@@ -5939,8 +5983,12 @@ function arqSaveItem(){
   if(!p.items) p.items = {};
   var key = _arqNav.setor + '|' + _arqNav.subpasta;
   if(!p.items[key]) p.items[key] = [];
-  p.items[key].push({id:Date.now(), nome:nome, url:url, desc:desc, tipo:tipo, data:new Date().toLocaleDateString('pt-BR')});
+  var item = {id:Date.now(), nome:nome, url:url||'', desc:desc, tipo:tipo, data:new Date().toLocaleDateString('pt-BR')};
+  if(fileData){ item.arquivo = {nome:_arqFileName, base64:fileData}; }
+  p.items[key].push(item);
   saveArqProjetos(proj);
+  _arqFileBase64 = null;
+  _arqFileName = '';
   var modal = document.getElementById('arq-add-modal');
   if(modal) modal.remove();
   renderArquivos();
@@ -6074,6 +6122,7 @@ function renderArquivos(){
         h += '<div style="font-size:11px;color:var(--text2);">'+item.data+'</div>';
         h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:6px;">';
         if(item.url) h += '<a href="'+item.url+'" target="_blank" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">🔗 Abrir</a>';
+        if(item.arquivo) h += '<a href="'+item.arquivo.base64+'" download="'+item.arquivo.nome+'" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">⬇ Baixar</a>';
         h += '<button onclick="arqDelItem('+item.id+')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;">🗑</button>';
         h += '</div></div>';
       }
