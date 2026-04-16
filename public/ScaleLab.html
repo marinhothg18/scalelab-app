@@ -5755,6 +5755,30 @@ function editCriativo(id){
   populateRemessas();
   openModal('modal-criativo');
 
+  // Bloquear edição pra não-Diretoria (campos principais ficam read-only)
+  var _isDirCri = currentUser&&currentUser.cargo==='Diretoria';
+  setTimeout(function(){
+    if(!_isDirCri){
+      // Bloquear campos do topo: nome, status, nicho, oferta, mês, semana, links docs/drive, responsáveis
+      var idsBloquear = ['cri-nome','cri-status','cri-nicho','cri-oferta','cri-mes','cri-semana','cri-docs','cri-drive','cri-copy','cri-editor','cri-revisor','cri-gestor'];
+      idsBloquear.forEach(function(fid){
+        var el = document.getElementById(fid);
+        if(el){
+          if(el.tagName==='SELECT') el.disabled = true;
+          else el.readOnly = true;
+          el.style.opacity = '.7';
+          el.style.cursor = 'default';
+        }
+      });
+      // Ocultar botão salvar
+      var saveBtn = document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]');
+      if(saveBtn) saveBtn.style.display = 'none';
+      // Atualizar título
+      var titleEl = document.querySelector('#modal-criativo .modal-title');
+      if(titleEl) titleEl.textContent = 'Visualizar Documento Criativo';
+    }
+  }, 100);
+
   // Cabeçalho do modal
   document.querySelector('#modal-criativo .modal-title').textContent = 'Editar Documento Criativo';
   document.querySelector('#modal-criativo .btn-primary[onclick="salvarCriativo()"]').textContent = '💾 Salvar alterações';
