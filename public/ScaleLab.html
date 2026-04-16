@@ -1071,7 +1071,13 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="btn btn-ghost" onclick="limparFiltrosCri()" style="font-size:12px;padding:6px 12px;">✕ Limpar</button>
         <span id="cri-count" style="font-size:12px;color:var(--text2);margin-left:auto;"></span>
       </div>
+      <!-- Toggle visualização -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+        <button onclick="_criView='lista';renderCriativos();document.getElementById('cri-v2').style.display='none';document.getElementById('criativos-list').style.display='';" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;" id="cri-btn-lista">📋 Lista</button>
+        <button onclick="_criView='nicho';document.getElementById('criativos-list').style.display='none';document.getElementById('cri-v2').style.display='block';renderCriV2();" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;" id="cri-btn-nicho">📂 Por Nicho</button>
+      </div>
       <div id="criativos-list"></div>
+      <div id="cri-v2" style="display:none;"></div>
     </div>
 
     <!-- CHAT -->
@@ -5292,6 +5298,165 @@ function salvarCriativo(){
   document.getElementById('anuncios-container').innerHTML=`<div class="ad-section"><div class="ad-section-title">Anúncio 1</div><div style="padding:12px;"><div class="form-grid"><div class="fg form-full"><label class="fl">Nome do Ad</label><input class="fi ad-nome" placeholder="Nome do anúncio"></div><div class="fg form-full"><label class="fl">Copywriter</label><select class="fs ad-copy"><option>Selecione</option></select></div></div><div class="form-grid-3"><div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div><div class="fg"><label class="fl">Validação</label><div class="toggle-wrap" style="margin-top:6px;"><div class="toggle ad-valid" onclick="this.classList.toggle('on')"></div><span>Não</span></div></div><div class="fg"><label class="fl">Hook Rate (%)</label><input class="fi ad-hook" type="number" placeholder="0.00"></div></div><div class="form-grid-3"><div class="fg"><label class="fl">Hold Rate (%)</label><input class="fi ad-hold" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CPM (R$)</label><input class="fi ad-cpm" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CPC (R$)</label><input class="fi ad-cpc" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">CIC (R$)</label><input class="fi ad-cic" type="number" placeholder="0.00"></div><div class="fg"><label class="fl">Conv. Checkout (%)</label><input class="fi ad-conv" type="number" placeholder="0.00"></div></div><div class="fg"><label class="fl">Texto</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div></div></div>`;
   renderCriativos();
 }
+// ── CRIATIVOS V2 — POR NICHO ──
+var _criView = 'lista';
+var _criV2Nav = { nicho:null, oferta:null, mes:null };
+
+function criV2Back(level){
+  if(level==='home') _criV2Nav = {nicho:null,oferta:null,mes:null};
+  else if(level==='nicho'){ _criV2Nav.oferta=null; _criV2Nav.mes=null; }
+  else if(level==='oferta'){ _criV2Nav.mes=null; }
+  renderCriV2();
+}
+
+function renderCriV2(){
+  var el = document.getElementById('cri-v2');
+  if(!el) return;
+  var nichos = g('sl_nichos',[]);
+  var ofertas = g('sl_ofertas_v2',[]);
+  var h = '';
+
+  // Breadcrumb
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;flex-wrap:wrap;">';
+  h += '<span onclick="criV2Back(\'home\')" style="cursor:pointer;color:var(--accent);font-weight:600;">🎨 Criativos</span>';
+  if(_criV2Nav.nicho){
+    var n = nichos.find(function(x){ return x.id===_criV2Nav.nicho; });
+    h += '<span style="color:var(--text2);">›</span>';
+    h += '<span onclick="criV2Back(\'nicho\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+(n?n.nome:'Nicho')+'</span>';
+  }
+  if(_criV2Nav.oferta){
+    var o = ofertas.find(function(x){ return x.id===_criV2Nav.oferta; });
+    h += '<span style="color:var(--text2);">›</span>';
+    h += '<span onclick="criV2Back(\'oferta\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+(o?o.nome:'Oferta')+'</span>';
+  }
+  if(_criV2Nav.mes){
+    h += '<span style="color:var(--text2);">›</span>';
+    h += '<span style="font-weight:600;color:var(--text);">'+_criV2Nav.mes+'</span>';
+  }
+  h += '</div>';
+
+  // NÍVEL 1: Nichos
+  if(!_criV2Nav.nicho){
+    h += '<div style="font-size:22px;font-weight:800;margin-bottom:20px;">Nichos</div>';
+    if(!nichos.length){
+      h += '<div style="color:var(--text2);font-size:14px;">Nenhum nicho cadastrado. Vá em Configurações para adicionar.</div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">';
+      for(var ni=0;ni<nichos.length;ni++){
+        var nc = nichos[ni];
+        var countCri = criativos.filter(function(c){ return c.nichoId===nc.id; }).length;
+        h += '<div onclick="_criV2Nav.nicho=\''+nc.id+'\';renderCriV2();" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;cursor:pointer;text-align:center;transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
+        h += '<div style="font-size:36px;margin-bottom:10px;">📂</div>';
+        h += '<div style="font-size:15px;font-weight:700;">'+nc.nome+'</div>';
+        h += '<div style="font-size:12px;color:var(--text2);margin-top:4px;">'+countCri+' remessa(s)</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+  }
+  // NÍVEL 2: Ofertas do nicho
+  else if(!_criV2Nav.oferta){
+    var nichoOfertas = ofertas.filter(function(o){ return o.nichoId===_criV2Nav.nicho; });
+    h += '<div style="font-size:20px;font-weight:700;margin-bottom:20px;">Ofertas</div>';
+    if(!nichoOfertas.length){
+      h += '<div style="color:var(--text2);font-size:14px;">Nenhuma oferta neste nicho.</div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">';
+      for(var oi=0;oi<nichoOfertas.length;oi++){
+        var of_ = nichoOfertas[oi];
+        var countOf = criativos.filter(function(c){ return c.ofertaId===of_.id; }).length;
+        h += '<div onclick="_criV2Nav.oferta=\''+of_.id+'\';renderCriV2();" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;cursor:pointer;text-align:center;transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
+        h += '<div style="font-size:36px;margin-bottom:10px;">📦</div>';
+        h += '<div style="font-size:15px;font-weight:700;">'+of_.nome+'</div>';
+        h += '<div style="font-size:12px;color:var(--text2);margin-top:4px;">'+countOf+' remessa(s)</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+  }
+  // NÍVEL 3: Meses da oferta
+  else if(!_criV2Nav.mes){
+    var ofertaCri = criativos.filter(function(c){ return c.ofertaId===_criV2Nav.oferta; });
+    // Extrair meses únicos das remessas
+    var mesesSet = {};
+    ofertaCri.forEach(function(c){
+      if(c.criado){
+        var parts = c.criado.split('/');
+        if(parts.length>=3){
+          var mesNomes = {1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'};
+          var mesNum = parseInt(parts[1]);
+          var ano = parts[2].split(' ')[0];
+          var key = mesNomes[mesNum]+' '+ano;
+          if(!mesesSet[key]) mesesSet[key] = {label:key, mes:parts[1], ano:ano, count:0};
+          mesesSet[key].count++;
+        }
+      }
+    });
+    var meses = Object.values(mesesSet);
+    h += '<div style="font-size:20px;font-weight:700;margin-bottom:20px;">Meses</div>';
+    if(!meses.length){
+      h += '<div style="color:var(--text2);font-size:14px;">Nenhuma remessa nesta oferta.</div>';
+    } else {
+      for(var mi=0;mi<meses.length;mi++){
+        var m = meses[mi];
+        h += '<div onclick="_criV2Nav.mes=\''+m.label.replace(/'/g,"\\'")+'\';renderCriV2();" style="display:flex;align-items:center;gap:14px;padding:16px 20px;border:1px solid var(--border);border-radius:12px;margin-bottom:10px;cursor:pointer;background:var(--bg2);transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+        h += '<span style="font-size:24px;">📅</span>';
+        h += '<span style="font-size:15px;font-weight:600;">'+m.label+'</span>';
+        h += '<span style="margin-left:auto;background:var(--accent);color:#fff;border-radius:20px;padding:2px 12px;font-size:12px;font-weight:700;">'+m.count+'</span>';
+        h += '<span style="color:var(--text2);font-size:14px;">›</span>';
+        h += '</div>';
+      }
+    }
+  }
+  // NÍVEL 4: Remessas do mês
+  else {
+    var ofertaCri2 = criativos.filter(function(c){ return c.ofertaId===_criV2Nav.oferta; });
+    var mesCri = ofertaCri2.filter(function(c){
+      if(!c.criado) return false;
+      var parts = c.criado.split('/');
+      if(parts.length<3) return false;
+      var mesNomes = {1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'};
+      var mesNum = parseInt(parts[1]);
+      var ano = parts[2].split(' ')[0];
+      return (mesNomes[mesNum]+' '+ano) === _criV2Nav.mes;
+    });
+    h += '<div style="font-size:20px;font-weight:700;margin-bottom:20px;">Remessas — '+_criV2Nav.mes+'</div>';
+    if(!mesCri.length){
+      h += '<div style="color:var(--text2);font-size:14px;">Nenhuma remessa neste mês.</div>';
+    } else {
+      for(var ri=0;ri<mesCri.length;ri++){
+        var c = mesCri[ri];
+        var totalAds = (c.ads||[]).length;
+        var validados = (c.ads||[]).filter(function(a){ return a.adStatus==='Validado'||a.validado; }).length;
+        h += '<div style="border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:14px;background:var(--bg2);">';
+        h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">';
+        h += '<span style="font-size:16px;font-weight:700;">'+c.remessa+'</span>';
+        h += '<span class="badge b-blue" style="font-size:10px;">'+c.status+'</span>';
+        h += '</div>';
+        h += '<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">'+totalAds+' anúncio(s) · '+validados+' validado(s) · '+c.criado+'</div>';
+        // Responsáveis
+        h += '<div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;">';
+        if(c.copy) h += '<span style="font-size:11px;">✍️ Copy: <b>'+c.copy+'</b></span>';
+        if(c.editor) h += '<span style="font-size:11px;">✂️ Editor: <b>'+c.editor+'</b></span>';
+        if(c.gestor) h += '<span style="font-size:11px;">🚀 Gestor: <b>'+c.gestor+'</b></span>';
+        h += '</div>';
+        // Ads status
+        (c.ads||[]).forEach(function(a,ai){
+          var st = a.adStatus||(a.validado?'Validado':'A Testar');
+          var stCor = (typeof AD_STATUS_COR!=='undefined'?AD_STATUS_COR:{})[st]||'#6B7280';
+          h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);">';
+          h += '<span style="font-size:13px;font-weight:600;">'+(a.nome||a.formato||'Ad '+(ai+1))+'</span>';
+          h += '<span style="background:'+stCor+';color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;">'+st+'</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+    }
+  }
+
+  el.innerHTML = h;
+}
+
 function limparFiltrosCri(){
   ['cri-filter-nicho','cri-filter-oferta','cri-filter-mes','cri-filter-semana','cri-filter-data','cri-filter-status','cri-filter-ad-status','cri-filter-pessoa'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
