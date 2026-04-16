@@ -1071,13 +1071,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="btn btn-ghost" onclick="limparFiltrosCri()" style="font-size:12px;padding:6px 12px;">✕ Limpar</button>
         <span id="cri-count" style="font-size:12px;color:var(--text2);margin-left:auto;"></span>
       </div>
-      <!-- Toggle visualização -->
-      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-        <button onclick="_criView='lista';renderCriativos();document.getElementById('cri-v2').style.display='none';document.getElementById('criativos-list').style.display='';" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;" id="cri-btn-lista">📋 Lista</button>
-        <button onclick="_criView='nicho';document.getElementById('criativos-list').style.display='none';document.getElementById('cri-v2').style.display='block';renderCriV2();" style="padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;" id="cri-btn-nicho">📂 Por Nicho</button>
-      </div>
-      <div id="criativos-list"></div>
-      <div id="cri-v2" style="display:none;"></div>
+      <div id="criativos-list" style="display:none;"></div>
+      <div id="cri-v2"></div>
     </div>
 
     <!-- CHAT -->
@@ -3327,7 +3322,7 @@ function goTo(id){
   if(id==='dashboard')renderDash();
   if(id==='task')renderTasks();
   if(id==='metricas'){if(!_trafegoTab)_trafegoTab='contingencia';renderTrafegoSidebar();renderTrafegoContent();};
-  if(id==='criativos')renderCriativos();
+  if(id==='criativos'){ renderCriativos(); renderCriV2(); }
   if(id==='chat')renderChat();
   if(id==='swipe')renderSwipe();
   if(id==='arquivos')renderArquivos();
@@ -5408,7 +5403,7 @@ function renderCriV2(){
       }
     }
   }
-  // NÍVEL 4: Remessas do mês
+  // NÍVEL 4: Remessas do mês — usa o mesmo render da lista principal
   else {
     var ofertaCri2 = criativos.filter(function(c){ return c.ofertaId===_criV2Nav.oferta; });
     var mesCri = ofertaCri2.filter(function(c){
@@ -5424,30 +5419,62 @@ function renderCriV2(){
     if(!mesCri.length){
       h += '<div style="color:var(--text2);font-size:14px;">Nenhuma remessa neste mês.</div>';
     } else {
+      // Injetar HTML temporário e chamar renderCriativos com os filtros certos
+      // Renderiza inline os cards completos (reutilizando o formato da lista principal)
+      var _isDir2 = currentUser&&currentUser.cargo==='Diretoria';
+      var PIPELINE = typeof PIPELINE!=='undefined' ? PIPELINE : [];
+      var stCores = {'Gravação':'b-orange','Edição':'b-purple','Análise 1':'b-blue','Análise 2':'b-yellow','Subir':'b-green','No Ar':'b-green','Pausado':'b-red'};
       for(var ri=0;ri<mesCri.length;ri++){
         var c = mesCri[ri];
         var totalAds = (c.ads||[]).length;
         var validados = (c.ads||[]).filter(function(a){ return a.adStatus==='Validado'||a.validado; }).length;
-        h += '<div style="border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:14px;background:var(--bg2);">';
-        h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">';
-        h += '<span style="font-size:16px;font-weight:700;">'+c.remessa+'</span>';
-        h += '<span class="badge b-blue" style="font-size:10px;">'+c.status+'</span>';
+
+        h += '<div class="cri-card" style="margin-bottom:16px;">';
+        // Header
+        h += '<div class="cri-header"><div>';
+        h += '<div class="cri-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
+        h += c.remessa||'Sem remessa';
+        h += ' <span class="badge '+(stCores[c.status]||'b-orange')+'" style="font-size:10px;cursor:pointer;">'+c.status+' ▾</span>';
         h += '</div>';
-        h += '<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">'+totalAds+' anúncio(s) · '+validados+' validado(s) · '+c.criado+'</div>';
-        // Responsáveis
-        h += '<div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;">';
-        if(c.copy) h += '<span style="font-size:11px;">✍️ Copy: <b>'+c.copy+'</b></span>';
-        if(c.editor) h += '<span style="font-size:11px;">✂️ Editor: <b>'+c.editor+'</b></span>';
-        if(c.gestor) h += '<span style="font-size:11px;">🚀 Gestor: <b>'+c.gestor+'</b></span>';
+        h += '<div class="cri-meta">'+totalAds+' anúncio(s) · '+validados+' validado(s) · '+c.criado+'</div>';
+        h += '<div style="display:flex;gap:8px;margin-top:4px;font-size:11px;color:var(--text2);">';
+        if(c.copy) h += '<span>✍️ Copy: <b style="color:var(--text);">'+c.copy+'</b></span>';
+        if(c.editor) h += '<span>✂️ Editor: <b style="color:var(--text);">'+c.editor+'</b></span>';
+        if(c.gestor) h += '<span>🚀 Gestor: <b style="color:var(--text);">'+c.gestor+'</b></span>';
         h += '</div>';
-        // Ads status
+        h += '</div>';
+        // Ações
+        h += '<div class="cri-actions" style="gap:6px;">';
+        h += '<button class="icon-btn" onclick="copiarLinkRemessa('+c.id+')" title="Copiar link">🔗</button>';
+        h += '<button class="icon-btn" onclick="editCriativo('+c.id+')" title="Editar">✏️</button>';
+        if(_isDir2) h += '<button class="icon-btn" onclick="delCriativo('+c.id+')">🗑</button>';
+        h += '</div></div>';
+
+        // Status summary
+        h += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;">';
+        var counts2={};
+        (c.ads||[]).forEach(function(a){ var st2=a.adStatus||(a.validado?'Validado':'A Testar'); counts2[st2]=(counts2[st2]||0)+1; });
+        Object.entries(counts2).forEach(function(e){ h += '<span style="font-size:11px;font-weight:700;color:'+(AD_STATUS_COR[e[0]]||'#6B7280')+';background:'+(AD_STATUS_COR[e[0]]||'#6B7280')+'18;padding:3px 10px;border-radius:20px;">'+e[1]+' '+e[0]+'</span>'; });
+        h += '</div>';
+
+        // Responsáveis com avatar
+        h += '<div style="display:flex;gap:16px;padding:10px 16px;flex-wrap:wrap;border-top:1px solid var(--border);">';
+        if(c.copy) h += '<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#38BDF8;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">'+c.copy.charAt(0).toUpperCase()+'</span><div><div style="font-size:10px;color:var(--text2);">Copy</div><div style="font-size:12px;font-weight:600;">'+c.copy+'</div></div></div>';
+        if(c.editor) h += '<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#818CF8;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">'+c.editor.charAt(0).toUpperCase()+'</span><div><div style="font-size:10px;color:var(--text2);">Editor</div><div style="font-size:12px;font-weight:600;">'+c.editor+'</div></div></div>';
+        if(c.gestor) h += '<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#F97316;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">'+c.gestor.charAt(0).toUpperCase()+'</span><div><div style="font-size:10px;color:var(--text2);">Gestor</div><div style="font-size:12px;font-weight:600;">'+c.gestor+'</div></div></div>';
+        h += '</div>';
+
+        // Anúncios com status
         (c.ads||[]).forEach(function(a,ai){
-          var st = a.adStatus||(a.validado?'Validado':'A Testar');
-          var stCor = (typeof AD_STATUS_COR!=='undefined'?AD_STATUS_COR:{})[st]||'#6B7280';
-          h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);">';
-          h += '<span style="font-size:13px;font-weight:600;">'+(a.nome||a.formato||'Ad '+(ai+1))+'</span>';
-          h += '<span style="background:'+stCor+';color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;">'+st+'</span>';
+          var adSt = a.adStatus||(a.validado?'Validado':'A Testar');
+          var adStCor = AD_STATUS_COR[adSt]||'#6B7280';
+          h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);gap:8px;">';
+          h += '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:13px;font-weight:600;">'+(a.nome||a.formato||'Ad '+(ai+1))+'</span>';
+          if(a.formato) h += '<span style="font-size:10px;color:var(--text2);background:var(--bg3);padding:2px 8px;border-radius:4px;">'+a.formato+'</span>';
           h += '</div>';
+          h += '<select onchange="setAdStatus('+c.id+','+ai+',this.value)" style="background:'+adStCor+';color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;">';
+          AD_STATUS_LIST.forEach(function(st){ h += '<option value="'+st+'"'+(adSt===st?' selected':'')+' style="background:#fff;color:#333;">'+st+'</option>'; });
+          h += '</select></div>';
         });
         h += '</div>';
       }
