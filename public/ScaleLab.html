@@ -3005,6 +3005,8 @@ async function syncAllFromServer(){
     tasks = g('tasks',[]);
     criativos = g('criativos',[]);
     _lastSync = Math.floor(Date.now()/1000);
+    // Atualiza badge de notificações após sync completo
+    if(typeof updateNotifBadge==='function') try{ updateNotifBadge(); }catch(e){}
   } catch(e){}
 }
 
@@ -11004,8 +11006,18 @@ function restoreSession(){
   currentUser = user;
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
+  // Atualiza badge de notificações quando sessão é restaurada
+  try{ updateNotifBadge(); }catch(e){}
+  // Força atualização após sync
+  setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 2000);
+  setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 5000);
   return true;
 }
+
+// Atualiza badge a cada 10s automaticamente
+setInterval(function(){
+  if(currentUser) try{ updateNotifBadge(); }catch(e){}
+}, 10000);
 
 // ── MÉTRICAS DE ADS (RedTrack) ──
 let adsFilter = { preset:'today', from:'', to:'' };
