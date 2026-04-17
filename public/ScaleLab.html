@@ -2469,12 +2469,6 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     </div>
     <!-- Campos exclusivos de Análise de dados -->
     <div id="ritual-analise-campos" style="display:none;flex-direction:column;gap:14px;">
-      <div class="fg">
-        <label class="fl">Projeto</label>
-        <select class="fs" id="ritual-projeto">
-          <option value="">Sem projeto</option>
-        </select>
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="fg">
           <label class="fl">Nicho</label>
@@ -8970,40 +8964,39 @@ function renderRituais(){
   renderRituaisFiltros();
 
   // Tela de projetos para Análise de dados (quando nenhum projeto aberto)
+  // Projetos = Ofertas cadastradas em Configurações > Ofertas
   if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel===null){
     const blocoFiltros = document.getElementById('rituais-analise-filtros');
     if(blocoFiltros) blocoFiltros.style.display = 'none';
-    const projetos = ritGetProjetos();
+    const ofertas = g('sl_ofertas_v2', []);
     const isDir = currentUser && currentUser.cargo==='Diretoria';
     const meuNome = (currentUser&&currentUser.nome)||'';
     const countEl = document.getElementById('rituais-count');
-    if(countEl) countEl.textContent = projetos.length + ' projeto'+(projetos.length!==1?'s':'');
+    if(countEl) countEl.textContent = ofertas.length + ' projeto'+(ofertas.length!==1?'s':'');
     let html = '<div style="font-size:22px;font-weight:800;margin-bottom:14px;">Projetos</div>';
+    if(!ofertas.length){
+      html += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhuma oferta cadastrada. Cadastre em Configurações > Ofertas.</div></div>';
+      el.innerHTML = html;
+      return;
+    }
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
-    projetos.forEach(p=>{
-      // Contar análises desse projeto visíveis para o usuário
+    ofertas.forEach(o=>{
+      // Contar análises dessa oferta visíveis para o usuário
       const qtde = rituais.filter(r=>{
         if(r.tipo!=='Análise de dados') return false;
-        if(r.projetoId!==p.id) return false;
+        if(r.ofertaId!==o.id) return false;
         if(isDir) return true;
         return r.participantes && r.participantes.includes(meuNome);
       }).length;
-      html += `<div onclick="ritAbrirProjeto(${p.id})" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+      html += `<div onclick="ritAbrirProjeto('${o.id}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
         <div style="height:110px;background:#E0E7FF;display:flex;align-items:center;justify-content:center;font-size:56px;">📁</div>
         <div style="padding:14px 16px;text-align:center;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${p.nome}</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${qtde} análise${qtde!==1?'s':''}</div>
-          ${isDir?`<span onclick="event.stopPropagation();ritDelProjeto(${p.id})" style="font-size:11px;color:var(--red);cursor:pointer;">🗑 Excluir</span>`:''}
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${o.nome}</div>
+          <div style="font-size:12px;color:var(--text2);">${qtde} análise${qtde!==1?'s':''}</div>
         </div>
       </div>`;
     });
-    if(isDir){
-      html += `<div onclick="ritAddProjeto()" style="background:transparent;border:2px dashed var(--border);border-radius:14px;min-height:180px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:14px;font-weight:600;">+ Novo Projeto</div>`;
-    }
     html += '</div>';
-    if(!projetos.length && !isDir){
-      html = '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum projeto disponível.</div></div>';
-    }
     el.innerHTML = html;
     return;
   }
@@ -9036,9 +9029,9 @@ function renderRituais(){
   });
   if(ritualTipoFiltro) lista = lista.filter(r=>r.tipo===ritualTipoFiltro);
 
-  // Filtrar por projeto selecionado em Análise de dados
+  // Filtrar por projeto (=oferta) selecionado em Análise de dados
   if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel!==null){
-    lista = lista.filter(r=>r.projetoId===ritualProjetoSel);
+    lista = lista.filter(r=>r.ofertaId===ritualProjetoSel);
   }
 
   // Filtros por tipo
@@ -9056,10 +9049,10 @@ function renderRituais(){
   const countEl = document.getElementById('rituais-count');
   if(countEl) countEl.textContent = lista.length + ' ritual'+(lista.length!==1?'s':'');
 
-  // Breadcrumb/voltar quando dentro de projeto
+  // Breadcrumb/voltar quando dentro de projeto (=oferta)
   let headerHtml = '';
   if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel!==null){
-    const proj = ritGetProjetos().find(p=>p.id===ritualProjetoSel);
+    const proj = g('sl_ofertas_v2',[]).find(o=>o.id===ritualProjetoSel);
     headerHtml = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><span onclick="ritVoltarProjetos()" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Projetos</span><span style="color:var(--text2);">/</span><span style="font-size:15px;font-weight:700;">${proj?proj.nome:'Projeto'}</span></div>`;
   }
 
