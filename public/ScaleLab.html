@@ -712,8 +712,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     </div>
   </nav>
   <div class="sidebar-bot">
-    <div class="nav-item" onclick="goTo('notificacoes')">
-      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+    <div class="nav-item" id="nav-notif" onclick="goTo('notificacoes')">
+      <svg class="nav-svg" id="nav-notif-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       Notificações
     </div>
     <div class="nav-item nav-item-cfg" onclick="goTo('configuracoes')">
@@ -1105,6 +1105,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             <div id="chat-suggestions" style="display:none;position:absolute;bottom:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.4);max-height:200px;overflow-y:auto;z-index:200;margin-bottom:4px;"></div>
             <input type="file" id="chat-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.mp4,.mov" style="display:none;" onchange="chatAnexarArquivos(this)">
             <button onclick="document.getElementById('chat-file-input').click()" title="Anexar arquivo" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">📎</button>
+            <button id="chat-mic-btn" onclick="toggleGravarAudio()" title="Gravar áudio" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">🎤</button>
             <input class="chat-input" id="chat-input" placeholder="Mensagem... use @ para marcar alguém ou # para pasta" onkeydown="sendMsg(event)" onkeyup="chatKeyup(event,this)">
             <div class="chat-send" onclick="sendMsg({key:'Enter'})">➤</div>
           </div>
@@ -3020,12 +3021,16 @@ async function syncFromServer(){
         if(cur==='task') renderTasks();
         if(cur==='dashboard') renderDash();
         if(cur==='criativos') renderCriativos();
+        if(cur==='chat' && typeof renderChat==='function') renderChat();
+        if(cur==='notificacoes' && typeof renderNotificacoes==='function') renderNotificacoes();
       }
       // Re-render task detail modal if open
       if(typeof taskDetalheId !== 'undefined' && taskDetalheId){
         const td = tasks.find(t=>t.id===taskDetalheId);
         if(td) renderTaskCmts(td);
       }
+      // Atualiza badge de notificações sempre que sync trouxer dados novos
+      if(data.sl_notifs && typeof updateNotifBadge==='function') try{ updateNotifBadge(); }catch(e){}
     }
     _lastSync = timestamp;
   } catch(e){}
@@ -6116,6 +6121,10 @@ function renderChat(){
         if(arq.tipo&&arq.tipo.startsWith('image/')){
           return `<a href="${arq.base64}" target="_blank"><img src="${arq.base64}" style="max-width:180px;max-height:120px;border-radius:6px;border:1px solid var(--border);display:block;"></a>`;
         }
+        if(arq.isAudio || (arq.tipo&&arq.tipo.startsWith('audio/'))){
+          var dur = arq.duracao ? ' · '+Math.floor(arq.duracao/60)+':'+(arq.duracao%60<10?'0':'')+(arq.duracao%60) : '';
+          return `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:8px;"><span style="font-size:14px;">🎤</span><audio controls src="${arq.base64}" style="height:32px;"></audio><span style="font-size:10px;color:var(--text2);">${dur.replace(' · ','')}</span></div>`;
+        }
         return `<a href="${arq.base64}" download="${arq.nome}" style="display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);text-decoration:none;">📎 ${arq.nome}</a>`;
       }).join('')+'</div>';
     }
@@ -6129,6 +6138,73 @@ function renderChat(){
     </div>`;
   }).join('');
   el.scrollTop=el.scrollHeight;
+}
+
+// ── GRAVAÇÃO DE ÁUDIO NO CHAT ──
+var _audioRecorder = null;
+var _audioChunks = [];
+var _audioStream = null;
+var _audioStartTime = null;
+var _audioTimer = null;
+
+async function toggleGravarAudio(){
+  var btn = document.getElementById('chat-mic-btn');
+  if(_audioRecorder && _audioRecorder.state === 'recording'){
+    // Parar gravação
+    _audioRecorder.stop();
+    if(_audioTimer){ clearInterval(_audioTimer); _audioTimer = null; }
+    if(btn){ btn.textContent = '🎤'; btn.style.background = 'var(--bg3)'; btn.style.color = 'var(--text2)'; btn.title = 'Gravar áudio'; }
+    return;
+  }
+  // Começar gravação
+  try {
+    _audioStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    _audioRecorder = new MediaRecorder(_audioStream);
+    _audioChunks = [];
+    _audioStartTime = Date.now();
+
+    _audioRecorder.ondataavailable = function(e){
+      if(e.data.size > 0) _audioChunks.push(e.data);
+    };
+    _audioRecorder.onstop = function(){
+      var duracao = Math.floor((Date.now() - _audioStartTime)/1000);
+      var blob = new Blob(_audioChunks, {type:'audio/webm'});
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        _chatAnexos.push({
+          nome: 'audio_'+Date.now()+'.webm',
+          tipo: 'audio/webm',
+          base64: ev.target.result,
+          duracao: duracao,
+          isAudio: true
+        });
+        renderChatAnexoPreview();
+      };
+      reader.readAsDataURL(blob);
+      // Para o stream
+      if(_audioStream) _audioStream.getTracks().forEach(function(t){ t.stop(); });
+      _audioStream = null;
+      _audioRecorder = null;
+    };
+
+    _audioRecorder.start();
+
+    // Timer visual
+    if(btn){
+      btn.textContent = '⏹';
+      btn.style.background = '#EF4444';
+      btn.style.color = '#fff';
+      btn.title = 'Parar gravação';
+      _audioTimer = setInterval(function(){
+        var s = Math.floor((Date.now() - _audioStartTime)/1000);
+        var m = Math.floor(s/60);
+        var sec = s%60;
+        btn.textContent = '⏹ '+m+':'+(sec<10?'0':'')+sec;
+      }, 500);
+    }
+  } catch(e){
+    alert('Não foi possível acessar o microfone. Verifique as permissões do navegador.');
+  }
 }
 
 // Chat attachments buffer
@@ -6155,9 +6231,12 @@ function renderChatAnexoPreview(){
   wrap.style.display='flex';
   wrap.innerHTML=_chatAnexos.map((a,i)=>{
     const isImg=a.tipo&&a.tipo.startsWith('image/');
+    const isAudio=a.isAudio||(a.tipo&&a.tipo.startsWith('audio/'));
+    var iconHtml = isImg ? `<img src="${a.base64}" style="width:24px;height:24px;object-fit:cover;border-radius:3px;">` : (isAudio ? '🎤' : '📎');
+    var label = isAudio ? ('Áudio '+(a.duracao?Math.floor(a.duracao/60)+':'+(a.duracao%60<10?'0':'')+(a.duracao%60):'')) : a.nome;
     return `<div style="position:relative;display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;max-width:140px;">
-      ${isImg?`<img src="${a.base64}" style="width:24px;height:24px;object-fit:cover;border-radius:3px;">`:'📎'}
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.nome}</span>
+      ${iconHtml}
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
       <button onclick="_chatAnexos.splice(${i},1);renderChatAnexoPreview()" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:11px;padding:0;margin-left:2px;">✕</button>
     </div>`;
   }).join('');
@@ -8070,21 +8149,41 @@ async function addNotif(destId, destNome, tipo, titulo, texto, refId){
 }
 
 function updateNotifBadge(){
-  var nav = document.querySelector('.sidebar-bot .nav-item');
+  var nav = document.getElementById('nav-notif') || document.querySelector('.sidebar-bot .nav-item');
   if(!nav) return;
   var myId = currentUser ? currentUser.id : null;
   if(!myId) return;
   var naoLidas = getNotifs().filter(function(n){ return n.destId===myId && !n.lida; }).length;
   var existing = nav.querySelector('.notif-badge');
   if(existing) existing.remove();
+  var svg = document.getElementById('nav-notif-svg');
   if(naoLidas > 0){
     var badge = document.createElement('span');
     badge.className = 'notif-badge';
     badge.textContent = naoLidas > 99 ? '99+' : naoLidas;
-    badge.style.cssText = 'background:#EF4444;color:#fff;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;margin-left:auto;';
+    badge.style.cssText = 'background:#EF4444;color:#fff;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;margin-left:auto;animation:pulseBell 1.5s infinite;box-shadow:0 0 8px rgba(239,68,68,.5);';
     nav.appendChild(badge);
+    // Animação no sino
+    if(svg){
+      svg.style.color = '#EF4444';
+      svg.style.animation = 'shakeBell 2s infinite';
+    }
+  } else {
+    if(svg){
+      svg.style.color = '';
+      svg.style.animation = '';
+    }
   }
 }
+
+// Adiciona keyframes se não existir
+(function(){
+  if(document.getElementById('notif-bell-anim')) return;
+  var style = document.createElement('style');
+  style.id = 'notif-bell-anim';
+  style.textContent = '@keyframes pulseBell{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}@keyframes shakeBell{0%,90%,100%{transform:rotate(0)}10%,30%{transform:rotate(-10deg)}20%{transform:rotate(10deg)}}';
+  document.head.appendChild(style);
+})();
 
 function detectarMencoes(texto){
   // Captura @Nome (uma palavra - letras/acentos/números/underscore, sem espaços)
