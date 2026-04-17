@@ -583,13 +583,36 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <label class="login-label" for="login-email">E-mail</label>
     <input class="login-input" type="email" id="login-email" placeholder="seu@email.com" style="margin-bottom:12px;">
     <label class="login-label" for="login-pwd">Senha</label>
-    <input class="login-input" type="password" id="login-pwd"
-      placeholder="••••••••••"
-      onkeydown="if(event.key==='Enter')tentarLogin()">
+    <div style="position:relative;">
+      <input class="login-input" type="password" id="login-pwd"
+        placeholder="••••••••••"
+        style="padding-right:44px;"
+        onkeydown="if(event.key==='Enter')tentarLogin()">
+      <button type="button" onclick="togglePwdLogin()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:6px;color:#9CA3AF;" id="pwd-eye">👁</button>
+    </div>
+    <div style="text-align:right;margin:8px 0 12px;">
+      <a onclick="abrirEsqueciSenha()" style="color:#38BDF8;font-size:12px;cursor:pointer;text-decoration:none;">Esqueceu a senha?</a>
+    </div>
     <button class="login-btn" onclick="tentarLogin()">Entrar →</button>
     <div class="login-error" id="login-error"></div>
   </div>
   <div class="login-footer">ScaleLab · Sistema interno · Acesso restrito</div>
+</div>
+
+<!-- MODAL ESQUECI SENHA -->
+<div id="esqueci-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:28px 32px;width:420px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.3);color:#1F2937;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <span style="font-size:18px;font-weight:700;">🔑 Esqueci minha senha</span>
+      <button onclick="fecharEsqueciSenha()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#9CA3AF;">✕</button>
+    </div>
+    <div style="font-size:13px;color:#6B7280;margin-bottom:16px;">Digite seu e-mail cadastrado. Uma notificação será enviada pra Diretoria redefinir sua senha.</div>
+    <input id="esqueci-email" placeholder="seu@email.com" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:14px;color:#1F2937;outline:none;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="fecharEsqueciSenha()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Cancelar</button>
+      <button onclick="enviarEsqueciSenha()" style="background:#38BDF8;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;cursor:pointer;font-weight:700;">Enviar</button>
+    </div>
+  </div>
 </div>
 
 <!-- SIDEBAR -->
@@ -10507,6 +10530,75 @@ function getCargoPermissions(cargo){
   };
   p.allowedStatuses = cargo==='Diretoria' ? Object.values(STATUS_PIPELINE).map((_,i)=>Object.keys(STATUS_PIPELINE)[i]) : (statusRanges[cargo]||[]);
   return p;
+}
+
+function togglePwdLogin(){
+  var inp = document.getElementById('login-pwd');
+  var eye = document.getElementById('pwd-eye');
+  if(!inp) return;
+  if(inp.type === 'password'){ inp.type = 'text'; if(eye) eye.textContent = '🙈'; }
+  else { inp.type = 'password'; if(eye) eye.textContent = '👁'; }
+}
+
+function abrirEsqueciSenha(){
+  var modal = document.getElementById('esqueci-modal');
+  if(!modal) return;
+  modal.style.display = 'flex';
+  var emailInp = document.getElementById('login-email');
+  var esqEmail = document.getElementById('esqueci-email');
+  if(esqEmail && emailInp) esqEmail.value = emailInp.value || '';
+  setTimeout(function(){ if(esqEmail) esqEmail.focus(); }, 100);
+}
+
+function fecharEsqueciSenha(){
+  var modal = document.getElementById('esqueci-modal');
+  if(modal) modal.style.display = 'none';
+}
+
+async function enviarEsqueciSenha(){
+  var email = (document.getElementById('esqueci-email').value||'').trim().toLowerCase();
+  if(!email){ alert('Digite seu e-mail.'); return; }
+  // Verifica se o email existe
+  var usuarios = getUsuarios();
+  var user = usuarios.find(function(u){ return u.email && u.email.toLowerCase()===email; });
+  if(!user){
+    alert('E-mail não cadastrado. Entre em contato com a Diretoria.');
+    return;
+  }
+  // Cria notificação pra Diretoria
+  var diretorias = usuarios.filter(function(u){ return u.cargo==='Diretoria'; });
+  if(!diretorias.length){
+    alert('Nenhuma Diretoria cadastrada pra receber a solicitação.');
+    return;
+  }
+  try {
+    // Busca notifs atuais do servidor pra não perder
+    var r = await fetch(API_BASE+'/api/store', {signal: AbortSignal.timeout(3000)});
+    var serverData = r.ok ? await r.json() : {};
+    var notifs = Array.isArray(serverData.sl_notifs) ? serverData.sl_notifs.slice() : [];
+    diretorias.forEach(function(dir){
+      notifs.unshift({
+        id: Date.now()+Math.random(),
+        destId: dir.id,
+        destNome: dir.nome,
+        tipo: 'senha',
+        titulo: '🔑 Solicitação de redefinição de senha',
+        texto: user.nome+' ('+email+') esqueceu a senha e pediu redefinição.',
+        refId: user.id,
+        lida: false,
+        criado: Date.now()
+      });
+    });
+    if(notifs.length > 500) notifs = notifs.slice(0,500);
+    await fetch(API_BASE+'/api/store/sl_notifs', {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(notifs)
+    });
+    alert('✅ Solicitação enviada! A Diretoria foi notificada.');
+    fecharEsqueciSenha();
+  } catch(e){
+    alert('❌ Erro ao enviar. Verifique a conexão.');
+  }
 }
 
 async function tentarLogin(){
