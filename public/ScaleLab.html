@@ -1090,18 +1090,14 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <!-- CHAT -->
     <div class="page" id="page-chat">
       <div class="chat-wrap">
-        <div class="chat-side">
-          <div class="chat-side-title">💬 Chats</div>
-          <div class="chat-chan active" id="chan-geral">
-            <span style="color:var(--text2);">#</span>
-            <span id="chan-name-label">geral</span>
-          </div>
+        <div class="chat-side" id="chat-sidebar-container">
+          <!-- populado dinamicamente por renderChatSidebar() -->
         </div>
         <div class="chat-body">
           <div class="chat-topbar">
-            <span style="color:var(--text2);">#</span>
+            <span id="chat-topbar-icon" style="color:var(--text2);">#</span>
             <span id="chat-chan-title">geral</span>
-            <span style="font-size:11px;color:var(--text2);margin-left:4px;">· Chat do projeto</span>
+            <span style="font-size:11px;color:var(--text2);margin-left:4px;" id="chat-topbar-sub">· Chat geral da empresa</span>
           </div>
           <div class="chat-msgs" id="chat-msgs"></div>
           <div id="chat-attach-preview" style="display:none;padding:8px 14px 0;gap:8px;flex-wrap:wrap;"></div>
@@ -2958,7 +2954,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -5958,11 +5954,157 @@ function parseChatText(txt){
   return txt;
 }
 
+// ══ SISTEMA DE CHAT MULTI-CANAL ══
+// Canais:
+//  - geral: todos veem
+//  - setor_XXX: só cargo XXX + Diretoria
+//  - direct_uid1_uid2: só esses 2 usuários (ids ordenados)
+var _chatCanalAtual = 'geral';
+var _chatIndividuaisAberto = false;
+
+var SETORES_CHAT = [
+  {id:'trafego', label:'Tráfego', cargo:'Gestor de Tráfego', cor:'#38BDF8', icon:'📈'},
+  {id:'copy',    label:'Copy',    cargo:'Copy',              cor:'#F97316', icon:'✍️'},
+  {id:'editor',  label:'Editores',cargo:'Editor',            cor:'#818CF8', icon:'✂️'},
+  {id:'infra',   label:'Infra',   cargo:'Infra',             cor:'#FBBF24', icon:'🔧'},
+  {id:'spy',     label:'Spy',     cargo:'Spy',               cor:'#22C55E', icon:'🔍'}
+];
+
+function getChatsData(){
+  // Retorna o objeto unificado de mensagens por canal
+  var data = g('sl_chats', null);
+  if(!data){
+    // Migração: msgs legacy → geral
+    var legacy = g('msgs', []);
+    data = { geral: legacy };
+    s('sl_chats', data);
+  }
+  return data;
+}
+
+function saveChatsData(data){
+  s('sl_chats', data);
+  try { syncKey('sl_chats'); } catch(e){}
+}
+
+function canalAtualMsgs(){
+  var data = getChatsData();
+  return data[_chatCanalAtual] || [];
+}
+
+function setChatCanal(canalId){
+  _chatCanalAtual = canalId;
+  renderChatSidebar();
+  renderChat();
+}
+
+function podeAcessarSetor(cargoSetor){
+  if(!currentUser) return false;
+  return currentUser.cargo === cargoSetor || currentUser.cargo === 'Diretoria';
+}
+
+function directChanId(uidA, uidB){
+  var a = String(uidA), b = String(uidB);
+  return 'direct_' + (a < b ? a+'_'+b : b+'_'+a);
+}
+
+function toggleChatIndividuais(){
+  _chatIndividuaisAberto = !_chatIndividuaisAberto;
+  renderChatSidebar();
+}
+
+function renderChatSidebar(){
+  var el = document.getElementById('chat-sidebar-container');
+  if(!el) return;
+  var usuarios = getUsuarios().filter(function(u){ return u.ativo !== false; });
+  var h = '<div class="chat-side-title">💬 Chats</div>';
+
+  // CANAL GERAL
+  var atGeral = _chatCanalAtual === 'geral';
+  h += '<div onclick="setChatCanal(\'geral\')" class="chat-chan'+(atGeral?' active':'')+'" style="cursor:pointer;">';
+  h += '<span style="color:var(--text2);">#</span>';
+  h += '<span>geral</span>';
+  h += '</div>';
+
+  // SETORES (só aparece se o usuário puder acessar)
+  SETORES_CHAT.forEach(function(s){
+    if(!podeAcessarSetor(s.cargo)) return;
+    var at = _chatCanalAtual === 'setor_'+s.id;
+    h += '<div onclick="setChatCanal(\'setor_'+s.id+'\')" class="chat-chan'+(at?' active':'')+'" style="cursor:pointer;">';
+    h += '<span>'+s.icon+'</span>';
+    h += '<span>'+s.label+'</span>';
+    h += '</div>';
+  });
+
+  // CHAT INDIVIDUAL (expansível)
+  h += '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">';
+  h += '<div onclick="toggleChatIndividuais()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:6px 10px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">';
+  h += '<span>👤 Individual</span>';
+  h += '<span style="font-size:10px;">'+(_chatIndividuaisAberto?'▼':'›')+'</span>';
+  h += '</div>';
+  if(_chatIndividuaisAberto && currentUser){
+    usuarios.filter(function(u){ return u.id !== currentUser.id; }).forEach(function(u){
+      var chanId = directChanId(currentUser.id, u.id);
+      var at = _chatCanalAtual === chanId;
+      var data = getChatsData();
+      var temNaoLida = (data[chanId] || []).some(function(m){ return m.destinatario === currentUser.id && !m.lida; });
+      h += '<div onclick="setChatCanal(\''+chanId+'\')" class="chat-chan'+(at?' active':'')+'" style="cursor:pointer;padding-left:22px;display:flex;align-items:center;gap:8px;">';
+      h += '<span style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">'+(u.nome||'U').charAt(0).toUpperCase()+'</span>';
+      h += '<span style="flex:1;">'+u.nome+'</span>';
+      if(temNaoLida) h += '<span style="background:#EF4444;width:8px;height:8px;border-radius:50%;"></span>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function _titleCanal(canalId){
+  if(canalId === 'geral') return {icon:'#', title:'geral', sub:'Chat geral da empresa'};
+  if(canalId.indexOf('setor_')===0){
+    var sid = canalId.replace('setor_','');
+    var s = SETORES_CHAT.find(function(x){ return x.id===sid; });
+    if(s) return {icon:s.icon, title:s.label, sub:'Canal restrito · '+s.cargo+' + Diretoria'};
+  }
+  if(canalId.indexOf('direct_')===0){
+    var parts = canalId.replace('direct_','').split('_');
+    if(currentUser){
+      var otherId = parts[0] === String(currentUser.id) ? parts[1] : parts[0];
+      var user = getUsuarios().find(function(u){ return String(u.id) === otherId; });
+      if(user) return {icon:'👤', title:user.nome, sub:'Conversa privada'};
+    }
+  }
+  return {icon:'#', title:canalId, sub:''};
+}
+
 function renderChat(){
   const el=document.getElementById('chat-msgs');
-  document.getElementById('chan-name-label').textContent=cfg.projeto||'geral';
-  if(!msgs.length){el.innerHTML='<div style="text-align:center;color:var(--text2);padding:24px;font-size:13px;">Nenhuma mensagem ainda.<br>Seja o primeiro a enviar uma mensagem!</div>';return;}
-  el.innerHTML=msgs.map(m=>{
+  renderChatSidebar();
+
+  // Atualiza topbar
+  var info = _titleCanal(_chatCanalAtual);
+  var titleEl = document.getElementById('chat-chan-title');
+  var iconEl = document.getElementById('chat-topbar-icon');
+  var subEl = document.getElementById('chat-topbar-sub');
+  if(titleEl) titleEl.textContent = info.title;
+  if(iconEl) iconEl.textContent = info.icon;
+  if(subEl) subEl.textContent = '· '+info.sub;
+
+  // Marca mensagens como lidas (para chats diretos)
+  if(_chatCanalAtual.indexOf('direct_')===0 && currentUser){
+    var data = getChatsData();
+    var arr = data[_chatCanalAtual] || [];
+    var changed = false;
+    arr.forEach(function(m){ if(m.destinatario === currentUser.id && !m.lida){ m.lida = true; changed = true; } });
+    if(changed){ data[_chatCanalAtual] = arr; saveChatsData(data); }
+  }
+
+  var msgsCanal = canalAtualMsgs();
+  if(!msgsCanal.length){
+    el.innerHTML='<div style="text-align:center;color:var(--text2);padding:24px;font-size:13px;">Nenhuma mensagem ainda.<br>Seja o primeiro a enviar uma mensagem!</div>';
+    return;
+  }
+  el.innerHTML=msgsCanal.map(m=>{
     const isBot=m.bot;
     const av=isBot?'🤖':(m.nome||'U')[0].toUpperCase();
     const avStyle=isBot?'background:rgba(249,115,22,.2);font-size:14px;':'';
@@ -6076,17 +6218,52 @@ function sendMsgDirect(inp){
   const t=inp.value.trim();
   if(!t&&!_chatAnexos.length)return;
   const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const msg={id:Date.now(),nome:cfg.nome||'Você',texto:t,hora};
+  const autorId = currentUser ? currentUser.id : '';
+  const autorNome = (currentUser && currentUser.nome) || cfg.nome || 'Você';
+  const msg={id:Date.now(), autorId, nome:autorNome, texto:t, hora};
   if(_chatAnexos.length){msg.arquivos=[..._chatAnexos]; _chatAnexos=[];}
-  msgs.push(msg);
-  s('msgs',msgs);
-  // Notificar menções no chat
-  if(t) notificarMencoes(t, 'mencao', 'Você foi mencionado no chat', msg.id);
+
+  // Se for chat individual, marca destinatário
+  if(_chatCanalAtual.indexOf('direct_')===0 && currentUser){
+    var parts = _chatCanalAtual.replace('direct_','').split('_');
+    var otherId = parts[0] === String(currentUser.id) ? parts[1] : parts[0];
+    msg.destinatario = otherId;
+    msg.lida = false;
+    // Notifica o destinatário
+    var destUser = getUsuarios().find(function(u){ return String(u.id) === otherId; });
+    if(destUser) try{ addNotif(destUser.id, destUser.nome, 'mencao', 'Nova mensagem de '+autorNome, (t||'[arquivo]').substring(0,100), msg.id); }catch(e){}
+  }
+  // Canal de setor: notifica pessoas do setor
+  else if(_chatCanalAtual.indexOf('setor_')===0){
+    var sid = _chatCanalAtual.replace('setor_','');
+    var setorInfo = SETORES_CHAT.find(function(x){ return x.id===sid; });
+    if(setorInfo){
+      getUsuarios().filter(function(u){ return u.cargo===setorInfo.cargo && u.id !== autorId; })
+        .forEach(function(u){ try{ addNotif(u.id, u.nome, 'mencao', 'Nova mensagem em '+setorInfo.label, autorNome+': '+(t||'[arquivo]').substring(0,80), msg.id); }catch(e){} });
+    }
+  }
+
+  // Salva no canal atual
+  var data = getChatsData();
+  if(!data[_chatCanalAtual]) data[_chatCanalAtual] = [];
+  data[_chatCanalAtual].push(msg);
+  saveChatsData(data);
+
+  // Mantém msgs (legado) sincronizado com o canal geral
+  if(_chatCanalAtual === 'geral'){
+    msgs = data.geral || [];
+    s('msgs', msgs);
+    fetch(API_BASE+'/api/store/msgs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs)}).catch(()=>{});
+  }
+
+  // Notificar menções @
+  if(t) try{ notificarMencoes(t, 'mencao', 'Você foi mencionado no chat', msg.id); }catch(e){}
+
   inp.value='';
-  document.getElementById('chat-suggestions').style.display='none';
+  var sugg = document.getElementById('chat-suggestions');
+  if(sugg) sugg.style.display='none';
   renderChatAnexoPreview();
   renderChat();
-  fetch(API_BASE+'/api/store/msgs',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(msgs)}).catch(()=>{});
 }
 function sendMsg(e){
   if(e.key!=='Enter')return;
