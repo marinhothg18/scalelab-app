@@ -10479,7 +10479,11 @@ function getUsuarios(){
   ];
   try{ return JSON.parse(localStorage.getItem('sl_usuarios'))||def; }catch(e){ return def; }
 }
-function saveUsuarios(list){ localStorage.setItem('sl_usuarios', JSON.stringify(list)); }
+function saveUsuarios(list){
+  localStorage.setItem('sl_usuarios', JSON.stringify(list));
+  // Sincroniza com o servidor pra outros usuários verem
+  try { syncKey('sl_usuarios'); } catch(e){}
+}
 
 let currentUser = null; // { id, nome, email, cargo, ativo }
 
