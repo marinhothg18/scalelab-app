@@ -885,22 +885,26 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
                 <option value="">Todas as ofertas</option>
               </select>
             </span>
-            <select class="fs" id="rit-f-mes" onchange="renderRituais()" style="font-size:12px;padding:6px 10px;min-width:130px;">
-              <option value="">Todos os meses</option>
-              <option value="01">Janeiro</option><option value="02">Fevereiro</option>
-              <option value="03">Março</option><option value="04">Abril</option>
-              <option value="05">Maio</option><option value="06">Junho</option>
-              <option value="07">Julho</option><option value="08">Agosto</option>
-              <option value="09">Setembro</option><option value="10">Outubro</option>
-              <option value="11">Novembro</option><option value="12">Dezembro</option>
-            </select>
-            <select class="fs" id="rit-f-semana" onchange="renderRituais()" style="font-size:12px;padding:6px 10px;min-width:120px;">
-              <option value="">Todas as semanas</option>
-              <option value="1">Semana 1</option>
-              <option value="2">Semana 2</option>
-              <option value="3">Semana 3</option>
-              <option value="4">Semana 4</option>
-            </select>
+            <span id="rit-f-mes-wrap">
+              <select class="fs" id="rit-f-mes" onchange="renderRituais()" style="font-size:12px;padding:6px 10px;min-width:130px;">
+                <option value="">Todos os meses</option>
+                <option value="01">Janeiro</option><option value="02">Fevereiro</option>
+                <option value="03">Março</option><option value="04">Abril</option>
+                <option value="05">Maio</option><option value="06">Junho</option>
+                <option value="07">Julho</option><option value="08">Agosto</option>
+                <option value="09">Setembro</option><option value="10">Outubro</option>
+                <option value="11">Novembro</option><option value="12">Dezembro</option>
+              </select>
+            </span>
+            <span id="rit-f-semana-wrap">
+              <select class="fs" id="rit-f-semana" onchange="renderRituais()" style="font-size:12px;padding:6px 10px;min-width:120px;">
+                <option value="">Todas as semanas</option>
+                <option value="1">Semana 1</option>
+                <option value="2">Semana 2</option>
+                <option value="3">Semana 3</option>
+                <option value="4">Semana 4</option>
+              </select>
+            </span>
             <button class="btn btn-ghost" onclick="limparFiltrosAnalise()" style="font-size:12px;padding:6px 12px;">✕ Limpar</button>
           </div>
           <div id="rituais-list"></div>
@@ -8966,16 +8970,32 @@ function renderRituais(){
   // Tela de projetos para Análise de dados (quando nenhum projeto aberto)
   // Projetos = Ofertas cadastradas em Configurações > Ofertas
   if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel===null){
+    // Mostrar filtros Nicho/Oferta na tela de Projetos, esconder mês/semana
     const blocoFiltros = document.getElementById('rituais-analise-filtros');
-    if(blocoFiltros) blocoFiltros.style.display = 'none';
-    const ofertas = g('sl_ofertas_v2', []);
+    const nichoWrap  = document.getElementById('rit-f-nicho-wrap');
+    const ofertaWrap = document.getElementById('rit-f-oferta-wrap');
+    const mesWrap    = document.getElementById('rit-f-mes-wrap');
+    const semWrap    = document.getElementById('rit-f-semana-wrap');
+    if(blocoFiltros) blocoFiltros.style.display = 'flex';
+    if(nichoWrap)  nichoWrap.style.display  = 'inline';
+    if(ofertaWrap) ofertaWrap.style.display = 'inline';
+    if(mesWrap)    mesWrap.style.display    = 'none';
+    if(semWrap)    semWrap.style.display    = 'none';
+    popularFiltrosAnalise();
+
+    let ofertas = g('sl_ofertas_v2', []);
+    const fN=(document.getElementById('rit-f-nicho')||{}).value||'';
+    const fO=(document.getElementById('rit-f-oferta')||{}).value||'';
+    if(fN) ofertas = ofertas.filter(o=>o.nichoId===fN);
+    if(fO) ofertas = ofertas.filter(o=>o.id===fO);
+
     const isDir = currentUser && currentUser.cargo==='Diretoria';
     const meuNome = (currentUser&&currentUser.nome)||'';
     const countEl = document.getElementById('rituais-count');
     if(countEl) countEl.textContent = ofertas.length + ' projeto'+(ofertas.length!==1?'s':'');
     let html = '<div style="font-size:22px;font-weight:800;margin-bottom:14px;">Projetos</div>';
     if(!ofertas.length){
-      html += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhuma oferta cadastrada. Cadastre em Configurações > Ofertas.</div></div>';
+      html += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhuma oferta encontrada.</div></div>';
       el.innerHTML = html;
       return;
     }
@@ -9005,13 +9025,18 @@ function renderRituais(){
   const blocoFiltros = document.getElementById('rituais-analise-filtros');
   const nichoWrap  = document.getElementById('rit-f-nicho-wrap');
   const ofertaWrap = document.getElementById('rit-f-oferta-wrap');
+  const mesWrap    = document.getElementById('rit-f-mes-wrap');
+  const semWrap    = document.getElementById('rit-f-semana-wrap');
   if(blocoFiltros){
     const tiposComFiltro = ['Análise de dados','Weekly de criativo','Planejamento estratégico'];
     if(ritualTipoFiltro && tiposComFiltro.includes(ritualTipoFiltro)){
       blocoFiltros.style.display = 'flex';
       const isAnalise = ritualTipoFiltro === 'Análise de dados';
-      if(nichoWrap)  nichoWrap.style.display  = isAnalise ? 'inline' : 'none';
-      if(ofertaWrap) ofertaWrap.style.display = isAnalise ? 'inline' : 'none';
+      // Dentro de Análise de dados (com projeto aberto) — esconde Nicho/Oferta, mostra só Mês/Semana
+      if(nichoWrap)  nichoWrap.style.display  = 'none';
+      if(ofertaWrap) ofertaWrap.style.display = 'none';
+      if(mesWrap)    mesWrap.style.display    = 'inline';
+      if(semWrap)    semWrap.style.display    = 'inline';
       if(isAnalise) popularFiltrosAnalise();
     } else {
       blocoFiltros.style.display = 'none';
@@ -9034,15 +9059,9 @@ function renderRituais(){
     lista = lista.filter(r=>r.ofertaId===ritualProjetoSel);
   }
 
-  // Filtros por tipo
+  // Filtros por tipo — mês/semana só quando dentro de projeto
   const fM=(document.getElementById('rit-f-mes')||{}).value||'';
   const fS=(document.getElementById('rit-f-semana')||{}).value||'';
-  if(ritualTipoFiltro==='Análise de dados'){
-    const fN=(document.getElementById('rit-f-nicho')||{}).value||'';
-    const fO=(document.getElementById('rit-f-oferta')||{}).value||'';
-    if(fN) lista=lista.filter(r=>r.nichoId===fN);
-    if(fO) lista=lista.filter(r=>r.ofertaId===fO);
-  }
   if(fM) lista=lista.filter(r=>r.mes===fM);
   if(fS) lista=lista.filter(r=>r.semana===fS);
 
