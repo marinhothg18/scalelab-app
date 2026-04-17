@@ -9261,7 +9261,18 @@ function salvarEditorTextoRd(){
   if(idx===-1) return;
   const tgt = _rdTextoTarget||'analise';
   if(!rituais[idx][tgt]) rituais[idx][tgt]={};
-  rituais[idx][tgt][_rdTextoCampo] = txt;
+  // Roteamento para extras de weekly (analise_extras / plano_extras)
+  if(_rdTextoCampo.indexOf('__extra:')===0){
+    const parts = _rdTextoCampo.split(':'); // ['__extra', key, idx]
+    const key = parts[1];
+    const eidx = parseInt(parts[2]);
+    if(!rituais[idx][tgt][key]) rituais[idx][tgt][key]=[];
+    if(rituais[idx][tgt][key][eidx]){
+      rituais[idx][tgt][key][eidx].texto = txt;
+    }
+  } else {
+    rituais[idx][tgt][_rdTextoCampo] = txt;
+  }
   s('rituais', rituais);
   fetch(API_BASE+'/api/store/rituais',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rituais)}).catch(()=>{});
   fecharEditorTextoRd();
@@ -9659,7 +9670,7 @@ function renderWeeklyCriativo(r){
     +'</div>';
   if(spyOpen){
     html += '<div style="padding-left:4px;">';
-    for(let i=0;i<3;i++){
+    for(let i=0;i<spy.length;i++){
       const o = spy[i]||{};
       html += '<div style="'+cardStyle+'">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
@@ -9667,7 +9678,10 @@ function renderWeeklyCriativo(r){
         +'<span style="color:#e53e3e;font-size:16px;">→|</span>'
         +'Oferta '+(i+1)+' | Nicho: <span style="color:var(--text2);font-weight:400;">'+(o.nicho||'—')+'</span>'
         +'</span>'
+        +'<span style="display:flex;gap:6px;">'
         +'<button onclick="abrirModalSpyOferta('+i+')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">✏️ Editar</button>'
+        +(i>=3?'<button onclick="removerSpyOferta('+i+')" style="background:var(--bg3);border:1px solid var(--border);color:var(--red);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;" title="Remover">🗑</button>':'')
+        +'</span>'
         +'</div>'
         +'<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;">'
         +'<li style="font-size:12px;"><span style="font-weight:600;">Página:</span> '+(o.pagina||'<span style="color:var(--text2);">—</span>')+'</li>'
@@ -9676,6 +9690,7 @@ function renderWeeklyCriativo(r){
         +'</ul>'
         +'</div>';
     }
+    html += '<button onclick="adicionarSpyOferta()" style="width:100%;background:transparent;border:2px dashed var(--border);color:var(--text2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;">+ Adicionar Oferta</button>';
     html += '</div>';
   }
   html += '</div>';
@@ -9705,6 +9720,24 @@ function renderWeeklyCriativo(r){
         +'<div style="font-size:12px;line-height:1.8;padding-left:4px;">'+txtPreview(txt,'Clique em Editar para adicionar...')+'</div>'
         +'</div>';
     });
+    // Extras de análise
+    const analExtras = w.analise_extras || [];
+    analExtras.forEach((ex,ei)=>{
+      html += '<div style="'+cardStyle+'">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+        +'<span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;">'
+        +'<span style="color:#e53e3e;font-size:16px;">→|</span>'
+        +'<span contenteditable="true" onblur="renomearExtraWeekly(\'analise_extras\','+ei+',this.innerText)" style="outline:none;border-bottom:1px dashed #ccc;padding:0 2px;">'+(ex.label||'Análise Extra').replace(/</g,'&lt;')+'</span>'
+        +'</span>'
+        +'<span style="display:flex;gap:6px;">'
+        +'<button onclick="abrirEditorWeeklyExtra(\'analise_extras\','+ei+')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">✏️ Editar</button>'
+        +'<button onclick="removerExtraWeekly(\'analise_extras\','+ei+')" style="background:var(--bg3);border:1px solid var(--border);color:var(--red);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;" title="Remover">🗑</button>'
+        +'</span>'
+        +'</div>'
+        +'<div style="font-size:12px;line-height:1.8;padding-left:4px;">'+txtPreview(ex.texto||'','Clique em Editar para adicionar...')+'</div>'
+        +'</div>';
+    });
+    html += '<button onclick="adicionarExtraWeekly(\'analise_extras\',\'Análise Extra\')" style="width:100%;background:transparent;border:2px dashed var(--border);color:var(--text2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;">+ Adicionar Análise</button>';
     html += '</div>';
   }
   html += '</div>';
@@ -9735,11 +9768,68 @@ function renderWeeklyCriativo(r){
         +'<div style="font-size:12px;line-height:1.8;padding-left:4px;">'+txtPreview(txt,'Clique em Editar para adicionar...')+'</div>'
         +'</div>';
     });
+    // Extras de plano
+    const planoExtras = w.plano_extras || [];
+    planoExtras.forEach((ex,ei)=>{
+      html += '<div style="'+cardStyle+'">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+        +'<span style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;">'
+        +'<span style="color:#e53e3e;font-size:16px;">→|</span>'
+        +'<span contenteditable="true" onblur="renomearExtraWeekly(\'plano_extras\','+ei+',this.innerText)" style="outline:none;border-bottom:1px dashed #ccc;padding:0 2px;">'+(ex.label||'Aplicabilidade Extra').replace(/</g,'&lt;')+'</span>'
+        +'</span>'
+        +'<span style="display:flex;gap:6px;">'
+        +'<button onclick="abrirEditorWeeklyExtra(\'plano_extras\','+ei+')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">✏️ Editar</button>'
+        +'<button onclick="removerExtraWeekly(\'plano_extras\','+ei+')" style="background:var(--bg3);border:1px solid var(--border);color:var(--red);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;" title="Remover">🗑</button>'
+        +'</span>'
+        +'</div>'
+        +'<div style="font-size:12px;line-height:1.8;padding-left:4px;">'+txtPreview(ex.texto||'','Clique em Editar para adicionar...')+'</div>'
+        +'</div>';
+    });
+    html += '<button onclick="adicionarExtraWeekly(\'plano_extras\',\'Aplicabilidade Extra\')" style="width:100%;background:transparent;border:2px dashed var(--border);color:var(--text2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px;">+ Adicionar Aplicabilidade</button>';
     html += '</div>';
   }
   html += '</div>';
 
   el.innerHTML = html;
+}
+
+// ── Helpers para SPY/Análise/Plano extras ──
+function _weeklyMutate(fn){
+  let rituais = g('rituais',[]);
+  const ri = rituais.findIndex(x=>x.id===_rdRitualId);
+  if(ri===-1) return;
+  if(!rituais[ri].weekly) rituais[ri].weekly={};
+  fn(rituais[ri].weekly);
+  s('rituais',rituais);
+  fetch(API_BASE+'/api/store/rituais',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rituais)}).catch(()=>{});
+  renderWeeklyCriativo(rituais[ri]);
+}
+function adicionarSpyOferta(){
+  _weeklyMutate(function(w){ if(!w.spy) w.spy=[{},{},{}]; w.spy.push({}); });
+}
+function removerSpyOferta(idx){
+  if(!confirm('Remover esta oferta?')) return;
+  _weeklyMutate(function(w){ if(w.spy) w.spy.splice(idx,1); });
+}
+function adicionarExtraWeekly(key, defaultLabel){
+  _weeklyMutate(function(w){ if(!w[key]) w[key]=[]; w[key].push({label:defaultLabel, texto:''}); });
+}
+function removerExtraWeekly(key, idx){
+  if(!confirm('Remover este bloco?')) return;
+  _weeklyMutate(function(w){ if(w[key]) w[key].splice(idx,1); });
+}
+function renomearExtraWeekly(key, idx, novoLabel){
+  _weeklyMutate(function(w){ if(w[key] && w[key][idx]) w[key][idx].label = (novoLabel||'').trim() || w[key][idx].label; });
+}
+function abrirEditorWeeklyExtra(key, idx){
+  const r = g('rituais',[]).find(x=>x.id===_rdRitualId)||{};
+  const ex = ((r.weekly||{})[key]||[])[idx]||{};
+  _rdTextoCampo = '__extra:'+key+':'+idx;
+  _rdTextoTarget = 'weekly';
+  document.getElementById('met-titulo').textContent = ex.label||'Editar';
+  document.getElementById('met-textarea').value = ex.texto||'';
+  document.getElementById('modal-editor-texto').classList.add('open');
+  setTimeout(()=>document.getElementById('met-textarea').focus(),100);
 }
 
 function salvarPlanejamentoCampo(campo, valor){
