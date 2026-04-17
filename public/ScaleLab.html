@@ -2368,6 +2368,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">VSL DO CONCORRENTE</label>
       <input id="spy-vsl" class="input" placeholder="Link ou descrição da VSL..." style="width:100%;">
     </div>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">BIBLIOTECA DE ANÚNCIO</label>
+      <input id="spy-biblioteca" class="input" placeholder="Link da biblioteca de anúncios..." style="width:100%;">
+    </div>
   </div>
   <div class="modal-footer">
     <button class="btn btn-ghost" onclick="fecharModalSpyOferta()">Cancelar</button>
@@ -9599,6 +9603,7 @@ function abrirModalSpyOferta(idx){
   document.getElementById('spy-pagina').value = o.pagina||'';
   document.getElementById('spy-ads').value = o.melhores_ads||'';
   document.getElementById('spy-vsl').value = o.vsl||'';
+  document.getElementById('spy-biblioteca').value = o.biblioteca||'';
   document.getElementById('modal-spy-oferta').classList.add('open');
 }
 function fecharModalSpyOferta(){ document.getElementById('modal-spy-oferta').classList.remove('open'); }
@@ -9615,6 +9620,7 @@ function salvarSpyOferta(){
     pagina: document.getElementById('spy-pagina').value,
     melhores_ads: document.getElementById('spy-ads').value,
     vsl: document.getElementById('spy-vsl').value,
+    biblioteca: document.getElementById('spy-biblioteca').value,
   };
   s('rituais',rituais);
   fetch(API_BASE+'/api/store/rituais',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rituais)}).catch(()=>{});
@@ -9653,6 +9659,12 @@ function renderWeeklyCriativo(r){
   const cardStyle = 'background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:16px 18px;margin-bottom:10px;';
   const secHdrStyle = 'display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;margin-bottom:8px;user-select:none;transition:background .15s;';
   const txtPreview = (val, ph) => val ? val.replace(/\n/g,'<br>') : '<span style="color:var(--text2);font-style:italic;">'+ph+'</span>';
+  const linkPreview = (val) => {
+    if(!val) return '<span style="color:var(--text2);">—</span>';
+    const esc = String(val).replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    if(/^https?:\/\//i.test(val)) return '<a href="'+esc+'" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;word-break:break-all;">'+esc+'</a>';
+    return esc;
+  };
   const editBtn = (campo, titulo) => '<button onclick="abrirEditorWeekly(\''+campo+'\',\''+titulo+'\')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">✏️ Editar</button>';
 
   // BLOCO A header
@@ -9684,9 +9696,10 @@ function renderWeeklyCriativo(r){
         +'</span>'
         +'</div>'
         +'<ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;">'
-        +'<li style="font-size:12px;"><span style="font-weight:600;">Página:</span> '+(o.pagina||'<span style="color:var(--text2);">—</span>')+'</li>'
-        +'<li style="font-size:12px;"><span style="font-weight:600;">Melhores ads:</span> '+(o.melhores_ads||'<span style="color:var(--text2);">—</span>')+'</li>'
-        +'<li style="font-size:12px;"><span style="font-weight:600;">Vsl do Concorrente:</span> '+(o.vsl||'<span style="color:var(--text2);">—</span>')+'</li>'
+        +'<li style="font-size:12px;"><span style="font-weight:600;">Página:</span> '+linkPreview(o.pagina)+'</li>'
+        +'<li style="font-size:12px;"><span style="font-weight:600;">Melhores ads:</span> '+(o.melhores_ads?String(o.melhores_ads).replace(/</g,'&lt;').replace(/\n/g,'<br>'):'<span style="color:var(--text2);">—</span>')+'</li>'
+        +'<li style="font-size:12px;"><span style="font-weight:600;">Vsl do Concorrente:</span> '+linkPreview(o.vsl)+'</li>'
+        +'<li style="font-size:12px;"><span style="font-weight:600;">Biblioteca de Anúncio:</span> '+linkPreview(o.biblioteca)+'</li>'
         +'</ul>'
         +'</div>';
     }
