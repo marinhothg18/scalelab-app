@@ -9881,148 +9881,160 @@ function renderPlanejamentoEstrategico(r){
   const el = document.getElementById('rd-view-weekly');
   if(!el) return;
   const p = r.planejamento||{};
-  const tblStyle = 'width:100%;border-collapse:collapse;font-size:13px;';
-  const thStyle  = 'padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:2px solid var(--border);background:var(--bg3);';
-  const tdStyle  = 'padding:0;border-bottom:1px solid var(--border);';
-  const inpStyle = 'width:100%;box-sizing:border-box;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;padding:10px 12px;font-family:inherit;';
-  const labelStyle = 'padding:10px 12px;font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;border-bottom:1px solid var(--border);background:var(--bg3);';
-  const autoStyle = 'padding:10px 12px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);';
-  const headerStyle = 'background:var(--accent);color:#fff;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:.5px;margin-bottom:14px;display:flex;align-items:center;gap:10px;';
+
+  // Migrar campos antigos obj1..obj4, falta1..falta4, demanda1..demanda4 para arrays
+  function migrar(prefix){
+    const arr = Array.isArray(p[prefix+'_list']) ? p[prefix+'_list'] : null;
+    if(arr) return arr.slice();
+    const acc = [];
+    for(let i=1;i<=20;i++){ if(p[prefix+i]!==undefined) acc.push(p[prefix+i]||''); }
+    while(acc.length<4) acc.push('');
+    return acc;
+  }
+  const objetivos = migrar('obj');
+  const faltas    = migrar('falta');
+  const demandas  = migrar('demanda');
+
+  // Formatador R$
+  const fmtMoeda = n => 'R$ '+Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   // Calcular valores auto
-  const fatMeta = parseFloat((p.fat_meta||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
-  const fatAtg  = parseFloat((p.fat_atingido||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+  const fatMeta = parseFloat(String(p.fat_meta||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+  const fatAtg  = parseFloat(String(p.fat_atingido||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
   const fatPct  = fatMeta>0 ? ((fatAtg/fatMeta)*100).toFixed(1)+'%' : '—';
   const fatGap  = fatMeta>0 ? fatMeta-fatAtg : null;
-  const fatGapFmt = fatGap===null ? '—' : (fatGap<=0?'✅ ':'')+Math.abs(fatGap).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+(fatGap<=0?' (superado)':' (faltam)');
+  const fatGapFmt = fatGap===null ? '—' : (fatGap<=0?'✅ ':'')+fmtMoeda(Math.abs(fatGap))+(fatGap<=0?' (superado)':' (faltam)');
   const fatPctCor = fatMeta>0&&fatAtg>=fatMeta?'var(--green)':fatAtg>0?'var(--yellow)':'var(--text2)';
   const fatGapCor = fatGap!==null&&fatGap<=0?'var(--green)':fatGap!==null?'var(--red)':'var(--text2)';
 
-  const semMeta = parseFloat((p.sem_meta||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
-  const semAtg  = parseFloat((p.sem_atingido||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+  const semMeta = parseFloat(String(p.sem_meta||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
+  const semAtg  = parseFloat(String(p.sem_atingido||'0').replace(/[^\d.,-]/g,'').replace(',','.')) || 0;
   const semPct  = semMeta>0 ? ((semAtg/semMeta)*100).toFixed(1)+'%' : '—';
   const semGap  = semMeta>0 ? semMeta-semAtg : null;
-  const semGapFmt = semGap===null ? '—' : (semGap<=0?'✅ ':'')+Math.abs(semGap).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+(semGap<=0?' (superado)':' (faltam)');
+  const semGapFmt = semGap===null ? '—' : (semGap<=0?'✅ ':'')+fmtMoeda(Math.abs(semGap))+(semGap<=0?' (superado)':' (faltam)');
   const semPctCor = semMeta>0&&semAtg>=semMeta?'var(--green)':semAtg>0?'var(--yellow)':'var(--text2)';
   const semGapCor = semGap!==null&&semGap<=0?'var(--green)':semGap!==null?'var(--red)':'var(--text2)';
 
-  const pencilBtn = (campo, label) =>
-    `<button onclick="editarPlanejMeta('${campo}','${label}')" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:13px;padding:2px 6px;opacity:.7;" title="Editar">✏️</button>`;
+  // Estilos compactos
+  const hdr = 'display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px 2px;';
+  const taStyle = 'width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--text);font-family:inherit;resize:vertical;min-height:38px;outline:none;line-height:1.5;';
+
+  // META compacta: tabela fina
+  function row(label, inpMeta, inpAtg, pct, pctCor, gap, gapCor){
+    return `<div style="display:grid;grid-template-columns:100px 1fr 1fr 110px 180px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);">
+      <div style="font-weight:700;font-size:13px;">${label}</div>
+      <div style="display:flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:0 8px;">
+        <span style="color:var(--text2);font-size:12px;">R$</span>
+        ${inpMeta}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:0 8px;">
+        <span style="color:var(--text2);font-size:12px;">R$</span>
+        ${inpAtg}
+      </div>
+      <div style="font-weight:700;color:${pctCor};font-size:14px;">${pct}</div>
+      <div style="font-weight:700;color:${gapCor};font-size:13px;">${gap}</div>
+    </div>`;
+  }
+  const inp = (id,val,ph) => `<input id="${id}" value="${String(val||'').replace(/"/g,'&quot;')}" placeholder="${ph}" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;padding:8px 0;" oninput="salvarPlanejamentoCampo('${id.replace('planj-','').replace(/-/g,'_')}',this.value)">`;
 
   el.innerHTML = `
-  <div style="max-width:900px;">
+  <div style="width:100%;">
 
     <!-- META DO MÊS -->
-    <div style="${headerStyle}">
-      <span style="font-size:18px;">🎯</span> META DO MÊS E PROGRESSO ATUAL:
-    </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;">
-      <table style="${tblStyle}">
-        <thead>
-          <tr>
-            <th style="${thStyle}width:130px;">Métrica</th>
-            <th style="${thStyle}">Meta do Mês</th>
-            <th style="${thStyle}">Atingido Até Agora</th>
-            <th style="${thStyle}width:130px;">% Progresso</th>
-            <th style="${thStyle}">Gap (Falta)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="${labelStyle}">Faturamento:</td>
-            <td style="padding:8px 12px;border-bottom:1px solid var(--border);">
-              <div style="display:flex;align-items:center;gap:4px;">
-                <input id="planj-fat-meta" style="${inpStyle}padding:2px 4px;" placeholder="Ex: 50000" value="${p.fat_meta||''}" oninput="salvarPlanejamentoCampo('fat_meta',this.value)">
-                ${pencilBtn('fat_meta','Meta Mensal - Faturamento')}
-              </div>
-            </td>
-            <td style="padding:8px 12px;border-bottom:1px solid var(--border);">
-              <div style="display:flex;align-items:center;gap:4px;">
-                <input id="planj-fat-atingido" style="${inpStyle}padding:2px 4px;" placeholder="Ex: 32000" value="${p.fat_atingido||''}" oninput="salvarPlanejamentoCampo('fat_atingido',this.value)">
-                ${pencilBtn('fat_atingido','Atingido - Faturamento')}
-              </div>
-            </td>
-            <td style="${autoStyle}"><span id="planj-fat-progresso" style="color:${fatPctCor};font-size:15px;">${fatPct}</span></td>
-            <td style="${autoStyle}"><span id="planj-fat-gap" style="color:${fatGapCor};">${fatGapFmt}</span></td>
-          </tr>
-          <tr>
-            <td style="${labelStyle}">Semanal:</td>
-            <td style="padding:8px 12px;border-bottom:1px solid var(--border);">
-              <div style="display:flex;align-items:center;gap:4px;">
-                <input id="planj-sem-meta" style="${inpStyle}padding:2px 4px;" placeholder="Ex: 12000" value="${p.sem_meta||''}" oninput="salvarPlanejamentoCampo('sem_meta',this.value)">
-                ${pencilBtn('sem_meta','Meta Semanal')}
-              </div>
-            </td>
-            <td style="padding:8px 12px;border-bottom:1px solid var(--border);">
-              <div style="display:flex;align-items:center;gap:4px;">
-                <input id="planj-sem-atingido" style="${inpStyle}padding:2px 4px;" placeholder="Ex: 8000" value="${p.sem_atingido||''}" oninput="salvarPlanejamentoCampo('sem_atingido',this.value)">
-                ${pencilBtn('sem_atingido','Atingido - Semanal')}
-              </div>
-            </td>
-            <td style="${autoStyle}"><span id="planj-sem-progresso" style="color:${semPctCor};font-size:15px;">${semPct}</span></td>
-            <td style="${autoStyle}"><span id="planj-sem-gap" style="color:${semGapCor};">${semGapFmt}</span></td>
-          </tr>
-        </tbody>
-      </table>
+    <div style="${hdr}"><span>🎯</span> META DO MÊS E PROGRESSO ATUAL</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px;">
+      <div style="display:grid;grid-template-columns:100px 1fr 1fr 110px 180px;gap:10px;padding:8px 12px;background:var(--bg3);font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">
+        <div>Métrica</div><div>Meta do Mês</div><div>Atingido</div><div>% Progresso</div><div>Gap</div>
+      </div>
+      ${row('Faturamento', inp('planj-fat-meta',p.fat_meta,'0,00'), inp('planj-fat-atingido',p.fat_atingido,'0,00'), fatPct, fatPctCor, fatGapFmt, fatGapCor)}
+      ${row('Semanal',     inp('planj-sem-meta',p.sem_meta,'0,00'), inp('planj-sem-atingido',p.sem_atingido,'0,00'), semPct, semPctCor, semGapFmt, semGapCor)}
     </div>
 
     <!-- PERGUNTA CHAVE -->
-    <div style="border-left:3px solid var(--accent);padding:10px 16px;margin-bottom:24px;background:var(--bg2);border-radius:0 8px 8px 0;">
-      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;margin-bottom:4px;">Pergunta-chave:</div>
+    <div style="border-left:3px solid var(--accent);padding:10px 16px;margin-bottom:22px;background:var(--bg2);border-radius:0 8px 8px 0;">
+      <div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;margin-bottom:4px;letter-spacing:.5px;">Pergunta-chave</div>
       <div style="font-size:13px;color:var(--accent);font-style:italic;">"O que precisamos fazer na próxima semana para fechar esse gap?"</div>
     </div>
 
     <!-- OBJETIVOS DA SEMANA -->
-    <div style="${headerStyle}">
-      <span style="font-size:18px;">🎯</span> OBJETIVOS DA SEMANA:
+    <div style="${hdr}"><span>🎯</span> OBJETIVOS DA SEMANA</div>
+    <div id="planj-obj-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+      ${objetivos.map((v,i)=>_planjRow('obj',i,v,'Descreva o objetivo '+(i+1)+'...','Objetivo '+(i+1))).join('')}
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;">
-      <table style="${tblStyle}">
-        <tbody>
-          ${[1,2,3,4].map(n=>`
-          <tr>
-            <td style="${labelStyle}width:120px;">Objetivo ${n}:</td>
-            <td style="${tdStyle}"><input style="${inpStyle}" placeholder="Descreva o objetivo ${n}..." value="${(p['obj'+n]||'').replace(/"/g,'&quot;')}" onchange="salvarPlanejamentoCampo('obj${n}',this.value)"></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <button onclick="planjAddItem('obj')" style="width:100%;background:transparent;border:2px dashed var(--border);color:var(--text2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:22px;">+ Adicionar Objetivo</button>
 
-    <!-- O QUE FALTA FAZER ESSA SEMANA -->
-    <div style="${headerStyle}">
-      <span style="font-size:18px;">⏳</span> O QUE FALTA FAZER ESSA SEMANA:
+    <!-- O QUE FALTA FAZER -->
+    <div style="${hdr}"><span>⏳</span> O QUE FALTA FAZER ESSA SEMANA</div>
+    <div id="planj-falta-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+      ${faltas.map((v,i)=>_planjRow('falta',i,v,'Descreva o item '+(i+1)+'...','Item '+(i+1))).join('')}
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;">
-      <table style="${tblStyle}">
-        <tbody>
-          ${[1,2,3,4].map(n=>`
-          <tr>
-            <td style="${labelStyle}width:120px;">Item ${n}:</td>
-            <td style="${tdStyle}"><input style="${inpStyle}" placeholder="Descreva o item ${n}..." value="${(p['falta'+n]||'').replace(/"/g,'&quot;')}" oninput="salvarPlanejamentoCampo('falta${n}',this.value)"></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <button onclick="planjAddItem('falta')" style="width:100%;background:transparent;border:2px dashed var(--border);color:var(--text2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:22px;">+ Adicionar Item</button>
 
-    <!-- DEMANDAS PRÓXIMA SEMANA -->
-    <div style="${headerStyle}">
-      <span style="font-size:18px;">📋</span> DEMANDAS PARA A PRÓXIMA SEMANA:
+    <!-- DEMANDAS -->
+    <div style="${hdr}"><span>📋</span> DEMANDAS PARA A PRÓXIMA SEMANA</div>
+    <div id="planj-demanda-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+      ${demandas.map((v,i)=>_planjRow('demanda',i,v,'Descreva a demanda '+(i+1)+'...','Demanda '+(i+1))).join('')}
     </div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;">
-      <table style="${tblStyle}">
-        <tbody>
-          ${[1,2,3,4].map(n=>`
-          <tr>
-            <td style="${labelStyle}width:120px;">Demanda ${n}:</td>
-            <td style="${tdStyle}"><input style="${inpStyle}" placeholder="Descreva a demanda ${n}..." value="${(p['demanda'+n]||'').replace(/"/g,'&quot;')}" oninput="salvarPlanejamentoCampo('demanda${n}',this.value)"></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <button onclick="planjAddItem('demanda')" style="width:100%;background:transparent;border:2px dashed var(--border);color:var(--text2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:22px;">+ Adicionar Demanda</button>
 
   </div>`;
   // Recalcular após renderizar o HTML
   setTimeout(recalcPlanejamento, 0);
+  // Auto-resize textareas
+  setTimeout(function(){ el.querySelectorAll('textarea.planj-auto').forEach(_planjAutoSize); }, 10);
+}
+
+function _planjRow(prefix, idx, val, ph, label){
+  const safe = String(val||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  return `<div style="display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:start;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+    <div style="font-weight:700;font-size:13px;padding-top:10px;">${label}:</div>
+    <textarea class="planj-auto" rows="1" placeholder="${ph}" oninput="_planjAutoSize(this);planjSaveItem('${prefix}',${idx},this.value)" style="width:100%;box-sizing:border-box;background:transparent;border:none;outline:none;color:var(--text);font-size:13px;padding:8px 0;font-family:inherit;resize:none;line-height:1.5;overflow:hidden;min-height:34px;">${safe}</textarea>
+    <button onclick="planjRemoveItem('${prefix}',${idx})" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:14px;padding:8px;" title="Remover">🗑</button>
+  </div>`;
+}
+function _planjAutoSize(ta){
+  ta.style.height='auto';
+  ta.style.height=(ta.scrollHeight)+'px';
+}
+function _planjGetList(prefix){
+  const rituais = g('rituais',[]);
+  const r = rituais.find(x=>x.id===_rdRitualId)||{};
+  const p = r.planejamento||{};
+  if(Array.isArray(p[prefix+'_list'])) return p[prefix+'_list'].slice();
+  const acc = [];
+  for(let i=1;i<=20;i++){ if(p[prefix+i]!==undefined) acc.push(p[prefix+i]||''); }
+  while(acc.length<4) acc.push('');
+  return acc;
+}
+function _planjSaveList(prefix, arr){
+  let rituais = g('rituais',[]);
+  const idx = rituais.findIndex(x=>x.id===_rdRitualId);
+  if(idx===-1) return;
+  if(!rituais[idx].planejamento) rituais[idx].planejamento={};
+  rituais[idx].planejamento[prefix+'_list'] = arr;
+  s('rituais', rituais);
+  fetch(API_BASE+'/api/store/rituais',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rituais)}).catch(()=>{});
+}
+function planjAddItem(prefix){
+  const arr = _planjGetList(prefix);
+  arr.push('');
+  _planjSaveList(prefix, arr);
+  const rituais = g('rituais',[]);
+  const r = rituais.find(x=>x.id===_rdRitualId);
+  if(r) renderPlanejamentoEstrategico(r);
+}
+function planjRemoveItem(prefix, idx){
+  const arr = _planjGetList(prefix);
+  if(arr.length<=1){ arr[idx]=''; } else { arr.splice(idx,1); }
+  _planjSaveList(prefix, arr);
+  const rituais = g('rituais',[]);
+  const r = rituais.find(x=>x.id===_rdRitualId);
+  if(r) renderPlanejamentoEstrategico(r);
+}
+function planjSaveItem(prefix, idx, val){
+  const arr = _planjGetList(prefix);
+  arr[idx] = val;
+  _planjSaveList(prefix, arr);
 }
 
 function renderRitualDetalhe(){
