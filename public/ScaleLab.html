@@ -2469,6 +2469,12 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     </div>
     <!-- Campos exclusivos de Análise de dados -->
     <div id="ritual-analise-campos" style="display:none;flex-direction:column;gap:14px;">
+      <div class="fg">
+        <label class="fl">Projeto</label>
+        <select class="fs" id="ritual-projeto">
+          <option value="">Sem projeto</option>
+        </select>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div class="fg">
           <label class="fl">Nicho</label>
@@ -2955,7 +2961,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -8880,7 +8886,8 @@ function enviarArquivoChat(input){
 
 // ── RITUAIS ──
 let rituais = g('rituais', []);
-let ritualTipoFiltro = '';
+let ritualTipoFiltro = 'Análise de dados';
+let ritualProjetoSel = null; // projeto selecionado em Análise de dados (null = tela de projetos)
 const RITUAL_TIPOS = ['Análise de dados', 'Weekly de criativo', 'Planejamento estratégico'];
 
 const RITUAL_TIPO_COR = {'Análise de dados':'#38BDF8','Weekly de criativo':'#818CF8','Planejamento estratégico':'#F97316'};
@@ -8888,19 +8895,45 @@ const RITUAL_TIPO_COR = {'Análise de dados':'#38BDF8','Weekly de criativo':'#81
 function renderRituaisFiltros(){
   const el = document.getElementById('ritual-tipo-filtros');
   if(!el) return;
-  const todos = [''].concat(RITUAL_TIPOS);
-  el.innerHTML = todos.map(t=>{
+  el.innerHTML = RITUAL_TIPOS.map(t=>{
     const ativo = ritualTipoFiltro === t;
     const cor = RITUAL_TIPO_COR[t]||'var(--text2)';
     return `<button onclick="setRitualTipo('${t}')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:none;width:100%;text-align:left;cursor:pointer;font-size:13px;font-weight:${ativo?'700':'500'};background:${ativo?'var(--accent)':'var(--bg2)'};color:${ativo?'#fff':'var(--text)'};transition:background .15s;">
       <span style="width:8px;height:8px;border-radius:50%;background:${ativo?'#fff':cor};flex-shrink:0;"></span>
-      ${t===''?'Todos':t}
+      ${t}
     </button>`;
   }).join('');
 }
 
 function setRitualTipo(t){
   ritualTipoFiltro = t;
+  ritualProjetoSel = null;
+  renderRituais();
+}
+
+// ── Projetos de Análise de dados ──
+function ritGetProjetos(){ return g('sl_projetos_analise', []); }
+function ritSaveProjetos(list){ s('sl_projetos_analise', list); syncKey('sl_projetos_analise'); }
+function ritAddProjeto(){
+  const nome = prompt('Nome do projeto:');
+  if(!nome || !nome.trim()) return;
+  const list = ritGetProjetos();
+  list.push({ id: Date.now(), nome: nome.trim() });
+  ritSaveProjetos(list);
+  renderRituais();
+}
+function ritDelProjeto(id){
+  if(!confirm('Excluir este projeto? As análises associadas serão mantidas mas ficarão sem projeto.')) return;
+  const list = ritGetProjetos().filter(p=>p.id!==id);
+  ritSaveProjetos(list);
+  renderRituais();
+}
+function ritAbrirProjeto(id){
+  ritualProjetoSel = id;
+  renderRituais();
+}
+function ritVoltarProjetos(){
+  ritualProjetoSel = null;
   renderRituais();
 }
 
@@ -8936,6 +8969,45 @@ function renderRituais(){
   rituais = g('rituais', []);
   renderRituaisFiltros();
 
+  // Tela de projetos para Análise de dados (quando nenhum projeto aberto)
+  if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel===null){
+    const blocoFiltros = document.getElementById('rituais-analise-filtros');
+    if(blocoFiltros) blocoFiltros.style.display = 'none';
+    const projetos = ritGetProjetos();
+    const isDir = currentUser && currentUser.cargo==='Diretoria';
+    const meuNome = (currentUser&&currentUser.nome)||'';
+    const countEl = document.getElementById('rituais-count');
+    if(countEl) countEl.textContent = projetos.length + ' projeto'+(projetos.length!==1?'s':'');
+    let html = '<div style="font-size:22px;font-weight:800;margin-bottom:14px;">Projetos</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
+    projetos.forEach(p=>{
+      // Contar análises desse projeto visíveis para o usuário
+      const qtde = rituais.filter(r=>{
+        if(r.tipo!=='Análise de dados') return false;
+        if(r.projetoId!==p.id) return false;
+        if(isDir) return true;
+        return r.participantes && r.participantes.includes(meuNome);
+      }).length;
+      html += `<div onclick="ritAbrirProjeto(${p.id})" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+        <div style="height:110px;background:#E0E7FF;display:flex;align-items:center;justify-content:center;font-size:56px;">📁</div>
+        <div style="padding:14px 16px;text-align:center;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${p.nome}</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${qtde} análise${qtde!==1?'s':''}</div>
+          ${isDir?`<span onclick="event.stopPropagation();ritDelProjeto(${p.id})" style="font-size:11px;color:var(--red);cursor:pointer;">🗑 Excluir</span>`:''}
+        </div>
+      </div>`;
+    });
+    if(isDir){
+      html += `<div onclick="ritAddProjeto()" style="background:transparent;border:2px dashed var(--border);border-radius:14px;min-height:180px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:14px;font-weight:600;">+ Novo Projeto</div>`;
+    }
+    html += '</div>';
+    if(!projetos.length && !isDir){
+      html = '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum projeto disponível.</div></div>';
+    }
+    el.innerHTML = html;
+    return;
+  }
+
   // Mostrar/ocultar filtros
   const blocoFiltros = document.getElementById('rituais-analise-filtros');
   const nichoWrap  = document.getElementById('rit-f-nicho-wrap');
@@ -8964,6 +9036,11 @@ function renderRituais(){
   });
   if(ritualTipoFiltro) lista = lista.filter(r=>r.tipo===ritualTipoFiltro);
 
+  // Filtrar por projeto selecionado em Análise de dados
+  if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel!==null){
+    lista = lista.filter(r=>r.projetoId===ritualProjetoSel);
+  }
+
   // Filtros por tipo
   const fM=(document.getElementById('rit-f-mes')||{}).value||'';
   const fS=(document.getElementById('rit-f-semana')||{}).value||'';
@@ -8979,13 +9056,20 @@ function renderRituais(){
   const countEl = document.getElementById('rituais-count');
   if(countEl) countEl.textContent = lista.length + ' ritual'+(lista.length!==1?'s':'');
 
+  // Breadcrumb/voltar quando dentro de projeto
+  let headerHtml = '';
+  if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel!==null){
+    const proj = ritGetProjetos().find(p=>p.id===ritualProjetoSel);
+    headerHtml = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><span onclick="ritVoltarProjetos()" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Projetos</span><span style="color:var(--text2);">/</span><span style="font-size:15px;font-weight:700;">${proj?proj.nome:'Projeto'}</span></div>`;
+  }
+
   if(!lista.length){
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⭐</div><div class="empty-text">Nenhum ritual encontrado.</div></div>';
+    el.innerHTML = headerHtml + '<div class="empty"><div class="empty-icon">⭐</div><div class="empty-text">Nenhum ritual encontrado.</div></div>';
     return;
   }
   const freqCor = {'Diário':'b-green','Semanal':'b-blue','Quinzenal':'b-purple','Mensal':'b-orange'};
   const meses = {'01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun','07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'};
-  el.innerHTML = lista.map(r=>{
+  el.innerHTML = headerHtml + lista.map(r=>{
     const cor = RITUAL_TIPO_COR[r.tipo]||'var(--accent)';
     return `
   <div style="background:var(--bg2);border:1px solid var(--border);border-left:4px solid ${cor};border-radius:12px;padding:18px 20px;margin-bottom:12px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;cursor:pointer;" onclick="abrirRitualDetalhe(${r.id})">
@@ -9041,6 +9125,12 @@ function abrirModalRitual(id){
   // Limpar lista de participantes
   const pLista = document.getElementById('ritual-participantes-list');
   if(pLista) pLista.innerHTML='';
+  // Popular select de projetos de análise
+  const projSel = document.getElementById('ritual-projeto');
+  if(projSel){
+    const projs = ritGetProjetos();
+    projSel.innerHTML = '<option value="">Sem projeto</option>' + projs.map(p=>`<option value="${p.id}">${p.nome}</option>`).join('');
+  }
 
   if(id){
     const r = rituais.find(x=>x.id===id);
@@ -9057,6 +9147,7 @@ function abrirModalRitual(id){
     });
     onRitualTipoChange();
     setTimeout(()=>{
+      if(r.projetoId) { const ps=document.getElementById('ritual-projeto'); if(ps) ps.value=r.projetoId; }
       if(r.nichoId) document.getElementById('ritual-nicho').value=r.nichoId;
       onRitualNichoChange();
       setTimeout(()=>{ if(r.ofertaId) document.getElementById('ritual-oferta').value=r.ofertaId; },50);
@@ -10099,12 +10190,14 @@ function salvarRitual(){
   const ofertas = g('sl_ofertas_v2',[]);
   const nichoId = nichoEl?nichoEl.value:'';
   const ofertaId = ofertaEl?ofertaEl.value:'';
+  const projetoSelVal = (document.getElementById('ritual-projeto')||{}).value||'';
   const obj = {
     id: window._editRitualId || Date.now(),
     nome,
     tipo,
     participantes,
     desc: document.getElementById('ritual-desc').value.trim(),
+    projetoId: tipo==='Análise de dados' && projetoSelVal ? Number(projetoSelVal) : null,
     nichoId: tipo==='Análise de dados'?nichoId:'',
     nichoNome: tipo==='Análise de dados'?(nichos.find(n=>n.id===nichoId)||{}).nome||'':'',
     ofertaId: tipo==='Análise de dados'?ofertaId:'',
