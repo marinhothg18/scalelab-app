@@ -3159,21 +3159,43 @@ async function backupListar(){
     const res = await fetch(API_BASE+'/api/backup/list', { headers: _bkAuthHeaders() });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error||res.statusText);
-    _bkStatus(`${data.total} snapshots (máx ${data.max})`);
+    _bkStatus(`${data.total} snapshots arquivados · Time Machine ativo (1h/48h + 1/dia/90d + 1/sem/12m + 1/mês eterno)`);
     const list = document.getElementById('backup-list');
     if(!list) return;
     if(!data.backups.length){ list.innerHTML = '<div style="color:var(--text2);font-size:12px;">Nenhum snapshot ainda.</div>'; return; }
-    list.innerHTML = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">'
-      + data.backups.map(b => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${b.nome}</div>
-            <div style="color:var(--text2);font-size:11px;">${b.criadoFmt} · ${b.tamanhoFmt}</div>
-          </div>
-          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" onclick="backupDownloadSnap('${b.nome}')">⬇️ Baixar</button>
-          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="backupRestaurarSnap('${b.nome}')">♻️ Restaurar</button>
-        </div>`).join('')
-      + '</div>';
+    const GRUPOS = [
+      { chave:'hoje',              titulo:'🟢 Hoje (últimas 24h)',          cor:'#16A34A' },
+      { chave:'ontem',             titulo:'🔵 Ontem',                        cor:'#2563EB' },
+      { chave:'esta_semana',       titulo:'📅 Esta semana',                  cor:'#7C3AED' },
+      { chave:'este_mes',          titulo:'🗓️ Este mês',                     cor:'#DB2777' },
+      { chave:'ultimos_3_meses',   titulo:'📆 Últimos 3 meses',              cor:'#EA580C' },
+      { chave:'este_ano',          titulo:'🗂️ Este ano',                     cor:'#CA8A04' },
+      { chave:'arquivo_historico', titulo:'🏛️ Arquivo histórico (anos)',    cor:'#6B7280' },
+    ];
+    let html = '';
+    GRUPOS.forEach(g => {
+      const itens = data.grupos[g.chave] || [];
+      if(!itens.length) return;
+      html += `<div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="width:3px;height:16px;background:${g.cor};border-radius:2px;"></div>
+          <div style="font-size:12px;font-weight:700;color:${g.cor};">${g.titulo}</div>
+          <div style="font-size:11px;color:var(--text2);">(${itens.length})</div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+          ${itens.map(b => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;">${b.criadoFmt}</div>
+              <div style="color:var(--text2);font-size:11px;">${b.nome.replace(/^db-/,'').replace(/\.json$/,'')} · ${b.tamanhoFmt}</div>
+            </div>
+            <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" onclick="backupDownloadSnap('${b.nome}')">⬇️ Baixar</button>
+            <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="backupRestaurarSnap('${b.nome}')">♻️ Restaurar</button>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    });
+    list.innerHTML = '<div style="max-height:500px;overflow-y:auto;">'+html+'</div>';
   }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
 }
 async function backupDownloadSnap(nome){

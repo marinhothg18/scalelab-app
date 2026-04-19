@@ -10,8 +10,12 @@ const PORT = process.env.PORT || 3001;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-const BACKUP_MAX = 30; // manter últimos 30 snapshots
-const BACKUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+const BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 1h (Time Machine style)
+// Retenção em camadas: tudo da última 48h + 1/dia (90d) + 1/semana (12m) + 1/mês (forever)
+const RET_HOURS   = 48;        // horas mantidas hora-a-hora
+const RET_DAYS    = 90;        // dias mantidos (1/dia)
+const RET_WEEKS   = 52;        // semanas mantidas (1/semana, até 12m)
+// Snapshots mensais nunca são apagados
 
 // Garante pasta de backups
 if (!fs.existsSync(BACKUP_DIR)) {
@@ -417,26 +421,103 @@ function authDiretoria(req, res, next) {
   next();
 }
 
-// Grava snapshot com rotação (mantém últimos N)
+// ── Helpers de data ──
+function _parseStamp(fname) {
+  // Ex: db-20260419-143012-auto.json → Date
+  const m = fname.match(/^db-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+  return new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]));
+}
+function _dayKey(d)   { return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; }
+function _weekKey(d)  {
+  // ISO week: ano-semana
+  const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = tmp.getUTCDay() || 7;
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dow);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+  return `${tmp.getUTCFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+}
+function _monthKey(d) { return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; }
+
+// ── Retenção Time Machine: decide quais backups manter ──
+function _aplicarRetencaoBackup() {
+  try {
+    const agora = new Date();
+    const lista = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => ({ nome: f, data: _parseStamp(f) }))
+      .filter(x => x.data)
+      .sort((a,b) => b.data - a.data); // mais novo primeiro
+
+    const manter = new Set();
+
+    // Marca "pre-restore" e "manual" pra manter sempre (são importantes)
+    lista.forEach(x => {
+      if (/-pre-restore|-manual/.test(x.nome)) manter.add(x.nome);
+    });
+
+    // Camada 1: tudo das últimas RET_HOURS horas
+    const limiteHoras = new Date(agora.getTime() - RET_HOURS*60*60*1000);
+    lista.forEach(x => { if (x.data >= limiteHoras) manter.add(x.nome); });
+
+    // Camada 2: 1 por dia nos últimos RET_DAYS dias (mais antigo do dia)
+    const limiteDias = new Date(agora.getTime() - RET_DAYS*24*60*60*1000);
+    const porDia = {};
+    lista.forEach(x => {
+      if (x.data < limiteDias || x.data >= limiteHoras) return;
+      const k = _dayKey(x.data);
+      // fica com o mais velho do dia (mais representativo)
+      if (!porDia[k] || x.data < porDia[k].data) porDia[k] = x;
+    });
+    Object.values(porDia).forEach(x => manter.add(x.nome));
+
+    // Camada 3: 1 por semana nas últimas RET_WEEKS semanas (>90d < 1ano)
+    const limiteSem = new Date(agora.getTime() - RET_WEEKS*7*24*60*60*1000);
+    const porSemana = {};
+    lista.forEach(x => {
+      if (x.data < limiteSem || x.data >= limiteDias) return;
+      const k = _weekKey(x.data);
+      if (!porSemana[k] || x.data < porSemana[k].data) porSemana[k] = x;
+    });
+    Object.values(porSemana).forEach(x => manter.add(x.nome));
+
+    // Camada 4: 1 por mês (para sempre) pros mais antigos que 1 ano
+    const porMes = {};
+    lista.forEach(x => {
+      if (x.data >= limiteSem) return;
+      const k = _monthKey(x.data);
+      if (!porMes[k] || x.data < porMes[k].data) porMes[k] = x;
+    });
+    Object.values(porMes).forEach(x => manter.add(x.nome));
+
+    // Apaga o que não foi marcado
+    let apagados = 0;
+    lista.forEach(x => {
+      if (!manter.has(x.nome)) {
+        try { fs.unlinkSync(path.join(BACKUP_DIR, x.nome)); apagados++; } catch {}
+      }
+    });
+    return { mantidos: manter.size, apagados, total: lista.length };
+  } catch (err) {
+    console.error('[BACKUP] erro na retenção:', err.message);
+    return { erro: err.message };
+  }
+}
+
+// Grava snapshot e aplica retenção
 function criarSnapshotBackup(motivo) {
   try {
     const agora = new Date();
     const pad = n => String(n).padStart(2,'0');
-    const stamp = `${agora.getFullYear()}${pad(agora.getMonth()+1)}${pad(agora.getDate())}-${pad(agora.getHours())}${pad(agora.getMinutes())}${pad(agora.getSeconds())}`;
+    const stamp = `${agora.getUTCFullYear()}${pad(agora.getUTCMonth()+1)}${pad(agora.getUTCDate())}-${pad(agora.getUTCHours())}${pad(agora.getUTCMinutes())}${pad(agora.getUTCSeconds())}`;
     const fname = `db-${stamp}${motivo ? '-' + motivo : ''}.json`;
     const fpath = path.join(BACKUP_DIR, fname);
     const conteudo = fs.readFileSync(DB_FILE, 'utf8');
     fs.writeFileSync(fpath, conteudo);
-    // Rotação: mantém só os últimos BACKUP_MAX
-    const lista = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.endsWith('.json'))
-      .map(f => ({ nome: f, mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
-      .sort((a,b) => b.mtime - a.mtime);
-    lista.slice(BACKUP_MAX).forEach(f => {
-      try { fs.unlinkSync(path.join(BACKUP_DIR, f.nome)); } catch {}
-    });
-    console.log(`[BACKUP] Snapshot criado: ${fname} (${lista.length} total)`);
-    return { ok: true, arquivo: fname, total: Math.min(lista.length, BACKUP_MAX) };
+    const ret = _aplicarRetencaoBackup();
+    console.log(`[BACKUP] ${fname} criado. Retenção: ${ret.mantidos} mantidos, ${ret.apagados||0} apagados.`);
+    return { ok: true, arquivo: fname, mantidos: ret.mantidos };
   } catch (err) {
     console.error('[BACKUP] erro ao criar snapshot:', err.message);
     return { ok: false, erro: err.message };
@@ -448,23 +529,47 @@ setInterval(() => criarSnapshotBackup('auto'), BACKUP_INTERVAL_MS);
 // Snapshot inicial 30s após startup (evita acumulação se reiniciar muito)
 setTimeout(() => criarSnapshotBackup('boot'), 30000);
 
-// GET /api/backup/list — lista snapshots disponíveis
+// GET /api/backup/list — lista snapshots disponíveis (classificados por período)
 app.get('/api/backup/list', authDiretoria, (req, res) => {
   try {
+    const agora = new Date();
     const lista = fs.readdirSync(BACKUP_DIR)
       .filter(f => f.endsWith('.json'))
       .map(f => {
         const st = fs.statSync(path.join(BACKUP_DIR, f));
+        const data = _parseStamp(f) || st.mtime;
+        const horasAtras = (agora - data) / (60*60*1000);
+        let periodo;
+        if (horasAtras < 24) periodo = 'hoje';
+        else if (horasAtras < 48) periodo = 'ontem';
+        else if (horasAtras < 7*24) periodo = 'esta_semana';
+        else if (horasAtras < 30*24) periodo = 'este_mes';
+        else if (horasAtras < 90*24) periodo = 'ultimos_3_meses';
+        else if (horasAtras < 365*24) periodo = 'este_ano';
+        else periodo = 'arquivo_historico';
         return {
           nome: f,
           tamanho: st.size,
           tamanhoFmt: (st.size/1024).toFixed(1) + ' KB',
-          criado: st.mtime.toISOString(),
-          criadoFmt: st.mtime.toLocaleString('pt-BR')
+          criado: data.toISOString(),
+          criadoFmt: data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+          periodo,
+          horasAtras: Math.round(horasAtras)
         };
       })
       .sort((a,b) => new Date(b.criado) - new Date(a.criado));
-    res.json({ total: lista.length, max: BACKUP_MAX, backups: lista });
+    // Agrupa por período pra UI
+    const grupos = {};
+    lista.forEach(b => {
+      if (!grupos[b.periodo]) grupos[b.periodo] = [];
+      grupos[b.periodo].push(b);
+    });
+    res.json({
+      total: lista.length,
+      backups: lista,
+      grupos,
+      retencao: { horas: RET_HOURS, dias: RET_DAYS, semanas: RET_WEEKS, mensal: 'para sempre' }
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -554,6 +659,6 @@ app.listen(PORT, () => {
   console.log(`  📌  App:  http://localhost:${PORT}/ScaleLab.html`);
   console.log(`  📖  API Docs: http://localhost:${PORT}/api/v1/docs`);
   console.log(`  🔑  Tokens:   POST /api/tokens/generate`);
-  console.log(`  💾  Backup:   GET /api/backup/list  (auto a cada 6h, máx ${BACKUP_MAX} snapshots)`);
+  console.log(`  💾  Backup:   Time Machine — 1h/48h + 1/dia/90d + 1/sem/12m + 1/mês forever`);
   console.log('');
 });
