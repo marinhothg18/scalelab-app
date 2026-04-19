@@ -543,52 +543,25 @@ app.get('/api/updates/:since', (req, res) => {
   res.json({ data, timestamp: now() });
 });
 
-// ── MERGE INTELIGENTE POR ID ──
-// Resolve conflitos entre edições concorrentes de múltiplos usuários
-// Regras:
+// ── MERGE INTELIGENTE POR ID (SAFE: union-only, sem delete-inference) ──
+// Regras conservadoras:
 // - Items novos do incoming são adicionados (concurrent create = add-wins)
 // - Items editados: maior _updatedAt vence (last-write-wins per-item)
-// - Items no server ausentes no incoming:
-//   * Se incoming tem _updatedAt em todos os itens (versão nova do cliente)
-//     e o item ausente tem _updatedAt ANTIGO (< max do incoming) → deletado pelo cliente, remove
-//   * Se o item ausente tem _updatedAt >= max do incoming → adicionado por outro cliente mais recente → preserva
-//   * Se incoming não tem _updatedAt → fallback: preserva (evita perda)
+// - Items no server ausentes no incoming: SEMPRE PRESERVADOS (evita perda)
+// - Deletes são feitos EXPLICITAMENTE via /api/lixeira/soft-delete (fora desse merge)
 function _mergeArrayById(existing, incoming) {
   if (!Array.isArray(existing)) return incoming;
   if (!Array.isArray(incoming)) return incoming;
   const hasIdAndObj = (arr) => arr.length === 0 || (typeof arr[0] === 'object' && arr[0] !== null && 'id' in arr[0]);
   if (!hasIdAndObj(existing) || !hasIdAndObj(incoming)) return incoming;
 
-  // Detecta se incoming vem de cliente que stampa _updatedAt
-  const allStamped = incoming.length === 0 || incoming.every(it => it && Number.isFinite(Number(it._updatedAt)));
-  const maxIncomingTs = incoming.reduce((m, it) => Math.max(m, Number(it && it._updatedAt) || 0), 0);
-
-  const incomingIds = new Set();
-  incoming.forEach(it => { if (it && it.id !== undefined && it.id !== null) incomingIds.add(String(it.id)); });
-
   const map = new Map();
-  // Começa com items existentes
+  // Preserva TODOS os items existentes do servidor
   existing.forEach(item => {
     if (!item || item.id === undefined || item.id === null) return;
-    const id = String(item.id);
-    if (incomingIds.has(id)) {
-      map.set(id, item); // será sobreposto pelo incoming se maior ts
-      return;
-    }
-    // Item no server mas NÃO no incoming
-    if (!allStamped) {
-      // Cliente antigo — preserva (não sabemos se foi deletado)
-      map.set(id, item);
-    } else {
-      const curTs = Number(item._updatedAt) || 0;
-      if (curTs > maxIncomingTs) {
-        // Adicionado depois que o cliente sincronizou → preserva
-        map.set(id, item);
-      }
-      // Senão: item é mais antigo que o push do cliente, e não está no incoming → foi deletado
-    }
+    map.set(String(item.id), item);
   });
-  // Sobrepõe/adiciona do incoming
+  // Aplica incoming: adiciona novos, sobrepõe existentes se _updatedAt for mais novo
   incoming.forEach(item => {
     if (!item || item.id === undefined || item.id === null) return;
     const id = String(item.id);
@@ -596,7 +569,8 @@ function _mergeArrayById(existing, incoming) {
     if (!cur) { map.set(id, item); return; }
     const curTs = Number(cur._updatedAt) || 0;
     const incTs = Number(item._updatedAt) || 0;
-    if (incTs >= curTs) map.set(id, item);
+    // Se incoming tem timestamp mais recente OU não há timestamps, incoming vence
+    if (incTs >= curTs || (curTs === 0 && incTs === 0)) map.set(id, item);
   });
   return Array.from(map.values());
 }

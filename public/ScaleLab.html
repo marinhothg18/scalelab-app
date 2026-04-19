@@ -3368,7 +3368,8 @@ function backupRestaurarArquivo(inp){
 // DATA
 function g(k,d){try{return JSON.parse(localStorage.getItem(k))||d;}catch{return d;}}
 function s(k,v){
-  // Auto-stamp _updatedAt em items de arrays com id (merge inteligente server-side)
+  // Stamp _updatedAt APENAS em items novos (sem timestamp ainda).
+  // Não sobrescreve timestamps existentes — preserva o carimbo da última edição real.
   if(Array.isArray(v)){
     v = v.map(function(it){
       if(it && typeof it==='object' && it.id!==undefined && it._updatedAt===undefined){
@@ -3386,6 +3387,8 @@ function s(k,v){
     }).catch(()=>{});
   }
 }
+// Helper pra marcar edição de um item específico (use quando editar)
+function touchItem(item){ if(item && typeof item==='object') item._updatedAt = Date.now(); return item; }
 
 // ── SOFT-DELETE: remove localmente + joga na Lixeira global no servidor ──
 // key: nome da chave sincronizada (ex: 'tasks', 'criativos', 'rituais')
