@@ -3148,14 +3148,16 @@ async function forceSyncAll(){
 // ── BACKUP & RESTORE (só Diretoria) ──
 function _bkAuthHeaders(){
   if(!currentUser || currentUser.cargo!=='Diretoria'){ alert('Apenas Diretoria pode usar backup.'); throw new Error('sem permissao'); }
-  // currentUser vindo do login não tem senha; busca no sl_usuarios local
+  var token = localStorage.getItem('sl_session_token');
+  if(token){ return { 'Authorization': 'Bearer ' + token }; }
+  // Fallback para legado (ainda funciona se tiver senha local)
   var senha = currentUser.senha;
   if(!senha){
     var full = (g('sl_usuarios',[])||[]).find(function(u){ return u.id===currentUser.id; });
     senha = full && full.senha;
   }
-  if(!senha){ alert('Não foi possível autenticar para backup. Faça logout e login novamente.'); throw new Error('sem senha'); }
-  return { 'x-user-email': currentUser.email, 'x-user-senha': senha };
+  if(senha) return { 'x-user-email': currentUser.email, 'x-user-senha': senha };
+  alert('Sessão expirada. Faça login novamente.'); logout(); throw new Error('sem sessao');
 }
 function _bkStatus(msg, cor){
   const el = document.getElementById('backup-status');
@@ -11509,17 +11511,21 @@ async function tentarLogin(){
       signal: AbortSignal.timeout(5000)
     });
     if(res.ok){
-      const {user} = await res.json();
-      _loginOk(user);
+      const data = await res.json();
+      if(data.token) localStorage.setItem('sl_session_token', data.token);
+      _loginOk(data.user);
+    } else if(res.status === 429){
+      err.textContent='Muitas tentativas. Aguarde 10 minutos.';
+      pwdInp.value='';
     } else {
       err.textContent='E-mail ou senha inválidos.';
       pwdInp.value='';
     }
   } catch(e){
-    // Backend offline — fallback para usuários locais
+    // Backend offline — fallback legado (só funciona se sl_usuarios local ainda tem senha em texto, pré-migração)
     const usuarios = getUsuarios();
-    const user = usuarios.find(u=>u.email.toLowerCase()===email && u.senha===senha && u.ativo!==false);
-    if(!user){ err.textContent='E-mail ou senha inválidos.'; pwdInp.value=''; }
+    const user = usuarios.find(u=>u.email && u.email.toLowerCase()===email && u.senha===senha && u.ativo!==false);
+    if(!user){ err.textContent='Backend offline ou credenciais inválidas.'; pwdInp.value=''; }
     else _loginOk(user);
   } finally {
     if(btn) btn.disabled = false;
@@ -11602,10 +11608,16 @@ function _loginOk(user){
 }
 
 function logout(){
+  // Invalida sessão no servidor (best-effort)
+  var token = localStorage.getItem('sl_session_token');
+  if(token){
+    fetch(API_BASE+'/api/auth/logout', { method:'POST', headers:{'Authorization': 'Bearer '+token} }).catch(function(){});
+  }
   currentUser = null;
   _stopSync();
   localStorage.removeItem('sl_auth');
   localStorage.removeItem('sl_user_id');
+  localStorage.removeItem('sl_session_token');
   location.reload();
 }
 

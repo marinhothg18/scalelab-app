@@ -4,6 +4,11 @@ const path = require('path');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const bcrypt = require('bcryptjs');
+
+// ── CONSTANTES DE AUTH ──
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias de inatividade
+const BCRYPT_ROUNDS = 10;
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +38,14 @@ app.use('/api/', globalLimiter);
 const apiLimiter = rateLimit({ windowMs: 60*1000, max: 60, message: { error: 'Limite da API atingido. Máximo 60 req/min.' } });
 app.use('/api/v1/', apiLimiter);
 
+// Rate limiting crítico para login: 5 tentativas por 10min por IP
+const loginLimiter = rateLimit({
+  windowMs: 10*60*1000,
+  max: 5,
+  message: { error: 'Muitas tentativas de login. Aguarde 10 minutos.' },
+  skipSuccessfulRequests: true
+});
+
 // CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -56,6 +69,91 @@ function writeDB(db) {
 
 function now() { return Math.floor(Date.now() / 1000); }
 
+// ── MIGRAÇÃO: hash de senhas em texto puro ──
+function _migrarSenhasParaHash() {
+  try {
+    const db = readDB();
+    const usuarios = db.store['sl_usuarios'] || [];
+    let migrados = 0;
+    usuarios.forEach(u => {
+      if (u && u.senha && !u.senhaHash) {
+        // Tem senha em texto puro e nenhum hash — migra
+        u.senhaHash = bcrypt.hashSync(String(u.senha), BCRYPT_ROUNDS);
+        delete u.senha;
+        migrados++;
+      } else if (u && u.senha && u.senhaHash) {
+        // Já tem hash — remove texto puro por segurança
+        delete u.senha;
+        migrados++;
+      }
+    });
+    if (migrados > 0) {
+      db.store['sl_usuarios'] = usuarios;
+      db.timestamps['sl_usuarios'] = now();
+      writeDB(db);
+      console.log(`[AUTH] ${migrados} senhas migradas para bcrypt.`);
+    }
+  } catch (err) {
+    console.error('[AUTH] Erro na migração de senhas:', err.message);
+  }
+}
+
+// ── SESSÕES ──
+function _getSessions(db) {
+  if (!db.sessions) db.sessions = [];
+  return db.sessions;
+}
+function _pruneSessoesExpiradas(db) {
+  const sess = _getSessions(db);
+  const agora = Date.now();
+  const antes = sess.length;
+  db.sessions = sess.filter(s => (s.lastActivity || s.createdAt || 0) + SESSION_TTL_MS > agora);
+  return antes - db.sessions.length;
+}
+function criarSessao(db, userId) {
+  _pruneSessoesExpiradas(db);
+  const token = 'ses_' + crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  _getSessions(db).push({
+    tokenHash,
+    userId,
+    createdAt: Date.now(),
+    lastActivity: Date.now()
+  });
+  return token;
+}
+function validarSessao(db, token) {
+  if (!token) return null;
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const sess = _getSessions(db).find(s => s.tokenHash === tokenHash);
+  if (!sess) return null;
+  // Verifica TTL
+  if ((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS < Date.now()) return null;
+  // Atualiza lastActivity
+  sess.lastActivity = Date.now();
+  return sess;
+}
+function invalidarSessao(db, token) {
+  if (!token) return;
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  db.sessions = _getSessions(db).filter(s => s.tokenHash !== tokenHash);
+}
+
+// ── STRIP DE SENHA EM RESPOSTAS (sempre) ──
+function _stripSenhas(value) {
+  if (Array.isArray(value)) {
+    return value.map(v => {
+      if (v && typeof v === 'object' && (v.senha !== undefined || v.senhaHash !== undefined)) {
+        const copy = Object.assign({}, v);
+        delete copy.senha; delete copy.senhaHash;
+        return copy;
+      }
+      return v;
+    });
+  }
+  return value;
+}
+
 // Init
 function initDB() {
   const db = readDB();
@@ -72,9 +170,16 @@ function initDB() {
   }
   if (!db.api_tokens) db.api_tokens = [];
   if (!db.api_logs) db.api_logs = [];
+  if (!db.sessions) db.sessions = [];
   writeDB(db);
 }
 initDB();
+// Migra senhas existentes para bcrypt na inicialização
+_migrarSenhasParaHash();
+// Limpeza de sessões expiradas a cada 1h
+setInterval(() => {
+  try { const db = readDB(); const n = _pruneSessoesExpiradas(db); if (n > 0) { writeDB(db); console.log(`[AUTH] ${n} sessões expiradas removidas.`); } } catch {}
+}, 60 * 60 * 1000);
 
 // ══════════════════════════════════════════════
 // ── MIDDLEWARE DE AUTENTICAÇÃO API v1 ──
@@ -342,7 +447,9 @@ app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
 
 app.get('/api/store', (req, res) => {
   const db = readDB();
-  res.json(db.store);
+  const safe = Object.assign({}, db.store);
+  if (safe['sl_usuarios']) safe['sl_usuarios'] = _stripSenhas(safe['sl_usuarios']);
+  res.json(safe);
 });
 
 app.get('/api/updates/:since', (req, res) => {
@@ -350,7 +457,7 @@ app.get('/api/updates/:since', (req, res) => {
   const db = readDB();
   const data = {};
   Object.entries(db.timestamps || {}).forEach(([k, ts]) => {
-    if (ts > since) data[k] = db.store[k];
+    if (ts > since) data[k] = (k === 'sl_usuarios') ? _stripSenhas(db.store[k]) : db.store[k];
   });
   res.json({ data, timestamp: now() });
 });
@@ -416,8 +523,31 @@ function _mergeArrayById(existing, incoming) {
 app.put('/api/store/:key', (req, res) => {
   const db = readDB();
   const key = req.params.key;
-  const incoming = req.body;
+  let incoming = req.body;
   const existing = db.store[key];
+
+  // Tratamento especial para sl_usuarios: preserva senhaHash existente + hash qualquer senha nova
+  if (key === 'sl_usuarios' && Array.isArray(incoming)) {
+    const existingMap = new Map();
+    if (Array.isArray(existing)) existing.forEach(u => { if (u && u.id) existingMap.set(String(u.id), u); });
+    incoming = incoming.map(u => {
+      if (!u || !u.id) return u;
+      const cur = existingMap.get(String(u.id));
+      const copy = Object.assign({}, u);
+      if (copy.senha) {
+        // Nova senha em texto puro (alteração via UI) — hash agora
+        copy.senhaHash = bcrypt.hashSync(String(copy.senha), BCRYPT_ROUNDS);
+        delete copy.senha;
+      } else if (!copy.senhaHash && cur && cur.senhaHash) {
+        // Usuário existente sem senha nova — preserva hash atual
+        copy.senhaHash = cur.senhaHash;
+      } else if (!copy.senhaHash && cur && cur.senha) {
+        // Migração — existia senha em texto, hash agora
+        copy.senhaHash = bcrypt.hashSync(String(cur.senha), BCRYPT_ROUNDS);
+      }
+      return copy;
+    });
+  }
 
   // Aplica merge inteligente por ID quando faz sentido
   db.store[key] = _mergeArrayById(existing, incoming);
@@ -529,15 +659,61 @@ function _limparLixeiraAntiga() {
 setInterval(_limparLixeiraAntiga, 6 * 60 * 60 * 1000);
 setTimeout(_limparLixeiraAntiga, 60 * 1000); // primeira execução 1min após boot
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { email, senha } = req.body || {};
   if (!email || !senha) return res.status(400).json({ error: 'Email e senha obrigatórios' });
   const db = readDB();
   const usuarios = db.store['sl_usuarios'] || [];
-  const user = usuarios.find(u => u.email?.toLowerCase() === email.toLowerCase() && u.senha === senha && u.ativo !== false);
+  const user = usuarios.find(u => u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
   if (!user) return res.status(401).json({ error: 'Email ou senha inválidos' });
-  const { senha: _, ...safeUser } = user;
-  res.json({ user: safeUser });
+
+  // Tenta bcrypt primeiro, senão senha em texto (legado — migra on-the-fly)
+  let match = false;
+  if (user.senhaHash) {
+    try { match = bcrypt.compareSync(String(senha), user.senhaHash); } catch { match = false; }
+  } else if (user.senha) {
+    match = (user.senha === senha);
+    if (match) {
+      // Migra agora
+      user.senhaHash = bcrypt.hashSync(String(senha), BCRYPT_ROUNDS);
+      delete user.senha;
+      db.timestamps['sl_usuarios'] = now();
+    }
+  }
+  if (!match) return res.status(401).json({ error: 'Email ou senha inválidos' });
+
+  const token = criarSessao(db, user.id);
+  writeDB(db);
+
+  const { senha: _s, senhaHash: _h, ...safeUser } = user;
+  res.json({ user: safeUser, token, expiraEm: new Date(Date.now() + SESSION_TTL_MS).toISOString() });
+});
+
+// POST /api/auth/logout — invalida sessão
+app.post('/api/auth/logout', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (token) {
+    const db = readDB();
+    invalidarSessao(db, token);
+    writeDB(db);
+  }
+  res.json({ ok: true });
+});
+
+// GET /api/auth/me — valida token e retorna usuário atual
+app.get('/api/auth/me', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (!token) return res.status(401).json({ error: 'Não autenticado' });
+  const db = readDB();
+  const sess = validarSessao(db, token);
+  if (!sess) return res.status(401).json({ error: 'Sessão inválida ou expirada' });
+  writeDB(db); // salvar lastActivity atualizado
+  const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+  if (!user || user.ativo === false) return res.status(401).json({ error: 'Usuário inexistente ou inativo' });
+  const { senha: _s, senhaHash: _h, ...safeUser } = user;
+  res.json({ user: safeUser, expiraEm: new Date((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS).toISOString() });
 });
 
 app.get('/api/ping', (req, res) => res.json({ ok: true, version: '2.0', api: true }));
@@ -571,19 +747,45 @@ app.get('/api/v1/docs', (req, res) => {
 // ── SISTEMA DE BACKUP ──
 // ══════════════════════════════════════════════
 
-// Middleware: só Diretoria pode acessar backup
+// Middleware: só Diretoria pode acessar backup. Aceita Bearer token (preferido) ou email+senha (legado).
 function authDiretoria(req, res, next) {
+  const db = readDB();
+
+  // 1) Bearer token (preferido)
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const sess = validarSessao(db, token);
+    if (sess) {
+      const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+      if (user && user.ativo !== false && user.cargo === 'Diretoria') {
+        writeDB(db); // persiste lastActivity
+        req.user = user;
+        return next();
+      }
+      if (user && user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+    }
+  }
+
+  // 2) Legado: email+senha (ainda aceito durante transição — migra hash on-the-fly)
   const email = req.headers['x-user-email'] || (req.body && req.body.email);
   const senha = req.headers['x-user-senha'] || (req.body && req.body.senha);
-  if (!email || !senha) return res.status(401).json({ error: 'Credenciais necessárias (x-user-email + x-user-senha).' });
-  const db = readDB();
-  const user = (db.store['sl_usuarios'] || []).find(u =>
-    u.email && u.email.toLowerCase() === String(email).toLowerCase() &&
-    u.senha === senha && u.ativo !== false);
-  if (!user) return res.status(401).json({ error: 'Credenciais inválidas.' });
-  if (user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
-  req.user = user;
-  next();
+  if (email && senha) {
+    const user = (db.store['sl_usuarios'] || []).find(u =>
+      u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
+    if (user) {
+      let match = false;
+      if (user.senhaHash) { try { match = bcrypt.compareSync(String(senha), user.senhaHash); } catch {} }
+      else if (user.senha) { match = (user.senha === senha); if (match) { user.senhaHash = bcrypt.hashSync(String(senha), BCRYPT_ROUNDS); delete user.senha; writeDB(db); } }
+      if (match) {
+        if (user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+        req.user = user;
+        return next();
+      }
+    }
+  }
+
+  return res.status(401).json({ error: 'Não autenticado. Use Authorization: Bearer <token>.' });
 }
 
 // ── Helpers de data ──
