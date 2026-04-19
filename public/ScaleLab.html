@@ -1573,6 +1573,21 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           </div>
           <div id="backup-status" style="margin-top:12px;font-size:12px;color:var(--text2);"></div>
           <div id="backup-list" style="margin-top:12px;"></div>
+
+          <!-- Backup Externo (GitHub) -->
+          <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <div style="font-size:13px;font-weight:700;">☁️ Backup Externo (GitHub)</div>
+              <span id="backup-remoto-badge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg3);color:var(--text2);">verificando...</span>
+            </div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Cópia diária automática em repositório GitHub privado — proteção contra falha total do Railway.</div>
+            <div id="backup-remoto-info" style="font-size:12px;color:var(--text2);margin-bottom:10px;"></div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+              <button class="btn btn-primary" onclick="backupRemotoPush()">☁️ Enviar agora para o GitHub</button>
+              <button class="btn btn-ghost" onclick="backupRemotoStatus()">🔄 Verificar status</button>
+            </div>
+            <div id="backup-remoto-status" style="margin-top:10px;font-size:12px;"></div>
+          </div>
         </div>
 
         <!-- Responsáveis por Etapa -->
@@ -3224,6 +3239,51 @@ async function backupRestaurarSnap(nome){
     setTimeout(()=>location.reload(), 1500);
   }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
 }
+async function backupRemotoStatus(){
+  try{
+    const res = await fetch(API_BASE+'/api/backup/remoto/status', { headers: _bkAuthHeaders() });
+    const data = await res.json();
+    const badge = document.getElementById('backup-remoto-badge');
+    const info = document.getElementById('backup-remoto-info');
+    const st = document.getElementById('backup-remoto-status');
+    if(st) st.textContent = '';
+    if(!data.configurado){
+      if(badge){ badge.textContent='⚠️ não configurado'; badge.style.background='#FEF3C7'; badge.style.color='#92400E'; }
+      if(info) info.innerHTML = '<b>Backup externo não está ativo.</b><br>Peça ao admin pra configurar <code>GITHUB_BACKUP_TOKEN</code> e <code>GITHUB_BACKUP_REPO</code> nas variáveis de ambiente do Railway.';
+      return;
+    }
+    if(badge){ badge.textContent='✅ ativo'; badge.style.background='#D1FAE5'; badge.style.color='#065F46'; }
+    if(info){
+      if(data.ultimo){
+        const atraso = data.ultimo.horasAtras;
+        const cor = atraso<26 ? 'var(--green)' : (atraso<72 ? 'var(--yellow)' : 'var(--red)');
+        info.innerHTML = `<div>Repositório: <b>${data.repo}</b></div>
+          <div style="margin-top:4px;">Último envio: <span style="color:${cor};font-weight:700;">${data.ultimo.fmt}</span> (${atraso}h atrás)</div>
+          <div style="color:var(--text2);font-size:11px;margin-top:2px;">Arquivo: ${data.ultimo.arquivo}</div>`;
+      } else {
+        info.innerHTML = `<div>Repositório: <b>${data.repo}</b></div><div style="color:var(--yellow);margin-top:4px;">Nenhum backup enviado ainda. Clique em "Enviar agora" pra primeira sincronização.</div>`;
+      }
+    }
+  }catch(e){
+    const st = document.getElementById('backup-remoto-status');
+    if(st){ st.textContent = '❌ '+e.message; st.style.color='var(--red)'; }
+  }
+}
+async function backupRemotoPush(){
+  const st = document.getElementById('backup-remoto-status');
+  try{
+    if(st){ st.textContent='⏳ Enviando para o GitHub...'; st.style.color='var(--text2)'; }
+    const res = await fetch(API_BASE+'/api/backup/remoto', {
+      method:'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, _bkAuthHeaders())
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.erro||res.statusText);
+    if(st){ st.textContent = `✅ Enviado: ${data.arquivo} (${(data.tamanho/1024).toFixed(1)}KB)`; st.style.color='var(--green)'; }
+    setTimeout(backupRemotoStatus, 500);
+  }catch(e){ if(st){ st.textContent='❌ '+e.message; st.style.color='var(--red)'; } }
+}
+
 function backupRestaurarArquivo(inp){
   const file = inp.files && inp.files[0];
   if(!file) return;
@@ -7261,6 +7321,9 @@ function switchCfgTab(tab, btn){
   if(tab==='geral'){
     const card = document.getElementById('cfg-backup-card');
     if(card) card.style.display = (currentUser && currentUser.cargo==='Diretoria') ? 'block' : 'none';
+    if(currentUser && currentUser.cargo==='Diretoria'){
+      try{ backupRemotoStatus(); }catch(e){}
+    }
   }
   if(tab==='usuarios') renderUsuarios();
   if(tab==='nichos') renderNichos();

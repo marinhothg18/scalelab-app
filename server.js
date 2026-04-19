@@ -529,6 +529,117 @@ setInterval(() => criarSnapshotBackup('auto'), BACKUP_INTERVAL_MS);
 // Snapshot inicial 30s após startup (evita acumulação se reiniciar muito)
 setTimeout(() => criarSnapshotBackup('boot'), 30000);
 
+// ══════════════════════════════════════════════
+// ── BACKUP EXTERNO (GitHub) ──
+// ══════════════════════════════════════════════
+// Variáveis de ambiente necessárias no Railway:
+//   GITHUB_BACKUP_TOKEN = PAT com scope "repo"
+//   GITHUB_BACKUP_REPO  = "owner/repo" (ex: marinhothg18/scalelab-backups)
+
+const REMOTE_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+const REMOTE_BACKUP_MARKER = path.join(DATA_DIR, '.last-remote-backup');
+
+async function pushBackupToGitHub(motivo) {
+  const token = process.env.GITHUB_BACKUP_TOKEN;
+  const repo  = process.env.GITHUB_BACKUP_REPO;
+  if (!token || !repo) {
+    return { ok: false, erro: 'GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO não configurados no Railway.' };
+  }
+  try {
+    const zlib = require('zlib');
+    const conteudo = fs.readFileSync(DB_FILE, 'utf8');
+    const gz = zlib.gzipSync(conteudo);
+    const base64 = gz.toString('base64');
+
+    const agora = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const stamp = `${agora.getUTCFullYear()}-${pad(agora.getUTCMonth()+1)}-${pad(agora.getUTCDate())}_${pad(agora.getUTCHours())}${pad(agora.getUTCMinutes())}`;
+    const filepath = `backups/${agora.getUTCFullYear()}/${pad(agora.getUTCMonth()+1)}/db-${stamp}${motivo ? '-' + motivo : ''}.json.gz`;
+
+    // Verifica se arquivo já existe (pra pegar SHA)
+    let sha;
+    try {
+      const r0 = await fetch(`https://api.github.com/repos/${repo}/contents/${encodeURI(filepath)}`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+      });
+      if (r0.ok) { const d = await r0.json(); sha = d.sha; }
+    } catch {}
+
+    const res = await fetch(`https://api.github.com/repos/${repo}/contents/${encodeURI(filepath)}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `Backup ${stamp}${motivo ? ' (' + motivo + ')' : ''}`,
+        content: base64,
+        ...(sha ? { sha } : {})
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      return { ok: false, erro: `GitHub ${res.status}: ${err.slice(0,300)}` };
+    }
+    // Grava marker com timestamp
+    try { fs.writeFileSync(REMOTE_BACKUP_MARKER, JSON.stringify({ ts: Date.now(), arquivo: filepath })); } catch {}
+    console.log(`[REMOTE-BACKUP] Enviado ao GitHub: ${filepath} (${(gz.length/1024).toFixed(1)}KB)`);
+    return { ok: true, arquivo: filepath, tamanho: gz.length, repo };
+  } catch (err) {
+    console.error('[REMOTE-BACKUP] erro:', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// Auto-push a cada 24h (se configurado)
+async function _tickBackupRemoto() {
+  try {
+    // Só se configurado
+    if (!process.env.GITHUB_BACKUP_TOKEN || !process.env.GITHUB_BACKUP_REPO) return;
+    // Só se última vez foi >20h atrás
+    try {
+      const marker = JSON.parse(fs.readFileSync(REMOTE_BACKUP_MARKER, 'utf8'));
+      if (marker && marker.ts && Date.now() - marker.ts < 20*60*60*1000) return;
+    } catch {}
+    await pushBackupToGitHub('daily');
+  } catch (e) { console.error('[REMOTE-BACKUP] tick erro:', e.message); }
+}
+setInterval(_tickBackupRemoto, 60*60*1000); // verifica a cada 1h
+setTimeout(_tickBackupRemoto, 2*60*1000);   // primeira tentativa 2min após boot
+
+// POST /api/backup/remoto — força push manual
+app.post('/api/backup/remoto', authDiretoria, async (req, res) => {
+  const r = await pushBackupToGitHub('manual');
+  if (!r.ok) return res.status(500).json(r);
+  res.json(r);
+});
+
+// GET /api/backup/remoto/status — status do último push
+app.get('/api/backup/remoto/status', authDiretoria, (req, res) => {
+  const config = !!(process.env.GITHUB_BACKUP_TOKEN && process.env.GITHUB_BACKUP_REPO);
+  let ultimo = null;
+  try {
+    const marker = JSON.parse(fs.readFileSync(REMOTE_BACKUP_MARKER, 'utf8'));
+    if (marker && marker.ts) {
+      const horasAtras = (Date.now() - marker.ts) / (60*60*1000);
+      ultimo = {
+        ts: marker.ts,
+        iso: new Date(marker.ts).toISOString(),
+        fmt: new Date(marker.ts).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+        arquivo: marker.arquivo,
+        horasAtras: Math.round(horasAtras*10)/10,
+        diasAtras: Math.round(horasAtras/24*10)/10
+      };
+    }
+  } catch {}
+  res.json({
+    configurado: config,
+    repo: process.env.GITHUB_BACKUP_REPO || null,
+    ultimo
+  });
+});
+
 // GET /api/backup/list — lista snapshots disponíveis (classificados por período)
 app.get('/api/backup/list', authDiretoria, (req, res) => {
   try {
@@ -660,5 +771,7 @@ app.listen(PORT, () => {
   console.log(`  📖  API Docs: http://localhost:${PORT}/api/v1/docs`);
   console.log(`  🔑  Tokens:   POST /api/tokens/generate`);
   console.log(`  💾  Backup:   Time Machine — 1h/48h + 1/dia/90d + 1/sem/12m + 1/mês forever`);
+  const remoteOk = !!(process.env.GITHUB_BACKUP_TOKEN && process.env.GITHUB_BACKUP_REPO);
+  console.log(`  ☁️   Remoto:   ${remoteOk ? 'ATIVO → ' + process.env.GITHUB_BACKUP_REPO : 'DESATIVADO (falta GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO)'}`);
   console.log('');
 });
