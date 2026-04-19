@@ -1555,6 +1555,26 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div id="sync-status" style="margin-top:10px;font-size:12px;color:var(--accent2);"></div>
         </div>
 
+        <!-- BACKUP & RESTORE (só Diretoria) -->
+        <div id="cfg-backup-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;grid-column:1/-1;display:none;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:13px;font-weight:700;">💾 Backup & Restauração</div>
+            <span style="font-size:11px;color:var(--text2);">Apenas Diretoria · Snapshot automático a cada 6h</span>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Baixe um backup do banco agora, liste snapshots automáticos ou restaure a partir de um arquivo. Antes de restaurar, um snapshot de segurança é criado.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <button class="btn btn-primary" onclick="backupDownloadAtual()">⬇️ Baixar backup agora</button>
+            <button class="btn btn-ghost" onclick="backupSnapshotManual()">📸 Gerar snapshot no servidor</button>
+            <button class="btn btn-ghost" onclick="backupListar()">📋 Listar snapshots</button>
+            <label class="btn btn-ghost" style="cursor:pointer;">
+              ♻️ Restaurar de arquivo...
+              <input type="file" accept="application/json,.json" onchange="backupRestaurarArquivo(this)" style="display:none;">
+            </label>
+          </div>
+          <div id="backup-status" style="margin-top:12px;font-size:12px;color:var(--text2);"></div>
+          <div id="backup-list" style="margin-top:12px;"></div>
+        </div>
+
         <!-- Responsáveis por Etapa -->
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;">
           <div style="font-size:13px;font-weight:700;margin-bottom:14px;">👥 Responsáveis por Etapa</div>
@@ -3092,6 +3112,119 @@ async function forceSyncAll(){
   }
   btn.disabled = false;
   btn.textContent = '⬆️ Sincronizar tudo agora';
+}
+
+// ── BACKUP & RESTORE (só Diretoria) ──
+function _bkAuthHeaders(){
+  if(!currentUser || currentUser.cargo!=='Diretoria'){ alert('Apenas Diretoria pode usar backup.'); throw new Error('sem permissao'); }
+  // currentUser vindo do login não tem senha; busca no sl_usuarios local
+  var senha = currentUser.senha;
+  if(!senha){
+    var full = (g('sl_usuarios',[])||[]).find(function(u){ return u.id===currentUser.id; });
+    senha = full && full.senha;
+  }
+  if(!senha){ alert('Não foi possível autenticar para backup. Faça logout e login novamente.'); throw new Error('sem senha'); }
+  return { 'x-user-email': currentUser.email, 'x-user-senha': senha };
+}
+function _bkStatus(msg, cor){
+  const el = document.getElementById('backup-status');
+  if(el){ el.textContent = msg; el.style.color = cor || 'var(--text2)'; }
+}
+async function backupDownloadAtual(){
+  try{
+    _bkStatus('⏳ Gerando backup...');
+    const res = await fetch(API_BASE+'/api/backup/download', { headers: _bkAuthHeaders() });
+    if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||res.statusText); }
+    const blob = await res.blob();
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `scalelab-backup-${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    _bkStatus('✅ Backup baixado com sucesso.', 'var(--green)');
+  }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
+}
+async function backupSnapshotManual(){
+  try{
+    _bkStatus('⏳ Criando snapshot no servidor...');
+    const res = await fetch(API_BASE+'/api/backup/snapshot', { method:'POST', headers: _bkAuthHeaders() });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error||res.statusText);
+    _bkStatus(`✅ Snapshot criado: ${data.arquivo} (${data.total} no total)`, 'var(--green)');
+  }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
+}
+async function backupListar(){
+  try{
+    _bkStatus('⏳ Buscando snapshots...');
+    const res = await fetch(API_BASE+'/api/backup/list', { headers: _bkAuthHeaders() });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error||res.statusText);
+    _bkStatus(`${data.total} snapshots (máx ${data.max})`);
+    const list = document.getElementById('backup-list');
+    if(!list) return;
+    if(!data.backups.length){ list.innerHTML = '<div style="color:var(--text2);font-size:12px;">Nenhum snapshot ainda.</div>'; return; }
+    list.innerHTML = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto;">'
+      + data.backups.map(b => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${b.nome}</div>
+            <div style="color:var(--text2);font-size:11px;">${b.criadoFmt} · ${b.tamanhoFmt}</div>
+          </div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" onclick="backupDownloadSnap('${b.nome}')">⬇️ Baixar</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:var(--red);" onclick="backupRestaurarSnap('${b.nome}')">♻️ Restaurar</button>
+        </div>`).join('')
+      + '</div>';
+  }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
+}
+async function backupDownloadSnap(nome){
+  try{
+    const res = await fetch(API_BASE+'/api/backup/download/'+encodeURIComponent(nome), { headers: _bkAuthHeaders() });
+    if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||res.statusText); }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    _bkStatus('✅ Snapshot baixado: '+nome, 'var(--green)');
+  }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
+}
+async function backupRestaurarSnap(nome){
+  if(!confirm(`Restaurar o banco a partir de "${nome}"?\n\nTODOS os dados atuais serão substituídos.\nUm snapshot de segurança será criado automaticamente.`)) return;
+  try{
+    _bkStatus('⏳ Restaurando...');
+    const res = await fetch(API_BASE+'/api/backup/restore/'+encodeURIComponent(nome), {
+      method:'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, _bkAuthHeaders()),
+      body: JSON.stringify({ confirmar: 'SIM_SUBSTITUIR_BANCO' })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error||res.statusText);
+    _bkStatus('✅ '+data.message+' — recarregando página...', 'var(--green)');
+    setTimeout(()=>location.reload(), 1500);
+  }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
+}
+function backupRestaurarArquivo(inp){
+  const file = inp.files && inp.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    try{
+      const dados = JSON.parse(e.target.result);
+      if(!dados || !dados.store) throw new Error('JSON inválido — falta a chave "store".');
+      if(!confirm(`Restaurar o banco a partir de "${file.name}"?\n\nTODOS os dados atuais serão substituídos.\nUm snapshot de segurança será criado automaticamente.`)){ inp.value=''; return; }
+      _bkStatus('⏳ Restaurando...');
+      const res = await fetch(API_BASE+'/api/backup/restore', {
+        method:'POST',
+        headers: Object.assign({'Content-Type':'application/json'}, _bkAuthHeaders()),
+        body: JSON.stringify({ dados, confirmar: 'SIM_SUBSTITUIR_BANCO' })
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error||res.statusText);
+      _bkStatus('✅ '+data.message+' — recarregando página...', 'var(--green)');
+      setTimeout(()=>location.reload(), 1500);
+    }catch(err){ _bkStatus('❌ '+err.message, 'var(--red)'); }
+    inp.value='';
+  };
+  reader.readAsText(file);
 }
 
 // DATA
@@ -7102,6 +7235,11 @@ function switchCfgTab(tab, btn){
     const tabBtn = document.getElementById('cfg-tab-'+t);
     if(tabBtn) tabBtn.classList.toggle('active', t===tab);
   });
+  // Mostrar card de Backup só para Diretoria
+  if(tab==='geral'){
+    const card = document.getElementById('cfg-backup-card');
+    if(card) card.style.display = (currentUser && currentUser.cargo==='Diretoria') ? 'block' : 'none';
+  }
   if(tab==='usuarios') renderUsuarios();
   if(tab==='nichos') renderNichos();
   if(tab==='ofertas-cfg') renderOfertasCfg();

@@ -9,6 +9,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const BACKUP_MAX = 30; // manter últimos 30 snapshots
+const BACKUP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+
+// Garante pasta de backups
+if (!fs.existsSync(BACKUP_DIR)) {
+  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); } catch {}
+}
 
 // ── SEGURANÇA ──
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
@@ -390,6 +398,154 @@ app.get('/api/v1/docs', (req, res) => {
   });
 });
 
+// ══════════════════════════════════════════════
+// ── SISTEMA DE BACKUP ──
+// ══════════════════════════════════════════════
+
+// Middleware: só Diretoria pode acessar backup
+function authDiretoria(req, res, next) {
+  const email = req.headers['x-user-email'] || (req.body && req.body.email);
+  const senha = req.headers['x-user-senha'] || (req.body && req.body.senha);
+  if (!email || !senha) return res.status(401).json({ error: 'Credenciais necessárias (x-user-email + x-user-senha).' });
+  const db = readDB();
+  const user = (db.store['sl_usuarios'] || []).find(u =>
+    u.email && u.email.toLowerCase() === String(email).toLowerCase() &&
+    u.senha === senha && u.ativo !== false);
+  if (!user) return res.status(401).json({ error: 'Credenciais inválidas.' });
+  if (user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  req.user = user;
+  next();
+}
+
+// Grava snapshot com rotação (mantém últimos N)
+function criarSnapshotBackup(motivo) {
+  try {
+    const agora = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const stamp = `${agora.getFullYear()}${pad(agora.getMonth()+1)}${pad(agora.getDate())}-${pad(agora.getHours())}${pad(agora.getMinutes())}${pad(agora.getSeconds())}`;
+    const fname = `db-${stamp}${motivo ? '-' + motivo : ''}.json`;
+    const fpath = path.join(BACKUP_DIR, fname);
+    const conteudo = fs.readFileSync(DB_FILE, 'utf8');
+    fs.writeFileSync(fpath, conteudo);
+    // Rotação: mantém só os últimos BACKUP_MAX
+    const lista = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => ({ nome: f, mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+      .sort((a,b) => b.mtime - a.mtime);
+    lista.slice(BACKUP_MAX).forEach(f => {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f.nome)); } catch {}
+    });
+    console.log(`[BACKUP] Snapshot criado: ${fname} (${lista.length} total)`);
+    return { ok: true, arquivo: fname, total: Math.min(lista.length, BACKUP_MAX) };
+  } catch (err) {
+    console.error('[BACKUP] erro ao criar snapshot:', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// Auto-snapshot a cada 6h
+setInterval(() => criarSnapshotBackup('auto'), BACKUP_INTERVAL_MS);
+// Snapshot inicial 30s após startup (evita acumulação se reiniciar muito)
+setTimeout(() => criarSnapshotBackup('boot'), 30000);
+
+// GET /api/backup/list — lista snapshots disponíveis
+app.get('/api/backup/list', authDiretoria, (req, res) => {
+  try {
+    const lista = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.endsWith('.json'))
+      .map(f => {
+        const st = fs.statSync(path.join(BACKUP_DIR, f));
+        return {
+          nome: f,
+          tamanho: st.size,
+          tamanhoFmt: (st.size/1024).toFixed(1) + ' KB',
+          criado: st.mtime.toISOString(),
+          criadoFmt: st.mtime.toLocaleString('pt-BR')
+        };
+      })
+      .sort((a,b) => new Date(b.criado) - new Date(a.criado));
+    res.json({ total: lista.length, max: BACKUP_MAX, backups: lista });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/backup/download — baixa o db atual (sem salvar snapshot)
+// Passa credenciais via headers x-user-email / x-user-senha
+app.get('/api/backup/download', authDiretoria, (req, res) => {
+  try {
+    const conteudo = fs.readFileSync(DB_FILE, 'utf8');
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-').split('T').join('_').slice(0,19);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="scalelab-backup-${stamp}.json"`);
+    res.send(conteudo);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/backup/download/:nome — baixa um snapshot específico
+app.get('/api/backup/download/:nome', authDiretoria, (req, res) => {
+  const nome = req.params.nome.replace(/[^\w.-]/g,'');
+  const fpath = path.join(BACKUP_DIR, nome);
+  if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Backup não encontrado.' });
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
+  res.send(fs.readFileSync(fpath, 'utf8'));
+});
+
+// POST /api/backup/snapshot — força um snapshot agora
+app.post('/api/backup/snapshot', authDiretoria, (req, res) => {
+  const r = criarSnapshotBackup('manual');
+  if (!r.ok) return res.status(500).json({ error: r.erro });
+  res.json(r);
+});
+
+// POST /api/backup/restore — restaura a partir de JSON enviado (DESTRUTIVO)
+// Salva snapshot atual antes de substituir
+app.post('/api/backup/restore', authDiretoria, (req, res) => {
+  const { dados, confirmar } = req.body || {};
+  if (confirmar !== 'SIM_SUBSTITUIR_BANCO') {
+    return res.status(400).json({ error: 'É necessário passar confirmar: "SIM_SUBSTITUIR_BANCO" no body.' });
+  }
+  if (!dados || typeof dados !== 'object') {
+    return res.status(400).json({ error: 'Campo "dados" ausente ou inválido (precisa ser o objeto do db).' });
+  }
+  if (!dados.store || typeof dados.store !== 'object') {
+    return res.status(400).json({ error: 'JSON inválido — falta a chave "store".' });
+  }
+  try {
+    // Snapshot de segurança ANTES de substituir
+    criarSnapshotBackup('pre-restore');
+    // Escreve novo db
+    fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
+    console.log(`[BACKUP] ${req.user.nome} restaurou o banco a partir de upload.`);
+    res.json({ ok: true, message: 'Banco restaurado. Snapshot de segurança foi criado antes da substituição.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/backup/restore/:nome — restaura a partir de um snapshot existente
+app.post('/api/backup/restore/:nome', authDiretoria, (req, res) => {
+  const { confirmar } = req.body || {};
+  if (confirmar !== 'SIM_SUBSTITUIR_BANCO') {
+    return res.status(400).json({ error: 'É necessário passar confirmar: "SIM_SUBSTITUIR_BANCO" no body.' });
+  }
+  const nome = req.params.nome.replace(/[^\w.-]/g,'');
+  const fpath = path.join(BACKUP_DIR, nome);
+  if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Backup não encontrado.' });
+  try {
+    criarSnapshotBackup('pre-restore');
+    const conteudo = fs.readFileSync(fpath, 'utf8');
+    fs.writeFileSync(DB_FILE, conteudo);
+    console.log(`[BACKUP] ${req.user.nome} restaurou a partir de ${nome}.`);
+    res.json({ ok: true, message: `Banco restaurado de ${nome}.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── INICIA ──
 app.listen(PORT, () => {
   console.log('');
@@ -398,5 +554,6 @@ app.listen(PORT, () => {
   console.log(`  📌  App:  http://localhost:${PORT}/ScaleLab.html`);
   console.log(`  📖  API Docs: http://localhost:${PORT}/api/v1/docs`);
   console.log(`  🔑  Tokens:   POST /api/tokens/generate`);
+  console.log(`  💾  Backup:   GET /api/backup/list  (auto a cada 6h, máx ${BACKUP_MAX} snapshots)`);
   console.log('');
 });
