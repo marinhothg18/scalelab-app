@@ -716,6 +716,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" id="nav-notif-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       Notificações
     </div>
+    <div class="nav-item nav-item-cfg" id="nav-lixeira" onclick="goTo('lixeira')">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
+      Lixeira
+    </div>
     <div class="nav-item nav-item-cfg" onclick="goTo('configuracoes')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Configurações
@@ -1169,6 +1173,18 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <!-- NOTIFICAÇÕES -->
     <div class="page" id="page-notificacoes">
       <div class="empty"><div class="empty-icon">🔔</div><div class="empty-text">Nenhuma notificação ainda.</div></div>
+    </div>
+
+    <!-- LIXEIRA -->
+    <div class="page" id="page-lixeira">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div>
+          <div style="font-size:26px;font-weight:800;">🗑️ Lixeira</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:4px;">Itens removidos — <b>restauráveis por 30 dias</b>. Após isso são apagados permanentemente.</div>
+        </div>
+        <button class="btn btn-ghost" onclick="renderLixeira()">🔄 Atualizar</button>
+      </div>
+      <div id="lixeira-list"></div>
     </div>
 
     <!-- CONTROLE ROI -->
@@ -2998,7 +3014,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -3312,6 +3328,15 @@ function backupRestaurarArquivo(inp){
 // DATA
 function g(k,d){try{return JSON.parse(localStorage.getItem(k))||d;}catch{return d;}}
 function s(k,v){
+  // Auto-stamp _updatedAt em items de arrays com id (merge inteligente server-side)
+  if(Array.isArray(v)){
+    v = v.map(function(it){
+      if(it && typeof it==='object' && it.id!==undefined && it._updatedAt===undefined){
+        return Object.assign({}, it, { _updatedAt: Date.now() });
+      }
+      return it;
+    });
+  }
   localStorage.setItem(k,JSON.stringify(v));
   if(SYNC_KEYS.includes(k)){
     fetch(API_BASE+'/api/store/'+encodeURIComponent(k),{
@@ -3320,6 +3345,76 @@ function s(k,v){
       body: JSON.stringify(v)
     }).catch(()=>{});
   }
+}
+
+// ── SOFT-DELETE: remove localmente + joga na Lixeira global no servidor ──
+// key: nome da chave sincronizada (ex: 'tasks', 'criativos', 'rituais')
+// itemId: id do item a remover
+// tipo: label amigável (ex: 'Demanda', 'Criativo', 'Ritual')
+function sDelete(key, itemId, tipo){
+  // Remove localmente
+  var arr = g(key, []);
+  if(!Array.isArray(arr)) return;
+  var idx = arr.findIndex(function(x){ return String(x && x.id) === String(itemId); });
+  if(idx === -1) return;
+  var item = arr[idx];
+  arr.splice(idx, 1);
+  localStorage.setItem(key, JSON.stringify(arr));
+  // Atualiza lixeira local pra exibir imediatamente
+  var lix = g('sl_lixeira', []);
+  lix.push({
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,8),
+    sourceKey: key,
+    tipo: tipo || key,
+    deletedAt: new Date().toISOString(),
+    deletedBy: currentUser && currentUser.id,
+    deletedByNome: currentUser && currentUser.nome,
+    originalId: item.id,
+    data: item
+  });
+  localStorage.setItem('sl_lixeira', JSON.stringify(lix));
+  // Manda pra servidor (DELETE real + lixeira)
+  fetch(API_BASE+'/api/lixeira/soft-delete', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      key: key,
+      itemId: itemId,
+      tipo: tipo || key,
+      deletedBy: currentUser && currentUser.id,
+      deletedByNome: currentUser && currentUser.nome
+    })
+  }).catch(function(){});
+  return item;
+}
+
+function sRestore(lixeiraId, cb){
+  fetch(API_BASE+'/api/lixeira/restore/'+encodeURIComponent(lixeiraId), {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(res.ok){
+        // Remove da lixeira local
+        var lix = g('sl_lixeira', []).filter(function(x){ return String(x.id) !== String(lixeiraId); });
+        localStorage.setItem('sl_lixeira', JSON.stringify(lix));
+        // Puxa os dados atualizados do servidor
+        if(typeof syncAllFromServer==='function') syncAllFromServer().then(function(){ if(cb) cb(true); });
+        else if(cb) cb(true);
+      } else if(cb) cb(false, res.error);
+    })
+    .catch(function(e){ if(cb) cb(false, e.message); });
+}
+
+function sPurgeLixeira(lixeiraId, cb){
+  fetch(API_BASE+'/api/lixeira/'+encodeURIComponent(lixeiraId), {method:'DELETE'})
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(res.ok){
+        var lix = g('sl_lixeira', []).filter(function(x){ return String(x.id) !== String(lixeiraId); });
+        localStorage.setItem('sl_lixeira', JSON.stringify(lix));
+        if(cb) cb(true);
+      } else if(cb) cb(false, res.error);
+    })
+    .catch(function(e){ if(cb) cb(false, e.message); });
 }
 
 // ── SEED DEMO DATA (runs once on first open) ──
@@ -3602,6 +3697,7 @@ function goTo(id){
   if(id==='adsmetrics')renderAdsMetrics();
   if(id==='rituais')renderRituais();
   if(id==='notificacoes')renderNotificacoes();
+  if(id==='lixeira')renderLixeira();
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
@@ -5986,7 +6082,7 @@ function mudarStatusCri(id, novoStatus){
   notif('Status: '+novoStatus);
 }
 
-function delCriativo(id){if(!confirm('Remover?'))return;criativos=criativos.filter(c=>c.id!==id);s('criativos',criativos);renderCriativos();}
+function delCriativo(id){if(!confirm('Remover criativo? Ficará na Lixeira por 30 dias.'))return;sDelete('criativos',id,'Criativo');criativos=g('criativos',[]);renderCriativos();}
 
 function copiarLinkRemessa(id){
   const base = window.location.protocol==='file:'
@@ -7687,8 +7783,9 @@ function salvarNicho(){
   saveNichos(lista); closeModal('modal-nicho'); renderNichos(); notif('Nicho salvo!');
 }
 function removerNicho(id){
-  if(!confirm('Remover este nicho?'))return;
-  saveNichos(getNichos().filter(n=>n.id!==id)); renderNichos(); notif('Nicho removido.');
+  if(!confirm('Remover este nicho? Ficará na Lixeira por 30 dias.'))return;
+  sDelete('sl_nichos', id, 'Nicho');
+  renderNichos(); notif('Nicho removido.');
 }
 
 // ── OFERTAS CFG ──
@@ -7740,8 +7837,9 @@ function salvarOfertaCfg(){
   saveOfertasV2(lista); closeModal('modal-oferta-cfg'); renderOfertasCfg(); notif('Oferta salva!');
 }
 function removerOfertaCfg(id){
-  if(!confirm('Remover esta oferta?'))return;
-  saveOfertasV2(getOfertasV2().filter(o=>o.id!==id)); renderOfertasCfg(); notif('Oferta removida.');
+  if(!confirm('Remover esta oferta? Ficará na Lixeira por 30 dias.'))return;
+  sDelete('sl_ofertas_v2', id, 'Oferta');
+  renderOfertasCfg(); notif('Oferta removida.');
 }
 
 // ── CHECKLISTS ──
@@ -8462,6 +8560,64 @@ function notificarMencoes(texto, tipo, titulo, refId){
   });
 }
 
+function renderLixeira(){
+  var list = document.getElementById('lixeira-list');
+  if(!list) return;
+  var lix = g('sl_lixeira', []);
+  // Ordenar por data desc
+  lix.sort(function(a,b){ return new Date(b.deletedAt) - new Date(a.deletedAt); });
+  if(!lix.length){
+    list.innerHTML = '<div class="empty"><div class="empty-icon">🗑️</div><div class="empty-text">Lixeira vazia.</div></div>';
+    return;
+  }
+  // Agrupar por tipo
+  var grupos = {};
+  lix.forEach(function(entry){
+    var t = entry.tipo || entry.sourceKey;
+    if(!grupos[t]) grupos[t] = [];
+    grupos[t].push(entry);
+  });
+  var html = '';
+  Object.keys(grupos).sort().forEach(function(tipo){
+    var itens = grupos[tipo];
+    html += '<div style="margin-bottom:22px;">'
+      + '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px;">'+tipo+' · '+itens.length+'</div>'
+      + '<div style="display:flex;flex-direction:column;gap:8px;">'
+      + itens.map(function(e){
+          var nome = (e.data && (e.data.nome || e.data.titulo || e.data.texto)) || ('Item #' + (e.originalId||'?'));
+          var hrs = Math.round((Date.now() - new Date(e.deletedAt).getTime())/(60*60*1000));
+          var tempoAtras = hrs<1 ? 'agora' : (hrs<24 ? hrs+'h atrás' : Math.round(hrs/24)+'d atrás');
+          var autor = e.deletedByNome ? ' · por '+e.deletedByNome : '';
+          var diasRestantes = Math.max(0, 30 - Math.floor((Date.now()-new Date(e.deletedAt).getTime())/(24*60*60*1000)));
+          return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">'
+            + '<div style="flex:1;min-width:0;">'
+              + '<div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+String(nome).replace(/</g,'&lt;')+'</div>'
+              + '<div style="font-size:11px;color:var(--text2);margin-top:2px;">Excluído '+tempoAtras+autor+' · some em '+diasRestantes+' dia'+(diasRestantes===1?'':'s')+'</div>'
+            + '</div>'
+            + '<div style="display:flex;gap:6px;flex-shrink:0;">'
+              + '<button onclick="lixeiraRestaurar(\''+e.id+'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">♻️ Restaurar</button>'
+              + '<button onclick="lixeiraApagarDef(\''+e.id+'\', \''+String(nome).replace(/'/g,"\\'")+'\')" style="background:var(--bg3);color:var(--red);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">🗑 Apagar</button>'
+            + '</div>'
+          + '</div>';
+        }).join('')
+      + '</div></div>';
+  });
+  list.innerHTML = html;
+}
+function lixeiraRestaurar(id){
+  sRestore(id, function(ok, err){
+    if(ok){ notif('✅ Restaurado!'); renderLixeira(); }
+    else alert('Erro ao restaurar: '+(err||''));
+  });
+}
+function lixeiraApagarDef(id, nome){
+  if(!confirm('Apagar permanentemente "'+nome+'"?\n\nEssa ação não pode ser desfeita.')) return;
+  sPurgeLixeira(id, function(ok, err){
+    if(ok){ notif('🗑 Apagado permanentemente'); renderLixeira(); }
+    else alert('Erro: '+(err||''));
+  });
+}
+
 function renderNotificacoes(){
   var el = document.getElementById('page-notificacoes');
   if(!el) return;
@@ -8909,13 +9065,9 @@ function delTask(id){
   document.body.appendChild(wrap);
   document.getElementById('del-no').onclick = function(){ wrap.remove(); };
   document.getElementById('del-yes').onclick = function(){
-    // Move para lixeira ao invés de excluir
-    var lixeira = g('tasks_lixeira',[]);
-    lixeira.unshift(Object.assign({}, t, {_deletedAt: Date.now()}));
-    s('tasks_lixeira', lixeira);
-    syncKey('tasks_lixeira');
-    tasks = tasks.filter(function(x){ return x.id!==id; });
-    s('tasks', tasks);
+    // Soft-delete unificado — vai pra Lixeira global (30 dias)
+    sDelete('tasks', id, 'Demanda');
+    tasks = g('tasks', []);
     wrap.remove();
     renderTasks();
   };
@@ -10574,10 +10726,9 @@ function salvarRitual(){
 }
 
 function deletarRitual(id){
-  if(!confirm('Remover ritual?')) return;
-  rituais = g('rituais', []).filter(r=>r.id!==id);
-  s('rituais', rituais);
-  fetch(API_BASE+'/api/store/rituais',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(rituais)}).catch(()=>{});
+  if(!confirm('Remover ritual? Ficará na Lixeira por 30 dias.')) return;
+  sDelete('rituais', id, 'Ritual');
+  rituais = g('rituais', []);
   renderRituais();
   notif('Ritual removido.');
 }

@@ -355,14 +355,179 @@ app.get('/api/updates/:since', (req, res) => {
   res.json({ data, timestamp: now() });
 });
 
+// ── MERGE INTELIGENTE POR ID ──
+// Resolve conflitos entre edições concorrentes de múltiplos usuários
+// Regras:
+// - Items novos do incoming são adicionados (concurrent create = add-wins)
+// - Items editados: maior _updatedAt vence (last-write-wins per-item)
+// - Items no server ausentes no incoming:
+//   * Se incoming tem _updatedAt em todos os itens (versão nova do cliente)
+//     e o item ausente tem _updatedAt ANTIGO (< max do incoming) → deletado pelo cliente, remove
+//   * Se o item ausente tem _updatedAt >= max do incoming → adicionado por outro cliente mais recente → preserva
+//   * Se incoming não tem _updatedAt → fallback: preserva (evita perda)
+function _mergeArrayById(existing, incoming) {
+  if (!Array.isArray(existing)) return incoming;
+  if (!Array.isArray(incoming)) return incoming;
+  const hasIdAndObj = (arr) => arr.length === 0 || (typeof arr[0] === 'object' && arr[0] !== null && 'id' in arr[0]);
+  if (!hasIdAndObj(existing) || !hasIdAndObj(incoming)) return incoming;
+
+  // Detecta se incoming vem de cliente que stampa _updatedAt
+  const allStamped = incoming.length === 0 || incoming.every(it => it && Number.isFinite(Number(it._updatedAt)));
+  const maxIncomingTs = incoming.reduce((m, it) => Math.max(m, Number(it && it._updatedAt) || 0), 0);
+
+  const incomingIds = new Set();
+  incoming.forEach(it => { if (it && it.id !== undefined && it.id !== null) incomingIds.add(String(it.id)); });
+
+  const map = new Map();
+  // Começa com items existentes
+  existing.forEach(item => {
+    if (!item || item.id === undefined || item.id === null) return;
+    const id = String(item.id);
+    if (incomingIds.has(id)) {
+      map.set(id, item); // será sobreposto pelo incoming se maior ts
+      return;
+    }
+    // Item no server mas NÃO no incoming
+    if (!allStamped) {
+      // Cliente antigo — preserva (não sabemos se foi deletado)
+      map.set(id, item);
+    } else {
+      const curTs = Number(item._updatedAt) || 0;
+      if (curTs > maxIncomingTs) {
+        // Adicionado depois que o cliente sincronizou → preserva
+        map.set(id, item);
+      }
+      // Senão: item é mais antigo que o push do cliente, e não está no incoming → foi deletado
+    }
+  });
+  // Sobrepõe/adiciona do incoming
+  incoming.forEach(item => {
+    if (!item || item.id === undefined || item.id === null) return;
+    const id = String(item.id);
+    const cur = map.get(id);
+    if (!cur) { map.set(id, item); return; }
+    const curTs = Number(cur._updatedAt) || 0;
+    const incTs = Number(item._updatedAt) || 0;
+    if (incTs >= curTs) map.set(id, item);
+  });
+  return Array.from(map.values());
+}
+
 app.put('/api/store/:key', (req, res) => {
   const db = readDB();
-  db.store[req.params.key] = req.body;
+  const key = req.params.key;
+  const incoming = req.body;
+  const existing = db.store[key];
+
+  // Aplica merge inteligente por ID quando faz sentido
+  db.store[key] = _mergeArrayById(existing, incoming);
+
   if (!db.timestamps) db.timestamps = {};
-  db.timestamps[req.params.key] = now();
+  db.timestamps[key] = now();
+  writeDB(db);
+  res.json({ ok: true, merged: Array.isArray(db.store[key]) ? db.store[key].length : undefined });
+});
+
+// ── LIXEIRA GLOBAL (30 dias) ──
+const LIXEIRA_MAX_DIAS = 30;
+
+// Remove item de uma key e joga na lixeira global
+// Body: { itemId, tipo, deletedBy, deletedByNome }
+app.post('/api/lixeira/soft-delete', (req, res) => {
+  const { key, itemId, tipo, deletedBy, deletedByNome } = req.body || {};
+  if (!key || itemId === undefined) return res.status(400).json({ error: 'key e itemId obrigatórios' });
+
+  const db = readDB();
+  const arr = db.store[key];
+  if (!Array.isArray(arr)) return res.status(400).json({ error: `${key} não é array` });
+
+  const idx = arr.findIndex(x => String(x && x.id) === String(itemId));
+  if (idx === -1) return res.status(404).json({ error: 'Item não encontrado' });
+
+  const item = arr[idx];
+  arr.splice(idx, 1);
+
+  // Adiciona à lixeira global
+  if (!db.store['sl_lixeira']) db.store['sl_lixeira'] = [];
+  db.store['sl_lixeira'].push({
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,8),
+    sourceKey: key,
+    tipo: tipo || key,
+    deletedAt: new Date().toISOString(),
+    deletedBy: deletedBy || null,
+    deletedByNome: deletedByNome || null,
+    originalId: item.id,
+    data: item
+  });
+
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps[key] = now();
+  db.timestamps['sl_lixeira'] = now();
   writeDB(db);
   res.json({ ok: true });
 });
+
+// Restaura item da lixeira de volta ao array original
+app.post('/api/lixeira/restore/:lixeiraId', (req, res) => {
+  const db = readDB();
+  const lix = db.store['sl_lixeira'] || [];
+  const idx = lix.findIndex(x => String(x.id) === String(req.params.lixeiraId));
+  if (idx === -1) return res.status(404).json({ error: 'Item da lixeira não encontrado' });
+
+  const entry = lix[idx];
+  if (!db.store[entry.sourceKey]) db.store[entry.sourceKey] = [];
+  // Evita duplicar caso já exista
+  const sourceArr = db.store[entry.sourceKey];
+  if (Array.isArray(sourceArr) && !sourceArr.find(x => String(x && x.id) === String(entry.data.id))) {
+    sourceArr.push(entry.data);
+  }
+  lix.splice(idx, 1);
+
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps[entry.sourceKey] = now();
+  db.timestamps['sl_lixeira'] = now();
+  writeDB(db);
+  res.json({ ok: true, restaurado: entry.data });
+});
+
+// Apaga permanentemente da lixeira
+app.delete('/api/lixeira/:lixeiraId', (req, res) => {
+  const db = readDB();
+  const lix = db.store['sl_lixeira'] || [];
+  const before = lix.length;
+  db.store['sl_lixeira'] = lix.filter(x => String(x.id) !== String(req.params.lixeiraId));
+  if (db.store['sl_lixeira'].length === before) return res.status(404).json({ error: 'Não encontrado' });
+
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps['sl_lixeira'] = now();
+  writeDB(db);
+  res.json({ ok: true });
+});
+
+// Limpa itens da lixeira >30 dias (chamado via cron)
+function _limparLixeiraAntiga() {
+  try {
+    const db = readDB();
+    const lix = db.store['sl_lixeira'] || [];
+    const limiteMs = Date.now() - (LIXEIRA_MAX_DIAS * 24 * 60 * 60 * 1000);
+    const antes = lix.length;
+    db.store['sl_lixeira'] = lix.filter(entry => {
+      const ts = new Date(entry.deletedAt).getTime();
+      return ts >= limiteMs;
+    });
+    const removidos = antes - db.store['sl_lixeira'].length;
+    if (removidos > 0) {
+      db.timestamps['sl_lixeira'] = now();
+      writeDB(db);
+      console.log(`[LIXEIRA] Limpeza automática: ${removidos} itens >30 dias removidos`);
+    }
+  } catch (err) {
+    console.error('[LIXEIRA] Erro na limpeza:', err.message);
+  }
+}
+// Roda limpeza a cada 6h
+setInterval(_limparLixeiraAntiga, 6 * 60 * 60 * 1000);
+setTimeout(_limparLixeiraAntiga, 60 * 1000); // primeira execução 1min após boot
 
 app.post('/api/auth/login', (req, res) => {
   const { email, senha } = req.body || {};
