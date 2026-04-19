@@ -720,6 +720,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
       Lixeira
     </div>
+    <div class="nav-item nav-item-cfg" id="nav-auditoria" onclick="goTo('auditoria')" style="display:none;">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+      Auditoria
+    </div>
     <div class="nav-item nav-item-cfg" onclick="goTo('configuracoes')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Configurações
@@ -1185,6 +1189,40 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="btn btn-ghost" onclick="renderLixeira()">🔄 Atualizar</button>
       </div>
       <div id="lixeira-list"></div>
+    </div>
+
+    <!-- AUDITORIA -->
+    <div class="page" id="page-auditoria">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div>
+          <div style="font-size:26px;font-weight:800;">📋 Auditoria</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:4px;">Registro de ações no sistema · Retenção de 90 dias</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" onclick="renderAuditoria()">🔄 Atualizar</button>
+          <button class="btn btn-ghost" onclick="auditExportCSV()">📥 Exportar CSV</button>
+        </div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
+        <div><label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">USUÁRIO</label><input id="aud-f-user" class="input" placeholder="nome ou id" style="width:100%;font-size:12px;padding:7px 10px;"></div>
+        <div><label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">AÇÃO</label><input id="aud-f-action" class="input" placeholder="login, soft_delete..." style="width:100%;font-size:12px;padding:7px 10px;"></div>
+        <div><label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">DE</label><input id="aud-f-from" type="date" class="input" style="width:100%;font-size:12px;padding:7px 10px;"></div>
+        <div><label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">ATÉ</label><input id="aud-f-to" type="date" class="input" style="width:100%;font-size:12px;padding:7px 10px;"></div>
+        <button class="btn btn-primary" onclick="renderAuditoria()" style="font-size:12px;padding:8px 16px;">🔍 Filtrar</button>
+      </div>
+      <div id="auditoria-list"></div>
+    </div>
+
+    <!-- BUSCA GLOBAL (Ctrl+K) -->
+    <div id="search-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeSearchOverlay()">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;width:620px;max-width:95vw;max-height:75vh;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.45);">
+        <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+          <span style="font-size:18px;">🔍</span>
+          <input id="search-input" placeholder="Buscar em demandas, criativos, rituais, ofertas, arquivos..." oninput="runGlobalSearch()" onkeydown="handleSearchKey(event)" style="flex:1;border:none;outline:none;background:transparent;color:var(--text);font-size:15px;">
+          <span style="font-size:10px;color:var(--text2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;">ESC</span>
+        </div>
+        <div id="search-results" style="flex:1;overflow:auto;padding:8px 0;"></div>
+      </div>
     </div>
 
     <!-- CONTROLE ROI -->
@@ -3014,7 +3052,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://scalelab-web-production.up.railway.app' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -3700,6 +3738,7 @@ function goTo(id){
   if(id==='rituais')renderRituais();
   if(id==='notificacoes')renderNotificacoes();
   if(id==='lixeira')renderLixeira();
+  if(id==='auditoria')renderAuditoria();
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
@@ -8620,6 +8659,212 @@ function lixeiraApagarDef(id, nome){
   });
 }
 
+// ══════════════════════════════════════════════
+// ── AUDITORIA ──
+// ══════════════════════════════════════════════
+var _auditCache = [];
+function _auditActionLabel(a){
+  var map = {
+    'login':'🔓 Login',
+    'login_falhou':'🔒 Login falhou',
+    'logout':'🚪 Logout',
+    'soft_delete':'🗑️ Exclusão',
+    'restore_lixeira':'♻️ Restauração',
+    'purge_lixeira':'🔥 Apagado definitivo',
+    'backup_restore_upload':'📂 Restauração (upload)',
+    'backup_restore_snap':'♻️ Restauração (snapshot)',
+    'api_token_criado':'🔑 Token criado',
+    'api_token_revogado':'🚫 Token revogado'
+  };
+  return map[a] || a;
+}
+async function renderAuditoria(){
+  var list = document.getElementById('auditoria-list');
+  if(!list) return;
+  if(!currentUser || currentUser.cargo!=='Diretoria'){ list.innerHTML='<div class="empty"><div class="empty-text">Restrito à Diretoria.</div></div>'; return; }
+  list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text2);">⏳ Carregando...</div>';
+  var params = new URLSearchParams();
+  var u = (document.getElementById('aud-f-user')||{}).value; if(u) params.set('user', u);
+  var a = (document.getElementById('aud-f-action')||{}).value; if(a) params.set('action', a);
+  var f = (document.getElementById('aud-f-from')||{}).value; if(f) params.set('from', f);
+  var t = (document.getElementById('aud-f-to')||{}).value; if(t) params.set('to', t);
+  params.set('limit', 500);
+  try{
+    var res = await fetch(API_BASE+'/api/auditoria/list?'+params.toString(), { headers: _bkAuthHeaders() });
+    if(!res.ok){ var e = await res.json().catch(()=>({})); throw new Error(e.error || res.statusText); }
+    var data = await res.json();
+    _auditCache = data.entries || [];
+    if(!_auditCache.length){ list.innerHTML='<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhum registro encontrado.</div></div>'; return; }
+    var html = '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;">'
+      + '<div style="display:grid;grid-template-columns:150px 170px 200px 1fr;gap:0;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);padding:10px 14px;background:var(--bg3);letter-spacing:.5px;">'
+      + '<div>QUANDO</div><div>AÇÃO</div><div>USUÁRIO</div><div>DETALHES</div>'
+      + '</div>';
+    _auditCache.forEach(function(e){
+      var when = new Date(e.ts).toLocaleString('pt-BR');
+      var who = e.userNome ? (e.userNome + ' ('+(e.userCargo||'-')+')') : '—';
+      var det = '';
+      if(e.target) det += JSON.stringify(e.target).replace(/[{}"]/g,'').replace(/,/g,' · ');
+      if(e.meta) det += ' · ' + JSON.stringify(e.meta).replace(/[{}"]/g,'').replace(/,/g,' · ');
+      var cor = e.action==='login_falhou'?'var(--red)':(e.action.indexOf('delete')>=0||e.action.indexOf('purge')>=0?'var(--orange)':'var(--text)');
+      html += '<div style="display:grid;grid-template-columns:150px 170px 200px 1fr;gap:0;font-size:12px;padding:10px 14px;border-top:1px solid var(--border);">'
+        + '<div style="color:var(--text2);">'+when+'</div>'
+        + '<div style="color:'+cor+';font-weight:600;">'+_auditActionLabel(e.action)+'</div>'
+        + '<div>'+who+'</div>'
+        + '<div style="color:var(--text2);word-break:break-word;font-size:11px;">'+det.slice(0,200)+'</div>'
+        + '</div>';
+    });
+    html += '</div><div style="font-size:12px;color:var(--text2);margin-top:10px;text-align:right;">Exibindo '+_auditCache.length+' registros</div>';
+    list.innerHTML = html;
+  }catch(err){
+    list.innerHTML = '<div style="color:var(--red);padding:20px;">❌ Erro: '+err.message+'</div>';
+  }
+}
+function auditExportCSV(){
+  if(!_auditCache.length){ alert('Nenhum dado para exportar. Clique em Filtrar primeiro.'); return; }
+  var rows = [['Quando','Ação','Usuário','Cargo','Target','Meta']];
+  _auditCache.forEach(function(e){
+    rows.push([
+      new Date(e.ts).toLocaleString('pt-BR'),
+      e.action,
+      e.userNome || '',
+      e.userCargo || '',
+      e.target ? JSON.stringify(e.target) : '',
+      e.meta ? JSON.stringify(e.meta) : ''
+    ]);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){ var s = String(c).replace(/"/g,'""'); return '"'+s+'"'; }).join(',');
+  }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'scalelab-auditoria-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ══════════════════════════════════════════════
+// ── BUSCA GLOBAL (Ctrl+K / Cmd+K) ──
+// ══════════════════════════════════════════════
+var _searchSelectedIdx = 0;
+var _searchResults = [];
+function openSearchOverlay(){
+  var ov = document.getElementById('search-overlay');
+  if(!ov) return;
+  ov.style.display = 'flex';
+  var inp = document.getElementById('search-input');
+  if(inp){ inp.value=''; setTimeout(function(){ inp.focus(); }, 50); }
+  _searchSelectedIdx = 0;
+  runGlobalSearch();
+}
+function closeSearchOverlay(){
+  var ov = document.getElementById('search-overlay');
+  if(ov) ov.style.display='none';
+}
+document.addEventListener('keydown', function(ev){
+  if((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase()==='k'){
+    ev.preventDefault();
+    openSearchOverlay();
+  }
+  if(ev.key==='Escape'){
+    var ov = document.getElementById('search-overlay');
+    if(ov && ov.style.display!=='none') closeSearchOverlay();
+  }
+});
+function _normalize(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function _matchesQuery(item, q){
+  if(!q) return true;
+  var keys = ['nome','titulo','label','texto','desc','descricao','body'];
+  for(var i=0;i<keys.length;i++){
+    var v = item[keys[i]];
+    if(v && _normalize(v).indexOf(q)>=0) return true;
+  }
+  // Fallback: varre valores string rasos
+  for(var k in item){
+    var v2 = item[k];
+    if(typeof v2==='string' && _normalize(v2).indexOf(q)>=0) return true;
+  }
+  return false;
+}
+function runGlobalSearch(){
+  var inp = document.getElementById('search-input');
+  var res = document.getElementById('search-results');
+  if(!res) return;
+  var q = _normalize(inp ? inp.value : '');
+  var fontes = [
+    { key:'tasks',          nome:'Demandas',  icon:'📋', go:function(it){ goTo('tasks'); abrirTaskDetalhe && abrirTaskDetalhe(it.id); } },
+    { key:'criativos',      nome:'Criativos', icon:'🎨', go:function(it){ goTo('criativos'); } },
+    { key:'rituais',        nome:'Rituais',   icon:'⭐', go:function(it){ goTo('rituais'); try{ abrirRitualDetalhe(it.id); }catch(e){} } },
+    { key:'sl_ofertas_v2',  nome:'Ofertas',   icon:'📦', go:function(it){ goTo('configuracoes'); setTimeout(function(){ switchCfgTab && switchCfgTab('ofertas-cfg', document.getElementById('cfg-tab-ofertas-cfg')); }, 50); } },
+    { key:'sl_nichos',      nome:'Nichos',    icon:'🏷️', go:function(it){ goTo('configuracoes'); setTimeout(function(){ switchCfgTab && switchCfgTab('nichos', document.getElementById('cfg-tab-nichos')); }, 50); } },
+    { key:'sl_usuarios',    nome:'Usuários',  icon:'👤', go:function(it){ goTo('configuracoes'); setTimeout(function(){ switchCfgTab && switchCfgTab('usuarios', document.getElementById('cfg-tab-usuarios')); }, 50); } },
+    { key:'arquivos',       nome:'Arquivos',  icon:'📂', go:function(it){ goTo('arquivos'); } }
+  ];
+  _searchResults = [];
+  var grupos = [];
+  fontes.forEach(function(f){
+    var arr = g(f.key, []);
+    if(!Array.isArray(arr)) return;
+    var matches = arr.filter(function(it){ return it && _matchesQuery(it, q); });
+    if(matches.length){
+      var top = matches.slice(0, q ? 8 : 3);
+      grupos.push({ fonte:f, itens:top, total:matches.length });
+      top.forEach(function(it){ _searchResults.push({ fonte:f, item:it }); });
+    }
+  });
+  if(!grupos.length){
+    res.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text2);font-size:13px;">'
+      + (q ? 'Nenhum resultado para "'+(inp.value)+'"' : 'Comece a digitar...')
+      + '</div>';
+    return;
+  }
+  var idxGlobal = 0;
+  var html = '';
+  grupos.forEach(function(gr){
+    html += '<div style="padding:6px 18px 4px;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">'+gr.fonte.icon+' '+gr.fonte.nome+' <span style="color:var(--text3);font-weight:400;">· '+gr.total+'</span></div>';
+    gr.itens.forEach(function(it, i){
+      var nome = it.nome || it.titulo || it.texto || it.label || it.email || ('Item #'+it.id);
+      var sub = '';
+      if(it.status) sub = it.status;
+      else if(it.cargo) sub = it.cargo;
+      else if(it.nichoNome) sub = it.nichoNome;
+      var isSel = (idxGlobal === _searchSelectedIdx);
+      html += '<div data-idx="'+idxGlobal+'" onclick="selectSearchResult('+idxGlobal+')" onmouseover="_searchSelectedIdx='+idxGlobal+';refreshSearchSel();" style="padding:10px 18px;cursor:pointer;background:'+(isSel?'var(--accent)':'transparent')+';color:'+(isSel?'#fff':'var(--text)')+';">'
+        + '<div style="font-size:13px;font-weight:600;">'+String(nome).replace(/</g,'&lt;').slice(0,80)+'</div>'
+        + (sub?'<div style="font-size:11px;color:'+(isSel?'rgba(255,255,255,.8)':'var(--text2)')+';">'+String(sub).replace(/</g,'&lt;')+'</div>':'')
+        + '</div>';
+      idxGlobal++;
+    });
+  });
+  html += '<div style="padding:8px 18px;border-top:1px solid var(--border);font-size:10px;color:var(--text2);display:flex;gap:14px;">'
+    + '<span>↑↓ navegar</span><span>↵ abrir</span><span>ESC fechar</span>'
+    + '</div>';
+  res.innerHTML = html;
+}
+function refreshSearchSel(){
+  var res = document.getElementById('search-results');
+  if(!res) return;
+  var items = res.querySelectorAll('[data-idx]');
+  items.forEach(function(el){
+    var isSel = parseInt(el.getAttribute('data-idx')) === _searchSelectedIdx;
+    el.style.background = isSel ? 'var(--accent)' : 'transparent';
+    el.style.color = isSel ? '#fff' : 'var(--text)';
+    el.querySelectorAll('div').forEach(function(sub){
+      if(sub.style.fontSize === '11px') sub.style.color = isSel ? 'rgba(255,255,255,.8)' : 'var(--text2)';
+    });
+  });
+}
+function handleSearchKey(ev){
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); _searchSelectedIdx = Math.min(_searchSelectedIdx+1, _searchResults.length-1); refreshSearchSel(); }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); _searchSelectedIdx = Math.max(_searchSelectedIdx-1, 0); refreshSearchSel(); }
+  else if(ev.key==='Enter'){ ev.preventDefault(); selectSearchResult(_searchSelectedIdx); }
+}
+function selectSearchResult(idx){
+  var r = _searchResults[idx];
+  if(!r) return;
+  closeSearchOverlay();
+  try{ r.fonte.go(r.item); }catch(e){ console.warn('Nav erro:', e); }
+}
+
 function renderNotificacoes(){
   var el = document.getElementById('page-notificacoes');
   if(!el) return;
@@ -11575,6 +11820,9 @@ function _applyNavPermissions(cargo){
   // Configurações: apenas Diretoria
   const configNav = document.querySelector('[onclick="goTo(\'configuracoes\')"]');
   if(configNav) configNav.style.display = isDir ? '' : 'none';
+  // Auditoria: apenas Diretoria
+  const audNav = document.getElementById('nav-auditoria');
+  if(audNav) audNav.style.display = isDir ? '' : 'none';
 
   // Demandas: Arquivados sidebar e botão Lixeira — apenas Diretoria
   setDisp('arquivados-section', isDir);

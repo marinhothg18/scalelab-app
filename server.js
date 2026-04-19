@@ -139,6 +139,84 @@ function invalidarSessao(db, token) {
   db.sessions = _getSessions(db).filter(s => s.tokenHash !== tokenHash);
 }
 
+// ══════════════════════════════════════════════
+// ── LOG DE AUDITORIA ──
+// ══════════════════════════════════════════════
+const AUDIT_RETENTION_DAYS = 90;
+const AUDIT_MAX_ENTRIES = 10000; // hard cap de segurança
+
+function audit(db, action, target, meta, userInfo) {
+  try {
+    if (!db.store['sl_auditlog']) db.store['sl_auditlog'] = [];
+    const entry = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      ts: Date.now(),
+      iso: new Date().toISOString(),
+      action: String(action || 'unknown'),
+      target: target || null,
+      userId: (userInfo && userInfo.id) || null,
+      userNome: (userInfo && userInfo.nome) || null,
+      userCargo: (userInfo && userInfo.cargo) || null,
+      meta: meta || null
+    };
+    db.store['sl_auditlog'].unshift(entry);
+    // Hard cap + retenção
+    if (db.store['sl_auditlog'].length > AUDIT_MAX_ENTRIES) {
+      db.store['sl_auditlog'] = db.store['sl_auditlog'].slice(0, AUDIT_MAX_ENTRIES);
+    }
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_auditlog'] = now();
+  } catch (err) {
+    console.error('[AUDIT] erro:', err.message);
+  }
+}
+function _limparAuditoriaAntiga() {
+  try {
+    const db = readDB();
+    const lim = Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const log = db.store['sl_auditlog'] || [];
+    const antes = log.length;
+    db.store['sl_auditlog'] = log.filter(x => (x.ts || 0) >= lim);
+    const rem = antes - db.store['sl_auditlog'].length;
+    if (rem > 0) {
+      db.timestamps['sl_auditlog'] = now();
+      writeDB(db);
+      console.log(`[AUDIT] ${rem} entradas >${AUDIT_RETENTION_DAYS}d removidas.`);
+    }
+  } catch {}
+}
+setInterval(_limparAuditoriaAntiga, 12 * 60 * 60 * 1000); // 2x/dia
+setTimeout(_limparAuditoriaAntiga, 2 * 60 * 1000);
+
+// Helper — pega user info a partir de Bearer token, se tiver
+function _userInfoFromReq(req, db) {
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const sess = validarSessao(db, token);
+    if (sess) {
+      const u = (db.store['sl_usuarios'] || []).find(x => x.id === sess.userId);
+      if (u) return { id: u.id, nome: u.nome, cargo: u.cargo };
+    }
+  }
+  return { id: null, nome: null, cargo: null };
+}
+
+// GET /api/auditoria/list — lista entradas (Diretoria-only)
+app.get('/api/auditoria/list', authDiretoria, (req, res) => {
+  const db = readDB();
+  const log = (db.store['sl_auditlog'] || []).slice();
+  const { user, action, target, from, to, limit } = req.query;
+  let out = log;
+  if (user) out = out.filter(x => x.userId === user || x.userNome === user);
+  if (action) out = out.filter(x => x.action && x.action.toLowerCase().includes(String(action).toLowerCase()));
+  if (target) out = out.filter(x => x.target && JSON.stringify(x.target).toLowerCase().includes(String(target).toLowerCase()));
+  if (from) out = out.filter(x => x.ts >= new Date(from).getTime());
+  if (to) out = out.filter(x => x.ts <= new Date(to).getTime() + 24*60*60*1000);
+  const lim = parseInt(limit) || 500;
+  res.json({ total: out.length, entries: out.slice(0, lim) });
+});
+
 // ── STRIP DE SENHA EM RESPOSTAS (sempre) ──
 function _stripSenhas(value) {
   if (Array.isArray(value)) {
@@ -231,7 +309,7 @@ app.post('/api/tokens/generate', (req, res) => {
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
   const db = readDB();
-  db.api_tokens.push({
+  const tokenMeta = {
     id: Date.now(),
     nome,
     hash: tokenHash,
@@ -241,7 +319,9 @@ app.post('/api/tokens/generate', (req, res) => {
     ativo: true,
     ultimoUso: null,
     totalReqs: 0
-  });
+  };
+  db.api_tokens.push(tokenMeta);
+  audit(db, 'api_token_criado', { tokenId: tokenMeta.id, nome }, null, _userInfoFromReq(req, db));
   writeDB(db);
 
   // Retorna o token APENAS NESTE MOMENTO (nunca mais será visível)
@@ -274,6 +354,7 @@ app.post('/api/tokens/revoke/:id', (req, res) => {
   const token = (db.api_tokens || []).find(t => t.id === id);
   if (!token) return res.status(404).json({ error: 'Token não encontrado.' });
   token.ativo = false;
+  audit(db, 'api_token_revogado', { tokenId: token.id, nome: token.nome }, null, _userInfoFromReq(req, db));
   writeDB(db);
   res.json({ ok: true, message: 'Token revogado com sucesso.' });
 });
@@ -593,6 +674,7 @@ app.post('/api/lixeira/soft-delete', (req, res) => {
   if (!db.timestamps) db.timestamps = {};
   db.timestamps[key] = now();
   db.timestamps['sl_lixeira'] = now();
+  audit(db, 'soft_delete', { sourceKey: key, itemId, tipo }, { itemNome: (item && (item.nome || item.titulo)) || null }, { id: deletedBy, nome: deletedByNome });
   writeDB(db);
   res.json({ ok: true });
 });
@@ -616,6 +698,7 @@ app.post('/api/lixeira/restore/:lixeiraId', (req, res) => {
   if (!db.timestamps) db.timestamps = {};
   db.timestamps[entry.sourceKey] = now();
   db.timestamps['sl_lixeira'] = now();
+  audit(db, 'restore_lixeira', { sourceKey: entry.sourceKey, itemId: entry.originalId, tipo: entry.tipo }, null, _userInfoFromReq(req, db));
   writeDB(db);
   res.json({ ok: true, restaurado: entry.data });
 });
@@ -624,12 +707,13 @@ app.post('/api/lixeira/restore/:lixeiraId', (req, res) => {
 app.delete('/api/lixeira/:lixeiraId', (req, res) => {
   const db = readDB();
   const lix = db.store['sl_lixeira'] || [];
-  const before = lix.length;
+  const entry = lix.find(x => String(x.id) === String(req.params.lixeiraId));
   db.store['sl_lixeira'] = lix.filter(x => String(x.id) !== String(req.params.lixeiraId));
-  if (db.store['sl_lixeira'].length === before) return res.status(404).json({ error: 'Não encontrado' });
+  if (!entry) return res.status(404).json({ error: 'Não encontrado' });
 
   if (!db.timestamps) db.timestamps = {};
   db.timestamps['sl_lixeira'] = now();
+  audit(db, 'purge_lixeira', { sourceKey: entry.sourceKey, itemId: entry.originalId, tipo: entry.tipo }, null, _userInfoFromReq(req, db));
   writeDB(db);
   res.json({ ok: true });
 });
@@ -665,7 +749,11 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   const db = readDB();
   const usuarios = db.store['sl_usuarios'] || [];
   const user = usuarios.find(u => u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
-  if (!user) return res.status(401).json({ error: 'Email ou senha inválidos' });
+  if (!user) {
+    audit(db, 'login_falhou', { email }, { ip: req.ip }, null);
+    writeDB(db);
+    return res.status(401).json({ error: 'Email ou senha inválidos' });
+  }
 
   // Tenta bcrypt primeiro, senão senha em texto (legado — migra on-the-fly)
   let match = false;
@@ -680,9 +768,14 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
       db.timestamps['sl_usuarios'] = now();
     }
   }
-  if (!match) return res.status(401).json({ error: 'Email ou senha inválidos' });
+  if (!match) {
+    audit(db, 'login_falhou', { email, userId: user.id }, { motivo: 'senha_incorreta', ip: req.ip }, null);
+    writeDB(db);
+    return res.status(401).json({ error: 'Email ou senha inválidos' });
+  }
 
   const token = criarSessao(db, user.id);
+  audit(db, 'login', { userId: user.id, email: user.email }, { ip: req.ip }, { id: user.id, nome: user.nome, cargo: user.cargo });
   writeDB(db);
 
   const { senha: _s, senhaHash: _h, ...safeUser } = user;
@@ -695,7 +788,9 @@ app.post('/api/auth/logout', (req, res) => {
   const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
   if (token) {
     const db = readDB();
+    const u = _userInfoFromReq(req, db);
     invalidarSessao(db, token);
+    audit(db, 'logout', { userId: u.id }, null, u);
     writeDB(db);
   }
   res.json({ ok: true });
@@ -1102,6 +1197,8 @@ app.post('/api/backup/restore', authDiretoria, (req, res) => {
     criarSnapshotBackup('pre-restore');
     // Escreve novo db
     fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
+    // Audit (nota: logs do novo db serão no novo db)
+    try { const ndb = readDB(); audit(ndb, 'backup_restore_upload', null, { tamanho: JSON.stringify(dados).length }, { id: req.user.id, nome: req.user.nome, cargo: req.user.cargo }); writeDB(ndb); } catch {}
     console.log(`[BACKUP] ${req.user.nome} restaurou o banco a partir de upload.`);
     res.json({ ok: true, message: 'Banco restaurado. Snapshot de segurança foi criado antes da substituição.' });
   } catch (err) {
@@ -1122,6 +1219,7 @@ app.post('/api/backup/restore/:nome', authDiretoria, (req, res) => {
     criarSnapshotBackup('pre-restore');
     const conteudo = fs.readFileSync(fpath, 'utf8');
     fs.writeFileSync(DB_FILE, conteudo);
+    try { const ndb = readDB(); audit(ndb, 'backup_restore_snap', { snapshot: nome }, null, { id: req.user.id, nome: req.user.nome, cargo: req.user.cargo }); writeDB(ndb); } catch {}
     console.log(`[BACKUP] ${req.user.nome} restaurou a partir de ${nome}.`);
     res.json({ ok: true, message: `Banco restaurado de ${nome}.` });
   } catch (err) {
