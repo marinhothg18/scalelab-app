@@ -567,6 +567,9 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .roi-add-row-btn { display:flex; align-items:center; gap:8px; padding:12px 16px; cursor:pointer; color:var(--text2); font-size:13px; border-top:1px dashed var(--border); transition:all .15s; }
 .roi-add-row-btn:hover { background:rgba(249,115,22,.05); color:var(--accent); }
 </style>
+<!-- Libs para export PDF/Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-cdB6mhJRV/Dy8aMhYCF3ELlZhO3y8E/wfVkAcA8Y0DULpf2C2WJTdCl0ZmXtWpNpxmgWjKrR5QUVIZr2SYFFbg==" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -855,6 +858,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
                 <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text2);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input id="task-search" type="text" placeholder="Buscar demandas..." oninput="renderTasks()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px 7px 32px;font-size:13px;color:var(--text);outline:none;width:190px;">
               </div>
+              <button onclick="exportarDemandasXLSX()" title="Exportar Excel" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;">📊 Excel</button>
               <button id="btn-nova-demanda" onclick="abrirNovaDemanda()" style="background:#0C1220;color:#38BDF8;border:1px solid #38BDF8;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                 <svg style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Nova Demanda
@@ -925,10 +929,11 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <!-- Header -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
         <button onclick="goTo('rituais')" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;color:var(--text);">← Voltar</button>
-        <div>
+        <div style="flex:1;">
           <div id="rd-titulo" style="font-size:20px;font-weight:800;"></div>
           <div id="rd-meta" style="font-size:12px;color:var(--text2);margin-top:2px;"></div>
         </div>
+        <button onclick="exportarRitualAtualPDF()" class="btn btn-ghost no-print" style="font-size:12px;padding:7px 14px;gap:6px;">📄 Exportar PDF</button>
       </div>
 
       <!-- Tabs (ocultas para Weekly/Planejamento) -->
@@ -1232,6 +1237,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <div class="roi-sidebar">
           <div class="roi-sub-item active-roi" onclick="setRoiView('home',this)">🏠 Home</div>
           <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="openModal('modal-oferta')">+ Adicionar Oferta</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="exportarROIXLSX()" title="Exportar Excel">📊 Excel</button>
           <div style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:.5px;margin-left:8px;">OFERTAS:</div>
           <div id="roi-oferta-list" style="display:flex;gap:4px;flex-wrap:wrap;"><!-- JS --></div>
         </div>
@@ -10617,6 +10623,194 @@ function _planjRow(prefix, idx, val, ph, label){
     <button onclick="planjRemoveItem('${prefix}',${idx})" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:14px;padding:8px;" title="Remover">🗑</button>
   </div>`;
 }
+// ══════════════════════════════════════════════
+// ── EXPORT PDF / EXCEL ──
+// ══════════════════════════════════════════════
+
+// Gera PDF a partir de um elemento HTML com header/footer padronizado
+function exportarElementoPDF(opts){
+  if(typeof html2pdf==='undefined'){ alert('Biblioteca de PDF não carregou. Recarregue a página.'); return; }
+  var el = typeof opts.element==='string' ? document.getElementById(opts.element) : opts.element;
+  if(!el){ alert('Elemento não encontrado pra exportar.'); return; }
+  var filename = opts.filename || 'scalelab-'+new Date().toISOString().slice(0,10)+'.pdf';
+  var titulo = opts.titulo || 'ScaleLab';
+  var subtitulo = opts.subtitulo || '';
+
+  // Clona elemento pra não sujar a página
+  var clone = el.cloneNode(true);
+  // Remove elementos não-printáveis
+  clone.querySelectorAll('.btn, button, input[type=text], select, textarea, .no-print').forEach(function(n){ n.remove(); });
+  // Container com header/footer
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'background:#fff;padding:40px;font-family:Helvetica,Arial,sans-serif;color:#111;width:800px;';
+  wrap.innerHTML = '<div style="border-bottom:2px solid #2563EB;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;">'
+    + '<div><div style="font-size:22px;font-weight:800;color:#1E3A8A;">⚡ ScaleLab</div>'
+    + '<div style="font-size:18px;font-weight:700;margin-top:6px;">'+titulo+'</div>'
+    + (subtitulo?'<div style="font-size:13px;color:#6B7280;margin-top:2px;">'+subtitulo+'</div>':'')
+    + '</div>'
+    + '<div style="font-size:11px;color:#6B7280;text-align:right;">Gerado em<br>'+new Date().toLocaleString('pt-BR')+'</div>'
+    + '</div>';
+  wrap.appendChild(clone);
+  wrap.innerHTML += '<div style="margin-top:32px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:10px;color:#9CA3AF;text-align:center;">ScaleLab · Documento confidencial · '+new Date().getFullYear()+'</div>';
+  // Injeta temporariamente no DOM oculto
+  wrap.style.position='fixed'; wrap.style.top='-9999px'; wrap.style.left='0';
+  document.body.appendChild(wrap);
+  html2pdf().set({
+    margin: [10,10,10,10],
+    filename: filename,
+    image: { type:'jpeg', quality:0.95 },
+    html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+    pagebreak: { mode:['avoid-all','css','legacy'] }
+  }).from(wrap).save().then(function(){
+    document.body.removeChild(wrap);
+    if(typeof notif==='function') notif('📄 PDF gerado!');
+  }).catch(function(err){
+    document.body.removeChild(wrap);
+    alert('Erro ao gerar PDF: '+(err && err.message || err));
+  });
+}
+
+// Exporta lista de demandas como Excel
+function exportarDemandasXLSX(){
+  var tasks = g('tasks',[]).filter(function(t){ return !t.arquivado; });
+  if(!tasks.length){ alert('Nenhuma demanda pra exportar.'); return; }
+  var headers = ['ID','Nome','Status','Responsável','Nicho','Oferta','Início','Prazo','Criado','Descrição'];
+  var rows = tasks.map(function(t){
+    return [
+      t.id,
+      t.nome||'',
+      t.status||'',
+      t.resp||'',
+      t.nichoNome||'',
+      t.ofertaNome||'',
+      t.inicio||'',
+      t.data||'',
+      t.criado||'',
+      (t.desc||'').replace(/\n/g,' ').slice(0,500)
+    ];
+  });
+  var fname = 'scalelab-demandas-'+new Date().toISOString().slice(0,10)+'.xlsx';
+  exportarXLSX(fname, [{ nome:'Demandas', headers:headers, rows:rows }]);
+}
+
+// Exporta ROI (remessas + metricas) como Excel multi-sheet
+function exportarROIXLSX(){
+  var remessas = g('remessas', []);
+  var metricas = g('metricas', []);
+  var nichos = g('sl_nichos', []);
+  var ofertas = g('sl_ofertas_v2', []);
+  function nichoNome(id){ var n = nichos.find(function(x){return x.id===id;}); return n?n.nome:''; }
+  function ofertaNome(id){ var o = ofertas.find(function(x){return x.id===id;}); return o?o.nome:''; }
+
+  var sheets = [];
+  // Sheet 1: Remessas
+  sheets.push({
+    nome: 'Remessas',
+    headers: ['Data','Nicho','Oferta','Investido','Retorno','Lucro','ROAS','CPA','Status'],
+    rows: remessas.map(function(r){
+      var inv = Number(r.investido)||0;
+      var ret = Number(r.retorno)||0;
+      return [
+        r.data||'',
+        nichoNome(r.nichoId),
+        ofertaNome(r.ofertaId),
+        inv,
+        ret,
+        ret-inv,
+        inv>0 ? (ret/inv).toFixed(2) : '',
+        (Number(r.leads)>0) ? (inv/Number(r.leads)).toFixed(2) : '',
+        r.status||''
+      ];
+    })
+  });
+  // Sheet 2: Métricas diárias
+  sheets.push({
+    nome: 'Métricas',
+    headers: ['Data','Nicho','Oferta','Investido','Retorno','Leads','Vendas','ROAS'],
+    rows: metricas.map(function(m){
+      var inv = Number(m.investido)||0;
+      var ret = Number(m.retorno)||0;
+      return [
+        m.data||'',
+        nichoNome(m.nichoId),
+        ofertaNome(m.ofertaId),
+        inv,
+        ret,
+        Number(m.leads)||0,
+        Number(m.vendas)||0,
+        inv>0?(ret/inv).toFixed(2):''
+      ];
+    })
+  });
+  // Sheet 3: Ofertas
+  sheets.push({
+    nome: 'Ofertas',
+    headers: ['ID','Nome','Nicho'],
+    rows: ofertas.map(function(o){ return [o.id, o.nome, nichoNome(o.nichoId)]; })
+  });
+
+  var fname = 'scalelab-roi-'+new Date().toISOString().slice(0,10)+'.xlsx';
+  exportarXLSX(fname, sheets);
+}
+
+// Exporta o ritual atualmente aberto no detalhe como PDF
+function exportarRitualAtualPDF(){
+  var r = (g('rituais',[])||[]).find(function(x){ return x.id === _rdRitualId; });
+  if(!r){ alert('Ritual não encontrado.'); return; }
+  // Escolhe qual view está visível
+  var views = ['rd-view-weekly','rd-view-trafego','rd-view-copy'];
+  var visible = null;
+  for(var i=0;i<views.length;i++){
+    var v = document.getElementById(views[i]);
+    if(v && v.style.display !== 'none' && v.innerHTML.trim()){ visible = v; break; }
+  }
+  if(!visible) visible = document.getElementById('rd-view-weekly') || document.getElementById('rd-view-trafego');
+  var meses = {'01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun','07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'};
+  var sub = [r.tipo, r.nichoNome, r.ofertaNome, r.mes?meses[r.mes]:null, r.semana?'Semana '+r.semana:null].filter(Boolean).join(' · ');
+  var safe = (r.nome||'ritual').replace(/[^\w\s-]/g,'').replace(/\s+/g,'-').toLowerCase().slice(0,40);
+  exportarElementoPDF({
+    element: visible,
+    filename: 'scalelab-ritual-'+safe+'-'+new Date().toISOString().slice(0,10)+'.pdf',
+    titulo: r.nome || 'Ritual',
+    subtitulo: sub
+  });
+}
+
+// Baixa um CSV (simples, sem libs)
+function exportarCSV(filename, headers, rows){
+  var csvLines = [];
+  csvLines.push(headers.map(function(h){ return '"'+String(h).replace(/"/g,'""')+'"'; }).join(','));
+  rows.forEach(function(r){
+    csvLines.push(r.map(function(c){
+      var s = c===undefined||c===null ? '' : String(c);
+      return '"'+s.replace(/"/g,'""')+'"';
+    }).join(','));
+  });
+  var csv = '\ufeff' + csvLines.join('\n'); // BOM pra Excel reconhecer UTF-8
+  var blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// Baixa um XLSX real (usa SheetJS)
+function exportarXLSX(filename, sheets){
+  if(typeof XLSX==='undefined'){ alert('Biblioteca Excel não carregou. Recarregue a página.'); return; }
+  var wb = XLSX.utils.book_new();
+  sheets.forEach(function(sh){
+    // sh = { nome, headers, rows }
+    var aoa = [sh.headers].concat(sh.rows || []);
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Ajuste simples de largura das colunas
+    ws['!cols'] = sh.headers.map(function(h){ return { wch: Math.min(30, Math.max(12, String(h).length+4)) }; });
+    XLSX.utils.book_append_sheet(wb, ws, (sh.nome||'Planilha').slice(0,31));
+  });
+  XLSX.writeFile(wb, filename);
+  if(typeof notif==='function') notif('📊 Planilha gerada!');
+}
+
 function _planjAutoSize(ta){
   ta.style.height='auto';
   ta.style.height=(ta.scrollHeight)+'px';
