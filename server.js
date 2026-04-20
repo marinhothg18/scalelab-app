@@ -56,6 +56,8 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+// URL raiz serve o app
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
 
 // ── BANCO DE DADOS ──
 function readDB() {
