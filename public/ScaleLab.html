@@ -5666,7 +5666,7 @@ function renderMetricas(){
     </div>
   </div>`).join('');
 }
-function delMetrica(id){if(!confirm('Remover?'))return;metricas=metricas.filter(m=>m.id!==id);s('metricas',metricas);renderMetricas();}
+function delMetrica(id){if(!confirm('Remover? Ficará na Lixeira por 30 dias.'))return;sDelete('metricas',id,'Métrica');metricas=g('metricas',[]);renderMetricas();}
 function fmtN(v){return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 function fmtP(v){return (parseFloat(v)||0).toFixed(2)+'%';}
 
@@ -7034,7 +7034,7 @@ function renderSwipe(){
   }).join('')}</div>`;
 }
 
-function delSwipe(id){if(!confirm('Remover este swipe?'))return;swipes=swipes.filter(sw=>sw.id!==id);s('swipes',swipes);renderSwipe();}
+function delSwipe(id){if(!confirm('Remover este swipe? Ficará na Lixeira por 30 dias.'))return;sDelete('swipes',id,'Swipe');swipes=g('swipes',[]);renderSwipe();}
 
 // ══ CENTRAL DE ARQUIVOS (por Projetos) ══
 var _arqNav = { projetoId:null, setor:null, subpasta:null };
@@ -7933,9 +7933,8 @@ function salvarUsuario(){
 }
 
 function removerUsuario(id){
-  if(!confirm('Remover este membro?')) return;
-  const lista = getUsuarios().filter(u=>u.id!==id);
-  saveUsuarios(lista);
+  if(!confirm('Remover este membro? Ficará na Lixeira por 30 dias (dá pra restaurar).')) return;
+  sDelete('sl_usuarios', id, 'Usuário');
   renderUsuarios();
   notif('Membro removido.');
 }
@@ -8086,8 +8085,9 @@ function salvarChecklist(){
   saveChecklists(lista); closeModal('modal-checklist'); renderChecklistsCfg(); notif('Checklist salvo!');
 }
 function removerChecklist(id){
-  if(!confirm('Remover este checklist?'))return;
-  saveChecklists(getChecklists().filter(cl=>cl.id!==id)); renderChecklistsCfg(); notif('Checklist removido.');
+  if(!confirm('Remover este checklist? Ficará na Lixeira por 30 dias.'))return;
+  sDelete('sl_checklists', id, 'Checklist');
+  renderChecklistsCfg(); notif('Checklist removido.');
 }
 
 // ── MULTI-RESPONSÁVEIS (state + helpers) ──
