@@ -1343,7 +1343,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <!-- ROI Sidebar -->
         <div class="roi-sidebar">
           <div class="roi-sub-item active-roi" onclick="setRoiView('home',this)">🏠 Home</div>
-          <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="openModal('modal-oferta')">+ Adicionar Oferta</button>
+          <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="populateRoiNichos();openModal('modal-oferta')">+ Adicionar Oferta</button>
           <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="exportarROIXLSX()" title="Exportar Excel">📊 Excel</button>
           <div style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:.5px;margin-left:8px;">OFERTAS:</div>
           <div id="roi-oferta-list" style="display:flex;gap:4px;flex-wrap:wrap;"><!-- JS --></div>
@@ -1997,7 +1997,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             </div>
             <div style="display:flex;align-items:center;gap:4px;">
               <span style="font-size:11px;color:var(--text2);">1 USD =</span>
-              <input type="number" id="ads-cotacao" value="5.10" step="0.01" min="1" onchange="loadAdsMetrics()" style="width:60px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;color:var(--text);outline:none;">
+              <input type="number" id="ads-cotacao" value="5.10" step="0.01" min="1" onchange="salvarCotacaoUSD(this.value);loadAdsMetrics()" style="width:60px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;color:var(--text);outline:none;">
             </div>
           </div>
         </div>
@@ -11478,10 +11478,12 @@ function renderRoiSidebar(){
   const ol=document.getElementById('roi-oferta-list');
   const ativas=roiOfertas.filter(o=>!o.arquivado);
   if(!ativas.length){ol.innerHTML='<div style="font-size:12px;color:var(--text2);padding:4px 8px;">Nenhuma oferta</div>';return;}
+  const isDir = currentUser && currentUser.cargo==='Diretoria';
   ol.innerHTML=ativas.map(o=>`
-    <div class="roi-oferta-item ${roiOfertaSel===o.id?'sel':''}" onclick="abrirDetalhe(${o.id})">
+    <div class="roi-oferta-item ${roiOfertaSel===o.id?'sel':''}" style="position:relative;" onclick="abrirDetalhe(${o.id})">
       <div class="roi-oferta-nome">${o.nome}</div>
       <div class="roi-oferta-meta">Mês de criação: ${o.mes||''}/${o.ano||''}</div>
+      ${isDir?`<button onclick="event.stopPropagation();excluirRoiOferta(${o.id})" title="Excluir (Diretoria)" style="position:absolute;top:4px;right:4px;background:transparent;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:2px 5px;border-radius:4px;opacity:.6;">🗑</button>`:''}
     </div>`).join('');
   // Por período
   const pl=document.getElementById('roi-period-list');
@@ -11519,6 +11521,19 @@ function setRoiView(view, el){
 
 function setRoiOfertaSel(id){roiOfertaSel=id;renderRoiSidebar();}
 
+// ── Excluir oferta ROI (só Diretoria) ──
+function excluirRoiOferta(id){
+  if(!currentUser || currentUser.cargo!=='Diretoria'){ alert('Apenas Diretoria pode excluir.'); return; }
+  var o = roiOfertas.find(function(x){ return x.id===id; });
+  if(!o){ return; }
+  if(!confirm('Excluir oferta "'+o.nome+'"? Ficará na Lixeira por 30 dias.')) return;
+  sDelete('roi_ofertas', id, 'Oferta ROI');
+  roiOfertas = g('roi_ofertas', []);
+  if(roiOfertaSel===id){ roiOfertaSel=null; setRoiView('home'); }
+  renderRoiSidebar();
+  notif('Oferta excluída.');
+}
+
 // ---- Currency ----
 function setRoiCurrency(c){
   roiCurrency=c;
@@ -11555,11 +11570,15 @@ function setRoiPeriodCustom(){
 
 // ---- Nichos ----
 function populateRoiNichos(){
+  // Combina nichos cadastrados em Configurações (sl_nichos) + legacy roi_nichos
+  var cfg = (getNichos ? getNichos() : []).map(function(n){ return n.nome; });
+  var legacy = nichos || [];
+  var combinado = Array.from(new Set(cfg.concat(legacy).filter(Boolean))).sort();
   ['of-nicho','roi-nicho-filter'].forEach(id=>{
     const el=document.getElementById(id);
     if(!el)return;
     const base=id==='roi-nicho-filter'?'<option value="">Todos os nichos</option>':'<option value="">Selecione ou crie um nicho</option>';
-    el.innerHTML=base+nichos.map(n=>`<option>${n}</option>`).join('');
+    el.innerHTML=base+combinado.map(function(n){ return '<option>'+n+'</option>'; }).join('');
   });
 }
 function adicionarNicho(){
@@ -12330,6 +12349,34 @@ function setAdsCurrency(c){
 function getAdsCotacao(){
   return parseFloat((document.getElementById('ads-cotacao')||{value:'5.10'}).value)||5.10;
 }
+
+function salvarCotacaoUSD(val){
+  var num = parseFloat(val)||5.10;
+  localStorage.setItem('sl_cotacao_usd', String(num));
+  // Sync com backend via cfg (reaproveita chave existente)
+  try{
+    var c = g('cfg', {}) || {};
+    c.cotacaoUSD = num;
+    s('cfg', c);
+  }catch(e){}
+}
+
+// Carrega cotação ao iniciar a página de ads metrics
+(function _initCotacaoUSD(){
+  function apply(){
+    var saved = localStorage.getItem('sl_cotacao_usd');
+    if(!saved){
+      try{ var c = g('cfg', {}); if(c && c.cotacaoUSD) saved = String(c.cotacaoUSD); }catch(e){}
+    }
+    var inp = document.getElementById('ads-cotacao');
+    if(inp && saved){ inp.value = parseFloat(saved).toFixed(2); }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', apply);
+  } else {
+    setTimeout(apply, 100);
+  }
+})();
 
 function convertAds(val){
   if(adsCurrency==='brl') return val * getAdsCotacao();
