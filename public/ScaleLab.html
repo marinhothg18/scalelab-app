@@ -2828,10 +2828,13 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             </select>
           </div>
           <div class="fg">
-            <label class="fl">Responsável *</label>
-            <select class="fs" id="t-resp-id" style="width:100%;">
-              <option value="">Selecionar responsável</option>
+            <label class="fl">Responsáveis *</label>
+            <div id="t-resp-tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:30px;padding:4px;border:1px solid var(--border);border-radius:7px;background:var(--bg3);margin-bottom:6px;"></div>
+            <select class="fs" id="t-resp-add" onchange="addResponsavelDemanda(this)" style="width:100%;">
+              <option value="">+ Adicionar responsável</option>
             </select>
+            <!-- Campo hidden pra compat com código legado (primeiro responsável) -->
+            <input type="hidden" id="t-resp-id">
           </div>
         </div>
         <!-- Nicho + Oferta -->
@@ -8081,13 +8084,63 @@ function removerChecklist(id){
   saveChecklists(getChecklists().filter(cl=>cl.id!==id)); renderChecklistsCfg(); notif('Checklist removido.');
 }
 
+// ── MULTI-RESPONSÁVEIS (state + helpers) ──
+var _taskResps = []; // array de { id, nome, cargo }
+function _refreshRespAddSelect(){
+  var sel = document.getElementById('t-resp-add');
+  if(!sel) return;
+  var usados = new Set(_taskResps.map(function(r){ return r.id; }));
+  var opts = '<option value="">+ Adicionar responsável</option>';
+  getUsuarios().forEach(function(u){
+    if(u.ativo===false) return;
+    if(usados.has(u.id)) return;
+    opts += '<option value="'+u.id+'">'+u.nome+' ('+u.cargo+')</option>';
+  });
+  sel.innerHTML = opts;
+  sel.value = '';
+}
+function _renderRespTags(){
+  var wrap = document.getElementById('t-resp-tags');
+  if(!wrap) return;
+  if(!_taskResps.length){
+    wrap.innerHTML = '<span style="font-size:12px;color:var(--text2);padding:6px 4px;">Nenhum responsável — selecione abaixo</span>';
+  } else {
+    wrap.innerHTML = _taskResps.map(function(r){
+      return '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;">'
+        + String(r.nome).replace(/</g,'&lt;')
+        + '<span onclick="removerResponsavelDemanda(\''+r.id+'\')" style="cursor:pointer;opacity:.85;font-size:13px;line-height:1;">✕</span>'
+        + '</span>';
+    }).join('');
+  }
+  _refreshRespAddSelect();
+  // Mantém compat com código legado: campo hidden = primeiro responsável
+  var h = document.getElementById('t-resp-id');
+  if(h) h.value = _taskResps.length ? _taskResps[0].id : '';
+}
+function addResponsavelDemanda(sel){
+  var id = sel.value;
+  if(!id) return;
+  var u = getUsuarios().find(function(x){ return x.id===id; });
+  if(!u) return;
+  if(_taskResps.some(function(r){ return r.id===id; })) return;
+  _taskResps.push({ id: u.id, nome: u.nome, cargo: u.cargo });
+  _renderRespTags();
+}
+function removerResponsavelDemanda(id){
+  _taskResps = _taskResps.filter(function(r){ return r.id !== id; });
+  _renderRespTags();
+}
+
 // ── NOVA DEMANDA ──
 function abrirNovaDemanda(){
   // Reset editing flag
   window._editingTaskId = null;
-  // Populate responsáveis
+  // Reset responsáveis
+  _taskResps = [];
+  _renderRespTags();
+  // Populate responsáveis (legacy — mantém o select oculto populado pra compat)
   const selResp=document.getElementById('t-resp-id');
-  selResp.innerHTML='<option value="">Selecionar responsável</option>'+getUsuarios().map(u=>`<option value="${u.id}">${u.nome} (${u.cargo})</option>`).join('');
+  if(selResp) selResp.value = '';
   // Populate nichos
   const selNicho=document.getElementById('t-nicho');
   selNicho.innerHTML='<option value="">Selecionar nicho</option>'+getNichos().map(n=>`<option value="${n.id}">${n.nome}</option>`).join('');
@@ -8233,9 +8286,19 @@ function abrirEditarDemanda(id){
   // Set editing flag
   window._editingTaskId = id;
 
-  // Populate fields same as nova demanda
-  const selResp=document.getElementById('t-resp-id');
-  selResp.innerHTML='<option value="">Selecionar responsável</option>'+getUsuarios().map(u=>`<option value="${u.id}">${u.nome} (${u.cargo})</option>`).join('');
+  // Popula multi-responsáveis a partir da tarefa
+  _taskResps = [];
+  var allUsers = getUsuarios();
+  if(Array.isArray(t.respIds) && t.respIds.length){
+    t.respIds.forEach(function(rid){
+      var u = allUsers.find(function(x){ return x.id === rid; });
+      if(u) _taskResps.push({ id:u.id, nome:u.nome, cargo:u.cargo });
+    });
+  } else if(t.respId){
+    var u = allUsers.find(function(x){ return x.id === t.respId; });
+    if(u) _taskResps.push({ id:u.id, nome:u.nome, cargo:u.cargo });
+  }
+  _renderRespTags();
 
   const selNicho=document.getElementById('t-nicho');
   selNicho.innerHTML='<option value="">Selecionar nicho</option>'+getNichos().map(n=>`<option value="${n.id}">${n.nome}</option>`).join('');
@@ -8246,7 +8309,6 @@ function abrirEditarDemanda(id){
   // Pre-fill all values
   document.getElementById('t-nome').value = t.nome || '';
   document.getElementById('t-status').value = t.status || 'BACKLOG';
-  selResp.value = t.respId || '';
   document.getElementById('t-link').value = t.link || '';
   // Links de referência: usa novo formato se existir, senão fallback pro antigo
   if(t.linksRef && t.linksRef.length){
@@ -9076,11 +9138,13 @@ function salvarTask(){
   if(!nome){ notif('Título obrigatório!'); return; }
 
   const status = document.getElementById('t-status').value||'BACKLOG';
-  const respEl = document.getElementById('t-resp-id');
-  const respId = respEl ? respEl.value : '';
-  if(!respId){ alert('Selecione um responsável.'); return; }
-  const respUser = getUsuarios().find(u=>u.id===respId);
-  const resp = respUser ? respUser.nome : '';
+  // Multi-responsáveis: pega de _taskResps
+  const respIds = _taskResps.map(function(r){ return r.id; });
+  const respNomes = _taskResps.map(function(r){ return r.nome; });
+  if(!respIds.length){ alert('Selecione pelo menos um responsável.'); return; }
+  // Mantém campos legados (respId/resp) apontando pro PRIMEIRO — preserva compat
+  const respId = respIds[0];
+  const resp = respNomes.join(', '); // exibição: "Ana, Rafael"
 
   const nichoId = document.getElementById('t-nicho').value;
   const nichos = getNichos(); const ofertas = getOfertasV2();
@@ -9105,9 +9169,9 @@ function salvarTask(){
   if(editId){
     // EDIT MODE — preserve existing checklist ticks if no new modelo selected
     var oldTask = tasks.find(function(x){ return x.id===editId; });
-    var oldRespId = oldTask ? oldTask.respId : null;
+    var oldRespIds = oldTask ? (Array.isArray(oldTask.respIds) ? oldTask.respIds : (oldTask.respId ? [oldTask.respId] : [])) : [];
     tasks = tasks.map(t => t.id === editId ? {
-      ...t, nome, status, resp, respId, nichoId, nichoNome, ofertaId, ofertaNome,
+      ...t, nome, status, resp, respId, respIds, nichoId, nichoNome, ofertaId, ofertaNome,
       link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
@@ -9115,10 +9179,12 @@ function salvarTask(){
       checklist: checklist !== null ? checklist : t.checklist,
       fotos: fotos.length ? fotos : (t.fotos||[])
     } : t);
-    // Notificar se mudou o responsável
-    if(respId && respId !== oldRespId){
-      addNotif(respId, resp, 'demanda', 'Nova demanda atribuída', 'Você foi atribuído à demanda "'+nome+'"', editId);
-    }
+    // Notificar SÓ os responsáveis novos (que não estavam antes)
+    respIds.forEach(function(rid, i){
+      if(oldRespIds.indexOf(rid) === -1){
+        addNotif(rid, respNomes[i], 'demanda', 'Nova demanda atribuída', 'Você foi atribuído à demanda "'+nome+'"', editId);
+      }
+    });
     // Notificar menções na descrição
     if(desc) notificarMencoes(desc, 'mencao', 'Você foi mencionado em: '+nome, editId);
     window._editingTaskId = null;
@@ -9127,7 +9193,7 @@ function salvarTask(){
     // CREATE MODE
     const t = {
       id: Date.now(),
-      nome, status, resp, respId, nichoId, nichoNome, ofertaId, ofertaNome,
+      nome, status, resp, respId, respIds, nichoId, nichoNome, ofertaId, ofertaNome,
       link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
@@ -9135,8 +9201,10 @@ function salvarTask(){
       arquivado: false, criado: new Date().toLocaleString('pt-BR'), cmts: window._newTaskCmts||[]
     };
     tasks.push(t);
-    // Notificar responsável
-    if(respId) addNotif(respId, resp, 'demanda', 'Nova demanda atribuída', 'Você foi atribuído à demanda "'+nome+'"', t.id);
+    // Notificar TODOS os responsáveis
+    respIds.forEach(function(rid, i){
+      addNotif(rid, respNomes[i], 'demanda', 'Nova demanda atribuída', 'Você foi atribuído à demanda "'+nome+'"', t.id);
+    });
     // Notificar menções na descrição
     if(desc) notificarMencoes(desc, 'mencao', 'Você foi mencionado em: '+nome, t.id);
     notif('Demanda criada!');
@@ -9165,8 +9233,9 @@ function renderTasks(){
 
   // Permission filtering
   if(currentUser && currentUser.cargo !== 'Diretoria'){
-    // Match by ID (new tasks) or by name (legacy seed tasks)
+    // Match by ID (new tasks), por respIds (multi), or por nome (legacy)
     filtered = filtered.filter(t=>
+      (Array.isArray(t.respIds) && t.respIds.indexOf(currentUser.id) >= 0) ||
       (t.respId && t.respId === currentUser.id) ||
       (!t.respId && t.resp === currentUser.nome)
     );
