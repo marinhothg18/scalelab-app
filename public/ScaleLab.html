@@ -4094,9 +4094,10 @@ function subirCriativo(id){
 }
 
 function delAdlib(id){
-  if(!confirm('Remover este anúncio?'))return;
-  adlibAds=adlibAds.filter(a=>a.id!==id);
-  s('adlib',adlibAds);renderAdlib();
+  if(!confirm('Remover este anúncio? Ficará na Lixeira por 30 dias.'))return;
+  sDelete('adlib', id, 'Anúncio Ad Library');
+  adlibAds = g('adlib', []);
+  renderAdlib();
 }
 
 let _adlibEditId = null;
@@ -5518,9 +5519,8 @@ function addConta(){
 }
 
 function delConta(id){
-  if(!confirm('Excluir esta conta?')) return;
-  const contas = getContas().filter(c=>c.id!==id);
-  saveContas(contas);
+  if(!confirm('Excluir esta conta? Ficará na Lixeira por 30 dias.')) return;
+  sDelete('sl_contingencia', id, 'Conta Contingência');
   renderContingencia();
 }
 
