@@ -1343,7 +1343,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <!-- ROI Sidebar -->
         <div class="roi-sidebar">
           <div class="roi-sub-item active-roi" onclick="setRoiView('home',this)">🏠 Home</div>
-          <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="populateRoiNichos();openModal('modal-oferta')">+ Adicionar Oferta</button>
+          <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="populateRoiNichos();populateRoiOfertasSelect();openModal('modal-oferta')">+ Adicionar Oferta</button>
           <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px;white-space:nowrap;" onclick="exportarROIXLSX()" title="Exportar Excel">📊 Excel</button>
           <div style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:.5px;margin-left:8px;">OFERTAS:</div>
           <div id="roi-oferta-list" style="display:flex;gap:4px;flex-wrap:wrap;"><!-- JS --></div>
@@ -1615,7 +1615,14 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <button class="modal-close" onclick="closeModal('modal-oferta')">✕</button>
         </div>
         <div class="form-grid">
-          <div class="fg form-full"><label class="fl">Nome da Oferta</label><input class="fi" id="of-nome" placeholder="Ex: Retatrutida"></div>
+          <div class="fg form-full">
+            <label class="fl">Oferta</label>
+            <select class="fs" id="of-nome-sel" onchange="_ofertaRoiSelChange(this)">
+              <option value="">Selecionar oferta cadastrada</option>
+              <option value="__nova__">➕ Nova oferta (digitar nome)</option>
+            </select>
+            <input class="fi" id="of-nome" placeholder="Nome da oferta" style="display:none;margin-top:6px;">
+          </div>
           <div class="fg form-full"><label class="fl">Loja</label><input class="fi" id="of-loja" placeholder="Ex: Burnflow"></div>
           <div class="fg form-full">
             <label class="fl">Nicho</label>
@@ -11566,6 +11573,46 @@ function setRoiPeriodCustom(){
     document.querySelectorAll('.roi-filter-btn').forEach(b=>b.classList.remove('active'));
   }
   renderRoiHome();
+}
+
+// ---- Ofertas cadastradas (Configurações → Ofertas) ----
+function populateRoiOfertasSelect(){
+  var sel = document.getElementById('of-nome-sel');
+  if(!sel) return;
+  var ofertas = g('sl_ofertas_v2', []) || [];
+  var nichos = getNichos();
+  var html = '<option value="">Selecionar oferta cadastrada</option>';
+  if(ofertas.length){
+    ofertas.forEach(function(o){
+      var nichoNome = (nichos.find(function(n){ return n.id===o.nichoId; })||{}).nome || '';
+      html += '<option value="'+String(o.nome).replace(/"/g,'&quot;')+'" data-nicho="'+String(nichoNome).replace(/"/g,'&quot;')+'">'+o.nome+(nichoNome?' · '+nichoNome:'')+'</option>';
+    });
+  }
+  html += '<option value="__nova__">➕ Nova oferta (digitar nome)</option>';
+  sel.innerHTML = html;
+}
+
+function _ofertaRoiSelChange(sel){
+  var v = sel.value;
+  var inp = document.getElementById('of-nome');
+  var selNicho = document.getElementById('of-nicho');
+  if(v === '__nova__'){
+    if(inp){ inp.style.display = 'block'; inp.value=''; inp.focus(); }
+  } else if(v){
+    if(inp){ inp.style.display = 'none'; inp.value = v; }
+    // Auto-seleciona o nicho da oferta se conhecido
+    var opt = sel.options[sel.selectedIndex];
+    var nichoNome = opt ? opt.getAttribute('data-nicho') : '';
+    if(nichoNome && selNicho){
+      // Garante que o nicho exista no select
+      populateRoiNichos();
+      for(var i=0;i<selNicho.options.length;i++){
+        if(selNicho.options[i].text === nichoNome){ selNicho.value = selNicho.options[i].value; break; }
+      }
+    }
+  } else {
+    if(inp){ inp.style.display = 'none'; inp.value=''; }
+  }
 }
 
 // ---- Nichos ----
