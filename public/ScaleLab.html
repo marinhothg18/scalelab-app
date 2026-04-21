@@ -1362,7 +1362,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
                   <button class="roi-currency-btn" id="roi-usd" onclick="setRoiCurrency('usd')">$ USD</button>
                   <button class="roi-currency-btn active" id="roi-brl" onclick="setRoiCurrency('brl')">R$ BRL</button>
                 </div>
-                <span style="font-size:12px;color:var(--text2);" id="roi-rate-label">1 USD = R$5,10</span>
+                <span style="font-size:12px;color:var(--text2);display:inline-flex;align-items:center;gap:4px;">
+                  1 USD = R$
+                  <input type="number" id="roi-rate-input" step="0.01" min="0.1" value="5.10" onchange="salvarCotacaoUSD(this.value);syncRoiCotacao();" style="width:60px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-size:12px;color:var(--text);outline:none;">
+                </span>
               </div>
             </div>
             <!-- Filters -->
@@ -11549,7 +11552,10 @@ function setRoiCurrency(c){
   renderRoiHome();
 }
 function fmtCurrency(v){
-  if(roiCurrency==='usd') return '$'+(v/5.1).toFixed(2).replace('.',',');
+  // Usa cotação dinâmica (input editável ou localStorage); fallback 5.10
+  var rate = parseFloat((document.getElementById('roi-rate-input')||{}).value) ||
+             parseFloat(localStorage.getItem('sl_cotacao_usd')) || 5.10;
+  if(roiCurrency==='usd') return '$'+(v/rate).toFixed(2).replace('.',',');
   return 'R$ '+v.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 }
 function fmtNum(v){return v.toFixed(2).replace('.',',');}
@@ -12406,23 +12412,45 @@ function salvarCotacaoUSD(val){
     c.cotacaoUSD = num;
     s('cfg', c);
   }catch(e){}
+  // Sincroniza os dois inputs (Métricas Ads + ROI Home) pra manterem mesmo valor
+  var fmt = num.toFixed(2);
+  ['ads-cotacao','roi-rate-input'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.value !== fmt) el.value = fmt;
+  });
 }
 
-// Carrega cotação ao iniciar a página de ads metrics
+// Re-renderiza ROI após mudar cotação
+function syncRoiCotacao(){
+  try{
+    if(typeof renderRoi==='function') renderRoi();
+    else if(typeof renderRoiHome==='function') renderRoiHome();
+    if(typeof renderRoiDetalhe==='function') renderRoiDetalhe();
+  }catch(e){}
+}
+
+// Carrega cotação ao iniciar a página (aplica em ambos os inputs: ads-cotacao e roi-rate-input)
 (function _initCotacaoUSD(){
   function apply(){
     var saved = localStorage.getItem('sl_cotacao_usd');
     if(!saved){
       try{ var c = g('cfg', {}); if(c && c.cotacaoUSD) saved = String(c.cotacaoUSD); }catch(e){}
     }
-    var inp = document.getElementById('ads-cotacao');
-    if(inp && saved){ inp.value = parseFloat(saved).toFixed(2); }
+    if(saved){
+      var fmt = parseFloat(saved).toFixed(2);
+      ['ads-cotacao','roi-rate-input'].forEach(function(id){
+        var el = document.getElementById(id);
+        if(el) el.value = fmt;
+      });
+    }
   }
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', apply);
   } else {
     setTimeout(apply, 100);
   }
+  // Re-aplica quando a página ROI é aberta (inputs só existem depois)
+  window._applyCotacaoUSD = apply;
 })();
 
 function convertAds(val){
