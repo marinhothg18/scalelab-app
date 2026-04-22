@@ -4251,16 +4251,17 @@ async function _homeCalcKPIsFromRedTrack(){
   }
   function fmt(d){ return d.toISOString().slice(0,10); }
   var agora = new Date();
-  var ini7 = new Date(agora.getTime() - 7*24*60*60*1000);
-  var ini14 = new Date(agora.getTime() - 14*24*60*60*1000);
+  var hoje = fmt(agora);
+  var ontemD = new Date(agora.getTime() - 24*60*60*1000);
+  var ontem = fmt(ontemD);
   try {
-    var [r7, r14] = await Promise.all([
-      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+fmt(ini7)+'&date_to='+fmt(agora)+'&columns=date,cost,revenue,conversions'),
-      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+fmt(ini14)+'&date_to='+fmt(ini7)+'&columns=date,cost,revenue,conversions')
+    var [rHoje, rOntem] = await Promise.all([
+      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+hoje+'&date_to='+hoje+'&columns=date,cost,revenue,conversions'),
+      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+ontem+'&date_to='+ontem+'&columns=date,cost,revenue,conversions')
     ]);
-    if(!r7.ok || !r14.ok) throw new Error('RedTrack API error');
-    var d7  = await r7.json();
-    var d14 = await r14.json();
+    if(!rHoje.ok || !rOntem.ok) throw new Error('RedTrack API error');
+    var d7  = await rHoje.json();
+    var d14 = await rOntem.json();
     // Conversão USD → BRL usando cotação salva
     var rate = parseFloat(localStorage.getItem('sl_cotacao_usd')) || 5.10;
     try{ var _cfg = g('cfg', {}); if(_cfg && _cfg.cotacaoUSD) rate = _cfg.cotacaoUSD; }catch(e){}
@@ -4280,10 +4281,11 @@ async function _homeCalcKPIsFromRedTrack(){
     var b = totais(d14);
     function variacao(x, y){ if(!y || !isFinite(y)) return null; return Math.round(((x-y)/y)*100); }
     var result = {
-      roas:        { atual: a.roas,  var: variacao(a.roas, b.roas) },
-      lucro:       { atual: a.lucro, var: variacao(a.lucro, b.lucro) },
-      cpa:         { atual: a.cpa,   var: variacao(a.cpa, b.cpa) },
       investimento:{ atual: a.cost,  var: variacao(a.cost, b.cost) },
+      faturamento: { atual: a.rev,   var: variacao(a.rev, b.rev) },
+      lucro:       { atual: a.lucro, var: variacao(a.lucro, b.lucro) },
+      roas:        { atual: a.roas,  var: variacao(a.roas, b.roas) },
+      cpa:         { atual: a.cpa,   var: variacao(a.cpa, b.cpa) },
       fonte: 'redtrack'
     };
     _homeKPICacheRT = { ts: Date.now(), data: result };
@@ -4412,19 +4414,19 @@ function renderHome(){
         try {
           var row2 = document.getElementById('home-kpi-row');
           if(!row2) return;
-          var dRoas = _homeDeltaPill(rtK.roas.var, false);
-          var dLucro = _homeDeltaPill(rtK.lucro.var, false);
-          var dCpa = _homeDeltaPill(rtK.cpa.var, true);
           var dInv = _homeDeltaPill(rtK.investimento.var, false);
+          var dFat = _homeDeltaPill(rtK.faturamento.var, false);
+          var dLucro = _homeDeltaPill(rtK.lucro.var, false);
+          var dRoas = _homeDeltaPill(rtK.roas.var, false);
           row2.innerHTML =
-            _homeKpiCard('📈', 'ROAS da Semana', _homeFormatBR(rtK.roas.atual, 'x'),
-                         dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(56,189,248,.15)')
-            + _homeKpiCard('💰', 'Lucro', _homeFormatBR(rtK.lucro.atual, 'R$'),
+            _homeKpiCard('💸', 'Investimento do Dia', _homeFormatBR(rtK.investimento.atual, 'R$'),
+                         dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)')
+            + _homeKpiCard('💵', 'Faturamento do Dia', _homeFormatBR(rtK.faturamento.atual, 'R$'),
+                           dFat.txt, null, dFat.bg, dFat.fg, 'rgba(34,197,94,.15)')
+            + _homeKpiCard('💰', 'Lucro do Dia', _homeFormatBR(rtK.lucro.atual, 'R$'),
                            dLucro.txt, rtK.lucro.atual>=0?'var(--green)':'var(--red)', dLucro.bg, dLucro.fg, 'rgba(22,163,74,.15)')
-            + _homeKpiCard('🎯', 'CPA Médio', rtK.cpa.atual>0?_homeFormatBR(rtK.cpa.atual, 'R$'):'—',
-                           dCpa.txt, null, dCpa.bg, dCpa.fg, 'rgba(245,158,11,.15)')
-            + _homeKpiCard('💸', 'Investimento', _homeFormatBR(rtK.investimento.atual, 'R$'),
-                           dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)');
+            + _homeKpiCard('📈', 'ROAS do Dia', _homeFormatBR(rtK.roas.atual, 'x'),
+                           dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(56,189,248,.15)');
         } catch(e){ console.warn('[HOME] RedTrack update erro:', e); }
       }
     });
@@ -4433,14 +4435,14 @@ function renderHome(){
   var dCpa = _homeDeltaPill(k.cpa.var, true);
   var dInv = _homeDeltaPill(k.investimento.var, false);
   row.innerHTML =
-    _homeKpiCard('📈', 'ROAS da Semana', _homeFormatBR(k.roas.atual, 'x'),
-                 dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(56,189,248,.15)')
-    + _homeKpiCard('💰', 'Lucro', _homeFormatBR(k.lucro.atual, 'R$'),
+    _homeKpiCard('💸', 'Investimento do Dia', _homeFormatBR(k.investimento.atual, 'R$'),
+                 dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)')
+    + _homeKpiCard('💵', 'Faturamento do Dia', _homeFormatBR(k.lucro.atual + k.investimento.atual, 'R$'),
+                   dLucro.txt, null, dLucro.bg, dLucro.fg, 'rgba(34,197,94,.15)')
+    + _homeKpiCard('💰', 'Lucro do Dia', _homeFormatBR(k.lucro.atual, 'R$'),
                    dLucro.txt, k.lucro.atual>=0?'var(--green)':'var(--red)', dLucro.bg, dLucro.fg, 'rgba(22,163,74,.15)')
-    + _homeKpiCard('🎯', 'CPA Médio', k.cpa.atual>0?_homeFormatBR(k.cpa.atual, 'R$'):'—',
-                   dCpa.txt, null, dCpa.bg, dCpa.fg, 'rgba(245,158,11,.15)')
-    + _homeKpiCard('💸', 'Investimento', _homeFormatBR(k.investimento.atual, 'R$'),
-                   dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)');
+    + _homeKpiCard('📈', 'ROAS do Dia', _homeFormatBR(k.roas.atual, 'x'),
+                   dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(56,189,248,.15)');
   } catch(e){ console.error('[HOME] KPI erro:', e); }
 
   try {
