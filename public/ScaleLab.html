@@ -696,8 +696,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .roi-add-row-btn:hover { background:rgba(249,115,22,.05); color:var(--accent); }
 </style>
 <!-- Libs para export PDF/Excel -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-cdB6mhJRV/Dy8aMhYCF3ELlZhO3y8E/wfVkAcA8Y0DULpf2C2WJTdCl0ZmXtWpNpxmgWjKrR5QUVIZr2SYFFbg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -4561,12 +4561,13 @@ function _homeSetor(status){
 }
 
 function renderDash(){
-  // update project name
-  document.getElementById('project-name').textContent='📁 '+cfg.projeto+' ▾';
-  document.getElementById('user-name-nav').textContent=cfg.nome||'Usuário';
-  document.getElementById('chan-name-label').textContent=cfg.projeto||'geral';
-  document.getElementById('chat-chan-title').textContent=cfg.projeto||'geral';
-  document.getElementById('chat-input').placeholder='Mensagem em #'+(cfg.projeto||'geral')+'...';
+  // update project name (defensivo — alguns elementos podem não existir)
+  var _set = function(id, prop, val){ var el = document.getElementById(id); if(el) el[prop] = val; };
+  _set('project-name', 'textContent', '📁 '+(cfg && cfg.projeto || '')+' ▾');
+  _set('user-name-nav', 'textContent', (cfg && cfg.nome) || 'Usuário');
+  _set('chan-name-label', 'textContent', (cfg && cfg.projeto) || 'geral');
+  _set('chat-chan-title', 'textContent', (cfg && cfg.projeto) || 'geral');
+  var ci = document.getElementById('chat-input'); if(ci) ci.placeholder = 'Mensagem em #'+((cfg && cfg.projeto) || 'geral')+'...';
 
   // Home widgets (novos)
   try { renderHome(); } catch(e){ console.warn('renderHome erro:', e); }
