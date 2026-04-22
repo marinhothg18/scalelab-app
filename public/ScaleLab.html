@@ -892,7 +892,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div id="home-data" style="font-size:13px;color:var(--text2);margin-top:2px;"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;" id="home-quick-actions">
-          <button onclick="abrirNovaDemanda()" class="btn btn-primary" style="font-size:12px;padding:8px 14px;gap:4px;display:inline-flex;align-items:center;">+ Demanda</button>
+          <button id="home-qa-demanda" onclick="abrirNovaDemanda()" class="btn btn-primary" style="font-size:12px;padding:8px 14px;gap:4px;display:inline-flex;align-items:center;">+ Demanda</button>
           <button onclick="goTo('criativos');setTimeout(function(){var b=document.querySelector('[onclick*=\'abrirNovaRemessa\']');if(b)b.click();},200)" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;">🎨 Criativo</button>
           <button onclick="goTo('rituais')" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;">⭐ Ritual</button>
           <button onclick="goTo('chat')" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;">💬 Chat</button>
@@ -922,52 +922,14 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <div id="dash-alertas" style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px;"></div>
 
       <!-- Pipeline de criativos -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:13px;font-weight:600;">Pipeline de Criativos</span>
-          <span style="font-size:12px;color:var(--text2);" id="dash-total"></span>
-        </div>
-        <select class="btn btn-ghost" style="font-size:11px;padding:3px 8px;" id="val-periodo" onchange="renderDash()">
-          <option value="7">7 dias</option><option value="15" selected>15 dias</option><option value="30">30 dias</option>
-        </select>
-      </div>
-      <div class="pipeline-bar" style="margin-bottom:20px;">
-        <div class="pip-card"><div class="pip-num orange" id="pip-grav">0</div><div class="pip-label">Gravação</div></div>
-        <div class="pip-card"><div class="pip-num blue" id="pip-an1">0</div><div class="pip-label">Análise 1</div></div>
-        <div class="pip-card"><div class="pip-num purple" id="pip-edi">0</div><div class="pip-label">Edição</div></div>
-        <div class="pip-card"><div class="pip-num yellow" id="pip-an2">0</div><div class="pip-label">Análise 2</div></div>
-        <div class="pip-card" id="pip-sub-card" onclick="goTo('fila')" style="cursor:pointer;" title="Ver fila de upload"><div class="pip-num green" id="pip-sub">0</div><div class="pip-label">⬆ Subir</div></div>
-        <div class="pip-card"><div class="pip-num teal" id="pip-ar">0</div><div class="pip-label">No Ar</div></div>
-      </div>
-
-
-      <!-- Valores e Cultura -->
-      <div style="margin-top:20px;margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-size:14px;font-weight:700;">🦔 Valores e cultura</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;" id="dash-valores-grid">
-          <!-- renderizado por renderValoresCultura() -->
-        </div>
-      </div>
-
-      <!-- Stats -->
-      <div class="stat-row" style="margin-top:14px;">
-        <div class="stat-card">
-          <div class="stat-top"><span style="font-size:16px;">✅</span><span class="stat-label">Criativos validados</span></div>
-          <div class="stat-val" id="dash-validados">0</div>
-          <div style="font-size:12px;color:var(--text2);">aprovados no período</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-top"><span style="font-size:16px;">📋</span><span class="stat-label">Tarefas ativas</span></div>
-          <div class="stat-val" id="dash-tarefas">0</div>
-          <div style="font-size:12px;color:var(--text2);">em andamento</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-top"><span style="font-size:16px;color:var(--accent);">⚡</span><span class="stat-label">Minhas tarefas</span></div>
-          <div class="stat-val" id="dash-minhas">0</div>
-          <div style="font-size:12px;color:var(--text2);">atribuídas a você</div>
-        </div>
+      <!-- Seções antigas (Pipeline, Valores, Stats) ocultas — mantidas só pra renderDash não quebrar -->
+      <div style="display:none;">
+        <select id="val-periodo"><option value="15" selected>15</option></select>
+        <span id="dash-total"></span>
+        <span id="pip-grav"></span><span id="pip-an1"></span><span id="pip-edi"></span>
+        <span id="pip-an2"></span><span id="pip-sub"></span><span id="pip-ar"></span>
+        <div id="dash-valores-grid"></div>
+        <span id="dash-validados"></span><span id="dash-tarefas"></span><span id="dash-minhas"></span>
       </div>
     </div>
 
@@ -4361,6 +4323,18 @@ function renderHome(){
   console.log('[HOME] renderHome started');
   if(!document.getElementById('home-kpi-row')) { console.warn('[HOME] home-kpi-row not found'); return; }
 
+  // Permissões
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  // Esconde botão "+ Demanda" para não-Diretoria
+  var btnNovaDem = document.getElementById('home-qa-demanda');
+  if(btnNovaDem) btnNovaDem.style.display = isDir ? '' : 'none';
+  // Esconde card "Em Risco" para não-Diretoria
+  var cardRisco = document.getElementById('home-risco');
+  if(cardRisco) cardRisco.style.display = isDir ? '' : 'none';
+  // Ajusta grid das 2 colunas pra ocupar melhor
+  var row2col = document.getElementById('home-2col');
+  if(row2col) row2col.style.gridTemplateColumns = isDir ? '1.4fr 1fr' : '1fr';
+
   // Saudação e data
   try {
     var nome = (currentUser && currentUser.nome) || (typeof cfg !== 'undefined' && cfg.nome) || 'Usuário';
@@ -4457,9 +4431,17 @@ function renderHome(){
   } catch(e){ console.error('[HOME] notifs erro:', e); }
 
   try {
-  // DEMANDAS DO DIA
+  // DEMANDAS DO DIA (colaborador vê só as dele; Diretoria vê todas)
   var hoje2 = new Date().toISOString().slice(0,10);
-  var hojeTasks = todasTasks.filter(function(t){ return t.data === hoje2 && t.status !== 'CONCLUIDO'; }).slice(0, 5);
+  var hojeTasks = todasTasks.filter(function(t){
+    if(t.data !== hoje2 || t.status === 'CONCLUIDO') return false;
+    if(isDir) return true;
+    // Não-Diretoria: precisa estar na lista de responsáveis
+    if(Array.isArray(t.respIds) && t.respIds.indexOf(myId) >= 0) return true;
+    if(t.respId === myId) return true;
+    if(!t.respId && t.resp === myNome) return true;
+    return false;
+  }).slice(0, 5);
   var elD = document.getElementById('home-demandas-hoje');
   elD.innerHTML = '<div class="home-card-header"><div class="home-card-title">📅 Demandas de Hoje</div>'
     + '<div class="home-card-action" onclick="goTo(\'task\')">ver tudo →</div></div>'
@@ -4480,12 +4462,16 @@ function renderHome(){
   } catch(e){ console.error('[HOME] demandas hoje erro:', e); }
 
   try {
-  // RITUAIS DA SEMANA
+  // RITUAIS DA SEMANA — filtrados por participante (Diretoria vê todos)
   var rits = g('rituais', []);
   var iniSemH = new Date(); iniSemH.setHours(0,0,0,0); iniSemH.setDate(iniSemH.getDate() - iniSemH.getDay()); // domingo
   var fimSemH = new Date(iniSemH); fimSemH.setDate(iniSemH.getDate()+7);
   var elR = document.getElementById('home-rituais');
-  var eus = rits.slice(0, 4);
+  var ritsFiltrados = rits.filter(function(r){
+    if(isDir) return true;
+    return Array.isArray(r.participantes) && r.participantes.indexOf(myNome) >= 0;
+  });
+  var eus = ritsFiltrados.slice(0, 4);
   elR.innerHTML = '<div class="home-card-header"><div class="home-card-title">⭐ Rituais desta Semana</div>'
     + '<div class="home-card-action" onclick="goTo(\'rituais\')">ver todos →</div></div>'
     + '<div class="home-card-sep"></div>'
