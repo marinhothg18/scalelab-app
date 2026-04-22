@@ -4875,7 +4875,8 @@ function renderTrafegoContent(){
 // ── GESTÃO ──
 var _gestaoTab = 'prog_demanda';
 var GESTAO_TABS = [
-  { id:'prog_demanda', label:'Programação de Demanda', icon:'📋', color:'#8B5CF6' }
+  { id:'prog_demanda', label:'Programação de Demanda', icon:'📋', color:'#8B5CF6' },
+  { id:'pulse',        label:'Pulse — Tempo Real',     icon:'📡', color:'#16A34A' }
 ];
 
 function renderGestaoSidebar(){
@@ -4892,6 +4893,200 @@ function renderGestaoContent(){
   var el = document.getElementById('gestao-content');
   if(!el) return;
   if(_gestaoTab === 'prog_demanda'){ renderProgDemanda(); }
+  else if(_gestaoTab === 'pulse'){ renderPulse(); }
+}
+
+// ══════════════════════════════════════════════
+// PULSE — Tempo Real da Operação (Diretoria)
+// ══════════════════════════════════════════════
+var _pulseAuditCache = [];
+var _pulseInterval = null;
+
+async function renderPulse(){
+  var el = document.getElementById('gestao-content');
+  if(!el) return;
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!isDir){ el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2);">Acesso restrito à Diretoria.</div>'; return; }
+
+  // Fetch auditoria recente
+  try {
+    var res = await fetch(API_BASE+'/api/auditoria/list?limit=100', { headers: _bkAuthHeaders() });
+    if(res.ok){ var data = await res.json(); _pulseAuditCache = data.entries || []; }
+  } catch(e){ _pulseAuditCache = []; }
+
+  _renderPulseHTML(el);
+
+  // Auto-refresh a cada 30s
+  if(_pulseInterval) clearInterval(_pulseInterval);
+  _pulseInterval = setInterval(function(){
+    if(document.getElementById('pulse-root')){ renderPulse(); }
+    else { clearInterval(_pulseInterval); _pulseInterval = null; }
+  }, 30000);
+}
+
+function _renderPulseHTML(el){
+  var usuarios = g('sl_usuarios', []);
+  var tasks = g('tasks', []).filter(function(t){ return !t.arquivado; });
+  var hojeStr = new Date().toISOString().slice(0,10);
+  // KPIs calc
+  var onlineThreshold = 15*60*1000; // online = atividade nos últimos 15min
+  var agora = Date.now();
+  var onlineUsers = _pulseAuditCache.filter(function(a){ return agora - a.ts < onlineThreshold; }).map(function(a){ return a.userId; });
+  var onlineSet = new Set(onlineUsers);
+  var ativos = usuarios.filter(function(u){ return u.ativo !== false; });
+  var onlineCount = ativos.filter(function(u){ return onlineSet.has(u.id); }).length;
+  var acoes2h = _pulseAuditCache.filter(function(a){ return agora - a.ts < 2*60*60*1000; }).length;
+  var emRisco = tasks.filter(function(t){ return t.data && t.data < hojeStr && t.status !== 'CONCLUIDO'; }).length;
+
+  var html = '<div id="pulse-root" style="padding:0;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+  html += '<div><div style="font-size:22px;font-weight:800;">📡 Pulse — Tempo Real da Operação</div>';
+  html += '<div style="font-size:12px;color:var(--text2);">Monitor da operação · atualiza a cada 30s</div></div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:#16A34A;display:inline-block;animation:pulse 2s infinite;"></span><span style="font-size:12px;font-weight:700;color:#16A34A;">AO VIVO</span></div>';
+  html += '</div>';
+
+  // KPIs row
+  var statCard = function(icon, label, val, sub, cor, bg){
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;position:relative;overflow:hidden;">'
+      + '<div style="position:absolute;top:0;left:0;bottom:0;width:4px;background:'+cor+';"></div>'
+      + '<div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">'+icon+' '+label+'</div>'
+      + '<div style="font-size:36px;font-weight:800;color:'+cor+';margin-top:6px;">'+val+'</div>'
+      + '<div style="font-size:11px;color:var(--text2);margin-top:6px;">'+sub+'</div>'
+      + '</div>';
+  };
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px;">';
+  html += statCard('🟢', 'Online agora', onlineCount, 'de '+ativos.length+' pessoas', '#16A34A', '#D1FAE5');
+  html += statCard('⚡', 'Ações nas últimas 2h', acoes2h, 'registradas', '#2563EB', '#DBEAFE');
+  html += statCard('🔥', 'Em risco / atrasadas', emRisco, 'itens paralisados', '#DC2626', '#FEE2E2');
+  // ROAS dia (placeholder — usa cache)
+  var roasDia = '–';
+  try {
+    if(_homeKPICacheRT && _homeKPICacheRT.data && _homeKPICacheRT.data.roas){
+      roasDia = (_homeKPICacheRT.data.roas.atual || 0).toFixed(2).replace('.',',')+'x';
+    }
+  } catch(e){}
+  html += statCard('📊', 'ROAS do dia', roasDia, 'de campanhas ativas', '#7C3AED', '#EDE9FE');
+  html += '</div>';
+
+  // 2 columns
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">';
+
+  // LEFT: Equipe online
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;">';
+  html += '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">👥 Equipe online agora</div>';
+  html += '<div style="height:1px;background:var(--border);margin-bottom:12px;"></div>';
+  ativos.slice(0, 10).forEach(function(u){
+    var lastAction = _pulseAuditCache.find(function(a){ return a.userId === u.id; });
+    var online = lastAction && (agora - lastAction.ts) < onlineThreshold;
+    var idle = lastAction ? Math.round((agora - lastAction.ts)/60000) : null;
+    var onde = lastAction ? _pulseAuditLabel(lastAction.action) : '–';
+    var idleStr = idle === null ? 'inativo' : idle === 0 ? 'agora' : 'há '+idle+'min';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">';
+    html += '<span style="width:10px;height:10px;border-radius:50%;background:'+(online?'#16A34A':'#9CA3AF')+';display:inline-block;"></span>';
+    html += '<div style="flex:1;min-width:0;">';
+    html += '<div style="font-size:13px;font-weight:600;">'+(u.nome||'').replace(/</g,'&lt;')+'</div>';
+    html += '<div style="font-size:11px;color:var(--text2);">'+u.cargo+' · '+onde+'</div>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:var(--text2);">'+idleStr+'</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // RIGHT: Ranking da semana
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;">';
+  html += '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">🏆 Ranking da semana — entregas</div>';
+  html += '<div style="height:1px;background:var(--border);margin-bottom:12px;"></div>';
+  var rankingData = _pulseCalcRanking();
+  rankingData.forEach(function(r, i){
+    var medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':('#'+(i+1));
+    var bgRow = i===0 ? '#FEF3C7' : 'transparent';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:'+bgRow+';border-radius:8px;margin-bottom:4px;">';
+    html += '<div style="font-size:16px;min-width:32px;">'+medal+'</div>';
+    html += '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+r.nome+'</div><div style="font-size:11px;color:var(--text2);">'+r.cargo+'</div></div>';
+    html += '<div style="font-size:12px;color:#16A34A;font-weight:600;">✅ '+r.entregues+' entregues</div>';
+    html += '<div style="font-size:12px;color:'+(r.atrasos>0?'#DC2626':'var(--text2)')+';font-weight:600;margin-left:12px;">⚠ '+r.atrasos+' atrasos</div>';
+    html += '</div>';
+  });
+  if(!rankingData.length){ html += '<div style="color:var(--text2);padding:20px;text-align:center;">Sem dados ainda</div>'; }
+  html += '</div>';
+
+  html += '</div>'; // end 2 cols
+
+  // Feed de ações
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+  html += '<div style="font-size:14px;font-weight:700;">⚡ Últimas ações (tempo real)</div>';
+  html += '<div style="font-size:11px;color:var(--text2);">'+_pulseAuditCache.length+' no total</div>';
+  html += '</div>';
+  html += '<div style="height:1px;background:var(--border);margin-bottom:8px;"></div>';
+  _pulseAuditCache.slice(0, 20).forEach(function(a){
+    var when = _homeTempoAtras(a.ts);
+    var cor = _pulseActionColor(a.action);
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bg3);font-size:12px;">';
+    html += '<div style="width:4px;height:16px;background:'+cor+';border-radius:2px;"></div>';
+    html += '<div style="flex:1;"><b>'+(a.userNome||'Sistema')+'</b> '+_pulseAuditLabel(a.action)+' '+_pulseAuditDetalhe(a)+'</div>';
+    html += '<div style="font-size:11px;color:var(--text2);">'+when+'</div>';
+    html += '</div>';
+  });
+  if(!_pulseAuditCache.length){ html += '<div style="color:var(--text2);padding:20px;text-align:center;">Nenhuma ação registrada ainda</div>'; }
+  html += '</div>';
+
+  // Pulse animation CSS
+  html += '<style>@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}</style>';
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function _pulseAuditLabel(a){
+  var map = {
+    'login':'entrou no sistema',
+    'login_falhou':'tentou login (falha)',
+    'logout':'saiu',
+    'soft_delete':'excluiu',
+    'restore_lixeira':'restaurou',
+    'purge_lixeira':'apagou permanente',
+    'backup_restore_upload':'restaurou backup',
+    'backup_restore_snap':'restaurou snapshot',
+    'api_token_criado':'criou token API',
+    'api_token_revogado':'revogou token API'
+  };
+  return map[a] || a;
+}
+function _pulseAuditDetalhe(a){
+  try {
+    if(!a.target) return '';
+    if(a.target.tipo) return a.target.tipo;
+    if(a.target.email) return '('+a.target.email+')';
+    return '';
+  } catch(e){ return ''; }
+}
+function _pulseActionColor(a){
+  if(a === 'login' || a === 'restore_lixeira') return '#16A34A';
+  if(a === 'soft_delete' || a === 'purge_lixeira' || a === 'login_falhou') return '#DC2626';
+  if(a === 'backup_restore_upload' || a === 'backup_restore_snap') return '#F59E0B';
+  return '#2563EB';
+}
+function _pulseCalcRanking(){
+  var tasks = g('tasks', []);
+  var usuarios = g('sl_usuarios', []);
+  var ini = new Date(); ini.setHours(0,0,0,0); ini.setDate(ini.getDate() - ini.getDay()); // domingo
+  var hojeStr = new Date().toISOString().slice(0,10);
+  var stats = {};
+  usuarios.forEach(function(u){ if(u.ativo !== false) stats[u.id] = { nome: u.nome, cargo: u.cargo, entregues: 0, atrasos: 0 }; });
+  tasks.forEach(function(t){
+    var responsaveis = Array.isArray(t.respIds) ? t.respIds : (t.respId ? [t.respId] : []);
+    responsaveis.forEach(function(rid){
+      if(!stats[rid]) return;
+      if(t.status === 'CONCLUIDO') {
+        // contabiliza só semana atual (rough)
+        stats[rid].entregues++;
+      } else if(t.data && t.data < hojeStr) {
+        stats[rid].atrasos++;
+      }
+    });
+  });
+  return Object.values(stats).sort(function(a, b){ return b.entregues - a.entregues; }).slice(0, 6);
 }
 
 // ── PROGRAMAÇÃO DE DEMANDA ──
