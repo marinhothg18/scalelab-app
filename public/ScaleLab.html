@@ -4340,19 +4340,25 @@ function _homeDeltaPill(v, inversa){
 }
 
 function renderHome(){
-  if(!document.getElementById('home-kpi-row')) return;
+  console.log('[HOME] renderHome started');
+  if(!document.getElementById('home-kpi-row')) { console.warn('[HOME] home-kpi-row not found'); return; }
 
   // Saudação e data
-  var nome = (currentUser && currentUser.nome) || cfg.nome || 'Usuário';
-  document.getElementById('home-saudacao').textContent = _homeSaudacao() + ', ' + nome;
-  var dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
-  var meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
-  var hoje = new Date();
-  document.getElementById('home-data').textContent = dias[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()];
+  try {
+    var nome = (currentUser && currentUser.nome) || (typeof cfg !== 'undefined' && cfg.nome) || 'Usuário';
+    var satEl = document.getElementById('home-saudacao');
+    if(satEl) satEl.textContent = _homeSaudacao() + ', ' + nome;
+    var dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    var meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    var hoje = new Date();
+    var dataEl = document.getElementById('home-data');
+    if(dataEl) dataEl.textContent = dias[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()];
+  } catch(e){ console.error('[HOME] saudação erro:', e); }
 
   // KPIs
-  var k = _homeCalcKPIs();
-  var row = document.getElementById('home-kpi-row');
+  try {
+    var k = _homeCalcKPIs();
+    var row = document.getElementById('home-kpi-row');
   var dRoas = _homeDeltaPill(k.roas.var, false);
   var dLucro = _homeDeltaPill(k.lucro.var, false);
   var dCpa = _homeDeltaPill(k.cpa.var, true);
@@ -4366,7 +4372,9 @@ function renderHome(){
                    dCpa.txt, null, dCpa.bg, dCpa.fg, 'rgba(245,158,11,.15)')
     + _homeKpiCard('💸', 'Investimento', _homeFormatBR(k.investimento.atual, 'R$'),
                    dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)');
+  } catch(e){ console.error('[HOME] KPI erro:', e); }
 
+  try {
   // MINHAS TAREFAS
   var myId = currentUser && currentUser.id;
   var myNome = currentUser && currentUser.nome;
@@ -4405,7 +4413,9 @@ function renderHome(){
           + '</div></div>';
       }).join('')
       : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nada pendente 🎉</div>');
+  } catch(e){ console.error('[HOME] tarefas erro:', e); }
 
+  try {
   // NOTIFICAÇÕES
   var notifs = (typeof getNotifs === 'function' ? getNotifs() : g('sl_notifs', [])).filter(function(n){
     return n.destId === myId && !n.lida;
@@ -4426,7 +4436,9 @@ function renderHome(){
           + '</div></div>';
       }).join('')
       : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Sem notificações novas</div>');
+  } catch(e){ console.error('[HOME] notifs erro:', e); }
 
+  try {
   // DEMANDAS DO DIA
   var hoje2 = new Date().toISOString().slice(0,10);
   var hojeTasks = todasTasks.filter(function(t){ return t.data === hoje2 && t.status !== 'CONCLUIDO'; }).slice(0, 5);
@@ -4447,7 +4459,9 @@ function renderHome(){
           + '</div></div>';
       }).join('')
       : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nenhuma demanda pra hoje</div>');
+  } catch(e){ console.error('[HOME] demandas hoje erro:', e); }
 
+  try {
   // RITUAIS DA SEMANA
   var rits = g('rituais', []);
   var iniSemH = new Date(); iniSemH.setHours(0,0,0,0); iniSemH.setDate(iniSemH.getDate() - iniSemH.getDay()); // domingo
@@ -4469,7 +4483,9 @@ function renderHome(){
           + '</div></div>';
       }).join('')
       : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nenhum ritual cadastrado</div>');
+  } catch(e){ console.error('[HOME] rituais erro:', e); }
 
+  try {
   // ITENS EM RISCO
   var risco = todasTasks.filter(function(t){
     if(t.status === 'CONCLUIDO') return false;
@@ -4491,6 +4507,8 @@ function renderHome(){
           + '</div></div>';
       }).join('')
       : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nada em risco 🟢</div>');
+  } catch(e){ console.error('[HOME] risco erro:', e); }
+  console.log('[HOME] renderHome finished');
 }
 
 function _homeTempoAtras(ts){
@@ -13657,7 +13675,12 @@ window.onload=()=>{
   if(localStorage.getItem('sl_auth')==='1'){
     document.getElementById('login-screen').classList.add('hidden');
     restoreSession();
-    syncAllFromServer().then(()=>{ abrirRemessaPorUrl(); abrirArquivoPorUrl(); });
+    syncAllFromServer().then(()=>{
+      abrirRemessaPorUrl();
+      abrirArquivoPorUrl();
+      // Re-renderiza Home depois que dados chegam do server
+      try{ renderDash(); }catch(e){ console.warn('renderDash pós-sync:', e); }
+    });
     _startSync();
   }
   // focus email field if login screen visible
@@ -13666,6 +13689,8 @@ window.onload=()=>{
 
   renderDash();updateEduAutores();populateOfertas();
   try{ updateNotifBadge(); }catch(e){}
+  // Garantia adicional: força renderHome em 500ms caso renderDash não tenha chegado nela
+  setTimeout(function(){ try{ if(typeof renderHome==='function') renderHome(); }catch(e){ console.warn('renderHome timeout:', e); } }, 500);
 };
 </script>
 </body>
