@@ -1044,6 +1044,167 @@ async function _tickBackupRemoto() {
   } catch (e) { console.error('[REMOTE-BACKUP] tick erro:', e.message); }
 }
 setInterval(_tickBackupRemoto, 60*60*1000); // verifica a cada 1h
+
+// ══════════════════════════════════════════════
+// LEMBRETES AUTOMÁTICOS (cron)
+// ══════════════════════════════════════════════
+function _lembretesRodar() {
+  try {
+    const db = readDB();
+    const cfgLemb = db.store['sl_lembretes_config'] || {};
+    // Regras padrão = ativas, exceto explicitamente false
+    const regras = {
+      prazo24h:     cfgLemb.prazo24h     !== false,
+      atrasada1d:   cfgLemb.atrasada1d   !== false,
+      atrasada3d:   cfgLemb.atrasada3d   !== false,
+      alertaDir2d:  cfgLemb.alertaDir2d  !== false,
+      ritualHoje:   cfgLemb.ritualHoje   !== false,
+      backlog3d:    cfgLemb.backlog3d    !== false,
+    };
+    const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
+    const rituais = db.store.rituais || [];
+    const usuarios = db.store['sl_usuarios'] || [];
+    const notifs = db.store['sl_notifs'] || [];
+
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0,10);
+    const amanha = new Date(today); amanha.setDate(today.getDate()+1);
+    const amanhaStr = amanha.toISOString().slice(0,10);
+
+    const dedupKey = (rule, extra) => `${todayStr}:${rule}:${extra}`;
+    const jaNotificado = (k) => notifs.some(n => n && n.dedupKey === k);
+    const addLembrete = (destId, destNome, titulo, texto, key, refId) => {
+      if (!destId) return;
+      if (jaNotificado(key)) return;
+      notifs.unshift({
+        id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        destId, destNome: destNome || '',
+        tipo: 'lembrete',
+        titulo: titulo || '', texto: texto || '',
+        refId: refId || null,
+        lida: false,
+        criado: Date.now(),
+        dedupKey: key
+      });
+    };
+    const respsOf = (t) => {
+      if (Array.isArray(t.respIds) && t.respIds.length) return t.respIds;
+      if (t.respId) return [t.respId];
+      return [];
+    };
+
+    let criados = 0;
+    const initialLen = notifs.length;
+
+    // ── Regra: prazo em 24h ──
+    if (regras.prazo24h) {
+      tasks.forEach(t => {
+        if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+        if (t.data !== amanhaStr) return;
+        respsOf(t).forEach(rid => {
+          const u = usuarios.find(x => x.id === rid);
+          if (!u || u.ativo === false) return;
+          addLembrete(rid, u.nome, '⏰ Prazo amanhã', `A demanda "${t.nome}" vence amanhã.`, dedupKey('prazo24h', rid+'-'+t.id), t.id);
+        });
+      });
+    }
+
+    // ── Regra: atrasada 1 dia ──
+    if (regras.atrasada1d) {
+      tasks.forEach(t => {
+        if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+        if (!t.data || t.data >= todayStr) return;
+        const dias = Math.floor((new Date(todayStr).getTime() - new Date(t.data).getTime()) / (24*60*60*1000));
+        if (dias !== 1) return;
+        respsOf(t).forEach(rid => {
+          const u = usuarios.find(x => x.id === rid);
+          if (!u || u.ativo === false) return;
+          addLembrete(rid, u.nome, '⚠️ Demanda atrasada', `"${t.nome}" está atrasada há 1 dia.`, dedupKey('atrasada1d', rid+'-'+t.id), t.id);
+        });
+      });
+    }
+
+    // ── Regra: alerta Diretoria (atrasada 2 dias) ──
+    if (regras.alertaDir2d) {
+      const diretoria = usuarios.filter(u => u.cargo === 'Diretoria' && u.ativo !== false);
+      tasks.forEach(t => {
+        if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+        if (!t.data || t.data >= todayStr) return;
+        const dias = Math.floor((new Date(todayStr).getTime() - new Date(t.data).getTime()) / (24*60*60*1000));
+        if (dias !== 2) return;
+        diretoria.forEach(u => {
+          addLembrete(u.id, u.nome, '🚨 Item em risco', `"${t.nome}" (${t.resp||'sem resp.'}) atrasada há 2 dias.`, dedupKey('alertaDir2d', u.id+'-'+t.id), t.id);
+        });
+      });
+    }
+
+    // ── Regra: atrasada 3+ dias (cobrança firme) ──
+    if (regras.atrasada3d) {
+      tasks.forEach(t => {
+        if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+        if (!t.data || t.data >= todayStr) return;
+        const dias = Math.floor((new Date(todayStr).getTime() - new Date(t.data).getTime()) / (24*60*60*1000));
+        if (dias !== 3) return; // só dispara no dia 3
+        respsOf(t).forEach(rid => {
+          const u = usuarios.find(x => x.id === rid);
+          if (!u || u.ativo === false) return;
+          addLembrete(rid, u.nome, '🔥 Demanda paralisada (3 dias)', `"${t.nome}" está paralisada há 3 dias. Precisa de ação urgente.`, dedupKey('atrasada3d', rid+'-'+t.id), t.id);
+        });
+      });
+    }
+
+    // ── Regra: ritual hoje (dispara só pela manhã, 8h-11h) ──
+    const hora = today.getHours();
+    if (regras.ritualHoje && hora >= 8 && hora <= 11) {
+      rituais.forEach(r => {
+        if (!r || !r.id) return;
+        const rDate = new Date(Number(r.id));
+        if (!isNaN(rDate.getTime()) && rDate.toISOString().slice(0,10) === todayStr) {
+          (r.participantes || []).forEach(nome => {
+            const u = usuarios.find(x => x.nome === nome && x.ativo !== false);
+            if (!u) return;
+            addLembrete(u.id, u.nome, '⭐ Ritual hoje', `Ritual "${r.nome}" acontece hoje.`, dedupKey('ritualHoje', u.id+'-'+r.id), r.id);
+          });
+        }
+      });
+    }
+
+    // ── Regra: demanda em Backlog 3+ dias ──
+    if (regras.backlog3d) {
+      tasks.forEach(t => {
+        if (t.status !== 'BACKLOG') return;
+        const ts = Number(t.id);
+        if (!ts) return;
+        const dias = Math.floor((today.getTime() - ts) / (24*60*60*1000));
+        if (dias !== 3 && dias !== 7) return; // dispara só nos dias 3 e 7
+        respsOf(t).forEach(rid => {
+          const u = usuarios.find(x => x.id === rid);
+          if (!u || u.ativo === false) return;
+          addLembrete(rid, u.nome, '💤 Demanda parada no Backlog', `"${t.nome}" está no Backlog há ${dias} dias.`, dedupKey('backlog3d-'+dias, rid+'-'+t.id), t.id);
+        });
+      });
+    }
+
+    criados = notifs.length - initialLen;
+    if (criados > 0) {
+      db.store['sl_notifs'] = notifs.slice(0, 1000); // limita a 1000 notifs
+      db.timestamps['sl_notifs'] = now();
+      writeDB(db);
+      console.log(`[LEMBRETES] ${criados} notificações criadas.`);
+    }
+  } catch (err) {
+    console.error('[LEMBRETES] erro:', err.message);
+  }
+}
+// Roda a cada 1h + primeira em 30s após boot
+setInterval(_lembretesRodar, 60 * 60 * 1000);
+setTimeout(_lembretesRodar, 30 * 1000);
+
+// Endpoint pra forçar execução manual (só Diretoria)
+app.post('/api/lembretes/rodar', authDiretoria, (req, res) => {
+  _lembretesRodar();
+  res.json({ ok: true, message: 'Lembretes executados.' });
+});
 setTimeout(_tickBackupRemoto, 2*60*1000);   // primeira tentativa 2min após boot
 
 // POST /api/backup/remoto — força push manual

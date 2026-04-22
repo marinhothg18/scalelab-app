@@ -1729,6 +1729,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="ads-tab" id="cfg-tab-apis" onclick="switchCfgTab('apis',this)">🔌 APIs</button>
         <button class="ads-tab" id="cfg-tab-api-tokens" onclick="switchCfgTab('api-tokens',this)">🔑 API Tokens</button>
         <button class="ads-tab" id="cfg-tab-criativos-cfg" onclick="switchCfgTab('criativos-cfg',this)">🎨 Criativos</button>
+        <button class="ads-tab" id="cfg-tab-lembretes" onclick="switchCfgTab('lembretes',this)">⏰ Lembretes</button>
       </div>
 
       <!-- TAB: GERAL -->
@@ -1934,6 +1935,24 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             <input class="fi" id="cri-status-new" placeholder="Novo status (ex: Em gravação)" style="flex:1;">
             <button class="btn btn-primary" onclick="addCriStatus()" style="padding:8px 16px;">+ Adicionar</button>
           </div>
+        </div>
+      </div>
+
+      <!-- TAB: LEMBRETES AUTOMÁTICOS -->
+      <div id="cfg-panel-lembretes" style="display:none;max-width:900px;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-size:16px;font-weight:700;">⏰ Lembretes Automáticos</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px;">O sistema roda essas regras a cada 1h e avisa a equipe sem você precisar mandar mensagem.</div>
+            </div>
+            <button class="btn btn-primary" onclick="rodarLembretesAgora()" style="font-size:12px;padding:8px 14px;">▶ Rodar agora (testar)</button>
+          </div>
+          <div id="lembretes-status" style="font-size:12px;color:var(--text2);margin-top:8px;"></div>
+        </div>
+
+        <div id="lembretes-rules" style="display:flex;flex-direction:column;gap:10px;">
+          <!-- gerado por renderLembretes() -->
         </div>
       </div>
 
@@ -3201,7 +3220,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -8706,8 +8725,84 @@ function viewEdu(id){
 }
 
 // CONFIG
+// ══════════════════════════════════════════════
+// LEMBRETES AUTOMÁTICOS (configuração)
+// ══════════════════════════════════════════════
+var LEMBRETES_REGRAS = [
+  { id:'prazo24h',    titulo:'⏰ Prazo em 24h',            desc:'Notifica responsável 24h antes da demanda vencer', cor:'#F59E0B' },
+  { id:'atrasada1d',  titulo:'⚠️ Demanda atrasada 1 dia',  desc:'Lembrete suave quando passa do prazo por 1 dia',   cor:'#EF4444' },
+  { id:'alertaDir2d', titulo:'🚨 Alerta Diretoria (2d)',   desc:'Notifica Diretoria quando demanda atrasa 2+ dias', cor:'#DC2626' },
+  { id:'atrasada3d',  titulo:'🔥 Paralisada (3 dias)',     desc:'Cobrança firme pro responsável quando chega a 3 dias atrasada', cor:'#991B1B' },
+  { id:'ritualHoje',  titulo:'⭐ Ritual hoje',              desc:'Aviso matinal (8h-11h) pros participantes do ritual', cor:'#7C3AED' },
+  { id:'backlog3d',   titulo:'💤 Demanda em Backlog 3+ dias', desc:'Lembra o responsável que a demanda está parada no backlog', cor:'#FBBF24' },
+];
+
+function getLembretesConfig(){
+  var c = g('sl_lembretes_config', {});
+  // Default todas ativas
+  LEMBRETES_REGRAS.forEach(function(r){ if(c[r.id] === undefined) c[r.id] = true; });
+  return c;
+}
+function saveLembretesConfig(c){
+  localStorage.setItem('sl_lembretes_config', JSON.stringify(c));
+  fetch(API_BASE+'/api/store/sl_lembretes_config', {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(c)
+  }).catch(function(){});
+}
+
+function renderLembretes(){
+  var wrap = document.getElementById('lembretes-rules');
+  if(!wrap) return;
+  var cfg = getLembretesConfig();
+  wrap.innerHTML = LEMBRETES_REGRAS.map(function(r){
+    var ativo = cfg[r.id] !== false;
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:14px;">'
+      + '<div style="width:4px;align-self:stretch;background:'+r.cor+';border-radius:2px;"></div>'
+      + '<div style="flex:1;">'
+        + '<div style="font-size:14px;font-weight:700;">'+r.titulo+'</div>'
+        + '<div style="font-size:12px;color:var(--text2);margin-top:3px;">'+r.desc+'</div>'
+      + '</div>'
+      + '<label style="display:inline-flex;align-items:center;cursor:pointer;">'
+        + '<input type="checkbox" '+(ativo?'checked':'')+' onchange="_lembreteToggle(\''+r.id+'\', this.checked)" style="display:none;">'
+        + '<span style="width:42px;height:24px;border-radius:12px;background:'+(ativo?'var(--green)':'var(--text3)')+';position:relative;transition:all .2s;">'
+          + '<span style="position:absolute;top:2px;left:'+(ativo?'20px':'2px')+';width:20px;height:20px;background:#fff;border-radius:50%;transition:all .2s;"></span>'
+        + '</span>'
+      + '</label>'
+    + '</div>';
+  }).join('');
+}
+
+function _lembreteToggle(ruleId, ativo){
+  var cfg = getLembretesConfig();
+  cfg[ruleId] = !!ativo;
+  saveLembretesConfig(cfg);
+  renderLembretes();
+}
+
+async function rodarLembretesAgora(){
+  var status = document.getElementById('lembretes-status');
+  if(!currentUser || currentUser.cargo !== 'Diretoria'){
+    if(status){ status.textContent = '❌ Apenas Diretoria pode rodar.'; status.style.color = 'var(--red)'; }
+    return;
+  }
+  if(status){ status.textContent = '⏳ Executando...'; status.style.color = 'var(--text2)'; }
+  try{
+    var res = await fetch(API_BASE+'/api/lembretes/rodar', {
+      method:'POST', headers: _bkAuthHeaders()
+    });
+    var data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'erro');
+    if(status){ status.textContent = '✅ '+(data.message||'Executado'); status.style.color = 'var(--green)'; }
+    // Atualiza badge
+    setTimeout(function(){ try{ syncAllFromServer().then(function(){ updateNotifBadge(); }); }catch(e){} }, 1000);
+  }catch(e){
+    if(status){ status.textContent = '❌ '+e.message; status.style.color = 'var(--red)'; }
+  }
+}
+
 function switchCfgTab(tab, btn){
-  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg'].forEach(t=>{
+  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes'].forEach(t=>{
     const panel = document.getElementById('cfg-panel-'+t);
     if(panel) panel.style.display = t===tab ? (t==='geral'?'grid':'block') : 'none';
     const tabBtn = document.getElementById('cfg-tab-'+t);
@@ -8727,6 +8822,7 @@ function switchCfgTab(tab, btn){
   if(tab==='checklists') renderChecklistsCfg();
   if(tab==='criativos-cfg') renderCriStatusList();
   if(tab==='api-tokens') renderApiTokens();
+  if(tab==='lembretes') renderLembretes();
   if(tab==='apis'){
     const k = getRtApiKey();
     const inp = document.getElementById('ads-api-key-input');
