@@ -12676,6 +12676,7 @@ function _loginOk(user){
     }
     renderTasks();
     try{ updateNotifBadge(); }catch(e){}
+    try{ renderDash(); }catch(e){ console.warn('renderDash erro:', e); }
     abrirRemessaPorUrl();
     abrirArquivoPorUrl();
   });
@@ -12706,7 +12707,10 @@ function restoreSession(){
   _applyNavPermissions(user.cargo);
   // Atualiza badge de notificações quando sessão é restaurada
   try{ updateNotifBadge(); }catch(e){}
-  // Força atualização após sync
+  // Renderiza Home logo na restauração da sessão
+  try{ renderDash(); }catch(e){ console.warn('renderDash erro:', e); }
+  // Re-renderiza Home após sync trazer dados novos
+  setTimeout(function(){ try{ renderDash(); }catch(e){} }, 1500);
   setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 2000);
   setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 5000);
   return true;
