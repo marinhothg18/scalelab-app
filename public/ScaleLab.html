@@ -4877,6 +4877,7 @@ var _gestaoTab = 'prog_demanda';
 var GESTAO_TABS = [
   { id:'prog_demanda', label:'Programação de Demanda', icon:'📋', color:'#8B5CF6' },
   { id:'risco',        label:'Itens em Risco',          icon:'⚠️', color:'#DC2626' },
+  { id:'plan_semanal', label:'Planejamento Semanal',    icon:'📅', color:'#2563EB' },
   { id:'pulse',        label:'Pulse — Tempo Real',     icon:'📡', color:'#16A34A' }
 ];
 
@@ -4895,7 +4896,236 @@ function renderGestaoContent(){
   if(!el) return;
   if(_gestaoTab === 'prog_demanda'){ renderProgDemanda(); }
   else if(_gestaoTab === 'risco'){ renderItensRisco(); }
+  else if(_gestaoTab === 'plan_semanal'){ renderPlanejamentoSemanal(); }
   else if(_gestaoTab === 'pulse'){ renderPulse(); }
+}
+
+// ══════════════════════════════════════════════
+// PLANEJAMENTO SEMANAL (Gestão → Planejamento Semanal)
+// ══════════════════════════════════════════════
+var _planSemFiltro = { tipo: 'empresa', valor: '' }; // empresa, setor, oferta, pessoa
+var _planSemOffset = 0; // 0 = semana atual; -1 = anterior; +1 = próxima
+
+function _planSemSetFiltro(tipo, valor){
+  _planSemFiltro = { tipo: tipo, valor: valor || '' };
+  renderPlanejamentoSemanal();
+}
+function _planSemNav(dir){
+  _planSemOffset += dir;
+  renderPlanejamentoSemanal();
+}
+function _planSemHoje(){ _planSemOffset = 0; renderPlanejamentoSemanal(); }
+
+function renderPlanejamentoSemanal(){
+  var el = document.getElementById('gestao-content');
+  if(!el) return;
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!isDir){ el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2);">Acesso restrito à Diretoria.</div>'; return; }
+
+  // Cálculo semana
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  // Começa na segunda-feira
+  var diaSemana = hoje.getDay(); // 0=domingo, 1=seg
+  var offsetSeg = diaSemana === 0 ? -6 : (1 - diaSemana);
+  var iniSem = new Date(hoje); iniSem.setDate(hoje.getDate() + offsetSeg + _planSemOffset*7);
+  var fimSem = new Date(iniSem); fimSem.setDate(iniSem.getDate()+7);
+  var fmt = function(d){ return d.toISOString().slice(0,10); };
+  var iniStr = fmt(iniSem), fimStr = fmt(fimSem);
+
+  var hojeStr = fmt(hoje);
+  var tasks = g('tasks', []).filter(function(t){ return !t.arquivado; });
+  var rituais = g('rituais', []);
+  var usuarios = g('sl_usuarios', []);
+  var ofertas = g('sl_ofertas_v2', []);
+  var setoresList = [
+    {id:'copy', label:'Copy', cor:'#38BDF8'},
+    {id:'edicao', label:'Edição', cor:'#818CF8'},
+    {id:'trafego', label:'Tráfego', cor:'#34D399'},
+    {id:'infra', label:'Infra', cor:'#FBBF24'},
+    {id:'spy', label:'Spy', cor:'#A78BFA'}
+  ];
+
+  function statusSetor(st){
+    if(!st) return 'outros';
+    if(st.indexOf('COPY') >= 0) return 'copy';
+    if(st.indexOf('EDICAO') >= 0) return 'edicao';
+    if(st === 'TRAFEGO') return 'trafego';
+    if(st.indexOf('INFRA') >= 0) return 'infra';
+    if(st === 'SPY') return 'spy';
+    return 'outros';
+  }
+  function taskPertence(t){
+    if(_planSemFiltro.tipo === 'empresa') return true;
+    if(_planSemFiltro.tipo === 'setor'){
+      return statusSetor(t.status) === _planSemFiltro.valor;
+    }
+    if(_planSemFiltro.tipo === 'oferta'){
+      return t.ofertaId === _planSemFiltro.valor;
+    }
+    if(_planSemFiltro.tipo === 'pessoa'){
+      if(Array.isArray(t.respIds)) return t.respIds.indexOf(_planSemFiltro.valor) >= 0;
+      return t.respId === _planSemFiltro.valor;
+    }
+    return true;
+  }
+
+  // Demandas na semana
+  var demandasNaSemana = tasks.filter(function(t){
+    if(!t.data || t.data < iniStr || t.data >= fimStr) return false;
+    return taskPertence(t);
+  });
+  // Pendências da semana anterior (atrasadas que caiam na sem anterior)
+  var iniAnt = new Date(iniSem); iniAnt.setDate(iniSem.getDate()-7);
+  var iniAntStr = fmt(iniAnt);
+  var pendenciasAnt = tasks.filter(function(t){
+    if(!t.data) return false;
+    if(t.data < iniAntStr || t.data >= iniStr) return false;
+    if(t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
+    return taskPertence(t);
+  });
+
+  var concluidas = demandasNaSemana.filter(function(t){ return t.status === 'CONCLUIDO' || t.status === 'Concluída'; }).length;
+  var emRisco = demandasNaSemana.filter(function(t){ return t.data < hojeStr && t.status !== 'CONCLUIDO' && t.status !== 'Concluída'; }).length;
+  var emAndamento = demandasNaSemana.length - concluidas - emRisco;
+
+  // Rituais na semana
+  var ritsSem = rituais.filter(function(r){
+    var ts = Number(r.id);
+    if(!ts) return false;
+    var d = new Date(ts);
+    return d >= iniSem && d < fimSem;
+  });
+
+  // ─── HTML ───
+  var html = '<div style="padding:0;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">';
+  html += '<div>';
+  html += '<div style="font-size:22px;font-weight:800;">📅 Planejamento Semanal</div>';
+  var numSem = _planSemOffset === 0 ? 'atual' : (_planSemOffset > 0 ? '+'+_planSemOffset : _planSemOffset) + ' semana(s)';
+  html += '<div style="font-size:12px;color:var(--text2);">Semana '+iniSem.toLocaleDateString('pt-BR')+' a '+(new Date(fimSem.getTime()-1)).toLocaleDateString('pt-BR')+' · '+numSem+'</div>';
+  html += '</div>';
+  // Nav semana
+  html += '<div style="display:flex;gap:6px;align-items:center;">';
+  html += '<button onclick="_planSemNav(-1)" class="btn btn-ghost" style="font-size:12px;padding:7px 12px;">← Anterior</button>';
+  html += '<button onclick="_planSemHoje()" class="btn btn-primary" style="font-size:12px;padding:7px 14px;">Hoje</button>';
+  html += '<button onclick="_planSemNav(1)" class="btn btn-ghost" style="font-size:12px;padding:7px 12px;">Próxima →</button>';
+  html += '</div>';
+  html += '</div>';
+
+  // Stats
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">';
+  var stat = function(n, l, cor){
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden;">'
+      + '<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:'+cor+';"></div>'
+      + '<div style="font-size:28px;font-weight:800;color:'+cor+';">'+n+'</div>'
+      + '<div style="font-size:11px;color:var(--text2);margin-top:4px;">'+l+'</div>'
+      + '</div>';
+  };
+  html += stat(demandasNaSemana.length, 'Demandas na semana', '#2563EB');
+  html += stat(concluidas, 'Concluídas', '#16A34A');
+  html += stat(emAndamento, 'Em andamento', '#F59E0B');
+  html += stat(emRisco, 'Em risco (atrasadas)', '#DC2626');
+  html += '</div>';
+
+  // Filtros
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:18px;">';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">';
+  html += '<span style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;">FILTRAR:</span>';
+  // Empresa (padrão)
+  var btnStyle = function(ativo){ return 'padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid '+(ativo?'var(--accent)':'var(--border)')+';background:'+(ativo?'var(--accent)':'transparent')+';color:'+(ativo?'#fff':'var(--text)')+';'; };
+  html += '<button onclick="_planSemSetFiltro(\'empresa\')" style="'+btnStyle(_planSemFiltro.tipo==='empresa')+'">🏢 Toda empresa</button>';
+  // Setor dropdown-like
+  html += '<span style="color:var(--border);">|</span>';
+  html += '<span style="font-size:11px;color:var(--text2);">Por setor:</span>';
+  setoresList.forEach(function(s){
+    var ativo = _planSemFiltro.tipo==='setor' && _planSemFiltro.valor===s.id;
+    html += '<button onclick="_planSemSetFiltro(\'setor\',\''+s.id+'\')" style="'+btnStyle(ativo)+'">'+s.label+'</button>';
+  });
+  html += '<span style="color:var(--border);">|</span>';
+  // Oferta dropdown
+  html += '<select onchange="_planSemSetFiltro(\'oferta\', this.value)" style="padding:6px 10px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:'+(_planSemFiltro.tipo==='oferta'?'var(--accent)':'var(--bg3)')+';color:'+(_planSemFiltro.tipo==='oferta'?'#fff':'var(--text)')+';">'
+    + '<option value="">Por oferta...</option>';
+  ofertas.forEach(function(o){
+    html += '<option value="'+o.id+'"'+(_planSemFiltro.tipo==='oferta' && _planSemFiltro.valor===o.id?' selected':'')+'>'+(o.nome||'').replace(/</g,'&lt;')+'</option>';
+  });
+  html += '</select>';
+  // Pessoa dropdown
+  html += '<select onchange="_planSemSetFiltro(\'pessoa\', this.value)" style="padding:6px 10px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:'+(_planSemFiltro.tipo==='pessoa'?'var(--accent)':'var(--bg3)')+';color:'+(_planSemFiltro.tipo==='pessoa'?'#fff':'var(--text)')+';">'
+    + '<option value="">Por pessoa...</option>';
+  usuarios.forEach(function(u){
+    if(u.ativo === false) return;
+    html += '<option value="'+u.id+'"'+(_planSemFiltro.tipo==='pessoa' && _planSemFiltro.valor===u.id?' selected':'')+'>'+(u.nome||'').replace(/</g,'&lt;')+' ('+u.cargo+')</option>';
+  });
+  html += '</select>';
+  html += '</div></div>';
+
+  // Grid semanal (7 colunas)
+  var diasSemana = ['SEG','TER','QUA','QUI','SEX','SÁB','DOM'];
+  var mesesAbrev = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;">';
+  html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);">';
+  for(var i=0; i<7; i++){
+    var dia = new Date(iniSem); dia.setDate(iniSem.getDate()+i);
+    var diaStr = fmt(dia);
+    var isHoje = diaStr === hojeStr;
+    var headerBg = isHoje ? 'linear-gradient(180deg, rgba(37,99,235,.15), transparent)' : 'transparent';
+    // fallback (linear-gradient doesn't work in inline on all browsers with 2 vars)
+    html += '<div style="border-right:1px solid var(--border);min-height:500px;'+(isHoje?'background:rgba(37,99,235,.05);':'')+'">';
+    html += '<div style="padding:12px 14px;border-bottom:1px solid var(--border);'+(isHoje?'background:rgba(37,99,235,.1);':'background:var(--bg3);')+'">';
+    html += '<div style="font-size:10px;font-weight:700;color:'+(isHoje?'#2563EB':'var(--text2)')+';letter-spacing:.4px;">'+diasSemana[i]+'</div>';
+    html += '<div style="font-size:16px;font-weight:800;color:'+(isHoje?'#2563EB':'var(--text)')+';">'+dia.getDate()+' '+mesesAbrev[dia.getMonth()]+'</div>';
+    html += '</div>';
+    html += '<div style="padding:10px;display:flex;flex-direction:column;gap:6px;">';
+    // Rituais do dia
+    ritsSem.forEach(function(r){
+      var d = new Date(Number(r.id));
+      if(fmt(d) !== diaStr) return;
+      html += '<div onclick="try{abrirRitualDetalhe('+r.id+')}catch(e){goTo(\'rituais\')}" style="background:rgba(249,115,22,.08);border-left:3px solid #F97316;border-radius:6px;padding:6px 8px;font-size:11px;cursor:pointer;">'
+        + '<div style="font-weight:700;color:#C2410C;">⭐ '+(r.nome||'').replace(/</g,'&lt;').slice(0,30)+'</div>'
+        + '<div style="color:var(--text2);font-size:10px;margin-top:2px;">'+(r.tipo||'')+'</div>'
+        + '</div>';
+    });
+    // Demandas do dia
+    var demandasDia = demandasNaSemana.filter(function(t){ return t.data === diaStr; });
+    demandasDia.forEach(function(t){
+      var setor = statusSetor(t.status);
+      var sObj = setoresList.find(function(s){ return s.id === setor; }) || {cor:'#9CA3AF', label:''};
+      var isAtrasada = t.data < hojeStr && t.status !== 'CONCLUIDO';
+      var isConcluida = t.status === 'CONCLUIDO' || t.status === 'Concluída';
+      var bg = isAtrasada ? 'rgba(220,38,38,.08)' : isConcluida ? 'rgba(22,163,74,.08)' : 'var(--bg3)';
+      var fg = isAtrasada ? '#991B1B' : isConcluida ? '#065F46' : 'var(--text)';
+      var resp = _riscoResp ? _riscoResp(t) : (t.resp||'—');
+      html += '<div onclick="abrirEditarDemanda('+t.id+')" style="background:'+bg+';border-left:3px solid '+sObj.cor+';border-radius:6px;padding:6px 8px;font-size:11px;cursor:pointer;">'
+        + '<div style="font-weight:600;color:'+fg+';line-height:1.3;">'+(isAtrasada?'⚠ ':isConcluida?'✓ ':'')+String(t.nome||'').replace(/</g,'&lt;').slice(0,40)+'</div>'
+        + '<div style="color:var(--text2);font-size:10px;margin-top:2px;">'+String(resp).slice(0,24).replace(/</g,'&lt;')+'</div>'
+        + '</div>';
+    });
+    if(!demandasDia.length && !ritsSem.some(function(r){ return fmt(new Date(Number(r.id)))===diaStr; })){
+      html += '<div style="color:var(--text3);font-size:11px;padding:8px 0;text-align:center;">—</div>';
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+  html += '</div>';
+
+  // Pendências da semana anterior
+  if(pendenciasAnt.length){
+    html += '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:16px 18px;margin-top:18px;">';
+    html += '<div style="font-size:14px;font-weight:700;color:#C2410C;margin-bottom:10px;">⚠️ Pendências da semana anterior ('+pendenciasAnt.length+')</div>';
+    pendenciasAnt.slice(0, 8).forEach(function(t){
+      var diasAtraso = Math.floor((new Date(hojeStr).getTime() - new Date(t.data).getTime()) / (24*60*60*1000));
+      var resp = _riscoResp(t);
+      html += '<div onclick="abrirEditarDemanda('+t.id+')" style="padding:6px 0;cursor:pointer;font-size:12px;border-top:1px solid rgba(245,158,11,.15);">';
+      html += '<span style="font-weight:600;">• '+String(t.nome||'').replace(/</g,'&lt;')+'</span>';
+      html += ' <span style="color:var(--text2);">('+resp.replace(/</g,'&lt;')+')</span>';
+      html += ' <span style="color:#DC2626;font-weight:600;">— atrasada há '+diasAtraso+' dia'+(diasAtraso!==1?'s':'')+'</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 // ══════════════════════════════════════════════
