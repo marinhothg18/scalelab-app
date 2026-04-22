@@ -4239,6 +4239,61 @@ function _homeKpiCard(icone, label, valor, delta, corValor, corDeltaBg, corDelta
     + '</div>';
 }
 
+// Cache simples pros KPIs vindos do RedTrack (5 minutos)
+var _homeKPICacheRT = { ts: 0, data: null };
+
+async function _homeCalcKPIsFromRedTrack(){
+  var key = typeof getRtApiKey === 'function' ? getRtApiKey() : '';
+  if(!key) return null;
+  // Cache 5 min
+  if(_homeKPICacheRT.data && (Date.now() - _homeKPICacheRT.ts) < 5*60*1000){
+    return _homeKPICacheRT.data;
+  }
+  function fmt(d){ return d.toISOString().slice(0,10); }
+  var agora = new Date();
+  var ini7 = new Date(agora.getTime() - 7*24*60*60*1000);
+  var ini14 = new Date(agora.getTime() - 14*24*60*60*1000);
+  try {
+    var [r7, r14] = await Promise.all([
+      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+fmt(ini7)+'&date_to='+fmt(agora)+'&columns=date,cost,revenue,conversions'),
+      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+fmt(ini14)+'&date_to='+fmt(ini7)+'&columns=date,cost,revenue,conversions')
+    ]);
+    if(!r7.ok || !r14.ok) throw new Error('RedTrack API error');
+    var d7  = await r7.json();
+    var d14 = await r14.json();
+    // Conversão USD → BRL usando cotação salva
+    var rate = parseFloat(localStorage.getItem('sl_cotacao_usd')) || 5.10;
+    try{ var _cfg = g('cfg', {}); if(_cfg && _cfg.cotacaoUSD) rate = _cfg.cotacaoUSD; }catch(e){}
+    function totais(arr){
+      var cost=0, rev=0, convs=0;
+      (Array.isArray(arr)?arr:[]).forEach(function(row){
+        cost += Number(row.cost) || 0;
+        rev  += Number(row.revenue) || 0;
+        convs+= Number(row.conversions) || 0;
+      });
+      // RedTrack retorna em USD — converte pra BRL
+      cost = cost * rate;
+      rev  = rev  * rate;
+      return { cost: cost, rev: rev, lucro: rev-cost, roas: cost>0?rev/cost:0, cpa: convs>0?cost/convs:0 };
+    }
+    var a = totais(d7);
+    var b = totais(d14);
+    function variacao(x, y){ if(!y || !isFinite(y)) return null; return Math.round(((x-y)/y)*100); }
+    var result = {
+      roas:        { atual: a.roas,  var: variacao(a.roas, b.roas) },
+      lucro:       { atual: a.lucro, var: variacao(a.lucro, b.lucro) },
+      cpa:         { atual: a.cpa,   var: variacao(a.cpa, b.cpa) },
+      investimento:{ atual: a.cost,  var: variacao(a.cost, b.cost) },
+      fonte: 'redtrack'
+    };
+    _homeKPICacheRT = { ts: Date.now(), data: result };
+    return result;
+  } catch(e){
+    console.warn('[HOME] RedTrack KPI erro, usando fallback roi_ofertas:', e);
+    return null;
+  }
+}
+
 function _homeCalcKPIs(){
   // Super defensivo — qualquer dado estranho retorna zeros
   var safeResult = {
@@ -4351,6 +4406,28 @@ function renderHome(){
   try {
     var k = _homeCalcKPIs();
     var row = document.getElementById('home-kpi-row');
+    // Tenta pegar dados mais precisos do RedTrack (async — atualiza depois)
+    _homeCalcKPIsFromRedTrack().then(function(rtK){
+      if(rtK) {
+        try {
+          var row2 = document.getElementById('home-kpi-row');
+          if(!row2) return;
+          var dRoas = _homeDeltaPill(rtK.roas.var, false);
+          var dLucro = _homeDeltaPill(rtK.lucro.var, false);
+          var dCpa = _homeDeltaPill(rtK.cpa.var, true);
+          var dInv = _homeDeltaPill(rtK.investimento.var, false);
+          row2.innerHTML =
+            _homeKpiCard('📈', 'ROAS da Semana', _homeFormatBR(rtK.roas.atual, 'x'),
+                         dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(56,189,248,.15)')
+            + _homeKpiCard('💰', 'Lucro', _homeFormatBR(rtK.lucro.atual, 'R$'),
+                           dLucro.txt, rtK.lucro.atual>=0?'var(--green)':'var(--red)', dLucro.bg, dLucro.fg, 'rgba(22,163,74,.15)')
+            + _homeKpiCard('🎯', 'CPA Médio', rtK.cpa.atual>0?_homeFormatBR(rtK.cpa.atual, 'R$'):'—',
+                           dCpa.txt, null, dCpa.bg, dCpa.fg, 'rgba(245,158,11,.15)')
+            + _homeKpiCard('💸', 'Investimento', _homeFormatBR(rtK.investimento.atual, 'R$'),
+                           dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)');
+        } catch(e){ console.warn('[HOME] RedTrack update erro:', e); }
+      }
+    });
   var dRoas = _homeDeltaPill(k.roas.var, false);
   var dLucro = _homeDeltaPill(k.lucro.var, false);
   var dCpa = _homeDeltaPill(k.cpa.var, true);
