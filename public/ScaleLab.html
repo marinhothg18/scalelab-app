@@ -4876,6 +4876,7 @@ function renderTrafegoContent(){
 var _gestaoTab = 'prog_demanda';
 var GESTAO_TABS = [
   { id:'prog_demanda', label:'Programação de Demanda', icon:'📋', color:'#8B5CF6' },
+  { id:'risco',        label:'Itens em Risco',          icon:'⚠️', color:'#DC2626' },
   { id:'pulse',        label:'Pulse — Tempo Real',     icon:'📡', color:'#16A34A' }
 ];
 
@@ -4893,7 +4894,241 @@ function renderGestaoContent(){
   var el = document.getElementById('gestao-content');
   if(!el) return;
   if(_gestaoTab === 'prog_demanda'){ renderProgDemanda(); }
+  else if(_gestaoTab === 'risco'){ renderItensRisco(); }
   else if(_gestaoTab === 'pulse'){ renderPulse(); }
+}
+
+// ══════════════════════════════════════════════
+// ITENS EM RISCO (Diretoria - Gestão)
+// ══════════════════════════════════════════════
+var _riscoFilter = 'todos'; // todos | atrasadas | paradas | criativos | rituais
+function _riscoSetFiltro(f){ _riscoFilter = f; renderItensRisco(); }
+
+function renderItensRisco(){
+  var el = document.getElementById('gestao-content');
+  if(!el) return;
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!isDir){ el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2);">Acesso restrito à Diretoria.</div>'; return; }
+
+  var hojeStr = new Date().toISOString().slice(0,10);
+  var agora = new Date();
+  var agoraMs = agora.getTime();
+  var tasks = g('tasks', []).filter(function(t){ return !t.arquivado; });
+  var criativos = g('criativos', []);
+  var rituais = g('rituais', []);
+
+  // ─── Coleta items em risco ───
+  var items = [];
+
+  // 1. Demandas atrasadas (data < hoje e não concluída)
+  tasks.forEach(function(t){
+    if(t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+    if(!t.data) return;
+    if(t.data >= hojeStr) return;
+    var diasAtraso = Math.floor((new Date(hojeStr).getTime() - new Date(t.data).getTime()) / (24*60*60*1000));
+    items.push({
+      tipo: 'atrasadas',
+      severidade: diasAtraso >= 3 ? 'alta' : 'media',
+      icon: '🔴',
+      nome: t.nome || '(sem nome)',
+      status: t.status || '—',
+      resp: _riscoResp(t),
+      respIds: _riscoRespIds(t),
+      tempo: diasAtraso + ' dia' + (diasAtraso!==1?'s':'') + ' atrasada',
+      corTempo: '#DC2626',
+      link: function(){ if(typeof abrirEditarDemanda==='function') abrirEditarDemanda(t.id); },
+      raw: t
+    });
+  });
+
+  // 2. Demandas paradas no mesmo status há 3+ dias (sem movimentação)
+  tasks.forEach(function(t){
+    if(t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+    var ts = t._updatedAt || (t.id && !isNaN(t.id) ? Number(t.id) : null);
+    if(!ts) return;
+    var diasParado = Math.floor((agoraMs - Number(ts)) / (24*60*60*1000));
+    if(diasParado < 3) return;
+    // Se já está nos atrasados, pula
+    if(t.data && t.data < hojeStr) return;
+    items.push({
+      tipo: 'paradas',
+      severidade: diasParado >= 7 ? 'alta' : 'media',
+      icon: '🟡',
+      nome: t.nome || '(sem nome)',
+      status: t.status || '—',
+      resp: _riscoResp(t),
+      respIds: _riscoRespIds(t),
+      tempo: diasParado + ' dias sem mexer',
+      corTempo: '#F59E0B',
+      link: function(){ if(typeof abrirEditarDemanda==='function') abrirEditarDemanda(t.id); },
+      raw: t
+    });
+  });
+
+  // 3. Criativos em revisão há 48h+ (baseado em _updatedAt)
+  criativos.forEach(function(c){
+    if(!c || !c.status) return;
+    if(c.status.indexOf('Revis') < 0 && c.status.indexOf('revis') < 0) return;
+    var ts = c._updatedAt || (c.id && !isNaN(c.id) ? Number(c.id) : null);
+    if(!ts) return;
+    var hrs = Math.floor((agoraMs - Number(ts)) / (60*60*1000));
+    if(hrs < 48) return;
+    items.push({
+      tipo: 'criativos',
+      severidade: hrs >= 120 ? 'alta' : 'media',
+      icon: '🟣',
+      nome: c.titulo || c.nome || '(criativo sem título)',
+      status: c.status,
+      resp: c.responsavel || c.resp || '—',
+      respIds: [],
+      tempo: (hrs < 48 ? hrs+'h' : Math.floor(hrs/24)+'d') + ' em revisão',
+      corTempo: '#7C3AED',
+      link: function(){ goTo('criativos'); },
+      raw: c
+    });
+  });
+
+  // 4. Rituais desta semana não realizados (heurística: tem prazo/data e passou)
+  rituais.forEach(function(r){
+    if(!r || !r.id) return;
+    // Se tem horario/data no futuro, ignora
+    // Se marcado como realizado, ignora
+    if(r.realizado === true) return;
+    // Considera rituais da semana atual ou passados sem sinal de realizado
+    var semanaIni = new Date(); semanaIni.setDate(semanaIni.getDate() - semanaIni.getDay()); semanaIni.setHours(0,0,0,0);
+    var semanaFim = new Date(semanaIni); semanaFim.setDate(semanaIni.getDate()+7);
+    var ts = Number(r.id);
+    if(!ts) return;
+    // Só considera rituais criados há mais de 3 dias sem marcar realizado
+    if(agoraMs - ts < 3*24*60*60*1000) return;
+    items.push({
+      tipo: 'rituais',
+      severidade: 'media',
+      icon: '⭐',
+      nome: r.nome || '(ritual sem nome)',
+      status: r.tipo || '—',
+      resp: (r.participantes||[]).slice(0,2).join(', ') || '—',
+      respIds: [],
+      tempo: 'não marcado como realizado',
+      corTempo: '#F59E0B',
+      link: function(){ goTo('rituais'); },
+      raw: r
+    });
+  });
+
+  // ─── Contadores ───
+  var count = {
+    atrasadas: items.filter(function(i){ return i.tipo==='atrasadas'; }).length,
+    paradas: items.filter(function(i){ return i.tipo==='paradas'; }).length,
+    criativos: items.filter(function(i){ return i.tipo==='criativos'; }).length,
+    rituais: items.filter(function(i){ return i.tipo==='rituais'; }).length
+  };
+
+  // Filtro
+  var filtrados = _riscoFilter === 'todos' ? items : items.filter(function(i){ return i.tipo === _riscoFilter; });
+  // Ordena: alta severidade primeiro
+  filtrados.sort(function(a,b){
+    if(a.severidade !== b.severidade) return a.severidade === 'alta' ? -1 : 1;
+    return 0;
+  });
+
+  // ─── HTML ───
+  var html = '<div style="padding:0;">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+  html += '<div><div style="font-size:22px;font-weight:800;">⚠️ Itens em Risco</div>';
+  html += '<div style="font-size:12px;color:var(--text2);">'+items.length+' itens precisam de atenção imediata</div></div>';
+  html += '<button onclick="renderItensRisco()" class="btn btn-ghost" style="font-size:12px;padding:7px 14px;">🔄 Atualizar</button>';
+  html += '</div>';
+
+  // Stats com filtro clicável
+  var statCard = function(n, l, tipo, cor, bg){
+    var ativo = _riscoFilter === tipo || (_riscoFilter === 'todos' && tipo === 'todos');
+    var borda = ativo ? ('2px solid '+cor) : '1px solid var(--border)';
+    return '<div onclick="_riscoSetFiltro(\''+tipo+'\')" style="background:var(--bg2);border:'+borda+';border-radius:14px;padding:18px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden;">'
+      + '<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:'+cor+';"></div>'
+      + '<div style="font-size:36px;font-weight:800;color:'+cor+';margin-bottom:4px;">'+n+'</div>'
+      + '<div style="font-size:12px;color:var(--text2);">'+l+'</div>'
+      + '</div>';
+  };
+
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:22px;">';
+  html += statCard(items.length, 'TODOS', 'todos', CINZA_STR('#374151'), 'rgba(55,65,81,.08)');
+  html += statCard(count.atrasadas, 'Demandas atrasadas', 'atrasadas', '#DC2626', 'rgba(220,38,38,.08)');
+  html += statCard(count.paradas, 'Paradas há 3+ dias', 'paradas', '#F59E0B', 'rgba(245,158,11,.08)');
+  html += statCard(count.criativos, 'Criativos em revisão 48h+', 'criativos', '#7C3AED', 'rgba(124,58,237,.08)');
+  html += statCard(count.rituais, 'Rituais pendentes', 'rituais', '#EC4899', 'rgba(236,72,153,.08)');
+  html += '</div>';
+
+  // Tabela
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;">';
+  html += '<div style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);">';
+  html += '<div style="font-size:14px;font-weight:700;">Itens que precisam de ação · '+filtrados.length+' '+(filtrados.length===1?'item':'itens')+'</div>';
+  html += '<div style="font-size:11px;color:var(--text2);">🔴 alta gravidade · 🟡 média · 🟣 criativo · ⭐ ritual</div>';
+  html += '</div>';
+
+  if(!filtrados.length){
+    html += '<div style="padding:40px;text-align:center;color:var(--text2);">'
+      + '<div style="font-size:40px;margin-bottom:10px;">🎉</div>'
+      + '<div style="font-size:14px;font-weight:700;">Nenhum item em risco!</div>'
+      + '<div style="font-size:12px;margin-top:4px;">Toda a operação está fluindo.</div>'
+      + '</div>';
+  } else {
+    // Header
+    html += '<div style="display:grid;grid-template-columns:40px 1fr 140px 140px 140px 110px;gap:10px;padding:10px 18px;background:var(--bg3);font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;">';
+    html += '<div></div><div>ITEM</div><div>STATUS</div><div>RESPONSÁVEL</div><div>TEMPO</div><div style="text-align:center;">AÇÃO</div>';
+    html += '</div>';
+    filtrados.forEach(function(it, idx){
+      html += '<div onclick="_riscoAbrir('+idx+')" data-risk-idx="'+idx+'" style="display:grid;grid-template-columns:40px 1fr 140px 140px 140px 110px;gap:10px;padding:12px 18px;border-top:1px solid var(--border);font-size:13px;cursor:pointer;align-items:center;" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">';
+      html += '<div style="font-size:18px;">'+it.icon+'</div>';
+      html += '<div style="font-weight:600;">'+String(it.nome).replace(/</g,'&lt;')+'</div>';
+      html += '<div style="font-size:11px;color:var(--text2);">'+String(it.status).replace(/</g,'&lt;')+'</div>';
+      html += '<div style="font-size:11px;color:var(--text2);">'+String(it.resp).replace(/</g,'&lt;')+'</div>';
+      html += '<div style="font-size:11px;font-weight:600;color:'+it.corTempo+';">⏱ '+it.tempo+'</div>';
+      html += '<div style="text-align:center;"><button onclick="event.stopPropagation();_riscoCobrar('+idx+')" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;">💬 Cobrar</button></div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+  // Guarda items para uso nos handlers
+  window._riscoItems = filtrados;
+}
+
+function _riscoResp(t){
+  if(Array.isArray(t.respIds) && t.respIds.length){
+    var us = g('sl_usuarios',[]);
+    return t.respIds.map(function(id){ var u = us.find(function(x){return x.id===id;}); return u?u.nome:'—'; }).join(', ');
+  }
+  return t.resp || '—';
+}
+function _riscoRespIds(t){
+  if(Array.isArray(t.respIds)) return t.respIds;
+  if(t.respId) return [t.respId];
+  return [];
+}
+function CINZA_STR(h){ return h; }
+function _riscoAbrir(idx){
+  var it = (window._riscoItems||[])[idx];
+  if(it && typeof it.link === 'function') it.link();
+}
+function _riscoCobrar(idx){
+  var it = (window._riscoItems||[])[idx];
+  if(!it) return;
+  var respIds = it.respIds || [];
+  var texto = 'Oi! Só lembrando da demanda "' + it.nome + '" — ' + it.tempo + '. Tudo certo? Precisa de ajuda?';
+  if(respIds.length){
+    respIds.forEach(function(rid){
+      var u = g('sl_usuarios',[]).find(function(x){ return x.id===rid; });
+      if(u && typeof addNotif === 'function'){
+        addNotif(rid, u.nome, 'cobranca', '⚠️ Cobrança: '+it.nome, texto, (it.raw && it.raw.id) || null);
+      }
+    });
+    notif('💬 '+respIds.length+' pessoa(s) cobrada(s) por notificação interna.');
+  } else {
+    alert('Este item não tem responsável com ID cadastrado (antigo).\n\nDica: edita a demanda e atribui um responsável.');
+  }
 }
 
 // ══════════════════════════════════════════════
