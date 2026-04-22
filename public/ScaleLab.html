@@ -590,6 +590,30 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
   .chat-side-toggle { display:inline-flex; }
 }
 
+/* ══ HOME (Sprint 2.1) ══ */
+.home-card { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:18px; }
+.home-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.home-card-title { font-size:14px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px; }
+.home-card-action { font-size:11px; color:var(--accent); font-weight:600; cursor:pointer; }
+.home-card-sep { height:1px; background:var(--border); margin:8px 0 12px; }
+.home-kpi { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:18px; position:relative; }
+.home-kpi-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; margin-bottom:10px; }
+.home-kpi-label { font-size:11px; color:var(--text2); text-transform:uppercase; letter-spacing:.4px; font-weight:600; margin-bottom:4px; }
+.home-kpi-val { font-size:24px; font-weight:800; color:var(--text); line-height:1.1; }
+.home-kpi-delta { margin-top:8px; display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 8px; border-radius:10px; }
+.home-row-item { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+.home-row-item:last-child { border-bottom:none; }
+.home-row-item:hover { background:rgba(0,0,0,.02); cursor:pointer; }
+
+@media (max-width: 900px) {
+  #home-kpi-row { grid-template-columns:1fr 1fr !important; }
+  #home-3col { grid-template-columns:1fr !important; }
+  #home-2col { grid-template-columns:1fr !important; }
+}
+@media (max-width: 500px) {
+  #home-kpi-row { grid-template-columns:1fr !important; }
+}
+
 /* CONTROLE ROI */
 .roi-layout { display:flex; flex-direction:column; gap:0; height:calc(100vh - 130px); }
 .roi-sidebar { width:100%; border-bottom:1px solid var(--border); padding:10px 12px; flex-shrink:0; overflow-x:auto; display:flex; flex-direction:row; flex-wrap:wrap; gap:6px; align-items:center; }
@@ -859,6 +883,40 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
+
+      <!-- ══════════ HOME WIDGETS (Sprint 2.1) ══════════ -->
+      <!-- Saudação -->
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div id="home-saudacao" style="font-size:26px;font-weight:800;color:var(--text);">Bom dia</div>
+          <div id="home-data" style="font-size:13px;color:var(--text2);margin-top:2px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="home-quick-actions">
+          <button onclick="abrirNovaDemanda()" class="btn btn-primary" style="font-size:12px;padding:8px 14px;gap:4px;display:inline-flex;align-items:center;">+ Demanda</button>
+          <button onclick="goTo('criativos');setTimeout(function(){var b=document.querySelector('[onclick*=\'abrirNovaRemessa\']');if(b)b.click();},200)" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;">🎨 Criativo</button>
+          <button onclick="goTo('rituais')" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;">⭐ Ritual</button>
+          <button onclick="goTo('chat')" class="btn btn-ghost" style="font-size:12px;padding:8px 14px;">💬 Chat</button>
+        </div>
+      </div>
+
+      <!-- KPI Row -->
+      <div id="home-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px;">
+        <!-- populado por renderHome() -->
+      </div>
+
+      <!-- 3 Colunas: Minhas Tarefas | Notificações | Demandas do Dia -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:22px;" id="home-3col">
+        <div id="home-minhas-tarefas" class="home-card"></div>
+        <div id="home-notifs" class="home-card"></div>
+        <div id="home-demandas-hoje" class="home-card"></div>
+      </div>
+
+      <!-- Rituais da Semana + Itens em Risco -->
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:22px;" id="home-2col">
+        <div id="home-rituais" class="home-card"></div>
+        <div id="home-risco" class="home-card"></div>
+      </div>
+      <!-- ══════════ /HOME WIDGETS ══════════ -->
 
       <!-- Alertas visuais -->
       <div id="dash-alertas" style="margin-bottom:14px;display:flex;flex-direction:column;gap:6px;"></div>
@@ -4195,6 +4253,277 @@ function editarValores(){
 
 // DASHBOARD
 let chartT,chartV;
+// ═══════════════════════════════════════════
+// HOME (Sprint 2.1) — widgets no topo do Dashboard
+// ═══════════════════════════════════════════
+function _homeSaudacao(){
+  var h = new Date().getHours();
+  if(h < 12) return 'Bom dia';
+  if(h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+function _homeFormatBR(v, simbolo){
+  if(!isFinite(v)) v = 0;
+  if(simbolo === 'R$') return 'R$ ' + Math.round(v).toLocaleString('pt-BR');
+  if(simbolo === 'x')  return (Math.round(v*100)/100).toFixed(2).replace('.',',') + 'x';
+  return String(v);
+}
+function _homeKpiCard(icone, label, valor, delta, corValor, corDeltaBg, corDeltaFg, bgIcon){
+  return '<div class="home-kpi">'
+    + '<div class="home-kpi-icon" style="background:'+bgIcon+';">'+icone+'</div>'
+    + '<div class="home-kpi-label">'+label+'</div>'
+    + '<div class="home-kpi-val" style="color:'+(corValor||'var(--text)')+';">'+valor+'</div>'
+    + (delta ? '<span class="home-kpi-delta" style="background:'+corDeltaBg+';color:'+corDeltaFg+';">'+delta+'</span>' : '')
+    + '</div>';
+}
+
+function _homeCalcKPIs(){
+  // Soma remessas das últimas 7 dias (atual) vs 7 anteriores
+  var ofertas = g('roi_ofertas', []);
+  var agora = new Date();
+  var iniSem = new Date(agora); iniSem.setDate(agora.getDate() - 7);
+  var iniSemAnt = new Date(agora); iniSemAnt.setDate(agora.getDate() - 14);
+
+  function somar(from, to){
+    var inv = 0, ret = 0;
+    ofertas.forEach(function(o){
+      (o.dias || []).forEach(function(dia){
+        if(!dia || !dia.data) return;
+        var d = new Date(dia.data);
+        if(d >= from && d < to){
+          inv += Number(dia.investido) || 0;
+          ret += Number(dia.retorno) || 0;
+        }
+      });
+    });
+    return { inv: inv, ret: ret, lucro: ret - inv, roas: inv > 0 ? ret / inv : 0 };
+  }
+  var atual = somar(iniSem, agora);
+  var ant   = somar(iniSemAnt, iniSem);
+
+  function variacao(a, b){
+    if(!b) return null;
+    var p = ((a - b) / b) * 100;
+    return Math.round(p);
+  }
+  var leads = atual.inv > 0 && g('metricas',[]).length ? null : null;
+  // CPA aproximado: soma leads
+  var leadsAtual = 0, leadsAnt = 0;
+  (g('metricas', []) || []).forEach(function(m){
+    if(!m || !m.data) return;
+    var d = new Date(m.data);
+    var L = Number(m.leads) || 0;
+    if(d >= iniSem && d < agora) leadsAtual += L;
+    else if(d >= iniSemAnt && d < iniSem) leadsAnt += L;
+  });
+  var cpaAtual = leadsAtual > 0 ? atual.inv / leadsAtual : 0;
+  var cpaAnt   = leadsAnt   > 0 ? ant.inv   / leadsAnt   : 0;
+
+  return {
+    roas: { atual: atual.roas, var: variacao(atual.roas, ant.roas) },
+    lucro: { atual: atual.lucro, var: variacao(atual.lucro, ant.lucro) },
+    cpa: { atual: cpaAtual, var: variacao(cpaAtual, cpaAnt) },
+    investimento: { atual: atual.inv, var: variacao(atual.inv, ant.inv) }
+  };
+}
+
+function _homeDeltaPill(v, inversa){
+  // inversa=true → descer é bom (ex: CPA)
+  if(v === null || v === 0 || !isFinite(v)) return { txt:'—', bg:'var(--bg3)', fg:'var(--text2)' };
+  var bom = inversa ? v < 0 : v > 0;
+  var seta = v > 0 ? '▲' : '▼';
+  return {
+    txt: seta + ' ' + (v > 0 ? '+' : '') + v + '%',
+    bg: bom ? 'rgba(22,163,74,.12)' : 'rgba(220,38,38,.12)',
+    fg: bom ? '#16A34A' : '#DC2626'
+  };
+}
+
+function renderHome(){
+  if(!document.getElementById('home-kpi-row')) return;
+
+  // Saudação e data
+  var nome = (currentUser && currentUser.nome) || cfg.nome || 'Usuário';
+  document.getElementById('home-saudacao').textContent = _homeSaudacao() + ', ' + nome;
+  var dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  var hoje = new Date();
+  document.getElementById('home-data').textContent = dias[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()];
+
+  // KPIs
+  var k = _homeCalcKPIs();
+  var row = document.getElementById('home-kpi-row');
+  var dRoas = _homeDeltaPill(k.roas.var, false);
+  var dLucro = _homeDeltaPill(k.lucro.var, false);
+  var dCpa = _homeDeltaPill(k.cpa.var, true);
+  var dInv = _homeDeltaPill(k.investimento.var, false);
+  row.innerHTML =
+    _homeKpiCard('📈', 'ROAS da Semana', _homeFormatBR(k.roas.atual, 'x'),
+                 dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(56,189,248,.15)')
+    + _homeKpiCard('💰', 'Lucro', _homeFormatBR(k.lucro.atual, 'R$'),
+                   dLucro.txt, k.lucro.atual>=0?'var(--green)':'var(--red)', dLucro.bg, dLucro.fg, 'rgba(22,163,74,.15)')
+    + _homeKpiCard('🎯', 'CPA Médio', k.cpa.atual>0?_homeFormatBR(k.cpa.atual, 'R$'):'—',
+                   dCpa.txt, null, dCpa.bg, dCpa.fg, 'rgba(245,158,11,.15)')
+    + _homeKpiCard('💸', 'Investimento', _homeFormatBR(k.investimento.atual, 'R$'),
+                   dInv.txt, null, dInv.bg, dInv.fg, 'rgba(249,115,22,.15)');
+
+  // MINHAS TAREFAS
+  var myId = currentUser && currentUser.id;
+  var myNome = currentUser && currentUser.nome;
+  var todasTasks = g('tasks', []).filter(function(t){ return !t.arquivado; });
+  var minhas = todasTasks.filter(function(t){
+    var meus = (Array.isArray(t.respIds) && t.respIds.indexOf(myId) >= 0)
+               || t.respId === myId
+               || (!t.respId && t.resp === myNome);
+    var aberta = t.status !== 'CONCLUIDO' && t.status !== 'Concluída';
+    return meus && aberta;
+  });
+  // Ordena por data (mais próxima primeiro)
+  minhas.sort(function(a, b){
+    if(!a.data && !b.data) return 0;
+    if(!a.data) return 1;
+    if(!b.data) return -1;
+    return a.data.localeCompare(b.data);
+  });
+  var top5 = minhas.slice(0, 5);
+  var el = document.getElementById('home-minhas-tarefas');
+  var hojeStr = new Date().toISOString().slice(0,10);
+  el.innerHTML = '<div class="home-card-header"><div class="home-card-title">✅ Minhas Tarefas</div>'
+    + '<div class="home-card-action" onclick="goTo(\'task\')">'+minhas.length+' pendentes →</div></div>'
+    + '<div class="home-card-sep"></div>'
+    + (top5.length ? top5.map(function(t){
+        var isHoje = t.data && t.data === hojeStr;
+        var atrasada = t.data && t.data < hojeStr;
+        var cor = atrasada ? 'var(--red)' : (isHoje ? '#F59E0B' : 'var(--text2)');
+        var label = atrasada ? '⚠️ atrasada' : (isHoje ? 'hoje' : (t.data ? t.data.split('-').reverse().slice(0,2).join('/') : 'sem prazo'));
+        var nome = (t.nome||'').replace(/</g,'&lt;');
+        return '<div class="home-row-item" onclick="abrirEditarDemanda('+t.id+')">'
+          + '<div style="width:14px;height:14px;border:2px solid var(--border);border-radius:50%;flex-shrink:0;margin-top:2px;"></div>'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+nome+'</div>'
+            + '<div style="font-size:11px;color:'+cor+';margin-top:2px;">📅 '+label+'</div>'
+          + '</div></div>';
+      }).join('')
+      : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nada pendente 🎉</div>');
+
+  // NOTIFICAÇÕES
+  var notifs = (typeof getNotifs === 'function' ? getNotifs() : g('sl_notifs', [])).filter(function(n){
+    return n.destId === myId && !n.lida;
+  });
+  var elN = document.getElementById('home-notifs');
+  var totalN = notifs.length;
+  elN.innerHTML = '<div class="home-card-header"><div class="home-card-title">🔔 Notificações</div>'
+    + '<div class="home-card-action" onclick="goTo(\'notificacoes\')">'+totalN+' não lidas →</div></div>'
+    + '<div class="home-card-sep"></div>'
+    + (notifs.length ? notifs.slice(0,4).map(function(n){
+        var quando = n.criado ? _homeTempoAtras(n.criado) : '';
+        return '<div class="home-row-item" onclick="goTo(\'notificacoes\')">'
+          + '<div style="width:8px;height:8px;background:var(--accent);border-radius:50%;flex-shrink:0;margin-top:6px;"></div>'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-size:12px;font-weight:600;">'+(n.titulo||'').replace(/</g,'&lt;')+'</div>'
+            + '<div style="font-size:11px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(n.texto||'').replace(/</g,'&lt;')+'</div>'
+            + (quando?'<div style="font-size:10px;color:var(--text3);margin-top:2px;">'+quando+'</div>':'')
+          + '</div></div>';
+      }).join('')
+      : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Sem notificações novas</div>');
+
+  // DEMANDAS DO DIA
+  var hoje2 = new Date().toISOString().slice(0,10);
+  var hojeTasks = todasTasks.filter(function(t){ return t.data === hoje2 && t.status !== 'CONCLUIDO'; }).slice(0, 5);
+  var elD = document.getElementById('home-demandas-hoje');
+  elD.innerHTML = '<div class="home-card-header"><div class="home-card-title">📅 Demandas de Hoje</div>'
+    + '<div class="home-card-action" onclick="goTo(\'task\')">ver tudo →</div></div>'
+    + '<div class="home-card-sep"></div>'
+    + (hojeTasks.length ? hojeTasks.map(function(t){
+        var setor = _homeSetor(t.status);
+        var nome = (t.nome||'').replace(/</g,'&lt;');
+        var resp = (Array.isArray(t.respIds) && t.respIds.length
+                    ? t.respIds.map(function(id){ var u = g('sl_usuarios',[]).find(function(x){return x.id===id;}); return u?u.nome:'—'; }).join(', ')
+                    : (t.resp || '—')).replace(/</g,'&lt;');
+        return '<div class="home-row-item" onclick="abrirEditarDemanda('+t.id+')">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-size:12px;font-weight:600;margin-bottom:3px;"><span style="display:inline-block;padding:1px 8px;border-radius:8px;background:'+setor.bg+';color:'+setor.fg+';font-size:10px;font-weight:700;">'+setor.label+'</span> <span style="color:var(--text2);font-size:11px;">'+resp+'</span></div>'
+            + '<div style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+nome+'</div>'
+          + '</div></div>';
+      }).join('')
+      : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nenhuma demanda pra hoje</div>');
+
+  // RITUAIS DA SEMANA
+  var rits = g('rituais', []);
+  var iniSemH = new Date(); iniSemH.setHours(0,0,0,0); iniSemH.setDate(iniSemH.getDate() - iniSemH.getDay()); // domingo
+  var fimSemH = new Date(iniSemH); fimSemH.setDate(iniSemH.getDate()+7);
+  var elR = document.getElementById('home-rituais');
+  var eus = rits.slice(0, 4);
+  elR.innerHTML = '<div class="home-card-header"><div class="home-card-title">⭐ Rituais desta Semana</div>'
+    + '<div class="home-card-action" onclick="goTo(\'rituais\')">ver todos →</div></div>'
+    + '<div class="home-card-sep"></div>'
+    + (eus.length ? eus.map(function(r){
+        var corMap = {'Análise de dados':'#38BDF8','Weekly de criativo':'#818CF8','Planejamento estratégico':'#F97316'};
+        var c = corMap[r.tipo] || 'var(--accent)';
+        var parts = (r.participantes || []).slice(0, 3).join(', ');
+        return '<div class="home-row-item" onclick="goTo(\'rituais\')" style="padding-left:0;">'
+          + '<div style="width:4px;align-self:stretch;background:'+c+';border-radius:2px;flex-shrink:0;"></div>'
+          + '<div style="flex:1;min-width:0;padding-left:10px;">'
+            + '<div style="font-size:13px;font-weight:600;color:var(--text);">'+(r.nome||'').replace(/</g,'&lt;')+'</div>'
+            + '<div style="font-size:11px;color:var(--text2);margin-top:3px;">'+(r.tipo||'')+(parts?' · 👥 '+parts.replace(/</g,'&lt;'):'')+'</div>'
+          + '</div></div>';
+      }).join('')
+      : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nenhum ritual cadastrado</div>');
+
+  // ITENS EM RISCO
+  var risco = todasTasks.filter(function(t){
+    if(t.status === 'CONCLUIDO') return false;
+    if(t.data && t.data < hojeStr) return true; // atrasado
+    return false;
+  }).slice(0, 4);
+  var elRisco = document.getElementById('home-risco');
+  elRisco.innerHTML = '<div class="home-card-header"><div class="home-card-title">⚠️ Em Risco</div>'
+    + '<div class="home-card-action" style="color:var(--red);">'+risco.length+' item(s)</div></div>'
+    + '<div class="home-card-sep"></div>'
+    + (risco.length ? risco.map(function(t){
+        var dias = t.data ? Math.floor((new Date(hojeStr) - new Date(t.data)) / (24*60*60*1000)) : 0;
+        var resp = (t.resp || '—').replace(/</g,'&lt;');
+        return '<div class="home-row-item" onclick="abrirEditarDemanda('+t.id+')">'
+          + '<div style="width:8px;height:8px;background:var(--red);border-radius:50%;flex-shrink:0;margin-top:6px;"></div>'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(t.nome||'').replace(/</g,'&lt;')+'</div>'
+            + '<div style="font-size:11px;color:var(--red);margin-top:2px;">⚠️ atrasada '+dias+' dia'+(dias!==1?'s':'')+' · '+resp+'</div>'
+          + '</div></div>';
+      }).join('')
+      : '<div style="color:var(--text2);font-size:12px;padding:16px 0;text-align:center;">Nada em risco 🟢</div>');
+}
+
+function _homeTempoAtras(ts){
+  var diff = Date.now() - Number(ts);
+  if(diff < 60000) return 'há pouco';
+  var min = Math.floor(diff / 60000);
+  if(min < 60) return 'há '+min+'min';
+  var h = Math.floor(min / 60);
+  if(h < 24) return 'há '+h+'h';
+  var d = Math.floor(h / 24);
+  return 'há '+d+'d';
+}
+function _homeSetor(status){
+  var map = {
+    'COPY_PENDENTE':{label:'Copy', bg:'rgba(56,189,248,.15)', fg:'#0891B2'},
+    'COPY_PROGRESSO':{label:'Copy', bg:'rgba(56,189,248,.15)', fg:'#0891B2'},
+    'COPY_REVISAO':{label:'Copy', bg:'rgba(56,189,248,.15)', fg:'#0891B2'},
+    'COPY_APROVADA':{label:'Copy', bg:'rgba(56,189,248,.15)', fg:'#0891B2'},
+    'EDICAO_PENDENTE':{label:'Edição', bg:'rgba(129,140,248,.15)', fg:'#6366F1'},
+    'EDICAO_PROGRESSO':{label:'Edição', bg:'rgba(129,140,248,.15)', fg:'#6366F1'},
+    'EDICAO_REVISAO':{label:'Edição', bg:'rgba(129,140,248,.15)', fg:'#6366F1'},
+    'EDICAO_CONCLUIDA':{label:'Edição', bg:'rgba(129,140,248,.15)', fg:'#6366F1'},
+    'TRAFEGO':{label:'Tráfego', bg:'rgba(52,211,153,.15)', fg:'#059669'},
+    'INFRA_PENDENTE':{label:'Infra', bg:'rgba(251,191,36,.15)', fg:'#D97706'},
+    'INFRA_PROGRESSO':{label:'Infra', bg:'rgba(251,191,36,.15)', fg:'#D97706'},
+    'INFRA_REVISAO':{label:'Infra', bg:'rgba(251,191,36,.15)', fg:'#D97706'},
+    'INFRA':{label:'Infra', bg:'rgba(251,191,36,.15)', fg:'#D97706'},
+    'SPY':{label:'Spy', bg:'rgba(167,139,250,.15)', fg:'#7C3AED'},
+    'BACKLOG':{label:'Backlog', bg:'var(--bg3)', fg:'var(--text2)'}
+  };
+  return map[status] || {label: status||'—', bg:'var(--bg3)', fg:'var(--text2)'};
+}
+
 function renderDash(){
   // update project name
   document.getElementById('project-name').textContent='📁 '+cfg.projeto+' ▾';
@@ -4202,6 +4531,9 @@ function renderDash(){
   document.getElementById('chan-name-label').textContent=cfg.projeto||'geral';
   document.getElementById('chat-chan-title').textContent=cfg.projeto||'geral';
   document.getElementById('chat-input').placeholder='Mensagem em #'+(cfg.projeto||'geral')+'...';
+
+  // Home widgets (novos)
+  try { renderHome(); } catch(e){ console.warn('renderHome erro:', e); }
 
   // pipeline
   const stages=['Gravação','Análise 1','Edição','Análise 2','Subir','No Ar'];
