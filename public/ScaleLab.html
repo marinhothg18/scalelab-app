@@ -4278,53 +4278,71 @@ function _homeKpiCard(icone, label, valor, delta, corValor, corDeltaBg, corDelta
 }
 
 function _homeCalcKPIs(){
-  // Soma remessas das últimas 7 dias (atual) vs 7 anteriores
-  var ofertas = g('roi_ofertas', []);
-  var agora = new Date();
-  var iniSem = new Date(agora); iniSem.setDate(agora.getDate() - 7);
-  var iniSemAnt = new Date(agora); iniSemAnt.setDate(agora.getDate() - 14);
-
-  function somar(from, to){
-    var inv = 0, ret = 0;
-    ofertas.forEach(function(o){
-      (o.dias || []).forEach(function(dia){
-        if(!dia || !dia.data) return;
-        var d = new Date(dia.data);
-        if(d >= from && d < to){
-          inv += Number(dia.investido) || 0;
-          ret += Number(dia.retorno) || 0;
-        }
-      });
-    });
-    return { inv: inv, ret: ret, lucro: ret - inv, roas: inv > 0 ? ret / inv : 0 };
-  }
-  var atual = somar(iniSem, agora);
-  var ant   = somar(iniSemAnt, iniSem);
-
-  function variacao(a, b){
-    if(!b) return null;
-    var p = ((a - b) / b) * 100;
-    return Math.round(p);
-  }
-  var leads = atual.inv > 0 && g('metricas',[]).length ? null : null;
-  // CPA aproximado: soma leads
-  var leadsAtual = 0, leadsAnt = 0;
-  (g('metricas', []) || []).forEach(function(m){
-    if(!m || !m.data) return;
-    var d = new Date(m.data);
-    var L = Number(m.leads) || 0;
-    if(d >= iniSem && d < agora) leadsAtual += L;
-    else if(d >= iniSemAnt && d < iniSem) leadsAnt += L;
-  });
-  var cpaAtual = leadsAtual > 0 ? atual.inv / leadsAtual : 0;
-  var cpaAnt   = leadsAnt   > 0 ? ant.inv   / leadsAnt   : 0;
-
-  return {
-    roas: { atual: atual.roas, var: variacao(atual.roas, ant.roas) },
-    lucro: { atual: atual.lucro, var: variacao(atual.lucro, ant.lucro) },
-    cpa: { atual: cpaAtual, var: variacao(cpaAtual, cpaAnt) },
-    investimento: { atual: atual.inv, var: variacao(atual.inv, ant.inv) }
+  // Super defensivo — qualquer dado estranho retorna zeros
+  var safeResult = {
+    roas: { atual: 0, var: null },
+    lucro: { atual: 0, var: null },
+    cpa: { atual: 0, var: null },
+    investimento: { atual: 0, var: null }
   };
+  try {
+    var ofertas = g('roi_ofertas', []) || [];
+    if(!Array.isArray(ofertas)) return safeResult;
+    var agora = new Date();
+    var iniSem = new Date(agora.getTime() - 7*24*60*60*1000);
+    var iniSemAnt = new Date(agora.getTime() - 14*24*60*60*1000);
+
+    function somar(from, to){
+      var inv = 0, ret = 0;
+      ofertas.forEach(function(o){
+        if(!o || typeof o !== 'object') return;
+        var dias = Array.isArray(o.dias) ? o.dias : [];
+        dias.forEach(function(dia){
+          if(!dia || typeof dia !== 'object' || !dia.data) return;
+          try {
+            var d = new Date(dia.data);
+            if(isNaN(d.getTime())) return;
+            if(d >= from && d < to){
+              inv += Number(dia.investido) || 0;
+              ret += Number(dia.retorno) || 0;
+            }
+          } catch(e){}
+        });
+      });
+      return { inv: inv, ret: ret, lucro: ret - inv, roas: inv > 0 ? ret / inv : 0 };
+    }
+    var atual = somar(iniSem, agora);
+    var ant = somar(iniSemAnt, iniSem);
+
+    function variacao(a, b){ if(!b || !isFinite(b)) return null; var p = ((a - b) / b) * 100; return Math.round(p); }
+
+    var leadsAtual = 0, leadsAnt = 0;
+    var metricas = g('metricas', []) || [];
+    if(Array.isArray(metricas)){
+      metricas.forEach(function(m){
+        if(!m || !m.data) return;
+        try {
+          var d = new Date(m.data);
+          if(isNaN(d.getTime())) return;
+          var L = Number(m.leads) || 0;
+          if(d >= iniSem && d < agora) leadsAtual += L;
+          else if(d >= iniSemAnt && d < iniSem) leadsAnt += L;
+        } catch(e){}
+      });
+    }
+    var cpaAtual = leadsAtual > 0 ? atual.inv / leadsAtual : 0;
+    var cpaAnt = leadsAnt > 0 ? ant.inv / leadsAnt : 0;
+
+    return {
+      roas: { atual: atual.roas, var: variacao(atual.roas, ant.roas) },
+      lucro: { atual: atual.lucro, var: variacao(atual.lucro, ant.lucro) },
+      cpa: { atual: cpaAtual, var: variacao(cpaAtual, cpaAnt) },
+      investimento: { atual: atual.inv, var: variacao(atual.inv, ant.inv) }
+    };
+  } catch(err) {
+    console.error('[HOME] _homeCalcKPIs erro:', err);
+    return safeResult;
+  }
 }
 
 function _homeDeltaPill(v, inversa){
