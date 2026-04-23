@@ -1448,6 +1448,41 @@ function _gerarRelatorioSemanal(forcado) {
       });
     });
 
+    // ── Envia resumo via WhatsApp para destinatários com número cadastrado ──
+    if (cfg.enviarWhatsApp !== false) {
+      const fmtBR = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
+      const linhas = [];
+      linhas.push('📊 *Relatório Semanal Axcend*');
+      linhas.push(`_${periodo_ini.split('-').reverse().join('/')} a ${periodo_fim.split('-').reverse().join('/')}_`);
+      linhas.push('');
+      linhas.push('*💰 KPIs*');
+      linhas.push(`• Investimento: ${fmtBR(inv)}`);
+      linhas.push(`• Faturamento: ${fmtBR(ret)}`);
+      linhas.push(`• Lucro: ${fmtBR(lucro)}`);
+      linhas.push(`• ROAS: ${roas.toFixed(2).replace('.',',')}x`);
+      if (vendas) linhas.push(`• Vendas: ${vendas} · Leads: ${leads}`);
+      linhas.push('');
+      linhas.push('*✅ Demandas*');
+      linhas.push(`• Concluídas: ${concluidasSemana}`);
+      linhas.push(`• Pendentes: ${pendentes}`);
+      linhas.push(`• Atrasadas: ${atrasadas}`);
+      if (topOfertas.length) {
+        linhas.push('');
+        linhas.push('*🏆 Top Ofertas*');
+        topOfertas.slice(0, 3).forEach((o, i) => {
+          linhas.push(`${i+1}. ${o.nome} · ${fmtBR(o.lucro)}`);
+        });
+      }
+      linhas.push('');
+      linhas.push('_Abra o app pra ver detalhes._');
+      const msg = linhas.join('\n');
+      destinos.forEach(uid => {
+        const u = (db.store['sl_usuarios'] || []).find(x => x.id === uid);
+        if (!u || !u.whatsapp) return;
+        sendWhatsAppMessage(u.whatsapp, msg).catch(()=>{});
+      });
+    }
+
     db.timestamps['sl_relatorios_semanais'] = now();
     db.timestamps['sl_notifs'] = now();
     writeDB(db);
@@ -1468,6 +1503,214 @@ app.post('/api/relatorio-semanal/rodar', authDiretoria, (req, res) => {
   const r = _gerarRelatorioSemanal(true);
   if (!r.ok) return res.status(400).json(r);
   res.json({ ok: true, relatorio: r.relatorio });
+});
+
+// ══════════════════════════════════════════════
+// RELATÓRIO DIÁRIO VIA WHATSAPP (Diretoria)
+// ══════════════════════════════════════════════
+function _gerarRelatorioDiario(forcado) {
+  try {
+    const db = readDB();
+    const cfg = db.store['sl_relatorio_diario_config'] || {};
+    const ativo = cfg.ativo !== false;
+    const hora = typeof cfg.hora === 'number' ? cfg.hora : 18;
+
+    const agora = new Date();
+    const hojeStr = agora.toISOString().slice(0,10);
+
+    if (!forcado) {
+      if (!ativo) return { ok: false, motivo: 'desativado' };
+      if (agora.getHours() !== hora) return { ok: false, motivo: 'hora_errada' };
+      // Evita mandar 2x no mesmo dia
+      const notifs = db.store['sl_notifs'] || [];
+      if (notifs.some(n => n.dedupKey && n.dedupKey.startsWith(`rel-diario:${hojeStr}:`))) {
+        return { ok: false, motivo: 'ja_rodou_hoje' };
+      }
+    }
+
+    const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
+    const usuarios = db.store['sl_usuarios'] || [];
+    const roiOfertas = db.store['roi_ofertas'] || [];
+
+    const respNome = (t) => {
+      if (Array.isArray(t.respIds) && t.respIds.length) {
+        return t.respIds.map(rid => {
+          const u = usuarios.find(x => x.id === rid);
+          return u ? u.nome : '—';
+        }).join(', ');
+      }
+      return t.resp || '—';
+    };
+    const respIdsOf = (t) => {
+      if (Array.isArray(t.respIds) && t.respIds.length) return t.respIds;
+      if (t.respId) return [t.respId];
+      return [];
+    };
+
+    // Concluídas hoje (usando _updatedAt)
+    const inicioDoDia = new Date(hojeStr + 'T00:00:00').getTime();
+    const fimDoDia = inicioDoDia + 24*60*60*1000 - 1;
+    const concluidasHoje = tasks.filter(t => {
+      if (t.status !== 'CONCLUIDO' && t.status !== 'Concluída') return false;
+      const ts = Number(t._updatedAt) || Number(t.id);
+      return ts >= inicioDoDia && ts <= fimDoDia;
+    });
+
+    // Vencendo hoje (não concluídas, prazo == hoje)
+    const vencendoHoje = tasks.filter(t => {
+      if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
+      return t.data === hojeStr;
+    });
+
+    // Atrasadas (prazo < hoje, não concluídas)
+    const atrasadas = tasks.filter(t => {
+      if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
+      return t.data && t.data < hojeStr;
+    });
+
+    // Em andamento / backlog (não concluídas, sem prazo ou prazo futuro)
+    const emAberto = tasks.filter(t => {
+      if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
+      return !t.data || t.data > hojeStr;
+    });
+
+    // ROI do dia (somando dias com data == hoje)
+    let invHoje = 0, retHoje = 0;
+    roiOfertas.forEach(o => {
+      (o.dias || []).forEach(d => {
+        if (d && d.data === hojeStr) {
+          invHoje += Number(d.investido) || 0;
+          retHoje += Number(d.retorno) || 0;
+        }
+      });
+    });
+    const lucroHoje = retHoje - invHoje;
+    const roasHoje = invHoje > 0 ? retHoje / invHoje : 0;
+
+    // Produtividade por pessoa (ativos com WhatsApp OU Diretoria)
+    const porPessoa = {};
+    tasks.forEach(t => {
+      respIdsOf(t).forEach(rid => {
+        const u = usuarios.find(x => x.id === rid);
+        if (!u || u.ativo === false) return;
+        if (!porPessoa[rid]) porPessoa[rid] = { nome: u.nome, concluidas: 0, atrasadas: 0, vencendoHoje: 0, abertas: 0 };
+        if (t.status === 'CONCLUIDO' || t.status === 'Concluída') {
+          const ts = Number(t._updatedAt) || Number(t.id);
+          if (ts >= inicioDoDia && ts <= fimDoDia) porPessoa[rid].concluidas++;
+        } else if (t.data && t.data < hojeStr) {
+          porPessoa[rid].atrasadas++;
+        } else if (t.data === hojeStr) {
+          porPessoa[rid].vencendoHoje++;
+        } else {
+          porPessoa[rid].abertas++;
+        }
+      });
+    });
+
+    // Destinatários: IDs configurados OU Diretoria com WhatsApp
+    const destinos = Array.isArray(cfg.destinatariosIds) && cfg.destinatariosIds.length
+      ? cfg.destinatariosIds
+      : usuarios.filter(u => u.cargo === 'Diretoria' && u.ativo !== false).map(u => u.id);
+
+    // Monta mensagem
+    const fmtBR = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
+    const dataBR = hojeStr.split('-').reverse().join('/');
+    const linhas = [];
+    linhas.push(`📋 *Relatório Diário Axcend — ${dataBR}*`);
+    linhas.push('');
+    linhas.push('*✅ Demandas hoje*');
+    linhas.push(`• Concluídas hoje: ${concluidasHoje.length}`);
+    linhas.push(`• Vencendo hoje: ${vencendoHoje.length}`);
+    linhas.push(`• Atrasadas: ${atrasadas.length}`);
+    linhas.push(`• Em aberto: ${emAberto.length}`);
+
+    if (invHoje > 0 || retHoje > 0) {
+      linhas.push('');
+      linhas.push('*💰 ROI hoje*');
+      linhas.push(`• Investido: ${fmtBR(invHoje)}`);
+      linhas.push(`• Faturamento: ${fmtBR(retHoje)}`);
+      linhas.push(`• Lucro: ${fmtBR(lucroHoje)}`);
+      linhas.push(`• ROAS: ${roasHoje.toFixed(2).replace('.',',')}x`);
+    }
+
+    const pessoasArr = Object.values(porPessoa).sort((a,b) => b.concluidas - a.concluidas || b.atrasadas - a.atrasadas);
+    if (pessoasArr.length) {
+      linhas.push('');
+      linhas.push('*👥 Por pessoa*');
+      pessoasArr.slice(0, 10).forEach(p => {
+        const partes = [];
+        if (p.concluidas) partes.push(`✅ ${p.concluidas}`);
+        if (p.vencendoHoje) partes.push(`⏰ ${p.vencendoHoje}`);
+        if (p.atrasadas) partes.push(`⚠️ ${p.atrasadas}`);
+        if (p.abertas) partes.push(`📌 ${p.abertas}`);
+        if (!partes.length) partes.push('sem demandas');
+        linhas.push(`• ${p.nome}: ${partes.join(' · ')}`);
+      });
+      linhas.push('_✅ concl · ⏰ hoje · ⚠️ atrasada · 📌 aberta_');
+    }
+
+    if (atrasadas.length) {
+      linhas.push('');
+      linhas.push('*⚠️ Atrasadas (top 5)*');
+      atrasadas.slice(0, 5).forEach(t => {
+        const dias = Math.floor((inicioDoDia - new Date(t.data).getTime()) / (24*60*60*1000));
+        linhas.push(`• ${t.nome} — ${respNome(t)} (${dias}d)`);
+      });
+      if (atrasadas.length > 5) linhas.push(`_+${atrasadas.length - 5} outras_`);
+    }
+
+    linhas.push('');
+    linhas.push('_Axcend · Abra o app pra detalhes_');
+    const msg = linhas.join('\n');
+
+    // Envia
+    let enviados = 0;
+    destinos.forEach(uid => {
+      const u = usuarios.find(x => x.id === uid);
+      if (!u) return;
+
+      // Notif interna
+      if (!db.store['sl_notifs']) db.store['sl_notifs'] = [];
+      const dedupKey = `rel-diario:${hojeStr}:${uid}`;
+      if (!db.store['sl_notifs'].some(n => n.dedupKey === dedupKey)) {
+        db.store['sl_notifs'].unshift({
+          id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          destId: uid, destNome: u.nome,
+          tipo: 'relatorio_diario',
+          titulo: `📋 Relatório Diário ${dataBR}`,
+          texto: `${concluidasHoje.length} concluídas · ${atrasadas.length} atrasadas · ${vencendoHoje.length} vencendo hoje`,
+          lida: false,
+          criado: Date.now(),
+          dedupKey
+        });
+      }
+
+      // WhatsApp
+      if (u.whatsapp) {
+        sendWhatsAppMessage(u.whatsapp, msg).catch(()=>{});
+        enviados++;
+      }
+    });
+
+    db.timestamps['sl_notifs'] = now();
+    writeDB(db);
+
+    console.log(`[RELATÓRIO-DIÁRIO] ${hojeStr} · enviado para ${enviados} pessoa(s)`);
+    return { ok: true, data: hojeStr, enviados, destinos: destinos.length };
+  } catch (err) {
+    console.error('[RELATÓRIO-DIÁRIO] erro:', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// Cron: checa de hora em hora
+setInterval(_gerarRelatorioDiario, 60 * 60 * 1000);
+
+// Endpoint: forçar manualmente
+app.post('/api/relatorio-diario/rodar', authDiretoria, (req, res) => {
+  const r = _gerarRelatorioDiario(true);
+  if (!r.ok) return res.status(400).json(r);
+  res.json(r);
 });
 
 // ══════════════════════════════════════════════

@@ -1734,7 +1734,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="ads-tab" id="cfg-tab-api-tokens" onclick="switchCfgTab('api-tokens',this)">🔑 API Tokens</button>
         <button class="ads-tab" id="cfg-tab-criativos-cfg" onclick="switchCfgTab('criativos-cfg',this)">🎨 Criativos</button>
         <button class="ads-tab" id="cfg-tab-lembretes" onclick="switchCfgTab('lembretes',this)">⏰ Lembretes</button>
-        <button class="ads-tab" id="cfg-tab-relatorio" onclick="switchCfgTab('relatorio',this)">📤 Relatório Semanal</button>
+        <button class="ads-tab" id="cfg-tab-relatorio" onclick="switchCfgTab('relatorio',this)">📤 Relatórios</button>
         <button class="ads-tab" id="cfg-tab-whatsapp" onclick="switchCfgTab('whatsapp',this)">💬 WhatsApp + IA</button>
       </div>
 
@@ -1950,11 +1950,65 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
             <div>
               <div style="font-size:16px;font-weight:700;">📤 Relatório Semanal Automático</div>
-              <div style="font-size:12px;color:var(--text2);margin-top:4px;">Toda semana, no dia e hora configurados, o sistema gera um resumo e notifica os destinatários.</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px;">Toda semana, no dia e hora configurados, o sistema gera um resumo e notifica os destinatários (interno + WhatsApp).</div>
             </div>
             <button class="btn btn-primary" onclick="gerarRelatorioAgora()" style="font-size:12px;padding:8px 14px;">▶ Gerar agora (testar)</button>
           </div>
           <div id="relatorio-status" style="font-size:12px;color:var(--text2);margin-top:8px;"></div>
+        </div>
+
+        <!-- ═══════════ RELATÓRIO DIÁRIO ═══════════ -->
+        <div style="background:linear-gradient(135deg,rgba(62,20,147,.15),rgba(27,156,250,.15));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-size:16px;font-weight:700;">📋 Relatório Diário no WhatsApp</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px;">Todo dia no horário configurado, a Diretoria recebe um resumo direto no WhatsApp: demandas concluídas hoje, vencendo hoje, atrasadas, produtividade por pessoa e ROI do dia.</div>
+            </div>
+            <button class="btn btn-primary" onclick="gerarRelatorioDiarioAgora()" style="font-size:12px;padding:8px 14px;">▶ Enviar agora (testar)</button>
+          </div>
+          <div id="reldiario-status" style="font-size:12px;color:var(--text2);margin-top:8px;"></div>
+        </div>
+
+        <!-- Config Diário -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:14px;">⚙️ Configuração — Relatório Diário</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;">
+            <div>
+              <label class="fl" style="display:block;margin-bottom:6px;">Horário de envio (todo dia)</label>
+              <select class="fs" id="reldiario-cfg-hora" style="width:100%;">
+                ${Array.from({length:24},(_,i)=>i).map(h=>`<option value="${h}"${h===18?' selected':''}>${String(h).padStart(2,'0')}h00</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="fl" style="display:block;margin-bottom:6px;">Destinatários</label>
+              <div style="font-size:11px;color:var(--text2);padding:10px 0;">Padrão: todos da Diretoria com WhatsApp cadastrado. Para restringir, marque manualmente:</div>
+            </div>
+          </div>
+          <div>
+            <label class="fl" style="display:block;margin-bottom:6px;">Destinatários específicos (opcional)</label>
+            <div id="reldiario-cfg-destinatarios" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--bg3);border-radius:8px;min-height:42px;"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:16px;">
+            <label style="display:inline-flex;align-items:center;cursor:pointer;">
+              <input type="checkbox" id="reldiario-cfg-ativo" checked style="display:none;">
+              <span id="reldiario-cfg-ativo-pill" style="width:42px;height:24px;border-radius:12px;background:var(--green);position:relative;transition:all .2s;">
+                <span style="position:absolute;top:2px;left:20px;width:20px;height:20px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+              </span>
+              <span style="margin-left:10px;font-size:13px;font-weight:600;" id="reldiario-cfg-ativo-label">Ativo</span>
+            </label>
+            <div style="flex:1;"></div>
+            <button class="btn btn-primary" onclick="salvarConfigRelatorioDiario()" style="font-size:12px;padding:8px 16px;">💾 Salvar</button>
+          </div>
+        </div>
+
+        <!-- ═══════════ RELATÓRIO SEMANAL ═══════════ -->
+        <div style="background:linear-gradient(135deg,rgba(197,44,88,.12),rgba(255,89,38,.12));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-size:16px;font-weight:700;">📤 Relatório Semanal Automático</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px;">Toda semana, no dia e hora configurados, o sistema gera um resumo completo e notifica os destinatários (interno + WhatsApp).</div>
+            </div>
+          </div>
         </div>
 
         <!-- Config -->
@@ -3363,7 +3417,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_whatsapp_config'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -9216,6 +9270,83 @@ async function gerarRelatorioAgora(){
 }
 
 // ══════════════════════════════════════════════
+// RELATÓRIO DIÁRIO (config + envio)
+// ══════════════════════════════════════════════
+function getRelatorioDiarioConfig(){
+  var c = g('sl_relatorio_diario_config', {});
+  if(c.ativo === undefined) c.ativo = true;
+  if(c.hora === undefined) c.hora = 18;
+  if(!Array.isArray(c.destinatariosIds)) c.destinatariosIds = [];
+  return c;
+}
+function saveRelatorioDiarioConfig(c){
+  localStorage.setItem('sl_relatorio_diario_config', JSON.stringify(c));
+  fetch(API_BASE+'/api/store/sl_relatorio_diario_config', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c) }).catch(function(){});
+}
+
+function renderRelatorioDiarioConfig(){
+  var cfg = getRelatorioDiarioConfig();
+  var hora = document.getElementById('reldiario-cfg-hora');
+  if(hora) hora.value = String(cfg.hora);
+  // Toggle ativo
+  var pill = document.getElementById('reldiario-cfg-ativo-pill');
+  var label = document.getElementById('reldiario-cfg-ativo-label');
+  if(pill){
+    pill.style.background = cfg.ativo ? 'var(--green)' : 'var(--text3)';
+    pill.firstElementChild.style.left = cfg.ativo ? '20px' : '2px';
+    pill.onclick = function(){ cfg.ativo = !cfg.ativo; saveRelatorioDiarioConfig(cfg); renderRelatorioDiarioConfig(); };
+  }
+  if(label) label.textContent = cfg.ativo ? 'Ativo' : 'Desativado';
+  // Destinatários
+  var dest = document.getElementById('reldiario-cfg-destinatarios');
+  if(dest){
+    var usuarios = g('sl_usuarios',[]).filter(function(u){ return u.ativo !== false; });
+    dest.innerHTML = usuarios.map(function(u){
+      var on = cfg.destinatariosIds.indexOf(u.id) >= 0;
+      var temWa = u.whatsapp ? '📱' : '';
+      return '<label style="display:inline-flex;align-items:center;gap:6px;background:'+(on?'var(--accent)':'var(--bg2)')+';color:'+(on?'#fff':'var(--text)')+';padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12px;border:1px solid var(--border);">'
+        + '<input type="checkbox" '+(on?'checked':'')+' onchange="_reldiarioToggleDest(\''+u.id+'\', this.checked)" style="display:none;">'
+        + temWa + ' ' + (u.nome||'').replace(/</g,'&lt;') + (u.cargo?' · '+u.cargo:'')
+        + '</label>';
+    }).join('') || '<span style="font-size:11px;color:var(--text2);padding:6px;">Nenhum usuário ativo. Padrão: toda Diretoria com WhatsApp.</span>';
+  }
+}
+
+window._reldiarioToggleDest = function(uid, on){
+  var cfg = getRelatorioDiarioConfig();
+  var idx = cfg.destinatariosIds.indexOf(uid);
+  if(on && idx < 0) cfg.destinatariosIds.push(uid);
+  else if(!on && idx >= 0) cfg.destinatariosIds.splice(idx, 1);
+  saveRelatorioDiarioConfig(cfg);
+  renderRelatorioDiarioConfig();
+};
+
+window.salvarConfigRelatorioDiario = function(){
+  var cfg = getRelatorioDiarioConfig();
+  var hEl = document.getElementById('reldiario-cfg-hora');
+  if(hEl) cfg.hora = parseInt(hEl.value, 10) || 18;
+  saveRelatorioDiarioConfig(cfg);
+  notif('💾 Configuração do relatório diário salva');
+};
+
+window.gerarRelatorioDiarioAgora = async function(){
+  var status = document.getElementById('reldiario-status');
+  if(!currentUser || currentUser.cargo !== 'Diretoria'){
+    if(status){ status.textContent = '❌ Apenas Diretoria pode rodar.'; status.style.color = 'var(--red)'; }
+    return;
+  }
+  if(status){ status.textContent = '⏳ Enviando resumo de hoje pro WhatsApp...'; status.style.color = 'var(--text2)'; }
+  try{
+    var res = await fetch(API_BASE+'/api/relatorio-diario/rodar', { method:'POST', headers: _bkAuthHeaders() });
+    var data = await res.json();
+    if(!res.ok) throw new Error(data.erro || data.motivo || 'erro');
+    if(status){ status.textContent = '✅ Enviado para '+(data.enviados||0)+' pessoa(s) — verifique seu WhatsApp.'; status.style.color = 'var(--green)'; }
+  }catch(e){
+    if(status){ status.textContent = '❌ '+e.message; status.style.color = 'var(--red)'; }
+  }
+};
+
+// ══════════════════════════════════════════════
 // WHATSAPP + IA (config)
 // ══════════════════════════════════════════════
 function getWhatsAppConfig(){
@@ -9390,7 +9521,7 @@ function switchCfgTab(tab, btn){
   if(tab==='criativos-cfg') renderCriStatusList();
   if(tab==='api-tokens') renderApiTokens();
   if(tab==='lembretes') renderLembretes();
-  if(tab==='relatorio') renderRelatorioConfig();
+  if(tab==='relatorio'){ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }
   if(tab==='whatsapp') renderWhatsAppConfig();
   if(tab==='apis'){
     const k = getRtApiKey();
