@@ -1205,6 +1205,159 @@ app.post('/api/lembretes/rodar', authDiretoria, (req, res) => {
   _lembretesRodar();
   res.json({ ok: true, message: 'Lembretes executados.' });
 });
+
+// ══════════════════════════════════════════════
+// RELATÓRIO SEMANAL AUTOMÁTICO
+// ══════════════════════════════════════════════
+function _gerarRelatorioSemanal(forcado) {
+  try {
+    const db = readDB();
+    const cfg = db.store['sl_relatorio_config'] || {};
+    const ativo = cfg.ativo !== false;
+    const diaSemana = typeof cfg.diaSemana === 'number' ? cfg.diaSemana : 5; // 5 = sexta
+    const hora = typeof cfg.hora === 'number' ? cfg.hora : 18;
+
+    if (!forcado) {
+      if (!ativo) return { ok: false, motivo: 'desativado' };
+      const agora = new Date();
+      if (agora.getDay() !== diaSemana) return { ok: false, motivo: 'dia_errado' };
+      if (agora.getHours() !== hora) return { ok: false, motivo: 'hora_errada' };
+      // Evita duplicar: se já rodou hoje, pula
+      const hojeStr = agora.toISOString().slice(0,10);
+      const existentes = db.store['sl_relatorios_semanais'] || [];
+      if (existentes.some(r => r.geradoEm && r.geradoEm.slice(0,10) === hojeStr)) {
+        return { ok: false, motivo: 'ja_rodou_hoje' };
+      }
+    }
+
+    const agora = new Date();
+    const iniSem = new Date(agora.getTime() - 7*24*60*60*1000);
+    const fmt = d => d.toISOString().slice(0,10);
+    const periodo_ini = fmt(iniSem), periodo_fim = fmt(agora);
+
+    // Dados: tasks, criativos, rituais, roi, alertas
+    const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
+    const rituais = db.store.rituais || [];
+    const roiOfertas = db.store['roi_ofertas'] || [];
+    const auditLog = db.store['sl_auditlog'] || [];
+
+    // KPIs ROI (soma dias na semana)
+    let inv = 0, ret = 0, leads = 0, vendas = 0;
+    const ofertasSemana = {};
+    roiOfertas.forEach(o => {
+      (o.dias || []).forEach(d => {
+        if (!d || !d.data) return;
+        if (d.data < periodo_ini || d.data > periodo_fim) return;
+        const dInv = Number(d.investido) || 0;
+        const dRet = Number(d.retorno) || 0;
+        inv += dInv; ret += dRet;
+        leads += Number(d.leads) || 0;
+        vendas += Number(d.vendas) || 0;
+        if (!ofertasSemana[o.id]) ofertasSemana[o.id] = { nome: o.nome, inv: 0, ret: 0, lucro: 0 };
+        ofertasSemana[o.id].inv += dInv;
+        ofertasSemana[o.id].ret += dRet;
+        ofertasSemana[o.id].lucro = ofertasSemana[o.id].ret - ofertasSemana[o.id].inv;
+      });
+    });
+    const lucro = ret - inv;
+    const roas = inv > 0 ? ret / inv : 0;
+    const cpa = leads > 0 ? inv / leads : 0;
+
+    // Top 5 ofertas por lucro
+    const topOfertas = Object.values(ofertasSemana)
+      .sort((a, b) => b.lucro - a.lucro)
+      .slice(0, 5);
+
+    // Demandas
+    const concluidasSemana = tasks.filter(t => {
+      if (t.status !== 'CONCLUIDO' && t.status !== 'Concluída') return false;
+      const ts = Number(t._updatedAt) || Number(t.id);
+      if (!ts) return false;
+      return ts >= iniSem.getTime();
+    }).length;
+    const atrasadas = tasks.filter(t => {
+      if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
+      return t.data && t.data < periodo_fim;
+    }).length;
+    const pendentes = tasks.filter(t => t.status !== 'CONCLUIDO' && t.status !== 'Concluída').length;
+
+    // Rituais na semana
+    const rituaisSemana = rituais.filter(r => {
+      const ts = Number(r.id);
+      return ts && ts >= iniSem.getTime();
+    }).length;
+
+    // Alertas da semana (audit events de login_falhou, ROAS, etc)
+    const alertasRaw = auditLog.filter(a => {
+      if (!a || !a.ts) return false;
+      if (a.ts < iniSem.getTime()) return false;
+      return /login_falhou|kpi|alerta/i.test(a.action || '');
+    }).slice(0, 20);
+
+    const relatorio = {
+      id: 'rel-' + Date.now(),
+      geradoEm: agora.toISOString(),
+      periodo_ini,
+      periodo_fim,
+      kpis: { investimento: inv, retorno: ret, lucro, roas, cpa, leads, vendas },
+      ofertas_top: topOfertas,
+      demandas: { concluidas: concluidasSemana, pendentes, atrasadas },
+      rituais_realizados: rituaisSemana,
+      alertas: alertasRaw.length
+    };
+
+    if (!db.store['sl_relatorios_semanais']) db.store['sl_relatorios_semanais'] = [];
+    db.store['sl_relatorios_semanais'].unshift(relatorio);
+    // Mantém últimos 52 (1 ano)
+    if (db.store['sl_relatorios_semanais'].length > 52) {
+      db.store['sl_relatorios_semanais'] = db.store['sl_relatorios_semanais'].slice(0, 52);
+    }
+
+    // Notifica destinatários
+    const destinos = Array.isArray(cfg.destinatariosIds) && cfg.destinatariosIds.length
+      ? cfg.destinatariosIds
+      : (db.store['sl_usuarios'] || []).filter(u => u.cargo === 'Diretoria' && u.ativo !== false).map(u => u.id);
+
+    if (!db.store['sl_notifs']) db.store['sl_notifs'] = [];
+    destinos.forEach(uid => {
+      const u = (db.store['sl_usuarios'] || []).find(x => x.id === uid);
+      if (!u) return;
+      const dedupKey = `rel-semanal:${periodo_fim}:${uid}`;
+      if (db.store['sl_notifs'].some(n => n.dedupKey === dedupKey)) return;
+      db.store['sl_notifs'].unshift({
+        id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        destId: uid, destNome: u.nome,
+        tipo: 'relatorio_semanal',
+        titulo: '📤 Relatório Semanal pronto',
+        texto: `Relatório ${periodo_ini} a ${periodo_fim} · ROAS ${roas.toFixed(2).replace('.',',')}x · Lucro R$ ${Math.round(lucro).toLocaleString('pt-BR')}`,
+        refId: relatorio.id,
+        lida: false,
+        criado: Date.now(),
+        dedupKey
+      });
+    });
+
+    db.timestamps['sl_relatorios_semanais'] = now();
+    db.timestamps['sl_notifs'] = now();
+    writeDB(db);
+
+    console.log(`[RELATÓRIO-SEMANAL] Gerado: ${periodo_ini} a ${periodo_fim} · ROAS ${roas.toFixed(2)}x · Lucro R$ ${Math.round(lucro)}`);
+    return { ok: true, relatorio };
+  } catch (err) {
+    console.error('[RELATÓRIO-SEMANAL] erro:', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// Cron roda a cada 1h
+setInterval(_gerarRelatorioSemanal, 60 * 60 * 1000);
+
+// Endpoint forçar (Diretoria)
+app.post('/api/relatorio-semanal/rodar', authDiretoria, (req, res) => {
+  const r = _gerarRelatorioSemanal(true);
+  if (!r.ok) return res.status(400).json(r);
+  res.json({ ok: true, relatorio: r.relatorio });
+});
 setTimeout(_tickBackupRemoto, 2*60*1000);   // primeira tentativa 2min após boot
 
 // POST /api/backup/remoto — força push manual
