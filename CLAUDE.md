@@ -112,3 +112,46 @@ Restore is destructive but always snapshots `pre-restore` first. Require body `c
 - **Rate limits are already wired** globally (`/api/` 200/min, `/api/v1/` 60/min, `/api/auth/login` 5 per 10min per IP). Don't bypass — if a legitimate use case needs more, adjust the limiter, don't work around it.
 - **`cur` global** in the SPA tracks current page. `goTo(id)` handles navigation + calls the right `render<Name>()`. When adding a new page, wire it into `goTo` and add a render function; also hook the real-time path in `syncFromServer` if the page should live-update.
 
+## Nomenclatura & identidade
+
+Muitos nomes aparecem na conversa com o usuário — todos apontam para **este mesmo projeto**:
+
+- **Axcend** — nome da marca/produto atual (o que aparece na UI)
+- **ScaleLab** — nome antigo. Ainda presente em `public/ScaleLab.html` e em todas as chaves `sl_*` do storage. **Não renomear** — quebraria dados em produção. Migração é apenas visual.
+- **Centralaxcend** — referência ao domínio (`app.centralaxcend.com`). Mesmo sistema.
+- **scalelab** / **scalelab-app** / **scalelab-web** — nome do repositório GitHub e do service Railway. Mesmo código.
+
+Resumo: se o usuário mencionar qualquer um desses nomes, ele está falando deste repositório. Não é preciso clonar outro projeto nem procurar em outro lugar.
+
+Paleta de cores (identidade visual definida — não alterar sem permissão):
+- Roxo `#3E1493` · Azul `#1B9CFA` · Rosa `#C52C58` · Laranja `#FF5926` · Azul profundo `#2509E4`
+
+## Deployment ops
+
+Railway **não está conectado ao GitHub** para auto-deploy. `git push` NÃO dispara build. Deploys acontecem via CLI:
+
+```bash
+railway up --detach        # sobe a pasta atual como nova versão
+railway status             # confirma projeto/env/service linkados (joyful-celebration / production / scalelab-web)
+railway logs               # logs em tempo real
+```
+
+O `.railwayignore` define o que sobe. O `public/ScaleLab.html` é o arquivo servido — edite-o, não duplicatas em outros lugares.
+
+## Workflow multi-máquina
+
+O usuário opera este projeto em 2 Macs (Mac mini + MacBook M4). Ambos têm o repo clonado em `~/Desktop/scalelab`. Regra obrigatória:
+
+**Antes de começar a editar em qualquer sessão, rode `git pull`.** Se não fizer, o `git push` no final vai falhar com "fetch first" ou dar conflito de merge. Se você receber esse erro, é sinal de que a outra máquina commitou algo novo — faça `git pull --rebase` e repita o push.
+
+Se houver conflito de merge em arquivos textuais (ex: `CLAUDE.md`), resolva preservando o que for mais informativo/recente. Não reverta trabalho da outra máquina sem confirmar com o usuário.
+
+## Perguntar ao usuário antes de
+
+- Deletar/restaurar dados em produção
+- Mudar regras de cron (lembretes, relatórios, backup) — risco de spam/perda
+- Alterar autenticação/permissões
+- Renomear chaves do storage (`sl_*`, `roi_ofertas`, etc.)
+- Mexer na paleta de cores ou no logo
+- Fazer qualquer coisa que afete usuários que não sejam o Thiago
+
