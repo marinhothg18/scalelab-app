@@ -1268,31 +1268,64 @@ function _gerarRelatorioSemanal(forcado) {
       .sort((a, b) => b.lucro - a.lucro)
       .slice(0, 5);
 
-    // Demandas
-    const concluidasSemana = tasks.filter(t => {
+    // Helpers pra resolver nomes de responsáveis
+    const respNome = (t) => {
+      if (Array.isArray(t.respIds) && t.respIds.length) {
+        return t.respIds.map(rid => {
+          const u = (db.store['sl_usuarios']||[]).find(x => x.id === rid);
+          return u ? u.nome : '—';
+        }).join(', ');
+      }
+      return t.resp || '—';
+    };
+
+    // Demandas concluídas na semana
+    const demandas_concluidas = tasks.filter(t => {
       if (t.status !== 'CONCLUIDO' && t.status !== 'Concluída') return false;
       const ts = Number(t._updatedAt) || Number(t.id);
       if (!ts) return false;
       return ts >= iniSem.getTime();
-    }).length;
-    const atrasadas = tasks.filter(t => {
+    }).map(t => ({ id: t.id, nome: t.nome||'(sem nome)', resp: respNome(t), ofertaNome: t.ofertaNome||'' }));
+
+    // Demandas atrasadas (prazo < hoje, não concluídas)
+    const demandas_atrasadas = tasks.filter(t => {
       if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
       return t.data && t.data < periodo_fim;
-    }).length;
-    const pendentes = tasks.filter(t => t.status !== 'CONCLUIDO' && t.status !== 'Concluída').length;
+    }).map(t => {
+      const diasAtraso = Math.floor((new Date(periodo_fim).getTime() - new Date(t.data).getTime()) / (24*60*60*1000));
+      return { id: t.id, nome: t.nome||'(sem nome)', resp: respNome(t), ofertaNome: t.ofertaNome||'', diasAtraso };
+    });
 
-    // Rituais na semana
-    const rituaisSemana = rituais.filter(r => {
+    // Demandas pendentes (não concluídas + não atrasadas)
+    const demandas_pendentes = tasks.filter(t => {
+      if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return false;
+      if (t.data && t.data < periodo_fim) return false; // já conta como atrasada
+      return true;
+    }).map(t => ({ id: t.id, nome: t.nome||'(sem nome)', resp: respNome(t), status: t.status||'', ofertaNome: t.ofertaNome||'' }));
+
+    const concluidasSemana = demandas_concluidas.length;
+    const atrasadas = demandas_atrasadas.length;
+    const pendentes = demandas_pendentes.length;
+
+    // Rituais na semana (detalhado)
+    const rituais_detalhes = rituais.filter(r => {
       const ts = Number(r.id);
       return ts && ts >= iniSem.getTime();
-    }).length;
+    }).map(r => ({
+      id: r.id, nome: r.nome||'(sem nome)', tipo: r.tipo||'—',
+      participantes: Array.isArray(r.participantes) ? r.participantes : []
+    }));
 
-    // Alertas da semana (audit events de login_falhou, ROAS, etc)
-    const alertasRaw = auditLog.filter(a => {
+    // Alertas da semana (audit events)
+    const alertas_detalhes = auditLog.filter(a => {
       if (!a || !a.ts) return false;
       if (a.ts < iniSem.getTime()) return false;
-      return /login_falhou|kpi|alerta/i.test(a.action || '');
-    }).slice(0, 20);
+      return /login_falhou|kpi|alerta|soft_delete|purge|backup_restore/i.test(a.action || '');
+    }).slice(0, 30).map(a => ({
+      ts: a.ts, iso: a.iso || new Date(a.ts).toISOString(),
+      action: a.action || '—', userNome: a.userNome||'—',
+      target: a.target || null
+    }));
 
     const relatorio = {
       id: 'rel-' + Date.now(),
@@ -1302,8 +1335,13 @@ function _gerarRelatorioSemanal(forcado) {
       kpis: { investimento: inv, retorno: ret, lucro, roas, cpa, leads, vendas },
       ofertas_top: topOfertas,
       demandas: { concluidas: concluidasSemana, pendentes, atrasadas },
-      rituais_realizados: rituaisSemana,
-      alertas: alertasRaw.length
+      demandas_concluidas,
+      demandas_pendentes: demandas_pendentes.slice(0, 50),
+      demandas_atrasadas,
+      rituais_realizados: rituais_detalhes.length,
+      rituais_detalhes,
+      alertas: alertas_detalhes.length,
+      alertas_detalhes
     };
 
     if (!db.store['sl_relatorios_semanais']) db.store['sl_relatorios_semanais'] = [];
