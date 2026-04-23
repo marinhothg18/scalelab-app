@@ -8872,18 +8872,22 @@ function viewEdu(id){
 // LEMBRETES AUTOMÁTICOS (configuração)
 // ══════════════════════════════════════════════
 var LEMBRETES_REGRAS = [
-  { id:'prazo24h',    titulo:'⏰ Prazo em 24h',            desc:'Notifica responsável 24h antes da demanda vencer', cor:'#F59E0B' },
-  { id:'atrasada1d',  titulo:'⚠️ Demanda atrasada 1 dia',  desc:'Lembrete suave quando passa do prazo por 1 dia',   cor:'#EF4444' },
-  { id:'alertaDir2d', titulo:'🚨 Alerta Diretoria (2d)',   desc:'Notifica Diretoria quando demanda atrasa 2+ dias', cor:'#DC2626' },
-  { id:'atrasada3d',  titulo:'🔥 Paralisada (3 dias)',     desc:'Cobrança firme pro responsável quando chega a 3 dias atrasada', cor:'#991B1B' },
-  { id:'ritualHoje',  titulo:'⭐ Ritual hoje',              desc:'Aviso matinal (8h-11h) pros participantes do ritual', cor:'#7C3AED' },
-  { id:'backlog3d',   titulo:'💤 Demanda em Backlog 3+ dias', desc:'Lembra o responsável que a demanda está parada no backlog', cor:'#FBBF24' },
+  { id:'novaDemanda', titulo:'📌 Nova demanda criada',     desc:'Notifica o responsável no WhatsApp assim que a demanda é atribuída', cor:'#1B9CFA', defOn:true },
+  { id:'prazo24h',    titulo:'⏰ Prazo em 24h',            desc:'Notifica responsável 24h antes da demanda vencer', cor:'#F59E0B', defOn:true },
+  { id:'prazo6h',     titulo:'⏳ Prazo em 6h',             desc:'Cobrança 6h antes do vencimento (desligado por padrão pra economizar envios)', cor:'#F97316', defOn:false },
+  { id:'prazo2h',     titulo:'⚡ Prazo em 2h',             desc:'Cobrança 2h antes do vencimento (desligado por padrão)', cor:'#EA580C', defOn:false },
+  { id:'prazo30min',  titulo:'🚨 Prazo em 30min',          desc:'Alerta final 30min antes do vencimento (desligado por padrão)', cor:'#DC2626', defOn:false },
+  { id:'vencendoHoje',titulo:'🔔 Vencendo agora',          desc:'Dispara no momento em que a demanda vence (desligado por padrão)', cor:'#B91C1C', defOn:false },
+  { id:'atrasada1d',  titulo:'⚠️ Demanda atrasada 1 dia',  desc:'Lembrete suave quando passa do prazo por 1 dia',   cor:'#EF4444', defOn:true },
+  { id:'alertaDir2d', titulo:'🚨 Alerta Diretoria (2d)',   desc:'Notifica Diretoria quando demanda atrasa 2+ dias', cor:'#DC2626', defOn:true },
+  { id:'atrasada3d',  titulo:'🔥 Paralisada (3 dias)',     desc:'Cobrança firme pro responsável quando chega a 3 dias atrasada', cor:'#991B1B', defOn:true },
+  { id:'ritualHoje',  titulo:'⭐ Ritual hoje',              desc:'Aviso matinal (8h-11h) pros participantes do ritual', cor:'#7C3AED', defOn:true },
+  { id:'backlog3d',   titulo:'💤 Demanda em Backlog 3+ dias', desc:'Lembra o responsável que a demanda está parada no backlog', cor:'#FBBF24', defOn:true },
 ];
 
 function getLembretesConfig(){
   var c = g('sl_lembretes_config', {});
-  // Default todas ativas
-  LEMBRETES_REGRAS.forEach(function(r){ if(c[r.id] === undefined) c[r.id] = true; });
+  LEMBRETES_REGRAS.forEach(function(r){ if(c[r.id] === undefined) c[r.id] = !!r.defOn; });
   return c;
 }
 function saveLembretesConfig(c){
@@ -9261,7 +9265,11 @@ function renderWhatsAppConfig(){
             + '<td style="padding:8px 4px;font-weight:600;">'+(u.nome||'').replace(/</g,'&lt;')+'</td>'
             + '<td style="padding:8px 4px;color:var(--text2);">'+(u.cargo||'—')+'</td>'
             + '<td style="padding:8px 4px;"><input id="wa-phone-'+u.id+'" placeholder="(11) 98765-4321" value="'+phone.replace(/"/g,'&quot;')+'" style="width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;"></td>'
-            + '<td style="padding:8px 4px;"><button onclick="salvarTelefoneUsuario(\''+u.id+'\')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;">💾</button></td>'
+            + '<td style="padding:8px 4px;white-space:nowrap;">'
+              + '<button onclick="salvarTelefoneUsuario(\''+u.id+'\')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" title="Salvar">💾</button> '
+              + '<button onclick="testarWhatsAppUsuario(\''+u.id+'\')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" title="Enviar teste">📨 Testar</button>'
+              + (phone ? '<span style="color:var(--green);margin-left:6px;font-size:14px;" title="Cadastrado">●</span>' : '<span style="color:var(--text3);margin-left:6px;font-size:14px;" title="Sem número">○</span>')
+            + '</td>'
             + '</tr>';
         }).join('')
       + '</table>';
@@ -9278,6 +9286,31 @@ window.salvarTelefoneUsuario = function(uid){
   u._updatedAt = Date.now();
   s('sl_usuarios', usuarios);
   notif('📱 Telefone salvo');
+};
+
+window.testarWhatsAppUsuario = async function(uid){
+  var usuarios = g('sl_usuarios', []);
+  var u = usuarios.find(function(x){ return x.id === uid; });
+  if(!u){ notif('❌ Usuário não encontrado'); return; }
+  // Usa o valor atual do input (pode estar editado ainda não salvo)
+  var el = document.getElementById('wa-phone-'+uid);
+  var phone = (el && el.value.trim()) || u.whatsapp || '';
+  if(!phone){ notif('❌ Cadastre o telefone primeiro'); return; }
+  var cfg = getWhatsAppConfig();
+  if(!cfg.ativo){ notif('❌ Ative o WhatsApp no toggle acima'); return; }
+  notif('⏳ Enviando teste para '+u.nome+'...');
+  try{
+    var res = await fetch(API_BASE+'/api/whatsapp/test', {
+      method:'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, _bkAuthHeaders()),
+      body: JSON.stringify({ phone: phone, message: '🤖 Olá '+u.nome+'! Este é um teste do Axcend. Seu WhatsApp está cadastrado e funcionando. 🎉' })
+    });
+    var data = await res.json();
+    if(!res.ok || !data.ok){ throw new Error(data.erro || data.error || 'erro'); }
+    notif('✅ Mensagem enviada para '+u.nome);
+  }catch(e){
+    notif('❌ Falha: '+e.message);
+  }
 };
 
 window.salvarConfigWhatsApp = function(){

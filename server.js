@@ -606,13 +606,45 @@ app.put('/api/store/:key', (req, res) => {
     });
   }
 
+  // Detecta tarefas novas ANTES do merge (pra disparar notificação WhatsApp)
+  let novasTasks = [];
+  if (key === 'tasks' && Array.isArray(incoming)) {
+    const existingIds = new Set((Array.isArray(existing) ? existing : []).map(t => String(t && t.id)));
+    novasTasks = incoming.filter(t => t && t.id && !existingIds.has(String(t.id)) && !t.arquivado);
+  }
+
   // Aplica merge inteligente por ID quando faz sentido
   db.store[key] = _mergeArrayById(existing, incoming);
 
   if (!db.timestamps) db.timestamps = {};
   db.timestamps[key] = now();
   writeDB(db);
-  res.json({ ok: true, merged: Array.isArray(db.store[key]) ? db.store[key].length : undefined });
+
+  // Dispara notificação WhatsApp para tarefas novas (fire-and-forget)
+  if (novasTasks.length) {
+    setImmediate(() => {
+      try {
+        const db2 = readDB();
+        const usuarios = db2.store['sl_usuarios'] || [];
+        const cfgLemb = db2.store['sl_lembretes_config'] || {};
+        if (cfgLemb.novaDemanda === false) return; // explicitamente desligado
+        novasTasks.forEach(t => {
+          const respIds = Array.isArray(t.respIds) && t.respIds.length ? t.respIds : (t.respId ? [t.respId] : []);
+          respIds.forEach(rid => {
+            const u = usuarios.find(x => x.id === rid);
+            if (!u || u.ativo === false || !u.whatsapp) return;
+            const prazo = t.data ? ` — prazo *${t.data.split('-').reverse().join('/')}*` : '';
+            const prio = t.prio || t.prioridade ? ` — prioridade *${t.prio || t.prioridade}*` : '';
+            const titulo = '📌 Nova demanda para você';
+            const texto = `*${t.nome || 'Sem título'}*${prazo}${prio}\n\nStatus: ${t.status || 'BACKLOG'}`;
+            _notificarViaWhatsApp(rid, titulo, texto).catch(()=>{});
+          });
+        });
+      } catch (e) { console.error('[WA nova demanda]', e.message); }
+    });
+  }
+
+  res.json({ ok: true, merged: Array.isArray(db.store[key]) ? db.store[key].length : undefined, novas: novasTasks.length });
 });
 
 // ── LIXEIRA GLOBAL (30 dias) ──
@@ -1052,15 +1084,21 @@ function _lembretesRodar() {
   try {
     const db = readDB();
     const cfgLemb = db.store['sl_lembretes_config'] || {};
-    // Regras padrão = ativas, exceto explicitamente false
+    // Regras padrão = ativas, exceto explicitamente false. prazo6h/2h/30min padrão = false (economia).
     const regras = {
       prazo24h:     cfgLemb.prazo24h     !== false,
+      prazo6h:      cfgLemb.prazo6h      === true,
+      prazo2h:      cfgLemb.prazo2h      === true,
+      prazo30min:   cfgLemb.prazo30min   === true,
+      vencendoHoje: cfgLemb.vencendoHoje === true,
       atrasada1d:   cfgLemb.atrasada1d   !== false,
       atrasada3d:   cfgLemb.atrasada3d   !== false,
       alertaDir2d:  cfgLemb.alertaDir2d  !== false,
       ritualHoje:   cfgLemb.ritualHoje   !== false,
       backlog3d:    cfgLemb.backlog3d    !== false,
     };
+    // Hora configurada como "fim do prazo" quando não há hora explícita na demanda (padrão 18h)
+    const prazoHoraFim = typeof cfgLemb.prazoHoraFim === 'number' ? cfgLemb.prazoHoraFim : 18;
     const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
     const rituais = db.store.rituais || [];
     const usuarios = db.store['sl_usuarios'] || [];
@@ -1107,6 +1145,39 @@ function _lembretesRodar() {
           const u = usuarios.find(x => x.id === rid);
           if (!u || u.ativo === false) return;
           addLembrete(rid, u.nome, '⏰ Prazo amanhã', `A demanda "${t.nome}" vence amanhã.`, dedupKey('prazo24h', rid+'-'+t.id), t.id);
+        });
+      });
+    }
+
+    // ── Regras por janela de horas até o vencimento (6h / 2h / 30min / vencendo hoje) ──
+    // Deadline = t.data + (t.prazoHora || prazoHoraFim:00)
+    const agoraMs = today.getTime();
+    const janelas = [
+      { ativa: regras.prazo6h,    min: 5*60,  max: 6*60 + 14, rule: 'prazo6h',    emoji: '⏳', titulo: 'Prazo em 6h' },
+      { ativa: regras.prazo2h,    min: 1*60 + 45, max: 2*60 + 14, rule: 'prazo2h',    emoji: '⚡', titulo: 'Prazo em 2h' },
+      { ativa: regras.prazo30min, min: 15,    max: 44,        rule: 'prazo30min', emoji: '🚨', titulo: 'Prazo em 30min' },
+      { ativa: regras.vencendoHoje, min: -14, max: 14,        rule: 'vencendoHoje', emoji: '🔔', titulo: 'Vencendo agora' },
+    ];
+    if (janelas.some(j => j.ativa)) {
+      tasks.forEach(t => {
+        if (t.status === 'CONCLUIDO' || t.status === 'Concluída') return;
+        if (!t.data) return;
+        // Monta timestamp do vencimento
+        let hora = prazoHoraFim, min = 0;
+        if (typeof t.prazoHora === 'string' && /^\d{1,2}:\d{2}$/.test(t.prazoHora)) {
+          const p = t.prazoHora.split(':'); hora = +p[0]; min = +p[1];
+        }
+        const deadline = new Date(t.data + 'T00:00:00');
+        deadline.setHours(hora, min, 0, 0);
+        const minutosAteVencer = Math.round((deadline.getTime() - agoraMs) / 60000);
+        janelas.forEach(j => {
+          if (!j.ativa) return;
+          if (minutosAteVencer < j.min || minutosAteVencer > j.max) return;
+          respsOf(t).forEach(rid => {
+            const u = usuarios.find(x => x.id === rid);
+            if (!u || u.ativo === false) return;
+            addLembrete(rid, u.nome, `${j.emoji} ${j.titulo}`, `"${t.nome}" vence ${minutosAteVencer <= 15 ? 'agora' : 'em breve'} (${t.data.split('-').reverse().join('/')} ${String(hora).padStart(2,'0')}:${String(min).padStart(2,'0')}).`, dedupKey(j.rule, rid+'-'+t.id), t.id);
+          });
         });
       });
     }
@@ -1198,8 +1269,8 @@ function _lembretesRodar() {
     console.error('[LEMBRETES] erro:', err.message);
   }
 }
-// Roda a cada 1h + primeira em 30s após boot
-setInterval(_lembretesRodar, 60 * 60 * 1000);
+// Roda a cada 15min + primeira em 30s após boot (granularidade para lembretes de 30min/2h/6h)
+setInterval(_lembretesRodar, 15 * 60 * 1000);
 setTimeout(_lembretesRodar, 30 * 1000);
 
 // Endpoint pra forçar execução manual (só Diretoria)
