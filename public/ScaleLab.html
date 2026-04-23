@@ -1731,6 +1731,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="ads-tab" id="cfg-tab-criativos-cfg" onclick="switchCfgTab('criativos-cfg',this)">🎨 Criativos</button>
         <button class="ads-tab" id="cfg-tab-lembretes" onclick="switchCfgTab('lembretes',this)">⏰ Lembretes</button>
         <button class="ads-tab" id="cfg-tab-relatorio" onclick="switchCfgTab('relatorio',this)">📤 Relatório Semanal</button>
+        <button class="ads-tab" id="cfg-tab-whatsapp" onclick="switchCfgTab('whatsapp',this)">💬 WhatsApp + IA</button>
       </div>
 
       <!-- TAB: GERAL -->
@@ -1999,6 +2000,80 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             <span id="rel-hist-count" style="font-size:11px;color:var(--text2);"></span>
           </div>
           <div id="rel-hist-list"></div>
+        </div>
+      </div>
+
+      <!-- TAB: WHATSAPP + IA -->
+      <div id="cfg-panel-whatsapp" style="display:none;max-width:900px;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-size:16px;font-weight:700;">💬 WhatsApp + Agente IA</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:4px;">Equipe recebe notificações no zap · você consulta o sistema por mensagem</div>
+            </div>
+            <label style="display:inline-flex;align-items:center;cursor:pointer;">
+              <input type="checkbox" id="wa-ativo" style="display:none;">
+              <span id="wa-ativo-pill" style="width:42px;height:24px;border-radius:12px;background:var(--text3);position:relative;transition:all .2s;">
+                <span style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:all .2s;"></span>
+              </span>
+              <span style="margin-left:10px;font-size:13px;font-weight:600;" id="wa-ativo-label">Desativado</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Z-API Config -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📱 Z-API (provedor de WhatsApp)</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Configure sua instância do Z-API · <a href="https://z-api.io" target="_blank" style="color:var(--accent);">z-api.io</a></div>
+          <div class="form-grid">
+            <div class="fg form-full"><label class="fl">Instance ID</label><input class="fi" id="wa-zapi-instance" placeholder="Ex: 3D2B..."></div>
+            <div class="fg form-full"><label class="fl">Token</label><input type="password" class="fi" id="wa-zapi-token" placeholder="..."></div>
+            <div class="fg form-full"><label class="fl">Client Token (opcional, para segurança extra)</label><input type="password" class="fi" id="wa-zapi-client-token" placeholder="..."></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn btn-primary" onclick="salvarConfigWhatsApp()">💾 Salvar config</button>
+            <button class="btn btn-ghost" onclick="testarWhatsApp()">📨 Enviar mensagem teste</button>
+          </div>
+          <div id="wa-test-status" style="margin-top:10px;font-size:12px;"></div>
+          <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--text2);">
+            <b>📌 Webhook para receber mensagens:</b><br>
+            <code style="background:var(--bg);padding:2px 6px;border-radius:4px;word-break:break-all;">https://app.centralaxcend.com/api/whatsapp/webhook</code><br>
+            <span style="font-size:11px;">Cole essa URL no campo "Webhook" da sua instância Z-API (eventos de recebimento de mensagem).</span>
+          </div>
+        </div>
+
+        <!-- IA Config -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🤖 Agente IA</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Chave da API pra IA responder perguntas pelo zap. <b>Claude</b> (Anthropic) é recomendado pois suporta tool use completo.</div>
+          <div class="form-grid">
+            <div class="fg">
+              <label class="fl">Provider</label>
+              <select class="fs" id="wa-ai-provider" style="width:100%;">
+                <option value="">— Desativar agente IA —</option>
+                <option value="claude">Claude (Anthropic)</option>
+                <option value="openai">OpenAI (GPT)</option>
+              </select>
+            </div>
+            <div class="fg form-full">
+              <label class="fl">API Key</label>
+              <input type="password" class="fi" id="wa-ai-key" placeholder="sk-ant-... ou sk-...">
+            </div>
+          </div>
+          <div style="margin-top:12px;padding:12px;background:var(--bg3);border-radius:8px;font-size:11px;color:var(--text2);">
+            <b>🛠️ Ferramentas disponíveis pro agente:</b><br>
+            • Listar tarefas (minhas / empresa / atrasadas)<br>
+            • Criar demanda com responsável e prazo<br>
+            • Resumo ROI da semana (ROAS, Lucro, Investimento)<br>
+            • Itens em risco (atrasadas + paralisadas)
+          </div>
+        </div>
+
+        <!-- Telefones dos usuários -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📞 Telefones da equipe</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Cada pessoa precisa ter WhatsApp cadastrado pra receber notificações e usar o bot. Edite cada usuário e coloque o número.</div>
+          <div id="wa-users-list"></div>
         </div>
       </div>
 
@@ -3284,7 +3359,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_whatsapp_config'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -9132,6 +9207,109 @@ async function gerarRelatorioAgora(){
   }
 }
 
+// ══════════════════════════════════════════════
+// WHATSAPP + IA (config)
+// ══════════════════════════════════════════════
+function getWhatsAppConfig(){
+  var c = g('sl_whatsapp_config', {});
+  if(c.ativo === undefined) c.ativo = false;
+  return c;
+}
+function saveWhatsAppConfig(c){
+  localStorage.setItem('sl_whatsapp_config', JSON.stringify(c));
+  fetch(API_BASE+'/api/store/sl_whatsapp_config', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c) }).catch(function(){});
+}
+
+function renderWhatsAppConfig(){
+  var cfg = getWhatsAppConfig();
+  // Toggle ativo
+  var pill = document.getElementById('wa-ativo-pill');
+  var label = document.getElementById('wa-ativo-label');
+  if(pill){
+    pill.style.background = cfg.ativo ? 'var(--green)' : 'var(--text3)';
+    var b = pill.firstElementChild;
+    if(b) b.style.left = cfg.ativo ? '20px' : '2px';
+    pill.onclick = function(){
+      cfg.ativo = !cfg.ativo;
+      saveWhatsAppConfig(cfg);
+      renderWhatsAppConfig();
+    };
+  }
+  if(label) label.textContent = cfg.ativo ? 'Ativo' : 'Desativado';
+
+  // Preenche campos
+  var f = function(id, val){ var el = document.getElementById(id); if(el) el.value = val || ''; };
+  f('wa-zapi-instance', cfg.zapi_instance);
+  f('wa-zapi-token', cfg.zapi_token);
+  f('wa-zapi-client-token', cfg.zapi_client_token);
+  f('wa-ai-provider', cfg.ai_provider);
+  f('wa-ai-key', cfg.ai_key);
+
+  // Lista usuários com coluna WhatsApp
+  var ul = document.getElementById('wa-users-list');
+  if(ul){
+    var usuarios = g('sl_usuarios', []).filter(function(u){ return u.ativo !== false; });
+    ul.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+      + '<tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:8px 4px;font-size:11px;color:var(--text2);">NOME</th><th style="text-align:left;padding:8px 4px;font-size:11px;color:var(--text2);">CARGO</th><th style="text-align:left;padding:8px 4px;font-size:11px;color:var(--text2);">WHATSAPP</th><th></th></tr>'
+      + usuarios.map(function(u){
+          var phone = u.whatsapp || '';
+          return '<tr style="border-bottom:1px solid var(--border);">'
+            + '<td style="padding:8px 4px;font-weight:600;">'+(u.nome||'').replace(/</g,'&lt;')+'</td>'
+            + '<td style="padding:8px 4px;color:var(--text2);">'+(u.cargo||'—')+'</td>'
+            + '<td style="padding:8px 4px;"><input id="wa-phone-'+u.id+'" placeholder="(11) 98765-4321" value="'+phone.replace(/"/g,'&quot;')+'" style="width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;"></td>'
+            + '<td style="padding:8px 4px;"><button onclick="salvarTelefoneUsuario(\''+u.id+'\')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;">💾</button></td>'
+            + '</tr>';
+        }).join('')
+      + '</table>';
+  }
+}
+
+window.salvarTelefoneUsuario = function(uid){
+  var el = document.getElementById('wa-phone-'+uid);
+  if(!el) return;
+  var usuarios = g('sl_usuarios', []);
+  var u = usuarios.find(function(x){ return x.id === uid; });
+  if(!u) return;
+  u.whatsapp = el.value.trim();
+  u._updatedAt = Date.now();
+  s('sl_usuarios', usuarios);
+  notif('📱 Telefone salvo');
+};
+
+window.salvarConfigWhatsApp = function(){
+  var cfg = getWhatsAppConfig();
+  cfg.zapi_instance = (document.getElementById('wa-zapi-instance')||{}).value.trim() || '';
+  cfg.zapi_token = (document.getElementById('wa-zapi-token')||{}).value.trim() || '';
+  cfg.zapi_client_token = (document.getElementById('wa-zapi-client-token')||{}).value.trim() || '';
+  cfg.ai_provider = (document.getElementById('wa-ai-provider')||{}).value || '';
+  cfg.ai_key = (document.getElementById('wa-ai-key')||{}).value.trim() || '';
+  saveWhatsAppConfig(cfg);
+  notif('💾 Configuração salva!');
+};
+
+window.testarWhatsApp = async function(){
+  var status = document.getElementById('wa-test-status');
+  var cfg = getWhatsAppConfig();
+  if(!cfg.ativo){ if(status){ status.textContent = '❌ Ative o WhatsApp no toggle acima primeiro.'; status.style.color = 'var(--red)'; } return; }
+  // Telefone do usuário atual
+  var usuarios = g('sl_usuarios',[]);
+  var me = usuarios.find(function(u){ return u.id === (currentUser && currentUser.id); });
+  if(!me || !me.whatsapp){ if(status){ status.textContent = '❌ Cadastre seu WhatsApp na lista de Telefones da equipe abaixo primeiro.'; status.style.color = 'var(--red)'; } return; }
+  if(status){ status.textContent = '⏳ Enviando...'; status.style.color = 'var(--text2)'; }
+  try{
+    var res = await fetch(API_BASE+'/api/whatsapp/test', {
+      method:'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, _bkAuthHeaders()),
+      body: JSON.stringify({ phone: me.whatsapp, message: '🤖 Teste do Axcend! Se você recebeu essa mensagem, a integração está funcionando perfeitamente. 🎉' })
+    });
+    var data = await res.json();
+    if(!res.ok || !data.ok){ throw new Error(data.erro || data.error || 'erro'); }
+    if(status){ status.textContent = '✅ Enviado! Verifique seu WhatsApp.'; status.style.color = 'var(--green)'; }
+  }catch(e){
+    if(status){ status.textContent = '❌ '+e.message; status.style.color = 'var(--red)'; }
+  }
+};
+
 async function rodarLembretesAgora(){
   var status = document.getElementById('lembretes-status');
   if(!currentUser || currentUser.cargo !== 'Diretoria'){
@@ -9154,7 +9332,7 @@ async function rodarLembretesAgora(){
 }
 
 function switchCfgTab(tab, btn){
-  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio'].forEach(t=>{
+  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp'].forEach(t=>{
     const panel = document.getElementById('cfg-panel-'+t);
     if(panel) panel.style.display = t===tab ? (t==='geral'?'grid':'block') : 'none';
     const tabBtn = document.getElementById('cfg-tab-'+t);
@@ -9176,6 +9354,7 @@ function switchCfgTab(tab, btn){
   if(tab==='api-tokens') renderApiTokens();
   if(tab==='lembretes') renderLembretes();
   if(tab==='relatorio') renderRelatorioConfig();
+  if(tab==='whatsapp') renderWhatsAppConfig();
   if(tab==='apis'){
     const k = getRtApiKey();
     const inp = document.getElementById('ads-api-key-input');
@@ -10305,6 +10484,14 @@ async function addNotif(destId, destNome, tipo, titulo, texto, refId){
   if(merged.length > 500) merged = merged.slice(0,500);
   saveNotifs(merged);
   updateNotifBadge();
+  // Também envia via WhatsApp se configurado (best-effort, fire-and-forget)
+  try {
+    fetch(API_BASE+'/api/whatsapp/notificar', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ destId: destId, titulo: titulo, texto: texto })
+    }).catch(function(){});
+  } catch(e){}
 }
 
 function updateNotifBadge(){

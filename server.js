@@ -1086,6 +1086,8 @@ function _lembretesRodar() {
         criado: Date.now(),
         dedupKey: key
       });
+      // Best-effort WhatsApp (fire-and-forget)
+      try { _notificarViaWhatsApp(destId, titulo, texto); } catch(e){}
     };
     const respsOf = (t) => {
       if (Array.isArray(t.respIds) && t.respIds.length) return t.respIds;
@@ -1395,6 +1397,377 @@ app.post('/api/relatorio-semanal/rodar', authDiretoria, (req, res) => {
   const r = _gerarRelatorioSemanal(true);
   if (!r.ok) return res.status(400).json(r);
   res.json({ ok: true, relatorio: r.relatorio });
+});
+
+// ══════════════════════════════════════════════
+// WHATSAPP + AGENTE IA (Z-API + Claude/OpenAI)
+// ══════════════════════════════════════════════
+
+// Limpa número de telefone pro formato Z-API (55+DDD+numero, só dígitos)
+function _waCleanPhone(phone) {
+  if (!phone) return '';
+  let p = String(phone).replace(/\D/g, '');
+  // Remove 9 extra do Brasil se tiver 14 digitos (55 + DDD + 9 + 8 dig)
+  if (p.length === 13 && p.startsWith('55')) {
+    // está ok
+  } else if (p.length === 11) {
+    p = '55' + p; // DDD + 9 digitos → adiciona 55
+  } else if (p.length === 10) {
+    p = '55' + p; // DDD + 8 digitos (sem 9)
+  }
+  return p;
+}
+
+// Envia mensagem via Z-API
+async function sendWhatsAppMessage(phone, message) {
+  try {
+    const db = readDB();
+    const cfg = db.store['sl_whatsapp_config'] || {};
+    if (!cfg.ativo) return { ok: false, erro: 'WhatsApp desativado' };
+    if (!cfg.zapi_instance || !cfg.zapi_token) return { ok: false, erro: 'Z-API não configurado' };
+    const clean = _waCleanPhone(phone);
+    if (!clean) return { ok: false, erro: 'telefone inválido' };
+
+    const url = `https://api.z-api.io/instances/${cfg.zapi_instance}/token/${cfg.zapi_token}/send-text`;
+    const headers = { 'Content-Type': 'application/json' };
+    if (cfg.zapi_client_token) headers['Client-Token'] = cfg.zapi_client_token;
+
+    const r = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ phone: clean, message })
+    });
+    const respText = await r.text();
+    if (!r.ok) {
+      console.error('[WA] erro Z-API:', r.status, respText);
+      return { ok: false, erro: `Z-API ${r.status}: ${respText.slice(0, 200)}` };
+    }
+    return { ok: true, resposta: respText };
+  } catch (err) {
+    console.error('[WA] send erro:', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// Endpoint: testa envio de mensagem (Diretoria)
+app.post('/api/whatsapp/test', authDiretoria, async (req, res) => {
+  const { phone, message } = req.body || {};
+  const to = phone || (req.user && req.user.whatsapp);
+  if (!to) return res.status(400).json({ error: 'Informe um telefone ou cadastre o seu no perfil.' });
+  const r = await sendWhatsAppMessage(to, message || '🤖 Teste do Axcend! Está funcionando.');
+  res.json(r);
+});
+
+// Webhook inbound da Z-API
+app.post('/api/whatsapp/webhook', async (req, res) => {
+  try {
+    const body = req.body || {};
+    console.log('[WA webhook]', JSON.stringify(body).slice(0, 500));
+
+    // Ignora mensagens do próprio bot
+    if (body.fromMe === true) return res.json({ ok: true, skipped: 'fromMe' });
+
+    // Z-API pode mandar formatos diferentes — extrai texto e telefone
+    const phone = body.phone || body.from || '';
+    let text = '';
+    if (body.text) {
+      text = (typeof body.text === 'object') ? (body.text.message || body.text.body || '') : String(body.text);
+    } else if (body.message) {
+      text = (typeof body.message === 'object') ? (body.message.body || '') : String(body.message);
+    } else if (body.body) {
+      text = String(body.body);
+    }
+    text = (text || '').trim();
+
+    if (!text || !phone) return res.json({ ok: true, skipped: 'sem-texto' });
+
+    const db = readDB();
+    const cfg = db.store['sl_whatsapp_config'] || {};
+    if (!cfg.ativo) return res.json({ ok: true, skipped: 'desativado' });
+
+    // Identifica usuário pelo telefone
+    const clean = _waCleanPhone(phone);
+    const user = (db.store['sl_usuarios'] || []).find(u =>
+      u && u.whatsapp && _waCleanPhone(u.whatsapp) === clean && u.ativo !== false
+    );
+
+    if (!user) {
+      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado no Axcend. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
+      return res.json({ ok: true, skipped: 'user-nao-encontrado' });
+    }
+
+    // Processa com IA (se configurada)
+    let resposta = '';
+    if (cfg.ai_provider && cfg.ai_key) {
+      resposta = await _processarMensagemIA(text, user, cfg);
+    } else {
+      resposta = `Olá ${user.nome}! 👋\n\nO agente IA ainda não foi configurado. Por enquanto só aceito comandos simples:\n• "tarefas" → tuas demandas pendentes\n• "relatorio" → resumo da semana\n\nMeus avisos de demandas atribuídas, rituais e alertas continuam chegando normalmente.`;
+      // Respostas simples
+      const lower = text.toLowerCase();
+      if (lower.includes('tarefa') || lower.includes('demanda')) {
+        const minhas = (db.store.tasks || []).filter(t => !t.arquivado && t.status !== 'CONCLUIDO' &&
+          ((Array.isArray(t.respIds) && t.respIds.includes(user.id)) || t.respId === user.id));
+        if (!minhas.length) resposta = `✅ Você não tem tarefas pendentes, ${user.nome}!`;
+        else {
+          resposta = `📋 Suas ${minhas.length} tarefa(s) pendente(s):\n\n` +
+            minhas.slice(0, 10).map((t, i) => `${i+1}. *${t.nome}*${t.data ? ` (prazo: ${t.data})` : ''}`).join('\n');
+        }
+      } else if (lower.includes('relatori')) {
+        const rels = db.store['sl_relatorios_semanais'] || [];
+        if (!rels.length) resposta = '📊 Ainda não há relatórios gerados. Peça ao admin pra gerar o primeiro.';
+        else {
+          const r = rels[0];
+          resposta = `📊 *Relatório ${r.periodo_ini} a ${r.periodo_fim}*\n\n` +
+            `💸 Investimento: R$ ${Math.round((r.kpis.investimento)||0).toLocaleString('pt-BR')}\n` +
+            `💵 Faturamento: R$ ${Math.round((r.kpis.retorno)||0).toLocaleString('pt-BR')}\n` +
+            `💰 Lucro: R$ ${Math.round((r.kpis.lucro)||0).toLocaleString('pt-BR')}\n` +
+            `📈 ROAS: ${(r.kpis.roas||0).toFixed(2).replace('.',',')}x\n\n` +
+            `✅ ${r.demandas.concluidas} demandas concluídas\n` +
+            `⏳ ${r.demandas.pendentes} pendentes · ⚠ ${r.demandas.atrasadas} atrasadas`;
+        }
+      }
+    }
+
+    await sendWhatsAppMessage(phone, resposta);
+
+    // Audit
+    audit(db, 'wa_mensagem_recebida', { userId: user.id, texto: text.slice(0, 200) }, null, { id: user.id, nome: user.nome, cargo: user.cargo });
+    writeDB(db);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[WA webhook erro]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Processa mensagem com Claude API + tool use
+async function _processarMensagemIA(texto, user, cfg) {
+  try {
+    if (cfg.ai_provider === 'claude') {
+      return await _chamarClaude(texto, user, cfg);
+    } else if (cfg.ai_provider === 'openai') {
+      return await _chamarOpenAI(texto, user, cfg);
+    }
+    return 'IA não configurada.';
+  } catch (e) {
+    console.error('[IA] erro:', e.message);
+    return `Opa, tive um problema ao processar: ${e.message}`;
+  }
+}
+
+// Chama Claude com tool use
+async function _chamarClaude(texto, user, cfg) {
+  const tools = _agentTools();
+  const systemPrompt = `Você é o assistente do Axcend (sistema de gestão de tráfego pago em centralaxcend.com).
+Usuário: ${user.nome} (${user.cargo}).
+Responde em português, tom natural e direto. Sem emojis demais.
+Use as ferramentas disponíveis quando o usuário pedir dados reais.
+Se o usuário pedir algo que não tem ferramenta, responda do que sabe sem inventar dados.`;
+
+  const body = {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: texto }],
+    tools
+  };
+
+  let r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': cfg.ai_key,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) { const err = await r.text(); throw new Error(`Claude ${r.status}: ${err.slice(0, 200)}`); }
+  let data = await r.json();
+
+  // Se Claude quis usar uma tool, executa e devolve
+  let rounds = 0;
+  while (data.stop_reason === 'tool_use' && rounds < 3) {
+    rounds++;
+    const toolUseBlocks = data.content.filter(c => c.type === 'tool_use');
+    const toolResults = [];
+    for (const tu of toolUseBlocks) {
+      const result = await _executarTool(tu.name, tu.input || {}, user);
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: tu.id,
+        content: typeof result === 'string' ? result : JSON.stringify(result)
+      });
+    }
+    body.messages.push({ role: 'assistant', content: data.content });
+    body.messages.push({ role: 'user', content: toolResults });
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': cfg.ai_key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { const err = await r.text(); throw new Error(`Claude ${r.status}: ${err.slice(0, 200)}`); }
+    data = await r.json();
+  }
+
+  // Extrai texto da resposta final
+  const textBlocks = (data.content || []).filter(c => c.type === 'text');
+  return textBlocks.map(c => c.text).join('\n\n') || 'Não consegui formular uma resposta.';
+}
+
+async function _chamarOpenAI(texto, user, cfg) {
+  // Simplificação: usa chat completion sem tool (pra suportar OpenAI precisaria traduzir tools)
+  const body = {
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: `Você é o assistente do Axcend. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
+      { role: 'user', content: texto }
+    ]
+  };
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + cfg.ai_key, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`OpenAI ${r.status}`);
+  const data = await r.json();
+  return data.choices[0].message.content;
+}
+
+// Define as ferramentas (tools) disponíveis pro agente
+function _agentTools() {
+  return [
+    {
+      name: 'listar_tarefas',
+      description: 'Lista tarefas/demandas do usuário atual ou de toda a empresa. Use quando perguntarem sobre tarefas, demandas ou o que fazer.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          escopo: { type: 'string', enum: ['minhas','empresa','atrasadas'], description: 'minhas=só do usuário; empresa=todas; atrasadas=vencidas' },
+          limite: { type: 'number', description: 'Quantas retornar, default 10' }
+        }
+      }
+    },
+    {
+      name: 'criar_demanda',
+      description: 'Cria uma nova demanda no sistema',
+      input_schema: {
+        type: 'object',
+        required: ['nome'],
+        properties: {
+          nome: { type: 'string' },
+          responsavel: { type: 'string', description: 'Nome do responsável' },
+          prazo: { type: 'string', description: 'Data YYYY-MM-DD' },
+          descricao: { type: 'string' }
+        }
+      }
+    },
+    {
+      name: 'resumo_roi',
+      description: 'Resumo dos KPIs (ROAS, Lucro, Investimento) da semana',
+      input_schema: { type: 'object', properties: {} }
+    },
+    {
+      name: 'itens_em_risco',
+      description: 'Lista demandas atrasadas, paradas ou criativos em revisão há muito tempo',
+      input_schema: { type: 'object', properties: {} }
+    }
+  ];
+}
+
+// Executa uma tool e retorna o resultado
+async function _executarTool(name, input, user) {
+  const db = readDB();
+  try {
+    if (name === 'listar_tarefas') {
+      const escopo = input.escopo || 'minhas';
+      const limite = input.limite || 10;
+      let ts = (db.store.tasks || []).filter(t => t && !t.arquivado && t.status !== 'CONCLUIDO');
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      if (escopo === 'minhas') {
+        ts = ts.filter(t => (Array.isArray(t.respIds) && t.respIds.includes(user.id)) || t.respId === user.id);
+      } else if (escopo === 'atrasadas') {
+        ts = ts.filter(t => t.data && t.data < hojeStr);
+      }
+      return ts.slice(0, limite).map(t => ({
+        id: t.id, nome: t.nome, status: t.status, prazo: t.data || null, responsavel: t.resp || null
+      }));
+    }
+    if (name === 'criar_demanda') {
+      if (!input.nome) return { erro: 'nome é obrigatório' };
+      // Encontra responsável por nome
+      let respId = null, respNome = '';
+      if (input.responsavel) {
+        const u = (db.store['sl_usuarios'] || []).find(x =>
+          x && x.nome && x.nome.toLowerCase().includes(input.responsavel.toLowerCase()) && x.ativo !== false);
+        if (u) { respId = u.id; respNome = u.nome; }
+      }
+      const nova = {
+        id: Date.now(),
+        nome: input.nome,
+        status: 'BACKLOG',
+        resp: respNome,
+        respId,
+        respIds: respId ? [respId] : [],
+        data: input.prazo || '',
+        desc: input.descricao || '',
+        criado: new Date().toLocaleString('pt-BR'),
+        arquivado: false,
+        cmts: [],
+        _updatedAt: Date.now()
+      };
+      if (!db.store.tasks) db.store.tasks = [];
+      db.store.tasks.push(nova);
+      db.timestamps.tasks = now();
+      writeDB(db);
+      return { ok: true, id: nova.id, mensagem: `Demanda "${nova.nome}" criada com sucesso${respNome ? ' e atribuída a '+respNome : ''}.` };
+    }
+    if (name === 'resumo_roi') {
+      const rels = db.store['sl_relatorios_semanais'] || [];
+      if (!rels.length) {
+        // Calcula on-the-fly
+        const r = _gerarRelatorioSemanal(true);
+        if (r.ok) return r.relatorio.kpis;
+        return { erro: 'sem dados de ROI ainda' };
+      }
+      return rels[0].kpis;
+    }
+    if (name === 'itens_em_risco') {
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
+      const atrasadas = tasks.filter(t => t.status !== 'CONCLUIDO' && t.data && t.data < hojeStr);
+      return {
+        atrasadas: atrasadas.length,
+        lista: atrasadas.slice(0, 10).map(t => ({
+          nome: t.nome, responsavel: t.resp, dias_atraso: Math.floor((new Date(hojeStr).getTime() - new Date(t.data).getTime())/(24*60*60*1000))
+        }))
+      };
+    }
+    return { erro: 'tool desconhecida' };
+  } catch (e) {
+    return { erro: e.message };
+  }
+}
+
+// Helper para notificar via WhatsApp quando addNotif é chamado (integração com fluxo interno)
+async function _notificarViaWhatsApp(destId, titulo, texto) {
+  try {
+    const db = readDB();
+    const cfg = db.store['sl_whatsapp_config'] || {};
+    if (!cfg.ativo) return;
+    const u = (db.store['sl_usuarios'] || []).find(x => x.id === destId);
+    if (!u || !u.whatsapp) return;
+    const mensagem = `*${titulo}*\n\n${texto}\n\n_Axcend_`;
+    await sendWhatsAppMessage(u.whatsapp, mensagem);
+  } catch (e) { console.error('[WA notif]', e.message); }
+}
+
+// Endpoint: dispara notificação manual pra WhatsApp (usado internamente quando cria notif)
+app.post('/api/whatsapp/notificar', async (req, res) => {
+  const { destId, titulo, texto } = req.body || {};
+  if (!destId || !texto) return res.status(400).json({ error: 'destId + texto obrigatórios' });
+  await _notificarViaWhatsApp(destId, titulo || 'Notificação Axcend', texto);
+  res.json({ ok: true });
 });
 setTimeout(_tickBackupRemoto, 2*60*1000);   // primeira tentativa 2min após boot
 
