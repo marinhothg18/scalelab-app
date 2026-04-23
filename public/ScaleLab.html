@@ -12330,60 +12330,53 @@ function exportarElementoPDF(opts){
   var titulo = opts.titulo || 'ScaleLab';
   var subtitulo = opts.subtitulo || '';
 
-  // Constrói wrapper usando DOM (sem innerHTML += que apaga o clone)
+  // Abordagem visível: cria overlay branco na tela por um instante, renderiza, remove.
+  // Isso garante que html2canvas pegue o conteúdo renderizado de verdade.
+  var overlay = document.createElement('div');
+  overlay.id = '_pdf_overlay_temp';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:flex-start;justify-content:center;padding:40px;overflow:auto;';
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'background:#fff;padding:40px;font-family:Helvetica,Arial,sans-serif;color:#111;width:800px;box-sizing:border-box;position:absolute;left:-9999px;top:0;';
+  wrap.style.cssText = 'background:#fff;padding:40px;font-family:Helvetica,Arial,sans-serif;color:#111;width:760px;max-width:100%;box-sizing:border-box;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.3);';
 
-  // Header
-  var header = document.createElement('div');
-  header.style.cssText = 'border-bottom:2px solid #2563EB;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;';
-  header.innerHTML = '<div><div style="font-size:22px;font-weight:800;color:#1E3A8A;">⚡ ScaleLab</div>'
+  // Header visual
+  var headerHtml = '<div style="border-bottom:2px solid #2563EB;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;">'
+    + '<div><div style="font-size:22px;font-weight:800;color:#1E3A8A;">⚡ ScaleLab</div>'
     + '<div style="font-size:18px;font-weight:700;margin-top:6px;color:#111;">'+titulo+'</div>'
     + (subtitulo?'<div style="font-size:13px;color:#6B7280;margin-top:2px;">'+subtitulo+'</div>':'')
     + '</div>'
-    + '<div style="font-size:11px;color:#6B7280;text-align:right;">Gerado em<br>'+new Date().toLocaleString('pt-BR')+'</div>';
-  wrap.appendChild(header);
+    + '<div style="font-size:11px;color:#6B7280;text-align:right;">Gerado em<br>'+new Date().toLocaleString('pt-BR')+'</div>'
+    + '</div>';
+  wrap.insertAdjacentHTML('beforeend', headerHtml);
 
-  // Conteúdo (clone)
+  // Clone do conteúdo (sem moves/position)
   var clone = el.cloneNode(true);
   clone.querySelectorAll('.btn, button, input[type=text], select, textarea, .no-print').forEach(function(n){ n.remove(); });
-  // Se o clone veio de dentro de um modal, zera posicionamento fixed/absolute pra não atrapalhar
-  clone.style.position = 'static';
-  clone.style.top = 'auto'; clone.style.left = 'auto'; clone.style.right = 'auto'; clone.style.bottom = 'auto';
-  clone.style.maxHeight = 'none';
-  clone.style.overflow = 'visible';
-  clone.style.width = '100%';
-  clone.style.boxShadow = 'none';
-  // Garante texto escuro (algumas telas são dark)
-  clone.style.color = '#111';
-  clone.style.background = '#fff';
+  clone.style.cssText = 'color:#111;background:#fff;max-height:none;overflow:visible;box-shadow:none;width:100%;';
   wrap.appendChild(clone);
 
-  // Rodapé
-  var footer = document.createElement('div');
-  footer.style.cssText = 'margin-top:32px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:10px;color:#9CA3AF;text-align:center;';
-  footer.textContent = 'ScaleLab · Documento confidencial · '+new Date().getFullYear();
-  wrap.appendChild(footer);
+  // Footer
+  wrap.insertAdjacentHTML('beforeend',
+    '<div style="margin-top:32px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:10px;color:#9CA3AF;text-align:center;">ScaleLab · Documento confidencial · '+new Date().getFullYear()+'</div>');
 
-  document.body.appendChild(wrap);
+  overlay.appendChild(wrap);
+  document.body.appendChild(overlay);
 
-  // Pequeno delay pra garantir render antes do html2canvas capturar
   setTimeout(function(){
     html2pdf().set({
       margin: [10,10,10,10],
       filename: filename,
       image: { type:'jpeg', quality:0.95 },
-      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false, windowWidth: 800 },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false },
       jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
       pagebreak: { mode:['avoid-all','css','legacy'] }
     }).from(wrap).save().then(function(){
-      if(wrap.parentNode) document.body.removeChild(wrap);
+      if(overlay.parentNode) document.body.removeChild(overlay);
       if(typeof notif==='function') notif('📄 PDF gerado!');
     }).catch(function(err){
-      if(wrap.parentNode) document.body.removeChild(wrap);
+      if(overlay.parentNode) document.body.removeChild(overlay);
       alert('Erro ao gerar PDF: '+(err && err.message || err));
     });
-  }, 200);
+  }, 300);
 }
 
 // Exporta lista de demandas como Excel
