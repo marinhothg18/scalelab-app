@@ -12323,46 +12323,67 @@ function toggleChatSidebar(){
 
 // Gera PDF a partir de um elemento HTML com header/footer padronizado
 function exportarElementoPDF(opts){
-  if(typeof html2pdf==='undefined'){ alert('Biblioteca de PDF não carregou. Recarregue a página.'); return; }
+  if(typeof html2pdf==='undefined'){ alert('Biblioteca de PDF não carregou. Recarregue a página (Ctrl+Shift+R).'); return; }
   var el = typeof opts.element==='string' ? document.getElementById(opts.element) : opts.element;
   if(!el){ alert('Elemento não encontrado pra exportar.'); return; }
   var filename = opts.filename || 'scalelab-'+new Date().toISOString().slice(0,10)+'.pdf';
   var titulo = opts.titulo || 'ScaleLab';
   var subtitulo = opts.subtitulo || '';
 
-  // Clona elemento pra não sujar a página
-  var clone = el.cloneNode(true);
-  // Remove elementos não-printáveis
-  clone.querySelectorAll('.btn, button, input[type=text], select, textarea, .no-print').forEach(function(n){ n.remove(); });
-  // Container com header/footer
+  // Constrói wrapper usando DOM (sem innerHTML += que apaga o clone)
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'background:#fff;padding:40px;font-family:Helvetica,Arial,sans-serif;color:#111;width:800px;';
-  wrap.innerHTML = '<div style="border-bottom:2px solid #2563EB;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;">'
-    + '<div><div style="font-size:22px;font-weight:800;color:#1E3A8A;">⚡ ScaleLab</div>'
-    + '<div style="font-size:18px;font-weight:700;margin-top:6px;">'+titulo+'</div>'
+  wrap.style.cssText = 'background:#fff;padding:40px;font-family:Helvetica,Arial,sans-serif;color:#111;width:800px;box-sizing:border-box;position:absolute;left:-9999px;top:0;';
+
+  // Header
+  var header = document.createElement('div');
+  header.style.cssText = 'border-bottom:2px solid #2563EB;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;';
+  header.innerHTML = '<div><div style="font-size:22px;font-weight:800;color:#1E3A8A;">⚡ ScaleLab</div>'
+    + '<div style="font-size:18px;font-weight:700;margin-top:6px;color:#111;">'+titulo+'</div>'
     + (subtitulo?'<div style="font-size:13px;color:#6B7280;margin-top:2px;">'+subtitulo+'</div>':'')
     + '</div>'
-    + '<div style="font-size:11px;color:#6B7280;text-align:right;">Gerado em<br>'+new Date().toLocaleString('pt-BR')+'</div>'
-    + '</div>';
+    + '<div style="font-size:11px;color:#6B7280;text-align:right;">Gerado em<br>'+new Date().toLocaleString('pt-BR')+'</div>';
+  wrap.appendChild(header);
+
+  // Conteúdo (clone)
+  var clone = el.cloneNode(true);
+  clone.querySelectorAll('.btn, button, input[type=text], select, textarea, .no-print').forEach(function(n){ n.remove(); });
+  // Se o clone veio de dentro de um modal, zera posicionamento fixed/absolute pra não atrapalhar
+  clone.style.position = 'static';
+  clone.style.top = 'auto'; clone.style.left = 'auto'; clone.style.right = 'auto'; clone.style.bottom = 'auto';
+  clone.style.maxHeight = 'none';
+  clone.style.overflow = 'visible';
+  clone.style.width = '100%';
+  clone.style.boxShadow = 'none';
+  // Garante texto escuro (algumas telas são dark)
+  clone.style.color = '#111';
+  clone.style.background = '#fff';
   wrap.appendChild(clone);
-  wrap.innerHTML += '<div style="margin-top:32px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:10px;color:#9CA3AF;text-align:center;">ScaleLab · Documento confidencial · '+new Date().getFullYear()+'</div>';
-  // Injeta temporariamente no DOM oculto
-  wrap.style.position='fixed'; wrap.style.top='-9999px'; wrap.style.left='0';
+
+  // Rodapé
+  var footer = document.createElement('div');
+  footer.style.cssText = 'margin-top:32px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:10px;color:#9CA3AF;text-align:center;';
+  footer.textContent = 'ScaleLab · Documento confidencial · '+new Date().getFullYear();
+  wrap.appendChild(footer);
+
   document.body.appendChild(wrap);
-  html2pdf().set({
-    margin: [10,10,10,10],
-    filename: filename,
-    image: { type:'jpeg', quality:0.95 },
-    html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff' },
-    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-    pagebreak: { mode:['avoid-all','css','legacy'] }
-  }).from(wrap).save().then(function(){
-    document.body.removeChild(wrap);
-    if(typeof notif==='function') notif('📄 PDF gerado!');
-  }).catch(function(err){
-    document.body.removeChild(wrap);
-    alert('Erro ao gerar PDF: '+(err && err.message || err));
-  });
+
+  // Pequeno delay pra garantir render antes do html2canvas capturar
+  setTimeout(function(){
+    html2pdf().set({
+      margin: [10,10,10,10],
+      filename: filename,
+      image: { type:'jpeg', quality:0.95 },
+      html2canvas: { scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false, windowWidth: 800 },
+      jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['avoid-all','css','legacy'] }
+    }).from(wrap).save().then(function(){
+      if(wrap.parentNode) document.body.removeChild(wrap);
+      if(typeof notif==='function') notif('📄 PDF gerado!');
+    }).catch(function(err){
+      if(wrap.parentNode) document.body.removeChild(wrap);
+      alert('Erro ao gerar PDF: '+(err && err.message || err));
+    });
+  }, 200);
 }
 
 // Exporta lista de demandas como Excel
