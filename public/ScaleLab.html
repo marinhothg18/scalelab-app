@@ -9722,9 +9722,11 @@ function renderStatusFilters(){
   const el = document.getElementById('task-status-filters');
   if(!el) return;
   const perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false, allowedStatuses:[]};
-  const visibleKeys = perms.isDiretoria
+  const baseKeys = perms.isDiretoria
     ? Object.keys(STATUS_PIPELINE).filter(k=>!['Pendente','Em andamento','Concluída'].includes(k))
     : perms.allowedStatuses;
+  // Filtro "Spy" sempre disponível para todos os cargos (apenas no filtro — não libera permissão pra mudar status)
+  const visibleKeys = baseKeys.includes('SPY') ? baseKeys : [...baseKeys, 'SPY'];
 
   const cur = typeof taskStatusFilter !== 'undefined' ? taskStatusFilter : '';
   el.innerHTML = `<div class="nav-item task-sf${cur===''?' active-sf':''}" onclick="setStatusFilter('',this)" style="font-size:12px;">
