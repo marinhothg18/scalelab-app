@@ -61,6 +61,14 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .ads-tab { background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text2); padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:-1px; transition:all .15s; }
 .ads-tab:hover { color:var(--text); }
 .ads-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.cfg-grupo { flex:1; min-width:fit-content; padding:10px 14px; font-size:12.5px; font-weight:600; color:var(--text2); background:transparent; border:0; border-radius:8px; cursor:pointer; transition:all .2s; white-space:nowrap; display:flex; align-items:center; gap:6px; justify-content:center; }
+.cfg-grupo:hover { color:var(--text); background:rgba(255,255,255,.04); }
+.cfg-grupo.active { background:linear-gradient(135deg,#3E1493,#1B9CFA); color:#fff; box-shadow:0 4px 14px rgba(62,20,147,.35); }
+.cfg-section-header { display:flex; align-items:center; gap:10px; margin:4px 0 14px; padding:14px 18px; border-radius:12px; color:#fff; font-weight:700; }
+.cfg-section-header .ic { font-size:20px; }
+.cfg-section-header .ti { flex:1; }
+.cfg-section-header .ti .t { font-size:15px; font-weight:800; }
+.cfg-section-header .ti .s { font-size:11px; opacity:.85; margin-top:2px; font-weight:400; }
 .ads-tab-panel table tr:hover td { background:rgba(255,255,255,.03); }
 .ads-camp-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px; transition:transform .15s; border-left:3px solid var(--border); }
 .ads-camp-card:hover { transform:translateY(-2px); }
@@ -1726,20 +1734,29 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <!-- CONFIGURAÇÕES -->
     <div class="page" id="page-configuracoes">
 
-      <!-- CONFIG TABS -->
-      <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px;">
-        <button class="ads-tab active" id="cfg-tab-geral" onclick="switchCfgTab('geral',this)">⚙️ Geral</button>
-        <button class="ads-tab" id="cfg-tab-usuarios" onclick="switchCfgTab('usuarios',this)">👥 Usuários</button>
-        <button class="ads-tab" id="cfg-tab-nichos" onclick="switchCfgTab('nichos',this)">🏷️ Nichos</button>
-        <button class="ads-tab" id="cfg-tab-ofertas-cfg" onclick="switchCfgTab('ofertas-cfg',this)">📦 Ofertas</button>
-        <button class="ads-tab" id="cfg-tab-checklists" onclick="switchCfgTab('checklists',this)">✅ Checklists</button>
-        <button class="ads-tab" id="cfg-tab-apis" onclick="switchCfgTab('apis',this)">🔌 APIs</button>
-        <button class="ads-tab" id="cfg-tab-api-tokens" onclick="switchCfgTab('api-tokens',this)">🔑 API Tokens</button>
-        <button class="ads-tab" id="cfg-tab-criativos-cfg" onclick="switchCfgTab('criativos-cfg',this)">🎨 Criativos</button>
-        <button class="ads-tab" id="cfg-tab-lembretes" onclick="switchCfgTab('lembretes',this)">⏰ Lembretes</button>
-        <button class="ads-tab" id="cfg-tab-relatorio" onclick="switchCfgTab('relatorio',this)">📤 Relatórios</button>
-        <button class="ads-tab" id="cfg-tab-whatsapp" onclick="switchCfgTab('whatsapp',this)">💬 WhatsApp + IA</button>
-        <button class="ads-tab" id="cfg-tab-dados" onclick="switchCfgTab('dados',this)">🛡️ Dados</button>
+      <!-- CONFIG GRUPOS (6 grupos lógicos) -->
+      <div style="display:flex;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:6px;margin-bottom:20px;overflow-x:auto;">
+        <button class="cfg-grupo active" id="cfg-grupo-conta" onclick="switchCfgGrupo('conta',this)">👤 Conta &amp; Time</button>
+        <button class="cfg-grupo" id="cfg-grupo-operacao" onclick="switchCfgGrupo('operacao',this)">⚙️ Operação</button>
+        <button class="cfg-grupo" id="cfg-grupo-automacao" onclick="switchCfgGrupo('automacao',this)">🔔 Automação</button>
+        <button class="cfg-grupo" id="cfg-grupo-integracoes" onclick="switchCfgGrupo('integracoes',this)">🔌 Integrações</button>
+        <button class="cfg-grupo" id="cfg-grupo-dados" onclick="switchCfgGrupo('dados',this)">🛡️ Dados</button>
+        <button class="cfg-grupo" id="cfg-grupo-avancado" onclick="switchCfgGrupo('avancado',this)">🛠️ Avançado</button>
+      </div>
+      <!-- abas legadas (escondidas, agora controladas por grupos) -->
+      <div style="display:none;">
+        <button id="cfg-tab-geral"></button>
+        <button id="cfg-tab-usuarios"></button>
+        <button id="cfg-tab-nichos"></button>
+        <button id="cfg-tab-ofertas-cfg"></button>
+        <button id="cfg-tab-checklists"></button>
+        <button id="cfg-tab-apis"></button>
+        <button id="cfg-tab-api-tokens"></button>
+        <button id="cfg-tab-criativos-cfg"></button>
+        <button id="cfg-tab-lembretes"></button>
+        <button id="cfg-tab-relatorio"></button>
+        <button id="cfg-tab-whatsapp"></button>
+        <button id="cfg-tab-dados"></button>
       </div>
 
       <!-- TAB: GERAL -->
@@ -9585,6 +9602,142 @@ async function rodarLembretesAgora(){
   }
 }
 
+// ───────────────────────────────────────────────
+// Mapa de grupos → painéis legados que cada grupo mostra
+// ───────────────────────────────────────────────
+const _CFG_GRUPOS = {
+  conta:       { tabs: ['geral', 'usuarios'],
+                 headers: { geral: ['👤','Projeto & Sincronização','Identificação do projeto e ações de sync'],
+                            usuarios: ['👥','Equipe','Membros, cargos e telefones do time'] },
+                 grad: 'linear-gradient(135deg,#3E1493,#1B9CFA)' },
+  operacao:    { tabs: ['nichos', 'ofertas-cfg', 'checklists', 'criativos-cfg'],
+                 headers: { nichos: ['🏷️','Nichos','Mercados em que opera'],
+                            'ofertas-cfg': ['📦','Ofertas','Produtos/funis associados a um nicho'],
+                            checklists: ['✅','Checklists','Templates reutilizáveis para tipos de demanda'],
+                            'criativos-cfg': ['🎨','Status de criativos','Etapas customizáveis de cada criativo'] },
+                 grad: 'linear-gradient(135deg,#1B9CFA,#3E1493)' },
+  automacao:   { tabs: ['lembretes', 'relatorio'],
+                 headers: { lembretes: ['⏰','Lembretes Automáticos','11 regras configuráveis'],
+                            relatorio: ['📤','Relatórios','Diário (todo dia) e Semanal (toda sexta)'] },
+                 grad: 'linear-gradient(135deg,#C52C58,#FF5926)' },
+  integracoes: { tabs: ['apis', 'api-tokens', 'whatsapp'],
+                 headers: { apis: ['🔌','APIs externas','RedTrack, Meta Ads e outros'],
+                            'api-tokens': ['🔑','API Tokens','Tokens para agentes externos consultarem o sistema'],
+                            whatsapp: ['💬','WhatsApp + Agente IA','Z-API + Claude/OpenAI'] },
+                 grad: 'linear-gradient(135deg,#FF5926,#C52C58)' },
+  dados:       { tabs: ['dados'], headers: {}, grad: 'linear-gradient(135deg,#10B981,#1B9CFA)' },
+  avancado:    { tabs: [], headers: {}, grad: 'linear-gradient(135deg,#7C3AED,#3E1493)' },
+};
+const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','dados'];
+
+function _injectCfgSectionHeader(panelId, headerCfg, grad){
+  if (!headerCfg) return;
+  const panel = document.getElementById('cfg-panel-' + panelId);
+  if (!panel) return;
+  const exId = 'cfg-h-' + panelId;
+  let h = document.getElementById(exId);
+  if (!h){
+    h = document.createElement('div');
+    h.id = exId;
+    h.className = 'cfg-section-header';
+    panel.insertBefore(h, panel.firstChild);
+  }
+  h.style.background = grad;
+  h.innerHTML = '<span class="ic">'+headerCfg[0]+'</span>'
+              + '<div class="ti"><div class="t">'+headerCfg[1]+'</div><div class="s">'+headerCfg[2]+'</div></div>';
+}
+
+function switchCfgGrupo(grupo, btn){
+  // 1) Marca grupo ativo
+  ['conta','operacao','automacao','integracoes','dados','avancado'].forEach(g => {
+    const el = document.getElementById('cfg-grupo-' + g);
+    if (el) el.classList.toggle('active', g === grupo);
+  });
+  const cfg = _CFG_GRUPOS[grupo];
+  if (!cfg) return;
+
+  // 2) Esconde TODOS os painéis primeiro
+  _CFG_TODAS_TABS.forEach(t => {
+    const p = document.getElementById('cfg-panel-' + t);
+    if (p) p.style.display = 'none';
+  });
+
+  // 3) Mostra os do grupo (empilhados verticalmente) + injeta header decorativo
+  const isDir = currentUser && currentUser.cargo === 'Diretoria';
+  cfg.tabs.forEach(t => {
+    const p = document.getElementById('cfg-panel-' + t);
+    if (!p) return;
+    p.style.display = (t === 'geral') ? 'grid' : 'block';
+    if (cfg.headers[t]) _injectCfgSectionHeader(t, cfg.headers[t], cfg.grad);
+    p.style.maxWidth = '1100px';
+    p.style.marginBottom = '24px';
+    // Triggers de render dos painéis
+    if (t === 'usuarios') renderUsuarios();
+    else if (t === 'nichos') renderNichos();
+    else if (t === 'ofertas-cfg') renderOfertasCfg();
+    else if (t === 'checklists') renderChecklistsCfg();
+    else if (t === 'criativos-cfg') renderCriStatusList();
+    else if (t === 'api-tokens') renderApiTokens();
+    else if (t === 'lembretes') renderLembretes();
+    else if (t === 'relatorio') { try{ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }catch(e){} }
+    else if (t === 'whatsapp') { try{ renderWhatsAppConfig(); }catch(e){} }
+    else if (t === 'apis') {
+      const k = (typeof getRtApiKey === 'function') ? getRtApiKey() : '';
+      const inp = document.getElementById('ads-api-key-input');
+      if (inp) inp.value = k;
+      const st = document.getElementById('cfg-rt-status');
+      if (st) st.style.display = k ? 'inline-block' : 'none';
+    }
+    else if (t === 'geral') {
+      // Mostra/esconde card de Backup só pra Diretoria
+      const card = document.getElementById('cfg-backup-card');
+      if (card) card.style.display = isDir ? 'block' : 'none';
+      if (isDir) { try{ backupRemotoStatus(); }catch(e){} }
+    }
+    else if (t === 'dados') {
+      const cardA = document.getElementById('card-auditoria-cfg');
+      if (cardA) cardA.style.display = isDir ? 'block' : 'none';
+      const cardB = document.getElementById('card-backup-cfg');
+      if (cardB) cardB.style.display = isDir ? 'block' : 'none';
+    }
+  });
+
+  // 4) Avançado — placeholder (sem painéis legados ainda)
+  if (grupo === 'avancado') {
+    let avancado = document.getElementById('cfg-panel-avancado-virtual');
+    if (!avancado) {
+      avancado = document.createElement('div');
+      avancado.id = 'cfg-panel-avancado-virtual';
+      avancado.style.maxWidth = '1100px';
+      const parent = document.getElementById('cfg-panel-dados') ? document.getElementById('cfg-panel-dados').parentNode : null;
+      if (parent) parent.appendChild(avancado);
+    }
+    avancado.style.display = 'block';
+    avancado.innerHTML = ''
+      + '<div class="cfg-section-header" style="background:'+cfg.grad+';">'
+      + '  <span class="ic">🛠️</span>'
+      + '  <div class="ti"><div class="t">Avançado</div><div class="s">Recursos técnicos e de manutenção</div></div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">'
+      + '  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;">'
+      + '    <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🚂 Railway</div>'
+      + '    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Servidor de produção. Use o botão Sincronizar tudo da aba Conta &amp; Time pra forçar push do storage local.</div>'
+      + '    <div style="font-size:12px;color:var(--text2);">Service: <b style="color:var(--text);">scalelab-web</b></div>'
+      + '    <div style="font-size:12px;color:var(--text2);">Projeto: <b style="color:var(--text);">joyful-celebration</b></div>'
+      + '  </div>'
+      + '  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;">'
+      + '    <div style="font-size:14px;font-weight:700;margin-bottom:6px;">ℹ️ Sobre</div>'
+      + '    <div style="font-size:12px;color:var(--text2);">Versão atual da plataforma e recursos.</div>'
+      + '    <div style="margin-top:10px;font-size:12px;">Repositório: <a href="https://github.com/marinhothg18/scalelab-app" target="_blank" style="color:var(--accent);">marinhothg18/scalelab-app</a></div>'
+      + '    <div style="font-size:12px;color:var(--text2);margin-top:6px;">Documentação: <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;">CLAUDE.md</code></div>'
+      + '  </div>'
+      + '</div>';
+  } else {
+    const av = document.getElementById('cfg-panel-avancado-virtual');
+    if (av) av.style.display = 'none';
+  }
+}
+
 function switchCfgTab(tab, btn){
   ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','dados'].forEach(t=>{
     const panel = document.getElementById('cfg-panel-'+t);
@@ -9677,6 +9830,8 @@ function populateCriStatusSelects(){
 function loadCfg(){
   document.getElementById('cfg-projeto').value=cfg.projeto||'';
   document.getElementById('cfg-nome').value=cfg.nome||'';
+  // Inicia no grupo padrão
+  try { switchCfgGrupo('conta', document.getElementById('cfg-grupo-conta')); } catch(e){}
   // Seções legacy (Responsáveis por Etapa, Pastas Drive, WhatsApp por etapa) foram removidas da UI.
   // Os dados continuam no storage por compatibilidade. Os DOMs abaixo só rodam se os elementos existirem.
   const ef=document.getElementById('equipe-fields');
