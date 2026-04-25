@@ -893,7 +893,13 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <div class="page-title" id="top-title">Dashboard</div>
       <div class="page-sub" id="top-sub">Visão geral do projeto</div>
     </div>
-    <div style="display:flex;gap:8px;" id="top-actions"></div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;gap:8px;" id="top-actions"></div>
+      <button id="btn-refresh-global" class="btn btn-ghost" onclick="refreshGlobal()" title="Atualizar dados (sincroniza com servidor)" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;">
+        <svg id="btn-refresh-global-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform .6s;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        Atualizar
+      </button>
+    </div>
   </div>
   <div class="content">
 
@@ -10307,9 +10313,63 @@ function salvarOfertaCfg(){
   const nichoId=document.getElementById('oferta-cfg-nicho').value;
   if(!nome||!nichoId){alert('Informe nome e nicho.');return;}
   let lista=getOfertasV2();
+  let novaOfertaId = id;
   if(id) lista=lista.map(o=>o.id===id?{...o,nome,nichoId}:o);
-  else lista.push({id:'o'+Date.now(),nome,nichoId});
-  saveOfertasV2(lista); closeModal('modal-oferta-cfg'); renderOfertasCfg(); notif('Oferta salva!');
+  else { novaOfertaId = 'o'+Date.now(); lista.push({id:novaOfertaId,nome,nichoId}); }
+  saveOfertasV2(lista);
+  // Auto-cria projeto correspondente na Central de Arquivos (se ainda não existir)
+  try { _autoCriarProjetoParaOferta(novaOfertaId, nome); } catch(e){ console.warn('auto-projeto:', e); }
+  closeModal('modal-oferta-cfg'); renderOfertasCfg(); notif('Oferta salva!');
+}
+
+// Cria automaticamente um projeto na Central de Arquivos espelhando a oferta.
+// Idempotente: se já existir projeto com mesmo nome ou ofertaId vinculado, não duplica.
+function _autoCriarProjetoParaOferta(ofertaId, nome){
+  if(!nome) return;
+  const projetos = getArqProjetos();
+  const jaExiste = projetos.some(p =>
+    (p.ofertaId && p.ofertaId === ofertaId) ||
+    (p.nome && p.nome.trim().toLowerCase() === nome.trim().toLowerCase())
+  );
+  if(jaExiste) return;
+  projetos.push({
+    id: 'pa'+Date.now()+'-'+Math.random().toString(36).slice(2,6),
+    nome: nome,
+    ofertaId: ofertaId,
+    capa: '',
+    setores: {},
+    criado: new Date().toISOString(),
+    autoCriado: true
+  });
+  saveArqProjetos(projetos);
+}
+
+// Migração: roda na inicialização e cria projetos pra ofertas existentes que ainda não têm projeto correspondente.
+function migrarOfertasParaProjetos(){
+  try {
+    const ofertas = getOfertasV2();
+    const projetos = getArqProjetos();
+    let criados = 0;
+    ofertas.forEach(o => {
+      if(!o || !o.id || !o.nome) return;
+      const jaExiste = projetos.some(p =>
+        (p.ofertaId && p.ofertaId === o.id) ||
+        (p.nome && p.nome.trim().toLowerCase() === o.nome.trim().toLowerCase())
+      );
+      if(!jaExiste){
+        projetos.push({
+          id: 'pa'+Date.now()+'-'+Math.random().toString(36).slice(2,6)+'-'+criados,
+          nome: o.nome, ofertaId: o.id, capa: '',
+          setores: {}, criado: new Date().toISOString(), autoCriado: true
+        });
+        criados++;
+      }
+    });
+    if(criados > 0){
+      saveArqProjetos(projetos);
+      console.log('[migracao] '+criados+' projeto(s) criados a partir de ofertas existentes.');
+    }
+  } catch(e){ console.warn('migracao ofertas->projetos:', e); }
 }
 function removerOfertaCfg(id){
   if(!confirm('Remover esta oferta? Ficará na Lixeira por 30 dias.'))return;
@@ -14613,9 +14673,9 @@ function _applyNavPermissions(cargo){
   // Configurações: apenas Diretoria
   const configNav = document.querySelector('[onclick="goTo(\'configuracoes\')"]');
   if(configNav) configNav.style.display = isDir ? '' : 'none';
-  // Auditoria: apenas Diretoria
+  // Auditoria: removida da sidebar (acesso pelo card em Configurações > Dados)
   const audNav = document.getElementById('nav-auditoria');
-  if(audNav) audNav.style.display = isDir ? '' : 'none';
+  if(audNav) audNav.style.display = 'none';
 
   // Demandas: Arquivados sidebar e botão Lixeira — apenas Diretoria
   setDisp('arquivados-section', isDir);
@@ -15618,6 +15678,54 @@ function renderAdsTable(tipo, data, namesMap, idField){
 }
 
 // INIT
+// ───────────────────────────────────────────────
+// REFRESH GLOBAL — botão "Atualizar" no header
+// Sincroniza com servidor + re-renderiza a página atual sem F5
+// ───────────────────────────────────────────────
+window.refreshGlobal = async function(){
+  const btn = document.getElementById('btn-refresh-global');
+  const icon = document.getElementById('btn-refresh-global-icon');
+  if(btn) btn.disabled = true;
+  if(icon){ icon.style.transform = 'rotate(720deg)'; }
+  try {
+    if(typeof syncAllFromServer === 'function'){
+      await syncAllFromServer();
+    }
+    // Re-renderiza a página atual (cur é definido em goTo)
+    const id = (typeof cur !== 'undefined' && cur) ? cur : 'dashboard';
+    const renderers = {
+      dashboard: () => { try{ renderDash(); renderHome && renderHome(); }catch(e){} },
+      demandas: () => { try{ renderTasks(); }catch(e){} },
+      criativos: () => { try{ renderCriativos && renderCriativos(); }catch(e){} },
+      projetos: () => { try{ if(typeof renderArquivosProjetos==='function') renderArquivosProjetos(); }catch(e){} },
+      chat: () => { try{ renderChat && renderChat(); }catch(e){} },
+      rituais: () => { try{ renderRituais && renderRituais(); }catch(e){} },
+      metricas: () => { try{ renderTrafegoSidebar && renderTrafegoSidebar(); renderTrafegoContent && renderTrafegoContent(); }catch(e){} },
+      gestao: () => { try{ renderGestaoSidebar && renderGestaoSidebar(); renderGestaoContent && renderGestaoContent(); }catch(e){} },
+      infra: () => { try{ renderInfra && renderInfra(); }catch(e){} },
+      adlibrary: () => { try{ renderAdLibrary && renderAdLibrary(); }catch(e){} },
+      educacional: () => { try{ renderEdu && renderEdu(); }catch(e){} },
+      notificacoes: () => { try{ renderNotificacoes && renderNotificacoes(); updateNotifBadge && updateNotifBadge(); }catch(e){} },
+      configuracoes: () => { try{ loadCfg && loadCfg(); }catch(e){} },
+      lixeira: () => { try{ renderLixeira && renderLixeira(); }catch(e){} },
+      auditoria: () => { try{ renderAuditoria && renderAuditoria(); }catch(e){} },
+      roi: () => { try{ renderRoi && renderRoi(); }catch(e){} },
+    };
+    const fn = renderers[id];
+    if(fn) fn();
+    if(typeof updateNotifBadge === 'function') updateNotifBadge();
+    if(typeof notif === 'function') notif('🔄 Dados atualizados');
+  } catch(e){
+    console.warn('refreshGlobal:', e);
+    if(typeof notif === 'function') notif('❌ Erro ao atualizar — ' + (e.message||e));
+  } finally {
+    setTimeout(function(){
+      if(icon) icon.style.transform = '';
+      if(btn) btn.disabled = false;
+    }, 700);
+  }
+};
+
 window.onload=()=>{
   // check if already authenticated this session
   if(localStorage.getItem('sl_auth')==='1'){
@@ -15626,6 +15734,8 @@ window.onload=()=>{
     syncAllFromServer().then(()=>{
       abrirRemessaPorUrl();
       abrirArquivoPorUrl();
+      // Migra ofertas existentes pra projetos da Central de Arquivos (idempotente)
+      try{ migrarOfertasParaProjetos(); }catch(e){ console.warn('migracao ofertas->projetos:', e); }
       // Re-renderiza Home depois que dados chegam do server
       try{ renderDash(); }catch(e){ console.warn('renderDash pós-sync:', e); }
     });
