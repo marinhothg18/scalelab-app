@@ -866,7 +866,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
       Lixeira
     </div>
-    <div class="nav-item nav-item-cfg" id="nav-auditoria" onclick="goTo('auditoria')" style="display:none;">
+    <!-- Auditoria movida para Configurações > Dados (acesso via card grande) -->
+    <div class="nav-item nav-item-cfg" id="nav-auditoria" onclick="goTo('auditoria')" style="display:none !important;" aria-hidden="true">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
       Auditoria
     </div>
@@ -3407,10 +3408,39 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     </div>
     <div class="modal-body">
       <input type="hidden" id="u-edit-id">
+      <!-- AVATAR / FOTO -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding:14px;background:var(--bg3);border-radius:10px;border:1px solid var(--border);">
+        <div id="u-foto-preview" style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#3E1493,#1B9CFA);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;color:#fff;flex-shrink:0;background-size:cover;background-position:center;">?</div>
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">📷 Foto do membro</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">JPG/PNG até 1MB. Aparece em demandas, chat, equipe…</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <label class="btn btn-ghost" style="font-size:11px;padding:6px 12px;cursor:pointer;">
+              📎 Escolher arquivo
+              <input type="file" id="u-foto-file" accept="image/*" onchange="onUserFotoChange(event)" style="display:none;">
+            </label>
+            <button type="button" class="btn btn-ghost" id="u-foto-remove" onclick="removeUserFoto()" style="font-size:11px;padding:6px 12px;display:none;">🗑️ Remover</button>
+          </div>
+          <input type="hidden" id="u-foto" value="">
+        </div>
+      </div>
       <div class="form-grid">
         <div class="fg form-full"><label class="fl">Nome *</label><input class="fi" id="u-nome" placeholder="Nome completo"></div>
         <div class="fg form-full"><label class="fl">E-mail *</label><input class="fi" id="u-email" type="email" placeholder="email@empresa.com"></div>
-        <div class="fg form-full"><label class="fl">Senha *</label><input class="fi" id="u-senha" type="password" placeholder="Senha de acesso"></div>
+        <div class="fg form-full">
+          <label class="fl">Senha *</label>
+          <div style="position:relative;">
+            <input class="fi" id="u-senha" type="password" placeholder="Senha de acesso" style="padding-right:40px;width:100%;">
+            <button type="button" id="u-senha-eye" onclick="toggleSenhaVisivel()" title="Ver senha"
+              style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:0;cursor:pointer;color:var(--text2);font-size:16px;padding:4px 6px;">👁️</button>
+          </div>
+          <div style="font-size:10.5px;color:var(--text2);margin-top:4px;">Clique no olhinho pra ver a senha e poder enviar pra pessoa.</div>
+        </div>
+        <div class="fg form-full">
+          <label class="fl">📱 WhatsApp</label>
+          <input class="fi" id="u-whatsapp" type="tel" placeholder="Ex: +55 11 99999-1234 ou só números">
+          <div style="font-size:10.5px;color:var(--text2);margin-top:4px;">Para receber notificações automáticas e usar o agente IA.</div>
+        </div>
         <div class="fg form-full">
           <label class="fl">Cargo *</label>
           <select class="fs" id="u-cargo" style="width:100%;">
@@ -10020,7 +10050,7 @@ function renderUsuarios(){
       <tr style="border-bottom:1px solid var(--border);transition:background .1s;" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''">
         <td style="padding:12px 12px;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:32px;height:32px;border-radius:50%;background:${cargoColor[u.cargo]||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;">${(u.nome||'?')[0].toUpperCase()}</div>
+            <div style="width:32px;height:32px;border-radius:50%;background:${u.foto?'#000 url('+u.foto+') center/cover':cargoColor[u.cargo]||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">${u.foto?'':(u.nome||'?')[0].toUpperCase()}</div>
             <span style="font-size:13px;font-weight:600;">${u.nome}</span>
           </div>
         </td>
@@ -10042,12 +10072,63 @@ function renderUsuarios(){
   </table>`;
 }
 
+// ── MODAL: AVATAR + SENHA ──
+function _setUserFotoPreview(fotoData, nome){
+  const prev = document.getElementById('u-foto-preview');
+  if(!prev) return;
+  if(fotoData){
+    prev.style.backgroundImage = 'url(' + fotoData + ')';
+    prev.textContent = '';
+    const rmBtn = document.getElementById('u-foto-remove');
+    if(rmBtn) rmBtn.style.display = 'inline-flex';
+  } else {
+    prev.style.backgroundImage = '';
+    prev.textContent = (nome||'?').trim().charAt(0).toUpperCase() || '?';
+    const rmBtn = document.getElementById('u-foto-remove');
+    if(rmBtn) rmBtn.style.display = 'none';
+  }
+}
+window.onUserFotoChange = function(ev){
+  const file = ev.target.files && ev.target.files[0];
+  if(!file) return;
+  if(file.size > 1024*1024){ alert('Foto muito grande (máx 1MB).'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const data = e.target.result;
+    document.getElementById('u-foto').value = data;
+    _setUserFotoPreview(data, document.getElementById('u-nome').value);
+  };
+  reader.readAsDataURL(file);
+};
+window.removeUserFoto = function(){
+  document.getElementById('u-foto').value = '';
+  const fileInput = document.getElementById('u-foto-file'); if(fileInput) fileInput.value = '';
+  _setUserFotoPreview('', document.getElementById('u-nome').value);
+};
+window.toggleSenhaVisivel = function(){
+  const el = document.getElementById('u-senha');
+  const eye = document.getElementById('u-senha-eye');
+  if(!el) return;
+  if(el.type === 'password'){
+    el.type = 'text';
+    if(eye){ eye.textContent = '🙈'; eye.title = 'Ocultar senha'; }
+  } else {
+    el.type = 'password';
+    if(eye){ eye.textContent = '👁️'; eye.title = 'Ver senha'; }
+  }
+};
+
 function openAddUsuario(){
   document.getElementById('modal-usuario-title').textContent='Adicionar Membro';
   document.getElementById('u-edit-id').value='';
-  ['u-nome','u-email','u-senha'].forEach(id=>document.getElementById(id).value='');
+  ['u-nome','u-email','u-senha','u-whatsapp','u-foto'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('u-cargo').value='';
   document.getElementById('u-ativo').value='true';
+  // Reset avatar
+  _setUserFotoPreview('', '');
+  // Reset olhinho
+  const sEl = document.getElementById('u-senha'); if(sEl) sEl.type = 'password';
+  const eye = document.getElementById('u-senha-eye'); if(eye) eye.textContent = '👁️';
   openModal('modal-add-usuario');
 }
 
@@ -10061,6 +10142,12 @@ function editarUsuario(id){
   document.getElementById('u-senha').value = u.senha||'';
   document.getElementById('u-cargo').value = u.cargo;
   document.getElementById('u-ativo').value = u.ativo!==false ? 'true' : 'false';
+  const wa = document.getElementById('u-whatsapp'); if(wa) wa.value = u.whatsapp||'';
+  const foto = document.getElementById('u-foto'); if(foto) foto.value = u.foto||'';
+  _setUserFotoPreview(u.foto||'', u.nome||'');
+  // Reset olhinho
+  const sEl = document.getElementById('u-senha'); if(sEl) sEl.type = 'password';
+  const eye = document.getElementById('u-senha-eye'); if(eye) eye.textContent = '👁️';
   openModal('modal-add-usuario');
 }
 
@@ -10071,15 +10158,17 @@ function salvarUsuario(){
   const senha = document.getElementById('u-senha').value.trim();
   const cargo = document.getElementById('u-cargo').value;
   const ativo = document.getElementById('u-ativo').value === 'true';
+  const whatsapp = (document.getElementById('u-whatsapp')||{}).value.trim() || '';
+  const foto = (document.getElementById('u-foto')||{}).value || '';
   if(!nome||!email||!cargo){ alert('Preencha nome, e-mail e cargo.'); return; }
   let lista = getUsuarios();
   if(id){
-    lista = lista.map(u=> u.id===id ? {...u, nome, email, cargo, ativo, ...(senha?{senha}:{})} : u);
+    lista = lista.map(u=> u.id===id ? {...u, nome, email, cargo, ativo, whatsapp, foto, ...(senha?{senha}:{})} : u);
     notif('Membro atualizado!');
   } else {
     if(!senha){ alert('Informe a senha.'); return; }
     if(lista.find(u=>u.email.toLowerCase()===email.toLowerCase())){ alert('E-mail já cadastrado.'); return; }
-    lista.push({id:'u'+Date.now(), nome, email, senha, cargo, ativo});
+    lista.push({id:'u'+Date.now(), nome, email, senha, cargo, ativo, whatsapp, foto});
     notif('Membro adicionado!');
   }
   saveUsuarios(lista);
