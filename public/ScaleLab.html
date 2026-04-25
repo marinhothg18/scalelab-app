@@ -3115,13 +3115,16 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             <input class="fi" id="t-data" type="date">
           </div>
         </div>
-        <!-- Hora do vencimento (opcional, ativa lembretes 6h/2h/30min com precisão) -->
-        <div class="fg form-full" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-            <label class="fl" style="margin:0;flex:1;">⏰ Hora do vencimento <span style="color:var(--text2);font-weight:400;font-size:11px;">(opcional)</span></label>
-            <input class="fi" id="t-prazo-hora" type="time" style="width:130px;">
+        <!-- Horas (mesmo grid das datas) -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="fg">
+            <label class="fl">Hora de início</label>
+            <input class="fi" id="t-hora-inicio" type="time">
           </div>
-          <div style="font-size:11px;color:var(--text2);">Sem hora = usa 18h como padrão. Com hora = lembretes de 6h/2h/30min antes disparam na janela exata.</div>
+          <div class="fg">
+            <label class="fl">Hora de vencimento</label>
+            <input class="fi" id="t-prazo-hora" type="time">
+          </div>
         </div>
         <!-- Links -->
         <div class="fg form-full">
@@ -10068,7 +10071,7 @@ function abrirNovaDemanda(){
   const selCl=document.getElementById('t-checklist-modelo');
   selCl.innerHTML='<option value="">Selecionar modelo de checklist</option>'+getChecklists().map(cl=>`<option value="${cl.id}">${cl.nome}</option>`).join('');
   // Reset fields
-  ['t-nome','t-link','t-inicio','t-data','t-prazo-hora'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['t-nome','t-link','t-inicio','t-data','t-hora-inicio','t-prazo-hora'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   setLinksRef([{nome:'',url:''}]);
   setDescHtml('');
   document.getElementById('t-status').value='BACKLOG';
@@ -10240,6 +10243,7 @@ function abrirEditarDemanda(id){
   setDescHtml(t.desc || '');
   if(document.getElementById('t-inicio')) document.getElementById('t-inicio').value = t.inicio || '';
   if(document.getElementById('t-data')) document.getElementById('t-data').value = t.data || '';
+  if(document.getElementById('t-hora-inicio')) document.getElementById('t-hora-inicio').value = t.horaInicio || '';
   if(document.getElementById('t-prazo-hora')) document.getElementById('t-prazo-hora').value = t.prazoHora || '';
 
   // Set nicho and cascade oferta
@@ -11085,6 +11089,7 @@ function salvarTask(){
   const desc = getDescHtml();
   const inicio = (document.getElementById('t-inicio')||{}).value||'';
   const data = (document.getElementById('t-data')||{}).value||'';
+  const horaInicio = (document.getElementById('t-hora-inicio')||{}).value||'';
   const prazoHora = (document.getElementById('t-prazo-hora')||{}).value||'';
   const diretoria = document.getElementById('toggle-diretoria').classList.contains('on');
   const fotos = window._taskFotos || [];
@@ -11104,7 +11109,7 @@ function salvarTask(){
       link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
-      prazoHora,
+      horaInicio, prazoHora,
       diretoria,
       checklist: checklist !== null ? checklist : t.checklist,
       fotos: fotos.length ? fotos : (t.fotos||[])
@@ -11127,7 +11132,7 @@ function salvarTask(){
       link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
-      prazoHora,
+      horaInicio, prazoHora,
       diretoria, checklist, fotos,
       arquivado: false, criado: new Date().toLocaleString('pt-BR'), cmts: window._newTaskCmts||[]
     };
