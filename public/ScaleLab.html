@@ -854,7 +854,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" id="nav-notif-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       Notificações
     </div>
-    <div class="nav-item nav-item-cfg" id="nav-lixeira" onclick="goTo('lixeira')">
+    <div class="nav-item nav-item-cfg" id="nav-lixeira" onclick="goTo('lixeira')" style="display:none;">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
       Lixeira
     </div>
@@ -1739,6 +1739,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="ads-tab" id="cfg-tab-lembretes" onclick="switchCfgTab('lembretes',this)">⏰ Lembretes</button>
         <button class="ads-tab" id="cfg-tab-relatorio" onclick="switchCfgTab('relatorio',this)">📤 Relatórios</button>
         <button class="ads-tab" id="cfg-tab-whatsapp" onclick="switchCfgTab('whatsapp',this)">💬 WhatsApp + IA</button>
+        <button class="ads-tab" id="cfg-tab-dados" onclick="switchCfgTab('dados',this)">🛡️ Dados</button>
       </div>
 
       <!-- TAB: GERAL -->
@@ -1795,30 +1796,6 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             </div>
             <div id="backup-remoto-status" style="margin-top:10px;font-size:12px;"></div>
           </div>
-        </div>
-
-        <!-- Responsáveis por Etapa -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:14px;">👥 Responsáveis por Etapa</div>
-          <div id="equipe-fields" style="display:flex;flex-direction:column;gap:8px;"></div>
-          <button class="btn btn-primary" style="margin-top:12px;" onclick="salvarEquipe()">💾 Salvar Equipe</button>
-        </div>
-
-        <!-- Pastas Drive -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;grid-column:1/-1;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <div style="font-size:13px;font-weight:700;">📁 Pastas do Drive <span style="font-size:11px;color:var(--text2);font-weight:400;">(menção com #nome no chat)</span></div>
-            <button class="btn btn-primary" style="font-size:12px;padding:5px 12px;" onclick="addPasta()">+ Adicionar Pasta</button>
-          </div>
-          <div id="pastas-list"></div>
-        </div>
-
-        <!-- WhatsApp Notificações -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;grid-column:1/-1;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px;">📱 Notificações WhatsApp</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Ao avançar um criativo de etapa, abre o WhatsApp direto com a mensagem pré-preenchida para o responsável.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" id="wpp-fields"></div>
-          <button class="btn btn-primary" style="margin-top:12px;" onclick="salvarWpp()">💾 Salvar números</button>
         </div>
 
       </div>
@@ -2135,6 +2112,106 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📞 Telefones da equipe</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Cada pessoa precisa ter WhatsApp cadastrado pra receber notificações e usar o bot. Edite cada usuário e coloque o número.</div>
           <div id="wa-users-list"></div>
+        </div>
+      </div>
+
+      <!-- TAB: DADOS & SEGURANÇA -->
+      <div id="cfg-panel-dados" style="display:none;max-width:1100px;">
+        <div style="background:linear-gradient(135deg,rgba(16,185,129,.15),rgba(27,156,250,.10));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">🛡️ Dados & Segurança</div>
+          <div style="font-size:12px;color:var(--text2);">Recuperação, auditoria, backup e snapshots. Aqui ficam os recursos críticos pra proteger e restaurar dados.</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+          <!-- LIXEIRA -->
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--green)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform=''" onclick="goTo('lixeira')">
+            <div style="background:linear-gradient(135deg,#10B981,#1B9CFA);padding:18px 22px;color:#fff;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="font-size:34px;">🗑️</div>
+                <div style="flex:1;">
+                  <div style="font-size:18px;font-weight:800;">Lixeira</div>
+                  <div style="font-size:11px;opacity:.9;margin-top:2px;">Itens deletados — restauráveis por 30 dias</div>
+                </div>
+                <div style="font-size:20px;">→</div>
+              </div>
+            </div>
+            <div style="padding:18px 22px;">
+              <div style="font-size:12px;color:var(--text2);">Demandas, criativos, ofertas e qualquer item removido fica aqui pra você restaurar com 1 clique antes de ser apagado de vez.</div>
+              <div style="display:flex;gap:8px;margin-top:14px;align-items:center;">
+                <span style="background:rgba(16,185,129,.15);color:var(--green);font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;">✓ Soft delete ativo</span>
+                <span style="font-size:11px;color:var(--text2);">Retenção: 30 dias</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- AUDITORIA -->
+          <div id="card-auditoria-cfg" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .2s;display:none;" onmouseover="this.style.borderColor='var(--accent)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform=''" onclick="goTo('auditoria')">
+            <div style="background:linear-gradient(135deg,#3E1493,#1B9CFA);padding:18px 22px;color:#fff;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div style="font-size:34px;">📜</div>
+                <div style="flex:1;">
+                  <div style="font-size:18px;font-weight:800;">Auditoria</div>
+                  <div style="font-size:11px;opacity:.9;margin-top:2px;">Histórico de ações sensíveis · 90 dias</div>
+                </div>
+                <div style="font-size:20px;">→</div>
+              </div>
+            </div>
+            <div style="padding:18px 22px;">
+              <div style="font-size:12px;color:var(--text2);">Logs de logins, deletes, restaurações, alterações de configuração — tudo registrado com usuário + data.</div>
+              <div style="display:flex;gap:8px;margin-top:14px;align-items:center;">
+                <span style="background:rgba(62,20,147,.15);color:#A78BFA;font-size:11px;font-weight:700;padding:4px 10px;border-radius:8px;">Apenas Diretoria</span>
+                <span style="font-size:11px;color:var(--text2);">Export CSV disponível</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BACKUP & TIME MACHINE -->
+        <div id="card-backup-cfg" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;display:none;">
+          <div style="background:linear-gradient(135deg,#FF5926,#C52C58);padding:18px 22px;color:#fff;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="font-size:30px;">💾</div>
+              <div style="flex:1;">
+                <div style="font-size:16px;font-weight:800;">Backup & Time Machine</div>
+                <div style="font-size:11px;opacity:.9;margin-top:2px;">Snapshots automáticos com retenção eterna · push GitHub diário</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:18px 22px;">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+              <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:22px;font-weight:800;color:var(--green);">48</div>
+                <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:2px;">Hourly</div>
+              </div>
+              <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:22px;font-weight:800;color:var(--green);">90</div>
+                <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:2px;">Daily</div>
+              </div>
+              <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:22px;font-weight:800;color:var(--green);">52</div>
+                <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:2px;">Weekly</div>
+              </div>
+              <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:22px;font-weight:800;color:var(--green);">∞</div>
+                <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:2px;">Monthly</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              <button class="btn btn-primary" onclick="backupDownloadAtual()" style="font-size:12px;padding:8px 14px;">⬇️ Baixar backup agora</button>
+              <button class="btn btn-ghost" onclick="backupSnapshotManual()" style="font-size:12px;padding:8px 14px;">📸 Snapshot manual</button>
+              <button class="btn btn-ghost" onclick="backupListar()" style="font-size:12px;padding:8px 14px;">📋 Listar snapshots</button>
+              <label class="btn btn-ghost" style="font-size:12px;padding:8px 14px;cursor:pointer;">
+                ♻️ Restaurar de arquivo...
+                <input type="file" accept="application/json,.json" onchange="backupRestaurarArquivo(this)" style="display:none;">
+              </label>
+            </div>
+            <div id="backup-status-dados" style="margin-top:12px;font-size:12px;color:var(--text2);"></div>
+            <div id="backup-list-dados" style="margin-top:12px;"></div>
+          </div>
+        </div>
+
+        <div style="background:rgba(27,156,250,.08);border:1px solid rgba(27,156,250,.3);border-radius:10px;padding:14px;font-size:12px;color:var(--text2);">
+          ℹ️ Antes de qualquer restauração, um snapshot <b>pre-restore</b> é gerado automaticamente. Os recursos de <b>Auditoria</b> e <b>Backup</b> ficam visíveis apenas para usuários da Diretoria.
         </div>
       </div>
 
@@ -9509,7 +9586,7 @@ async function rodarLembretesAgora(){
 }
 
 function switchCfgTab(tab, btn){
-  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp'].forEach(t=>{
+  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','dados'].forEach(t=>{
     const panel = document.getElementById('cfg-panel-'+t);
     if(panel) panel.style.display = t===tab ? (t==='geral'?'grid':'block') : 'none';
     const tabBtn = document.getElementById('cfg-tab-'+t);
@@ -9522,6 +9599,14 @@ function switchCfgTab(tab, btn){
     if(currentUser && currentUser.cargo==='Diretoria'){
       try{ backupRemotoStatus(); }catch(e){}
     }
+  }
+  if(tab==='dados'){
+    // Mostra cards de Auditoria/Backup só para Diretoria
+    const isDir = currentUser && currentUser.cargo==='Diretoria';
+    const cardA = document.getElementById('card-auditoria-cfg');
+    if(cardA) cardA.style.display = isDir ? 'block' : 'none';
+    const cardB = document.getElementById('card-backup-cfg');
+    if(cardB) cardB.style.display = isDir ? 'block' : 'none';
   }
   if(tab==='usuarios') renderUsuarios();
   if(tab==='nichos') renderNichos();
@@ -9592,15 +9677,18 @@ function populateCriStatusSelects(){
 function loadCfg(){
   document.getElementById('cfg-projeto').value=cfg.projeto||'';
   document.getElementById('cfg-nome').value=cfg.nome||'';
-  // render equipe fields
+  // Seções legacy (Responsáveis por Etapa, Pastas Drive, WhatsApp por etapa) foram removidas da UI.
+  // Os dados continuam no storage por compatibilidade. Os DOMs abaixo só rodam se os elementos existirem.
   const ef=document.getElementById('equipe-fields');
-  ef.innerHTML=PIPELINE.map(etapa=>`
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span class="badge ${stCores[etapa]||'b-orange'}" style="width:90px;text-align:center;font-size:11px;flex-shrink:0;">${etapa}</span>
-      <input class="fi" id="eq-${etapa.replace(/\s/g,'-')}" value="${equipe[etapa]||''}" placeholder="Responsável..." style="flex:1;">
-    </div>`).join('');
-  renderPastas();
-  loadWpp();
+  if(ef){
+    ef.innerHTML=PIPELINE.map(etapa=>`
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="badge ${stCores[etapa]||'b-orange'}" style="width:90px;text-align:center;font-size:11px;flex-shrink:0;">${etapa}</span>
+        <input class="fi" id="eq-${etapa.replace(/\s/g,'-')}" value="${equipe[etapa]||''}" placeholder="Responsável..." style="flex:1;">
+      </div>`).join('');
+  }
+  try{ renderPastas(); }catch(e){}
+  try{ loadWpp(); }catch(e){}
 }
 function salvarConfig(){
   cfg={projeto:document.getElementById('cfg-projeto').value||'Meu Projeto',nome:document.getElementById('cfg-nome').value||'Usuário'};
@@ -9615,6 +9703,7 @@ function salvarEquipe(){
 }
 function renderPastas(){
   const el=document.getElementById('pastas-list');
+  if(!el) return; // UI legacy removida
   if(!pastas.length){el.innerHTML='<div style="color:var(--text2);font-size:13px;padding:8px 0;">Nenhuma pasta cadastrada. Clique em "+ Adicionar Pasta".</div>';return;}
   el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 2fr auto;gap:8px;margin-bottom:8px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px;padding:0 4px;">
     <span>Nome (#menção)</span><span>Link do Drive</span><span></span>
