@@ -2805,6 +2805,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <div class="ad-section-title">Anúncio 1</div>
       <div style="padding:12px;">
         <div class="fg" style="margin-bottom:10px;"><label class="fl">📝 Nome do anúncio</label><input class="fi ad-nome" type="text" placeholder="Ex: AD848 - Hook Direto - VSL v5"></div>
+        <div class="form-grid">
+          <div class="fg"><label class="fl">🎬 Editor responsável</label><select class="fs ad-editor"><option value="">—</option></select></div>
+          <div class="fg"><label class="fl">📊 Gestor de tráfego</label><select class="fs ad-gestor"><option value="">—</option></select></div>
+        </div>
         <div class="form-grid-3">
           <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
           <div class="fg"><label class="fl">Status</label>
@@ -2825,7 +2829,6 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div class="fg"><label class="fl">📈 Retorno (R$)</label><input class="fi ad-retorno" type="number" placeholder="0.00"></div>
         </div>
         <div class="fg" style="margin-top:4px;"><label class="fl">🔗 Link do anúncio</label><input class="fi ad-link" type="url" placeholder="https://..."></div>
-        <div class="fg" style="margin-top:4px;"><label class="fl">Texto do anúncio</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div>
       </div>
     </div>
   </div>
@@ -4233,7 +4236,18 @@ const titles={
   infra:{t:'Infra',s:'Infraestrutura e controle de testes.'}
 };
 const addBtns={
-  criativos:()=>{populateRemessas();openModal('modal-criativo');},
+  criativos:()=>{
+    populateRemessas();
+    openModal('modal-criativo');
+    // Popula selects de Editor/Gestor do Anúncio 1 (HTML estático)
+    setTimeout(function(){
+      try {
+        document.querySelectorAll('#anuncios-container .ad-section').forEach(function(sec){
+          if(typeof _populateAdResponsaveis === 'function') _populateAdResponsaveis(sec);
+        });
+      } catch(e){}
+    }, 50);
+  },
   swipe:()=>openModal('modal-swipe'),
   educacional:()=>openModal('modal-edu')
 };
@@ -7260,6 +7274,32 @@ function voltarStatus(id){
   renderDash();
   notif(`Voltou para ${c.status}`);
 }
+// Popula os selects ad-editor e ad-gestor de uma .ad-section com base nos usuários cadastrados
+window._populateAdResponsaveis = function(scope, current){
+  scope = scope || document;
+  current = current || {};
+  try {
+    var usuarios = (typeof getUsuarios === 'function' ? getUsuarios() : g('sl_usuarios', [])).filter(function(u){ return u && u.ativo !== false; });
+    var selEd = scope.querySelector ? scope.querySelector('.ad-editor') : null;
+    var selGe = scope.querySelector ? scope.querySelector('.ad-gestor') : null;
+    function buildOptions(filterFn, currentVal){
+      var arr = usuarios.filter(filterFn);
+      // se usuário atual não está no filtro, inclui mesmo assim pra preservar valor
+      if(currentVal && !arr.some(function(u){ return u.nome === currentVal; })){
+        var add = usuarios.find(function(u){ return u.nome === currentVal; });
+        if(add) arr.push(add);
+      }
+      var opts = '<option value="">—</option>' + arr.map(function(u){
+        var sel = (u.nome === currentVal) ? ' selected' : '';
+        return '<option value="'+ (u.nome||'').replace(/"/g,'&quot;') +'"'+sel+'>'+ (u.nome||'') + (u.cargo?' ('+u.cargo+')':'') +'</option>';
+      }).join('');
+      return opts;
+    }
+    if(selEd) selEd.innerHTML = buildOptions(function(u){ return u.cargo === 'Editor'; }, current.editor || '');
+    if(selGe) selGe.innerHTML = buildOptions(function(u){ return u.cargo === 'Gestor de Tráfego'; }, current.gestor || '');
+  } catch(e){ console.warn('_populateAdResponsaveis:', e); }
+};
+
 let adCount=1;
 function addAnuncio(){
   adCount++;
@@ -7269,6 +7309,10 @@ function addAnuncio(){
   d.innerHTML=`<div class="ad-section-title">Anúncio ${adCount} <button onclick="this.closest('.ad-section').remove()" class="icon-btn" style="font-size:12px;">✕</button></div>
   <div style="padding:12px;">
     <div class="fg" style="margin-bottom:10px;"><label class="fl">📝 Nome do anúncio</label><input class="fi ad-nome" type="text" placeholder="Ex: AD848 - Hook Direto - VSL v5"></div>
+    <div class="form-grid">
+      <div class="fg"><label class="fl">🎬 Editor responsável</label><select class="fs ad-editor"><option value="">—</option></select></div>
+      <div class="fg"><label class="fl">📊 Gestor de tráfego</label><select class="fs ad-gestor"><option value="">—</option></select></div>
+    </div>
     <div class="form-grid-3">
       <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
       <div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option value="A Testar">A Testar</option><option value="Validado">Validado</option><option value="Testando">Testando</option><option value="Rejeitado">Rejeitado</option><option value="A Analisar">A Analisar</option><option value="Descartado">Descartado</option><option value="Pré-Escala">Pré-Escala</option></select></div>
@@ -7287,9 +7331,9 @@ function addAnuncio(){
       <div class="fg"><label class="fl">📈 Retorno (R$)</label><input class="fi ad-retorno" type="number" placeholder="0.00"></div>
     </div>
     <div class="fg" style="margin-top:4px;"><label class="fl">🔗 Link do anúncio</label><input class="fi ad-link" type="url" placeholder="https://..."></div>
-    <div class="fg" style="margin-top:4px;"><label class="fl">Texto do anúncio</label><textarea class="ft ad-texto" placeholder="Texto do anúncio..."></textarea></div>
   </div>`;
   c.appendChild(d);
+  if(typeof _populateAdResponsaveis === 'function') _populateAdResponsaveis(d);
 }
 function addRemessa(){const n=prompt('Nome da remessa:');if(n){remessas.push(n);s('remessas',remessas);populateRemessas();}}
 function populateRemessas(){
@@ -7325,6 +7369,8 @@ function salvarCriativo(){
     formato:sec.querySelector('.ad-formato').value,
     adStatus:sec.querySelector('.ad-status')?.value||'A Testar',
     validado:(sec.querySelector('.ad-status')?.value||'')==='Validado',
+    editor:sec.querySelector('.ad-editor')?.value||'',
+    gestor:sec.querySelector('.ad-gestor')?.value||'',
     hook:sec.querySelector('.ad-hook').value,
     hold:sec.querySelector('.ad-hold').value,
     cpm:sec.querySelector('.ad-cpm').value,
@@ -7334,8 +7380,7 @@ function salvarCriativo(){
     investido:sec.querySelector('.ad-investido').value,
     vendas:sec.querySelector('.ad-vendas').value,
     retorno:sec.querySelector('.ad-retorno').value,
-    link:sec.querySelector('.ad-link').value,
-    texto:sec.querySelector('.ad-texto').value
+    link:sec.querySelector('.ad-link').value
   }));
   const st=document.getElementById('c-status')?.value||ads[0]?.status||'Gravação';
   const c={
@@ -7585,17 +7630,42 @@ function renderCriV2(){
         if(c.gestor) h += '<div style="display:flex;align-items:center;gap:8px;"><span style="width:28px;height:28px;background:#F97316;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">'+c.gestor.charAt(0).toUpperCase()+'</span><div><div style="font-size:10px;color:var(--text2);">Gestor</div><div style="font-size:12px;font-weight:600;">'+c.gestor+'</div></div></div>';
         h += '</div>';
 
-        // Anúncios com status
+        // Anúncios com status + resumo de métricas
         (c.ads||[]).forEach(function(a,ai){
           var adSt = a.adStatus||(a.validado?'Validado':'A Testar');
           var adStCor = AD_STATUS_COR[adSt]||'#6B7280';
-          h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);gap:8px;">';
-          h += '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:13px;font-weight:600;">'+(a.nome||a.formato||'Ad '+(ai+1))+'</span>';
+          var inv = Number(a.investido)||0;
+          var ret = Number(a.retorno)||0;
+          var vds = Number(a.vendas)||0;
+          var fmtBR = function(v){ return 'R$ ' + Math.round(v).toLocaleString('pt-BR'); };
+          var lucro = ret - inv;
+          var roas = inv > 0 ? (ret/inv).toFixed(2).replace('.',',') : '—';
+          h += '<div style="padding:10px 16px;border-top:1px solid var(--border);">';
+          h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">';
+          h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0;">';
+          h += '<span style="font-size:13px;font-weight:600;">'+(a.nome||a.formato||'Ad '+(ai+1))+'</span>';
           if(a.formato) h += '<span style="font-size:10px;color:var(--text2);background:var(--bg3);padding:2px 8px;border-radius:4px;">'+a.formato+'</span>';
+          if(inv > 0 || ret > 0 || vds > 0) {
+            h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+            if(vds > 0) h += '<span title="Vendas" style="font-size:10.5px;font-weight:600;background:rgba(27,156,250,.12);color:var(--accent);padding:2px 8px;border-radius:10px;">🛒 '+vds+'</span>';
+            if(inv > 0) h += '<span title="Investimento" style="font-size:10.5px;font-weight:600;background:rgba(245,158,11,.12);color:#F59E0B;padding:2px 8px;border-radius:10px;">💰 '+fmtBR(inv)+'</span>';
+            if(ret > 0) h += '<span title="Retorno" style="font-size:10.5px;font-weight:600;background:rgba(16,185,129,.12);color:var(--green);padding:2px 8px;border-radius:10px;">📈 '+fmtBR(ret)+'</span>';
+            if(inv > 0 && ret > 0) h += '<span title="Lucro" style="font-size:10.5px;font-weight:600;background:rgba(124,58,237,.12);color:#A78BFA;padding:2px 8px;border-radius:10px;">💵 '+fmtBR(lucro)+'</span>';
+            if(inv > 0) h += '<span title="ROAS" style="font-size:10.5px;font-weight:600;background:rgba(197,44,88,.12);color:#F472B6;padding:2px 8px;border-radius:10px;">⚡ '+roas+'x</span>';
+            h += '</div>';
+          }
           h += '</div>';
-          h += '<select onchange="setAdStatus('+c.id+','+ai+',this.value)" style="background:'+adStCor+';color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;">';
+          h += '<select onchange="setAdStatus('+c.id+','+ai+',this.value)" style="background:'+adStCor+';color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">';
           AD_STATUS_LIST.forEach(function(st){ h += '<option value="'+st+'"'+(adSt===st?' selected':'')+' style="background:#fff;color:#333;">'+st+'</option>'; });
-          h += '</select></div>';
+          h += '</select>';
+          h += '</div>';
+          if(a.editor || a.gestor){
+            h += '<div style="display:flex;gap:14px;margin-top:6px;font-size:10.5px;color:var(--text2);">';
+            if(a.editor) h += '<span>🎬 Editor: <b style="color:var(--text);">'+a.editor+'</b></span>';
+            if(a.gestor) h += '<span>📊 Gestor: <b style="color:var(--text);">'+a.gestor+'</b></span>';
+            h += '</div>';
+          }
+          h += '</div>';
         });
         h += '</div>';
       }
@@ -7917,6 +7987,10 @@ function editCriativo(id){
       d.innerHTML=`<div class="ad-section-title">Anúncio ${adCount} <button onclick="this.closest('.ad-section').remove()" class="icon-btn" style="font-size:12px;">✕</button></div>
       <div style="padding:12px;">
         <div class="fg" style="margin-bottom:10px;"><label class="fl">📝 Nome do anúncio</label><input class="fi ad-nome" type="text" placeholder="Ex: AD848 - Hook Direto - VSL v5" value="${(a.nome||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-grid">
+          <div class="fg"><label class="fl">🎬 Editor responsável</label><select class="fs ad-editor"><option value="">—</option></select></div>
+          <div class="fg"><label class="fl">📊 Gestor de tráfego</label><select class="fs ad-gestor"><option value="">—</option></select></div>
+        </div>
         <div class="form-grid-3">
           <div class="fg"><label class="fl">Formato</label><select class="fs ad-formato"><option>Selecione</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>
           <div class="fg"><label class="fl">Status</label><select class="fs ad-status"><option value="A Testar"${(a.adStatus||'A Testar')==='A Testar'?' selected':''}>A Testar</option><option value="Validado"${a.adStatus==='Validado'||a.validado?' selected':''}>Validado</option><option value="Testando"${a.adStatus==='Testando'?' selected':''}>Testando</option><option value="Rejeitado"${a.adStatus==='Rejeitado'?' selected':''}>Rejeitado</option><option value="A Analisar"${a.adStatus==='A Analisar'?' selected':''}>A Analisar</option><option value="Descartado"${a.adStatus==='Descartado'?' selected':''}>Descartado</option><option value="Pré-Escala"${a.adStatus==='Pré-Escala'?' selected':''}>Pré-Escala</option></select></div>
@@ -7935,12 +8009,12 @@ function editCriativo(id){
           <div class="fg"><label class="fl">📈 Retorno (R$)</label><input class="fi ad-retorno" type="number" value="${a.retorno||0}"></div>
         </div>
         <div class="fg" style="margin-top:4px;"><label class="fl">🔗 Link do anúncio</label><input class="fi ad-link" type="url" value="${a.link||''}"></div>
-        <div class="fg" style="margin-top:4px;"><label class="fl">Texto do anúncio</label><textarea class="ft ad-texto">${a.texto||''}</textarea></div>
       </div>`;
       container.appendChild(d);
-      // Set formato
+      // Set formato + Editor + Gestor
       const fmtSel = d.querySelector('.ad-formato');
       if(fmtSel) fmtSel.value = a.formato||'Selecione';
+      if(typeof _populateAdResponsaveis === 'function') _populateAdResponsaveis(d, { editor: a.editor||'', gestor: a.gestor||'' });
     });
     // Bloquear campos pra colaboradores DEPOIS de popular tudo
     if(!_isDirCri) _bloquearCriColab();
