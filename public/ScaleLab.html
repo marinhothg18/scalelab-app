@@ -8550,6 +8550,41 @@ var ARQ_SUBPASTAS = {
 function getArqProjetos(){ return g('sl_arq_projetos',[]); }
 function saveArqProjetos(arr){ s('sl_arq_projetos',arr); syncKey('sl_arq_projetos'); }
 
+// Botão manual: força sincronização ofertas → projetos.
+// Útil pra criar retroativamente projetos das ofertas que já existem.
+window.arqSincronizarOfertas = function(){
+  try {
+    const ofertas = (typeof getOfertasV2 === 'function') ? getOfertasV2() : [];
+    const projetos = getArqProjetos();
+    let criados = 0;
+    ofertas.forEach(o => {
+      if(!o || !o.id || !o.nome) return;
+      const jaExiste = projetos.some(p =>
+        (p.ofertaId && p.ofertaId === o.id) ||
+        (p.nome && p.nome.trim().toLowerCase() === o.nome.trim().toLowerCase())
+      );
+      if(!jaExiste){
+        projetos.push({
+          id: 'pa'+Date.now()+'-'+Math.random().toString(36).slice(2,6)+'-'+criados,
+          nome: o.nome, ofertaId: o.id, capa: '',
+          setores: {}, items: {}, criado: new Date().toISOString(), autoCriado: true
+        });
+        criados++;
+      }
+    });
+    if(criados > 0){
+      saveArqProjetos(projetos);
+      if(typeof notif === 'function') notif('✅ '+criados+' projeto(s) criado(s) a partir das ofertas.');
+      if(typeof renderArquivos === 'function') renderArquivos();
+    } else {
+      if(typeof notif === 'function') notif('ℹ️ Tudo sincronizado — nenhum novo projeto a criar.');
+    }
+  } catch(e){
+    console.error('arqSincronizarOfertas:', e);
+    if(typeof notif === 'function') notif('❌ Erro: ' + e.message);
+  }
+};
+
 function arqAddProjeto(){
   var wrap = document.createElement('div');
   wrap.id = 'arq-proj-modal';
@@ -8847,6 +8882,7 @@ function renderArquivos(){
     h += '<div style="font-size:24px;font-weight:800;">Projetos</div>';
     if(_isDir){
       h += '<div style="display:flex;gap:8px;">';
+      h += '<button onclick="arqSincronizarOfertas()" class="btn btn-ghost" style="font-size:13px;" title="Cria projeto pra cada oferta cadastrada que ainda não tem">🔁 Sincronizar com Ofertas</button>';
       h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
       h += '<button onclick="arqAddProjeto()" class="btn btn-primary" style="font-size:13px;">+ Novo Projeto</button>';
       h += '</div>';
