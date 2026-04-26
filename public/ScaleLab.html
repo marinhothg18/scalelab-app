@@ -8949,7 +8949,8 @@ function renderArquivos(){
         // Contar items
         var totalItems = 0;
         if(pr.items) for(var k in pr.items) totalItems += (pr.items[k]||[]).length;
-        h += '<div onclick="arqNavProjeto('+pr.id+')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
+        var prIdSafe = String(pr.id).replace(/'/g, "\\'");
+        h += '<div onclick="arqNavProjeto(\''+prIdSafe+'\')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
         if(pr.capa){
           h += '<div style="width:100%;height:140px;background:url(\''+pr.capa+'\') center/cover no-repeat;"></div>';
         } else {
@@ -8958,7 +8959,7 @@ function renderArquivos(){
         h += '<div style="padding:16px;text-align:center;">';
         h += '<div style="font-size:16px;font-weight:700;margin-bottom:4px;">'+pr.nome+'</div>';
         h += '<div style="font-size:12px;color:var(--text2);">'+totalItems+' arquivo(s)</div>';
-        if(_isDir) h += '<button onclick="event.stopPropagation();arqDelProjeto('+pr.id+')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;margin-top:8px;opacity:.6;">🗑 Excluir</button>';
+        if(_isDir) h += '<button onclick="event.stopPropagation();arqDelProjeto(\''+prIdSafe+'\')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:12px;margin-top:8px;opacity:.6;">🗑 Excluir</button>';
         h += '</div></div>';
       }
       h += '</div>';
