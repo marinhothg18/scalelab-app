@@ -12392,8 +12392,9 @@ function renderRituais(){
       ${r.desc?`<div style="font-size:13px;color:var(--text);margin-top:8px;padding:10px;background:var(--bg3);border-radius:8px;">${r.desc}</div>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-shrink:0;">
-      ${isDiretoria?`<button onclick="event.stopPropagation();editarRitual(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">✏️</button>`:''}
-      ${isDiretoria?`<button onclick="event.stopPropagation();deletarRitual(${r.id})" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🗑</button>`:''}
+      ${isDiretoria?`<button onclick="event.stopPropagation();editarRitual(${r.id})" title="Editar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">✏️</button>`:''}
+      <button onclick="event.stopPropagation();copiarLinkRitual(${r.id})" title="Copiar link compartilhável" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🔗</button>
+      ${isDiretoria?`<button onclick="event.stopPropagation();deletarRitual(${r.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🗑</button>`:''}
     </div>
   </div>`;}).join('');
 }
@@ -12473,6 +12474,60 @@ function abrirModalRitual(id){
 }
 
 function editarRitual(id){ abrirModalRitual(id); }
+
+// Copia link compartilhável do ritual
+window.copiarLinkRitual = function(id){
+  try {
+    var url = window.location.origin + window.location.pathname + '?ritual=' + encodeURIComponent(String(id));
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        if(typeof notif === 'function') notif('🔗 Link copiado! Cole no chat ou WhatsApp.');
+      }).catch(function(){
+        _fallbackCopy(url);
+      });
+    } else {
+      _fallbackCopy(url);
+    }
+  } catch(e){
+    console.warn('copiarLinkRitual:', e);
+    if(typeof notif === 'function') notif('❌ Não foi possível copiar.');
+  }
+};
+function _fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position='fixed'; ta.style.opacity='0'; ta.style.top='0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); if(typeof notif==='function') notif('🔗 Link copiado!'); }
+  catch(e){ if(typeof notif==='function') notif('❌ Copie manualmente: '+text); prompt('Copie o link:', text); }
+  document.body.removeChild(ta);
+}
+
+// Abre ritual específico se a URL tiver ?ritual=ID
+window.abrirRitualPorUrl = function(){
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var rid = params.get('ritual');
+    if(!rid) return;
+    goTo('rituais');
+    // Destaca o ritual após o render
+    setTimeout(function(){
+      var cards = document.querySelectorAll('#rituais-list > div');
+      cards.forEach(function(c){
+        // Procura ID nos botões dentro do card
+        if(c.innerHTML && c.innerHTML.indexOf('('+rid+')') !== -1){
+          c.style.boxShadow = '0 0 0 3px var(--accent)';
+          c.style.transform = 'scale(1.01)';
+          c.scrollIntoView({behavior:'smooth', block:'center'});
+          setTimeout(function(){ c.style.boxShadow=''; c.style.transform=''; }, 3500);
+        }
+      });
+      // Limpa o param da URL pra não abrir de novo num refresh
+      try { history.replaceState({}, '', window.location.pathname); } catch(e){}
+    }, 400);
+  } catch(e){ console.warn('abrirRitualPorUrl:', e); }
+};
 
 let _rdRitualId = null;
 let _rdTab = 'trafego';
@@ -15823,6 +15878,7 @@ window.onload=()=>{
     syncAllFromServer().then(()=>{
       abrirRemessaPorUrl();
       abrirArquivoPorUrl();
+      try{ abrirRitualPorUrl(); }catch(e){ console.warn('abrirRitualPorUrl:', e); }
       // Migra ofertas existentes pra projetos da Central de Arquivos (idempotente)
       try{ migrarOfertasParaProjetos(); }catch(e){ console.warn('migracao ofertas->projetos:', e); }
       // Re-renderiza Home depois que dados chegam do server
