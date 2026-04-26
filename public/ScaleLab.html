@@ -3871,6 +3871,50 @@ function backupRestaurarArquivo(inp){
 
 // DATA
 function g(k,d){try{return JSON.parse(localStorage.getItem(k))||d;}catch{return d;}}
+
+// ═══════════════════════════════════════════════════════
+// USER AVATAR HELPER (foto se existir, senão inicial colorida)
+// Usar em qualquer lugar que mostra a "bolinha" do usuário.
+// ═══════════════════════════════════════════════════════
+window.userAvatar = function(opts){
+  opts = opts || {};
+  var nome = (opts.nome || '').toString();
+  var foto = opts.foto || '';
+  var size = opts.size || 30;
+  var bg = opts.bg || 'var(--accent)';
+  var fontSize = opts.fontSize || Math.max(10, Math.round(size * 0.42));
+  var inline = opts.inline === true;
+  var border = opts.border ? ('border:'+opts.border+';') : '';
+  var base = 'width:'+size+'px;height:'+size+'px;border-radius:50%;display:'+(inline?'inline-flex':'flex')+';align-items:center;justify-content:center;font-weight:700;color:#fff;flex-shrink:0;font-size:'+fontSize+'px;'+border;
+  if(foto){
+    return '<div style="'+base+'background:#000 url(\''+foto.replace(/'/g,"\\'")+'\') center/cover no-repeat;"></div>';
+  }
+  var inicial = nome.trim().charAt(0).toUpperCase() || '?';
+  return '<div style="'+base+'background:'+bg+';">'+inicial+'</div>';
+};
+// Lookup por NOME (busca o usuário com esse nome para pegar a foto)
+window.userAvatarByName = function(nome, opts){
+  opts = opts || {};
+  try {
+    var usuarios = (typeof getUsuarios === 'function') ? getUsuarios() : [];
+    var u = usuarios.find(function(x){ return x && x.nome === nome; });
+    return userAvatar({ nome: nome, foto: u && u.foto, size: opts.size, bg: opts.bg, fontSize: opts.fontSize, inline: opts.inline, border: opts.border });
+  } catch(e){
+    return userAvatar({ nome: nome, size: opts.size, bg: opts.bg, fontSize: opts.fontSize, inline: opts.inline, border: opts.border });
+  }
+};
+// Lookup por ID
+window.userAvatarById = function(uid, opts){
+  opts = opts || {};
+  try {
+    var usuarios = (typeof getUsuarios === 'function') ? getUsuarios() : [];
+    var u = usuarios.find(function(x){ return x && x.id === uid; });
+    if(!u) return userAvatar({ nome: '?', size: opts.size, bg: opts.bg, fontSize: opts.fontSize, inline: opts.inline });
+    return userAvatar({ nome: u.nome, foto: u.foto, size: opts.size, bg: opts.bg, fontSize: opts.fontSize, inline: opts.inline, border: opts.border });
+  } catch(e){
+    return userAvatar({ nome: '?', size: opts.size, bg: opts.bg, fontSize: opts.fontSize });
+  }
+};
 function s(k,v){
   // Stamp _updatedAt APENAS em items novos (sem timestamp ainda).
   // Não sobrescreve timestamps existentes — preserva o carimbo da última edição real.
@@ -8047,7 +8091,9 @@ function renderChatSidebar(){
       var data = getChatsData();
       var temNaoLida = (data[chanId] || []).some(function(m){ return m.destinatario === currentUser.id && !m.lida; });
       h += '<div onclick="setChatCanal(\''+chanId+'\')" class="chat-chan'+(at?' active':'')+'" style="cursor:pointer;padding-left:22px;display:flex;align-items:center;gap:8px;">';
-      h += '<span style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">'+(u.nome||'U').charAt(0).toUpperCase()+'</span>';
+      h += (typeof userAvatar === 'function')
+        ? userAvatar({ nome: u.nome, foto: u.foto, size: 22, fontSize: 10, inline: true })
+        : ('<span style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">'+(u.nome||'U').charAt(0).toUpperCase()+'</span>');
       h += '<span style="flex:1;">'+u.nome+'</span>';
       if(temNaoLida) h += '<span style="background:#EF4444;width:8px;height:8px;border-radius:50%;"></span>';
       h += '</div>';
@@ -8110,6 +8156,12 @@ function renderChat(){
     const av=isBot?'🤖':(m.nome||'U')[0].toUpperCase();
     const avStyle=isBot?'background:rgba(249,115,22,.2);font-size:14px;':'';
     const bubStyle=isBot?'background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.2);':'';
+    // Avatar com foto (se o usuário tiver), bot mantém emoji
+    const userAv = isBot
+      ? ('<div class="chat-av" style="'+avStyle+'">🤖</div>')
+      : (typeof userAvatarByName === 'function'
+          ? userAvatarByName(m.nome, { size:30, fontSize:12 })
+          : ('<div class="chat-av" style="'+avStyle+'">'+av+'</div>'));
     // Render attachments
     let attachHtml='';
     if(m.arquivos&&m.arquivos.length){
@@ -8128,7 +8180,7 @@ function renderChat(){
     const isDir = currentUser && currentUser.cargo==='Diretoria';
     const delBtn = isDir ? `<button class="chat-msg-del" onclick="deleteChatMsg('${m.id}')" title="Excluir mensagem (Diretoria)" style="background:transparent;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:3px 7px;border-radius:5px;opacity:0;transition:opacity .15s;">🗑</button>` : '';
     return `<div class="chat-msg" style="${isBot?'opacity:.95;':''}position:relative;" onmouseover="this.querySelector('.chat-msg-del')&&(this.querySelector('.chat-msg-del').style.opacity=1)" onmouseout="this.querySelector('.chat-msg-del')&&(this.querySelector('.chat-msg-del').style.opacity=0)">
-      <div class="chat-av" style="${avStyle}">${av}</div>
+      ${userAv}
       <div class="chat-content">
         <div class="chat-meta" style="display:flex;align-items:center;gap:6px;">${m.nome||'Usuário'} · ${m.hora}${delBtn}</div>
         ${textoHtml}${attachHtml}
@@ -11731,7 +11783,7 @@ function renderTasks(){
 
     <!-- Responsável -->
     <div style="display:flex;align-items:center;gap:6px;">
-      <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;color:#fff;flex-shrink:0;">${avatar}</div>
+      ${(typeof userAvatarByName==='function') ? userAvatarByName(t.resp, { size:24, fontSize:10 }) : `<div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;color:#fff;flex-shrink:0;">${avatar}</div>`}
       <span style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.resp||'—'}</span>
     </div>
 
