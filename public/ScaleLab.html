@@ -12511,20 +12511,40 @@ window.abrirRitualPorUrl = function(){
     var rid = params.get('ritual');
     if(!rid) return;
     goTo('rituais');
-    // Destaca o ritual após o render
     setTimeout(function(){
-      var cards = document.querySelectorAll('#rituais-list > div');
-      cards.forEach(function(c){
-        // Procura ID nos botões dentro do card
-        if(c.innerHTML && c.innerHTML.indexOf('('+rid+')') !== -1){
-          c.style.boxShadow = '0 0 0 3px var(--accent)';
-          c.style.transform = 'scale(1.01)';
-          c.scrollIntoView({behavior:'smooth', block:'center'});
-          setTimeout(function(){ c.style.boxShadow=''; c.style.transform=''; }, 3500);
-        }
-      });
-      // Limpa o param da URL pra não abrir de novo num refresh
-      try { history.replaceState({}, '', window.location.pathname); } catch(e){}
+      // 1) Tenta achar o ritual nos dados (pra ajustar filtros se necessário)
+      var rituais = (typeof getRituais === 'function') ? getRituais() : (g('rituais', []) || []);
+      var found = rituais.find(function(r){ return String(r.id) === String(rid); });
+      if(found){
+        // Reseta filtros pra garantir que o ritual apareça na lista
+        try {
+          if(found.tipo){
+            var tipoEl = document.getElementById('rit-f-tipo');
+            if(tipoEl){ tipoEl.value = found.tipo; }
+            // Variável global usada pelos filtros laterais (caso exista)
+            if(typeof _rituaisTipoSel !== 'undefined') _rituaisTipoSel = found.tipo;
+          }
+          ['rit-f-mes','rit-f-semana','rit-f-nicho','rit-f-oferta'].forEach(function(id){
+            var el = document.getElementById(id); if(el) el.value = '';
+          });
+          if(typeof renderRituaisFiltros === 'function') renderRituaisFiltros();
+          if(typeof renderRituais === 'function') renderRituais();
+        } catch(e){ console.warn('reset filtros:', e); }
+      }
+      // 2) Abre o modal do ritual específico (visualização/edição)
+      setTimeout(function(){
+        try {
+          if(typeof abrirModalRitual === 'function'){
+            // abrirModalRitual usa comparação estrita (===). Converte pra número se aplicável.
+            var idToOpen = rid;
+            var asNum = Number(rid);
+            if(!isNaN(asNum) && String(asNum) === rid) idToOpen = asNum;
+            abrirModalRitual(idToOpen);
+          }
+        } catch(e){ console.warn('abrirModalRitual:', e); }
+        // Limpa o param da URL pra não reabrir em refresh
+        try { history.replaceState({}, '', window.location.pathname); } catch(e){}
+      }, 200);
     }, 400);
   } catch(e){ console.warn('abrirRitualPorUrl:', e); }
 };
