@@ -12531,17 +12531,20 @@ window.abrirRitualPorUrl = function(){
           if(typeof renderRituais === 'function') renderRituais();
         } catch(e){ console.warn('reset filtros:', e); }
       }
-      // 2) Abre o modal do ritual específico (visualização/edição)
+      // 2) Abre a página de DETALHE do ritual específico (não o modal de editar)
       setTimeout(function(){
         try {
-          if(typeof abrirModalRitual === 'function'){
-            // abrirModalRitual usa comparação estrita (===). Converte pra número se aplicável.
-            var idToOpen = rid;
-            var asNum = Number(rid);
-            if(!isNaN(asNum) && String(asNum) === rid) idToOpen = asNum;
+          // abrirRitualDetalhe usa comparação estrita. Converte pra número se aplicável.
+          var idToOpen = rid;
+          var asNum = Number(rid);
+          if(!isNaN(asNum) && String(asNum) === rid) idToOpen = asNum;
+          if(typeof abrirRitualDetalhe === 'function'){
+            abrirRitualDetalhe(idToOpen);
+          } else if(typeof abrirModalRitual === 'function'){
+            // Fallback caso a função de detalhe não exista (versão antiga)
             abrirModalRitual(idToOpen);
           }
-        } catch(e){ console.warn('abrirModalRitual:', e); }
+        } catch(e){ console.warn('abrirRitualDetalhe:', e); }
         // Limpa o param da URL pra não reabrir em refresh
         try { history.replaceState({}, '', window.location.pathname); } catch(e){}
       }, 200);
