@@ -2788,16 +2788,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <select class="fs" id="c-copy"><option value="">Selecionar copy</option></select>
     </div>
     <div class="fg">
-      <label class="fl">✂️ Editor responsável</label>
-      <select class="fs" id="c-edi"><option value="">Selecionar editor</option></select>
-    </div>
-    <div class="fg">
       <label class="fl">🔍 Revisor do material</label>
       <select class="fs" id="c-rev"><option value="">Selecionar revisor</option></select>
-    </div>
-    <div class="fg">
-      <label class="fl">🚀 Gestor que vai subir</label>
-      <select class="fs" id="c-sub"><option value="">Selecionar gestor</option></select>
     </div>
   </div>
   <div id="anuncios-container">
@@ -7350,7 +7342,7 @@ function populateRemessas(){
   if(ofertaEl) ofertaEl.innerHTML='<option value="">Selecione a oferta</option>'+ofertas.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
 
   const memOpts='<option value="">Selecionar membro</option>'+usuarios.map(u=>`<option value="${u.nome}">${u.nome} (${u.cargo})</option>`).join('');
-  ['c-copy','c-edi','c-rev','c-sub'].forEach(id=>{
+  ['c-copy','c-rev'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.innerHTML=memOpts;
   });
@@ -7395,9 +7387,10 @@ function salvarCriativo(){
     docs:document.getElementById('c-docs').value,
     drive:document.getElementById('c-drive').value,
     copy:document.getElementById('c-copy').value,
-    editor:document.getElementById('c-edi').value,
+    // editor/gestor da remessa removidos do modal — preserva valor antigo se for edição
+    editor: _editCriId ? (criativos.find(x=>x.id===_editCriId)?.editor || '') : '',
     revisor:document.getElementById('c-rev').value,
-    gestor:document.getElementById('c-sub').value,
+    gestor: _editCriId ? (criativos.find(x=>x.id===_editCriId)?.gestor || '') : '',
     status:st,ads,
     criado:new Date().toLocaleDateString('pt-BR')
   };
@@ -7658,6 +7651,7 @@ function renderCriV2(){
           h += '<select onchange="setAdStatus('+c.id+','+ai+',this.value)" style="background:'+adStCor+';color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">';
           AD_STATUS_LIST.forEach(function(st){ h += '<option value="'+st+'"'+(adSt===st?' selected':'')+' style="background:#fff;color:#333;">'+st+'</option>'; });
           h += '</select>';
+          if(a.link) h += '<a href="'+(a.link||'').replace(/"/g,'&quot;')+'" target="_blank" rel="noopener noreferrer" class="icon-btn" title="Abrir link do anúncio" style="flex-shrink:0;text-decoration:none;">🔗</a>';
           h += '<button class="icon-btn" onclick="editCriativo('+c.id+')" title="Editar informações do anúncio" style="flex-shrink:0;">✏️</button>';
           h += '</div>';
           if(a.editor || a.gestor){
@@ -7922,7 +7916,7 @@ function editCriativo(id){
   // Bloquear pra não-Diretoria — roda múltiplas vezes pra garantir
   function _bloquearCriColab(){
     if(_isDirCri) return;
-    var idsBloquear = ['c-remessa','c-status','c-nicho','c-oferta','c-mes','c-semana','c-copy','c-edi','c-rev','c-sub'];
+    var idsBloquear = ['c-remessa','c-status','c-nicho','c-oferta','c-mes','c-semana','c-copy','c-rev'];
     idsBloquear.forEach(function(fid){
       var el = document.getElementById(fid);
       if(el){
@@ -7972,9 +7966,8 @@ function editCriativo(id){
     set('c-docs',    c.docs);
     set('c-drive',   c.drive);
     set('c-copy',    c.copy);
-    set('c-edi',     c.editor);
     set('c-rev',     c.revisor);
-    set('c-sub',     c.gestor);
+    // c-edi e c-sub removidos do modal (Editor/Gestor da remessa)
 
     // Anúncios
     const container = document.getElementById('anuncios-container');
