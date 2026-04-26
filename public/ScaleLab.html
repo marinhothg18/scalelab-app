@@ -4671,27 +4671,25 @@ async function _homeCalcKPIsFromRedTrack(){
   var ontemD = new Date(agora.getTime() - 24*60*60*1000);
   var ontem = fmt(ontemD);
   try {
+    // Usa a MESMA fonte de Métricas de Ads (/campaigns?with_stats=true) pra garantir números idênticos
     var [rHoje, rOntem] = await Promise.all([
-      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+hoje+'&date_to='+hoje+'&columns=date,cost,revenue,conversions'),
-      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+ontem+'&date_to='+ontem+'&columns=date,cost,revenue,conversions')
+      fetch('https://api.redtrack.io/campaigns?api_key='+key+'&with_stats=true&date_from='+hoje+'&date_to='+hoje),
+      fetch('https://api.redtrack.io/campaigns?api_key='+key+'&with_stats=true&date_from='+ontem+'&date_to='+ontem)
     ]);
     if(!rHoje.ok || !rOntem.ok) throw new Error('RedTrack API error');
     var d7  = await rHoje.json();
     var d14 = await rOntem.json();
-    // Conversão USD → BRL usando cotação salva
-    var rate = parseFloat(localStorage.getItem('sl_cotacao_usd')) || 5.10;
-    try{ var _cfg = g('cfg', {}); if(_cfg && _cfg.cotacaoUSD) rate = _cfg.cotacaoUSD; }catch(e){}
     function totais(arr){
-      var cost=0, rev=0, convs=0;
-      (Array.isArray(arr)?arr:[]).forEach(function(row){
-        cost += Number(row.cost) || 0;
-        rev  += Number(row.revenue) || 0;
-        convs+= Number(row.conversions) || 0;
+      var cost=0, rev=0, profit=0, convs=0;
+      (Array.isArray(arr)?arr:[]).forEach(function(c){
+        var s = c && c.stat ? c.stat : {};
+        cost  += Number(s.cost)          || 0;
+        rev   += Number(s.total_revenue) || 0;
+        profit+= Number(s.profit)        || 0;
+        convs += Number(s.approved)      || 0;
       });
-      // RedTrack retorna em USD — converte pra BRL
-      cost = cost * rate;
-      rev  = rev  * rate;
-      return { cost: cost, rev: rev, lucro: rev-cost, roas: cost>0?rev/cost:0, cpa: convs>0?cost/convs:0 };
+      var lucro = (profit !== 0) ? profit : (rev - cost);
+      return { cost: cost, rev: rev, lucro: lucro, roas: cost>0?rev/cost:0, cpa: convs>0?cost/convs:0 };
     }
     var a = totais(d7);
     var b = totais(d14);
@@ -7645,15 +7643,19 @@ function renderCriV2(){
           h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0;">';
           h += '<span style="font-size:13px;font-weight:600;">'+(a.nome||a.formato||'Ad '+(ai+1))+'</span>';
           if(a.formato) h += '<span style="font-size:10px;color:var(--text2);background:var(--bg3);padding:2px 8px;border-radius:4px;">'+a.formato+'</span>';
-          if(inv > 0 || ret > 0 || vds > 0) {
-            h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-            if(vds > 0) h += '<span title="Vendas" style="font-size:10.5px;font-weight:600;background:rgba(27,156,250,.12);color:var(--accent);padding:2px 8px;border-radius:10px;">🛒 '+vds+'</span>';
-            if(inv > 0) h += '<span title="Investimento" style="font-size:10.5px;font-weight:600;background:rgba(245,158,11,.12);color:#F59E0B;padding:2px 8px;border-radius:10px;">💰 '+fmtBR(inv)+'</span>';
-            if(ret > 0) h += '<span title="Retorno" style="font-size:10.5px;font-weight:600;background:rgba(16,185,129,.12);color:var(--green);padding:2px 8px;border-radius:10px;">📈 '+fmtBR(ret)+'</span>';
-            if(inv > 0 && ret > 0) h += '<span title="Lucro" style="font-size:10.5px;font-weight:600;background:rgba(124,58,237,.12);color:#A78BFA;padding:2px 8px;border-radius:10px;">💵 '+fmtBR(lucro)+'</span>';
-            if(inv > 0) h += '<span title="ROAS" style="font-size:10.5px;font-weight:600;background:rgba(197,44,88,.12);color:#F472B6;padding:2px 8px;border-radius:10px;">⚡ '+roas+'x</span>';
-            h += '</div>';
+          // Pílulas sempre visíveis (apagadas quando vazias). Clica → abre edição
+          var dimStyle = ';opacity:.45;';
+          var pillBase = 'font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;cursor:pointer;';
+          var clickHandler = ' onclick="event.stopPropagation();editCri('+c.id+')"';
+          h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+          h += '<span title="Vendas — clique para editar"'+clickHandler+' style="'+pillBase+'background:rgba(27,156,250,.12);color:var(--accent);'+(vds>0?'':dimStyle)+'">🛒 '+vds+'</span>';
+          h += '<span title="Investimento — clique para editar"'+clickHandler+' style="'+pillBase+'background:rgba(245,158,11,.12);color:#F59E0B;'+(inv>0?'':dimStyle)+'">💰 '+fmtBR(inv)+'</span>';
+          h += '<span title="Retorno — clique para editar"'+clickHandler+' style="'+pillBase+'background:rgba(16,185,129,.12);color:var(--green);'+(ret>0?'':dimStyle)+'">📈 '+fmtBR(ret)+'</span>';
+          if(inv > 0) {
+            h += '<span title="Lucro" style="'+pillBase+'background:rgba(124,58,237,.12);color:#A78BFA;cursor:default;">💵 '+fmtBR(lucro)+'</span>';
+            h += '<span title="ROAS" style="'+pillBase+'background:rgba(197,44,88,.12);color:#F472B6;cursor:default;">⚡ '+roas+'x</span>';
           }
+          h += '</div>';
           h += '</div>';
           h += '<select onchange="setAdStatus('+c.id+','+ai+',this.value)" style="background:'+adStCor+';color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">';
           AD_STATUS_LIST.forEach(function(st){ h += '<option value="'+st+'"'+(adSt===st?' selected':'')+' style="background:#fff;color:#333;">'+st+'</option>'; });
