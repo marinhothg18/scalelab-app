@@ -4663,9 +4663,12 @@ async function _homeCalcKPIsFromRedTrack(){
   var ontemD = new Date(agora.getTime() - 24*60*60*1000);
   var ontem = fmt(ontemD);
   try {
+    // Usa /campaigns?with_stats=true (mesmo endpoint da página Métricas de Ads)
+    // O /report?group_by=date às vezes retorna revenue=0; total_revenue de campaigns
+    // é a fonte confiável que bate com o que o usuário vê na aba Resumo.
     var [rHoje, rOntem] = await Promise.all([
-      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+hoje+'&date_to='+hoje+'&columns=date,cost,revenue,conversions'),
-      fetch('https://api.redtrack.io/report?api_key='+key+'&group_by=date&date_from='+ontem+'&date_to='+ontem+'&columns=date,cost,revenue,conversions')
+      fetch('https://api.redtrack.io/campaigns?api_key='+key+'&with_stats=true&date_from='+hoje+'&date_to='+hoje),
+      fetch('https://api.redtrack.io/campaigns?api_key='+key+'&with_stats=true&date_from='+ontem+'&date_to='+ontem)
     ]);
     if(!rHoje.ok || !rOntem.ok) throw new Error('RedTrack API error');
     var d7  = await rHoje.json();
@@ -4675,10 +4678,12 @@ async function _homeCalcKPIsFromRedTrack(){
     try{ var _cfg = g('cfg', {}); if(_cfg && _cfg.cotacaoUSD) rate = _cfg.cotacaoUSD; }catch(e){}
     function totais(arr){
       var cost=0, rev=0, convs=0;
-      (Array.isArray(arr)?arr:[]).forEach(function(row){
-        cost += Number(row.cost) || 0;
-        rev  += Number(row.revenue) || 0;
-        convs+= Number(row.conversions) || 0;
+      (Array.isArray(arr)?arr:[]).forEach(function(c){
+        if(!c) return;
+        var st = c.stat || c.stats || {};
+        cost += Number(st.cost) || 0;
+        rev  += Number(st.total_revenue) || Number(st.revenue) || 0;
+        convs+= Number(st.approved) || Number(st.conversions) || 0;
       });
       // RedTrack retorna em USD — converte pra BRL
       cost = cost * rate;
