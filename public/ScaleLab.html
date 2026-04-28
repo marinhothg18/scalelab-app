@@ -5042,7 +5042,7 @@ function renderDash(){
   // update project name (defensivo — alguns elementos podem não existir)
   var _set = function(id, prop, val){ var el = document.getElementById(id); if(el) el[prop] = val; };
   _set('project-name', 'textContent', '📁 '+(cfg && cfg.projeto || '')+' ▾');
-  _set('user-name-nav', 'textContent', (cfg && cfg.nome) || 'Usuário');
+  _set('user-name-nav', 'textContent', (currentUser && currentUser.nome) || (cfg && cfg.nome) || 'Usuário');
   _set('chan-name-label', 'textContent', (cfg && cfg.projeto) || 'geral');
   _set('chat-chan-title', 'textContent', (cfg && cfg.projeto) || 'geral');
   var ci = document.getElementById('chat-input'); if(ci) ci.placeholder = 'Mensagem em #'+((cfg && cfg.projeto) || 'geral')+'...';
@@ -14359,14 +14359,19 @@ function renderRoiDetalhe(){
   if(o.linkUtmify)links.push(`<a href="${o.linkUtmify}" target="_blank" class="roi-link-badge">UTMify ↗</a>`);
   if(o.linkPlanilha)links.push(`<a href="${o.linkPlanilha}" target="_blank" class="roi-link-badge">Planilha ↗</a>`);
   document.getElementById('roi-det-links').innerHTML=links.join('');
-  // Populate gestor filter
+  // Populate gestor filter — auto-inclui todos os usuários com cargo "Gestor de Tráfego"
+  // ativos, além dos gestores já vinculados manualmente à oferta (preservados via merge)
   const gf=document.getElementById('roi-det-gestor');
-  gf.innerHTML='<option value="">👤 Todos os gestores</option>'+(o.gestores||[]).map(g2=>`<option>${g2}</option>`).join('');
-  // Filter days by month
+  const _gestorSelAtual = (gf && gf.value) || '';
+  const _gtUsers = (g('sl_usuarios', []) || []).filter(u => u && u.cargo === 'Gestor de Tráfego' && u.ativo !== false).map(u => u.nome).filter(Boolean);
+  const _gestoresLista = [...new Set([...(o.gestores||[]), ..._gtUsers])].filter(Boolean);
+  gf.innerHTML='<option value="">👤 Todos os gestores</option>'+_gestoresLista.map(g2=>`<option${_gestorSelAtual===g2?' selected':''}>${g2}</option>`).join('');
+  // Filter days by month + gestor selecionado
   const mes=document.getElementById('roi-det-mes').value;
   const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
   let dias=(o.dias||[]).slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
   if(mes&&mesMap[mes]!==undefined){dias=dias.filter(d=>new Date(d.data).getMonth()===mesMap[mes]);}
+  if(_gestorSelAtual){ dias=dias.filter(d=>d.gestor===_gestorSelAtual); }
   // Totals for cards
   let fat=0,inv=0,taxa=0,imp=0;
   dias.forEach(d=>{fat+=d.fat||0;inv+=d.inv||0;taxa+=d.taxa||0;imp+=d.imp||0;});
@@ -14433,15 +14438,17 @@ function roiInlineUpdate(idx, field, val){
   const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
   let dias=(o.dias||[]).slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
   if(mes&&mesMap[mes]!==undefined)dias=dias.filter(d=>new Date(d.data).getMonth()===mesMap[mes]);
+  const _gestorSel = (document.getElementById('roi-det-gestor')||{}).value || '';
+  if(_gestorSel) dias=dias.filter(d=>d.gestor===_gestorSel);
   const d=dias[idx];
   if(!d)return;
-  // update in o.dias
-  const realD=o.dias.find(x=>x.data===d.data)||(d);
+  // Acha o dia real por referência (preferido) ou por par (data + gestor) — evita confundir
+  // dias de gestores diferentes na mesma data
+  const realD=o.dias.find(x=>x===d)||o.dias.find(x=>x.data===d.data && (x.gestor||'')===(d.gestor||''))||d;
   realD[field]=val;
   if(field==='data'){
-    // update date key in o.dias
-    const ri=o.dias.findIndex(x=>x===realD||x.data===d.data);
-    if(ri>=0)o.dias[ri].data=val;
+    // update date key in o.dias (preserva referência — só muda a data)
+    realD.data=val;
   }
   s('roi_ofertas',roiOfertas);
   // Update calculated cells in this row
@@ -14504,7 +14511,11 @@ function addRoiRow(){
   let nextDate;
   if(last){const d=new Date(last+'T12:00:00');d.setDate(d.getDate()+1);nextDate=d.toISOString().slice(0,10);}
   else nextDate=new Date().toISOString().slice(0,10);
-  o.dias.push({data:nextDate,fat:0,inv:0,taxa:0,imp:0});
+  // Se o filtro de gestor estiver ativo, novo dia herda esse gestor
+  const _gestorSel = (document.getElementById('roi-det-gestor')||{}).value || '';
+  const _novoDia = {data:nextDate,fat:0,inv:0,taxa:0,imp:0};
+  if(_gestorSel) _novoDia.gestor = _gestorSel;
+  o.dias.push(_novoDia);
   s('roi_ofertas',roiOfertas);
   renderRoiDetalhe();
   // scroll to bottom of table
@@ -14518,8 +14529,12 @@ function roiDeleteRow(idx){
   const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
   let dias=(o.dias||[]).slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
   if(mes&&mesMap[mes]!==undefined)dias=dias.filter(d=>new Date(d.data).getMonth()===mesMap[mes]);
+  const _gestorSel = (document.getElementById('roi-det-gestor')||{}).value || '';
+  if(_gestorSel) dias=dias.filter(d=>d.gestor===_gestorSel);
   const d=dias[idx];
-  o.dias=o.dias.filter(x=>x.data!==d.data);
+  if(!d)return;
+  // Compara por (data + gestor) pra não deletar dias de outros gestores na mesma data
+  o.dias=o.dias.filter(x=>!(x.data===d.data && (x.gestor||'')===(d.gestor||'')));
   s('roi_ofertas',roiOfertas); notif('Dia removido.'); renderRoiDetalhe();
 }
 
