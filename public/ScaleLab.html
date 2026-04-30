@@ -1481,7 +1481,6 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
                   <option>Setembro</option><option>Outubro</option><option>Novembro</option><option>Dezembro</option>
                 </select>
                 <select class="fs" id="roi-det-gestor" onchange="renderRoiDetalhe()" style="font-size:12px;padding:5px 12px;">
-                  <option value="">👤 Todos os gestores</option>
                 </select>
               </div>
             </div>
@@ -14386,13 +14385,22 @@ function renderRoiDetalhe(){
   const _gestorSelAtual = (gf && gf.value) || '';
   const _gtUsers = (g('sl_usuarios', []) || []).filter(u => u && u.cargo === 'Gestor de Tráfego' && u.ativo !== false).map(u => u.nome).filter(Boolean);
   const _gestoresLista = [...new Set([...(o.gestores||[]), ..._gtUsers])].filter(Boolean);
-  gf.innerHTML='<option value="">👤 Todos os gestores</option>'+_gestoresLista.map(g2=>`<option${_gestorSelAtual===g2?' selected':''}>${g2}</option>`).join('');
+  // Sem opção "Todos" — força sempre 1 gestor selecionado pra evitar somar dados de gestores diferentes
+  if(_gestoresLista.length === 0){
+    gf.innerHTML = '<option value="" disabled selected>Sem gestores cadastrados</option>';
+    gf.disabled = true;
+  } else {
+    gf.disabled = false;
+    const _selUse = _gestoresLista.indexOf(_gestorSelAtual) >= 0 ? _gestorSelAtual : _gestoresLista[0];
+    gf.innerHTML = _gestoresLista.map(g2=>`<option${_selUse===g2?' selected':''}>${g2}</option>`).join('');
+  }
+  const _gestorAtivo = gf.value || '';
   // Filter days by month + gestor selecionado
   const mes=document.getElementById('roi-det-mes').value;
   const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
   let dias=(o.dias||[]).slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
   if(mes&&mesMap[mes]!==undefined){dias=dias.filter(d=>new Date(d.data).getMonth()===mesMap[mes]);}
-  if(_gestorSelAtual){ dias=dias.filter(d=>d.gestor===_gestorSelAtual); }
+  if(_gestorAtivo){ dias=dias.filter(d=>d.gestor===_gestorAtivo); }
   // Totals for cards
   let fat=0,inv=0,taxa=0,imp=0;
   dias.forEach(d=>{fat+=d.fat||0;inv+=d.inv||0;taxa+=d.taxa||0;imp+=d.imp||0;});
@@ -14413,16 +14421,43 @@ function renderRoiDetalhe(){
   renderRoiTableRows(o, dias);
 }
 
+// Helpers de formatação BR (input editável estilo "R$ 10.000,00" sem o prefixo)
+function _fmtBR(v){ return (Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function _parseBR(s){ if(s==null||s==='') return 0; var n = String(s).replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.'); return parseFloat(n)||0; }
+
 function renderRoiTableRows(o, dias){
   const tbody=document.getElementById('roi-det-tbody');
-  if(!dias.length){
+  // Quando um mês está selecionado, gera grade fixa (1 ao último dia do mês) e
+  // mescla com dias reais da oferta. Linhas sem dado salvo ficam "virtuais" —
+  // ganham entrada em o.dias só quando o usuário edita pela primeira vez.
+  const mes = (document.getElementById('roi-det-mes')||{}).value || '';
+  const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
+  const _gestorAtivo = (document.getElementById('roi-det-gestor')||{}).value || '';
+  let linhas;
+  if(mes && mesMap[mes] !== undefined){
+    const ano = new Date().getFullYear();
+    const m = mesMap[mes];
+    const ultDia = new Date(ano, m+1, 0).getDate();
+    linhas = [];
+    for(let dd=1; dd<=ultDia; dd++){
+      const dataIso = `${ano}-${String(m+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+      const real = (o.dias||[]).find(x => x.data === dataIso && (x.gestor||'') === (_gestorAtivo||''));
+      linhas.push(real || {data:dataIso, fat:0, inv:0, taxa:0, imp:0, gestor:_gestorAtivo, _virtual:true});
+    }
+  } else {
+    linhas = dias;
+  }
+  // Esconde "+ Adicionar dia" quando grade do mês está ativa (não há mais necessidade)
+  const addBtn = document.querySelector('.roi-add-row-btn');
+  if(addBtn) addBtn.parentElement.parentElement.style.display = (mes && mesMap[mes]!==undefined) ? 'none' : '';
+  if(!linhas.length){
     tbody.innerHTML=`<tr><td colspan="11" style="text-align:center;color:var(--text2);padding:24px;">
       Nenhum dado ainda. Clique em <strong style="color:var(--accent);">+ Adicionar dia</strong> abaixo para começar.
     </td></tr>`;
-    roiUpdateTotals(dias);
+    roiUpdateTotals(linhas);
     return;
   }
-  tbody.innerHTML=dias.map((d,idx)=>{
+  tbody.innerHTML=linhas.map((d,idx)=>{
     const rid=`roi-row-${idx}`;
     const f=d.fat||0,i=d.inv||0,tx=d.taxa||0,im=d.imp||0;
     const liq=f-tx-im; const lucB=f-i; const lc=liq-i;
@@ -14432,14 +14467,22 @@ function renderRoiTableRows(o, dias){
       <td><input class="roi-td-date" type="date" value="${d.data||''}"
         onchange="roiInlineUpdate(${idx},'data',this.value)" title="${dtStr}">
       </td>
-      <td><input class="roi-td-input" type="number" step="0.01" min="0" value="${f||''}" placeholder="0,00"
-        oninput="roiInlineUpdate(${idx},'fat',parseFloat(this.value)||0)"></td>
-      <td><input class="roi-td-input roi-red" type="number" step="0.01" min="0" value="${i||''}" placeholder="0,00"
-        oninput="roiInlineUpdate(${idx},'inv',parseFloat(this.value)||0)"></td>
-      <td><input class="roi-td-input" type="number" step="0.01" min="0" value="${tx||''}" placeholder="0"
-        oninput="roiInlineUpdate(${idx},'taxa',parseFloat(this.value)||0)"></td>
-      <td><input class="roi-td-input" type="number" step="0.01" min="0" value="${im||''}" placeholder="0"
-        oninput="roiInlineUpdate(${idx},'imp',parseFloat(this.value)||0)"></td>
+      <td><input class="roi-td-input" type="text" inputmode="decimal" value="${f?_fmtBR(f):''}" placeholder="0,00"
+        onfocus="this.select()"
+        onblur="this.value=_parseBR(this.value)?_fmtBR(_parseBR(this.value)):''"
+        onchange="roiInlineUpdate(${idx},'fat',_parseBR(this.value))"></td>
+      <td><input class="roi-td-input roi-red" type="text" inputmode="decimal" value="${i?_fmtBR(i):''}" placeholder="0,00"
+        onfocus="this.select()"
+        onblur="this.value=_parseBR(this.value)?_fmtBR(_parseBR(this.value)):''"
+        onchange="roiInlineUpdate(${idx},'inv',_parseBR(this.value))"></td>
+      <td><input class="roi-td-input" type="text" inputmode="decimal" value="${tx?_fmtBR(tx):''}" placeholder="0,00"
+        onfocus="this.select()"
+        onblur="this.value=_parseBR(this.value)?_fmtBR(_parseBR(this.value)):''"
+        onchange="roiInlineUpdate(${idx},'taxa',_parseBR(this.value))"></td>
+      <td><input class="roi-td-input" type="text" inputmode="decimal" value="${im?_fmtBR(im):''}" placeholder="0,00"
+        onfocus="this.select()"
+        onblur="this.value=_parseBR(this.value)?_fmtBR(_parseBR(this.value)):''"
+        onchange="roiInlineUpdate(${idx},'imp',_parseBR(this.value))"></td>
       <td class="roi-td-calc" id="${rid}-liq">${fmtCurrency(liq)}</td>
       <td class="roi-td-calc ${lucB>=0?'roi-green':'roi-red'}" id="${rid}-lucb">${fmtCurrency(lucB)}</td>
       <td class="roi-td-calc ${lc>=0?'roi-green':'roi-red'}" id="${rid}-luc">${fmtCurrency(lc)}</td>
@@ -14448,29 +14491,42 @@ function renderRoiTableRows(o, dias){
       <td><button class="icon-btn" onclick="roiDeleteRow(${idx})" title="Remover dia">🗑</button></td>
     </tr>`;
   }).join('');
-  roiUpdateTotals(dias);
+  roiUpdateTotals(linhas);
 }
 
 function roiInlineUpdate(idx, field, val){
   const o=roiOfertas.find(x=>x.id===roiOfertaSel);
-  if(!o||!o.dias)return;
-  // find sorted dias to match idx
+  if(!o)return;
+  if(!o.dias) o.dias=[];
+  // Reconstrói o mesmo array `linhas` que foi renderizado para localizar o item por idx
   const mes=document.getElementById('roi-det-mes').value;
   const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
-  let dias=(o.dias||[]).slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
-  if(mes&&mesMap[mes]!==undefined)dias=dias.filter(d=>new Date(d.data).getMonth()===mesMap[mes]);
-  const _gestorSel = (document.getElementById('roi-det-gestor')||{}).value || '';
-  if(_gestorSel) dias=dias.filter(d=>d.gestor===_gestorSel);
-  const d=dias[idx];
-  if(!d)return;
-  // Acha o dia real por referência (preferido) ou por par (data + gestor) — evita confundir
-  // dias de gestores diferentes na mesma data
-  const realD=o.dias.find(x=>x===d)||o.dias.find(x=>x.data===d.data && (x.gestor||'')===(d.gestor||''))||d;
-  realD[field]=val;
-  if(field==='data'){
-    // update date key in o.dias (preserva referência — só muda a data)
-    realD.data=val;
+  const _gestorAtivo = (document.getElementById('roi-det-gestor')||{}).value || '';
+  let linhas;
+  if(mes && mesMap[mes] !== undefined){
+    const ano = new Date().getFullYear();
+    const m = mesMap[mes];
+    const ultDia = new Date(ano, m+1, 0).getDate();
+    linhas = [];
+    for(let dd=1; dd<=ultDia; dd++){
+      const dataIso = `${ano}-${String(m+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+      const real = o.dias.find(x => x.data === dataIso && (x.gestor||'') === (_gestorAtivo||''));
+      linhas.push(real || {data:dataIso, fat:0, inv:0, taxa:0, imp:0, gestor:_gestorAtivo, _virtual:true});
+    }
+  } else {
+    linhas = o.dias.slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
+    if(_gestorAtivo) linhas = linhas.filter(x => x.gestor === _gestorAtivo);
   }
+  const d = linhas[idx];
+  if(!d) return;
+  // Se a linha é virtual, materializa em o.dias antes de atualizar
+  let realD = o.dias.find(x => x.data === d.data && (x.gestor||'') === (d.gestor||''));
+  if(!realD){
+    realD = {data:d.data, fat:0, inv:0, taxa:0, imp:0, gestor:d.gestor||_gestorAtivo};
+    o.dias.push(realD);
+  }
+  realD[field] = val;
+  if(field==='data') realD.data = val;
   s('roi_ofertas',roiOfertas);
   // Update calculated cells in this row
   const rid=`roi-row-${idx}`;
@@ -14544,18 +14600,40 @@ function addRoiRow(){
 }
 
 function roiDeleteRow(idx){
-  if(!confirm('Remover este dia?'))return;
   const o=roiOfertas.find(x=>x.id===roiOfertaSel);
+  if(!o)return;
+  if(!o.dias) o.dias=[];
+  // Reconstrói o mesmo array `linhas` que foi renderizado para localizar o item por idx
   const mes=document.getElementById('roi-det-mes').value;
   const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
-  let dias=(o.dias||[]).slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
-  if(mes&&mesMap[mes]!==undefined)dias=dias.filter(d=>new Date(d.data).getMonth()===mesMap[mes]);
-  const _gestorSel = (document.getElementById('roi-det-gestor')||{}).value || '';
-  if(_gestorSel) dias=dias.filter(d=>d.gestor===_gestorSel);
-  const d=dias[idx];
-  if(!d)return;
+  const _gestorAtivo = (document.getElementById('roi-det-gestor')||{}).value || '';
+  let linhas;
+  if(mes && mesMap[mes] !== undefined){
+    const ano = new Date().getFullYear();
+    const m = mesMap[mes];
+    const ultDia = new Date(ano, m+1, 0).getDate();
+    linhas = [];
+    for(let dd=1; dd<=ultDia; dd++){
+      const dataIso = `${ano}-${String(m+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+      const real = o.dias.find(x => x.data === dataIso && (x.gestor||'') === (_gestorAtivo||''));
+      linhas.push(real || {data:dataIso, fat:0, inv:0, taxa:0, imp:0, gestor:_gestorAtivo, _virtual:true});
+    }
+  } else {
+    linhas = o.dias.slice().sort((a,b)=>new Date(a.data)-new Date(b.data));
+    if(_gestorAtivo) linhas = linhas.filter(x => x.gestor === _gestorAtivo);
+  }
+  const d = linhas[idx];
+  if(!d) return;
+  // Linha virtual (sem dado salvo) — só zera os campos no array existente, sem confirm
+  if(d._virtual){
+    const real = o.dias.find(x => x.data === d.data && (x.gestor||'') === (d.gestor||''));
+    if(real){ real.fat=0; real.inv=0; real.taxa=0; real.imp=0; s('roi_ofertas',roiOfertas); }
+    renderRoiDetalhe();
+    return;
+  }
+  if(!confirm('Limpar os valores deste dia?'))return;
   // Compara por (data + gestor) pra não deletar dias de outros gestores na mesma data
-  o.dias=o.dias.filter(x=>!(x.data===d.data && (x.gestor||'')===(d.gestor||'')));
+  o.dias = o.dias.filter(x=>!(x.data===d.data && (x.gestor||'')===(d.gestor||'')));
   s('roi_ofertas',roiOfertas); notif('Dia removido.'); renderRoiDetalhe();
 }
 
