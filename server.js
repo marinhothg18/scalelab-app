@@ -100,6 +100,39 @@ function _migrarSenhasParaHash() {
   }
 }
 
+// Atribui gestor (1º da lista `o.gestores`) aos dias do ROI que ainda não têm
+// o campo. Idempotente: rodadas seguintes não fazem nada. Ofertas sem gestor
+// vinculado são puladas — o usuário precisa setar manualmente.
+function _migrarGestorEmDiasAntigos() {
+  try {
+    const db = readDB();
+    const ofertas = db.store['roi_ofertas'] || [];
+    let diasMigrados = 0;
+    let ofertasAfetadas = 0;
+    ofertas.forEach(o => {
+      if (!o || !Array.isArray(o.dias)) return;
+      const gestorPadrao = Array.isArray(o.gestores) && o.gestores[0] ? String(o.gestores[0]) : '';
+      if (!gestorPadrao) return;
+      const antes = diasMigrados;
+      o.dias.forEach(d => {
+        if (d && !d.gestor) {
+          d.gestor = gestorPadrao;
+          diasMigrados++;
+        }
+      });
+      if (diasMigrados > antes) ofertasAfetadas++;
+    });
+    if (diasMigrados > 0) {
+      db.store['roi_ofertas'] = ofertas;
+      db.timestamps['roi_ofertas'] = now();
+      writeDB(db);
+      console.log(`[ROI] ${diasMigrados} dia(s) antigo(s) migrado(s) com gestor padrão da oferta em ${ofertasAfetadas} oferta(s).`);
+    }
+  } catch (err) {
+    console.error('[ROI] Erro na migração de gestor em dias antigos:', err.message);
+  }
+}
+
 // ── SESSÕES ──
 function _getSessions(db) {
   if (!db.sessions) db.sessions = [];
@@ -256,6 +289,8 @@ function initDB() {
 initDB();
 // Migra senhas existentes para bcrypt na inicialização
 _migrarSenhasParaHash();
+// Atribui gestor padrão (1º da oferta) a dias antigos do ROI que não têm o campo
+_migrarGestorEmDiasAntigos();
 // Limpeza de sessões expiradas a cada 1h
 setInterval(() => {
   try { const db = readDB(); const n = _pruneSessoesExpiradas(db); if (n > 0) { writeDB(db); console.log(`[AUTH] ${n} sessões expiradas removidas.`); } } catch {}
