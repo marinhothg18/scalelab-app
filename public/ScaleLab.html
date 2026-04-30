@@ -7031,8 +7031,23 @@ function renderControleTestes(){
 const CONTA_STATUS = ['Zerada','Aquecimento','Rodando','Escalada','Desativada','Standy By','BM Caiu'];
 const CONTA_STATUS_COR = {Zerada:'#FBBF24',Aquecimento:'#F97316',Rodando:'#3B82F6',Escalada:'#22C55E',Desativada:'#EF4444','Standy By':'#9CA3AF','BM Caiu':'#7C3AED'};
 const CONTA_PROCESSO = ['Nao Gastou','Engajamento','CBO','1 Camp 1.50.1','Processo Aquecimento'];
-const CONTA_GESTORES = ['Rafa','Lucca'];
 let _contaFiltroGestor = '';
+
+// Lista dinâmica de gestores: usuários ativos com cargo "Gestor de Tráfego"
+// + gestores legados já presentes nas contas (preserva 'Rafa', 'Lucca' etc.)
+function getContaGestores(){
+  var gtUsers = (g('sl_usuarios', []) || [])
+    .filter(function(u){ return u && u.cargo === 'Gestor de Tráfego' && u.ativo !== false; })
+    .map(function(u){ return u.nome; })
+    .filter(Boolean);
+  var legados = (g('sl_contingencia', []) || [])
+    .map(function(c){ return c && c.gestor; })
+    .filter(Boolean);
+  var seen = {};
+  return gtUsers.concat(legados).filter(function(n){
+    if(seen[n]) return false; seen[n] = true; return true;
+  });
+}
 
 function getContas(){ return g('sl_contingencia',[]); }
 function saveContas(arr){ s('sl_contingencia',arr); syncKey('sl_contingencia'); }
@@ -7050,7 +7065,9 @@ function syncKey(k){
 
 function addConta(){
   const contas = getContas();
-  contas.push({id:Date.now(), status:'Aquecimento', processo:'Nao Gastou', gestor:'Rafa', perfil:'', oferta:'', nome:'', cartao:'', link1:'', link2:''});
+  const gestores = getContaGestores();
+  const gestorPadrao = _contaFiltroGestor || gestores[0] || '';
+  contas.push({id:Date.now(), status:'Aquecimento', processo:'Nao Gastou', gestor:gestorPadrao, perfil:'', oferta:'', nome:'', cartao:'', link1:'', link2:''});
   saveContas(contas);
   renderContingencia();
 }
@@ -7077,10 +7094,11 @@ function renderContingencia(){
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">';
   html += '<div style="font-size:18px;font-weight:700;">🛡️ Controle de Contingência</div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
+  var _gestoresLista = getContaGestores();
   html += '<select id="conta-filtro-gestor" onchange="_contaFiltroGestor=this.value;renderContingencia();" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer;">';
   html += '<option value=""'+((_contaFiltroGestor===''?' selected':'')+'>Todos Gestores</option>');
-  for(var gi=0;gi<CONTA_GESTORES.length;gi++){
-    html += '<option value="'+CONTA_GESTORES[gi]+'"'+(_contaFiltroGestor===CONTA_GESTORES[gi]?' selected':'')+'>'+CONTA_GESTORES[gi]+'</option>';
+  for(var gi=0;gi<_gestoresLista.length;gi++){
+    html += '<option value="'+_gestoresLista[gi]+'"'+(_contaFiltroGestor===_gestoresLista[gi]?' selected':'')+'>'+_gestoresLista[gi]+'</option>';
   }
   html += '</select>';
   html += '<button class="btn btn-primary" style="font-size:12px;" onclick="addConta()">+ Adicionar Conta</button>';
@@ -7141,9 +7159,11 @@ function renderContingencia(){
       html += '</select></td>';
 
       // Gestor select
+      var _gestoresRow = _gestoresLista.slice();
+      if(c.gestor && _gestoresRow.indexOf(c.gestor) === -1) _gestoresRow.push(c.gestor);
       html += '<td style="padding:6px 4px;"><select onchange="updateConta('+c.id+',\'gestor\',this.value)" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:11px;color:var(--text);cursor:pointer;">';
-      for(var gsi=0;gsi<CONTA_GESTORES.length;gsi++){
-        html += '<option value="'+CONTA_GESTORES[gsi]+'"'+(c.gestor===CONTA_GESTORES[gsi]?' selected':'')+'>'+CONTA_GESTORES[gsi]+'</option>';
+      for(var gsi=0;gsi<_gestoresRow.length;gsi++){
+        html += '<option value="'+_gestoresRow[gsi]+'"'+(c.gestor===_gestoresRow[gsi]?' selected':'')+'>'+_gestoresRow[gsi]+'</option>';
       }
       html += '</select></td>';
 
