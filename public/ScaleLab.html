@@ -246,10 +246,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .vturb-header { padding:10px 18px; font-size:12px; font-weight:600; color:var(--text2); border-bottom:1px solid var(--border); background:var(--bg3); }
 
 /* CRIATIVOS */
-.cri-card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; }
-.cri-header { padding:16px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); }
-.cri-title { font-size:16px; font-weight:700; }
-.cri-meta { font-size:13px; color:var(--text2); margin-top:4px; }
+.cri-card { background:var(--bg2); border:1px solid var(--border); border-left:5px solid var(--accent); border-radius:12px; margin-bottom:22px; box-shadow:0 2px 10px rgba(0,0,0,.06); overflow:hidden; }
+.cri-header { padding:18px 22px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.04), transparent); }
+.cri-title { font-size:19px; font-weight:800; letter-spacing:-.2px; }
+.cri-meta { font-size:13px; color:var(--text2); margin-top:6px; }
 .cri-actions { display:flex; gap:8px; }
 .icon-btn { background:none; border:none; color:var(--text2); cursor:pointer; font-size:15px; padding:3px; border-radius:5px; transition:all .15s; }
 .icon-btn:hover { background:var(--bg3); color:var(--text); }
@@ -7608,14 +7608,16 @@ function renderCriV2(){
       var _isDir2 = currentUser&&currentUser.cargo==='Diretoria';
       var PIPELINE = typeof PIPELINE!=='undefined' ? PIPELINE : [];
       var stCores = {'Gravação':'b-orange','Edição':'b-purple','Análise 1':'b-blue','Análise 2':'b-yellow','Subir':'b-green','No Ar':'b-green','Pausado':'b-red'};
+      var stCorHex = {'b-orange':'#F97316','b-purple':'#A855F7','b-blue':'#3B82F6','b-yellow':'#EAB308','b-green':'#22C55E','b-red':'#EF4444'};
       for(var ri=0;ri<mesCri.length;ri++){
         var c = mesCri[ri];
         var totalAds = (c.ads||[]).length;
         var validados = (c.ads||[]).filter(function(a){ return a.adStatus==='Validado'||a.validado; }).length;
+        var _corCard = stCorHex[stCores[c.status]] || '#F97316';
 
-        h += '<div class="cri-card" style="margin-bottom:16px;">';
-        // Header
-        h += '<div class="cri-header"><div>';
+        h += '<div class="cri-card" style="border-left-color:'+_corCard+';">';
+        // Header com leve tint da cor do status
+        h += '<div class="cri-header" style="background:linear-gradient(180deg, '+_corCard+'10, transparent);"><div>';
         h += '<div class="cri-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
         h += c.remessa||'Sem remessa';
         h += ' <span class="badge '+(stCores[c.status]||'b-orange')+'" style="font-size:10px;cursor:pointer;">'+c.status+' ▾</span>';
