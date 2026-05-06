@@ -107,6 +107,61 @@ function _migrarSenhasParaHash() {
   }
 }
 
+// Migra tarefas com status legados (COPY_PENDENTE, EDICAO_PROGRESSO, etc) pro
+// novo modelo: setor + status simples + aprovacao. Idempotente — quem já tem
+// `setor` é pulado.
+function _migrarTasksParaSetorStatus() {
+  try {
+    const db = readDB();
+    const tasks = db.store['tasks'] || [];
+    let migrados = 0;
+    const MAP = {
+      'BACKLOG':          { setor: 'Copy',    status: 'Pendente' },
+      'COPY_PENDENTE':    { setor: 'Copy',    status: 'Pendente' },
+      'COPY_PROGRESSO':   { setor: 'Copy',    status: 'Em Progresso' },
+      'COPY_PARADA':      { setor: 'Copy',    status: 'Em Progresso' },
+      'COPY_REVISAO':     { setor: 'Copy',    status: 'Em Revisão' },
+      'COPY_APROVADA':    { setor: 'Copy',    status: 'Concluída', aprovacao: 'aprovada' },
+      'EDICAO_PENDENTE':  { setor: 'Edição',  status: 'Pendente' },
+      'EDICAO_PROGRESSO': { setor: 'Edição',  status: 'Em Progresso' },
+      'EDICAO_REVISAO':   { setor: 'Edição',  status: 'Em Revisão' },
+      'EDICAO_CONCLUIDA': { setor: 'Edição',  status: 'Concluída', aprovacao: 'aprovada' },
+      'INFRA_PENDENTE':   { setor: 'Infra',   status: 'Pendente' },
+      'INFRA_PROGRESSO':  { setor: 'Infra',   status: 'Em Progresso' },
+      'INFRA_REVISAO':    { setor: 'Infra',   status: 'Em Revisão' },
+      'INFRA':            { setor: 'Infra',   status: 'Concluída', aprovacao: 'aprovada' },
+      'TRAFEGO':          { setor: 'Tráfego', status: 'Pendente' },
+      'SPY':              { setor: 'Spy',     status: 'Pendente' },
+      'CONCLUIDO':        { setor: null,      status: 'Concluída', aprovacao: 'aprovada' },
+      'Pendente':         { setor: 'Copy',    status: 'Pendente' },
+      'Em andamento':     { setor: 'Copy',    status: 'Em Progresso' },
+      'Concluída':        { setor: null,      status: 'Concluída', aprovacao: 'aprovada' },
+    };
+    tasks.forEach(t => {
+      if (!t || t.setor) return; // já migrado
+      const m = MAP[t.status];
+      if (m) {
+        t.setor = m.setor || t.setor || 'Copy';
+        t.status = m.status;
+        if (m.aprovacao) t.aprovacao = m.aprovacao;
+      } else {
+        // Status desconhecido — default Copy/Pendente
+        t.setor = 'Copy';
+        t.status = 'Pendente';
+      }
+      migrados++;
+    });
+    if (migrados > 0) {
+      db.store['tasks'] = tasks;
+      db.timestamps['tasks'] = now();
+      writeDB(db);
+      console.log(`[TASKS] ${migrados} tarefa(s) migrada(s) para setor+status novo.`);
+    }
+  } catch (err) {
+    console.error('[TASKS] Erro na migração de setor+status:', err.message);
+  }
+}
+
 // Atribui gestor (1º da lista `o.gestores`) aos dias do ROI que ainda não têm
 // o campo. Idempotente: rodadas seguintes não fazem nada. Ofertas sem gestor
 // vinculado são puladas — o usuário precisa setar manualmente.
@@ -298,6 +353,8 @@ initDB();
 _migrarSenhasParaHash();
 // Atribui gestor padrão (1º da oferta) a dias antigos do ROI que não têm o campo
 _migrarGestorEmDiasAntigos();
+// Migra tarefas com status legados (COPY_PENDENTE etc) pro novo modelo setor+status
+_migrarTasksParaSetorStatus();
 // Limpeza de sessões expiradas a cada 1h
 setInterval(() => {
   try { const db = readDB(); const n = _pruneSessoesExpiradas(db); if (n > 0) { writeDB(db); console.log(`[AUTH] ${n} sessões expiradas removidas.`); } } catch {}

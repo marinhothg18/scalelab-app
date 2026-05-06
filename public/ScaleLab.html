@@ -1061,18 +1061,11 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <div style="display:flex;height:calc(100vh - 56px);">
 
         <!-- Sidebar esquerda de Demandas -->
-        <div style="width:210px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:var(--bg2);">
-          <!-- Filtro por Status (gerado via JS por cargo) -->
+        <div style="width:230px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:var(--bg2);">
+          <!-- Filtro por Setor -->
           <div style="padding:16px 12px 8px;flex:1;overflow-y:auto;">
-            <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Filtrar por Status</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Filtrar por Setor</div>
             <div id="task-status-filters" style="display:flex;flex-direction:column;gap:2px;"></div>
-            <!-- Arquivados abaixo dos status -->
-            <div id="arquivados-section" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
-              <div class="nav-item task-view" id="btn-arquivados" onclick="setTaskView('arquivados',this)">
-                <svg style="width:15px;height:15px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-                Arquivados
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1085,16 +1078,20 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
               <div style="font-size:12px;color:var(--text2);" id="task-count">0 demandas</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <!-- Filtro Nicho -->
-              <select id="task-nicho-filter" onchange="onNichoFilterChange()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
+              <!-- Filtro Responsável (NOVO) -->
+              <select id="task-resp-filter" onchange="taskRespFilter=this.value;renderTasks()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
+                <option value="">Todos os responsáveis</option>
+              </select>
+              <!-- Filtro Nicho (oculto, mantido pra compat com onNichoFilterChange) -->
+              <select id="task-nicho-filter" onchange="onNichoFilterChange()" style="display:none;">
                 <option value="">Todos os nichos</option>
               </select>
-              <!-- Botão Lixeira -->
-              <button id="btn-lixeira-tasks" onclick="abrirLixeiraTask()" title="Ver lixeira" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:15px;color:var(--text);outline:none;cursor:pointer;display:flex;align-items:center;gap:4px;">🗑️</button>
-              <!-- Filtro Oferta cascata -->
+              <!-- Filtro Oferta -->
               <select id="task-oferta-filter" onchange="renderTasks()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
                 <option value="">Todas as ofertas</option>
               </select>
+              <!-- Botão Lixeira -->
+              <button id="btn-lixeira-tasks" onclick="abrirLixeiraTask()" title="Ver lixeira" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:15px;color:var(--text);outline:none;cursor:pointer;display:flex;align-items:center;gap:4px;">🗑️</button>
               <!-- Filtro Data -->
               <div style="position:relative;">
                 <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--text2);pointer-events:none;" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1111,6 +1108,13 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
                 Nova Demanda
               </button>
             </div>
+          </div>
+          <!-- Chips de status (filtro dentro do setor) -->
+          <div id="task-status-chips" style="padding:10px 20px;border-bottom:1px solid var(--border);display:none;flex-wrap:wrap;gap:6px;align-items:center;background:var(--bg3);"></div>
+          <!-- Quick filters: atrasadas, minhas -->
+          <div style="padding:10px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button onclick="toggleTaskAtrasadas()" id="btn-task-atrasadas" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;">🔥 Atrasadas</button>
+            <button onclick="toggleTaskMinhas()" id="btn-task-minhas" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:5px;">👤 Minhas</button>
           </div>
           <!-- Lista -->
           <div id="task-list" style="flex:1;overflow-y:auto;padding:8px 0;"></div>
@@ -10460,6 +10464,321 @@ const STATUS_PIPELINE = {
 
 function getStatusInfo(st){ return STATUS_PIPELINE[st] || {label:st, color:'#6b7280'}; }
 
+// ══════════════════════════════════════════════
+// ── DEMANDAS V2: SETOR + STATUS + APROVAÇÃO ──
+// ══════════════════════════════════════════════
+const SETORES = ['Copy', 'Edição', 'Infra', 'Tráfego', 'Gráfico', 'Spy'];
+const SETOR_COR = {
+  'Copy':    '#3B82F6',
+  'Edição':  '#A855F7',
+  'Infra':   '#EAB308',
+  'Tráfego': '#22C55E',
+  'Gráfico': '#A16207',
+  'Spy':     '#EF4444'
+};
+const STATUS_NOVO_LIST = ['Pendente', 'Em Progresso', 'Em Revisão', 'Concluída'];
+const STATUS_NOVO_INFO = {
+  'Pendente':       { icon: '⏳', color: '#475569', bg: '#f1f5f9' },
+  'Em Progresso':   { icon: '▶️', color: '#1d4ed8', bg: '#dbeafe' },
+  'Em Revisão':     { icon: '👀', color: '#b45309', bg: '#fef3c7' },
+  'Concluída':      { icon: '✅', color: '#047857', bg: '#d1fae5' }
+};
+// Cargo do usuário ↔ setor que ele pertence
+const CARGO_SETOR = {
+  'Copy':              'Copy',
+  'Editor':            'Edição',
+  'Infra':             'Infra',
+  'Gestor de Tráfego': 'Tráfego',
+  'Spy':               'Spy'
+};
+
+let taskSetorFilter = '';      // 'Copy' | 'Edição' | ... | 'aguardando' | 'aprovadas' | 'arquivadas' | ''
+let taskStatusChip = '';       // 'Pendente' | 'Em Progresso' | 'Em Revisão' | 'Aguard. Aprovação' | ''
+let taskRespFilter = '';       // userId
+let taskMinhasFilter = false;  // só minhas
+let taskAtrasadasFilter = false;
+
+// Mapeia status legados (não-migrados localmente) pra novo formato
+const _STATUS_LEGADO_MAP = {
+  'BACKLOG':{setor:'Copy',status:'Pendente'},
+  'COPY_PENDENTE':{setor:'Copy',status:'Pendente'},
+  'COPY_PROGRESSO':{setor:'Copy',status:'Em Progresso'},
+  'COPY_PARADA':{setor:'Copy',status:'Em Progresso'},
+  'COPY_REVISAO':{setor:'Copy',status:'Em Revisão'},
+  'COPY_APROVADA':{setor:'Copy',status:'Concluída',aprovacao:'aprovada'},
+  'EDICAO_PENDENTE':{setor:'Edição',status:'Pendente'},
+  'EDICAO_PROGRESSO':{setor:'Edição',status:'Em Progresso'},
+  'EDICAO_REVISAO':{setor:'Edição',status:'Em Revisão'},
+  'EDICAO_CONCLUIDA':{setor:'Edição',status:'Concluída',aprovacao:'aprovada'},
+  'INFRA_PENDENTE':{setor:'Infra',status:'Pendente'},
+  'INFRA_PROGRESSO':{setor:'Infra',status:'Em Progresso'},
+  'INFRA_REVISAO':{setor:'Infra',status:'Em Revisão'},
+  'INFRA':{setor:'Infra',status:'Concluída',aprovacao:'aprovada'},
+  'TRAFEGO':{setor:'Tráfego',status:'Pendente'},
+  'SPY':{setor:'Spy',status:'Pendente'},
+  'CONCLUIDO':{setor:null,status:'Concluída',aprovacao:'aprovada'},
+  'Pendente':{setor:'Copy',status:'Pendente'},
+  'Em andamento':{setor:'Copy',status:'Em Progresso'},
+  'Concluída':{setor:null,status:'Concluída',aprovacao:'aprovada'}
+};
+// Lê o "setor efetivo" mesmo de tasks ainda com status antigo (fallback durante sync)
+function _taskSetor(t){
+  if(t.setor) return t.setor;
+  var m = _STATUS_LEGADO_MAP[t.status];
+  return m && m.setor ? m.setor : 'Copy';
+}
+function _taskStatus(t){
+  if(t.setor) return t.status; // já migrada
+  var m = _STATUS_LEGADO_MAP[t.status];
+  return m ? m.status : (t.status || 'Pendente');
+}
+function _taskAprovacao(t){
+  if(t.aprovacao) return t.aprovacao;
+  var m = _STATUS_LEGADO_MAP[t.status];
+  return m && m.aprovacao ? m.aprovacao : '';
+}
+
+// Cor + texto de urgência da data de entrega
+function _urgenciaData(dataIso){
+  if(!dataIso) return { texto:'—', cor:'var(--text2)', icon:'' };
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var d = new Date(dataIso + 'T12:00:00');
+  var diff = Math.floor((d - hoje) / 86400000);
+  if(diff < 0) return { texto:'Atrasada · '+Math.abs(diff)+'d', cor:'#dc2626', icon:'🔴' };
+  if(diff === 0) return { texto:'Hoje', cor:'#c2410c', icon:'🟠' };
+  if(diff === 1) return { texto:'Amanhã', cor:'#b45309', icon:'🟡' };
+  if(diff <= 3) return { texto:'Em '+diff+' dias', cor:'#0284c7', icon:'🔵' };
+  return { texto:'Em '+diff+' dias', cor:'var(--text2)', icon:'⚪' };
+}
+
+// Próximo status na pipeline
+function _proximoStatus(s){
+  if(s === 'Pendente') return 'Em Progresso';
+  if(s === 'Em Progresso') return 'Em Revisão';
+  if(s === 'Em Revisão') return 'Concluída';
+  return null;
+}
+function _labelBotaoAvancar(s){
+  if(s === 'Pendente') return '▶️ Iniciar';
+  if(s === 'Em Progresso') return '👀 Revisar';
+  if(s === 'Em Revisão') return '✅ Concluir';
+  return '';
+}
+
+// Avança o status de uma demanda (Iniciar / Revisar / Concluir)
+function taskAvancarStatus(id){
+  var t = tasks.find(function(x){ return x.id === id; });
+  if(!t) return;
+  var atual = _taskStatus(t);
+  var prox = _proximoStatus(atual);
+  if(!prox) return;
+  t.status = prox;
+  if(!t.setor) t.setor = _taskSetor(t);
+  // Se foi pra Concluída, marca aprovacao=pendente (Diretoria precisa aprovar)
+  if(prox === 'Concluída'){
+    var ehDir = currentUser && currentUser.cargo === 'Diretoria';
+    t.aprovacao = ehDir ? 'aprovada' : 'pendente';
+    if(ehDir){
+      t.aprovadoPor = currentUser.id;
+      t.aprovadoEm = Date.now();
+    }
+    // Cria notif pra Diretoria se for colaborador concluindo
+    if(!ehDir) _criarNotifAprovacao(t);
+  }
+  s('tasks', tasks);
+  renderTasks();
+  notif(prox === 'Concluída'
+    ? (currentUser && currentUser.cargo === 'Diretoria' ? '✅ Demanda aprovada!' : '✅ Concluída! Aguardando aprovação da Diretoria.')
+    : '✅ Status atualizado pra '+prox);
+}
+
+function _criarNotifAprovacao(t){
+  try {
+    var notifs = g('sl_notifs', []);
+    var dirs = (g('sl_usuarios', []) || []).filter(function(u){ return u && u.cargo === 'Diretoria' && u.ativo !== false; });
+    dirs.forEach(function(u){
+      notifs.unshift({
+        id: Date.now() + '-aprov-' + Math.random().toString(36).slice(2,6),
+        destId: u.id,
+        destNome: u.nome,
+        tipo: 'aprovacao_demanda',
+        titulo: '⚠️ Demanda aguardando aprovação',
+        texto: '"'+(t.nome||'Sem título')+'" — '+(currentUser?currentUser.nome:'usuário')+' marcou como concluída',
+        refId: t.id,
+        lida: false,
+        criado: Date.now()
+      });
+    });
+    s('sl_notifs', notifs);
+  } catch(e){}
+}
+
+function taskAprovar(id){
+  if(!currentUser || currentUser.cargo !== 'Diretoria'){ notif('Só Diretoria aprova.'); return; }
+  var t = tasks.find(function(x){ return x.id === id; });
+  if(!t) return;
+  t.aprovacao = 'aprovada';
+  t.aprovadoPor = currentUser.id;
+  t.aprovadoEm = Date.now();
+  s('tasks', tasks);
+  renderTasks();
+  notif('✅ Demanda aprovada!');
+}
+
+function taskReprovar(id){
+  if(!currentUser || currentUser.cargo !== 'Diretoria'){ notif('Só Diretoria reprova.'); return; }
+  var t = tasks.find(function(x){ return x.id === id; });
+  if(!t) return;
+  // Modal simples
+  var existing = document.getElementById('modal-reprovar-task');
+  if(existing) existing.remove();
+  var html = '<div class="modal-overlay open" id="modal-reprovar-task" onclick="if(event.target===this)document.getElementById(\'modal-reprovar-task\').remove()">' +
+    '<div class="modal" style="max-width:520px;">' +
+      '<div class="modal-header"><div class="modal-title">❌ Reprovar demanda</div>' +
+      '<button class="modal-close" onclick="document.getElementById(\'modal-reprovar-task\').remove()">✕</button></div>' +
+      '<div style="margin-bottom:12px;font-size:14px;font-weight:700;">📋 '+(t.nome||'Sem título').replace(/</g,'&lt;')+'</div>' +
+      '<label class="fl">Motivo da reprovação <span style="color:var(--red);">*</span></label>' +
+      '<textarea id="reprovar-motivo" class="ft" style="min-height:90px;width:100%;" placeholder="Descreva o que precisa ser ajustado..."></textarea>' +
+      '<div style="background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;margin-top:14px;">⚠️ A demanda volta pra "Em Progresso" e o responsável recebe notificação com seu motivo.</div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">' +
+        '<button class="btn btn-ghost" onclick="document.getElementById(\'modal-reprovar-task\').remove()">Cancelar</button>' +
+        '<button class="btn btn-primary" style="background:var(--red);" onclick="taskConfirmarReprovacao('+id+')">❌ Reprovar</button>' +
+      '</div>' +
+    '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(function(){ var m = document.getElementById('reprovar-motivo'); if(m) m.focus(); }, 50);
+}
+
+function taskConfirmarReprovacao(id){
+  var motivo = (document.getElementById('reprovar-motivo')||{}).value || '';
+  motivo = motivo.trim();
+  if(!motivo){ notif('Motivo é obrigatório.'); return; }
+  var t = tasks.find(function(x){ return x.id === id; });
+  if(!t) return;
+  t.aprovacao = 'reprovada';
+  t.motivoReprovacao = motivo;
+  t.reprovadoPor = currentUser.id;
+  t.reprovadoEm = Date.now();
+  t.status = 'Em Progresso'; // volta pra em progresso
+  s('tasks', tasks);
+  // Notif pro responsável
+  try {
+    var notifs = g('sl_notifs', []);
+    var respIds = Array.isArray(t.respIds) && t.respIds.length ? t.respIds : (t.respId ? [t.respId] : []);
+    respIds.forEach(function(rid){
+      notifs.unshift({
+        id: Date.now() + '-reprov-' + Math.random().toString(36).slice(2,6),
+        destId: rid,
+        tipo: 'reprovacao_demanda',
+        titulo: '❌ Demanda reprovada',
+        texto: '"'+(t.nome||'Sem título')+'" foi reprovada por '+currentUser.nome+'. Motivo: '+motivo,
+        refId: t.id,
+        lida: false,
+        criado: Date.now()
+      });
+    });
+    s('sl_notifs', notifs);
+  } catch(e){}
+  document.getElementById('modal-reprovar-task').remove();
+  renderTasks();
+  notif('Demanda reprovada e responsável notificado.');
+}
+
+// Filtros do sidebar (setor)
+function setSetorFilter(setor, el){
+  taskSetorFilter = setor;
+  taskStatusChip = ''; // reset chip ao trocar setor
+  document.querySelectorAll('.task-setor').forEach(function(x){ x.classList.remove('active-sf'); });
+  if(el) el.classList.add('active-sf');
+  renderTasks();
+}
+
+function setStatusChip(s){
+  taskStatusChip = s;
+  renderTasks();
+}
+
+function toggleTaskMinhas(){
+  taskMinhasFilter = !taskMinhasFilter;
+  var btn = document.getElementById('btn-task-minhas');
+  if(btn){
+    btn.style.background = taskMinhasFilter ? 'var(--accent)' : 'var(--bg3)';
+    btn.style.color = taskMinhasFilter ? '#fff' : 'var(--text)';
+  }
+  renderTasks();
+}
+
+function toggleTaskAtrasadas(){
+  taskAtrasadasFilter = !taskAtrasadasFilter;
+  var btn = document.getElementById('btn-task-atrasadas');
+  if(btn){
+    btn.style.background = taskAtrasadasFilter ? '#fef2f2' : 'var(--bg3)';
+    btn.style.color = taskAtrasadasFilter ? '#dc2626' : 'var(--text)';
+    btn.style.borderColor = taskAtrasadasFilter ? '#fecaca' : 'var(--border)';
+  }
+  renderTasks();
+}
+
+// Renderiza a sidebar de setores (substitui renderStatusFilters)
+function renderSetoresFilters(){
+  var el = document.getElementById('task-status-filters');
+  if(!el) return;
+  var perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false};
+  var meusTasks = tasks.filter(function(t){ return t && !t.arquivado; });
+  if(currentUser && !perms.isDiretoria){
+    meusTasks = meusTasks.filter(function(t){
+      return (Array.isArray(t.respIds) && t.respIds.indexOf(currentUser.id) >= 0) ||
+             (t.respId && t.respId === currentUser.id) ||
+             (!t.respId && t.resp === currentUser.nome);
+    });
+  }
+  // Conta por setor (apenas ativas — não aprovadas)
+  function ehAtiva(t){ return _taskAprovacao(t) !== 'aprovada'; }
+  var counts = {};
+  SETORES.forEach(function(s){ counts[s] = 0; });
+  meusTasks.forEach(function(t){ if(ehAtiva(t)){ var s = _taskSetor(t); if(counts[s] !== undefined) counts[s]++; } });
+  var aguardCount = meusTasks.filter(function(t){ return _taskAprovacao(t) === 'pendente'; }).length;
+  var aprovadasCount = meusTasks.filter(function(t){ return _taskAprovacao(t) === 'aprovada'; }).length;
+  var arquivadasCount = tasks.filter(function(t){ return t && t.arquivado; }).length;
+
+  // Sugere setor pré-selecionado pro cargo do usuário
+  var setorDefault = currentUser && CARGO_SETOR[currentUser.cargo] ? CARGO_SETOR[currentUser.cargo] : '';
+  if(taskSetorFilter === '' && setorDefault && !perms.isDiretoria){
+    taskSetorFilter = setorDefault;
+  }
+
+  var html = '';
+  SETORES.forEach(function(s){
+    var ativo = taskSetorFilter === s ? ' active-sf' : '';
+    html += '<div class="nav-item task-setor'+ativo+'" onclick="setSetorFilter(\''+s+'\',this)" style="font-size:12px;justify-content:space-between;">' +
+      '<div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:'+SETOR_COR[s]+';flex-shrink:0;display:inline-block;"></span> '+s+'</div>' +
+      '<span style="font-size:11px;color:var(--text2);font-weight:600;">'+counts[s]+'</span>' +
+    '</div>';
+  });
+  html += '<div style="height:1px;background:var(--border);margin:10px 4px;"></div>';
+  // Aguardando aprovação — só Diretoria vê com destaque
+  if(perms.isDiretoria){
+    var ativoA = taskSetorFilter === 'aguardando' ? ' active-sf' : '';
+    html += '<div class="nav-item task-setor'+ativoA+'" onclick="setSetorFilter(\'aguardando\',this)" style="font-size:12px;background:'+(taskSetorFilter==='aguardando'?'rgba(245,158,11,.20)':(aguardCount>0?'rgba(245,158,11,.10)':'transparent'))+';color:'+(aguardCount>0?'#fbbf24':'var(--text2)')+';justify-content:space-between;">' +
+      '<div>⚠️ Aguard. Aprovação</div>' +
+      '<span style="font-size:11px;font-weight:700;">'+aguardCount+'</span>' +
+    '</div>';
+  }
+  var ativoB = taskSetorFilter === 'aprovadas' ? ' active-sf' : '';
+  html += '<div class="nav-item task-setor'+ativoB+'" onclick="setSetorFilter(\'aprovadas\',this)" style="font-size:12px;justify-content:space-between;">' +
+    '<div>✅ Aprovadas</div>' +
+    '<span style="font-size:11px;color:var(--text2);font-weight:600;">'+aprovadasCount+'</span>' +
+  '</div>';
+  if(perms.isDiretoria){
+    var ativoC = taskSetorFilter === 'arquivadas' ? ' active-sf' : '';
+    html += '<div class="nav-item task-setor'+ativoC+'" onclick="setSetorFilter(\'arquivadas\',this)" style="font-size:12px;justify-content:space-between;">' +
+      '<div>🗄️ Arquivadas</div>' +
+      '<span style="font-size:11px;color:var(--text2);font-weight:600;">'+arquivadasCount+'</span>' +
+    '</div>';
+  }
+  el.innerHTML = html;
+}
+
 function setTaskView(v, el){
   taskView=v;
   document.querySelectorAll('.task-view').forEach(x=>x.classList.remove('active-view'));
@@ -12025,53 +12344,95 @@ function salvarTask(){
 
 function renderTasks(){
   tasks = g('tasks', []); // Always sync from localStorage
-  renderStatusFilters();
+  renderSetoresFilters();
   populateTaskFilters();
+  populateTaskRespFilter();
   if(document.getElementById('t-proj-opt')) document.getElementById('t-proj-opt').textContent=cfg.projeto||'Meu Projeto';
 
+  const perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false};
   const today=new Date().toISOString().split('T')[0];
-  let filtered=tasks.filter(t=>!t.arquivado);
-
-  // Permission filtering
-  if(currentUser && currentUser.cargo !== 'Diretoria'){
-    // Match by ID (new tasks), por respIds (multi), or por nome (legacy)
-    filtered = filtered.filter(t=>
+  let base = tasks.filter(t => t && !t.arquivado);
+  // Permission: não-Diretoria vê só suas
+  if(currentUser && !perms.isDiretoria){
+    base = base.filter(t =>
       (Array.isArray(t.respIds) && t.respIds.indexOf(currentUser.id) >= 0) ||
       (t.respId && t.respId === currentUser.id) ||
       (!t.respId && t.resp === currentUser.nome)
     );
   } else if(!currentUser){
-    filtered = [];
+    base = [];
   }
 
-  if(taskView==='arquivados') filtered=tasks.filter(t=>t.arquivado);
+  // Resolução do "modo" baseado em taskSetorFilter
+  let filtered;
+  if(taskSetorFilter === 'arquivadas'){
+    filtered = tasks.filter(t => t && t.arquivado);
+    if(currentUser && !perms.isDiretoria) filtered = filtered.filter(t =>
+      (Array.isArray(t.respIds) && t.respIds.indexOf(currentUser.id) >= 0) ||
+      (t.respId && t.respId === currentUser.id) ||
+      (!t.respId && t.resp === currentUser.nome)
+    );
+  } else if(taskSetorFilter === 'aprovadas'){
+    filtered = base.filter(t => _taskAprovacao(t) === 'aprovada');
+  } else if(taskSetorFilter === 'aguardando'){
+    filtered = base.filter(t => _taskAprovacao(t) === 'pendente');
+  } else if(taskSetorFilter && SETORES.indexOf(taskSetorFilter) >= 0){
+    // Setor selecionado — esconde aprovadas (vão pra tab Aprovadas)
+    filtered = base.filter(t => _taskSetor(t) === taskSetorFilter && _taskAprovacao(t) !== 'aprovada');
+  } else {
+    // "Todos" — esconde aprovadas
+    filtered = base.filter(t => _taskAprovacao(t) !== 'aprovada');
+  }
 
-  // filtro por status
-  if(taskStatusFilter){
-    const sfLabel = STATUS_PIPELINE[taskStatusFilter]?.label;
-    filtered=filtered.filter(t=>
-      t.status===taskStatusFilter ||
-      (sfLabel && (t.status===sfLabel || STATUS_PIPELINE[t.status]?.label===sfLabel))
+  // Chip de status no header (só relevante quando setor selecionado, não em "aprovadas/arquivadas")
+  if(taskStatusChip && SETORES.indexOf(taskSetorFilter) >= 0){
+    if(taskStatusChip === 'Aguard. Aprovação'){
+      filtered = filtered.filter(t => _taskAprovacao(t) === 'pendente');
+    } else {
+      filtered = filtered.filter(t => _taskStatus(t) === taskStatusChip && _taskAprovacao(t) !== 'pendente');
+    }
+  }
+
+  // Filtros do header
+  if(taskMinhasFilter && currentUser){
+    filtered = filtered.filter(t =>
+      (Array.isArray(t.respIds) && t.respIds.indexOf(currentUser.id) >= 0) ||
+      (t.respId && t.respId === currentUser.id)
     );
   }
-
-  // filtro por nicho
-  const nichoFiltro=(document.getElementById('task-nicho-filter')||{}).value||'';
-  if(nichoFiltro) filtered=filtered.filter(t=>t.nichoId===nichoFiltro);
-
-  // filtro por oferta
+  if(taskAtrasadasFilter){
+    filtered = filtered.filter(t => t.data && t.data < today && _taskStatus(t) !== 'Concluída');
+  }
+  // Filtro responsável (dropdown)
+  if(taskRespFilter){
+    filtered = filtered.filter(t =>
+      (Array.isArray(t.respIds) && t.respIds.indexOf(taskRespFilter) >= 0) ||
+      t.respId === taskRespFilter
+    );
+  }
+  // Filtros legados (oferta + data + busca) continuam funcionando
   const ofertaFiltro=(document.getElementById('task-oferta-filter')||{}).value||'';
   if(ofertaFiltro) filtered=filtered.filter(t=>t.ofertaId===ofertaFiltro);
-
-  // filtro por data
   const dataFiltro=(document.getElementById('task-date-filter')||{}).value||'';
   if(dataFiltro) filtered=filtered.filter(t=>t.data===dataFiltro||t.inicio===dataFiltro);
-
-  // filtro por busca
   const search=(document.getElementById('task-search')||{}).value||'';
   if(search) filtered=filtered.filter(t=>(t.nome||'').toLowerCase().includes(search.toLowerCase())||(t.desc||'').toLowerCase().includes(search.toLowerCase()));
 
+  // Ordena: ativas primeiro (por urgência da data), aprovadas/arquivadas por data desc
+  filtered.sort(function(a,b){
+    var aprA = _taskAprovacao(a), aprB = _taskAprovacao(b);
+    if(aprA !== aprB){
+      // aguardando antes, ativas, depois aprovadas
+      var ordem = { 'pendente':0, '':1, 'reprovada':1, 'aprovada':2 };
+      return (ordem[aprA]||1) - (ordem[aprB]||1);
+    }
+    // Por data
+    return (a.data || '9999') < (b.data || '9999') ? -1 : 1;
+  });
+
+  // Atualiza contadores no header
   document.getElementById('task-count').textContent=filtered.length+' demanda'+(filtered.length!==1?'s':'');
+  renderStatusChips(base);
 
   const novaDemandaBtn = document.getElementById('btn-nova-demanda');
   if(novaDemandaBtn) novaDemandaBtn.style.display = (currentUser && currentUser.cargo==='Diretoria') ? '' : 'none';
@@ -12082,13 +12443,9 @@ function renderTasks(){
     return;
   }
 
-  const perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false, allowedStatuses:[]};
-  const allowedKeys = perms.isDiretoria ? Object.keys(STATUS_PIPELINE).filter(k=>!['Pendente','Em andamento','Concluída'].includes(k)) : perms.allowedStatuses;
-  const statusOpts = Object.entries(STATUS_PIPELINE).filter(([k])=>allowedKeys.includes(k));
-
   // ── HEADER DA TABELA ──
   const headerHtml = `
-  <div style="display:grid;grid-template-columns:2fr 140px 130px 100px 150px 90px;gap:0;padding:8px 16px;border-bottom:2px solid var(--border);background:var(--bg3);">
+  <div style="display:grid;grid-template-columns:2fr 140px 140px 130px 220px 90px;gap:0;padding:8px 16px;border-bottom:2px solid var(--border);background:var(--bg3);">
     <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;">Nome</div>
     <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;">Nicho / Oferta</div>
     <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;">Responsável</div>
@@ -12098,9 +12455,15 @@ function renderTasks(){
   </div>`;
 
   const rowsHtml = filtered.map(t=>{
-    const si = getStatusInfo(t.status);
-    const isVencido = t.data && t.data < today;
+    const setor = _taskSetor(t);
+    const stat = _taskStatus(t);
+    const apr = _taskAprovacao(t);
+    const stInfo = STATUS_NOVO_INFO[stat] || STATUS_NOVO_INFO['Pendente'];
+    const urg = _urgenciaData(t.data);
     const avatar = (t.resp||'U')[0].toUpperCase();
+    const ehAprovada = apr === 'aprovada';
+    const ehAguardando = apr === 'pendente';
+
     let clHtml='';
     if(t.checklist && t.checklist.itens && t.checklist.itens.length){
       const total=t.checklist.itens.length;
@@ -12122,12 +12485,33 @@ function renderTasks(){
         </div>
       </div>`;
     }
+
+    // Status badge + botão de ação
+    let statusBadgeHtml = '';
+    let actionBtnHtml = '';
+    if(ehAprovada){
+      statusBadgeHtml = '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:'+SETOR_COR[setor]+'22;color:'+SETOR_COR[setor]+';">'+setor+'</span> <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:#d1fae5;color:#047857;margin-left:4px;">✅ Aprovada</span>';
+    } else if(ehAguardando){
+      statusBadgeHtml = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:#fce7f3;color:#be185d;">⏸️ Aguard. Aprov.</span>';
+      if(perms.isDiretoria){
+        actionBtnHtml = '<button onclick="event.stopPropagation();taskAprovar('+t.id+')" style="background:#d1fae5;color:#047857;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11px;font-weight:600;margin-left:4px;">✅ Aprovar</button> <button onclick="event.stopPropagation();taskReprovar('+t.id+')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11px;font-weight:600;margin-left:2px;">❌</button>';
+      }
+    } else {
+      statusBadgeHtml = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:'+stInfo.bg+';color:'+stInfo.color+';">'+stInfo.icon+' '+stat+'</span>';
+      const labelAvancar = _labelBotaoAvancar(stat);
+      if(labelAvancar){
+        actionBtnHtml = '<button onclick="event.stopPropagation();taskAvancarStatus('+t.id+')" style="background:'+stInfo.bg+';color:'+stInfo.color+';border:1px solid '+stInfo.color+'33;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11px;font-weight:600;margin-left:4px;">'+labelAvancar+'</button>';
+      }
+    }
+
     return `
-  <div style="display:grid;grid-template-columns:2fr 140px 130px 100px 150px 90px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s;align-items:center;cursor:pointer;" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''" onclick="editTask(${t.id})">
+  <div style="display:grid;grid-template-columns:2fr 140px 140px 130px 220px 90px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s;align-items:center;cursor:pointer;${ehAprovada?'opacity:.6;':''}" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''" onclick="editTask(${t.id})">
 
     <!-- Nome -->
     <div style="min-width:0;">
-      <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.nome}</div>
+      <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${ehAprovada?'text-decoration:line-through;':''}">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${SETOR_COR[setor]};margin-right:6px;vertical-align:middle;"></span>${t.nome}
+      </div>
       ${clHtml}
     </div>
 
@@ -12138,21 +12522,21 @@ function renderTasks(){
     </div>
 
     <!-- Responsável -->
-    <div style="display:flex;align-items:center;gap:6px;">
+    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
       ${(typeof userAvatarByName==='function') ? userAvatarByName(t.resp, { size:24, fontSize:10 }) : `<div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;color:#fff;flex-shrink:0;">${avatar}</div>`}
       <span style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.resp||'—'}</span>
     </div>
 
-    <!-- Data -->
-    <div style="font-size:11px;color:${isVencido?'var(--red)':'var(--text2)'};white-space:nowrap;">
-      ${t.data?fmtDate(t.data):'—'}
+    <!-- Entrega (data com cor de urgência) -->
+    <div style="font-size:11.5px;font-weight:700;color:${urg.cor};white-space:nowrap;">
+      ${urg.icon} ${urg.texto}
+      ${t.data?'<div style="font-size:10px;color:var(--text2);font-weight:500;margin-top:2px;">'+fmtDate(t.data)+'</div>':''}
     </div>
 
-    <!-- Status badge clicável -->
-    <div onclick="event.stopPropagation();abrirMenuStatusTask(event,${t.id})" style="cursor:pointer;">
-      <span style="display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:${STATUS_PIPELINE[t.status]?.color||'#64748b'};color:${STATUS_PIPELINE[t.status]?.tc||'#fff'};white-space:nowrap;max-width:138px;overflow:hidden;text-overflow:ellipsis;">
-        ${STATUS_PIPELINE[t.status]?.label||t.status||'—'} ▾
-      </span>
+    <!-- Status + ação inline -->
+    <div onclick="event.stopPropagation()" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
+      ${statusBadgeHtml}
+      ${actionBtnHtml}
     </div>
 
     <!-- Ações -->
@@ -12166,6 +12550,45 @@ function renderTasks(){
   }).join('');
 
   el.innerHTML = headerHtml + rowsHtml;
+}
+
+// Renderiza chips de status no header (filtra dentro do setor selecionado)
+function renderStatusChips(baseTasks){
+  var el = document.getElementById('task-status-chips');
+  if(!el) return;
+  var setorAtivo = SETORES.indexOf(taskSetorFilter) >= 0;
+  if(!setorAtivo){ el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  // Conta por status dentro do setor
+  var doSetor = baseTasks.filter(function(t){ return _taskSetor(t) === taskSetorFilter && _taskAprovacao(t) !== 'aprovada'; });
+  var counts = { 'Pendente':0, 'Em Progresso':0, 'Em Revisão':0, 'Aguard. Aprovação':0 };
+  var total = doSetor.length;
+  doSetor.forEach(function(t){
+    if(_taskAprovacao(t) === 'pendente') counts['Aguard. Aprovação']++;
+    else { var s = _taskStatus(t); if(counts[s] !== undefined) counts[s]++; }
+  });
+  var chips = [{ id:'', label:'Todas', icon:'', cnt: total }];
+  Object.keys(counts).forEach(function(s){
+    var info = s === 'Aguard. Aprovação' ? { icon: '✅' } : (STATUS_NOVO_INFO[s] || {});
+    chips.push({ id: s, label: s, icon: info.icon || '', cnt: counts[s] });
+  });
+  el.innerHTML = chips.map(function(c){
+    var ativo = (taskStatusChip || '') === c.id;
+    return '<button class="task-chip'+(ativo?' active':'')+'" onclick="setStatusChip(\''+c.id+'\')" style="padding:6px 12px;border-radius:18px;background:'+(ativo?'var(--accent)':'var(--bg2)')+';border:1px solid '+(ativo?'var(--accent)':'var(--border)')+';color:'+(ativo?'#fff':'var(--text)')+';font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+      (c.icon?c.icon+' ':'')+c.label+
+      ' <span style="background:'+(ativo?'rgba(255,255,255,.25)':'rgba(0,0,0,.08)')+';padding:1px 7px;border-radius:10px;font-size:10.5px;font-weight:700;">'+c.cnt+'</span></button>';
+  }).join('');
+}
+
+// Popula dropdown de responsável (filtro)
+function populateTaskRespFilter(){
+  var sel = document.getElementById('task-resp-filter');
+  if(!sel) return;
+  var users = (g('sl_usuarios', []) || []).filter(function(u){ return u && u.ativo !== false; });
+  var prev = taskRespFilter || sel.value || '';
+  var html = '<option value="">Todos os responsáveis</option>';
+  users.forEach(function(u){ html += '<option value="'+u.id+'"'+(prev===u.id?' selected':'')+'>'+u.nome+'</option>'; });
+  sel.innerHTML = html;
 }
 
 function toggleChecklistInCard(taskId, btn){
