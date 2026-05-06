@@ -1146,6 +1146,13 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           </div>
           <!-- Lista -->
           <div id="task-list" style="flex:1;overflow-y:auto;padding:8px 0;"></div>
+          <!-- Barra flutuante de aprovação em lote (aparece quando Diretoria seleciona checkboxes) -->
+          <div id="task-bulk-bar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0F172A;border:1px solid var(--border);border-radius:14px;padding:10px 14px;box-shadow:0 14px 40px rgba(0,0,0,.4);z-index:500;align-items:center;gap:12px;">
+            <span style="color:#fff;font-size:13px;font-weight:700;"><span id="task-bulk-count">0</span> selecionada(s)</span>
+            <button onclick="taskBulkSelectAll()" style="background:rgba(255,255,255,.08);color:#cbd5e1;border:none;border-radius:7px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:600;">Selecionar todas</button>
+            <button onclick="taskBulkClear()" style="background:rgba(255,255,255,.08);color:#cbd5e1;border:none;border-radius:7px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:600;">Limpar</button>
+            <button onclick="taskAprovarLote()" style="background:#10B981;color:#fff;border:none;border-radius:7px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;">✅ Aprovar selecionadas</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3392,6 +3399,18 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
             Adicionar foto ou arquivo
             <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" multiple style="display:none;" onchange="adicionarFotosTask(this)">
           </label>
+        </div>
+        <!-- Recorrência -->
+        <div class="fg form-full">
+          <label class="fl">🔁 Repetir esta demanda</label>
+          <select class="fs" id="t-recorrente" style="width:100%;">
+            <option value="">Não — só uma vez</option>
+            <option value="diaria">Todo dia útil</option>
+            <option value="semanal">Toda semana (mesmo dia)</option>
+            <option value="quinzenal">A cada 15 dias</option>
+            <option value="mensal">Todo mês (mesmo dia)</option>
+          </select>
+          <div style="font-size:10.5px;color:var(--text2);margin-top:4px;">Quando esta demanda for aprovada, o sistema cria automaticamente a próxima ocorrência com a data ajustada.</div>
         </div>
         <!-- Checklist -->
         <div class="fg form-full">
@@ -10648,9 +10667,125 @@ function taskAprovar(id){
   t.aprovacao = 'aprovada';
   t.aprovadoPor = currentUser.id;
   t.aprovadoEm = Date.now();
+  // Recorrência: cria próxima ocorrência automaticamente (sem comentários, status reset)
+  var proxima = _gerarProximaRecorrencia(t);
+  if(proxima){
+    tasks.push(proxima);
+    notif('✅ Aprovada + 🔁 próxima ocorrência criada ('+(proxima.data||'sem data')+')');
+  } else {
+    notif('✅ Demanda aprovada!');
+  }
   s('tasks', tasks);
   renderTasks();
-  notif('✅ Demanda aprovada!');
+}
+
+// Gera próxima ocorrência de uma demanda recorrente (cliente — roda no momento da aprovação)
+function _gerarProximaRecorrencia(t){
+  if(!t || !t.recorrente) return null;
+  // Se já tem uma cópia "filha" criada a partir desta, não duplica
+  if(t.recorrenteSpawned) return null;
+  var diasAdd = { 'diaria':1, 'semanal':7, 'quinzenal':15, 'mensal':30 }[t.recorrente];
+  if(!diasAdd) return null;
+  // Calcula próxima data baseado na data original (ou hoje se não tiver)
+  var baseDate;
+  if(t.data){
+    baseDate = new Date(t.data + 'T12:00:00');
+  } else {
+    baseDate = new Date();
+  }
+  // Para 'diaria': pular fim de semana
+  var proxDate = new Date(baseDate);
+  proxDate.setDate(proxDate.getDate() + diasAdd);
+  if(t.recorrente === 'diaria'){
+    while(proxDate.getDay() === 0 || proxDate.getDay() === 6) proxDate.setDate(proxDate.getDate() + 1);
+  }
+  var proxIso = proxDate.toISOString().slice(0,10);
+  // Marca a original pra não regerar
+  t.recorrenteSpawned = true;
+  // Cria nova
+  return {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    nome: t.nome,
+    setor: _taskSetor(t),
+    status: 'Pendente',
+    aprovacao: '',
+    resp: t.resp,
+    respId: t.respId,
+    respIds: Array.isArray(t.respIds) ? t.respIds.slice() : [],
+    nichoId: t.nichoId,
+    nichoNome: t.nichoNome,
+    ofertaId: t.ofertaId,
+    ofertaNome: t.ofertaNome,
+    link: t.link || '',
+    linksRef: Array.isArray(t.linksRef) ? t.linksRef.slice() : [],
+    desc: t.desc || '',
+    inicio: '',
+    data: proxIso,
+    horaInicio: t.horaInicio || '',
+    prazoHora: t.prazoHora || '',
+    diretoria: t.diretoria,
+    recorrente: t.recorrente, // mantém pra próxima vez
+    checklist: t.checklist ? { modeloId: t.checklist.modeloId, nome: t.checklist.nome, itens: (t.checklist.itens||[]).map(function(i){ return { texto:i.texto, feito:false }; }) } : null,
+    fotos: [],
+    arquivado: false,
+    criado: new Date().toLocaleString('pt-BR'),
+    cmts: [],
+    favorito: false
+  };
+}
+
+// ── APROVAÇÃO EM LOTE ──
+var _taskBulkSel = new Set();
+function taskBulkToggle(id){
+  if(_taskBulkSel.has(id)) _taskBulkSel.delete(id);
+  else _taskBulkSel.add(id);
+  taskBulkUpdateBar();
+}
+function taskBulkSelectAll(){
+  // Seleciona todas atualmente visíveis em "aguardando"
+  var perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false};
+  if(!perms.isDiretoria) return;
+  tasks.forEach(function(t){
+    if(t && _taskAprovacao(t) === 'pendente') _taskBulkSel.add(t.id);
+  });
+  renderTasks();
+}
+function taskBulkClear(){
+  _taskBulkSel.clear();
+  renderTasks();
+}
+function taskBulkUpdateBar(){
+  var bar = document.getElementById('task-bulk-bar');
+  if(!bar) return;
+  bar.style.display = _taskBulkSel.size > 0 ? 'flex' : 'none';
+  var counter = document.getElementById('task-bulk-count');
+  if(counter) counter.textContent = _taskBulkSel.size;
+}
+function taskAprovarLote(){
+  if(!currentUser || currentUser.cargo !== 'Diretoria'){ notif('Só Diretoria aprova.'); return; }
+  if(!_taskBulkSel.size) return;
+  if(!confirm('Aprovar '+_taskBulkSel.size+' demanda(s)?')) return;
+  var n = 0;
+  var recorrentesGeradas = 0;
+  var novasOcorrencias = [];
+  _taskBulkSel.forEach(function(id){
+    var t = tasks.find(function(x){ return x.id === id; });
+    if(t && _taskAprovacao(t) === 'pendente'){
+      t.aprovacao = 'aprovada';
+      t.aprovadoPor = currentUser.id;
+      t.aprovadoEm = Date.now();
+      n++;
+      var prox = _gerarProximaRecorrencia(t);
+      if(prox){ novasOcorrencias.push(prox); recorrentesGeradas++; }
+    }
+  });
+  if(novasOcorrencias.length) tasks = tasks.concat(novasOcorrencias);
+  _taskBulkSel.clear();
+  s('tasks', tasks);
+  renderTasks();
+  var msg = '✅ '+n+' demanda(s) aprovadas!';
+  if(recorrentesGeradas > 0) msg += ' 🔁 '+recorrentesGeradas+' próxima(s) ocorrência(s) criada(s).';
+  notif(msg);
 }
 
 function taskReprovar(id){
@@ -11393,6 +11528,9 @@ function abrirNovaDemanda(){
   if(_selSetor) _selSetor.value = (currentUser && CARGO_SETOR[currentUser.cargo]) || 'Copy';
   var _selStNovo = document.getElementById('t-status-novo');
   if(_selStNovo) _selStNovo.value = 'Pendente';
+  // Reset recorrência
+  var _selRec = document.getElementById('t-recorrente');
+  if(_selRec) _selRec.value = '';
   document.getElementById('toggle-diretoria').classList.remove('on');
   document.getElementById('toggle-checklist').classList.remove('on');
   document.getElementById('checklist-field').style.display='none';
@@ -11558,6 +11696,9 @@ function abrirEditarDemanda(id){
     var _aprCur = _taskAprovacao(t);
     _eStNovo.value = (_aprCur === 'pendente') ? 'A Aprovar' : (_stCur === 'Concluída' ? 'A Aprovar' : _stCur);
   }
+  // Popula recorrência
+  var _eRec = document.getElementById('t-recorrente');
+  if(_eRec) _eRec.value = t.recorrente || '';
   document.getElementById('t-link').value = t.link || '';
   // Links de referência: usa novo formato se existir, senão fallback pro antigo
   if(t.linksRef && t.linksRef.length){
@@ -12071,6 +12212,117 @@ function notificarMencoes(texto, tipo, titulo, refId){
   });
 }
 
+// ── @MENÇÃO AUTOCOMPLETE ──
+// Detecta digitação de @palavra em qualquer input e mostra dropdown flutuante
+// com sugestões de usuários. Tab/Enter completa, Esc fecha.
+var _mentionState = { input:null, queryStart:-1, sel:0, list:[], el:null };
+
+function _ensureMentionDropdown(){
+  if(_mentionState.el) return _mentionState.el;
+  var d = document.createElement('div');
+  d.id = 'mention-dropdown';
+  d.style.cssText = 'position:fixed;z-index:5500;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.5);min-width:200px;max-width:280px;max-height:240px;overflow-y:auto;display:none;padding:4px;';
+  document.body.appendChild(d);
+  _mentionState.el = d;
+  return d;
+}
+
+function _hideMentionDropdown(){
+  if(_mentionState.el) _mentionState.el.style.display = 'none';
+  _mentionState.input = null;
+  _mentionState.queryStart = -1;
+}
+
+function _renderMentionDropdown(){
+  var d = _ensureMentionDropdown();
+  var list = _mentionState.list;
+  if(!list.length){ _hideMentionDropdown(); return; }
+  d.innerHTML = list.map(function(u, i){
+    var initial = (u.nome||'?')[0].toUpperCase();
+    var isSel = i === _mentionState.sel;
+    return '<div class="mention-opt" data-i="'+i+'" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;cursor:pointer;'+(isSel?'background:var(--bg3);':'')+'">' +
+      '<span style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">'+initial+'</span>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:12.5px;font-weight:600;color:var(--text);">'+u.nome+'</div>' +
+        '<div style="font-size:10px;color:var(--text2);">'+(u.cargo||'')+'</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  d.style.display = 'block';
+  d.querySelectorAll('.mention-opt').forEach(function(el){
+    el.addEventListener('mouseenter', function(){ _mentionState.sel = parseInt(el.dataset.i, 10); _renderMentionDropdown(); });
+    el.addEventListener('click', function(e){ e.preventDefault(); _completeMention(); });
+  });
+}
+
+function _positionMentionDropdown(input){
+  var rect = input.getBoundingClientRect();
+  var d = _ensureMentionDropdown();
+  d.style.left = rect.left + 'px';
+  // Abrir acima se input está na metade inferior da tela
+  if(rect.top > window.innerHeight - 280){
+    d.style.top = (rect.top - 4) + 'px';
+    d.style.transform = 'translateY(-100%)';
+  } else {
+    d.style.top = (rect.bottom + 4) + 'px';
+    d.style.transform = '';
+  }
+}
+
+function _completeMention(){
+  var s = _mentionState;
+  if(!s.input || s.queryStart < 0 || !s.list.length) return;
+  var u = s.list[s.sel];
+  if(!u) return;
+  var v = s.input.value;
+  var primeiroNome = (u.nome || '').split(' ')[0];
+  var antes = v.slice(0, s.queryStart);
+  var depois = v.slice(s.input.selectionStart);
+  s.input.value = antes + '@' + primeiroNome + ' ' + depois;
+  var newPos = (antes + '@' + primeiroNome + ' ').length;
+  s.input.setSelectionRange(newPos, newPos);
+  s.input.focus();
+  _hideMentionDropdown();
+}
+
+// Listener global pra qualquer input/textarea com data-mention="true" (ou auto-detectados)
+document.addEventListener('input', function(e){
+  var t = e.target;
+  if(!t || !t.value) { _hideMentionDropdown(); return; }
+  // Aplica em inputs/textareas comuns de comentário/chat (heurística por id/class)
+  var enable = t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && (t.id === 'mtc-input' || t.id === 'chat-input' || /comentar|mencao|cmt/i.test(t.placeholder||'')));
+  if(!enable){ _hideMentionDropdown(); return; }
+  var pos = t.selectionStart || 0;
+  var v = t.value.slice(0, pos);
+  // Procura @ não-escapado seguido de letras
+  var m = v.match(/@([\wÀ-ÿ]*)$/i);
+  if(!m){ _hideMentionDropdown(); return; }
+  var query = m[1].toLowerCase();
+  var users = getUsuarios().filter(function(u){
+    if(!u || u.ativo === false) return false;
+    if(currentUser && u.id === currentUser.id) return false; // não auto-mencionar
+    if(!query) return true;
+    return u.nome.toLowerCase().indexOf(query) === 0 ||
+           u.nome.toLowerCase().split(' ')[0].indexOf(query) === 0;
+  }).slice(0, 6);
+  if(!users.length){ _hideMentionDropdown(); return; }
+  _mentionState.input = t;
+  _mentionState.queryStart = pos - m[0].length;
+  _mentionState.list = users;
+  _mentionState.sel = 0;
+  _positionMentionDropdown(t);
+  _renderMentionDropdown();
+}, true);
+
+document.addEventListener('keydown', function(e){
+  var s = _mentionState;
+  if(!s.input || s.queryStart < 0) return;
+  if(e.key === 'ArrowDown'){ e.preventDefault(); s.sel = (s.sel + 1) % s.list.length; _renderMentionDropdown(); }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); s.sel = (s.sel - 1 + s.list.length) % s.list.length; _renderMentionDropdown(); }
+  else if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); _completeMention(); }
+  else if(e.key === 'Escape'){ e.preventDefault(); _hideMentionDropdown(); }
+}, true);
+
 function renderLixeira(){
   var list = document.getElementById('lixeira-list');
   if(!list) return;
@@ -12430,6 +12682,7 @@ function salvarTask(){
   const horaInicio = (document.getElementById('t-hora-inicio')||{}).value||'';
   const prazoHora = (document.getElementById('t-prazo-hora')||{}).value||'';
   const diretoria = document.getElementById('toggle-diretoria').classList.contains('on');
+  const recorrente = (document.getElementById('t-recorrente')||{}).value || '';
   const fotos = window._taskFotos || [];
 
   // Checklist
@@ -12449,7 +12702,7 @@ function salvarTask(){
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
       horaInicio, prazoHora,
-      diretoria,
+      diretoria, recorrente,
       checklist: checklist !== null ? checklist : t.checklist,
       fotos: fotos.length ? fotos : (t.fotos||[])
     } : t);
@@ -12473,7 +12726,7 @@ function salvarTask(){
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
       horaInicio, prazoHora,
-      diretoria, checklist, fotos,
+      diretoria, recorrente, checklist, fotos,
       arquivado: false, criado: new Date().toLocaleString('pt-BR'), cmts: window._newTaskCmts||[]
     };
     tasks.push(t);
@@ -12603,6 +12856,7 @@ function renderTasks(){
   // Atualiza contadores no header
   document.getElementById('task-count').textContent=filtered.length+' demanda'+(filtered.length!==1?'s':'');
   renderStatusChips(base);
+  taskBulkUpdateBar();
 
   const novaDemandaBtn = document.getElementById('btn-nova-demanda');
   if(novaDemandaBtn) novaDemandaBtn.style.display = (currentUser && currentUser.cargo==='Diretoria') ? '' : 'none';
@@ -12673,11 +12927,15 @@ function renderTasks(){
     // Status badge + botão de ação
     let statusBadgeHtml = '';
     let actionBtnHtml = '';
+    let bulkCheckHtml = '';
     if(ehAprovada){
       statusBadgeHtml = '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:'+SETOR_COR[setor]+'22;color:'+SETOR_COR[setor]+';">'+setor+'</span> <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:#d1fae5;color:#047857;margin-left:4px;">✅ Aprovada</span>';
     } else if(ehAguardando){
       statusBadgeHtml = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:#fce7f3;color:#be185d;">⏸️ Aguard. Aprov.</span>';
       if(perms.isDiretoria){
+        // Checkbox de seleção em lote (só Diretoria, só na aba Aguard. Aprovação)
+        const isSel = _taskBulkSel.has(t.id);
+        bulkCheckHtml = '<input type="checkbox" '+(isSel?'checked':'')+' onclick="event.stopPropagation();taskBulkToggle('+t.id+')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent);margin-right:4px;flex-shrink:0;" title="Selecionar pra aprovar em lote">';
         actionBtnHtml = '<button onclick="event.stopPropagation();taskAprovar('+t.id+')" style="background:#d1fae5;color:#047857;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11px;font-weight:600;margin-left:4px;">✅ Aprovar</button> <button onclick="event.stopPropagation();taskReprovar('+t.id+')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:11px;font-weight:600;margin-left:2px;">❌</button>';
       }
     } else {
@@ -12693,6 +12951,7 @@ function renderTasks(){
 
     <!-- Nome -->
     <div style="min-width:0;display:flex;align-items:center;gap:6px;">
+      ${bulkCheckHtml}
       <button class="fav-star ${t.favorito?'is-fav':''}" onclick="event.stopPropagation();toggleFavoritoTask(${t.id})" title="${t.favorito?'Remover dos favoritos':'Marcar como favorito'}">${t.favorito?'★':'☆'}</button>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${ehAprovada?'text-decoration:line-through;':''}">
@@ -12728,6 +12987,7 @@ function renderTasks(){
 
     <!-- Ações -->
     <div style="display:flex;gap:4px;justify-content:flex-end;" onclick="event.stopPropagation()">
+      ${perms.isDiretoria ? `<button onclick="event.stopPropagation();duplicarDemanda(${t.id})" title="Duplicar como template" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">📋</button>` : ''}
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();abrirEditarDemanda(${t.id})" title="Editar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">✏️</button>` : ''}
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();arquivarTask(${t.id})" title="Arquivar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">📦</button>` : ''}
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();delTask(${t.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">🗑</button>` : ''}
@@ -12919,6 +13179,61 @@ function arquivarTask(id){
 }
 
 function editTask(id){ abrirEditarDemanda(id); }
+
+// ── DUPLICAR DEMANDA (Template) ──
+function duplicarDemanda(id){
+  var orig = tasks.find(function(x){ return x.id === id; });
+  if(!orig){ notif('Demanda não encontrada.'); return; }
+  // Abre modal Nova Demanda preenchido com mesmos dados (sem id, sem comentários, status volta pra Pendente)
+  abrirNovaDemanda();
+  setTimeout(function(){
+    var setEl = function(elId, val){ var e = document.getElementById(elId); if(e) e.value = val || ''; };
+    setEl('t-nome', (orig.nome || '') + ' (cópia)');
+    setEl('t-setor', _taskSetor(orig));
+    setEl('t-status-novo', 'Pendente');
+    setEl('t-nicho', orig.nichoId);
+    // Trigger oferta cascade
+    if(typeof onNichoChange === 'function') try{ onNichoChange(); }catch(e){}
+    setTimeout(function(){
+      setEl('t-oferta-v2', orig.ofertaId);
+      setEl('t-link', orig.link || '');
+      setEl('t-data', orig.data || '');
+      setEl('t-inicio', orig.inicio || '');
+      setEl('t-hora-inicio', orig.horaInicio || '');
+      setEl('t-prazo-hora', orig.prazoHora || '');
+      // Descrição
+      if(typeof setDescHtml === 'function' && orig.desc) setDescHtml(orig.desc);
+      // Links de referência
+      if(Array.isArray(orig.linksRef) && orig.linksRef.length && typeof setLinksRef === 'function'){
+        setLinksRef(orig.linksRef);
+      }
+      // Responsáveis
+      if(Array.isArray(orig.respIds) && orig.respIds.length){
+        var users = getUsuarios();
+        _taskResps = orig.respIds.map(function(rid){
+          var u = users.find(function(x){ return x.id === rid; });
+          return u ? { id:u.id, nome:u.nome, cargo:u.cargo } : null;
+        }).filter(Boolean);
+        if(typeof _renderRespTags === 'function') _renderRespTags();
+      }
+      // Checklist
+      if(orig.checklist && orig.checklist.itens){
+        var clToggle = document.getElementById('toggle-checklist');
+        if(clToggle) clToggle.classList.add('on');
+        var clField = document.getElementById('checklist-field');
+        if(clField) clField.style.display = '';
+        // Mostra preview com itens (não copia status feito/não feito)
+        var preview = document.getElementById('t-checklist-preview');
+        if(preview){
+          preview.innerHTML = orig.checklist.itens.map(function(item){
+            return '<div style="padding:6px 0;font-size:12.5px;">☐ '+(item.texto||'')+'</div>';
+          }).join('');
+        }
+      }
+      notif('📋 Demanda duplicada — ajuste o que precisar e salve');
+    }, 100);
+  }, 80);
+}
 
 function delTask(id){
   var t = tasks.find(function(x){ return x.id===id; });
