@@ -3712,6 +3712,8 @@ async function syncFromServer(){
     if(!res.ok) return;
     const {data, timestamp} = await res.json();
     if(Object.keys(data).length > 0){
+      // Snapshot ANTES de aplicar pra detectar notificações novas destinadas ao usuário
+      var _notifsAntes = data.sl_notifs ? new Set(g('sl_notifs',[]).map(function(n){ return n && n.id; })) : null;
       Object.entries(data).forEach(([k,v])=>{ localStorage.setItem(k, JSON.stringify(v)); });
       tasks = g('tasks',[]);
       criativos = g('criativos',[]);
@@ -3729,6 +3731,10 @@ async function syncFromServer(){
       }
       // Atualiza badge de notificações sempre que sync trouxer dados novos
       if(data.sl_notifs && typeof updateNotifBadge==='function') try{ updateNotifBadge(); }catch(e){}
+      // Dispara desktop notification pra notifs novas destinadas ao usuário atual
+      if(_notifsAntes && Array.isArray(data.sl_notifs)){
+        try { _processarNotifsParaDesktop(data.sl_notifs, _notifsAntes); } catch(e){}
+      }
     }
     _lastSync = timestamp;
   } catch(e){}
@@ -3738,6 +3744,7 @@ function _startSync(){
   syncFromServer();
   if(!_syncInterval) _syncInterval = setInterval(syncFromServer, 4000);
   _iniciarStreamRealtime();
+  _agendarPedidoDesktop();
 }
 
 function _stopSync(){
@@ -3795,6 +3802,83 @@ function _pararStreamRealtime(){
   if(_eventSource){ try { _eventSource.close(); } catch(e){} _eventSource = null; }
   if(_streamReconnTimer){ clearTimeout(_streamReconnTimer); _streamReconnTimer = null; }
   if(_streamSyncDebounce){ clearTimeout(_streamSyncDebounce); _streamSyncDebounce = null; }
+}
+
+// ── DESKTOP NOTIFICATIONS (Web Notifications API) ──
+// Dispara pop-up nativo do SO quando chega uma notif nova destinada ao usuário
+// atual e a aba não está focada. Permissão pedida 1x; toggle salvo em localStorage.
+async function _pedirPermissaoDesktop(){
+  if(!('Notification' in window)) return false;
+  if(Notification.permission === 'granted') return true;
+  if(Notification.permission === 'denied') return false;
+  try {
+    const r = await Notification.requestPermission();
+    return r === 'granted';
+  } catch(e){ return false; }
+}
+
+function _desktopAtivo(){
+  if(!('Notification' in window)) return false;
+  if(Notification.permission !== 'granted') return false;
+  return localStorage.getItem('sl_notif_desktop') !== 'off';
+}
+
+function _exibirNotifDesktop(notif){
+  // Smart guards: aba focada, permissão, toggle, dedup por id
+  if(document.visibilityState === 'visible' && document.hasFocus()) return;
+  if(!_desktopAtivo()) return;
+  try {
+    var n = new Notification(notif.titulo || 'Axcend', {
+      body: (notif.texto || '').replace(/<[^>]+>/g, ''),
+      icon: '/favicon.ico',
+      tag: 'axcend-' + (notif.id || Date.now()),
+      requireInteraction: false
+    });
+    n.onclick = function(){
+      window.focus();
+      try { goTo('notificacoes'); } catch(e){}
+      n.close();
+    };
+    setTimeout(function(){ try { n.close(); } catch(e){} }, 8000);
+  } catch(e){}
+}
+
+// Marca o último timestamp processado pra não disparar pro histórico todo no boot
+var _lastDesktopNotifTs = parseInt(localStorage.getItem('sl_last_desktop_notif')||'0', 10) || Date.now();
+
+function _processarNotifsParaDesktop(notifsAtuais, idsAntigos){
+  if(!currentUser || !currentUser.id) return;
+  if(!_desktopAtivo()) return;
+  var novas = notifsAtuais.filter(function(n){
+    if(!n || !n.id) return false;
+    if(idsAntigos.has(n.id)) return false; // já existia
+    if(n.destId !== currentUser.id) return false; // não é pra mim
+    if(n.lida) return false;
+    var ts = n.criado || 0;
+    if(ts <= _lastDesktopNotifTs) return false; // antigas demais (boot)
+    return true;
+  });
+  if(!novas.length) return;
+  // Atualiza marcador
+  var maxTs = novas.reduce(function(m,n){ return Math.max(m, n.criado||0); }, _lastDesktopNotifTs);
+  _lastDesktopNotifTs = maxTs;
+  try { localStorage.setItem('sl_last_desktop_notif', String(maxTs)); } catch(e){}
+  // Dispara (no máximo 3 — agrupa o resto)
+  novas.slice(0, 3).forEach(_exibirNotifDesktop);
+  if(novas.length > 3){
+    _exibirNotifDesktop({ id:'mais-'+Date.now(), titulo:'+'+(novas.length-3)+' novas notificações', texto:'Abra o app pra ver todas' });
+  }
+}
+
+// Pede permissão 8s após login (deixa o usuário se ambientar antes)
+function _agendarPedidoDesktop(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission !== 'default') return; // já decidiu
+  setTimeout(function(){
+    _pedirPermissaoDesktop().then(function(ok){
+      if(ok){ try { notif('🔔 Notificações desktop ativadas!'); } catch(e){} }
+    });
+  }, 8000);
 }
 
 // Monkey-patch fetch: injeta x-client-id em writes pra /api/ — server inclui esse
@@ -16442,6 +16526,23 @@ function _cmdkInit(){
   _cmdkRegister({ id:'nova-remessa', label:'Nova remessa de criativos', icon:'🎬', keywords:'criar criativo ads novo', shortcut:'⌘⇧C', action:function(){ _cmdkGo('criativos'); setTimeout(function(){ if(typeof abrirNovaRemessa==='function') abrirNovaRemessa(); }, 150); } });
   _cmdkRegister({ id:'sync-now', label:'Sincronizar tudo agora', icon:'🔄', keywords:'pull push sync', action:function(){ try{ if(typeof forceSyncAll==='function') forceSyncAll.call({ target:{ disabled:false, textContent:'' } }); else syncFromServer(); }catch(e){ syncFromServer(); } } });
   _cmdkRegister({ id:'cheatsheet', label:'Mostrar atalhos de teclado', icon:'⌨️', keywords:'help ajuda', shortcut:'?', action:_cmdkCheatsheet });
+  _cmdkRegister({ id:'desktop-notif', label:'Notificações desktop (ativar/desativar)', icon:'🔔', keywords:'avisar popup macos windows', action:function(){
+    if(!('Notification' in window)){ notif('Seu navegador não suporta notificações desktop.'); return; }
+    if(Notification.permission === 'denied'){
+      alert('Notificações foram bloqueadas no navegador. Vá em Configurações do site → Notificações → Permitir, e recarregue.');
+      return;
+    }
+    if(Notification.permission === 'default'){
+      _pedirPermissaoDesktop().then(function(ok){
+        notif(ok ? '🔔 Notificações desktop ativadas!' : 'Notificações negadas.');
+      });
+      return;
+    }
+    // Permissão já concedida — toggle on/off via flag local
+    var atual = localStorage.getItem('sl_notif_desktop') !== 'off';
+    if(atual){ localStorage.setItem('sl_notif_desktop','off'); notif('🔕 Notificações desktop desativadas (use o comando pra reativar).'); }
+    else { localStorage.removeItem('sl_notif_desktop'); notif('🔔 Notificações desktop reativadas!'); }
+  } });
   _cmdkRegister({ id:'logout', label:'Sair (Logout)', icon:'🚪', keywords:'sair desconectar', action:function(){ if(confirm('Sair da conta?')) logout(); } });
 
   // Listener global
