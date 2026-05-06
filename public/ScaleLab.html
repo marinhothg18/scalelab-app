@@ -332,6 +332,21 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 .file-name { font-size:12px; font-weight:500; }
 .file-meta { font-size:11px; color:var(--text2); margin-top:4px; }
 
+/* COMMAND PALETTE (Cmd+K) */
+.cmdk-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; display:none; align-items:flex-start; justify-content:center; padding-top:12vh; backdrop-filter:blur(4px); }
+.cmdk-overlay.open { display:flex; }
+.cmdk-modal { background:var(--bg2); border:1px solid var(--border); border-radius:14px; width:92%; max-width:620px; max-height:70vh; box-shadow:0 24px 60px rgba(0,0,0,.55); display:flex; flex-direction:column; overflow:hidden; }
+.cmdk-input { background:transparent; border:none; outline:none; padding:18px 22px; font-size:16px; color:var(--text); border-bottom:1px solid var(--border); }
+.cmdk-input::placeholder { color:var(--text2); }
+.cmdk-list { list-style:none; margin:0; padding:6px 0; overflow-y:auto; flex:1; }
+.cmdk-item { display:flex; align-items:center; gap:12px; padding:10px 18px; cursor:pointer; color:var(--text); border-left:2px solid transparent; }
+.cmdk-item.sel { background:rgba(27,156,250,.10); border-left-color:var(--blue); }
+.cmdk-item-icon { width:22px; text-align:center; font-size:15px; }
+.cmdk-item-label { flex:1; font-size:13.5px; }
+.cmdk-item-shortcut { font-size:10.5px; color:var(--text2); background:var(--bg3); border:1px solid var(--border); border-radius:5px; padding:2px 7px; font-family:ui-monospace,monospace; letter-spacing:.3px; }
+.cmdk-empty { padding:30px; text-align:center; color:var(--text2); font-size:13px; }
+.cmdk-section { padding:6px 18px 4px; font-size:10px; font-weight:700; color:var(--text2); letter-spacing:.6px; text-transform:uppercase; }
+
 /* MODAL */
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; display:none; align-items:center; justify-content:center; }
 .modal-overlay.open { display:flex; }
@@ -16181,7 +16196,220 @@ window.onload=()=>{
   try{ updateNotifBadge(); }catch(e){}
   // Garantia adicional: força renderHome em 500ms caso renderDash não tenha chegado nela
   setTimeout(function(){ try{ if(typeof renderHome==='function') renderHome(); }catch(e){ console.warn('renderHome timeout:', e); } }, 500);
+  // Inicializa paleta de comandos (Cmd+K) e atalhos globais
+  try{ _cmdkInit(); }catch(e){ console.warn('cmdk init:', e); }
 };
+
+// ══════════════════════════════════════════════
+// ── COMMAND PALETTE (Cmd+K) + ATALHOS GLOBAIS ──
+// ══════════════════════════════════════════════
+var _cmdkCmds = [];
+var _cmdkSel = 0;
+var _cmdkFiltered = [];
+var _cmdkRecent = []; try { _cmdkRecent = JSON.parse(localStorage.getItem('sl_cmdk_recent')||'[]'); } catch(e){}
+
+function _cmdkRegister(cmd){ _cmdkCmds.push(cmd); }
+
+function _cmdkInjectModal(){
+  if(document.getElementById('cmdk-overlay')) return;
+  var html = '<div class="cmdk-overlay" id="cmdk-overlay" onclick="if(event.target===this)_cmdkClose()">' +
+    '<div class="cmdk-modal" role="dialog" aria-label="Paleta de comandos">' +
+      '<input class="cmdk-input" id="cmdk-input" type="text" placeholder="Pesquisar comando ou navegar..." autocomplete="off">' +
+      '<ul class="cmdk-list" id="cmdk-list"></ul>' +
+    '</div>' +
+  '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('cmdk-input').addEventListener('input', _cmdkRender);
+  document.getElementById('cmdk-input').addEventListener('keydown', _cmdkKey);
+}
+
+function _cmdkOpen(){
+  _cmdkInjectModal();
+  document.getElementById('cmdk-overlay').classList.add('open');
+  var inp = document.getElementById('cmdk-input');
+  inp.value = '';
+  _cmdkSel = 0;
+  _cmdkRender();
+  setTimeout(function(){ inp.focus(); }, 30);
+}
+
+function _cmdkClose(){
+  var ov = document.getElementById('cmdk-overlay');
+  if(ov) ov.classList.remove('open');
+}
+
+function _cmdkRender(){
+  var inp = document.getElementById('cmdk-input');
+  var q = (inp ? inp.value : '').toLowerCase().trim();
+  var items;
+  if(!q){
+    // Sem busca: mostra recentes primeiro, depois todos
+    var recentSet = new Set(_cmdkRecent);
+    var recents = _cmdkRecent.map(function(id){ return _cmdkCmds.find(function(c){ return c.id===id; }); }).filter(Boolean);
+    var others = _cmdkCmds.filter(function(c){ return !recentSet.has(c.id); });
+    items = recents.concat(others);
+  } else {
+    items = _cmdkCmds.filter(function(c){
+      var hay = (c.label + ' ' + (c.keywords||'')).toLowerCase();
+      return q.split(/\s+/).every(function(t){ return hay.indexOf(t) !== -1; });
+    });
+  }
+  _cmdkFiltered = items;
+  if(_cmdkSel >= items.length) _cmdkSel = Math.max(0, items.length - 1);
+  var ul = document.getElementById('cmdk-list');
+  if(!items.length){ ul.innerHTML = '<div class="cmdk-empty">Nenhum comando encontrado</div>'; return; }
+  ul.innerHTML = items.map(function(c, i){
+    var sc = c.shortcut ? '<span class="cmdk-item-shortcut">'+c.shortcut+'</span>' : '';
+    return '<li class="cmdk-item'+(i===_cmdkSel?' sel':'')+'" data-i="'+i+'">' +
+      '<span class="cmdk-item-icon">'+(c.icon||'•')+'</span>' +
+      '<span class="cmdk-item-label">'+c.label+'</span>' + sc +
+    '</li>';
+  }).join('');
+  // Click handler delegado
+  ul.querySelectorAll('.cmdk-item').forEach(function(el){
+    el.addEventListener('click', function(){ _cmdkExecAt(parseInt(el.dataset.i,10)); });
+    el.addEventListener('mousemove', function(){ _cmdkSel = parseInt(el.dataset.i,10); _cmdkUpdateSel(); });
+  });
+}
+
+function _cmdkUpdateSel(){
+  var ul = document.getElementById('cmdk-list');
+  if(!ul) return;
+  ul.querySelectorAll('.cmdk-item').forEach(function(el, i){
+    el.classList.toggle('sel', i === _cmdkSel);
+  });
+  // Scroll item selecionado para vista
+  var sel = ul.querySelector('.cmdk-item.sel');
+  if(sel) sel.scrollIntoView({ block:'nearest' });
+}
+
+function _cmdkKey(e){
+  if(e.key === 'ArrowDown'){ e.preventDefault(); _cmdkSel = Math.min(_cmdkFiltered.length-1, _cmdkSel+1); _cmdkUpdateSel(); }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); _cmdkSel = Math.max(0, _cmdkSel-1); _cmdkUpdateSel(); }
+  else if(e.key === 'Enter'){ e.preventDefault(); _cmdkExecAt(_cmdkSel); }
+  else if(e.key === 'Escape'){ e.preventDefault(); _cmdkClose(); }
+}
+
+function _cmdkExecAt(i){
+  var c = _cmdkFiltered[i];
+  if(!c) return;
+  // Atualiza recentes (mantém últimos 5)
+  _cmdkRecent = [c.id].concat(_cmdkRecent.filter(function(x){ return x !== c.id; })).slice(0,5);
+  try { localStorage.setItem('sl_cmdk_recent', JSON.stringify(_cmdkRecent)); } catch(e){}
+  _cmdkClose();
+  setTimeout(function(){ try { c.action(); } catch(err){ console.error('cmd erro:', err); } }, 50);
+}
+
+// Cheatsheet — modal simples ativado por "?"
+function _cmdkCheatsheet(){
+  var atalhos = [
+    ['Cmd/Ctrl + K', 'Abrir paleta de comandos'],
+    ['Cmd/Ctrl + N', 'Nova demanda'],
+    ['Cmd/Ctrl + Shift + C', 'Nova remessa de criativos'],
+    ['G depois D', 'Ir para Dashboard'],
+    ['G depois T', 'Ir para Tráfego'],
+    ['G depois P', 'Ir para Projetos'],
+    ['G depois C', 'Ir para Chat'],
+    ['G depois R', 'Ir para Criativos'],
+    ['G depois N', 'Ir para Notificações'],
+    ['?', 'Mostrar esta lista'],
+    ['Esc', 'Fechar modal aberto']
+  ];
+  var rows = atalhos.map(function(a){
+    return '<tr><td style="padding:8px 14px;font-family:ui-monospace,monospace;font-size:12px;color:var(--blue);white-space:nowrap;">'+a[0]+'</td><td style="padding:8px 14px;font-size:13px;">'+a[1]+'</td></tr>';
+  }).join('');
+  var html = '<div class="modal-overlay open" id="modal-cheatsheet" onclick="if(event.target===this)document.getElementById(\'modal-cheatsheet\').remove()">' +
+    '<div class="modal" style="max-width:520px;">' +
+      '<div class="modal-header"><div class="modal-title">⌨️ Atalhos de teclado</div>' +
+      '<button class="modal-close" onclick="document.getElementById(\'modal-cheatsheet\').remove()">✕</button></div>' +
+      '<table style="width:100%;border-collapse:collapse;">'+rows+'</table>' +
+      '<div style="margin-top:14px;font-size:11px;color:var(--text2);">Dica: na paleta (Cmd+K) você pode digitar parte do nome — ex: "roi", "logout".</div>' +
+    '</div></div>';
+  var existing = document.getElementById('modal-cheatsheet');
+  if(existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// Helper pra navegar via goTo (cobre páginas comuns)
+function _cmdkGo(page){ try { goTo(page); } catch(e){ console.warn('goTo erro:', e); } }
+
+// ── HANDLERS GLOBAIS DE TECLADO ──
+var _gNavBuffer = null; // pra "G" + letra estilo Linear/Gmail
+function _cmdkInit(){
+  // Registra comandos padrão
+  _cmdkCmds = [];
+  // Navegação
+  _cmdkRegister({ id:'go-dashboard', label:'Ir para Dashboard', icon:'📊', keywords:'home inicio', shortcut:'G D', action:function(){ _cmdkGo('dashboard'); } });
+  _cmdkRegister({ id:'go-trafego', label:'Ir para Tráfego', icon:'🚀', keywords:'metricas roi contingencia', shortcut:'G T', action:function(){ _cmdkGo('metricas'); } });
+  _cmdkRegister({ id:'go-criativos', label:'Ir para Criativos', icon:'🎨', keywords:'remessas anuncios ads', shortcut:'G R', action:function(){ _cmdkGo('criativos'); } });
+  _cmdkRegister({ id:'go-task', label:'Ir para Demandas', icon:'📋', keywords:'tarefas tasks', action:function(){ _cmdkGo('task'); } });
+  _cmdkRegister({ id:'go-chat', label:'Ir para Chat', icon:'💬', keywords:'mensagens', shortcut:'G C', action:function(){ _cmdkGo('chat'); } });
+  _cmdkRegister({ id:'go-projetos', label:'Ir para Projetos', icon:'📁', keywords:'arquivos pastas', shortcut:'G P', action:function(){ _cmdkGo('arquivos'); } });
+  _cmdkRegister({ id:'go-notif', label:'Ir para Notificações', icon:'🔔', keywords:'avisos', shortcut:'G N', action:function(){ _cmdkGo('notificacoes'); } });
+  _cmdkRegister({ id:'go-swipe', label:'Ir para Swipe', icon:'📌', keywords:'biblioteca referencias', action:function(){ _cmdkGo('swipe'); } });
+  _cmdkRegister({ id:'go-edu', label:'Ir para Educacional', icon:'🎓', keywords:'aprender conteudo', action:function(){ _cmdkGo('educacional'); } });
+  _cmdkRegister({ id:'go-adlib', label:'Ir para Ad Library', icon:'📚', keywords:'biblioteca anuncios', action:function(){ _cmdkGo('adlibrary'); } });
+  _cmdkRegister({ id:'go-config', label:'Ir para Configurações', icon:'⚙️', keywords:'settings ajustes', action:function(){ _cmdkGo('configuracoes'); } });
+  _cmdkRegister({ id:'go-lixeira', label:'Ir para Lixeira', icon:'🗑️', keywords:'trash deletados', action:function(){ _cmdkGo('lixeira'); } });
+  // Ações
+  _cmdkRegister({ id:'nova-demanda', label:'Nova demanda', icon:'➕', keywords:'criar tarefa task', shortcut:'⌘N', action:function(){ _cmdkGo('task'); setTimeout(function(){ if(typeof abrirNovaDemanda==='function') abrirNovaDemanda(); }, 150); } });
+  _cmdkRegister({ id:'nova-remessa', label:'Nova remessa de criativos', icon:'🎬', keywords:'criar criativo ads novo', shortcut:'⌘⇧C', action:function(){ _cmdkGo('criativos'); setTimeout(function(){ if(typeof abrirNovaRemessa==='function') abrirNovaRemessa(); }, 150); } });
+  _cmdkRegister({ id:'sync-now', label:'Sincronizar tudo agora', icon:'🔄', keywords:'pull push sync', action:function(){ try{ if(typeof forceSyncAll==='function') forceSyncAll.call({ target:{ disabled:false, textContent:'' } }); else syncFromServer(); }catch(e){ syncFromServer(); } } });
+  _cmdkRegister({ id:'cheatsheet', label:'Mostrar atalhos de teclado', icon:'⌨️', keywords:'help ajuda', shortcut:'?', action:_cmdkCheatsheet });
+  _cmdkRegister({ id:'logout', label:'Sair (Logout)', icon:'🚪', keywords:'sair desconectar', action:function(){ if(confirm('Sair da conta?')) logout(); } });
+
+  // Listener global
+  document.addEventListener('keydown', _cmdkGlobalKey, true);
+}
+
+function _cmdkGlobalKey(e){
+  // Ignora se está digitando em campo
+  var tag = (e.target && e.target.tagName) || '';
+  var isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable);
+  var modOpen = !!document.querySelector('.cmdk-overlay.open');
+
+  // Cmd/Ctrl+K — abre paleta (funciona inclusive em inputs)
+  if((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')){
+    e.preventDefault();
+    if(modOpen) _cmdkClose(); else _cmdkOpen();
+    return;
+  }
+  if(modOpen) return; // demais atalhos ignorados quando paleta aberta
+
+  // Cmd/Ctrl+N — nova demanda
+  if((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'n' || e.key === 'N')){
+    e.preventDefault();
+    _cmdkGo('task');
+    setTimeout(function(){ if(typeof abrirNovaDemanda==='function') abrirNovaDemanda(); }, 150);
+    return;
+  }
+  // Cmd/Ctrl+Shift+C — nova remessa
+  if((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')){
+    e.preventDefault();
+    _cmdkGo('criativos');
+    setTimeout(function(){ if(typeof abrirNovaRemessa==='function') abrirNovaRemessa(); }, 150);
+    return;
+  }
+
+  if(isTyping) return; // resto só fora de inputs
+
+  // ? — cheatsheet
+  if(e.key === '?'){ e.preventDefault(); _cmdkCheatsheet(); return; }
+
+  // G + letra (estilo Linear/Gmail)
+  if(e.key === 'g' || e.key === 'G'){
+    if(_gNavBuffer) clearTimeout(_gNavBuffer.timer);
+    _gNavBuffer = { timer: setTimeout(function(){ _gNavBuffer = null; }, 800) };
+    return;
+  }
+  if(_gNavBuffer){
+    var k = e.key.toLowerCase();
+    var dest = ({ d:'dashboard', t:'metricas', c:'chat', p:'arquivos', r:'criativos', n:'notificacoes' })[k];
+    clearTimeout(_gNavBuffer.timer); _gNavBuffer = null;
+    if(dest){ e.preventDefault(); _cmdkGo(dest); }
+    return;
+  }
+}
 </script>
 </body>
 </html>
