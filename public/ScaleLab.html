@@ -3255,40 +3255,40 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <label class="fl">Título *</label>
           <input class="fi" id="t-nome" placeholder="Ex: Campanha Black Friday 2024">
         </div>
-        <!-- Status + Responsável -->
+        <!-- Setor + Status novo -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="fg">
-            <label class="fl">Status</label>
-            <select class="fs" id="t-status" style="width:100%;">
-              <option value="BACKLOG">Backlog</option>
-              <option value="COPY_PENDENTE">Copy Pendente</option>
-              <option value="COPY_PROGRESSO">Copy Progresso</option>
-              <option value="COPY_PARADA">Copy Parada</option>
-              <option value="COPY_REVISAO">Copy Revisão</option>
-              <option value="COPY_APROVADA">Copy Aprovada</option>
-              <option value="EDICAO_PENDENTE">Edição Pendente</option>
-              <option value="EDICAO_PROGRESSO">Edição Progresso</option>
-              <option value="EDICAO_REVISAO">Edição Revisão</option>
-              <option value="EDICAO_CONCLUIDA">Edição Concluída</option>
-              <option value="INFRA_PENDENTE">Infra Pendente</option>
-              <option value="INFRA_PROGRESSO">Infra Progresso</option>
-              <option value="INFRA_REVISAO">Infra Revisão</option>
-              <option value="INFRA">Infra Concluída</option>
-              <option value="TRAFEGO">Tráfego</option>
-              <option value="SPY">Spy</option>
-              <option value="CONCLUIDO">Concluído</option>
+            <label class="fl">Área / Setor *</label>
+            <select class="fs" id="t-setor" style="width:100%;">
+              <option value="Copy">🔵 Copy</option>
+              <option value="Edição">🟣 Edição</option>
+              <option value="Infra">🟡 Infra</option>
+              <option value="Tráfego">🟢 Tráfego</option>
+              <option value="Gráfico">🟤 Gráfico</option>
+              <option value="Spy">🔴 Spy</option>
             </select>
           </div>
           <div class="fg">
-            <label class="fl">Responsáveis *</label>
-            <div id="t-resp-tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:30px;padding:4px;border:1px solid var(--border);border-radius:7px;background:var(--bg3);margin-bottom:6px;"></div>
-            <select class="fs" id="t-resp-add" onchange="addResponsavelDemanda(this)" style="width:100%;">
-              <option value="">+ Adicionar responsável</option>
+            <label class="fl">Status</label>
+            <select class="fs" id="t-status-novo" style="width:100%;">
+              <option value="Pendente">⏳ Pendente</option>
+              <option value="Em Progresso">▶️ Em Progresso</option>
+              <option value="Em Revisão">👀 Em Revisão</option>
+              <option value="A Aprovar">✅ A Aprovar</option>
             </select>
-            <!-- Campo hidden pra compat com código legado (primeiro responsável) -->
-            <input type="hidden" id="t-resp-id">
           </div>
         </div>
+        <!-- Responsáveis (separado) -->
+        <div class="fg">
+          <label class="fl">Responsáveis <span style="color:var(--text2);font-size:11px;">(opcional — se vazio, vai pra Backlog)</span></label>
+          <div id="t-resp-tags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:30px;padding:4px;border:1px solid var(--border);border-radius:7px;background:var(--bg3);margin-bottom:6px;"></div>
+          <select class="fs" id="t-resp-add" onchange="addResponsavelDemanda(this)" style="width:100%;">
+            <option value="">+ Adicionar responsável</option>
+          </select>
+          <input type="hidden" id="t-resp-id">
+        </div>
+        <!-- Status legado escondido — preserva compat com código antigo -->
+        <input type="hidden" id="t-status" value="BACKLOG">
         <!-- Nicho + Oferta -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div class="fg">
@@ -10724,6 +10724,13 @@ function renderSetoresFilters(){
   var el = document.getElementById('task-status-filters');
   if(!el) return;
   var perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false};
+  // Esconde sidebar inteira pra colaborador (só vê suas próprias demandas, não precisa filtrar setor)
+  var sidebarWrapper = el.closest('div[style*="width:230px"]') || el.closest('div[style*="border-right"]');
+  if(sidebarWrapper && !perms.isDiretoria){ sidebarWrapper.style.display = 'none'; return; }
+  if(sidebarWrapper) sidebarWrapper.style.display = '';
+  // Esconde filtro de responsável pra colaborador (só ele mesmo é responsável)
+  var respFilter = document.getElementById('task-resp-filter');
+  if(respFilter) respFilter.style.display = perms.isDiretoria ? '' : 'none';
   var meusTasks = tasks.filter(function(t){ return t && !t.arquivado; });
   if(currentUser && !perms.isDiretoria){
     meusTasks = meusTasks.filter(function(t){
@@ -10740,6 +10747,11 @@ function renderSetoresFilters(){
   var aguardCount = meusTasks.filter(function(t){ return _taskAprovacao(t) === 'pendente'; }).length;
   var aprovadasCount = meusTasks.filter(function(t){ return _taskAprovacao(t) === 'aprovada'; }).length;
   var arquivadasCount = tasks.filter(function(t){ return t && t.arquivado; }).length;
+  // Backlog: demandas sem responsável atribuído (rascunhos pra atribuir depois)
+  var backlogCount = meusTasks.filter(function(t){
+    var temResp = (Array.isArray(t.respIds) && t.respIds.length) || t.respId || t.resp;
+    return !temResp && _taskAprovacao(t) !== 'aprovada';
+  }).length;
 
   // Sugere setor pré-selecionado pro cargo do usuário
   var setorDefault = currentUser && CARGO_SETOR[currentUser.cargo] ? CARGO_SETOR[currentUser.cargo] : '';
@@ -10762,6 +10774,12 @@ function renderSetoresFilters(){
     html += '<div class="nav-item task-setor'+ativoA+'" onclick="setSetorFilter(\'aguardando\',this)" style="font-size:12px;background:'+(taskSetorFilter==='aguardando'?'rgba(245,158,11,.20)':(aguardCount>0?'rgba(245,158,11,.10)':'transparent'))+';color:'+(aguardCount>0?'#fbbf24':'var(--text2)')+';justify-content:space-between;">' +
       '<div>⚠️ Aguard. Aprovação</div>' +
       '<span style="font-size:11px;font-weight:700;">'+aguardCount+'</span>' +
+    '</div>';
+    // Backlog: demandas em rascunho sem responsável atribuído (só Diretoria gerencia)
+    var ativoBL = taskSetorFilter === 'backlog' ? ' active-sf' : '';
+    html += '<div class="nav-item task-setor'+ativoBL+'" onclick="setSetorFilter(\'backlog\',this)" style="font-size:12px;justify-content:space-between;">' +
+      '<div>📥 Backlog</div>' +
+      '<span style="font-size:11px;color:var(--text2);font-weight:600;">'+backlogCount+'</span>' +
     '</div>';
   }
   var ativoB = taskSetorFilter === 'aprovadas' ? ' active-sf' : '';
@@ -11259,6 +11277,11 @@ function abrirNovaDemanda(){
   setLinksRef([{nome:'',url:''}]);
   setDescHtml('');
   document.getElementById('t-status').value='BACKLOG';
+  // Reset Setor + Status novo (defaults pro Nova Demanda)
+  var _selSetor = document.getElementById('t-setor');
+  if(_selSetor) _selSetor.value = (currentUser && CARGO_SETOR[currentUser.cargo]) || 'Copy';
+  var _selStNovo = document.getElementById('t-status-novo');
+  if(_selStNovo) _selStNovo.value = 'Pendente';
   document.getElementById('toggle-diretoria').classList.remove('on');
   document.getElementById('toggle-checklist').classList.remove('on');
   document.getElementById('checklist-field').style.display='none';
@@ -11415,6 +11438,15 @@ function abrirEditarDemanda(id){
   // Pre-fill all values
   document.getElementById('t-nome').value = t.nome || '';
   document.getElementById('t-status').value = t.status || 'BACKLOG';
+  // Popula Setor + Status novo a partir do task (usa _taskSetor/_taskStatus pra compat com legado)
+  var _eSetor = document.getElementById('t-setor');
+  if(_eSetor) _eSetor.value = _taskSetor(t) || 'Copy';
+  var _eStNovo = document.getElementById('t-status-novo');
+  if(_eStNovo){
+    var _stCur = _taskStatus(t);
+    var _aprCur = _taskAprovacao(t);
+    _eStNovo.value = (_aprCur === 'pendente') ? 'A Aprovar' : (_stCur === 'Concluída' ? 'A Aprovar' : _stCur);
+  }
   document.getElementById('t-link').value = t.link || '';
   // Links de referência: usa novo formato se existir, senão fallback pro antigo
   if(t.linksRef && t.linksRef.length){
@@ -12253,13 +12285,24 @@ function salvarTask(){
   const nome = (document.getElementById('t-nome').value||'').trim();
   if(!nome){ notif('Título obrigatório!'); return; }
 
-  const status = document.getElementById('t-status').value||'BACKLOG';
-  // Multi-responsáveis: pega de _taskResps
+  // Setor + Status novo (campos visíveis no modal)
+  const setor = (document.getElementById('t-setor')||{}).value || 'Copy';
+  const statusNovo = (document.getElementById('t-status-novo')||{}).value || 'Pendente';
+  // "A Aprovar" no modal == status=Concluída + aprovacao=pendente (entra na fila Diretoria)
+  let status = statusNovo === 'A Aprovar' ? 'Concluída' : statusNovo;
+  let aprovacao = '';
+  if(statusNovo === 'A Aprovar'){
+    aprovacao = currentUser && currentUser.cargo === 'Diretoria' ? 'aprovada' : 'pendente';
+  }
+
+  // Multi-responsáveis: pega de _taskResps (opcional — se vazio vai pro Backlog)
   const respIds = _taskResps.map(function(r){ return r.id; });
   const respNomes = _taskResps.map(function(r){ return r.nome; });
-  if(!respIds.length){ alert('Selecione pelo menos um responsável.'); return; }
+  // Diretoria pode salvar sem responsável (Backlog); colaborador precisa ter ao menos 1
+  const ehDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!respIds.length && !ehDir){ alert('Selecione pelo menos um responsável.'); return; }
   // Mantém campos legados (respId/resp) apontando pro PRIMEIRO — preserva compat
-  const respId = respIds[0];
+  const respId = respIds[0] || '';
   const resp = respNomes.join(', '); // exibição: "Ana, Rafael"
 
   const nichoId = document.getElementById('t-nicho').value;
@@ -12289,7 +12332,8 @@ function salvarTask(){
     var oldTask = tasks.find(function(x){ return x.id===editId; });
     var oldRespIds = oldTask ? (Array.isArray(oldTask.respIds) ? oldTask.respIds : (oldTask.respId ? [oldTask.respId] : [])) : [];
     tasks = tasks.map(t => t.id === editId ? {
-      ...t, nome, status, resp, respId, respIds, nichoId, nichoNome, ofertaId, ofertaNome,
+      ...t, nome, setor, status, aprovacao: aprovacao || t.aprovacao || '',
+      resp, respId, respIds, nichoId, nichoNome, ofertaId, ofertaNome,
       link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
@@ -12312,7 +12356,8 @@ function salvarTask(){
     // CREATE MODE
     const t = {
       id: Date.now(),
-      nome, status, resp, respId, respIds, nichoId, nichoNome, ofertaId, ofertaNome,
+      nome, setor, status, aprovacao,
+      resp, respId, respIds, nichoId, nichoNome, ofertaId, ofertaNome,
       link, linkRef, linksRef, desc,
       inicio: inicio ? inicio.split('T')[0] : '',
       data: data ? data.split('T')[0] : '',
@@ -12376,12 +12421,24 @@ function renderTasks(){
     filtered = base.filter(t => _taskAprovacao(t) === 'aprovada');
   } else if(taskSetorFilter === 'aguardando'){
     filtered = base.filter(t => _taskAprovacao(t) === 'pendente');
+  } else if(taskSetorFilter === 'backlog'){
+    // Backlog: demandas sem responsável (rascunhos pra Diretoria atribuir)
+    filtered = base.filter(t => {
+      var temResp = (Array.isArray(t.respIds) && t.respIds.length) || t.respId || t.resp;
+      return !temResp && _taskAprovacao(t) !== 'aprovada';
+    });
   } else if(taskSetorFilter && SETORES.indexOf(taskSetorFilter) >= 0){
-    // Setor selecionado — esconde aprovadas (vão pra tab Aprovadas)
-    filtered = base.filter(t => _taskSetor(t) === taskSetorFilter && _taskAprovacao(t) !== 'aprovada');
+    // Setor selecionado — esconde aprovadas (vão pra tab Aprovadas) e backlog (sem responsável)
+    filtered = base.filter(t => {
+      var temResp = (Array.isArray(t.respIds) && t.respIds.length) || t.respId || t.resp;
+      return _taskSetor(t) === taskSetorFilter && _taskAprovacao(t) !== 'aprovada' && temResp;
+    });
   } else {
-    // "Todos" — esconde aprovadas
-    filtered = base.filter(t => _taskAprovacao(t) !== 'aprovada');
+    // "Todos" — esconde aprovadas e backlog
+    filtered = base.filter(t => {
+      var temResp = (Array.isArray(t.respIds) && t.respIds.length) || t.respId || t.resp;
+      return _taskAprovacao(t) !== 'aprovada' && temResp;
+    });
   }
 
   // Chip de status no header (só relevante quando setor selecionado, não em "aprovadas/arquivadas")
