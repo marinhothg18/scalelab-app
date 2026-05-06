@@ -10722,9 +10722,8 @@ function renderSetoresFilters(){
   var el = document.getElementById('task-status-filters');
   if(!el) return;
   var perms = currentUser ? getCargoPermissions(currentUser.cargo) : {isDiretoria:false};
-  // Esconde sidebar inteira pra colaborador (só vê suas próprias demandas, não precisa filtrar setor)
+  // Sidebar SEMPRE visível, mas itens variam por perfil (colaborador vê só seus setores)
   var sidebarWrapper = el.closest('div[style*="width:230px"]') || el.closest('div[style*="border-right"]');
-  if(sidebarWrapper && !perms.isDiretoria){ sidebarWrapper.style.display = 'none'; return; }
   if(sidebarWrapper) sidebarWrapper.style.display = '';
   // Esconde filtro de responsável pra colaborador (só ele mesmo é responsável)
   var respFilter = document.getElementById('task-resp-filter');
@@ -10758,7 +10757,12 @@ function renderSetoresFilters(){
   }
 
   var html = '';
+  // Pra colaborador: mostra só setores que ele tem demanda (ou o setor do cargo dele se vazio)
+  var setorDoCargo = currentUser && CARGO_SETOR[currentUser.cargo] ? CARGO_SETOR[currentUser.cargo] : '';
   SETORES.forEach(function(s){
+    if(!perms.isDiretoria){
+      if(counts[s] === 0 && s !== setorDoCargo) return;
+    }
     var ativo = taskSetorFilter === s ? ' active-sf' : '';
     html += '<div class="nav-item task-setor'+ativo+'" onclick="setSetorFilter(\''+s+'\',this)" style="font-size:12px;justify-content:space-between;">' +
       '<div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:'+SETOR_COR[s]+';flex-shrink:0;display:inline-block;"></span> '+s+'</div>' +
