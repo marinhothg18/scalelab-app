@@ -207,7 +207,35 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 
 /* PAGES */
 .page { display:none; }
-.page.active { display:block; }
+.page.active { display:block; animation: pageFadeIn .22s ease-out; }
+@keyframes pageFadeIn {
+  from { opacity:0; transform: translateY(6px); }
+  to { opacity:1; transform: translateY(0); }
+}
+
+/* Skeleton loading — placeholder animado enquanto lista carrega */
+.skeleton { background:linear-gradient(90deg, var(--bg3) 25%, var(--bg2) 50%, var(--bg3) 75%); background-size:200% 100%; animation:skeletonShine 1.4s infinite; border-radius:6px; }
+.skeleton-row { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:center; }
+.skeleton-line { height:12px; flex:1; }
+.skeleton-circle { width:32px; height:32px; border-radius:50%; flex-shrink:0; }
+@keyframes skeletonShine {
+  0% { background-position:200% 0; }
+  100% { background-position:-200% 0; }
+}
+
+/* Hover preview tooltip pra demandas */
+.task-hover-preview { position:fixed; z-index:5000; background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; box-shadow:0 14px 40px rgba(0,0,0,.45); width:340px; pointer-events:none; opacity:0; transform:translateY(-4px); transition:opacity .14s, transform .14s; }
+.task-hover-preview.show { opacity:1; transform:translateY(0); }
+.task-hover-preview-title { font-size:13px; font-weight:700; margin-bottom:6px; line-height:1.3; }
+.task-hover-preview-meta { font-size:11px; color:var(--text2); margin-bottom:10px; display:flex; gap:10px; flex-wrap:wrap; }
+.task-hover-preview-meta span { display:inline-flex; align-items:center; gap:4px; }
+.task-hover-preview-desc { font-size:12px; color:var(--text); line-height:1.55; max-height:90px; overflow:hidden; opacity:.85; }
+.task-hover-preview-cmts { font-size:11px; color:var(--text2); margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }
+
+/* Estrela de favorito */
+.fav-star { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:5px; cursor:pointer; font-size:14px; color:var(--text2); transition:all .15s; background:transparent; border:none; flex-shrink:0; }
+.fav-star:hover { background:var(--bg3); color:#FBBF24; transform:scale(1.15); }
+.fav-star.is-fav { color:#FBBF24; }
 
 /* DASHBOARD CARDS */
 .pipeline-bar { display:flex; gap:10px; margin-bottom:20px; }
@@ -3714,6 +3742,8 @@ async function syncFromServer(){
     const res = await fetch(API_BASE+'/api/updates/'+_lastSync, {signal: AbortSignal.timeout(4000)});
     if(!res.ok) return;
     const {data, timestamp} = await res.json();
+    // Marca primeiro sync concluído (tira skeleton de listas)
+    window._tasksLoaded = true;
     if(Object.keys(data).length > 0){
       // Snapshot ANTES de aplicar pra detectar notificações novas destinadas ao usuário
       var _notifsAntes = data.sl_notifs ? new Set(g('sl_notifs',[]).map(function(n){ return n && n.id; })) : null;
@@ -10691,6 +10721,75 @@ function setSetorFilter(setor, el){
   renderTasks();
 }
 
+// ── FAVORITOS ──
+function toggleFavoritoTask(id){
+  var arr = g('tasks', []);
+  var t = arr.find(function(x){ return x && x.id === id; });
+  if(!t) return;
+  t.favorito = !t.favorito;
+  s('tasks', arr);
+  syncKey('tasks');
+  notif(t.favorito ? '⭐ Adicionada aos favoritos' : 'Removida dos favoritos');
+  renderTasks();
+}
+
+// ── HOVER PREVIEW ──
+var _taskHoverEl = null;
+var _taskHoverTimer = null;
+function _ensureTaskHoverEl(){
+  if(_taskHoverEl) return _taskHoverEl;
+  var d = document.createElement('div');
+  d.className = 'task-hover-preview';
+  document.body.appendChild(d);
+  _taskHoverEl = d;
+  return d;
+}
+function taskHoverShow(ev, taskId){
+  if(_taskHoverTimer) clearTimeout(_taskHoverTimer);
+  _taskHoverTimer = setTimeout(function(){
+    var arr = g('tasks', []);
+    var t = arr.find(function(x){ return x && x.id === taskId; });
+    if(!t) return;
+    var el = _ensureTaskHoverEl();
+    var setor = _taskSetor(t);
+    var stat = _taskStatus(t);
+    var apr = _taskAprovacao(t);
+    var resp = (Array.isArray(t.respIds) && t.respIds.length)
+      ? t.respIds.map(function(rid){ var u = (g('sl_usuarios',[])||[]).find(function(x){ return x.id===rid; }); return u ? u.nome : ''; }).filter(Boolean).join(', ')
+      : (t.resp || '—');
+    var dataStr = t.data ? new Date(t.data + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    var descClean = (t.desc || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if(!descClean) descClean = '<span style="color:var(--text2);font-style:italic;">Sem descrição</span>';
+    var qtdCmts = Array.isArray(t.cmts) ? t.cmts.length : 0;
+    var html = '<div class="task-hover-preview-title">'+
+      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+SETOR_COR[setor]+';margin-right:6px;vertical-align:middle;"></span>'+
+      (t.favorito ? '⭐ ' : '') + t.nome +
+    '</div>';
+    html += '<div class="task-hover-preview-meta">';
+    html += '<span>👤 '+resp+'</span>';
+    html += '<span>📅 '+dataStr+'</span>';
+    html += '<span>🏷️ '+setor+'</span>';
+    html += '<span>'+stat+(apr==='pendente'?' · ⏸️ aguard. aprov.':'')+'</span>';
+    html += '</div>';
+    html += '<div class="task-hover-preview-desc">'+descClean+'</div>';
+    if(qtdCmts > 0) html += '<div class="task-hover-preview-cmts">💬 '+qtdCmts+' comentário'+(qtdCmts>1?'s':'')+'</div>';
+    el.innerHTML = html;
+    // Posicionar à direita do mouse, com flip se sair da tela
+    var x = ev.clientX + 18;
+    var y = ev.clientY + 14;
+    var w = 340, h = 200;
+    if(x + w > window.innerWidth) x = ev.clientX - w - 12;
+    if(y + h > window.innerHeight) y = window.innerHeight - h - 12;
+    el.style.left = x + 'px';
+    el.style.top = Math.max(8, y) + 'px';
+    el.classList.add('show');
+  }, 320); // 320ms delay — evita popup acidental
+}
+function taskHoverHide(){
+  if(_taskHoverTimer) clearTimeout(_taskHoverTimer);
+  if(_taskHoverEl) _taskHoverEl.classList.remove('show');
+}
+
 function setStatusChip(s){
   taskStatusChip = s;
   renderTasks();
@@ -10749,6 +10848,8 @@ function renderSetoresFilters(){
     var temResp = (Array.isArray(t.respIds) && t.respIds.length) || t.respId || t.resp;
     return !temResp && _taskAprovacao(t) !== 'aprovada';
   }).length;
+  // Favoritos: demandas marcadas com estrela
+  var favCount = meusTasks.filter(function(t){ return t.favorito === true && _taskAprovacao(t) !== 'aprovada'; }).length;
 
   // Sugere setor pré-selecionado pro cargo do usuário
   var setorDefault = currentUser && CARGO_SETOR[currentUser.cargo] ? CARGO_SETOR[currentUser.cargo] : '';
@@ -10782,6 +10883,14 @@ function renderSetoresFilters(){
     html += '<div class="nav-item task-setor'+ativoBL+'" onclick="setSetorFilter(\'backlog\',this)" style="font-size:12px;justify-content:space-between;">' +
       '<div>📥 Backlog</div>' +
       '<span style="font-size:11px;color:var(--text2);font-weight:600;">'+backlogCount+'</span>' +
+    '</div>';
+  }
+  // Favoritos — todos os perfis (só aparece se tem ao menos 1 favorito)
+  if(favCount > 0){
+    var ativoFav = taskSetorFilter === 'favoritos' ? ' active-sf' : '';
+    html += '<div class="nav-item task-setor'+ativoFav+'" onclick="setSetorFilter(\'favoritos\',this)" style="font-size:12px;justify-content:space-between;color:#FBBF24;">' +
+      '<div>⭐ Favoritos</div>' +
+      '<span style="font-size:11px;font-weight:700;">'+favCount+'</span>' +
     '</div>';
   }
   var ativoB = taskSetorFilter === 'aprovadas' ? ' active-sf' : '';
@@ -12429,6 +12538,8 @@ function renderTasks(){
       var temResp = (Array.isArray(t.respIds) && t.respIds.length) || t.respId || t.resp;
       return !temResp && _taskAprovacao(t) !== 'aprovada';
     });
+  } else if(taskSetorFilter === 'favoritos'){
+    filtered = base.filter(t => t.favorito === true && _taskAprovacao(t) !== 'aprovada');
   } else if(taskSetorFilter && SETORES.indexOf(taskSetorFilter) >= 0){
     // Setor selecionado — esconde aprovadas (vão pra tab Aprovadas) e backlog (sem responsável)
     filtered = base.filter(t => {
@@ -12498,6 +12609,20 @@ function renderTasks(){
 
   const el=document.getElementById('task-list');
   if(!filtered.length){
+    // Mostra skeleton se ainda não fez primeiro sync (carregando)
+    if(!window._tasksLoaded){
+      el.innerHTML = Array.from({length:5}).map(function(){
+        return '<div class="skeleton-row">' +
+          '<div class="skeleton skeleton-circle"></div>' +
+          '<div style="flex:1;display:flex;flex-direction:column;gap:8px;">' +
+            '<div class="skeleton skeleton-line" style="width:60%;"></div>' +
+            '<div class="skeleton skeleton-line" style="width:40%;height:9px;"></div>' +
+          '</div>' +
+          '<div class="skeleton" style="width:80px;height:24px;border-radius:12px;"></div>' +
+        '</div>';
+      }).join('');
+      return;
+    }
     el.innerHTML='<div class="empty"><div class="empty-icon">✅</div><div class="empty-text">Nenhuma demanda aqui.</div></div>';
     return;
   }
@@ -12564,14 +12689,17 @@ function renderTasks(){
     }
 
     return `
-  <div style="display:grid;grid-template-columns:2fr 140px 140px 130px 220px 90px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s;align-items:center;cursor:pointer;${ehAprovada?'opacity:.6;':''}" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''" onclick="editTask(${t.id})">
+  <div style="display:grid;grid-template-columns:2fr 140px 140px 130px 220px 90px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s;align-items:center;cursor:pointer;${ehAprovada?'opacity:.6;':''}" onmouseenter="this.style.background='rgba(255,255,255,.03)';taskHoverShow(event,${t.id})" onmouseleave="this.style.background='';taskHoverHide()" onclick="editTask(${t.id})">
 
     <!-- Nome -->
-    <div style="min-width:0;">
-      <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${ehAprovada?'text-decoration:line-through;':''}">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${SETOR_COR[setor]};margin-right:6px;vertical-align:middle;"></span>${t.nome}
+    <div style="min-width:0;display:flex;align-items:center;gap:6px;">
+      <button class="fav-star ${t.favorito?'is-fav':''}" onclick="event.stopPropagation();toggleFavoritoTask(${t.id})" title="${t.favorito?'Remover dos favoritos':'Marcar como favorito'}">${t.favorito?'★':'☆'}</button>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${ehAprovada?'text-decoration:line-through;':''}">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${SETOR_COR[setor]};margin-right:6px;vertical-align:middle;"></span>${t.nome}
+        </div>
+        ${clHtml}
       </div>
-      ${clHtml}
     </div>
 
     <!-- Nicho / Oferta -->
