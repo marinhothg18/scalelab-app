@@ -11542,6 +11542,15 @@ function abrirNovaDemanda(){
   // Reset recorrência
   var _selRec = document.getElementById('t-recorrente');
   if(_selRec) _selRec.value = '';
+  // Bloco IA: só Diretoria vê
+  var _iaBlock = document.getElementById('t-ia-block');
+  var _iaSep = _iaBlock ? _iaBlock.nextElementSibling : null; // o "ou preencha manualmente"
+  var _ehDirIA = currentUser && currentUser.cargo === 'Diretoria';
+  if(_iaBlock) _iaBlock.style.display = _ehDirIA ? '' : 'none';
+  if(_iaSep && _iaSep.textContent && _iaSep.textContent.indexOf('preencha manualmente') !== -1) _iaSep.style.display = _ehDirIA ? '' : 'none';
+  // Reset prompt
+  var _iaPrompt = document.getElementById('t-ia-prompt'); if(_iaPrompt) _iaPrompt.value = '';
+  var _iaResultado = document.getElementById('t-ia-resultado'); if(_iaResultado) _iaResultado.style.display = 'none';
   document.getElementById('toggle-diretoria').classList.remove('on');
   document.getElementById('toggle-checklist').classList.remove('on');
   document.getElementById('checklist-field').style.display='none';
@@ -11710,6 +11719,12 @@ function abrirEditarDemanda(id){
   // Popula recorrência
   var _eRec = document.getElementById('t-recorrente');
   if(_eRec) _eRec.value = t.recorrente || '';
+  // Bloco IA: só Diretoria vê (esconde no edit também)
+  var _iaBlockE = document.getElementById('t-ia-block');
+  var _iaSepE = _iaBlockE ? _iaBlockE.nextElementSibling : null;
+  var _ehDirIAEdit = currentUser && currentUser.cargo === 'Diretoria';
+  if(_iaBlockE) _iaBlockE.style.display = _ehDirIAEdit ? '' : 'none';
+  if(_iaSepE && _iaSepE.textContent && _iaSepE.textContent.indexOf('preencha manualmente') !== -1) _iaSepE.style.display = _ehDirIAEdit ? '' : 'none';
   document.getElementById('t-link').value = t.link || '';
   // Links de referência: usa novo formato se existir, senão fallback pro antigo
   if(t.linksRef && t.linksRef.length){
