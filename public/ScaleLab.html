@@ -853,6 +853,14 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     justify-content:center !important;
   }
 
+  /* ── CHAT: força flex column (CSS base usa grid) ── */
+  .chat-wrap {
+    display:flex !important;
+    flex-direction:column !important;
+    grid-template-columns:none !important;
+    grid-template-rows:none !important;
+    height:calc(100vh - 130px) !important;
+  }
   /* ── CHAT: sidebar de canais vira tabs horizontais ── */
   /* Sobrescreve regras antigas (display:none, position:fixed) pra sempre mostrar
      a sidebar de canais como uma tab bar horizontal no topo do chat */
@@ -911,6 +919,54 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     grid-template-columns:1fr 1fr !important;
     gap:10px !important;
   }
+
+  /* ── MODAL EDITAR DEMANDA: empilha formulario + chat panel ── */
+  .modal-task-body-wrap {
+    flex-direction:column !important;
+    overflow-y:auto !important;
+    height:auto !important;
+  }
+  #modal-task-chat-panel {
+    width:100% !important;
+    border-left:none !important;
+    border-top:1px solid var(--border) !important;
+    flex-shrink:0 !important;
+    max-height:50vh;
+  }
+  #modal-task .modal {
+    width:100% !important;
+    max-width:100% !important;
+    max-height:100vh !important;
+    height:100vh !important;
+    border-radius:0 !important;
+  }
+  #modal-task .modal-header {
+    padding:12px 14px !important;
+  }
+  #modal-task .modal-body {
+    padding:14px !important;
+  }
+  /* Botoes do footer empilhados full-width */
+  #modal-task button[onclick*="salvarTask"],
+  #modal-task button[onclick*="closeModal('modal-task')"] {
+    flex:1 1 auto;
+    min-width:0;
+  }
+
+  /* ── DASHBOARD CARDS: previne texto cortando ── */
+  .home-card { overflow:hidden; }
+  .home-card * {
+    overflow-wrap:break-word;
+    word-break:break-word;
+    min-width:0;
+  }
+  .home-row-item {
+    flex-wrap:wrap !important;
+  }
+  /* Demanda card no dashboard com texto longo: trunca elegante */
+  .home-card .home-row-item div { min-width:0; }
+  /* Notificações: remove scrollbar lateral feio */
+  .home-card { padding:14px !important; }
 
   /* ── GERAL: previne overflow horizontal global ── */
   body { overflow-x:hidden; }
@@ -3441,7 +3497,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <button class="modal-close" onclick="closeModal('modal-task')">✕</button>
     </div>
     <!-- Corpo: formulário + chat lado a lado -->
-    <div style="display:flex;flex:1;overflow:hidden;min-height:0;">
+    <div class="modal-task-body-wrap" style="display:flex;flex:1;overflow:hidden;min-height:0;">
       <!-- FORMULÁRIO -->
       <div class="modal-body" style="flex:1;display:flex;flex-direction:column;gap:14px;overflow-y:auto;padding:20px;">
         <!-- IA: Campo de descrição livre que preenche os campos automaticamente -->
