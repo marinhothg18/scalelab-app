@@ -803,43 +803,88 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
   }
   #task-search { width:100% !important; max-width:100% !important; flex:1 1 100% !important; }
 
+  /* ── TOPBAR DESKTOP: redundante em mobile, esconde ── */
+  /* A mobile-topbar já substitui — esconde a desktop pra não duplicar header */
+  .topbar {
+    display:none !important;
+  }
+  /* Mas precisamos dos botões #top-actions (Gerenciar Remessas/Formatos/Criar documento)
+     em mobile. Solução: re-mostrar topbar mas em formato compacto, sem o "Atualizar"
+     (que é redundante com o pull-to-refresh do navegador) */
+  #page-criativos .topbar,
+  body:has(#page-criativos.active) .topbar {
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:stretch !important;
+    padding:8px 14px !important;
+    gap:8px !important;
+    position:relative !important;
+  }
+  #btn-refresh-global { display:none !important; }
+  /* Top actions: botões em row com wrap (quebram em 2 linhas) */
+  #top-actions {
+    flex-wrap:wrap !important;
+    gap:6px !important;
+    width:100% !important;
+  }
+  #top-actions button {
+    flex:1 1 auto !important;
+    min-width:0 !important;
+    font-size:11px !important;
+    padding:8px 10px !important;
+    white-space:nowrap;
+  }
+
   /* ── DASHBOARD: botão "+ Demanda" sem cortar ── */
   /* Saudação flexbox quebra se precisar */
-  #page-dashboard div[style*="display:flex"][style*="align-items:center"] {
-    flex-wrap:wrap !important;
-    gap:10px !important;
+  #page-dashboard > div:first-child {
+    flex-direction:column !important;
+    align-items:stretch !important;
+    gap:12px !important;
   }
-  /* Botões grandes em DASHBOARD ficam full-width */
-  #page-dashboard button[onclick*="abrirNovaDemanda"],
-  #page-dashboard button[onclick*="goTo('task'"] {
-    flex-shrink:0 !important;
+  /* Quick actions empilham em row com wrap */
+  #home-quick-actions {
+    flex-wrap:wrap !important;
+    gap:6px !important;
+  }
+  #home-quick-actions button {
+    flex:1 1 calc(50% - 4px) !important;
+    min-width:0 !important;
+    justify-content:center !important;
   }
 
   /* ── CHAT: sidebar de canais vira tabs horizontais ── */
-  /* O painel #chats-list (sidebar) — torna scroll horizontal compacto */
-  .chat-side {
+  /* Sobrescreve regras antigas (display:none, position:fixed) pra sempre mostrar
+     a sidebar de canais como uma tab bar horizontal no topo do chat */
+  #page-chat .chat-side,
+  .chat-wrap .chat-side {
+    display:flex !important;
+    position:relative !important;
     width:100% !important;
     max-width:100% !important;
     border-right:none !important;
     border-bottom:1px solid var(--border) !important;
     height:auto !important;
-    max-height:60px !important;
+    max-height:64px !important;
+    min-height:40px !important;
     overflow-x:auto !important;
     overflow-y:hidden !important;
     flex-direction:row !important;
     padding:6px 8px !important;
     gap:4px !important;
     flex-shrink:0 !important;
-    display:flex !important;
-    position:relative !important;
     z-index:1 !important;
+    top:auto !important;
+    left:auto !important;
+    right:auto !important;
+    bottom:auto !important;
   }
   .chat-side > * {
     flex-shrink:0 !important;
     white-space:nowrap !important;
     width:auto !important;
   }
-  /* Esconde header "CHATS" e search bar do chat em mobile (econ. espaço) */
+  /* Esconde header "CHATS" e search bar em mobile (economiza espaço) */
   .chat-side > div[style*="font-weight"]:first-child,
   .chat-side input[type="search"],
   .chat-side input[placeholder*="Buscar"] {
