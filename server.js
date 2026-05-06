@@ -927,6 +927,126 @@ app.get('/api/auth/me', (req, res) => {
 app.get('/api/ping', (req, res) => res.json({ ok: true, version: '2.0', api: true }));
 
 // ══════════════════════════════════════════════
+// ── IA: CATEGORIZAÇÃO AUTOMÁTICA DE DEMANDA ──
+// ══════════════════════════════════════════════
+// Recebe texto livre, devolve JSON estruturado com sugestões para o modal Nova Demanda.
+// Usa Claude API (mesma chave do agente WhatsApp em sl_whatsapp_config).
+async function _iaAnalisarDemanda(texto, db) {
+  const cfg = (db.store['sl_whatsapp_config']) || {};
+  if (!cfg.ai_key) throw new Error('IA não configurada (configure em Configurações → WhatsApp/IA)');
+
+  const usuarios = (db.store['sl_usuarios'] || []).filter(u => u && u.ativo !== false).map(u => ({ id: u.id, nome: u.nome, cargo: u.cargo }));
+  const nichos = (db.store['sl_nichos'] || []).map(n => ({ id: n.id, nome: n.nome }));
+  const ofertas = (db.store['sl_ofertas_v2'] || []).map(o => ({ id: o.id, nome: o.nome, nichoId: o.nichoId }));
+  const setores = ['Copy', 'Edição', 'Infra', 'Tráfego', 'Spy'];
+  // Histórico recente (últimas 30 demandas) — pra IA ver padrões
+  const tasksRecentes = (db.store['tasks'] || [])
+    .filter(t => t && !t.arquivado)
+    .slice(-30)
+    .map(t => ({
+      nome: t.nome || '',
+      setor: t.setor || '',
+      respIds: t.respIds || (t.respId ? [t.respId] : []),
+      ofertaId: t.ofertaId || null,
+      data: t.data || null
+    }));
+
+  const systemPrompt = `Você é um assistente que analisa descrições de tarefas e sugere campos estruturados para criação no sistema Axcend (gestão de tráfego pago).
+
+IMPORTANTE: responda APENAS com JSON válido, sem markdown, sem explicação. Use exatamente esta estrutura:
+{
+  "titulo": "string curto e claro",
+  "setor": "Copy" | "Edição" | "Infra" | "Tráfego" | "Spy",
+  "status": "Pendente",
+  "respId": "id_do_usuario_ou_null",
+  "nichoId": "id_do_nicho_ou_null",
+  "ofertaId": "id_da_oferta_ou_null",
+  "prazoData": "YYYY-MM-DD ou null",
+  "checklist": ["item 1", "item 2"] ou [],
+  "raciocinio": "1 frase curta explicando suas escolhas"
+}
+
+REGRAS:
+- "setor": Copy=textos/roteiros/headlines/CTA. Edição=videos/UGC/cortes/legenda. Infra=cloaker/dominio/server/PV/teste A/B. Tráfego=campanhas/ads/budget/cbo. Spy=concorrentes/análise.
+- "respId": pegue o usuario com o cargo certo do setor — se varios, escolha o que aparece mais em demandas recentes do mesmo setor.
+- "ofertaId": detecte por palavras (TGLV10, Detox, Gelatina, Memória etc) — match contra a lista.
+- "nichoId": derive do match da oferta (ofertas tem nichoId).
+- "prazoData": demandas de Copy tipicamente 2 dias, Edição 3 dias, Infra 1 dia, Tráfego 1 dia. Calcule a partir de hoje (${new Date().toISOString().slice(0,10)}).
+- "checklist": só se a descrição menciona passos claros. Caso contrário, [].
+- Se algo for ambíguo, escolha o mais provável e mencione no raciocinio.`;
+
+  const userPrompt = `DESCRIÇÃO DO USUÁRIO:
+"${texto}"
+
+USUÁRIOS DISPONÍVEIS:
+${JSON.stringify(usuarios)}
+
+NICHOS:
+${JSON.stringify(nichos)}
+
+OFERTAS:
+${JSON.stringify(ofertas)}
+
+DEMANDAS RECENTES (pra você ver padrão de quem faz o quê):
+${JSON.stringify(tasksRecentes)}
+
+Responda agora com o JSON.`;
+
+  const body = {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 800,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  };
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': cfg.ai_key,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) {
+    const err = await r.text();
+    throw new Error(`Claude ${r.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await r.json();
+  const textRaw = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  // Remove possíveis cercas markdown
+  const cleaned = textRaw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  let parsed;
+  try { parsed = JSON.parse(cleaned); }
+  catch (e) {
+    // Tenta extrair primeiro objeto JSON válido
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (m) { try { parsed = JSON.parse(m[0]); } catch (e2) { throw new Error('Resposta da IA não foi JSON válido'); } }
+    else throw new Error('Resposta da IA não foi JSON válido');
+  }
+  return parsed;
+}
+
+// POST /api/ia/analisar-demanda — body: { texto }
+app.post('/api/ia/analisar-demanda', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) return res.status(401).json({ error: 'Não autenticado' });
+    const db = readDB();
+    const sess = validarSessao(db, token);
+    if (!sess) return res.status(401).json({ error: 'Sessão inválida' });
+    const texto = (req.body && req.body.texto) || '';
+    if (!texto.trim()) return res.status(400).json({ error: 'Texto vazio' });
+    const resultado = await _iaAnalisarDemanda(texto.trim(), db);
+    res.json({ ok: true, resultado });
+  } catch (err) {
+    console.error('[IA analisar-demanda]', err.message);
+    res.status(500).json({ error: err.message || 'Erro na IA' });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ── SSE: SINCRONIZAÇÃO EM TEMPO REAL ──
 // ══════════════════════════════════════════════
 // Clientes conectados mantêm uma conexão HTTP aberta. Quando alguma chave

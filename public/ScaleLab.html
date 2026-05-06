@@ -3285,6 +3285,17 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <div style="display:flex;flex:1;overflow:hidden;min-height:0;">
       <!-- FORMULÁRIO -->
       <div class="modal-body" style="flex:1;display:flex;flex-direction:column;gap:14px;overflow-y:auto;padding:20px;">
+        <!-- IA: Campo de descrição livre que preenche os campos automaticamente -->
+        <div id="t-ia-block" class="fg form-full" style="background:linear-gradient(135deg, rgba(62,20,147,.10), rgba(27,156,250,.06));border:1px solid rgba(62,20,147,.25);border-radius:12px;padding:14px;margin-bottom:4px;">
+          <label class="fl" style="display:flex;align-items:center;gap:8px;color:#3E1493;">✨ Preencher com IA <span style="font-size:10px;font-weight:600;background:rgba(62,20,147,.15);padding:2px 8px;border-radius:10px;">Opcional</span></label>
+          <textarea id="t-ia-prompt" class="ft" rows="2" placeholder="Descreva o que precisa em linguagem natural — ex: 'editar UGC nova da Maria pra TGLV10 com legenda e CTA forte no final'" style="width:100%;resize:vertical;min-height:50px;font-size:13px;"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+            <button type="button" id="t-ia-btn" onclick="iaAnalisarDemandaModal()" style="background:linear-gradient(135deg,#3E1493,#1B9CFA);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">🤖 <span id="t-ia-btn-label">Preencher com IA</span></button>
+            <span id="t-ia-status" style="font-size:11px;color:var(--text2);"></span>
+          </div>
+          <div id="t-ia-resultado" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;font-size:12px;color:var(--text);"></div>
+        </div>
+        <div style="text-align:center;font-size:11px;color:var(--text2);margin:-8px 0;">— ou preencha manualmente —</div>
         <!-- Título -->
         <div class="fg form-full">
           <label class="fl">Título *</label>
@@ -13180,6 +13191,155 @@ function arquivarTask(id){
 
 function editTask(id){ abrirEditarDemanda(id); }
 
+// ── IA: CRIAR DEMANDA DIRETO (via Cmd+K) ──
+async function iaCriarDemandaRapida(texto){
+  notif('🤖 IA analisando…');
+  try {
+    var token = localStorage.getItem('sl_session_token') || '';
+    var r = await fetch(API_BASE + '/api/ia/analisar-demanda', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+token },
+      body: JSON.stringify({ texto: texto })
+    });
+    var data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Erro IA');
+    var s = data.resultado || {};
+    // Cria task direto
+    var users = getUsuarios();
+    var respIds = s.respId ? [s.respId] : [];
+    var respNomes = s.respId ? [(users.find(function(x){ return x.id===s.respId; })||{}).nome || ''].filter(Boolean) : [];
+    var nichoNome = s.nichoId ? ((getNichos().find(function(n){ return n.id===s.nichoId; })||{}).nome || '') : '';
+    var ofertaNome = s.ofertaId ? ((getOfertasV2().find(function(o){ return o.id===s.ofertaId; })||{}).nome || '') : '';
+    var checklist = Array.isArray(s.checklist) && s.checklist.length
+      ? { modeloId:'', nome:'IA', itens: s.checklist.map(function(t){ return { texto:t, feito:false }; }) }
+      : null;
+    var t = {
+      id: Date.now(),
+      nome: s.titulo || texto.slice(0,80),
+      setor: s.setor || 'Copy',
+      status: s.status || 'Pendente',
+      aprovacao: '',
+      resp: respNomes.join(', '),
+      respId: respIds[0] || '',
+      respIds: respIds,
+      nichoId: s.nichoId || '',
+      nichoNome: nichoNome,
+      ofertaId: s.ofertaId || '',
+      ofertaNome: ofertaNome,
+      data: s.prazoData || '',
+      desc: '<p>'+texto.replace(/</g,'&lt;')+'</p>',
+      checklist: checklist,
+      arquivado: false,
+      criado: new Date().toLocaleString('pt-BR'),
+      cmts: [],
+      iaGerada: true
+    };
+    tasks = g('tasks', []);
+    tasks.push(t);
+    s2('tasks', tasks);
+    fetch(API_BASE+'/api/store/tasks', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(tasks) }).catch(function(){});
+    // Notifica responsável se existe
+    if(respIds.length && typeof addNotif === 'function'){
+      respIds.forEach(function(rid, i){ addNotif(rid, respNomes[i]||'', 'demanda', '✨ Nova demanda (criada por IA)', t.nome, t.id); });
+    }
+    if(typeof renderTasks === 'function') renderTasks();
+    notif('✅ "'+t.nome+'" criada — '+t.setor+' · '+(respNomes[0]||'sem responsável'));
+  } catch(err){
+    notif('❌ Erro: ' + (err.message || 'Falha na IA'));
+  }
+}
+// Helper local pra salvar no localStorage com mesma logica de s()
+function s2(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+// ── IA: ANALISAR DEMANDA E PREENCHER MODAL ──
+async function iaAnalisarDemandaModal(){
+  var promptEl = document.getElementById('t-ia-prompt');
+  var btnEl = document.getElementById('t-ia-btn');
+  var lblEl = document.getElementById('t-ia-btn-label');
+  var statusEl = document.getElementById('t-ia-status');
+  var resEl = document.getElementById('t-ia-resultado');
+  if(!promptEl) return;
+  var texto = (promptEl.value||'').trim();
+  if(!texto){ notif('Digite uma descrição primeiro.'); promptEl.focus(); return; }
+  if(btnEl) btnEl.disabled = true;
+  if(lblEl) lblEl.textContent = 'Analisando…';
+  if(statusEl) statusEl.textContent = '⏳ IA pensando…';
+  if(resEl) resEl.style.display = 'none';
+  try {
+    var token = localStorage.getItem('sl_session_token') || '';
+    var r = await fetch(API_BASE + '/api/ia/analisar-demanda', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+token },
+      body: JSON.stringify({ texto: texto })
+    });
+    var data = await r.json();
+    if(!r.ok){ throw new Error(data.error || 'Erro na IA'); }
+    var s = data.resultado || {};
+    // Aplica sugestões aos campos do modal
+    var setIf = function(id, val){ var e=document.getElementById(id); if(e && val!=null) e.value = val; };
+    setIf('t-nome', s.titulo);
+    setIf('t-setor', s.setor);
+    setIf('t-status-novo', s.status || 'Pendente');
+    setIf('t-nicho', s.nichoId);
+    // dispara cascade pra popular ofertas
+    var nichoEl = document.getElementById('t-nicho');
+    if(nichoEl && typeof onNichoChange === 'function'){ try{ onNichoChange(); }catch(e){} }
+    setTimeout(function(){
+      setIf('t-oferta-v2', s.ofertaId);
+      setIf('t-data', s.prazoData);
+      // Responsável: adiciona via _taskResps
+      if(s.respId){
+        var users = getUsuarios();
+        var u = users.find(function(x){ return x.id === s.respId; });
+        if(u){
+          if(!Array.isArray(_taskResps)) _taskResps = [];
+          if(!_taskResps.find(function(r){ return r.id === u.id; })){
+            _taskResps.push({ id:u.id, nome:u.nome, cargo:u.cargo });
+            if(typeof _renderRespTags === 'function') _renderRespTags();
+          }
+        }
+      }
+      // Checklist
+      if(Array.isArray(s.checklist) && s.checklist.length){
+        var clToggle = document.getElementById('toggle-checklist');
+        if(clToggle && !clToggle.classList.contains('on')) clToggle.classList.add('on');
+        var clField = document.getElementById('checklist-field');
+        if(clField) clField.style.display = '';
+        var preview = document.getElementById('t-checklist-preview');
+        if(preview){
+          preview.innerHTML = s.checklist.map(function(t){
+            return '<div style="padding:6px 0;font-size:12.5px;">☐ '+(t||'').replace(/</g,'&lt;')+'</div>';
+          }).join('');
+        }
+      }
+    }, 120);
+    // Mostra resumo da sugestão
+    if(resEl){
+      var users2 = getUsuarios();
+      var respNome = s.respId ? ((users2.find(function(x){ return x.id===s.respId; })||{}).nome || '—') : '—';
+      var html = '<div style="font-weight:700;margin-bottom:6px;">✅ Campos preenchidos pela IA</div>';
+      html += '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11.5px;">';
+      if(s.setor) html += '<span style="color:var(--text2);">Setor</span><span><b>'+s.setor+'</b></span>';
+      if(s.respId) html += '<span style="color:var(--text2);">Responsável</span><span><b>'+respNome+'</b></span>';
+      if(s.prazoData) html += '<span style="color:var(--text2);">Prazo</span><span><b>'+s.prazoData+'</b></span>';
+      if(Array.isArray(s.checklist) && s.checklist.length) html += '<span style="color:var(--text2);">Checklist</span><span><b>'+s.checklist.length+' itens</b></span>';
+      html += '</div>';
+      if(s.raciocinio) html += '<div style="margin-top:8px;font-style:italic;color:var(--text2);font-size:11px;">💭 '+s.raciocinio+'</div>';
+      html += '<div style="margin-top:8px;font-size:11px;color:var(--text2);">Revise os campos abaixo e ajuste o que precisar antes de salvar.</div>';
+      resEl.innerHTML = html;
+      resEl.style.display = '';
+    }
+    if(statusEl) statusEl.textContent = '';
+    notif('✨ Campos preenchidos — revise e salve');
+  } catch(err){
+    if(statusEl) statusEl.textContent = '⚠️ ' + (err.message || 'Erro');
+    notif('Erro: ' + (err.message || 'Falha na IA'));
+  } finally {
+    if(btnEl) btnEl.disabled = false;
+    if(lblEl) lblEl.textContent = 'Preencher com IA';
+  }
+}
+
 // ── DUPLICAR DEMANDA (Template) ──
 function duplicarDemanda(id){
   var orig = tasks.find(function(x){ return x.id === id; });
@@ -17448,6 +17608,11 @@ function _cmdkInit(){
   _cmdkRegister({ id:'go-lixeira', label:'Ir para Lixeira', icon:'🗑️', keywords:'trash deletados', action:function(){ _cmdkGo('lixeira'); } });
   // Ações
   _cmdkRegister({ id:'nova-demanda', label:'Nova demanda', icon:'➕', keywords:'criar tarefa task', shortcut:'⌘N', action:function(){ _cmdkGo('task'); setTimeout(function(){ if(typeof abrirNovaDemanda==='function') abrirNovaDemanda(); }, 150); } });
+  _cmdkRegister({ id:'nova-demanda-ia', label:'Nova demanda com IA ✨', icon:'✨', keywords:'criar tarefa rapido inteligente automatico', action:function(){
+    var texto = prompt('✨ Descreva o que precisa (a IA vai criar a demanda):');
+    if(!texto || !texto.trim()) return;
+    iaCriarDemandaRapida(texto.trim());
+  } });
   _cmdkRegister({ id:'nova-remessa', label:'Nova remessa de criativos', icon:'🎬', keywords:'criar criativo ads novo', shortcut:'⌘⇧C', action:function(){ _cmdkGo('criativos'); setTimeout(function(){ if(typeof abrirNovaRemessa==='function') abrirNovaRemessa(); }, 150); } });
   _cmdkRegister({ id:'sync-now', label:'Sincronizar tudo agora', icon:'🔄', keywords:'pull push sync', action:function(){ try{ if(typeof forceSyncAll==='function') forceSyncAll.call({ target:{ disabled:false, textContent:'' } }); else syncFromServer(); }catch(e){ syncFromServer(); } } });
   _cmdkRegister({ id:'cheatsheet', label:'Mostrar atalhos de teclado', icon:'⌨️', keywords:'help ajuda', shortcut:'?', action:_cmdkCheatsheet });
