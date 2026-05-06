@@ -3636,11 +3636,86 @@ async function syncFromServer(){
 function _startSync(){
   syncFromServer();
   if(!_syncInterval) _syncInterval = setInterval(syncFromServer, 4000);
+  _iniciarStreamRealtime();
 }
 
 function _stopSync(){
   if(_syncInterval){ clearInterval(_syncInterval); _syncInterval = null; }
+  _pararStreamRealtime();
 }
+
+// ── REAL-TIME via SSE ──
+// Mantém uma conexão aberta com /api/sync/stream. Quando o server emite um
+// evento (algo mudou no db), dispara syncFromServer() pra re-puxar e re-render.
+// Eventos originados pela própria aba são ignorados via _clientId.
+var _clientId = (function(){
+  try {
+    var k = 'sl_client_id';
+    var v = sessionStorage.getItem(k);
+    if(!v){ v = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,10); sessionStorage.setItem(k, v); }
+    return v;
+  } catch(e){ return 'anon-' + Math.random().toString(36).slice(2,10); }
+})();
+var _eventSource = null;
+var _streamReconnTimer = null;
+var _streamSyncDebounce = null;
+
+function _iniciarStreamRealtime(){
+  try {
+    if(_eventSource) return; // já conectado
+    var token = localStorage.getItem('sl_session_token');
+    if(!token) return; // sem auth, sem stream
+    var url = API_BASE + '/api/sync/stream?token=' + encodeURIComponent(token);
+    var es = new EventSource(url);
+    _eventSource = es;
+    es.onmessage = function(ev){
+      try {
+        var msg = JSON.parse(ev.data);
+        // Ignora eventos que esta aba originou
+        if(msg && msg.originator === _clientId) return;
+        // Debounce: vários eventos seguidos disparam um único syncFromServer
+        if(_streamSyncDebounce) clearTimeout(_streamSyncDebounce);
+        _streamSyncDebounce = setTimeout(function(){ syncFromServer(); }, 200);
+      } catch(e){}
+    };
+    es.addEventListener('hello', function(){ /* server confirmou */ });
+    es.onerror = function(){
+      // EventSource já reconecta sozinho. Se fechou totalmente, agenda nova tentativa.
+      if(es.readyState === EventSource.CLOSED){
+        _eventSource = null;
+        if(_streamReconnTimer) clearTimeout(_streamReconnTimer);
+        _streamReconnTimer = setTimeout(_iniciarStreamRealtime, 5000);
+      }
+    };
+  } catch(e){ /* navegador antigo sem EventSource — fica só no polling */ }
+}
+
+function _pararStreamRealtime(){
+  if(_eventSource){ try { _eventSource.close(); } catch(e){} _eventSource = null; }
+  if(_streamReconnTimer){ clearTimeout(_streamReconnTimer); _streamReconnTimer = null; }
+  if(_streamSyncDebounce){ clearTimeout(_streamSyncDebounce); _streamSyncDebounce = null; }
+}
+
+// Monkey-patch fetch: injeta x-client-id em writes pra /api/ — server inclui esse
+// id no broadcast, e a aba que originou ignora o eco em vez de re-renderizar
+(function(){
+  var _origFetch = window.fetch;
+  window.fetch = function(input, init){
+    init = init || {};
+    var url = (typeof input === 'string') ? input : (input && input.url) || '';
+    var method = (init.method || 'GET').toUpperCase();
+    if(url.indexOf('/api/') !== -1 && method !== 'GET' && method !== 'HEAD'){
+      var headers = init.headers || {};
+      // Headers pode ser Headers, plain object ou array — normaliza pra plain
+      if(headers instanceof Headers){
+        var h = {}; headers.forEach(function(v,k){ h[k] = v; }); headers = h;
+      }
+      headers['x-client-id'] = _clientId;
+      init.headers = headers;
+    }
+    return _origFetch.call(this, input, init);
+  };
+})();
 
 async function pushAllToServer(){
   const promises = SYNC_KEYS.map(k => {
