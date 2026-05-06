@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview Mobile — Axcend</title>
+<style>
+  :root {
+    --bg: #FFFFFF; --bg2: #FFFFFF; --bg3: #F8FAFC;
+    --accent: #1B9CFA; --text: #0F172A; --text2: #64748B;
+    --border: #E2E8F0; --green: #10B981; --red: #EF4444;
+    --orange: #FF5926; --purple: #6366F1; --yellow: #EAB308;
+    --sidebar-bg: #0A1628;
+    --roxo: #3E1493; --rosa: #C52C58;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f3f7; color: var(--text); font-size: 14px; padding: 20px; }
+
+  /* Tabs preview no topo */
+  .preview-tabs { background: #1e293b; padding: 12px 20px; border-radius: 12px; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .preview-label { color: #fbbf24; font-size: 11px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; }
+  .preview-tab { padding: 7px 12px; background: rgba(255,255,255,.06); color: #cbd5e1; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-size: 11.5px; font-weight: 600; }
+  .preview-tab.active { background: rgba(27,156,250,.25); color: #fff; border-color: rgba(27,156,250,.5); }
+
+  /* Frame do celular */
+  .phone-row { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .phone-frame { width: 380px; min-height: 720px; background: #0F172A; border-radius: 36px; padding: 12px; box-shadow: 0 20px 50px rgba(0,0,0,.25); flex-shrink: 0; }
+  .phone-screen { background: #fff; border-radius: 26px; overflow: hidden; height: 700px; display: flex; flex-direction: column; position: relative; }
+  .phone-label { text-align: center; font-size: 11px; color: var(--text2); margin-top: 10px; font-weight: 600; }
+
+  /* Top bar (header preto) */
+  .topbar { background: #0A1628; color: #fff; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .topbar-burger { width: 28px; height: 28px; display: flex; flex-direction: column; justify-content: center; gap: 4px; cursor: pointer; }
+  .topbar-burger span { display: block; width: 20px; height: 2px; background: #cbd5e1; border-radius: 2px; }
+  .topbar-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .topbar-action { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+  /* Bottom nav */
+  .bottomnav { background: #0A1628; padding: 8px 4px 12px; display: flex; flex-shrink: 0; border-top: 1px solid #1e293b; }
+  .bn-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px; cursor: pointer; color: #94a3b8; font-size: 9.5px; font-weight: 600; }
+  .bn-btn.active { color: var(--accent); }
+  .bn-btn .ic { font-size: 18px; }
+
+  /* Content */
+  .content { flex: 1; overflow-y: auto; padding: 14px; background: var(--bg3); }
+  .page-title { font-size: 22px; font-weight: 800; margin-bottom: 2px; color: var(--text); }
+  .page-sub { font-size: 12.5px; color: var(--text2); margin-bottom: 16px; }
+
+  /* ═══ DEMANDAS ═══ */
+  /* Filtros: 1 por linha, full width */
+  .filter-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .filter-stack input, .filter-stack select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: #fff; font-size: 13px; color: var(--text); outline: none; }
+  .quick-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px; }
+  .qchip { padding: 7px 13px; background: #fff; border: 1px solid var(--border); border-radius: 18px; font-size: 11.5px; font-weight: 600; color: var(--text2); cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; }
+  .qchip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .qchip.danger { background: #fef2f2; color: var(--red); border-color: #fecaca; }
+  .btn-add { display: block; width: 100%; padding: 12px; background: linear-gradient(135deg, #3E1493, #1B9CFA); color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-bottom: 14px; }
+
+  /* Cards de demanda (em vez de tabela) */
+  .demanda-card { background: #fff; border: 1px solid var(--border); border-left: 4px solid; border-radius: 11px; padding: 13px 14px; margin-bottom: 10px; cursor: pointer; }
+  .demanda-card.copy { border-left-color: #3B82F6; }
+  .demanda-card.edicao { border-left-color: #A855F7; }
+  .demanda-card.trafego { border-left-color: #22C55E; }
+  .demanda-card.spy { border-left-color: #EF4444; }
+  .dc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .dc-fav { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: #cbd5e1; cursor: pointer; }
+  .dc-fav.is-fav { color: #FBBF24; }
+  .dc-title { font-size: 14px; font-weight: 700; color: var(--text); flex: 1; line-height: 1.3; }
+  .dc-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .tag-emag { background: #dbeafe; color: #1d4ed8; }
+  .tag-tglv { background: #fed7aa; color: #c2410c; }
+  .dc-row2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .dc-resp { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text); }
+  .ava { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+  .ava.purple { background: #A855F7; }
+  .ava.green { background: #22C55E; }
+  .ava.red { background: #EF4444; }
+  .dc-date { font-size: 11px; font-weight: 700; }
+  .dc-date.atrasada { color: var(--red); }
+  .dc-date.atrasada::before { content: '🔴 '; }
+  .dc-date.hoje { color: var(--orange); }
+  .dc-date.hoje::before { content: '🟠 '; }
+  .dc-date.amanha { color: #b45309; }
+  .dc-date.amanha::before { content: '🟡 '; }
+  .dc-date.folga { color: var(--text2); }
+  .dc-date.folga::before { content: '⚪ '; }
+  .dc-status { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 14px; font-size: 11px; font-weight: 700; flex: 1; justify-content: center; }
+  .st-pendente { background: #f1f5f9; color: #475569; }
+  .st-progresso { background: #dbeafe; color: #1d4ed8; }
+  .st-revisao { background: #fef3c7; color: #b45309; }
+  .st-aprov { background: #fce7f3; color: #be185d; }
+  .dc-bar-actions { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .dc-bar-actions .act { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid; font-size: 11.5px; font-weight: 700; cursor: pointer; background: #fff; }
+  .act-ini { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }
+  .act-rev { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+  .act-conc { color: #047857; border-color: #6ee7b7; background: #f0fdf4; }
+
+  /* ═══ DASHBOARD ═══ */
+  .greet { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .greet-text h1 { font-size: 19px; font-weight: 800; }
+  .greet-text p { font-size: 12px; color: var(--text2); }
+  .btn-novo { padding: 10px 14px; background: linear-gradient(135deg, #3E1493, #1B9CFA); color: #fff; border: none; border-radius: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .kpi-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .kpi-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 8px; }
+  .kpi-i-blue { background: #dbeafe; }
+  .kpi-i-green { background: #d1fae5; }
+  .kpi-i-rose { background: #fce7f3; }
+  .kpi-i-yellow { background: #fef3c7; }
+  .kpi-label { font-size: 9.5px; color: var(--text2); text-transform: uppercase; font-weight: 700; letter-spacing: .4px; }
+  .kpi-val { font-size: 19px; font-weight: 800; color: var(--text); margin-top: 3px; }
+  .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 8px; margin-top: 6px; }
+  .kpi-delta.up { background: #d1fae5; color: #047857; }
+
+  .alerts-section { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .alerts-title { font-size: 12.5px; font-weight: 800; margin-bottom: 10px; }
+  .alert-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid var(--bg3); font-size: 12px; }
+  .alert-item:first-of-type { border-top: none; padding-top: 0; }
+  .alert-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ═══ CHAT ═══ */
+  .chat-channel-bar { background: #fff; padding: 0; display: flex; gap: 0; border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; }
+  .chat-ch { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--text2); white-space: nowrap; cursor: pointer; border-bottom: 3px solid transparent; }
+  .chat-ch.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+  .chat-ch::before { content: '#'; opacity: .5; margin-right: 4px; }
+  .chat-msgs { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .chat-msg { display: flex; gap: 8px; }
+  .chat-msg-body { flex: 1; }
+  .chat-msg-meta { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+  .chat-msg-meta b { color: var(--text); margin-right: 4px; }
+  .chat-msg-text { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 13px; color: var(--text); }
+  .chat-msg.own .chat-msg-text { background: #1B9CFA; color: #fff; border-color: #1B9CFA; }
+  .chat-msg.own { flex-direction: row-reverse; }
+  .chat-msg.own .chat-msg-meta { text-align: right; }
+  .chat-input-bar { display: flex; gap: 6px; padding: 10px 12px; background: #fff; border-top: 1px solid var(--border); flex-shrink: 0; align-items: center; }
+  .chat-attach { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; color: var(--text2); flex-shrink: 0; }
+  .chat-input { flex: 1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 18px; font-size: 13px; outline: none; }
+  .chat-send { width: 38px; height: 38px; background: var(--accent); color: #fff; border: none; border-radius: 50%; font-size: 16px; cursor: pointer; flex-shrink: 0; }
+
+  /* ═══ CRIATIVOS ═══ */
+  .cri-actions-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .cri-btn { padding: 10px 14px; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .cri-btn.primary { background: linear-gradient(135deg, #3E1493, #1B9CFA); color: #fff; border: none; }
+  .breadcrumb { font-size: 12px; color: var(--text2); margin-bottom: 12px; }
+  .breadcrumb b { color: var(--accent); font-weight: 700; }
+  .cri-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cri-card { background: #fff; border: 1px solid var(--border); border-radius: 11px; padding: 16px 12px; text-align: center; cursor: pointer; }
+  .cri-card.sel { border-color: var(--accent); background: rgba(27,156,250,.06); }
+  .cri-card-ic { font-size: 28px; margin-bottom: 6px; }
+  .cri-card-name { font-size: 13px; font-weight: 700; margin-bottom: 3px; line-height: 1.25; }
+  .cri-card-meta { font-size: 11px; color: var(--text2); }
+
+  /* Views */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Annotation */
+  .annotate { background: #fef3c7; border: 1px dashed #f59e0b; border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #92400e; margin-bottom: 12px; }
+  .annotate b { font-weight: 700; }
+
+  @media (max-width: 800px) {
+    .phone-row { gap: 12px; }
+    body { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-tabs">
+  <span class="preview-label">📱 PREVIEW MOBILE</span>
+  <button class="preview-tab active" onclick="showView('view-demandas')">1. Demandas</button>
+  <button class="preview-tab" onclick="showView('view-dashboard')">2. Dashboard</button>
+  <button class="preview-tab" onclick="showView('view-chat')">3. Chat</button>
+  <button class="preview-tab" onclick="showView('view-criativos')">4. Criativos</button>
+</div>
+
+<div class="phone-row">
+
+  <!-- ════════════ VIEW 1: DEMANDAS ════════════ -->
+  <div class="view active" id="view-demandas">
+    <div class="phone-frame">
+      <div class="phone-screen">
+        <div class="topbar">
+          <div class="topbar-burger"><span></span><span></span><span></span></div>
+          <div class="topbar-title">Demandas</div>
+          <div class="topbar-action">🔄</div>
+        </div>
+        <div class="content">
+          <div class="page-title">Demandas</div>
+          <div class="page-sub">21 demandas · 4 atrasadas</div>
+
+          <div class="annotate"><b>Antes:</b> filtros lado a lado, cortando · <b>Agora:</b> empilhados, full-width</div>
+
+          <!-- Filtros empilhados (1 por linha) -->
+          <div class="filter-stack">
+            <select><option>👤 Todos os responsáveis</option></select>
+            <select><option>🏷️ Todas as ofertas</option></select>
+            <input type="date" placeholder="Data">
+            <input type="search" placeholder="🔍 Buscar demandas...">
+          </div>
+
+          <button class="btn-add">+ Nova Demanda</button>
+
+          <!-- Quick chips horizontais -->
+          <div class="quick-chips">
+            <span class="qchip danger">🔥 Atrasadas (4)</span>
+            <span class="qchip">👤 Minhas</span>
+            <span class="qchip">⏳ Pendente</span>
+            <span class="qchip">▶️ Em Progresso</span>
+          </div>
+
+          <!-- Cards de demanda (em vez de tabela cortada) -->
+          <div class="demanda-card copy">
+            <div class="dc-header">
+              <span class="dc-fav">☆</span>
+              <div class="dc-title">Analisar métricas semana 2</div>
+            </div>
+            <div class="dc-row2">
+              <div class="dc-resp"><span class="ava">T</span> Thiago</div>
+              <div class="dc-date atrasada">Atrasada · 28d</div>
+            </div>
+            <div class="dc-bar-actions">
+              <span class="dc-status st-pendente">⏳ Pendente</span>
+              <button class="act act-ini">▶️ Iniciar</button>
+            </div>
+          </div>
+
+          <div class="demanda-card edicao">
+            <div class="dc-header">
+              <span class="dc-fav is-fav">★</span>
+              <div class="dc-title">Editar UGC — Maria (Depoimento)</div>
+            </div>
+            <div class="dc-meta">
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-tglv">TGLV10</span>
+            </div>
+            <div class="dc-row2">
+              <div class="dc-resp"><span class="ava purple">L</span> Lucca</div>
+              <div class="dc-date hoje">Hoje · 18h</div>
+            </div>
+            <div class="dc-bar-actions">
+              <span class="dc-status st-progresso">▶️ Em Progresso</span>
+              <button class="act act-rev">👀 Revisar</button>
+            </div>
+          </div>
+
+          <div class="demanda-card copy">
+            <div class="dc-header">
+              <span class="dc-fav">☆</span>
+              <div class="dc-title">Criar novo hook — Variação 2</div>
+            </div>
+            <div class="dc-meta">
+              <span class="tag tag-emag">Emagrecimento</span>
+            </div>
+            <div class="dc-row2">
+              <div class="dc-resp"><span class="ava green">R</span> Rafael</div>
+              <div class="dc-date amanha">Amanhã · 12h</div>
+            </div>
+            <div class="dc-bar-actions">
+              <span class="dc-status st-revisao">👀 Em Revisão</span>
+              <button class="act act-conc">✅ Concluir</button>
+            </div>
+          </div>
+
+          <div class="demanda-card spy">
+            <div class="dc-header">
+              <span class="dc-fav">☆</span>
+              <div class="dc-title">Iniciar SPY para concorrentes</div>
+            </div>
+            <div class="dc-row2">
+              <div class="dc-resp"><span class="ava red">L</span> Lucas</div>
+              <div class="dc-date folga">Em 3 dias</div>
+            </div>
+            <div class="dc-bar-actions">
+              <span class="dc-status st-pendente">⏳ Pendente</span>
+              <button class="act act-ini">▶️ Iniciar</button>
+            </div>
+          </div>
+
+        </div>
+        <div class="bottomnav">
+          <div class="bn-btn"><span class="ic">🏠</span>Dashboard</div>
+          <div class="bn-btn active"><span class="ic">📋</span>Demandas</div>
+          <div class="bn-btn"><span class="ic">💬</span>Chat</div>
+          <div class="bn-btn"><span class="ic">🎨</span>Criativos</div>
+          <div class="bn-btn"><span class="ic">≡</span>Menu</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">📱 Demandas — cards verticais (sem tabela cortada)</div>
+  </div>
+
+  <!-- ════════════ VIEW 2: DASHBOARD ════════════ -->
+  <div class="view" id="view-dashboard">
+    <div class="phone-frame">
+      <div class="phone-screen">
+        <div class="topbar">
+          <div class="topbar-burger"><span></span><span></span><span></span></div>
+          <div class="topbar-title">Dashboard</div>
+        </div>
+        <div class="content">
+          <div class="greet">
+            <div class="greet-text">
+              <h1>Boa tarde, Thiago</h1>
+              <p>Quarta, 6 de maio</p>
+            </div>
+            <button class="btn-novo">+ Demanda</button>
+          </div>
+
+          <div class="annotate"><b>Antes:</b> botão "+ D..." cortado · <b>Agora:</b> "+ Demanda" cabe inteiro</div>
+
+          <!-- KPIs em grid 2x2 -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-i-rose">💰</div>
+              <div class="kpi-label">Investimento Hoje</div>
+              <div class="kpi-val">R$ 4.236</div>
+              <span class="kpi-delta up">▲ +29%</span>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-i-blue">💵</div>
+              <div class="kpi-label">Faturamento</div>
+              <div class="kpi-val">R$ 2.184</div>
+              <span class="kpi-delta" style="background:#fee2e2;color:#dc2626;">▼ -12%</span>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-i-green">📈</div>
+              <div class="kpi-label">ROAS</div>
+              <div class="kpi-val">2.8x</div>
+              <span class="kpi-delta up">▲ +0.3</span>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-i-yellow">⚡</div>
+              <div class="kpi-label">Lucro</div>
+              <div class="kpi-val">R$ 580</div>
+              <span class="kpi-delta up">▲ +5%</span>
+            </div>
+          </div>
+
+          <!-- Alertas inline -->
+          <div class="alerts-section">
+            <div class="alerts-title">⚠️ Alertas</div>
+            <div class="alert-item">
+              <span class="alert-icon">🔥</span>
+              <div><b>4 demandas atrasadas</b> · Esteve, Lucca e Rafael</div>
+            </div>
+            <div class="alert-item">
+              <span class="alert-icon">⏰</span>
+              <div><b>3 vencem hoje</b> · 18h</div>
+            </div>
+            <div class="alert-item">
+              <span class="alert-icon">📉</span>
+              <div><b>ROAS de TGLV10 caiu 22%</b> nas últimas 6h</div>
+            </div>
+          </div>
+
+        </div>
+        <div class="bottomnav">
+          <div class="bn-btn active"><span class="ic">🏠</span>Dashboard</div>
+          <div class="bn-btn"><span class="ic">📋</span>Demandas</div>
+          <div class="bn-btn"><span class="ic">💬</span>Chat</div>
+          <div class="bn-btn"><span class="ic">🎨</span>Criativos</div>
+          <div class="bn-btn"><span class="ic">≡</span>Menu</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">📱 Dashboard — KPIs 2x2 + alertas inline</div>
+  </div>
+
+  <!-- ════════════ VIEW 3: CHAT ════════════ -->
+  <div class="view" id="view-chat">
+    <div class="phone-frame">
+      <div class="phone-screen">
+        <div class="topbar">
+          <div class="topbar-burger"><span></span><span></span><span></span></div>
+          <div class="topbar-title">Chat — geral</div>
+          <div class="topbar-action">🔍</div>
+        </div>
+        <div class="annotate" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;font-size:10.5px;padding:6px 12px;"><b>Antes:</b> sidebar empurrava conteúdo · <b>Agora:</b> sidebar vira drawer (☰), conteúdo full-width</div>
+
+        <!-- Canais como tabs horizontais (ao invés de sidebar lateral) -->
+        <div class="chat-channel-bar">
+          <div class="chat-ch active">geral</div>
+          <div class="chat-ch">copy</div>
+          <div class="chat-ch">edição</div>
+          <div class="chat-ch">tráfego</div>
+          <div class="chat-ch">links-cad...</div>
+        </div>
+
+        <div class="chat-msgs">
+          <div class="chat-msg">
+            <span class="ava purple">L</span>
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta"><b>Lucca</b> · 13:20</div>
+              <div class="chat-msg-text">subi a versão final do UGC no drive 👍</div>
+            </div>
+          </div>
+          <div class="chat-msg own">
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta">13:24</div>
+              <div class="chat-msg-text">show, vou revisar agora</div>
+            </div>
+          </div>
+          <div class="chat-msg">
+            <span class="ava">T</span>
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta"><b>Thiago</b> · 13:26</div>
+              <div class="chat-msg-text">olá</div>
+            </div>
+          </div>
+          <div class="chat-msg own">
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta">13:28</div>
+              <div class="chat-msg-text">@Lucca pode incluir CTA no final?</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-bar">
+          <div class="chat-attach">📎</div>
+          <input class="chat-input" placeholder="Mensagem...">
+          <button class="chat-send">▸</button>
+        </div>
+
+        <div class="bottomnav">
+          <div class="bn-btn"><span class="ic">🏠</span>Dashboard</div>
+          <div class="bn-btn"><span class="ic">📋</span>Demandas</div>
+          <div class="bn-btn active"><span class="ic">💬</span>Chat</div>
+          <div class="bn-btn"><span class="ic">🎨</span>Criativos</div>
+          <div class="bn-btn"><span class="ic">≡</span>Menu</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">📱 Chat — canais em tabs (sidebar vira drawer)</div>
+  </div>
+
+  <!-- ════════════ VIEW 4: CRIATIVOS ════════════ -->
+  <div class="view" id="view-criativos">
+    <div class="phone-frame">
+      <div class="phone-screen">
+        <div class="topbar">
+          <div class="topbar-burger"><span></span><span></span><span></span></div>
+          <div class="topbar-title">Criativos</div>
+        </div>
+        <div class="content">
+          <div class="page-title">Criativos</div>
+          <div class="page-sub">Gerencie seus materiais</div>
+
+          <div class="annotate"><b>Antes:</b> 3 botões cortados em row · <b>Agora:</b> empilhados full-width</div>
+
+          <!-- Botões empilhados em vez de row -->
+          <div class="cri-actions-bar">
+            <button class="cri-btn primary">📄 Criar Documento</button>
+            <button class="cri-btn">📦 Gerenciar Remessas</button>
+            <button class="cri-btn">⚙️ Gerenciar Formatos</button>
+          </div>
+
+          <div class="breadcrumb">🎨 <b>Criativos</b> › Emagrecimento</div>
+
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">Ofertas</div>
+
+          <div class="cri-grid">
+            <div class="cri-card sel">
+              <div class="cri-card-ic">📦</div>
+              <div class="cri-card-name">Gelatina v5</div>
+              <div class="cri-card-meta">2 remessas</div>
+            </div>
+            <div class="cri-card">
+              <div class="cri-card-ic">📦</div>
+              <div class="cri-card-name">TGLV10</div>
+              <div class="cri-card-meta">3 remessas</div>
+            </div>
+            <div class="cri-card">
+              <div class="cri-card-ic">📦</div>
+              <div class="cri-card-name">Detox Express</div>
+              <div class="cri-card-meta">1 remessa</div>
+            </div>
+            <div class="cri-card">
+              <div class="cri-card-ic">📦</div>
+              <div class="cri-card-name">Memória AF</div>
+              <div class="cri-card-meta">4 remessas</div>
+            </div>
+          </div>
+
+        </div>
+        <div class="bottomnav">
+          <div class="bn-btn"><span class="ic">🏠</span>Dashboard</div>
+          <div class="bn-btn"><span class="ic">📋</span>Demandas</div>
+          <div class="bn-btn"><span class="ic">💬</span>Chat</div>
+          <div class="bn-btn active"><span class="ic">🎨</span>Criativos</div>
+          <div class="bn-btn"><span class="ic">≡</span>Menu</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone-label">📱 Criativos — botões empilhados, grid 2x2 ofertas</div>
+  </div>
+
+</div>
+
+<div style="max-width:900px;margin:30px auto 50px;background:#fff;padding:24px;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.05);">
+  <h2 style="font-size:18px;font-weight:800;margin-bottom:14px;">📋 Resumo das mudanças</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="background:#f8fafc;text-align:left;">
+        <th style="padding:10px;border-bottom:1px solid #E2E8F0;">Tela</th>
+        <th style="padding:10px;border-bottom:1px solid #E2E8F0;">Antes</th>
+        <th style="padding:10px;border-bottom:1px solid #E2E8F0;">Depois</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:10px;border-bottom:1px solid #f1f5f9;"><b>Demandas</b></td><td style="padding:10px;border-bottom:1px solid #f1f5f9;color:#64748b;">Filtros em row cortando · Tabela com scroll horizontal · Linhas sem padding</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;">Filtros empilhados full-width · Cards verticais por demanda · Status + ação no rodapé do card</td></tr>
+      <tr><td style="padding:10px;border-bottom:1px solid #f1f5f9;"><b>Dashboard</b></td><td style="padding:10px;border-bottom:1px solid #f1f5f9;color:#64748b;">Botão "+ Demanda" cortado · KPIs full-width</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;">Botão completo no header · KPIs 2x2 + alertas inline</td></tr>
+      <tr><td style="padding:10px;border-bottom:1px solid #f1f5f9;"><b>Chat</b></td><td style="padding:10px;border-bottom:1px solid #f1f5f9;color:#64748b;">Sidebar de canais empurrava o conteúdo · Mensagens espremidas</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;">Canais como tabs horizontais · Conteúdo 100% largura · Sidebar full vira drawer (☰)</td></tr>
+      <tr><td style="padding:10px;"><b>Criativos</b></td><td style="padding:10px;color:#64748b;">3 botões em row cortando · Grid de nichos cortando 2ª coluna</td><td style="padding:10px;">Botões empilhados · Grid 2x2 ofertas · Breadcrumb visível</td></tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top:18px;padding:14px;background:#f0f9ff;border-radius:10px;border-left:3px solid #1B9CFA;font-size:13px;color:#0c4a6e;">
+    <b>Próximo passo:</b> abre essa página no celular pra ver "tamanho real". Se aprovar, eu aplico no sistema real (apenas dentro de @media max-width:768px — desktop fica intocado).
+  </div>
+</div>
+
+<script>
+function showView(id){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+  var v = document.getElementById(id);
+  if(v) v.classList.add('active');
+  var idx = ['view-demandas','view-dashboard','view-chat','view-criativos'].indexOf(id);
+  if(idx >= 0) document.querySelectorAll('.preview-tab')[idx].classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+</script>
+
+</body>
+</html>
