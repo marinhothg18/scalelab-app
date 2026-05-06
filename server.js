@@ -30,8 +30,15 @@ if (!fs.existsSync(BACKUP_DIR)) {
 // ── SEGURANÇA ──
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
-// Rate limiting global
-const globalLimiter = rateLimit({ windowMs: 60*1000, max: 200, message: { error: 'Muitas requisições. Tente novamente em 1 minuto.' } });
+// Rate limiting global. SSE stream é pulado — é uma conexão long-lived
+// (uma única request fica aberta horas; não faz sentido contar no rate limit)
+// e o Authorization vai por query param, não no header
+const globalLimiter = rateLimit({
+  windowMs: 60*1000,
+  max: 200,
+  message: { error: 'Muitas requisições. Tente novamente em 1 minuto.' },
+  skip: (req) => req.path === '/api/sync/stream'
+});
 app.use('/api/', globalLimiter);
 
 // Rate limiting mais agressivo pra API v1
@@ -654,6 +661,7 @@ app.put('/api/store/:key', (req, res) => {
   if (!db.timestamps) db.timestamps = {};
   db.timestamps[key] = now();
   writeDB(db);
+  _broadcastSync(key, req.headers['x-client-id']);
 
   // Dispara notificação WhatsApp para tarefas novas (fire-and-forget)
   if (novasTasks.length) {
@@ -719,6 +727,8 @@ app.post('/api/lixeira/soft-delete', (req, res) => {
   db.timestamps['sl_lixeira'] = now();
   audit(db, 'soft_delete', { sourceKey: key, itemId, tipo }, { itemNome: (item && (item.nome || item.titulo)) || null }, { id: deletedBy, nome: deletedByNome });
   writeDB(db);
+  _broadcastSync(key, req.headers['x-client-id']);
+  _broadcastSync('sl_lixeira', req.headers['x-client-id']);
   res.json({ ok: true });
 });
 
@@ -743,6 +753,8 @@ app.post('/api/lixeira/restore/:lixeiraId', (req, res) => {
   db.timestamps['sl_lixeira'] = now();
   audit(db, 'restore_lixeira', { sourceKey: entry.sourceKey, itemId: entry.originalId, tipo: entry.tipo }, null, _userInfoFromReq(req, db));
   writeDB(db);
+  _broadcastSync(entry.sourceKey, req.headers['x-client-id']);
+  _broadcastSync('sl_lixeira', req.headers['x-client-id']);
   res.json({ ok: true, restaurado: entry.data });
 });
 
@@ -758,6 +770,7 @@ app.delete('/api/lixeira/:lixeiraId', (req, res) => {
   db.timestamps['sl_lixeira'] = now();
   audit(db, 'purge_lixeira', { sourceKey: entry.sourceKey, itemId: entry.originalId, tipo: entry.tipo }, null, _userInfoFromReq(req, db));
   writeDB(db);
+  _broadcastSync('sl_lixeira', req.headers['x-client-id']);
   res.json({ ok: true });
 });
 
@@ -855,6 +868,54 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.get('/api/ping', (req, res) => res.json({ ok: true, version: '2.0', api: true }));
+
+// ══════════════════════════════════════════════
+// ── SSE: SINCRONIZAÇÃO EM TEMPO REAL ──
+// ══════════════════════════════════════════════
+// Clientes conectados mantêm uma conexão HTTP aberta. Quando alguma chave
+// do db é mutada (PUT /api/store, lixeira), o server emite um evento com
+// {key, ts, originator} pra todos. O cliente filtra eventos próprios via
+// `originator` (clientId enviado no PUT) e re-puxa só as chaves alteradas.
+const _sseClients = new Set();
+
+function _broadcastSync(key, originator) {
+  if (!_sseClients.size) return;
+  const payload = JSON.stringify({ key, ts: now(), originator: originator || null });
+  for (const client of _sseClients) {
+    try { client.res.write(`data: ${payload}\n\n`); } catch (e) { /* desconectado */ }
+  }
+}
+
+// EventSource não suporta headers customizados — auth via ?token=...
+app.get('/api/sync/stream', (req, res) => {
+  const token = req.query.token;
+  if (!token) return res.status(401).end();
+  const db = readDB();
+  const sess = validarSessao(db, String(token));
+  if (!sess) return res.status(401).end();
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const client = { res, userId: sess.userId, connectedAt: Date.now() };
+  _sseClients.add(client);
+
+  // Hello inicial — cliente confirma conexão e pode sincronizar com /api/updates/:since
+  res.write(`event: hello\ndata: ${JSON.stringify({ ts: now() })}\n\n`);
+
+  // Heartbeat a cada 30s — mantém conexão viva em proxies/CDN do Railway
+  const heartbeat = setInterval(() => {
+    try { res.write(`: ping\n\n`); } catch (e) { clearInterval(heartbeat); }
+  }, 30 * 1000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    _sseClients.delete(client);
+  });
+});
 
 // ── DOCUMENTAÇÃO DA API ──
 app.get('/api/v1/docs', (req, res) => {
