@@ -545,6 +545,51 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
   /* ── DEMANDAS ── */
   #page-task .content { padding:0 !important; }
   #page-task > .content > div[style*="display:flex"] { flex-wrap:wrap !important; gap:8px !important; padding:10px 12px !important; }
+  /* Layout 2-col da pagina-task (sidebar 210px + main) vira coluna unica */
+  #page-task > div[style*="height:calc(100vh"] {
+    flex-direction:column !important;
+    height:auto !important;
+  }
+  #page-task > div[style*="height:calc(100vh"] > div:first-child {
+    width:100% !important;
+    border-right:none !important;
+    border-bottom:1px solid var(--border) !important;
+    flex-shrink:0 !important;
+  }
+  #page-task > div[style*="height:calc(100vh"] > div:first-child > div:first-child {
+    padding:10px 12px !important;
+    overflow:visible !important;
+  }
+  /* "Filtrar por Status" vira chips horizontais scrollaveis */
+  #task-status-filters {
+    flex-direction:row !important;
+    overflow-x:auto !important;
+    flex-wrap:nowrap !important;
+    padding-bottom:4px;
+    scrollbar-width:thin;
+    -webkit-overflow-scrolling:touch;
+  }
+  #task-status-filters .nav-item {
+    flex-shrink:0 !important;
+    padding:6px 12px !important;
+    border-radius:14px !important;
+    background:var(--bg3);
+    margin-right:6px;
+  }
+  #task-status-filters .nav-item.active-sf {
+    background:var(--blue) !important;
+    color:#fff !important;
+  }
+  /* Esconde label "FILTRAR POR STATUS" em mobile (chips ja sao auto-explicativos) */
+  #page-task > div[style*="height:calc(100vh"] > div:first-child > div:first-child > div:first-child {
+    display:none !important;
+  }
+  /* Arquivados separa visualmente abaixo dos chips */
+  #arquivados-section {
+    margin-top:8px !important;
+    padding-top:8px !important;
+  }
+  /* Filtros do header (nicho, oferta, busca) full-width */
   #task-search { width:100% !important; max-width:100% !important; }
   #task-nicho-filter, #task-oferta-filter, #task-date-filter {
     flex:1 1 calc(50% - 4px) !important; min-width:0 !important; width:auto !important;
@@ -608,6 +653,47 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
   /* Lixeira / Auditoria tabelas viram lista */
   #auditoria-list > div > div { grid-template-columns:1fr !important; gap:4px !important; }
   #auditoria-list > div > div > div:first-child { font-size:10px !important; }
+
+  /* ── ROI: tabela com scroll horizontal explicito ── */
+  /* O wrapper da tabela ja tem overflow-x via .roi-main, mas garante touch-friendly */
+  .roi-main { padding:12px !important; -webkit-overflow-scrolling:touch; }
+  .roi-summary { grid-template-columns:1fr 1fr !important; gap:8px !important; }
+  .roi-card { padding:14px 12px 0 12px !important; min-height:100px !important; }
+  .roi-card-val { font-size:18px !important; }
+  /* Headers do detalhe: filtros mes/gestor full-width */
+  #roi-det-mes, #roi-det-gestor { flex:1 1 calc(50% - 4px) !important; min-width:0 !important; }
+  /* Tabela dentro do detalhe: garante scroll horizontal e largura minima */
+  #roi-det-table-wrapper, .roi-det-table-wrap, [id^="roi-det"] > div[style*="overflow"] {
+    overflow-x:auto !important; -webkit-overflow-scrolling:touch;
+  }
+  /* Sidebar de ofertas em ROI ja vira horizontal pelo CSS principal — ajusta padding */
+  .roi-sidebar { padding:8px 10px !important; }
+
+  /* ── CRIATIVOS: cards de remessa com padding reduzido ── */
+  .cri-card { margin-bottom:14px !important; }
+  .cri-header { padding:14px 14px !important; flex-wrap:wrap !important; gap:8px; }
+  .cri-title { font-size:16px !important; }
+  .cri-actions { width:100%; justify-content:flex-end; }
+  /* Filtros de criativos: chips horizontais scrollaveis se passar largura */
+  #cri-filters-bar { gap:6px !important; overflow-x:auto !important; flex-wrap:nowrap !important; padding-bottom:4px; }
+  #cri-filters-bar > * { flex-shrink:0; }
+
+  /* ── CONFIG: abas como chips compactos (ja tem overflow-x mas ajusta visual) ── */
+  .cfg-grupo {
+    flex-shrink:0 !important;
+    font-size:12px !important;
+    padding:8px 12px !important;
+    white-space:nowrap;
+  }
+  /* Painel: 2-col vira 1-col */
+  #cfg-panel-geral, [id^="cfg-panel-"] {
+    grid-template-columns:1fr !important;
+  }
+
+  /* ── HEADER: trunca textos longos ── */
+  #roi-det-nome { font-size:18px !important; word-break:break-word; }
+  /* Inputs e selects nao podem cortar conteudo */
+  select, input { max-width:100%; }
 
   /* Busca global: full width no mobile */
   #search-overlay { padding-top:20px !important; }
