@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview — Demandas v2 (Axcend)</title>
+<style>
+:root {
+  --bg: #FFFFFF; --bg2: #FFFFFF; --bg3: #F8FAFC;
+  --accent: #0284C7; --accent2: #059669; --text: #0F172A; --text2: #475569;
+  --border: #E2E8F0; --green: #059669; --red: #dc2626;
+  --blue: #0284C7; --purple: #6366F1; --yellow: #D97706;
+  --sidebar-bg: #0A1628;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+/* Layout */
+.shell { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; background: var(--sidebar-bg); color: #fff; padding: 18px 12px; flex-shrink: 0; }
+.sidebar-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; padding: 0 8px; }
+.brand-logo { width: 32px; height: 32px; background: linear-gradient(135deg, #1B9CFA, #3E1493); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; }
+.brand-text { font-size: 15px; font-weight: 700; }
+
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 7px; color: #cbd5e1; cursor: pointer; font-size: 13px; margin-bottom: 2px; transition: all .15s; }
+.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+.nav-item.active { background: rgba(27,156,250,.18); color: #fff; }
+.nav-icon { width: 18px; text-align: center; font-size: 15px; }
+.nav-count { margin-left: auto; font-size: 11px; opacity: .7; }
+.nav-divider { height: 1px; background: rgba(255,255,255,.08); margin: 12px 0; }
+.nav-sectoral { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: .8px; padding: 8px 12px 4px; text-transform: uppercase; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.dot-blue { background: #3B82F6; }
+.dot-purple { background: #A855F7; }
+.dot-yellow { background: #EAB308; }
+.dot-green { background: #22C55E; }
+.dot-brown { background: #A16207; }
+.dot-red { background: #EF4444; }
+
+/* Main */
+.main { flex: 1; background: var(--bg3); }
+.topbar { background: #0A1628; color: #fff; padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; }
+.topbar-title { font-size: 15px; font-weight: 700; }
+.btn-refresh { background: #0F172A; color: #fff; border: 1px solid #1e293b; padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+
+.content { padding: 24px 28px; }
+.page-header { margin-bottom: 18px; }
+.page-title { font-size: 26px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+.page-meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
+
+/* Filter chips */
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.chip { padding: 7px 14px; border-radius: 20px; background: #fff; border: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip-counter { background: rgba(0,0,0,.08); padding: 1px 7px; border-radius: 10px; font-size: 10.5px; font-weight: 700; }
+.chip.active .chip-counter { background: rgba(255,255,255,.25); }
+
+.quick-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.qa-btn { padding: 8px 14px; background: #fff; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.qa-btn.danger { border-color: #fecaca; color: var(--red); background: #fef2f2; }
+.qa-btn.success { border-color: #bbf7d0; color: var(--green); background: #f0fdf4; }
+.search-box { flex: 1; min-width: 200px; padding: 8px 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--text); }
+
+/* List */
+.list { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.list-header { display: grid; grid-template-columns: 2.5fr 1.4fr 1.2fr 1.2fr 1.5fr 1fr; gap: 12px; padding: 12px 18px; background: var(--bg3); font-size: 10.5px; font-weight: 800; color: var(--text2); text-transform: uppercase; letter-spacing: .6px; }
+.row { display: grid; grid-template-columns: 2.5fr 1.4fr 1.2fr 1.2fr 1.5fr 1fr; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--border); align-items: center; transition: background .1s; cursor: pointer; }
+.row:hover { background: #fafbfd; }
+.row.completed { opacity: .55; text-decoration: line-through; }
+.row-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.row-name-sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+.tag { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+.tag-emag { background: #dbeafe; color: #1d4ed8; }
+.tag-gel { background: #fed7aa; color: #c2410c; }
+.tag-tglv { background: #fed7aa; color: #c2410c; }
+.tag-detox { background: #d1fae5; color: #047857; }
+
+.avatar { display: inline-flex; align-items: center; gap: 6px; }
+.avatar-circle { width: 26px; height: 26px; background: #0284C7; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.avatar-circle.purple { background: #A855F7; }
+.avatar-circle.green { background: #22C55E; }
+.avatar-circle.red { background: #EF4444; }
+
+/* Date urgency */
+.date-cell { font-size: 12.5px; font-weight: 700; }
+.date-vencida { color: #dc2626; }
+.date-vencida::before { content: '🔴 '; }
+.date-hoje { color: #c2410c; }
+.date-hoje::before { content: '🟠 '; }
+.date-amanha { color: #b45309; }
+.date-amanha::before { content: '🟡 '; }
+.date-folga { color: #64748b; }
+.date-folga::before { content: '⚪ '; }
+
+/* Status pill */
+.status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 15px; font-size: 11px; font-weight: 700; }
+.status-pendente { background: #f1f5f9; color: #475569; }
+.status-progresso { background: #dbeafe; color: #1d4ed8; }
+.status-revisao { background: #fef3c7; color: #b45309; }
+.status-aguardando { background: #fce7f3; color: #be185d; }
+
+/* Action buttons */
+.action-btn { padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid transparent; display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.action-iniciar { background: #dbeafe; color: #1d4ed8; }
+.action-revisar { background: #fef3c7; color: #b45309; }
+.action-concluir { background: #d1fae5; color: #047857; }
+.action-aprovar { background: #d1fae5; color: #047857; border: 1px solid #6ee7b7; padding: 7px 16px; font-size: 12px; }
+.action-reprovar { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 7px 16px; font-size: 12px; }
+.action-ver { background: #e0e7ff; color: #4338ca; padding: 7px 16px; font-size: 12px; }
+
+.icons-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.icon-btn { width: 28px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; }
+
+/* Approval cards */
+.approval-grid { display: flex; flex-direction: column; gap: 12px; }
+.approval-card { background: #fff; border: 1px solid var(--border); border-left: 4px solid #f59e0b; border-radius: 10px; padding: 16px 18px; }
+.approval-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.approval-card-title { font-size: 16px; font-weight: 700; flex: 1; }
+.approval-meta { font-size: 12px; color: var(--text2); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.approval-msg { background: var(--bg3); border-radius: 7px; padding: 10px 12px; font-size: 12.5px; color: var(--text2); margin-bottom: 12px; font-style: italic; }
+.approval-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Tabs no top do preview */
+.preview-tabs { background: #1e293b; padding: 12px 28px; display: flex; gap: 8px; align-items: center; }
+.preview-tab { padding: 8px 14px; background: transparent; color: #94a3b8; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.preview-tab.active { background: rgba(27,156,250,.2); color: #fff; border-color: rgba(27,156,250,.4); }
+.preview-label { color: #fbbf24; font-size: 11px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; margin-right: 12px; }
+
+/* Hide views */
+.view { display: none; }
+.view.active { display: block; }
+
+@media (max-width: 768px) {
+  .sidebar { width: 100%; min-height: auto; }
+  .shell { flex-direction: column; }
+  .list-header, .row { grid-template-columns: 1fr; gap: 6px; }
+  .list-header > div:not(:first-child) { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Tabs de preview pra alternar entre as 4 telas -->
+<div class="preview-tabs">
+  <span class="preview-label">🎨 PREVIEW</span>
+  <button class="preview-tab active" onclick="showView('view-copy')">1. Setor Copy (Esteve)</button>
+  <button class="preview-tab" onclick="showView('view-approval')">2. Diretoria — Aprovação</button>
+  <button class="preview-tab" onclick="showView('view-aprovadas')">3. Aprovadas</button>
+  <button class="preview-tab" onclick="showView('view-reprovar')">4. Modal Reprovar</button>
+</div>
+
+<div class="shell">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">A</div>
+      <div class="brand-text">Axcend</div>
+    </div>
+
+    <div class="nav-item">
+      <span class="nav-icon">📊</span> Dashboard
+    </div>
+    <div class="nav-item active">
+      <span class="nav-icon">📋</span> Demandas
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">🎨</span> Criativos
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">📁</span> Projetos
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">💬</span> Chat
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">🚀</span> Tráfego
+    </div>
+
+    <div class="nav-divider"></div>
+    <div class="nav-sectoral">Filtrar por Setor</div>
+
+    <div class="nav-item active">
+      <span class="dot dot-blue"></span> Copy <span class="nav-count">12</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot dot-purple"></span> Edição <span class="nav-count">8</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot dot-yellow"></span> Infra <span class="nav-count">3</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot dot-green"></span> Tráfego <span class="nav-count">5</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot dot-brown"></span> Gráfico <span class="nav-count">2</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot dot-red"></span> Spy <span class="nav-count">1</span>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-item" style="background:rgba(245,158,11,.18);color:#fcd34d;" onclick="showView('view-approval')">
+      <span class="nav-icon">⚠️</span> Aguard. Aprovação <span class="nav-count" style="color:#fcd34d;">5</span>
+    </div>
+    <div class="nav-item" onclick="showView('view-aprovadas')">
+      <span class="nav-icon">✅</span> Aprovadas <span class="nav-count">47</span>
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">🗄️</span> Arquivadas <span class="nav-count">120</span>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-item">
+      <span class="nav-icon">🔔</span> Notificações <span class="nav-count" style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;">60</span>
+    </div>
+    <div class="nav-item">
+      <span class="nav-icon">⚙️</span> Configurações
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Task</div>
+      <button class="btn-refresh">🔄 Atualizar</button>
+    </div>
+
+    <div class="content">
+
+      <!-- VIEW 1: Lista de demandas do setor Copy (Esteve, copywriter) -->
+      <div class="view active" id="view-copy">
+        <div class="page-header">
+          <h1 class="page-title"><span class="dot dot-blue" style="width:14px;height:14px;"></span> Demandas — Copy</h1>
+          <div class="page-meta">12 ativas · 3 em revisão · 2 aguardando aprovação</div>
+        </div>
+
+        <!-- Chips de status (filtro principal) -->
+        <div class="filter-bar">
+          <span class="chip active">Todas <span class="chip-counter">12</span></span>
+          <span class="chip">⏳ Pendente <span class="chip-counter">4</span></span>
+          <span class="chip">▶️ Em Progresso <span class="chip-counter">3</span></span>
+          <span class="chip">👀 Em Revisão <span class="chip-counter">3</span></span>
+          <span class="chip">✅ Aguard. Aprovação <span class="chip-counter">2</span></span>
+        </div>
+
+        <!-- Quick filters -->
+        <div class="quick-actions">
+          <button class="qa-btn danger">🔥 Atrasadas <span style="background:#fee2e2;color:#dc2626;padding:1px 7px;border-radius:10px;font-size:10px;">1</span></button>
+          <button class="qa-btn">👤 Minhas</button>
+          <input type="text" class="search-box" placeholder="🔍 Buscar demandas...">
+          <button class="qa-btn">📅 Data</button>
+          <button class="qa-btn success">+ Nova Demanda</button>
+        </div>
+
+        <!-- Lista -->
+        <div class="list">
+          <div class="list-header">
+            <div>Nome</div>
+            <div>Nicho / Oferta</div>
+            <div>Responsável</div>
+            <div>Entrega</div>
+            <div>Status</div>
+            <div style="text-align:right;">Ações</div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-name">📋 Apresentar Weecly</div>
+              <div class="row-name-sub">Prazo definido por Diretoria</div>
+            </div>
+            <div>
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-gel">Gelatina v5</span>
+            </div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;font-weight:600;">Esteve</span>
+            </div>
+            <div class="date-cell date-vencida">Vencida há 16 dias</div>
+            <div>
+              <span class="status-pill status-pendente">⏳ Pendente</span>
+              <button class="action-btn action-iniciar">▶️ Iniciar</button>
+            </div>
+            <div class="icons-actions">
+              <span class="icon-btn">✏️</span>
+              <span class="icon-btn">📦</span>
+              <span class="icon-btn">🗑️</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-name">📋 Iniciar VSL nova p/ TGLV10</div>
+              <div class="row-name-sub">Hook mais agressivo no início</div>
+            </div>
+            <div>
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-tglv">TGLV10</span>
+            </div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;font-weight:600;">Esteve</span>
+            </div>
+            <div class="date-cell date-hoje">Hoje · 18h</div>
+            <div>
+              <span class="status-pill status-progresso">▶️ Em Progresso</span>
+              <button class="action-btn action-revisar">👀 Revisar</button>
+            </div>
+            <div class="icons-actions">
+              <span class="icon-btn">✏️</span>
+              <span class="icon-btn">📦</span>
+              <span class="icon-btn">🗑️</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-name">📋 Escrever 5 ADS p/ TGLV10</div>
+              <div class="row-name-sub">Variação de hook</div>
+            </div>
+            <div>
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-tglv">TGLV10</span>
+            </div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;font-weight:600;">Esteve</span>
+            </div>
+            <div class="date-cell date-amanha">Amanhã · 12h</div>
+            <div>
+              <span class="status-pill status-revisao">👀 Em Revisão</span>
+              <button class="action-btn action-concluir">✅ Concluir</button>
+            </div>
+            <div class="icons-actions">
+              <span class="icon-btn">✏️</span>
+              <span class="icon-btn">📦</span>
+              <span class="icon-btn">🗑️</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-name">📋 Hook Detox v2</div>
+              <div class="row-name-sub">Variação criativa</div>
+            </div>
+            <div>
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-detox">Detox</span>
+            </div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;font-weight:600;">Esteve</span>
+            </div>
+            <div class="date-cell date-folga">Em 5 dias</div>
+            <div>
+              <span class="status-pill status-pendente">⏳ Pendente</span>
+              <button class="action-btn action-iniciar">▶️ Iniciar</button>
+            </div>
+            <div class="icons-actions">
+              <span class="icon-btn">✏️</span>
+              <span class="icon-btn">📦</span>
+              <span class="icon-btn">🗑️</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-name">📋 Headline teste tglv10</div>
+              <div class="row-name-sub">A/B test</div>
+            </div>
+            <div>
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-tglv">TGLV10</span>
+            </div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;font-weight:600;">Esteve</span>
+            </div>
+            <div class="date-cell date-folga">Em 7 dias</div>
+            <div>
+              <span class="status-pill status-aguardando">✅ Aguard. Aprov.</span>
+            </div>
+            <div class="icons-actions">
+              <span class="icon-btn">✏️</span>
+              <span class="icon-btn">📦</span>
+              <span class="icon-btn">🗑️</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-name">📋 Iniciar weekly</div>
+              <div class="row-name-sub">Resumo semanal</div>
+            </div>
+            <div>
+              <span class="tag tag-emag">Emagrecimento</span>
+              <span class="tag tag-gel">Gelatina v5</span>
+            </div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;font-weight:600;">Esteve</span>
+            </div>
+            <div class="date-cell date-folga">Em 4 dias</div>
+            <div>
+              <span class="status-pill status-progresso">▶️ Em Progresso</span>
+              <button class="action-btn action-revisar">👀 Revisar</button>
+            </div>
+            <div class="icons-actions">
+              <span class="icon-btn">✏️</span>
+              <span class="icon-btn">📦</span>
+              <span class="icon-btn">🗑️</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW 2: Diretoria vê demandas aguardando aprovação -->
+      <div class="view" id="view-approval">
+        <div class="page-header">
+          <h1 class="page-title">⚠️ Aguardando sua aprovação</h1>
+          <div class="page-meta">5 demandas · Aprove ou reprove. Reprovação volta pra "Em Progresso" e notifica o responsável.</div>
+        </div>
+
+        <div class="approval-grid">
+
+          <div class="approval-card">
+            <div class="approval-card-header">
+              <span class="dot dot-blue" style="width:14px;height:14px;"></span>
+              <div class="approval-card-title">📋 Apresentar Weecly</div>
+            </div>
+            <div class="approval-meta">
+              <span class="status-pill status-pendente" style="background:#dbeafe;color:#1d4ed8;">Copy</span>
+              <span class="avatar"><span class="avatar-circle" style="width:22px;height:22px;font-size:10px;">E</span> Esteve</span>
+              <span>· Concluída há 2h</span>
+            </div>
+            <div class="approval-msg">"Roteiro finalizado, link no drive: drive.google.com/..."</div>
+            <div class="approval-actions">
+              <button class="action-btn action-ver">👁️ Ver detalhes</button>
+              <button class="action-btn action-aprovar">✅ Aprovar</button>
+              <button class="action-btn action-reprovar" onclick="showView('view-reprovar')">❌ Reprovar</button>
+            </div>
+          </div>
+
+          <div class="approval-card">
+            <div class="approval-card-header">
+              <span class="dot dot-purple" style="width:14px;height:14px;"></span>
+              <div class="approval-card-title">📋 Editar UGC Maria — Detox</div>
+            </div>
+            <div class="approval-meta">
+              <span class="status-pill" style="background:#f3e8ff;color:#7e22ce;">Edição</span>
+              <span class="avatar"><span class="avatar-circle purple" style="width:22px;height:22px;font-size:10px;">L</span> Lucca</span>
+              <span>· Concluída há 4h</span>
+            </div>
+            <div class="approval-msg">"Cortei pausas, adicionei legenda e CTA final. Versão 2 no drive."</div>
+            <div class="approval-actions">
+              <button class="action-btn action-ver">👁️ Ver detalhes</button>
+              <button class="action-btn action-aprovar">✅ Aprovar</button>
+              <button class="action-btn action-reprovar" onclick="showView('view-reprovar')">❌ Reprovar</button>
+            </div>
+          </div>
+
+          <div class="approval-card">
+            <div class="approval-card-header">
+              <span class="dot dot-green" style="width:14px;height:14px;"></span>
+              <div class="approval-card-title">📋 Subir campanha — Gelatina v5</div>
+            </div>
+            <div class="approval-meta">
+              <span class="status-pill" style="background:#d1fae5;color:#047857;">Tráfego</span>
+              <span class="avatar"><span class="avatar-circle green" style="width:22px;height:22px;font-size:10px;">R</span> Rafael</span>
+              <span>· Concluída há 6h</span>
+            </div>
+            <div class="approval-msg">"5 ADs no ar, CBO 1.50.1, budget 200/dia. Monitorando CPM."</div>
+            <div class="approval-actions">
+              <button class="action-btn action-ver">👁️ Ver detalhes</button>
+              <button class="action-btn action-aprovar">✅ Aprovar</button>
+              <button class="action-btn action-reprovar" onclick="showView('view-reprovar')">❌ Reprovar</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW 3: Aprovadas -->
+      <div class="view" id="view-aprovadas">
+        <div class="page-header">
+          <h1 class="page-title">✅ Aprovadas</h1>
+          <div class="page-meta">47 demandas · Histórico de tudo que foi aprovado pela Diretoria</div>
+        </div>
+
+        <div class="quick-actions">
+          <button class="qa-btn">📂 Todos os setores ▾</button>
+          <button class="qa-btn">👤 Aprovado por: Todos ▾</button>
+          <button class="qa-btn">📅 Últimos: 30 dias ▾</button>
+          <input type="text" class="search-box" placeholder="🔍 Buscar...">
+        </div>
+
+        <div class="list">
+          <div class="list-header">
+            <div>Nome</div>
+            <div>Setor</div>
+            <div>Responsável</div>
+            <div>Aprovada em</div>
+            <div>Aprovada por</div>
+            <div style="text-align:right;">Ações</div>
+          </div>
+
+          <div class="row completed">
+            <div>
+              <div class="row-name">📋 Editar UGC Maria — Detox</div>
+            </div>
+            <div><span class="status-pill" style="background:#f3e8ff;color:#7e22ce;">Edição</span></div>
+            <div class="avatar">
+              <span class="avatar-circle purple">L</span>
+              <span style="font-size:12.5px;">Lucca</span>
+            </div>
+            <div class="date-cell date-folga">28/abr · há 7d</div>
+            <div class="avatar"><span class="avatar-circle">T</span><span style="font-size:12.5px;">Thiago</span></div>
+            <div class="icons-actions">
+              <span class="icon-btn">👁️</span>
+              <span class="icon-btn">🗄️</span>
+            </div>
+          </div>
+
+          <div class="row completed">
+            <div>
+              <div class="row-name">📋 Hook Detox v2</div>
+            </div>
+            <div><span class="status-pill" style="background:#dbeafe;color:#1d4ed8;">Copy</span></div>
+            <div class="avatar">
+              <span class="avatar-circle">E</span>
+              <span style="font-size:12.5px;">Esteve</span>
+            </div>
+            <div class="date-cell date-folga">27/abr · há 8d</div>
+            <div class="avatar"><span class="avatar-circle">T</span><span style="font-size:12.5px;">Thiago</span></div>
+            <div class="icons-actions">
+              <span class="icon-btn">👁️</span>
+              <span class="icon-btn">🗄️</span>
+            </div>
+          </div>
+
+          <div class="row completed">
+            <div>
+              <div class="row-name">📋 Subir campanha Gelatina v5</div>
+            </div>
+            <div><span class="status-pill" style="background:#d1fae5;color:#047857;">Tráfego</span></div>
+            <div class="avatar">
+              <span class="avatar-circle green">R</span>
+              <span style="font-size:12.5px;">Rafael</span>
+            </div>
+            <div class="date-cell date-folga">25/abr · há 10d</div>
+            <div class="avatar"><span class="avatar-circle">T</span><span style="font-size:12.5px;">Thiago</span></div>
+            <div class="icons-actions">
+              <span class="icon-btn">👁️</span>
+              <span class="icon-btn">🗄️</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VIEW 4: Modal de Reprovação -->
+      <div class="view" id="view-reprovar">
+        <div class="page-header">
+          <h1 class="page-title">📋 Modal de Reprovação</h1>
+          <div class="page-meta">Como aparece quando Diretoria clica em "Reprovar" numa demanda</div>
+        </div>
+
+        <div style="background:rgba(0,0,0,.4);padding:60px 20px;border-radius:12px;display:flex;justify-content:center;align-items:flex-start;">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:14px;width:100%;max-width:500px;padding:0;box-shadow:0 24px 60px rgba(0,0,0,.3);overflow:hidden;">
+            <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-size:16px;font-weight:700;">❌ Reprovar demanda</div>
+              <button style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:14px;">✕</button>
+            </div>
+            <div style="padding:22px;">
+              <div style="margin-bottom:14px;">
+                <div style="font-size:15px;font-weight:700;margin-bottom:4px;">📋 Apresentar Weecly</div>
+                <div style="font-size:12px;color:var(--text2);"><span class="status-pill status-pendente" style="background:#dbeafe;color:#1d4ed8;">Copy</span> · Esteve</div>
+              </div>
+
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;color:var(--text);">Motivo da reprovação <span style="color:#dc2626;">*</span></label>
+              <textarea style="width:100%;min-height:90px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;outline:none;resize:vertical;" placeholder="Descreva o que precisa ser ajustado...">Falta o CTA no fim do roteiro, refazer com gancho mais forte na headline. O início ficou genérico demais.</textarea>
+
+              <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;margin-top:14px;display:flex;align-items:flex-start;gap:8px;">
+                <span style="font-size:14px;flex-shrink:0;">⚠️</span>
+                <div>A demanda volta pra <strong>"Em Progresso"</strong> e o Esteve recebe notificação com seu motivo.</div>
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+                <button class="action-btn" style="background:#f1f5f9;color:var(--text);padding:9px 18px;font-size:13px;">Cancelar</button>
+                <button class="action-btn action-reprovar" style="padding:9px 18px;font-size:13px;">❌ Reprovar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function showView(id){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+  var v = document.getElementById(id);
+  if(v) v.classList.add('active');
+  var idx = ['view-copy','view-approval','view-aprovadas','view-reprovar'].indexOf(id);
+  if(idx >= 0){ document.querySelectorAll('.preview-tab')[idx].classList.add('active'); }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+</script>
+
+</body>
+</html>
