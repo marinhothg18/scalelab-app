@@ -28,7 +28,41 @@ if (!fs.existsSync(BACKUP_DIR)) {
 }
 
 // ── SEGURANÇA ──
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+// CSP habilitada com diretivas que permitem o app funcionar (Chart.js, scripts inline,
+// data URIs em imagens, EventSource pra SSE) e bloqueiam injeções externas
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "script-src": [
+        "'self'",
+        "'unsafe-inline'", // necessário pro app (event handlers inline tipo onclick="...")
+        "'unsafe-eval'",   // necessário pra Chart.js / html2pdf
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.sheetjs.com"
+      ],
+      "style-src": ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      "img-src": ["'self'", "data:", "https:", "blob:"],
+      "connect-src": [
+        "'self'",
+        "https://api.anthropic.com",
+        "https://api.openai.com",
+        "https://api.z-api.io",
+        "https://api.github.com",
+        "https://*.up.railway.app"
+      ],
+      "font-src": ["'self'", "data:", "https://cdnjs.cloudflare.com"],
+      "frame-src": ["'self'", "https:"],
+      "object-src": ["'none'"],
+      "base-uri": ["'self'"],
+      "form-action": ["'self'"],
+      "worker-src": ["'self'", "blob:"]
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // Rate limiting global. SSE stream é pulado — é uma conexão long-lived
 // (uma única request fica aberta horas; não faz sentido contar no rate limit)
@@ -53,11 +87,29 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true
 });
 
-// CORS
+// CORS — restrito a domínios conhecidos (app.centralaxcend.com + dev local)
+// Bloqueia qualquer outro site de chamar a API mesmo com token roubado
+const ALLOWED_ORIGINS = [
+  'https://app.centralaxcend.com',
+  'https://centralaxcend.com',
+  'http://localhost:3001',
+  'http://localhost:3000',
+  'http://127.0.0.1:3001'
+];
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+  } else if (!origin) {
+    // Same-origin requests (sem header Origin) — sempre permitidos
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  // Se origin presente mas não está na whitelist, NÃO seta header e
+  // o browser vai bloquear via mecanismo CORS natural
   res.header('Access-Control-Allow-Methods', 'GET, PUT, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-client-id, x-user-email, x-user-senha');
+  res.header('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -931,9 +983,18 @@ app.get('/api/ping', (req, res) => res.json({ ok: true, version: '2.0', api: tru
 // ══════════════════════════════════════════════
 // Recebe texto livre, devolve JSON estruturado com sugestões para o modal Nova Demanda.
 // Usa Claude API (mesma chave do agente WhatsApp em sl_whatsapp_config).
+// Resolve a chave da IA: prefere ENV var (mais seguro — não vai pro backup),
+// fallback pra cfg.ai_key salva em db (legado, ainda funciona)
+function _getAIKey() {
+  const db = readDB();
+  const cfg = (db.store['sl_whatsapp_config']) || {};
+  return process.env.ANTHROPIC_API_KEY || process.env.AI_KEY || cfg.ai_key || '';
+}
+
 async function _iaAnalisarDemanda(texto, db) {
   const cfg = (db.store['sl_whatsapp_config']) || {};
-  if (!cfg.ai_key) throw new Error('IA não configurada (configure em Configurações → WhatsApp/IA)');
+  const aiKey = _getAIKey();
+  if (!aiKey) throw new Error('IA não configurada (defina ANTHROPIC_API_KEY no Railway ou em Configurações → WhatsApp/IA)');
 
   const usuarios = (db.store['sl_usuarios'] || []).filter(u => u && u.ativo !== false).map(u => ({ id: u.id, nome: u.nome, cargo: u.cargo }));
   const nichos = (db.store['sl_nichos'] || []).map(n => ({ id: n.id, nome: n.nome }));
@@ -1002,7 +1063,7 @@ Responda agora com o JSON.`;
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': cfg.ai_key,
+      'x-api-key': aiKey,
       'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json'
     },
@@ -2083,9 +2144,10 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       return res.json({ ok: true, skipped: 'user-nao-encontrado' });
     }
 
-    // Processa com IA (se configurada)
+    // Processa com IA (se configurada — env var ou cfg)
     let resposta = '';
-    if (cfg.ai_provider && cfg.ai_key) {
+    const _aiKeyResolved = _getAIKey();
+    if (cfg.ai_provider && _aiKeyResolved) {
       resposta = await _processarMensagemIA(text, user, cfg);
     } else {
       resposta = `Olá ${user.nome}! 👋\n\nO agente IA ainda não foi configurado. Por enquanto só aceito comandos simples:\n• "tarefas" → tuas demandas pendentes\n• "relatorio" → resumo da semana\n\nMeus avisos de demandas atribuídas, rituais e alertas continuam chegando normalmente.`;
@@ -2145,6 +2207,8 @@ async function _processarMensagemIA(texto, user, cfg) {
 
 // Chama Claude com tool use
 async function _chamarClaude(texto, user, cfg) {
+  const aiKey = _getAIKey();
+  if (!aiKey) throw new Error('IA não configurada (defina ANTHROPIC_API_KEY no Railway)');
   const tools = _agentTools();
   const systemPrompt = `Você é o assistente do Axcend (sistema de gestão de tráfego pago em centralaxcend.com).
 Usuário: ${user.nome} (${user.cargo}).
@@ -2163,7 +2227,7 @@ Se o usuário pedir algo que não tem ferramenta, responda do que sabe sem inven
   let r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': cfg.ai_key,
+      'x-api-key': aiKey,
       'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json'
     },
@@ -2190,7 +2254,7 @@ Se o usuário pedir algo que não tem ferramenta, responda do que sabe sem inven
     body.messages.push({ role: 'user', content: toolResults });
     r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'x-api-key': cfg.ai_key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     if (!r.ok) { const err = await r.text(); throw new Error(`Claude ${r.status}: ${err.slice(0, 200)}`); }
@@ -2203,6 +2267,8 @@ Se o usuário pedir algo que não tem ferramenta, responda do que sabe sem inven
 }
 
 async function _chamarOpenAI(texto, user, cfg) {
+  const aiKey = _getAIKey();
+  if (!aiKey) throw new Error('IA não configurada (defina AI_KEY ou ANTHROPIC_API_KEY no Railway)');
   // Simplificação: usa chat completion sem tool (pra suportar OpenAI precisaria traduzir tools)
   const body = {
     model: 'gpt-4o-mini',
@@ -2213,7 +2279,7 @@ async function _chamarOpenAI(texto, user, cfg) {
   };
   const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + cfg.ai_key, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': 'Bearer ' + aiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   if (!r.ok) throw new Error(`OpenAI ${r.status}`);
