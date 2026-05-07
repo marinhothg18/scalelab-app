@@ -7410,10 +7410,47 @@ function ctDelTeste(id){
   renderControleTestes();
 }
 
-function ctToggleMenu(id){
+function ctToggleMenu(id, evt){
   var m = document.getElementById('ct-menu-'+id);
-  if(m) m.style.display = m.style.display==='block' ? 'none' : 'block';
+  if(!m) return;
+  var aberto = m.style.display === 'block';
+  // Fecha qualquer outro menu ct aberto antes
+  document.querySelectorAll('[id^="ct-menu-"]').forEach(function(el){ el.style.display = 'none'; });
+  if(aberto) return;
+  // Reposiciona como fixed pra não ser cortado por overflow:hidden do pai
+  m.style.position = 'fixed';
+  m.style.right = 'auto';
+  m.style.top = 'auto';
+  m.style.left = 'auto';
+  m.style.bottom = 'auto';
+  m.style.display = 'block';
+  // Posiciona com base no botão (3 pontinhos) clicado
+  var btn = (evt && evt.currentTarget) || (evt && evt.target) || null;
+  if(!btn){
+    // Fallback: encontra o span ⋯ irmão
+    btn = m.parentElement && m.parentElement.querySelector('span[onclick*="ctToggleMenu"]');
+  }
+  if(btn){
+    var rect = btn.getBoundingClientRect();
+    var menuH = m.offsetHeight || 160;
+    var menuW = m.offsetWidth || 180;
+    var espacoAbaixo = window.innerHeight - rect.bottom;
+    var topPx = espacoAbaixo > menuH + 12
+      ? rect.bottom + 6              // abre pra baixo
+      : rect.top - menuH - 6;        // abre pra cima
+    var leftPx = Math.max(8, rect.right - menuW);
+    if(leftPx + menuW > window.innerWidth - 8) leftPx = window.innerWidth - menuW - 8;
+    m.style.top = Math.max(8, topPx) + 'px';
+    m.style.left = leftPx + 'px';
+  }
 }
+
+// Fecha menus ao clicar fora
+document.addEventListener('click', function(e){
+  if(e.target.closest && e.target.closest('[id^="ct-menu-"]')) return;
+  if(e.target.closest && e.target.closest('span[onclick*="ctToggleMenu"]')) return;
+  document.querySelectorAll('[id^="ct-menu-"]').forEach(function(el){ el.style.display = 'none'; });
+}, true);
 
 function renderControleTestes(){
   var el = document.getElementById('infra-content');
@@ -7521,7 +7558,7 @@ function renderControleTestes(){
       h += '<div>'+(t.vsl?'<a href="'+t.vsl+'" target="_blank" style="color:#A855F7;text-decoration:none;font-size:13px;font-weight:600;">🎬 VSL</a>':'—')+'</div>';
       h += '<div style="color:var(--text2);font-size:13px;font-weight:500;">'+dataFmt+'</div>';
       h += '<div><span style="background:'+statusCor+'22;color:'+statusCor+';padding:8px 16px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;">'+t.status+'</span></div>';
-      h += '<div style="position:relative;"><span onclick="ctToggleMenu('+t.id+')" style="cursor:pointer;color:var(--text2);font-size:24px;padding:6px 12px;line-height:1;">⋯</span>';
+      h += '<div style="position:relative;"><span onclick="ctToggleMenu('+t.id+',event)" style="cursor:pointer;color:var(--text2);font-size:24px;padding:6px 12px;line-height:1;">⋯</span>';
       h += '<div id="ct-menu-'+t.id+'" style="display:none;position:absolute;right:0;top:36px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:50;min-width:160px;">';
       h += '<div onclick="ctOpenTeste('+t.id+');ctToggleMenu('+t.id+');" style="padding:12px 16px;font-size:14px;cursor:pointer;border-radius:8px;color:var(--text);display:flex;align-items:center;gap:10px;">✏️ Editar</div>';
       h += '<div onclick="ctArquivarTeste('+t.id+');" style="padding:12px 16px;font-size:14px;cursor:pointer;border-radius:8px;color:var(--text);display:flex;align-items:center;gap:10px;">📦 '+(t.arquivado?'Desarquivar':'Arquivar')+'</div>';
