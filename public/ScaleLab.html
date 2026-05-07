@@ -2,11 +2,21 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Axcend</title>
+<!-- ── PWA / iOS Home Screen ── -->
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152.png">
+<link rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120.png">
 <meta name="theme-color" content="#3E1493">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Axcend">
+<meta name="mobile-web-app-capable" content="yes">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 :root {
@@ -17683,7 +17693,72 @@ window.onload=()=>{
   setTimeout(function(){ try{ if(typeof renderHome==='function') renderHome(); }catch(e){ console.warn('renderHome timeout:', e); } }, 500);
   // Inicializa paleta de comandos (Cmd+K) e atalhos globais
   try{ _cmdkInit(); }catch(e){ console.warn('cmdk init:', e); }
+  // Registra Service Worker (PWA — Fase 1)
+  try{ _pwaInit(); }catch(e){ console.warn('pwa init:', e); }
 };
+
+// ══════════════════════════════════════════════
+// ── PWA — INSTALAÇÃO + SERVICE WORKER ──
+// ══════════════════════════════════════════════
+function _pwaInit(){
+  // 1. Registra service worker
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(function(reg){ console.log('[PWA] SW registrado:', reg.scope); })
+        .catch(function(err){ console.warn('[PWA] SW falhou:', err); });
+    });
+  }
+
+  // 2. Detecta se já está rodando como PWA instalado
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                     window.navigator.standalone === true; // iOS
+  if(isStandalone){
+    console.log('[PWA] Rodando como app instalado.');
+    document.body.classList.add('pwa-standalone');
+    return;
+  }
+
+  // 3. Detecta iOS (Safari precisa instrução manual)
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  var jaInstrucaoIOSLida = localStorage.getItem('sl_pwa_ios_dismissed') === '1';
+
+  // Pra iOS, mostra banner "Adicionar à Tela Inicial" 12s após login (1x por usuário)
+  if(isIOS && !jaInstrucaoIOSLida){
+    setTimeout(function(){
+      // Só mostra se já tá logado
+      if(!currentUser) return;
+      _pwaIOSPrompt();
+    }, 12000);
+  }
+
+  // Android/Desktop: captura evento beforeinstallprompt e oferece botão Cmd+K
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    window._pwaDeferredPrompt = e;
+    console.log('[PWA] Pronto pra instalar (Android/Desktop).');
+  });
+}
+
+function _pwaIOSPrompt(){
+  if(document.getElementById('pwa-ios-banner')) return;
+  var html = '<div id="pwa-ios-banner" style="position:fixed;bottom:80px;left:12px;right:12px;z-index:9999;background:linear-gradient(135deg,#3E1493,#1B9CFA);color:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 12px 40px rgba(0,0,0,.4);">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;">' +
+      '<div style="font-size:14px;font-weight:700;">📱 Instalar Axcend</div>' +
+      '<button onclick="_pwaIOSDismiss()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:14px;">✕</button>' +
+    '</div>' +
+    '<div style="font-size:12.5px;line-height:1.45;opacity:.92;">' +
+      'Acesso em 1 toque, sem barra do Safari. Toque em <b>Compartilhar ⬆️</b> e depois em <b>"Adicionar à Tela de Início"</b>.' +
+    '</div>' +
+  '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function _pwaIOSDismiss(){
+  try { localStorage.setItem('sl_pwa_ios_dismissed', '1'); } catch(e){}
+  var b = document.getElementById('pwa-ios-banner');
+  if(b) b.remove();
+}
 
 // ══════════════════════════════════════════════
 // ── COMMAND PALETTE (Cmd+K) + ATALHOS GLOBAIS ──
