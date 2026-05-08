@@ -50,7 +50,10 @@ app.use(helmet({
         "https://api.openai.com",
         "https://api.z-api.io",
         "https://api.github.com",
-        "https://*.up.railway.app"
+        "https://*.up.railway.app",
+        "https://api.redtrack.io",
+        "https://*.redtrack.io",
+        "https:" // permite qualquer HTTPS pra integrações futuras (mais permissivo mas evita quebras)
       ],
       "font-src": ["'self'", "data:", "https://cdnjs.cloudflare.com"],
       "frame-src": ["'self'", "https:"],
