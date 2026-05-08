@@ -28,41 +28,12 @@ if (!fs.existsSync(BACKUP_DIR)) {
 }
 
 // ── SEGURANÇA ──
-// CSP habilitada com diretivas que permitem o app funcionar (Chart.js, scripts inline,
-// data URIs em imagens, EventSource pra SSE) e bloqueiam injeções externas
+// CSP desabilitada temporariamente — estava quebrando o app (handlers inline,
+// service worker, etc.). TODO: reabilitar com config mais permissiva ou via
+// nonces nos scripts inline. Por enquanto outras protecoes (CORS, helmet defaults,
+// rate limit, bcrypt, sessões hasheadas) continuam ativas.
 app.use(helmet({
-  contentSecurityPolicy: {
-    useDefaults: true,
-    directives: {
-      "default-src": ["'self'"],
-      "script-src": [
-        "'self'",
-        "'unsafe-inline'", // necessário pro app (event handlers inline tipo onclick="...")
-        "'unsafe-eval'",   // necessário pra Chart.js / html2pdf
-        "https://cdnjs.cloudflare.com",
-        "https://cdn.sheetjs.com"
-      ],
-      "style-src": ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
-      "img-src": ["'self'", "data:", "https:", "blob:"],
-      "connect-src": [
-        "'self'",
-        "https://api.anthropic.com",
-        "https://api.openai.com",
-        "https://api.z-api.io",
-        "https://api.github.com",
-        "https://*.up.railway.app",
-        "https://api.redtrack.io",
-        "https://*.redtrack.io",
-        "https:" // permite qualquer HTTPS pra integrações futuras (mais permissivo mas evita quebras)
-      ],
-      "font-src": ["'self'", "data:", "https://cdnjs.cloudflare.com"],
-      "frame-src": ["'self'", "https:"],
-      "object-src": ["'none'"],
-      "base-uri": ["'self'"],
-      "form-action": ["'self'"],
-      "worker-src": ["'self'", "blob:"]
-    }
-  },
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
