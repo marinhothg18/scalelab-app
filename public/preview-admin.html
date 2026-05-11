@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axcend — Preview Admin (todas as telas)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0:#0f0f0f; --bg-1:#1c1c1c; --bg-2:#252525; --bg-3:#2e2e2e;
+    --text-1:#fff; --text-2:#888; --text-3:#444;
+    --border:rgba(255,255,255,.06);
+    --rosa:#C52C58; --azul:#1B9CFA; --laranja:#FF5926;
+    --roxo-side:#5b5ef4; --roxo-deep:#3E1493;
+    --delta-down:#E24B4A; --delta-down-bg:rgba(226,75,74,.15);
+    --delta-up:#639922; --delta-up-bg:rgba(99,153,34,.15);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:#050505; color:var(--text-1); font-family:'Inter',-apple-system,sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+  body { padding:30px 24px 60px; }
+
+  .preview-banner { max-width:1280px; margin:0 auto 28px; padding:22px 26px; background:var(--bg-1); border-radius:14px; border:1px solid var(--border); display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .preview-banner-icon { width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg,var(--roxo-deep),var(--azul)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:22px; }
+  .preview-banner h1 { font-size:18px; font-weight:600; margin-bottom:2px; }
+  .preview-banner p { font-size:12.5px; color:var(--text-2); }
+
+  .section-title { max-width:1280px; margin:36px auto 14px; padding:0 4px; font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-2); }
+  .section-title small { color:var(--text-3); font-weight:400; letter-spacing:1px; margin-left:8px; text-transform:none; }
+
+  .screen-frame { max-width:1280px; margin:0 auto; background:var(--bg-0); border-radius:14px; overflow:hidden; border:1px solid var(--border); display:flex; min-height:680px; }
+
+  /* SIDEBAR */
+  .sidebar { width:220px; background:var(--bg-0); padding:18px 12px 14px; display:flex; flex-direction:column; gap:4px; border-right:1px solid var(--border); flex-shrink:0; }
+  .logo { display:flex; align-items:center; gap:10px; padding:8px 10px 18px; font-size:18px; font-weight:600; }
+  .logo-mark { width:28px; height:28px; border-radius:7px; background:linear-gradient(135deg,var(--roxo-deep),var(--azul)); display:flex; align-items:center; justify-content:center; }
+  .logo-mark svg { width:18px; height:18px; stroke:#fff; stroke-width:2.2; fill:none; }
+  .nav-item { display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:9px; color:var(--text-2); font-size:13.5px; font-weight:500; cursor:pointer; transition:all .15s; }
+  .nav-item:hover { background:var(--bg-1); color:var(--text-1); }
+  .nav-item.active { background:var(--roxo-side); color:#fff; }
+  .nav-item svg { width:17px; height:17px; stroke:currentColor; stroke-width:1.8; fill:none; flex-shrink:0; }
+  .nav-spacer { flex:1; }
+  .nav-divider { height:1px; background:var(--border); margin:8px 4px; }
+  .nav-user { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:9px; cursor:pointer; }
+  .nav-user-avatar { width:26px; height:26px; border-radius:50%; background:var(--rosa); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; }
+  .nav-sair { color:var(--delta-down); }
+
+  /* MAIN */
+  .main { flex:1; padding:28px 32px; overflow-y:auto; }
+  .topbar { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:24px; gap:16px; flex-wrap:wrap; }
+  .topbar-title { font-size:30px; font-weight:500; letter-spacing:-.4px; }
+  .topbar-title.smaller { font-size:24px; }
+  .topbar-sub { font-size:13px; color:var(--text-2); margin-top:4px; }
+  .topbar-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+  .btn { padding:9px 16px; background:var(--bg-2); border:1px solid var(--border); color:var(--text-1); border-radius:9px; font-size:12.5px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-family:inherit; }
+  .btn:hover { background:var(--bg-3); }
+  .btn-primary { background:var(--azul); border-color:var(--azul); color:#fff; }
+  .btn-laranja { background:var(--laranja); border-color:var(--laranja); color:#fff; }
+  .btn-rosa { background:var(--rosa); border-color:var(--rosa); color:#fff; }
+  .btn-roxo { background:var(--roxo-side); border-color:var(--roxo-side); color:#fff; }
+
+  /* KPI */
+  .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:26px; }
+  .kpi-card { background:var(--bg-1); border-radius:12px; padding:18px; border:1px solid var(--border); }
+  .kpi-icon-box { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; margin-bottom:12px; }
+  .icon-rosa { background:rgba(197,44,88,.12); color:var(--rosa); }
+  .icon-azul { background:rgba(27,156,250,.12); color:var(--azul); }
+  .icon-laranja { background:rgba(255,89,38,.12); color:var(--laranja); }
+  .icon-roxo { background:rgba(91,94,244,.12); color:var(--roxo-side); }
+  .icon-verde { background:rgba(99,153,34,.12); color:var(--delta-up); }
+  .kpi-icon-box svg { width:18px; height:18px; stroke:currentColor; stroke-width:1.8; fill:none; }
+  .kpi-label { font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:1.2px; font-weight:500; margin-bottom:6px; }
+  .kpi-value { font-size:26px; font-weight:600; letter-spacing:-.5px; }
+  .delta { font-size:11px; font-weight:500; padding:3px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:3px; margin-left:10px; }
+  .delta-up { background:var(--delta-up-bg); color:var(--delta-up); }
+  .delta-down { background:var(--delta-down-bg); color:var(--delta-down); }
+
+  /* Cards */
+  .card-box { background:var(--bg-1); border-radius:12px; border:1px solid var(--border); padding:18px; }
+  .card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .card-title { font-size:13.5px; font-weight:600; }
+  .card-link { font-size:11px; color:var(--text-2); cursor:pointer; }
+  .card-link:hover { color:var(--azul); }
+  .three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:18px; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+  .empty-state { text-align:center; padding:24px 8px; color:var(--text-3); font-size:12px; }
+
+  /* Tags & badges */
+  .tag { display:inline-block; padding:3px 8px; border-radius:5px; font-size:10.5px; font-weight:500; margin-right:4px; }
+  .tag-nicho { background:rgba(27,156,250,.12); color:var(--azul); }
+  .tag-oferta { background:rgba(255,89,38,.12); color:var(--laranja); }
+  .tag-roxo { background:rgba(91,94,244,.15); color:var(--roxo-side); }
+
+  /* Avatar */
+  .avatar { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:600; color:#fff; flex-shrink:0; }
+  .av-azul { background:var(--azul); }
+  .av-roxo { background:var(--roxo-side); }
+  .av-rosa { background:var(--rosa); }
+  .av-verde { background:var(--delta-up); }
+  .av-laranja { background:var(--laranja); }
+
+  /* Status pill */
+  .status-pill { display:inline-flex; align-items:center; gap:4px; padding:5px 10px; border-radius:7px; font-size:11px; font-weight:500; }
+  .st-pendente { background:var(--bg-2); color:var(--text-2); }
+  .st-progresso { background:rgba(27,156,250,.15); color:var(--azul); }
+  .st-revisao { background:rgba(212,160,23,.15); color:#d4a017; }
+  .st-aprov { background:rgba(197,44,88,.15); color:var(--rosa); }
+  .st-conc { background:var(--delta-up-bg); color:var(--delta-up); }
+
+  /* Demanda card */
+  .demanda-row { background:var(--bg-1); border:1px solid var(--border); border-left:3px solid; border-radius:11px; padding:14px 16px; margin-bottom:10px; display:grid; grid-template-columns:2fr 1.4fr 1.2fr 1fr 1.4fr 100px; gap:14px; align-items:center; }
+  .demanda-row.copy { border-left-color:var(--azul); }
+  .demanda-row.edicao { border-left-color:var(--roxo-side); }
+  .demanda-row.trafego { border-left-color:var(--delta-up); }
+  .demanda-row.spy { border-left-color:var(--delta-down); }
+  .demanda-row.infra { border-left-color:var(--laranja); }
+  .demanda-nome { font-size:13px; font-weight:500; }
+  .demanda-sub { font-size:11px; color:var(--text-2); margin-top:2px; }
+  .resp-cell { display:flex; align-items:center; gap:8px; font-size:12.5px; }
+  .date-cell { font-size:11.5px; font-weight:500; }
+  .date-atrasada { color:var(--delta-down); }
+  .date-hoje { color:var(--laranja); }
+  .date-amanha { color:#d4a017; }
+  .date-folga { color:var(--text-2); }
+
+  /* Filtros laterais (em Demandas, ROI, Infra etc) */
+  .filtros-side { width:200px; background:var(--bg-1); border-radius:12px; border:1px solid var(--border); padding:14px; flex-shrink:0; height:fit-content; }
+  .filtro-label { font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:12px; font-weight:500; }
+  .filtro-item { padding:8px 11px; border-radius:7px; font-size:12.5px; color:var(--text-2); margin-bottom:3px; cursor:pointer; display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .filtro-item.active { background:var(--roxo-side); color:#fff; }
+  .filtro-item:hover:not(.active) { background:var(--bg-2); color:var(--text-1); }
+  .filtro-item-count { font-size:11px; opacity:.7; }
+  .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+  /* Tabela */
+  .table-card { background:var(--bg-1); border-radius:12px; border:1px solid var(--border); overflow:hidden; }
+  .table-toolbar { padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .tabs { display:flex; gap:4px; }
+  .tab { padding:8px 14px; border-radius:8px; font-size:12px; color:var(--text-2); cursor:pointer; font-weight:500; }
+  .tab.active { background:var(--azul); color:#fff; }
+  .table-row, .table-head { display:grid; gap:12px; padding:12px 18px; align-items:center; font-size:12px; border-bottom:1px solid var(--border); }
+  .table-row:last-child { border-bottom:none; }
+  .table-head { background:var(--bg-2); color:var(--text-2); text-transform:uppercase; letter-spacing:1px; font-size:10px; font-weight:500; }
+  .table-row:hover { background:var(--bg-2); }
+
+  /* Specific layouts */
+  .with-side { display:flex; gap:14px; }
+
+  /* Criativos grid */
+  .cri-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .cri-card-grid { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:18px; cursor:pointer; transition:all .15s; }
+  .cri-card-grid:hover { border-color:var(--azul); background:var(--bg-2); }
+  .cri-card-ic { font-size:32px; margin-bottom:12px; }
+  .cri-card-name { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .cri-card-meta { font-size:11px; color:var(--text-2); }
+
+  /* Chat */
+  .chat-layout { display:flex; gap:14px; height:560px; }
+  .chat-channels { width:200px; background:var(--bg-1); border-radius:12px; border:1px solid var(--border); padding:12px; }
+  .chat-ch { padding:8px 11px; border-radius:7px; font-size:13px; color:var(--text-2); cursor:pointer; margin-bottom:2px; }
+  .chat-ch.active { background:var(--roxo-side); color:#fff; }
+  .chat-ch:hover:not(.active) { background:var(--bg-2); }
+  .chat-ch::before { content:'#'; opacity:.5; margin-right:4px; }
+  .chat-body { flex:1; background:var(--bg-1); border-radius:12px; border:1px solid var(--border); display:flex; flex-direction:column; }
+  .chat-msgs { flex:1; padding:18px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; }
+  .chat-msg { display:flex; gap:10px; }
+  .chat-msg-body { flex:1; }
+  .chat-msg-meta { font-size:11px; color:var(--text-2); margin-bottom:3px; }
+  .chat-msg-meta b { color:var(--text-1); margin-right:4px; font-weight:500; }
+  .chat-msg-text { background:var(--bg-2); padding:9px 13px; border-radius:10px; font-size:13px; max-width:80%; }
+  .chat-input-bar { padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+  .chat-input { flex:1; padding:10px 14px; background:var(--bg-2); border:1px solid var(--border); border-radius:9px; color:var(--text-1); font-size:13px; outline:none; font-family:inherit; }
+
+  /* ROI Table dias */
+  .roi-table { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .roi-th, .roi-tr { display:grid; grid-template-columns:90px 1fr 1fr 1fr 1fr 1fr 1fr 1fr 60px 60px; gap:8px; padding:10px 14px; font-size:11.5px; align-items:center; }
+  .roi-th { background:var(--bg-2); color:var(--text-2); text-transform:uppercase; letter-spacing:1px; font-size:10px; font-weight:500; }
+  .roi-tr { border-top:1px solid var(--border); }
+  .roi-tr input { background:var(--bg-2); border:1px solid var(--border); border-radius:6px; padding:5px 7px; color:var(--text-1); font-size:11px; font-family:inherit; width:100%; outline:none; }
+  .roi-calc { font-weight:500; font-size:11.5px; }
+  .roi-green { color:var(--delta-up); }
+  .roi-red { color:var(--delta-down); }
+  .roi-yellow { color:#d4a017; }
+
+  /* Contingencia */
+  .conting-tr { display:grid; grid-template-columns:140px 140px 90px 110px 110px 100px 100px 100px 100px 40px; gap:6px; padding:10px 14px; font-size:11px; align-items:center; border-top:1px solid var(--border); }
+  .conting-th { background:var(--bg-2); color:var(--text-2); text-transform:uppercase; letter-spacing:1px; font-size:9.5px; font-weight:500; }
+  .conting-sel { background:var(--bg-2); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:11px; color:var(--text-1); font-family:inherit; width:100%; }
+  .conting-sel.cor1 { background:var(--azul); color:#fff; border-color:var(--azul); font-weight:600; }
+  .conting-sel.cor2 { background:var(--delta-up); color:#fff; border-color:var(--delta-up); font-weight:600; }
+  .conting-sel.cor3 { background:var(--laranja); color:#fff; border-color:var(--laranja); font-weight:600; }
+  .conting-sel.cor-rosa { background:var(--rosa); color:#fff; border-color:var(--rosa); font-weight:600; }
+
+  /* Notificações */
+  .notif-item { background:var(--bg-1); border:1px solid var(--border); border-left:3px solid var(--azul); border-radius:11px; padding:14px 16px; margin-bottom:10px; }
+  .notif-item.urgent { border-left-color:var(--delta-down); }
+  .notif-item.warning { border-left-color:var(--laranja); }
+  .notif-item.success { border-left-color:var(--delta-up); }
+  .notif-title { font-size:13.5px; font-weight:600; margin-bottom:4px; }
+  .notif-text { font-size:12.5px; color:var(--text-2); }
+  .notif-time { font-size:11px; color:var(--text-3); margin-top:6px; }
+
+  /* Rituais */
+  .ritual-card { background:var(--bg-1); border-radius:12px; border:1px solid var(--border); padding:18px; border-left:3px solid var(--roxo-side); margin-bottom:10px; }
+  .ritual-titulo { font-size:14px; font-weight:600; }
+  .ritual-meta { font-size:11.5px; color:var(--text-2); margin-top:4px; display:flex; gap:14px; flex-wrap:wrap; }
+
+  /* Settings */
+  .cfg-groups { display:flex; gap:6px; background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:6px; margin-bottom:20px; overflow-x:auto; }
+  .cfg-group { padding:10px 16px; border-radius:8px; font-size:12.5px; color:var(--text-2); cursor:pointer; white-space:nowrap; font-weight:500; }
+  .cfg-group.active { background:var(--roxo-side); color:#fff; }
+
+  /* Ad library */
+  .adlib-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .adlib-card { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .adlib-img { aspect-ratio:16/9; background:linear-gradient(135deg,var(--bg-2),var(--bg-3)); display:flex; align-items:center; justify-content:center; color:var(--text-3); font-size:30px; }
+  .adlib-body { padding:14px; }
+  .adlib-title { font-size:13px; font-weight:600; margin-bottom:4px; }
+  .adlib-meta { font-size:11px; color:var(--text-2); }
+
+  /* Educacional */
+  .edu-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .edu-card { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:16px; cursor:pointer; }
+  .edu-card:hover { border-color:var(--azul); }
+  .edu-cat { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--azul); margin-bottom:8px; font-weight:600; }
+  .edu-titulo { font-size:13.5px; font-weight:600; margin-bottom:8px; line-height:1.35; }
+  .edu-autor { font-size:11.5px; color:var(--text-2); display:flex; align-items:center; gap:6px; }
+
+  /* Sidebar reused fn (gerar var pra cada nav) */
+
+  @media (max-width:900px) {
+    .kpi-grid { grid-template-columns:1fr 1fr; }
+    .three-col, .two-col, .cri-grid, .adlib-grid, .edu-grid { grid-template-columns:1fr; }
+    .sidebar { display:none; }
+    .with-side { flex-direction:column; }
+    .filtros-side { width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-banner">
+  <div class="preview-banner-icon">A</div>
+  <div>
+    <h1>Axcend · Preview Admin (Diretoria)</h1>
+    <p>11 telas mockadas com novo design — só visual, lógica/dados preservados. Role pra ver tudo ↓</p>
+  </div>
+</div>
+
+<!-- SIDEBAR TEMPLATE (vou repetir simples por tela) -->
+<script>
+function sidebar(active) {
+  const items = [
+    {id:'dashboard', label:'Dashboard', svg:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'},
+    {id:'task', label:'Demandas', svg:'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>'},
+    {id:'criativos', label:'Criativos', svg:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33"/>'},
+    {id:'arquivos', label:'Projetos', svg:'<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>'},
+    {id:'chat', label:'Chat', svg:'<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8z"/>'},
+    {id:'rituais', label:'Rituais', svg:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'},
+    {id:'metricas', label:'Tráfego', svg:'<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>'},
+    {id:'adsmetrics', label:'Métricas de Ads', svg:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'},
+    {id:'infra', label:'Infra', svg:'<rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="9" y2="15"/><line x1="15" y1="9" x2="15" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/>'},
+    {id:'adlibrary', label:'Ad Library', svg:'<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'},
+    {id:'edu', label:'Educacional', svg:'<path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>'},
+    {id:'notif', label:'Notificações', svg:'<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>'},
+    {id:'config', label:'Configurações', svg:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33"/>'},
+  ];
+  return '<aside class="sidebar">' +
+    '<div class="logo"><div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>Axcend</div>' +
+    items.map(it => `<div class="nav-item${active===it.id?' active':''}"><svg viewBox="0 0 24 24">${it.svg}</svg>${it.label}</div>`).join('') +
+    '<div class="nav-spacer"></div>' +
+    '<div class="nav-user"><div class="nav-user-avatar">T</div><span style="font-size:13px;font-weight:500;">Thiago</span></div>' +
+    '<div class="nav-item nav-sair"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sair</div>' +
+  '</aside>';
+}
+document.write('<style>aside.sidebar svg{fill:none;}</style>');
+</script>
+
+<!-- ════════════ 01 · DASHBOARD ════════════ -->
+<div class="section-title">01 · Dashboard <small>visão geral do projeto</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('dashboard'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 class="topbar-title">Boa tarde, Thiago</h1>
+        <p class="topbar-sub">Segunda, 11 de maio</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary">+ Demanda</button>
+        <button class="btn">🎨 Criativo</button>
+        <button class="btn">⭐ Ritual</button>
+        <button class="btn">💬 Chat</button>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-rosa"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+        <div class="kpi-label">Investimento do Dia</div>
+        <div><span class="kpi-value">R$ 7.261</span><span class="delta delta-down">▼ -47%</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-azul"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/></svg></div>
+        <div class="kpi-label">Faturamento do Dia</div>
+        <div><span class="kpi-value">R$ 9.152</span><span class="delta delta-down">▼ -27%</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-laranja"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="4"/><path d="M21 18a3 3 0 00-3-3H7a3 3 0 00-3 3"/></svg></div>
+        <div class="kpi-label">Lucro do Dia</div>
+        <div><span class="kpi-value">R$ 1.891</span><span class="delta delta-down">▼ -54%</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-roxo"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+        <div class="kpi-label">ROAS do Dia</div>
+        <div><span class="kpi-value">1,26x</span><span class="delta delta-up">▲ +38%</span></div>
+      </div>
+    </div>
+    <div class="three-col">
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">Minhas Tarefas</div><div class="card-link">1 pendente →</div></div>
+        <div style="background:var(--bg-2);border-radius:9px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12.5px;">Subir estrutura da vsl burnflow</span>
+          <span style="background:var(--delta-down-bg);color:var(--delta-down);font-size:10px;padding:3px 8px;border-radius:5px;font-weight:500;">atrasada</span>
+        </div>
+      </div>
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">Notificações</div><div class="card-link">3 não lidas →</div></div>
+        <div style="font-size:12.5px;color:var(--text-1);margin-bottom:8px;display:flex;gap:8px;"><span style="color:var(--delta-down);">🚨</span><div>Item em risco<div style="font-size:11px;color:var(--text-2);">há 2h</div></div></div>
+        <div style="font-size:12.5px;color:var(--text-1);display:flex;gap:8px;"><span style="color:var(--laranja);">⚠️</span><div>Demanda paralisada<div style="font-size:11px;color:var(--text-2);">há 1d</div></div></div>
+      </div>
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">Demandas de Hoje</div><div class="card-link">ver tudo →</div></div>
+        <div style="margin-bottom:8px;font-size:12.5px;">
+          <span style="background:rgba(27,156,250,.15);color:var(--azul);font-size:10px;padding:2px 7px;border-radius:5px;margin-right:6px;">Em Revisão</span>Will
+          <div style="margin-top:3px;color:var(--text-2);font-size:12px;">teste not</div>
+        </div>
+        <div style="font-size:12.5px;">
+          <span style="background:var(--delta-up-bg);color:var(--delta-up);font-size:10px;padding:2px 7px;border-radius:5px;margin-right:6px;">Concluída</span>Giovana
+          <div style="margin-top:3px;color:var(--text-2);font-size:12px;">CRIAR MANUAL DE REVISÃO</div>
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">⭐ Rituais desta Semana</div><div class="card-link">ver todos →</div></div>
+        <div style="border-left:3px solid var(--azul);padding:10px 14px;background:var(--bg-2);border-radius:0 9px 9px 0;margin-bottom:8px;">
+          <div style="font-size:13px;font-weight:500;">Weekly · 11/05</div>
+          <div style="font-size:11.5px;color:var(--text-2);margin-top:2px;">Weekly de criativo · RAI, Will, roberta</div>
+        </div>
+        <div style="border-left:3px solid var(--laranja);padding:10px 14px;background:var(--bg-2);border-radius:0 9px 9px 0;">
+          <div style="font-size:13px;font-weight:500;">Análise Semanal 02</div>
+          <div style="font-size:11.5px;color:var(--text-2);margin-top:2px;">Análise de dados · Thiago, Rafael</div>
+        </div>
+      </div>
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">⚠️ Em Risco</div><div class="card-link" style="color:var(--delta-down);">4 itens</div></div>
+        <div style="font-size:12.5px;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:500;"><span style="width:6px;height:6px;border-radius:50%;background:var(--delta-down);"></span>Apresentar Weecly</div>
+          <div style="font-size:11px;color:var(--text-2);margin-top:2px;margin-left:14px;">⚠️ atrasada 18 dias · Lucca</div>
+        </div>
+        <div style="font-size:12.5px;">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:500;"><span style="width:6px;height:6px;border-radius:50%;background:var(--delta-down);"></span>Iniciar escrita de vsl nova</div>
+          <div style="font-size:11px;color:var(--text-2);margin-top:2px;margin-left:14px;">⚠️ atrasada 7 dias · Esteve</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 02 · DEMANDAS ════════════ -->
+<div class="section-title">02 · Demandas <small>filtro por setor + cards verticais</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('task'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Demandas</h1><p class="topbar-sub">21 demandas · 4 atrasadas · 2 aguardando aprovação</p></div>
+      <div class="topbar-actions"><button class="btn">🔥 Atrasadas (4)</button><button class="btn">👤 Minhas</button><button class="btn-primary btn">+ Nova Demanda</button></div>
+    </div>
+    <div class="with-side">
+      <aside class="filtros-side">
+        <div class="filtro-label">Setores</div>
+        <div class="filtro-item active"><span style="display:flex;align-items:center;gap:8px;"><span class="dot" style="background:var(--azul);"></span>Copy</span><span class="filtro-item-count">12</span></div>
+        <div class="filtro-item"><span style="display:flex;align-items:center;gap:8px;"><span class="dot" style="background:var(--roxo-side);"></span>Edição</span><span class="filtro-item-count">8</span></div>
+        <div class="filtro-item"><span style="display:flex;align-items:center;gap:8px;"><span class="dot" style="background:var(--laranja);"></span>Infra</span><span class="filtro-item-count">3</span></div>
+        <div class="filtro-item"><span style="display:flex;align-items:center;gap:8px;"><span class="dot" style="background:var(--delta-up);"></span>Tráfego</span><span class="filtro-item-count">5</span></div>
+        <div class="filtro-item"><span style="display:flex;align-items:center;gap:8px;"><span class="dot" style="background:var(--delta-down);"></span>Spy</span><span class="filtro-item-count">1</span></div>
+        <div style="height:1px;background:var(--border);margin:10px 4px;"></div>
+        <div class="filtro-item" style="color:var(--laranja);"><span>⚠️ Aguard. Aprov.</span><span class="filtro-item-count">2</span></div>
+        <div class="filtro-item"><span>📥 Backlog</span><span class="filtro-item-count">3</span></div>
+        <div class="filtro-item"><span>✅ Aprovadas</span><span class="filtro-item-count">47</span></div>
+      </aside>
+      <div style="flex:1;">
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+          <span class="status-pill" style="background:var(--azul);color:#fff;">Todas · 12</span>
+          <span class="status-pill st-pendente">⏳ Pendente · 4</span>
+          <span class="status-pill st-progresso">▶️ Em Progresso · 3</span>
+          <span class="status-pill st-revisao">👀 Em Revisão · 3</span>
+          <span class="status-pill st-aprov">⏸️ Aguard. Aprov. · 2</span>
+        </div>
+        <div class="demanda-row copy">
+          <div><div class="demanda-nome">⭐ Apresentar Weecly</div><div class="demanda-sub">Prazo definido por Diretoria</div></div>
+          <div><span class="tag tag-nicho">Emagrecimento</span><span class="tag tag-oferta">Gelatina v5</span></div>
+          <div class="resp-cell"><span class="avatar av-azul">E</span>Esteve</div>
+          <div class="date-cell date-atrasada">🔴 Vencida 16d</div>
+          <div><span class="status-pill st-pendente">⏳ Pendente</span></div>
+          <div style="text-align:right;font-size:11px;color:var(--text-2);">📋✏️📦🗑</div>
+        </div>
+        <div class="demanda-row edicao">
+          <div><div class="demanda-nome">Editar UGC — Maria (Depoimento)</div><div class="demanda-sub">Cortar pausas + CTA final</div></div>
+          <div><span class="tag tag-nicho">Emagrecimento</span><span class="tag tag-oferta">TGLV10</span></div>
+          <div class="resp-cell"><span class="avatar av-roxo">L</span>Lucca</div>
+          <div class="date-cell date-hoje">🟠 Hoje · 18h</div>
+          <div><span class="status-pill st-progresso">▶️ Em Progresso</span></div>
+          <div style="text-align:right;font-size:11px;color:var(--text-2);">📋✏️📦🗑</div>
+        </div>
+        <div class="demanda-row trafego">
+          <div><div class="demanda-nome">Subir campanha — Gelatina v5</div><div class="demanda-sub">CBO 1.50.1, budget 200/dia</div></div>
+          <div><span class="tag tag-nicho">Emagrecimento</span><span class="tag tag-oferta">Gelatina v5</span></div>
+          <div class="resp-cell"><span class="avatar av-verde">R</span>Rafael</div>
+          <div class="date-cell date-amanha">🟡 Amanhã · 12h</div>
+          <div><span class="status-pill st-revisao">👀 Em Revisão</span></div>
+          <div style="text-align:right;font-size:11px;color:var(--text-2);">📋✏️📦🗑</div>
+        </div>
+        <div class="demanda-row spy">
+          <div><div class="demanda-nome">Iniciar SPY para concorrentes</div><div class="demanda-sub">Top 5 do nicho saúde</div></div>
+          <div><span class="tag tag-nicho">Saúde</span></div>
+          <div class="resp-cell"><span class="avatar av-rosa">L</span>Lucas</div>
+          <div class="date-cell date-folga">⚪ Em 3 dias</div>
+          <div><span class="status-pill st-aprov">⏸️ Aguard. Aprov.</span></div>
+          <div style="text-align:right;font-size:11px;color:var(--text-2);">📋✏️📦🗑</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 03 · CRIATIVOS ════════════ -->
+<div class="section-title">03 · Criativos <small>grid de nichos / ofertas / remessas</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('criativos'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Criativos</h1><p class="topbar-sub">Gerencie seus materiais por nicho e oferta</p></div>
+      <div class="topbar-actions"><button class="btn">📦 Gerenciar Remessas</button><button class="btn">⚙️ Formatos</button><button class="btn-primary btn">📄 Criar Documento</button></div>
+    </div>
+    <div style="font-size:12.5px;color:var(--text-2);margin-bottom:18px;">🎨 <span style="color:var(--azul);font-weight:500;">Criativos</span></div>
+    <h2 style="font-size:18px;font-weight:600;margin-bottom:14px;">Nichos</h2>
+    <div class="cri-grid">
+      <div class="cri-card-grid" style="border-color:var(--azul);background:var(--bg-2);"><div class="cri-card-ic">📁</div><div class="cri-card-name">Emagrecimento</div><div class="cri-card-meta">10 remessas</div></div>
+      <div class="cri-card-grid"><div class="cri-card-ic">📁</div><div class="cri-card-name">Diabetes</div><div class="cri-card-meta">3 remessas</div></div>
+      <div class="cri-card-grid"><div class="cri-card-ic">📁</div><div class="cri-card-name">Fitness</div><div class="cri-card-meta">2 remessas</div></div>
+      <div class="cri-card-grid"><div class="cri-card-ic">📁</div><div class="cri-card-name">Saúde Mental</div><div class="cri-card-meta">1 remessa</div></div>
+      <div class="cri-card-grid"><div class="cri-card-ic">📁</div><div class="cri-card-name">Memória</div><div class="cri-card-meta">4 remessas</div></div>
+      <div class="cri-card-grid"><div class="cri-card-ic">📁</div><div class="cri-card-name">Beleza</div><div class="cri-card-meta">2 remessas</div></div>
+      <div class="cri-card-grid" style="border-style:dashed;color:var(--text-2);"><div class="cri-card-ic" style="color:var(--text-2);">＋</div><div class="cri-card-name">Adicionar Nicho</div><div class="cri-card-meta">Novo</div></div>
+    </div>
+    <h2 style="font-size:18px;font-weight:600;margin:24px 0 14px;">Remessa selecionada · TGLV10 · 04-05 (MEMOPEZIL)</h2>
+    <div class="card-box" style="border-left:4px solid var(--azul);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:16px;font-weight:600;">04-05 [MEMOPEZIL] - [MEMO] - [BUYGOODS] <span class="tag" style="background:rgba(91,94,244,.18);color:var(--roxo-side);margin-left:8px;">Copy em produção</span></div>
+          <div style="font-size:12px;color:var(--text-2);margin-top:4px;">3 anúncio(s) · 0 validado(s) · 30/04/2026 · ✍️ Copy: <span style="color:var(--text-1);font-weight:500;">Esteve</span></div>
+        </div>
+        <div style="display:flex;gap:6px;font-size:14px;color:var(--text-2);">🔗 ✏️ 📦</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="status-pill" style="background:rgba(27,156,250,.12);color:var(--azul);">2 A Testar</span>
+        <span class="status-pill" style="background:rgba(212,160,23,.15);color:#d4a017;">1 Testando</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 04 · PROJETOS ════════════ -->
+<div class="section-title">04 · Projetos <small>arquivos organizados por projeto</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('arquivos'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Projetos</h1><p class="topbar-sub">Central de arquivos · 12 projetos ativos</p></div>
+      <div class="topbar-actions"><button class="btn">🔄 Sincronizar com Ofertas</button><button class="btn-primary btn">+ Novo Projeto</button></div>
+    </div>
+    <div class="with-side">
+      <aside class="filtros-side">
+        <div class="filtro-label">Projetos</div>
+        <div class="filtro-item active"><span>📁 TGLV10</span><span class="filtro-item-count">23</span></div>
+        <div class="filtro-item"><span>📁 Detox Express</span><span class="filtro-item-count">12</span></div>
+        <div class="filtro-item"><span>📁 Gelatina v5</span><span class="filtro-item-count">8</span></div>
+        <div class="filtro-item"><span>📁 Memória AF</span><span class="filtro-item-count">15</span></div>
+        <div class="filtro-item"><span>📁 Glyco Harmony</span><span class="filtro-item-count">5</span></div>
+      </aside>
+      <div style="flex:1;">
+        <div style="font-size:12.5px;color:var(--text-2);margin-bottom:14px;">📁 <span style="color:var(--azul);">Projetos</span> › TGLV10</div>
+        <div class="three-col">
+          <div class="card-box" style="text-align:center;"><div style="font-size:38px;margin-bottom:8px;">📄</div><div style="font-size:13px;font-weight:600;margin-bottom:4px;">Briefing v3.docx</div><div style="font-size:11px;color:var(--text-2);">há 2 dias · 230 KB</div></div>
+          <div class="card-box" style="text-align:center;"><div style="font-size:38px;margin-bottom:8px;">🎬</div><div style="font-size:13px;font-weight:600;margin-bottom:4px;">UGC Maria.mp4</div><div style="font-size:11px;color:var(--text-2);">há 4h · 48 MB</div></div>
+          <div class="card-box" style="text-align:center;"><div style="font-size:38px;margin-bottom:8px;">🖼️</div><div style="font-size:13px;font-weight:600;margin-bottom:4px;">Thumb v2.png</div><div style="font-size:11px;color:var(--text-2);">há 6h · 1.2 MB</div></div>
+          <div class="card-box" style="text-align:center;"><div style="font-size:38px;margin-bottom:8px;">📊</div><div style="font-size:13px;font-weight:600;margin-bottom:4px;">Analise ROAS.xlsx</div><div style="font-size:11px;color:var(--text-2);">há 1 dia · 45 KB</div></div>
+          <div class="card-box" style="text-align:center;"><div style="font-size:38px;margin-bottom:8px;">📝</div><div style="font-size:13px;font-weight:600;margin-bottom:4px;">Roteiros copy.txt</div><div style="font-size:11px;color:var(--text-2);">há 3 dias · 12 KB</div></div>
+          <div class="card-box" style="text-align:center;border-style:dashed;color:var(--text-2);cursor:pointer;"><div style="font-size:38px;margin-bottom:8px;">＋</div><div style="font-size:13px;font-weight:600;margin-bottom:4px;">Adicionar arquivo</div><div style="font-size:11px;color:var(--text-3);">drag & drop</div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 05 · CHAT ════════════ -->
+<div class="section-title">05 · Chat <small>canais por área + DMs</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('chat'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Chat</h1><p class="topbar-sub">Comunicação interna · 4 canais ativos</p></div>
+    </div>
+    <div class="chat-layout">
+      <aside class="chat-channels">
+        <div class="filtro-label" style="margin-bottom:8px;">Canais</div>
+        <div class="chat-ch active">geral</div>
+        <div class="chat-ch">copy</div>
+        <div class="chat-ch">edição</div>
+        <div class="chat-ch">tráfego</div>
+        <div class="chat-ch">links-cadastros</div>
+        <div class="filtro-label" style="margin-top:14px;margin-bottom:8px;">Mensagens diretas</div>
+        <div class="chat-ch" style="padding-left:11px;">Lucca</div>
+        <div class="chat-ch" style="padding-left:11px;">Esteve</div>
+      </aside>
+      <div class="chat-body">
+        <div class="chat-msgs">
+          <div class="chat-msg">
+            <span class="avatar av-roxo">L</span>
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta"><b>Lucca</b> · 13:20</div>
+              <div class="chat-msg-text">subi a versão final do UGC no drive 👍</div>
+            </div>
+          </div>
+          <div class="chat-msg" style="flex-direction:row-reverse;">
+            <div class="chat-msg-body" style="text-align:right;">
+              <div class="chat-msg-meta">13:24</div>
+              <div class="chat-msg-text" style="background:var(--azul);color:#fff;display:inline-block;text-align:left;">show, vou revisar agora</div>
+            </div>
+          </div>
+          <div class="chat-msg">
+            <span class="avatar av-azul">E</span>
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta"><b>Esteve</b> · 13:31</div>
+              <div class="chat-msg-text">@Lucca consegue ajustar o CTA do final? tava sem ênfase</div>
+            </div>
+          </div>
+          <div class="chat-msg">
+            <span class="avatar av-rosa">T</span>
+            <div class="chat-msg-body">
+              <div class="chat-msg-meta"><b>Thiago</b> · 13:35</div>
+              <div class="chat-msg-text">pessoal, weekly em 1h. preparar números</div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-bar">
+          <div style="width:36px;height:36px;background:var(--bg-2);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-2);">📎</div>
+          <input class="chat-input" placeholder="Mensagem...">
+          <button class="btn-primary btn" style="width:36px;height:36px;padding:0;justify-content:center;">▸</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 06 · RITUAIS ════════════ -->
+<div class="section-title">06 · Rituais <small>weekly e análises recorrentes</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('rituais'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Rituais</h1><p class="topbar-sub">Reuniões semanais e análises de dados</p></div>
+      <div class="topbar-actions"><button class="btn">📅 Calendário</button><button class="btn-primary btn">+ Novo Ritual</button></div>
+    </div>
+    <h2 style="font-size:13px;color:var(--text-2);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;font-weight:500;">Esta semana</h2>
+    <div class="ritual-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div>
+          <div class="ritual-titulo">Weekly de Criativo · 11/05 às 14h</div>
+          <div class="ritual-meta">
+            <span>🎯 Análise de criativos da semana</span>
+            <span>👥 RAI, Will, roberta, Thiago</span>
+            <span>📍 Google Meet</span>
+          </div>
+        </div>
+        <span class="status-pill st-progresso">📅 Próximo</span>
+      </div>
+    </div>
+    <div class="ritual-card" style="border-left-color:var(--laranja);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div>
+          <div class="ritual-titulo">Análise Semanal de ROAS · 13/05</div>
+          <div class="ritual-meta">
+            <span>📊 Revisão de performance</span>
+            <span>👥 Thiago, Rafael</span>
+            <span>📍 Híbrido</span>
+          </div>
+        </div>
+        <span class="status-pill st-pendente">⏳ Em 2 dias</span>
+      </div>
+    </div>
+    <h2 style="font-size:13px;color:var(--text-2);text-transform:uppercase;letter-spacing:1.5px;margin:24px 0 12px;font-weight:500;">Rituais ativos</h2>
+    <div class="two-col">
+      <div class="ritual-card" style="margin:0;border-left-color:var(--azul);">
+        <div class="ritual-titulo">Weekly de Criativo</div>
+        <div class="ritual-meta"><span>📅 Toda segunda 14h</span><span>👥 4 pessoas</span></div>
+      </div>
+      <div class="ritual-card" style="margin:0;border-left-color:var(--rosa);">
+        <div class="ritual-titulo">Daily Tráfego</div>
+        <div class="ritual-meta"><span>📅 Todo dia útil 09h</span><span>👥 Rafael, Thiago</span></div>
+      </div>
+      <div class="ritual-card" style="margin:0;border-left-color:var(--delta-up);">
+        <div class="ritual-titulo">Revisão Mensal de ROI</div>
+        <div class="ritual-meta"><span>📅 Toda 1ª sexta 16h</span><span>👥 Diretoria</span></div>
+      </div>
+      <div class="ritual-card" style="margin:0;border-left-color:var(--laranja);">
+        <div class="ritual-titulo">Planejamento Estratégico</div>
+        <div class="ritual-meta"><span>📅 Quinzenal</span><span>👥 Urciano, Thiago</span></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 07 · TRÁFEGO → ROI ════════════ -->
+<div class="section-title">07 · Tráfego — Controle de ROI <small>tabela de dias por oferta</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('metricas'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Tráfego — TGLV10</h1><p class="topbar-sub">Controle de ROI · Loja Buygoods · 8 dias de dados</p></div>
+      <div class="topbar-actions">
+        <button class="btn">📅 Maio</button>
+        <button class="btn">👤 Rafael</button>
+        <button class="btn">📊 Baixar PDF</button>
+      </div>
+    </div>
+    <div class="with-side">
+      <aside class="filtros-side">
+        <div class="filtro-label">Ofertas</div>
+        <div class="filtro-item active"><span>📦 TGLV10</span><span class="filtro-item-count">8d</span></div>
+        <div class="filtro-item"><span>📦 Gelatina v5</span><span class="filtro-item-count">5d</span></div>
+        <div class="filtro-item"><span>📦 Detox Express</span><span class="filtro-item-count">12d</span></div>
+        <div class="filtro-item"><span>📦 Memória AF</span><span class="filtro-item-count">3d</span></div>
+      </aside>
+      <div style="flex:1;">
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
+          <div class="kpi-card"><div class="kpi-icon-box icon-azul"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/></svg></div><div class="kpi-label">Faturamento</div><div><span class="kpi-value" style="font-size:22px;">R$ 38.450</span></div></div>
+          <div class="kpi-card"><div class="kpi-icon-box icon-rosa"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/></svg></div><div class="kpi-label">Investimento</div><div><span class="kpi-value" style="font-size:22px;">R$ 12.230</span></div></div>
+          <div class="kpi-card"><div class="kpi-icon-box icon-laranja"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="4"/></svg></div><div class="kpi-label">Lucro</div><div><span class="kpi-value roi-green" style="font-size:22px;">R$ 26.220</span></div></div>
+          <div class="kpi-card"><div class="kpi-icon-box icon-roxo"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div><div class="kpi-label">ROAS</div><div><span class="kpi-value roi-green" style="font-size:22px;">3,14x</span></div></div>
+        </div>
+        <div class="roi-table">
+          <div class="roi-th"><div>Data</div><div>Fat. Bruto</div><div>Investimento</div><div>Taxa</div><div>Imposto</div><div>Fat. Líquido</div><div>Lucro</div><div>ROAS</div><div>ROI</div><div></div></div>
+          <div class="roi-tr"><div style="color:var(--azul);font-weight:500;">01/05</div><div><input value="6.200,00"></div><div><input value="1.800,00" style="color:var(--delta-down);"></div><div><input value="124,00"></div><div><input value="80,00"></div><div class="roi-calc">R$ 5.996,00</div><div class="roi-calc roi-green">R$ 4.196,00</div><div class="roi-calc roi-green">3,44x</div><div class="roi-calc roi-green">2,33</div><div style="text-align:right;color:var(--text-3);">🗑</div></div>
+          <div class="roi-tr"><div style="color:var(--azul);font-weight:500;">02/05</div><div><input value="4.800,00"></div><div><input value="1.500,00" style="color:var(--delta-down);"></div><div><input value="96,00"></div><div><input value="60,00"></div><div class="roi-calc">R$ 4.644,00</div><div class="roi-calc roi-green">R$ 3.144,00</div><div class="roi-calc roi-green">3,20x</div><div class="roi-calc roi-green">2,10</div><div style="text-align:right;color:var(--text-3);">🗑</div></div>
+          <div class="roi-tr"><div style="color:var(--azul);font-weight:500;">03/05</div><div><input value="3.200,00"></div><div><input value="1.450,00" style="color:var(--delta-down);"></div><div><input value="64,00"></div><div><input value="42,00"></div><div class="roi-calc">R$ 3.094,00</div><div class="roi-calc roi-green">R$ 1.644,00</div><div class="roi-calc roi-yellow">2,21x</div><div class="roi-calc roi-green">1,13</div><div style="text-align:right;color:var(--text-3);">🗑</div></div>
+          <div class="roi-tr" style="background:var(--bg-2);font-weight:600;"><div>TOTAL</div><div>R$ 14.200,00</div><div class="roi-red">R$ 4.750,00</div><div>284,00</div><div>182,00</div><div>R$ 13.734,00</div><div class="roi-green">R$ 8.984,00</div><div class="roi-green">2,99x</div><div class="roi-green">1,89</div><div></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 08 · TRÁFEGO → CONTINGÊNCIA ════════════ -->
+<div class="section-title">08 · Tráfego — Controle de Contingência <small>contas de anúncio</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('metricas'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">🛡️ Controle de Contingência</h1><p class="topbar-sub">11 contas · 8 ativas · Status real-time</p></div>
+      <div class="topbar-actions"><button class="btn">👤 Todos Gestores</button><button class="btn-primary btn">+ Adicionar Conta</button></div>
+    </div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:20px;">
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">Zerada</div><div style="font-size:20px;font-weight:600;color:#FBBF24;">0</div></div>
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">Aquecimento</div><div style="font-size:20px;font-weight:600;color:var(--laranja);">9</div></div>
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">Rodando</div><div style="font-size:20px;font-weight:600;color:var(--azul);">5</div></div>
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">Escalada</div><div style="font-size:20px;font-weight:600;color:var(--delta-up);">2</div></div>
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">Desativada</div><div style="font-size:20px;font-weight:600;color:var(--delta-down);">3</div></div>
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">Stand By</div><div style="font-size:20px;font-weight:600;color:var(--text-2);">1</div></div>
+      <div class="kpi-card" style="padding:14px;"><div class="kpi-label" style="font-size:9.5px;">BM Caiu</div><div style="font-size:20px;font-weight:600;color:var(--roxo-side);">2</div></div>
+    </div>
+    <div class="table-card">
+      <div class="conting-tr conting-th"><div>Status</div><div>Processo</div><div>Gestor</div><div>Perfil</div><div>Oferta</div><div>Nome</div><div>Cartão</div><div>Link 01</div><div>Link 02</div><div></div></div>
+      <div class="conting-tr">
+        <div><select class="conting-sel cor1">Rodando</select></div>
+        <div><select class="conting-sel cor3">CBO</select></div>
+        <div><select class="conting-sel">Rafael</select></div>
+        <div>JoaoSilva</div><div>TGLV10</div><div>BM #001</div><div>•••• 4521</div>
+        <div style="color:var(--azul);font-size:11px;">🔗 link</div>
+        <div style="color:var(--azul);font-size:11px;">🔗 link</div>
+        <div style="text-align:right;color:var(--text-3);">🗑</div>
+      </div>
+      <div class="conting-tr">
+        <div><select class="conting-sel cor3">Aquecimento</select></div>
+        <div><select class="conting-sel cor3">Engajamento</select></div>
+        <div><select class="conting-sel">Lucca</select></div>
+        <div>MariaPaula</div><div>Detox</div><div>BM #045</div><div>•••• 8821</div>
+        <div style="color:var(--azul);font-size:11px;">🔗 link</div>
+        <div style="color:var(--text-3);">—</div>
+        <div style="text-align:right;color:var(--text-3);">🗑</div>
+      </div>
+      <div class="conting-tr">
+        <div><select class="conting-sel cor2">Escalada</select></div>
+        <div><select class="conting-sel cor3">CBO</select></div>
+        <div><select class="conting-sel">Rafael</select></div>
+        <div>FernandaR</div><div>Gelatina v5</div><div>BM #112</div><div>•••• 1234</div>
+        <div style="color:var(--azul);font-size:11px;">🔗 link</div>
+        <div style="color:var(--azul);font-size:11px;">🔗 link</div>
+        <div style="text-align:right;color:var(--text-3);">🗑</div>
+      </div>
+      <div class="conting-tr">
+        <div><select class="conting-sel cor-rosa">BM Caiu</select></div>
+        <div><select class="conting-sel cor3">Nao Gastou</select></div>
+        <div><select class="conting-sel">Lucca</select></div>
+        <div>CarlosM</div><div>TGLV10</div><div>BM #233</div><div>•••• 9912</div>
+        <div style="color:var(--text-3);">—</div>
+        <div style="color:var(--text-3);">—</div>
+        <div style="text-align:right;color:var(--text-3);">🗑</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 09 · MÉTRICAS DE ADS ════════════ -->
+<div class="section-title">09 · Métricas de Ads <small>integração RedTrack</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('adsmetrics'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Métricas de Ads</h1><p class="topbar-sub">Performance de campanhas via RedTrack · últimos 7 dias</p></div>
+      <div class="topbar-actions"><button class="btn">📅 Últimos 7 dias</button><button class="btn">📊 Exportar</button></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-icon-box icon-azul"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div><div class="kpi-label">Cliques</div><div><span class="kpi-value">14.823</span><span class="delta delta-up">▲ +12%</span></div></div>
+      <div class="kpi-card"><div class="kpi-icon-box icon-laranja"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/></svg></div><div class="kpi-label">Conversões</div><div><span class="kpi-value">312</span><span class="delta delta-up">▲ +8%</span></div></div>
+      <div class="kpi-card"><div class="kpi-icon-box icon-rosa"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/></svg></div><div class="kpi-label">CPM</div><div><span class="kpi-value">R$ 18,40</span><span class="delta delta-down">▼ -5%</span></div></div>
+      <div class="kpi-card"><div class="kpi-icon-box icon-roxo"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div><div class="kpi-label">ROAS Médio</div><div><span class="kpi-value">2,84x</span><span class="delta delta-up">▲ +0.3</span></div></div>
+    </div>
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="tabs"><div class="tab active">Top Performance</div><div class="tab">Em risco</div><div class="tab">Pausados</div></div>
+        <button class="btn">🔄 Atualizar agora</button>
+      </div>
+      <div class="table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;"><div>Anúncio</div><div>Hook</div><div>CPM</div><div>CPC</div><div>Conv.</div><div>ROAS</div><div>Status</div></div>
+      <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;"><div><div style="font-weight:500;">AD848 — Hook Direto</div><div style="font-size:11px;color:var(--text-2);">TGLV10 · VSL v5</div></div><div class="roi-green">68%</div><div>R$ 16,20</div><div>R$ 1,12</div><div>89</div><div class="roi-green">4,12x</div><div><span class="status-pill" style="background:var(--delta-up-bg);color:var(--delta-up);">🔥 Escalando</span></div></div>
+      <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;"><div><div style="font-weight:500;">AD850 — Depoimento</div><div style="font-size:11px;color:var(--text-2);">Detox · UGC</div></div><div class="roi-yellow">45%</div><div>R$ 22,40</div><div>R$ 1,80</div><div>34</div><div class="roi-yellow">2,15x</div><div><span class="status-pill" style="background:rgba(212,160,23,.15);color:#d4a017;">⚠️ Atenção</span></div></div>
+      <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;"><div><div style="font-weight:500;">AD852 — Headline forte</div><div style="font-size:11px;color:var(--text-2);">Gelatina · Estático</div></div><div class="roi-green">71%</div><div>R$ 14,80</div><div>R$ 0,95</div><div>112</div><div class="roi-green">4,68x</div><div><span class="status-pill" style="background:var(--delta-up-bg);color:var(--delta-up);">🔥 Escalando</span></div></div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 10 · NOTIFICAÇÕES ════════════ -->
+<div class="section-title">10 · Notificações <small>tudo que precisa da sua atenção</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('notif'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Notificações</h1><p class="topbar-sub">7 não lidas · 23 esta semana</p></div>
+      <div class="topbar-actions"><button class="btn">✓ Marcar todas lidas</button></div>
+    </div>
+    <div class="notif-item urgent">
+      <div class="notif-title">🚨 ROAS de TGLV10 caiu 22% nas últimas 6h</div>
+      <div class="notif-text">De 3,4x → 2,6x · Investido R$ 580 · Verificar campanha agora</div>
+      <div class="notif-time">há 2 horas · Sistema</div>
+    </div>
+    <div class="notif-item warning">
+      <div class="notif-title">⚠️ 4 demandas atrasadas</div>
+      <div class="notif-text">Esteve (2), Lucca (1), Rafael (1) · Total de 18 dias de atraso acumulado</div>
+      <div class="notif-time">há 4 horas · Sistema</div>
+    </div>
+    <div class="notif-item">
+      <div class="notif-title">💬 Lucca mencionou você em "Editar UGC Maria"</div>
+      <div class="notif-text">"@Thiago consegue revisar a versão final antes do upload?"</div>
+      <div class="notif-time">há 6 horas · Chat</div>
+    </div>
+    <div class="notif-item success">
+      <div class="notif-title">✅ Demanda aprovada</div>
+      <div class="notif-text">"Subir campanha Gelatina v5" foi aprovada pela Diretoria</div>
+      <div class="notif-time">há 8 horas · Sistema</div>
+    </div>
+    <div class="notif-item">
+      <div class="notif-title">📊 Relatório semanal pronto</div>
+      <div class="notif-text">Semana 29/abr–06/mai · ROAS médio 2,84x · Lucro R$ 12.450</div>
+      <div class="notif-time">há 1 dia · Sistema</div>
+    </div>
+    <div class="notif-item warning">
+      <div class="notif-title">⚠️ 3 ofertas sem investimento há 5 dias</div>
+      <div class="notif-text">Detox, Memória AF, Crescimento Premium</div>
+      <div class="notif-time">há 1 dia · Sistema</div>
+    </div>
+  </main>
+</div>
+
+<!-- ════════════ 11 · CONFIGURAÇÕES ════════════ -->
+<div class="section-title">11 · Configurações <small>6 grupos · acesso Diretoria</small></div>
+<div class="screen-frame">
+  <script>document.write(sidebar('config'));</script>
+  <main class="main">
+    <div class="topbar">
+      <div><h1 class="topbar-title smaller">Configurações</h1><p class="topbar-sub">Gestão completa do sistema</p></div>
+    </div>
+    <div class="cfg-groups">
+      <div class="cfg-group active">👤 Conta &amp; Time</div>
+      <div class="cfg-group">⚙️ Operação</div>
+      <div class="cfg-group">🔔 Automação</div>
+      <div class="cfg-group">🔌 Integrações</div>
+      <div class="cfg-group">🛡️ Dados</div>
+      <div class="cfg-group">🛠️ Avançado</div>
+    </div>
+    <div class="three-col">
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">👥 Equipe</div><div class="card-link">12 membros</div></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span class="avatar av-rosa">T</span><div><div style="font-size:13px;font-weight:500;">Thiago</div><div style="font-size:11px;color:var(--text-2);">Diretoria</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span class="avatar av-roxo">L</span><div><div style="font-size:13px;font-weight:500;">Lucca</div><div style="font-size:11px;color:var(--text-2);">Editor</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px;"><span class="avatar av-verde">R</span><div><div style="font-size:13px;font-weight:500;">Rafael</div><div style="font-size:11px;color:var(--text-2);">Gestor de Tráfego</div></div></div>
+      </div>
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">🎯 Nichos</div><div class="card-link">6 nichos</div></div>
+        <div style="font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;"><span>Emagrecimento</span><span style="color:var(--text-2);">10 ofertas</span></div>
+        <div style="font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;"><span>Diabetes</span><span style="color:var(--text-2);">3 ofertas</span></div>
+        <div style="font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;"><span>Memória</span><span style="color:var(--text-2);">4 ofertas</span></div>
+        <div style="font-size:13px;display:flex;justify-content:space-between;"><span>Saúde Mental</span><span style="color:var(--text-2);">1 oferta</span></div>
+      </div>
+      <div class="card-box">
+        <div class="card-head"><div class="card-title">📋 Cargos</div><div class="card-link">6 cargos</div></div>
+        <div style="font-size:13px;color:var(--text-2);">Diretoria · Copy · Editor · Gestor de Tráfego · Infra · Spy</div>
+      </div>
+    </div>
+    <div class="card-box" style="margin-top:14px;">
+      <div class="card-head"><div class="card-title">⚙️ Projeto</div><div class="card-link">salvar alterações →</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <label style="font-size:11.5px;color:var(--text-2);display:block;margin-bottom:6px;">Nome do projeto</label>
+          <input value="Axcend" style="width:100%;padding:9px 12px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;color:var(--text-1);font-family:inherit;font-size:13px;outline:none;">
+        </div>
+        <div>
+          <label style="font-size:11.5px;color:var(--text-2);display:block;margin-bottom:6px;">Cor primária</label>
+          <div style="display:flex;gap:6px;"><div style="width:32px;height:32px;border-radius:8px;background:var(--roxo-side);border:2px solid var(--text-1);"></div><div style="width:32px;height:32px;border-radius:8px;background:var(--azul);"></div><div style="width:32px;height:32px;border-radius:8px;background:var(--rosa);"></div><div style="width:32px;height:32px;border-radius:8px;background:var(--laranja);"></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div style="max-width:1280px;margin:36px auto 0;padding:22px 26px;background:var(--bg-1);border-radius:14px;border:1px solid var(--border);font-size:13px;color:var(--text-2);line-height:1.6;">
+  <strong style="color:var(--text-1);">Telas mockadas:</strong> Dashboard · Demandas · Criativos · Projetos · Chat · Rituais · Tráfego/ROI · Tráfego/Contingência · Métricas de Ads · Notificações · Configurações.<br>
+  <strong style="color:var(--text-1);margin-top:8px;display:inline-block;">Próximo passo:</strong> se aprovar o visual, aplico no sistema real (só CSS + tokens, lógica/dados preservados). Quer ajustes em alguma tela específica?
+</div>
+
+</body>
+</html>
