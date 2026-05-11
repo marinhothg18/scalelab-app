@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axcend — Preview Novo Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Background scale (dark) */
+    --bg-0: #0f0f0f;
+    --bg-1: #1c1c1c;
+    --bg-2: #252525;
+    --bg-3: #2e2e2e;
+    /* Texto */
+    --text-1: #ffffff;
+    --text-2: #888888;
+    --text-3: #444444;
+    /* Borders */
+    --border: rgba(255,255,255,.06);
+    /* Accents */
+    --rosa: #C52C58;
+    --azul: #1B9CFA;
+    --laranja: #FF5926;
+    --roxo-side: #5b5ef4;
+    --roxo-deep: #3E1493;
+    /* Deltas */
+    --delta-down: #E24B4A;
+    --delta-down-bg: rgba(226,75,74,.15);
+    --delta-up: #639922;
+    --delta-up-bg: rgba(99,153,34,.15);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #050505; color: var(--text-1); font-family: 'Inter', -apple-system, sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased; }
+  body { padding: 30px 24px 60px; }
+
+  /* Banner preview no topo */
+  .preview-banner {
+    max-width: 1280px; margin: 0 auto 28px; padding: 22px 26px;
+    background: var(--bg-1); border-radius: 14px; border: 1px solid var(--border);
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .preview-banner-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--roxo-deep), var(--azul));
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; color: #fff;
+  }
+  .preview-banner-text h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; }
+  .preview-banner-text p { font-size: 12.5px; color: var(--text-2); }
+  .preview-tab-row { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .preview-tab {
+    padding: 8px 14px; background: var(--bg-2); border: 1px solid var(--border); color: var(--text-2);
+    border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit;
+  }
+  .preview-tab.active { background: var(--roxo-side); color: #fff; border-color: var(--roxo-side); }
+
+  /* Section title entre telas */
+  .section-title {
+    max-width: 1280px; margin: 36px auto 14px; padding: 0 4px;
+    font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text-2);
+  }
+
+  /* Frame de tela completa (mockup desktop) */
+  .screen-frame {
+    max-width: 1280px; margin: 0 auto;
+    background: var(--bg-0); border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--border);
+    display: flex; min-height: 720px;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 220px; background: var(--bg-0); padding: 18px 12px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+    border-right: 1px solid var(--border); flex-shrink: 0;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px 18px; font-size: 18px; font-weight: 600; color: var(--text-1);
+  }
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--roxo-deep), var(--azul));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-mark svg { width: 18px; height: 18px; stroke: #fff; stroke-width: 2.2; fill: none; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px; border-radius: 9px;
+    color: var(--text-2); font-size: 13.5px; font-weight: 500; cursor: pointer;
+    transition: all .15s;
+  }
+  .nav-item:hover { background: var(--bg-1); color: var(--text-1); }
+  .nav-item.active { background: var(--roxo-side); color: #fff; }
+  .nav-item svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.8; fill: none; flex-shrink: 0; }
+  .nav-spacer { flex: 1; }
+  .nav-divider { height: 1px; background: var(--border); margin: 8px 4px; }
+  .nav-user {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 9px; cursor: pointer;
+  }
+  .nav-user-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--bg-2); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+  .nav-user-name { font-size: 13px; font-weight: 500; }
+  .nav-sair { color: var(--delta-down); }
+
+  /* MAIN */
+  .main { flex: 1; padding: 28px 32px; overflow-y: auto; }
+  .topbar {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 26px; gap: 16px; flex-wrap: wrap;
+  }
+  .topbar-title { font-size: 32px; font-weight: 500; letter-spacing: -.4px; color: var(--text-1); }
+  .topbar-sub { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    padding: 9px 16px; background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--text-1); border-radius: 9px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; font-family: inherit;
+  }
+  .btn:hover { background: var(--bg-3); }
+  .btn-primary { background: var(--azul); border-color: var(--azul); color: #fff; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-laranja { background: var(--laranja); border-color: var(--laranja); color: #fff; }
+  .btn-rosa { background: var(--rosa); border-color: var(--rosa); color: #fff; }
+  .btn-refresh { background: var(--bg-1); }
+
+  /* KPI Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+  .kpi-card {
+    background: var(--bg-1); border-radius: 12px; padding: 18px 18px 16px;
+    border: 1px solid var(--border);
+  }
+  .kpi-icon-box {
+    width: 38px; height: 38px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 12px;
+  }
+  .icon-rosa { background: rgba(197,44,88,.12); color: var(--rosa); }
+  .icon-azul { background: rgba(27,156,250,.12); color: var(--azul); }
+  .icon-laranja { background: rgba(255,89,38,.12); color: var(--laranja); }
+  .icon-roxo { background: rgba(91,94,244,.12); color: var(--roxo-side); }
+  .kpi-icon-box svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+  .kpi-label { font-size: 10.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 500; margin-bottom: 6px; }
+  .kpi-value-row { display: flex; align-items: baseline; gap: 10px; }
+  .kpi-value { font-size: 26px; font-weight: 600; letter-spacing: -.5px; color: var(--text-1); }
+  .delta {
+    font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .delta-up { background: var(--delta-up-bg); color: var(--delta-up); }
+  .delta-down { background: var(--delta-down-bg); color: var(--delta-down); }
+
+  /* Cards grid (3 col) */
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 22px; }
+  .card-box { background: var(--bg-1); border-radius: 12px; border: 1px solid var(--border); padding: 18px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .card-title { font-size: 13.5px; font-weight: 600; color: var(--text-1); }
+  .card-link { font-size: 11px; color: var(--text-2); font-weight: 500; cursor: pointer; }
+  .card-link:hover { color: var(--azul); }
+
+  .empty-state { text-align: center; padding: 28px 8px; color: var(--text-3); font-size: 12px; }
+
+  .tarefa-item {
+    background: var(--bg-2); border-radius: 9px; padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;
+  }
+  .tarefa-nome { font-size: 12.5px; color: var(--text-1); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge-atrasada { background: var(--delta-down-bg); color: var(--delta-down); font-size: 10px; padding: 3px 8px; border-radius: 5px; font-weight: 500; }
+
+  /* Demandas list */
+  .demanda-row { background: var(--bg-1); border: 1px solid var(--border); border-left: 3px solid; border-radius: 11px; padding: 14px 16px; margin-bottom: 10px; display: grid; grid-template-columns: 2fr 1.4fr 1.2fr 1fr 1.4fr 100px; gap: 14px; align-items: center; }
+  .demanda-row.copy { border-left-color: var(--azul); }
+  .demanda-row.edicao { border-left-color: var(--roxo-side); }
+  .demanda-row.trafego { border-left-color: var(--delta-up); }
+  .demanda-row.spy { border-left-color: var(--delta-down); }
+  .demanda-row.infra { border-left-color: var(--laranja); }
+  .demanda-nome { font-size: 13px; font-weight: 500; color: var(--text-1); }
+  .demanda-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+  .tag {
+    display: inline-block; padding: 3px 8px; border-radius: 5px;
+    font-size: 10.5px; font-weight: 500; margin-right: 4px;
+  }
+  .tag-nicho { background: rgba(27,156,250,.12); color: var(--azul); }
+  .tag-oferta { background: rgba(255,89,38,.12); color: var(--laranja); }
+  .resp-cell { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .avatar {
+    width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 600; color: #fff; flex-shrink: 0;
+  }
+  .av-azul { background: var(--azul); }
+  .av-roxo { background: var(--roxo-side); }
+  .av-rosa { background: var(--rosa); }
+  .av-verde { background: var(--delta-up); }
+  .av-laranja { background: var(--laranja); }
+  .date-cell { font-size: 11.5px; font-weight: 500; }
+  .date-atrasada { color: var(--delta-down); }
+  .date-hoje { color: var(--laranja); }
+  .date-amanha { color: #d4a017; }
+  .date-folga { color: var(--text-2); }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px; border-radius: 7px; font-size: 11px; font-weight: 500;
+  }
+  .st-pendente { background: var(--bg-2); color: var(--text-2); }
+  .st-progresso { background: rgba(27,156,250,.15); color: var(--azul); }
+  .st-revisao { background: rgba(212,160,23,.15); color: #d4a017; }
+  .st-aprov { background: rgba(197,44,88,.15); color: var(--rosa); }
+
+  /* INFRA mockup */
+  .filtros-side { width: 180px; background: var(--bg-1); border-radius: 12px; border: 1px solid var(--border); padding: 14px; }
+  .filtro-label { font-size: 10.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 12px; font-weight: 500; }
+  .filtro-item {
+    padding: 8px 11px; border-radius: 7px; font-size: 12.5px; color: var(--text-2);
+    margin-bottom: 4px; cursor: pointer; display: flex; align-items: center; gap: 7px;
+  }
+  .filtro-item.active { background: var(--azul); color: #fff; }
+  .filtro-item:hover:not(.active) { background: var(--bg-2); color: var(--text-1); }
+
+  .table-card { background: var(--bg-1); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+  .table-toolbar { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tabs { display: flex; gap: 4px; }
+  .tab { padding: 8px 16px; border-radius: 8px; font-size: 12px; color: var(--text-2); cursor: pointer; font-weight: 500; }
+  .tab.active { background: var(--azul); color: #fff; }
+  .table-header, .table-row {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 100px;
+    gap: 12px; padding: 12px 18px; align-items: center;
+    font-size: 12px;
+  }
+  .table-header { background: var(--bg-2); color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; font-size: 10px; font-weight: 500; }
+  .table-row { border-bottom: 1px solid var(--border); }
+  .table-row:last-child { border-bottom: none; }
+  .table-row:hover { background: var(--bg-2); }
+  .link-pill { color: var(--azul); font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px; }
+
+  /* Componentes referência */
+  .ref-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+  .ref-card { background: var(--bg-1); border-radius: 12px; border: 1px solid var(--border); padding: 18px; }
+  .ref-card h3 { font-size: 12px; color: var(--text-2); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; font-weight: 500; }
+  .color-swatch { width: 100%; height: 60px; border-radius: 9px; margin-bottom: 8px; }
+  .color-info { font-size: 11.5px; }
+  .color-info strong { display: block; color: var(--text-1); font-weight: 500; margin-bottom: 2px; }
+  .color-info code { color: var(--text-2); font-family: ui-monospace, monospace; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .demanda-row { grid-template-columns: 1fr; }
+    .table-header, .table-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-banner">
+  <div class="preview-banner-icon">A</div>
+  <div class="preview-banner-text">
+    <h1>Axcend · Preview do novo design</h1>
+    <p>Mockup das telas com a nova identidade visual da Giovana — role pra ver as 4 telas em sequência.</p>
+  </div>
+</div>
+
+<!-- ════════════ DASHBOARD ════════════ -->
+<div class="section-title">01 · Dashboard</div>
+<div class="screen-frame">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>
+      Axcend
+    </div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      Demandas
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4"/></svg>
+      Criativos
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      Projetos
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8z"/></svg>
+      Chat
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Rituais
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+      Tráfego
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Métricas
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="9" y2="15"/><line x1="15" y1="9" x2="15" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/></svg>
+      Infra
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+      Educacional
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      Notificações
+    </div>
+    <div class="nav-user">
+      <div class="nav-user-avatar" style="background:var(--rosa)">T</div>
+      <div class="nav-user-name">Thiago</div>
+    </div>
+    <div class="nav-item nav-sair">
+      <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sair
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 class="topbar-title">Boa tarde, Thiago</h1>
+        <p class="topbar-sub">Sexta, 8 de maio</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary">+ Demanda</button>
+        <button class="btn">🎨 Criativo</button>
+        <button class="btn">⭐ Ritual</button>
+        <button class="btn">💬 Chat</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-rosa"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+        <div class="kpi-label">Investimento do Dia</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">R$ 7.261</span>
+          <span class="delta delta-down">▼ -47%</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-azul"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
+        <div class="kpi-label">Faturamento do Dia</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">R$ 9.152</span>
+          <span class="delta delta-down">▼ -27%</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-laranja"><svg viewBox="0 0 24 24"><path d="M21 18a3 3 0 00-3-3H7a3 3 0 00-3 3"/><circle cx="12" cy="9" r="4"/></svg></div>
+        <div class="kpi-label">Lucro do Dia</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">R$ 1.891</span>
+          <span class="delta delta-down">▼ -254%</span>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-roxo"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+        <div class="kpi-label">ROAS do Dia</div>
+        <div class="kpi-value-row">
+          <span class="kpi-value">1,26x</span>
+          <span class="delta delta-up">▲ +38%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 columns -->
+    <div class="three-col">
+      <div class="card-box">
+        <div class="card-head">
+          <div class="card-title">Minhas Tarefas</div>
+          <div class="card-link">1 pendente →</div>
+        </div>
+        <div class="tarefa-item">
+          <span class="tarefa-nome">Subir estrutura da vsl burnflow</span>
+          <span class="badge-atrasada">atrasada</span>
+        </div>
+      </div>
+      <div class="card-box">
+        <div class="card-head">
+          <div class="card-title">Notificações</div>
+          <div class="card-link">0 não lidas →</div>
+        </div>
+        <div class="empty-state">Sem notificações novas</div>
+      </div>
+      <div class="card-box">
+        <div class="card-head">
+          <div class="card-title">Demandas de Hoje</div>
+          <div class="card-link">ver tudo →</div>
+        </div>
+        <div class="empty-state">Nenhuma demanda pra hoje</div>
+      </div>
+    </div>
+
+    <div class="card-box">
+      <div class="card-head">
+        <div class="card-title">Rituais desta Semana</div>
+        <div class="card-link">ver todos →</div>
+      </div>
+      <div style="border-left: 3px solid var(--azul); padding: 10px 14px; background: var(--bg-2); border-radius: 0 9px 9px 0; margin-bottom: 8px;">
+        <div style="font-size:13px;font-weight:500;color:var(--text-1);">Weekly · 11/05</div>
+        <div style="font-size:11.5px;color:var(--text-2);margin-top:2px;">Weekly de criativo · RAI, Will, roberta</div>
+      </div>
+      <div style="border-left: 3px solid var(--laranja); padding: 10px 14px; background: var(--bg-2); border-radius: 0 9px 9px 0;">
+        <div style="font-size:13px;font-weight:500;color:var(--text-1);">Análise Semanal 02</div>
+        <div style="font-size:11.5px;color:var(--text-2);margin-top:2px;">Análise de dados · Thiago, Rafael</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ════════════ DEMANDAS ════════════ -->
+<div class="section-title">02 · Demandas</div>
+<div class="screen-frame">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>
+      Axcend
+    </div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</div>
+    <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Demandas</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33"/></svg>Criativos</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>Projetos</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7"/></svg>Chat</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Infra</div>
+    <div class="nav-spacer"></div>
+    <div class="nav-user">
+      <div class="nav-user-avatar" style="background:var(--rosa)">T</div>
+      <div class="nav-user-name">Thiago</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 class="topbar-title" style="font-size:28px;">Demandas</h1>
+        <p class="topbar-sub">21 demandas · 4 atrasadas</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn">🔥 Atrasadas (4)</button>
+        <button class="btn">👤 Minhas</button>
+        <button class="btn-primary btn">+ Nova Demanda</button>
+      </div>
+    </div>
+
+    <!-- Filtros chips -->
+    <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+      <span class="status-pill" style="background:var(--azul);color:#fff;">Todas · 21</span>
+      <span class="status-pill st-pendente">⏳ Pendente · 8</span>
+      <span class="status-pill st-progresso">▶️ Em Progresso · 5</span>
+      <span class="status-pill st-revisao">👀 Em Revisão · 4</span>
+      <span class="status-pill st-aprov">✅ Aguard. Aprov. · 4</span>
+    </div>
+
+    <!-- Lista -->
+    <div class="demanda-row copy">
+      <div>
+        <div class="demanda-nome">Apresentar Weecly</div>
+        <div class="demanda-sub">Prazo definido por Diretoria</div>
+      </div>
+      <div>
+        <span class="tag tag-nicho">Emagrecimento</span>
+        <span class="tag tag-oferta">Gelatina v5</span>
+      </div>
+      <div class="resp-cell"><span class="avatar av-azul">E</span> Esteve</div>
+      <div class="date-cell date-atrasada">🔴 Vencida 16d</div>
+      <div><span class="status-pill st-pendente">⏳ Pendente</span></div>
+      <div style="text-align:right;font-size:11px;color:var(--text-2);">✏️ 📦 🗑</div>
+    </div>
+
+    <div class="demanda-row edicao">
+      <div>
+        <div class="demanda-nome">Editar UGC — Maria (Depoimento)</div>
+        <div class="demanda-sub">Cortar pausas + CTA</div>
+      </div>
+      <div>
+        <span class="tag tag-nicho">Emagrecimento</span>
+        <span class="tag tag-oferta">TGLV10</span>
+      </div>
+      <div class="resp-cell"><span class="avatar av-roxo">L</span> Lucca</div>
+      <div class="date-cell date-hoje">🟠 Hoje · 18h</div>
+      <div><span class="status-pill st-progresso">▶️ Em Progresso</span></div>
+      <div style="text-align:right;font-size:11px;color:var(--text-2);">✏️ 📦 🗑</div>
+    </div>
+
+    <div class="demanda-row trafego">
+      <div>
+        <div class="demanda-nome">Subir campanha — Gelatina v5</div>
+        <div class="demanda-sub">CBO 1.50.1, budget 200/dia</div>
+      </div>
+      <div>
+        <span class="tag tag-nicho">Emagrecimento</span>
+        <span class="tag tag-oferta">Gelatina v5</span>
+      </div>
+      <div class="resp-cell"><span class="avatar av-verde">R</span> Rafael</div>
+      <div class="date-cell date-amanha">🟡 Amanhã · 12h</div>
+      <div><span class="status-pill st-revisao">👀 Em Revisão</span></div>
+      <div style="text-align:right;font-size:11px;color:var(--text-2);">✏️ 📦 🗑</div>
+    </div>
+
+    <div class="demanda-row spy">
+      <div>
+        <div class="demanda-nome">Iniciar SPY para concorrentes</div>
+        <div class="demanda-sub">Análise top 5 do nicho</div>
+      </div>
+      <div>
+        <span class="tag tag-nicho">Saúde</span>
+      </div>
+      <div class="resp-cell"><span class="avatar av-rosa">L</span> Lucas</div>
+      <div class="date-cell date-folga">⚪ Em 3 dias</div>
+      <div><span class="status-pill st-aprov">⏸️ Aguard. Aprov.</span></div>
+      <div style="text-align:right;font-size:11px;color:var(--text-2);">✏️ 📦 🗑</div>
+    </div>
+
+    <div class="demanda-row infra">
+      <div>
+        <div class="demanda-nome">Configurar cloaker do TGLV10</div>
+        <div class="demanda-sub">PV nova</div>
+      </div>
+      <div>
+        <span class="tag tag-nicho">Emagrecimento</span>
+        <span class="tag tag-oferta">TGLV10</span>
+      </div>
+      <div class="resp-cell"><span class="avatar av-laranja">G</span> Giovana</div>
+      <div class="date-cell date-folga">⚪ Em 5 dias</div>
+      <div><span class="status-pill st-pendente">⏳ Pendente</span></div>
+      <div style="text-align:right;font-size:11px;color:var(--text-2);">✏️ 📦 🗑</div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ════════════ INFRA ════════════ -->
+<div class="section-title">03 · Infra (réplica do screenshot)</div>
+<div class="screen-frame">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>
+      Axcend
+    </div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/></svg>Demandas</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>Projetos</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Chat</div>
+    <div class="nav-item active"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="9" y2="15"/></svg>Infra</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M22 10v6"/></svg>Educacional</div>
+    <div class="nav-spacer"></div>
+    <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg>Notificações</div>
+    <div class="nav-user">
+      <div class="nav-user-avatar" style="background:var(--laranja)">G</div>
+      <div class="nav-user-name">Giovana</div>
+    </div>
+    <div class="nav-item nav-sair"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/></svg>Sair</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 class="topbar-title" style="font-size:26px;">Infra</h1>
+        <p class="topbar-sub">Infraestrutura e controle de testes</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-refresh">🔄 Atualizar</button>
+      </div>
+    </div>
+
+    <!-- 4 KPIs -->
+    <div class="kpi-grid" style="margin-bottom:24px;">
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-roxo"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2"/></svg></div>
+        <div class="kpi-label">Total de Campanhas</div>
+        <div class="kpi-value-row"><span class="kpi-value">11</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-azul"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="kpi-label">Campanhas Ativas</div>
+        <div class="kpi-value-row"><span class="kpi-value">1</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-rosa"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg></div>
+        <div class="kpi-label">Campanhas Desativadas</div>
+        <div class="kpi-value-row"><span class="kpi-value">0</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon-box icon-laranja"><svg viewBox="0 0 24 24"><path d="M10 2v7.5L4 18a2 2 0 001.8 3h12.4a2 2 0 001.8-3L14 9.5V2"/><line x1="10" y1="2" x2="14" y2="2"/></svg></div>
+        <div class="kpi-label">A Testar</div>
+        <div class="kpi-value-row"><span class="kpi-value">10</span></div>
+      </div>
+    </div>
+
+    <!-- Tabela com sidebar de filtros -->
+    <div style="display:flex;gap:14px;">
+      <aside class="filtros-side">
+        <div class="filtro-label">Filtrar por Tipo</div>
+        <div class="filtro-item active">🧪 Controle de Testes</div>
+      </aside>
+
+      <div class="table-card" style="flex:1;">
+        <div class="table-toolbar">
+          <div class="tabs">
+            <div class="tab active">Ativos</div>
+            <div class="tab">Arquivados (1)</div>
+          </div>
+          <button class="btn btn-laranja">+ Novo Teste</button>
+        </div>
+        <div class="table-header">
+          <div>Nome / Oferta</div>
+          <div>Links da PV</div>
+          <div>Link Cloaker</div>
+          <div>VSL (VTURB)</div>
+          <div>Data</div>
+          <div>Status</div>
+          <div style="text-align:right;">Ações</div>
+        </div>
+        <div class="table-row">
+          <div>
+            <div style="font-size:13px;color:var(--text-1);font-weight:500;">cc</div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:2px;">DORES · cc</div>
+          </div>
+          <div><span class="link-pill">🔗 PV 1</span></div>
+          <div><span class="link-pill">🐱 Acessar</span></div>
+          <div><span class="link-pill" style="color:var(--roxo-side);">🎬 VSL</span></div>
+          <div style="font-size:11.5px;color:var(--text-2);">08 abr 2026</div>
+          <div><span class="status-pill" style="background:rgba(255,89,38,.15);color:var(--laranja);">A testar</span></div>
+          <div style="text-align:right;font-size:14px;color:var(--text-2);">···</div>
+        </div>
+        <div class="table-row">
+          <div>
+            <div style="font-size:13px;color:var(--text-1);font-weight:500;">Glyco Harmony — Diabetes 04/05</div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:2px;">DIABETES · Glyco Harmony</div>
+          </div>
+          <div>
+            <div><span class="link-pill">🔗 PV 1</span></div>
+            <div style="margin-top:2px;"><span class="link-pill">🔗 PV 2</span></div>
+          </div>
+          <div><span class="link-pill">🐱 Acessar</span></div>
+          <div><span class="link-pill" style="color:var(--roxo-side);">🎬 VSL</span></div>
+          <div style="font-size:11.5px;color:var(--text-2);">09 abr 2026</div>
+          <div><span class="status-pill" style="background:rgba(255,89,38,.15);color:var(--laranja);">A testar</span></div>
+          <div style="text-align:right;font-size:14px;color:var(--text-2);">···</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ════════════ DESIGN SYSTEM ════════════ -->
+<div class="section-title">04 · Sistema de design</div>
+<div class="screen-frame" style="display:block;padding:32px;">
+  <h2 style="font-size:14px;color:var(--text-2);text-transform:uppercase;letter-spacing:2px;font-weight:500;margin-bottom:16px;">Paleta de cores</h2>
+  <div class="ref-row" style="margin-bottom:32px;">
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#0f0f0f;border:1px solid var(--border);"></div>
+      <div class="color-info"><strong>Background base</strong><code>#0f0f0f</code></div>
+    </div>
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#1c1c1c;border:1px solid var(--border);"></div>
+      <div class="color-info"><strong>Card</strong><code>#1c1c1c</code></div>
+    </div>
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#252525;"></div>
+      <div class="color-info"><strong>Sub-elementos</strong><code>#252525</code></div>
+    </div>
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#5b5ef4;"></div>
+      <div class="color-info"><strong>Sidebar ativo</strong><code>#5b5ef4</code></div>
+    </div>
+  </div>
+
+  <h2 style="font-size:14px;color:var(--text-2);text-transform:uppercase;letter-spacing:2px;font-weight:500;margin-bottom:16px;">Accents</h2>
+  <div class="ref-row" style="margin-bottom:32px;">
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#C52C58;"></div>
+      <div class="color-info"><strong>Rosa</strong><code>#C52C58</code></div>
+    </div>
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#1B9CFA;"></div>
+      <div class="color-info"><strong>Azul</strong><code>#1B9CFA</code></div>
+    </div>
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#FF5926;"></div>
+      <div class="color-info"><strong>Laranja</strong><code>#FF5926</code></div>
+    </div>
+    <div class="ref-card">
+      <div class="color-swatch" style="background:#3E1493;"></div>
+      <div class="color-info"><strong>Roxo profundo</strong><code>#3E1493</code></div>
+    </div>
+  </div>
+
+  <h2 style="font-size:14px;color:var(--text-2);text-transform:uppercase;letter-spacing:2px;font-weight:500;margin-bottom:16px;">Status e Deltas</h2>
+  <div class="ref-row" style="margin-bottom:32px;">
+    <div class="ref-card">
+      <span class="delta delta-up" style="font-size:13px;">▲ +18%</span>
+      <div class="color-info" style="margin-top:10px;"><strong>Delta positivo</strong><code>#639922 + bg rgba</code></div>
+    </div>
+    <div class="ref-card">
+      <span class="delta delta-down" style="font-size:13px;">▼ -27%</span>
+      <div class="color-info" style="margin-top:10px;"><strong>Delta negativo</strong><code>#E24B4A + bg rgba</code></div>
+    </div>
+    <div class="ref-card">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="status-pill st-pendente">⏳ Pendente</span>
+        <span class="status-pill st-progresso">▶️ Progresso</span>
+      </div>
+      <div class="color-info" style="margin-top:10px;"><strong>Status</strong><code>fundo rgba 15%</code></div>
+    </div>
+    <div class="ref-card">
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-primary" style="font-size:11px;padding:6px 12px;">Primário</button>
+        <button class="btn" style="font-size:11px;padding:6px 12px;">Secundário</button>
+      </div>
+      <div class="color-info" style="margin-top:10px;"><strong>Botões</strong><code>azul · bg-2</code></div>
+    </div>
+  </div>
+
+  <h2 style="font-size:14px;color:var(--text-2);text-transform:uppercase;letter-spacing:2px;font-weight:500;margin-bottom:16px;">Tipografia · Inter</h2>
+  <div class="ref-card" style="padding:24px;">
+    <div style="font-size:42px;font-weight:500;letter-spacing:-1px;margin-bottom:14px;color:var(--text-1);">Boa tarde, Thiago</div>
+    <div style="font-size:24px;font-weight:600;color:var(--text-1);margin-bottom:8px;">Título de seção</div>
+    <div style="font-size:14px;font-weight:500;color:var(--text-1);margin-bottom:4px;">Texto medium · 14px</div>
+    <div style="font-size:13px;font-weight:400;color:var(--text-2);margin-bottom:4px;">Texto regular · 13px secundário</div>
+    <div style="font-size:11px;font-weight:500;color:var(--text-2);text-transform:uppercase;letter-spacing:1.5px;">Label uppercase · 11px</div>
+  </div>
+
+</div>
+
+<div style="max-width:1280px;margin:36px auto 0;padding:22px 26px;background:var(--bg-1);border-radius:14px;border:1px solid var(--border);font-size:13px;color:var(--text-2);line-height:1.6;">
+  <strong style="color:var(--text-1);">Próximos passos:</strong> abre essa página, navega pelas 4 telas. Se aprovar o visual, aplico no sistema real (preservo toda lógica/dados existentes, só troco o CSS + tokens). Se quiser ajustes (cores, espaçamentos, fontes diferentes), me fala que ajusto antes de subir.
+</div>
+
+</body>
+</html>
