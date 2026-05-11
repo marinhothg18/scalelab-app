@@ -1,9 +1,7 @@
 // Service Worker do Axcend — Fase 1 (PWA instalável, sem push ainda)
-// Cache leve de shell + estratégia "network-first" pra HTML (sempre busca novo, fallback cache)
-const CACHE_NAME = 'axcend-v1';
+// v2 (novo design 2026): bumpou cache pra invalidar versões antigas
+const CACHE_NAME = 'axcend-v2';
 const SHELL = [
-  '/',
-  '/ScaleLab.html',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
@@ -35,14 +33,11 @@ self.addEventListener('fetch', (event) => {
   // Stream SSE: deixa passar
   if (req.url.includes('/sync/stream')) return;
 
-  // HTML/page: network-first com fallback pro cache
+  // HTML/page: network-ONLY (sempre busca novo, não cacheia mais o HTML).
+  // Isso evita que o app fique preso em versão antiga depois de deploy.
   if (req.destination === 'document' || req.url.endsWith('.html')) {
     event.respondWith(
-      fetch(req).then((r) => {
-        const copy = r.clone();
-        caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => {});
-        return r;
-      }).catch(() => caches.match(req))
+      fetch(req).catch(() => caches.match(req) || new Response('Offline', { status: 503 }))
     );
     return;
   }
