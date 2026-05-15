@@ -4269,13 +4269,8 @@ async function syncFromServer(){
       Object.entries(data).forEach(([k,v])=>{ localStorage.setItem(k, JSON.stringify(v)); });
       tasks = g('tasks',[]);
       criativos = g('criativos',[]);
-      if(typeof cur !== 'undefined'){
-        if(cur==='task') renderTasks();
-        if(cur==='dashboard') renderDash();
-        if(cur==='criativos') renderCriativos();
-        if(cur==='chat' && typeof renderChat==='function') renderChat();
-        if(cur==='notificacoes' && typeof renderNotificacoes==='function') renderNotificacoes();
-      }
+      // Re-render a página atual em tempo real — cobre TODAS as páginas do app
+      try { _rerenderCurrentPage(); } catch(e){ console.warn('rerender erro:', e); }
       // Re-render task detail modal if open
       if(typeof taskDetalheId !== 'undefined' && taskDetalheId){
         const td = tasks.find(t=>t.id===taskDetalheId);
@@ -4290,6 +4285,31 @@ async function syncFromServer(){
     }
     _lastSync = timestamp;
   } catch(e){}
+}
+
+// Re-renderiza a página atual sempre que dados novos chegam do servidor.
+// Cobre TODAS as páginas do app — adicionei novos cases conforme funções existem.
+// Cada chamada está em try/catch pra evitar quebrar o sync se uma página tiver erro.
+function _rerenderCurrentPage(){
+  if(typeof cur === 'undefined' || !cur) return;
+  var safe = function(fn){ try { if(typeof fn === 'function') fn(); } catch(e){ console.warn('render erro ('+cur+'):', e); } };
+  // Mapa de páginas → função render
+  if(cur === 'dashboard') { safe(window.renderDash); safe(window.renderHome); }
+  else if(cur === 'task') safe(window.renderTasks);
+  else if(cur === 'criativos') safe(window.renderCriativos);
+  else if(cur === 'chat') safe(window.renderChat);
+  else if(cur === 'notificacoes') safe(window.renderNotificacoes);
+  else if(cur === 'arquivos') safe(window.renderArquivos);
+  else if(cur === 'rituais') safe(window.renderRituais);
+  else if(cur === 'metricas') { safe(window.renderTrafegoContent); safe(window.renderTrafegoSidebar); }
+  else if(cur === 'adsmetrics') safe(window.renderAdsMetrics);
+  else if(cur === 'adlibrary') safe(window.renderAdLibrary);
+  else if(cur === 'edu' || cur === 'educacional') safe(window.renderEdu);
+  else if(cur === 'swipe') safe(window.renderSwipe);
+  else if(cur === 'lixeira') safe(window.renderLixeira);
+  else if(cur === 'gestao') safe(window.renderGestaoContent);
+  else if(cur === 'infra') safe(window.renderInfraContent);
+  else if(cur === 'configuracoes' && typeof renderUsuarios === 'function') safe(window.renderUsuarios);
 }
 
 function _startSync(){
