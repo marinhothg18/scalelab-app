@@ -4296,19 +4296,40 @@ function _rerenderCurrentPage(){
   // Mapa de páginas → função render
   if(cur === 'dashboard') { safe(window.renderDash); safe(window.renderHome); }
   else if(cur === 'task') safe(window.renderTasks);
-  else if(cur === 'criativos') safe(window.renderCriativos);
+  else if(cur === 'criativos') {
+    safe(window.renderCriativos);
+    // V2 — renderiza a navegação interna (nichos/ofertas/remessas por mês)
+    safe(window.renderCriV2);
+  }
   else if(cur === 'chat') safe(window.renderChat);
   else if(cur === 'notificacoes') safe(window.renderNotificacoes);
   else if(cur === 'arquivos') safe(window.renderArquivos);
   else if(cur === 'rituais') safe(window.renderRituais);
-  else if(cur === 'metricas') { safe(window.renderTrafegoContent); safe(window.renderTrafegoSidebar); }
+  else if(cur === 'metricas') {
+    safe(window.renderTrafegoContent);
+    safe(window.renderTrafegoSidebar);
+    // Subviews específicas (ROI, Contingência) dentro do Tráfego
+    safe(window.renderRoiHome);
+    safe(window.renderRoiDetalhe);
+    safe(window.renderContingencia);
+  }
   else if(cur === 'adsmetrics') safe(window.renderAdsMetrics);
   else if(cur === 'adlibrary') safe(window.renderAdLibrary);
   else if(cur === 'edu' || cur === 'educacional') safe(window.renderEdu);
   else if(cur === 'swipe') safe(window.renderSwipe);
   else if(cur === 'lixeira') safe(window.renderLixeira);
-  else if(cur === 'gestao') safe(window.renderGestaoContent);
-  else if(cur === 'infra') safe(window.renderInfraContent);
+  else if(cur === 'gestao') {
+    safe(window.renderGestaoContent);
+    safe(window.renderGestaoSidebar);
+    // Subviews da Gestão (Planejamento Semanal, Itens em Risco, Pulse)
+    safe(window.renderPlanejamentoSemanal);
+    safe(window.renderItensRisco);
+  }
+  else if(cur === 'infra') {
+    safe(window.renderInfraContent);
+    safe(window.renderInfraSidebar);
+    safe(window.renderControleTestes);
+  }
   else if(cur === 'configuracoes' && typeof renderUsuarios === 'function') safe(window.renderUsuarios);
 }
 
