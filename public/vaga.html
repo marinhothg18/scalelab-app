@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f0f0f">
+<title>Vaga · Axcend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0f0f0f;
+    --bg-1:#1c1c1c;
+    --bg-2:#252525;
+    --border:#2a2a2a;
+    --text:#f5f5f5;
+    --text2:#a3a3a3;
+    --accent:#5b5ef4;
+    --roxo:#3E1493;
+    --azul:#1B9CFA;
+    --rosa:#C52C58;
+    --laranja:#FF5926;
+    --azul-profundo:#2509E4;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--bg-0);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none;}
+  a:hover{text-decoration:underline;}
+
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px 80px;}
+
+  /* HEADER COM GRADIENTE */
+  .hero{
+    background:linear-gradient(135deg, var(--azul-profundo) 0%, var(--roxo) 50%, var(--rosa) 100%);
+    padding:60px 24px 80px;
+    text-align:center;
+    margin-bottom:-40px;
+    position:relative;
+    overflow:hidden;
+  }
+  .hero::before{
+    content:'';position:absolute;inset:0;
+    background:radial-gradient(circle at 20% 20%, rgba(255,255,255,.08) 0%, transparent 50%);
+    pointer-events:none;
+  }
+  .hero-inner{max-width:760px;margin:0 auto;position:relative;z-index:1;}
+  .badge-hero{
+    display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;
+    letter-spacing:1.5px;color:#fff;opacity:.85;
+    background:rgba(255,255,255,.12);padding:6px 14px;border-radius:99px;margin-bottom:18px;
+    backdrop-filter:blur(8px);
+  }
+  .hero h1{
+    font-size:42px;font-weight:800;letter-spacing:-.02em;color:#fff;margin-bottom:10px;
+    text-shadow:0 2px 20px rgba(0,0,0,.2);
+  }
+  .hero-meta{
+    font-size:14px;color:#fff;opacity:.9;font-weight:500;
+  }
+  .hero-meta span{margin:0 8px;}
+
+  /* CARD PRINCIPAL */
+  .card{
+    background:var(--bg-1);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:36px;
+    margin-bottom:20px;
+    position:relative;
+  }
+
+  /* SEÇÕES */
+  .secao{margin-bottom:32px;}
+  .secao:last-child{margin-bottom:0;}
+  .secao h2{
+    font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+    color:var(--accent);margin-bottom:14px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .secao h2 .ico{font-size:18px;}
+  .secao p, .secao li{font-size:15px;color:var(--text);line-height:1.65;}
+  .secao ul{list-style:none;padding:0;}
+  .secao ul li{
+    position:relative;padding-left:24px;margin-bottom:8px;
+  }
+  .secao ul li::before{
+    content:'';position:absolute;left:8px;top:10px;width:6px;height:6px;border-radius:50%;background:var(--accent);
+  }
+  .descricao{font-size:16px;color:var(--text);line-height:1.7;white-space:pre-wrap;}
+
+  /* CTA */
+  .cta-wrap{
+    text-align:center;padding:32px 0 0;
+    border-top:1px solid var(--border);margin-top:32px;
+  }
+  .btn-cta{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    background:linear-gradient(135deg, var(--accent) 0%, var(--roxo) 100%);
+    color:#fff;font-family:inherit;font-size:16px;font-weight:700;
+    padding:16px 36px;border:none;border-radius:99px;cursor:pointer;
+    box-shadow:0 4px 20px rgba(91,94,244,.4);
+    transition:transform .15s, box-shadow .15s;
+  }
+  .btn-cta:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(91,94,244,.55);}
+  .btn-cta:active{transform:translateY(0);}
+  .btn-secundario{
+    display:inline-flex;align-items:center;gap:6px;
+    background:transparent;color:var(--text2);font-family:inherit;font-size:13px;
+    padding:8px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;
+    transition:border-color .15s,color .15s;
+  }
+  .btn-secundario:hover{border-color:var(--accent);color:var(--text);}
+
+  /* FORMULÁRIO */
+  .form-wrap{display:none;}
+  .form-wrap.ativo{display:block;}
+  .vaga-wrap.escondido{display:none;}
+  .form-wrap h2.form-title{
+    font-size:24px;font-weight:700;color:var(--text);margin-bottom:8px;letter-spacing:-.01em;
+  }
+  .form-wrap .form-sub{
+    font-size:14px;color:var(--text2);margin-bottom:28px;
+  }
+  .fg{margin-bottom:18px;}
+  .fl{
+    display:block;font-size:12px;font-weight:600;color:var(--text2);
+    text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;
+  }
+  .fl .req{color:var(--rosa);margin-left:4px;}
+  .fi, textarea.fi{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font-family:inherit;font-size:14px;color:var(--text);
+    transition:border-color .15s;
+  }
+  .fi:focus, textarea.fi:focus{outline:none;border-color:var(--accent);}
+  textarea.fi{resize:vertical;min-height:90px;line-height:1.5;}
+
+  /* SUCESSO */
+  .sucesso{
+    text-align:center;padding:40px 20px;
+  }
+  .sucesso .icone{
+    font-size:60px;margin-bottom:16px;
+  }
+  .sucesso h2{
+    font-size:24px;font-weight:700;color:var(--text);margin-bottom:10px;
+  }
+  .sucesso p{
+    font-size:15px;color:var(--text2);max-width:480px;margin:0 auto;
+  }
+
+  /* FOOTER */
+  .footer{
+    text-align:center;padding:24px 0;color:var(--text2);font-size:12px;
+    margin-top:20px;
+  }
+  .footer a{color:var(--text2);}
+
+  /* LOADING / ERRO */
+  .estado{
+    text-align:center;padding:120px 20px;color:var(--text2);
+  }
+  .estado h2{color:var(--text);font-size:22px;margin-bottom:8px;font-weight:700;}
+  .estado p{font-size:14px;}
+  .spinner{
+    width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);
+    border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  @media (max-width:600px){
+    .hero{padding:40px 20px 60px;}
+    .hero h1{font-size:32px;}
+    .card{padding:24px 20px;border-radius:12px;}
+    .wrap{padding:0 16px 60px;}
+    .btn-cta{font-size:14px;padding:14px 28px;width:100%;}
+  }
+</style>
+</head>
+<body>
+
+<div id="root">
+  <div class="estado">
+    <div class="spinner"></div>
+    <p>Carregando vaga...</p>
+  </div>
+</div>
+
+<script>
+  // Pega o slug da URL: /vaga/copywriter-pleno
+  function getSlug(){
+    var path = location.pathname || '';
+    var match = path.match(/\/vaga\/([^\/\?]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  var SLUG = getSlug();
+  var VAGA = null;
+
+  function esc(s){
+    return String(s==null?'':s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function nl2br(s){ return esc(s).replace(/\n/g,'<br>'); }
+
+  // Carrega dados da vaga
+  function carregar(){
+    if(!SLUG){ erroEstado('URL inválida', 'Não foi possível identificar a vaga.'); return; }
+    fetch('/api/vagas/publica/' + encodeURIComponent(SLUG))
+      .then(function(r){
+        if(!r.ok) return r.json().then(function(j){ throw new Error(j.error || 'Vaga não encontrada'); });
+        return r.json();
+      })
+      .then(function(v){
+        VAGA = v;
+        document.title = v.titulo + ' · Axcend';
+        renderVaga();
+      })
+      .catch(function(e){
+        erroEstado('Vaga indisponível', e.message || 'Esta vaga não está mais aberta.');
+      });
+  }
+
+  function erroEstado(titulo, msg){
+    document.getElementById('root').innerHTML =
+      '<div class="estado">' +
+        '<div style="font-size:48px;margin-bottom:14px;">🔒</div>' +
+        '<h2>' + esc(titulo) + '</h2>' +
+        '<p>' + esc(msg) + '</p>' +
+      '</div>';
+  }
+
+  function listaHtml(arr){
+    if(!arr || !arr.length) return '';
+    return '<ul>' + arr.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+  }
+
+  function renderVaga(){
+    var v = VAGA;
+    var metaPartes = [];
+    if(v.area) metaPartes.push(esc(v.area));
+    if(v.modelo) metaPartes.push(esc(v.modelo));
+    if(v.salario) metaPartes.push('💰 ' + esc(v.salario));
+
+    var html = ''+
+      '<div class="vaga-wrap">'+
+        '<div class="hero">'+
+          '<div class="hero-inner">'+
+            '<div class="badge-hero">Faça parte do movimento</div>'+
+            '<h1>' + esc(v.titulo) + '</h1>'+
+            (metaPartes.length ? '<div class="hero-meta">' + metaPartes.join(' <span>·</span> ') + '</div>' : '') +
+          '</div>'+
+        '</div>'+
+        '<div class="wrap">'+
+          '<div class="card">'+
+            (v.descricao ?
+              '<div class="secao">'+
+                '<div class="descricao">' + nl2br(v.descricao) + '</div>'+
+              '</div>'
+              : '') +
+            (v.requisitos && v.requisitos.length ?
+              '<div class="secao"><h2><span class="ico">✅</span>Requisitos</h2>' + listaHtml(v.requisitos) + '</div>'
+              : '') +
+            (v.expectativas && v.expectativas.length ?
+              '<div class="secao"><h2><span class="ico">🎯</span>O que esperamos</h2>' + listaHtml(v.expectativas) + '</div>'
+              : '') +
+            (v.diferenciais && v.diferenciais.length ?
+              '<div class="secao"><h2><span class="ico">⭐</span>Plus / Diferenciais</h2>' + listaHtml(v.diferenciais) + '</div>'
+              : '') +
+            (v.porqueUnica ?
+              '<div class="secao"><h2><span class="ico">💎</span>Por que essa vaga é única</h2>'+
+                '<div class="descricao">' + nl2br(v.porqueUnica) + '</div>'+
+              '</div>'
+              : '') +
+            '<div class="cta-wrap">'+
+              '<button class="btn-cta" onclick="irParaFormulario()">Quero me candidatar →</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="form-wrap" id="form-wrap">'+
+        '<div class="hero">'+
+          '<div class="hero-inner">'+
+            '<div class="badge-hero">Candidatura</div>'+
+            '<h1>' + esc(v.titulo) + '</h1>'+
+          '</div>'+
+        '</div>'+
+        '<div class="wrap">'+
+          '<div class="card" id="form-card">'+
+            '<button class="btn-secundario" onclick="voltarVaga()" style="margin-bottom:18px;">← Voltar pra vaga</button>'+
+            '<h2 class="form-title">Conte um pouco sobre você</h2>'+
+            '<p class="form-sub">Preencha os campos abaixo. Vamos responder em até 7 dias úteis.</p>'+
+            '<div class="fg"><label class="fl">Nome completo<span class="req">*</span></label><input class="fi" id="ca-nome" type="text" required></div>'+
+            '<div class="fg"><label class="fl">Email<span class="req">*</span></label><input class="fi" id="ca-email" type="email" required placeholder="seu@email.com"></div>'+
+            '<div class="fg"><label class="fl">Instagram</label><input class="fi" id="ca-instagram" type="text" placeholder="@seuhandle"></div>'+
+            '<div class="fg"><label class="fl">WhatsApp</label><input class="fi" id="ca-whatsapp" type="text" placeholder="(11) 99999-9999"></div>'+
+            renderPerguntasCustom(v.perguntasCustom || []) +
+            '<div class="cta-wrap" style="border-top:none;padding-top:8px;">'+
+              '<button class="btn-cta" id="btn-enviar" onclick="enviarCandidatura()">Enviar candidatura</button>'+
+              '<div style="font-size:11px;color:var(--text2);margin-top:14px;">Seus dados ficam armazenados de forma segura e usados só para o processo seletivo.</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="footer">Powered by <a href="https://app.centralaxcend.com">Axcend</a></div>';
+
+    document.getElementById('root').innerHTML = html;
+  }
+
+  function renderPerguntasCustom(perguntas){
+    if(!perguntas || !perguntas.length) return '';
+    return perguntas.map(function(p){
+      return '<div class="fg"><label class="fl">' + esc(p.label) + '</label>'+
+        '<textarea class="fi" data-pergunta="' + esc(p.id) + '" rows="3"></textarea>'+
+        '</div>';
+    }).join('');
+  }
+
+  function irParaFormulario(){
+    document.querySelector('.vaga-wrap').classList.add('escondido');
+    document.getElementById('form-wrap').classList.add('ativo');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function voltarVaga(){
+    document.getElementById('form-wrap').classList.remove('ativo');
+    document.querySelector('.vaga-wrap').classList.remove('escondido');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function enviarCandidatura(){
+    var btn = document.getElementById('btn-enviar');
+    var nome = (document.getElementById('ca-nome').value || '').trim();
+    var email = (document.getElementById('ca-email').value || '').trim();
+    var instagram = (document.getElementById('ca-instagram').value || '').trim();
+    var whatsapp = (document.getElementById('ca-whatsapp').value || '').trim();
+
+    if(!nome){ alert('Informe seu nome.'); return; }
+    if(!email || !/^\S+@\S+\.\S+$/.test(email)){ alert('Email inválido.'); return; }
+
+    // Respostas custom
+    var respostas = {};
+    document.querySelectorAll('[data-pergunta]').forEach(function(el){
+      respostas[el.getAttribute('data-pergunta')] = el.value || '';
+    });
+
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+
+    fetch('/api/vagas/publica/' + encodeURIComponent(SLUG) + '/aplicar', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ nome:nome, email:email, instagram:instagram, whatsapp:whatsapp, respostasCustom: respostas })
+    })
+    .then(function(r){
+      if(!r.ok) return r.json().then(function(j){ throw new Error(j.error || 'Erro'); });
+      return r.json();
+    })
+    .then(function(){
+      // Sucesso
+      document.getElementById('form-card').innerHTML =
+        '<div class="sucesso">'+
+          '<div class="icone">🎉</div>'+
+          '<h2>Candidatura enviada!</h2>'+
+          '<p>Recebemos suas informações com sucesso. Vamos analisar seu perfil e responder em até 7 dias úteis. Boa sorte!</p>'+
+        '</div>';
+      window.scrollTo({top:0,behavior:'smooth'});
+    })
+    .catch(function(e){
+      btn.disabled = false;
+      btn.textContent = 'Enviar candidatura';
+      alert('Não foi possível enviar: ' + (e.message || 'erro desconhecido'));
+    });
+  }
+
+  carregar();
+</script>
+
+</body>
+</html>
