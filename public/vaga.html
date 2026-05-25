@@ -135,6 +135,17 @@
   }
   .fi:focus, textarea.fi:focus{outline:none;border-color:var(--accent);}
   textarea.fi{resize:vertical;min-height:90px;line-height:1.5;}
+  .opcoes{display:flex;flex-direction:column;gap:8px;padding:4px 2px;}
+  .opc-label{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text);cursor:pointer;padding:6px 0;}
+  .opc-label input[type="radio"], .opc-label input[type="checkbox"]{
+    width:18px;height:18px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;
+  }
+  .opc-label span{flex-shrink:0;}
+  .opc-outro{
+    background:var(--bg-2);border:none;border-bottom:1px solid var(--border);border-radius:0;
+    padding:4px 6px;font-family:inherit;font-size:13px;color:var(--text);outline:none;flex:1;min-width:120px;
+  }
+  .opc-outro:focus{border-bottom-color:var(--accent);}
 
   /* SUCESSO */
   .sucesso{
@@ -327,9 +338,39 @@
   function renderPerguntasCustom(perguntas){
     if(!perguntas || !perguntas.length) return '';
     return perguntas.map(function(p){
-      return '<div class="fg"><label class="fl">' + esc(p.label) + '</label>'+
-        '<textarea class="fi" data-pergunta="' + esc(p.id) + '" rows="3"></textarea>'+
-        '</div>';
+      var tipo = p.tipo || 'curta';
+      var req = p.obrigatoria ? '<span class="req">*</span>' : '';
+      var label = '<label class="fl">' + esc(p.label) + req + '</label>';
+      var input = '';
+
+      if(tipo === 'longa'){
+        input = '<textarea class="fi" data-pergunta="' + esc(p.id) + '" data-tipo="longa" rows="3"' + (p.obrigatoria?' required':'') + '></textarea>';
+      } else if(tipo === 'link'){
+        input = '<input class="fi" data-pergunta="' + esc(p.id) + '" data-tipo="link" type="url" placeholder="https://..."' + (p.obrigatoria?' required':'') + '>';
+      } else if(tipo === 'numero'){
+        input = '<input class="fi" data-pergunta="' + esc(p.id) + '" data-tipo="numero" type="number"' + (p.obrigatoria?' required':'') + '>';
+      } else if(tipo === 'radio'){
+        var opcoes = (p.opcoes||[]).map(function(o, i){
+          var oid = esc(p.id) + '_' + i;
+          return '<label class="opc-label"><input type="radio" name="r_' + esc(p.id) + '" data-pergunta="' + esc(p.id) + '" data-tipo="radio" value="' + esc(o) + '"' + (p.obrigatoria?' required':'') + '> <span>' + esc(o) + '</span></label>';
+        }).join('');
+        if(p.permitirOutro){
+          opcoes += '<label class="opc-label"><input type="radio" name="r_' + esc(p.id) + '" data-pergunta="' + esc(p.id) + '" data-tipo="radio" value="__outro__" onchange="document.querySelector(\'[data-outro=\\\'' + esc(p.id) + '\\\']\').focus()"> <span>Outro:</span> <input type="text" class="opc-outro" data-outro="' + esc(p.id) + '" placeholder="…" onclick="this.previousElementSibling.previousElementSibling.checked=true"></label>';
+        }
+        input = '<div class="opcoes">' + opcoes + '</div>';
+      } else if(tipo === 'checkbox'){
+        var opcoes2 = (p.opcoes||[]).map(function(o, i){
+          return '<label class="opc-label"><input type="checkbox" data-pergunta="' + esc(p.id) + '" data-tipo="checkbox" value="' + esc(o) + '"> <span>' + esc(o) + '</span></label>';
+        }).join('');
+        if(p.permitirOutro){
+          opcoes2 += '<label class="opc-label"><input type="checkbox" data-pergunta="' + esc(p.id) + '" data-tipo="checkbox" value="__outro__" onchange="document.querySelector(\'[data-outro=\\\'' + esc(p.id) + '\\\']\').focus()"> <span>Outro:</span> <input type="text" class="opc-outro" data-outro="' + esc(p.id) + '" placeholder="…"></label>';
+        }
+        input = '<div class="opcoes">' + opcoes2 + '</div>';
+      } else {
+        // curta (padrão)
+        input = '<input class="fi" data-pergunta="' + esc(p.id) + '" data-tipo="curta" type="text"' + (p.obrigatoria?' required':'') + '>';
+      }
+      return '<div class="fg" data-fg-pergunta="' + esc(p.id) + '">' + label + input + '</div>';
     }).join('');
   }
 
@@ -355,11 +396,49 @@
     if(!nome){ alert('Informe seu nome.'); return; }
     if(!email || !/^\S+@\S+\.\S+$/.test(email)){ alert('Email inválido.'); return; }
 
-    // Respostas custom
+    // Respostas custom — agrupa por id de pergunta, conforme tipo
     var respostas = {};
+    var perguntasMeta = (VAGA.perguntasCustom || []).reduce(function(acc, p){ acc[p.id]=p; return acc; }, {});
     document.querySelectorAll('[data-pergunta]').forEach(function(el){
-      respostas[el.getAttribute('data-pergunta')] = el.value || '';
+      var pid = el.getAttribute('data-pergunta');
+      var tipo = el.getAttribute('data-tipo') || 'curta';
+      var val = el.value || '';
+      if(tipo === 'radio'){
+        if(el.checked){
+          if(val === '__outro__'){
+            var outroEl = document.querySelector('[data-outro="'+pid+'"]');
+            respostas[pid] = (outroEl && outroEl.value) ? outroEl.value : 'Outro';
+          } else {
+            respostas[pid] = val;
+          }
+        }
+      } else if(tipo === 'checkbox'){
+        if(!respostas[pid]) respostas[pid] = [];
+        if(el.checked){
+          if(val === '__outro__'){
+            var outroEl2 = document.querySelector('[data-outro="'+pid+'"]');
+            respostas[pid].push((outroEl2 && outroEl2.value) ? outroEl2.value : 'Outro');
+          } else {
+            respostas[pid].push(val);
+          }
+        }
+      } else {
+        respostas[pid] = val;
+      }
     });
+    // Valida obrigatórias customizadas (radio/checkbox que required nativo não pega bem)
+    var faltam = [];
+    Object.keys(perguntasMeta).forEach(function(pid){
+      var p = perguntasMeta[pid];
+      if(!p.obrigatoria) return;
+      var r = respostas[pid];
+      var vazio = (r==null) || (typeof r==='string' && !r.trim()) || (Array.isArray(r) && !r.length);
+      if(vazio) faltam.push(p.label);
+    });
+    if(faltam.length){
+      alert('Preencha as perguntas obrigatórias:\n• '+faltam.join('\n• '));
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = 'Enviando...';
