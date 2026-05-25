@@ -4201,7 +4201,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -6173,7 +6173,8 @@ var GESTAO_TABS = [
   { id:'prog_demanda', label:'Programação de Demanda', icon:'📋', color:'#8B5CF6' },
   { id:'risco',        label:'Itens em Risco',          icon:'⚠️', color:'#DC2626' },
   { id:'plan_semanal', label:'Planejamento Semanal',    icon:'📅', color:'#2563EB' },
-  { id:'pulse',        label:'Pulse — Tempo Real',     icon:'📡', color:'#16A34A' }
+  { id:'pulse',        label:'Pulse — Tempo Real',     icon:'📡', color:'#16A34A' },
+  { id:'vagas',        label:'Vagas',                    icon:'💼', color:'#5B5EF4' }
 ];
 
 function renderGestaoSidebar(){
@@ -6193,6 +6194,7 @@ function renderGestaoContent(){
   else if(_gestaoTab === 'risco'){ renderItensRisco(); }
   else if(_gestaoTab === 'plan_semanal'){ renderPlanejamentoSemanal(); }
   else if(_gestaoTab === 'pulse'){ renderPulse(); }
+  else if(_gestaoTab === 'vagas'){ renderVagas(); }
 }
 
 // ══════════════════════════════════════════════
@@ -7476,6 +7478,419 @@ function pdDelColab(idx){
   saveColabs(colabs);
   pdCloseEquipe();
   pdOpenEquipe();
+}
+
+// ══════════════════════════════════════════════
+// VAGAS (Gestão → Vagas) — só Diretoria
+// Substitui o fluxo Notion + Google Forms.
+// ══════════════════════════════════════════════
+var _vagasView = 'lista';        // 'lista' | 'editor' | 'detalhe' | 'talentos'
+var _vagasEditId = null;          // id da vaga em edição
+var _vagasDetalheId = null;       // id da vaga no detalhe
+var _vagasKanbanFiltroVaga = '';  // filtro de vaga no kanban de talentos
+
+var VAGAS_STATUS_VAGA = ['Ativa','Pausada','Encerrada'];
+var VAGAS_AREAS = ['Copy','Edição','Tráfego','Infra','Spy','Gestão','RH','Outros'];
+var VAGAS_MODELOS = ['Remoto','Híbrido','Presencial'];
+var VAGAS_KANBAN_COLUNAS = [
+  { id:'Novo',       cor:'#5B5EF4' },
+  { id:'Triagem',    cor:'#1B9CFA' },
+  { id:'Teste',      cor:'#FBBF24' },
+  { id:'Entrevista', cor:'#A78BFA' },
+  { id:'Aprovado',   cor:'#16A34A' },
+  { id:'Reprovado',  cor:'#9CA3AF' }
+];
+
+function _vagasGetAll(){ return g('sl_vagas', []); }
+function _vagasGetCandidatos(){ return g('sl_candidatos', []); }
+function _vagasGetById(id){ return _vagasGetAll().find(function(v){ return String(v.id)===String(id); }); }
+function _vagasNovoId(){ return 'vaga-'+Date.now()+'-'+Math.random().toString(36).slice(2,8); }
+function _vagasNovoIdCand(){ return 'cand-'+Date.now()+'-'+Math.random().toString(36).slice(2,8); }
+
+function _vagasSlug(titulo){
+  return String(titulo||'').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9\s-]/g,'')
+    .trim().replace(/\s+/g,'-').replace(/-+/g,'-').slice(0,80);
+}
+
+function _vagasSlugUnico(titulo, excetoId){
+  var base = _vagasSlug(titulo) || 'vaga';
+  var todas = _vagasGetAll();
+  var slug = base, n = 1;
+  while(todas.some(function(v){ return v.slug===slug && String(v.id)!==String(excetoId); })){
+    n++; slug = base+'-'+n;
+  }
+  return slug;
+}
+
+function _vagasPublicUrl(slug){
+  if(!slug) return '';
+  return location.origin + '/vaga/' + encodeURIComponent(slug);
+}
+
+function _vagasContadorPorStatus(vagaId){
+  var cands = _vagasGetCandidatos().filter(function(c){ return String(c.vagaId)===String(vagaId); });
+  var out = {};
+  VAGAS_KANBAN_COLUNAS.forEach(function(col){ out[col.id]=0; });
+  cands.forEach(function(c){
+    var st = c.status || 'Novo';
+    if(out[st]===undefined) out[st]=0;
+    out[st]++;
+  });
+  out._total = cands.length;
+  return out;
+}
+
+function renderVagas(){
+  var el = document.getElementById('gestao-content');
+  if(!el) return;
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!isDir){ el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2);">Acesso restrito à Diretoria.</div>'; return; }
+  if(_vagasView==='editor')  { _renderVagasEditor(el); return; }
+  if(_vagasView==='detalhe') { _renderVagasDetalhe(el); return; }
+  if(_vagasView==='talentos'){ _renderVagasTalentos(el); return; }
+  _renderVagasLista(el);
+}
+
+// ─── LISTA DE VAGAS ───
+function _renderVagasLista(el){
+  var vagas = _vagasGetAll().slice().sort(function(a,b){
+    return (b._updatedAt||0) - (a._updatedAt||0);
+  });
+
+  var header = ''+
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div>'+
+        '<div style="font-size:20px;font-weight:700;color:var(--text);">Vagas</div>'+
+        '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Substitui Notion + Google Forms. Cada vaga gera uma página pública e um link de candidatura.</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+        '<button class="btn btn-ghost" onclick="vagasAbrirTalentos()" style="display:flex;align-items:center;gap:6px;">👥 Banco de talentos</button>'+
+        '<button class="btn btn-primary" onclick="vagasNova()" style="display:flex;align-items:center;gap:6px;">+ Nova vaga</button>'+
+      '</div>'+
+    '</div>';
+
+  if(!vagas.length){
+    el.innerHTML = header +
+      '<div style="border:1px dashed var(--border);border-radius:12px;padding:48px 24px;text-align:center;color:var(--text2);">'+
+        '<div style="font-size:40px;margin-bottom:8px;">💼</div>'+
+        '<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px;">Nenhuma vaga criada ainda</div>'+
+        '<div style="font-size:12px;margin-bottom:16px;">Clique em "+ Nova vaga" para criar a primeira posição.</div>'+
+        '<button class="btn btn-primary" onclick="vagasNova()">+ Criar primeira vaga</button>'+
+      '</div>';
+    return;
+  }
+
+  var cards = vagas.map(function(v){
+    var ct = _vagasContadorPorStatus(v.id);
+    var statusCor = v.status==='Ativa' ? '#16A34A' : (v.status==='Pausada' ? '#FBBF24' : '#9CA3AF');
+    var url = _vagasPublicUrl(v.slug);
+    var pubBadge = v.publicada
+      ? '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#16A34A;font-weight:600;">● Publicada</span>'
+      : '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);font-weight:600;">○ Rascunho</span>';
+    return ''+
+      '<div style="border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--card);transition:border-color .15s;" onmouseover="this.style.borderColor=\'#5B5EF4\'" onmouseout="this.style.borderColor=\'var(--border)\'">'+
+        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">'+
+          '<div style="flex:1;min-width:0;cursor:pointer;" onclick="vagasAbrirDetalhe(\''+v.id+'\')">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">'+
+              '<span style="font-size:11px;font-weight:700;color:'+statusCor+';text-transform:uppercase;letter-spacing:.5px;">● '+(v.status||'Ativa')+'</span>'+
+              '<span style="font-size:11px;color:var(--text2);">'+(v.area||'—')+'</span>'+
+              (v.modelo?'<span style="font-size:11px;color:var(--text2);">· '+v.modelo+'</span>':'')+
+              pubBadge+
+            '</div>'+
+            '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">'+_esc(v.titulo||'(sem título)')+'</div>'+
+            (v.salario?'<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">💰 '+_esc(v.salario)+'</div>':'')+
+            '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);">'+
+              '<span><b style="color:var(--text);">'+ct._total+'</b> candidatos</span>'+
+              (ct.Novo?'<span>🆕 '+ct.Novo+' novos</span>':'')+
+              (ct.Entrevista?'<span>💬 '+ct.Entrevista+' em entrevista</span>':'')+
+              (ct.Aprovado?'<span style="color:#16A34A;font-weight:600;">✅ '+ct.Aprovado+' aprovados</span>':'')+
+            '</div>'+
+          '</div>'+
+          '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">'+
+            '<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="vagasEditar(\''+v.id+'\')">Editar</button>'+
+            (v.publicada && v.slug
+              ? '<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="vagasCopiarLink(\''+v.slug+'\')">🔗 Copiar link</button>'
+              : '')+
+          '</div>'+
+        '</div>'+
+      '</div>';
+  }).join('');
+
+  el.innerHTML = header + '<div style="display:flex;flex-direction:column;gap:10px;">'+cards+'</div>';
+}
+
+// helper escape (caso não exista helper igual)
+function _esc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ─── AÇÕES ───
+function vagasNova(){ _vagasEditId=null; _vagasView='editor'; renderVagas(); }
+function vagasEditar(id){ _vagasEditId=id; _vagasView='editor'; renderVagas(); }
+function vagasAbrirDetalhe(id){ _vagasDetalheId=id; _vagasView='detalhe'; renderVagas(); }
+function vagasAbrirTalentos(){ _vagasView='talentos'; renderVagas(); }
+function vagasVoltarLista(){ _vagasView='lista'; _vagasEditId=null; _vagasDetalheId=null; renderVagas(); }
+
+function vagasCopiarLink(slug){
+  var url = _vagasPublicUrl(slug);
+  try{
+    navigator.clipboard.writeText(url);
+    alert('Link copiado:\n'+url);
+  }catch(e){
+    prompt('Copie o link da vaga:', url);
+  }
+}
+
+// ─── EDITOR ───
+function _renderVagasEditor(el){
+  var v = _vagasEditId ? _vagasGetById(_vagasEditId) : null;
+  var isNova = !v;
+  v = v || { titulo:'', area:'Copy', modelo:'Remoto', salario:'', status:'Ativa', publicada:false, descricao:'', requisitos:[], expectativas:[], diferenciais:[], porqueUnica:'', perguntasCustom:[] };
+
+  var areaOpts = VAGAS_AREAS.map(function(a){ return '<option value="'+a+'"'+(v.area===a?' selected':'')+'>'+a+'</option>'; }).join('');
+  var modeloOpts = VAGAS_MODELOS.map(function(m){ return '<option value="'+m+'"'+(v.modelo===m?' selected':'')+'>'+m+'</option>'; }).join('');
+  var statusOpts = VAGAS_STATUS_VAGA.map(function(s){ return '<option value="'+s+'"'+(v.status===s?' selected':'')+'>'+s+'</option>'; }).join('');
+
+  var requisitos = (v.requisitos||[]).join('\n');
+  var expectativas = (v.expectativas||[]).join('\n');
+  var diferenciais = (v.diferenciais||[]).join('\n');
+  var perguntas = (v.perguntasCustom||[]).map(function(p){ return p.label||p; }).join('\n');
+
+  el.innerHTML = ''+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">'+
+      '<button class="btn btn-ghost" onclick="vagasVoltarLista()" style="padding:4px 10px;font-size:12px;">← Voltar</button>'+
+      '<div style="font-size:20px;font-weight:700;color:var(--text);">'+(isNova?'Nova vaga':'Editar vaga')+'</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:flex-start;">'+
+      // CONTEÚDO
+      '<div style="display:flex;flex-direction:column;gap:16px;">'+
+        '<div class="fg"><label class="fl">Título da vaga *</label><input class="fi" id="vag-titulo" placeholder="Ex: Copywriter Pleno ou Sênior" value="'+_esc(v.titulo)+'"></div>'+
+        '<div class="fg"><label class="fl">Descrição (introdução / "Faça parte do movimento")</label><textarea class="fi" id="vag-descricao" rows="4" style="resize:vertical;">'+_esc(v.descricao)+'</textarea></div>'+
+        '<div class="fg"><label class="fl">Requisitos (um por linha)</label><textarea class="fi" id="vag-requisitos" rows="5" style="resize:vertical;" placeholder="Experiência mínima de 2 anos\nPortfólio comprovado">'+_esc(requisitos)+'</textarea></div>'+
+        '<div class="fg"><label class="fl">O que esperamos (um por linha)</label><textarea class="fi" id="vag-expectativas" rows="5" style="resize:vertical;">'+_esc(expectativas)+'</textarea></div>'+
+        '<div class="fg"><label class="fl">Diferenciais / Plus (um por linha)</label><textarea class="fi" id="vag-diferenciais" rows="4" style="resize:vertical;">'+_esc(diferenciais)+'</textarea></div>'+
+        '<div class="fg"><label class="fl">Por que essa vaga é única</label><textarea class="fi" id="vag-porqueunica" rows="4" style="resize:vertical;">'+_esc(v.porqueUnica||'')+'</textarea></div>'+
+        '<div class="fg"><label class="fl">Perguntas custom no formulário (uma por linha — além de nome/email/instagram/whatsapp)</label><textarea class="fi" id="vag-perguntas" rows="3" style="resize:vertical;" placeholder="Por que você quer essa vaga?\nQual seu portfólio?">'+_esc(perguntas)+'</textarea></div>'+
+      '</div>'+
+      // SIDEBAR CONFIG
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;position:sticky;top:12px;">'+
+        '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Configurações</div>'+
+        '<div class="fg"><label class="fl">Status</label><select class="fs" id="vag-status">'+statusOpts+'</select></div>'+
+        '<div class="fg"><label class="fl">Área</label><select class="fs" id="vag-area">'+areaOpts+'</select></div>'+
+        '<div class="fg"><label class="fl">Modelo</label><select class="fs" id="vag-modelo">'+modeloOpts+'</select></div>'+
+        '<div class="fg"><label class="fl">Salário</label><input class="fi" id="vag-salario" placeholder="A combinar" value="'+_esc(v.salario||'')+'"></div>'+
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">'+
+          '<input type="checkbox" id="vag-publicada"'+(v.publicada?' checked':'')+'> Publicar (gera link público)'+
+        '</label>'+
+        (v.slug ? '<div style="font-size:11px;color:var(--text2);word-break:break-all;background:var(--bg);padding:8px;border-radius:6px;">URL atual:<br><b style="color:var(--accent);">'+_vagasPublicUrl(v.slug)+'</b></div>' : '')+
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">'+
+          '<button class="btn btn-primary" onclick="vagasSalvar()" style="width:100%;justify-content:center;">Salvar vaga</button>'+
+          (isNova ? '' :
+            '<button class="btn btn-ghost" onclick="vagasArquivar(\''+v.id+'\')" style="width:100%;justify-content:center;font-size:12px;">Mover pra lixeira</button>'
+          )+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+function vagasSalvar(){
+  var titulo = (document.getElementById('vag-titulo').value||'').trim();
+  if(!titulo){ alert('Informe o título da vaga.'); return; }
+
+  var v = _vagasEditId ? _vagasGetById(_vagasEditId) : null;
+  var isNova = !v;
+  if(!v){ v = { id:_vagasNovoId(), criadoEm: new Date().toISOString(), perguntasCustom: [] }; }
+
+  v.titulo = titulo;
+  v.descricao = (document.getElementById('vag-descricao').value||'').trim();
+  v.requisitos = (document.getElementById('vag-requisitos').value||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  v.expectativas = (document.getElementById('vag-expectativas').value||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  v.diferenciais = (document.getElementById('vag-diferenciais').value||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  v.porqueUnica = (document.getElementById('vag-porqueunica').value||'').trim();
+  v.status = document.getElementById('vag-status').value;
+  v.area = document.getElementById('vag-area').value;
+  v.modelo = document.getElementById('vag-modelo').value;
+  v.salario = (document.getElementById('vag-salario').value||'').trim();
+  v.publicada = document.getElementById('vag-publicada').checked;
+  v.slug = _vagasSlugUnico(v.titulo, v.id);
+  // perguntas custom
+  var perRaw = (document.getElementById('vag-perguntas').value||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  v.perguntasCustom = perRaw.map(function(label, i){ return { id:'p'+(i+1), label:label }; });
+  v._updatedAt = Date.now();
+
+  var todas = _vagasGetAll();
+  if(isNova){ todas.push(v); } else {
+    var idx = todas.findIndex(function(x){ return String(x.id)===String(v.id); });
+    if(idx>=0) todas[idx] = v; else todas.push(v);
+  }
+  s('sl_vagas', todas);
+  _vagasView = 'lista';
+  _vagasEditId = null;
+  renderVagas();
+}
+
+function vagasArquivar(id){
+  if(!confirm('Mover essa vaga e candidatos relacionados pra lixeira?')) return;
+  // Move candidatos primeiro
+  var cands = _vagasGetCandidatos().filter(function(c){ return String(c.vagaId)===String(id); });
+  cands.forEach(function(c){ try{ sDelete('sl_candidatos', c.id, 'Candidato'); }catch(e){} });
+  // Depois a vaga
+  try{ sDelete('sl_vagas', id, 'Vaga'); }catch(e){
+    // fallback caso sDelete não funcione: remove local
+    var todas = _vagasGetAll().filter(function(x){ return String(x.id)!==String(id); });
+    s('sl_vagas', todas);
+  }
+  vagasVoltarLista();
+}
+
+// ─── DETALHE DA VAGA + CANDIDATOS DELA ───
+function _renderVagasDetalhe(el){
+  var v = _vagasGetById(_vagasDetalheId);
+  if(!v){ vagasVoltarLista(); return; }
+  var cands = _vagasGetCandidatos().filter(function(c){ return String(c.vagaId)===String(v.id); });
+  var ct = _vagasContadorPorStatus(v.id);
+
+  var kanban = VAGAS_KANBAN_COLUNAS.map(function(col){
+    var lista = cands.filter(function(c){ return (c.status||'Novo')===col.id; });
+    var items = lista.length
+      ? lista.map(function(c){ return _vagasCardCandidato(c, v); }).join('')
+      : '<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px 4px;">vazio</div>';
+    return ''+
+      '<div style="min-width:240px;max-width:280px;flex:0 0 260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;">'+
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">'+
+          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col.cor+';"></span>'+
+          '<span style="font-size:12px;font-weight:700;color:var(--text);">'+col.id+'</span>'+
+          '<span style="font-size:11px;color:var(--text2);margin-left:auto;">'+lista.length+'</span>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;min-height:40px;">'+items+'</div>'+
+      '</div>';
+  }).join('');
+
+  el.innerHTML = ''+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
+      '<button class="btn btn-ghost" onclick="vagasVoltarLista()" style="padding:4px 10px;font-size:12px;">← Voltar</button>'+
+      '<div style="font-size:20px;font-weight:700;color:var(--text);">'+_esc(v.titulo)+'</div>'+
+      '<span style="font-size:11px;color:var(--text2);">'+(v.area||'—')+' · '+(v.modelo||'—')+' · '+(v.status||'Ativa')+'</span>'+
+      '<div style="margin-left:auto;display:flex;gap:6px;">'+
+        '<button class="btn btn-ghost" onclick="vagasEditar(\''+v.id+'\')" style="padding:4px 10px;font-size:12px;">Editar vaga</button>'+
+        (v.publicada && v.slug ? '<button class="btn btn-ghost" onclick="vagasCopiarLink(\''+v.slug+'\')" style="padding:4px 10px;font-size:12px;">🔗 Link público</button>' : '')+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:18px;font-size:12px;color:var(--text2);margin-bottom:14px;flex-wrap:wrap;">'+
+      '<span><b style="color:var(--text);">'+ct._total+'</b> candidatos totais</span>'+
+      VAGAS_KANBAN_COLUNAS.map(function(col){ return '<span><span style="color:'+col.cor+';">●</span> '+col.id+': <b style="color:var(--text);">'+(ct[col.id]||0)+'</b></span>'; }).join('')+
+    '</div>'+
+    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;">'+kanban+'</div>';
+}
+
+function _vagasCardCandidato(c, v){
+  var nome = _esc(c.nome || c.email || '(sem nome)');
+  var statusOpts = VAGAS_KANBAN_COLUNAS.map(function(col){
+    return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
+  }).join('');
+  return ''+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;">'+
+      '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">'+nome+'</div>'+
+      (c.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;word-break:break-all;">✉️ '+_esc(c.email)+'</div>' : '')+
+      (c.instagram ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;">📷 '+_esc(c.instagram)+'</div>' : '')+
+      (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
+      '<div style="display:flex;gap:4px;margin-top:6px;">'+
+        '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
+        '<button onclick="vagasAbrirCandidato(\''+c.id+'\')" title="Ver detalhes" style="background:transparent;border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text);">👁</button>'+
+      '</div>'+
+    '</div>';
+}
+
+function vagasMoverCandidato(candId, novoStatus){
+  var cands = _vagasGetCandidatos();
+  var idx = cands.findIndex(function(c){ return String(c.id)===String(candId); });
+  if(idx<0) return;
+  cands[idx].status = novoStatus;
+  cands[idx]._updatedAt = Date.now();
+  s('sl_candidatos', cands);
+  // re-render
+  if(_vagasView==='detalhe') _renderVagasDetalhe(document.getElementById('gestao-content'));
+  else if(_vagasView==='talentos') _renderVagasTalentos(document.getElementById('gestao-content'));
+}
+
+function vagasAbrirCandidato(candId){
+  var c = _vagasGetCandidatos().find(function(x){ return String(x.id)===String(candId); });
+  if(!c) return;
+  var v = _vagasGetById(c.vagaId);
+  var resp = c.respostasCustom || {};
+  var perguntas = (v && v.perguntasCustom) || [];
+  var extras = perguntas.length
+    ? perguntas.map(function(p){
+        var val = resp[p.id] || '—';
+        return '<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:2px;">'+_esc(p.label)+'</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;">'+_esc(val)+'</div></div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--text2);font-style:italic;">Sem perguntas custom configuradas.</div>';
+  var info = ''+
+    'Vaga: '+(v?v.titulo:'(removida)')+'\n'+
+    'Nome: '+(c.nome||'—')+'\n'+
+    'Email: '+(c.email||'—')+'\n'+
+    'Instagram: '+(c.instagram||'—')+'\n'+
+    'WhatsApp: '+(c.whatsapp||'—')+'\n'+
+    'Status: '+(c.status||'Novo')+'\n'+
+    'Recebido em: '+(c.criadoEm || '—')+'\n\n'+
+    perguntas.map(function(p){ return p.label+': '+(resp[p.id]||'—'); }).join('\n');
+  alert(info);
+}
+
+// ─── BANCO DE TALENTOS (KANBAN GLOBAL) ───
+function _renderVagasTalentos(el){
+  var vagas = _vagasGetAll();
+  var cands = _vagasGetCandidatos();
+  var filtro = _vagasKanbanFiltroVaga;
+  if(filtro) cands = cands.filter(function(c){ return String(c.vagaId)===String(filtro); });
+
+  var vagaOpts = '<option value="">Todas as vagas</option>' +
+    vagas.map(function(v){ return '<option value="'+v.id+'"'+(filtro==v.id?' selected':'')+'>'+_esc(v.titulo)+'</option>'; }).join('');
+
+  var kanban = VAGAS_KANBAN_COLUNAS.map(function(col){
+    var lista = cands.filter(function(c){ return (c.status||'Novo')===col.id; }).sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); });
+    var items = lista.length
+      ? lista.map(function(c){
+          var v = vagas.find(function(x){ return String(x.id)===String(c.vagaId); });
+          var nomeVaga = v ? _esc(v.titulo) : '<i>(vaga removida)</i>';
+          var nome = _esc(c.nome || c.email || '(sem nome)');
+          var statusOpts = VAGAS_KANBAN_COLUNAS.map(function(c2){
+            return '<option value="'+c2.id+'"'+(col.id===c2.id?' selected':'')+'>'+c2.id+'</option>';
+          }).join('');
+          return ''+
+            '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;">'+
+              '<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:4px;cursor:pointer;" onclick="vagasAbrirDetalhe(\''+(c.vagaId||'')+'\')">'+nomeVaga+'</div>'+
+              '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">'+nome+'</div>'+
+              (c.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;word-break:break-all;">✉️ '+_esc(c.email)+'</div>' : '')+
+              (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
+              '<div style="display:flex;gap:4px;margin-top:6px;">'+
+                '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
+                '<button onclick="vagasAbrirCandidato(\''+c.id+'\')" title="Ver detalhes" style="background:transparent;border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text);">👁</button>'+
+              '</div>'+
+            '</div>';
+        }).join('')
+      : '<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px 4px;">vazio</div>';
+    return ''+
+      '<div style="min-width:240px;max-width:280px;flex:0 0 260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;">'+
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">'+
+          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col.cor+';"></span>'+
+          '<span style="font-size:12px;font-weight:700;color:var(--text);">'+col.id+'</span>'+
+          '<span style="font-size:11px;color:var(--text2);margin-left:auto;">'+lista.length+'</span>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;min-height:40px;">'+items+'</div>'+
+      '</div>';
+  }).join('');
+
+  el.innerHTML = ''+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
+      '<button class="btn btn-ghost" onclick="vagasVoltarLista()" style="padding:4px 10px;font-size:12px;">← Voltar</button>'+
+      '<div style="font-size:20px;font-weight:700;color:var(--text);">Banco de talentos</div>'+
+      '<select class="fs" style="margin-left:12px;max-width:280px;" onchange="_vagasKanbanFiltroVaga=this.value;renderVagas();">'+vagaOpts+'</select>'+
+      '<span style="margin-left:auto;font-size:12px;color:var(--text2);"><b style="color:var(--text);">'+cands.length+'</b> candidatos</span>'+
+    '</div>'+
+    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;">'+kanban+'</div>';
 }
 
 // ── INFRA ──

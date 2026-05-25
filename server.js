@@ -92,6 +92,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
 
+// ── PÁGINA PÚBLICA DA VAGA ──
+// /vaga/:slug → serve vaga.html (que faz fetch dos dados via API pública)
+app.get('/vaga/:slug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'vaga.html'));
+});
+
 // ── BANCO DE DADOS ──
 function readDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
@@ -855,6 +861,107 @@ app.delete('/api/lixeira/:lixeiraId', (req, res) => {
   writeDB(db);
   _broadcastSync('sl_lixeira', req.headers['x-client-id']);
   res.json({ ok: true });
+});
+
+// ══════════════════════════════════════════════
+// VAGAS — endpoints públicos (sem auth)
+// Substituem o fluxo Notion + Google Forms.
+// ══════════════════════════════════════════════
+
+// Rate limit específico pra aplicação em vaga: 10 candidaturas por hora por IP
+const aplicarLimiter = rateLimit({
+  windowMs: 60*60*1000,
+  max: 10,
+  message: { error: 'Muitas candidaturas. Aguarde 1 hora antes de tentar novamente.' }
+});
+
+// GET /api/vagas/publica/:slug — retorna dados públicos da vaga (sem auth)
+// Só vagas com publicada=true e status !=='Encerrada'. Strip de campos internos.
+app.get('/api/vagas/publica/:slug', (req, res) => {
+  try {
+    const db = readDB();
+    const todas = db.store['sl_vagas'] || [];
+    const v = todas.find(x => x && x.slug === req.params.slug);
+    if (!v) return res.status(404).json({ error: 'Vaga não encontrada' });
+    if (!v.publicada) return res.status(404).json({ error: 'Vaga não disponível' });
+    if (v.status === 'Encerrada') return res.status(404).json({ error: 'Vaga encerrada' });
+
+    res.json({
+      id: v.id,
+      titulo: v.titulo || '',
+      area: v.area || '',
+      modelo: v.modelo || '',
+      salario: v.salario || '',
+      descricao: v.descricao || '',
+      requisitos: Array.isArray(v.requisitos) ? v.requisitos : [],
+      expectativas: Array.isArray(v.expectativas) ? v.expectativas : [],
+      diferenciais: Array.isArray(v.diferenciais) ? v.diferenciais : [],
+      porqueUnica: v.porqueUnica || '',
+      perguntasCustom: Array.isArray(v.perguntasCustom) ? v.perguntasCustom : [],
+      slug: v.slug
+    });
+  } catch (e) {
+    console.error('[VAGAS publica GET]', e.message);
+    res.status(500).json({ error: 'Erro ao buscar vaga' });
+  }
+});
+
+// POST /api/vagas/publica/:slug/aplicar — recebe candidatura (sem auth, rate-limited)
+app.post('/api/vagas/publica/:slug/aplicar', aplicarLimiter, (req, res) => {
+  try {
+    const db = readDB();
+    const todas = db.store['sl_vagas'] || [];
+    const v = todas.find(x => x && x.slug === req.params.slug);
+    if (!v) return res.status(404).json({ error: 'Vaga não encontrada' });
+    if (!v.publicada || v.status === 'Encerrada') return res.status(400).json({ error: 'Vaga não está aceitando candidaturas' });
+
+    const body = req.body || {};
+    const nome = String(body.nome || '').trim().slice(0, 200);
+    const email = String(body.email || '').trim().slice(0, 200);
+    const instagram = String(body.instagram || '').trim().slice(0, 100);
+    const whatsapp = String(body.whatsapp || '').trim().slice(0, 60);
+    const respostasCustom = (body.respostasCustom && typeof body.respostasCustom === 'object') ? body.respostasCustom : {};
+
+    if (!nome || !email) return res.status(400).json({ error: 'Nome e email são obrigatórios' });
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
+
+    // Sanitiza respostas custom — só strings, máx 2000 chars cada, só pra perguntas conhecidas
+    const perguntasIds = (v.perguntasCustom || []).map(p => p.id);
+    const respClean = {};
+    for (const k of Object.keys(respostasCustom)) {
+      if (perguntasIds.includes(k)) {
+        respClean[k] = String(respostasCustom[k] || '').slice(0, 2000);
+      }
+    }
+
+    const cand = {
+      id: 'cand-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+      vagaId: v.id,
+      vagaSlug: v.slug,
+      vagaTitulo: v.titulo,
+      nome,
+      email,
+      instagram,
+      whatsapp,
+      respostasCustom: respClean,
+      status: 'Novo',
+      criadoEm: new Date().toISOString(),
+      _updatedAt: Date.now(),
+      ipOrigem: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 60)
+    };
+
+    if (!db.store['sl_candidatos']) db.store['sl_candidatos'] = [];
+    db.store['sl_candidatos'].push(cand);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_candidatos'] = now();
+    writeDB(db);
+    _broadcastSync('sl_candidatos', null);
+
+    res.json({ ok: true, mensagem: 'Candidatura recebida com sucesso!' });
+  } catch (e) {
+    console.error('[VAGAS aplicar]', e.message);
+    res.status(500).json({ error: 'Erro ao enviar candidatura' });
+  }
 });
 
 // Limpa itens da lixeira >30 dias (chamado via cron)
