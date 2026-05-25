@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axcend · Preview Módulo Vagas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0:#0f0f0f; --bg-1:#1c1c1c; --bg-2:#252525; --bg-3:#2e2e2e;
+  --text-1:#fff; --text-2:#888; --text-3:#555;
+  --border:rgba(255,255,255,.08);
+  --rosa:#C52C58; --azul:#1B9CFA; --laranja:#FF5926;
+  --roxo:#5b5ef4; --roxo-deep:#3E1493;
+  --verde:#639922; --vermelho:#E24B4A;
+  --amarelo:#FBBF24;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { background:#050505; color:var(--text-1); font-family:'Inter',-apple-system,sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+body { padding:28px 20px 60px; }
+
+/* Banner topo */
+.banner { max-width:1280px; margin:0 auto 24px; padding:20px 24px; background:linear-gradient(135deg,#3E1493 0%,#5b5ef4 50%,#1B9CFA 100%); border-radius:14px; display:flex; align-items:center; gap:16px; }
+.banner-icon { width:44px; height:44px; border-radius:11px; background:rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; }
+.banner h1 { font-size:17px; font-weight:700; margin-bottom:2px; }
+.banner p { font-size:12.5px; opacity:.9; }
+
+/* Tabs de navegação entre telas */
+.preview-tabs { max-width:1280px; margin:0 auto 16px; padding:10px 12px; background:var(--bg-1); border:1px solid var(--border); border-radius:12px; display:flex; gap:6px; flex-wrap:wrap; overflow-x:auto; }
+.preview-tab { padding:8px 14px; background:transparent; color:var(--text-2); border:none; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; font-family:inherit; white-space:nowrap; }
+.preview-tab.active { background:var(--roxo); color:#fff; }
+.preview-tab:hover:not(.active) { background:var(--bg-2); color:var(--text-1); }
+
+/* Section title */
+.section-title { max-width:1280px; margin:30px auto 12px; padding:0 4px; font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-2); }
+.section-title small { color:var(--text-3); font-weight:400; letter-spacing:1px; margin-left:8px; text-transform:none; }
+
+/* Tela / frame */
+.screen-frame { max-width:1280px; margin:0 auto; background:var(--bg-0); border-radius:14px; overflow:hidden; border:1px solid var(--border); display:flex; min-height:640px; }
+
+/* Sidebar (reutiliza padrão do app real) */
+.sidebar { width:220px; background:var(--bg-0); padding:16px 12px 14px; display:flex; flex-direction:column; gap:3px; border-right:1px solid var(--border); flex-shrink:0; }
+.logo { display:flex; align-items:center; gap:10px; padding:6px 10px 16px; font-size:17px; font-weight:600; }
+.logo-mark { width:28px; height:28px; border-radius:7px; background:linear-gradient(135deg,var(--roxo-deep),var(--azul)); display:flex; align-items:center; justify-content:center; }
+.logo-mark svg { width:18px; height:18px; stroke:#fff; stroke-width:2.2; fill:none; }
+.nav-item { display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:9px; color:var(--text-2); font-size:13px; font-weight:500; cursor:pointer; }
+.nav-item:hover { background:var(--bg-1); color:var(--text-1); }
+.nav-item.active { background:var(--roxo); color:#fff; }
+.nav-item svg { width:16px; height:16px; stroke:currentColor; stroke-width:1.8; fill:none; flex-shrink:0; }
+.nav-spacer { flex:1; }
+.nav-user { display:flex; align-items:center; gap:10px; padding:9px 12px; }
+.nav-user-avatar { width:26px; height:26px; border-radius:50%; background:var(--rosa); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; }
+
+/* Main */
+.main { flex:1; padding:26px 30px; overflow-y:auto; }
+.topbar { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:22px; gap:14px; flex-wrap:wrap; }
+.topbar-title { font-size:26px; font-weight:600; letter-spacing:-.4px; }
+.topbar-sub { font-size:12.5px; color:var(--text-2); margin-top:4px; }
+.btn { padding:9px 16px; background:var(--bg-2); border:1px solid var(--border); color:var(--text-1); border-radius:8px; font-size:12.5px; font-weight:500; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:6px; }
+.btn:hover { background:var(--bg-3); }
+.btn-primary { background:var(--roxo); border-color:var(--roxo); }
+.btn-roxo-deep { background:var(--roxo-deep); border-color:var(--roxo-deep); }
+.btn-laranja { background:var(--laranja); border-color:var(--laranja); }
+.btn-rosa { background:var(--rosa); border-color:var(--rosa); }
+
+/* TELA 1 — Lista de vagas */
+.vagas-list { display:flex; flex-direction:column; gap:8px; }
+.vaga-item-admin { background:var(--bg-1); border:1px solid var(--border); border-left:3px solid var(--roxo); border-radius:11px; padding:14px 16px; display:grid; grid-template-columns: 1fr 130px 110px 100px 80px; gap:14px; align-items:center; cursor:pointer; }
+.vaga-item-admin:hover { background:var(--bg-2); }
+.vaga-item-admin.copy { border-left-color:var(--azul); }
+.vaga-item-admin.edicao { border-left-color:var(--roxo); }
+.vaga-item-admin.trafego { border-left-color:var(--verde); }
+.vaga-item-admin.designer { border-left-color:var(--rosa); }
+.vaga-item-admin.dados { border-left-color:var(--amarelo); }
+.vaga-item-admin.pausada { opacity:.5; border-left-color:var(--text-3); }
+.va-titulo { font-size:14px; font-weight:600; }
+.va-sub { font-size:11.5px; color:var(--text-2); margin-top:2px; }
+.va-area-tag { display:inline-block; padding:3px 9px; border-radius:5px; font-size:10.5px; font-weight:500; }
+.tag-copy { background:rgba(27,156,250,.15); color:var(--azul); }
+.tag-edicao { background:rgba(91,94,244,.15); color:var(--roxo); }
+.tag-trafego { background:rgba(99,153,34,.15); color:var(--verde); }
+.tag-designer { background:rgba(197,44,88,.15); color:var(--rosa); }
+.tag-dados { background:rgba(251,191,36,.15); color:var(--amarelo); }
+.tag-fin { background:rgba(255,89,38,.15); color:var(--laranja); }
+.va-status { font-size:11px; padding:3px 9px; border-radius:5px; font-weight:600; text-align:center; }
+.st-ativa { background:rgba(99,153,34,.15); color:var(--verde); }
+.st-pausada { background:rgba(136,136,136,.15); color:var(--text-2); }
+.st-fechada { background:rgba(226,75,74,.15); color:var(--vermelho); }
+.va-num { font-size:13px; font-weight:600; color:var(--text-1); }
+.va-num small { font-size:10.5px; color:var(--text-2); font-weight:400; }
+.va-actions { display:flex; gap:5px; justify-content:flex-end; font-size:14px; color:var(--text-2); }
+
+/* TELA 2 — Editor de vaga */
+.editor-wrap { display:grid; grid-template-columns:1fr 280px; gap:16px; }
+.editor-main { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.editor-side { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:18px; height:fit-content; }
+.editor-side h3 { font-size:11px; font-weight:700; color:var(--text-2); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:12px; }
+.field { margin-bottom:14px; }
+.field label { display:block; font-size:11px; color:var(--text-2); margin-bottom:5px; text-transform:uppercase; letter-spacing:.8px; font-weight:600; }
+.field input, .field select, .field textarea {
+  width:100%; background:var(--bg-2); border:1px solid var(--border); color:var(--text-1);
+  padding:9px 12px; border-radius:7px; font-family:inherit; font-size:13px; outline:none;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color:var(--roxo); }
+.editor-banner-upload { background:linear-gradient(135deg,#3E1493,#5b5ef4,#1B9CFA); border-radius:10px; padding:30px; text-align:center; color:#fff; margin-bottom:14px; border:1px dashed rgba(255,255,255,.4); cursor:pointer; }
+.editor-toolbar { display:flex; gap:4px; background:var(--bg-2); padding:6px; border-radius:8px 8px 0 0; border:1px solid var(--border); border-bottom:none; }
+.editor-tool { padding:5px 9px; background:transparent; color:var(--text-2); border:none; border-radius:5px; cursor:pointer; font-size:13px; font-family:inherit; }
+.editor-tool:hover { background:var(--bg-3); color:var(--text-1); }
+.editor-content { background:var(--bg-2); border:1px solid var(--border); border-radius:0 0 8px 8px; padding:18px; min-height:300px; font-size:13.5px; line-height:1.65; color:#cbd5e1; }
+.editor-content h2 { color:#fff; font-size:16px; font-weight:700; margin:14px 0 8px; padding:6px 12px; background:rgba(91,94,244,.15); border-radius:6px; display:inline-block; }
+.editor-content ul { margin:6px 0 12px 24px; }
+.editor-content li { margin-bottom:4px; }
+.editor-content strong { color:#fff; }
+
+/* TELA 3 — Página pública da vaga */
+.public-page { background:#0a0a0a; }
+.public-header { background:linear-gradient(135deg,#3E1493 0%,#5b5ef4 50%,#1B9CFA 100%); padding:50px 40px 70px; text-align:center; position:relative; overflow:hidden; }
+.public-header::after { content:''; position:absolute; inset:0; background:radial-gradient(circle at 70% 30%, rgba(255,255,255,.1), transparent 50%); pointer-events:none; }
+.public-logo-big { width:70px; height:70px; background:#fff; color:var(--roxo-deep); border-radius:18px; display:flex; align-items:center; justify-content:center; font-size:38px; font-weight:900; margin:0 auto 14px; }
+.public-brand { font-size:32px; font-weight:800; letter-spacing:-.5px; margin-bottom:6px; }
+.public-tagline { font-size:12.5px; opacity:.9; margin-bottom:14px; letter-spacing:2px; text-transform:uppercase; }
+.public-cta-header { display:inline-flex; align-items:center; gap:12px; background:rgba(255,255,255,.18); padding:10px 22px; border-radius:30px; font-size:14px; font-weight:700; }
+
+.public-body { max-width:760px; margin:0 auto; padding:40px 30px; }
+.public-title { font-size:32px; font-weight:800; letter-spacing:-.5px; margin-bottom:20px; line-height:1.15; }
+.public-section { background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:18px; }
+.public-section-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; font-size:14px; font-weight:700; padding-bottom:10px; border-bottom:1px solid var(--border); }
+.public-section-head-icon { width:30px; height:30px; border-radius:8px; background:rgba(91,94,244,.18); color:var(--roxo); display:flex; align-items:center; justify-content:center; font-size:16px; }
+.public-section p { font-size:13.5px; color:#cbd5e1; line-height:1.65; margin-bottom:10px; }
+.public-section ul { margin:8px 0 12px 20px; }
+.public-section li { font-size:13.5px; color:#cbd5e1; line-height:1.65; margin-bottom:6px; }
+.public-section strong { color:#fff; font-weight:600; }
+.public-highlight { background:rgba(91,94,244,.12); border-left:3px solid var(--roxo); padding:14px 18px; border-radius:0 8px 8px 0; margin:12px 0; font-style:italic; color:#fff; font-size:13px; }
+.public-cta { background:linear-gradient(135deg,#3E1493,#5b5ef4); border-radius:14px; padding:34px 28px; text-align:center; margin-top:20px; }
+.public-cta-icon { font-size:38px; margin-bottom:10px; }
+.public-cta h3 { font-size:22px; font-weight:800; margin-bottom:8px; }
+.public-cta p { font-size:13px; opacity:.92; margin-bottom:20px; }
+.public-cta-btn { background:#fff; color:var(--roxo-deep); padding:13px 36px; border-radius:9px; font-weight:800; font-size:14px; display:inline-block; }
+
+/* TELA 4 — Formulário de candidatura */
+.form-wrap { background:#0a0a0a; padding:30px 0; }
+.form-header { max-width:680px; margin:0 auto 18px; background:linear-gradient(135deg,#3E1493 0%,#5b5ef4 50%,#1B9CFA 100%); border-radius:14px; padding:36px 30px; text-align:center; }
+.form-header-logo { width:54px; height:54px; background:#fff; color:var(--roxo-deep); border-radius:13px; display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:900; margin:0 auto 12px; }
+.form-header h1 { font-size:22px; font-weight:800; margin-bottom:8px; }
+.form-header p { font-size:12.5px; opacity:.9; max-width:480px; margin:0 auto; line-height:1.55; }
+.form-card { max-width:680px; margin:0 auto 14px; background:var(--bg-1); border:1px solid var(--border); border-radius:12px; padding:22px 26px; }
+.form-q { font-size:14px; font-weight:600; margin-bottom:4px; color:#fff; }
+.form-q .req { color:var(--vermelho); }
+.form-hint { font-size:12px; color:var(--text-2); margin-bottom:10px; line-height:1.5; }
+.form-input { width:100%; background:var(--bg-2); border:1px solid var(--border); color:var(--text-1); padding:10px 14px; border-radius:7px; font-family:inherit; font-size:13.5px; outline:none; }
+.form-input:focus { border-color:var(--roxo); }
+.form-textarea { min-height:90px; resize:vertical; }
+.form-submit { max-width:680px; margin:18px auto 0; display:flex; justify-content:flex-end; gap:8px; }
+.form-success-meta { max-width:680px; margin:0 auto 12px; font-size:12px; color:var(--text-2); text-align:right; }
+
+/* TELA 5 — Inbox candidatos (Kanban) */
+.kanban-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+.kanban-col { background:var(--bg-1); border:1px solid var(--border); border-radius:11px; padding:10px; }
+.kanban-col-head { font-size:11px; font-weight:700; color:var(--text-2); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; padding:0 4px; }
+.kanban-count { background:var(--bg-2); color:#fff; padding:1px 8px; border-radius:5px; font-size:10.5px; }
+.kanban-card { background:var(--bg-2); border-radius:8px; padding:10px 12px; margin-bottom:7px; cursor:pointer; }
+.kanban-card:hover { background:var(--bg-3); }
+.kc-nome { font-size:12px; font-weight:600; }
+.kc-vaga { font-size:10.5px; color:var(--text-2); margin-top:2px; }
+.kc-score { display:inline-block; font-size:9.5px; padding:1px 6px; border-radius:4px; font-weight:600; margin-top:4px; }
+.score-alto { background:rgba(99,153,34,.18); color:var(--verde); }
+.score-medio { background:rgba(255,89,38,.18); color:var(--laranja); }
+.score-baixo { background:rgba(226,75,74,.18); color:var(--vermelho); }
+
+/* Modal vaga preview */
+.preview-actions-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.copy-link-btn { background:var(--bg-2); border:1px solid var(--border); padding:8px 14px; border-radius:8px; font-size:12px; color:var(--text-1); display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-family:inherit; }
+.copy-link-input { background:var(--bg-2); color:var(--azul); padding:8px 14px; border-radius:8px; font-size:12px; font-family:ui-monospace,monospace; border:1px solid var(--border); flex:1; max-width:380px; }
+
+/* Views */
+.view { display:none; }
+.view.active { display:block; }
+
+@media (max-width:900px) {
+  .vaga-item-admin { grid-template-columns: 1fr; }
+  .editor-wrap { grid-template-columns:1fr; }
+  .kanban-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="banner">
+  <div class="banner-icon">A</div>
+  <div>
+    <h1>Preview · Módulo Vagas dentro do Axcend</h1>
+    <p>5 telas conectadas — substitui Notion + Google Forms. Clique nas abas pra navegar.</p>
+  </div>
+</div>
+
+<div class="preview-tabs">
+  <button class="preview-tab active" onclick="showView('view-lista')">1. Lista de Vagas (Admin)</button>
+  <button class="preview-tab" onclick="showView('view-criar')">2. Criar / Editar Vaga</button>
+  <button class="preview-tab" onclick="showView('view-publica')">3. Página Pública</button>
+  <button class="preview-tab" onclick="showView('view-form')">4. Formulário de Candidatura</button>
+  <button class="preview-tab" onclick="showView('view-kanban')">5. Inbox Candidatos</button>
+</div>
+
+<!-- ════════════ TELA 1 — LISTA DE VAGAS (ADMIN) ════════════ -->
+<div class="view active" id="view-lista">
+  <div class="section-title">01 · Lista de vagas · admin <small>substitui o hub do Notion</small></div>
+  <div class="screen-frame">
+    <aside class="sidebar">
+      <div class="logo"><div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>Axcend</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Demandas</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Criativos</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>Tráfego</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6M22 8v6"/></svg>Vagas <span style="margin-left:auto;background:var(--vermelho);color:#fff;font-size:9.5px;padding:1px 6px;border-radius:8px;font-weight:700;">12</span></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>Pessoas</div>
+      <div class="nav-spacer"></div>
+      <div class="nav-user"><div class="nav-user-avatar">T</div><span style="font-size:13px;font-weight:500;">Thiago</span></div>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1 class="topbar-title">Vagas · Contratações</h1>
+          <p class="topbar-sub">12 vagas ativas · 3 com candidatos novos</p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn">📊 Métricas</button>
+          <button class="btn btn-primary">+ Nova Vaga</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;">
+        <span class="va-status st-ativa" style="padding:6px 14px;font-size:12px;cursor:pointer;">Ativas · 12</span>
+        <span class="va-status st-pausada" style="padding:6px 14px;font-size:12px;cursor:pointer;">Pausadas · 3</span>
+        <span class="va-status st-fechada" style="padding:6px 14px;font-size:12px;cursor:pointer;">Fechadas · 8</span>
+        <input style="background:var(--bg-2);border:1px solid var(--border);color:var(--text-1);padding:6px 14px;border-radius:6px;font-family:inherit;font-size:12px;flex:1;max-width:240px;margin-left:auto;outline:none;" placeholder="🔍 Buscar vaga...">
+      </div>
+
+      <div class="vagas-list">
+        <div class="vaga-item-admin copy">
+          <div>
+            <div class="va-titulo">Copywriter Pleno ou Sênior</div>
+            <div class="va-sub">VSL · Direct Response · Salário R$ 4-7k + bônus</div>
+          </div>
+          <div><span class="va-area-tag tag-copy">Copy</span></div>
+          <div><span class="va-status st-ativa">Ativa</span></div>
+          <div class="va-num">23 <small>candidatos</small></div>
+          <div class="va-actions">👁 ✏️ ⏸ 🗑</div>
+        </div>
+        <div class="vaga-item-admin edicao">
+          <div>
+            <div class="va-titulo">Edição de VSL & Criativos</div>
+            <div class="va-sub">UGC, Reels, Stories · Premiere/CapCut · R$ 3-5k</div>
+          </div>
+          <div><span class="va-area-tag tag-edicao">Edição</span></div>
+          <div><span class="va-status st-ativa">Ativa</span></div>
+          <div class="va-num">18 <small>candidatos</small></div>
+          <div class="va-actions">👁 ✏️ ⏸ 🗑</div>
+        </div>
+        <div class="vaga-item-admin trafego">
+          <div>
+            <div class="va-titulo">Gestor de Tráfego Facebook Pleno/Sênior</div>
+            <div class="va-sub">Meta Ads · 30k+/mês de budget · R$ 6-10k</div>
+          </div>
+          <div><span class="va-area-tag tag-trafego">Tráfego</span></div>
+          <div><span class="va-status st-ativa">Ativa</span></div>
+          <div class="va-num">12 <small>candidatos</small></div>
+          <div class="va-actions">👁 ✏️ ⏸ 🗑</div>
+        </div>
+        <div class="vaga-item-admin trafego">
+          <div>
+            <div class="va-titulo">Gestor de Tráfego YouTube Júnior</div>
+            <div class="va-sub">Google Ads · YouTube · R$ 2.5-4k</div>
+          </div>
+          <div><span class="va-area-tag tag-trafego">Tráfego</span></div>
+          <div><span class="va-status st-ativa">Ativa</span></div>
+          <div class="va-num">7 <small>candidatos</small></div>
+          <div class="va-actions">👁 ✏️ ⏸ 🗑</div>
+        </div>
+        <div class="vaga-item-admin designer">
+          <div>
+            <div class="va-titulo">Web Designer Especialista em Funis</div>
+            <div class="va-sub">PVs, Carrinho, Páginas de venda · R$ 4-6k</div>
+          </div>
+          <div><span class="va-area-tag tag-designer">Designer</span></div>
+          <div><span class="va-status st-ativa">Ativa</span></div>
+          <div class="va-num">9 <small>candidatos</small></div>
+          <div class="va-actions">👁 ✏️ ⏸ 🗑</div>
+        </div>
+        <div class="vaga-item-admin dados">
+          <div>
+            <div class="va-titulo">Analista de Dados</div>
+            <div class="va-sub">Métricas, dashboards, automações · R$ 5-8k</div>
+          </div>
+          <div><span class="va-area-tag tag-dados">Dados</span></div>
+          <div><span class="va-status st-ativa">Ativa</span></div>
+          <div class="va-num">5 <small>candidatos</small></div>
+          <div class="va-actions">👁 ✏️ ⏸ 🗑</div>
+        </div>
+        <div class="vaga-item-admin pausada">
+          <div>
+            <div class="va-titulo">Analista de Inteligência (Spy)</div>
+            <div class="va-sub">Mineração de ofertas · R$ 4-6k</div>
+          </div>
+          <div><span class="va-area-tag" style="background:var(--bg-2);color:var(--text-2);">Spy</span></div>
+          <div><span class="va-status st-pausada">Pausada</span></div>
+          <div class="va-num">14 <small>candidatos</small></div>
+          <div class="va-actions">👁 ▶️ 🗑</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ════════════ TELA 2 — CRIAR / EDITAR VAGA ════════════ -->
+<div class="view" id="view-criar">
+  <div class="section-title">02 · Criar / editar vaga <small>editor estilo Notion + configurações ao lado</small></div>
+  <div class="screen-frame">
+    <aside class="sidebar">
+      <div class="logo"><div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>Axcend</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/></svg>Demandas</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Vagas</div>
+      <div class="nav-spacer"></div>
+      <div class="nav-user"><div class="nav-user-avatar">T</div><span style="font-size:13px;font-weight:500;">Thiago</span></div>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div style="font-size:11.5px;color:var(--text-2);margin-bottom:4px;display:flex;align-items:center;gap:6px;"><span style="color:var(--roxo);cursor:pointer;">← Vagas</span> › Nova vaga</div>
+          <h1 class="topbar-title">Nova Vaga</h1>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn">💾 Salvar rascunho</button>
+          <button class="btn btn-primary">🚀 Publicar vaga</button>
+        </div>
+      </div>
+
+      <div class="editor-wrap">
+        <div class="editor-main">
+          <div class="field">
+            <label>Título da vaga</label>
+            <input value="Copywriter Pleno ou Sênior" style="font-size:16px;font-weight:600;">
+          </div>
+
+          <div class="field">
+            <label>Banner do topo (opcional)</label>
+            <div class="editor-banner-upload">
+              <div style="font-size:32px;margin-bottom:6px;">📷</div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Banner ativo · Axcend - Faça parte do movimento</div>
+              <div style="font-size:11px;opacity:.85;">1920×500 · Click pra trocar</div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Descrição completa (editor)</label>
+            <div class="editor-toolbar">
+              <button class="editor-tool"><b>B</b></button>
+              <button class="editor-tool"><i>I</i></button>
+              <button class="editor-tool"><u>U</u></button>
+              <button class="editor-tool">H1</button>
+              <button class="editor-tool">H2</button>
+              <button class="editor-tool">• Lista</button>
+              <button class="editor-tool">😀</button>
+              <button class="editor-tool">🔗</button>
+              <button class="editor-tool">📷</button>
+              <button class="editor-tool">↗ Bloco destaque</button>
+            </div>
+            <div class="editor-content">
+              <h2>🚀 FAÇA PARTE DO TIME AXCEND</h2>
+              <p>Se você quer estar no coração da inovação em <strong>nutracêuticos</strong> e <strong>direct response marketing</strong>, essa é a sua chance!</p>
+              <p>Aqui na <strong>Axcend</strong>, não seguimos tendências — nós as criamos!</p>
+              <h2>➡️ REQUISITOS MÍNIMOS</h2>
+              <ul>
+                <li>Experiência <strong>COMPROVADA</strong> em direct response marketing</li>
+                <li>Inglês desejável</li>
+                <li>Organização (extremamente importante)</li>
+              </ul>
+              <h2>➡️ O QUE ESPERAMOS DE VOCÊ</h2>
+              <ul>
+                <li>Agilidade + Qualidade</li>
+                <li>Resiliência pra feedbacks rápidos</li>
+                <li>Mentalidade de crescimento</li>
+              </ul>
+              <h2>➡️ POR QUE ESSA É UMA OPORTUNIDADE ÚNICA</h2>
+              <ul>
+                <li>Salário fixo competitivo + Comissões agressivas</li>
+                <li>Trabalho 100% remoto</li>
+                <li>Liberdade com responsabilidade</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <aside class="editor-side">
+          <h3>⚙️ Configurações</h3>
+          <div class="field">
+            <label>Área</label>
+            <select><option>Copy</option><option>Edição</option><option>Tráfego</option></select>
+          </div>
+          <div class="field">
+            <label>Nível</label>
+            <select><option>Pleno ou Sênior</option><option>Júnior</option><option>Sênior</option></select>
+          </div>
+          <div class="field">
+            <label>Regime</label>
+            <select><option>PJ</option><option>CLT</option><option>Freelancer</option></select>
+          </div>
+          <div class="field">
+            <label>Modalidade</label>
+            <select><option>Remoto</option><option>Híbrido</option><option>Presencial</option></select>
+          </div>
+          <div class="field">
+            <label>Salário (faixa)</label>
+            <input value="R$ 4-7k + bônus">
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select><option>Rascunho</option><option>Publicada (ativa)</option><option>Pausada</option><option>Fechada</option></select>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+            <h3>🔗 Link da vaga</h3>
+            <div style="background:var(--bg-2);padding:10px 12px;border-radius:7px;font-size:11px;font-family:ui-monospace,monospace;color:var(--azul);word-break:break-all;line-height:1.4;">app.centralaxcend.com/vagas/copywriter-pleno-senior</div>
+            <button class="btn" style="margin-top:8px;width:100%;justify-content:center;">📋 Copiar link</button>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+            <h3>📋 Formulário</h3>
+            <p style="font-size:11.5px;color:var(--text-2);line-height:1.5;margin-bottom:8px;">Configure as perguntas que o candidato responderá ao clicar em "Quero me candidatar".</p>
+            <button class="btn" style="width:100%;justify-content:center;">⚙️ Editar formulário</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ════════════ TELA 3 — PÁGINA PÚBLICA DA VAGA ════════════ -->
+<div class="view" id="view-publica">
+  <div class="section-title">03 · Página pública da vaga <small>candidato vê isso · substitui página Notion</small></div>
+  <div class="screen-frame public-page" style="display:block;">
+    <div class="public-header">
+      <div class="public-logo-big">A</div>
+      <div class="public-brand">Axcend</div>
+      <div class="public-tagline">FAZER QUE GERA RESULTADO</div>
+      <div class="public-cta-header">Faça parte do movimento <span>→</span></div>
+    </div>
+
+    <div class="public-body">
+      <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-2);margin-bottom:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">
+        <span class="va-area-tag tag-copy">Copy</span> · Pleno/Sênior · Remoto · PJ
+      </div>
+      <h1 class="public-title">Copywriter Pleno ou Sênior — Axcend</h1>
+
+      <div class="public-highlight">🚀 FAÇA PARTE DO TIME AXCEND — ONDE GRANDES MENTES CRIAM GRANDES RESULTADOS!</div>
+
+      <p style="font-size:14px;color:#cbd5e1;line-height:1.7;margin-bottom:18px;">Se você quer estar no coração da inovação em <strong style="color:#fff;">nutracêuticos</strong> e <strong style="color:#fff;">direct response marketing</strong>, essa é a sua chance!</p>
+
+      <div class="public-section">
+        <div class="public-section-head"><div class="public-section-head-icon">➡️</div>REQUISITOS MÍNIMOS</div>
+        <ul>
+          <li>Experiência <strong>COMPROVADA</strong> em copywriting pra direct response (<em>por favor, não aplique se não tiver experiência</em>)</li>
+          <li>Inglês desejável</li>
+          <li><strong>Organização</strong> — isso é extremamente importante</li>
+        </ul>
+      </div>
+
+      <div class="public-section">
+        <div class="public-section-head"><div class="public-section-head-icon">➡️</div>O QUE ESPERAMOS DE VOCÊ</div>
+        <ul>
+          <li>Agilidade + Qualidade (velocidade sem comprometer conversão)</li>
+          <li>Resiliência pra feedbacks rápidos e melhorias constantes</li>
+          <li>Capacidade de pensar fora da caixa</li>
+          <li>Mentalidade de crescimento</li>
+          <li>Ser <strong>extremamente organizado</strong></li>
+          <li>Proatividade pra resolver problemas</li>
+        </ul>
+        <div class="public-highlight">Nosso objetivo é encontrar alguém com <strong>fome de conversão</strong>. Queremos te ver imerso no processo, gerando ideias, testando e ajudando a empresa a crescer.</div>
+      </div>
+
+      <div class="public-section">
+        <div class="public-section-head"><div class="public-section-head-icon">➡️</div>O QUE SERIA UM PLUS (não obrigatório)</div>
+        <ul>
+          <li>Ter feito cursos como <strong>Empiricus, RMBC</strong></li>
+          <li>Conhecimento em estruturas de cartas (Stefan Georgi, Chris Haddad, Jon Benson)</li>
+          <li>Aluno de Derick Carneiro ou Comunidade Tiago Filemon</li>
+          <li>Experiência com construção e otimização de funis</li>
+        </ul>
+      </div>
+
+      <div class="public-section">
+        <div class="public-section-head"><div class="public-section-head-icon">➡️</div>POR QUE É UMA OPORTUNIDADE ÚNICA</div>
+        <ul>
+          <li><strong>Salário fixo competitivo + Comissões agressivas</strong> (ganhe mais conforme performa)</li>
+          <li>Ambiente de crescimento acelerado</li>
+          <li>Liberdade com responsabilidade — foco no resultado</li>
+          <li>Trabalho 100% remoto</li>
+        </ul>
+      </div>
+
+      <div class="public-cta">
+        <div class="public-cta-icon">🚀</div>
+        <h3>Se interessou?</h3>
+        <p>Preencha o formulário de candidatura e nos conta por que você é a pessoa certa.</p>
+        <a class="public-cta-btn" onclick="showView('view-form')" style="cursor:pointer;">Quero me candidatar →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ TELA 4 — FORMULÁRIO DE CANDIDATURA ════════════ -->
+<div class="view" id="view-form">
+  <div class="section-title">04 · Formulário de candidatura <small>candidato preenche · substitui Google Forms</small></div>
+  <div class="screen-frame form-wrap" style="display:block;">
+    <div class="form-header">
+      <div class="form-header-logo">A</div>
+      <h1>AXCEND · Copywriter Pleno ou Sênior</h1>
+      <p>Preencha o formulário abaixo mostrando todo o seu potencial e nos convença de que você é o candidato perfeito pra integrar nosso time. <strong>Estamos super empolgados pra te conhecer!</strong></p>
+    </div>
+
+    <div class="form-success-meta">Sessão segura · Auto-salvo</div>
+
+    <div class="form-card">
+      <div class="form-q">E-mail <span class="req">*</span></div>
+      <div class="form-hint">Pra te contatarmos sobre o resultado</div>
+      <input class="form-input" placeholder="seu@email.com" value="maria.l.silva@gmail.com">
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">Nome completo <span class="req">*</span></div>
+      <input class="form-input" placeholder="Sua resposta" value="Maria L. Silva">
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">Qual o @ do seu Instagram? <span class="req">*</span></div>
+      <input class="form-input" placeholder="@seuinstagram" value="@maria.copy">
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">WhatsApp <span class="req">*</span></div>
+      <div class="form-hint">Com DDD · pra agendar conversa se passar</div>
+      <input class="form-input" placeholder="+55 11 99999-9999" value="+55 11 98876-5432">
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">Tem experiência com Direct Response? <span class="req">*</span></div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+        <button class="btn btn-primary" style="font-size:12px;">✓ Sim</button>
+        <button class="btn" style="font-size:12px;">Não</button>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">Cite 3 cases de copy que você fez <span class="req">*</span></div>
+      <div class="form-hint">Com link pra portfolio/drive se possível</div>
+      <textarea class="form-input form-textarea" placeholder="1. Case 1...&#10;2. Case 2...&#10;3. Case 3...">1. VSL Detox - escalou pra 6 dígitos no Hotmart
+2. Hook de UGC pra emagrecimento - CTR 4.8%
+3. Sequência email Buygoods - 22% conversão</textarea>
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">Por que você quer trabalhar na Axcend? <span class="req">*</span></div>
+      <textarea class="form-input form-textarea" placeholder="Sua resposta..."></textarea>
+    </div>
+
+    <div class="form-card">
+      <div class="form-q">Portfolio (link Drive, site, etc.) <span class="req">*</span></div>
+      <input class="form-input" placeholder="https://...">
+    </div>
+
+    <div class="form-submit">
+      <button class="btn">Limpar</button>
+      <button class="btn btn-primary" style="padding:11px 24px;font-weight:700;">Enviar candidatura →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ TELA 5 — INBOX DE CANDIDATOS (KANBAN) ════════════ -->
+<div class="view" id="view-kanban">
+  <div class="section-title">05 · Inbox de candidatos <small>visão Diretoria · Kanban</small></div>
+  <div class="screen-frame">
+    <aside class="sidebar">
+      <div class="logo"><div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7V15"/></svg></div>Axcend</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/></svg>Demandas</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Vagas</div>
+      <div class="nav-spacer"></div>
+      <div class="nav-user"><div class="nav-user-avatar">T</div><span style="font-size:13px;font-weight:500;">Thiago</span></div>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div style="font-size:11.5px;color:var(--text-2);margin-bottom:4px;"><span style="color:var(--roxo);cursor:pointer;">← Vagas</span> › Copywriter Pleno ou Sênior</div>
+          <h1 class="topbar-title">42 candidatos</h1>
+          <p class="topbar-sub">23 novos esta semana · 4 em entrevista · 2 aprovados</p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn">📊 Métricas funil</button>
+          <button class="btn">📥 Banco talentos</button>
+          <button class="btn btn-primary">✨ IA: ranquear top 10</button>
+        </div>
+      </div>
+
+      <div class="kanban-grid">
+        <div class="kanban-col">
+          <div class="kanban-col-head">Novo <span class="kanban-count">15</span></div>
+          <div class="kanban-card"><div class="kc-nome">Lucas M.</div><div class="kc-vaga">há 2h · LinkedIn</div></div>
+          <div class="kanban-card"><div class="kc-nome">Ana P.</div><div class="kc-vaga">há 4h · Instagram</div></div>
+          <div class="kanban-card"><div class="kc-nome">Bruno C.</div><div class="kc-vaga">ontem</div></div>
+          <div class="kanban-card"><div class="kc-nome">Patricia R.</div><div class="kc-vaga">ontem</div></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-head">Triagem <span class="kanban-count">8</span></div>
+          <div class="kanban-card"><div class="kc-nome">Fernanda R.</div><div class="kc-vaga">portfolio top</div><span class="kc-score score-alto">★ 9.2</span></div>
+          <div class="kanban-card"><div class="kc-nome">Carlos S.</div><div class="kc-vaga">cases ok</div><span class="kc-score score-medio">★ 7.1</span></div>
+          <div class="kanban-card"><div class="kc-nome">Ricardo D.</div><div class="kc-vaga">avaliar</div><span class="kc-score score-medio">★ 6.8</span></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-head">Teste <span class="kanban-count">6</span></div>
+          <div class="kanban-card"><div class="kc-nome">Maria L.</div><div class="kc-vaga">enviou ontem</div><span class="kc-score score-alto">★ 8.8</span></div>
+          <div class="kanban-card"><div class="kc-nome">Diego P.</div><div class="kc-vaga">aguardando</div></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-head">Entrevista <span class="kanban-count">4</span></div>
+          <div class="kanban-card"><div class="kc-nome">Júlia M.</div><div class="kc-vaga">amanhã 15h</div><span class="kc-score score-alto">★ 9.5</span></div>
+          <div class="kanban-card"><div class="kc-nome">Felipe B.</div><div class="kc-vaga">agendar</div><span class="kc-score score-alto">★ 8.4</span></div>
+        </div>
+        <div class="kanban-col">
+          <div class="kanban-col-head">Aprovado <span class="kanban-count">2</span></div>
+          <div class="kanban-card" style="background:rgba(99,153,34,.2);border:1px solid rgba(99,153,34,.4);"><div class="kc-nome">Rodrigo F.</div><div class="kc-vaga" style="color:#cbd5e1;">contratado ✓</div></div>
+          <div class="kanban-card" style="background:rgba(99,153,34,.2);border:1px solid rgba(99,153,34,.4);"><div class="kc-nome">Beatriz S.</div><div class="kc-vaga" style="color:#cbd5e1;">aguardando aceite</div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div style="max-width:1280px;margin:30px auto 0;padding:18px 22px;background:var(--bg-1);border-radius:12px;border:1px solid var(--border);font-size:13px;color:var(--text-2);line-height:1.6;">
+  <strong style="color:var(--text-1);">Resumo do fluxo proposto:</strong><br>
+  1️⃣ Diretoria entra em <strong>Vagas</strong> → vê lista de todas as vagas (substitui Notion) →
+  2️⃣ Clica <strong>+ Nova Vaga</strong> → editor estilo Notion + configurações ao lado (status, salário, formulário) →
+  3️⃣ Sistema gera link público <strong>app.centralaxcend.com/vagas/[slug]</strong> →
+  4️⃣ Candidato abre → vê página linda (igual Notion atual, mas dentro do Axcend) → clica <strong>Quero me candidatar</strong> →
+  5️⃣ Formulário embutido (substitui Google Forms) → candidato preenche e envia →
+  6️⃣ Aparece no <strong>Inbox Kanban</strong> da Diretoria pra triagem → arrastar entre etapas → aprovar → vira colaborador.
+</div>
+
+<script>
+function showView(id){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+  var v = document.getElementById(id);
+  if(v) v.classList.add('active');
+  var ids = ['view-lista','view-criar','view-publica','view-form','view-kanban'];
+  var idx = ids.indexOf(id);
+  if(idx >= 0) document.querySelectorAll('.preview-tab')[idx].classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+</script>
+</body>
+</html>
