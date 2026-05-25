@@ -7502,6 +7502,36 @@ var VAGAS_KANBAN_COLUNAS = [
   { id:'Reprovado',  cor:'#9CA3AF' }
 ];
 
+// Tipos de pergunta no formulário (igual Google Forms)
+var VAGAS_TIPOS_PERGUNTA = [
+  { id:'curta',    label:'Texto curto',     icone:'📝', precisaOpcoes:false },
+  { id:'longa',    label:'Parágrafo',       icone:'📄', precisaOpcoes:false },
+  { id:'link',     label:'Link / URL',      icone:'🔗', precisaOpcoes:false },
+  { id:'numero',   label:'Número',          icone:'🔢', precisaOpcoes:false },
+  { id:'radio',    label:'Escolha única',   icone:'⚪', precisaOpcoes:true  },
+  { id:'checkbox', label:'Múltipla escolha',icone:'☑️', precisaOpcoes:true  }
+];
+
+// Estado do builder de perguntas (re-inicializado quando abre o editor)
+var _vagasEditorPerguntas = [];
+
+// Migra formato antigo {id,label} pra {id,label,tipo:'curta',obrigatoria:false,opcoes:[]}
+function _vagasMigrarPergunta(p, idx){
+  if(!p) return null;
+  if(typeof p === 'string') return { id:'p'+(idx+1), label:p, tipo:'curta', obrigatoria:false, opcoes:[], permitirOutro:false };
+  return {
+    id: p.id || 'p'+(idx+1),
+    label: p.label || '',
+    tipo: p.tipo || 'curta',
+    obrigatoria: !!p.obrigatoria,
+    opcoes: Array.isArray(p.opcoes) ? p.opcoes : [],
+    permitirOutro: !!p.permitirOutro
+  };
+}
+function _vagasMigrarPerguntas(arr){
+  return (arr||[]).map(_vagasMigrarPergunta).filter(Boolean);
+}
+
 function _vagasGetAll(){ return g('sl_vagas', []); }
 function _vagasGetCandidatos(){ return g('sl_candidatos', []); }
 function _vagasGetById(id){ return _vagasGetAll().find(function(v){ return String(v.id)===String(id); }); }
@@ -7610,12 +7640,27 @@ function vagasExportCSV(){
     var v = vagas.find(function(x){ return String(x.id)===String(vagaId); });
     return v ? v.titulo : '(vaga removida)';
   }
-  var headers = ['Vaga','Nome','Email','Instagram','WhatsApp','Portfolio','Status','Score','Anotacoes','Recebido em'];
+  function perguntasDaVaga(vagaId){
+    var v = vagas.find(function(x){ return String(x.id)===String(vagaId); });
+    return (v && v.perguntasCustom) || [];
+  }
+  function respostaFmt(r){
+    if(r==null) return '';
+    if(Array.isArray(r)) return r.join(' | ');
+    return String(r);
+  }
+  function respostasCustomFlat(c){
+    var perg = perguntasDaVaga(c.vagaId);
+    var resp = c.respostasCustom || {};
+    return perg.map(function(p){ return p.label+': '+respostaFmt(resp[p.id]); }).join(' || ');
+  }
+  var headers = ['Vaga','Nome','Email','Instagram','WhatsApp','Portfolio','Status','Score','Anotacoes','Respostas Custom','Recebido em'];
   var linhas = [headers.join(';')];
   cands.forEach(function(c){
     linhas.push([
       nomeVaga(c.vagaId), c.nome||'', c.email||'', c.instagram||'', c.whatsapp||'',
       c.portfolio||'', c.status||'Novo', (c.score||''), c.anotacoes||'',
+      respostasCustomFlat(c),
       c.criadoEm||''
     ].map(_vagasCsvEscape).join(';'));
   });
@@ -7772,6 +7817,145 @@ function vagasCopiarLink(slug){
   }
 }
 
+// ─── BUILDER DE PERGUNTAS (estilo Google Forms) ───
+// Lê valores do DOM (labels, opções) de volta pro estado antes de re-renderizar.
+// Necessário porque o usuário pode estar editando texto sem ter dado blur ainda.
+function _vagasEditorSyncFromDom(){
+  _vagasEditorPerguntas.forEach(function(p, idx){
+    var lab = document.querySelector('[data-pergunta-label="'+idx+'"]');
+    if(lab) p.label = lab.value;
+    // opções (radio/checkbox)
+    var opcs = document.querySelectorAll('[data-pergunta-opcao="'+idx+'"]');
+    if(opcs.length){
+      p.opcoes = Array.from(opcs).map(function(el){ return el.value; });
+    }
+  });
+}
+
+function _vagasEditorRender(){
+  var el = document.getElementById('vag-perguntas-list');
+  if(!el) return;
+  if(!_vagasEditorPerguntas.length){
+    el.innerHTML = '<div style="border:1px dashed var(--border);border-radius:10px;padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nenhuma pergunta ainda. Clique abaixo pra adicionar a primeira.</div>';
+    return;
+  }
+  el.innerHTML = _vagasEditorPerguntas.map(function(p, idx){
+    var tipoDef = VAGAS_TIPOS_PERGUNTA.find(function(t){ return t.id===p.tipo; }) || VAGAS_TIPOS_PERGUNTA[0];
+    var tipoOpts = VAGAS_TIPOS_PERGUNTA.map(function(t){
+      return '<option value="'+t.id+'"'+(p.tipo===t.id?' selected':'')+'>'+t.icone+' '+t.label+'</option>';
+    }).join('');
+
+    // opções (radio/checkbox)
+    var opcoesHtml = '';
+    if(tipoDef.precisaOpcoes){
+      var lista = (p.opcoes||[]).map(function(o, oi){
+        return ''+
+          '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">'+
+            '<span style="color:var(--text2);font-size:13px;width:14px;text-align:center;">'+(p.tipo==='radio'?'○':'☐')+'</span>'+
+            '<input data-pergunta-opcao="'+idx+'" class="fi" value="'+_esc(o)+'" placeholder="Opção '+(oi+1)+'" style="flex:1;font-size:13px;padding:6px 10px;">'+
+            '<button type="button" onclick="_vagasEditorRemOpcao('+idx+','+oi+')" title="Remover opção" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;color:var(--text2);font-size:11px;">✕</button>'+
+          '</div>';
+      }).join('');
+      opcoesHtml = ''+
+        '<div style="margin-top:10px;padding-left:14px;border-left:2px solid var(--border);">'+
+          '<div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Opções de resposta</div>'+
+          lista+
+          '<button type="button" onclick="_vagasEditorAddOpcao('+idx+')" style="background:transparent;border:1px dashed var(--border);border-radius:6px;padding:6px 12px;cursor:pointer;color:var(--text2);font-size:12px;margin-top:4px;">+ Adicionar opção</button>'+
+          '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);margin-top:12px;cursor:pointer;">'+
+            '<input type="checkbox"'+(p.permitirOutro?' checked':'')+' onchange="_vagasEditorTogglePermitirOutro('+idx+')"> Permitir resposta "Outro:" (campo livre)'+
+          '</label>'+
+        '</div>';
+    }
+
+    return ''+
+      '<div style="background:var(--card);border:1px solid var(--border);border-left:4px solid '+(p.obrigatoria?'#DC2626':'var(--accent)')+';border-radius:10px;padding:14px;margin-bottom:10px;">'+
+        // header da pergunta
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">'+
+          '<span style="font-size:11px;font-weight:700;color:var(--text2);background:var(--bg);padding:3px 8px;border-radius:6px;">#'+(idx+1)+'</span>'+
+          '<select onchange="_vagasEditorMudarTipo('+idx+', this.value)" class="fs" style="max-width:180px;font-size:12px;padding:4px 8px;">'+tipoOpts+'</select>'+
+          '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;margin-left:6px;">'+
+            '<input type="checkbox"'+(p.obrigatoria?' checked':'')+' onchange="_vagasEditorToggleObrig('+idx+')"> Obrigatória'+
+          '</label>'+
+          '<div style="margin-left:auto;display:flex;gap:4px;">'+
+            '<button type="button" onclick="_vagasEditorMover('+idx+',-1)" title="Mover pra cima" '+(idx===0?'disabled':'')+' style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;color:var(--text2);font-size:11px;'+(idx===0?'opacity:.3;':'')+'">↑</button>'+
+            '<button type="button" onclick="_vagasEditorMover('+idx+',1)" title="Mover pra baixo" '+(idx===_vagasEditorPerguntas.length-1?'disabled':'')+' style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;color:var(--text2);font-size:11px;'+(idx===_vagasEditorPerguntas.length-1?'opacity:.3;':'')+'">↓</button>'+
+            '<button type="button" onclick="_vagasEditorRemover('+idx+')" title="Excluir pergunta" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;color:#DC2626;font-size:11px;">✕</button>'+
+          '</div>'+
+        '</div>'+
+        // label da pergunta
+        '<input data-pergunta-label="'+idx+'" class="fi" placeholder="Digite a pergunta…" value="'+_esc(p.label)+'" style="font-size:14px;">'+
+        opcoesHtml+
+      '</div>';
+  }).join('');
+}
+
+function _vagasEditorAddPergunta(tipo){
+  _vagasEditorSyncFromDom();
+  var n = _vagasEditorPerguntas.length + 1;
+  var t = tipo || 'curta';
+  var tipoDef = VAGAS_TIPOS_PERGUNTA.find(function(x){ return x.id===t; }) || VAGAS_TIPOS_PERGUNTA[0];
+  _vagasEditorPerguntas.push({
+    id: 'p'+Date.now().toString(36).slice(-5)+'-'+n,
+    label: '',
+    tipo: t,
+    obrigatoria: false,
+    opcoes: tipoDef.precisaOpcoes ? ['Opção 1','Opção 2'] : [],
+    permitirOutro: false
+  });
+  _vagasEditorRender();
+}
+function _vagasEditorRemover(idx){
+  _vagasEditorSyncFromDom();
+  if(!confirm('Remover essa pergunta?')) return;
+  _vagasEditorPerguntas.splice(idx, 1);
+  _vagasEditorRender();
+}
+function _vagasEditorMover(idx, dir){
+  _vagasEditorSyncFromDom();
+  var ni = idx + dir;
+  if(ni<0 || ni>=_vagasEditorPerguntas.length) return;
+  var tmp = _vagasEditorPerguntas[idx];
+  _vagasEditorPerguntas[idx] = _vagasEditorPerguntas[ni];
+  _vagasEditorPerguntas[ni] = tmp;
+  _vagasEditorRender();
+}
+function _vagasEditorMudarTipo(idx, novoTipo){
+  _vagasEditorSyncFromDom();
+  var p = _vagasEditorPerguntas[idx];
+  p.tipo = novoTipo;
+  var tipoDef = VAGAS_TIPOS_PERGUNTA.find(function(x){ return x.id===novoTipo; }) || VAGAS_TIPOS_PERGUNTA[0];
+  if(tipoDef.precisaOpcoes && (!p.opcoes || !p.opcoes.length)){
+    p.opcoes = ['Opção 1','Opção 2'];
+  }
+  if(!tipoDef.precisaOpcoes){
+    // mantém opções no estado (não apaga), mas elas não vão aparecer no form público
+  }
+  _vagasEditorRender();
+}
+function _vagasEditorToggleObrig(idx){
+  _vagasEditorSyncFromDom();
+  _vagasEditorPerguntas[idx].obrigatoria = !_vagasEditorPerguntas[idx].obrigatoria;
+  _vagasEditorRender();
+}
+function _vagasEditorAddOpcao(idx){
+  _vagasEditorSyncFromDom();
+  var p = _vagasEditorPerguntas[idx];
+  if(!Array.isArray(p.opcoes)) p.opcoes = [];
+  p.opcoes.push('Opção '+(p.opcoes.length+1));
+  _vagasEditorRender();
+}
+function _vagasEditorRemOpcao(idx, opcIdx){
+  _vagasEditorSyncFromDom();
+  var p = _vagasEditorPerguntas[idx];
+  if(Array.isArray(p.opcoes)) p.opcoes.splice(opcIdx, 1);
+  _vagasEditorRender();
+}
+function _vagasEditorTogglePermitirOutro(idx){
+  _vagasEditorSyncFromDom();
+  _vagasEditorPerguntas[idx].permitirOutro = !_vagasEditorPerguntas[idx].permitirOutro;
+  _vagasEditorRender();
+}
+
 // ─── EDITOR ───
 function _renderVagasEditor(el){
   var v = _vagasEditId ? _vagasGetById(_vagasEditId) : null;
@@ -7785,7 +7969,8 @@ function _renderVagasEditor(el){
   var requisitos = (v.requisitos||[]).join('\n');
   var expectativas = (v.expectativas||[]).join('\n');
   var diferenciais = (v.diferenciais||[]).join('\n');
-  var perguntas = (v.perguntasCustom||[]).map(function(p){ return p.label||p; }).join('\n');
+  // Inicializa o builder de perguntas com o que tá salvo (migrando formato antigo se preciso)
+  _vagasEditorPerguntas = _vagasMigrarPerguntas(v.perguntasCustom);
 
   el.innerHTML = ''+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">'+
@@ -7801,7 +7986,18 @@ function _renderVagasEditor(el){
         '<div class="fg"><label class="fl">O que esperamos (um por linha)</label><textarea class="fi" id="vag-expectativas" rows="5" style="resize:vertical;">'+_esc(expectativas)+'</textarea></div>'+
         '<div class="fg"><label class="fl">Diferenciais / Plus (um por linha)</label><textarea class="fi" id="vag-diferenciais" rows="4" style="resize:vertical;">'+_esc(diferenciais)+'</textarea></div>'+
         '<div class="fg"><label class="fl">Por que essa vaga é única</label>'+_vagasMdToolbarHtml('vag-porqueunica')+'<textarea class="fi" id="vag-porqueunica" rows="5" style="resize:vertical;">'+_esc(v.porqueUnica||'')+'</textarea></div>'+
-        '<div class="fg"><label class="fl">Perguntas custom no formulário (uma por linha — além de nome/email/instagram/whatsapp)</label><textarea class="fi" id="vag-perguntas" rows="3" style="resize:vertical;" placeholder="Por que você quer essa vaga?\nQual seu portfólio?">'+_esc(perguntas)+'</textarea></div>'+
+        // BUILDER DE PERGUNTAS (estilo Google Forms)
+        '<div class="fg">'+
+          '<label class="fl">Perguntas do formulário</label>'+
+          '<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Além de nome/email/Instagram/WhatsApp/portfólio (que já vêm fixos), você monta as perguntas extras aqui — escolha o tipo, marque se é obrigatória e, pra escolha única/múltipla, defina as opções.</div>'+
+          '<div id="vag-perguntas-list" style="margin-bottom:10px;"></div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:var(--bg);border:1px dashed var(--border);border-radius:10px;padding:10px;">'+
+            '<span style="font-size:12px;font-weight:600;color:var(--text2);">+ Adicionar pergunta:</span>'+
+            VAGAS_TIPOS_PERGUNTA.map(function(t){
+              return '<button type="button" onclick="_vagasEditorAddPergunta(\''+t.id+'\')" class="btn btn-ghost" style="padding:4px 10px;font-size:12px;">'+t.icone+' '+t.label+'</button>';
+            }).join('')+
+          '</div>'+
+        '</div>'+
       '</div>'+
       // SIDEBAR CONFIG
       '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;position:sticky;top:12px;">'+
@@ -7822,6 +8018,8 @@ function _renderVagasEditor(el){
         '</div>'+
       '</div>'+
     '</div>';
+  // Renderiza o builder de perguntas dentro do container
+  _vagasEditorRender();
 }
 
 function vagasSalvar(){
@@ -7844,9 +8042,24 @@ function vagasSalvar(){
   v.salario = (document.getElementById('vag-salario').value||'').trim();
   v.publicada = document.getElementById('vag-publicada').checked;
   v.slug = _vagasSlugUnico(v.titulo, v.id);
-  // perguntas custom
-  var perRaw = (document.getElementById('vag-perguntas').value||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
-  v.perguntasCustom = perRaw.map(function(label, i){ return { id:'p'+(i+1), label:label }; });
+  // perguntas custom (do builder estilo Google Forms)
+  _vagasEditorSyncFromDom(); // garante que último input em foco seja capturado
+  v.perguntasCustom = _vagasEditorPerguntas
+    .map(function(p, i){
+      var tipoDef = VAGAS_TIPOS_PERGUNTA.find(function(t){ return t.id===p.tipo; }) || VAGAS_TIPOS_PERGUNTA[0];
+      var opcoesLimpas = tipoDef.precisaOpcoes
+        ? (p.opcoes||[]).map(function(o){ return String(o||'').trim(); }).filter(Boolean)
+        : [];
+      return {
+        id: p.id || 'p'+(i+1),
+        label: String(p.label||'').trim(),
+        tipo: p.tipo || 'curta',
+        obrigatoria: !!p.obrigatoria,
+        opcoes: opcoesLimpas,
+        permitirOutro: tipoDef.precisaOpcoes ? !!p.permitirOutro : false
+      };
+    })
+    .filter(function(p){ return p.label.length > 0; }); // ignora perguntas sem texto
   v._updatedAt = Date.now();
 
   var todas = _vagasGetAll();
@@ -7962,10 +8175,20 @@ function vagasAbrirCandidato(candId){
     return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
   }).join('');
 
+  function _fmtResposta(p, r){
+    if(r == null) return '—';
+    if(Array.isArray(r)) return r.length ? r.map(_esc).join(', ') : '—';
+    var s = String(r);
+    if(!s.trim()) return '—';
+    return _esc(s);
+  }
   var perguntasHtml = perguntas.length
     ? perguntas.map(function(p){
-        var val = resp[p.id] || '—';
-        return '<div style="margin-bottom:14px;"><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+_esc(p.label)+'</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5;">'+_esc(val)+'</div></div>';
+        var tipoLabel = (VAGAS_TIPOS_PERGUNTA.find(function(t){ return t.id===(p.tipo||'curta'); })||{}).label || 'Texto';
+        return '<div style="margin-bottom:14px;">'+
+          '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+_esc(p.label)+' <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7;">('+tipoLabel+')</span></div>'+
+          '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5;">'+_fmtResposta(p, resp[p.id])+'</div>'+
+        '</div>';
       }).join('')
     : '<div style="font-size:12px;color:var(--text2);font-style:italic;">Sem perguntas custom nessa vaga.</div>';
 

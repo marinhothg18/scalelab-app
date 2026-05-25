@@ -955,12 +955,28 @@ app.post('/api/vagas/publica/:slug/aplicar', aplicarLimiter, (req, res) => {
     if (!nome || !email) return res.status(400).json({ error: 'Nome e email são obrigatórios' });
     if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
 
-    // Sanitiza respostas custom — só strings, máx 2000 chars cada, só pra perguntas conhecidas
-    const perguntasIds = (v.perguntasCustom || []).map(p => p.id);
+    // Sanitiza respostas custom — só perguntas conhecidas. String OU array (checkbox).
+    // String: max 2000 chars. Array: max 50 itens, cada item max 500 chars.
+    const perguntasMap = {};
+    (v.perguntasCustom || []).forEach(p => { perguntasMap[p.id] = p; });
     const respClean = {};
     for (const k of Object.keys(respostasCustom)) {
-      if (perguntasIds.includes(k)) {
-        respClean[k] = String(respostasCustom[k] || '').slice(0, 2000);
+      if (!perguntasMap[k]) continue;
+      const raw = respostasCustom[k];
+      if (Array.isArray(raw)) {
+        respClean[k] = raw.slice(0, 50).map(v => String(v == null ? '' : v).slice(0, 500));
+      } else {
+        respClean[k] = String(raw == null ? '' : raw).slice(0, 2000);
+      }
+    }
+
+    // Valida obrigatórias do servidor (defesa em profundidade — frontend já valida)
+    for (const p of (v.perguntasCustom || [])) {
+      if (!p.obrigatoria) continue;
+      const r = respClean[p.id];
+      const vazio = (r == null) || (typeof r === 'string' && !r.trim()) || (Array.isArray(r) && !r.length);
+      if (vazio) {
+        return res.status(400).json({ error: 'Pergunta obrigatória sem resposta: ' + p.label });
       }
     }
 
