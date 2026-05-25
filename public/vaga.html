@@ -206,6 +206,17 @@
 
   function nl2br(s){ return esc(s).replace(/\n/g,'<br>'); }
 
+  // Markdown leve — mesmo parser do admin (negrito, itálico, link, quebras)
+  function mdToHtml(txt){
+    if(!txt) return '';
+    var safe = esc(txt);
+    safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;">$1</a>');
+    safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    safe = safe.replace(/\n/g, '<br>');
+    return safe;
+  }
+
   // Carrega dados da vaga
   function carregar(){
     if(!SLUG){ erroEstado('URL inválida', 'Não foi possível identificar a vaga.'); return; }
@@ -258,7 +269,7 @@
           '<div class="card">'+
             (v.descricao ?
               '<div class="secao">'+
-                '<div class="descricao">' + nl2br(v.descricao) + '</div>'+
+                '<div class="descricao">' + mdToHtml(v.descricao) + '</div>'+
               '</div>'
               : '') +
             (v.requisitos && v.requisitos.length ?
@@ -272,7 +283,7 @@
               : '') +
             (v.porqueUnica ?
               '<div class="secao"><h2><span class="ico">💎</span>Por que essa vaga é única</h2>'+
-                '<div class="descricao">' + nl2br(v.porqueUnica) + '</div>'+
+                '<div class="descricao">' + mdToHtml(v.porqueUnica) + '</div>'+
               '</div>'
               : '') +
             '<div class="cta-wrap">'+
@@ -298,6 +309,7 @@
             '<div class="fg"><label class="fl">Email<span class="req">*</span></label><input class="fi" id="ca-email" type="email" required placeholder="seu@email.com"></div>'+
             '<div class="fg"><label class="fl">Instagram</label><input class="fi" id="ca-instagram" type="text" placeholder="@seuhandle"></div>'+
             '<div class="fg"><label class="fl">WhatsApp</label><input class="fi" id="ca-whatsapp" type="text" placeholder="(11) 99999-9999"></div>'+
+            '<div class="fg"><label class="fl">Portfólio / Currículo (link)</label><input class="fi" id="ca-portfolio" type="url" placeholder="https://drive.google.com/... ou https://github.com/seuuser"></div>'+
             renderPerguntasCustom(v.perguntasCustom || []) +
             '<div class="cta-wrap" style="border-top:none;padding-top:8px;">'+
               '<button class="btn-cta" id="btn-enviar" onclick="enviarCandidatura()">Enviar candidatura</button>'+
@@ -338,6 +350,7 @@
     var email = (document.getElementById('ca-email').value || '').trim();
     var instagram = (document.getElementById('ca-instagram').value || '').trim();
     var whatsapp = (document.getElementById('ca-whatsapp').value || '').trim();
+    var portfolio = (document.getElementById('ca-portfolio').value || '').trim();
 
     if(!nome){ alert('Informe seu nome.'); return; }
     if(!email || !/^\S+@\S+\.\S+$/.test(email)){ alert('Email inválido.'); return; }
@@ -354,7 +367,7 @@
     fetch('/api/vagas/publica/' + encodeURIComponent(SLUG) + '/aplicar', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ nome:nome, email:email, instagram:instagram, whatsapp:whatsapp, respostasCustom: respostas })
+      body: JSON.stringify({ nome:nome, email:email, instagram:instagram, whatsapp:whatsapp, portfolio:portfolio, respostasCustom: respostas })
     })
     .then(function(r){
       if(!r.ok) return r.json().then(function(j){ throw new Error(j.error || 'Erro'); });

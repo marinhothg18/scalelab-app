@@ -97,6 +97,10 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab
 app.get('/vaga/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'vaga.html'));
 });
+// /vagas → lista pública de todas as vagas ativas (ponto único pra compartilhar)
+app.get('/vagas', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'vagas-publico.html'));
+});
 
 // ── BANCO DE DADOS ──
 function readDB() {
@@ -875,6 +879,31 @@ const aplicarLimiter = rateLimit({
   message: { error: 'Muitas candidaturas. Aguarde 1 hora antes de tentar novamente.' }
 });
 
+// GET /api/vagas/publicas — lista pública de TODAS as vagas ativas+publicadas
+// (usada pela página /vagas; só campos públicos)
+app.get('/api/vagas/publicas', (req, res) => {
+  try {
+    const db = readDB();
+    const todas = db.store['sl_vagas'] || [];
+    const visiveis = todas
+      .filter(v => v && v.publicada && v.status !== 'Encerrada')
+      .map(v => ({
+        id: v.id,
+        titulo: v.titulo || '',
+        area: v.area || '',
+        modelo: v.modelo || '',
+        salario: v.salario || '',
+        slug: v.slug,
+        descricao: (v.descricao || '').slice(0, 280) // preview curto
+      }))
+      .sort((a, b) => String(a.titulo).localeCompare(String(b.titulo), 'pt-BR'));
+    res.json(visiveis);
+  } catch (e) {
+    console.error('[VAGAS publicas list]', e.message);
+    res.status(500).json({ error: 'Erro ao listar vagas' });
+  }
+});
+
 // GET /api/vagas/publica/:slug — retorna dados públicos da vaga (sem auth)
 // Só vagas com publicada=true e status !=='Encerrada'. Strip de campos internos.
 app.get('/api/vagas/publica/:slug', (req, res) => {
@@ -920,6 +949,7 @@ app.post('/api/vagas/publica/:slug/aplicar', aplicarLimiter, (req, res) => {
     const email = String(body.email || '').trim().slice(0, 200);
     const instagram = String(body.instagram || '').trim().slice(0, 100);
     const whatsapp = String(body.whatsapp || '').trim().slice(0, 60);
+    const portfolio = String(body.portfolio || '').trim().slice(0, 500);
     const respostasCustom = (body.respostasCustom && typeof body.respostasCustom === 'object') ? body.respostasCustom : {};
 
     if (!nome || !email) return res.status(400).json({ error: 'Nome e email são obrigatórios' });
@@ -943,6 +973,7 @@ app.post('/api/vagas/publica/:slug/aplicar', aplicarLimiter, (req, res) => {
       email,
       instagram,
       whatsapp,
+      portfolio,
       respostasCustom: respClean,
       status: 'Novo',
       criadoEm: new Date().toISOString(),

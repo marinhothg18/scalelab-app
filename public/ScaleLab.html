@@ -7487,7 +7487,8 @@ function pdDelColab(idx){
 var _vagasView = 'lista';        // 'lista' | 'editor' | 'detalhe' | 'talentos'
 var _vagasEditId = null;          // id da vaga em edição
 var _vagasDetalheId = null;       // id da vaga no detalhe
-var _vagasKanbanFiltroVaga = '';  // filtro de vaga no kanban de talentos
+var _vagasFiltros = { vaga:'', status:'', busca:'' };  // filtros do banco de talentos
+var _vagasModalCandidatoId = null; // id do candidato no modal aberto
 
 var VAGAS_STATUS_VAGA = ['Ativa','Pausada','Encerrada'];
 var VAGAS_AREAS = ['Copy','Edição','Tráfego','Infra','Spy','Gestão','RH','Outros'];
@@ -7527,6 +7528,134 @@ function _vagasSlugUnico(titulo, excetoId){
 function _vagasPublicUrl(slug){
   if(!slug) return '';
   return location.origin + '/vaga/' + encodeURIComponent(slug);
+}
+
+// ─── MARKDOWN LEVE → HTML (negrito, itálico, links, quebras) ───
+function _vagasMarkdown(txt){
+  if(!txt) return '';
+  var safe = _esc(txt);
+  // links [texto](url) — antes de outros, e validando protocolo
+  safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;">$1</a>');
+  // **negrito**
+  safe = safe.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  // *itálico* (evita conflito com ** já substituído)
+  safe = safe.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  // quebras
+  safe = safe.replace(/\n/g, '<br>');
+  return safe;
+}
+
+// Toolbar markdown — insere marcação em torno da seleção do textarea
+function _vagasMdInsert(textareaId, prefixo, sufixo, placeholder){
+  var el = document.getElementById(textareaId);
+  if(!el) return;
+  var start = el.selectionStart, end = el.selectionEnd;
+  var val = el.value, sel = val.slice(start, end) || (placeholder||'texto');
+  var antes = val.slice(0, start), depois = val.slice(end);
+  var insercao = prefixo + sel + sufixo;
+  el.value = antes + insercao + depois;
+  el.focus();
+  var novoIni = start + prefixo.length;
+  el.setSelectionRange(novoIni, novoIni + sel.length);
+}
+function _vagasMdLink(textareaId){
+  var url = prompt('URL do link (https://...):', 'https://');
+  if(!url || !/^https?:\/\//i.test(url)) return;
+  var el = document.getElementById(textareaId);
+  if(!el) return;
+  var start = el.selectionStart, end = el.selectionEnd;
+  var val = el.value, sel = val.slice(start, end) || 'clique aqui';
+  var insercao = '['+sel+']('+url+')';
+  el.value = val.slice(0,start) + insercao + val.slice(end);
+  el.focus();
+}
+function _vagasMdToolbarHtml(textareaId){
+  return '<div style="display:flex;gap:4px;margin-bottom:6px;">'+
+    '<button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:12px;font-weight:700;" onclick="_vagasMdInsert(\''+textareaId+'\', \'**\', \'**\', \'negrito\')" title="Negrito (Ctrl+B)">B</button>'+
+    '<button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:12px;font-style:italic;" onclick="_vagasMdInsert(\''+textareaId+'\', \'*\', \'*\', \'itálico\')" title="Itálico">I</button>'+
+    '<button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="_vagasMdLink(\''+textareaId+'\')" title="Link">🔗 Link</button>'+
+    '<span style="font-size:10px;color:var(--text2);margin-left:auto;align-self:center;">**negrito** *itálico* [texto](url)</span>'+
+    '</div>';
+}
+
+// ─── DRAG & DROP (HTML5) ───
+var _vagasDragCandId = null;
+function _vagasDragStart(ev, candId){
+  _vagasDragCandId = candId;
+  try{ ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', candId); }catch(e){}
+}
+function _vagasDragOver(ev){ ev.preventDefault(); try{ ev.dataTransfer.dropEffect='move'; }catch(e){} }
+function _vagasDragEnter(ev){ ev.preventDefault(); ev.currentTarget.style.background = 'rgba(91,94,244,.08)'; }
+function _vagasDragLeave(ev){ ev.currentTarget.style.background = ''; }
+function _vagasDrop(ev, novoStatus){
+  ev.preventDefault();
+  ev.currentTarget.style.background = '';
+  var candId = _vagasDragCandId || (ev.dataTransfer && ev.dataTransfer.getData('text/plain'));
+  if(!candId) return;
+  _vagasDragCandId = null;
+  vagasMoverCandidato(candId, novoStatus);
+}
+
+// ─── CSV EXPORT ───
+function _vagasCsvEscape(v){
+  var s = String(v==null?'':v);
+  if(/[";\n\r]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function vagasExportCSV(){
+  var cands = _vagasFiltrarCandidatos();
+  if(!cands.length){ alert('Nenhum candidato pra exportar com os filtros atuais.'); return; }
+  var vagas = _vagasGetAll();
+  function nomeVaga(vagaId){
+    var v = vagas.find(function(x){ return String(x.id)===String(vagaId); });
+    return v ? v.titulo : '(vaga removida)';
+  }
+  var headers = ['Vaga','Nome','Email','Instagram','WhatsApp','Portfolio','Status','Score','Anotacoes','Recebido em'];
+  var linhas = [headers.join(';')];
+  cands.forEach(function(c){
+    linhas.push([
+      nomeVaga(c.vagaId), c.nome||'', c.email||'', c.instagram||'', c.whatsapp||'',
+      c.portfolio||'', c.status||'Novo', (c.score||''), c.anotacoes||'',
+      c.criadoEm||''
+    ].map(_vagasCsvEscape).join(';'));
+  });
+  var csv = '﻿' + linhas.join('\r\n'); // BOM pra Excel BR abrir UTF-8 ok
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'candidatos-axcend-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ─── FILTRO no banco de talentos ───
+function _vagasFiltrarCandidatos(){
+  var cands = _vagasGetCandidatos();
+  var f = _vagasFiltros;
+  if(f.vaga)   cands = cands.filter(function(c){ return String(c.vagaId)===String(f.vaga); });
+  if(f.status) cands = cands.filter(function(c){ return (c.status||'Novo')===f.status; });
+  if(f.busca){
+    var q = f.busca.toLowerCase();
+    cands = cands.filter(function(c){
+      return (c.nome||'').toLowerCase().indexOf(q)>=0 ||
+             (c.email||'').toLowerCase().indexOf(q)>=0 ||
+             (c.instagram||'').toLowerCase().indexOf(q)>=0 ||
+             (c.whatsapp||'').toLowerCase().indexOf(q)>=0;
+    });
+  }
+  return cands;
+}
+
+// ─── STARS (display de score) ───
+function _vagasStars(n){
+  n = Number(n) || 0;
+  if(!n) return '<span style="font-size:11px;color:var(--text2);">sem nota</span>';
+  var out = '';
+  for(var i=1;i<=5;i++){
+    out += '<span style="color:'+(i<=n?'#FBBF24':'#374151')+';font-size:13px;">★</span>';
+  }
+  return out;
 }
 
 function _vagasContadorPorStatus(vagaId){
@@ -7667,11 +7796,11 @@ function _renderVagasEditor(el){
       // CONTEÚDO
       '<div style="display:flex;flex-direction:column;gap:16px;">'+
         '<div class="fg"><label class="fl">Título da vaga *</label><input class="fi" id="vag-titulo" placeholder="Ex: Copywriter Pleno ou Sênior" value="'+_esc(v.titulo)+'"></div>'+
-        '<div class="fg"><label class="fl">Descrição (introdução / "Faça parte do movimento")</label><textarea class="fi" id="vag-descricao" rows="4" style="resize:vertical;">'+_esc(v.descricao)+'</textarea></div>'+
+        '<div class="fg"><label class="fl">Descrição (introdução / "Faça parte do movimento")</label>'+_vagasMdToolbarHtml('vag-descricao')+'<textarea class="fi" id="vag-descricao" rows="5" style="resize:vertical;">'+_esc(v.descricao)+'</textarea></div>'+
         '<div class="fg"><label class="fl">Requisitos (um por linha)</label><textarea class="fi" id="vag-requisitos" rows="5" style="resize:vertical;" placeholder="Experiência mínima de 2 anos\nPortfólio comprovado">'+_esc(requisitos)+'</textarea></div>'+
         '<div class="fg"><label class="fl">O que esperamos (um por linha)</label><textarea class="fi" id="vag-expectativas" rows="5" style="resize:vertical;">'+_esc(expectativas)+'</textarea></div>'+
         '<div class="fg"><label class="fl">Diferenciais / Plus (um por linha)</label><textarea class="fi" id="vag-diferenciais" rows="4" style="resize:vertical;">'+_esc(diferenciais)+'</textarea></div>'+
-        '<div class="fg"><label class="fl">Por que essa vaga é única</label><textarea class="fi" id="vag-porqueunica" rows="4" style="resize:vertical;">'+_esc(v.porqueUnica||'')+'</textarea></div>'+
+        '<div class="fg"><label class="fl">Por que essa vaga é única</label>'+_vagasMdToolbarHtml('vag-porqueunica')+'<textarea class="fi" id="vag-porqueunica" rows="5" style="resize:vertical;">'+_esc(v.porqueUnica||'')+'</textarea></div>'+
         '<div class="fg"><label class="fl">Perguntas custom no formulário (uma por linha — além de nome/email/instagram/whatsapp)</label><textarea class="fi" id="vag-perguntas" rows="3" style="resize:vertical;" placeholder="Por que você quer essa vaga?\nQual seu portfólio?">'+_esc(perguntas)+'</textarea></div>'+
       '</div>'+
       // SIDEBAR CONFIG
@@ -7756,9 +7885,9 @@ function _renderVagasDetalhe(el){
     var lista = cands.filter(function(c){ return (c.status||'Novo')===col.id; });
     var items = lista.length
       ? lista.map(function(c){ return _vagasCardCandidato(c, v); }).join('')
-      : '<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px 4px;">vazio</div>';
+      : '<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px 4px;">arraste aqui</div>';
     return ''+
-      '<div style="min-width:240px;max-width:280px;flex:0 0 260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;">'+
+      '<div ondragover="_vagasDragOver(event)" ondragenter="_vagasDragEnter(event)" ondragleave="_vagasDragLeave(event)" ondrop="_vagasDrop(event, \''+col.id+'\')" style="min-width:240px;max-width:280px;flex:0 0 260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;transition:background .15s;">'+
         '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">'+
           '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col.cor+';"></span>'+
           '<span style="font-size:12px;font-weight:700;color:var(--text);">'+col.id+'</span>'+
@@ -7781,6 +7910,7 @@ function _renderVagasDetalhe(el){
     '<div style="display:flex;gap:18px;font-size:12px;color:var(--text2);margin-bottom:14px;flex-wrap:wrap;">'+
       '<span><b style="color:var(--text);">'+ct._total+'</b> candidatos totais</span>'+
       VAGAS_KANBAN_COLUNAS.map(function(col){ return '<span><span style="color:'+col.cor+';">●</span> '+col.id+': <b style="color:var(--text);">'+(ct[col.id]||0)+'</b></span>'; }).join('')+
+      '<span style="margin-left:auto;font-size:11px;color:var(--text2);">💡 Arraste os cards entre as colunas</span>'+
     '</div>'+
     '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;">'+kanban+'</div>';
 }
@@ -7791,13 +7921,17 @@ function _vagasCardCandidato(c, v){
     return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
   }).join('');
   return ''+
-    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;">'+
-      '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">'+nome+'</div>'+
+    '<div draggable="true" ondragstart="_vagasDragStart(event, \''+c.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:grab;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px;">'+
+        '<div style="font-size:13px;font-weight:600;color:var(--text);word-break:break-word;flex:1;cursor:pointer;" onclick="vagasAbrirCandidato(\''+c.id+'\')">'+nome+'</div>'+
+        '<div style="white-space:nowrap;">'+_vagasStars(c.score)+'</div>'+
+      '</div>'+
       (c.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;word-break:break-all;">✉️ '+_esc(c.email)+'</div>' : '')+
-      (c.instagram ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;">📷 '+_esc(c.instagram)+'</div>' : '')+
-      (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
-      '<div style="display:flex;gap:4px;margin-top:6px;">'+
-        '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
+      (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
+      (c.portfolio ? '<div style="font-size:11px;color:var(--accent);margin-bottom:2px;word-break:break-all;"><a href="'+_esc(c.portfolio)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📎 Portfólio</a></div>' : '')+
+      (c.anotacoes ? '<div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic;border-left:2px solid var(--border);padding-left:6px;">'+_esc(c.anotacoes.slice(0,80))+(c.anotacoes.length>80?'…':'')+'</div>' : '')+
+      '<div style="display:flex;gap:4px;margin-top:8px;">'+
+        '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" onclick="event.stopPropagation()" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
         '<button onclick="vagasAbrirCandidato(\''+c.id+'\')" title="Ver detalhes" style="background:transparent;border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text);">👁</button>'+
       '</div>'+
     '</div>';
@@ -7818,36 +7952,158 @@ function vagasMoverCandidato(candId, novoStatus){
 function vagasAbrirCandidato(candId){
   var c = _vagasGetCandidatos().find(function(x){ return String(x.id)===String(candId); });
   if(!c) return;
+  _vagasModalCandidatoId = candId;
   var v = _vagasGetById(c.vagaId);
   var resp = c.respostasCustom || {};
   var perguntas = (v && v.perguntasCustom) || [];
-  var extras = perguntas.length
+  var scoreAtual = Number(c.score)||0;
+
+  var statusOpts = VAGAS_KANBAN_COLUNAS.map(function(col){
+    return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
+  }).join('');
+
+  var perguntasHtml = perguntas.length
     ? perguntas.map(function(p){
         var val = resp[p.id] || '—';
-        return '<div style="margin-bottom:10px;"><div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:2px;">'+_esc(p.label)+'</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;">'+_esc(val)+'</div></div>';
+        return '<div style="margin-bottom:14px;"><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+_esc(p.label)+'</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5;">'+_esc(val)+'</div></div>';
       }).join('')
-    : '<div style="font-size:12px;color:var(--text2);font-style:italic;">Sem perguntas custom configuradas.</div>';
-  var info = ''+
-    'Vaga: '+(v?v.titulo:'(removida)')+'\n'+
-    'Nome: '+(c.nome||'—')+'\n'+
-    'Email: '+(c.email||'—')+'\n'+
-    'Instagram: '+(c.instagram||'—')+'\n'+
-    'WhatsApp: '+(c.whatsapp||'—')+'\n'+
-    'Status: '+(c.status||'Novo')+'\n'+
-    'Recebido em: '+(c.criadoEm || '—')+'\n\n'+
-    perguntas.map(function(p){ return p.label+': '+(resp[p.id]||'—'); }).join('\n');
-  alert(info);
+    : '<div style="font-size:12px;color:var(--text2);font-style:italic;">Sem perguntas custom nessa vaga.</div>';
+
+  var starsBtn = '';
+  for(var i=1;i<=5;i++){
+    starsBtn += '<button type="button" data-star="'+i+'" onclick="_vagasModalSetScore('+i+')" style="background:transparent;border:none;cursor:pointer;font-size:24px;padding:2px 4px;color:'+(i<=scoreAtual?'#FBBF24':'#374151')+';">★</button>';
+  }
+  starsBtn += '<button type="button" onclick="_vagasModalSetScore(0)" style="background:transparent;border:none;cursor:pointer;font-size:11px;color:var(--text2);margin-left:8px;text-decoration:underline;">limpar</button>';
+
+  var html = ''+
+    '<div id="vagas-modal-cand" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)vagasFecharModalCandidato()">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:680px;width:100%;max-height:90vh;overflow:auto;">'+
+        // header
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:20px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:2;">'+
+          '<div style="flex:1;">'+
+            '<div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+(v?_esc(v.titulo):'(vaga removida)')+'</div>'+
+            '<div style="font-size:20px;font-weight:700;color:var(--text);">'+_esc(c.nome||'(sem nome)')+'</div>'+
+            '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Recebido em '+_esc(c.criadoEm||'—')+'</div>'+
+          '</div>'+
+          '<button onclick="vagasFecharModalCandidato()" style="background:transparent;border:none;color:var(--text2);font-size:24px;cursor:pointer;line-height:1;">✕</button>'+
+        '</div>'+
+        // body
+        '<div style="padding:20px 24px;">'+
+          // info contato
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">'+
+            '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div><div style="font-size:13px;color:var(--text);word-break:break-all;">'+_esc(c.email||'—')+'</div></div>'+
+            '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">WhatsApp</div><div style="font-size:13px;color:var(--text);">'+_esc(c.whatsapp||'—')+'</div></div>'+
+            '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Instagram</div><div style="font-size:13px;color:var(--text);">'+_esc(c.instagram||'—')+'</div></div>'+
+            '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Portfólio</div><div style="font-size:13px;color:var(--text);word-break:break-all;">'+(c.portfolio?'<a href="'+_esc(c.portfolio)+'" target="_blank" rel="noopener" style="color:var(--accent);">📎 Abrir</a>':'—')+'</div></div>'+
+          '</div>'+
+          // score
+          '<div style="margin-bottom:20px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">'+
+            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Score</div>'+
+            '<div id="vagas-modal-stars">'+starsBtn+'</div>'+
+          '</div>'+
+          // status
+          '<div style="margin-bottom:20px;">'+
+            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Status no funil</div>'+
+            '<select id="vagas-modal-status" class="fs" style="max-width:200px;">'+statusOpts+'</select>'+
+          '</div>'+
+          // anotações
+          '<div style="margin-bottom:20px;">'+
+            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Anotações internas</div>'+
+            '<textarea id="vagas-modal-anotacoes" class="fi" rows="4" style="resize:vertical;" placeholder="Ex: muito boa pra área X, falar com Ana, agendar entrevista em…">'+_esc(c.anotacoes||'')+'</textarea>'+
+          '</div>'+
+          // respostas custom
+          '<div style="margin-bottom:20px;">'+
+            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Respostas do formulário</div>'+
+            perguntasHtml+
+          '</div>'+
+        '</div>'+
+        // footer
+        '<div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;position:sticky;bottom:0;background:var(--card);">'+
+          '<button class="btn btn-ghost" onclick="vagasRemoverCandidato(\''+c.id+'\')" style="color:#DC2626;">Remover candidato</button>'+
+          '<div style="display:flex;gap:8px;">'+
+            '<button class="btn btn-ghost" onclick="vagasFecharModalCandidato()">Cancelar</button>'+
+            '<button class="btn btn-primary" onclick="vagasSalvarCandidato()">Salvar alterações</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  // remove modal antigo se houver
+  var antigo = document.getElementById('vagas-modal-cand');
+  if(antigo) antigo.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function vagasFecharModalCandidato(){
+  var m = document.getElementById('vagas-modal-cand');
+  if(m) m.remove();
+  _vagasModalCandidatoId = null;
+}
+
+function _vagasModalSetScore(n){
+  // Atualiza visual
+  var stars = document.querySelectorAll('#vagas-modal-stars [data-star]');
+  stars.forEach(function(el){
+    var v = Number(el.getAttribute('data-star'));
+    el.style.color = (v<=n) ? '#FBBF24' : '#374151';
+  });
+  // Salva temporariamente num data-attribute
+  document.getElementById('vagas-modal-stars').setAttribute('data-score', n);
+}
+
+function vagasSalvarCandidato(){
+  if(!_vagasModalCandidatoId) return;
+  var cands = _vagasGetCandidatos();
+  var idx = cands.findIndex(function(x){ return String(x.id)===String(_vagasModalCandidatoId); });
+  if(idx<0) return;
+  var status = document.getElementById('vagas-modal-status').value;
+  var anotacoes = (document.getElementById('vagas-modal-anotacoes').value||'').trim();
+  var scoreEl = document.getElementById('vagas-modal-stars');
+  var score = scoreEl ? Number(scoreEl.getAttribute('data-score')) : Number(cands[idx].score)||0;
+  if(isNaN(score)) score = 0;
+  cands[idx].status = status;
+  cands[idx].anotacoes = anotacoes;
+  cands[idx].score = score;
+  cands[idx]._updatedAt = Date.now();
+  s('sl_candidatos', cands);
+  vagasFecharModalCandidato();
+  // re-render view atual
+  if(_vagasView==='detalhe') _renderVagasDetalhe(document.getElementById('gestao-content'));
+  else if(_vagasView==='talentos') _renderVagasTalentos(document.getElementById('gestao-content'));
+}
+
+function vagasRemoverCandidato(candId){
+  if(!confirm('Mover esse candidato pra lixeira?')) return;
+  try{ sDelete('sl_candidatos', candId, 'Candidato'); }catch(e){
+    var cands = _vagasGetCandidatos().filter(function(x){ return String(x.id)!==String(candId); });
+    s('sl_candidatos', cands);
+  }
+  vagasFecharModalCandidato();
+  if(_vagasView==='detalhe') _renderVagasDetalhe(document.getElementById('gestao-content'));
+  else if(_vagasView==='talentos') _renderVagasTalentos(document.getElementById('gestao-content'));
 }
 
 // ─── BANCO DE TALENTOS (KANBAN GLOBAL) ───
+function _vagasFiltroChange(campo, valor){
+  _vagasFiltros[campo] = valor || '';
+  // re-render mantendo foco no input de busca
+  _renderVagasTalentos(document.getElementById('gestao-content'));
+  if(campo==='busca'){
+    var b = document.getElementById('vagas-busca');
+    if(b){ b.focus(); var len = b.value.length; b.setSelectionRange(len, len); }
+  }
+}
+
 function _renderVagasTalentos(el){
   var vagas = _vagasGetAll();
-  var cands = _vagasGetCandidatos();
-  var filtro = _vagasKanbanFiltroVaga;
-  if(filtro) cands = cands.filter(function(c){ return String(c.vagaId)===String(filtro); });
+  var totalGeral = _vagasGetCandidatos().length;
+  var cands = _vagasFiltrarCandidatos();
 
   var vagaOpts = '<option value="">Todas as vagas</option>' +
-    vagas.map(function(v){ return '<option value="'+v.id+'"'+(filtro==v.id?' selected':'')+'>'+_esc(v.titulo)+'</option>'; }).join('');
+    vagas.map(function(v){ return '<option value="'+v.id+'"'+(_vagasFiltros.vaga==v.id?' selected':'')+'>'+_esc(v.titulo)+'</option>'; }).join('');
+
+  var statusOpts2 = '<option value="">Todos os status</option>' +
+    VAGAS_KANBAN_COLUNAS.map(function(col){ return '<option value="'+col.id+'"'+(_vagasFiltros.status===col.id?' selected':'')+'>'+col.id+'</option>'; }).join('');
 
   var kanban = VAGAS_KANBAN_COLUNAS.map(function(col){
     var lista = cands.filter(function(c){ return (c.status||'Novo')===col.id; }).sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); });
@@ -7860,20 +8116,25 @@ function _renderVagasTalentos(el){
             return '<option value="'+c2.id+'"'+(col.id===c2.id?' selected':'')+'>'+c2.id+'</option>';
           }).join('');
           return ''+
-            '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;">'+
-              '<div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:4px;cursor:pointer;" onclick="vagasAbrirDetalhe(\''+(c.vagaId||'')+'\')">'+nomeVaga+'</div>'+
-              '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;">'+nome+'</div>'+
+            '<div draggable="true" ondragstart="_vagasDragStart(event, \''+c.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:grab;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'+
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px;">'+
+                '<div style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;flex:1;" onclick="vagasAbrirDetalhe(\''+(c.vagaId||'')+'\')">'+nomeVaga+'</div>'+
+                '<div style="white-space:nowrap;">'+_vagasStars(c.score)+'</div>'+
+              '</div>'+
+              '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;word-break:break-word;cursor:pointer;" onclick="vagasAbrirCandidato(\''+c.id+'\')">'+nome+'</div>'+
               (c.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;word-break:break-all;">✉️ '+_esc(c.email)+'</div>' : '')+
-              (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
-              '<div style="display:flex;gap:4px;margin-top:6px;">'+
-                '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
+              (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
+              (c.portfolio ? '<div style="font-size:11px;color:var(--accent);margin-bottom:2px;word-break:break-all;"><a href="'+_esc(c.portfolio)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📎 Portfólio</a></div>' : '')+
+              (c.anotacoes ? '<div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic;border-left:2px solid var(--border);padding-left:6px;">'+_esc(c.anotacoes.slice(0,80))+(c.anotacoes.length>80?'…':'')+'</div>' : '')+
+              '<div style="display:flex;gap:4px;margin-top:8px;">'+
+                '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" onclick="event.stopPropagation()" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
                 '<button onclick="vagasAbrirCandidato(\''+c.id+'\')" title="Ver detalhes" style="background:transparent;border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text);">👁</button>'+
               '</div>'+
             '</div>';
         }).join('')
-      : '<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px 4px;">vazio</div>';
+      : '<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px 4px;">arraste aqui</div>';
     return ''+
-      '<div style="min-width:240px;max-width:280px;flex:0 0 260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;">'+
+      '<div ondragover="_vagasDragOver(event)" ondragenter="_vagasDragEnter(event)" ondragleave="_vagasDragLeave(event)" ondrop="_vagasDrop(event, \''+col.id+'\')" style="min-width:240px;max-width:280px;flex:0 0 260px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;transition:background .15s;">'+
         '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">'+
           '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col.cor+';"></span>'+
           '<span style="font-size:12px;font-weight:700;color:var(--text);">'+col.id+'</span>'+
@@ -7883,13 +8144,27 @@ function _renderVagasTalentos(el){
       '</div>';
   }).join('');
 
+  var temFiltro = !!(_vagasFiltros.vaga || _vagasFiltros.status || _vagasFiltros.busca);
+
   el.innerHTML = ''+
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">'+
       '<button class="btn btn-ghost" onclick="vagasVoltarLista()" style="padding:4px 10px;font-size:12px;">← Voltar</button>'+
       '<div style="font-size:20px;font-weight:700;color:var(--text);">Banco de talentos</div>'+
-      '<select class="fs" style="margin-left:12px;max-width:280px;" onchange="_vagasKanbanFiltroVaga=this.value;renderVagas();">'+vagaOpts+'</select>'+
-      '<span style="margin-left:auto;font-size:12px;color:var(--text2);"><b style="color:var(--text);">'+cands.length+'</b> candidatos</span>'+
+      '<span style="font-size:12px;color:var(--text2);margin-left:8px;">'+
+        '<b style="color:var(--text);">'+cands.length+'</b>'+(temFiltro?' de '+totalGeral:'')+' candidato'+(cands.length===1?'':'s')+
+      '</span>'+
+      '<div style="margin-left:auto;display:flex;gap:6px;">'+
+        '<button class="btn btn-ghost" onclick="vagasExportCSV()" style="padding:4px 10px;font-size:12px;">📥 Exportar CSV</button>'+
+      '</div>'+
     '</div>'+
+    // FILTROS
+    '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;">'+
+      '<input id="vagas-busca" class="fi" placeholder="🔎 Buscar por nome, email, Instagram, WhatsApp…" value="'+_esc(_vagasFiltros.busca)+'" oninput="_vagasFiltroChange(\'busca\', this.value)" style="flex:1;min-width:220px;font-size:13px;">'+
+      '<select class="fs" onchange="_vagasFiltroChange(\'vaga\', this.value)" style="max-width:240px;font-size:13px;">'+vagaOpts+'</select>'+
+      '<select class="fs" onchange="_vagasFiltroChange(\'status\', this.value)" style="max-width:180px;font-size:13px;">'+statusOpts2+'</select>'+
+      (temFiltro ? '<button class="btn btn-ghost" onclick="_vagasFiltros={vaga:\'\',status:\'\',busca:\'\'};renderVagas();" style="padding:4px 10px;font-size:12px;">Limpar</button>' : '')+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;">💡 Arraste os cards entre as colunas pra mudar o status</div>'+
     '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;">'+kanban+'</div>';
 }
 
