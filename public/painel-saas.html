@@ -284,16 +284,16 @@ function s(k, v){
     });
   }
   localStorage.setItem(k, JSON.stringify(v));
-  // Sincroniza com o servidor (mesmo backend do Axcend)
-  fetch(API_BASE + '/api/store/' + encodeURIComponent(k), {
-    method:'POST', // por compatibilidade, mas servidor aceita PUT também
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(v)
-  }).catch(function(){});
-  // Tenta também via PUT (que é o endpoint canônico)
-  fetch(API_BASE + '/api/store/' + encodeURIComponent(k), {
+  // Sincroniza com o servidor. Painel SaaS sempre escreve como super-admin
+  // (autenticado com Bearer + ?_super=1) pra poder gravar chaves da plataforma
+  // (sl_saas_tenants, sl_saas_config, sl_saas_faturas).
+  var token = localStorage.getItem('sl_session_token') || '';
+  fetch(API_BASE + '/api/store/' + encodeURIComponent(k) + '?_super=1', {
     method:'PUT',
-    headers:{'Content-Type':'application/json'},
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization': token ? 'Bearer ' + token : ''
+    },
     body: JSON.stringify(v)
   }).catch(function(){});
 }
