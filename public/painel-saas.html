@@ -352,7 +352,60 @@ function iniciarApp(){
   document.getElementById('user-nome').textContent = currentUser.nome || currentUser.email;
   // Inicializa storage padrão (config inicial se vazia)
   if(!g('sl_saas_config', null)) s('sl_saas_config', defaultConfig());
+  // Seed: se não houver tenants, cria o "Axcend interno" com dados reais do sistema
+  seedAxcendComoTenant();
+  // Sincroniza dados reais do tenant interno (toda vez que abre, atualiza usuários/vagas/candidatos)
+  atualizarTenantInterno();
   goScreen('dashboard');
+}
+
+// Cria automaticamente o tenant "Axcend interno" se ainda não existir
+function seedAxcendComoTenant(){
+  var ts = getTenants();
+  if(ts.some(function(t){ return t.id==='tenant-axcend-interno'; })) return; // já existe
+  var d = new Date(); d.setFullYear(d.getFullYear()+1); // renovação muito longe
+  var tenant = {
+    id: 'tenant-axcend-interno',
+    nome: 'Axcend (operação interna)',
+    slug: 'axcend',
+    dominio: 'app.centralaxcend.com',
+    ownerEmail: currentUser.email || '',
+    ownerNome: currentUser.nome || '',
+    plano: 'enterprise',
+    status: 'ativo',
+    mrr: 0, // você não paga pra si mesmo
+    moeda: 'BRL',
+    pais: 'BR',
+    cadastroEm: new Date('2025-01-01').toISOString(),
+    renovaEm: d.toISOString(),
+    interno: true, // marca especial
+    notas: 'Esse é VOCÊ — seu próprio Centralaxcend. Cadastrado automaticamente. Não cobra MRR. Dados sincronizados em tempo real com o que existe no sistema.',
+    branding: {
+      primary: '#5b5ef4',
+      secondary: '#3E1493',
+      bgDark: '#0F0F0F'
+    },
+    _updatedAt: Date.now()
+  };
+  ts.unshift(tenant); // primeiro da lista
+  saveTenants(ts);
+}
+
+// Atualiza os contadores do tenant interno com dados REAIS do Axcend
+function atualizarTenantInterno(){
+  var ts = getTenants();
+  var idx = ts.findIndex(function(t){ return t.id==='tenant-axcend-interno'; });
+  if(idx<0) return;
+  var usuarios = (g('sl_usuarios', [])||[]).filter(function(u){ return u && u.ativo !== false; }).length;
+  var vagas = (g('sl_vagas', [])||[]).length;
+  var vagasAtivas = (g('sl_vagas', [])||[]).filter(function(v){ return v && v.status==='Ativa'; }).length;
+  var candidatos = (g('sl_candidatos', [])||[]).length;
+  ts[idx].usuarios = usuarios;
+  ts[idx].vagasTotal = vagas;
+  ts[idx].vagasAtivas = vagasAtivas;
+  ts[idx].candidatosTotal = candidatos;
+  ts[idx]._updatedAt = Date.now();
+  saveTenants(ts);
 }
 
 function defaultConfig(){
@@ -475,6 +528,10 @@ function statusChip(st){
   if(st==='suspenso')     return '<span class="chip neutro">⛔ Suspenso</span>';
   return '<span class="chip neutro">'+esc(st||'—')+'</span>';
 }
+
+function badgeInterno(){
+  return '<span class="chip" style="background:rgba(91,94,244,.2);color:var(--accent);margin-left:6px;">👑 Você</span>';
+}
 function planoChip(id){
   var p = planoById(id);
   if(!p) return '<span class="chip neutro">—</span>';
@@ -547,7 +604,7 @@ function renderDashboard(){
             '<table><thead><tr><th>Cliente</th><th>Plano</th><th>MRR</th><th>Status</th><th></th></tr></thead><tbody>'+
             ultimos.map(function(t){
               return '<tr>'+
-                '<td><div style="display:flex;align-items:center;gap:10px;">'+avHtml(t)+'<div><b>'+esc(t.nome)+'</b><br><span style="font-size:11px;color:var(--text2);">'+esc(t.slug)+'.axcend.com</span></div></div></td>'+
+                '<td><div style="display:flex;align-items:center;gap:10px;">'+avHtml(t)+'<div><b>'+esc(t.nome)+'</b>'+(t.interno?badgeInterno():'')+'<br><span style="font-size:11px;color:var(--text2);">'+esc(t.dominio||t.slug+'.axcend.com')+'</span></div></div></td>'+
                 '<td>'+planoChip(t.plano)+'</td>'+
                 '<td>'+fmtMoney(t.mrr,t.moeda||'BRL')+'</td>'+
                 '<td>'+statusChip(t.status)+'</td>'+
@@ -638,7 +695,7 @@ function renderClientes(){
         filtrados.map(function(t){
           var dr = t.renovaEm ? diasEntre(new Date(), t.renovaEm) : null;
           return '<tr>'+
-            '<td><div style="display:flex;align-items:center;gap:10px;">'+avHtml(t)+'<div><b>'+esc(t.nome)+'</b><br><span style="font-size:11px;color:var(--text2);">'+esc(t.dominio||t.slug+'.axcend.com')+' · '+esc(t.ownerEmail||'')+'</span></div></div></td>'+
+            '<td><div style="display:flex;align-items:center;gap:10px;">'+avHtml(t)+'<div><b>'+esc(t.nome)+'</b>'+(t.interno?badgeInterno():'')+'<br><span style="font-size:11px;color:var(--text2);">'+esc(t.dominio||t.slug+'.axcend.com')+' · '+esc(t.ownerEmail||'')+'</span></div></div></td>'+
             '<td>'+planoChip(t.plano)+'</td>'+
             '<td>'+fmtMoney(t.mrr,t.moeda||'BRL')+'</td>'+
             '<td>'+(t.usuarios||0)+(t.limiteUsuarios?' / '+t.limiteUsuarios:'')+'</td>'+
@@ -809,13 +866,20 @@ function renderClienteDetalhe(){
 }
 
 function renderTenantGeral(t, p, dr){
+  var kpis = ''+
+    '<div class="kpi"><div class="kpi-label">MRR</div><div class="kpi-valor">'+(t.interno?'<span style="color:var(--text2);font-size:14px;">não cobra</span>':fmtMoney(t.mrr,t.moeda||'BRL'))+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Plano</div><div class="kpi-valor" style="font-size:18px;">'+esc(p?p.nome:'—')+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Usuários</div><div class="kpi-valor">'+(t.usuarios||0)+(t.limiteUsuarios?' / '+t.limiteUsuarios:'')+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Status</div><div class="kpi-valor" style="font-size:18px;">'+statusChip(t.status)+'</div></div>';
+  // Pra tenant interno, mostra também vagas e candidatos REAIS do sistema
+  if(t.interno){
+    kpis += ''+
+      '<div class="kpi"><div class="kpi-label">Vagas (ativas / total)</div><div class="kpi-valor">'+(t.vagasAtivas||0)+' / '+(t.vagasTotal||0)+'</div></div>'+
+      '<div class="kpi"><div class="kpi-label">Candidatos</div><div class="kpi-valor">'+(t.candidatosTotal||0)+'</div></div>';
+  }
   return ''+
-    '<div class="kpi-grid">'+
-      '<div class="kpi"><div class="kpi-label">MRR</div><div class="kpi-valor">'+fmtMoney(t.mrr,t.moeda||'BRL')+'</div></div>'+
-      '<div class="kpi"><div class="kpi-label">Plano</div><div class="kpi-valor" style="font-size:18px;">'+esc(p?p.nome:'—')+'</div></div>'+
-      '<div class="kpi"><div class="kpi-label">Usuários</div><div class="kpi-valor">'+(t.usuarios||0)+(t.limiteUsuarios?' / '+t.limiteUsuarios:'')+'</div></div>'+
-      '<div class="kpi"><div class="kpi-label">Status</div><div class="kpi-valor" style="font-size:18px;">'+statusChip(t.status)+'</div></div>'+
-    '</div>'+
+    (t.interno ? '<div style="background:rgba(91,94,244,.08);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-bottom:18px;font-size:13px;color:var(--text);">👑 <b>Esse é VOCÊ</b> — seu próprio Centralaxcend cadastrado automaticamente como tenant interno. Os contadores de usuários/vagas/candidatos são atualizados em tempo real a partir dos dados do Axcend.</div>' : '')+
+    '<div class="kpi-grid">'+kpis+'</div>'+
     '<div class="row-side">'+
       '<div>'+
         '<div class="card">'+
