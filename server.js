@@ -296,6 +296,12 @@ app.get('/painel-saas', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'painel-saas.html'));
 });
 
+// ── TESTE PRÁTICO (público, sem login) ──
+// Candidato acessa /teste/:slug → faz o teste → submete entrega
+app.get('/teste/:slug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'teste.html'));
+});
+
 // ── BANCO DE DADOS ──
 function readDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
@@ -1262,6 +1268,235 @@ const aplicarLimiter = rateLimit({
   windowMs: 60*60*1000,
   max: 10,
   message: { error: 'Muitas candidaturas. Aguarde 1 hora antes de tentar novamente.' }
+});
+
+// ══════════════════════════════════════════════
+// IA · RANKEAR CANDIDATO (Claude)
+// Lê briefing da vaga + portfolio + respostas + teste e dá score 0-100.
+// ══════════════════════════════════════════════
+app.post('/api/ia/rankear-candidato', async (req, res) => {
+  try {
+    const { candidatoId } = req.body || {};
+    if (!candidatoId) return res.status(400).json({ error: 'candidatoId obrigatório' });
+    const db = readDB();
+    const cands = db.store['sl_candidatos'] || [];
+    const c = cands.find(x => String(x.id) === String(candidatoId));
+    if (!c) return res.status(404).json({ error: 'Candidato não encontrado' });
+    const vagas = db.store['sl_vagas'] || [];
+    const v = vagas.find(x => String(x.id) === String(c.vagaId));
+    if (!v) return res.status(404).json({ error: 'Vaga não encontrada' });
+    const aiKey = _getAIKey();
+    if (!aiKey) return res.status(500).json({ error: 'IA não configurada (defina ANTHROPIC_API_KEY ou ai_key)' });
+
+    // Coleta entrega(s) de teste se houver
+    const emailNorm = String(c.email||'').toLowerCase().trim();
+    const entregas = (db.store['sl_teste_entregas'] || []).filter(e => String(e.email||'').toLowerCase().trim() === emailNorm && e.vagaId === v.id);
+
+    // Monta prompt
+    const respostas = c.respostasCustom || {};
+    const perguntas = v.perguntasCustom || [];
+    const respostasFmt = perguntas.map(p => {
+      const r = respostas[p.id];
+      const valor = Array.isArray(r) ? r.join(', ') : (r||'(sem resposta)');
+      return `[${p.label}]\n${valor}`;
+    }).join('\n\n');
+
+    const entregasFmt = entregas.map(e => {
+      return `Entrega em ${e.recebidoEm}, tempo ${Math.round((e.tempoGasto||0)/60)}min:\n${e.entregaTexto||'(sem texto)'}\n${e.entregaLink?'Link: '+e.entregaLink:''}`;
+    }).join('\n\n---\n\n') || '(candidato ainda não fez teste prático)';
+
+    const systemPrompt = `Você é um avaliador sênior de candidatos pra vagas de operação de direct response (Brasil). Avalia candidatos com rigor e foco em RESULTADOS práticos, não em formação acadêmica. Você responde APENAS com JSON válido, sem markdown:
+{
+  "score": <0-100>,
+  "motivo": "<1-2 frases curtas explicando a nota: forças e fraquezas críticas>",
+  "analise": "<análise mais longa: 3-5 parágrafos cobrindo: aderência ao briefing/requisitos, qualidade do portfólio/teste, sinais de risco, recomendação final>"
+}
+
+REGRAS de scoring:
+- 90-100: excepcional, contrata sem entrevista
+- 80-89: forte match, entrevista é só formalidade
+- 70-79: bom, entrevistar pra validar
+- 60-69: mediano, talvez banco de talentos
+- 40-59: fraco, raras chances
+- 0-39: descartar
+
+CRITÉRIOS:
+- Experiência REAL no nicho (não decorada)
+- Provas concretas (cases, números, prints)
+- Português correto
+- Pensamento estruturado nas respostas
+- Se tem teste prático: qualidade do que entregou pesa MUITO mais que o currículo`;
+
+    const userPrompt = `VAGA:
+Título: ${v.titulo||'-'}
+Área: ${v.area||'-'}
+Descrição: ${v.descricao||'-'}
+Requisitos: ${(v.requisitos||[]).join('; ')}
+Expectativas: ${(v.expectativas||[]).join('; ')}
+Diferenciais: ${(v.diferenciais||[]).join('; ')}
+Por que única: ${v.porqueUnica||'-'}
+${v.teste && v.teste.briefing ? '\nBRIEFING DO TESTE PRÁTICO:\n'+v.teste.briefing : ''}
+${v.teste && v.teste.criterios ? '\nCRITÉRIOS DE AVALIAÇÃO:\n'+v.teste.criterios : ''}
+
+CANDIDATO:
+Nome: ${c.nome||'-'}
+Email: ${c.email||'-'}
+Portfolio: ${c.portfolio||'(não enviou)'}
+Instagram: ${c.instagram||'-'}
+
+RESPOSTAS CUSTOM:
+${respostasFmt || '(sem respostas custom)'}
+
+ENTREGAS DO TESTE PRÁTICO:
+${entregasFmt}
+
+Avalia e responde com o JSON.`;
+
+    const body = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    };
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      return res.status(500).json({ error: `Claude ${r.status}: ${err.slice(0, 200)}` });
+    }
+    const data = await r.json();
+    const textRaw = (data.content || []).filter(x => x.type === 'text').map(x => x.text).join('').trim();
+    const cleaned = textRaw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(cleaned); }
+    catch (e) {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) { try { parsed = JSON.parse(match[0]); } catch (e2) { return res.status(500).json({ error: 'IA retornou JSON inválido', raw: cleaned.slice(0,500) }); } }
+      else return res.status(500).json({ error: 'IA não retornou JSON', raw: cleaned.slice(0,500) });
+    }
+
+    // Salva no candidato
+    const idx = cands.findIndex(x => String(x.id) === String(candidatoId));
+    if (idx >= 0) {
+      cands[idx].scoreIA = Number(parsed.score) || 0;
+      cands[idx].motivoIA = String(parsed.motivo||'').slice(0, 1000);
+      cands[idx].analiseIA = String(parsed.analise||'').slice(0, 5000);
+      cands[idx].dataIA = new Date().toISOString();
+      cands[idx]._updatedAt = Date.now();
+      db.store['sl_candidatos'] = cands;
+      if (!db.timestamps) db.timestamps = {};
+      db.timestamps['sl_candidatos'] = now();
+      writeDB(db);
+      _broadcastSync('sl_candidatos', req.headers['x-client-id']);
+    }
+
+    res.json({ score: parsed.score, motivo: parsed.motivo, analise: parsed.analise });
+  } catch (e) {
+    console.error('[IA rankear]', e.message);
+    res.status(500).json({ error: e.message || 'Erro IA' });
+  }
+});
+
+// ══════════════════════════════════════════════
+// TESTE PRÁTICO — endpoints públicos (sem auth)
+// ══════════════════════════════════════════════
+
+// Rate limit pra envio de teste: 5 entregas por hora por IP
+const testeLimiter = rateLimit({
+  windowMs: 60*60*1000,
+  max: 5,
+  message: { error: 'Muitas entregas. Aguarde 1h antes de tentar novamente.' }
+});
+
+// GET /api/teste/publica/:slug — retorna briefing público do teste
+app.get('/api/teste/publica/:slug', (req, res) => {
+  try {
+    const db = readDB();
+    const vagas = db.store['sl_vagas'] || [];
+    const v = vagas.find(x => x && x.teste && x.teste.slug === req.params.slug && x.teste.ativo);
+    if (!v) return res.status(404).json({ error: 'Teste não encontrado ou desativado' });
+    res.json({
+      vagaTitulo: v.titulo || '',
+      vagaArea: v.area || '',
+      briefing: v.teste.briefing || '',
+      links: Array.isArray(v.teste.links) ? v.teste.links : [],
+      tipoEntrega: v.teste.tipoEntrega || 'ambos',
+      tempoEstimado: v.teste.tempoEstimado || 'Sem limite'
+      // critérios NÃO retornados — só o admin vê
+    });
+  } catch (e) {
+    console.error('[TESTE publica GET]', e.message);
+    res.status(500).json({ error: 'Erro ao buscar teste' });
+  }
+});
+
+// POST /api/teste/publica/:slug/enviar — recebe entrega do candidato
+app.post('/api/teste/publica/:slug/enviar', testeLimiter, (req, res) => {
+  try {
+    const db = readDB();
+    const vagas = db.store['sl_vagas'] || [];
+    const v = vagas.find(x => x && x.teste && x.teste.slug === req.params.slug && x.teste.ativo);
+    if (!v) return res.status(404).json({ error: 'Teste não encontrado' });
+
+    const body = req.body || {};
+    const nome = String(body.nome || '').trim().slice(0, 200);
+    const email = String(body.email || '').trim().slice(0, 200);
+    const entregaTexto = String(body.entregaTexto || '').slice(0, 20000);
+    const entregaLink = String(body.entregaLink || '').trim().slice(0, 500);
+    const tempoGasto = Number(body.tempoGastoSegundos) || 0;
+
+    if (!nome || !email) return res.status(400).json({ error: 'Nome e email são obrigatórios' });
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
+    if (!entregaTexto && !entregaLink) return res.status(400).json({ error: 'Entrega vazia' });
+
+    const entrega = {
+      id: 'tst-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+      testeSlug: req.params.slug,
+      vagaId: v.id,
+      vagaTitulo: v.titulo,
+      nome,
+      email,
+      entregaTexto,
+      entregaLink,
+      tempoGasto,
+      recebidoEm: new Date().toISOString(),
+      _updatedAt: Date.now(),
+      tenant_id: getItemTenant(v),
+      ipOrigem: (req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim().slice(0, 60),
+      status: 'novo'  // 'novo' | 'avaliado' | 'rejeitado'
+    };
+
+    if (!db.store['sl_teste_entregas']) db.store['sl_teste_entregas'] = [];
+    db.store['sl_teste_entregas'].push(entrega);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_teste_entregas'] = now();
+    writeDB(db);
+    _broadcastSync('sl_teste_entregas', null);
+
+    // Tenta notificar via WhatsApp a Diretoria
+    setImmediate(() => {
+      try {
+        const db2 = readDB();
+        const usuarios = db2.store['sl_usuarios'] || [];
+        const diretoria = usuarios.filter(u => u && u.cargo === 'Diretoria' && u.ativo !== false);
+        diretoria.forEach(d => {
+          if (!d.whatsapp) return;
+          const titulo = '📝 Teste prático recebido!';
+          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja no Axcend.`;
+          _notificarViaWhatsApp(d.id, titulo, texto).catch(()=>{});
+        });
+      } catch (e) { console.error('[WA teste]', e.message); }
+    });
+
+    res.json({ ok: true, mensagem: 'Entrega recebida! Vamos avaliar e responder em breve.' });
+  } catch (e) {
+    console.error('[TESTE enviar]', e.message);
+    res.status(500).json({ error: 'Erro ao enviar entrega' });
+  }
 });
 
 // GET /api/vagas/publicas — lista pública de TODAS as vagas ativas+publicadas

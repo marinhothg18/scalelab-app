@@ -4214,7 +4214,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_teste_entregas'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -7739,8 +7739,11 @@ function renderVagas(){
   if(_vagasView==='editor')  { _renderVagasEditor(el); return; }
   if(_vagasView==='detalhe') { _renderVagasDetalhe(el); return; }
   if(_vagasView==='talentos'){ _renderVagasTalentos(el); return; }
+  if(_vagasView==='metricas'){ _renderVagasMetricas(el); return; }
   _renderVagasLista(el);
 }
+
+function vagasAbrirMetricas(){ _vagasView='metricas'; renderVagas(); }
 
 // ─── LISTA DE VAGAS ───
 function _renderVagasLista(el){
@@ -7755,6 +7758,7 @@ function _renderVagasLista(el){
         '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Substitui Notion + Google Forms. Cada vaga gera uma página pública e um link de candidatura.</div>'+
       '</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+        '<button class="btn btn-ghost" onclick="vagasAbrirMetricas()" style="display:flex;align-items:center;gap:6px;">📊 Métricas do funil</button>'+
         '<button class="btn btn-ghost" onclick="vagasAbrirTalentos()" style="display:flex;align-items:center;gap:6px;">👥 Banco de talentos</button>'+
         '<button class="btn btn-primary" onclick="vagasNova()" style="display:flex;align-items:center;gap:6px;">+ Nova vaga</button>'+
       '</div>'+
@@ -7830,6 +7834,20 @@ function vagasCopiarLink(slug){
   }catch(e){
     prompt('Copie o link da vaga:', url);
   }
+}
+
+// ─── TESTE PRÁTICO HELPERS ───
+function _vagasToggleTeste(){
+  var ativo = document.getElementById('vag-teste-ativo').checked;
+  document.getElementById('vag-teste-config').style.display = ativo ? 'block' : 'none';
+}
+function vagasCopiarLinkTeste(slug){
+  var url = location.origin + '/teste/' + slug;
+  try{ navigator.clipboard.writeText(url); alert('Link do teste copiado:\n'+url); }
+  catch(e){ prompt('Copie o link do teste:', url); }
+}
+function vagasAbrirLinkTeste(slug){
+  window.open(location.origin + '/teste/' + slug, '_blank');
 }
 
 // ─── BUILDER DE PERGUNTAS (estilo Google Forms) ───
@@ -8025,6 +8043,40 @@ function _renderVagasEditor(el){
             }).join('')+
           '</div>'+
         '</div>'+
+        // ─── TESTE PRÁTICO ───
+        '<div class="fg" style="border-top:1px solid var(--border);padding-top:18px;margin-top:6px;">'+
+          '<label style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;">'+
+            '<input type="checkbox" id="vag-teste-ativo"'+(v.teste && v.teste.ativo?' checked':'')+' onchange="_vagasToggleTeste()"> '+
+            '<span style="font-size:14px;font-weight:600;">📝 Habilitar teste prático embutido</span>'+
+          '</label>'+
+          '<div style="font-size:11px;color:var(--text2);margin-bottom:10px;margin-left:24px;">Quando ativo, gera um link único pra você enviar ao candidato. Ele faz o teste sem precisar de login e a entrega aparece aqui.</div>'+
+          '<div id="vag-teste-config" style="display:'+(v.teste && v.teste.ativo?'block':'none')+';margin-left:24px;padding-left:14px;border-left:2px solid var(--accent);">'+
+            '<div class="fg"><label class="fl">📋 Briefing (o candidato vai ver isso)</label><textarea class="fi" id="vag-teste-briefing" rows="5" placeholder="Crie 3 hooks fortes para uma VSL no nicho de emagrecimento. Use ângulos diferentes (medo, identidade, conquista)...">'+_esc(v.teste && v.teste.briefing || '')+'</textarea></div>'+
+            '<div class="fg"><label class="fl">✅ Critérios de avaliação (só você vê)</label><textarea class="fi" id="vag-teste-criterios" rows="3" placeholder="- Hook conecta com dor real?\n- Tem prova/curiosidade?\n- Funciona pra VSL longa?">'+_esc(v.teste && v.teste.criterios || '')+'</textarea></div>'+
+            '<div class="fg"><label class="fl">🔗 Links de referência/exemplo (um por linha, mostrado pro candidato)</label><textarea class="fi" id="vag-teste-links" rows="3" placeholder="https://drive.google.com/...\nhttps://youtu.be/...">'+_esc((v.teste && v.teste.links || []).join('\n'))+'</textarea></div>'+
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
+              '<div class="fg"><label class="fl">📤 Tipo de entrega</label><select class="fs" id="vag-teste-tipo">'+
+                ['texto','link','ambos'].map(function(t){
+                  var labels = {texto:'📝 Texto direto',link:'🔗 Link (Drive/Docs/etc)','ambos':'📝 Texto + 🔗 Link (opcional)'};
+                  return '<option value="'+t+'"'+(v.teste && v.teste.tipoEntrega===t?' selected':(t==='ambos' && (!v.teste || !v.teste.tipoEntrega)?' selected':''))+'>'+labels[t]+'</option>';
+                }).join('')+
+              '</select></div>'+
+              '<div class="fg"><label class="fl">⏱ Tempo estimado</label><select class="fs" id="vag-teste-tempo">'+
+                ['30 minutos','45 minutos','1 hora','2 horas','Sem limite'].map(function(t){ return '<option'+((v.teste && v.teste.tempoEstimado===t) || (t==='45 minutos' && (!v.teste || !v.teste.tempoEstimado))?' selected':'')+'>'+t+'</option>'; }).join('')+
+              '</select></div>'+
+            '</div>'+
+            (v.teste && v.teste.slug ? ''+
+              '<div style="background:linear-gradient(135deg,rgba(22,163,74,.1),rgba(13,99,50,.05));border:1px solid #16A34A;border-radius:8px;padding:14px;margin-top:8px;">'+
+                '<div style="font-size:11px;color:#16A34A;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">🔗 Link compartilhável</div>'+
+                '<div style="font-family:monospace;font-size:12px;color:var(--accent);word-break:break-all;margin-bottom:10px;background:var(--bg);padding:8px;border-radius:6px;">'+location.origin+'/teste/'+_esc(v.teste.slug)+'</div>'+
+                '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+
+                  '<button type="button" class="btn btn-primary" onclick="vagasCopiarLinkTeste(\''+v.teste.slug+'\')" style="padding:5px 12px;font-size:12px;">📋 Copiar link</button>'+
+                  '<button type="button" class="btn btn-ghost" onclick="vagasAbrirLinkTeste(\''+v.teste.slug+'\')" style="padding:5px 12px;font-size:12px;">👁 Ver como candidato</button>'+
+                '</div>'+
+              '</div>'
+              : '<div style="font-size:11px;color:var(--text2);margin-top:8px;font-style:italic;">💡 O link compartilhável vai aparecer aqui depois que você salvar a vaga.</div>')+
+          '</div>'+
+        '</div>'+
       '</div>'+
       // SIDEBAR CONFIG
       '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;position:sticky;top:12px;">'+
@@ -8069,6 +8121,20 @@ function vagasSalvar(){
   v.salario = (document.getElementById('vag-salario').value||'').trim();
   v.publicada = document.getElementById('vag-publicada').checked;
   v.slug = _vagasSlugUnico(v.titulo, v.id);
+  // Teste prático
+  var testeAtivo = document.getElementById('vag-teste-ativo') && document.getElementById('vag-teste-ativo').checked;
+  if(testeAtivo){
+    if(!v.teste) v.teste = {};
+    v.teste.ativo = true;
+    v.teste.briefing = (document.getElementById('vag-teste-briefing').value||'').trim();
+    v.teste.criterios = (document.getElementById('vag-teste-criterios').value||'').trim();
+    v.teste.links = (document.getElementById('vag-teste-links').value||'').split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+    v.teste.tipoEntrega = document.getElementById('vag-teste-tipo').value;
+    v.teste.tempoEstimado = document.getElementById('vag-teste-tempo').value;
+    if(!v.teste.slug) v.teste.slug = v.slug + '-' + Math.random().toString(36).slice(2,8);
+  } else if(v.teste){
+    v.teste.ativo = false;
+  }
   // perguntas custom (do builder estilo Google Forms)
   _vagasEditorSyncFromDom(); // garante que último input em foco seja capturado
   v.perguntasCustom = _vagasEditorPerguntas
@@ -8239,6 +8305,8 @@ function vagasAbrirCandidato(candId){
         '</div>'+
         // body
         '<div style="padding:20px 24px;">'+
+          // IA SCORE (se já analisado)
+          _vagasRenderIaScore(c)+
           // info contato
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">'+
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div><div style="font-size:13px;color:var(--text);word-break:break-all;">'+_esc(c.email||'—')+'</div></div>'+
@@ -8266,11 +8334,14 @@ function vagasAbrirCandidato(candId){
             '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Respostas do formulário</div>'+
             perguntasHtml+
           '</div>'+
+          // teste prático (entregas vinculadas por email)
+          _vagasRenderEntregasCandidato(c, v)+
         '</div>'+
         // footer
         '<div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;position:sticky;bottom:0;background:var(--card);">'+
           '<button class="btn btn-ghost" onclick="vagasRemoverCandidato(\''+c.id+'\')" style="color:#DC2626;">Remover candidato</button>'+
           '<div style="display:flex;gap:8px;">'+
+            '<button class="btn btn-ghost" onclick="vagasIaAnalisar(\''+c.id+'\')" id="btn-ia-analisar">✨ Analisar com IA</button>'+
             '<button class="btn btn-ghost" onclick="vagasFecharModalCandidato()">Cancelar</button>'+
             '<button class="btn btn-primary" onclick="vagasSalvarCandidato()">Salvar alterações</button>'+
           '</div>'+
@@ -8288,6 +8359,96 @@ function vagasFecharModalCandidato(){
   var m = document.getElementById('vagas-modal-cand');
   if(m) m.remove();
   _vagasModalCandidatoId = null;
+}
+
+// ─── ENTREGAS DE TESTE PRÁTICO DO CANDIDATO ───
+// Lê sl_teste_entregas filtrando pelo email do candidato.
+function _vagasRenderEntregasCandidato(c, v){
+  if(!c || !c.email) return '';
+  var emailNorm = String(c.email).toLowerCase().trim();
+  var entregas = (g('sl_teste_entregas',[])||[]).filter(function(e){
+    return e && String(e.email||'').toLowerCase().trim() === emailNorm;
+  }).sort(function(a,b){ return new Date(b.recebidoEm||0) - new Date(a.recebidoEm||0); });
+  if(!entregas.length) return '';
+  var criterios = (v && v.teste && v.teste.criterios) ? v.teste.criterios : '';
+  return ''+
+    '<div style="margin-bottom:20px;padding:14px;background:linear-gradient(135deg,rgba(91,94,244,.06),rgba(62,20,147,.03));border:1px solid var(--accent);border-radius:10px;">'+
+      '<div style="font-size:11px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📝 Teste prático · '+entregas.length+' entrega'+(entregas.length>1?'s':'')+'</div>'+
+      entregas.map(function(e){
+        var tempoMin = e.tempoGasto ? Math.round(e.tempoGasto/60) : null;
+        return ''+
+          '<div style="background:var(--bg);border-radius:8px;padding:12px;margin-bottom:8px;">'+
+            '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:8px;">'+
+              '<span>📅 '+new Date(e.recebidoEm).toLocaleString('pt-BR')+'</span>'+
+              (tempoMin ? '<span>⏱ '+tempoMin+' min</span>' : '')+
+            '</div>'+
+            (e.entregaTexto ? '<div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;max-height:200px;overflow:auto;background:var(--card);padding:10px;border-radius:6px;margin-bottom:6px;">'+_esc(e.entregaTexto)+'</div>' : '')+
+            (e.entregaLink ? '<div style="font-size:12px;"><a href="'+_esc(e.entregaLink)+'" target="_blank" rel="noopener" style="color:var(--accent);">🔗 '+_esc(e.entregaLink)+'</a></div>' : '')+
+          '</div>';
+      }).join('')+
+      (criterios ? ''+
+        '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">'+
+          '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">✅ Critérios de avaliação (só você vê)</div>'+
+          '<div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;">'+_esc(criterios)+'</div>'+
+        '</div>'
+        : '')+
+    '</div>';
+}
+
+// ─── IA SCORE display ───
+function _vagasRenderIaScore(c){
+  if(!c || !c.scoreIA) return '';
+  var score = Number(c.scoreIA);
+  var classe, cor, label;
+  if(score >= 80){ classe='Forte match'; cor='#16A34A'; label='🚀'; }
+  else if(score >= 60){ classe='Bom match'; cor='#FF5926'; label='✓'; }
+  else { classe='Match fraco'; cor='#DC2626'; label='⚠️'; }
+  return ''+
+    '<div style="background:linear-gradient(135deg,'+cor+'15,'+cor+'05);border:1px solid '+cor+';border-radius:10px;padding:14px;margin-bottom:18px;display:flex;align-items:flex-start;gap:14px;">'+
+      '<div style="width:54px;height:54px;border-radius:50%;background:'+cor+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0;">'+score+'</div>'+
+      '<div style="flex:1;">'+
+        '<div style="font-size:11px;font-weight:700;color:'+cor+';text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+label+' '+classe+' · Análise IA</div>'+
+        '<div style="font-size:13px;color:var(--text);line-height:1.5;">'+_esc(c.motivoIA||'(sem análise)')+'</div>'+
+        (c.dataIA ? '<div style="font-size:10px;color:var(--text3);margin-top:6px;">Analisado em '+new Date(c.dataIA).toLocaleString('pt-BR')+'</div>' : '')+
+      '</div>'+
+    '</div>';
+}
+
+// ─── ANALISAR COM IA ───
+function vagasIaAnalisar(candId){
+  var c = _vagasGetCandidatos().find(function(x){ return String(x.id)===String(candId); });
+  if(!c){ alert('Candidato não encontrado.'); return; }
+  var v = _vagasGetById(c.vagaId);
+  if(!v){ alert('Vaga não encontrada.'); return; }
+  var btn = document.getElementById('btn-ia-analisar');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Analisando...'; }
+  var token = localStorage.getItem('sl_session_token');
+  fetch(API_BASE+'/api/ia/rankear-candidato', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization': token?'Bearer '+token:''},
+    body: JSON.stringify({ candidatoId: candId })
+  })
+  .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||'Erro IA'); }); return r.json(); })
+  .then(function(resp){
+    // Atualiza candidato localmente
+    var cands = _vagasGetCandidatos();
+    var idx = cands.findIndex(function(x){ return String(x.id)===String(candId); });
+    if(idx>=0){
+      cands[idx].scoreIA = resp.score;
+      cands[idx].motivoIA = resp.motivo;
+      cands[idx].analiseIA = resp.analise;
+      cands[idx].dataIA = new Date().toISOString();
+      cands[idx]._updatedAt = Date.now();
+      s('sl_candidatos', cands);
+    }
+    // Re-abre o modal pra mostrar o score
+    vagasFecharModalCandidato();
+    vagasAbrirCandidato(candId);
+  })
+  .catch(function(e){
+    if(btn){ btn.disabled = false; btn.textContent = '✨ Analisar com IA'; }
+    alert('Erro: '+(e.message||'desconhecido'));
+  });
 }
 
 function _vagasModalSetScore(n){
@@ -8416,6 +8577,128 @@ function _renderVagasTalentos(el){
     '</div>'+
     '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;">💡 Arraste os cards entre as colunas pra mudar o status</div>'+
     '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;">'+kanban+'</div>';
+}
+
+// ─── MÉTRICAS DO FUNIL ───
+function _renderVagasMetricas(el){
+  var vagas = _vagasGetAll();
+  var cands = _vagasGetCandidatos();
+
+  // Funil: contar por status atual
+  var statuses = ['Novo','Triagem','Teste','Entrevista','Aprovado'];
+  var funil = {};
+  statuses.forEach(function(s){ funil[s] = 0; });
+  cands.forEach(function(c){
+    var st = c.status || 'Novo';
+    if(funil[st] !== undefined) funil[st]++;
+  });
+  // Conversão: Aprovado / Total * 100
+  var totalCands = cands.length;
+  var aprovados = funil['Aprovado'] || 0;
+  var convTotal = totalCands ? (aprovados/totalCands*100) : 0;
+
+  // Tempo médio até hire (Aprovado): _criadoEm → dataIA ou _updatedAt
+  var hires = cands.filter(function(c){ return c.status==='Aprovado' && c.criadoEm; });
+  var tempoMedioDias = 0;
+  if(hires.length){
+    var soma = hires.reduce(function(s,c){
+      var ini = new Date(c.criadoEm);
+      var fim = new Date(c._updatedAt||Date.now());
+      return s + Math.max(0, (fim-ini)/(86400000));
+    }, 0);
+    tempoMedioDias = soma / hires.length;
+  }
+
+  // Total mês atual + contratados mês
+  var hoje = new Date();
+  var inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  var candsMes = cands.filter(function(c){ return c.criadoEm && new Date(c.criadoEm) >= inicioMes; });
+  var hiresMes = candsMes.filter(function(c){ return c.status==='Aprovado'; }).length;
+
+  // Por vaga
+  var porVaga = {};
+  cands.forEach(function(c){
+    if(!c.vagaId) return;
+    if(!porVaga[c.vagaId]) porVaga[c.vagaId] = { total:0, aprovados:0 };
+    porVaga[c.vagaId].total++;
+    if(c.status==='Aprovado') porVaga[c.vagaId].aprovados++;
+  });
+
+  // Fonte (campo opcional 'fonte' no candidato; senão "Direto")
+  var porFonte = {};
+  cands.forEach(function(c){
+    var f = c.fonte || 'Direto';
+    if(!porFonte[f]) porFonte[f] = { total:0, hires:0 };
+    porFonte[f].total++;
+    if(c.status==='Aprovado') porFonte[f].hires++;
+  });
+
+  // Funil bar widths (max = total)
+  var maxTotal = Math.max(totalCands, 1);
+  var corStatus = { 'Novo':'#5B5EF4', 'Triagem':'#1B9CFA', 'Teste':'#FBBF24', 'Entrevista':'#A78BFA', 'Aprovado':'#16A34A' };
+
+  el.innerHTML = ''+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
+      '<button class="btn btn-ghost" onclick="vagasVoltarLista()" style="padding:4px 10px;font-size:12px;">← Voltar</button>'+
+      '<div style="font-size:20px;font-weight:700;color:var(--text);">📊 Métricas do funil</div>'+
+      '<span style="font-size:12px;color:var(--text2);margin-left:8px;">Todas as vagas · todos os tempos</span>'+
+    '</div>'+
+
+    // KPIs
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Total candidatos</div><div style="font-size:24px;font-weight:700;margin-top:4px;">'+totalCands+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Total mês</div><div style="font-size:24px;font-weight:700;margin-top:4px;">'+candsMes.length+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Contratados mês</div><div style="font-size:24px;font-weight:700;margin-top:4px;color:#16A34A;">'+hiresMes+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Conversão (total)</div><div style="font-size:24px;font-weight:700;margin-top:4px;">'+convTotal.toFixed(1)+'%</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Tempo médio até hire</div><div style="font-size:24px;font-weight:700;margin-top:4px;">'+Math.round(tempoMedioDias)+'d</div></div>'+
+    '</div>'+
+
+    // Funil visual
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:14px;">'+
+      '<div style="font-size:14px;font-weight:700;margin-bottom:14px;">📊 Funil de candidatos (estado atual)</div>'+
+      '<div style="display:flex;flex-direction:column;gap:8px;">'+
+        statuses.map(function(s){
+          var n = funil[s] || 0;
+          var pct = totalCands ? (n/totalCands*100) : 0;
+          return '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:8px;">'+
+            '<span style="flex:1;font-weight:600;font-size:13px;">'+s+'</span>'+
+            '<span style="font-weight:700;min-width:50px;text-align:right;">'+n+'</span>'+
+            '<span style="color:var(--text2);font-size:11px;min-width:60px;text-align:right;">'+pct.toFixed(1)+'%</span>'+
+            '<div style="width:300px;max-width:50%;height:8px;background:#000;border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+pct.toFixed(0)+'%;background:'+corStatus[s]+';"></div></div>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>'+
+
+    // Por vaga + Por fonte
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">'+
+      // Vagas
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;">'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:14px;">💼 Performance por vaga</div>'+
+        (Object.keys(porVaga).length ?
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Vaga</th><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Candidatos</th><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Hires</th><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Conv.</th></tr></thead><tbody>'+
+          Object.keys(porVaga).sort(function(a,b){ return porVaga[b].total - porVaga[a].total; }).map(function(vid){
+            var vg = vagas.find(function(x){ return x.id===vid; });
+            var conv = porVaga[vid].total ? (porVaga[vid].aprovados/porVaga[vid].total*100).toFixed(1) : '0';
+            return '<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px 6px;">'+(vg?_esc(vg.titulo):'<i>(removida)</i>')+'</td><td style="padding:8px 6px;">'+porVaga[vid].total+'</td><td style="padding:8px 6px;color:#16A34A;font-weight:600;">'+porVaga[vid].aprovados+'</td><td style="padding:8px 6px;">'+conv+'%</td></tr>';
+          }).join('')+
+          '</tbody></table>'
+          : '<div style="font-size:12px;color:var(--text2);text-align:center;padding:14px;">Sem dados ainda.</div>')+
+      '</div>'+
+      // Fonte
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;">'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:14px;">📡 Por fonte do candidato</div>'+
+        (Object.keys(porFonte).length ?
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Fonte</th><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Cand.</th><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Hires</th><th style="text-align:left;padding:6px;font-size:10px;color:var(--text2);text-transform:uppercase;">Taxa</th></tr></thead><tbody>'+
+          Object.keys(porFonte).sort(function(a,b){ return porFonte[b].total - porFonte[a].total; }).map(function(f){
+            var taxa = porFonte[f].total ? (porFonte[f].hires/porFonte[f].total*100).toFixed(1) : '0';
+            return '<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px 6px;">'+_esc(f)+'</td><td style="padding:8px 6px;">'+porFonte[f].total+'</td><td style="padding:8px 6px;color:#16A34A;font-weight:600;">'+porFonte[f].hires+'</td><td style="padding:8px 6px;">'+taxa+'%</td></tr>';
+          }).join('')+
+          '</tbody></table>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:10px;">💡 Adicione UTM nas suas campanhas. O sistema lê e classifica automaticamente.</div>'
+          : '<div style="font-size:12px;color:var(--text2);text-align:center;padding:14px;">Sem dados ainda.</div>')+
+      '</div>'+
+    '</div>';
 }
 
 // ══════════════════════════════════════════════

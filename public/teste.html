@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f0f0f">
+<title>Teste Prático · Axcend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0f0f0f; --bg-1:#1c1c1c; --bg-2:#252525;
+    --border:#2a2a2a; --text:#f5f5f5; --text2:#a3a3a3; --text3:#6b6b6b;
+    --accent:#5b5ef4; --roxo:#3E1493;
+    --verde:#16A34A; --rosa:#C52C58;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--bg-0);color:var(--text);font-family:'Inter',sans-serif;line-height:1.5;font-size:14px;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);}
+
+  .wrap{max-width:720px;margin:0 auto;padding:30px 24px 80px;}
+
+  .header{text-align:center;margin-bottom:24px;}
+  .header .logo{
+    width:48px;height:48px;border-radius:12px;
+    background:linear-gradient(135deg,var(--accent),var(--roxo));
+    display:inline-flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:22px;margin-bottom:10px;
+  }
+  .header .badge{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
+  .header h1{font-size:24px;font-weight:700;margin-top:6px;}
+  .header .meta{font-size:13px;color:var(--text2);margin-top:6px;}
+
+  .card{background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:14px;}
+  .card-label{font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:10px;}
+
+  .briefing{color:var(--text);font-size:14px;line-height:1.7;white-space:pre-wrap;}
+
+  .refs a{display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg-2);border-radius:6px;font-size:13px;text-decoration:none;margin-bottom:6px;}
+  .refs a:hover{background:var(--bg-2);text-decoration:underline;}
+
+  .tabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:10px;}
+  .tab{background:transparent;color:var(--text2);padding:8px 14px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid var(--border);cursor:pointer;}
+  .tab.ativo{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+  .input, textarea.input{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px 12px;font-family:inherit;font-size:14px;color:var(--text);
+  }
+  textarea.input{resize:vertical;min-height:140px;line-height:1.6;}
+  .input:focus, textarea.input:focus{outline:none;border-color:var(--accent);}
+
+  .field{margin-bottom:12px;}
+  .field-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+  .btn-primary{
+    width:100%;background:linear-gradient(135deg,var(--accent),var(--roxo));
+    color:#fff;font-family:inherit;font-size:14px;font-weight:700;
+    padding:14px;border:none;border-radius:10px;cursor:pointer;
+    box-shadow:0 4px 20px rgba(91,94,244,.4);
+    transition:transform .15s;
+  }
+  .btn-primary:hover{transform:translateY(-1px);}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed;}
+
+  .nota{font-size:11px;color:var(--text3);text-align:center;margin-top:10px;}
+
+  .sucesso{text-align:center;padding:60px 20px;}
+  .sucesso .ico{font-size:60px;margin-bottom:14px;}
+  .sucesso h2{font-size:22px;font-weight:700;margin-bottom:8px;}
+  .sucesso p{color:var(--text2);max-width:420px;margin:0 auto;font-size:13px;}
+
+  .estado{text-align:center;padding:100px 20px;color:var(--text2);}
+  .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .footer{text-align:center;padding:24px 0;color:var(--text2);font-size:12px;margin-top:20px;}
+  .footer a{color:var(--text2);}
+
+  @media (max-width:600px){
+    .field-row{grid-template-columns:1fr;}
+    .header h1{font-size:20px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="root">
+  <div class="estado">
+    <div class="spinner"></div>
+    <p>Carregando teste...</p>
+  </div>
+</div>
+
+<div class="footer">Powered by <a href="https://app.centralaxcend.com">Axcend</a></div>
+
+<script>
+function getSlug(){
+  var m = location.pathname.match(/\/teste\/([^\/\?]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+var SLUG = getSlug();
+var TESTE = null;
+var startTime = Date.now();
+var tipoEntregaAtivo = 'texto';
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+function carregar(){
+  if(!SLUG){ erro('URL inválida'); return; }
+  fetch('/api/teste/publica/' + encodeURIComponent(SLUG))
+    .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||'Não encontrado'); }); return r.json(); })
+    .then(function(t){
+      TESTE = t;
+      document.title = 'Teste · ' + t.vagaTitulo + ' · Axcend';
+      tipoEntregaAtivo = (t.tipoEntrega === 'link') ? 'link' : 'texto';
+      renderTeste();
+      startTime = Date.now();
+    })
+    .catch(function(e){ erro(e.message || 'Erro'); });
+}
+
+function erro(msg){
+  document.getElementById('root').innerHTML =
+    '<div class="estado">'+
+      '<div style="font-size:48px;margin-bottom:14px;">🔒</div>'+
+      '<h2 style="color:var(--text);font-size:22px;margin-bottom:8px;">Teste indisponível</h2>'+
+      '<p>' + esc(msg) + '</p>'+
+    '</div>';
+}
+
+function tabsHtml(){
+  var t = TESTE.tipoEntrega || 'ambos';
+  if(t === 'texto'){
+    return '<button class="tab ativo">📝 Texto</button>';
+  }
+  if(t === 'link'){
+    return '<button class="tab ativo">🔗 Link</button>';
+  }
+  // ambos
+  return ''+
+    '<button class="tab '+(tipoEntregaAtivo==='texto'?'ativo':'')+'" onclick="trocaTab(\'texto\')">📝 Texto</button>'+
+    '<button class="tab '+(tipoEntregaAtivo==='link'?'ativo':'')+'" onclick="trocaTab(\'link\')">🔗 Link</button>';
+}
+
+function trocaTab(tab){
+  tipoEntregaAtivo = tab;
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('ativo'); });
+  var btnAtivo = document.querySelectorAll('.tab')[tab==='texto'?0:1];
+  if(btnAtivo) btnAtivo.classList.add('ativo');
+  document.getElementById('campo-texto').style.display = tab==='texto' ? 'block' : 'none';
+  document.getElementById('campo-link').style.display = tab==='link' ? 'block' : 'none';
+}
+
+function renderTeste(){
+  var t = TESTE;
+  var linksHtml = '';
+  if(t.links && t.links.length){
+    linksHtml = '<div class="card refs">'+
+      '<div class="card-label">🔗 Referências (opcional · pra inspirar)</div>'+
+      t.links.map(function(url){
+        return '<a href="'+esc(url)+'" target="_blank" rel="noopener">🔗 '+esc(url.slice(0,80))+(url.length>80?'…':'')+'</a>';
+      }).join('')+
+    '</div>';
+  }
+
+  var camposEntrega = '';
+  var tipo = t.tipoEntrega || 'ambos';
+  // Campo texto
+  if(tipo === 'texto' || tipo === 'ambos'){
+    camposEntrega += '<div id="campo-texto" style="display:'+(tipoEntregaAtivo==='texto'||tipo==='texto'?'block':'none')+';">'+
+      '<textarea id="ent-texto" class="input" rows="8" placeholder="Sua entrega aqui... (auto-salvo)"></textarea>'+
+      '<div style="font-size:11px;color:var(--text2);margin-top:6px;text-align:right;" id="charcount">0 caracteres</div>'+
+    '</div>';
+  }
+  // Campo link
+  if(tipo === 'link' || tipo === 'ambos'){
+    camposEntrega += '<div id="campo-link" style="display:'+(tipoEntregaAtivo==='link'||tipo==='link'?'block':'none')+';margin-top:'+(tipo==='ambos'?'10px':'0')+';">'+
+      '<input id="ent-link" class="input" type="url" placeholder="https://docs.google.com/... ou https://github.com/...">'+
+      '<div style="font-size:11px;color:var(--text3);margin-top:4px;">Cole link público (Docs/Drive/Figma/Loom/GitHub/etc).</div>'+
+    '</div>';
+  }
+
+  var html = ''+
+    '<div class="header">'+
+      '<div class="logo">A</div>'+
+      '<div class="badge">📝 Teste Prático · Axcend</div>'+
+      '<h1>'+esc(t.vagaTitulo)+(t.vagaArea?' · '+esc(t.vagaArea):'')+'</h1>'+
+      '<div class="meta">⏱ Tempo estimado: '+esc(t.tempoEstimado||'sem limite')+'</div>'+
+    '</div>'+
+
+    '<div class="card">'+
+      '<div class="card-label">📋 Briefing</div>'+
+      '<div class="briefing">'+esc(t.briefing||'(briefing vazio)')+'</div>'+
+    '</div>'+
+
+    linksHtml +
+
+    '<div class="card">'+
+      '<div class="card-label">👋 Seus dados</div>'+
+      '<div class="field-row">'+
+        '<div class="field"><label class="field-label">Nome completo *</label><input id="cand-nome" class="input" type="text"></div>'+
+        '<div class="field"><label class="field-label">Email *</label><input id="cand-email" class="input" type="email" placeholder="seu@email.com"></div>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="card">'+
+      '<div class="card-label">📤 Sua entrega</div>'+
+      '<div class="tabs">'+tabsHtml()+'</div>'+
+      camposEntrega +
+    '</div>'+
+
+    '<button class="btn-primary" id="btn-enviar" onclick="enviarEntrega()">📤 Enviar entrega</button>'+
+    '<div class="nota">Após enviar você recebe confirmação e o time da Axcend te responde em breve.</div>';
+
+  document.getElementById('root').innerHTML = html;
+
+  // Auto-salvo + char count
+  var ta = document.getElementById('ent-texto');
+  if(ta){
+    var saved = localStorage.getItem('teste-draft-' + SLUG);
+    if(saved) ta.value = saved;
+    document.getElementById('charcount').textContent = ta.value.length + ' caracteres';
+    ta.addEventListener('input', function(){
+      localStorage.setItem('teste-draft-' + SLUG, ta.value);
+      document.getElementById('charcount').textContent = ta.value.length + ' caracteres';
+    });
+  }
+}
+
+function enviarEntrega(){
+  var btn = document.getElementById('btn-enviar');
+  var nome = (document.getElementById('cand-nome').value||'').trim();
+  var email = (document.getElementById('cand-email').value||'').trim();
+  if(!nome){ alert('Informe seu nome'); return; }
+  if(!email || !/^\S+@\S+\.\S+$/.test(email)){ alert('Email inválido'); return; }
+
+  var entTexto = (document.getElementById('ent-texto') && document.getElementById('ent-texto').value) || '';
+  var entLink = (document.getElementById('ent-link') && document.getElementById('ent-link').value || '').trim();
+
+  if(!entTexto.trim() && !entLink){ alert('Sua entrega está vazia. Preencha texto ou link.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  var tempoSeg = Math.round((Date.now() - startTime) / 1000);
+
+  fetch('/api/teste/publica/' + encodeURIComponent(SLUG) + '/enviar', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ nome:nome, email:email, entregaTexto:entTexto, entregaLink:entLink, tempoGastoSegundos:tempoSeg })
+  })
+  .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||'Erro'); }); return r.json(); })
+  .then(function(){
+    localStorage.removeItem('teste-draft-' + SLUG);
+    document.getElementById('root').innerHTML =
+      '<div class="sucesso">'+
+        '<div class="ico">✅</div>'+
+        '<h2>Entrega enviada!</h2>'+
+        '<p>Recebemos sua entrega. O time vai analisar e responder em até 7 dias úteis. Você recebe um email com a confirmação. Boa sorte!</p>'+
+      '</div>';
+    window.scrollTo({top:0,behavior:'smooth'});
+  })
+  .catch(function(e){
+    btn.disabled = false;
+    btn.textContent = '📤 Enviar entrega';
+    alert('Erro ao enviar: ' + (e.message || ''));
+  });
+}
+
+carregar();
+</script>
+
+</body>
+</html>
