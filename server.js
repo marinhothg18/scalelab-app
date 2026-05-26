@@ -1366,7 +1366,19 @@ Avalia e responde com o JSON.`;
     });
     if (!r.ok) {
       const err = await r.text();
-      return res.status(500).json({ error: `Claude ${r.status}: ${err.slice(0, 200)}` });
+      // Mensagens amigáveis pros erros mais comuns
+      const errLower = err.toLowerCase();
+      let msg = `Claude ${r.status}: ${err.slice(0, 200)}`;
+      if (errLower.includes('credit balance') || errLower.includes('credit_balance')) {
+        msg = 'Sem créditos na conta Anthropic. Adicione créditos em https://console.anthropic.com/settings/billing (custo ~$0.02 por análise).';
+      } else if (errLower.includes('invalid_api_key') || errLower.includes('authentication')) {
+        msg = 'Chave da Anthropic inválida ou expirada. Verifique em Configurações → WhatsApp/IA.';
+      } else if (errLower.includes('rate_limit') || r.status === 429) {
+        msg = 'Limite de requisições da Anthropic atingido. Aguarde 1 minuto e tente de novo.';
+      } else if (errLower.includes('overloaded') || r.status === 529) {
+        msg = 'API da Anthropic sobrecarregada. Tente em alguns segundos.';
+      }
+      return res.status(500).json({ error: msg });
     }
     const data = await r.json();
     const textRaw = (data.content || []).filter(x => x.type === 'text').map(x => x.text).join('').trim();
