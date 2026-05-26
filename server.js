@@ -118,13 +118,81 @@ function getItemTenant(item) {
   return (item && item.tenant_id) || TENANT_DEFAULT_ID;
 }
 
-// Chaves do storage que NÃO são scoped por tenant (são globais da plataforma).
-// Tudo o resto leva tenant_id em cada item na migração e nos próximos PRs.
-const KEYS_GLOBAIS = new Set([
-  'sl_saas_tenants',   // a tabela dos tenants em si — global da plataforma
-  'sl_saas_config',    // config global da plataforma (planos, gateways, idiomas)
-  'sl_auditlog'        // audit log global — quem fez o quê no sistema todo
+/**
+ * Filtra um array por tenant_id. Items sem tag (legados) são tratados
+ * como axcend-interno via getItemTenant.
+ */
+function _filtrarPorTenant(arr, tenantId) {
+  if (!Array.isArray(arr)) return arr;
+  return arr.filter(item => {
+    if (!item || typeof item !== 'object') return true; // primitivos sempre passam
+    return getItemTenant(item) === tenantId;
+  });
+}
+
+/**
+ * Aplica filtro de tenant em todo o store. Regras:
+ * - Chaves da plataforma (KEYS_PLATAFORMA): só visíveis pro tenant interno;
+ *   pra outros tenants são omitidas (não vazam info da plataforma).
+ * - Arrays: filtra por tenant_id em cada item.
+ * - Singletons (object): só aparece se for do tenant correto.
+ * - Primitivos: passam direto (não fazem sentido tenant em string/número).
+ */
+function _aplicarFiltroTenant(store, tenantId) {
+  const out = {};
+  const isInterno = tenantId === TENANT_INTERNO_ID;
+  for (const [k, v] of Object.entries(store || {})) {
+    if (KEYS_PLATAFORMA.has(k)) {
+      // Chaves da plataforma: só pro interno
+      if (isInterno) out[k] = v;
+      // Pra outros tenants: omite a chave (não aparece no response)
+      continue;
+    }
+    if (Array.isArray(v)) {
+      out[k] = _filtrarPorTenant(v, tenantId);
+    } else if (v && typeof v === 'object') {
+      // Singleton: só inclui se for do tenant certo (ou legado sem tag = interno)
+      if (getItemTenant(v) === tenantId) out[k] = v;
+    } else {
+      out[k] = v; // primitivos passam direto (ex: rt_api_key)
+    }
+  }
+  return out;
+}
+
+/**
+ * Verifica se a request é de um super-admin (Diretoria do tenant interno).
+ * Super-admin pode bypass de filtros usando ?_super=1 nas leituras —
+ * útil pro painel SaaS poder ver dados de qualquer tenant.
+ */
+function _isSuperAdmin(req) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (!token) return false;
+  try {
+    const db = readDB();
+    const sess = validarSessao(db, token);
+    if (!sess) return false;
+    const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+    if (!user || user.cargo !== 'Diretoria') return false;
+    return getItemTenant(user) === TENANT_INTERNO_ID;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Chaves que pertencem à PLATAFORMA (master), não a tenants.
+// - Na migração: não recebem tenant_id (não fazem sentido nesse contexto)
+// - No filtro de leitura: só visíveis pro tenant interno (vazariam info de
+//   outros clientes pra um cliente externo).
+const KEYS_PLATAFORMA = new Set([
+  'sl_saas_tenants',   // lista de clientes — SÓ master deve ver
+  'sl_saas_config',    // config da plataforma (planos, gateways, idiomas) — SÓ master
+  'sl_saas_faturas',   // faturas geradas — SÓ master por enquanto (PR futuro: cliente vê só suas próprias)
+  'sl_auditlog'        // audit log da plataforma — SÓ master
 ]);
+// Alias pra retrocompatibilidade com código que ainda usa KEYS_GLOBAIS
+const KEYS_GLOBAIS = KEYS_PLATAFORMA;
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -845,7 +913,12 @@ app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
 
 app.get('/api/store', (req, res) => {
   const db = readDB();
-  const safe = Object.assign({}, db.store);
+  // Multi-tenancy: filtra o store pelo tenant da request.
+  // Super-admin com ?_super=1 vê tudo (pro painel SaaS poder consultar
+  // dados de qualquer tenant quando precisar).
+  const bypass = req.query._super === '1' && _isSuperAdmin(req);
+  const baseStore = bypass ? db.store : _aplicarFiltroTenant(db.store, req.tenantId);
+  const safe = Object.assign({}, baseStore);
   if (safe['sl_usuarios']) safe['sl_usuarios'] = _stripSenhas(safe['sl_usuarios']);
   res.json(safe);
 });
@@ -853,9 +926,25 @@ app.get('/api/store', (req, res) => {
 app.get('/api/updates/:since', (req, res) => {
   const since = parseInt(req.params.since) || 0;
   const db = readDB();
+  const bypass = req.query._super === '1' && _isSuperAdmin(req);
+  const isInterno = req.tenantId === TENANT_INTERNO_ID;
   const data = {};
   Object.entries(db.timestamps || {}).forEach(([k, ts]) => {
-    if (ts > since) data[k] = (k === 'sl_usuarios') ? _stripSenhas(db.store[k]) : db.store[k];
+    if (ts > since) {
+      let valor = db.store[k];
+      if (!bypass) {
+        // Chaves da plataforma: só pro interno
+        if (KEYS_PLATAFORMA.has(k)) {
+          if (!isInterno) return; // omite pra outros tenants
+        } else if (Array.isArray(valor)) {
+          valor = _filtrarPorTenant(valor, req.tenantId);
+        } else if (valor && typeof valor === 'object') {
+          valor = (getItemTenant(valor) === req.tenantId) ? valor : undefined;
+        }
+      }
+      if (valor === undefined) return;
+      data[k] = (k === 'sl_usuarios') ? _stripSenhas(valor) : valor;
+    }
   });
   res.json({ data, timestamp: now() });
 });
@@ -1064,7 +1153,8 @@ const aplicarLimiter = rateLimit({
 app.get('/api/vagas/publicas', (req, res) => {
   try {
     const db = readDB();
-    const todas = db.store['sl_vagas'] || [];
+    // Multi-tenancy: só lista vagas do tenant que o host resolveu.
+    const todas = (db.store['sl_vagas'] || []).filter(v => getItemTenant(v) === req.tenantId);
     const visiveis = todas
       .filter(v => v && v.publicada && v.status !== 'Encerrada')
       .map(v => ({
@@ -1086,10 +1176,11 @@ app.get('/api/vagas/publicas', (req, res) => {
 
 // GET /api/vagas/publica/:slug — retorna dados públicos da vaga (sem auth)
 // Só vagas com publicada=true e status !=='Encerrada'. Strip de campos internos.
+// Multi-tenancy: também filtra por tenant do host (acme.axcend.com só vê vagas do Acme).
 app.get('/api/vagas/publica/:slug', (req, res) => {
   try {
     const db = readDB();
-    const todas = db.store['sl_vagas'] || [];
+    const todas = (db.store['sl_vagas'] || []).filter(v => getItemTenant(v) === req.tenantId);
     const v = todas.find(x => x && x.slug === req.params.slug);
     if (!v) return res.status(404).json({ error: 'Vaga não encontrada' });
     if (!v.publicada) return res.status(404).json({ error: 'Vaga não disponível' });
@@ -1116,10 +1207,11 @@ app.get('/api/vagas/publica/:slug', (req, res) => {
 });
 
 // POST /api/vagas/publica/:slug/aplicar — recebe candidatura (sem auth, rate-limited)
+// Multi-tenancy: a candidatura é taggeada com o tenant_id resolvido pelo host.
 app.post('/api/vagas/publica/:slug/aplicar', aplicarLimiter, (req, res) => {
   try {
     const db = readDB();
-    const todas = db.store['sl_vagas'] || [];
+    const todas = (db.store['sl_vagas'] || []).filter(v => getItemTenant(v) === req.tenantId);
     const v = todas.find(x => x && x.slug === req.params.slug);
     if (!v) return res.status(404).json({ error: 'Vaga não encontrada' });
     if (!v.publicada || v.status === 'Encerrada') return res.status(400).json({ error: 'Vaga não está aceitando candidaturas' });
