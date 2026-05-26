@@ -10620,8 +10620,15 @@ function finEditarRecorrente(id){
             '<div class="fg"><label class="fl">Categoria</label><select id="fr-cat" class="fs"><option value="">— sem —</option>'+cats.map(function(c){ return '<option value="'+c.id+'"'+(r.categoriaId===c.id?' selected':'')+'>'+c.icone+' '+_esc(c.nome)+'</option>'; }).join('')+'</select></div>'+
             '<div class="fg"><label class="fl">Conta</label><select id="fr-conta" class="fs"><option value="">— escolher —</option>'+contas.map(function(c){ return '<option value="'+c.id+'"'+(r.contaId===c.id?' selected':'')+'>'+_esc(c.nome)+'</option>'; }).join('')+'</select></div>'+
           '</div>'+
-          '<div class="fg"><label class="fl">Dia do vencimento</label><input id="fr-dia" class="fi" type="number" min="1" max="31" value="'+(r.diaVencimento||1)+'"></div>'+
-          '<div style="font-size:11px;color:var(--text2);padding:10px;background:var(--bg);border-radius:6px;">💡 Quando você abrir o módulo Financeiro, o sistema gera automaticamente os lançamentos pendentes desse recorrente. Você só precisa marcar como pago quando pagar.</div>'+
+          '<div class="fg">'+
+            '<label class="fl">📅 Dia do vencimento (todo mês)</label>'+
+            '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">'+
+              '<input id="fr-dia" class="fi" type="number" min="1" max="31" value="'+(r.diaVencimento||1)+'" oninput="_finPreviewProxVenc()" style="max-width:100px;font-size:18px;font-weight:700;text-align:center;">'+
+              '<span style="font-size:13px;color:var(--text2);">de cada mês</span>'+
+            '</div>'+
+            '<div id="fr-preview" style="font-size:12px;color:var(--accent);padding:8px;background:rgba(91,94,244,.08);border-radius:6px;"></div>'+
+          '</div>'+
+          '<div style="font-size:11px;color:var(--text2);padding:10px;background:var(--bg);border-radius:6px;">💡 Quando você salvar, o sistema vai gerar automaticamente os lançamentos dos próximos 60 dias — vai aparecer no Dashboard em "A pagar próximos 7 dias" assim que chegar perto da data.</div>'+
         '</div>'+
         '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">'+
           '<button class="btn btn-ghost" onclick="finFecharModalRec()">Cancelar</button>'+
@@ -10632,6 +10639,8 @@ function finEditarRecorrente(id){
   var antigo = document.getElementById('fin-modal-rec');
   if(antigo) antigo.remove();
   document.body.insertAdjacentHTML('beforeend', html);
+  // Mostra preview de próximas datas
+  setTimeout(_finPreviewProxVenc, 50);
 }
 
 function _finRecAtualizaCats(){
@@ -10639,6 +10648,23 @@ function _finRecAtualizaCats(){
   var sel = document.getElementById('fr-cat');
   var cats = _finGetCategorias().filter(function(c){ return c.tipo===tipo; });
   sel.innerHTML = '<option value="">— sem —</option>' + cats.map(function(c){ return '<option value="'+c.id+'">'+c.icone+' '+_esc(c.nome)+'</option>'; }).join('');
+}
+
+// Preview: mostra próximas 3 datas calculadas do recorrente
+function _finPreviewProxVenc(){
+  var prev = document.getElementById('fr-preview');
+  if(!prev) return;
+  var dia = parseInt(document.getElementById('fr-dia').value, 10);
+  if(!dia || dia < 1 || dia > 31){ prev.textContent = '⚠️ Dia inválido (1-31)'; return; }
+  var hoje = new Date(); hoje.setHours(12,0,0,0);
+  var datas = [];
+  var prox = new Date(hoje.getFullYear(), hoje.getMonth(), dia);
+  if(prox < hoje) prox = new Date(hoje.getFullYear(), hoje.getMonth()+1, dia);
+  for(var i=0;i<3;i++){
+    datas.push(prox.toLocaleDateString('pt-BR'));
+    prox = new Date(prox.getFullYear(), prox.getMonth()+1, dia);
+  }
+  prev.innerHTML = '📆 Próximos vencimentos: <b>'+datas.join(' · ')+'</b>';
 }
 
 function finFecharModalRec(){ var m = document.getElementById('fin-modal-rec'); if(m) m.remove(); }
@@ -10657,15 +10683,29 @@ function finSalvarRec(id){
   r.categoriaId = document.getElementById('fr-cat').value||'';
   r.contaId = document.getElementById('fr-conta').value||'';
   r.ativo = true;
-  // Calcula próxima geração
+  // Calcula próxima geração — começa do mês atual (não do próximo).
+  // Se o dia já passou esse mês, começa do próximo mês.
   var hoje = new Date(); hoje.setHours(12,0,0,0);
   var prox = new Date(hoje.getFullYear(), hoje.getMonth(), r.diaVencimento);
-  if(prox < hoje) prox = new Date(hoje.getFullYear(), hoje.getMonth()+1, r.diaVencimento);
+  // Se for novo recorrente e o dia já passou esse mês, pula pro próximo
+  if(isNovo && prox < hoje){
+    prox = new Date(hoje.getFullYear(), hoje.getMonth()+1, r.diaVencimento);
+  }
+  // Se já existia e tinha proximaGeracao antigo, mantém pra não duplicar histórico
+  if(!isNovo && r.proximaGeracao){
+    var antigaProx = new Date(r.proximaGeracao+'T12:00:00');
+    // Mantém só se ainda for relevante (do mês atual ou futuro)
+    if(antigaProx >= new Date(hoje.getFullYear(), hoje.getMonth(), 1)){
+      prox = antigaProx;
+    }
+  }
   r.proximaGeracao = prox.toISOString().slice(0,10);
   r._updatedAt = Date.now();
   if(isNovo) recs.push(r);
   else { var idx = recs.findIndex(function(x){ return x.id===r.id; }); if(idx>=0) recs[idx]=r; }
   s('sl_fin_recorrentes', recs);
+  // Gera lançamentos imediatamente (até hoje+60d) pra aparecer logo no Dashboard
+  _finGerarRecorrentesPendentes();
   finFecharModalRec();
   renderFinanceiro();
 }
@@ -10676,42 +10716,60 @@ function finExcluirRecorrente(id){
   renderFinanceiro();
 }
 
-// Gera lançamentos pendentes dos recorrentes (chamado no boot do módulo)
+// Gera lançamentos pendentes dos recorrentes (chamado no boot do módulo).
+// Agora gera:
+//  - TODOS os meses passados/atrasados (até a data atual)
+//  - + Próximos 60 dias futuros (pra aparecer em "A pagar 7d" e o usuário
+//    poder marcar pago antes do vencimento se quiser)
+// Não duplica: usa chave (recorrenteId + dataVencimento) pra checar.
 function _finGerarRecorrentesPendentes(){
   var recs = _finGetRecorrentes();
   if(!recs.length) return;
   var lancs = _finGetLancamentos();
   var hoje = new Date(); hoje.setHours(12,0,0,0);
+  var ate = new Date(hoje); ate.setDate(hoje.getDate() + 60); // gera até hoje+60d
+
+  // Mapa de lançamentos existentes pra evitar duplicata: recorrenteId|dataVencimento
+  var existentes = new Set();
+  lancs.forEach(function(l){
+    if(l.recorrenteId && l.dataVencimento) existentes.add(l.recorrenteId+'|'+l.dataVencimento);
+  });
+
   var mudou = false;
   recs.forEach(function(r){
     if(!r.ativo) return;
     if(!r.proximaGeracao) return;
+    // Começa do mais antigo: ou do proximaGeracao salvo, ou da primeira ocorrência possível
     var prox = new Date(r.proximaGeracao+'T12:00:00');
-    // Gera todos os meses pendentes até hoje (em caso de muito tempo sem abrir)
     var guard = 0;
-    while(prox <= hoje && guard < 24){
-      // Cria lançamento
-      lancs.push({
-        id: _finNovoId('lanc'),
-        tipo: r.tipo,
-        descricao: r.descricao,
-        valor: r.valor,
-        dataVencimento: prox.toISOString().slice(0,10),
-        dataPagamento: '',
-        status: 'pendente',
-        metodo: 'pix',
-        categoriaId: r.categoriaId||'',
-        contaId: r.contaId||'',
-        recorrenteId: r.id,
-        notas: 'Gerado automaticamente do recorrente "'+r.descricao+'"',
-        _criadoEm: new Date().toISOString(),
-        _updatedAt: Date.now()
-      });
-      mudou = true;
+    while(prox <= ate && guard < 60){
+      var dataStr = prox.toISOString().slice(0,10);
+      var chave = r.id + '|' + dataStr;
+      if(!existentes.has(chave)){
+        lancs.push({
+          id: _finNovoId('lanc'),
+          tipo: r.tipo,
+          descricao: r.descricao,
+          valor: r.valor,
+          dataVencimento: dataStr,
+          dataPagamento: '',
+          status: 'pendente',
+          metodo: 'pix',
+          categoriaId: r.categoriaId||'',
+          contaId: r.contaId||'',
+          recorrenteId: r.id,
+          notas: 'Gerado automaticamente do recorrente "'+r.descricao+'"',
+          _criadoEm: new Date().toISOString(),
+          _updatedAt: Date.now()
+        });
+        existentes.add(chave);
+        mudou = true;
+      }
       // Próximo mês mesmo dia
       prox = new Date(prox.getFullYear(), prox.getMonth()+1, r.diaVencimento);
       guard++;
     }
+    // Atualiza proximaGeracao pra a próxima ocorrência APÓS a janela gerada
     if(guard > 0){
       r.proximaGeracao = prox.toISOString().slice(0,10);
       r._updatedAt = Date.now();
