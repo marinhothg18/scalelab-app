@@ -102,6 +102,13 @@ app.get('/vagas', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'vagas-publico.html'));
 });
 
+// ── PAINEL SAAS (gestão de clientes externos · só Diretoria) ──
+// Serve o painel; a autenticação é checada client-side via /api/auth/me
+// (igual o resto do sistema). Não-Diretoria recebe tela de bloqueio.
+app.get('/painel-saas', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'painel-saas.html'));
+});
+
 // ── BANCO DE DADOS ──
 function readDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
