@@ -10,6 +10,50 @@ const bcrypt = require('bcryptjs');
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias de inatividade
 const BCRYPT_ROUNDS = 10;
 
+// ══════════════════════════════════════════════
+// ── MULTI-TENANCY (PR 1: infraestrutura) ──
+// Por enquanto TODO MUNDO é o tenant interno (axcend-interno). Nada filtra
+// ainda — esse PR só cria a fundação. Os filtros vêm nos próximos PRs.
+// ══════════════════════════════════════════════
+const TENANT_INTERNO_ID = 'axcend-interno';
+const TENANT_DEFAULT_ID = TENANT_INTERNO_ID;
+// Hosts que sempre resolvem pro tenant interno (master + dev)
+const HOSTS_INTERNO = new Set([
+  'app.centralaxcend.com',
+  'centralaxcend.com',
+  'localhost:3001',
+  'localhost:3000',
+  '127.0.0.1:3001'
+]);
+// Domínio raiz do SaaS — qualquer subdomínio disso vira tenant (acme.axcend.com → 'acme')
+const SAAS_ROOT_DOMAIN = 'axcend.com';
+
+/**
+ * Resolve o tenant_id a partir da request.
+ * - Se host está em HOSTS_INTERNO → axcend-interno
+ * - Se é subdomínio de SAAS_ROOT_DOMAIN → busca tenant com esse slug
+ * - Se cliente tem domínio próprio → busca tenant com esse domínio
+ * - Senão → default (interno)
+ *
+ * IMPORTANTE: por enquanto sempre retorna axcend-interno até PR 3 ativar.
+ */
+function _resolverTenantId(req) {
+  // PR 1: tudo é interno. Será substituído por lógica real no PR 3.
+  return TENANT_INTERNO_ID;
+}
+
+/**
+ * Middleware: injeta req.tenantId em toda request.
+ * Nenhum endpoint usa req.tenantId ainda — só fica disponível pra debug
+ * e pros próximos PRs começarem a consumir.
+ */
+function _injetarTenant(req, res, next) {
+  req.tenantId = _resolverTenantId(req);
+  // Expose no header de resposta pra debug (será removido em prod)
+  res.setHeader('X-Tenant-Id', req.tenantId);
+  next();
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
@@ -88,6 +132,9 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '20mb' }));
+// Multi-tenancy PR 1: injeta req.tenantId em toda request.
+// Por enquanto sempre 'axcend-interno' — não afeta nada.
+app.use(_injetarTenant);
 app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
