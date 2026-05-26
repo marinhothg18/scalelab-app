@@ -4220,7 +4220,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -11126,15 +11126,29 @@ function renderFinanceiro(){
   else if(_finView==='contas')       _renderFinContas(el);
   else if(_finView==='categorias')   _renderFinCategorias(el);
   else if(_finView==='recorrentes')  _renderFinRecorrentes(el);
+  else if(_finView==='extrato')      _renderFinExtrato(el);
+  else if(_finView==='dre')          _renderFinDRE(el);
+  else if(_finView==='nfs')          _renderFinNFs(el);
+  else if(_finView==='ofx')          _renderFinOFX(el);
+  else if(_finView==='cobranca')     _renderFinCobranca(el);
+  else if(_finView==='impostos')     _renderFinImpostos(el);
+  else if(_finView==='ia')           _renderFinIA(el);
 }
 
 function _finHeader(){
   var itens = [
     {id:'dashboard',    label:'Dashboard',    icone:'📊'},
     {id:'lancamentos',  label:'Lançamentos',  icone:'💸'},
+    {id:'extrato',      label:'Extrato',      icone:'💰'},
+    {id:'dre',          label:'DRE',          icone:'📈'},
     {id:'contas',       label:'Contas',       icone:'🏦'},
+    {id:'ofx',          label:'OFX',          icone:'📥'},
+    {id:'nfs',          label:'NFs',          icone:'📄'},
+    {id:'cobranca',     label:'Cobrança',     icone:'📲'},
+    {id:'impostos',     label:'Impostos',     icone:'🧾'},
     {id:'categorias',   label:'Categorias',   icone:'🏷️'},
-    {id:'recorrentes',  label:'Recorrentes',  icone:'🔁'}
+    {id:'recorrentes',  label:'Recorrentes',  icone:'🔁'},
+    {id:'ia',           label:'IA Financ.',   icone:'🤖'}
   ];
   var tabs = itens.map(function(it){
     var ativo = _finView === it.id;
@@ -11985,6 +11999,852 @@ function _finGerarRecorrentesPendentes(){
     s('sl_fin_lancamentos', lancs);
     s('sl_fin_recorrentes', recs);
   }
+}
+
+// ══════════════════════════════════════════════
+// FINANCEIRO · MÓDULOS EXPANDIDOS (Extrato, DRE, NFs, OFX, Cobrança, Impostos, IA)
+// ══════════════════════════════════════════════
+
+function _finGetNFs(){ return g('sl_fin_nfs', []); }
+function _finGetOFX(){ return g('sl_fin_ofx', []); }
+function _finGetImpostos(){ return g('sl_fin_impostos', []); }
+
+// ─── EXTRATO UNIFICADO ───
+var _finExtFiltros = { conta:'', categoria:'', tipo:'', busca:'', dataIni:'', dataFim:'' };
+
+function _renderFinExtrato(el){
+  var lancs = _finGetLancamentos().slice();
+  var contas = _finGetContas();
+  var cats = _finGetCategorias();
+
+  // Aplica filtros
+  var filtrados = lancs.filter(function(l){
+    if(_finExtFiltros.conta && l.contaId !== _finExtFiltros.conta) return false;
+    if(_finExtFiltros.categoria && l.categoriaId !== _finExtFiltros.categoria) return false;
+    if(_finExtFiltros.tipo && l.tipo !== _finExtFiltros.tipo) return false;
+    if(_finExtFiltros.busca){
+      var q = _finExtFiltros.busca.toLowerCase();
+      if(!(l.descricao||'').toLowerCase().includes(q)) return false;
+    }
+    var dRef = l.dataPagamento || l.dataVencimento || '';
+    if(_finExtFiltros.dataIni && dRef && dRef < _finExtFiltros.dataIni) return false;
+    if(_finExtFiltros.dataFim && dRef && dRef > _finExtFiltros.dataFim) return false;
+    return true;
+  });
+
+  // Ordena por data mais recente
+  filtrados.sort(function(a,b){
+    var da = a.dataPagamento || a.dataVencimento || '';
+    var db = b.dataPagamento || b.dataVencimento || '';
+    return db.localeCompare(da);
+  });
+
+  // Calcula totais
+  var totalRec = filtrados.filter(function(l){ return l.tipo==='receita' && l.status==='confirmado'; }).reduce(function(s,l){ return s + Number(l.valor||0); }, 0);
+  var totalDes = filtrados.filter(function(l){ return l.tipo==='despesa' && l.status==='confirmado'; }).reduce(function(s,l){ return s + Number(l.valor||0); }, 0);
+  var saldo = totalRec - totalDes;
+
+  var contaOpts = '<option value="">Todas as contas</option>'+contas.map(function(c){ return '<option value="'+c.id+'"'+(_finExtFiltros.conta===c.id?' selected':'')+'>'+_esc(c.nome)+'</option>'; }).join('');
+  var catOpts = '<option value="">Todas as categorias</option>'+cats.map(function(c){ return '<option value="'+c.id+'"'+(_finExtFiltros.categoria===c.id?' selected':'')+'>'+_esc(c.icone||'')+' '+_esc(c.nome)+'</option>'; }).join('');
+
+  var linhas = filtrados.length
+    ? filtrados.slice(0, 200).map(function(l){
+        var cat = _finCatById(l.categoriaId);
+        var conta = _finContaById(l.contaId);
+        var dRef = l.dataPagamento || l.dataVencimento || '';
+        var corValor = l.tipo==='receita' ? '#16A34A' : '#DC2626';
+        var sinal = l.tipo==='receita' ? '+' : '-';
+        var statusChip = l.status==='confirmado'
+          ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">✓ PAGO</span>'
+          : l.status==='atrasado'
+          ? '<span style="background:rgba(220,38,38,.15);color:#DC2626;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">⚠ ATRASADO</span>'
+          : '<span style="background:rgba(251,191,36,.15);color:#FBBF24;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">⏳ PENDENTE</span>';
+        return '<tr style="border-bottom:1px solid var(--border);">'+
+          '<td style="padding:9px 8px;font-size:11px;color:var(--text2);">'+_finFmtData(dRef)+'</td>'+
+          '<td style="padding:9px 8px;font-size:12px;"><b>'+_esc(l.descricao||'—')+'</b>'+(cat?'<div style="font-size:10px;color:var(--text3);margin-top:2px;">'+(cat.icone||'')+' '+_esc(cat.nome)+'</div>':'')+'</td>'+
+          '<td style="padding:9px 8px;font-size:11px;color:var(--text2);">'+(conta?_esc(conta.nome):'—')+'</td>'+
+          '<td style="padding:9px 8px;text-align:center;">'+statusChip+'</td>'+
+          '<td style="padding:9px 8px;text-align:right;font-weight:700;font-size:13px;color:'+corValor+';">'+sinal+_finFmtMoeda(Math.abs(Number(l.valor||0)))+'</td>'+
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--text2);font-size:12px;">Nenhum lançamento encontrado com esses filtros.</td></tr>';
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">💰 Extrato Unificado</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Todos os lançamentos de todas as contas em um lugar só · filtros avançados</div></div>'+
+      '<button class="btn btn-ghost" onclick="finExtExportar()">📥 Exportar CSV</button>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Receitas (filtrado)</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#16A34A;">'+_finFmtMoeda(totalRec)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Despesas (filtrado)</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#DC2626;">'+_finFmtMoeda(totalDes)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Saldo período</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:'+(saldo>=0?'#16A34A':'#DC2626')+';">'+_finFmtMoeda(saldo)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Lançamentos</div><div style="font-size:20px;font-weight:700;margin-top:4px;">'+filtrados.length+'</div></div>'+
+    '</div>'+
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;">'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:center;">'+
+        '<input class="fi" type="text" placeholder="🔍 Buscar descrição..." value="'+_esc(_finExtFiltros.busca)+'" onchange="_finExtFiltros.busca=this.value;renderFinanceiro();" style="font-size:12px;">'+
+        '<select class="fs" onchange="_finExtFiltros.conta=this.value;renderFinanceiro();" style="font-size:12px;">'+contaOpts+'</select>'+
+        '<select class="fs" onchange="_finExtFiltros.categoria=this.value;renderFinanceiro();" style="font-size:12px;">'+catOpts+'</select>'+
+        '<select class="fs" onchange="_finExtFiltros.tipo=this.value;renderFinanceiro();" style="font-size:12px;"><option value="">Todos tipos</option><option value="receita"'+(_finExtFiltros.tipo==='receita'?' selected':'')+'>Só receitas</option><option value="despesa"'+(_finExtFiltros.tipo==='despesa'?' selected':'')+'>Só despesas</option></select>'+
+        '<input class="fi" type="date" value="'+_esc(_finExtFiltros.dataIni)+'" onchange="_finExtFiltros.dataIni=this.value;renderFinanceiro();" style="font-size:12px;" title="Data início">'+
+        '<input class="fi" type="date" value="'+_esc(_finExtFiltros.dataFim)+'" onchange="_finExtFiltros.dataFim=this.value;renderFinanceiro();" style="font-size:12px;" title="Data fim">'+
+      '</div>'+
+      (Object.values(_finExtFiltros).some(function(v){ return v; }) ? '<button onclick="_finExtFiltros={conta:\'\',categoria:\'\',tipo:\'\',busca:\'\',dataIni:\'\',dataFim:\'\'};renderFinanceiro();" style="margin-top:8px;background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:11px;">× Limpar filtros</button>' : '')+
+    '</div>'+
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">'+
+      '<table style="width:100%;border-collapse:collapse;">'+
+        '<thead><tr style="background:var(--bg);"><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Data</th><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Descrição</th><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Conta</th><th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">Status</th><th style="padding:9px 8px;text-align:right;font-size:10px;color:var(--text2);font-weight:600;">Valor</th></tr></thead>'+
+        '<tbody>'+linhas+'</tbody>'+
+      '</table>'+
+      (filtrados.length > 200 ? '<div style="padding:10px;text-align:center;font-size:11px;color:var(--text2);background:var(--bg);">Mostrando 200 de '+filtrados.length+'. Use filtros pra refinar.</div>' : '')+
+    '</div>';
+}
+
+function finExtExportar(){
+  var lancs = _finGetLancamentos();
+  var csv = 'Data,Descricao,Categoria,Conta,Tipo,Status,Valor\n';
+  lancs.forEach(function(l){
+    var cat = _finCatById(l.categoriaId);
+    var conta = _finContaById(l.contaId);
+    var d = l.dataPagamento || l.dataVencimento || '';
+    csv += [d, '"'+(l.descricao||'').replace(/"/g,'""')+'"', '"'+(cat?cat.nome:'').replace(/"/g,'""')+'"', '"'+(conta?conta.nome:'').replace(/"/g,'""')+'"', l.tipo, l.status, l.valor].join(',')+'\n';
+  });
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'extrato-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── DRE (Demonstrativo de Resultado) ───
+var _finDreMeses = 6; // janela padrão
+
+function _renderFinDRE(el){
+  var lancs = _finGetLancamentos().filter(function(l){ return l.status==='confirmado'; });
+  var cats = _finGetCategorias();
+
+  // Monta meses (últimos N)
+  var hoje = new Date(); hoje.setDate(1);
+  var meses = [];
+  for(var i=_finDreMeses-1;i>=0;i--){
+    var d = new Date(hoje.getFullYear(), hoje.getMonth()-i, 1);
+    meses.push({ key: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label: ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][d.getMonth()]+'/'+String(d.getFullYear()).slice(-2) });
+  }
+
+  // Agrupa por categoria e mês
+  var dados = {};
+  cats.forEach(function(c){ dados[c.id] = { cat:c, meses:{}, total:0 }; meses.forEach(function(m){ dados[c.id].meses[m.key] = 0; }); });
+
+  lancs.forEach(function(l){
+    var d = l.dataPagamento || l.dataVencimento || '';
+    if(!d) return;
+    var mk = d.slice(0,7);
+    if(!dados[l.categoriaId]) return;
+    if(!meses.find(function(m){ return m.key===mk; })) return;
+    var v = Number(l.valor||0);
+    dados[l.categoriaId].meses[mk] += v;
+    dados[l.categoriaId].total += v;
+  });
+
+  // Separa receitas e despesas
+  var receitas = Object.values(dados).filter(function(d){ return d.cat.tipo==='receita' && d.total>0; }).sort(function(a,b){ return b.total-a.total; });
+  var despesas = Object.values(dados).filter(function(d){ return d.cat.tipo==='despesa' && d.total>0; }).sort(function(a,b){ return b.total-a.total; });
+
+  // Totais por mês
+  var totRecMes = {}, totDesMes = {}, totLucMes = {};
+  meses.forEach(function(m){
+    totRecMes[m.key] = receitas.reduce(function(s,d){ return s + d.meses[m.key]; }, 0);
+    totDesMes[m.key] = despesas.reduce(function(s,d){ return s + d.meses[m.key]; }, 0);
+    totLucMes[m.key] = totRecMes[m.key] - totDesMes[m.key];
+  });
+  var totRecGeral = Object.values(totRecMes).reduce(function(s,v){ return s+v; }, 0);
+  var totDesGeral = Object.values(totDesMes).reduce(function(s,v){ return s+v; }, 0);
+  var totLucGeral = totRecGeral - totDesGeral;
+  var margem = totRecGeral ? Math.round(totLucGeral/totRecGeral*100) : 0;
+
+  var headerMeses = meses.map(function(m){ return '<th style="padding:8px;text-align:right;font-size:10px;color:var(--text2);font-weight:600;min-width:80px;">'+m.label+'</th>'; }).join('');
+
+  var linhaCat = function(d, isReceita){
+    var celulas = meses.map(function(m){
+      var v = d.meses[m.key];
+      return '<td style="padding:8px;text-align:right;font-size:12px;color:'+(v>0?(isReceita?'#16A34A':'#DC2626'):'var(--text3)')+';">'+(v>0?_finFmtMoeda(v):'—')+'</td>';
+    }).join('');
+    return '<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px 10px;font-size:12px;">'+(d.cat.icone||'')+' '+_esc(d.cat.nome)+'</td>'+celulas+'<td style="padding:8px;text-align:right;font-weight:700;font-size:12px;color:'+(isReceita?'#16A34A':'#DC2626')+';">'+_finFmtMoeda(d.total)+'</td></tr>';
+  };
+
+  var linhaTotal = function(label, mesesTot, totalGeral, cor){
+    var celulas = meses.map(function(m){ return '<td style="padding:10px 8px;text-align:right;font-weight:700;font-size:13px;color:'+cor+';">'+_finFmtMoeda(mesesTot[m.key])+'</td>'; }).join('');
+    return '<tr style="background:var(--bg);border-top:2px solid '+cor+';"><td style="padding:10px;font-weight:700;font-size:13px;color:'+cor+';">'+label+'</td>'+celulas+'<td style="padding:10px;text-align:right;font-weight:700;font-size:14px;color:'+cor+';">'+_finFmtMoeda(totalGeral)+'</td></tr>';
+  };
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">📈 DRE · Demonstrativo de Resultado</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Receitas e despesas por categoria, mês a mês · só lançamentos confirmados</div></div>'+
+      '<div style="display:flex;gap:6px;">'+
+        '<select class="fs" onchange="_finDreMeses=parseInt(this.value,10);renderFinanceiro();" style="font-size:12px;padding:6px 10px;"><option value="3"'+(_finDreMeses===3?' selected':'')+'>Últimos 3 meses</option><option value="6"'+(_finDreMeses===6?' selected':'')+'>Últimos 6 meses</option><option value="12"'+(_finDreMeses===12?' selected':'')+'>Últimos 12 meses</option></select>'+
+      '</div>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Receita Total</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+_finFmtMoeda(totRecGeral)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Despesa Total</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#DC2626;">'+_finFmtMoeda(totDesGeral)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Lucro/Prejuízo</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:'+(totLucGeral>=0?'#16A34A':'#DC2626')+';">'+_finFmtMoeda(totLucGeral)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Margem</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:'+(margem>=20?'#16A34A':margem>=0?'#FBBF24':'#DC2626')+';">'+margem+'%</div></div>'+
+    '</div>'+
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;overflow-x:auto;">'+
+      '<table style="width:100%;border-collapse:collapse;min-width:700px;">'+
+        '<thead><tr style="background:var(--bg);"><th style="padding:10px;text-align:left;font-size:11px;color:var(--text2);font-weight:700;">Categoria</th>'+headerMeses+'<th style="padding:10px;text-align:right;font-size:11px;color:var(--text2);font-weight:700;">Total</th></tr></thead>'+
+        '<tbody>'+
+          (receitas.length ? '<tr><td colspan="'+(meses.length+2)+'" style="padding:10px;font-size:11px;font-weight:700;color:#16A34A;text-transform:uppercase;letter-spacing:.5px;background:rgba(22,163,74,.05);">▲ Receitas</td></tr>' : '')+
+          receitas.map(function(d){ return linhaCat(d, true); }).join('')+
+          linhaTotal('= Total Receitas', totRecMes, totRecGeral, '#16A34A')+
+          (despesas.length ? '<tr><td colspan="'+(meses.length+2)+'" style="padding:10px;font-size:11px;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.5px;background:rgba(220,38,38,.05);">▼ Despesas</td></tr>' : '')+
+          despesas.map(function(d){ return linhaCat(d, false); }).join('')+
+          linhaTotal('= Total Despesas', totDesMes, totDesGeral, '#DC2626')+
+          linhaTotal('💰 Resultado (Lucro/Prejuízo)', totLucMes, totLucGeral, totLucGeral>=0?'#5b5ef4':'#DC2626')+
+        '</tbody>'+
+      '</table>'+
+    '</div>';
+}
+
+// ─── NFs (Notas Fiscais) ───
+function _renderFinNFs(el){
+  var nfs = _finGetNFs();
+  var status = { rascunho:'#FBBF24', emitida:'#16A34A', cancelada:'#DC2626', pendente:'#9CA3AF' };
+  var statusLabel = { rascunho:'Rascunho', emitida:'Emitida', cancelada:'Cancelada', pendente:'Pendente' };
+
+  var totalEmitidas = nfs.filter(function(n){ return n.status==='emitida'; }).reduce(function(s,n){ return s + Number(n.valor||0); }, 0);
+  var qtdEmitidas = nfs.filter(function(n){ return n.status==='emitida'; }).length;
+  var qtdPendentes = nfs.filter(function(n){ return n.status==='pendente'; }).length;
+  var qtdRascunho = nfs.filter(function(n){ return n.status==='rascunho'; }).length;
+
+  var linhas = nfs.length
+    ? nfs.sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); }).map(function(n){
+        var cor = status[n.status]||'#9CA3AF';
+        var linkBtn = n.linkArquivo ? '<a href="'+_esc(n.linkArquivo)+'" target="_blank" style="font-size:10px;color:var(--accent);text-decoration:none;">📎 Ver</a>' : '<span style="font-size:10px;color:var(--text3);">—</span>';
+        return '<tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="finNFEditar(\''+n.id+'\')">'+
+          '<td style="padding:10px 8px;font-size:11px;color:var(--text2);">'+_finFmtData(n.dataEmissao||'')+'</td>'+
+          '<td style="padding:10px 8px;font-size:12px;"><b>'+_esc(n.numero||'—')+'</b></td>'+
+          '<td style="padding:10px 8px;font-size:12px;">'+_esc(n.tomador||'—')+'</td>'+
+          '<td style="padding:10px 8px;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(n.descricao||'—')+'</td>'+
+          '<td style="padding:10px 8px;text-align:right;font-weight:700;font-size:13px;">'+_finFmtMoeda(n.valor||0)+'</td>'+
+          '<td style="padding:10px 8px;text-align:center;"><span style="background:'+cor+';color:#fff;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase;">'+(statusLabel[n.status]||n.status)+'</span></td>'+
+          '<td style="padding:10px 8px;text-align:center;">'+linkBtn+'</td>'+
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="7" style="padding:40px;text-align:center;color:var(--text2);"><div style="font-size:36px;margin-bottom:10px;">📄</div>Nenhuma NF cadastrada ainda.<br><small>Clique em "+ Nova NF" para começar.</small></td></tr>';
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">📄 Notas Fiscais</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Controle das NFs emitidas · vinculação com lançamentos · upload com OCR (em breve)</div></div>'+
+      '<div style="display:flex;gap:6px;">'+
+        '<button class="btn btn-ghost" onclick="finNFUploadOCR()">📷 Upload + OCR</button>'+
+        '<button class="btn btn-primary" onclick="finNFEditar(null)">+ Nova NF</button>'+
+      '</div>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Total emitido</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#16A34A;">'+_finFmtMoeda(totalEmitidas)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Emitidas</div><div style="font-size:20px;font-weight:700;margin-top:4px;">'+qtdEmitidas+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Pendentes</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#FBBF24;">'+qtdPendentes+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Rascunhos</div><div style="font-size:20px;font-weight:700;margin-top:4px;">'+qtdRascunho+'</div></div>'+
+    '</div>'+
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">'+
+      '<table style="width:100%;border-collapse:collapse;">'+
+        '<thead><tr style="background:var(--bg);"><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Data</th><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Nº</th><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Tomador</th><th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Descrição</th><th style="padding:9px 8px;text-align:right;font-size:10px;color:var(--text2);font-weight:600;">Valor</th><th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">Status</th><th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">PDF</th></tr></thead>'+
+        '<tbody>'+linhas+'</tbody>'+
+      '</table>'+
+    '</div>';
+}
+
+function finNFEditar(id){
+  var nfs = _finGetNFs();
+  var n = id ? nfs.find(function(x){ return x.id===id; }) : null;
+  var isNovo = !n;
+  n = n || { numero:'', dataEmissao:new Date().toISOString().slice(0,10), tomador:'', cnpj:'', descricao:'', valor:0, status:'rascunho', linkArquivo:'', categoriaId:'', notas:'' };
+
+  var cats = _finGetCategorias().filter(function(c){ return c.tipo==='receita'; });
+  var catOpts = '<option value="">— Sem categoria —</option>'+cats.map(function(c){ return '<option value="'+c.id+'"'+(n.categoriaId===c.id?' selected':'')+'>'+_esc(c.icone||'')+' '+_esc(c.nome)+'</option>'; }).join('');
+
+  var html =
+    '<div id="fin-modal-nf" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'fin-modal-nf\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;margin:20px auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
+          '<div style="font-size:16px;font-weight:700;">📄 '+(isNovo?'Nova Nota Fiscal':'Editar NF · '+_esc(n.numero||''))+'</div>'+
+          '<button onclick="document.getElementById(\'fin-modal-nf\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:22px;">'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">'+
+            '<div class="fg"><label class="fl">Número da NF *</label><input id="nf-num" class="fi" value="'+_esc(n.numero)+'" placeholder="00001"></div>'+
+            '<div class="fg"><label class="fl">Data de emissão *</label><input id="nf-data" class="fi" type="date" value="'+_esc(n.dataEmissao)+'"></div>'+
+          '</div>'+
+          '<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px;">'+
+            '<div class="fg"><label class="fl">Tomador (cliente) *</label><input id="nf-tom" class="fi" value="'+_esc(n.tomador)+'" placeholder="Nome ou Razão Social"></div>'+
+            '<div class="fg"><label class="fl">CNPJ/CPF</label><input id="nf-cnpj" class="fi" value="'+_esc(n.cnpj||'')+'" placeholder="00.000.000/0001-00"></div>'+
+          '</div>'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Descrição do serviço *</label><textarea id="nf-desc" class="fi" rows="3" style="resize:vertical;" placeholder="Ex: Serviços de marketing digital · Campanha Maio/26">'+_esc(n.descricao)+'</textarea></div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">'+
+            '<div class="fg"><label class="fl">Valor (R$) *</label><input id="nf-valor" class="fi" type="number" step="0.01" value="'+(n.valor||0)+'"></div>'+
+            '<div class="fg"><label class="fl">Status</label><select id="nf-status" class="fs"><option value="rascunho"'+(n.status==='rascunho'?' selected':'')+'>Rascunho</option><option value="pendente"'+(n.status==='pendente'?' selected':'')+'>Pendente</option><option value="emitida"'+(n.status==='emitida'?' selected':'')+'>Emitida</option><option value="cancelada"'+(n.status==='cancelada'?' selected':'')+'>Cancelada</option></select></div>'+
+            '<div class="fg"><label class="fl">Categoria</label><select id="nf-cat" class="fs">'+catOpts+'</select></div>'+
+          '</div>'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Link do arquivo (PDF da NF)</label><input id="nf-link" class="fi" value="'+_esc(n.linkArquivo||'')+'" placeholder="https://drive.google.com/..."></div>'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Notas internas</label><textarea id="nf-notas" class="fi" rows="2" style="resize:vertical;">'+_esc(n.notas||'')+'</textarea></div>'+
+          '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text2);">'+
+            '💡 Ao salvar com status <b>Emitida</b>, opção de criar lançamento de receita automaticamente.'+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;position:sticky;bottom:0;background:var(--card);border-radius:0 0 12px 12px;">'+
+          (isNovo ? '<div></div>' : '<button class="btn btn-ghost" onclick="finNFExcluir(\''+n.id+'\')" style="color:#DC2626;">Excluir</button>')+
+          '<div style="display:flex;gap:8px;">'+
+            '<button class="btn btn-ghost" onclick="document.getElementById(\'fin-modal-nf\').remove();">Cancelar</button>'+
+            '<button class="btn btn-primary" onclick="finNFSalvar(\''+(n.id||'')+'\')">Salvar</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('fin-modal-nf'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function finNFSalvar(id){
+  var numero = (document.getElementById('nf-num').value||'').trim();
+  var tomador = (document.getElementById('nf-tom').value||'').trim();
+  var descricao = (document.getElementById('nf-desc').value||'').trim();
+  var valor = Number(document.getElementById('nf-valor').value)||0;
+  if(!numero || !tomador || !descricao || !valor){ alert('Número, tomador, descrição e valor são obrigatórios.'); return; }
+  var nfs = _finGetNFs();
+  var n = id ? nfs.find(function(x){ return x.id===id; }) : null;
+  var isNovo = !n;
+  if(!n){ n = { id:'nf-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), _criadoEm:new Date().toISOString() }; }
+  n.numero = numero;
+  n.tomador = tomador;
+  n.cnpj = (document.getElementById('nf-cnpj').value||'').trim();
+  n.descricao = descricao;
+  n.valor = valor;
+  n.dataEmissao = document.getElementById('nf-data').value;
+  n.status = document.getElementById('nf-status').value;
+  n.categoriaId = document.getElementById('nf-cat').value;
+  n.linkArquivo = (document.getElementById('nf-link').value||'').trim();
+  n.notas = (document.getElementById('nf-notas').value||'').trim();
+  n._updatedAt = Date.now();
+  if(isNovo) nfs.push(n);
+  s('sl_fin_nfs', nfs);
+
+  // Opcional: lançar como receita se emitida
+  if(n.status==='emitida' && confirm('NF emitida! Quer criar um lançamento de receita pra essa NF no Financeiro?')){
+    var lancs = _finGetLancamentos();
+    if(!lancs.find(function(l){ return l.nfId===n.id; })){
+      lancs.push({
+        id: _finNovoId('lanc'),
+        tipo:'receita', descricao:'NF '+n.numero+' · '+n.tomador, valor:n.valor,
+        dataVencimento:n.dataEmissao, dataPagamento:'', status:'pendente',
+        metodo:'pix', categoriaId:n.categoriaId||'', contaId:'', nfId:n.id,
+        notas:n.descricao, _criadoEm:new Date().toISOString(), _updatedAt:Date.now()
+      });
+      s('sl_fin_lancamentos', lancs);
+    }
+  }
+  var m = document.getElementById('fin-modal-nf'); if(m) m.remove();
+  renderFinanceiro();
+}
+
+function finNFExcluir(id){
+  if(!confirm('Excluir essa NF permanentemente?')) return;
+  s('sl_fin_nfs', _finGetNFs().filter(function(n){ return n.id!==id; }));
+  var m = document.getElementById('fin-modal-nf'); if(m) m.remove();
+  renderFinanceiro();
+}
+
+function finNFUploadOCR(){
+  alert('🤖 Upload com OCR\n\nEm breve: upload do PDF/imagem da NF e a IA extrai automaticamente:\n• Número\n• Tomador\n• CNPJ\n• Valor\n• Descrição\n• Data de emissão\n\nPor enquanto, cadastre manualmente em "+ Nova NF" e cole o link do arquivo.');
+}
+
+// ─── OFX (Conciliação bancária) ───
+function _renderFinOFX(el){
+  var imports = _finGetOFX();
+  var lancs = _finGetLancamentos();
+
+  var totalImportados = imports.reduce(function(s,i){ return s + (i.transacoes||[]).length; }, 0);
+  var totalConciliados = imports.reduce(function(s,i){ return s + (i.transacoes||[]).filter(function(t){ return t.conciliado; }).length; }, 0);
+  var pendentes = totalImportados - totalConciliados;
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">📥 Importação OFX · Conciliação bancária</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Importe o extrato do banco em OFX e bata com seus lançamentos automaticamente</div></div>'+
+      '<button class="btn btn-primary" onclick="finOFXImportar()">+ Importar arquivo OFX</button>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Arquivos OFX</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+imports.length+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Transações</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+totalImportados+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Conciliadas</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+totalConciliados+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Pendentes</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#FBBF24;">'+pendentes+'</div></div>'+
+    '</div>'+
+
+    (imports.length === 0
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:36px;margin-bottom:12px;">📥</div>'+
+          '<div style="font-size:14px;margin-bottom:8px;">Nenhum arquivo OFX importado ainda</div>'+
+          '<div style="font-size:12px;max-width:480px;margin:8px auto 16px;line-height:1.6;">Baixe o extrato do seu banco no formato OFX (Itaú, Bradesco, Nubank, Inter, Santander suportam) e importe aqui. O sistema vai comparar com seus lançamentos e te mostrar o que falta registrar.</div>'+
+          '<button class="btn btn-primary" onclick="finOFXImportar()">+ Importar agora</button>'+
+        '</div>'
+      : imports.sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); }).map(function(imp){
+          var concil = (imp.transacoes||[]).filter(function(t){ return t.conciliado; }).length;
+          var prog = imp.transacoes && imp.transacoes.length ? Math.round(concil/imp.transacoes.length*100) : 0;
+          var conta = _finContaById(imp.contaId);
+          return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px;">'+
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'+
+              '<div><div style="font-size:14px;font-weight:700;">📁 '+_esc(imp.nomeArquivo||'arquivo.ofx')+'</div>'+
+              '<div style="font-size:11px;color:var(--text2);margin-top:2px;">'+(conta?'🏦 '+_esc(conta.nome)+' · ':'')+'Importado '+_finFmtData(imp.dataImport||'')+' · '+(imp.transacoes||[]).length+' transações</div></div>'+
+              '<div style="text-align:right;"><div style="font-size:18px;font-weight:700;color:'+(prog===100?'#16A34A':'#FBBF24')+';">'+prog+'%</div><div style="font-size:10px;color:var(--text2);">'+concil+'/'+(imp.transacoes||[]).length+' conciliadas</div></div>'+
+            '</div>'+
+            '<div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;width:'+prog+'%;background:'+(prog===100?'#16A34A':'#FBBF24')+';"></div></div>'+
+            '<button class="btn btn-ghost" style="font-size:11px;padding:5px 12px;" onclick="finOFXVerImport(\''+imp.id+'\')">Ver transações →</button>'+
+            '<button class="btn btn-ghost" style="font-size:11px;padding:5px 12px;color:#DC2626;margin-left:6px;" onclick="finOFXRemover(\''+imp.id+'\')">Remover</button>'+
+          '</div>';
+        }).join(''));
+}
+
+function finOFXImportar(){
+  var contas = _finGetContas();
+  if(!contas.length){ alert('Cadastre uma conta bancária primeiro na aba Contas.'); return; }
+  var contaOpts = contas.map(function(c){ return '<option value="'+c.id+'">'+_esc(c.nome)+'</option>'; }).join('');
+  var html =
+    '<div id="fin-modal-ofx" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'fin-modal-ofx\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:520px;width:100%;padding:22px;">'+
+        '<div style="font-size:16px;font-weight:700;margin-bottom:14px;">📥 Importar arquivo OFX</div>'+
+        '<div class="fg" style="margin-bottom:12px;"><label class="fl">Conta bancária *</label><select id="ofx-conta" class="fs">'+contaOpts+'</select></div>'+
+        '<div class="fg" style="margin-bottom:14px;"><label class="fl">Arquivo OFX *</label><input id="ofx-file" type="file" accept=".ofx,.OFX,.xml" class="fi"></div>'+
+        '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text2);margin-bottom:14px;">'+
+          '💡 <b>Como baixar o OFX no seu banco:</b><br>'+
+          '• <b>Nubank:</b> Extrato → Exportar → OFX<br>'+
+          '• <b>Itaú:</b> Internet banking → Extrato → Salvar como → OFX<br>'+
+          '• <b>Inter:</b> App → Extrato → Compartilhar → OFX<br>'+
+          '• <b>Bradesco/Santander:</b> Conciliação → Exportar OFX'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'fin-modal-ofx\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="finOFXProcessar()">Importar e conciliar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('fin-modal-ofx'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function finOFXProcessar(){
+  var contaId = document.getElementById('ofx-conta').value;
+  var file = document.getElementById('ofx-file').files[0];
+  if(!contaId || !file){ alert('Selecione conta e arquivo.'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var conteudo = e.target.result;
+    var trans = _finOFXParse(conteudo);
+    if(!trans.length){ alert('Não foi possível extrair transações do arquivo. Verifique o formato.'); return; }
+
+    // Tenta conciliar com lançamentos existentes
+    var lancs = _finGetLancamentos();
+    trans.forEach(function(t){
+      var match = lancs.find(function(l){
+        var dataMatch = (l.dataPagamento || l.dataVencimento) === t.data;
+        var valMatch = Math.abs(Number(l.valor||0) - Math.abs(t.valor)) < 0.01;
+        return dataMatch && valMatch;
+      });
+      if(match){ t.conciliado = true; t.lancamentoId = match.id; }
+    });
+
+    var imports = _finGetOFX();
+    imports.push({
+      id: 'ofx-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+      nomeArquivo: file.name,
+      contaId: contaId,
+      dataImport: new Date().toISOString().slice(0,10),
+      transacoes: trans,
+      _updatedAt: Date.now()
+    });
+    s('sl_fin_ofx', imports);
+
+    var conciliados = trans.filter(function(t){ return t.conciliado; }).length;
+    alert('✅ '+trans.length+' transação(ões) importada(s).\n'+conciliados+' já foram conciliadas automaticamente.\n'+(trans.length-conciliados)+' aguardam revisão.');
+    var m = document.getElementById('fin-modal-ofx'); if(m) m.remove();
+    renderFinanceiro();
+  };
+  reader.readAsText(file);
+}
+
+// Parser OFX básico (extrai transações)
+function _finOFXParse(txt){
+  var trans = [];
+  var blocks = txt.split(/<STMTTRN>/i).slice(1);
+  blocks.forEach(function(b){
+    var fim = b.indexOf('</STMTTRN>');
+    if(fim < 0) return;
+    var bloco = b.slice(0, fim);
+    var get = function(tag){
+      var m = bloco.match(new RegExp('<'+tag+'>\\s*([^<\\r\\n]+)', 'i'));
+      return m ? m[1].trim() : '';
+    };
+    var dt = get('DTPOSTED').slice(0,8);
+    var data = dt ? dt.slice(0,4)+'-'+dt.slice(4,6)+'-'+dt.slice(6,8) : '';
+    trans.push({
+      id: 't-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+      data: data,
+      valor: Number(get('TRNAMT'))||0,
+      descricao: get('MEMO') || get('NAME') || '',
+      tipo: get('TRNTYPE').toLowerCase(),
+      fitid: get('FITID'),
+      conciliado: false,
+      lancamentoId: null
+    });
+  });
+  return trans;
+}
+
+function finOFXVerImport(impId){
+  var imp = _finGetOFX().find(function(x){ return x.id===impId; });
+  if(!imp){ alert('Importação não encontrada.'); return; }
+  var linhas = (imp.transacoes||[]).map(function(t){
+    var corValor = t.valor>=0 ? '#16A34A' : '#DC2626';
+    var chip = t.conciliado
+      ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;">✓ CONCILIADO</span>'
+      : '<button onclick="finOFXConciliarManual(\''+imp.id+'\',\''+t.id+'\')" style="background:#FBBF24;color:#000;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;border:none;cursor:pointer;">CONCILIAR</button>';
+    return '<tr style="border-bottom:1px solid var(--border);">'+
+      '<td style="padding:8px;font-size:11px;">'+_finFmtData(t.data)+'</td>'+
+      '<td style="padding:8px;font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(t.descricao||'—')+'</td>'+
+      '<td style="padding:8px;text-align:right;font-weight:700;font-size:12px;color:'+corValor+';">'+_finFmtMoeda(t.valor)+'</td>'+
+      '<td style="padding:8px;text-align:center;">'+chip+'</td>'+
+    '</tr>';
+  }).join('');
+  var html =
+    '<div id="fin-modal-ofxver" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'fin-modal-ofxver\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:780px;width:100%;margin:20px auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--card);border-radius:12px 12px 0 0;">'+
+          '<div style="font-size:15px;font-weight:700;">📁 '+_esc(imp.nomeArquivo)+'</div>'+
+          '<button onclick="document.getElementById(\'fin-modal-ofxver\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:14px 22px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:var(--bg);"><th style="padding:8px;text-align:left;font-size:10px;color:var(--text2);">Data</th><th style="padding:8px;text-align:left;font-size:10px;color:var(--text2);">Descrição</th><th style="padding:8px;text-align:right;font-size:10px;color:var(--text2);">Valor</th><th style="padding:8px;text-align:center;font-size:10px;color:var(--text2);">Status</th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('fin-modal-ofxver'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function finOFXConciliarManual(impId, transId){
+  var imp = _finGetOFX().find(function(x){ return x.id===impId; });
+  if(!imp) return;
+  var t = (imp.transacoes||[]).find(function(x){ return x.id===transId; });
+  if(!t) return;
+  if(!confirm('Criar lançamento no Financeiro a partir dessa transação OFX?\n\n'+t.descricao+'\n'+_finFmtMoeda(t.valor)+' em '+_finFmtData(t.data))) return;
+  var lancs = _finGetLancamentos();
+  var novo = {
+    id: _finNovoId('lanc'),
+    tipo: t.valor>=0 ? 'receita' : 'despesa',
+    descricao: t.descricao || 'Transação OFX',
+    valor: Math.abs(t.valor),
+    dataVencimento: t.data,
+    dataPagamento: t.data,
+    status: 'confirmado',
+    metodo: 'pix',
+    categoriaId: '',
+    contaId: imp.contaId,
+    ofxId: t.id,
+    notas: 'Importado via OFX',
+    _criadoEm: new Date().toISOString(),
+    _updatedAt: Date.now()
+  };
+  lancs.push(novo);
+  s('sl_fin_lancamentos', lancs);
+  t.conciliado = true;
+  t.lancamentoId = novo.id;
+  var imports = _finGetOFX();
+  var idx = imports.findIndex(function(x){ return x.id===impId; });
+  if(idx>=0){ imports[idx] = imp; imports[idx]._updatedAt = Date.now(); s('sl_fin_ofx', imports); }
+  var m = document.getElementById('fin-modal-ofxver'); if(m) m.remove();
+  finOFXVerImport(impId);
+}
+
+function finOFXRemover(impId){
+  if(!confirm('Remover essa importação OFX? Os lançamentos já criados continuam.')) return;
+  s('sl_fin_ofx', _finGetOFX().filter(function(i){ return i.id!==impId; }));
+  renderFinanceiro();
+}
+
+// ─── COBRANÇA · NFs PJ pendentes ───
+function _renderFinCobranca(el){
+  // Puxa da Folha PJ todas as entradas com NF não aprovada
+  var folha = g('sl_rh_folha', []);
+  var pendentes = folha.filter(function(f){ return f.nfStatus !== 'aprovada'; });
+  var colabs = g('sl_rh_colaboradores', []);
+
+  var totalPendente = pendentes.reduce(function(s,f){ return s + Number(f.total||0); }, 0);
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">📲 Cobrança de NFs PJ</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Lista de PJs com NF pendente · disparar lembretes via WhatsApp em lote</div></div>'+
+      (pendentes.length ? '<button class="btn btn-primary" onclick="finCobrancaEnviarTodos()">📲 Cobrar todos via WA</button>' : '')+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">NFs pendentes</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:'+(pendentes.length?'#FBBF24':'#16A34A')+';">'+pendentes.length+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Valor a receber NF</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#FBBF24;">'+_finFmtMoeda(totalPendente)+'</div></div>'+
+    '</div>'+
+
+    (pendentes.length === 0
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:36px;margin-bottom:10px;">✅</div>Nenhuma NF pendente! Todos os PJs já entregaram.</div>'
+      : '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;"><table style="width:100%;border-collapse:collapse;">'+
+        '<thead><tr style="background:var(--bg);"><th style="padding:10px;text-align:left;font-size:11px;color:var(--text2);font-weight:600;">PJ</th><th style="padding:10px;text-align:left;font-size:11px;color:var(--text2);font-weight:600;">Mês</th><th style="padding:10px;text-align:right;font-size:11px;color:var(--text2);font-weight:600;">Valor</th><th style="padding:10px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">Status</th><th style="padding:10px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">WhatsApp</th><th style="padding:10px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">Ação</th></tr></thead>'+
+        '<tbody>'+
+          pendentes.map(function(f){
+            var c = colabs.find(function(x){ return x.id===f.colaboradorId; });
+            if(!c) return '';
+            var chip = f.nfStatus==='enviada'
+              ? '<span style="background:rgba(27,156,250,.15);color:#1B9CFA;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;">📨 Enviada</span>'
+              : '<span style="background:rgba(251,191,36,.15);color:#FBBF24;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;">⏳ Pendente</span>';
+            var tel = c.telefone ? '✅ '+_esc(c.telefone) : '<span style="color:#DC2626;">⚠️ sem WA</span>';
+            return '<tr style="border-bottom:1px solid var(--border);">'+
+              '<td style="padding:10px;font-size:12px;"><b>'+_esc(c.nome)+'</b><div style="font-size:10px;color:var(--text2);">'+_esc(c.cargo||'')+'</div></td>'+
+              '<td style="padding:10px;font-size:12px;">'+_esc(f.mes||'—')+'</td>'+
+              '<td style="padding:10px;text-align:right;font-weight:700;font-size:13px;">'+_finFmtMoeda(f.total||0)+'</td>'+
+              '<td style="padding:10px;text-align:center;">'+chip+'</td>'+
+              '<td style="padding:10px;text-align:center;font-size:11px;">'+tel+'</td>'+
+              '<td style="padding:10px;text-align:center;">'+(c.telefone?'<button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="finCobrancaEnviar(\''+f.id+'\')">📲 Cobrar</button>':'<span style="font-size:10px;color:var(--text3);">—</span>')+'</td>'+
+            '</tr>';
+          }).join('')+
+        '</tbody></table></div>');
+}
+
+function finCobrancaEnviar(folhaId){
+  var folha = g('sl_rh_folha', []);
+  var f = folha.find(function(x){ return x.id===folhaId; });
+  if(!f) return;
+  var c = (g('sl_rh_colaboradores', [])||[]).find(function(x){ return x.id===f.colaboradorId; });
+  if(!c){ alert('Colaborador não encontrado.'); return; }
+  var msg = 'Olá '+c.nome.split(' ')[0]+'! 👋\n\nLembrete: a NF da Folha de '+(f.mes||'')+' (valor '+_finFmtMoeda(f.total||0)+') está pendente.\n\nPode emitir e enviar pra gente? 🙏\n\nObrigado!';
+  alert('Mensagem que será enviada:\n\n'+msg+'\n\n(Integração Z-API necessária pra envio real)');
+  f.nfStatus = 'enviada';
+  f._updatedAt = Date.now()/1000;
+  s('sl_rh_folha', folha);
+  renderFinanceiro();
+}
+
+function finCobrancaEnviarTodos(){
+  var folha = g('sl_rh_folha', []);
+  var pendentes = folha.filter(function(f){ return f.nfStatus !== 'aprovada'; });
+  if(!pendentes.length){ alert('Sem pendências.'); return; }
+  if(!confirm('Enviar lembrete via WhatsApp para os '+pendentes.length+' PJs com NF pendente?')) return;
+  pendentes.forEach(function(f){ f.nfStatus = 'enviada'; f._updatedAt = Date.now()/1000; });
+  s('sl_rh_folha', folha);
+  alert('✅ '+pendentes.length+' lembrete(s) registrado(s). Quando a Z-API estiver configurada, serão enviados automaticamente.');
+  renderFinanceiro();
+}
+
+// ─── IMPOSTOS · Simples Nacional ───
+function _renderFinImpostos(el){
+  var lancs = _finGetLancamentos().filter(function(l){ return l.status==='confirmado' && l.tipo==='receita'; });
+  var hoje = new Date();
+
+  // Últimos 12 meses de receita
+  var meses = [];
+  for(var i=11;i>=0;i--){
+    var d = new Date(hoje.getFullYear(), hoje.getMonth()-i, 1);
+    var mk = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    var rec = lancs.filter(function(l){ var dr = (l.dataPagamento||l.dataVencimento||''); return dr.slice(0,7)===mk; }).reduce(function(s,l){ return s+Number(l.valor||0); }, 0);
+    meses.push({ key:mk, label:['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][d.getMonth()]+'/'+String(d.getFullYear()).slice(-2), receita:rec });
+  }
+  var rbt12 = meses.reduce(function(s,m){ return s+m.receita; }, 0); // Receita bruta últimos 12 meses
+
+  // Alíquota Simples Nacional Anexo III (serviços) — aproximação
+  var anexoIII = [
+    { ate: 180000,    aliq: 0.06,  deducao: 0 },
+    { ate: 360000,    aliq: 0.112, deducao: 9360 },
+    { ate: 720000,    aliq: 0.135, deducao: 17640 },
+    { ate: 1800000,   aliq: 0.16,  deducao: 35640 },
+    { ate: 3600000,   aliq: 0.21,  deducao: 125640 },
+    { ate: 4800000,   aliq: 0.33,  deducao: 648000 }
+  ];
+  var faixa = anexoIII.find(function(f){ return rbt12 <= f.ate; }) || anexoIII[anexoIII.length-1];
+  var aliqEfetiva = rbt12 > 0 ? ((rbt12 * faixa.aliq) - faixa.deducao) / rbt12 : faixa.aliq;
+  if(aliqEfetiva < 0) aliqEfetiva = faixa.aliq;
+  var mesAtual = meses[meses.length-1];
+  var dasEstimado = mesAtual.receita * aliqEfetiva;
+
+  // Histórico de pagamentos
+  var impostos = _finGetImpostos();
+
+  var linhasMes = meses.slice().reverse().map(function(m){
+    var aliqM = aliqEfetiva;
+    var das = m.receita * aliqM;
+    var pago = impostos.find(function(i){ return i.mes===m.key && i.tipo==='DAS'; });
+    var statusBadge = pago && pago.pago
+      ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;">✓ PAGO</span>'
+      : m.key === mesAtual.key
+      ? '<span style="background:rgba(251,191,36,.15);color:#FBBF24;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;">A PAGAR</span>'
+      : '<span style="background:rgba(220,38,38,.15);color:#DC2626;font-size:9px;font-weight:700;padding:3px 8px;border-radius:10px;">EM ATRASO</span>';
+    return '<tr style="border-bottom:1px solid var(--border);">'+
+      '<td style="padding:9px;font-size:12px;"><b>'+m.label+'</b></td>'+
+      '<td style="padding:9px;text-align:right;font-size:12px;color:#16A34A;">'+_finFmtMoeda(m.receita)+'</td>'+
+      '<td style="padding:9px;text-align:right;font-size:12px;color:var(--text2);">'+(aliqM*100).toFixed(2)+'%</td>'+
+      '<td style="padding:9px;text-align:right;font-weight:700;font-size:12px;color:#DC2626;">'+_finFmtMoeda(das)+'</td>'+
+      '<td style="padding:9px;text-align:center;">'+statusBadge+'</td>'+
+      '<td style="padding:9px;text-align:center;">'+(pago && pago.pago ? '<span style="font-size:10px;color:var(--text3);">Pago '+_finFmtData(pago.dataPagamento||'')+'</span>' : '<button class="btn btn-ghost" style="font-size:10px;padding:4px 10px;" onclick="finImpostoPagar(\''+m.key+'\','+das.toFixed(2)+')">Marcar pago</button>')+'</td>'+
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">🧾 Impostos · Simples Nacional</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Cálculo automático do DAS Anexo III (serviços) com base na receita dos últimos 12 meses</div></div>'+
+    '</div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Receita RBT12</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#16A34A;">'+_finFmtMoeda(rbt12)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Alíquota efetiva</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#FBBF24;">'+(aliqEfetiva*100).toFixed(2)+'%</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">DAS '+mesAtual.label+'</div><div style="font-size:20px;font-weight:700;margin-top:4px;color:#DC2626;">'+_finFmtMoeda(dasEstimado)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Faixa SN</div><div style="font-size:14px;font-weight:700;margin-top:4px;">até '+_finFmtMoeda(faixa.ate)+'</div><div style="font-size:10px;color:var(--text2);">alíq. nominal '+(faixa.aliq*100).toFixed(1)+'%</div></div>'+
+    '</div>'+
+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px;">'+
+      '<div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;">📅 DAS mês a mês</div>'+
+      '<table style="width:100%;border-collapse:collapse;">'+
+        '<thead><tr style="background:var(--bg);"><th style="padding:9px;text-align:left;font-size:10px;color:var(--text2);">Mês</th><th style="padding:9px;text-align:right;font-size:10px;color:var(--text2);">Receita</th><th style="padding:9px;text-align:right;font-size:10px;color:var(--text2);">Alíquota</th><th style="padding:9px;text-align:right;font-size:10px;color:var(--text2);">DAS</th><th style="padding:9px;text-align:center;font-size:10px;color:var(--text2);">Status</th><th style="padding:9px;text-align:center;font-size:10px;color:var(--text2);">Ação</th></tr></thead>'+
+        '<tbody>'+linhasMes+'</tbody>'+
+      '</table>'+
+    '</div>'+
+
+    '<div style="background:rgba(251,191,36,.06);border:1px solid #FBBF24;border-radius:10px;padding:14px;font-size:12px;color:var(--text2);line-height:1.7;">'+
+      '⚠️ <b>Atenção:</b> Esse é um cálculo aproximado baseado no Anexo III do Simples Nacional (serviços em geral, incluindo marketing). Para o cálculo oficial e definitivo, sempre consulte sua contabilidade ou use o PGDAS-D do governo. As alíquotas dos demais anexos (I, II, IV, V) e regimes (Lucro Real, Lucro Presumido) não estão considerados aqui.'+
+    '</div>';
+}
+
+function finImpostoPagar(mes, valor){
+  var dataPag = prompt('Data do pagamento (AAAA-MM-DD):', new Date().toISOString().slice(0,10));
+  if(!dataPag) return;
+  var impostos = _finGetImpostos();
+  impostos.push({
+    id: 'imp-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+    tipo: 'DAS',
+    mes: mes,
+    valor: valor,
+    dataPagamento: dataPag,
+    pago: true,
+    _updatedAt: Date.now()
+  });
+  s('sl_fin_impostos', impostos);
+  // Cria lançamento de despesa
+  if(confirm('Criar lançamento de despesa "DAS '+mes+'" no valor de '+_finFmtMoeda(valor)+'?')){
+    var lancs = _finGetLancamentos();
+    lancs.push({
+      id: _finNovoId('lanc'),
+      tipo:'despesa', descricao:'DAS Simples Nacional · '+mes, valor:valor,
+      dataVencimento:dataPag, dataPagamento:dataPag, status:'confirmado',
+      metodo:'pix', categoriaId:'cat-des-impostos', contaId:'',
+      notas:'Pagamento de DAS', _criadoEm:new Date().toISOString(), _updatedAt:Date.now()
+    });
+    s('sl_fin_lancamentos', lancs);
+  }
+  renderFinanceiro();
+}
+
+// ─── IA FINANCEIRA ───
+function _renderFinIA(el){
+  var lancs = _finGetLancamentos().filter(function(l){ return l.status==='confirmado'; });
+  var hoje = new Date();
+  var mesAtual = hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0');
+  var mesPassado = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+  var mesPassadoKey = mesPassado.getFullYear()+'-'+String(mesPassado.getMonth()+1).padStart(2,'0');
+
+  // Métricas básicas
+  var recAtual = lancs.filter(function(l){ return l.tipo==='receita' && (l.dataPagamento||l.dataVencimento||'').slice(0,7)===mesAtual; }).reduce(function(s,l){ return s+Number(l.valor||0); }, 0);
+  var recPassado = lancs.filter(function(l){ return l.tipo==='receita' && (l.dataPagamento||l.dataVencimento||'').slice(0,7)===mesPassadoKey; }).reduce(function(s,l){ return s+Number(l.valor||0); }, 0);
+  var desAtual = lancs.filter(function(l){ return l.tipo==='despesa' && (l.dataPagamento||l.dataVencimento||'').slice(0,7)===mesAtual; }).reduce(function(s,l){ return s+Number(l.valor||0); }, 0);
+  var desPassado = lancs.filter(function(l){ return l.tipo==='despesa' && (l.dataPagamento||l.dataVencimento||'').slice(0,7)===mesPassadoKey; }).reduce(function(s,l){ return s+Number(l.valor||0); }, 0);
+  var varRec = recPassado ? Math.round((recAtual-recPassado)/recPassado*100) : 0;
+  var varDes = desPassado ? Math.round((desAtual-desPassado)/desPassado*100) : 0;
+
+  // Alertas inteligentes
+  var alertas = [];
+  if(varDes > 20) alertas.push({ tipo:'warn', icone:'⚠️', titulo:'Despesas subiram '+varDes+'% vs mês passado', detalhe:'De '+_finFmtMoeda(desPassado)+' para '+_finFmtMoeda(desAtual)+'. Vale revisar categorias com maior crescimento.' });
+  if(varRec < -15) alertas.push({ tipo:'danger', icone:'🚨', titulo:'Receita caiu '+Math.abs(varRec)+'% vs mês passado', detalhe:'De '+_finFmtMoeda(recPassado)+' para '+_finFmtMoeda(recAtual)+'. Investigar fontes de receita perdidas.' });
+  if(varRec > 30) alertas.push({ tipo:'ok', icone:'🚀', titulo:'Receita cresceu '+varRec+'% vs mês passado', detalhe:'Excelente! De '+_finFmtMoeda(recPassado)+' para '+_finFmtMoeda(recAtual)+'. Identificar o que tá funcionando pra escalar.' });
+  if(desAtual > recAtual) alertas.push({ tipo:'danger', icone:'🔴', titulo:'Despesas maiores que receitas neste mês', detalhe:'Resultado negativo de '+_finFmtMoeda(desAtual-recAtual)+'. Ação urgente: cortar despesas ou acelerar receitas.' });
+
+  // Top 5 despesas do mês
+  var cats = _finGetCategorias();
+  var despMes = lancs.filter(function(l){ return l.tipo==='despesa' && (l.dataPagamento||l.dataVencimento||'').slice(0,7)===mesAtual; });
+  var porCat = {};
+  despMes.forEach(function(l){ porCat[l.categoriaId] = (porCat[l.categoriaId]||0) + Number(l.valor||0); });
+  var topCats = Object.entries(porCat).map(function(e){ var c = cats.find(function(x){ return x.id===e[0]; }); return { cat:c, valor:e[1] }; }).filter(function(x){ return x.cat; }).sort(function(a,b){ return b.valor-a.valor; }).slice(0,5);
+
+  // Próximos pagamentos
+  var prox = _finGetLancamentos().filter(function(l){ return l.status==='pendente' && l.dataVencimento; }).sort(function(a,b){ return (a.dataVencimento||'').localeCompare(b.dataVencimento||''); }).slice(0,5);
+
+  el.innerHTML = _finHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">🤖 IA Financeira</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Análise automática do mês · alertas inteligentes · recomendações</div></div>'+
+      '<button class="btn btn-ghost" onclick="finIAPerguntarClaude()">💬 Perguntar pra IA</button>'+
+    '</div>'+
+
+    // Resumo do mês
+    '<div style="background:linear-gradient(135deg,rgba(91,94,244,.1),rgba(62,20,147,.05));border:1px solid var(--accent);border-radius:12px;padding:18px;margin-bottom:14px;">'+
+      '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">🤖 Resumo do mês — '+['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][hoje.getMonth()]+'/'+String(hoje.getFullYear()).slice(-2)+'</div>'+
+      '<div style="font-size:13px;color:var(--text);line-height:1.7;">'+
+        'A Axcend faturou <b style="color:#16A34A;">'+_finFmtMoeda(recAtual)+'</b> e gastou <b style="color:#DC2626;">'+_finFmtMoeda(desAtual)+'</b>, resultando em '+(recAtual>=desAtual?'<b style="color:#16A34A;">lucro de '+_finFmtMoeda(recAtual-desAtual)+'</b>':'<b style="color:#DC2626;">prejuízo de '+_finFmtMoeda(desAtual-recAtual)+'</b>')+'. '+
+        'Comparado ao mês passado, a receita '+(varRec>=0?'cresceu':'caiu')+' <b>'+Math.abs(varRec)+'%</b> e as despesas '+(varDes>=0?'cresceram':'caíram')+' <b>'+Math.abs(varDes)+'%</b>.'+
+      '</div>'+
+    '</div>'+
+
+    // Alertas
+    (alertas.length
+      ? '<div style="font-size:13px;font-weight:700;margin:18px 0 10px;">⚠️ Alertas e oportunidades</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">'+
+          alertas.map(function(a){
+            var cor = a.tipo==='danger'?'#DC2626':a.tipo==='warn'?'#FBBF24':'#16A34A';
+            return '<div style="background:rgba('+(a.tipo==='danger'?'220,38,38':a.tipo==='warn'?'251,191,36':'22,163,74')+',.06);border-left:3px solid '+cor+';padding:12px 14px;border-radius:6px;"><div style="font-size:13px;font-weight:700;color:'+cor+';">'+a.icone+' '+_esc(a.titulo)+'</div><div style="font-size:12px;color:var(--text2);margin-top:4px;">'+_esc(a.detalhe)+'</div></div>';
+          }).join('')+
+        '</div>'
+      : '<div style="background:rgba(22,163,74,.06);border-left:3px solid #16A34A;padding:14px;border-radius:6px;margin-bottom:14px;"><b style="color:#16A34A;">✅ Tudo dentro do esperado.</b> Nenhuma anomalia detectada no mês.</div>')+
+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">'+
+      // Top despesas
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">💸 Top 5 categorias de despesa</div>'+
+        (topCats.length ? topCats.map(function(t){
+          var pct = desAtual ? Math.round(t.valor/desAtual*100) : 0;
+          return '<div style="margin-bottom:8px;">'+
+            '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;"><span>'+(t.cat.icone||'')+' '+_esc(t.cat.nome)+'</span><b>'+_finFmtMoeda(t.valor)+' ('+pct+'%)</b></div>'+
+            '<div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+(t.cat.cor||'#DC2626')+';"></div></div>'+
+          '</div>';
+        }).join('') : '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:20px;">Sem despesas no mês.</div>')+
+      '</div>'+
+      // Próximos pagamentos
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">📅 Próximos pagamentos</div>'+
+        (prox.length ? prox.map(function(l){
+          var diff = Math.round((new Date(l.dataVencimento)-hoje)/(1000*60*60*24));
+          var cor = diff<0?'#DC2626':diff<=7?'#FBBF24':'var(--text2)';
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;">'+
+            '<div><b>'+_esc(l.descricao||'—')+'</b><div style="font-size:10px;color:'+cor+';">'+(diff<0?'atrasado '+Math.abs(diff)+'d':'vence em '+diff+'d')+'</div></div>'+
+            '<div style="color:'+(l.tipo==='receita'?'#16A34A':'#DC2626')+';font-weight:700;">'+(l.tipo==='receita'?'+':'-')+_finFmtMoeda(l.valor)+'</div>'+
+          '</div>';
+        }).join('') : '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:20px;">Nenhum pagamento pendente.</div>')+
+      '</div>'+
+    '</div>';
+}
+
+function finIAPerguntarClaude(){
+  alert('💬 Em breve: chat com IA financeira\n\nVocê vai poder perguntar coisas como:\n• "Qual foi minha categoria de despesa que mais cresceu nos últimos 3 meses?"\n• "Estou gastando demais com ads em relação à receita?"\n• "Quanto eu deveria reservar de impostos esse mês?"\n• "Quais clientes/ofertas têm a melhor margem?"\n\nA integração com Claude/OpenAI tá no roadmap.');
 }
 
 // ── INFRA ──
