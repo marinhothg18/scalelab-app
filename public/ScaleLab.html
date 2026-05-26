@@ -5454,19 +5454,119 @@ var _spyAutoTab = 'adlib'; // 'adlib' | 'spyauto'
 var _spyAutoNichoSelecionado = '';
 
 function _spyGetBibliotecas(){ return g('sl_spy_auto', []); }
+// Dicionário completo de nichos da skill Spy Wolf
+// Cada nicho tem: keywords (pra busca direta) + angles (padrões trick/hack/etc) + falsos positivos conhecidos
+var SPY_WOLF_NICHOS_DEFAULT = [
+  {
+    id:'nic-memo', nome:'Memória / Alzheimer', icone:'🧠',
+    termos:'honey trick memory loss, biblical honey memory trick, copy this honey recipe removed, forgetting names faces honey, memory loss recipe, brain fog supplement, neighbor showed honey trick, tap for recipe honey memory, himalayan honey dementia cure',
+    ingredientes:'mel, cúrcuma, canela, red spice',
+    angulos:'forgetting names/faces, copy this recipe before removed, neighbor showed trick',
+    falsosPositivos:'M.THENEURODEFENDER.COM, M.HEALTHVEXA.ONLINE, M.PUREXO.ONLINE, M.CHAPTERHAVEN.COM, GO.VISIONCLARITYLAB.COM, BUYMAIA.COM, TRY-EDENLABS.COM, ALEVIA.COM, PRODROME.COM',
+    autoRun:true, ultimaBusca:''
+  },
+  {
+    id:'nic-emag', nome:'Emagrecimento', icone:'🥗',
+    termos:'coffee trick weight loss, belly fat morning trick, ice hack weight loss, alpine ice hack, coffee loophole, pink salt trick, gelatin trick weight loss, tea loophole, japanese water ritual, 7 second ritual, jello trick, watch before deleted weight, ozempic natural alternative, glp-1 natural',
+    ingredientes:'café, chá, vinagre, limão, gelatin, pink salt, mel',
+    angulos:'Day 21 visible loss, doctor secret coffee recipe, X pounds in Y weeks, morning trick burns belly fat',
+    falsosPositivos:'M.READHARBOR.COM, M.BOOKPATHWAY.NET, M.CHAPTERHAVEN.COM, W2A.SHORTTV.LIVE, ABOUT.BUGMD.COM, SENZIO.STORE, EVELABS.STORE, VITALCURE.SHOP, LIVERCLEANSEPROTOCOL.COM, GELIXER.COM, PILLS.MOERIE.COM, GO.KINGKONG.CO, NEUROEDGELAB.COM, COLONBROOM.COM, GREENCHEF.COM',
+    autoRun:false, ultimaBusca:''
+  },
+  {
+    id:'nic-diab', nome:'Diabetes / Glicemia', icone:'💉',
+    termos:'blood sugar trick, diabetes kitchen trick, cinnamon trick blood sugar, type 2 reverse, metformin natural alternative, lower blood sugar, glicemia natural, açúcar no sangue, ozempic saxenda',
+    ingredientes:'canela, bitter melon, berberine',
+    angulos:'simple trick lowered blood sugar, kitchen spice destroys diabetes, doctor reveals',
+    falsosPositivos:'',
+    autoRun:false, ultimaBusca:''
+  },
+  {
+    id:'nic-ed', nome:'Disfunção erétil (ED)', icone:'🍆',
+    termos:'horse gelatin male vitality, weak erection fix, 70 years old still hard, stronger harder longer natural, morning wood men over, ED natural remedy home, men over 50 performance, bedroom trick men, blue pill trick, viagra natural, ereção fraca, tratamento impotência',
+    ingredientes:'ginger, watermelon, beet, horse gelatin, shilajit',
+    angulos:'wife can\'t believe trick, ancient remedy men over 50, husband discovered weird ritual, diabetic erections gone',
+    falsosPositivos:'M.HOTBUKU.COM, TRY.LUHXE.COM, FIND.ALPHA-SPECIALS.COM, TRK.MRTTRCK.COM, FIND.INFO-ROADS.COM, OFFER.NEBROO.COM, TRY.PRIMITIVELABSRESEARCH.COM, TRY.NOURIAL.COM, TRY.PRIMALS.SHOP, EDCURE.COM, COLOPLAST.TO, LABOMBITA.COM, AQUABLATIONDALLAS.COM, QUIZ.PEPTONIX.COM, TRYSOLUMA.COM',
+    autoRun:false, ultimaBusca:''
+  },
+  {
+    id:'nic-dor', nome:'Dor / Articulação', icone:'🦴',
+    termos:'joint pain trick, knee pain kitchen remedy, inflammation hack, dor crônica natural, fibromialgia, neuropatia, dor nas articulações',
+    ingredientes:'turmeric, ginger, collagen',
+    angulos:'I was in wheelchair now walking, doctor begged me to share',
+    falsosPositivos:'',
+    autoRun:false, ultimaBusca:''
+  },
+  {
+    id:'nic-rel', nome:'Relacionamento', icone:'💔',
+    termos:'reconquistar ex, salvar casamento, atrair homem, sedução, frase secreta, faça ele implorar, traição, amarração, win back ex, make him beg, espião marido',
+    ingredientes:'',
+    angulos:'see if he is cheating, conquistar ele de volta, frase que faz ele correr atrás',
+    falsosPositivos:'',
+    autoRun:false, ultimaBusca:''
+  },
+  {
+    id:'nic-rejuv', nome:'Rejuvenescimento / Pele', icone:'🪞',
+    termos:'ritual matinal rugas, creminho anti-rugas, recuperar firmeza pele, colágeno 3 vezes mais, ácido hialurônico, pé de galinha, pra quem passou dos 45',
+    ingredientes:'colágeno, ácido hialurônico, botox',
+    angulos:'pra quem já passou dos 45, recuperar firmeza',
+    falsosPositivos:'',
+    autoRun:false, ultimaBusca:''
+  },
+  {
+    id:'nic-renda', nome:'Renda extra / MMO', icone:'💰',
+    termos:'renda extra celular, ganhar dinheiro pix, mini site automático, renda passiva IA, ganhar com chatgpt, método 5 em 7, funil invisível, aula gratuita renda extra, ganhar R$50 por dia',
+    ingredientes:'',
+    angulos:'queimei a CLT, comprei esse carro, sem precisar vender, sem aparecer, sem investir',
+    falsosPositivos:'',
+    autoRun:false, ultimaBusca:''
+  }
+];
+
+// TLDs descartáveis usados por operações de tracking
+var SPY_WOLF_TLDS_DESCARTAVEIS = ['LAT','SBS','SITE','FUN','STORE','TOP','ONLINE','SHOP','CLICK','XYZ','CLUB','ICU','REST','QUEST','CFD','BUZZ','LINK','CO','DIET','NEWS','INFO'];
+
+// Subdomains de tracking conhecidos
+var SPY_WOLF_SUBDOMAIN_PREFIXES = ['m','video','about','pp','pages','quiz','track','trk','go','red','sp','start','promo','checkout','offer','try','find','new','tryout','lp','shop','get'];
+
+// Blacklist global de falsos positivos (apps de novela/drama + nichos adjacentes confirmados)
+var SPY_WOLF_BLACKLIST = [
+  'M.READHARBOR.COM','M.BOOKPATHWAY.NET','M.CHAPTERHAVEN.COM','M.THENEURODEFENDER.COM','M.HEALTHVEXA.ONLINE','M.PUREXO.ONLINE','M.HOTBUKU.COM',
+  'W2A.SHORTTV.LIVE','FB.DRAMABOX.COM','FIND.ALPHA-SPECIALS.COM','TRY.LUHXE.COM',
+  'ABOUT.BUGMD.COM','SENZIO.STORE','EVELABS.STORE','VITALCURE.SHOP','LIVERCLEANSEPROTOCOL.COM','RED.TRK.ANCHORPIXEL.COM','EVERYDAYHUBONLINE.COM',
+  'TRK.MRTTRCK.COM','FIND.INFO-ROADS.COM','NEW.FAST-GUIDES.COM','TRY.PRIMALS.SHOP','OFFER.NEBROO.COM','TRY.PRIMITIVELABSRESEARCH.COM','TRY.NOURIAL.COM',
+  'GELIXER.COM','PILLS.MOERIE.COM','GO.KINGKONG.CO','SHOP.GETAMALAHEALTH.COM','NEUROEDGELAB.COM','OUTFIELDORGANICS.COM',
+  'COLONBROOM.COM','SHOP.THEBETTYROCKER.COM','GET.METABOOSTING.COM','MEMBERS.WARRIORBABE.COM','MERAKIFITNESS.NET','GREENCHEF.COM','THESMOOTHIEBOMBS.COM','THESALADHOUSE.COM','TRIAL.HEALTHBOX.ME','FREEZERFIT.COM','PEACHFIT.COM','PROJECTSLIFESTYLE.CO',
+  'EDCURE.COM','COLOPLAST.TO','LABOMBITA.COM','AQUABLATIONDALLAS.COM','INFO.UROLIFT.COM','QUIZ.PEPTONIX.COM','PEPTONIX.COM','TRYSOLUMA.COM',
+  'ALEVIA.COM','PRODROME.COM','GO.VISIONCLARITYLAB.COM','BUYMAIA.COM','TRY-EDENLABS.COM','TRY.PLOISE.COM'
+];
+
 function _spyGetNichos(){
   var n = g('sl_spy_auto_nichos', []);
   if(!n.length){
-    n = [
-      { id:'nic-emag',  nome:'Emagrecimento', icone:'🩺', termos:'emagrecer rápido, detox, perder barriga, queimar gordura', autoRun:true,  ultimaBusca:'' },
-      { id:'nic-fin',   nome:'Finanças',       icone:'💰', termos:'investimento, renda extra, trader, dólar',                  autoRun:false, ultimaBusca:'' },
-      { id:'nic-rel',   nome:'Relacionamento', icone:'💔', termos:'reconquistar, salvar casamento, atrair, sedução',           autoRun:false, ultimaBusca:'' },
-      { id:'nic-sm',    nome:'Saúde mental',   icone:'🧠', termos:'ansiedade, depressão, autoestima, autoconhecimento',         autoRun:false, ultimaBusca:'' },
-      { id:'nic-curso', nome:'Cursos digitais',icone:'📖', termos:'curso online, infoproduto, mentoria, especialização',        autoRun:false, ultimaBusca:'' }
-    ];
+    n = SPY_WOLF_NICHOS_DEFAULT.slice();
     s('sl_spy_auto_nichos', n);
   }
   return n;
+}
+
+// Detecta tier baseado em volume de ads ativos
+function _spyTierPorVolume(adsAtivos){
+  var v = Number(adsAtivos)||0;
+  if(v >= 50000) return { tier:1, label:'TIER 1', cor:'#DC2626', desc:'Operador dominante' };
+  if(v >= 10000) return { tier:2, label:'TIER 2', cor:'#F97316', desc:'Operador forte' };
+  if(v >= 1000)  return { tier:3, label:'TIER 3', cor:'#FBBF24', desc:'Operador médio' };
+  return { tier:4, label:'TIER 4', cor:'#9CA3AF', desc:'Operador pequeno' };
+}
+
+// Verifica se um domínio é suspeito (blacklist + heurísticas)
+function _spyDominioSuspeito(host){
+  if(!host) return null;
+  var H = host.toUpperCase();
+  if(SPY_WOLF_BLACKLIST.indexOf(H) >= 0) return { tipo:'blacklist', motivo:'Falso positivo conhecido (app de novela ou nicho adjacente)' };
+  // Domínio com números aleatórios (ex: 23a14.cfd) → token-matching falso
+  if(/^[0-9]/.test(H) || /\.[A-Z]{2,4}$/.test(H) && /[0-9]{3,}/.test(H.split('.')[0])) return { tipo:'random', motivo:'Domínio com números — provável token-matching, verificar copy 2x' };
+  return null;
 }
 
 function adlibSwitchTab(tab){
@@ -5517,14 +5617,17 @@ function renderSpyAuto(){
     // Hero / topo
     '<div style="background:linear-gradient(135deg,rgba(91,94,244,.1),rgba(62,20,147,.05));border:1px solid var(--accent);border-radius:10px;padding:18px;margin-bottom:18px;">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:14px;">'+
-        '<div><div style="font-size:15px;font-weight:700;">🚀 Fazer Spy agora</div>'+
-        '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Escolhe nicho, sistema busca as bibliotecas de anúncios e salva no monitoramento.</div></div>'+
-        '<button class="btn btn-primary" onclick="spyAutoConfigurarNichos()">⚙️ Gerenciar nichos</button>'+
+        '<div><div style="font-size:15px;font-weight:700;">🐺 Spy Wolf · Plano inteligente</div>'+
+        '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Gera 15-20 keywords inteligentes por nicho, abre na Meta Ad Library, importa entrega da skill direto pra cá.</div></div>'+
+        '<div style="display:flex;gap:6px;">'+
+          '<button class="btn btn-ghost" onclick="spyAutoImportarSkill()">📋 Importar entrega Spy Wolf</button>'+
+          '<button class="btn btn-primary" onclick="spyAutoConfigurarNichos()">⚙️ Gerenciar nichos</button>'+
+        '</div>'+
       '</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr 200px;gap:12px;align-items:flex-end;">'+
         '<div class="fg"><label class="fl">Nicho</label><select id="spy-novo-nicho" class="fs">'+nichos.map(function(n){ return '<option value="'+n.id+'">'+n.icone+' '+_esc(n.nome)+'</option>'; }).join('')+'</select></div>'+
         '<div class="fg"><label class="fl">Termos / mecanismos (separados por vírgula)</label><input id="spy-novo-termos" class="fi" placeholder="emagrecer rápido, detox, queimar gordura"></div>'+
-        '<button class="btn btn-primary" onclick="spyAutoBuscar()" style="padding:10px;font-weight:700;">🔍 Buscar agora</button>'+
+        '<button class="btn btn-primary" onclick="spyAutoBuscar()" style="padding:10px;font-weight:700;">🚀 Gerar plano + abrir Meta</button>'+
       '</div>'+
       '<div style="display:flex;gap:14px;margin-top:12px;font-size:11px;color:var(--text2);flex-wrap:wrap;">'+
         '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="spy-fonte-meta" checked> Meta Ad Library (FB+IG)</label>'+
@@ -5572,9 +5675,13 @@ function renderSpyAuto(){
                 ? '<span style="font-size:10px;color:var(--text3);">—</span>'
                 : '<span style="background:rgba('+(varAds>0?'22,163,74':'220,38,38')+',.15);color:'+corVar+';font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;">'+(varAds>0?'↑':'↓')+' '+Math.abs(varAds)+' ads</span>'+(b.adsAnteriores>0?'<div style="font-size:9px;color:'+corVar+';margin-top:2px;">'+(varAds>0?'+':'')+varPct+'%</div>':'');
               var badgeNova = b.isNova ? '<span style="background:rgba(27,156,250,.15);color:#1B9CFA;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:6px;">🆕 NOVA</span>' : '';
+              var tierInfo = _spyTierPorVolume(b.adsAtivos);
+              var badgeTier = '<span style="background:'+tierInfo.cor+';color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;margin-left:6px;" title="'+tierInfo.desc+'">'+tierInfo.label+'</span>';
+              var suspeitoInfo = _spyDominioSuspeito((b.nomePagina||'').toUpperCase());
+              var badgeSuspeito = suspeitoInfo ? '<span style="background:rgba(220,38,38,.15);color:#DC2626;font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;margin-left:6px;" title="'+suspeitoInfo.motivo+'">⚠️ VERIFICAR</span>' : '';
               var linkBtn = b.linkBiblioteca ? '<a href="'+_esc(b.linkBiblioteca)+'" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;">🔗 Abrir</a>' : '<span style="font-size:10px;color:var(--text3);">—</span>';
               return '<tr style="border-bottom:1px solid var(--border);">'+
-                '<td style="padding:10px 8px;font-size:12px;"><b>'+_esc(b.nomePagina||'—')+'</b>'+badgeNova+(b.handles?'<div style="font-size:10px;color:var(--text2);margin-top:2px;">'+_esc(b.handles)+'</div>':'')+'</td>'+
+                '<td style="padding:10px 8px;font-size:12px;"><b>'+_esc(b.nomePagina||'—')+'</b>'+badgeTier+badgeNova+badgeSuspeito+(b.handles?'<div style="font-size:10px;color:var(--text2);margin-top:2px;">'+_esc(b.handles)+'</div>':'')+'</td>'+
                 '<td style="padding:10px 8px;font-size:11px;color:var(--text2);">'+(nicho?nicho.icone+' '+_esc(nicho.nome):'—')+'</td>'+
                 '<td style="padding:10px 8px;text-align:center;"><b style="font-size:16px;">'+(Number(b.adsAtivos)||0)+'</b></td>'+
                 '<td style="padding:10px 8px;text-align:center;">'+chipVar+'</td>'+
@@ -5625,7 +5732,7 @@ function _spyHorasAtras(ts){
   return 'há '+Math.floor(diff/86400)+'d';
 }
 
-// Realiza busca (placeholder — integração real com Meta Ad Library API exige token)
+// Gera plano de spy completo — abre N tabs na Meta Ad Library com keywords inteligentes
 function spyAutoBuscar(){
   var nichoId = document.getElementById('spy-novo-nicho').value;
   var termos = (document.getElementById('spy-novo-termos').value||'').trim();
@@ -5635,25 +5742,231 @@ function spyAutoBuscar(){
   if(!termos){ termos = nicho.termos || ''; }
   if(!termos){ alert('Adicione termos pra buscar.'); return; }
 
-  var msg = '🔍 Buscando bibliotecas no nicho "'+nicho.nome+'"...\n\nTermos: '+termos+'\n\nFontes:\n'+
-    (document.getElementById('spy-fonte-meta').checked?'✓ Meta Ad Library\n':'')+
-    (document.getElementById('spy-fonte-google').checked?'✓ Google Ads Transparency\n':'')+
-    (document.getElementById('spy-fonte-tiktok').checked?'✓ TikTok Creative Center\n':'');
+  // Quebra termos em array
+  var keywords = termos.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
 
-  // Abre o link da Meta Ad Library com os termos pesquisados
-  if(document.getElementById('spy-fonte-meta').checked){
-    var query = encodeURIComponent(termos.split(',')[0].trim());
-    var metaUrl = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q='+query;
-    if(confirm(msg+'\n\nClique OK pra abrir a Meta Ad Library com o primeiro termo. Depois cole as bibliotecas que achar usando "+ Adicionar manualmente".')){
-      window.open(metaUrl, '_blank');
-    }
-  } else {
-    alert(msg+'\n\n⚠️ Integração automática com API requer token da Meta. Por enquanto, use "+ Adicionar manualmente" pra registrar as bibliotecas que encontrar.');
-  }
+  // Monta URLs Meta Ad Library
+  var urls = keywords.map(function(kw){
+    return {
+      keyword: kw,
+      url: 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q='+encodeURIComponent(kw)+'&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc'
+    };
+  });
+
+  // Monta modal com plano completo
+  var fpList = nicho.falsosPositivos ? nicho.falsosPositivos.split(',').map(function(d){ return '<span style="display:inline-block;background:rgba(220,38,38,.1);color:#DC2626;font-size:10px;padding:2px 8px;border-radius:10px;margin:2px;font-family:monospace;">'+_esc(d.trim())+'</span>'; }).join(' ') : '';
+
+  var html =
+    '<div id="spy-modal-plano" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-plano\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:20px auto;">'+
+        '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
+          '<div><div style="font-size:17px;font-weight:700;">🐺 Plano de Spy · '+nicho.icone+' '+_esc(nicho.nome)+'</div>'+
+          '<div style="font-size:12px;color:var(--text2);margin-top:2px;">'+keywords.length+' keywords prontas pra Meta Ad Library · país: US · ordem: total_impressions desc</div></div>'+
+          '<button onclick="document.getElementById(\'spy-modal-plano\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:22px 26px;">'+
+          // Estratégia
+          '<div style="background:linear-gradient(135deg,rgba(91,94,244,.1),rgba(62,20,147,.05));border:1px solid var(--accent);padding:14px;border-radius:10px;margin-bottom:18px;">'+
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🎯 Estratégia recomendada</div>'+
+            '<div style="font-size:12px;color:var(--text2);line-height:1.7;">'+
+              '<b>1.</b> Clique em "Abrir todas as keywords" — vai abrir '+keywords.length+' abas na Meta Ad Library<br>'+
+              '<b>2.</b> Em cada aba, dê <b>scroll 5-8x</b> pra carregar os ad cards (Meta usa virtualização DOM)<br>'+
+              '<b>3.</b> Anote os <b>tracking domains</b> que aparecem nos botões "Saiba mais" (TLDs: '+SPY_WOLF_TLDS_DESCARTAVEIS.slice(0,8).join(', ')+'...)<br>'+
+              '<b>4.</b> Pra cada domínio achado: <b>VERIFIQUE A COPY</b> — se menciona o nicho de '+_esc(nicho.nome)+', adiciona ao Axcend<br>'+
+              '<b>5.</b> Volte pro Axcend e use <b>"+ Adicionar manualmente"</b> OU <b>"📋 Importar entrega Spy Wolf"</b> pra colar texto da skill'+
+            '</div>'+
+          '</div>'+
+
+          // Keywords + links individuais
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">🔑 Keywords ('+keywords.length+')</div>'+
+          '<div style="background:var(--bg);border-radius:8px;padding:8px;max-height:240px;overflow-y:auto;margin-bottom:14px;">'+
+            urls.map(function(u, i){
+              return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12px;border-bottom:1px solid var(--border);">'+
+                '<div style="flex:1;font-family:monospace;color:var(--text2);"><b style="color:var(--text);">'+(i+1)+'.</b> '+_esc(u.keyword)+'</div>'+
+                '<a href="'+u.url+'" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;white-space:nowrap;">🔗 Abrir</a>'+
+              '</div>';
+            }).join('')+
+          '</div>'+
+
+          // Falsos positivos do nicho
+          (fpList ? '<div style="font-size:11px;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">⚠️ Falsos positivos conhecidos (DESCARTE se aparecer)</div>'+
+            '<div style="margin-bottom:14px;line-height:2;">'+fpList+'</div>' : '')+
+
+          // Ângulos de copy
+          (nicho.angulos ? '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">💡 Ângulos de copy esperados</div>'+
+            '<div style="background:var(--bg);padding:10px;border-radius:7px;font-size:12px;color:var(--text2);margin-bottom:14px;font-style:italic;">"'+_esc(nicho.angulos)+'"</div>' : '')+
+
+          // Ingredientes
+          (nicho.ingredientes ? '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">🌿 Ingredientes/produtos típicos</div>'+
+            '<div style="background:var(--bg);padding:10px;border-radius:7px;font-size:12px;color:var(--text2);margin-bottom:14px;">'+_esc(nicho.ingredientes)+'</div>' : '')+
+        '</div>'+
+        '<div style="padding:14px 26px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;position:sticky;bottom:0;background:var(--card);border-radius:0 0 12px 12px;">'+
+          '<button class="btn btn-ghost" onclick="spyAutoCopiarKeywords(\''+nicho.id+'\')">📋 Copiar keywords</button>'+
+          '<div style="display:flex;gap:8px;">'+
+            '<button class="btn btn-ghost" onclick="document.getElementById(\'spy-modal-plano\').remove();">Fechar</button>'+
+            '<button class="btn btn-primary" onclick="spyAutoAbrirTodasTabs(\''+nicho.id+'\')">🚀 Abrir todas as '+keywords.length+' abas</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('spy-modal-plano'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
 
   // Atualiza última busca do nicho
   nicho.ultimaBusca = new Date().toISOString();
   s('sl_spy_auto_nichos', nichos);
+}
+
+function spyAutoCopiarKeywords(nichoId){
+  var nicho = _spyGetNichos().find(function(n){ return n.id===nichoId; });
+  if(!nicho) return;
+  var txt = nicho.termos.split(',').map(function(t){ return t.trim(); }).filter(Boolean).join('\n');
+  navigator.clipboard.writeText(txt).then(function(){ alert('✅ '+txt.split('\n').length+' keywords copiadas!\n\nCole numa skill Spy Wolf no Claude Cowork ou em outra ferramenta.'); });
+}
+
+function spyAutoAbrirTodasTabs(nichoId){
+  var nicho = _spyGetNichos().find(function(n){ return n.id===nichoId; });
+  if(!nicho) return;
+  var keywords = nicho.termos.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
+  if(keywords.length > 10 && !confirm('Vai abrir '+keywords.length+' abas no navegador. Tem certeza?')) return;
+  keywords.forEach(function(kw, i){
+    var url = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q='+encodeURIComponent(kw)+'&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc';
+    setTimeout(function(){ window.open(url, '_blank'); }, i*150); // espaça pra não bloquear
+  });
+}
+
+// ─── IMPORTADOR DA ENTREGA DA SKILL SPY WOLF ───
+function spyAutoImportarSkill(){
+  var nichos = _spyGetNichos();
+  var nichoOpts = nichos.map(function(n){ return '<option value="'+n.id+'">'+n.icone+' '+_esc(n.nome)+'</option>'; }).join('');
+  var html =
+    '<div id="spy-modal-import" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-import\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:760px;width:100%;margin:20px auto;">'+
+        '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
+          '<div><div style="font-size:17px;font-weight:700;">🐺 Importar entrega da skill Spy Wolf</div>'+
+          '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Cole o texto formatado da skill que ela entrega no chat. O Axcend extrai domínios, tiers e links automaticamente.</div></div>'+
+          '<button onclick="document.getElementById(\'spy-modal-import\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:22px 26px;">'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Nicho de destino *</label><select id="spy-imp-nicho" class="fs">'+nichoOpts+'</select></div>'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Cole o texto da skill aqui *</label><textarea id="spy-imp-texto" class="fi" rows="14" style="resize:vertical;font-family:monospace;font-size:12px;" placeholder="Cole o texto completo da entrega. Aceita formatos:&#10;&#10;**TIER 1 — 50,000+ ads:**&#10;[https://www.facebook.com/ads/library/?...&amp;q=%22DOMINIO.COM%22...](url)&#10;&#10;OU formato simples:&#10;DOMINIO.COM (50k — comentário)&#10;OUTRODOMINIO.LAT (12k)"></textarea></div>'+
+          '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:12px 14px;border-radius:7px;font-size:11px;color:var(--text2);margin-bottom:8px;">'+
+            '💡 <b>O Axcend vai:</b><br>'+
+            '✓ Extrair todos os domínios (.LAT, .CFD, .COM, etc.) do texto<br>'+
+            '✓ Detectar tier de cada um pelo volume mencionado<br>'+
+            '✓ Filtrar automaticamente falsos positivos da blacklist global<br>'+
+            '✓ Alertar domínios suspeitos (com números aleatórios)<br>'+
+            '✓ Gerar link Meta Ad Library pra cada um (exact phrase)<br>'+
+            '✓ Popular a tabela com o nicho escolhido'+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:14px 26px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card);border-radius:0 0 12px 12px;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'spy-modal-import\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="spyAutoProcessarImport()">🚀 Importar e processar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('spy-modal-import'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function spyAutoProcessarImport(){
+  var nichoId = document.getElementById('spy-imp-nicho').value;
+  var texto = (document.getElementById('spy-imp-texto').value||'').trim();
+  if(!nichoId || !texto){ alert('Selecione nicho e cole o texto.'); return; }
+
+  // Regex pra extrair domínios (incluindo subdomínios)
+  // Captura padrões como: DOMINIO.LAT, m.dominio.com, trk.go-urbanflow.site, etc.
+  var dominioRegex = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi;
+  var matches = texto.match(dominioRegex) || [];
+
+  // Limpa e dedupa
+  var dominiosUnicos = {};
+  matches.forEach(function(d){
+    var H = d.toUpperCase().replace(/^WWW\./,'');
+    // Ignora domínios da própria Meta/Facebook/etc
+    if(/^(FACEBOOK|META|INSTAGRAM|WHATSAPP|FB|GOOGLE|YOUTUBE|AMAZON|APPLE|CDN|FBCDN|MESSENGER)/.test(H)) return;
+    if(H.length < 6) return; // muito curto
+    dominiosUnicos[H] = true;
+  });
+
+  var dominios = Object.keys(dominiosUnicos);
+  if(!dominios.length){ alert('Nenhum domínio detectado no texto.'); return; }
+
+  // Tenta extrair volume associado a cada domínio (procura padrão "DOMINIO ... 50k" ou "DOMINIO (50,000)" etc.)
+  var bibs = _spyGetBibliotecas();
+  var jaExistentes = {};
+  bibs.forEach(function(b){ jaExistentes[(b.nomePagina||'').toUpperCase()] = b.id; });
+
+  var novos = 0, atualizados = 0, blacklisted = 0, suspeitos = 0;
+  var detalhes = [];
+
+  dominios.forEach(function(host){
+    var suspeitoInfo = _spyDominioSuspeito(host);
+    if(suspeitoInfo && suspeitoInfo.tipo === 'blacklist'){
+      blacklisted++;
+      detalhes.push({ host:host, status:'blacklisted', motivo:suspeitoInfo.motivo });
+      return;
+    }
+
+    // Tenta achar volume próximo ao domínio no texto (até 200 chars antes/depois)
+    var idx = texto.toUpperCase().indexOf(host);
+    var snippet = idx >= 0 ? texto.substr(Math.max(0,idx-100), 300) : '';
+    var volumeMatch = snippet.match(/(\d[\d.,]*)\s*(k|K|mil|thousand|\bads\b)/);
+    var volume = 0;
+    if(volumeMatch){
+      var n = parseFloat(volumeMatch[1].replace(/\./g,'').replace(',','.'));
+      if(volumeMatch[2] && /k|K|mil|thousand/i.test(volumeMatch[2])) n *= 1000;
+      volume = Math.round(n);
+    }
+
+    if(suspeitoInfo && suspeitoInfo.tipo === 'random'){
+      suspeitos++;
+      detalhes.push({ host:host, status:'suspeito', motivo:suspeitoInfo.motivo });
+    }
+
+    var linkBiblioteca = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=ALL&q=%22'+encodeURIComponent(host)+'%22&search_type=keyword_exact_phrase&sort_data[mode]=total_impressions&sort_data[direction]=desc';
+
+    if(jaExistentes[host]){
+      // Atualiza
+      var b = bibs.find(function(x){ return x.id===jaExistentes[host]; });
+      if(b){
+        b.adsAnteriores = b.adsAtivos || 0;
+        if(volume > 0){ b.adsAtivos = volume; b.varAds24h = volume - b.adsAnteriores; }
+        b._updatedAt = Date.now()/1000;
+        atualizados++;
+      }
+    } else {
+      // Cria novo
+      bibs.push({
+        id: 'bib-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+        nomePagina: host,
+        handles: '',
+        nichoId: nichoId,
+        linkBiblioteca: linkBiblioteca,
+        adsAtivos: volume,
+        adsAnteriores: 0,
+        varAds24h: 0,
+        isNova: true,
+        notas: 'Importado da skill Spy Wolf em '+new Date().toLocaleDateString('pt-BR')+(suspeitoInfo && suspeitoInfo.tipo==='random' ? ' · ⚠️ VERIFICAR COPY (domínio com números aleatórios)' : ''),
+        _criadoEm: new Date().toISOString(),
+        _updatedAt: Date.now()/1000
+      });
+      novos++;
+    }
+  });
+
+  s('sl_spy_auto', bibs);
+  var m = document.getElementById('spy-modal-import'); if(m) m.remove();
+
+  // Modal de relatório
+  var rel = '<div style="font-size:13px;line-height:1.8;">'+
+    '<div><b style="color:#16A34A;">✅ '+novos+'</b> domínio(s) novo(s) adicionado(s)</div>'+
+    '<div><b style="color:var(--accent);">🔄 '+atualizados+'</b> domínio(s) atualizado(s) (volume novo registrado)</div>'+
+    '<div><b style="color:#DC2626;">⚠️ '+blacklisted+'</b> bloqueado(s) pela blacklist (falso positivo conhecido)</div>'+
+    '<div><b style="color:#FBBF24;">🟡 '+suspeitos+'</b> marcado(s) como suspeito(s) — verificar copy</div>'+
+  '</div>';
+  alert('🐺 Importação concluída!\n\n✅ '+novos+' novos\n🔄 '+atualizados+' atualizados\n⚠️ '+blacklisted+' blacklisted (falso positivo)\n🟡 '+suspeitos+' suspeitos\n\nTotal de domínios processados: '+dominios.length);
   renderSpyAuto();
 }
 
