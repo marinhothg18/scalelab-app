@@ -4232,7 +4232,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -5596,8 +5596,22 @@ function renderSpyAuto(){
   var nichos = _spyGetNichos();
   var bibs = _spyGetBibliotecas();
 
+  // Banco MASTER (inteligência global mantida pela Axcend)
+  var masterBibs = g('sl_spy_master', []);
+  var totalMaster = masterBibs.length;
+  var ultimaAtuMaster = masterBibs.length ? Math.max.apply(null, masterBibs.map(function(b){ return b._updatedAt||0; })) : 0;
+
+  // Busca atualização do master via API (background, sem bloquear UI)
+  fetch('/api/spy/master', { credentials:'include' }).then(function(r){ return r.json(); }).then(function(data){
+    if(data && data.ok && data.bibliotecas){
+      s('sl_spy_master', data.bibliotecas);
+      if(data.bibliotecas.length !== totalMaster) renderSpyAuto(); // re-renderiza se mudou
+    }
+  }).catch(function(){});
+
   var totalBibs = bibs.length;
   var totalAds = bibs.reduce(function(s,b){ return s + (Number(b.adsAtivos)||0); }, 0);
+  var totalAdsMaster = masterBibs.reduce(function(s,b){ return s + (Number(b.adsAtivos)||0); }, 0);
   var ultimaBusca = bibs.length ? Math.max.apply(null, bibs.map(function(b){ return b._updatedAt||0; })) : 0;
   var ultimaLabel = ultimaBusca ? _spyHorasAtras(ultimaBusca) : '—';
 
@@ -5637,12 +5651,24 @@ function renderSpyAuto(){
       '</div>'+
     '</div>'+
 
-    // KPIs
+    // Card MASTER (inteligência global mantida pela Axcend)
+    (totalMaster > 0 ? '<div style="background:linear-gradient(135deg,#16A34A,#1B9CFA);color:#fff;border-radius:10px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+
+        '<div style="font-size:32px;">🌐</div>'+
+        '<div>'+
+          '<div style="font-size:14px;font-weight:700;">Inteligência Axcend (Master)</div>'+
+          '<div style="font-size:11px;opacity:.9;margin-top:2px;">'+totalMaster+' bibliotecas mapeadas · '+totalAdsMaster.toLocaleString('pt-BR')+' ads ativos · atualizado '+(ultimaAtuMaster?_spyHorasAtras(ultimaAtuMaster):'—')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="font-size:11px;opacity:.85;background:rgba(0,0,0,.2);padding:6px 12px;border-radius:6px;">✨ Inteligência curada · pra todos os planos</div>'+
+    '</div>' : '')+
+
+    // KPIs (privadas do tenant)
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
       '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Nichos monitorados</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+nichos.length+'</div></div>'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Bibliotecas</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+totalBibs+'</div></div>'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Ads ativos (total)</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+totalAds.toLocaleString('pt-BR')+'</div></div>'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Última busca</div><div style="font-size:16px;font-weight:700;margin-top:4px;">'+ultimaLabel+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Suas bibliotecas</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+totalBibs+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Ads ativos (suas)</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+totalAds.toLocaleString('pt-BR')+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Sua última busca</div><div style="font-size:16px;font-weight:700;margin-top:4px;">'+ultimaLabel+'</div></div>'+
     '</div>'+
 
     // Tabela de bibliotecas
@@ -5856,6 +5882,7 @@ async function spyAutoConectarSkill(){
   var nichoExemplo = nichos[0] || { id:'nic-emag', nome:'Emagrecimento' };
   var baseUrl = window.location.origin;
 
+  var ehDiretoria = currentUser && currentUser.cargo === 'Diretoria';
   var snippetSkill =
 '```javascript\n'+
 '// No FIM da skill spy-wolf, depois de montar a lista de domínios:\n'+
@@ -5870,7 +5897,8 @@ async function spyAutoConectarSkill(){
 '    "Authorization": "Bearer " + AXCEND_TOKEN\n'+
 '  },\n'+
 '  body: JSON.stringify({\n'+
-'    nichoId: "'+nichoExemplo.id+'",  // ← id do nicho no Axcend (ver tabela abaixo)\n'+
+'    nichoId: "'+nichoExemplo.id+'",  // ← id do nicho (ver tabela abaixo)\n'+
+(ehDiretoria ? '    broadcast: true,  // ← MASTER: visível pra TODOS os tenants (só com token master)\n' : '')+
 '    dominios: [\n'+
 '      { host: "DOMINIO.LAT", volume: 50000, copy: "trecho da copy", advertisers: "Nome 1 | Nome 2" },\n'+
 '      { host: "OUTRODOMINIO.COM", volume: 12000 }\n'+
@@ -5926,6 +5954,25 @@ async function spyAutoConectarSkill(){
           '<div style="background:rgba(22,163,74,.08);border-left:3px solid #16A34A;padding:12px 14px;border-radius:7px;font-size:11px;color:var(--text2);margin-top:14px;">'+
             '✅ <b>Pronto!</b> Quando você rodar a skill no Claude Cowork, ela vai mandar os domínios direto pro Axcend. Eles aparecem na tabela em segundos.'+
           '</div>'+
+
+          // Bonus: Cron automático (só pra Diretoria)
+          (ehDiretoria ? '<div style="margin-top:20px;padding-top:20px;border-top:1px dashed var(--border);">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:linear-gradient(135deg,#16A34A,#1B9CFA);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">⚡</span><b style="font-size:14px;">BÔNUS: Rodar automático 1x/dia (cron)</b></div>'+
+            '<div style="background:var(--bg);padding:14px;border-radius:8px;font-size:12px;color:var(--text2);line-height:1.7;">'+
+              '<p style="margin:0 0 10px 0;">Tem um script pronto em <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:11px;">~/Desktop/scalelab/bin/axcend-spy-daily.sh</code> que roda spy de todos os nichos master automaticamente.</p>'+
+              '<b>Pra ativar (no Terminal do seu Mac):</b><br>'+
+              '<div style="background:#0a0a0a;color:#10b981;padding:10px;border-radius:6px;margin-top:6px;font-family:Menlo,monospace;font-size:11px;overflow-x:auto;white-space:pre-wrap;">'+
+                '# 1. Edite o script e cole seu token MASTER:\n'+
+                'open -e ~/Desktop/scalelab/bin/axcend-spy-daily.sh\n\n'+
+                '# 2. Teste manual:\n'+
+                '~/Desktop/scalelab/bin/axcend-spy-daily.sh\n\n'+
+                '# 3. Agende cron (roda 6h da manhã todo dia):\n'+
+                'crontab -e\n'+
+                '0 6 * * * /Users/thiagomarinho/Desktop/scalelab/bin/axcend-spy-daily.sh >> ~/axcend-spy.log 2>&1'+
+              '</div>'+
+              '<p style="margin:10px 0 0 0;font-size:11px;">Seu Mac precisa estar ligado às 6h. Resultados vão pra TODOS os tenants do Axcend automaticamente.</p>'+
+            '</div>'+
+          '</div>' : '')+
         '</div>'+
         '<div style="padding:14px 26px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card);border-radius:0 0 12px 12px;">'+
           '<button class="btn btn-ghost" onclick="document.getElementById(\'spy-modal-conectar\').remove();">Fechar</button>'+
@@ -5937,12 +5984,24 @@ async function spyAutoConectarSkill(){
 }
 
 async function spyAutoGerarTokenWebhook(){
+  // Detecta se é Diretoria pra oferecer flag master
+  var ehDiretoria = currentUser && currentUser.cargo === 'Diretoria';
+  var ehMaster = false;
+  if(ehDiretoria){
+    ehMaster = confirm('🌐 Gerar token MASTER?\n\nToken master pode usar broadcast:true e popular o banco MASTER (visível pra todos os tenants/clientes do Axcend).\n\nClique OK pra master (recomendado se você é o admin Axcend) ou Cancelar pra token normal (só seus dados).');
+  }
   try {
     const resp = await fetch('/api/tokens/generate', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       credentials: 'include',
-      body: JSON.stringify({ nome: 'spy-wolf-webhook', descricao: 'Token usado pela skill spy-wolf (Claude Cowork) pra enviar resultados ao Axcend via /api/spy/import' })
+      body: JSON.stringify({
+        nome: ehMaster ? 'spy-wolf-master' : 'spy-wolf-webhook',
+        master: ehMaster,
+        descricao: ehMaster
+          ? '🌐 MASTER · Popula banco master visível pra todos os tenants. Use broadcast:true no payload.'
+          : 'Token usado pela skill spy-wolf (Claude Cowork) pra enviar resultados ao Axcend (privado).'
+      })
     });
     if(!resp.ok){
       const err = await resp.json();

@@ -693,7 +693,7 @@ function _logAPI(db, tokenPreview, method, path) {
 
 // POST /api/tokens/generate — gera novo token (precisa login de Diretoria)
 app.post('/api/tokens/generate', (req, res) => {
-  const { nome, userId } = req.body || {};
+  const { nome, userId, master, descricao } = req.body || {};
   if (!nome) return res.status(400).json({ error: 'Nome do token obrigatório.' });
 
   const token = 'sk_live_' + crypto.randomBytes(32).toString('hex');
@@ -703,11 +703,13 @@ app.post('/api/tokens/generate', (req, res) => {
   const tokenMeta = {
     id: Date.now(),
     nome,
+    descricao: descricao || '',
     hash: tokenHash,
     preview: token.substring(0, 16) + '...',
     criado: new Date().toISOString(),
     criadoPor: userId || 'sistema',
     ativo: true,
+    master: master === true,  // flag pra habilitar broadcast no /api/spy/import
     ultimoUso: null,
     totalReqs: 0
   };
@@ -970,17 +972,23 @@ function _spyParsearTexto(texto) {
 }
 
 // POST /api/spy/import  — webhook que a skill spy-wolf chama
-// Body: { nichoId: 'nic-emag', dominios?: [{host, volume?, copy?, advertisers?, notas?}], rawText?: '...' }
+// Body: { nichoId: 'nic-emag', dominios?: [...], rawText?: '...', broadcast?: true }
+//   broadcast:true → salva em sl_spy_master (visível pra TODOS os tenants)
+//                    Só funciona se o token tiver flag master:true (token "spy-wolf-master")
 app.post('/api/spy/import', authAPI, (req, res) => {
   try {
-    const { nichoId, dominios, rawText, runMeta } = req.body || {};
+    const { nichoId, dominios, rawText, runMeta, broadcast } = req.body || {};
     if (!nichoId) return res.status(400).json({ error: 'Campo obrigatório: nichoId' });
     if (!Array.isArray(dominios) && !rawText) {
       return res.status(400).json({ error: 'Forneça `dominios` (array) ou `rawText` (string).' });
     }
 
     const db = readDB();
-    const bibs = db.store['sl_spy_auto'] || [];
+    // Master mode: salva em sl_spy_master (global, lido por todos os tenants)
+    // Modo normal: salva em sl_spy_auto (privado do tenant que fez o request)
+    const isMaster = broadcast === true && req.apiToken && req.apiToken.master === true;
+    const storeKey = isMaster ? 'sl_spy_master' : 'sl_spy_auto';
+    const bibs = db.store[storeKey] || [];
     const nichos = db.store['sl_spy_auto_nichos'] || [];
     const nicho = nichos.find(n => n.id === nichoId);
     if (!nicho) return res.status(404).json({ error: `Nicho não encontrado: ${nichoId}` });
@@ -1060,9 +1068,9 @@ app.post('/api/spy/import', authAPI, (req, res) => {
       }
     });
 
-    // Salva no DB
-    db.store['sl_spy_auto'] = bibs;
-    db.timestamps['sl_spy_auto'] = Date.now() / 1000;
+    // Salva no DB (no storeKey correto — master ou tenant)
+    db.store[storeKey] = bibs;
+    db.timestamps[storeKey] = Date.now() / 1000;
 
     // Atualiza last-run do nicho
     const nichoIdx = nichos.findIndex(n => n.id === nichoId);
@@ -1072,6 +1080,7 @@ app.post('/api/spy/import', authAPI, (req, res) => {
         timestamp: new Date().toISOString(),
         novos, atualizados, blacklisted, suspeitos,
         totalProcessados: candidatos.length,
+        modo: isMaster ? 'master' : 'privado',
         meta: runMeta || null
       };
       db.store['sl_spy_auto_nichos'] = nichos;
@@ -1082,6 +1091,7 @@ app.post('/api/spy/import', authAPI, (req, res) => {
 
     res.json({
       ok: true,
+      modo: isMaster ? 'master (visível pra todos os tenants)' : 'privado (só este tenant)',
       nicho: nicho.nome,
       novos,
       atualizados,
@@ -1093,6 +1103,26 @@ app.post('/api/spy/import', authAPI, (req, res) => {
   } catch (err) {
     console.error('[/api/spy/import]', err);
     res.status(500).json({ error: 'Erro interno: ' + err.message });
+  }
+});
+
+// GET /api/spy/master — bibliotecas mestre (qualquer usuário autenticado pode ler)
+// Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência Axcend"
+app.get('/api/spy/master', (req, res) => {
+  try {
+    const db = readDB();
+    const masterBibs = db.store['sl_spy_master'] || [];
+    const nichos = db.store['sl_spy_auto_nichos'] || [];
+    const lastUpdate = db.timestamps['sl_spy_master'] || 0;
+    res.json({
+      ok: true,
+      bibliotecas: masterBibs,
+      nichos: nichos,
+      totalBibliotecas: masterBibs.length,
+      ultimaAtualizacao: lastUpdate ? new Date(lastUpdate * 1000).toISOString() : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
