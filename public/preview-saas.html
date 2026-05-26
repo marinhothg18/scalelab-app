@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f0f0f">
+<title>Preview · Axcend SaaS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0a0a0a; --bg-1:#141414; --bg-2:#1c1c1c; --bg-3:#252525;
+    --border:#2a2a2a; --border-2:#333;
+    --text:#f5f5f5; --text2:#a3a3a3; --text3:#6b6b6b;
+    --accent:#5b5ef4; --roxo:#3E1493; --azul:#1B9CFA;
+    --rosa:#C52C58; --laranja:#FF5926; --verde:#16A34A; --amarelo:#FBBF24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--bg-0);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;font-size:14px;}
+  a{color:inherit;text-decoration:none;}
+  button{font-family:inherit;cursor:pointer;}
+
+  /* TABS NO TOPO */
+  .tabs{
+    background:var(--bg-1);border-bottom:1px solid var(--border);
+    padding:0 24px;position:sticky;top:0;z-index:10;
+    display:flex;overflow-x:auto;
+  }
+  .tabs::-webkit-scrollbar{height:0;}
+  .tab{
+    padding:14px 18px;font-size:13px;font-weight:600;color:var(--text2);
+    border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;
+    transition:color .15s,border-color .15s;display:flex;align-items:center;gap:6px;
+  }
+  .tab:hover{color:var(--text);}
+  .tab.ativo{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab .num{
+    background:var(--bg-3);color:var(--text2);font-size:10px;
+    padding:1px 6px;border-radius:99px;font-weight:700;
+  }
+  .tab.ativo .num{background:var(--accent);color:#fff;}
+
+  /* CONTAINER */
+  .screen{display:none;padding:24px;max-width:1280px;margin:0 auto;}
+  .screen.ativo{display:block;}
+
+  /* HEADER DE PÁGINA */
+  .page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
+  .page-title{font-size:24px;font-weight:700;letter-spacing:-.01em;}
+  .page-sub{color:var(--text2);font-size:13px;margin-top:4px;}
+
+  /* CARDS / KPIs */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px;}
+  .kpi{background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:18px;}
+  .kpi-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+  .kpi-valor{font-size:26px;font-weight:700;letter-spacing:-.02em;}
+  .kpi-delta{font-size:12px;margin-top:4px;color:var(--verde);}
+  .kpi-delta.neg{color:var(--rosa);}
+
+  /* CARDS GERAIS */
+  .card{background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .card-title{font-size:15px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .card-sub{font-size:12px;color:var(--text2);margin-top:-8px;margin-bottom:14px;}
+
+  /* TABELA */
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:1px solid var(--border);}
+  td{padding:12px;border-bottom:1px solid var(--border);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover{background:var(--bg-2);}
+
+  /* CHIPS / BADGES */
+  .chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;}
+  .chip.ok{background:rgba(22,163,74,.15);color:#22c55e;}
+  .chip.warn{background:rgba(251,191,36,.15);color:#fbbf24;}
+  .chip.err{background:rgba(220,38,38,.15);color:#ef4444;}
+  .chip.info{background:rgba(91,94,244,.15);color:var(--accent);}
+  .chip.neutro{background:var(--bg-3);color:var(--text2);}
+
+  /* BOTÕES */
+  .btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid transparent;transition:all .15s;}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn-primary:hover{background:#4a4dd4;}
+  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border);}
+  .btn-ghost:hover{border-color:var(--accent);}
+  .btn-danger{background:transparent;color:var(--rosa);border-color:var(--border);}
+  .btn-sm{padding:5px 10px;font-size:12px;}
+
+  /* INPUTS */
+  .input, .select{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);
+  }
+  .input:focus, .select:focus{outline:none;border-color:var(--accent);}
+  .field{margin-bottom:14px;}
+  .field-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;}
+  .field-hint{font-size:11px;color:var(--text3);margin-top:4px;}
+
+  /* GRID HELPERS */
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .row-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .row-side{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:flex-start;}
+
+  /* STEPS (WIZARD) */
+  .steps{display:flex;gap:8px;margin-bottom:24px;}
+  .step{flex:1;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-1);}
+  .step.ativo{border-color:var(--accent);background:rgba(91,94,244,.08);}
+  .step.feito{border-color:var(--verde);}
+  .step-num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--bg-3);color:var(--text2);font-size:11px;font-weight:700;align-items:center;justify-content:center;margin-right:8px;}
+  .step.ativo .step-num{background:var(--accent);color:#fff;}
+  .step.feito .step-num{background:var(--verde);color:#fff;}
+  .step-label{font-size:12px;font-weight:600;display:inline-block;vertical-align:middle;}
+
+  /* TENANT INDICATOR */
+  .tenant-strip{
+    background:var(--bg-1);border-bottom:1px solid var(--border);
+    padding:8px 24px;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text2);
+  }
+  .tenant-strip .acme-logo{
+    width:22px;height:22px;border-radius:5px;background:linear-gradient(135deg,#FF5926,#C52C58);
+    display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;
+  }
+
+  /* PLANS */
+  .plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .plan{background:var(--bg-1);border:1px solid var(--border);border-radius:14px;padding:24px;text-align:center;}
+  .plan.destaque{border-color:var(--accent);position:relative;overflow:hidden;}
+  .plan.destaque::before{
+    content:'MAIS POPULAR';position:absolute;top:14px;right:-30px;background:var(--accent);color:#fff;
+    font-size:10px;font-weight:700;padding:3px 36px;transform:rotate(35deg);letter-spacing:1px;
+  }
+  .plan-nome{font-size:14px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+  .plan-preco{font-size:36px;font-weight:800;letter-spacing:-.02em;}
+  .plan-preco span{font-size:14px;color:var(--text2);font-weight:500;}
+  .plan-features{list-style:none;text-align:left;margin:20px 0;}
+  .plan-features li{padding:6px 0;font-size:13px;color:var(--text);display:flex;gap:8px;}
+  .plan-features li::before{content:'✓';color:var(--verde);font-weight:700;}
+
+  /* PREVIEW BROWSER */
+  .browser{background:var(--bg-1);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .browser-bar{background:var(--bg-2);padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);}
+  .browser-dot{width:10px;height:10px;border-radius:50%;background:var(--border-2);}
+  .browser-url{flex:1;background:var(--bg-3);border-radius:6px;padding:5px 12px;font-size:11px;color:var(--text2);font-family:monospace;}
+  .browser-content{padding:20px;background:#fff;color:#0f0f0f;min-height:200px;}
+
+  /* TOGGLES */
+  .toggle{position:relative;display:inline-block;width:38px;height:22px;flex-shrink:0;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--bg-3);border-radius:99px;transition:.2s;}
+  .toggle-slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+  .toggle input:checked + .toggle-slider{background:var(--accent);}
+  .toggle input:checked + .toggle-slider::before{transform:translateX(16px);}
+
+  /* SECTION LINKS */
+  .sec-links{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
+  .sec-link{padding:7px 14px;font-size:12px;border-radius:7px;background:var(--bg-2);color:var(--text2);font-weight:600;cursor:pointer;border:1px solid var(--border);}
+  .sec-link.ativo{background:var(--bg-3);color:var(--text);border-color:var(--accent);}
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px;}
+
+  /* FOOTER */
+  .footer-saas{
+    background:var(--bg-1);border-top:1px solid var(--border);
+    padding:30px 24px;text-align:center;color:var(--text2);font-size:12px;margin-top:40px;
+  }
+  .footer-saas h3{color:var(--text);font-size:16px;margin-bottom:10px;}
+
+  /* RESPONSIVE */
+  @media (max-width:900px){
+    .row-2,.row-3,.row-side,.plans-grid{grid-template-columns:1fr;}
+    .steps{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+
+<!-- TABS NO TOPO -->
+<div class="tabs">
+  <div class="tab ativo" data-tab="1" onclick="goTab(1)"><span class="num">1</span> Dashboard Master</div>
+  <div class="tab" data-tab="2" onclick="goTab(2)"><span class="num">2</span> Clientes</div>
+  <div class="tab" data-tab="3" onclick="goTab(3)"><span class="num">3</span> Cliente · detalhe</div>
+  <div class="tab" data-tab="4" onclick="goTab(4)"><span class="num">4</span> Onboarding</div>
+  <div class="tab" data-tab="5" onclick="goTab(5)"><span class="num">5</span> White-label</div>
+  <div class="tab" data-tab="6" onclick="goTab(6)"><span class="num">6</span> Faturamento</div>
+  <div class="tab" data-tab="7" onclick="goTab(7)"><span class="num">7</span> Configurações</div>
+  <div class="tab" data-tab="8" onclick="goTab(8)"><span class="num">8</span> Utmify</div>
+</div>
+
+<!-- ============ 1. DASHBOARD MASTER ============ -->
+<div class="screen ativo" id="screen-1">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Painel SaaS · Axcend</div>
+      <div class="page-sub">Visão geral de todos os clientes ativos · Última atualização: agora</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost">📊 Relatório mensal</button>
+      <button class="btn btn-primary">+ Novo cliente</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">MRR (Receita Mensal)</div>
+      <div class="kpi-valor">R$ 187.450</div>
+      <div class="kpi-delta">↑ +12,4% vs mês ant.</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Clientes ativos</div>
+      <div class="kpi-valor">142</div>
+      <div class="kpi-delta">↑ +8 novos</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">ARR projetado</div>
+      <div class="kpi-valor">R$ 2,24M</div>
+      <div class="kpi-delta">↑ +18% YoY</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Churn (30d)</div>
+      <div class="kpi-valor">2,1%</div>
+      <div class="kpi-delta neg">↓ 3 cancelaram</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Trial em andamento</div>
+      <div class="kpi-valor">17</div>
+      <div class="kpi-delta">6 convertem hoje</div>
+    </div>
+  </div>
+
+  <div class="row-side">
+    <div>
+      <div class="card">
+        <div class="card-title">Receita últimos 12 meses
+          <span class="chip info">USD + BRL</span>
+        </div>
+        <div style="height:220px;background:linear-gradient(180deg, rgba(91,94,244,.2) 0%, rgba(91,94,244,0) 100%);border-radius:8px;display:flex;align-items:flex-end;padding:14px;gap:6px;">
+          <div style="flex:1;height:30%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:35%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:42%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:48%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:55%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:60%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:68%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:72%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:78%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:85%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:92%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+          <div style="flex:1;height:100%;background:linear-gradient(180deg,var(--accent),var(--roxo));border-radius:4px 4px 0 0;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:8px;">
+          <span>Jun</span><span>Jul</span><span>Ago</span><span>Set</span><span>Out</span><span>Nov</span><span>Dez</span><span>Jan</span><span>Fev</span><span>Mar</span><span>Abr</span><span>Mai</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Últimos clientes
+          <a class="btn btn-ghost btn-sm" onclick="goTab(2)">Ver todos →</a>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Cliente</th><th>Plano</th><th>MRR</th><th>Status</th><th>Cadastro</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><b>Acme Marketing</b><br><span style="font-size:11px;color:var(--text2);">acme.axcend.com</span></td><td><span class="chip info">Pro</span></td><td>R$ 1.890</td><td><span class="chip ok">● Ativo</span></td><td>2d atrás</td></tr>
+            <tr><td><b>Vortex Digital</b><br><span style="font-size:11px;color:var(--text2);">vortex.axcend.com</span></td><td><span class="chip neutro">Starter</span></td><td>R$ 590</td><td><span class="chip warn">⏱ Trial</span></td><td>5d atrás</td></tr>
+            <tr><td><b>RD Performance</b><br><span style="font-size:11px;color:var(--text2);">app.rdperformance.com.br</span></td><td><span class="chip info">Pro</span></td><td>R$ 1.890</td><td><span class="chip ok">● Ativo</span></td><td>1sem atrás</td></tr>
+            <tr><td><b>HighTicket Co.</b><br><span style="font-size:11px;color:var(--text2);">app.highticket.io</span></td><td><span class="chip info">Enterprise</span></td><td>R$ 4.890</td><td><span class="chip ok">● Ativo</span></td><td>2sem atrás</td></tr>
+            <tr><td><b>Funnel Labs</b><br><span style="font-size:11px;color:var(--text2);">funnel.axcend.com</span></td><td><span class="chip neutro">Starter</span></td><td>R$ 590</td><td><span class="chip err">✕ Cancelado</span></td><td>3sem atrás</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">Distribuição por plano</div>
+        <div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span>Enterprise</span><b>18</b></div><div style="height:6px;background:var(--bg-3);border-radius:99px;overflow:hidden;"><div style="height:100%;width:13%;background:var(--rosa);"></div></div></div>
+        <div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span>Pro</span><b>72</b></div><div style="height:6px;background:var(--bg-3);border-radius:99px;overflow:hidden;"><div style="height:100%;width:51%;background:var(--accent);"></div></div></div>
+        <div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span>Starter</span><b>52</b></div><div style="height:6px;background:var(--bg-3);border-radius:99px;overflow:hidden;"><div style="height:100%;width:36%;background:var(--azul);"></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Alertas operacionais</div>
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:rgba(220,38,38,.08);border-left:3px solid var(--rosa);border-radius:6px;margin-bottom:8px;">
+          <span>⚠️</span>
+          <div style="font-size:12px;"><b>Funnel Labs</b> não pagou faturas dos últimos 7d. <a style="color:var(--accent);">Revisar →</a></div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:rgba(251,191,36,.08);border-left:3px solid var(--amarelo);border-radius:6px;margin-bottom:8px;">
+          <span>⏱</span>
+          <div style="font-size:12px;"><b>6 trials</b> expiram nas próximas 24h. <a style="color:var(--accent);">Ver lista →</a></div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:10px;background:rgba(22,163,74,.08);border-left:3px solid var(--verde);border-radius:6px;">
+          <span>✓</span>
+          <div style="font-size:12px;"><b>3 upgrades</b> Starter → Pro essa semana. 🎉</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Top clientes por receita</div>
+        <div style="font-size:13px;">
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span>1. HighTicket Co.</span><b>R$ 4.890</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span>2. ScaleUp Brasil</span><b>R$ 4.890</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span>3. Acme Marketing</span><b>R$ 1.890</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);"><span>4. RD Performance</span><b>R$ 1.890</b></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;"><span>5. Conversão+</span><b>R$ 1.890</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2. LISTA DE CLIENTES ============ -->
+<div class="screen" id="screen-2">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Clientes</div>
+      <div class="page-sub">142 clientes ativos · 17 em trial · 8 cancelados nos últimos 30d</div>
+    </div>
+    <button class="btn btn-primary">+ Novo cliente</button>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <input class="input" placeholder="🔎 Buscar por empresa, email, domínio…" style="flex:1;min-width:240px;">
+      <select class="select" style="max-width:150px;">
+        <option>Todos planos</option>
+        <option>Starter</option>
+        <option>Pro</option>
+        <option>Enterprise</option>
+      </select>
+      <select class="select" style="max-width:150px;">
+        <option>Todos status</option>
+        <option>Ativos</option>
+        <option>Em trial</option>
+        <option>Inadimplente</option>
+        <option>Cancelados</option>
+      </select>
+      <button class="btn btn-ghost">📥 Exportar CSV</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Plano</th>
+          <th>MRR</th>
+          <th>Usuários</th>
+          <th>Status</th>
+          <th>Renova em</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#FF5926,#C52C58);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;">AM</div>
+              <div><b>Acme Marketing</b><br><span style="font-size:11px;color:var(--text2);">acme.axcend.com · 12 usuários</span></div>
+            </div>
+          </td>
+          <td><span class="chip info">Pro</span></td>
+          <td>R$ 1.890</td>
+          <td>12 / 20</td>
+          <td><span class="chip ok">● Ativo</span></td>
+          <td>em 23 dias</td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="goTab(3)">Abrir</button>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#5b5ef4,#3E1493);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;">VD</div>
+              <div><b>Vortex Digital</b><br><span style="font-size:11px;color:var(--text2);">vortex.axcend.com · 3 usuários</span></div>
+            </div>
+          </td>
+          <td><span class="chip neutro">Starter</span></td>
+          <td>R$ 590</td>
+          <td>3 / 5</td>
+          <td><span class="chip warn">⏱ Trial · 9 dias</span></td>
+          <td>—</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="goTab(3)">Abrir</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#1B9CFA,#2509E4);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;">RD</div>
+              <div><b>RD Performance</b><br><span style="font-size:11px;color:var(--text2);">app.rdperformance.com.br · 8 usuários</span></div>
+            </div>
+          </td>
+          <td><span class="chip info">Pro</span></td>
+          <td>R$ 1.890</td>
+          <td>8 / 20</td>
+          <td><span class="chip ok">● Ativo</span></td>
+          <td>em 12 dias</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="goTab(3)">Abrir</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#FBBF24,#FF5926);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;">HC</div>
+              <div><b>HighTicket Co.</b><br><span style="font-size:11px;color:var(--text2);">app.highticket.io · 28 usuários · domínio próprio</span></div>
+            </div>
+          </td>
+          <td><span class="chip info">Enterprise</span></td>
+          <td>R$ 4.890</td>
+          <td>28 / ∞</td>
+          <td><span class="chip ok">● Ativo</span></td>
+          <td>em 4 dias</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="goTab(3)">Abrir</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#A78BFA,#5b5ef4);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;">FL</div>
+              <div><b>Funnel Labs</b><br><span style="font-size:11px;color:var(--text2);">funnel.axcend.com · 4 usuários</span></div>
+            </div>
+          </td>
+          <td><span class="chip neutro">Starter</span></td>
+          <td>R$ 590</td>
+          <td>4 / 5</td>
+          <td><span class="chip err">⚠ Inadimplente · 7d</span></td>
+          <td>vencido</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="goTab(3)">Abrir</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#16A34A,#1B9CFA);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;">SU</div>
+              <div><b>ScaleUp Brasil</b><br><span style="font-size:11px;color:var(--text2);">app.scaleupbr.com · 35 usuários · domínio próprio</span></div>
+            </div>
+          </td>
+          <td><span class="chip info">Enterprise</span></td>
+          <td>R$ 4.890</td>
+          <td>35 / ∞</td>
+          <td><span class="chip ok">● Ativo</span></td>
+          <td>em 18 dias</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="goTab(3)">Abrir</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============ 3. CLIENTE DETALHE ============ -->
+<div class="screen" id="screen-3">
+  <div class="tenant-strip">
+    <span>Você está vendo o tenant:</span>
+    <span class="acme-logo">AM</span>
+    <b style="color:var(--text);">Acme Marketing</b>
+    <span class="chip info">Pro</span>
+    <span class="chip ok">● Ativo</span>
+    <span style="margin-left:auto;font-size:12px;">acme.axcend.com</span>
+    <button class="btn btn-ghost btn-sm" onclick="goTab(2)">← Voltar à lista</button>
+  </div>
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Acme Marketing</div>
+      <div class="page-sub">Cliente desde 12/Mar/2025 · CNPJ 12.345.678/0001-00 · Brasil 🇧🇷</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost">🔑 Logar como cliente</button>
+      <button class="btn btn-ghost">📧 Enviar mensagem</button>
+      <button class="btn btn-danger">Suspender conta</button>
+    </div>
+  </div>
+
+  <div class="sec-links">
+    <div class="sec-link ativo">Geral</div>
+    <div class="sec-link">Usuários</div>
+    <div class="sec-link">Faturamento</div>
+    <div class="sec-link">Branding</div>
+    <div class="sec-link">Domínio</div>
+    <div class="sec-link">Integrações</div>
+    <div class="sec-link">Logs de acesso</div>
+  </div>
+
+  <div class="row-side">
+    <div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+        <div class="kpi"><div class="kpi-label">Usuários</div><div class="kpi-valor">12 / 20</div></div>
+        <div class="kpi"><div class="kpi-label">Vagas ativas</div><div class="kpi-valor">7</div></div>
+        <div class="kpi"><div class="kpi-label">Demandas no mês</div><div class="kpi-valor">184</div></div>
+        <div class="kpi"><div class="kpi-label">Storage</div><div class="kpi-valor">2,4 GB</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Atividade últimos 30 dias</div>
+        <div style="height:160px;background:linear-gradient(180deg, rgba(91,94,244,.15), transparent);border-radius:8px;display:flex;align-items:flex-end;padding:14px;gap:3px;">
+          <div style="flex:1;height:25%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:45%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:38%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:55%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:68%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:42%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:78%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:82%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:65%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:90%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:75%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:88%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:95%;background:var(--accent);border-radius:3px 3px 0 0;"></div>
+          <div style="flex:1;height:100%;background:linear-gradient(180deg,var(--accent),var(--roxo));border-radius:3px 3px 0 0;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Health score</div>
+        <div style="display:flex;gap:14px;align-items:center;">
+          <div style="position:relative;width:80px;height:80px;border-radius:50%;background:conic-gradient(var(--verde) 0deg 280deg, var(--bg-3) 280deg 360deg);display:flex;align-items:center;justify-content:center;">
+            <div style="width:62px;height:62px;border-radius:50%;background:var(--bg-1);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;">78</div>
+          </div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.6;">
+            ✓ Login frequente (5x/sem)<br>
+            ✓ Usando 60% dos recursos<br>
+            ⚠ Não convidou novos users em 60d<br>
+            ✓ Pagou em dia últimas 12 fat.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">Informações</div>
+        <div style="font-size:13px;">
+          <div style="margin-bottom:10px;"><div class="field-label">Empresa</div>Acme Marketing LTDA</div>
+          <div style="margin-bottom:10px;"><div class="field-label">Email do owner</div>thiago@acme.com</div>
+          <div style="margin-bottom:10px;"><div class="field-label">País / Idioma</div>Brasil · pt-BR</div>
+          <div style="margin-bottom:10px;"><div class="field-label">Plano atual</div>Pro · R$ 1.890/mês</div>
+          <div style="margin-bottom:10px;"><div class="field-label">Próxima renovação</div>15/Jun/2026 (R$ 1.890)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Ações rápidas</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;">📈 Upgrade pra Enterprise</button>
+          <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;">🎁 Dar 1 mês grátis</button>
+          <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;">🔄 Resetar senha do owner</button>
+          <button class="btn btn-ghost btn-sm" style="justify-content:flex-start;">📋 Exportar dados (LGPD)</button>
+          <button class="btn btn-danger btn-sm" style="justify-content:flex-start;">🗑 Encerrar conta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4. ONBOARDING / SIGNUP ============ -->
+<div class="screen" id="screen-4">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Onboarding auto-serviço</div>
+      <div class="page-sub">Como um novo cliente cria a conta sozinho · /signup</div>
+    </div>
+    <span class="chip info">Wizard 3 passos</span>
+  </div>
+
+  <div class="steps">
+    <div class="step feito"><span class="step-num">✓</span><span class="step-label">Conta</span></div>
+    <div class="step ativo"><span class="step-num">2</span><span class="step-label">Branding</span></div>
+    <div class="step"><span class="step-num">3</span><span class="step-label">Plano</span></div>
+  </div>
+
+  <div class="row-side">
+    <div class="card">
+      <div class="card-title">Passo 2: Branding inicial</div>
+      <div class="card-sub">Configure como sua conta vai aparecer pros seus usuários. Pode ajustar depois nas configurações.</div>
+
+      <div class="row-2">
+        <div class="field">
+          <label class="field-label">Nome da empresa *</label>
+          <input class="input" value="Acme Marketing">
+        </div>
+        <div class="field">
+          <label class="field-label">Slug / subdomínio *</label>
+          <div style="display:flex;align-items:center;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:0 12px;">
+            <input class="input" value="acme" style="border:none;background:transparent;padding-left:0;">
+            <span style="color:var(--text2);font-size:12px;">.axcend.com</span>
+          </div>
+          <div class="field-hint">Esse vai ser o endereço do seu painel. Pode trocar pra domínio próprio depois.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Logo (PNG/SVG · fundo transparente)</label>
+        <div style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px dashed var(--border);border-radius:8px;padding:18px;">
+          <div style="width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,#FF5926,#C52C58);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;">AM</div>
+          <div>
+            <button class="btn btn-ghost btn-sm">📤 Trocar logo</button>
+            <div class="field-hint">Recomendado: 512×512px</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row-3">
+        <div class="field">
+          <label class="field-label">Cor primária</label>
+          <div style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;">
+            <div style="width:24px;height:24px;background:#FF5926;border-radius:6px;"></div>
+            <span style="font-family:monospace;font-size:13px;">#FF5926</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">Cor secundária</label>
+          <div style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;">
+            <div style="width:24px;height:24px;background:#C52C58;border-radius:6px;"></div>
+            <span style="font-family:monospace;font-size:13px;">#C52C58</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">País</label>
+          <select class="select"><option>🇧🇷 Brasil</option><option>🇺🇸 EUA</option><option>🇪🇸 Espanha</option></select>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;margin-top:20px;">
+        <button class="btn btn-ghost">← Voltar</button>
+        <button class="btn btn-primary">Continuar →</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">Preview ao vivo</div>
+        <div class="browser">
+          <div class="browser-bar">
+            <div class="browser-dot" style="background:#ff5f57;"></div>
+            <div class="browser-dot" style="background:#febc2e;"></div>
+            <div class="browser-dot" style="background:#28c840;"></div>
+            <div class="browser-url">acme.axcend.com</div>
+          </div>
+          <div style="background:#0f0f0f;color:#fff;padding:20px;min-height:200px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+              <div style="width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,#FF5926,#C52C58);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">AM</div>
+              <b style="font-size:13px;">Acme Marketing</b>
+            </div>
+            <div style="font-size:11px;color:#888;margin-bottom:6px;">DASHBOARD</div>
+            <div style="height:8px;background:#FF5926;border-radius:2px;width:50%;margin-bottom:10px;"></div>
+            <div style="height:8px;background:#2a2a2a;border-radius:2px;width:80%;margin-bottom:6px;"></div>
+            <div style="height:8px;background:#2a2a2a;border-radius:2px;width:65%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">✨ Próximos passos</div>
+        <ol style="font-size:12px;color:var(--text2);padding-left:18px;line-height:1.8;">
+          <li>Convidar primeiros usuários</li>
+          <li>Importar dados (CSV/Sheets)</li>
+          <li>Conectar integrações (Utmify, Z-API, RedTrack)</li>
+          <li>Configurar primeira automação</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 5. WHITE-LABEL / BRANDING ============ -->
+<div class="screen" id="screen-5">
+  <div class="page-header">
+    <div>
+      <div class="page-title">White-label · Acme Marketing</div>
+      <div class="page-sub">Personalize visual, domínio e emails do seu painel</div>
+    </div>
+    <button class="btn btn-primary">Salvar e publicar</button>
+  </div>
+
+  <div class="row-side">
+    <div>
+      <div class="card">
+        <div class="card-title">Identidade visual</div>
+        <div class="row-2">
+          <div class="field">
+            <label class="field-label">Logo principal</label>
+            <div style="background:var(--bg-2);border:1px dashed var(--border);border-radius:8px;padding:24px;display:flex;align-items:center;justify-content:center;">
+              <div style="width:60px;height:60px;border-radius:10px;background:linear-gradient(135deg,#FF5926,#C52C58);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;">AM</div>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">Favicon</label>
+            <div style="background:var(--bg-2);border:1px dashed var(--border);border-radius:8px;padding:24px;display:flex;align-items:center;justify-content:center;">
+              <div style="width:32px;height:32px;border-radius:5px;background:linear-gradient(135deg,#FF5926,#C52C58);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;">AM</div>
+            </div>
+          </div>
+        </div>
+        <div class="row-3">
+          <div class="field"><label class="field-label">Primária</label><div style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"><div style="width:24px;height:24px;background:#FF5926;border-radius:6px;"></div><span style="font-family:monospace;font-size:13px;">#FF5926</span></div></div>
+          <div class="field"><label class="field-label">Secundária</label><div style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"><div style="width:24px;height:24px;background:#C52C58;border-radius:6px;"></div><span style="font-family:monospace;font-size:13px;">#C52C58</span></div></div>
+          <div class="field"><label class="field-label">Fundo</label><div style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;"><div style="width:24px;height:24px;background:#0f0f0f;border:1px solid var(--border);border-radius:6px;"></div><span style="font-family:monospace;font-size:13px;">#0F0F0F</span></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Domínio</div>
+        <div class="field">
+          <label class="field-label">Subdomínio padrão</label>
+          <input class="input" value="acme.axcend.com" readonly>
+        </div>
+        <div class="field">
+          <label class="field-label">Domínio próprio (CNAME)</label>
+          <input class="input" placeholder="ex: app.acmemarketing.com">
+          <div class="field-hint">Adicione um CNAME apontando pra <b>cname.axcend.com</b>. SSL emitido automaticamente. Disponível no plano Pro+.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Emails transacionais</div>
+        <div class="row-2">
+          <div class="field">
+            <label class="field-label">Remetente</label>
+            <input class="input" value="time@acmemarketing.com">
+          </div>
+          <div class="field">
+            <label class="field-label">Nome remetente</label>
+            <input class="input" value="Acme Marketing">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">Assinatura HTML</label>
+          <textarea class="input" rows="3" style="font-family:monospace;font-size:12px;">Atenciosamente,&#10;Equipe Acme Marketing&#10;https://acmemarketing.com</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">Preview ao vivo</div>
+        <div class="browser">
+          <div class="browser-bar">
+            <div class="browser-dot" style="background:#ff5f57;"></div>
+            <div class="browser-dot" style="background:#febc2e;"></div>
+            <div class="browser-dot" style="background:#28c840;"></div>
+            <div class="browser-url">app.acmemarketing.com</div>
+          </div>
+          <div style="background:#0f0f0f;color:#fff;padding:14px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px;background:#1c1c1c;border-radius:6px;margin-bottom:10px;">
+              <div style="width:24px;height:24px;border-radius:5px;background:linear-gradient(135deg,#FF5926,#C52C58);"></div>
+              <b style="font-size:12px;">Acme</b>
+            </div>
+            <div style="font-size:9px;color:#888;margin-bottom:4px;">▤ Dashboard</div>
+            <div style="font-size:9px;color:#888;margin-bottom:4px;">▤ Vagas</div>
+            <div style="font-size:9px;color:#fff;font-weight:700;background:#FF5926;padding:4px 6px;border-radius:4px;margin-bottom:4px;">▤ Criativos</div>
+            <div style="font-size:9px;color:#888;margin-bottom:4px;">▤ Métricas</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">SSL e domínio</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--verde);margin-bottom:8px;">
+          🔒 acme.axcend.com — SSL OK
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);">
+          ⏳ app.acmemarketing.com — aguardando CNAME
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 6. FATURAMENTO ============ -->
+<div class="screen" id="screen-6">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Faturamento e planos</div>
+      <div class="page-sub">Configuração de billing recorrente · Stripe (USD/EUR) + Pagar.me (BRL)</div>
+    </div>
+  </div>
+
+  <div class="plans-grid" style="margin-bottom:24px;">
+    <div class="plan">
+      <div class="plan-nome">Starter</div>
+      <div class="plan-preco">R$ 590<span>/mês</span></div>
+      <ul class="plan-features">
+        <li>Até 5 usuários</li>
+        <li>3 vagas ativas</li>
+        <li>500 candidatos/mês</li>
+        <li>Subdomínio .axcend.com</li>
+        <li>Suporte por email</li>
+      </ul>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;">52 clientes</button>
+    </div>
+    <div class="plan destaque">
+      <div class="plan-nome">Pro</div>
+      <div class="plan-preco">R$ 1.890<span>/mês</span></div>
+      <ul class="plan-features">
+        <li>Até 20 usuários</li>
+        <li>Vagas ilimitadas</li>
+        <li>5.000 candidatos/mês</li>
+        <li>Domínio próprio (CNAME)</li>
+        <li>White-label completo</li>
+        <li>Integração Utmify + Z-API</li>
+        <li>Suporte WhatsApp</li>
+      </ul>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;">72 clientes</button>
+    </div>
+    <div class="plan">
+      <div class="plan-nome">Enterprise</div>
+      <div class="plan-preco">R$ 4.890<span>/mês</span></div>
+      <ul class="plan-features">
+        <li>Usuários ilimitados</li>
+        <li>Tudo do Pro</li>
+        <li>SLA 99,9%</li>
+        <li>Single Sign-On (SSO)</li>
+        <li>Auditoria avançada</li>
+        <li>API dedicada</li>
+        <li>Customer Success dedicado</li>
+      </ul>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;">18 clientes</button>
+    </div>
+  </div>
+
+  <div class="row-2">
+    <div class="card">
+      <div class="card-title">Gateways de pagamento</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:40px;height:40px;border-radius:8px;background:#635bff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">S</div>
+          <div>
+            <b>Stripe</b><br>
+            <span style="font-size:11px;color:var(--text2);">USD · EUR · GBP · processamento internacional</span>
+          </div>
+        </div>
+        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:40px;height:40px;border-radius:8px;background:#1cba9e;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">P</div>
+          <div>
+            <b>Pagar.me</b><br>
+            <span style="font-size:11px;color:var(--text2);">BRL · PIX · boleto · cartão brasileiro</span>
+          </div>
+        </div>
+        <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg-2);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:40px;height:40px;border-radius:8px;background:#9CA3AF;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">M</div>
+          <div>
+            <b>Mercado Pago</b><br>
+            <span style="font-size:11px;color:var(--text2);">BRL · ARS · MXN · LatAm</span>
+          </div>
+        </div>
+        <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Últimas faturas geradas</div>
+      <table>
+        <thead><tr><th>Cliente</th><th>Valor</th><th>Status</th><th>Data</th></tr></thead>
+        <tbody>
+          <tr><td>HighTicket Co.</td><td>R$ 4.890</td><td><span class="chip ok">Pago</span></td><td>hoje</td></tr>
+          <tr><td>Acme Marketing</td><td>R$ 1.890</td><td><span class="chip ok">Pago</span></td><td>ontem</td></tr>
+          <tr><td>RD Performance</td><td>R$ 1.890</td><td><span class="chip warn">Pendente</span></td><td>2d</td></tr>
+          <tr><td>Vortex Digital</td><td>R$ 590</td><td><span class="chip info">Trial</span></td><td>5d</td></tr>
+          <tr><td>Funnel Labs</td><td>R$ 590</td><td><span class="chip err">Atrasado</span></td><td>7d</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 7. CONFIGURAÇÕES ============ -->
+<div class="screen" id="screen-7">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Configurações do SaaS</div>
+      <div class="page-sub">Idiomas, moedas, integrações globais e páginas legais</div>
+    </div>
+  </div>
+
+  <div class="row-2">
+    <div class="card">
+      <div class="card-title">Idiomas habilitados</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-2);border-radius:8px;cursor:pointer;">
+          <span>🇧🇷 Português (Brasil)</span>
+          <span class="chip ok">● Padrão</span>
+        </label>
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-2);border-radius:8px;cursor:pointer;">
+          <span>🇺🇸 English (US)</span>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </label>
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-2);border-radius:8px;cursor:pointer;">
+          <span>🇪🇸 Español (LatAm)</span>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </label>
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-2);border-radius:8px;cursor:pointer;color:var(--text2);">
+          <span>🇫🇷 Français</span>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Moedas suportadas</div>
+      <table>
+        <thead><tr><th>Moeda</th><th>Símbolo</th><th>Gateway</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><b>BRL</b> Real Brasileiro</td><td>R$</td><td>Pagar.me</td><td><span class="chip ok">Ativo</span></td></tr>
+          <tr><td><b>USD</b> Dólar</td><td>$</td><td>Stripe</td><td><span class="chip ok">Ativo</span></td></tr>
+          <tr><td><b>EUR</b> Euro</td><td>€</td><td>Stripe</td><td><span class="chip ok">Ativo</span></td></tr>
+          <tr><td><b>MXN</b> Peso Mexicano</td><td>$</td><td>Mercado Pago</td><td><span class="chip neutro">Inativo</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Páginas legais</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Cada cliente pode usar as defaults ou customizar pra contas Enterprise.</div>
+    <div class="row-3">
+      <div style="padding:16px;background:var(--bg-2);border-radius:10px;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📜 Termos de Uso</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">v3.2 · atualizado 12/Mar/2026</div>
+        <button class="btn btn-ghost btn-sm">Editar</button>
+      </div>
+      <div style="padding:16px;background:var(--bg-2);border-radius:10px;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🔒 Política de Privacidade</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">v2.1 · atualizado 5/Jan/2026</div>
+        <button class="btn btn-ghost btn-sm">Editar</button>
+      </div>
+      <div style="padding:16px;background:var(--bg-2);border-radius:10px;">
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🇧🇷 LGPD · DPO</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Pedidos de dados, exportar, deletar</div>
+        <button class="btn btn-ghost btn-sm">Configurar</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:12px;background:rgba(91,94,244,.08);border-left:3px solid var(--accent);border-radius:6px;font-size:12px;">
+      💡 <b>LGPD:</b> Cada novo usuário precisa aceitar Termos+Privacidade no signup. Logs de aceite são registrados (data, IP, versão).
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Integrações globais</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Integrações que ficam disponíveis pra TODOS os clientes (não precisa cada um conectar separadamente).</div>
+    <div class="row-3">
+      <div style="padding:14px;background:var(--bg-2);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b>🟢 Utmify</b>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div style="font-size:11px;color:var(--text2);">Rastreio de UTM e atribuição de conversão</div>
+      </div>
+      <div style="padding:14px;background:var(--bg-2);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b>💬 Z-API (WhatsApp)</b>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div style="font-size:11px;color:var(--text2);">Notificações no WhatsApp</div>
+      </div>
+      <div style="padding:14px;background:var(--bg-2);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b>📊 RedTrack</b>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div style="font-size:11px;color:var(--text2);">Métricas de ads</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 8. UTMIFY ============ -->
+<div class="screen" id="screen-8">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Integração Utmify</div>
+      <div class="page-sub">Rastreio de UTMs e atribuição de conversão no funil</div>
+    </div>
+    <span class="chip ok">● Conectado</span>
+  </div>
+
+  <div class="row-side">
+    <div>
+      <div class="card">
+        <div class="card-title">Conexão</div>
+        <div class="field">
+          <label class="field-label">Token da API · Utmify</label>
+          <div style="display:flex;gap:8px;">
+            <input class="input" value="utm_••••••••••••••••a7b3" readonly style="font-family:monospace;">
+            <button class="btn btn-ghost">👁</button>
+            <button class="btn btn-ghost">↻ Regenerar</button>
+          </div>
+          <div class="field-hint">Conta Utmify Pro · Workspace "axcend-saas"</div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label class="field-label">Última sincronização</label>
+            <input class="input" value="há 2 minutos" readonly>
+          </div>
+          <div class="field">
+            <label class="field-label">Eventos sincronizados (24h)</label>
+            <input class="input" value="3.847 eventos" readonly>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Mapeamento de eventos</div>
+        <div class="card-sub">Define quais ações no Axcend disparam evento no Utmify, e como ele é classificado.</div>
+        <table>
+          <thead><tr><th>Evento Axcend</th><th>→</th><th>Evento Utmify</th><th>Tipo</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Candidatura recebida</td><td>→</td><td>lead</td><td><span class="chip info">Lead</span></td><td><label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label></td></tr>
+            <tr><td>Candidato → Triagem</td><td>→</td><td>lead_qualified</td><td><span class="chip info">Lead</span></td><td><label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label></td></tr>
+            <tr><td>Candidato → Entrevista</td><td>→</td><td>opportunity</td><td><span class="chip warn">Oportun.</span></td><td><label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label></td></tr>
+            <tr><td>Candidato → Aprovado</td><td>→</td><td>conversion</td><td><span class="chip ok">Conversão</span></td><td><label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label></td></tr>
+            <tr><td>Cliente faz upgrade plano</td><td>→</td><td>upsell</td><td><span class="chip ok">Receita</span></td><td><label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label></td></tr>
+            <tr><td>Demanda criada</td><td>→</td><td>activity</td><td><span class="chip neutro">Activity</span></td><td><label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">URL de tracking</div>
+        <div class="card-sub">Use essa base de URL ao criar campanhas pra que o Utmify capture as UTMs e atribua candidaturas/conversões corretamente.</div>
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:var(--text);word-break:break-all;">
+          https://app.acme.com/vaga/copywriter-pleno<br>
+          <span style="color:var(--accent);">?utm_source=facebook</span><br>
+          <span style="color:var(--accent);">&utm_medium=cpc</span><br>
+          <span style="color:var(--accent);">&utm_campaign=copy_q2</span><br>
+          <span style="color:var(--accent);">&utm_content=video_v3</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-title">Funil últimos 30d</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Dados via Utmify</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg-2);border-radius:6px;">
+            <span>🔗 Cliques no link</span>
+            <b>12.480</b>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg-2);border-radius:6px;">
+            <span>📩 Leads (cand.)</span>
+            <b>847 <span style="font-size:11px;color:var(--verde);">(6,8%)</span></b>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg-2);border-radius:6px;">
+            <span>✅ Qualificados</span>
+            <b>312 <span style="font-size:11px;color:var(--verde);">(36,8%)</span></b>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg-2);border-radius:6px;">
+            <span>💼 Entrevistas</span>
+            <b>78 <span style="font-size:11px;color:var(--verde);">(25%)</span></b>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:linear-gradient(135deg,rgba(91,94,244,.15),rgba(62,20,147,.15));border-radius:6px;border:1px solid var(--accent);">
+            <span><b>🎯 Aprovados</b></span>
+            <b>18 <span style="font-size:11px;color:var(--verde);">(23%)</span></b>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Top fontes</div>
+        <div style="font-size:13px;">
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>📘 Facebook Ads</span><b>43%</b></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>🟦 Instagram</span><b>28%</b></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>🔍 Google Search</span><b>18%</b></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>📨 Email</span><b>7%</b></div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;"><span>🔗 Direto</span><b>4%</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-saas">
+  <h3>Como tudo isso funciona junto</h3>
+  <div style="max-width:780px;margin:0 auto;line-height:1.7;">
+    <p style="margin-bottom:10px;">Cliente novo vai em <code>/signup</code>, faz o wizard de 3 passos (conta → branding → plano), escolhe pagar mensal/anual em BRL ou USD, e em segundos tem o painel rodando em <code>seunome.axcend.com</code>.</p>
+    <p style="margin-bottom:10px;">Você gerencia tudo no <b>Dashboard Master</b>: vê MRR, churn, health score de cada cliente, e pode entrar no painel de qualquer um (modo "logar como").</p>
+    <p style="margin-bottom:10px;">Cada cliente é <b>isolado em multi-tenant</b> (dados separados), mas integrações como Utmify ficam centralizadas — você conecta uma vez e todos os clientes ganham rastreio de UTMs nas candidaturas e conversões.</p>
+    <p>Páginas legais (Termos/Privacidade/LGPD) ficam versionadas e cada usuário aceita ao se cadastrar (com log de auditoria).</p>
+  </div>
+  <div style="margin-top:24px;color:var(--text3);">Preview · Axcend SaaS · {{versão de planejamento — nada implementado ainda}}</div>
+</div>
+
+<script>
+  function goTab(n){
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('ativo'); });
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('ativo'); });
+    var tab = document.querySelector('.tab[data-tab="'+n+'"]');
+    var screen = document.getElementById('screen-'+n);
+    if(tab) tab.classList.add('ativo');
+    if(screen) screen.classList.add('ativo');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+</script>
+
+</body>
+</html>
