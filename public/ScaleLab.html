@@ -2909,46 +2909,58 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <!-- AD LIBRARY -->
     <div class="page" id="page-adlibrary">
 
-      <!-- Topbar -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-        <div style="flex:1;">
-          <div style="font-size:13px;font-weight:700;">🔎 Ad Library — Anúncios de Concorrentes</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:2px;">Salve anúncios manuais ou busque nas bibliotecas públicas. Tudo vai para o Swipe File.</div>
+      <!-- Sub-tabs: AdLib · Spy Automático -->
+      <div id="adlib-subtabs" style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:8px;flex-wrap:wrap;">
+        <div id="adlib-tab-adlib" onclick="adlibSwitchTab('adlib')" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:#fff;background:#a855f7;transition:all .15s;">🔎 AdLib</div>
+        <div id="adlib-tab-spyauto" onclick="adlibSwitchTab('spyauto')" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);background:transparent;transition:all .15s;">🕵️ Spy Automático</div>
+      </div>
+
+      <!-- Conteúdo AdLib (original) -->
+      <div id="adlib-content-adlib">
+        <!-- Topbar -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;">🔎 Ad Library — Anúncios de Concorrentes</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px;">Salve anúncios manuais ou busque nas bibliotecas públicas. Tudo vai para o Swipe File.</div>
+          </div>
+          <button class="btn btn-primary" onclick="openModal('modal-adlib')">+ Adicionar Anúncio</button>
         </div>
-        <button class="btn btn-primary" onclick="openModal('modal-adlib')">+ Adicionar Anúncio</button>
+
+        <!-- Filters -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+          <input class="fi" id="adlib-search" placeholder="🔍  Buscar por anunciante, produto, nicho..." style="flex:1;min-width:200px;" oninput="renderAdlib()">
+          <select class="fs" id="adlib-nicho-f" style="width:180px;" onchange="renderAdlib()">
+            <option value="">Todos os nichos</option>
+            <option>Emagrecimento</option>
+            <option>Alemão Emagrecimento</option>
+            <option>Diabetes</option>
+            <option>DIABETES</option>
+            <option>Desconforto Articular</option>
+            <option>Visão</option>
+            <option>Zumbido</option>
+            <option>Renda Extra</option>
+            <option>Neuropatia</option>
+            <option>Constipação</option>
+            <option>Rejuvenescimento</option>
+            <option>Próstata</option>
+            <option>Memória</option>
+            <option>InfoProduto</option>
+          </select>
+          <select class="fs" id="adlib-status-f" style="width:150px;" onchange="renderAdlib()">
+            <option value="">Todos os status</option>
+            <option value="Pausada">⏸ Pausada</option>
+            <option value="Iniciando">🚀 Iniciando</option>
+            <option value="Pré Escala">📈 Pré Escala</option>
+            <option value="Escalada">⚡ Escalada</option>
+          </select>
+        </div>
+
+        <!-- Grid -->
+        <div id="adlib-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;"></div>
       </div>
 
-      <!-- Filters -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-        <input class="fi" id="adlib-search" placeholder="🔍  Buscar por anunciante, produto, nicho..." style="flex:1;min-width:200px;" oninput="renderAdlib()">
-        <select class="fs" id="adlib-nicho-f" style="width:180px;" onchange="renderAdlib()">
-          <option value="">Todos os nichos</option>
-          <option>Emagrecimento</option>
-          <option>Alemão Emagrecimento</option>
-          <option>Diabetes</option>
-          <option>DIABETES</option>
-          <option>Desconforto Articular</option>
-          <option>Visão</option>
-          <option>Zumbido</option>
-          <option>Renda Extra</option>
-          <option>Neuropatia</option>
-          <option>Constipação</option>
-          <option>Rejuvenescimento</option>
-          <option>Próstata</option>
-          <option>Memória</option>
-          <option>InfoProduto</option>
-        </select>
-        <select class="fs" id="adlib-status-f" style="width:150px;" onchange="renderAdlib()">
-          <option value="">Todos os status</option>
-          <option value="Pausada">⏸ Pausada</option>
-          <option value="Iniciando">🚀 Iniciando</option>
-          <option value="Pré Escala">📈 Pré Escala</option>
-          <option value="Escalada">⚡ Escalada</option>
-        </select>
-      </div>
-
-      <!-- Grid -->
-      <div id="adlib-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;"></div>
+      <!-- Conteúdo Spy Automático (renderizado dinamicamente) -->
+      <div id="adlib-content-spyauto" style="display:none;"></div>
 
     </div>
 
@@ -4220,7 +4232,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -4333,7 +4345,10 @@ function _rerenderCurrentPage(){
     safe(window.renderContingencia);
   }
   else if(cur === 'adsmetrics') safe(window.renderAdsMetrics);
-  else if(cur === 'adlibrary') safe(window.renderAdLibrary);
+  else if(cur === 'adlibrary') {
+    if(_spyAutoTab === 'spyauto') renderSpyAuto();
+    else { try{ renderAdlib(); }catch(e){} }
+  }
   else if(cur === 'edu' || cur === 'educacional') safe(window.renderEdu);
   else if(cur === 'swipe') safe(window.renderSwipe);
   else if(cur === 'lixeira') safe(window.renderLixeira);
@@ -5429,6 +5444,413 @@ function editarAdlibAds(id, campo){
   a[campo] = val;
   s('adlib', adlibAds);
   renderAdlib();
+}
+
+// ══════════════════════════════════════════════
+// SPY AUTOMÁTICO · monitoramento de bibliotecas Meta Ad Library
+// Sub-aba dentro de AdLib (page-adlibrary)
+// ══════════════════════════════════════════════
+var _spyAutoTab = 'adlib'; // 'adlib' | 'spyauto'
+var _spyAutoNichoSelecionado = '';
+
+function _spyGetBibliotecas(){ return g('sl_spy_auto', []); }
+function _spyGetNichos(){
+  var n = g('sl_spy_auto_nichos', []);
+  if(!n.length){
+    n = [
+      { id:'nic-emag',  nome:'Emagrecimento', icone:'🩺', termos:'emagrecer rápido, detox, perder barriga, queimar gordura', autoRun:true,  ultimaBusca:'' },
+      { id:'nic-fin',   nome:'Finanças',       icone:'💰', termos:'investimento, renda extra, trader, dólar',                  autoRun:false, ultimaBusca:'' },
+      { id:'nic-rel',   nome:'Relacionamento', icone:'💔', termos:'reconquistar, salvar casamento, atrair, sedução',           autoRun:false, ultimaBusca:'' },
+      { id:'nic-sm',    nome:'Saúde mental',   icone:'🧠', termos:'ansiedade, depressão, autoestima, autoconhecimento',         autoRun:false, ultimaBusca:'' },
+      { id:'nic-curso', nome:'Cursos digitais',icone:'📖', termos:'curso online, infoproduto, mentoria, especialização',        autoRun:false, ultimaBusca:'' }
+    ];
+    s('sl_spy_auto_nichos', n);
+  }
+  return n;
+}
+
+function adlibSwitchTab(tab){
+  _spyAutoTab = tab;
+  var tAdlib = document.getElementById('adlib-tab-adlib');
+  var tSpy = document.getElementById('adlib-tab-spyauto');
+  var cAdlib = document.getElementById('adlib-content-adlib');
+  var cSpy = document.getElementById('adlib-content-spyauto');
+  if(tab === 'adlib'){
+    tAdlib.style.background = '#a855f7'; tAdlib.style.color = '#fff'; tAdlib.style.fontWeight = '700';
+    tSpy.style.background = 'transparent'; tSpy.style.color = 'var(--text2)'; tSpy.style.fontWeight = '500';
+    cAdlib.style.display = '';
+    cSpy.style.display = 'none';
+    try{ renderAdlib && renderAdlib(); }catch(e){}
+  } else {
+    tAdlib.style.background = 'transparent'; tAdlib.style.color = 'var(--text2)'; tAdlib.style.fontWeight = '500';
+    tSpy.style.background = '#a855f7'; tSpy.style.color = '#fff'; tSpy.style.fontWeight = '700';
+    cAdlib.style.display = 'none';
+    cSpy.style.display = '';
+    renderSpyAuto();
+  }
+}
+
+function renderSpyAuto(){
+  var el = document.getElementById('adlib-content-spyauto');
+  if(!el) return;
+  var nichos = _spyGetNichos();
+  var bibs = _spyGetBibliotecas();
+
+  var totalBibs = bibs.length;
+  var totalAds = bibs.reduce(function(s,b){ return s + (Number(b.adsAtivos)||0); }, 0);
+  var ultimaBusca = bibs.length ? Math.max.apply(null, bibs.map(function(b){ return b._updatedAt||0; })) : 0;
+  var ultimaLabel = ultimaBusca ? _spyHorasAtras(ultimaBusca) : '—';
+
+  // Variações 24h
+  var top24Up = bibs.filter(function(b){ return b.varAds24h > 0; }).sort(function(a,b){ return b.varAds24h - a.varAds24h; }).slice(0,3);
+  var top24Down = bibs.filter(function(b){ return b.varAds24h < 0; }).sort(function(a,b){ return a.varAds24h - b.varAds24h; }).slice(0,3);
+
+  var nichoOpts = '<option value="">Todos os nichos</option>'+nichos.map(function(n){ return '<option value="'+n.id+'"'+(_spyAutoNichoSelecionado===n.id?' selected':'')+'>'+n.icone+' '+_esc(n.nome)+'</option>'; }).join('');
+
+  // Lista filtrada
+  var listaFiltrada = _spyAutoNichoSelecionado
+    ? bibs.filter(function(b){ return b.nichoId === _spyAutoNichoSelecionado; })
+    : bibs;
+  listaFiltrada.sort(function(a,b){ return (Number(b.adsAtivos)||0) - (Number(a.adsAtivos)||0); });
+
+  el.innerHTML =
+    // Hero / topo
+    '<div style="background:linear-gradient(135deg,rgba(91,94,244,.1),rgba(62,20,147,.05));border:1px solid var(--accent);border-radius:10px;padding:18px;margin-bottom:18px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:14px;">'+
+        '<div><div style="font-size:15px;font-weight:700;">🚀 Fazer Spy agora</div>'+
+        '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Escolhe nicho, sistema busca as bibliotecas de anúncios e salva no monitoramento.</div></div>'+
+        '<button class="btn btn-primary" onclick="spyAutoConfigurarNichos()">⚙️ Gerenciar nichos</button>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 200px;gap:12px;align-items:flex-end;">'+
+        '<div class="fg"><label class="fl">Nicho</label><select id="spy-novo-nicho" class="fs">'+nichos.map(function(n){ return '<option value="'+n.id+'">'+n.icone+' '+_esc(n.nome)+'</option>'; }).join('')+'</select></div>'+
+        '<div class="fg"><label class="fl">Termos / mecanismos (separados por vírgula)</label><input id="spy-novo-termos" class="fi" placeholder="emagrecer rápido, detox, queimar gordura"></div>'+
+        '<button class="btn btn-primary" onclick="spyAutoBuscar()" style="padding:10px;font-weight:700;">🔍 Buscar agora</button>'+
+      '</div>'+
+      '<div style="display:flex;gap:14px;margin-top:12px;font-size:11px;color:var(--text2);flex-wrap:wrap;">'+
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="spy-fonte-meta" checked> Meta Ad Library (FB+IG)</label>'+
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="spy-fonte-google" checked> Google Ads Transparency</label>'+
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="spy-fonte-tiktok"> TikTok Creative Center</label>'+
+      '</div>'+
+    '</div>'+
+
+    // KPIs
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Nichos monitorados</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+nichos.length+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Bibliotecas</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+totalBibs+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Ads ativos (total)</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+totalAds.toLocaleString('pt-BR')+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Última busca</div><div style="font-size:16px;font-weight:700;margin-top:4px;">'+ultimaLabel+'</div></div>'+
+    '</div>'+
+
+    // Tabela de bibliotecas
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px;">'+
+      '<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'+
+        '<div style="font-size:13px;font-weight:700;">📋 Bibliotecas monitoradas '+(listaFiltrada.length<totalBibs?'('+listaFiltrada.length+' de '+totalBibs+')':'('+totalBibs+')')+'</div>'+
+        '<div style="display:flex;gap:6px;align-items:center;">'+
+          '<select class="fs" onchange="_spyAutoNichoSelecionado=this.value;renderSpyAuto();" style="font-size:12px;padding:5px 10px;">'+nichoOpts+'</select>'+
+          (totalBibs ? '<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="spyAutoAtualizarTodas()">🔄 Atualizar todas</button>' : '')+
+          (totalBibs ? '<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="spyAutoExportarCSV()">📥 CSV</button>' : '')+
+        '</div>'+
+      '</div>'+
+      (listaFiltrada.length === 0
+        ? '<div style="padding:40px;text-align:center;color:var(--text2);"><div style="font-size:36px;margin-bottom:10px;">🕵️</div>'+(totalBibs===0?'Nenhuma biblioteca cadastrada ainda.<br><small>Use "Fazer Spy agora" acima ou "+ Adicionar manualmente" pra começar.</small>':'Nenhuma biblioteca neste nicho.')+'<br><br><button class="btn btn-primary" onclick="spyAutoAddManual()" style="margin-top:8px;">+ Adicionar manualmente</button></div>'
+        : '<table style="width:100%;border-collapse:collapse;">'+
+            '<thead><tr style="background:var(--bg);">'+
+              '<th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Biblioteca / Página</th>'+
+              '<th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Nicho</th>'+
+              '<th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">Ads ativos</th>'+
+              '<th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">Variação 24h</th>'+
+              '<th style="padding:9px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:600;">Última atualização</th>'+
+              '<th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">Link</th>'+
+              '<th style="padding:9px 8px;text-align:center;font-size:10px;color:var(--text2);font-weight:600;">Ações</th>'+
+            '</tr></thead><tbody>'+
+            listaFiltrada.map(function(b){
+              var nicho = nichos.find(function(n){ return n.id===b.nichoId; });
+              var varAds = Number(b.varAds24h)||0;
+              var varPct = b.adsAnteriores>0 ? Math.round(varAds/b.adsAnteriores*100) : 0;
+              var corVar = varAds>0?'#16A34A':varAds<0?'#DC2626':'var(--text3)';
+              var chipVar = varAds === 0
+                ? '<span style="font-size:10px;color:var(--text3);">—</span>'
+                : '<span style="background:rgba('+(varAds>0?'22,163,74':'220,38,38')+',.15);color:'+corVar+';font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;">'+(varAds>0?'↑':'↓')+' '+Math.abs(varAds)+' ads</span>'+(b.adsAnteriores>0?'<div style="font-size:9px;color:'+corVar+';margin-top:2px;">'+(varAds>0?'+':'')+varPct+'%</div>':'');
+              var badgeNova = b.isNova ? '<span style="background:rgba(27,156,250,.15);color:#1B9CFA;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:6px;">🆕 NOVA</span>' : '';
+              var linkBtn = b.linkBiblioteca ? '<a href="'+_esc(b.linkBiblioteca)+'" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none;">🔗 Abrir</a>' : '<span style="font-size:10px;color:var(--text3);">—</span>';
+              return '<tr style="border-bottom:1px solid var(--border);">'+
+                '<td style="padding:10px 8px;font-size:12px;"><b>'+_esc(b.nomePagina||'—')+'</b>'+badgeNova+(b.handles?'<div style="font-size:10px;color:var(--text2);margin-top:2px;">'+_esc(b.handles)+'</div>':'')+'</td>'+
+                '<td style="padding:10px 8px;font-size:11px;color:var(--text2);">'+(nicho?nicho.icone+' '+_esc(nicho.nome):'—')+'</td>'+
+                '<td style="padding:10px 8px;text-align:center;"><b style="font-size:16px;">'+(Number(b.adsAtivos)||0)+'</b></td>'+
+                '<td style="padding:10px 8px;text-align:center;">'+chipVar+'</td>'+
+                '<td style="padding:10px 8px;font-size:11px;color:var(--text2);">'+(b._updatedAt?_spyHorasAtras(b._updatedAt):'—')+'</td>'+
+                '<td style="padding:10px 8px;text-align:center;">'+linkBtn+'</td>'+
+                '<td style="padding:10px 8px;text-align:center;"><div style="display:flex;gap:4px;justify-content:center;">'+
+                  '<button onclick="spyAutoAtualizar(\''+b.id+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);" title="Atualizar">🔄</button>'+
+                  '<button onclick="spyAutoEditar(\''+b.id+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);" title="Editar">✎</button>'+
+                  '<button onclick="spyAutoRemover(\''+b.id+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:#DC2626;" title="Remover">🗑</button>'+
+                '</div></td>'+
+              '</tr>';
+            }).join('')+
+          '</tbody></table>')+
+    '</div>'+
+
+    // Top variações 24h
+    (totalBibs ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#16A34A;">📈 Top crescimento (24h)</div>'+
+        (top24Up.length ? top24Up.map(function(b){
+          var pct = b.adsAnteriores>0 ? Math.round(b.varAds24h/b.adsAnteriores*100) : 0;
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg);border-radius:7px;margin-bottom:6px;font-size:12px;">'+
+            '<div><b>'+_esc(b.nomePagina)+'</b><div style="font-size:10px;color:var(--text2);">'+(b.adsAnteriores||0)+' → '+(b.adsAtivos||0)+' ads</div></div>'+
+            '<span style="background:rgba(22,163,74,.15);color:#16A34A;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;">↑ +'+pct+'%</span>'+
+          '</div>';
+        }).join('') : '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:18px;">Nenhuma biblioteca cresceu nas últimas 24h.</div>')+
+      '</div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#DC2626;">📉 Top queda (24h)</div>'+
+        (top24Down.length ? top24Down.map(function(b){
+          var pct = b.adsAnteriores>0 ? Math.round(b.varAds24h/b.adsAnteriores*100) : 0;
+          var pausou = (Number(b.adsAtivos)||0) === 0 && (Number(b.adsAnteriores)||0) > 0;
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg);border-radius:7px;margin-bottom:6px;font-size:12px;">'+
+            '<div><b>'+_esc(b.nomePagina)+'</b><div style="font-size:10px;color:var(--text2);">'+(b.adsAnteriores||0)+' → '+(b.adsAtivos||0)+' ads'+(pausou?' · ⛔ pausou':'')+'</div></div>'+
+            '<span style="background:rgba(220,38,38,.15);color:#DC2626;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;">'+(pausou?'⛔ pausou':'↓ '+pct+'%')+'</span>'+
+          '</div>';
+        }).join('') : '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:18px;">Nenhuma biblioteca caiu nas últimas 24h.</div>')+
+      '</div>'+
+    '</div>' : '');
+}
+
+function _spyHorasAtras(ts){
+  if(!ts) return '—';
+  var diff = Math.floor((Date.now() - (ts*1000 < 10e9 ? ts*1000 : ts)) / 1000);
+  if(diff < 60) return 'agora';
+  if(diff < 3600) return 'há '+Math.floor(diff/60)+'min';
+  if(diff < 86400) return 'há '+Math.floor(diff/3600)+'h';
+  return 'há '+Math.floor(diff/86400)+'d';
+}
+
+// Realiza busca (placeholder — integração real com Meta Ad Library API exige token)
+function spyAutoBuscar(){
+  var nichoId = document.getElementById('spy-novo-nicho').value;
+  var termos = (document.getElementById('spy-novo-termos').value||'').trim();
+  var nichos = _spyGetNichos();
+  var nicho = nichos.find(function(n){ return n.id===nichoId; });
+  if(!nicho){ alert('Selecione um nicho.'); return; }
+  if(!termos){ termos = nicho.termos || ''; }
+  if(!termos){ alert('Adicione termos pra buscar.'); return; }
+
+  var msg = '🔍 Buscando bibliotecas no nicho "'+nicho.nome+'"...\n\nTermos: '+termos+'\n\nFontes:\n'+
+    (document.getElementById('spy-fonte-meta').checked?'✓ Meta Ad Library\n':'')+
+    (document.getElementById('spy-fonte-google').checked?'✓ Google Ads Transparency\n':'')+
+    (document.getElementById('spy-fonte-tiktok').checked?'✓ TikTok Creative Center\n':'');
+
+  // Abre o link da Meta Ad Library com os termos pesquisados
+  if(document.getElementById('spy-fonte-meta').checked){
+    var query = encodeURIComponent(termos.split(',')[0].trim());
+    var metaUrl = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&q='+query;
+    if(confirm(msg+'\n\nClique OK pra abrir a Meta Ad Library com o primeiro termo. Depois cole as bibliotecas que achar usando "+ Adicionar manualmente".')){
+      window.open(metaUrl, '_blank');
+    }
+  } else {
+    alert(msg+'\n\n⚠️ Integração automática com API requer token da Meta. Por enquanto, use "+ Adicionar manualmente" pra registrar as bibliotecas que encontrar.');
+  }
+
+  // Atualiza última busca do nicho
+  nicho.ultimaBusca = new Date().toISOString();
+  s('sl_spy_auto_nichos', nichos);
+  renderSpyAuto();
+}
+
+// Adicionar/editar biblioteca manualmente
+function spyAutoAddManual(){ spyAutoEditar(null); }
+
+function spyAutoEditar(id){
+  var bibs = _spyGetBibliotecas();
+  var b = id ? bibs.find(function(x){ return x.id===id; }) : null;
+  var isNovo = !b;
+  b = b || { nomePagina:'', handles:'', nichoId:_spyAutoNichoSelecionado || (_spyGetNichos()[0]||{}).id || '', linkBiblioteca:'', adsAtivos:0, varAds24h:0, adsAnteriores:0, isNova:true, notas:'' };
+
+  var nichos = _spyGetNichos();
+  var nichoOpts = nichos.map(function(n){ return '<option value="'+n.id+'"'+(b.nichoId===n.id?' selected':'')+'>'+n.icone+' '+_esc(n.nome)+'</option>'; }).join('');
+
+  var html =
+    '<div id="spy-modal-bib" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'spy-modal-bib\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow:auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--card);">'+
+          '<div style="font-size:16px;font-weight:700;">🕵️ '+(isNovo?'Adicionar biblioteca':'Editar biblioteca')+'</div>'+
+          '<button onclick="document.getElementById(\'spy-modal-bib\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:22px;">'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nome da página / produto *</label><input id="spy-b-nome" class="fi" value="'+_esc(b.nomePagina)+'" placeholder="Ex: Detox 21 Pro"></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nicho *</label><select id="spy-b-nicho" class="fs">'+nichoOpts+'</select></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Handles (FB/IG/TikTok)</label><input id="spy-b-handles" class="fi" value="'+_esc(b.handles||'')+'" placeholder="FB: @detox21pro · IG: @detox21pro"></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Link da biblioteca Meta Ad Library *</label><input id="spy-b-link" class="fi" value="'+_esc(b.linkBiblioteca||'')+'" placeholder="https://facebook.com/ads/library/?id=..."></div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">'+
+            '<div class="fg"><label class="fl">Ads ativos agora *</label><input id="spy-b-ads" class="fi" type="number" min="0" value="'+(b.adsAtivos||0)+'"></div>'+
+            '<div class="fg"><label class="fl">Ads ontem (referência)</label><input id="spy-b-ads-ant" class="fi" type="number" min="0" value="'+(b.adsAnteriores||0)+'"></div>'+
+          '</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Notas internas</label><textarea id="spy-b-notas" class="fi" rows="2" style="resize:vertical;" placeholder="Observações sobre essa biblioteca">'+_esc(b.notas||'')+'</textarea></div>'+
+          '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text2);">'+
+            '💡 <b>Dica:</b> ao atualizar a contagem de ads, o sistema calcula automaticamente a variação 24h baseada no valor anterior. Use o link da Meta Ad Library pra acompanhar visualmente.'+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'spy-modal-bib\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="spyAutoSalvarBib(\''+(b.id||'')+'\')">Salvar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('spy-modal-bib'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function spyAutoSalvarBib(id){
+  var nome = (document.getElementById('spy-b-nome').value||'').trim();
+  var nichoId = document.getElementById('spy-b-nicho').value;
+  var link = (document.getElementById('spy-b-link').value||'').trim();
+  var ads = Math.max(0, parseInt(document.getElementById('spy-b-ads').value,10)||0);
+  if(!nome || !nichoId || !link){ alert('Nome, nicho e link da biblioteca são obrigatórios.'); return; }
+  var bibs = _spyGetBibliotecas();
+  var b = id ? bibs.find(function(x){ return x.id===id; }) : null;
+  var isNovo = !b;
+  if(!b){ b = { id:'bib-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), _criadoEm:new Date().toISOString(), isNova:true }; }
+  var adsAnt = Math.max(0, parseInt(document.getElementById('spy-b-ads-ant').value,10)||0);
+  // Se a edição mudou ads atuais e tinha valor antes, calcula variação automaticamente
+  if(!isNovo && b.adsAtivos !== ads && !adsAnt){
+    adsAnt = b.adsAtivos;
+  }
+  b.nomePagina = nome;
+  b.nichoId = nichoId;
+  b.handles = (document.getElementById('spy-b-handles').value||'').trim();
+  b.linkBiblioteca = link;
+  b.adsAnteriores = adsAnt;
+  b.adsAtivos = ads;
+  b.varAds24h = ads - adsAnt;
+  b.notas = (document.getElementById('spy-b-notas').value||'').trim();
+  if(isNovo) b.isNova = true;
+  else b.isNova = false; // só "nova" na primeira medição
+  b._updatedAt = Date.now()/1000;
+  if(isNovo) bibs.push(b);
+  s('sl_spy_auto', bibs);
+  var m = document.getElementById('spy-modal-bib'); if(m) m.remove();
+  renderSpyAuto();
+}
+
+function spyAutoAtualizar(id){
+  var bibs = _spyGetBibliotecas();
+  var b = bibs.find(function(x){ return x.id===id; });
+  if(!b) return;
+  var novo = prompt('Nova contagem de ads ativos pra "'+b.nomePagina+'":\n\n(Valor atual: '+(b.adsAtivos||0)+' ads)', b.adsAtivos||0);
+  if(novo === null) return;
+  var n = Math.max(0, parseInt(novo,10)||0);
+  b.adsAnteriores = b.adsAtivos || 0;
+  b.adsAtivos = n;
+  b.varAds24h = n - b.adsAnteriores;
+  b.isNova = false;
+  b._updatedAt = Date.now()/1000;
+  s('sl_spy_auto', bibs);
+  renderSpyAuto();
+}
+
+function spyAutoAtualizarTodas(){
+  var bibs = _spyGetBibliotecas();
+  if(!bibs.length){ alert('Nenhuma biblioteca cadastrada.'); return; }
+  if(!confirm('Abrir cada biblioteca no navegador pra você contar os ads ativos manualmente?\n\nVai abrir '+bibs.length+' aba(s) novas.\n\n⚠️ A atualização automática (sem ações manuais) requer integração com a API da Meta, que precisa de token + aprovação.')) return;
+  bibs.forEach(function(b){ if(b.linkBiblioteca) window.open(b.linkBiblioteca, '_blank'); });
+  alert('Bibliotecas abertas! Conte os ads ativos e clique no 🔄 de cada linha pra atualizar.');
+}
+
+function spyAutoRemover(id){
+  if(!confirm('Remover essa biblioteca do monitoramento?')) return;
+  s('sl_spy_auto', _spyGetBibliotecas().filter(function(b){ return b.id!==id; }));
+  renderSpyAuto();
+}
+
+function spyAutoExportarCSV(){
+  var bibs = _spyGetBibliotecas();
+  var nichos = _spyGetNichos();
+  var csv = 'Pagina,Nicho,Handles,Link,AdsAtivos,AdsAnteriores,Variacao24h,UltimaAtualizacao\n';
+  bibs.forEach(function(b){
+    var nicho = nichos.find(function(n){ return n.id===b.nichoId; });
+    csv += [
+      '"'+(b.nomePagina||'').replace(/"/g,'""')+'"',
+      '"'+(nicho?nicho.nome:'').replace(/"/g,'""')+'"',
+      '"'+(b.handles||'').replace(/"/g,'""')+'"',
+      '"'+(b.linkBiblioteca||'')+'"',
+      b.adsAtivos||0,
+      b.adsAnteriores||0,
+      b.varAds24h||0,
+      b._updatedAt ? new Date(b._updatedAt*1000).toISOString() : ''
+    ].join(',')+'\n';
+  });
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'spy-automatico-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── GERENCIAR NICHOS ───
+function spyAutoConfigurarNichos(){
+  var nichos = _spyGetNichos();
+  var linhas = nichos.map(function(n, idx){
+    return '<div style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:8px;">'+
+      '<div style="display:grid;grid-template-columns:60px 1fr 1fr 60px;gap:8px;align-items:center;">'+
+        '<input class="fi" type="text" value="'+_esc(n.icone||'')+'" data-nf="icone" data-idx="'+idx+'" placeholder="🩺" style="text-align:center;font-size:18px;">'+
+        '<input class="fi" type="text" value="'+_esc(n.nome||'')+'" data-nf="nome" data-idx="'+idx+'" placeholder="Nome do nicho">'+
+        '<input class="fi" type="text" value="'+_esc(n.termos||'')+'" data-nf="termos" data-idx="'+idx+'" placeholder="Termos separados por vírgula">'+
+        '<button onclick="spyAutoRemoverNicho(\''+n.id+'\')" style="background:transparent;border:1px solid #DC2626;color:#DC2626;border-radius:6px;padding:6px;cursor:pointer;font-size:11px;">🗑</button>'+
+      '</div>'+
+      '<div style="margin-top:8px;display:flex;gap:14px;font-size:11px;color:var(--text2);">'+
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-nf="autoRun" data-idx="'+idx+'"'+(n.autoRun?' checked':'')+'> Auto-buscar diariamente</label>'+
+        '<span>Última busca: '+(n.ultimaBusca?_finFmtData(n.ultimaBusca):'nunca')+'</span>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  var html =
+    '<div id="spy-modal-nichos" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-nichos\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:780px;width:100%;margin:20px auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--card);">'+
+          '<div><div style="font-size:16px;font-weight:700;">⚙️ Gerenciar nichos do Spy</div>'+
+          '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Cada nicho tem seus termos próprios e pode ser auto-buscado diariamente.</div></div>'+
+          '<button onclick="document.getElementById(\'spy-modal-nichos\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:18px 22px;">'+linhas+'<button class="btn btn-ghost" style="width:100%;" onclick="spyAutoAddNicho()">+ Adicionar nicho</button></div>'+
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'spy-modal-nichos\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="spyAutoSalvarNichos()">Salvar nichos</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('spy-modal-nichos'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function spyAutoAddNicho(){
+  var nichos = _spyGetNichos();
+  nichos.push({ id:'nic-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,5), nome:'Novo nicho', icone:'📦', termos:'', autoRun:false, ultimaBusca:'' });
+  s('sl_spy_auto_nichos', nichos);
+  spyAutoConfigurarNichos();
+}
+
+function spyAutoRemoverNicho(id){
+  if(!confirm('Remover esse nicho? As bibliotecas associadas continuam, só perdem a referência.')) return;
+  var nichos = _spyGetNichos().filter(function(n){ return n.id!==id; });
+  s('sl_spy_auto_nichos', nichos);
+  spyAutoConfigurarNichos();
+  renderSpyAuto();
+}
+
+function spyAutoSalvarNichos(){
+  var nichos = _spyGetNichos();
+  document.querySelectorAll('#spy-modal-nichos [data-nf][data-idx]').forEach(function(inp){
+    var idx = parseInt(inp.getAttribute('data-idx'),10);
+    var field = inp.getAttribute('data-nf');
+    if(idx >= nichos.length) return;
+    if(field === 'autoRun') nichos[idx][field] = !!inp.checked;
+    else nichos[idx][field] = (inp.value||'').trim();
+  });
+  s('sl_spy_auto_nichos', nichos);
+  var m = document.getElementById('spy-modal-nichos'); if(m) m.remove();
+  renderSpyAuto();
 }
 
 function openModal(id){document.getElementById(id).classList.add('open');}
