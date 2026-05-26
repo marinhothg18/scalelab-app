@@ -28,17 +28,72 @@ const HOSTS_INTERNO = new Set([
 // Domínio raiz do SaaS — qualquer subdomínio disso vira tenant (acme.axcend.com → 'acme')
 const SAAS_ROOT_DOMAIN = 'axcend.com';
 
+// Cache de tenants em memória (refresh a cada 30s). Evita ler o db.json em
+// CADA request — só atualiza periodicamente. Quando um tenant é criado/editado,
+// o cache simplesmente expira e na próxima request é refrescado.
+let _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
+const _TENANT_CACHE_TTL_MS = 30 * 1000;
+// Subdomínios reservados que NUNCA são tenants (são endpoints da plataforma)
+const SUBDOMINIOS_RESERVADOS = new Set([
+  'app', 'www', 'api', 'admin', 'painel', 'master', 'mail', 'cname',
+  'static', 'cdn', 'assets', 'help', 'docs', 'blog', 'status'
+]);
+
+function _atualizarCacheTenants() {
+  const agora = Date.now();
+  if ((agora - _tenantCache.ts) < _TENANT_CACHE_TTL_MS) return;
+  try {
+    const db = readDB();
+    const tenants = db.store['sl_saas_tenants'] || [];
+    const byHost = new Map();
+    const bySlug = new Map();
+    for (const t of tenants) {
+      if (!t || !t.id) continue;
+      if (t.dominio) byHost.set(String(t.dominio).toLowerCase(), t.id);
+      if (t.slug) bySlug.set(String(t.slug).toLowerCase(), t.id);
+    }
+    _tenantCache = { ts: agora, byHost, bySlug };
+  } catch (e) {
+    // mantém cache antigo se der erro
+  }
+}
+
 /**
- * Resolve o tenant_id a partir da request.
- * - Se host está em HOSTS_INTERNO → axcend-interno
- * - Se é subdomínio de SAAS_ROOT_DOMAIN → busca tenant com esse slug
- * - Se cliente tem domínio próprio → busca tenant com esse domínio
- * - Senão → default (interno)
+ * Resolve o tenant_id a partir do host da request.
  *
- * IMPORTANTE: por enquanto sempre retorna axcend-interno até PR 3 ativar.
+ * Regras:
+ * 1. Host em HOSTS_INTERNO (app.centralaxcend.com, localhost...) → axcend-interno
+ * 2. Host bate com tenant.dominio (domínio próprio do cliente) → tenant.id
+ * 3. Host é subdomínio de axcend.com:
+ *    - Subdomínio reservado (app, www, api...) → axcend-interno
+ *    - Senão busca tenant com slug=subdomínio → tenant.id
+ * 4. Default (host desconhecido): axcend-interno
+ *
+ * Defensive: hosts desconhecidos não revelam existência de outros tenants.
  */
 function _resolverTenantId(req) {
-  // PR 1: tudo é interno. Será substituído por lógica real no PR 3.
+  // Normaliza host: lowercase, sem porta
+  const hostRaw = String(req.headers.host || '').toLowerCase();
+  const host = hostRaw.split(':')[0];
+  // 1. Hosts internos sempre são axcend-interno
+  if (HOSTS_INTERNO.has(hostRaw) || HOSTS_INTERNO.has(host)) {
+    return TENANT_INTERNO_ID;
+  }
+  // 2. Refresh cache + procura por domínio próprio
+  _atualizarCacheTenants();
+  const porDominio = _tenantCache.byHost.get(host);
+  if (porDominio) return porDominio;
+  // 3. Subdomínio de SAAS_ROOT_DOMAIN
+  const sufixo = '.' + SAAS_ROOT_DOMAIN;
+  if (host.endsWith(sufixo)) {
+    const sub = host.slice(0, -sufixo.length);
+    // Subdomínios reservados → interno
+    if (SUBDOMINIOS_RESERVADOS.has(sub)) return TENANT_INTERNO_ID;
+    // Busca tenant com esse slug
+    const porSlug = _tenantCache.bySlug.get(sub);
+    if (porSlug) return porSlug;
+  }
+  // 4. Default seguro: interno
   return TENANT_INTERNO_ID;
 }
 
