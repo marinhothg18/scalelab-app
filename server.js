@@ -914,6 +914,203 @@ app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── SPY WOLF · webhook de import ──
+// Recebe resultado da skill spy-wolf (Claude Cowork) e popula sl_spy_auto.
+// Aceita 2 formatos: { dominios: [...] } estruturado OU { rawText: "..." } pra parser.
+// ══════════════════════════════════════════════
+
+// Blacklist global de falsos positivos (mesma do frontend)
+const SPY_BLACKLIST = new Set([
+  'M.READHARBOR.COM','M.BOOKPATHWAY.NET','M.CHAPTERHAVEN.COM','M.THENEURODEFENDER.COM','M.HEALTHVEXA.ONLINE','M.PUREXO.ONLINE','M.HOTBUKU.COM',
+  'W2A.SHORTTV.LIVE','FB.DRAMABOX.COM','FIND.ALPHA-SPECIALS.COM','TRY.LUHXE.COM',
+  'ABOUT.BUGMD.COM','SENZIO.STORE','EVELABS.STORE','VITALCURE.SHOP','LIVERCLEANSEPROTOCOL.COM','RED.TRK.ANCHORPIXEL.COM','EVERYDAYHUBONLINE.COM',
+  'TRK.MRTTRCK.COM','FIND.INFO-ROADS.COM','NEW.FAST-GUIDES.COM','TRY.PRIMALS.SHOP','OFFER.NEBROO.COM','TRY.PRIMITIVELABSRESEARCH.COM','TRY.NOURIAL.COM',
+  'GELIXER.COM','PILLS.MOERIE.COM','GO.KINGKONG.CO','SHOP.GETAMALAHEALTH.COM','NEUROEDGELAB.COM','OUTFIELDORGANICS.COM',
+  'COLONBROOM.COM','SHOP.THEBETTYROCKER.COM','GET.METABOOSTING.COM','MEMBERS.WARRIORBABE.COM','MERAKIFITNESS.NET','GREENCHEF.COM','THESMOOTHIEBOMBS.COM','THESALADHOUSE.COM','TRIAL.HEALTHBOX.ME','FREEZERFIT.COM','PEACHFIT.COM','PROJECTSLIFESTYLE.CO',
+  'EDCURE.COM','COLOPLAST.TO','LABOMBITA.COM','AQUABLATIONDALLAS.COM','INFO.UROLIFT.COM','QUIZ.PEPTONIX.COM','PEPTONIX.COM','TRYSOLUMA.COM',
+  'ALEVIA.COM','PRODROME.COM','GO.VISIONCLARITYLAB.COM','BUYMAIA.COM','TRY-EDENLABS.COM','TRY.PLOISE.COM'
+]);
+
+// Detecta domínio suspeito (mesma heurística do frontend)
+function _spyDominioSuspeito(host) {
+  if (!host) return null;
+  const H = host.toUpperCase();
+  if (SPY_BLACKLIST.has(H)) return { tipo:'blacklist', motivo:'Falso positivo conhecido' };
+  if (/^[0-9]/.test(H) || (/\.[A-Z]{2,4}$/.test(H) && /[0-9]{3,}/.test(H.split('.')[0]))) {
+    return { tipo:'random', motivo:'Domínio com números — possível token-matching' };
+  }
+  return null;
+}
+
+// Parser de domínios em texto livre (mesma lógica do frontend)
+function _spyParsearTexto(texto) {
+  if (!texto || typeof texto !== 'string') return [];
+  const dominioRegex = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\b/gi;
+  const matches = texto.match(dominioRegex) || [];
+  const dominiosMap = {};
+  matches.forEach(d => {
+    const H = d.toUpperCase().replace(/^WWW\./, '');
+    if (/^(FACEBOOK|META|INSTAGRAM|WHATSAPP|FB|GOOGLE|YOUTUBE|AMAZON|APPLE|CDN|FBCDN|MESSENGER|HTTPS|HTTP)/.test(H)) return;
+    if (H.length < 6) return;
+    if (!dominiosMap[H]) {
+      // Tenta extrair volume próximo
+      const idx = texto.toUpperCase().indexOf(H);
+      const snippet = idx >= 0 ? texto.substr(Math.max(0, idx - 100), 300) : '';
+      const volMatch = snippet.match(/(\d[\d.,]*)\s*(k|K|mil|thousand|\bads\b)/);
+      let volume = 0;
+      if (volMatch) {
+        let n = parseFloat(volMatch[1].replace(/\./g, '').replace(',', '.'));
+        if (volMatch[2] && /k|K|mil|thousand/i.test(volMatch[2])) n *= 1000;
+        volume = Math.round(n);
+      }
+      dominiosMap[H] = { host: H, volume };
+    }
+  });
+  return Object.values(dominiosMap);
+}
+
+// POST /api/spy/import  — webhook que a skill spy-wolf chama
+// Body: { nichoId: 'nic-emag', dominios?: [{host, volume?, copy?, advertisers?, notas?}], rawText?: '...' }
+app.post('/api/spy/import', authAPI, (req, res) => {
+  try {
+    const { nichoId, dominios, rawText, runMeta } = req.body || {};
+    if (!nichoId) return res.status(400).json({ error: 'Campo obrigatório: nichoId' });
+    if (!Array.isArray(dominios) && !rawText) {
+      return res.status(400).json({ error: 'Forneça `dominios` (array) ou `rawText` (string).' });
+    }
+
+    const db = readDB();
+    const bibs = db.store['sl_spy_auto'] || [];
+    const nichos = db.store['sl_spy_auto_nichos'] || [];
+    const nicho = nichos.find(n => n.id === nichoId);
+    if (!nicho) return res.status(404).json({ error: `Nicho não encontrado: ${nichoId}` });
+
+    // Combina dominios estruturados + parse do rawText
+    let candidatos = Array.isArray(dominios) ? dominios.slice() : [];
+    if (rawText) {
+      const parsed = _spyParsearTexto(rawText);
+      parsed.forEach(p => {
+        if (!candidatos.find(c => (c.host || '').toUpperCase() === p.host)) candidatos.push(p);
+      });
+    }
+
+    if (!candidatos.length) return res.status(400).json({ error: 'Nenhum domínio detectado.' });
+
+    // Map de existentes por host (uppercase)
+    const existentes = {};
+    bibs.forEach(b => { existentes[(b.nomePagina || '').toUpperCase()] = b; });
+
+    let novos = 0, atualizados = 0, blacklisted = 0, suspeitos = 0;
+    const detalhes = [];
+
+    candidatos.forEach(cand => {
+      const host = String(cand.host || cand.dominio || '').toUpperCase().trim();
+      if (!host || host.length < 6) return;
+
+      const suspeitoInfo = _spyDominioSuspeito(host);
+      if (suspeitoInfo && suspeitoInfo.tipo === 'blacklist') {
+        blacklisted++;
+        detalhes.push({ host, status: 'blacklisted', motivo: suspeitoInfo.motivo });
+        return;
+      }
+
+      const volume = Number(cand.volume || cand.adsAtivos || 0);
+      const linkBiblioteca = cand.linkBiblioteca || `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=ALL&q=%22${encodeURIComponent(host)}%22&search_type=keyword_exact_phrase&sort_data[mode]=total_impressions&sort_data[direction]=desc`;
+
+      if (suspeitoInfo && suspeitoInfo.tipo === 'random') {
+        suspeitos++;
+        detalhes.push({ host, status: 'suspeito', motivo: suspeitoInfo.motivo });
+      }
+
+      if (existentes[host]) {
+        // Atualiza — mantém histórico de ads anteriores pra calcular variação
+        const b = existentes[host];
+        b.adsAnteriores = b.adsAtivos || 0;
+        if (volume > 0) {
+          b.adsAtivos = volume;
+          b.varAds24h = volume - b.adsAnteriores;
+        }
+        if (cand.copy) b.notas = (b.notas || '') + ` | copy: ${String(cand.copy).slice(0, 200)}`;
+        if (cand.advertisers) b.notas = (b.notas || '') + ` | adv: ${String(cand.advertisers).slice(0, 200)}`;
+        b.isNova = false;
+        b._updatedAt = Date.now() / 1000;
+        atualizados++;
+      } else {
+        // Cria novo
+        const novoId = 'bib-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+        const novo = {
+          id: novoId,
+          nomePagina: host,
+          handles: cand.handles || '',
+          nichoId: nichoId,
+          linkBiblioteca: linkBiblioteca,
+          adsAtivos: volume,
+          adsAnteriores: 0,
+          varAds24h: 0,
+          isNova: true,
+          notas: `Importado via webhook Spy Wolf em ${new Date().toLocaleDateString('pt-BR')}`
+            + (cand.copy ? ` | copy: ${String(cand.copy).slice(0, 200)}` : '')
+            + (cand.advertisers ? ` | advertisers: ${String(cand.advertisers).slice(0, 200)}` : '')
+            + (suspeitoInfo && suspeitoInfo.tipo === 'random' ? ' | ⚠️ VERIFICAR COPY (números aleatórios)' : ''),
+          _criadoEm: new Date().toISOString(),
+          _updatedAt: Date.now() / 1000
+        };
+        bibs.push(novo);
+        novos++;
+      }
+    });
+
+    // Salva no DB
+    db.store['sl_spy_auto'] = bibs;
+    db.timestamps['sl_spy_auto'] = Date.now() / 1000;
+
+    // Atualiza last-run do nicho
+    const nichoIdx = nichos.findIndex(n => n.id === nichoId);
+    if (nichoIdx >= 0) {
+      nichos[nichoIdx].ultimaBusca = new Date().toISOString();
+      nichos[nichoIdx].ultimoRun = {
+        timestamp: new Date().toISOString(),
+        novos, atualizados, blacklisted, suspeitos,
+        totalProcessados: candidatos.length,
+        meta: runMeta || null
+      };
+      db.store['sl_spy_auto_nichos'] = nichos;
+      db.timestamps['sl_spy_auto_nichos'] = Date.now() / 1000;
+    }
+
+    writeDB(db);
+
+    res.json({
+      ok: true,
+      nicho: nicho.nome,
+      novos,
+      atualizados,
+      blacklisted,
+      suspeitos,
+      totalProcessados: candidatos.length,
+      detalhes
+    });
+  } catch (err) {
+    console.error('[/api/spy/import]', err);
+    res.status(500).json({ error: 'Erro interno: ' + err.message });
+  }
+});
+
+// GET /api/spy/nichos — lista nichos disponíveis (pra skill saber pra qual mandar)
+app.get('/api/spy/nichos', authAPI, (req, res) => {
+  const db = readDB();
+  const nichos = (db.store['sl_spy_auto_nichos'] || []).map(n => ({
+    id: n.id,
+    nome: n.nome,
+    icone: n.icone,
+    termos: n.termos,
+    ultimaBusca: n.ultimaBusca || null,
+    ultimoRun: n.ultimoRun || null
+  }));
+  res.json({ ok: true, nichos });
+});
+
+// ══════════════════════════════════════════════
 // ── ROTAS INTERNAS (frontend sync) ──
 // ══════════════════════════════════════════════
 

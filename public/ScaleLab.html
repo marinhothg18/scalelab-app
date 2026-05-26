@@ -5619,9 +5619,10 @@ function renderSpyAuto(){
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:14px;">'+
         '<div><div style="font-size:15px;font-weight:700;">🐺 Spy Wolf · Plano inteligente</div>'+
         '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Gera 15-20 keywords inteligentes por nicho, abre na Meta Ad Library, importa entrega da skill direto pra cá.</div></div>'+
-        '<div style="display:flex;gap:6px;">'+
-          '<button class="btn btn-ghost" onclick="spyAutoImportarSkill()">📋 Importar entrega Spy Wolf</button>'+
-          '<button class="btn btn-primary" onclick="spyAutoConfigurarNichos()">⚙️ Gerenciar nichos</button>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+
+          '<button class="btn btn-ghost" onclick="spyAutoConectarSkill()" style="background:linear-gradient(135deg,#16A34A,#1B9CFA);color:#fff;font-weight:700;">🔗 Conectar Spy Wolf (webhook)</button>'+
+          '<button class="btn btn-ghost" onclick="spyAutoImportarSkill()">📋 Importar manualmente</button>'+
+          '<button class="btn btn-primary" onclick="spyAutoConfigurarNichos()">⚙️ Nichos</button>'+
         '</div>'+
       '</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr 200px;gap:12px;align-items:flex-end;">'+
@@ -5833,6 +5834,130 @@ function spyAutoAbrirTodasTabs(nichoId){
     var url = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q='+encodeURIComponent(kw)+'&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc';
     setTimeout(function(){ window.open(url, '_blank'); }, i*150); // espaça pra não bloquear
   });
+}
+
+// ─── CONECTAR SKILL SPY WOLF (WEBHOOK) ───
+// Mostra modal com token + instruções pra atualizar a skill no Claude Cowork
+async function spyAutoConectarSkill(){
+  // Tenta achar/gerar token API existente
+  let token = '';
+  try {
+    const resp = await fetch('/api/tokens/list', { credentials: 'include' });
+    if(resp.ok){
+      const data = await resp.json();
+      const tokenSpy = (data.tokens || []).find(t => t.nome === 'spy-wolf-webhook' && t.ativo);
+      if(tokenSpy){
+        token = '⚠️ Token "spy-wolf-webhook" já existe (não exibido por segurança). Gere um novo se perdeu.';
+      }
+    }
+  } catch(e){}
+
+  var nichos = _spyGetNichos();
+  var nichoExemplo = nichos[0] || { id:'nic-emag', nome:'Emagrecimento' };
+  var baseUrl = window.location.origin;
+
+  var snippetSkill =
+'```javascript\n'+
+'// No FIM da skill spy-wolf, depois de montar a lista de domínios:\n'+
+'\n'+
+'const AXCEND_TOKEN = "SEU_TOKEN_AQUI";  // ← cole aqui\n'+
+'const AXCEND_URL = "'+baseUrl+'/api/spy/import";\n'+
+'\n'+
+'await fetch(AXCEND_URL, {\n'+
+'  method: "POST",\n'+
+'  headers: {\n'+
+'    "Content-Type": "application/json",\n'+
+'    "Authorization": "Bearer " + AXCEND_TOKEN\n'+
+'  },\n'+
+'  body: JSON.stringify({\n'+
+'    nichoId: "'+nichoExemplo.id+'",  // ← id do nicho no Axcend (ver tabela abaixo)\n'+
+'    dominios: [\n'+
+'      { host: "DOMINIO.LAT", volume: 50000, copy: "trecho da copy", advertisers: "Nome 1 | Nome 2" },\n'+
+'      { host: "OUTRODOMINIO.COM", volume: 12000 }\n'+
+'    ],\n'+
+'    runMeta: { keywords: ["honey trick", "biblical honey"], duracaoSeg: 180 }\n'+
+'  })\n'+
+'});\n'+
+'```';
+
+  // Tabela de IDs de nicho pra colar
+  var tabelaNichos = nichos.map(n => '`'+n.id+'` → '+n.icone+' '+n.nome).join('\n');
+
+  var html =
+    '<div id="spy-modal-conectar" style="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-conectar\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:20px auto;">'+
+        '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
+          '<div><div style="font-size:17px;font-weight:700;">🔗 Conectar Spy Wolf · Webhook</div>'+
+          '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Faça sua skill mandar os domínios diretamente pro Axcend quando terminar</div></div>'+
+          '<button onclick="document.getElementById(\'spy-modal-conectar\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:22px 26px;">'+
+
+          // Passo 1: Gerar token
+          '<div style="margin-bottom:20px;">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">1</span><b style="font-size:14px;">Gere um token de API</b></div>'+
+            '<div style="background:var(--bg);padding:12px;border-radius:8px;">'+
+              '<button class="btn btn-primary" onclick="spyAutoGerarTokenWebhook()" style="width:100%;">🔑 Gerar token "spy-wolf-webhook"</button>'+
+              '<div id="spy-token-display" style="margin-top:10px;font-size:11px;color:var(--text2);">'+(token||'Clique acima pra gerar. O token só será exibido UMA vez — copia e cola na skill.')+'</div>'+
+            '</div>'+
+          '</div>'+
+
+          // Passo 2: Atualizar a skill
+          '<div style="margin-bottom:20px;">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">2</span><b style="font-size:14px;">Adicione no fim da skill spy-wolf</b></div>'+
+            '<div style="background:#0a0a0a;color:#e5e5e5;padding:14px;border-radius:8px;font-family:Menlo,monospace;font-size:11px;line-height:1.6;overflow-x:auto;white-space:pre;">'+_esc(snippetSkill.replace(/```javascript\n/,'').replace(/\n```$/,''))+'</div>'+
+            '<button class="btn btn-ghost" onclick="navigator.clipboard.writeText(`'+snippetSkill.replace(/`/g,'\\`').replace(/\n/g,'\\n').replace(/'/g,"\\'")+'`);this.textContent=\'✅ Copiado!\';setTimeout(()=>this.textContent=\'📋 Copiar snippet\',2000);" style="margin-top:8px;font-size:11px;padding:6px 12px;">📋 Copiar snippet</button>'+
+          '</div>'+
+
+          // Passo 3: IDs dos nichos
+          '<div style="margin-bottom:20px;">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">3</span><b style="font-size:14px;">IDs dos nichos pra usar no `nichoId`</b></div>'+
+            '<div style="background:var(--bg);padding:12px;border-radius:8px;font-family:Menlo,monospace;font-size:11px;line-height:1.8;">'+
+              nichos.map(n => '<code style="color:var(--accent);">'+n.id+'</code> → '+n.icone+' '+_esc(n.nome)).join('<br>')+
+            '</div>'+
+          '</div>'+
+
+          // Passo 4: Test
+          '<div style="margin-bottom:8px;">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">4</span><b style="font-size:14px;">Teste com curl</b></div>'+
+            '<div style="background:#0a0a0a;color:#e5e5e5;padding:14px;border-radius:8px;font-family:Menlo,monospace;font-size:11px;line-height:1.6;overflow-x:auto;white-space:pre;">curl -X POST '+baseUrl+'/api/spy/import \\\n  -H "Authorization: Bearer SEU_TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"nichoId":"'+nichoExemplo.id+'","dominios":[{"host":"TESTE.LAT","volume":5000}]}\'</div>'+
+          '</div>'+
+
+          '<div style="background:rgba(22,163,74,.08);border-left:3px solid #16A34A;padding:12px 14px;border-radius:7px;font-size:11px;color:var(--text2);margin-top:14px;">'+
+            '✅ <b>Pronto!</b> Quando você rodar a skill no Claude Cowork, ela vai mandar os domínios direto pro Axcend. Eles aparecem na tabela em segundos.'+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:14px 26px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card);border-radius:0 0 12px 12px;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'spy-modal-conectar\').remove();">Fechar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('spy-modal-conectar'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function spyAutoGerarTokenWebhook(){
+  try {
+    const resp = await fetch('/api/tokens/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      credentials: 'include',
+      body: JSON.stringify({ nome: 'spy-wolf-webhook', descricao: 'Token usado pela skill spy-wolf (Claude Cowork) pra enviar resultados ao Axcend via /api/spy/import' })
+    });
+    if(!resp.ok){
+      const err = await resp.json();
+      alert('Erro ao gerar token: '+(err.error||resp.status));
+      return;
+    }
+    const data = await resp.json();
+    const token = data.token;
+    document.getElementById('spy-token-display').innerHTML =
+      '<div style="background:#fef3c7;border:1px solid #FBBF24;color:#92400e;padding:10px 12px;border-radius:6px;margin-bottom:6px;font-size:11px;"><b>⚠️ COPIE AGORA</b> — esse token não será exibido novamente.</div>'+
+      '<div style="background:#0a0a0a;color:#10b981;padding:12px;border-radius:6px;font-family:Menlo,monospace;font-size:12px;word-break:break-all;">'+_esc(token)+'</div>'+
+      '<button onclick="navigator.clipboard.writeText(\''+token+'\');this.textContent=\'✅ Copiado!\';" style="margin-top:8px;background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;">📋 Copiar token</button>';
+  } catch(err) {
+    alert('Erro: '+err.message);
+  }
 }
 
 // ─── IMPORTADOR DA ENTREGA DA SKILL SPY WOLF ───
