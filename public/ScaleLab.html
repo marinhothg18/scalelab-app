@@ -7818,6 +7818,14 @@ function vagasCopiarLink(slug){
 }
 
 // ─── BUILDER DE PERGUNTAS (estilo Google Forms) ───
+// Auto-grow do textarea conforme o usuário digita (pra perguntas longas
+// não ficarem cortadas em 1 linha).
+function _vagasAutoGrow(el){
+  if(!el) return;
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight + 2) + 'px';
+}
+
 // Lê valores do DOM (labels, opções) de volta pro estado antes de re-renderizar.
 // Necessário porque o usuário pode estar editando texto sem ter dado blur ainda.
 function _vagasEditorSyncFromDom(){
@@ -7839,7 +7847,7 @@ function _vagasEditorRender(){
     el.innerHTML = '<div style="border:1px dashed var(--border);border-radius:10px;padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nenhuma pergunta ainda. Clique abaixo pra adicionar a primeira.</div>';
     return;
   }
-  el.innerHTML = _vagasEditorPerguntas.map(function(p, idx){
+  var perguntasHtmlList = _vagasEditorPerguntas.map(function(p, idx){
     var tipoDef = VAGAS_TIPOS_PERGUNTA.find(function(t){ return t.id===p.tipo; }) || VAGAS_TIPOS_PERGUNTA[0];
     var tipoOpts = VAGAS_TIPOS_PERGUNTA.map(function(t){
       return '<option value="'+t.id+'"'+(p.tipo===t.id?' selected':'')+'>'+t.icone+' '+t.label+'</option>';
@@ -7882,11 +7890,15 @@ function _vagasEditorRender(){
             '<button type="button" onclick="_vagasEditorRemover('+idx+')" title="Excluir pergunta" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;color:#DC2626;font-size:11px;">✕</button>'+
           '</div>'+
         '</div>'+
-        // label da pergunta
-        '<input data-pergunta-label="'+idx+'" class="fi" placeholder="Digite a pergunta…" value="'+_esc(p.label)+'" style="font-size:14px;">'+
+        // label da pergunta (textarea grande que cresce com o conteúdo)
+        '<textarea data-pergunta-label="'+idx+'" class="fi" placeholder="Digite a pergunta…" rows="2" oninput="_vagasAutoGrow(this)" style="font-size:15px;line-height:1.5;resize:vertical;min-height:54px;width:100%;font-weight:500;">'+_esc(p.label)+'</textarea>'+
         opcoesHtml+
       '</div>';
   }).join('');
+  el.innerHTML = perguntasHtmlList;
+  // Pós-render: aplica auto-grow em cada textarea pra perguntas longas
+  // já abrirem com a altura certa, sem precisar focar primeiro.
+  el.querySelectorAll('[data-pergunta-label]').forEach(_vagasAutoGrow);
 }
 
 function _vagasEditorAddPergunta(tipo){
