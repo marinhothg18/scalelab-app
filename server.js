@@ -54,6 +54,23 @@ function _injetarTenant(req, res, next) {
   next();
 }
 
+/**
+ * Helper: retorna o tenant_id de um item, ou o default se não tiver.
+ * Backwards compat: items antigos sem tag são assumidos do tenant interno.
+ * Usar nos próximos PRs ao implementar filtros.
+ */
+function getItemTenant(item) {
+  return (item && item.tenant_id) || TENANT_DEFAULT_ID;
+}
+
+// Chaves do storage que NÃO são scoped por tenant (são globais da plataforma).
+// Tudo o resto leva tenant_id em cada item na migração e nos próximos PRs.
+const KEYS_GLOBAIS = new Set([
+  'sl_saas_tenants',   // a tabela dos tenants em si — global da plataforma
+  'sl_saas_config',    // config global da plataforma (planos, gateways, idiomas)
+  'sl_auditlog'        // audit log global — quem fez o quê no sistema todo
+]);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
@@ -167,6 +184,57 @@ function writeDB(db) {
 }
 
 function now() { return Math.floor(Date.now() / 1000); }
+
+// ── MIGRAÇÃO (PR 2): tagear itens existentes com tenant_id ──
+// Roda uma vez no boot. Idempotente (não roda 2x). Snapshot antes.
+// Não filtra/quebra nada — só carimba os items existentes pra os próximos
+// PRs poderem começar a filtrar com segurança.
+function _migrarParaMultiTenant() {
+  try {
+    const db = readDB();
+    if (db._migrated_v1_tenant) {
+      // Já migrou — não faz nada
+      console.log('[MULTI-TENANT] Já migrado em ' + db._migrated_v1_tenant + '. Pulando.');
+      return;
+    }
+    // Snapshot ANTES de qualquer mudança (Time Machine + Pre-restore equivalentes)
+    const snap = criarSnapshotBackup('pre-multitenancy-v1');
+    if (snap && snap.ok) {
+      console.log('[MULTI-TENANT] Snapshot pre-migracao criado: ' + snap.arquivo);
+    } else {
+      console.warn('[MULTI-TENANT] AVISO: snapshot pre-migracao falhou. Migracao prossegue.');
+    }
+    let itensTotais = 0;
+    let itensTaggeados = 0;
+    for (const key of Object.keys(db.store || {})) {
+      if (KEYS_GLOBAIS.has(key)) continue;
+      const valor = db.store[key];
+      if (Array.isArray(valor)) {
+        for (const item of valor) {
+          if (item && typeof item === 'object') {
+            itensTotais++;
+            if (!item.tenant_id) {
+              item.tenant_id = TENANT_INTERNO_ID;
+              itensTaggeados++;
+            }
+          }
+        }
+      } else if (valor && typeof valor === 'object') {
+        itensTotais++;
+        if (!valor.tenant_id) {
+          valor.tenant_id = TENANT_INTERNO_ID;
+          itensTaggeados++;
+        }
+      }
+    }
+    db._migrated_v1_tenant = new Date().toISOString();
+    db._migrated_v1_tenant_count = itensTaggeados;
+    writeDB(db);
+    console.log(`[MULTI-TENANT] Migracao concluida. ${itensTaggeados}/${itensTotais} items taggeados como '${TENANT_INTERNO_ID}'.`);
+  } catch (err) {
+    console.error('[MULTI-TENANT] Erro na migracao:', err.message);
+  }
+}
 
 // ── MIGRAÇÃO: hash de senhas em texto puro ──
 function _migrarSenhasParaHash() {
@@ -445,6 +513,9 @@ _migrarSenhasParaHash();
 _migrarGestorEmDiasAntigos();
 // Migra tarefas com status legados (COPY_PENDENTE etc) pro novo modelo setor+status
 _migrarTasksParaSetorStatus();
+// Multi-tenancy PR 2: tagear items existentes com tenant_id='axcend-interno'.
+// Idempotente (não roda 2x). Snapshot automático antes.
+_migrarParaMultiTenant();
 // Limpeza de sessões expiradas a cada 1h
 setInterval(() => {
   try { const db = readDB(); const n = _pruneSessoesExpiradas(db); if (n > 0) { writeDB(db); console.log(`[AUTH] ${n} sessões expiradas removidas.`); } } catch {}
