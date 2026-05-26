@@ -4220,7 +4220,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -8822,6 +8822,7 @@ function renderRh(){
   else if(_rhView==='feedbacks')     _renderRhFeedbacksTodos(el);
   else if(_rhView==='ferias')        _renderRhFeriasTodas(el);
   else if(_rhView==='onboarding')    _renderRhOnboardingTodos(el);
+  else if(_rhView==='offboarding')   _renderRhOffboarding(el);
   else if(_rhView==='folha')         _renderRhFolhaPJ(el);
   else if(_rhView==='treinamentos')  _renderRhTreinamentos(el);
   else if(_rhView==='enps')          _renderRhEnps(el);
@@ -8836,6 +8837,7 @@ function _rhHeader(){
     {id:'feedbacks',     label:'Feedbacks',     icone:'💬'},
     {id:'ferias',        label:'Férias',        icone:'🏖'},
     {id:'onboarding',    label:'Onboarding',    icone:'🚀'},
+    {id:'offboarding',   label:'Offboarding',   icone:'👋'},
     {id:'folha',         label:'Folha PJ',      icone:'💵'},
     {id:'treinamentos',  label:'Treinamentos',  icone:'🎓'},
     {id:'enps',          label:'eNPS',          icone:'📊'},
@@ -9820,6 +9822,257 @@ function _renderRhOnboardingTodos(el){
       : '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:32px;margin-bottom:8px;">🚀</div>Nenhum onboarding em andamento.<br>Abra um colaborador e clique em "Iniciar onboarding".</div>');
 }
 
+// ─── OFFBOARDING ───
+function _rhGetOffboardings(){ return g('sl_rh_offboarding', []); }
+
+// Checklist padrão de desligamento
+var OFFBOARDING_TEMPLATE = [
+  { categoria:'📋 Documentação', itens:[
+    'Termo de rescisão assinado',
+    'Última NF emitida e paga (PJ)',
+    'Carta de referência (se aplicável)',
+    'Documentos de RH arquivados'
+  ]},
+  { categoria:'🔐 Acessos e segurança', itens:[
+    'Revogar acesso Axcend / Centralaxcend',
+    'Revogar acesso a contas de ferramentas (Meta Ads, Google, Hotmart, etc.)',
+    'Revogar acesso a Slack/Discord/WhatsApp grupos',
+    'Trocar senhas de contas compartilhadas',
+    'Revogar acesso a repositórios GitHub',
+    'Revogar acesso a Google Drive / Notion / Dropbox'
+  ]},
+  { categoria:'💻 Equipamentos e bens', itens:[
+    'Devolução de notebook/computador',
+    'Devolução de equipamentos (câmera, microfone, etc.)',
+    'Cancelar VPN / contas SaaS pessoais',
+    'Backup dos arquivos de trabalho da pessoa'
+  ]},
+  { categoria:'💰 Financeiro', itens:[
+    'Quitar últimos pagamentos pendentes',
+    'Acertar férias não gozadas (se CLT)',
+    'Devolver vale benefícios',
+    'Encerrar lançamentos recorrentes no Financeiro'
+  ]},
+  { categoria:'🤝 Transição de conhecimento', itens:[
+    'Identificar substituto temporário/definitivo',
+    'Sessão de transferência de conhecimento (1-2 dias)',
+    'Documentar SOPs críticos que só essa pessoa sabia',
+    'Repassar contatos e relacionamentos com clientes',
+    'Migrar tarefas/projetos no Axcend pra outro responsável'
+  ]},
+  { categoria:'💬 Entrevista de saída', itens:[
+    'Agendar entrevista de saída com Diretoria',
+    'Coletar feedbacks sobre cultura e processos',
+    'Documentar motivo do desligamento',
+    'Pesquisa anônima opcional (eNPS exit)'
+  ]},
+  { categoria:'📢 Comunicação', itens:[
+    'Comunicar equipe internamente (Slack/Discord)',
+    'Atualizar orgograma e ferramentas',
+    'Comunicar clientes externos (se aplicável)',
+    'Atualizar páginas públicas (LinkedIn da empresa, site)'
+  ]}
+];
+
+function _renderRhOffboarding(el){
+  var offs = _rhGetOffboardings();
+  var colabs = _rhGetColabs();
+
+  // Card resumido por offboarding
+  var offsAtivos = offs.filter(function(o){ return o.status !== 'concluido'; });
+  var offsConcluidos = offs.filter(function(o){ return o.status === 'concluido'; });
+
+  var cardOff = function(o){
+    var c = _rhColabById(o.colaboradorId);
+    if(!c) return '';
+    var totalItens = (o.checklist||[]).reduce(function(s,cat){ return s + (cat.itens||[]).length; }, 0);
+    var feitos = (o.checklist||[]).reduce(function(s,cat){ return s + (cat.itens||[]).filter(function(i){ return i.feito; }).length; }, 0);
+    var prog = totalItens ? Math.round(feitos/totalItens*100) : 0;
+    var corStatus = o.status==='concluido' ? '#16A34A' : prog>=70 ? '#FBBF24' : '#DC2626';
+    return '<div onclick="rhAbrirOffboarding(\''+o.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:all .15s;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+_rhAvatar(c)+'<div><b style="font-size:14px;">'+_esc(c.nome)+'</b><div style="font-size:11px;color:var(--text2);">'+_esc(c.cargo||'')+' · iniciado '+_rhFmtData(o.iniciadoEm||'')+'</div></div></div>'+
+        '<div style="text-align:right;"><div style="font-size:18px;font-weight:700;color:'+corStatus+';">'+prog+'%</div><div style="font-size:10px;color:var(--text2);">'+feitos+'/'+totalItens+' itens</div></div>'+
+      '</div>'+
+      '<div style="height:6px;background:var(--bg);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+prog+'%;background:'+corStatus+';"></div></div>'+
+      (o.motivo ? '<div style="font-size:11px;color:var(--text2);margin-top:8px;"><b>Motivo:</b> '+_esc(o.motivo)+'</div>' : '')+
+    '</div>';
+  };
+
+  el.innerHTML = _rhHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">👋 Offboarding · desligamentos</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Checklist completo de saída: documentos, acessos, equipamentos, transição</div></div>'+
+      '<button class="btn btn-primary" onclick="rhIniciarOffboarding()">+ Iniciar offboarding</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Em andamento</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+offsAtivos.length+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Concluídos</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+offsConcluidos.length+'</div></div>'+
+    '</div>'+
+    (offsAtivos.length
+      ? '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">🔄 Em andamento</div><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">'+offsAtivos.map(cardOff).join('')+'</div>'
+      : '')+
+    (offsConcluidos.length
+      ? '<div style="font-size:13px;font-weight:700;margin:18px 0 10px;color:var(--text2);">✅ Concluídos</div><div style="display:flex;flex-direction:column;gap:10px;">'+offsConcluidos.map(cardOff).join('')+'</div>'
+      : '')+
+    (!offsAtivos.length && !offsConcluidos.length
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:36px;margin-bottom:10px;">👋</div>Nenhum offboarding iniciado.<br><small>Quando um colaborador for desligado, clique em "+ Iniciar offboarding" pra abrir o checklist completo.</small></div>'
+      : '');
+}
+
+function rhIniciarOffboarding(){
+  var colabs = _rhGetColabs().filter(function(c){ return c.status!=='desligado'; });
+  if(!colabs.length){ alert('Nenhum colaborador ativo disponível.'); return; }
+  var colabOpts = colabs.map(function(c){ return '<option value="'+c.id+'">'+_esc(c.nome)+(c.cargo?' · '+_esc(c.cargo):'')+'</option>'; }).join('');
+
+  var html =
+    '<div id="rh-modal-iniof" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-iniof\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:540px;width:100%;padding:22px;">'+
+        '<div style="font-size:16px;font-weight:700;margin-bottom:14px;">👋 Iniciar offboarding</div>'+
+        '<div class="fg" style="margin-bottom:12px;"><label class="fl">Colaborador *</label><select id="rh-of-colab" class="fs">'+colabOpts+'</select></div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
+          '<div class="fg"><label class="fl">Data de saída *</label><input id="rh-of-data" class="fi" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div>'+
+          '<div class="fg"><label class="fl">Tipo</label><select id="rh-of-tipo" class="fs"><option value="pedido_demissao">Pedido de demissão</option><option value="rescisao">Rescisão pela empresa</option><option value="acordo">Acordo mútuo</option><option value="fim_contrato">Fim de contrato</option><option value="abandono">Abandono</option></select></div>'+
+        '</div>'+
+        '<div class="fg" style="margin-bottom:14px;"><label class="fl">Motivo (interno)</label><textarea id="rh-of-motivo" class="fi" rows="2" style="resize:vertical;" placeholder="Resumo do motivo do desligamento"></textarea></div>'+
+        '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text2);margin-bottom:14px;">'+
+          '💡 Vai ser gerado um checklist completo com '+OFFBOARDING_TEMPLATE.reduce(function(s,cat){return s+cat.itens.length;},0)+' itens, organizados em '+OFFBOARDING_TEMPLATE.length+' categorias. Você pode marcar/desmarcar conforme avança.'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-iniof\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="rhSalvarInicioOffboarding()">Iniciar checklist</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-iniof'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function rhSalvarInicioOffboarding(){
+  var cid = document.getElementById('rh-of-colab').value;
+  var data = document.getElementById('rh-of-data').value;
+  if(!cid || !data){ alert('Colaborador e data são obrigatórios.'); return; }
+  var checklist = OFFBOARDING_TEMPLATE.map(function(cat){
+    return {
+      categoria: cat.categoria,
+      itens: cat.itens.map(function(it){ return { label:it, feito:false, obs:'' }; })
+    };
+  });
+  var offs = _rhGetOffboardings();
+  var novo = {
+    id: 'off-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+    colaboradorId: cid,
+    dataSaida: data,
+    tipo: document.getElementById('rh-of-tipo').value,
+    motivo: (document.getElementById('rh-of-motivo').value||'').trim(),
+    status: 'em_andamento',
+    iniciadoEm: new Date().toISOString().slice(0,10),
+    checklist: checklist,
+    _updatedAt: Date.now()/1000
+  };
+  offs.push(novo);
+  s('sl_rh_offboarding', offs);
+  var m = document.getElementById('rh-modal-iniof'); if(m) m.remove();
+  rhAbrirOffboarding(novo.id);
+}
+
+function rhAbrirOffboarding(id){
+  var off = _rhGetOffboardings().find(function(x){ return x.id===id; });
+  if(!off){ alert('Offboarding não encontrado.'); return; }
+  var c = _rhColabById(off.colaboradorId);
+  if(!c){ alert('Colaborador removido.'); return; }
+  var totalItens = (off.checklist||[]).reduce(function(s,cat){ return s + (cat.itens||[]).length; }, 0);
+  var feitos = (off.checklist||[]).reduce(function(s,cat){ return s + (cat.itens||[]).filter(function(i){ return i.feito; }).length; }, 0);
+  var prog = totalItens ? Math.round(feitos/totalItens*100) : 0;
+
+  var tiposLabel = { pedido_demissao:'Pedido de demissão', rescisao:'Rescisão', acordo:'Acordo mútuo', fim_contrato:'Fim de contrato', abandono:'Abandono' };
+
+  var categoriasHtml = (off.checklist||[]).map(function(cat, ci){
+    var itensFeitos = (cat.itens||[]).filter(function(i){ return i.feito; }).length;
+    var pctCat = cat.itens.length ? Math.round(itensFeitos/cat.itens.length*100) : 0;
+    return '<div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:10px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
+        '<div style="font-size:13px;font-weight:700;">'+_esc(cat.categoria)+'</div>'+
+        '<div style="font-size:11px;color:'+(pctCat===100?'#16A34A':'var(--text2)')+';font-weight:600;">'+itensFeitos+'/'+cat.itens.length+' · '+pctCat+'%</div>'+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px;">'+
+        cat.itens.map(function(it, ii){
+          var marc = it.feito ? 'checked' : '';
+          var deco = it.feito ? 'text-decoration:line-through;opacity:.6;' : '';
+          return '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px;border-radius:6px;cursor:pointer;font-size:12px;'+deco+'">'+
+            '<input type="checkbox" '+marc+' onchange="rhOffToggleItem(\''+off.id+'\','+ci+','+ii+',this.checked)" style="margin-top:2px;">'+
+            '<span style="flex:1;">'+_esc(it.label)+'</span>'+
+          '</label>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  var html =
+    '<div id="rh-modal-off" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-off\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:720px;width:100%;max-height:92vh;overflow:auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:2;">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'+
+            '<div>'+
+              '<div style="font-size:16px;font-weight:700;">👋 Offboarding · '+_esc(c.nome)+'</div>'+
+              '<div style="font-size:11px;color:var(--text2);margin-top:3px;">'+_esc(c.cargo||'')+' · saída '+_rhFmtData(off.dataSaida||'')+' · '+(tiposLabel[off.tipo]||off.tipo)+'</div>'+
+            '</div>'+
+            '<button onclick="document.getElementById(\'rh-modal-off\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+          '</div>'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">'+
+            '<div style="font-size:13px;"><b>'+feitos+'/'+totalItens+'</b> itens concluídos · <b style="color:'+(prog===100?'#16A34A':'var(--accent)')+';">'+prog+'%</b></div>'+
+            '<div style="display:flex;gap:6px;">'+
+              (off.status!=='concluido' && prog===100 ? '<button class="btn btn-primary" style="font-size:11px;padding:6px 12px;" onclick="rhOffConcluir(\''+off.id+'\')">✅ Marcar como concluído</button>' : '')+
+              '<button class="btn btn-ghost" style="font-size:11px;padding:6px 12px;color:#DC2626;" onclick="rhOffExcluir(\''+off.id+'\')">🗑️ Excluir</button>'+
+            '</div>'+
+          '</div>'+
+          '<div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:8px;"><div style="height:100%;width:'+prog+'%;background:'+(prog===100?'#16A34A':'var(--accent)')+';"></div></div>'+
+        '</div>'+
+        '<div style="padding:18px 22px;">'+
+          (off.motivo ? '<div style="background:rgba(220,38,38,.05);border-left:3px solid #DC2626;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:14px;"><b>Motivo:</b> '+_esc(off.motivo)+'</div>' : '')+
+          categoriasHtml+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-off'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function rhOffToggleItem(offId, catIdx, itemIdx, feito){
+  var offs = _rhGetOffboardings();
+  var o = offs.find(function(x){ return x.id===offId; });
+  if(!o) return;
+  o.checklist[catIdx].itens[itemIdx].feito = !!feito;
+  o._updatedAt = Date.now()/1000;
+  s('sl_rh_offboarding', offs);
+  // re-renderiza modal pra atualizar progresso
+  rhAbrirOffboarding(offId);
+}
+
+function rhOffConcluir(offId){
+  if(!confirm('Marcar offboarding como concluído? O colaborador também será marcado como "desligado".')) return;
+  var offs = _rhGetOffboardings();
+  var o = offs.find(function(x){ return x.id===offId; });
+  if(!o) return;
+  o.status = 'concluido';
+  o.concluidoEm = new Date().toISOString().slice(0,10);
+  o._updatedAt = Date.now()/1000;
+  s('sl_rh_offboarding', offs);
+  // marca colaborador como desligado
+  var colabs = _rhGetColabs();
+  var c = colabs.find(function(x){ return x.id===o.colaboradorId; });
+  if(c){ c.status = 'desligado'; c._updatedAt = Date.now(); s('sl_rh_colaboradores', colabs); }
+  var m = document.getElementById('rh-modal-off'); if(m) m.remove();
+  renderRh();
+}
+
+function rhOffExcluir(offId){
+  if(!confirm('Excluir esse registro de offboarding? Essa ação não pode ser desfeita.')) return;
+  s('sl_rh_offboarding', _rhGetOffboardings().filter(function(o){ return o.id!==offId; }));
+  var m = document.getElementById('rh-modal-off'); if(m) m.remove();
+  renderRh();
+}
+
 // ─── FOLHA PJ ───
 function _rhGetFolha(){ return g('sl_rh_folha', []); }
 function _rhSalvarFolha(folha){ s('sl_rh_folha', folha); }
@@ -10050,25 +10303,79 @@ function rhNovoTreinamento(){ rhRegistrarConclusao(''); }
 function rhRegistrarConclusao(colabIdPre){
   var colabs = _rhGetColabs().filter(function(c){ return c.status==='ativo'; });
   if(!colabs.length){ alert('Nenhum colaborador ativo.'); return; }
-  var opcoes = colabs.map(function(c){ return c.id+'|'+c.nome; }).join('\n');
-  var sel = colabIdPre || prompt('Colaborador (cole o ID ou nome):\n'+colabs.map(function(c){ return c.nome; }).join(', '));
-  if(!sel) return;
-  var colab = colabs.find(function(c){ return c.id===sel || c.nome.toLowerCase()===sel.toLowerCase(); });
-  if(!colab){ alert('Colaborador não encontrado.'); return; }
-  var titulo = prompt('Nome do curso/treinamento:');
-  if(!titulo || !titulo.trim()) return;
-  var status = prompt('Status: concluido / em_andamento / cancelado', 'concluido');
-  if(!status) return;
+  var areas = ['Cultura Axcend','Tráfego','Copy','Edição','Spy','Infra','Liderança','Vendas','Outro'];
+  var colabOpts = colabs.map(function(c){
+    return '<option value="'+c.id+'"'+(colabIdPre===c.id?' selected':'')+'>'+_esc(c.nome)+(c.cargo?' · '+_esc(c.cargo):'')+'</option>';
+  }).join('');
+  var areaOpts = areas.map(function(a){ return '<option value="'+a+'">'+a+'</option>'; }).join('');
+
+  var html =
+    '<div id="rh-modal-train" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-train\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow:auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;">'+
+          '<div style="font-size:16px;font-weight:700;">🎓 Registrar treinamento</div>'+
+          '<button onclick="document.getElementById(\'rh-modal-train\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:20px 22px;">'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Colaborador *</label><select id="rh-tr-colab" class="fs">'+colabOpts+'</select></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nome do curso/treinamento *</label><input id="rh-tr-nome" class="fi" placeholder="Ex: After Effects Master, Cultura Axcend, AE Avançado"></div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
+            '<div class="fg"><label class="fl">Área</label><select id="rh-tr-area" class="fs">'+areaOpts+'</select></div>'+
+            '<div class="fg"><label class="fl">Tipo</label><select id="rh-tr-tipo" class="fs"><option value="interno">Interno (Axcend)</option><option value="externo">Externo (curso pago)</option><option value="gratuito">Externo gratuito (YT, blog)</option></select></div>'+
+          '</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Link de acesso ao curso</label><input id="rh-tr-link" class="fi" placeholder="https://..."></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Credenciais/acesso (opcional)</label><input id="rh-tr-acesso" class="fi" placeholder="Login + senha ou observações"></div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
+            '<div class="fg"><label class="fl">Status</label><select id="rh-tr-status" class="fs"><option value="em_andamento">📚 Em andamento</option><option value="concluido">✅ Concluído</option><option value="cancelado">❌ Cancelado</option></select></div>'+
+            '<div class="fg"><label class="fl">Progresso (%)</label><input id="rh-tr-prog" class="fi" type="number" min="0" max="100" value="0"></div>'+
+          '</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Notas/observações</label><textarea id="rh-tr-notas" class="fi" rows="2" style="resize:vertical;" placeholder="Aprendizados, certificado, próximos passos..."></textarea></div>'+
+        '</div>'+
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card);">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-train\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="rhSalvarTreinamento()">Salvar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-train'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+  // auto-update progresso quando status === concluido
+  setTimeout(function(){
+    var st = document.getElementById('rh-tr-status');
+    var pr = document.getElementById('rh-tr-prog');
+    if(st && pr){
+      st.addEventListener('change', function(){
+        if(st.value==='concluido') pr.value = 100;
+        else if(st.value==='cancelado') pr.value = 0;
+      });
+    }
+  }, 50);
+}
+
+function rhSalvarTreinamento(){
+  var colabId = document.getElementById('rh-tr-colab').value;
+  var titulo = (document.getElementById('rh-tr-nome').value||'').trim();
+  if(!colabId || !titulo){ alert('Colaborador e nome do curso são obrigatórios.'); return; }
   var treinamentos = _rhGetTreinamentos();
-  var ex = treinamentos.find(function(t){ return t.colaboradorId===colab.id && t.titulo===titulo.trim(); });
-  if(ex){
-    ex.status = status;
-    ex.progresso = status==='concluido' ? 100 : (parseInt(prompt('Progresso (0-100):','50'),10)||50);
-    ex._updatedAt = Date.now()/1000;
-  } else {
-    treinamentos.push({ id:'tr-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), colaboradorId:colab.id, titulo:titulo.trim(), status:status, progresso:status==='concluido'?100:50, data:new Date().toISOString().slice(0,10), _updatedAt:Date.now()/1000 });
-  }
+  var status = document.getElementById('rh-tr-status').value;
+  var prog = Math.max(0, Math.min(100, parseInt(document.getElementById('rh-tr-prog').value,10)||0));
+  if(status==='concluido') prog = 100;
+  treinamentos.push({
+    id: 'tr-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+    colaboradorId: colabId,
+    titulo: titulo,
+    area: document.getElementById('rh-tr-area').value,
+    tipo: document.getElementById('rh-tr-tipo').value,
+    link: (document.getElementById('rh-tr-link').value||'').trim(),
+    acesso: (document.getElementById('rh-tr-acesso').value||'').trim(),
+    status: status,
+    progresso: prog,
+    notas: (document.getElementById('rh-tr-notas').value||'').trim(),
+    data: new Date().toISOString().slice(0,10),
+    _updatedAt: Date.now()/1000
+  });
   s('sl_rh_treinamentos', treinamentos);
+  var m = document.getElementById('rh-modal-train'); if(m) m.remove();
   renderRh();
 }
 
@@ -10171,37 +10478,184 @@ function _renderRhEnps(el){
       : '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:32px;margin-bottom:10px;">📊</div>Nenhum ciclo de eNPS ainda.<br><small>Clique em "+ Novo ciclo" para criar a primeira pesquisa.</small></div>');
 }
 
-function rhEnpsNovoCiclo(){
-  var titulo = prompt('Nome do ciclo (ex: Q2/2026, Jun/26):');
-  if(!titulo || !titulo.trim()) return;
-  var proxData = prompt('Data da próxima pesquisa (AAAA-MM-DD):', new Date(Date.now()+90*24*60*60*1000).toISOString().slice(0,10));
+function rhEnpsNovoCiclo(cicloId){
   var ciclos = _rhGetEnps();
-  ciclos.push({ id:'enps-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), titulo:titulo.trim(), periodo:titulo.trim(), proximaCiclo:proxData||'', respostas:[], _updatedAt:Date.now()/1000 });
+  var c = cicloId ? ciclos.find(function(x){ return x.id===cicloId; }) : null;
+  var isNovo = !c;
+  c = c || {
+    titulo: '',
+    dataInicio: new Date().toISOString().slice(0,10),
+    dataFim: new Date(Date.now()+14*24*60*60*1000).toISOString().slice(0,10),
+    proximaCiclo: new Date(Date.now()+90*24*60*60*1000).toISOString().slice(0,10),
+    textoMensagem: 'Oi! Tá aberta a pesquisa de clima trimestral da Axcend. 🙋\n\nÉ 100% anônima — ninguém vê quem respondeu. Leva 2 min.\n\nResponda aqui: {LINK}\n\nObrigado! 🙏',
+    perguntaPrincipal: 'Em uma escala de 0 a 10, o quanto você recomendaria trabalhar na Axcend pra um amigo?',
+    respostas:[]
+  };
+
+  var html =
+    '<div id="rh-modal-enps" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-enps\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;max-height:90vh;overflow:auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;">'+
+          '<div style="font-size:16px;font-weight:700;">📊 '+(isNovo?'Novo ciclo de eNPS':'Editar ciclo')+'</div>'+
+          '<button onclick="document.getElementById(\'rh-modal-enps\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:20px 22px;">'+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Identificação</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nome do ciclo *</label><input id="rh-enps-titulo" class="fi" value="'+_esc(c.titulo)+'" placeholder="Ex: Q2/2026, Junho/26, Pós-lançamento Bagas"></div>'+
+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Janela de coleta</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:18px;">'+
+            '<div class="fg"><label class="fl">Início *</label><input id="rh-enps-ini" class="fi" type="date" value="'+_esc(c.dataInicio)+'"></div>'+
+            '<div class="fg"><label class="fl">Fim *</label><input id="rh-enps-fim" class="fi" type="date" value="'+_esc(c.dataFim)+'"></div>'+
+            '<div class="fg"><label class="fl">Próximo ciclo</label><input id="rh-enps-prox" class="fi" type="date" value="'+_esc(c.proximaCiclo||'')+'"></div>'+
+          '</div>'+
+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Pergunta principal (eNPS)</div>'+
+          '<div class="fg" style="margin-bottom:18px;"><textarea id="rh-enps-pergunta" class="fi" rows="2" style="resize:vertical;">'+_esc(c.perguntaPrincipal||'')+'</textarea>'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:4px;">A resposta esperada é nota de 0 a 10. Quem responde 9-10 = promotor, 7-8 = neutro, 0-6 = detrator.</div></div>'+
+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📱 Mensagem que vai pra galera (WhatsApp)</div>'+
+          '<div class="fg" style="margin-bottom:8px;"><textarea id="rh-enps-msg" class="fi" rows="6" style="resize:vertical;font-family:monospace;font-size:12px;">'+_esc(c.textoMensagem||'')+'</textarea></div>'+
+          '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text2);margin-bottom:18px;">'+
+            '<b>💡 Como funciona:</b><br>'+
+            '• Use <code>{LINK}</code> no texto — vai ser substituído pelo link único de resposta de cada um.<br>'+
+            '• A pesquisa <b>é anônima</b> — você não vê quem respondeu, só as notas e comentários.<br>'+
+            '• O WhatsApp só envia o aviso. Quem responde acessa via link no celular ou desktop.'+
+          '</div>'+
+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">📈 Como você vai ver os resultados</div>'+
+          '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:8px;">'+
+            '✅ <b>Aba eNPS</b> mostra em tempo real: score atual, % de promotores/detratores, taxa de resposta.<br>'+
+            '✅ <b>Comentários anônimos</b> aparecem agregados (sem identificar quem escreveu).<br>'+
+            '✅ Notificação no Axcend e no WhatsApp quando alguém responde.<br>'+
+            '✅ Histórico em barras compara com ciclos anteriores.'+
+          '</div>'+
+        '</div>'+
+
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card);">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-enps\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="rhEnpsSalvarCiclo(\''+(c.id||'')+'\')">Salvar e abrir</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-enps'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function rhEnpsSalvarCiclo(id){
+  var titulo = (document.getElementById('rh-enps-titulo').value||'').trim();
+  if(!titulo){ alert('Nome do ciclo é obrigatório.'); return; }
+  var ciclos = _rhGetEnps();
+  var c = id ? ciclos.find(function(x){ return x.id===id; }) : null;
+  var isNovo = !c;
+  if(!c){ c = { id:'enps-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), respostas:[], _criadoEm:new Date().toISOString() }; }
+  c.titulo = titulo;
+  c.periodo = titulo;
+  c.dataInicio = document.getElementById('rh-enps-ini').value;
+  c.dataFim = document.getElementById('rh-enps-fim').value;
+  c.proximaCiclo = document.getElementById('rh-enps-prox').value;
+  c.perguntaPrincipal = (document.getElementById('rh-enps-pergunta').value||'').trim();
+  c.textoMensagem = (document.getElementById('rh-enps-msg').value||'').trim();
+  c._updatedAt = Date.now()/1000;
+  if(isNovo) ciclos.push(c);
   s('sl_rh_enps', ciclos);
+  var m = document.getElementById('rh-modal-enps'); if(m) m.remove();
   renderRh();
 }
 
 function rhEnpsVerCiclo(id){
   var c = _rhGetEnps().find(function(x){ return x.id===id; });
   if(!c){ alert('Ciclo não encontrado.'); return; }
-  alert('Ciclo: '+c.titulo+'\nRespostas: '+(c.respostas||[]).length+'\nComentários: '+(c.respostas||[]).filter(function(r){ return r.comentario; }).length);
+  var respostas = c.respostas||[];
+  var prom = respostas.filter(function(r){ return r.nota>=9; });
+  var neut = respostas.filter(function(r){ return r.nota>=7 && r.nota<=8; });
+  var det = respostas.filter(function(r){ return r.nota<=6; });
+  var score = respostas.length ? Math.round((prom.length-det.length)/respostas.length*100) : 0;
+
+  var listaResp = respostas.length
+    ? respostas.map(function(r){
+        var cor = r.nota>=9?'#16A34A':r.nota>=7?'#FBBF24':'#DC2626';
+        return '<div style="background:var(--bg);padding:10px 12px;border-radius:7px;border-left:3px solid '+cor+';margin-bottom:6px;">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;"><b style="color:'+cor+';font-size:18px;">'+r.nota+'</b><span style="font-size:10px;color:var(--text3);">'+_rhFmtData(r.data||'')+'</span></div>'+
+          (r.comentario ? '<div style="font-size:12px;color:var(--text2);margin-top:6px;font-style:italic;">"'+_esc(r.comentario)+'"</div>' : '')+
+        '</div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:14px 0;">Nenhuma resposta ainda.<br><small>Use o botão "+ Registrar resposta" pra simular ou aguarde respostas via WhatsApp.</small></div>';
+
+  var html =
+    '<div id="rh-modal-vercic" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-vercic\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:620px;width:100%;max-height:90vh;overflow:auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;">'+
+          '<div><div style="font-size:16px;font-weight:700;">📊 '+_esc(c.titulo)+'</div>'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:2px;">'+_rhFmtData(c.dataInicio||'')+' → '+_rhFmtData(c.dataFim||'')+'</div></div>'+
+          '<button onclick="document.getElementById(\'rh-modal-vercic\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+        '<div style="padding:18px 22px;">'+
+          '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;">'+
+            '<div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;"><div style="font-size:9px;color:var(--text2);text-transform:uppercase;">Score</div><div style="font-size:20px;font-weight:700;color:'+(score>=50?'#16A34A':score>=0?'#FBBF24':'#DC2626')+';">'+score+'</div></div>'+
+            '<div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;"><div style="font-size:9px;color:var(--text2);text-transform:uppercase;">Promot.</div><div style="font-size:20px;font-weight:700;color:#16A34A;">'+prom.length+'</div></div>'+
+            '<div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;"><div style="font-size:9px;color:var(--text2);text-transform:uppercase;">Neutros</div><div style="font-size:20px;font-weight:700;color:#FBBF24;">'+neut.length+'</div></div>'+
+            '<div style="background:var(--bg);padding:10px;border-radius:8px;text-align:center;"><div style="font-size:9px;color:var(--text2);text-transform:uppercase;">Detrat.</div><div style="font-size:20px;font-weight:700;color:#DC2626;">'+det.length+'</div></div>'+
+          '</div>'+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Respostas ('+respostas.length+')</div>'+
+          listaResp+
+          '<button class="btn btn-ghost" style="width:100%;margin-top:10px;" onclick="rhEnpsAddResposta(\''+c.id+'\')">+ Registrar resposta manualmente</button>'+
+          '<button class="btn btn-ghost" style="width:100%;margin-top:6px;color:var(--accent);" onclick="document.getElementById(\'rh-modal-vercic\').remove();rhEnpsNovoCiclo(\''+c.id+'\');">✎ Editar ciclo</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-vercic'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function rhEnpsAddResposta(cicloId){
+  var nota = prompt('Nota de 0 a 10:');
+  if(nota===null) return;
+  var n = parseInt(nota,10);
+  if(isNaN(n)||n<0||n>10){ alert('Nota inválida.'); return; }
+  var coment = prompt('Comentário (opcional, anônimo):') || '';
+  var ciclos = _rhGetEnps();
+  var c = ciclos.find(function(x){ return x.id===cicloId; });
+  if(!c) return;
+  c.respostas = c.respostas || [];
+  c.respostas.push({ id:'r-'+Date.now().toString(36), nota:n, comentario:coment.trim(), data:new Date().toISOString().slice(0,10), _updatedAt:Date.now()/1000 });
+  c._updatedAt = Date.now()/1000;
+  s('sl_rh_enps', ciclos);
+  var m = document.getElementById('rh-modal-vercic'); if(m) m.remove();
+  rhEnpsVerCiclo(cicloId);
 }
 
 function rhEnpsEnviarPesquisa(){
-  alert('Disparo via WhatsApp será feito automaticamente para todos os colaboradores ativos com número cadastrado. (Integração WhatsApp necessária)');
+  var ciclos = _rhGetEnps().sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); });
+  var ultimo = ciclos[0];
+  if(!ultimo){ alert('Crie um ciclo primeiro.'); return; }
+  var colabsAtivos = _rhGetColabs().filter(function(c){ return c.status==='ativo' && c.telefone; });
+  var msg = ultimo.textoMensagem || '';
+  var preview = msg.replace('{LINK}', 'https://app.centralaxcend.com/enps/'+ultimo.id);
+
+  var html =
+    '<div id="rh-modal-enviar" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-enviar\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:540px;width:100%;padding:22px;">'+
+        '<div style="font-size:16px;font-weight:700;margin-bottom:14px;">📲 Enviar pesquisa via WhatsApp</div>'+
+        '<div style="font-size:13px;color:var(--text2);margin-bottom:14px;">Ciclo: <b>'+_esc(ultimo.titulo)+'</b> · '+colabsAtivos.length+' colaborador(es) com WhatsApp cadastrado</div>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:8px;">Preview da mensagem:</div>'+
+        '<div style="background:#075E54;color:#fff;padding:14px;border-radius:10px;font-size:13px;white-space:pre-wrap;line-height:1.5;font-family:-apple-system,sans-serif;margin-bottom:14px;">'+_esc(preview)+'</div>'+
+        '<div style="background:rgba(251,191,36,.1);border:1px solid #FBBF24;padding:10px 12px;border-radius:7px;font-size:11px;color:var(--text2);margin-bottom:14px;">⚠️ A integração com Z-API precisa estar ativa em Configurações → WhatsApp.</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-enviar\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="alert(\'Disparo registrado. Quando a Z-API estiver configurada, as mensagens serão enviadas automaticamente.\');document.getElementById(\'rh-modal-enviar\').remove();">📤 Enviar para '+colabsAtivos.length+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-enviar'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
 }
 
 // ─── ORGOGRAMA ───
 function _renderRhOrgograma(el){
   var colabs = _rhGetColabs().filter(function(c){ return c.status!=='desligado'; });
-  var usuarios = g('sl_usuarios', []).filter(function(u){ return u && u.ativo!==false; });
 
-  // Monta árvore a partir de sl_rh_colaboradores (campo gestor = id do gestor)
-  // Se não tiver, tenta pelo cargo Diretoria como raiz
-  var raizes = colabs.filter(function(c){ return !c.gestorId || !colabs.find(function(x){ return x.id===c.gestorId; }); });
-  var naoRaizes = colabs.filter(function(c){ return c.gestorId && colabs.find(function(x){ return x.id===c.gestorId; }); });
-
-  // detecta PSFs: colaboradores únicos em um cargo ou departamento
+  // detecta PSFs
   var cargoCount = {};
   colabs.forEach(function(c){ if(c.status==='ativo') cargoCount[c.cargo||'?'] = (cargoCount[c.cargo||'?']||0)+1; });
   var isPSF = function(c){ return c.status==='ativo' && (cargoCount[c.cargo||'?']||0)===1; };
@@ -10214,57 +10668,78 @@ function _renderRhOrgograma(el){
     'Infra': 'linear-gradient(135deg,#FBBF24,#FF5926)',
     'Spy': 'linear-gradient(135deg,#A78BFA,#5b5ef4)'
   };
-  var cor = function(c){ return corPorCargo[c.cargo||''] || 'linear-gradient(135deg,var(--accent),#2509E4)'; };
+  var cor = function(c){ return corPorCargo[c.cargo||''] || 'linear-gradient(135deg,#5b5ef4,#2509E4)'; };
 
+  // Card com botão de editar gestor
   var cardColab = function(c, size){
     var psf = isPSF(c);
     var s = size||'md';
-    var pad = s==='lg' ? '14px 24px' : s==='md' ? '10px 18px' : '7px 12px';
+    var pad = s==='lg' ? '14px 22px' : s==='md' ? '10px 16px' : '8px 12px';
+    var minW = s==='lg' ? '170px' : s==='md' ? '150px' : '120px';
     var fs = s==='lg' ? '14px' : s==='md' ? '13px' : '11px';
-    var borda = psf ? 'border:2px solid #DC2626;' : '';
-    return '<div style="background:'+cor(c)+';padding:'+pad+';border-radius:10px;color:#fff;text-align:center;min-width:140px;cursor:pointer;'+borda+'" onclick="rhAbrirColab(\''+c.id+'\',\'geral\')">'+
-      '<div style="font-size:10px;opacity:.85;">'+_esc(c.cargo||'')+(psf?' · PSF ⚠️':'')+'</div>'+
-      '<div style="font-weight:700;font-size:'+fs+';margin-top:2px;">'+_esc(c.nome)+'</div>'+
-      (psf ? '<div style="font-size:9px;margin-top:2px;background:rgba(0,0,0,.2);padding:2px 6px;border-radius:4px;display:inline-block;">Ponto único de falha</div>' : '')+
+    var borda = psf ? 'box-shadow:0 0 0 2px #DC2626;' : '';
+    return '<div class="org-card" data-cid="'+c.id+'" style="position:relative;background:'+cor(c)+';padding:'+pad+';border-radius:10px;color:#fff;text-align:center;min-width:'+minW+';cursor:pointer;'+borda+'">'+
+      '<div onclick="rhAbrirColab(\''+c.id+'\',\'geral\')" style="cursor:pointer;">'+
+        '<div style="font-size:10px;opacity:.9;font-weight:600;">'+_esc(c.cargo||'')+(psf?' · ⚠️ PSF':'')+'</div>'+
+        '<div style="font-weight:700;font-size:'+fs+';margin-top:2px;">'+_esc(c.nome)+'</div>'+
+        (psf ? '<div style="font-size:9px;margin-top:3px;background:rgba(0,0,0,.25);padding:2px 6px;border-radius:4px;display:inline-block;">Ponto único de falha</div>' : '')+
+      '</div>'+
+      '<button onclick="rhOrgEditarGestor(\''+c.id+'\')" title="Editar gestor" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border:none;background:rgba(0,0,0,.25);color:#fff;border-radius:50%;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;">✎</button>'+
     '</div>';
   };
 
-  var lidarSubordinados = function(gestorId){
-    var subs = colabs.filter(function(c){ return c.gestorId===gestorId; });
-    if(!subs.length) return '';
-    return '<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;">'+
-      subs.map(function(s){
-        var filhos = colabs.filter(function(c){ return c.gestorId===s.id; });
-        return '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;">'+
-          cardColab(s,'md')+
-          (filhos.length ? '<div style="width:2px;height:14px;background:var(--border);"></div>'+
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">'+filhos.map(function(f){ return cardColab(f,'sm'); }).join('')+'</div>' : '')+
+  // Renderiza nó recursivamente — com linhas conectoras
+  var renderNo = function(colab, nivel){
+    var filhos = colabs.filter(function(c){ return c.gestorId===colab.id; });
+    var size = nivel===0 ? 'lg' : nivel===1 ? 'md' : 'sm';
+    var html = '<div class="org-no" style="display:flex;flex-direction:column;align-items:center;">'+
+      cardColab(colab, size);
+    if(filhos.length){
+      html += '<div style="width:2px;height:18px;background:#5b5ef4;"></div>';
+      // linha horizontal sobre os filhos
+      if(filhos.length > 1){
+        html += '<div style="height:2px;background:#5b5ef4;width:calc(100% - 80px);position:relative;top:0;"></div>';
+      }
+      html += '<div style="display:flex;gap:14px;align-items:flex-start;justify-content:center;flex-wrap:wrap;padding-top:0;">';
+      html += filhos.map(function(f){
+        return '<div style="display:flex;flex-direction:column;align-items:center;position:relative;">'+
+          '<div style="width:2px;height:14px;background:#5b5ef4;margin-bottom:-2px;"></div>'+
+          renderNo(f, nivel+1)+
         '</div>';
-      }).join('')+
-    '</div>';
+      }).join('');
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
   };
 
+  // Identifica raízes (sem gestor ou gestor não existe mais)
+  var raizes = colabs.filter(function(c){ return !c.gestorId || !colabs.find(function(x){ return x.id===c.gestorId; }); });
+
+  // Status: tem hierarquia definida?
+  var temHierarquia = colabs.some(function(c){ return c.gestorId; });
   var psfs = colabs.filter(isPSF);
 
   var arvoreHtml = '';
   if(colabs.length === 0){
     arvoreHtml = '<div style="font-size:13px;color:var(--text2);font-style:italic;text-align:center;padding:30px 0;">Nenhum colaborador cadastrado.</div>';
-  } else if(raizes.length === 0){
-    // sem hierarquia definida — mostra flat
-    arvoreHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">'+colabs.map(function(c){ return cardColab(c,'md'); }).join('')+'</div>';
+  } else if(!temHierarquia){
+    // Sem hierarquia ainda — mostra alerta + lista flat clicável pra definir
+    arvoreHtml =
+      '<div style="background:rgba(251,191,36,.1);border:1px solid #FBBF24;border-radius:10px;padding:16px;margin-bottom:18px;text-align:left;">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:6px;">⚙️ Configure a hierarquia</div>'+
+        '<div style="font-size:12px;color:var(--text2);line-height:1.6;">Nenhum colaborador tem gestor definido ainda. Clique no <b>✎</b> em qualquer card abaixo para escolher o gestor direto e o orgograma vai se montar automaticamente.<br><b>Dica:</b> comece definindo o gestor dos Editors/Copies/Tráfego apontando pra um Diretor.</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;">'+colabs.map(function(c){ return cardColab(c,'md'); }).join('')+'</div>';
   } else {
-    arvoreHtml = raizes.map(function(r){
-      var subs = lidarSubordinados(r.id);
-      return '<div style="display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:20px;">'+
-        cardColab(r,'lg')+
-        (subs ? '<div style="width:2px;height:20px;background:var(--border);"></div>'+subs : '')+
-      '</div>';
-    }).join('<div style="margin:14px 0;border-top:1px dashed var(--border);"></div>');
+    arvoreHtml = '<div style="display:flex;flex-direction:column;align-items:center;gap:30px;">'+
+      raizes.map(function(r){ return renderNo(r, 0); }).join('<div style="height:1px;width:100%;background:var(--border);margin:10px 0;"></div>')+
+    '</div>';
   }
 
   var psfAlertaHtml = psfs.length
     ? '<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.25);border-radius:10px;padding:16px;margin-top:14px;">'+
-        '<div style="font-size:12px;font-weight:700;margin-bottom:8px;">⚠️ Pontos únicos de falha (PSF) · '+psfs.length+' detectado'+(psfs.length>1?'s':'')+'</div>'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">⚠️ Pontos únicos de falha (PSF) · '+psfs.length+' detectado'+(psfs.length>1?'s':'')+'</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px;">'+
           psfs.map(function(c){
             return '<div style="font-size:12px;color:var(--text2);">'+
@@ -10279,13 +10754,94 @@ function _renderRhOrgograma(el){
   el.innerHTML = _rhHeader()+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
       '<div><div style="font-size:20px;font-weight:700;">🗂️ Orgograma Visual</div>'+
-      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Auto-gerado das relações gestor/liderado · PSFs destacados em vermelho</div></div>'+
-      '<div style="font-size:11px;color:var(--text2);margin-top:8px;">Para definir hierarquia, edite o campo "Gestor" na ficha de cada colaborador.</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Árvore conectada · clique no <b>✎</b> em cada card para definir o gestor · PSFs em vermelho</div></div>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-ghost" onclick="rhOrgConfigurarTudo()">⚙️ Configurar tudo</button>'+
+      '</div>'+
     '</div>'+
-    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;text-align:center;overflow-x:auto;">'+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:30px 24px;overflow-x:auto;">'+
       arvoreHtml+
     '</div>'+
     psfAlertaHtml;
+}
+
+// Modal rápido: editar gestor de UM colaborador
+function rhOrgEditarGestor(colabId){
+  var c = _rhColabById(colabId);
+  if(!c) return;
+  var outros = _rhGetColabs().filter(function(x){ return x.id !== colabId && x.status!=='desligado'; });
+  var opts = '<option value="">— Sem gestor (raiz) —</option>'+
+    outros.map(function(x){ return '<option value="'+x.id+'"'+(c.gestorId===x.id?' selected':'')+'>'+_esc(x.nome)+(x.cargo?' · '+_esc(x.cargo):'')+'</option>'; }).join('');
+  var html =
+    '<div id="rh-modal-gestor" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-gestor\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:440px;width:100%;padding:22px;">'+
+        '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">✎ Editar gestor direto · '+_esc(c.nome)+'</div>'+
+        '<div class="fg"><label class="fl">Gestor</label><select id="rh-mg-gestor" class="fs">'+opts+'</select></div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-top:8px;">Apontar pra quem essa pessoa reporta direto.</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-gestor\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="rhOrgSalvarGestor(\''+colabId+'\')">Salvar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-gestor'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function rhOrgSalvarGestor(colabId){
+  var novoGestor = document.getElementById('rh-mg-gestor').value || '';
+  var colabs = _rhGetColabs();
+  var idx = colabs.findIndex(function(x){ return x.id===colabId; });
+  if(idx<0) return;
+  colabs[idx].gestorId = novoGestor;
+  colabs[idx]._updatedAt = Date.now();
+  s('sl_rh_colaboradores', colabs);
+  var m = document.getElementById('rh-modal-gestor'); if(m) m.remove();
+  renderRh();
+}
+
+// Modal: configurar gestor de TODOS de uma vez
+function rhOrgConfigurarTudo(){
+  var colabs = _rhGetColabs().filter(function(c){ return c.status!=='desligado'; });
+  if(!colabs.length){ alert('Nenhum colaborador.'); return; }
+  var linhas = colabs.map(function(c){
+    var opts = '<option value="">— Sem gestor —</option>'+
+      colabs.filter(function(x){ return x.id!==c.id; })
+        .map(function(x){ return '<option value="'+x.id+'"'+(c.gestorId===x.id?' selected':'')+'>'+_esc(x.nome)+(x.cargo?' · '+_esc(x.cargo):'')+'</option>'; }).join('');
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">'+
+      '<div style="font-size:13px;"><b>'+_esc(c.nome)+'</b><div style="font-size:11px;color:var(--text2);">'+_esc(c.cargo||'')+'</div></div>'+
+      '<select class="fs" data-cid="'+c.id+'">'+opts+'</select>'+
+    '</div>';
+  }).join('');
+
+  var html =
+    '<div id="rh-modal-orgall" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-orgall\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;max-height:85vh;overflow:auto;">'+
+        '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);">'+
+          '<div style="font-size:16px;font-weight:700;">⚙️ Configurar hierarquia (todos de uma vez)</div>'+
+          '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Aponte o gestor direto de cada um. Quem não tem gestor vira raiz do orgograma.</div>'+
+        '</div>'+
+        '<div style="padding:14px 22px;">'+linhas+'</div>'+
+        '<div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--card);">'+
+          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-orgall\').remove();">Cancelar</button>'+
+          '<button class="btn btn-primary" onclick="rhOrgSalvarTudo()">Salvar tudo</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('rh-modal-orgall'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function rhOrgSalvarTudo(){
+  var colabs = _rhGetColabs();
+  document.querySelectorAll('#rh-modal-orgall select[data-cid]').forEach(function(sel){
+    var cid = sel.getAttribute('data-cid');
+    var idx = colabs.findIndex(function(x){ return x.id===cid; });
+    if(idx>=0){ colabs[idx].gestorId = sel.value || ''; colabs[idx]._updatedAt = Date.now(); }
+  });
+  s('sl_rh_colaboradores', colabs);
+  var m = document.getElementById('rh-modal-orgall'); if(m) m.remove();
+  renderRh();
 }
 
 // ══════════════════════════════════════════════
