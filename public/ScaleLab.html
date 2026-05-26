@@ -4220,7 +4220,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -8822,6 +8822,10 @@ function renderRh(){
   else if(_rhView==='feedbacks')     _renderRhFeedbacksTodos(el);
   else if(_rhView==='ferias')        _renderRhFeriasTodas(el);
   else if(_rhView==='onboarding')    _renderRhOnboardingTodos(el);
+  else if(_rhView==='folha')         _renderRhFolhaPJ(el);
+  else if(_rhView==='treinamentos')  _renderRhTreinamentos(el);
+  else if(_rhView==='enps')          _renderRhEnps(el);
+  else if(_rhView==='orgograma')     _renderRhOrgograma(el);
 }
 
 // Sub-nav (botões topo da página)
@@ -8831,7 +8835,11 @@ function _rhHeader(){
     {id:'colaboradores', label:'Colaboradores', icone:'👥'},
     {id:'feedbacks',     label:'Feedbacks',     icone:'💬'},
     {id:'ferias',        label:'Férias',        icone:'🏖'},
-    {id:'onboarding',    label:'Onboarding',    icone:'🚀'}
+    {id:'onboarding',    label:'Onboarding',    icone:'🚀'},
+    {id:'folha',         label:'Folha PJ',      icone:'💵'},
+    {id:'treinamentos',  label:'Treinamentos',  icone:'🎓'},
+    {id:'enps',          label:'eNPS',          icone:'📊'},
+    {id:'orgograma',     label:'Orgograma',     icone:'🗂️'}
   ];
   var tabs = itens.map(function(it){
     var ativo = _rhView === it.id;
@@ -9083,6 +9091,9 @@ function rhEditarColab(id){
   var areaOpts = RH_AREAS.map(function(a){ return '<option value="'+a+'"'+(c.area===a?' selected':'')+'>'+a+'</option>'; }).join('');
   var regimeOpts = RH_REGIMES.map(function(r){ return '<option value="'+r+'"'+(c.regime===r?' selected':'')+'>'+r+'</option>'; }).join('');
   var statusOpts = RH_STATUS_COLAB.map(function(s){ return '<option value="'+s.id+'"'+(c.status===s.id?' selected':'')+'>'+s.label+'</option>'; }).join('');
+  var gestorOpts = '<option value="">— Sem gestor (raiz do org.) —</option>'+
+    _rhGetColabs().filter(function(x){ return x.id !== c.id; })
+      .map(function(x){ return '<option value="'+x.id+'"'+(c.gestorId===x.id?' selected':'')+'>'+_esc(x.nome)+(x.cargo?' ('+x.cargo+')':'')+'</option>'; }).join('');
 
   var html = ''+
     '<div id="rh-modal-colab" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)rhFecharModalColab()">'+
@@ -9110,7 +9121,7 @@ function rhEditarColab(id){
             '<div class="fg"><label class="fl">Regime</label><select id="rh-c-regime" class="fs">'+regimeOpts+'</select></div>'+
             '<div class="fg"><label class="fl">Status</label><select id="rh-c-status" class="fs">'+statusOpts+'</select></div>'+
             '<div class="fg"><label class="fl">Data de admissão</label><input id="rh-c-adm" class="fi" type="date" value="'+_esc(c.admissao||'')+'"></div>'+
-            '<div class="fg"><label class="fl">Manager direto</label><input id="rh-c-mgr" class="fi" value="'+_esc(c.manager||'')+'" placeholder="Nome do manager"></div>'+
+            '<div class="fg"><label class="fl">Gestor direto (Orgograma)</label><select id="rh-c-gestor" class="fs">'+gestorOpts+'</select></div>'+
           '</div>'+
           // Remuneração
           '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Remuneração (R$/mês)</div>'+
@@ -9170,7 +9181,7 @@ function rhSalvarColab(id){
   c.regime = document.getElementById('rh-c-regime').value;
   c.status = document.getElementById('rh-c-status').value;
   c.admissao = (document.getElementById('rh-c-adm').value||'').trim();
-  c.manager = (document.getElementById('rh-c-mgr').value||'').trim();
+  c.gestorId = document.getElementById('rh-c-gestor').value || '';
   c.salario = Number(document.getElementById('rh-c-sal').value)||0;
   c.salarioVariavel = Number(document.getElementById('rh-c-svar').value)||0;
   c.valeBeneficios = Number(document.getElementById('rh-c-ben').value)||0;
@@ -9807,6 +9818,474 @@ function _renderRhOnboardingTodos(el){
       }).join('') +
       '</div>'
       : '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:32px;margin-bottom:8px;">🚀</div>Nenhum onboarding em andamento.<br>Abra um colaborador e clique em "Iniciar onboarding".</div>');
+}
+
+// ─── FOLHA PJ ───
+function _rhGetFolha(){ return g('sl_rh_folha', []); }
+function _rhSalvarFolha(folha){ s('sl_rh_folha', folha); }
+
+function _renderRhFolhaPJ(el){
+  var colabs = _rhGetColabs().filter(function(c){ return c.regime==='PJ' && c.status==='ativo'; });
+  var folha = _rhGetFolha();
+  var hoje = new Date();
+  var mesRef = String(hoje.getFullYear()) + '-' + String(hoje.getMonth()+1).padStart(2,'0');
+  var mesLabel = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][hoje.getMonth()] + '/' + String(hoje.getFullYear()).slice(-2);
+  var diasUteis = 22; // estimativa padrão
+
+  // entradas da folha deste mês
+  var entradas = folha.filter(function(f){ return f.mes === mesRef; });
+  // garante entrada para cada PJ ativo
+  var mudou = false;
+  colabs.forEach(function(c){
+    if(!entradas.find(function(e){ return e.colaboradorId === c.id; })){
+      var salBase = Number(c.salario)||0;
+      entradas.push({ id:'folha-'+c.id+'-'+mesRef, colaboradorId:c.id, mes:mesRef, diasTrabalhados:diasUteis, diasUteis:diasUteis, valorDia: salBase ? salBase/diasUteis : 0, total:salBase, nfStatus:'pendente', nfLink:'', obs:'', _updatedAt:Date.now()/1000 });
+      mudou = true;
+    }
+  });
+  if(mudou){ folha = folha.filter(function(f){ return f.mes !== mesRef; }).concat(entradas); _rhSalvarFolha(folha); }
+
+  var totalFolha = entradas.reduce(function(s,e){ return s + (Number(e.total)||0); }, 0);
+  var pendentesNF = entradas.filter(function(e){ return e.nfStatus !== 'aprovada'; }).length;
+  var aprovadas = entradas.filter(function(e){ return e.nfStatus === 'aprovada'; }).length;
+
+  var linhas = entradas.map(function(e){
+    var c = _rhColabById(e.colaboradorId);
+    if(!c) return '';
+    var statusChip = e.nfStatus === 'aprovada'
+      ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;">✅ Aprovada</span>'
+      : e.nfStatus === 'enviada'
+      ? '<span style="background:rgba(27,156,250,.15);color:#1B9CFA;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;">📨 Enviada</span>'
+      : '<span style="background:rgba(251,191,36,.15);color:#FBBF24;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;">⏳ Ag. NF</span>';
+    var nfLink = e.nfLink ? '<a href="'+_esc(e.nfLink)+'" target="_blank" style="font-size:10px;color:var(--accent);">📎 Ver</a>' : '<span style="font-size:10px;color:var(--text3);">—</span>';
+    return '<tr>'+
+      '<td style="padding:10px 8px;"><div style="display:flex;align-items:center;gap:8px;">'+_rhAvatar(c)+'<div><b style="font-size:13px;">'+_esc(c.nome)+'</b><div style="font-size:10px;color:var(--text2);">'+_esc(c.cargo||'')+'</div></div></div></td>'+
+      '<td style="padding:10px 8px;text-align:center;"><input type="number" min="0" max="31" value="'+e.diasTrabalhados+'" onchange="rhFolhaSetDias(\''+e.id+'\',this.value)" style="width:52px;text-align:center;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px;color:var(--text);font-size:13px;">/<span style="color:var(--text2);font-size:12px;">'+e.diasUteis+'</span></td>'+
+      '<td style="padding:10px 8px;text-align:right;font-weight:700;font-size:13px;">'+_rhFmtMoeda(e.total)+'</td>'+
+      '<td style="padding:10px 8px;text-align:center;">'+nfLink+'</td>'+
+      '<td style="padding:10px 8px;text-align:center;">'+statusChip+'</td>'+
+      '<td style="padding:10px 8px;text-align:center;"><div style="display:flex;gap:4px;justify-content:center;">'+
+        (e.nfStatus!=='aprovada' ? '<button onclick="rhFolhaAprovar(\''+e.id+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);" title="Aprovar NF">✅</button>' : '')+
+        '<button onclick="rhFolhaSetNFLink(\''+e.id+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);" title="Link da NF">📎</button>'+
+      '</div></td>'+
+    '</tr>';
+  }).join('');
+
+  el.innerHTML = _rhHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">💵 Folha PJ · '+mesLabel+'</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Cálculo por dias trabalhados · NF vinculada · exporta pro Financeiro</div></div>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-ghost" onclick="rhFolhaCobrarNFs()">📲 Cobrar NFs (WA)</button>'+
+        '<button class="btn btn-primary" onclick="rhFolhaExportarFinanceiro()">📥 Exportar pro Financeiro</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Total folha</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+_rhFmtMoeda(totalFolha)+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">PJs na folha</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+entradas.length+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Ag. NF</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:'+(pendentesNF?'#FBBF24':'#16A34A')+';">'+pendentesNF+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Aprovadas</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+aprovadas+'</div></div>'+
+    '</div>'+
+    (entradas.length === 0
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:32px;margin-bottom:10px;">💵</div>Nenhum colaborador PJ ativo.<br><small>Cadastre colaboradores com regime "PJ" na aba Colaboradores.</small></div>'
+      : '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">'+
+          '<table style="width:100%;border-collapse:collapse;">'+
+            '<thead><tr style="background:var(--bg);"><th style="padding:10px 8px;text-align:left;font-size:11px;color:var(--text2);font-weight:600;">Colaborador</th><th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">Dias</th><th style="padding:10px 8px;text-align:right;font-size:11px;color:var(--text2);font-weight:600;">Total</th><th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">NF</th><th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">Status</th><th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--text2);font-weight:600;">Ações</th></tr></thead>'+
+            '<tbody>'+linhas+'</tbody>'+
+          '</table>'+
+        '</div>');
+}
+
+function rhFolhaSetDias(entradaId, dias){
+  var folha = _rhGetFolha();
+  var e = folha.find(function(f){ return f.id===entradaId; });
+  if(!e) return;
+  var d = Math.max(0, Math.min(31, parseInt(dias,10)||0));
+  e.diasTrabalhados = d;
+  var base = Number(e.valorDia)||0;
+  if(!base){
+    var c = _rhColabById(e.colaboradorId);
+    var salBase = c ? (Number(c.salario)||0) : 0;
+    base = salBase / (e.diasUteis||22);
+    e.valorDia = base;
+  }
+  e.total = Math.round(base * d * 100) / 100;
+  e._updatedAt = Date.now()/1000;
+  _rhSalvarFolha(folha);
+  renderRh();
+}
+
+function rhFolhaAprovar(entradaId){
+  var folha = _rhGetFolha();
+  var e = folha.find(function(f){ return f.id===entradaId; });
+  if(!e) return;
+  e.nfStatus = 'aprovada';
+  e._updatedAt = Date.now()/1000;
+  _rhSalvarFolha(folha);
+  renderRh();
+}
+
+function rhFolhaSetNFLink(entradaId){
+  var link = prompt('Link da Nota Fiscal (Google Drive, Dropbox, etc.):');
+  if(link === null) return;
+  var folha = _rhGetFolha();
+  var e = folha.find(function(f){ return f.id===entradaId; });
+  if(!e) return;
+  e.nfLink = link.trim();
+  if(e.nfLink) e.nfStatus = 'enviada';
+  e._updatedAt = Date.now()/1000;
+  _rhSalvarFolha(folha);
+  renderRh();
+}
+
+function rhFolhaCobrarNFs(){
+  alert('Funcionalidade de cobrança via WhatsApp será disparada automaticamente para PJs com NF pendente. (Integração WhatsApp necessária)');
+}
+
+function rhFolhaExportarFinanceiro(){
+  var hoje = new Date();
+  var mesRef = String(hoje.getFullYear()) + '-' + String(hoje.getMonth()+1).padStart(2,'0');
+  var entradas = _rhGetFolha().filter(function(f){ return f.mes === mesRef; });
+  if(!entradas.length){ alert('Nenhum dado de folha para o mês atual.'); return; }
+  // lança lançamentos no Financeiro (categoria PJ/Freelancers)
+  var lancamentos = g('sl_fin_lancamentos', []);
+  var novos = 0;
+  entradas.forEach(function(e){
+    var c = _rhColabById(e.colaboradorId);
+    if(!c) return;
+    var lanId = 'lan-folha-'+e.id;
+    if(lancamentos.find(function(l){ return l.id===lanId; })) return; // já exportado
+    lancamentos.push({
+      id: lanId,
+      tipo: 'despesa',
+      descricao: 'Folha PJ · '+_esc(c.nome)+' · '+mesRef,
+      valor: e.total,
+      data: hoje.toISOString().slice(0,10),
+      categoriaId: 'cat-des-pj',
+      contaId: '',
+      status: 'confirmado',
+      origem: 'folha_rh',
+      _updatedAt: Date.now()/1000
+    });
+    novos++;
+  });
+  s('sl_fin_lancamentos', lancamentos);
+  alert('✅ '+novos+' lançamento(s) exportado(s) pro Financeiro na categoria "PJ / Freelancers".'+(novos===0?' Todos já haviam sido exportados.':''));
+}
+
+// ─── TREINAMENTOS ───
+function _rhGetTreinamentos(){ return g('sl_rh_treinamentos', []); }
+
+function _renderRhTreinamentos(el){
+  var treinamentos = _rhGetTreinamentos();
+  var colabs = _rhGetColabs().filter(function(c){ return c.status==='ativo'; });
+
+  // trilhas por cargo padrão
+  var trilhasCargo = {
+    'Gestor de Tráfego': ['Introdução Axcend · Cultura DR','Meta Ads Avançado','Análise de Métricas','Liderança de Times'],
+    'Editor': ['Introdução Axcend · Cultura DR','After Effects Master','Som e trilha para VSL','Edição de Longos'],
+    'Copy': ['Introdução Axcend · Cultura DR','Copywriting DR','Storytelling','Objeções e Gatilhos'],
+    'Infra': ['Introdução Axcend · Cultura DR','Segurança e Backups','SRE Básico','Documentação de SOPs'],
+    'Spy': ['Introdução Axcend · Cultura DR','Análise Competitiva','Ferramentas de Spy','Relatórios de Inteligência'],
+    'Diretoria': ['Liderança e Gestão','OKRs e Planejamento','Financeiro para Gestores','Comunicação Estratégica']
+  };
+
+  // resumo por colab
+  var resumos = colabs.slice(0,6).map(function(c){
+    var trilha = trilhasCargo[c.cargo] || ['Introdução Axcend · Cultura DR','Treinamento Geral'];
+    var treinosColab = treinamentos.filter(function(t){ return t.colaboradorId===c.id; });
+    var concluidos = trilha.filter(function(item){
+      return treinosColab.find(function(t){ return t.titulo===item && t.status==='concluido'; });
+    }).length;
+    var prog = trilha.length ? Math.round(concluidos/trilha.length*100) : 0;
+    return { c:c, trilha:trilha, treinosColab:treinosColab, concluidos:concluidos, prog:prog };
+  });
+
+  var totalComp = resumos.reduce(function(s,r){ return s+(r.prog===100?1:0); }, 0);
+  var progMedio = resumos.length ? Math.round(resumos.reduce(function(s,r){ return s+r.prog; },0)/resumos.length) : 0;
+
+  el.innerHTML = _rhHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">🎓 Treinamentos e Trilha por Cargo</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Cursos externos · trilha interna · quiz de cultura</div></div>'+
+      '<button class="btn btn-primary" onclick="rhNovoTreinamento()">+ Registrar curso</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Progresso médio</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+progMedio+'%</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Trilha 100%</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+totalComp+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Colaboradores</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+colabs.length+'</div></div>'+
+    '</div>'+
+    (resumos.length === 0
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:32px;margin-bottom:10px;">🎓</div>Nenhum colaborador ativo cadastrado ainda.</div>'
+      : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">'+
+          resumos.map(function(r){
+            var itens = r.trilha.map(function(item){
+              var treino = r.treinosColab.find(function(t){ return t.titulo===item; });
+              var ok = treino && treino.status==='concluido';
+              var emAnd = treino && treino.status==='em_andamento';
+              var cor = ok ? '#16A34A' : emAnd ? 'var(--accent)' : 'var(--text3)';
+              var bg = ok ? 'rgba(22,163,74,.08)' : emAnd ? 'rgba(91,94,244,.08)' : 'var(--bg)';
+              var icone = ok ? '✅' : emAnd ? '📚' : '⏸';
+              var pct = ok ? '100%' : emAnd ? (treino.progresso||0)+'%' : '0%';
+              return '<div style="padding:8px 10px;background:'+bg+';border-radius:7px;border-left:3px solid '+cor+';display:flex;justify-content:space-between;align-items:center;font-size:12px;">'+
+                '<span>'+icone+' '+_esc(item)+'</span>'+
+                '<span style="font-size:10px;color:'+cor+';font-weight:600;">'+pct+'</span>'+
+                '</div>';
+            }).join('');
+            return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">'+
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
+                '<div style="display:flex;align-items:center;gap:8px;">'+_rhAvatar(r.c)+'<div><b style="font-size:13px;">'+_esc(r.c.nome)+'</b><div style="font-size:11px;color:var(--text2);">'+_esc(r.c.cargo||'')+'</div></div></div>'+
+                '<div style="font-size:20px;font-weight:700;color:'+(r.prog===100?'#16A34A':'var(--accent)')+'">'+r.prog+'%</div>'+
+              '</div>'+
+              '<div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;width:'+r.prog+'%;background:'+(r.prog===100?'#16A34A':'var(--accent)')+';"></div></div>'+
+              '<div style="display:flex;flex-direction:column;gap:5px;">'+itens+'</div>'+
+              '<button onclick="rhRegistrarConclusao(\''+r.c.id+'\')" style="margin-top:10px;font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);width:100%;">+ Registrar conclusão de curso</button>'+
+            '</div>';
+          }).join('')+
+        '</div>');
+}
+
+function rhNovoTreinamento(){ rhRegistrarConclusao(''); }
+
+function rhRegistrarConclusao(colabIdPre){
+  var colabs = _rhGetColabs().filter(function(c){ return c.status==='ativo'; });
+  if(!colabs.length){ alert('Nenhum colaborador ativo.'); return; }
+  var opcoes = colabs.map(function(c){ return c.id+'|'+c.nome; }).join('\n');
+  var sel = colabIdPre || prompt('Colaborador (cole o ID ou nome):\n'+colabs.map(function(c){ return c.nome; }).join(', '));
+  if(!sel) return;
+  var colab = colabs.find(function(c){ return c.id===sel || c.nome.toLowerCase()===sel.toLowerCase(); });
+  if(!colab){ alert('Colaborador não encontrado.'); return; }
+  var titulo = prompt('Nome do curso/treinamento:');
+  if(!titulo || !titulo.trim()) return;
+  var status = prompt('Status: concluido / em_andamento / cancelado', 'concluido');
+  if(!status) return;
+  var treinamentos = _rhGetTreinamentos();
+  var ex = treinamentos.find(function(t){ return t.colaboradorId===colab.id && t.titulo===titulo.trim(); });
+  if(ex){
+    ex.status = status;
+    ex.progresso = status==='concluido' ? 100 : (parseInt(prompt('Progresso (0-100):','50'),10)||50);
+    ex._updatedAt = Date.now()/1000;
+  } else {
+    treinamentos.push({ id:'tr-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), colaboradorId:colab.id, titulo:titulo.trim(), status:status, progresso:status==='concluido'?100:50, data:new Date().toISOString().slice(0,10), _updatedAt:Date.now()/1000 });
+  }
+  s('sl_rh_treinamentos', treinamentos);
+  renderRh();
+}
+
+// ─── eNPS ───
+function _rhGetEnps(){ return g('sl_rh_enps', []); }
+
+function _renderRhEnps(el){
+  var ciclos = _rhGetEnps().sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); });
+  var ultimo = ciclos[0] || null;
+
+  var calcEnps = function(ciclo){
+    if(!ciclo || !(ciclo.respostas||[]).length) return { score:0, promotores:0, neutros:0, detratores:0, total:0 };
+    var total = ciclo.respostas.length;
+    var prom = ciclo.respostas.filter(function(r){ return r.nota>=9; }).length;
+    var det = ciclo.respostas.filter(function(r){ return r.nota<=6; }).length;
+    return { score: Math.round((prom-det)/total*100), promotores:prom, neutros:total-prom-det, detratores:det, total:total };
+  };
+
+  var calc = calcEnps(ultimo);
+  var scoreColor = calc.score >= 50 ? '#16A34A' : calc.score >= 0 ? '#FBBF24' : '#DC2626';
+
+  var historicoHtml = ciclos.slice(0,6).reverse().map(function(c){
+    var r = calcEnps(c);
+    return { label: c.titulo||c.periodo||'—', score: r.score };
+  });
+  var maxAbs = Math.max(100, ...historicoHtml.map(function(h){ return Math.abs(h.score); }));
+
+  var barras = historicoHtml.map(function(h){
+    var pct = Math.round(Math.abs(h.score)/maxAbs*80)+5;
+    var cor = h.score>=50?'#16A34A':h.score>=0?'#FBBF24':'#DC2626';
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;">'+
+      '<div style="font-size:10px;font-weight:700;color:'+cor+';">'+h.score+'</div>'+
+      '<div style="width:100%;background:var(--bg);border-radius:4px;overflow:hidden;height:60px;display:flex;align-items:flex-end;">'+
+        '<div style="width:100%;height:'+pct+'%;background:'+cor+';border-radius:4px 4px 0 0;"></div>'+
+      '</div>'+
+      '<div style="font-size:9px;color:var(--text3);text-align:center;">'+_esc(h.label)+'</div>'+
+    '</div>';
+  }).join('');
+
+  var comentariosHtml = ultimo && ultimo.respostas && ultimo.respostas.filter(function(r){ return r.comentario; }).length
+    ? ultimo.respostas.filter(function(r){ return r.comentario; }).map(function(r){
+        var cor = r.nota>=9?'#16A34A':r.nota>=7?'#FBBF24':'#DC2626';
+        return '<div style="background:var(--bg);padding:8px 10px;border-radius:7px;border-left:3px solid '+cor+';font-size:12px;color:var(--text2);">'+_esc(r.comentario)+'</div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--text2);font-style:italic;padding:10px 0;">Nenhum comentário ainda neste ciclo.</div>';
+
+  var proximaData = ultimo && ultimo.proximaCiclo ? _rhFmtData(ultimo.proximaCiclo) : '—';
+  var diasProx = '—';
+  if(ultimo && ultimo.proximaCiclo){
+    var diff = Math.round((new Date(ultimo.proximaCiclo)-new Date())/(1000*60*60*24));
+    diasProx = diff > 0 ? diff+' dias' : diff === 0 ? 'Hoje' : 'Atrasado';
+  }
+
+  el.innerHTML = _rhHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">📊 eNPS e Clima Interno</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Pesquisa interna · 100% anônima · WhatsApp só avisa</div></div>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-ghost" onclick="rhEnpsEnviarPesquisa()">📲 Enviar pesquisa (WA)</button>'+
+        '<button class="btn btn-primary" onclick="rhEnpsNovoCiclo()">+ Novo ciclo</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:18px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">eNPS atual</div><div style="font-size:28px;font-weight:700;margin-top:4px;color:'+scoreColor+';">'+calc.score+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Promotores</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+calc.promotores+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Detratores</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#DC2626;">'+calc.detratores+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Respostas</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+calc.total+'</div></div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Próxima</div><div style="font-size:16px;font-weight:700;margin-top:4px;">'+diasProx+'</div><div style="font-size:10px;color:var(--text2);">'+proximaData+'</div></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">'+
+        '<div style="font-size:12px;font-weight:700;margin-bottom:12px;">📈 Histórico</div>'+
+        (historicoHtml.length
+          ? '<div style="display:flex;gap:6px;align-items:flex-end;height:80px;">'+barras+'</div>'
+          : '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:20px 0;">Nenhum ciclo registrado ainda.</div>')+
+      '</div>'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;">'+
+        '<div style="font-size:12px;font-weight:700;margin-bottom:10px;">💬 Comentários anônimos</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;">'+comentariosHtml+'</div>'+
+      '</div>'+
+    '</div>'+
+    (ciclos.length
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;">'+
+          '<div style="padding:12px 16px;font-size:12px;font-weight:700;border-bottom:1px solid var(--border);">Histórico de ciclos</div>'+
+          '<div style="display:flex;flex-direction:column;">'+
+            ciclos.map(function(c){
+              var r = calcEnps(c);
+              var cor = r.score>=50?'#16A34A':r.score>=0?'#FBBF24':'#DC2626';
+              return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;">'+
+                '<div><b>'+_esc(c.titulo||c.periodo||'Ciclo')+'</b></div>'+
+                '<div style="display:flex;gap:16px;align-items:center;">'+
+                  '<span style="font-size:11px;color:var(--text2);">'+r.total+' respostas</span>'+
+                  '<span style="font-size:16px;font-weight:700;color:'+cor+';">'+r.score+'</span>'+
+                  '<button onclick="rhEnpsVerCiclo(\''+c.id+'\')" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);">Ver</button>'+
+                '</div>'+
+              '</div>';
+            }).join('')+
+          '</div>'+
+        '</div>'
+      : '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center;color:var(--text2);"><div style="font-size:32px;margin-bottom:10px;">📊</div>Nenhum ciclo de eNPS ainda.<br><small>Clique em "+ Novo ciclo" para criar a primeira pesquisa.</small></div>');
+}
+
+function rhEnpsNovoCiclo(){
+  var titulo = prompt('Nome do ciclo (ex: Q2/2026, Jun/26):');
+  if(!titulo || !titulo.trim()) return;
+  var proxData = prompt('Data da próxima pesquisa (AAAA-MM-DD):', new Date(Date.now()+90*24*60*60*1000).toISOString().slice(0,10));
+  var ciclos = _rhGetEnps();
+  ciclos.push({ id:'enps-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6), titulo:titulo.trim(), periodo:titulo.trim(), proximaCiclo:proxData||'', respostas:[], _updatedAt:Date.now()/1000 });
+  s('sl_rh_enps', ciclos);
+  renderRh();
+}
+
+function rhEnpsVerCiclo(id){
+  var c = _rhGetEnps().find(function(x){ return x.id===id; });
+  if(!c){ alert('Ciclo não encontrado.'); return; }
+  alert('Ciclo: '+c.titulo+'\nRespostas: '+(c.respostas||[]).length+'\nComentários: '+(c.respostas||[]).filter(function(r){ return r.comentario; }).length);
+}
+
+function rhEnpsEnviarPesquisa(){
+  alert('Disparo via WhatsApp será feito automaticamente para todos os colaboradores ativos com número cadastrado. (Integração WhatsApp necessária)');
+}
+
+// ─── ORGOGRAMA ───
+function _renderRhOrgograma(el){
+  var colabs = _rhGetColabs().filter(function(c){ return c.status!=='desligado'; });
+  var usuarios = g('sl_usuarios', []).filter(function(u){ return u && u.ativo!==false; });
+
+  // Monta árvore a partir de sl_rh_colaboradores (campo gestor = id do gestor)
+  // Se não tiver, tenta pelo cargo Diretoria como raiz
+  var raizes = colabs.filter(function(c){ return !c.gestorId || !colabs.find(function(x){ return x.id===c.gestorId; }); });
+  var naoRaizes = colabs.filter(function(c){ return c.gestorId && colabs.find(function(x){ return x.id===c.gestorId; }); });
+
+  // detecta PSFs: colaboradores únicos em um cargo ou departamento
+  var cargoCount = {};
+  colabs.forEach(function(c){ if(c.status==='ativo') cargoCount[c.cargo||'?'] = (cargoCount[c.cargo||'?']||0)+1; });
+  var isPSF = function(c){ return c.status==='ativo' && (cargoCount[c.cargo||'?']||0)===1; };
+
+  var corPorCargo = {
+    'Diretoria': 'linear-gradient(135deg,#FF5926,#C52C58)',
+    'Gestor de Tráfego': 'linear-gradient(135deg,#5b5ef4,#3E1493)',
+    'Copy': 'linear-gradient(135deg,#16A34A,#1B9CFA)',
+    'Editor': 'linear-gradient(135deg,#1B9CFA,#2509E4)',
+    'Infra': 'linear-gradient(135deg,#FBBF24,#FF5926)',
+    'Spy': 'linear-gradient(135deg,#A78BFA,#5b5ef4)'
+  };
+  var cor = function(c){ return corPorCargo[c.cargo||''] || 'linear-gradient(135deg,var(--accent),#2509E4)'; };
+
+  var cardColab = function(c, size){
+    var psf = isPSF(c);
+    var s = size||'md';
+    var pad = s==='lg' ? '14px 24px' : s==='md' ? '10px 18px' : '7px 12px';
+    var fs = s==='lg' ? '14px' : s==='md' ? '13px' : '11px';
+    var borda = psf ? 'border:2px solid #DC2626;' : '';
+    return '<div style="background:'+cor(c)+';padding:'+pad+';border-radius:10px;color:#fff;text-align:center;min-width:140px;cursor:pointer;'+borda+'" onclick="rhAbrirColab(\''+c.id+'\',\'geral\')">'+
+      '<div style="font-size:10px;opacity:.85;">'+_esc(c.cargo||'')+(psf?' · PSF ⚠️':'')+'</div>'+
+      '<div style="font-weight:700;font-size:'+fs+';margin-top:2px;">'+_esc(c.nome)+'</div>'+
+      (psf ? '<div style="font-size:9px;margin-top:2px;background:rgba(0,0,0,.2);padding:2px 6px;border-radius:4px;display:inline-block;">Ponto único de falha</div>' : '')+
+    '</div>';
+  };
+
+  var lidarSubordinados = function(gestorId){
+    var subs = colabs.filter(function(c){ return c.gestorId===gestorId; });
+    if(!subs.length) return '';
+    return '<div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;">'+
+      subs.map(function(s){
+        var filhos = colabs.filter(function(c){ return c.gestorId===s.id; });
+        return '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;">'+
+          cardColab(s,'md')+
+          (filhos.length ? '<div style="width:2px;height:14px;background:var(--border);"></div>'+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">'+filhos.map(function(f){ return cardColab(f,'sm'); }).join('')+'</div>' : '')+
+        '</div>';
+      }).join('')+
+    '</div>';
+  };
+
+  var psfs = colabs.filter(isPSF);
+
+  var arvoreHtml = '';
+  if(colabs.length === 0){
+    arvoreHtml = '<div style="font-size:13px;color:var(--text2);font-style:italic;text-align:center;padding:30px 0;">Nenhum colaborador cadastrado.</div>';
+  } else if(raizes.length === 0){
+    // sem hierarquia definida — mostra flat
+    arvoreHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">'+colabs.map(function(c){ return cardColab(c,'md'); }).join('')+'</div>';
+  } else {
+    arvoreHtml = raizes.map(function(r){
+      var subs = lidarSubordinados(r.id);
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:20px;">'+
+        cardColab(r,'lg')+
+        (subs ? '<div style="width:2px;height:20px;background:var(--border);"></div>'+subs : '')+
+      '</div>';
+    }).join('<div style="margin:14px 0;border-top:1px dashed var(--border);"></div>');
+  }
+
+  var psfAlertaHtml = psfs.length
+    ? '<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.25);border-radius:10px;padding:16px;margin-top:14px;">'+
+        '<div style="font-size:12px;font-weight:700;margin-bottom:8px;">⚠️ Pontos únicos de falha (PSF) · '+psfs.length+' detectado'+(psfs.length>1?'s':'')+'</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;">'+
+          psfs.map(function(c){
+            return '<div style="font-size:12px;color:var(--text2);">'+
+              '<b style="color:#DC2626;">🔴 '+_esc(c.nome)+'</b> · '+_esc(c.cargo||'')+
+              ' — Único neste papel. Recomendação: documentar SOPs críticos e treinar 1 backup.'+
+            '</div>';
+          }).join('')+
+        '</div>'+
+      '</div>'
+    : '';
+
+  el.innerHTML = _rhHeader()+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:20px;font-weight:700;">🗂️ Orgograma Visual</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:2px;">Auto-gerado das relações gestor/liderado · PSFs destacados em vermelho</div></div>'+
+      '<div style="font-size:11px;color:var(--text2);margin-top:8px;">Para definir hierarquia, edite o campo "Gestor" na ficha de cada colaborador.</div>'+
+    '</div>'+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;text-align:center;overflow-x:auto;">'+
+      arvoreHtml+
+    '</div>'+
+    psfAlertaHtml;
 }
 
 // ══════════════════════════════════════════════
