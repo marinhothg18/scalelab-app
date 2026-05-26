@@ -9920,60 +9920,186 @@ function _renderRhOffboarding(el){
       : '');
 }
 
-function rhIniciarOffboarding(){
-  var colabs = _rhGetColabs().filter(function(c){ return c.status!=='desligado'; });
-  if(!colabs.length){ alert('Nenhum colaborador ativo disponível.'); return; }
-  var colabOpts = colabs.map(function(c){ return '<option value="'+c.id+'">'+_esc(c.nome)+(c.cargo?' · '+_esc(c.cargo):'')+'</option>'; }).join('');
+function rhIniciarOffboarding(offId){
+  var offs = _rhGetOffboardings();
+  var o = offId ? offs.find(function(x){ return x.id===offId; }) : null;
+  var isEdit = !!o;
+  o = o || {
+    colaboradorId: '',
+    dataSaida: new Date().toISOString().slice(0,10),
+    tipo: 'pedido_demissao',
+    motivo: '',
+    motivoDetalhado: '',
+    feedback: '',
+    pontosPositivos: '',
+    pontosMelhoria: '',
+    sugestoes: '',
+    avaliacaoGeral: 0,
+    recomendaEmpresa: '',
+    voltaria: '',
+    proximoDestino: '',
+    comunicarTime: 'agendar',
+    entrevistaFeita: false,
+    confidencial: false
+  };
+
+  var colabsList = _rhGetColabs().filter(function(c){ return isEdit ? true : c.status!=='desligado'; });
+  if(!colabsList.length){ alert('Nenhum colaborador disponível.'); return; }
+  var colabOpts = colabsList.map(function(c){
+    return '<option value="'+c.id+'"'+(o.colaboradorId===c.id?' selected':'')+'>'+_esc(c.nome)+(c.cargo?' · '+_esc(c.cargo):'')+'</option>';
+  }).join('');
+
+  var tipoOpts = [
+    ['pedido_demissao','Pedido de demissão (pessoa pediu pra sair)'],
+    ['rescisao','Rescisão pela empresa (a empresa desligou)'],
+    ['acordo','Acordo mútuo'],
+    ['fim_contrato','Fim de contrato (não-renovação)'],
+    ['abandono','Abandono de função / sumiu']
+  ].map(function(t){ return '<option value="'+t[0]+'"'+(o.tipo===t[0]?' selected':'')+'>'+t[1]+'</option>'; }).join('');
+
+  // Estrelas pra avaliação geral
+  var estrelas = '';
+  for(var i=1;i<=5;i++){
+    estrelas += '<button type="button" data-star="'+i+'" onclick="rhOffSetStar('+i+')" style="background:transparent;border:none;font-size:26px;cursor:pointer;color:'+(i<=(o.avaliacaoGeral||0)?'#FBBF24':'var(--text3)')+';padding:0 2px;">★</button>';
+  }
 
   var html =
-    '<div id="rh-modal-iniof" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)document.getElementById(\'rh-modal-iniof\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:540px;width:100%;padding:22px;">'+
-        '<div style="font-size:16px;font-weight:700;margin-bottom:14px;">👋 Iniciar offboarding</div>'+
-        '<div class="fg" style="margin-bottom:12px;"><label class="fl">Colaborador *</label><select id="rh-of-colab" class="fs">'+colabOpts+'</select></div>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">'+
-          '<div class="fg"><label class="fl">Data de saída *</label><input id="rh-of-data" class="fi" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div>'+
-          '<div class="fg"><label class="fl">Tipo</label><select id="rh-of-tipo" class="fs"><option value="pedido_demissao">Pedido de demissão</option><option value="rescisao">Rescisão pela empresa</option><option value="acordo">Acordo mútuo</option><option value="fim_contrato">Fim de contrato</option><option value="abandono">Abandono</option></select></div>'+
+    '<div id="rh-modal-iniof" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'rh-modal-iniof\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:20px auto;">'+
+        // Header sticky
+        '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:2;display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
+          '<div>'+
+            '<div style="font-size:18px;font-weight:700;">👋 '+(isEdit?'Editar offboarding':'Iniciar offboarding')+'</div>'+
+            '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Capture o máximo de contexto agora — quanto mais detalhe, mais a equipe aprende com a saída.</div>'+
+          '</div>'+
+          '<button onclick="document.getElementById(\'rh-modal-iniof\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:24px;cursor:pointer;">✕</button>'+
         '</div>'+
-        '<div class="fg" style="margin-bottom:14px;"><label class="fl">Motivo (interno)</label><textarea id="rh-of-motivo" class="fi" rows="2" style="resize:vertical;" placeholder="Resumo do motivo do desligamento"></textarea></div>'+
-        '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text2);margin-bottom:14px;">'+
-          '💡 Vai ser gerado um checklist completo com '+OFFBOARDING_TEMPLATE.reduce(function(s,cat){return s+cat.itens.length;},0)+' itens, organizados em '+OFFBOARDING_TEMPLATE.length+' categorias. Você pode marcar/desmarcar conforme avança.'+
+
+        '<div style="padding:22px 26px;">'+
+          // ───── SEÇÃO 1: Dados básicos ─────
+          '<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;border-left:3px solid var(--accent);padding-left:10px;">1 · Dados básicos</div>'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Colaborador *</label><select id="rh-of-colab" class="fs"'+(isEdit?' disabled':'')+'>'+colabOpts+'</select></div>'+
+          '<div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:14px;">'+
+            '<div class="fg"><label class="fl">Data de saída *</label><input id="rh-of-data" class="fi" type="date" value="'+_esc(o.dataSaida)+'"></div>'+
+            '<div class="fg"><label class="fl">Tipo de saída</label><select id="rh-of-tipo" class="fs">'+tipoOpts+'</select></div>'+
+          '</div>'+
+
+          // ───── SEÇÃO 2: Motivo e contexto ─────
+          '<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin:24px 0 12px;border-left:3px solid var(--accent);padding-left:10px;">2 · Por que essa pessoa está saindo?</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Motivo principal (resumo curto, 1 linha) *</label><input id="rh-of-motivo" class="fi" value="'+_esc(o.motivo)+'" placeholder="Ex: Pediu pra sair · proposta melhor · não bateu com cultura"></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Motivo detalhado · contexto completo</label><textarea id="rh-of-motivodet" class="fi" rows="4" style="resize:vertical;" placeholder="Conte o que aconteceu, o que levou a essa decisão, quando começou a aparecer, o que foi tentado antes. Quanto mais detalhe aqui, melhor pra entender padrões e prevenir saídas futuras.">'+_esc(o.motivoDetalhado||'')+'</textarea></div>'+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">Próximo destino (se sabido)</label><input id="rh-of-destino" class="fi" value="'+_esc(o.proximoDestino||'')+'" placeholder="Concorrente · empresa X · faculdade · negócio próprio · não vai trabalhar"></div>'+
+
+          // ───── SEÇÃO 3: Feedback do colaborador (entrevista de saída) ─────
+          '<div style="font-size:11px;font-weight:700;color:#16A34A;text-transform:uppercase;letter-spacing:.5px;margin:24px 0 12px;border-left:3px solid #16A34A;padding-left:10px;">3 · Entrevista de saída · feedback do colaborador</div>'+
+          '<div style="background:rgba(22,163,74,.06);padding:10px 12px;border-radius:7px;font-size:11px;color:var(--text2);margin-bottom:14px;">💡 Faça a entrevista de saída com a pessoa e capture as respostas aqui. Pode preencher agora ou voltar e editar depois.</div>'+
+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">📝 Feedback geral (o que ela disse na entrevista)</label><textarea id="rh-of-feedback" class="fi" rows="4" style="resize:vertical;" placeholder="Como foi a experiência dela na Axcend? O que ela falou de mais relevante?">'+_esc(o.feedback||'')+'</textarea></div>'+
+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">👍 O que ela mais gostou (pontos positivos)</label><textarea id="rh-of-pos" class="fi" rows="3" style="resize:vertical;" placeholder="Cultura, time, aprendizado, autonomia, projetos, lideranças que admira...">'+_esc(o.pontosPositivos||'')+'</textarea></div>'+
+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">🔧 O que precisa melhorar (pontos críticos)</label><textarea id="rh-of-mel" class="fi" rows="3" style="resize:vertical;" placeholder="Processos, comunicação, ferramentas, lideranças, carga de trabalho, salário, cultura, falta de plano de carreira...">'+_esc(o.pontosMelhoria||'')+'</textarea></div>'+
+
+          '<div class="fg" style="margin-bottom:14px;"><label class="fl">💡 Sugestões e dicas que ela deixa pra Axcend</label><textarea id="rh-of-sug" class="fi" rows="3" style="resize:vertical;" placeholder="Conselhos pra evitar que outros saiam pelo mesmo motivo, ideias pra melhorar, processos que ela acha que precisam mudar...">'+_esc(o.sugestoes||'')+'</textarea></div>'+
+
+          // ───── SEÇÃO 4: Avaliações ─────
+          '<div style="font-size:11px;font-weight:700;color:#FBBF24;text-transform:uppercase;letter-spacing:.5px;margin:24px 0 12px;border-left:3px solid #FBBF24;padding-left:10px;">4 · Avaliações da pessoa que está saindo</div>'+
+
+          '<div style="background:var(--bg);border-radius:8px;padding:14px;margin-bottom:12px;">'+
+            '<label class="fl" style="display:block;margin-bottom:8px;">⭐ Como ela avalia a experiência na Axcend? (de 1 a 5 estrelas)</label>'+
+            '<div id="rh-of-stars" style="display:flex;align-items:center;gap:2px;">'+estrelas+'<span id="rh-of-stars-label" style="margin-left:14px;font-size:12px;color:var(--text2);">'+(o.avaliacaoGeral?o.avaliacaoGeral+'/5':'sem nota ainda')+'</span></div>'+
+          '</div>'+
+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">'+
+            '<div class="fg"><label class="fl">🙋 Recomendaria a Axcend pra um amigo trabalhar?</label><select id="rh-of-rec" class="fs"><option value="">— Não preenchido —</option><option value="sim_forte"'+(o.recomendaEmpresa==='sim_forte'?' selected':'')+'>Sim, com certeza</option><option value="sim_resalvas"'+(o.recomendaEmpresa==='sim_resalvas'?' selected':'')+'>Sim, com ressalvas</option><option value="talvez"'+(o.recomendaEmpresa==='talvez'?' selected':'')+'>Talvez, depende</option><option value="nao"'+(o.recomendaEmpresa==='nao'?' selected':'')+'>Não recomendaria</option></select></div>'+
+            '<div class="fg"><label class="fl">🔁 Voltaria a trabalhar aqui no futuro?</label><select id="rh-of-volt" class="fs"><option value="">— Não preenchido —</option><option value="sim"'+(o.voltaria==='sim'?' selected':'')+'>Sim, voltaria</option><option value="talvez"'+(o.voltaria==='talvez'?' selected':'')+'>Talvez, depende do projeto</option><option value="nao"'+(o.voltaria==='nao'?' selected':'')+'>Não voltaria</option></select></div>'+
+          '</div>'+
+
+          // ───── SEÇÃO 5: Próximos passos ─────
+          '<div style="font-size:11px;font-weight:700;color:#A78BFA;text-transform:uppercase;letter-spacing:.5px;margin:24px 0 12px;border-left:3px solid #A78BFA;padding-left:10px;">5 · Próximos passos</div>'+
+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">📢 Como comunicar a equipe</label><select id="rh-of-com" class="fs"><option value="agendar"'+(o.comunicarTime==='agendar'?' selected':'')+'>Agendar comunicação (a fazer)</option><option value="ja_feito"'+(o.comunicarTime==='ja_feito'?' selected':'')+'>Já comunicado</option><option value="silencioso"'+(o.comunicarTime==='silencioso'?' selected':'')+'>Saída silenciosa (sem anúncio)</option></select></div>'+
+
+          '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">'+
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="checkbox" id="rh-of-ent"'+(o.entrevistaFeita?' checked':'')+'> Entrevista de saída já realizada</label>'+
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;"><input type="checkbox" id="rh-of-conf"'+(o.confidencial?' checked':'')+'> 🔒 Marcar como confidencial (só Diretoria vê o feedback completo)</label>'+
+          '</div>'+
+
+          '<div style="background:rgba(91,94,244,.08);border-left:3px solid var(--accent);padding:12px 14px;border-radius:7px;font-size:12px;color:var(--text2);margin-top:18px;">'+
+            '💡 <b>Após salvar:</b> vai ser gerado um checklist completo com <b>'+OFFBOARDING_TEMPLATE.reduce(function(s,cat){return s+cat.itens.length;},0)+' itens</b> em '+OFFBOARDING_TEMPLATE.length+' categorias (documentação, acessos, equipamentos, financeiro, transição, entrevista, comunicação). Tudo aqui também fica salvo no histórico e você pode voltar pra editar a qualquer momento.'+
+          '</div>'+
         '</div>'+
-        '<div style="display:flex;gap:8px;justify-content:flex-end;">'+
-          '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-iniof\').remove();">Cancelar</button>'+
-          '<button class="btn btn-primary" onclick="rhSalvarInicioOffboarding()">Iniciar checklist</button>'+
+
+        // Footer sticky
+        '<div style="padding:16px 26px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;position:sticky;bottom:0;background:var(--card);border-radius:0 0 12px 12px;">'+
+          '<div style="font-size:11px;color:var(--text2);align-self:center;">⚠️ Salvar marca o colaborador como "em offboarding". Concluir o checklist marca como "desligado".</div>'+
+          '<div style="display:flex;gap:8px;">'+
+            '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-iniof\').remove();">Cancelar</button>'+
+            '<button class="btn btn-primary" onclick="rhSalvarInicioOffboarding(\''+(o.id||'')+'\')">'+(isEdit?'Salvar alterações':'Iniciar offboarding')+'</button>'+
+          '</div>'+
         '</div>'+
       '</div>'+
     '</div>';
   var ex = document.getElementById('rh-modal-iniof'); if(ex) ex.remove();
   document.body.insertAdjacentHTML('beforeend', html);
+  // armazena avaliação inicial
+  window._rhOffStarAtual = o.avaliacaoGeral||0;
 }
 
-function rhSalvarInicioOffboarding(){
+function rhOffSetStar(n){
+  window._rhOffStarAtual = n;
+  var btns = document.querySelectorAll('#rh-of-stars button[data-star]');
+  btns.forEach(function(b){
+    var v = parseInt(b.getAttribute('data-star'),10);
+    b.style.color = v<=n ? '#FBBF24' : 'var(--text3)';
+  });
+  var label = document.getElementById('rh-of-stars-label');
+  if(label) label.textContent = n+'/5';
+}
+
+function rhSalvarInicioOffboarding(idExistente){
   var cid = document.getElementById('rh-of-colab').value;
   var data = document.getElementById('rh-of-data').value;
-  if(!cid || !data){ alert('Colaborador e data são obrigatórios.'); return; }
-  var checklist = OFFBOARDING_TEMPLATE.map(function(cat){
-    return {
-      categoria: cat.categoria,
-      itens: cat.itens.map(function(it){ return { label:it, feito:false, obs:'' }; })
-    };
-  });
+  var motivo = (document.getElementById('rh-of-motivo').value||'').trim();
+  if(!cid || !data || !motivo){ alert('Colaborador, data e motivo principal são obrigatórios.'); return; }
+
   var offs = _rhGetOffboardings();
-  var novo = {
-    id: 'off-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
-    colaboradorId: cid,
-    dataSaida: data,
-    tipo: document.getElementById('rh-of-tipo').value,
-    motivo: (document.getElementById('rh-of-motivo').value||'').trim(),
-    status: 'em_andamento',
-    iniciadoEm: new Date().toISOString().slice(0,10),
-    checklist: checklist,
-    _updatedAt: Date.now()/1000
-  };
-  offs.push(novo);
+  var o = idExistente ? offs.find(function(x){ return x.id===idExistente; }) : null;
+  var isNovo = !o;
+
+  if(!o){
+    o = {
+      id: 'off-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+      status: 'em_andamento',
+      iniciadoEm: new Date().toISOString().slice(0,10),
+      checklist: OFFBOARDING_TEMPLATE.map(function(cat){
+        return { categoria: cat.categoria, itens: cat.itens.map(function(it){ return { label:it, feito:false, obs:'' }; }) };
+      })
+    };
+  }
+
+  o.colaboradorId = cid;
+  o.dataSaida = data;
+  o.tipo = document.getElementById('rh-of-tipo').value;
+  o.motivo = motivo;
+  o.motivoDetalhado = (document.getElementById('rh-of-motivodet').value||'').trim();
+  o.proximoDestino = (document.getElementById('rh-of-destino').value||'').trim();
+  o.feedback = (document.getElementById('rh-of-feedback').value||'').trim();
+  o.pontosPositivos = (document.getElementById('rh-of-pos').value||'').trim();
+  o.pontosMelhoria = (document.getElementById('rh-of-mel').value||'').trim();
+  o.sugestoes = (document.getElementById('rh-of-sug').value||'').trim();
+  o.avaliacaoGeral = window._rhOffStarAtual||0;
+  o.recomendaEmpresa = document.getElementById('rh-of-rec').value;
+  o.voltaria = document.getElementById('rh-of-volt').value;
+  o.comunicarTime = document.getElementById('rh-of-com').value;
+  o.entrevistaFeita = !!document.getElementById('rh-of-ent').checked;
+  o.confidencial = !!document.getElementById('rh-of-conf').checked;
+  o._updatedAt = Date.now()/1000;
+
+  if(isNovo) offs.push(o);
   s('sl_rh_offboarding', offs);
   var m = document.getElementById('rh-modal-iniof'); if(m) m.remove();
-  rhAbrirOffboarding(novo.id);
+  rhAbrirOffboarding(o.id);
 }
 
 function rhAbrirOffboarding(id){
@@ -10029,7 +10155,52 @@ function rhAbrirOffboarding(id){
           '<div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:8px;"><div style="height:100%;width:'+prog+'%;background:'+(prog===100?'#16A34A':'var(--accent)')+';"></div></div>'+
         '</div>'+
         '<div style="padding:18px 22px;">'+
-          (off.motivo ? '<div style="background:rgba(220,38,38,.05);border-left:3px solid #DC2626;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:14px;"><b>Motivo:</b> '+_esc(off.motivo)+'</div>' : '')+
+          // Bloco de motivo + feedback (se preenchido)
+          (function(){
+            var blocos = [];
+            if(off.motivo){
+              blocos.push('<div style="background:rgba(220,38,38,.05);border-left:3px solid #DC2626;padding:10px 12px;border-radius:6px;font-size:12px;"><b>📌 Motivo:</b> '+_esc(off.motivo)+(off.motivoDetalhado?'<div style="margin-top:6px;color:var(--text2);white-space:pre-wrap;">'+_esc(off.motivoDetalhado)+'</div>':'')+'</div>');
+            }
+            if(off.proximoDestino){
+              blocos.push('<div style="background:var(--bg);padding:8px 12px;border-radius:6px;font-size:12px;color:var(--text2);"><b>➡️ Próximo destino:</b> '+_esc(off.proximoDestino)+'</div>');
+            }
+            // Feedback do colaborador
+            var temFeedback = off.feedback || off.pontosPositivos || off.pontosMelhoria || off.sugestoes;
+            if(temFeedback){
+              blocos.push('<div style="background:rgba(22,163,74,.05);border-left:3px solid #16A34A;padding:12px;border-radius:6px;font-size:12px;">'+
+                '<div style="font-weight:700;color:#16A34A;margin-bottom:8px;font-size:13px;">💬 Feedback da entrevista de saída'+(off.confidencial?' <span style="background:#DC2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;margin-left:6px;">🔒 CONFIDENCIAL</span>':'')+'</div>'+
+                (off.feedback ? '<div style="margin-bottom:8px;"><b>📝 Geral:</b><div style="white-space:pre-wrap;color:var(--text2);margin-top:3px;">'+_esc(off.feedback)+'</div></div>' : '')+
+                (off.pontosPositivos ? '<div style="margin-bottom:8px;"><b>👍 Pontos positivos:</b><div style="white-space:pre-wrap;color:var(--text2);margin-top:3px;">'+_esc(off.pontosPositivos)+'</div></div>' : '')+
+                (off.pontosMelhoria ? '<div style="margin-bottom:8px;"><b>🔧 Pontos a melhorar:</b><div style="white-space:pre-wrap;color:var(--text2);margin-top:3px;">'+_esc(off.pontosMelhoria)+'</div></div>' : '')+
+                (off.sugestoes ? '<div><b>💡 Sugestões:</b><div style="white-space:pre-wrap;color:var(--text2);margin-top:3px;">'+_esc(off.sugestoes)+'</div></div>' : '')+
+              '</div>');
+            }
+            // Avaliações
+            var temAval = off.avaliacaoGeral || off.recomendaEmpresa || off.voltaria;
+            if(temAval){
+              var recLabel = {sim_forte:'✅ Sim, com certeza',sim_resalvas:'⚠️ Sim, com ressalvas',talvez:'🤔 Talvez',nao:'❌ Não recomenda'}[off.recomendaEmpresa] || '—';
+              var voltLabel = {sim:'✅ Sim, voltaria',talvez:'🤔 Talvez',nao:'❌ Não voltaria'}[off.voltaria] || '—';
+              var stars = '';
+              for(var i=1;i<=5;i++) stars += '<span style="color:'+(i<=(off.avaliacaoGeral||0)?'#FBBF24':'var(--text3)')+';font-size:18px;">★</span>';
+              blocos.push('<div style="background:rgba(251,191,36,.05);border-left:3px solid #FBBF24;padding:12px;border-radius:6px;font-size:12px;">'+
+                '<div style="font-weight:700;color:#FBBF24;margin-bottom:8px;font-size:13px;">⭐ Avaliações</div>'+
+                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">'+
+                  (off.avaliacaoGeral ? '<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;">Experiência</div><div style="margin-top:2px;">'+stars+' <b style="font-size:13px;">'+off.avaliacaoGeral+'/5</b></div></div>' : '')+
+                  (off.recomendaEmpresa ? '<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;">Recomendaria?</div><div style="margin-top:2px;font-size:12px;">'+recLabel+'</div></div>' : '')+
+                  (off.voltaria ? '<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;">Voltaria?</div><div style="margin-top:2px;font-size:12px;">'+voltLabel+'</div></div>' : '')+
+                '</div>'+
+              '</div>');
+            }
+            return blocos.length
+              ? '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">'+blocos.join('')+
+                '<button class="btn btn-ghost" onclick="document.getElementById(\'rh-modal-off\').remove();rhIniciarOffboarding(\''+off.id+'\');" style="align-self:flex-start;font-size:11px;padding:6px 12px;color:var(--accent);">✎ Editar feedback / motivo / avaliações</button>'+
+                '</div>'
+              : '<div style="background:rgba(251,191,36,.06);border:1px dashed #FBBF24;padding:14px;border-radius:8px;text-align:center;margin-bottom:18px;">'+
+                  '<div style="font-size:13px;margin-bottom:6px;">📝 Nenhum motivo/feedback registrado</div>'+
+                  '<button class="btn btn-primary" style="font-size:11px;padding:6px 12px;" onclick="document.getElementById(\'rh-modal-off\').remove();rhIniciarOffboarding(\''+off.id+'\');">+ Adicionar motivo e feedback</button>'+
+                '</div>';
+          })()+
+          '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:10px;">📋 Checklist de saída</div>'+
           categoriasHtml+
         '</div>'+
       '</div>'+
