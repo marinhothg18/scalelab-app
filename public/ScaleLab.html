@@ -2375,6 +2375,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button class="cfg-grupo" id="cfg-grupo-operacao" onclick="switchCfgGrupo('operacao',this)">⚙️ Operação</button>
         <button class="cfg-grupo" id="cfg-grupo-automacao" onclick="switchCfgGrupo('automacao',this)">🔔 Automação</button>
         <button class="cfg-grupo" id="cfg-grupo-integracoes" onclick="switchCfgGrupo('integracoes',this)">🔌 Integrações</button>
+        <button class="cfg-grupo" id="cfg-grupo-branding" onclick="switchCfgGrupo('branding',this)">🎨 Branding</button>
         <button class="cfg-grupo" id="cfg-grupo-dados" onclick="switchCfgGrupo('dados',this)">🛡️ Dados</button>
         <button class="cfg-grupo" id="cfg-grupo-avancado" onclick="switchCfgGrupo('avancado',this)">🛠️ Avançado</button>
       </div>
@@ -2391,6 +2392,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button id="cfg-tab-lembretes"></button>
         <button id="cfg-tab-relatorio"></button>
         <button id="cfg-tab-whatsapp"></button>
+        <button id="cfg-tab-branding"></button>
         <button id="cfg-tab-dados"></button>
       </div>
 
@@ -2764,6 +2766,17 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📞 Telefones da equipe</div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Cada pessoa precisa ter WhatsApp cadastrado pra receber notificações e usar o bot. Edite cada usuário e coloque o número.</div>
           <div id="wa-users-list"></div>
+        </div>
+      </div>
+
+      <!-- TAB: BRANDING (white-label do tenant) -->
+      <div id="cfg-panel-branding" style="display:none;max-width:900px;">
+        <div style="background:linear-gradient(135deg,rgba(91,94,244,.15),rgba(62,20,147,.10));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">🎨 Branding & White-label</div>
+          <div style="font-size:12px;color:var(--text2);">Personalize as cores, logo e identidade visual do painel da sua empresa. Aplicado em todos os usuários do seu time.</div>
+        </div>
+        <div id="branding-container">
+          <div style="text-align:center;padding:40px;color:var(--text2);">Carregando...</div>
         </div>
       </div>
 
@@ -11544,6 +11557,162 @@ function saveWhatsAppConfig(c){
   fetch(API_BASE+'/api/store/sl_whatsapp_config', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(c) }).catch(function(){});
 }
 
+// ══════════════════════════════════════════════
+// BRANDING DO TENANT (PR 6 — multi-tenancy)
+// Cliente customiza cores, logo e identidade visual do painel DELE.
+// Aplicado dinamicamente em todos os usuários do mesmo tenant.
+// ══════════════════════════════════════════════
+var _brandingAtual = null;
+
+function carregarBranding(){
+  return fetch(API_BASE + '/api/tenant/branding')
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(resp){
+      if(!resp) return null;
+      _brandingAtual = resp.branding;
+      _brandingTenantNome = resp.tenantNome;
+      aplicarBrandingDinamico(resp.branding);
+      return resp;
+    })
+    .catch(function(){ return null; });
+}
+
+function aplicarBrandingDinamico(b){
+  if(!b) return;
+  // Injeta CSS variables que sobrescrevem as defaults do app
+  var styleId = 'tenant-branding-style';
+  var style = document.getElementById(styleId);
+  if(!style){
+    style = document.createElement('style');
+    style.id = styleId;
+    document.head.appendChild(style);
+  }
+  style.textContent = ''+
+    ':root.dark, :root {'+
+      '--accent: '+(b.primary||'#1B9CFA')+';'+
+      '--accent2: '+(b.secondary||'#5b5ef4')+';'+
+      '--accent-grad: linear-gradient(135deg,'+(b.secondary||'#3E1493')+','+(b.primary||'#1B9CFA')+');'+
+    '}';
+  // Favicon (se cliente customizou)
+  if(b.faviconUrl){
+    var fav = document.querySelector('link[rel="icon"]');
+    if(!fav){
+      fav = document.createElement('link');
+      fav.rel = 'icon';
+      document.head.appendChild(fav);
+    }
+    fav.href = b.faviconUrl;
+  }
+}
+
+function renderBrandingTab(){
+  var el = document.getElementById('branding-container');
+  if(!el) return;
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!isDir){
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">Só Diretoria pode editar o branding.</div>';
+    return;
+  }
+  // Garante que temos branding carregado
+  if(!_brandingAtual){
+    carregarBranding().then(function(){ renderBrandingTab(); });
+    return;
+  }
+  var b = _brandingAtual;
+  el.innerHTML = ''+
+    '<div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:flex-start;">'+
+      // FORM
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:16px;">Cores principais</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;">'+
+          '<div><label style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;">Cor primária</label>'+
+            '<input type="color" id="br-primary" value="'+(b.primary||'#5b5ef4')+'" style="width:100%;height:42px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg);" onchange="brandingPreview()"></div>'+
+          '<div><label style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;">Cor secundária</label>'+
+            '<input type="color" id="br-secondary" value="'+(b.secondary||'#3E1493')+'" style="width:100%;height:42px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg);" onchange="brandingPreview()"></div>'+
+          '<div><label style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;">Fundo escuro</label>'+
+            '<input type="color" id="br-bgdark" value="'+(b.bgDark||'#0F0F0F')+'" style="width:100%;height:42px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg);" onchange="brandingPreview()"></div>'+
+        '</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">Logo e identidade</div>'+
+        '<div style="margin-bottom:14px;">'+
+          '<label style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;">URL do logo (PNG/SVG)</label>'+
+          '<input type="url" id="br-logo" class="fi" value="'+(b.logoUrl||'').replace(/"/g,'&quot;')+'" placeholder="https://cdn.../logo.png">'+
+          '<div style="font-size:11px;color:var(--text3);margin-top:4px;">Recomendado: fundo transparente, 512×128px.</div>'+
+        '</div>'+
+        '<div style="margin-bottom:18px;">'+
+          '<label style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;">URL do favicon</label>'+
+          '<input type="url" id="br-favicon" class="fi" value="'+(b.faviconUrl||'').replace(/"/g,'&quot;')+'" placeholder="https://cdn.../favicon.png">'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;">'+
+          '<button class="btn btn-primary" onclick="salvarBranding()">💾 Salvar branding</button>'+
+          '<button class="btn btn-ghost" onclick="resetBrandingDefaults()">↺ Voltar pro padrão</button>'+
+        '</div>'+
+      '</div>'+
+      // PREVIEW
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;">'+
+        '<div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Preview ao vivo</div>'+
+        '<div id="br-preview" style="background:'+(b.bgDark||'#0F0F0F')+';border:1px solid var(--border);border-radius:10px;padding:16px;color:#fff;">'+
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'+
+            '<div id="br-prev-logo" style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,'+(b.primary||'#5b5ef4')+','+(b.secondary||'#3E1493')+');"></div>'+
+            '<b style="font-size:13px;" id="br-prev-name">'+(_brandingTenantNome||'Sua empresa')+'</b>'+
+          '</div>'+
+          '<div id="br-prev-section" style="font-size:11px;font-weight:700;color:'+(b.primary||'#5b5ef4')+';margin-bottom:6px;">▤ DASHBOARD</div>'+
+          '<div id="br-prev-bar" style="height:6px;border-radius:3px;width:60%;margin-bottom:6px;background:'+(b.primary||'#5b5ef4')+';"></div>'+
+          '<div style="height:6px;border-radius:3px;width:80%;background:#333;"></div>'+
+        '</div>'+
+        '<div style="font-size:11px;color:var(--text3);margin-top:10px;text-align:center;">Esse é como o painel vai aparecer pros seus usuários.</div>'+
+      '</div>'+
+    '</div>';
+}
+
+function brandingPreview(){
+  var p = document.getElementById('br-primary').value;
+  var s = document.getElementById('br-secondary').value;
+  var bg = document.getElementById('br-bgdark').value;
+  var box = document.getElementById('br-preview');
+  if(box) box.style.background = bg;
+  var logo = document.getElementById('br-prev-logo');
+  if(logo) logo.style.background = 'linear-gradient(135deg,'+p+','+s+')';
+  var section = document.getElementById('br-prev-section');
+  if(section) section.style.color = p;
+  var bar = document.getElementById('br-prev-bar');
+  if(bar) bar.style.background = p;
+}
+
+function salvarBranding(){
+  var token = localStorage.getItem('sl_session_token');
+  if(!token){ alert('Você precisa estar logado.'); return; }
+  var body = {
+    primary: document.getElementById('br-primary').value,
+    secondary: document.getElementById('br-secondary').value,
+    bgDark: document.getElementById('br-bgdark').value,
+    logoUrl: document.getElementById('br-logo').value.trim(),
+    faviconUrl: document.getElementById('br-favicon').value.trim()
+  };
+  fetch(API_BASE + '/api/tenant/branding', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+    body: JSON.stringify(body)
+  })
+  .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||'erro'); }); return r.json(); })
+  .then(function(resp){
+    _brandingAtual = resp.branding;
+    aplicarBrandingDinamico(resp.branding);
+    alert('Branding salvo! O painel já está usando as novas cores.');
+  })
+  .catch(function(e){ alert('Erro ao salvar branding: '+(e.message||'')); });
+}
+
+function resetBrandingDefaults(){
+  document.getElementById('br-primary').value = '#5b5ef4';
+  document.getElementById('br-secondary').value = '#3E1493';
+  document.getElementById('br-bgdark').value = '#0F0F0F';
+  document.getElementById('br-logo').value = '';
+  document.getElementById('br-favicon').value = '';
+  brandingPreview();
+}
+
+var _brandingTenantNome = '';
+
 function renderWhatsAppConfig(){
   var cfg = getWhatsAppConfig();
   // Toggle ativo
@@ -11707,10 +11876,13 @@ const _CFG_GRUPOS = {
                             'api-tokens': ['🔑','API Tokens','Tokens para agentes externos consultarem o sistema'],
                             whatsapp: ['💬','WhatsApp + Agente IA','Z-API + Claude/OpenAI'] },
                  grad: 'linear-gradient(135deg,#FF5926,#C52C58)' },
+  branding:    { tabs: ['branding'],
+                 headers: { branding: ['🎨','Branding & White-label','Cores, logo e identidade visual do painel'] },
+                 grad: 'linear-gradient(135deg,#5b5ef4,#3E1493)' },
   dados:       { tabs: ['dados'], headers: {}, grad: 'linear-gradient(135deg,#10B981,#1B9CFA)' },
   avancado:    { tabs: [], headers: {}, grad: 'linear-gradient(135deg,#7C3AED,#3E1493)' },
 };
-const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','dados'];
+const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','branding','dados'];
 
 function _injectCfgSectionHeader(panelId, headerCfg, grad){
   if (!headerCfg) return;
@@ -11731,7 +11903,7 @@ function _injectCfgSectionHeader(panelId, headerCfg, grad){
 
 function switchCfgGrupo(grupo, btn){
   // 1) Marca grupo ativo
-  ['conta','operacao','automacao','integracoes','dados','avancado'].forEach(g => {
+  ['conta','operacao','automacao','integracoes','branding','dados','avancado'].forEach(g => {
     const el = document.getElementById('cfg-grupo-' + g);
     if (el) el.classList.toggle('active', g === grupo);
   });
@@ -11763,6 +11935,7 @@ function switchCfgGrupo(grupo, btn){
     else if (t === 'lembretes') renderLembretes();
     else if (t === 'relatorio') { try{ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }catch(e){} }
     else if (t === 'whatsapp') { try{ renderWhatsAppConfig(); }catch(e){} }
+    else if (t === 'branding') { try{ renderBrandingTab(); }catch(e){} }
     else if (t === 'apis') {
       const k = (typeof getRtApiKey === 'function') ? getRtApiKey() : '';
       const inp = document.getElementById('ads-api-key-input');
@@ -11821,7 +11994,7 @@ function switchCfgGrupo(grupo, btn){
 }
 
 function switchCfgTab(tab, btn){
-  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','dados'].forEach(t=>{
+  ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','branding','dados'].forEach(t=>{
     const panel = document.getElementById('cfg-panel-'+t);
     if(panel) panel.style.display = t===tab ? (t==='geral'?'grid':'block') : 'none';
     const tabBtn = document.getElementById('cfg-tab-'+t);
@@ -11852,6 +12025,7 @@ function switchCfgTab(tab, btn){
   if(tab==='lembretes') renderLembretes();
   if(tab==='relatorio'){ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }
   if(tab==='whatsapp') renderWhatsAppConfig();
+  if(tab==='branding') renderBrandingTab();
   if(tab==='apis'){
     const k = getRtApiKey();
     const inp = document.getElementById('ads-api-key-input');
@@ -17915,6 +18089,8 @@ function _loginOk(user){
   document.getElementById('login-error').textContent='';
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
+  // PR 6: aplica branding do tenant assim que loga (fire-and-forget)
+  try{ carregarBranding(); }catch(e){}
   // PRIMEIRO puxa do servidor (pra não sobrescrever notificações novas), depois envia local
   syncAllFromServer().then(()=> pushAllToServer()).then(()=>{
     // Se Diretoria e tiver rt_api_key local que não está no servidor, empurra agora
@@ -17953,6 +18129,8 @@ function restoreSession(){
   currentUser = user;
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
+  // PR 6: aplica branding do tenant quando sessão é restaurada
+  try{ carregarBranding(); }catch(e){}
   // Atualiza badge de notificações quando sessão é restaurada
   try{ updateNotifBadge(); }catch(e){}
   // Renderiza Home logo na restauração da sessão

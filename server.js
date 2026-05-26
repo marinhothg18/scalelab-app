@@ -911,6 +911,83 @@ app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
 // ── ROTAS INTERNAS (frontend sync) ──
 // ══════════════════════════════════════════════
 
+// ══════════════════════════════════════════════
+// ── BRANDING DO TENANT (multi-tenancy PR 6) ──
+// Endpoints pra o cliente buscar/editar o branding DELE.
+// O branding mora em sl_saas_tenants[].branding — esse endpoint expõe só o
+// branding (não toda a info do tenant), pra qualquer um logado.
+// ══════════════════════════════════════════════
+const BRANDING_DEFAULT = {
+  nome: 'Axcend',
+  primary: '#5b5ef4',
+  secondary: '#3E1493',
+  bgDark: '#0F0F0F',
+  logoUrl: '',
+  faviconUrl: ''
+};
+
+app.get('/api/tenant/branding', (req, res) => {
+  try {
+    const db = readDB();
+    const tenants = db.store['sl_saas_tenants'] || [];
+    const t = tenants.find(x => x && x.id === req.tenantId);
+    const branding = (t && t.branding) ? t.branding : {};
+    res.json({
+      tenantId: req.tenantId,
+      tenantNome: (t && t.nome) || 'Axcend',
+      branding: Object.assign({}, BRANDING_DEFAULT, branding)
+    });
+  } catch (e) {
+    console.error('[BRANDING get]', e.message);
+    res.status(500).json({ error: 'Erro ao buscar branding' });
+  }
+});
+
+app.put('/api/tenant/branding', (req, res) => {
+  try {
+    // Só Diretoria do tenant pode editar o branding dele
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) return res.status(401).json({ error: 'Não autenticado' });
+    const db = readDB();
+    const sess = validarSessao(db, token);
+    if (!sess) return res.status(401).json({ error: 'Sessão expirada' });
+    const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+    if (!user || user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Só Diretoria pode editar branding' });
+    if (getItemTenant(user) !== req.tenantId) return res.status(403).json({ error: 'Usuário não pertence a esse tenant' });
+
+    const body = req.body || {};
+    // Sanitiza: só campos esperados, valores curtos
+    const novo = {
+      primary: String(body.primary || BRANDING_DEFAULT.primary).slice(0, 20),
+      secondary: String(body.secondary || BRANDING_DEFAULT.secondary).slice(0, 20),
+      bgDark: String(body.bgDark || BRANDING_DEFAULT.bgDark).slice(0, 20),
+      logoUrl: String(body.logoUrl || '').slice(0, 500),
+      faviconUrl: String(body.faviconUrl || '').slice(0, 500)
+    };
+    // Atualiza no tenant
+    let tenants = db.store['sl_saas_tenants'] || [];
+    const idx = tenants.findIndex(t => t && t.id === req.tenantId);
+    if (idx < 0) {
+      // Tenant não existe na tabela (pode ser tenant interno que ainda não foi criado)
+      // Cria entrada mínima
+      tenants.push({ id: req.tenantId, nome: 'Axcend', branding: novo, _updatedAt: Date.now() });
+    } else {
+      tenants[idx].branding = novo;
+      tenants[idx]._updatedAt = Date.now();
+    }
+    db.store['sl_saas_tenants'] = tenants;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_saas_tenants'] = now();
+    writeDB(db);
+    _broadcastSync('sl_saas_tenants', req.headers['x-client-id']);
+    res.json({ ok: true, branding: novo });
+  } catch (e) {
+    console.error('[BRANDING put]', e.message);
+    res.status(500).json({ error: 'Erro ao salvar branding' });
+  }
+});
+
 app.get('/api/store', (req, res) => {
   const db = readDB();
   // Multi-tenancy: filtra o store pelo tenant da request.
@@ -986,6 +1063,45 @@ app.put('/api/store/:key', (req, res) => {
   const key = req.params.key;
   let incoming = req.body;
   const existing = db.store[key];
+
+  // ── MULTI-TENANCY PR 5: protege escritas ──
+  // 1. Chaves da plataforma: só super-admin (Diretoria do tenant interno) escreve.
+  // 2. Items novos: força tenant_id = req.tenantId (cliente nao escolhe).
+  // 3. Items existentes: força tenant_id do existente (impede roubo cross-tenant).
+  // Super-admin pode mexer em qualquer item — pro master conseguir corrigir dados.
+  const isSuper = _isSuperAdmin(req);
+  if (KEYS_PLATAFORMA.has(key) && !isSuper) {
+    return res.status(403).json({ error: 'Apenas o tenant interno pode editar essa chave.' });
+  }
+  if (!KEYS_PLATAFORMA.has(key)) {
+    if (Array.isArray(incoming)) {
+      // Mapeia tenant_id dos items existentes
+      const existingTenantMap = new Map();
+      if (Array.isArray(existing)) {
+        existing.forEach(it => { if (it && it.id !== undefined) existingTenantMap.set(String(it.id), getItemTenant(it)); });
+      }
+      incoming = incoming.map(item => {
+        if (!item || typeof item !== 'object') return item;
+        const idStr = item.id !== undefined ? String(item.id) : null;
+        const tenantExistente = idStr ? existingTenantMap.get(idStr) : null;
+        const copy = Object.assign({}, item);
+        if (tenantExistente) {
+          // Item já existe: preserva tenant_id original (super pode trocar)
+          copy.tenant_id = isSuper && item.tenant_id ? item.tenant_id : tenantExistente;
+        } else {
+          // Item novo: força tenant_id da request (super pode escolher outro)
+          copy.tenant_id = isSuper && item.tenant_id ? item.tenant_id : req.tenantId;
+        }
+        return copy;
+      });
+    } else if (incoming && typeof incoming === 'object') {
+      // Singleton object: força tenant_id
+      const tenantExistente = (existing && typeof existing === 'object') ? getItemTenant(existing) : null;
+      incoming = Object.assign({}, incoming, {
+        tenant_id: tenantExistente || (isSuper && incoming.tenant_id) || req.tenantId
+      });
+    }
+  }
 
   // Tratamento especial para sl_usuarios: preserva senhaHash existente + hash qualquer senha nova
   if (key === 'sl_usuarios' && Array.isArray(incoming)) {
