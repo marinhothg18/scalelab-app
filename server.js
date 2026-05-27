@@ -1107,6 +1107,212 @@ app.post('/api/spy/import', authAPI, (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── SAAS · PLANOS E LIMITES (Bloqueador 3/7) ──
+// Define os 3 planos comerciais com limites e features.
+// ══════════════════════════════════════════════
+
+const SAAS_PLANOS = {
+  trial: {
+    id: 'trial',
+    nome: 'Trial Grátis',
+    precoBRL: 0,
+    duracao: '14 dias',
+    limites: {
+      maxUsuarios: 5,
+      maxDemandas: 100,
+      maxClientes: 1,
+      maxNichos: 3,
+      maxArquivosMB: 200,
+      historicoMeses: 1
+    },
+    features: {
+      demandas: true,
+      criativos: true,
+      rh: true,
+      financeiro: true,
+      spy: true,
+      spyWolfMaster: false,
+      iaWhatsapp: false,
+      ofx: false,
+      apiTokens: false,
+      brandingCustom: false,
+      dominioProprio: false,
+      multiUsuario: true,
+      relatoriosCustom: false
+    }
+  },
+  basic: {
+    id: 'basic',
+    nome: 'Basic',
+    precoBRL: 97,
+    duracao: 'mensal',
+    limites: {
+      maxUsuarios: 5,
+      maxDemandas: 500,
+      maxClientes: 3,
+      maxNichos: 5,
+      maxArquivosMB: 1000,
+      historicoMeses: 3
+    },
+    features: {
+      demandas: true,
+      criativos: true,
+      rh: true,
+      financeiro: true,
+      spy: true,
+      spyWolfMaster: true,
+      iaWhatsapp: false,
+      ofx: false,
+      apiTokens: false,
+      brandingCustom: false,
+      dominioProprio: false,
+      multiUsuario: true,
+      relatoriosCustom: false
+    }
+  },
+  pro: {
+    id: 'pro',
+    nome: 'Pro',
+    precoBRL: 297,
+    duracao: 'mensal',
+    limites: {
+      maxUsuarios: 20,
+      maxDemandas: 5000,
+      maxClientes: 10,
+      maxNichos: 20,
+      maxArquivosMB: 10000,
+      historicoMeses: 12
+    },
+    features: {
+      demandas: true,
+      criativos: true,
+      rh: true,
+      financeiro: true,
+      spy: true,
+      spyWolfMaster: true,
+      iaWhatsapp: true,
+      ofx: true,
+      apiTokens: true,
+      brandingCustom: true,
+      dominioProprio: false,
+      multiUsuario: true,
+      relatoriosCustom: true
+    }
+  },
+  enterprise: {
+    id: 'enterprise',
+    nome: 'Enterprise',
+    precoBRL: 997,
+    duracao: 'mensal',
+    limites: {
+      maxUsuarios: -1, // ilimitado
+      maxDemandas: -1,
+      maxClientes: -1,
+      maxNichos: -1,
+      maxArquivosMB: -1,
+      historicoMeses: -1
+    },
+    features: {
+      demandas: true,
+      criativos: true,
+      rh: true,
+      financeiro: true,
+      spy: true,
+      spyWolfMaster: true,
+      iaWhatsapp: true,
+      ofx: true,
+      apiTokens: true,
+      brandingCustom: true,
+      dominioProprio: true,
+      multiUsuario: true,
+      relatoriosCustom: true,
+      suportePrioritario: true,
+      nichosCustom: true
+    }
+  }
+};
+
+// Retorna o plano efetivo de um tenant (com fallback pra trial)
+function _getPlanoTenant(tenantId, db) {
+  if (!db) db = readDB();
+  if (tenantId === TENANT_INTERNO_ID) return SAAS_PLANOS.enterprise; // axcend-interno tem tudo
+  const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+  if (!tenant || !tenant.plano) return SAAS_PLANOS.trial;
+  return SAAS_PLANOS[tenant.plano] || SAAS_PLANOS.trial;
+}
+
+// Verifica se o tenant pode usar uma feature
+function _podeUsarFeature(tenantId, feature, db) {
+  const plano = _getPlanoTenant(tenantId, db);
+  return plano.features[feature] === true;
+}
+
+// Verifica se o tenant ainda tem espaço pra criar mais um item de tipo X
+// returns: { ok: bool, usado: N, limite: N, plano: 'basic' }
+function _checarLimite(tenantId, tipo, db) {
+  if (!db) db = readDB();
+  const plano = _getPlanoTenant(tenantId, db);
+  const limiteKey = 'max' + tipo.charAt(0).toUpperCase() + tipo.slice(1);
+  const limite = plano.limites[limiteKey];
+  if (limite === -1) return { ok: true, usado: -1, limite: -1, plano: plano.id, ilimitado: true };
+
+  // Conta uso atual
+  let usado = 0;
+  const tenantTag = u => getItemTenant(u) === tenantId;
+  if (tipo === 'usuarios') usado = (db.store['sl_usuarios'] || []).filter(tenantTag).filter(u => u.ativo !== false).length;
+  else if (tipo === 'demandas') usado = (db.store.tasks || []).filter(tenantTag).filter(t => !t.arquivado).length;
+  else if (tipo === 'clientes') usado = (db.store['roi_nichos'] || []).filter(tenantTag).length;
+  else if (tipo === 'nichos') usado = (db.store['sl_nichos'] || []).filter(tenantTag).length;
+
+  return {
+    ok: usado < limite,
+    usado,
+    limite,
+    plano: plano.id,
+    ilimitado: false,
+    pct: Math.round(usado / limite * 100)
+  };
+}
+
+// GET /api/saas/planos — lista planos disponíveis
+app.get('/api/saas/planos', (req, res) => {
+  res.json({ ok: true, planos: Object.values(SAAS_PLANOS) });
+});
+
+// GET /api/saas/meu-plano — retorna plano atual + uso vs limite
+app.get('/api/saas/meu-plano', (req, res) => {
+  try {
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const db = readDB();
+    const plano = _getPlanoTenant(tenantId, db);
+    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+
+    // Uso atual em cada limite
+    const uso = {
+      usuarios: _checarLimite(tenantId, 'usuarios', db),
+      demandas: _checarLimite(tenantId, 'demandas', db),
+      clientes: _checarLimite(tenantId, 'clientes', db),
+      nichos: _checarLimite(tenantId, 'nichos', db)
+    };
+
+    res.json({
+      ok: true,
+      tenantId,
+      tenantNome: tenant ? tenant.nome : 'Interno',
+      plano,
+      uso,
+      tenant: tenant ? {
+        plano: tenant.plano,
+        status: tenant.status,
+        trial: tenant.trial || null
+      } : null
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ── SAAS · SIGNUP PÚBLICO (Bloqueador 1/7) ──
 // Permite que qualquer pessoa se cadastre como cliente novo:
 // cria tenant + usuário admin + trial de 14d.

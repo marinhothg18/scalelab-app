@@ -2399,6 +2399,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button id="cfg-tab-relatorio"></button>
         <button id="cfg-tab-whatsapp"></button>
         <button id="cfg-tab-branding"></button>
+        <button id="cfg-tab-meuplano"></button>
         <button id="cfg-tab-dados"></button>
       </div>
 
@@ -2803,6 +2804,17 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div style="font-size:12px;color:var(--text2);">Personalize as cores, logo e identidade visual do painel da sua empresa. Aplicado em todos os usuários do seu time.</div>
         </div>
         <div id="branding-container">
+          <div style="text-align:center;padding:40px;color:var(--text2);">Carregando...</div>
+        </div>
+      </div>
+
+      <!-- TAB: MEU PLANO (SaaS) -->
+      <div id="cfg-panel-meuplano" style="display:none;max-width:1100px;">
+        <div style="background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,89,38,.10));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">💎 Meu Plano</div>
+          <div style="font-size:12px;color:var(--text2);">Plano atual, uso dos recursos vs limite, upgrade de plano e gerenciamento de assinatura.</div>
+        </div>
+        <div id="meuplano-container">
           <div style="text-align:center;padding:40px;color:var(--text2);">Carregando...</div>
         </div>
       </div>
@@ -17071,6 +17083,133 @@ function salvarBranding(){
   .catch(function(e){ alert('Erro ao salvar branding: '+(e.message||'')); });
 }
 
+// ══════════════════════════════════════════════
+// ── MEU PLANO (Bloqueador 3/7) ──
+// ══════════════════════════════════════════════
+async function renderMeuPlanoTab(){
+  var el = document.getElementById('meuplano-container');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">⏳ Carregando informações do plano...</div>';
+  try {
+    var r = await fetch(API_BASE+'/api/saas/meu-plano', {
+      headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
+    });
+    var data = await r.json();
+    if(!data.ok){ el.innerHTML = '<div style="text-align:center;padding:40px;color:#DC2626;">❌ Erro: '+(data.error||'')+'</div>'; return; }
+
+    var p = data.plano;
+    var uso = data.uso || {};
+    var t = data.tenant;
+
+    // Calcula dias de trial restantes
+    var trialInfo = '';
+    if(t && t.plano === 'trial' && t.trial && t.trial.expira){
+      var dias = Math.ceil((new Date(t.trial.expira) - new Date()) / (1000*60*60*24));
+      var cor = dias < 0 ? '#DC2626' : dias < 3 ? '#FBBF24' : '#16A34A';
+      var txt = dias < 0 ? 'EXPIROU há '+Math.abs(dias)+' dias' : dias+' dias restantes';
+      trialInfo = '<div style="background:rgba('+(dias<0?'220,38,38':dias<3?'251,191,36':'22,163,74')+',.1);border:1px solid '+cor+';color:'+cor+';padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;text-align:center;">⏰ Trial: '+txt+(dias<3 && dias>=0?' — Faça upgrade pra não perder acesso!':'')+'</div>';
+    }
+
+    // Barras de uso
+    var barraUso = function(label, info, icone){
+      if(!info) return '';
+      if(info.ilimitado) return '<div style="background:var(--bg);padding:14px;border-radius:10px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div><b>'+icone+' '+label+'</b><div style="font-size:11px;color:var(--text2);">'+(info.usado===-1?'—':info.usado)+' usados</div></div><span style="background:rgba(91,94,244,.15);color:var(--accent);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">∞ ILIMITADO</span></div></div>';
+      var pct = info.pct || 0;
+      var cor = pct >= 90 ? '#DC2626' : pct >= 70 ? '#FBBF24' : '#16A34A';
+      return '<div style="background:var(--bg);padding:14px;border-radius:10px;margin-bottom:10px;">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><b>'+icone+' '+label+'</b><span style="color:'+cor+';font-weight:700;">'+info.usado+' / '+info.limite+' ('+pct+'%)</span></div>'+
+        '<div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+cor+';transition:width .3s;"></div></div>'+
+        (pct >= 80 ? '<div style="font-size:11px;color:'+cor+';margin-top:6px;">⚠️ Você está chegando no limite. Considere upgrade.</div>' : '')+
+      '</div>';
+    };
+
+    // Card do plano atual
+    var precoLabel = p.precoBRL === 0 ? 'Grátis' : 'R$ '+p.precoBRL+'/mês';
+    var corPlano = p.id === 'trial' ? '#FBBF24' : p.id === 'basic' ? '#1B9CFA' : p.id === 'pro' ? '#5b5ef4' : '#FF5926';
+
+    // Features
+    var featLabels = {
+      demandas:'📋 Demandas', criativos:'🎨 Criativos', rh:'👥 RH', financeiro:'💰 Financeiro',
+      spy:'🕵️ Spy', spyWolfMaster:'🌐 Spy Wolf Master', iaWhatsapp:'🤖 IA WhatsApp',
+      ofx:'📥 OFX Bancário', apiTokens:'🔑 API Tokens', brandingCustom:'🎨 Branding Custom',
+      dominioProprio:'🌐 Domínio Próprio', relatoriosCustom:'📊 Relatórios Custom',
+      suportePrioritario:'🎯 Suporte Prioritário', nichosCustom:'🌟 Nichos Custom'
+    };
+    var featuresHtml = '';
+    Object.keys(featLabels).forEach(function(k){
+      if(featLabels[k]){
+        var ativo = p.features[k] === true;
+        featuresHtml += '<div style="font-size:12px;padding:5px 0;color:'+(ativo?'var(--text)':'var(--text3)')+';">'+(ativo?'✅':'❌')+' '+featLabels[k]+'</div>';
+      }
+    });
+
+    // Lista de outros planos pra upgrade
+    var planosOutros = ['basic','pro','enterprise'].filter(function(id){ return id !== p.id; });
+    var resp = await fetch(API_BASE+'/api/saas/planos');
+    var planosData = await resp.json();
+    var todosPlanos = planosData.planos || [];
+
+    var upgradeCards = planosOutros.map(function(id){
+      var po = todosPlanos.find(function(x){ return x.id === id; });
+      if(!po) return '';
+      var maisCaro = po.precoBRL > p.precoBRL;
+      var corOutro = po.id === 'basic' ? '#1B9CFA' : po.id === 'pro' ? '#5b5ef4' : '#FF5926';
+      return '<div style="background:var(--bg);border:2px solid '+corOutro+';border-radius:12px;padding:16px;">'+
+        '<div style="font-size:13px;font-weight:700;color:'+corOutro+';margin-bottom:4px;">'+po.nome+'</div>'+
+        '<div style="font-size:22px;font-weight:700;margin-bottom:6px;">R$ '+po.precoBRL+'<span style="font-size:12px;color:var(--text2);">/'+po.duracao+'</span></div>'+
+        '<ul style="font-size:11px;color:var(--text2);padding-left:18px;line-height:1.7;margin-bottom:12px;">'+
+          '<li>Até '+(po.limites.maxUsuarios===-1?'∞':po.limites.maxUsuarios)+' usuários</li>'+
+          '<li>Até '+(po.limites.maxDemandas===-1?'∞':po.limites.maxDemandas.toLocaleString('pt-BR'))+' demandas</li>'+
+          '<li>'+(po.limites.historicoMeses===-1?'Histórico ilimitado':'Histórico '+po.limites.historicoMeses+'m')+'</li>'+
+          (po.features.iaWhatsapp?'<li>✅ IA WhatsApp</li>':'')+
+          (po.features.spyWolfMaster?'<li>✅ Spy Wolf Master</li>':'')+
+          (po.features.apiTokens?'<li>✅ API Tokens</li>':'')+
+          (po.features.brandingCustom?'<li>✅ White-label</li>':'')+
+        '</ul>'+
+        '<button onclick="alert(\'⚠️ Billing Pagar.me em implementação. Em breve!\')" style="width:100%;padding:10px;background:'+corOutro+';color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;">'+(maisCaro?'⬆️ Fazer Upgrade':'Mudar pra '+po.nome)+'</button>'+
+      '</div>';
+    }).join('');
+
+    el.innerHTML =
+      trialInfo +
+      '<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:flex-start;">'+
+        '<div>'+
+          // Card plano atual
+          '<div style="background:linear-gradient(135deg,rgba('+(p.id==='trial'?'251,191,36':p.id==='basic'?'27,156,250':p.id==='pro'?'91,94,244':'255,89,38')+',.15),transparent);border:2px solid '+corPlano+';border-radius:14px;padding:22px;margin-bottom:18px;">'+
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">'+
+              '<div><div style="font-size:11px;color:'+corPlano+';font-weight:700;text-transform:uppercase;letter-spacing:1px;">Plano atual</div>'+
+              '<div style="font-size:28px;font-weight:800;color:'+corPlano+';margin-top:2px;">'+p.nome+'</div></div>'+
+              '<div style="text-align:right;"><div style="font-size:22px;font-weight:700;">'+precoLabel+'</div><div style="font-size:11px;color:var(--text2);">'+p.duracao+'</div></div>'+
+            '</div>'+
+          '</div>'+
+
+          // Uso atual
+          '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;">'+
+            '<div style="font-size:14px;font-weight:700;margin-bottom:14px;">📊 Uso atual do plano</div>'+
+            barraUso('Usuários ativos', uso.usuarios, '👤')+
+            barraUso('Demandas ativas', uso.demandas, '📋')+
+            barraUso('Clientes/Ofertas', uso.clientes, '🎯')+
+            barraUso('Nichos', uso.nichos, '🏷️')+
+          '</div>'+
+        '</div>'+
+
+        '<div>'+
+          // Features do plano atual
+          '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px;">'+
+            '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">✨ Features do '+p.nome+'</div>'+
+            featuresHtml+
+          '</div>'+
+
+          // Upgrade
+          (planosOutros.length ? '<div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">⬆️ Outros planos</div>'+
+          '<div style="display:flex;flex-direction:column;gap:10px;">'+upgradeCards+'</div>' : '')+
+        '</div>'+
+      '</div>';
+  } catch(err){
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:#DC2626;">❌ Erro: '+err.message+'</div>';
+  }
+}
+
 function resetBrandingDefaults(){
   document.getElementById('br-primary').value = '#5b5ef4';
   document.getElementById('br-secondary').value = '#3E1493';
@@ -17248,10 +17387,13 @@ const _CFG_GRUPOS = {
   branding:    { tabs: ['branding'],
                  headers: { branding: ['🎨','Branding & White-label','Cores, logo e identidade visual do painel'] },
                  grad: 'linear-gradient(135deg,#5b5ef4,#3E1493)' },
+  meuplano:    { tabs: ['meuplano'],
+                 headers: { meuplano: ['💎','Meu Plano','Plano atual, uso vs limite, upgrade'] },
+                 grad: 'linear-gradient(135deg,#FBBF24,#FF5926)' },
   dados:       { tabs: ['dados'], headers: {}, grad: 'linear-gradient(135deg,#10B981,#1B9CFA)' },
   avancado:    { tabs: [], headers: {}, grad: 'linear-gradient(135deg,#7C3AED,#3E1493)' },
 };
-const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','branding','dados'];
+const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','branding','meuplano','dados'];
 
 function _injectCfgSectionHeader(panelId, headerCfg, grad){
   if (!headerCfg) return;
@@ -17305,6 +17447,7 @@ function switchCfgGrupo(grupo, btn){
     else if (t === 'relatorio') { try{ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }catch(e){} }
     else if (t === 'whatsapp') { try{ renderWhatsAppConfig(); }catch(e){} }
     else if (t === 'branding') { try{ renderBrandingTab(); }catch(e){} }
+    else if (t === 'meuplano') { try{ renderMeuPlanoTab(); }catch(e){} }
     else if (t === 'apis') {
       const k = (typeof getRtApiKey === 'function') ? getRtApiKey() : '';
       const inp = document.getElementById('ads-api-key-input');
@@ -17395,6 +17538,7 @@ function switchCfgTab(tab, btn){
   if(tab==='relatorio'){ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }
   if(tab==='whatsapp') renderWhatsAppConfig();
   if(tab==='branding') renderBrandingTab();
+  if(tab==='meuplano') renderMeuPlanoTab();
   if(tab==='apis'){
     const k = getRtApiKey();
     const inp = document.getElementById('ads-api-key-input');
