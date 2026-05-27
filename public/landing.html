@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Axcend · Sistema de gestão pra Direct Response</title>
+  <meta name="description" content="A plataforma completa pra agências e operações de marketing de direct response: demandas, RH, financeiro, spy de concorrência, agente IA via WhatsApp.">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    html{scroll-behavior:smooth;}
+    body{background:#0a0a0a;color:#fff;overflow-x:hidden;}
+    .container{max-width:1180px;margin:0 auto;padding:0 20px;}
+
+    /* NAV */
+    .nav{position:sticky;top:0;background:rgba(10,10,10,.85);backdrop-filter:blur(20px);border-bottom:1px solid #1a1a1a;z-index:100;padding:14px 0;}
+    .nav-inner{display:flex;justify-content:space-between;align-items:center;}
+    .logo{font-size:22px;font-weight:800;background:linear-gradient(135deg,#5b5ef4,#3E1493);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .nav-links{display:flex;gap:24px;align-items:center;font-size:14px;}
+    .nav-links a{color:#9CA3AF;text-decoration:none;transition:color .15s;}
+    .nav-links a:hover{color:#fff;}
+    .btn{background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;border:none;cursor:pointer;display:inline-block;transition:transform .15s;}
+    .btn:hover{transform:translateY(-2px);}
+    .btn-ghost{background:transparent;border:1px solid #2a2a2a;color:#fff;}
+    @media(max-width:680px){.nav-links a:not(.btn){display:none;}}
+
+    /* HERO */
+    .hero{padding:80px 0 60px;text-align:center;background:radial-gradient(ellipse at top,rgba(91,94,244,.15),transparent 70%);}
+    .hero h1{font-size:56px;font-weight:900;line-height:1.1;margin-bottom:20px;}
+    .hero h1 .grad{background:linear-gradient(135deg,#5b5ef4,#3E1493,#C52C58);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .hero p{font-size:19px;color:#9CA3AF;max-width:680px;margin:0 auto 30px;line-height:1.6;}
+    .hero-ctas{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;}
+    .btn-lg{padding:14px 32px;font-size:16px;}
+    .hero-badges{margin-top:30px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap;font-size:12px;color:#6B7280;}
+    .hero-badges span{display:flex;align-items:center;gap:6px;}
+    @media(max-width:680px){.hero h1{font-size:36px;} .hero p{font-size:16px;}}
+
+    /* FEATURES */
+    .section{padding:80px 0;}
+    .section-head{text-align:center;margin-bottom:50px;}
+    .section-head .tag{display:inline-block;background:rgba(91,94,244,.15);color:#a5a8ff;padding:5px 14px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;}
+    .section-head h2{font-size:38px;font-weight:800;line-height:1.2;margin-bottom:14px;}
+    .section-head p{font-size:16px;color:#9CA3AF;max-width:580px;margin:0 auto;line-height:1.6;}
+    .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
+    .feature-card{background:linear-gradient(135deg,rgba(91,94,244,.06),rgba(255,255,255,.02));border:1px solid #1a1a1a;border-radius:14px;padding:24px;transition:transform .2s,border-color .2s;}
+    .feature-card:hover{transform:translateY(-4px);border-color:#5b5ef4;}
+    .feature-card .icon{font-size:36px;margin-bottom:14px;display:block;}
+    .feature-card h3{font-size:17px;font-weight:700;margin-bottom:10px;}
+    .feature-card p{color:#9CA3AF;font-size:13px;line-height:1.6;}
+    .feature-card ul{margin-top:10px;padding-left:18px;font-size:12px;color:#9CA3AF;line-height:1.8;}
+
+    /* PRICING */
+    .pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
+    .price-card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px;padding:28px;position:relative;transition:transform .15s;}
+    .price-card:hover{transform:translateY(-4px);}
+    .price-card.featured{border:2px solid #5b5ef4;background:linear-gradient(135deg,rgba(91,94,244,.08),transparent);}
+    .price-card.featured::before{content:'MAIS POPULAR';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;padding:5px 14px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;}
+    .price-name{font-size:14px;color:#9CA3AF;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:10px;}
+    .price-value{font-size:46px;font-weight:800;margin-bottom:4px;}
+    .price-period{font-size:13px;color:#9CA3AF;margin-bottom:24px;}
+    .price-features{list-style:none;padding:0;margin-bottom:26px;}
+    .price-features li{padding:8px 0;font-size:13px;color:#d1d5db;display:flex;align-items:flex-start;gap:8px;}
+    .price-features li::before{content:'✓';color:#16A34A;font-weight:700;flex-shrink:0;}
+    .price-features li.no::before{content:'✗';color:#6B7280;}
+    .price-features li.no{color:#6B7280;}
+    .price-card .btn{width:100%;text-align:center;}
+
+    /* TESTIMONIALS */
+    .testimonials{background:#0f0f0f;}
+    .testimonial-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
+    .testimonial{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;}
+    .testimonial-text{font-size:14px;color:#d1d5db;line-height:1.7;margin-bottom:16px;font-style:italic;}
+    .testimonial-author{display:flex;align-items:center;gap:12px;}
+    .testimonial-avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#5b5ef4,#3E1493);display:flex;align-items:center;justify-content:center;font-weight:700;}
+    .testimonial-author .name{font-weight:600;font-size:13px;}
+    .testimonial-author .role{font-size:11px;color:#9CA3AF;margin-top:2px;}
+
+    /* CTA FINAL */
+    .cta-final{background:linear-gradient(135deg,rgba(91,94,244,.15),rgba(62,20,147,.10));border:1px solid #2a2a2a;border-radius:24px;padding:56px 30px;text-align:center;margin:40px 0;}
+    .cta-final h2{font-size:36px;margin-bottom:14px;}
+    .cta-final p{font-size:16px;color:#9CA3AF;margin-bottom:24px;}
+
+    /* FOOTER */
+    .footer{padding:36px 0;border-top:1px solid #1a1a1a;text-align:center;color:#6B7280;font-size:13px;}
+    .footer a{color:#9CA3AF;margin:0 10px;text-decoration:none;}
+    .footer a:hover{color:#fff;}
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="container nav-inner">
+      <div class="logo">Axcend</div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#pricing">Planos</a>
+        <a href="/termos">Termos</a>
+        <a href="/">Login</a>
+        <a href="/signup" class="btn">Começar grátis</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Gestão completa pra<br><span class="grad">Direct Response</span></h1>
+      <p>A plataforma que une demandas, RH, financeiro, spy de concorrência e agente IA via WhatsApp — tudo no mesmo lugar. Feito por quem entende de DR.</p>
+      <div class="hero-ctas">
+        <a href="/signup" class="btn btn-lg">🚀 Teste grátis por 14 dias</a>
+        <a href="#features" class="btn btn-ghost btn-lg">Ver features</a>
+      </div>
+      <div class="hero-badges">
+        <span>✅ Sem cartão de crédito</span>
+        <span>✅ Cancela quando quiser</span>
+        <span>✅ Setup em 2 minutos</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-head">
+        <div class="tag">⚡ Features</div>
+        <h2>Tudo que sua operação precisa</h2>
+        <p>Pare de pular entre 12 ferramentas diferentes. O Axcend tem tudo integrado, conversando entre si.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="icon">📋</span>
+          <h3>Demandas + Rituais</h3>
+          <p>Kanban, atribuição, prazos, alertas automáticos. Rituais semanais com checklist e relatório executivo.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">👥</span>
+          <h3>RH completo</h3>
+          <p>Colaboradores, Folha PJ, Treinamentos, eNPS, Orgograma visual com PSF, Offboarding com entrevista de saída.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">💰</span>
+          <h3>Financeiro</h3>
+          <p>DRE, NFs com OCR, conciliação OFX, cálculo de Simples Nacional, IA financeira com alertas inteligentes.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">🕵️</span>
+          <h3>Spy Wolf integrado</h3>
+          <p>Banco de tracking domains atualizado diariamente em 8+ nichos. Detecta operações novas, monitora variação 24h.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">💬</span>
+          <h3>Agente IA WhatsApp</h3>
+          <p>Crie demandas, delegue, peça relatórios, aprove candidatos — tudo direto no zap. Powered by Claude.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">🏢</span>
+          <h3>Recrutamento</h3>
+          <p>Vagas públicas, kanban de candidatos, IA score, teste prático embutido, métricas do funil.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">📊</span>
+          <h3>ROI + Métricas</h3>
+          <p>Integração RedTrack, métricas por oferta, ROAS, lucro, painel executivo com KPIs em tempo real.</p>
+        </div>
+        <div class="feature-card">
+          <span class="icon">🎨</span>
+          <h3>White-label</h3>
+          <p>Cores, logo, favicon e identidade visual da sua empresa em todo o painel. Plano Pro+.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="pricing">
+    <div class="container">
+      <div class="section-head">
+        <div class="tag">💎 Planos</div>
+        <h2>Escolha o plano ideal</h2>
+        <p>Começa grátis. Faz upgrade quando precisar. Cancela quando quiser. Sem fidelidade.</p>
+      </div>
+      <div class="pricing-grid">
+        <div class="price-card">
+          <div class="price-name">🌱 Trial</div>
+          <div class="price-value">Grátis</div>
+          <div class="price-period">14 dias · sem cartão</div>
+          <ul class="price-features">
+            <li>Até 5 usuários</li>
+            <li>Até 100 demandas</li>
+            <li>Tudo do Basic</li>
+            <li class="no">IA WhatsApp</li>
+            <li class="no">Spy Wolf Master</li>
+          </ul>
+          <a href="/signup" class="btn btn-ghost">Começar agora</a>
+        </div>
+        <div class="price-card">
+          <div class="price-name">🚀 Basic</div>
+          <div class="price-value">R$ 97<span style="font-size:18px;color:#9CA3AF;">/mês</span></div>
+          <div class="price-period">Para times pequenos</div>
+          <ul class="price-features">
+            <li>Até 5 usuários</li>
+            <li>Até 500 demandas/mês</li>
+            <li>Spy Wolf Master incluído</li>
+            <li>RH + Financeiro completos</li>
+            <li class="no">IA WhatsApp</li>
+          </ul>
+          <a href="/signup" class="btn">Assinar Basic</a>
+        </div>
+        <div class="price-card featured">
+          <div class="price-name">⚡ Pro</div>
+          <div class="price-value">R$ 297<span style="font-size:18px;color:#9CA3AF;">/mês</span></div>
+          <div class="price-period">Para agências em crescimento</div>
+          <ul class="price-features">
+            <li>Até 20 usuários</li>
+            <li>Até 5.000 demandas/mês</li>
+            <li>IA WhatsApp (Claude)</li>
+            <li>Spy Wolf Master + OFX</li>
+            <li>White-label + API tokens</li>
+            <li>Relatórios customizáveis</li>
+          </ul>
+          <a href="/signup" class="btn">Assinar Pro</a>
+        </div>
+        <div class="price-card">
+          <div class="price-name">🏢 Enterprise</div>
+          <div class="price-value">R$ 997<span style="font-size:18px;color:#9CA3AF;">/mês</span></div>
+          <div class="price-period">Para grandes operações</div>
+          <ul class="price-features">
+            <li>Usuários ilimitados</li>
+            <li>Demandas ilimitadas</li>
+            <li>Domínio próprio</li>
+            <li>Suporte prioritário</li>
+            <li>Nichos custom no Spy</li>
+            <li>Onboarding assistido</li>
+          </ul>
+          <a href="mailto:vendas@axcend.com?subject=Plano%20Enterprise" class="btn btn-ghost">Falar com vendas</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section testimonials">
+    <div class="container">
+      <div class="section-head">
+        <div class="tag">💬 Depoimentos</div>
+        <h2>Quem usa, recomenda</h2>
+      </div>
+      <div class="testimonial-grid">
+        <div class="testimonial">
+          <div class="testimonial-text">"Centralizou tudo. Antes a gente perdia tempo com 8 ferramentas. Agora só tenho o Axcend aberto o dia inteiro."</div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">TM</div>
+            <div><div class="name">Thiago M.</div><div class="role">CEO · Axcend</div></div>
+          </div>
+        </div>
+        <div class="testimonial">
+          <div class="testimonial-text">"O Spy Wolf integrado me economiza 4-5h por semana. E o agente WhatsApp pra criar demanda enquanto dirijo é GENIAL."</div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">CM</div>
+            <div><div class="name">Carlos M.</div><div class="role">Head Tráfego · RD Performance</div></div>
+          </div>
+        </div>
+        <div class="testimonial">
+          <div class="testimonial-text">"Finalmente um sistema feito por quem entende de DR. Não é mais um Notion genérico — entende a operação."</div>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">JS</div>
+            <div><div class="name">Júlia S.</div><div class="role">Diretora · Lab Marketing</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="cta-final">
+        <h2>Pronto pra começar?</h2>
+        <p>14 dias grátis · sem cartão · setup em 2 minutos · cancela quando quiser</p>
+        <a href="/signup" class="btn btn-lg">🚀 Criar minha conta agora</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <p>© 2026 <strong>Axcend</strong> — Sistema de gestão pra Direct Response</p>
+      <p style="margin-top:10px;">
+        <a href="/termos">Termos de Uso</a> ·
+        <a href="/termos#privacidade">Política de Privacidade (LGPD)</a> ·
+        <a href="mailto:suporte@axcend.com">Suporte</a> ·
+        <a href="mailto:vendas@axcend.com">Vendas</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

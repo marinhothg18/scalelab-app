@@ -1683,6 +1683,21 @@ app.get('/signup', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'signup.html'));
 });
 
+// GET /termos — serve Termos de Uso + Política de Privacidade (LGPD)
+app.get('/termos', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'termos.html'));
+});
+
+// GET /landing — landing page pública pra vendas
+app.get('/landing', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+});
+// /pricing e /planos viram alias pra /landing#pricing
+app.get('/pricing', (req, res) => res.redirect('/landing#pricing'));
+app.get('/planos', (req, res) => res.redirect('/landing#pricing'));
+app.get('/privacidade', (req, res) => res.redirect('/termos#privacidade'));
+app.get('/lgpd', (req, res) => res.redirect('/termos#privacidade'));
+
 // GET /api/spy/master — bibliotecas mestre (qualquer usuário autenticado pode ler)
 // Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência Axcend"
 app.get('/api/spy/master', (req, res) => {
