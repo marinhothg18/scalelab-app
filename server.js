@@ -1108,6 +1108,248 @@ app.post('/api/spy/import', authAPI, (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── EMAIL TRANSACIONAL (Resend) ──
+// Configurar RESEND_API_KEY no Railway (https://resend.com)
+// Free tier: 100 emails/dia, 3000/mês
+// ══════════════════════════════════════════════
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || 'Axcend <noreply@centralaxcend.com>';
+
+async function _enviarEmail({ to, subject, html, text, replyTo }) {
+  try {
+    if (!RESEND_API_KEY) {
+      console.warn('[email] RESEND_API_KEY não configurada, log fake:', { to, subject });
+      return { ok: false, motivo: 'RESEND_API_KEY não configurada', mock: true };
+    }
+    const payload = {
+      from: RESEND_FROM,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html: html || `<p>${text || ''}</p>`,
+      text: text || (html ? html.replace(/<[^>]+>/g, '') : '')
+    };
+    if (replyTo) payload.reply_to = replyTo;
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + RESEND_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      console.error('[email] erro Resend:', data);
+      return { ok: false, erro: data.message || JSON.stringify(data) };
+    }
+    return { ok: true, id: data.id };
+  } catch (err) {
+    console.error('[email]', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// Templates de email (HTML embutido, mas pode ser extraído depois)
+function _emailTemplateBase(corpo) {
+  return `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(135deg,#5b5ef4,#3E1493);padding:24px;text-align:center;">
+      <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;">Axcend</h1>
+    </div>
+    <div style="padding:32px 28px;color:#333;line-height:1.6;font-size:15px;">
+      ${corpo}
+    </div>
+    <div style="background:#f9f9f9;padding:18px;text-align:center;font-size:12px;color:#999;border-top:1px solid #eee;">
+      Axcend · Sistema de gestão pra Direct Response<br>
+      <a href="https://app.centralaxcend.com" style="color:#5b5ef4;text-decoration:none;">app.centralaxcend.com</a>
+    </div>
+  </div>
+</body></html>`;
+}
+
+function _emailTemplateResetSenha(nome, linkReset) {
+  return _emailTemplateBase(`
+    <h2 style="margin:0 0 16px 0;font-size:22px;">🔐 Resetar sua senha</h2>
+    <p>Oi ${nome || 'tudo bem'}!</p>
+    <p>Recebemos um pedido pra resetar a senha da sua conta no Axcend.</p>
+    <p>Clica no botão abaixo pra criar uma nova senha (link válido por <b>1 hora</b>):</p>
+    <p style="text-align:center;margin:28px 0;">
+      <a href="${linkReset}" style="display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;">Criar nova senha</a>
+    </p>
+    <p style="font-size:13px;color:#666;">Ou cole esta URL no navegador:<br><code style="background:#f0f0f0;padding:6px 10px;border-radius:4px;font-size:11px;word-break:break-all;">${linkReset}</code></p>
+    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+    <p style="font-size:13px;color:#999;">Se você não pediu isso, é só ignorar — ninguém vai alterar nada sem clicar no link.</p>
+  `);
+}
+
+function _emailTemplateBoasVindas(nome, urlPainel) {
+  return _emailTemplateBase(`
+    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo ao Axcend, ${nome || 'tudo bem'}!</h2>
+    <p>Sua conta foi criada com sucesso. Você tem <b>14 dias grátis</b> pra testar tudo.</p>
+    <p>Acesse seu painel:</p>
+    <p style="text-align:center;margin:28px 0;">
+      <a href="${urlPainel}" style="display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;">Abrir meu painel</a>
+    </p>
+    <h3 style="font-size:16px;margin:24px 0 10px;">🚀 Primeiros passos:</h3>
+    <ul style="padding-left:20px;color:#555;">
+      <li>Adicione sua equipe em Configurações → Usuários</li>
+      <li>Personalize as cores em Configurações → Branding</li>
+      <li>Conecte WhatsApp em Configurações → WhatsApp (opcional)</li>
+      <li>Crie sua primeira demanda</li>
+    </ul>
+    <p style="font-size:13px;color:#999;margin-top:24px;">Dúvidas? Responde esse email ou fala com <a href="mailto:suporte@centralaxcend.com" style="color:#5b5ef4;">suporte@centralaxcend.com</a></p>
+  `);
+}
+
+function _emailTemplatePagamentoConfirmado(nome, plano, valor) {
+  return _emailTemplateBase(`
+    <h2 style="margin:0 0 16px 0;font-size:22px;">✅ Pagamento confirmado!</h2>
+    <p>Oi ${nome || ''}, recebemos seu pagamento. Plano <b>${plano}</b> ativado.</p>
+    <div style="background:#f9f9f9;padding:16px;border-radius:8px;margin:20px 0;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>Plano:</span><b>${plano}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>Valor:</span><b>R$ ${valor.toFixed(2).replace('.', ',')}</b></div>
+      <div style="display:flex;justify-content:space-between;"><span>Próxima cobrança:</span><b>${new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString('pt-BR')}</b></div>
+    </div>
+    <p>A nota fiscal será emitida em até 24h e enviada por email.</p>
+    <p style="font-size:13px;color:#999;">Pra cancelar ou trocar de plano, acesse Configurações → Meu Plano.</p>
+  `);
+}
+
+function _emailTemplatePagamentoFalhado(nome, plano, tentativa, max) {
+  return _emailTemplateBase(`
+    <h2 style="margin:0 0 16px 0;font-size:22px;color:#DC2626;">⚠️ Não conseguimos cobrar seu cartão</h2>
+    <p>Oi ${nome || ''}, a renovação do plano <b>${plano}</b> falhou.</p>
+    <p style="background:rgba(220,38,38,.1);color:#DC2626;padding:12px;border-radius:8px;font-weight:700;">Tentativa ${tentativa} de ${max}.</p>
+    <p>Verifique seu cartão e atualize os dados em Configurações → Meu Plano antes que a conta seja suspensa.</p>
+    <p style="text-align:center;margin:28px 0;">
+      <a href="https://app.centralaxcend.com/" style="display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;">Atualizar pagamento</a>
+    </p>
+  `);
+}
+
+// POST /api/email/test — envia email de teste (Diretoria)
+app.post('/api/email/test', authDiretoria, async (req, res) => {
+  try {
+    const { to } = req.body || {};
+    if (!to || !to.includes('@')) return res.status(400).json({ error: 'email destinatário inválido' });
+    const r = await _enviarEmail({
+      to,
+      subject: '🧪 Teste do Axcend',
+      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado do Axcend. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
+    });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
+// ── RESET DE SENHA + 2FA ──
+// Fluxo: usuário esquece → digita email → recebe link único → cria nova senha
+// ══════════════════════════════════════════════
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+
+// POST /api/auth/forgot — usuário pede reset
+app.post('/api/auth/forgot', loginLimiter, async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Email inválido' });
+    const db = readDB();
+    const usuarios = db.store['sl_usuarios'] || [];
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    // Filtra por tenant do host atual + email
+    const user = usuarios.find(u =>
+      u && u.email && u.email.toLowerCase() === email.toLowerCase() &&
+      u.ativo !== false &&
+      getItemTenant(u) === tenantId
+    );
+    // Sempre responde sucesso (não vaza info de email existente)
+    if (!user) {
+      audit(db, 'reset_senha_solicitado_invalido', { email, tenantId }, { ip: req.ip }, null);
+      writeDB(db);
+      return res.json({ ok: true, mensagem: 'Se o email existir, você vai receber um link de reset em alguns segundos.' });
+    }
+
+    // Gera token de reset
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    user.resetSenha = {
+      hash: tokenHash,
+      criadoEm: new Date().toISOString(),
+      expira: new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString()
+    };
+    user._updatedAt = Date.now();
+    db.timestamps['sl_usuarios'] = now();
+    audit(db, 'reset_senha_solicitado', { userId: user.id, email }, { ip: req.ip }, { id: user.id, nome: user.nome, cargo: user.cargo });
+    writeDB(db);
+
+    // Monta URL baseada no host
+    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+    const baseUrl = tenant && tenant.slug && tenantId !== TENANT_INTERNO_ID
+      ? `https://${tenant.slug}.${SAAS_ROOT_DOMAIN}`
+      : 'https://app.centralaxcend.com';
+    const linkReset = `${baseUrl}/reset-senha?token=${token}`;
+
+    // Envia email
+    const emailResult = await _enviarEmail({
+      to: user.email,
+      subject: '🔐 Resetar senha · Axcend',
+      html: _emailTemplateResetSenha(user.nome, linkReset)
+    });
+
+    res.json({
+      ok: true,
+      mensagem: 'Se o email existir, você vai receber um link de reset em alguns segundos.',
+      emailEnviado: emailResult.ok,
+      // Em modo dev (sem RESEND_API_KEY), retorna o link pra debug:
+      _dev: !RESEND_API_KEY ? { linkReset, motivo: 'RESEND_API_KEY não configurada' } : undefined
+    });
+  } catch (err) {
+    console.error('[auth/forgot]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/reset — confirma novo password
+app.post('/api/auth/reset', loginLimiter, (req, res) => {
+  try {
+    const { token, novaSenha } = req.body || {};
+    if (!token || !novaSenha) return res.status(400).json({ error: 'Token e nova senha obrigatórios' });
+    if (novaSenha.length < 6) return res.status(400).json({ error: 'Senha precisa ter no mínimo 6 caracteres' });
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const db = readDB();
+    const usuarios = db.store['sl_usuarios'] || [];
+    const user = usuarios.find(u => u.resetSenha && u.resetSenha.hash === tokenHash);
+    if (!user) return res.status(401).json({ error: 'Link inválido ou já usado' });
+    if (new Date(user.resetSenha.expira) < new Date()) return res.status(401).json({ error: 'Link expirou. Solicite um novo reset.' });
+
+    // Atualiza senha
+    user.senhaHash = bcrypt.hashSync(String(novaSenha), BCRYPT_ROUNDS);
+    delete user.senha; // remove campo legado se existir
+    delete user.resetSenha;
+    user._updatedAt = Date.now();
+    db.timestamps['sl_usuarios'] = now();
+    audit(db, 'reset_senha_concluido', { userId: user.id, email: user.email }, { ip: req.ip }, { id: user.id, nome: user.nome, cargo: user.cargo });
+    writeDB(db);
+
+    res.json({ ok: true, mensagem: 'Senha alterada com sucesso! Faça login com a nova senha.' });
+  } catch (err) {
+    console.error('[auth/reset]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /reset-senha — serve a página de reset
+app.get('/reset-senha', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'reset-senha.html'));
+});
+
+// ══════════════════════════════════════════════
 // ── INTEGRAÇÃO UTMIFY (por tenant) ──
 // Cada cliente conecta SUA conta Utmify pelo painel.
 // Axcend dispara eventos de conversão automaticamente (lead, qualified, opportunity, conversion).
@@ -1598,6 +1840,13 @@ app.post('/api/billing/webhook', async (req, res) => {
         const db = readDB();
         const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
         if (tenant) {
+          // 📧 Hook email: confirma pagamento
+          _enviarEmail({
+            to: tenant.contato?.email,
+            subject: '✅ Pagamento confirmado · Axcend',
+            html: _emailTemplatePagamentoConfirmado(tenant.contato?.nomeAdmin || tenant.nome, SAAS_PLANOS[planoId]?.nome, SAAS_PLANOS[planoId]?.precoBRL || 0)
+          }).catch(()=>{});
+
           // 🚀 Hook Utmify: cliente PAGOU → evento 'conversion' (venda fechada!)
           // Envia pra Diretoria Axcend (você é o owner do funil) + pro próprio tenant (auto-conversão)
           const valorPago = SAAS_PLANOS[planoId]?.precoBRL || 0;
@@ -1640,6 +1889,12 @@ app.post('/api/billing/webhook', async (req, res) => {
         if (tenant) {
           tenant.assinatura = tenant.assinatura || {};
           tenant.assinatura.tentativasFalhadas = (tenant.assinatura.tentativasFalhadas || 0) + 1;
+          // 📧 Hook email: avisa cliente que cobrança falhou
+          _enviarEmail({
+            to: tenant.contato?.email,
+            subject: '⚠️ Pagamento falhou · Axcend',
+            html: _emailTemplatePagamentoFalhado(tenant.contato?.nomeAdmin || tenant.nome, SAAS_PLANOS[tenant.plano]?.nome || tenant.plano, tenant.assinatura.tentativasFalhadas, 3)
+          }).catch(()=>{});
           if (tenant.assinatura.tentativasFalhadas >= 3) {
             tenant.status = 'suspenso';
             audit(db, 'billing_tenant_suspenso', { tenantId, tentativas: 3 }, null, { id: 'sistema', nome: 'Sistema', cargo: 'sistema' });
@@ -1860,6 +2115,13 @@ app.post('/api/saas/signup', async (req, res) => {
         ).catch(()=>{});
       }
     } catch(e) { console.error('[signup notif WA]', e.message); }
+
+    // 📧 Hook email: envia boas-vindas pro novo admin
+    _enviarEmail({
+      to: email.toLowerCase(),
+      subject: `🎉 Bem-vindo ao Axcend, ${nomeAdmin}!`,
+      html: _emailTemplateBoasVindas(nomeAdmin, `https://${slug}.${SAAS_ROOT_DOMAIN}/?token=${token}`)
+    }).catch(()=>{});
 
     // 🚀 Hook Utmify: envia evento 'lead' pra Diretoria Axcend (qualifica como lead)
     // Esse signup conta como LEAD QUALIFICADO no funil do Axcend (você é o owner)

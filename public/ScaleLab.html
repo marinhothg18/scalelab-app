@@ -17360,12 +17360,40 @@ async function renderIntegracoesTab(){
         logsHtml+
       '</div>' : '')+
 
+      // CARD EMAIL TRANSACIONAL (Resend)
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:14px;">'+
+          '<div style="display:flex;align-items:center;gap:14px;">'+
+            '<div style="width:48px;height:48px;background:linear-gradient(135deg,#F59E0B,#DC2626);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📧</div>'+
+            '<div>'+
+              '<div style="font-size:17px;font-weight:700;">Email transacional</div>'+
+              '<div style="font-size:11px;color:var(--text2);">Resend · boas-vindas, reset de senha, confirmação de pagamento, alertas</div>'+
+            '</div>'+
+          '</div>'+
+          '<span style="background:rgba(91,94,244,.15);color:var(--accent);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">SISTEMA</span>'+
+        '</div>'+
+        '<div style="background:rgba(245,158,11,.06);border-left:3px solid #F59E0B;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px;">'+
+          '<b>📬 Emails que o sistema envia automaticamente:</b><br>'+
+          '✓ Boas-vindas (signup novo cliente)<br>'+
+          '✓ Reset de senha (esqueci a senha)<br>'+
+          '✓ Pagamento confirmado<br>'+
+          '✓ Aviso de cobrança falhada<br>'+
+          '✓ Notificações importantes (suspensão, trial expirando)'+
+        '</div>'+
+        '<div style="background:var(--bg);padding:12px;border-radius:8px;margin-bottom:12px;font-size:11px;color:var(--text2);">'+
+          '⚙️ <b>Configuração:</b> Defina <code style="background:var(--bg3);padding:1px 6px;border-radius:3px;">RESEND_API_KEY</code> no Railway. <a href="https://resend.com" target="_blank" style="color:var(--accent);">Criar conta Resend</a> (free: 100 emails/dia)'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;align-items:center;">'+
+          '<input type="email" id="email-test-to" class="fi" placeholder="seu@email.com" style="flex:1;">'+
+          '<button class="btn btn-ghost" onclick="testarEmail()">🧪 Enviar teste</button>'+
+        '</div>'+
+      '</div>'+
+
       // CARDS DE INTEGRAÇÕES FUTURAS (placeholder)
       '<div style="background:var(--bg2);border:1px dashed var(--border);border-radius:14px;padding:22px;">'+
         '<div style="font-size:14px;font-weight:700;margin-bottom:6px;color:var(--text2);">⏳ Em breve</div>'+
-        '<div style="font-size:11px;color:var(--text2);margin-bottom:14px;">Integrações que estão no roadmap. RedTrack já cobre métricas de Meta/Google/TikTok.</div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:14px;">Integrações que estão no roadmap.</div>'+
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;">'+
-          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">📧</div><b style="font-size:13px;">Email transacional</b><div style="font-size:10px;color:var(--text2);">SendGrid / Resend</div></div>'+
           '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">💳</div><b style="font-size:13px;">Stripe</b><div style="font-size:10px;color:var(--text2);">Cobrança internacional</div></div>'+
           '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">📊</div><b style="font-size:13px;">Google Analytics</b><div style="font-size:10px;color:var(--text2);">Eventos GA4</div></div>'+
           '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">🛒</div><b style="font-size:13px;">Hotmart / Eduzz / Kiwify</b><div style="font-size:10px;color:var(--text2);">Webhook de vendas</div></div>'+
@@ -17423,6 +17451,28 @@ async function salvarUtmifyConfig(){
     }
   } catch(err){
     alert('❌ Erro: '+err.message);
+  }
+}
+
+async function testarEmail(){
+  var to = (document.getElementById('email-test-to')||{}).value.trim();
+  if(!to || !to.includes('@')){ alert('Digite um email válido'); return; }
+  try {
+    var r = await fetch(API_BASE+'/api/email/test', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')},
+      body: JSON.stringify({ to: to })
+    });
+    var data = await r.json();
+    if(data.ok){
+      alert('✅ Email enviado!\n\nID: ' + (data.id || '—') + '\n\nConfere a caixa de entrada (e spam).');
+    } else if(data.mock){
+      alert('⚠️ ' + (data.motivo || 'RESEND_API_KEY não configurada') + '\n\nDefine a variável no Railway pra ativar envio de email.');
+    } else {
+      alert('❌ ' + (data.erro || data.error || 'Erro desconhecido'));
+    }
+  } catch(err){
+    alert('❌ ' + err.message);
   }
 }
 
@@ -23720,46 +23770,32 @@ function fecharEsqueciSenha(){
 async function enviarEsqueciSenha(){
   var email = (document.getElementById('esqueci-email').value||'').trim().toLowerCase();
   if(!email){ alert('Digite seu e-mail.'); return; }
-  // Verifica se o email existe
-  var usuarios = getUsuarios();
-  var user = usuarios.find(function(u){ return u.email && u.email.toLowerCase()===email; });
-  if(!user){
-    alert('E-mail não cadastrado. Entre em contato com a Diretoria.');
-    return;
-  }
-  // Cria notificação pra Diretoria
-  var diretorias = usuarios.filter(function(u){ return u.cargo==='Diretoria'; });
-  if(!diretorias.length){
-    alert('Nenhuma Diretoria cadastrada pra receber a solicitação.');
-    return;
-  }
   try {
-    // Busca notifs atuais do servidor pra não perder
-    var r = await fetch(API_BASE+'/api/store', {signal: AbortSignal.timeout(3000)});
-    var serverData = r.ok ? await r.json() : {};
-    var notifs = Array.isArray(serverData.sl_notifs) ? serverData.sl_notifs.slice() : [];
-    diretorias.forEach(function(dir){
-      notifs.unshift({
-        id: Date.now()+Math.random(),
-        destId: dir.id,
-        destNome: dir.nome,
-        tipo: 'senha',
-        titulo: '🔑 Solicitação de redefinição de senha',
-        texto: user.nome+' ('+email+') esqueceu a senha e pediu redefinição.',
-        refId: user.id,
-        lida: false,
-        criado: Date.now()
-      });
+    // Usa endpoint novo /api/auth/forgot — envia link de reset por email automaticamente
+    var r = await fetch(API_BASE+'/api/auth/forgot', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email: email })
     });
-    if(notifs.length > 500) notifs = notifs.slice(0,500);
-    await fetch(API_BASE+'/api/store/sl_notifs', {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(notifs)
-    });
-    alert('✅ Solicitação enviada! A Diretoria foi notificada.');
-    fecharEsqueciSenha();
+    var data = await r.json();
+    if(data.ok){
+      var msg = '✅ ' + (data.mensagem || 'Se o email existir, você vai receber um link de reset em alguns segundos.');
+      // Dev mode (sem RESEND_API_KEY)
+      if(data._dev && data._dev.linkReset){
+        msg += '\n\n⚠️ DEV MODE (sem email configurado):\n' + data._dev.linkReset;
+        if(confirm(msg + '\n\nAbrir o link de reset agora?')){
+          window.location.href = data._dev.linkReset;
+          return;
+        }
+      } else {
+        alert(msg);
+      }
+      fecharEsqueciSenha();
+    } else {
+      alert('❌ ' + (data.error || 'Erro ao enviar'));
+    }
   } catch(e){
-    alert('❌ Erro ao enviar. Verifique a conexão.');
+    alert('❌ Erro ao enviar: ' + e.message);
   }
 }
 

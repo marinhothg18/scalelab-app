@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resetar senha · Axcend</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{background:#0F0F0F;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .container{max-width:440px;width:100%;}
+    .logo{text-align:center;margin-bottom:30px;}
+    .logo h1{font-size:32px;font-weight:800;background:linear-gradient(135deg,#5b5ef4,#3E1493);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .card{background:#1A1A1A;border:1px solid #2a2a2a;border-radius:14px;padding:30px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+    .card h2{font-size:22px;margin-bottom:6px;}
+    .card .sub{color:#9CA3AF;font-size:13px;margin-bottom:24px;line-height:1.5;}
+    .field{margin-bottom:16px;}
+    .field label{display:block;font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+    .field input{width:100%;padding:11px 14px;background:#0F0F0F;border:1px solid #2a2a2a;border-radius:8px;color:#fff;font-size:14px;outline:none;}
+    .field input:focus{border-color:#5b5ef4;}
+    .field .hint{font-size:11px;color:#9CA3AF;margin-top:4px;}
+    .btn{width:100%;padding:14px;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;}
+    .btn:disabled{opacity:.6;cursor:not-allowed;}
+    .alert{padding:12px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;}
+    .alert.error{background:rgba(220,38,38,.1);border:1px solid #DC2626;color:#fca5a5;}
+    .alert.success{background:rgba(22,163,74,.1);border:1px solid #16A34A;color:#86efac;}
+    .footer{text-align:center;margin-top:18px;font-size:13px;color:#9CA3AF;}
+    .footer a{color:#5b5ef4;text-decoration:none;}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo"><h1>Axcend</h1></div>
+
+    <!-- TELA 1: SOLICITAR RESET (se chega sem token) -->
+    <div class="card" id="card-solicitar" style="display:none;">
+      <h2>🔐 Esqueceu a senha?</h2>
+      <div class="sub">Digite seu email e enviamos um link pra criar uma nova senha.</div>
+      <div id="alert-box-1"></div>
+      <form id="form-solicitar">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="email" required placeholder="seu@email.com">
+        </div>
+        <button type="submit" class="btn" id="btn-solicitar">Enviar link de reset</button>
+      </form>
+      <div class="footer"><a href="/">← Voltar pro login</a></div>
+    </div>
+
+    <!-- TELA 2: CRIAR NOVA SENHA (se chega com token na URL) -->
+    <div class="card" id="card-criar" style="display:none;">
+      <h2>🔑 Crie sua nova senha</h2>
+      <div class="sub">Defina uma senha segura. Mínimo 6 caracteres.</div>
+      <div id="alert-box-2"></div>
+      <form id="form-criar">
+        <div class="field">
+          <label>Nova senha</label>
+          <input type="password" id="senha" required minlength="6" placeholder="Mínimo 6 caracteres">
+          <div class="hint">Use letras, números e símbolos pra mais segurança.</div>
+        </div>
+        <div class="field">
+          <label>Confirmar nova senha</label>
+          <input type="password" id="senha2" required minlength="6" placeholder="Digite de novo">
+        </div>
+        <button type="submit" class="btn" id="btn-criar">Salvar nova senha</button>
+      </form>
+    </div>
+
+    <!-- TELA 3: SUCESSO -->
+    <div class="card" id="card-sucesso" style="display:none;text-align:center;">
+      <div style="font-size:60px;margin-bottom:14px;">✅</div>
+      <h2>Senha alterada!</h2>
+      <div class="sub" style="margin:14px 0 24px;">Pronto, agora você pode fazer login com a nova senha.</div>
+      <a href="/" class="btn" style="display:inline-block;text-decoration:none;text-align:center;">Ir pro login</a>
+    </div>
+  </div>
+
+  <script>
+    var $ = function(id){ return document.getElementById(id); };
+    function showAlert(box, msg, type){ box.innerHTML = '<div class="alert '+(type||'error')+'">'+msg+'</div>'; }
+
+    var params = new URLSearchParams(window.location.search);
+    var token = params.get('token');
+
+    if(token){
+      // Tela de criar nova senha
+      $('card-criar').style.display = 'block';
+      $('form-criar').addEventListener('submit', async function(e){
+        e.preventDefault();
+        var s1 = $('senha').value;
+        var s2 = $('senha2').value;
+        if(s1 !== s2){ showAlert($('alert-box-2'), '❌ Senhas não batem'); return; }
+        if(s1.length < 6){ showAlert($('alert-box-2'), '❌ Senha precisa ter no mínimo 6 caracteres'); return; }
+        var btn = $('btn-criar');
+        btn.disabled = true; btn.textContent = '⏳ Salvando...';
+        try {
+          var r = await fetch('/api/auth/reset', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ token: token, novaSenha: s1 })
+          });
+          var data = await r.json();
+          if(!r.ok){
+            showAlert($('alert-box-2'), '❌ ' + (data.error || 'Erro'));
+            btn.disabled = false; btn.textContent = 'Salvar nova senha';
+            return;
+          }
+          $('card-criar').style.display = 'none';
+          $('card-sucesso').style.display = 'block';
+        } catch(err){
+          showAlert($('alert-box-2'), '❌ ' + err.message);
+          btn.disabled = false; btn.textContent = 'Salvar nova senha';
+        }
+      });
+    } else {
+      // Tela de solicitar reset
+      $('card-solicitar').style.display = 'block';
+      $('form-solicitar').addEventListener('submit', async function(e){
+        e.preventDefault();
+        var email = $('email').value.trim();
+        var btn = $('btn-solicitar');
+        btn.disabled = true; btn.textContent = '⏳ Enviando...';
+        try {
+          var r = await fetch('/api/auth/forgot', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ email: email })
+          });
+          var data = await r.json();
+          if(data.ok){
+            showAlert($('alert-box-1'), '✅ ' + data.mensagem, 'success');
+            // Dev mode (sem RESEND_API_KEY)
+            if(data._dev && data._dev.linkReset){
+              showAlert($('alert-box-1'), '✅ ' + data.mensagem + '<br><br>⚠️ <b>DEV MODE</b> (sem email configurado):<br><a href="'+data._dev.linkReset+'" style="color:#5b5ef4;word-break:break-all;font-size:11px;">Clique aqui pra resetar</a>', 'success');
+            }
+          } else {
+            showAlert($('alert-box-1'), '❌ ' + (data.error || 'Erro'));
+          }
+        } catch(err){
+          showAlert($('alert-box-1'), '❌ ' + err.message);
+        }
+        btn.disabled = false; btn.textContent = 'Enviar link de reset';
+      });
+    }
+  </script>
+</body>
+</html>
