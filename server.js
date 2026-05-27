@@ -3137,7 +3137,14 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
     // Processa com IA (se configurada — env var ou cfg)
     let resposta = '';
     const _aiKeyResolved = _getAIKey();
-    if (cfg.ai_provider && _aiKeyResolved) {
+
+    // ─── COMANDOS SLASH DIRETOS (atalho rápido, não passa pela IA) ───
+    // /relatorio, /relatorio copy, /relatorio roi, /relatorio vagas, /relatorio semana, /relatorio mes
+    // /help, /ajuda, /minhas, /risco
+    const slashCmd = _processarComandoSlash(text, user, db);
+    if (slashCmd !== null) {
+      resposta = slashCmd;
+    } else if (cfg.ai_provider && _aiKeyResolved) {
       resposta = await _processarMensagemIA(text, user, cfg);
     } else {
       resposta = `Olá ${user.nome}! 👋\n\nO agente IA ainda não foi configurado. Por enquanto só aceito comandos simples:\n• "tarefas" → tuas demandas pendentes\n• "relatorio" → resumo da semana\n\nMeus avisos de demandas atribuídas, rituais e alertas continuam chegando normalmente.`;
@@ -3200,11 +3207,35 @@ async function _chamarClaude(texto, user, cfg) {
   const aiKey = _getAIKey();
   if (!aiKey) throw new Error('IA não configurada (defina ANTHROPIC_API_KEY no Railway)');
   const tools = _agentTools();
-  const systemPrompt = `Você é o assistente do Axcend (sistema de gestão de tráfego pago em centralaxcend.com).
-Usuário: ${user.nome} (${user.cargo}).
-Responde em português, tom natural e direto. Sem emojis demais.
-Use as ferramentas disponíveis quando o usuário pedir dados reais.
-Se o usuário pedir algo que não tem ferramenta, responda do que sabe sem inventar dados.`;
+  const hojeStr = new Date().toLocaleDateString('pt-BR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const systemPrompt = `Você é o assistente operacional do Axcend (sistema de gestão de tráfego pago em centralaxcend.com).
+Usuário falando: ${user.nome} (cargo: ${user.cargo}, ID: ${user.id}).
+Hoje: ${hojeStr}.
+
+Responde em português brasileiro, tom direto e operacional. Use emojis com moderação (1-2 por mensagem).
+
+VOCÊ PODE DELEGAR E GERENCIAR via WhatsApp:
+- Criar demandas e atribuir responsável (tool: criar_demanda)
+- Delegar/trocar responsável de demanda existente (tool: delegar_demanda)
+- Marcar demandas como concluídas (tool: concluir_demanda)
+- Adicionar comentários a demandas (tool: comentar_demanda)
+- Aprovar/mover candidatos no funil de vagas (tool: aprovar_candidato)
+- Listar tarefas, ROI, itens em risco, relatórios por setor (tools especializadas)
+
+INTERPRETAÇÃO DE LINGUAGEM NATURAL:
+- "cria pra Ana revisar VSL até sexta" → criar_demanda(nome='Revisar VSL', responsavel='Ana', prazo='2026-XX-XX')
+- "delega #823 pra Carlos" → delegar_demanda(demandaId='823', responsavel='Carlos')
+- "delega #823 pra Carlos também" → delegar_demanda(..., adicionar=true)
+- "concluir #847" / "fecha #847" → concluir_demanda(demandaId='847')
+- "aprova candidato fulano" → aprovar_candidato(candidato='fulano')
+- "minhas tarefas" → listar_tarefas(escopo='minhas')
+
+PRAZOS naturais: hoje, amanhã, sexta, segunda, próxima semana — converta pra YYYY-MM-DD usando a data atual.
+
+CONFIRMAÇÃO: depois de criar/delegar/concluir, confirme em formato estruturado WhatsApp:
+"✅ Demanda criada\n\n📋 *Nome*\n👤 Responsável\n📅 Prazo\n🔴 Prioridade\n\nID: #N"
+
+Se faltar info importante (responsável, prazo), execute mesmo assim com valores razoáveis e pergunte ao final se quer ajustar.`;
 
   const body = {
     model: 'claude-sonnet-4-20250514',
@@ -3293,17 +3324,84 @@ function _agentTools() {
     },
     {
       name: 'criar_demanda',
-      description: 'Cria uma nova demanda no sistema',
+      description: 'Cria uma nova demanda no sistema. Aceita parsing de prazo natural como "sexta", "amanhã", "próxima semana".',
       input_schema: {
         type: 'object',
         required: ['nome'],
         properties: {
           nome: { type: 'string' },
-          responsavel: { type: 'string', description: 'Nome do responsável' },
-          prazo: { type: 'string', description: 'Data YYYY-MM-DD' },
-          descricao: { type: 'string' }
+          responsavel: { type: 'string', description: 'Nome do responsável (ex: "Ana", "Carlos"). O sistema acha por nome parcial.' },
+          prazo: { type: 'string', description: 'Data YYYY-MM-DD ou expressão natural (sexta, amanhã, próxima semana, 5d)' },
+          descricao: { type: 'string' },
+          prioridade: { type: 'string', enum: ['ALTA','MEDIA','BAIXA'], description: 'Prioridade da demanda' },
+          setor: { type: 'string', description: 'Setor/categoria (Copy, Edição, Tráfego, etc.)' }
         }
       }
+    },
+    {
+      name: 'delegar_demanda',
+      description: 'Adiciona ou troca o responsável de uma demanda existente. Use quando pedirem "delega #ID pra X" ou "atribui a Y a demanda Z".',
+      input_schema: {
+        type: 'object',
+        required: ['demandaId','responsavel'],
+        properties: {
+          demandaId: { type: 'string', description: 'ID da demanda (pode vir com # ou DEM-)' },
+          responsavel: { type: 'string', description: 'Nome do novo responsável' },
+          adicionar: { type: 'boolean', description: 'true = adiciona como co-responsável; false = substitui' }
+        }
+      }
+    },
+    {
+      name: 'concluir_demanda',
+      description: 'Marca uma demanda como concluída. Use quando disserem "concluir #ID", "fecha #ID", "finalizei #ID".',
+      input_schema: {
+        type: 'object',
+        required: ['demandaId'],
+        properties: {
+          demandaId: { type: 'string', description: 'ID da demanda' }
+        }
+      }
+    },
+    {
+      name: 'comentar_demanda',
+      description: 'Adiciona um comentário a uma demanda existente.',
+      input_schema: {
+        type: 'object',
+        required: ['demandaId','comentario'],
+        properties: {
+          demandaId: { type: 'string', description: 'ID da demanda' },
+          comentario: { type: 'string', description: 'Texto do comentário' }
+        }
+      }
+    },
+    {
+      name: 'aprovar_candidato',
+      description: 'Move um candidato de uma vaga pro próximo estágio do funil. Use quando disserem "aprova candidato X", "passa fulano pra próxima etapa".',
+      input_schema: {
+        type: 'object',
+        required: ['candidato'],
+        properties: {
+          candidato: { type: 'string', description: 'Nome ou email do candidato' },
+          vaga: { type: 'string', description: 'Nome da vaga (opcional, se o candidato estiver em várias)' },
+          proximoEstagio: { type: 'string', enum: ['triagem','entrevista','teste','aprovado','reprovado'], description: 'Estágio destino. Se omitido, avança um estágio.' }
+        }
+      }
+    },
+    {
+      name: 'relatorio_setor',
+      description: 'Gera relatório de demandas de um setor específico (Copy, Edição, Tráfego, Spy, Infra) num período. Use pra "relatorio copy semana", "relatorio tráfego mes", etc.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          setor: { type: 'string', description: 'Setor/cargo (Copy, Edição, Tráfego, Spy, Infra, RH) — opcional, se omitido pega geral' },
+          periodo: { type: 'string', enum: ['hoje','semana','mes'], description: 'Período do relatório, default semana' }
+        }
+      }
+    },
+    {
+      name: 'relatorio_vagas',
+      description: 'Resumo do funil de recrutamento (vagas abertas, candidatos por estágio, novos esta semana).',
+      input_schema: { type: 'object', properties: {} }
     },
     {
       name: 'resumo_roi',
@@ -3316,6 +3414,199 @@ function _agentTools() {
       input_schema: { type: 'object', properties: {} }
     }
   ];
+}
+
+// ─── COMANDOS SLASH (atalhos rápidos, não passam pela IA) ───
+function _processarComandoSlash(text, user, db) {
+  const t = text.trim();
+  if (!t.startsWith('/')) return null; // só processa se começa com /
+
+  const parts = t.slice(1).toLowerCase().split(/\s+/);
+  const cmd = parts[0] || '';
+  const args = parts.slice(1);
+
+  // /help · /ajuda · /comandos
+  if (cmd === 'help' || cmd === 'ajuda' || cmd === 'comandos') {
+    return `🤖 *Comandos disponíveis*\n\n` +
+      `📊 *Relatórios*\n` +
+      `/relatorio — resumo geral agora\n` +
+      `/relatorio copy — só do setor Copy\n` +
+      `/relatorio edicao — só Edição\n` +
+      `/relatorio trafego — só Tráfego\n` +
+      `/relatorio spy — só Spy\n` +
+      `/relatorio roi — performance financeira\n` +
+      `/relatorio vagas — funil recrutamento\n` +
+      `/relatorio semana — últimos 7d (em qualquer setor)\n` +
+      `/relatorio mes — mês atual\n\n` +
+      `📋 *Demandas*\n` +
+      `/minhas — minhas demandas pendentes\n` +
+      `/risco — demandas atrasadas\n` +
+      `/concluir #ID — marca como pronta\n\n` +
+      `💬 *Linguagem natural também funciona*\n` +
+      `"cria demanda pra Ana revisar VSL até sexta"\n` +
+      `"delega #123 pra Carlos"\n` +
+      `"aprova candidato fulano"`;
+  }
+
+  // /relatorio [setor|tipo] [periodo]
+  if (cmd === 'relatorio' || cmd === 'relatório') {
+    let setor = null, periodo = 'semana', tipo = 'geral';
+    args.forEach(a => {
+      if (['hoje','dia','agora'].includes(a)) periodo = 'hoje';
+      else if (['semana','sem','7d','7dias'].includes(a)) periodo = 'semana';
+      else if (['mes','mês','mensal','30d'].includes(a)) periodo = 'mes';
+      else if (a === 'roi') tipo = 'roi';
+      else if (a === 'vagas') tipo = 'vagas';
+      else if (['copy','edicao','edição','trafego','tráfego','spy','infra','rh','diretoria'].includes(a)) setor = a;
+    });
+    return _gerarRelatorioSlash(db, { setor, periodo, tipo, user });
+  }
+
+  // /minhas — minhas demandas
+  if (cmd === 'minhas' || cmd === 'tarefas' || cmd === 'demandas') {
+    const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado && t.status !== 'CONCLUIDO' &&
+      ((Array.isArray(t.respIds) && t.respIds.includes(user.id)) || t.respId === user.id));
+    if (!tasks.length) return `✅ Sem tarefas pendentes pra você, ${user.nome}!`;
+    return `📋 *Suas ${tasks.length} tarefa(s) pendente(s)*\n\n` +
+      tasks.slice(0, 15).map((t, i) => `${i+1}. *${t.nome}*${t.data ? ` _(prazo ${t.data})_` : ''} _#${t.id}_`).join('\n');
+  }
+
+  // /risco · /atrasadas
+  if (cmd === 'risco' || cmd === 'atrasadas' || cmd === 'atraso') {
+    const hojeStr = new Date().toISOString().slice(0, 10);
+    const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado && t.status !== 'CONCLUIDO' && t.data && t.data < hojeStr);
+    if (!tasks.length) return `✅ Nenhuma demanda em atraso! 🎉`;
+    return `⚠️ *${tasks.length} demanda(s) em atraso*\n\n` +
+      tasks.slice(0, 15).map((t, i) => {
+        const dias = Math.floor((new Date(hojeStr) - new Date(t.data))/(86400000));
+        return `${i+1}. *${t.nome}*\n   👤 ${t.resp || 'sem resp'} · ⏰ ${dias}d atrasado · _#${t.id}_`;
+      }).join('\n\n');
+  }
+
+  // /concluir #ID
+  if (cmd === 'concluir' || cmd === 'concluido' || cmd === 'fechar') {
+    const idArg = (args[0] || '').replace(/[#a-zA-Z-]/g, '');
+    if (!idArg) return '❌ Falta o ID. Use: `/concluir #123`';
+    const idNum = Number(idArg);
+    const task = (db.store.tasks || []).find(t => t.id == idArg || t.id === idNum);
+    if (!task) return `❌ Demanda *#${idArg}* não encontrada.`;
+    task.status = 'CONCLUIDO';
+    task.concluidoEm = new Date().toISOString();
+    task._updatedAt = Date.now();
+    db.timestamps.tasks = now();
+    writeDB(db);
+    return `✅ *Concluído!*\n\n📋 ${task.nome}\n👤 ${task.resp || '—'}\n\nID: #${task.id}`;
+  }
+
+  return null; // não é comando slash conhecido
+}
+
+// Gera relatório formatado pro WhatsApp baseado em setor + período + tipo
+function _gerarRelatorioSlash(db, { setor, periodo, tipo, user }) {
+  const hoje = new Date(); hoje.setHours(23,59,59,999);
+  const inicio = new Date(hoje);
+  if (periodo === 'hoje') inicio.setHours(0,0,0,0);
+  else if (periodo === 'semana') inicio.setDate(hoje.getDate() - 7);
+  else if (periodo === 'mes') inicio.setMonth(hoje.getMonth() - 1);
+  const inicioStr = inicio.toISOString().slice(0,10);
+  const hojeStr = new Date().toISOString().slice(0,10);
+  const periodoLabel = { hoje:'hoje', semana:'últimos 7 dias', mes:'últimos 30 dias' }[periodo] || '';
+
+  // Relatório ROI
+  if (tipo === 'roi') {
+    const rels = db.store['sl_relatorios_semanais'] || [];
+    if (!rels.length) {
+      try {
+        const r = _gerarRelatorioSemanal(true);
+        if (r.ok) return _fmtRelatorioROI(r.relatorio);
+      } catch (e) {}
+      return '📊 Ainda sem dados de ROI. Cadastre métricas pra começar.';
+    }
+    return _fmtRelatorioROI(rels[0]);
+  }
+
+  // Relatório Vagas
+  if (tipo === 'vagas') {
+    const vagas = (db.store['sl_vagas'] || []).filter(v => v.ativa !== false);
+    const candidatos = db.store['sl_candidatos'] || [];
+    const novosSem = candidatos.filter(c => c._criadoEm && c._criadoEm >= inicio.toISOString()).length;
+    const porEstagio = {};
+    candidatos.forEach(c => { porEstagio[c.estagio || 'triagem'] = (porEstagio[c.estagio || 'triagem']||0) + 1; });
+    return `📲 *Vagas · ${periodoLabel}*\n\n` +
+      `🎯 Vagas ativas: ${vagas.length}\n` +
+      `👥 Candidatos totais: ${candidatos.length}\n` +
+      `🆕 Novos ${periodoLabel}: ${novosSem}\n\n` +
+      `📊 *Por estágio:*\n` +
+      Object.entries(porEstagio).map(([est, qt]) => `• ${est}: ${qt}`).join('\n');
+  }
+
+  // Relatório de SETOR ou GERAL
+  let tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
+  const usuarios = db.store['sl_usuarios'] || [];
+
+  // Filtra por setor (matcha responsáveis com cargo X)
+  if (setor) {
+    const setorNorm = setor.toLowerCase().replace(/[áàâã]/g,'a').replace(/[éê]/g,'e');
+    const cargoMap = { copy:'Copy', edicao:'Editor', trafego:'Gestor de Tráfego', spy:'Spy', infra:'Infra', rh:'Diretoria', diretoria:'Diretoria' };
+    const cargoAlvo = cargoMap[setorNorm];
+    if (cargoAlvo) {
+      const userIdsSetor = new Set(usuarios.filter(u => u.cargo === cargoAlvo).map(u => u.id));
+      tasks = tasks.filter(t => {
+        if (Array.isArray(t.respIds) && t.respIds.some(id => userIdsSetor.has(id))) return true;
+        if (t.respId && userIdsSetor.has(t.respId)) return true;
+        return false;
+      });
+    }
+  }
+
+  // Filtra por período (data criação ou prazo)
+  const tasksPeriodo = tasks.filter(t => {
+    if (t.data && t.data >= inicioStr) return true;
+    if (t._updatedAt && new Date(t._updatedAt) >= inicio) return true;
+    return false;
+  });
+
+  const concluidas = tasksPeriodo.filter(t => t.status === 'CONCLUIDO');
+  const pendentes = tasksPeriodo.filter(t => t.status !== 'CONCLUIDO');
+  const atrasadas = pendentes.filter(t => t.data && t.data < hojeStr);
+
+  // Top responsáveis
+  const porResp = {};
+  tasksPeriodo.forEach(t => {
+    const r = t.resp || '—';
+    porResp[r] = (porResp[r]||0) + 1;
+  });
+  const topResp = Object.entries(porResp).sort((a,b) => b[1]-a[1]).slice(0,5);
+
+  // Tempo médio (em dias) das concluídas
+  let tempoMedio = '—';
+  if (concluidas.length) {
+    const dias = concluidas.map(t => {
+      if (!t.concluidoEm || !t._updatedAt) return null;
+      const cri = new Date(t._updatedAt);
+      const fim = new Date(t.concluidoEm);
+      return (fim - cri) / 86400000;
+    }).filter(Boolean);
+    if (dias.length) tempoMedio = (dias.reduce((a,b)=>a+b,0)/dias.length).toFixed(1) + 'd';
+  }
+
+  const titulo = setor ? `Setor ${setor.toUpperCase()} · ${periodoLabel}` : `Geral · ${periodoLabel}`;
+  return `📊 *${titulo}*\n\n` +
+    `📝 Demandas: ${tasksPeriodo.length} (${atrasadas.length} atrasadas)\n` +
+    `✅ Concluídas: ${concluidas.length}\n` +
+    `⏳ Pendentes: ${pendentes.length}\n` +
+    `⏱️ Tempo médio: ${tempoMedio}\n\n` +
+    (topResp.length ? `👥 *Top responsáveis:*\n` + topResp.map(([n,q]) => `• ${n} (${q})`).join('\n') : '');
+}
+
+function _fmtRelatorioROI(rel) {
+  const k = rel.kpis || {};
+  return `💰 *ROI · ${rel.periodo_ini || ''} a ${rel.periodo_fim || ''}*\n\n` +
+    `💸 Investido: R$ ${Math.round(k.investimento || 0).toLocaleString('pt-BR')}\n` +
+    `💵 Faturamento: R$ ${Math.round(k.retorno || 0).toLocaleString('pt-BR')}\n` +
+    `💰 Lucro: R$ ${Math.round(k.lucro || 0).toLocaleString('pt-BR')}\n` +
+    `📈 ROAS: ${(k.roas || 0).toFixed(2).replace('.',',')}x\n\n` +
+    `✅ ${rel.demandas?.concluidas || 0} demandas concluídas · ⚠ ${rel.demandas?.atrasadas || 0} atrasadas`;
 }
 
 // Executa uma tool e retorna o resultado
@@ -3382,11 +3673,115 @@ async function _executarTool(name, input, user) {
       return {
         atrasadas: atrasadas.length,
         lista: atrasadas.slice(0, 10).map(t => ({
-          nome: t.nome, responsavel: t.resp, dias_atraso: Math.floor((new Date(hojeStr).getTime() - new Date(t.data).getTime())/(24*60*60*1000))
+          id: t.id, nome: t.nome, responsavel: t.resp,
+          dias_atraso: Math.floor((new Date(hojeStr).getTime() - new Date(t.data).getTime())/(24*60*60*1000))
         }))
       };
     }
-    return { erro: 'tool desconhecida' };
+
+    // ── DELEGAR DEMANDA ──
+    if (name === 'delegar_demanda') {
+      const id = String(input.demandaId || '').replace(/[#a-zA-Z-]/g, '');
+      if (!id) return { erro: 'demandaId é obrigatório' };
+      const task = (db.store.tasks || []).find(t => t.id == id);
+      if (!task) return { erro: `Demanda #${id} não encontrada` };
+      const novoResp = (db.store['sl_usuarios'] || []).find(x =>
+        x && x.nome && x.nome.toLowerCase().includes(String(input.responsavel || '').toLowerCase()) && x.ativo !== false);
+      if (!novoResp) return { erro: `Usuário "${input.responsavel}" não encontrado` };
+
+      if (input.adicionar) {
+        if (!Array.isArray(task.respIds)) task.respIds = task.respId ? [task.respId] : [];
+        if (!task.respIds.includes(novoResp.id)) task.respIds.push(novoResp.id);
+        task.resp = (task.resp ? task.resp + ', ' : '') + novoResp.nome;
+      } else {
+        task.respId = novoResp.id;
+        task.respIds = [novoResp.id];
+        task.resp = novoResp.nome;
+      }
+      task._updatedAt = Date.now();
+      db.timestamps.tasks = now();
+      writeDB(db);
+      // Notifica o novo responsável via WhatsApp
+      if (novoResp.whatsapp) {
+        sendWhatsAppMessage(novoResp.whatsapp, `📋 *Nova demanda atribuída*\n\n*${task.nome}*${task.data ? `\n📅 Prazo: ${task.data}` : ''}\n\n_#${task.id}_`).catch(()=>{});
+      }
+      return { ok: true, demanda: task.nome, novoResponsavel: novoResp.nome, modo: input.adicionar ? 'co-responsavel' : 'substituiu' };
+    }
+
+    // ── CONCLUIR DEMANDA ──
+    if (name === 'concluir_demanda') {
+      const id = String(input.demandaId || '').replace(/[#a-zA-Z-]/g, '');
+      if (!id) return { erro: 'demandaId é obrigatório' };
+      const task = (db.store.tasks || []).find(t => t.id == id);
+      if (!task) return { erro: `Demanda #${id} não encontrada` };
+      task.status = 'CONCLUIDO';
+      task.concluidoEm = new Date().toISOString();
+      task._updatedAt = Date.now();
+      db.timestamps.tasks = now();
+      writeDB(db);
+      return { ok: true, demanda: task.nome, id: task.id };
+    }
+
+    // ── COMENTAR DEMANDA ──
+    if (name === 'comentar_demanda') {
+      const id = String(input.demandaId || '').replace(/[#a-zA-Z-]/g, '');
+      if (!id) return { erro: 'demandaId é obrigatório' };
+      const task = (db.store.tasks || []).find(t => t.id == id);
+      if (!task) return { erro: `Demanda #${id} não encontrada` };
+      if (!Array.isArray(task.cmts)) task.cmts = [];
+      task.cmts.push({
+        texto: input.comentario,
+        autor: user.nome,
+        autorId: user.id,
+        data: new Date().toISOString()
+      });
+      task._updatedAt = Date.now();
+      db.timestamps.tasks = now();
+      writeDB(db);
+      return { ok: true, demanda: task.nome, totalComentarios: task.cmts.length };
+    }
+
+    // ── APROVAR CANDIDATO ──
+    if (name === 'aprovar_candidato') {
+      const candidatos = db.store['sl_candidatos'] || [];
+      const busca = String(input.candidato || '').toLowerCase();
+      let candidato = candidatos.find(c =>
+        (c.nome && c.nome.toLowerCase().includes(busca)) ||
+        (c.email && c.email.toLowerCase().includes(busca))
+      );
+      if (!candidato) return { erro: `Candidato "${input.candidato}" não encontrado` };
+
+      const estagios = ['triagem', 'entrevista', 'teste', 'aprovado', 'reprovado'];
+      const estagioAtual = candidato.estagio || 'triagem';
+      const idxAtual = estagios.indexOf(estagioAtual);
+      let novoEstagio;
+      if (input.proximoEstagio) {
+        novoEstagio = input.proximoEstagio;
+      } else {
+        novoEstagio = estagios[Math.min(idxAtual + 1, estagios.length - 1)];
+      }
+      candidato.estagio = novoEstagio;
+      candidato._updatedAt = Date.now();
+      db.timestamps['sl_candidatos'] = now();
+      writeDB(db);
+      return { ok: true, candidato: candidato.nome, de: estagioAtual, para: novoEstagio };
+    }
+
+    // ── RELATÓRIO POR SETOR ──
+    if (name === 'relatorio_setor') {
+      const setor = input.setor || null;
+      const periodo = input.periodo || 'semana';
+      const texto = _gerarRelatorioSlash(db, { setor, periodo, tipo: 'geral', user });
+      return { relatorio: texto };
+    }
+
+    // ── RELATÓRIO VAGAS ──
+    if (name === 'relatorio_vagas') {
+      const texto = _gerarRelatorioSlash(db, { periodo: 'semana', tipo: 'vagas', user });
+      return { relatorio: texto };
+    }
+
+    return { erro: 'tool desconhecida: ' + name };
   } catch (e) {
     return { erro: e.message };
   }
