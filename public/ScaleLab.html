@@ -24496,6 +24496,30 @@ window.refreshGlobal = async function(){
 };
 
 window.onload=()=>{
+  // ── AUTO-LOGIN VIA ?token= (vindo do signup público) ──
+  try {
+    var urlParams = new URLSearchParams(window.location.search);
+    var tokenUrl = urlParams.get('token');
+    if(tokenUrl){
+      // Valida o token e loga
+      fetch(API_BASE+'/api/auth/me', {
+        headers: {'Authorization': 'Bearer '+tokenUrl}
+      }).then(function(r){ return r.json(); }).then(function(data){
+        if(data && data.user){
+          localStorage.setItem('sl_session_token', tokenUrl);
+          localStorage.setItem('sl_auth', '1');
+          localStorage.setItem('sl_user_id', data.user.id);
+          // Remove ?token= da URL pra não ficar visível
+          var cleanUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
+          // Recarrega pra inicializar com sessão
+          window.location.reload();
+        }
+      }).catch(function(){});
+      return; // espera o reload
+    }
+  } catch(e){ console.warn('auto-login url token:', e); }
+
   // check if already authenticated this session
   if(localStorage.getItem('sl_auth')==='1'){
     document.getElementById('login-screen').classList.add('hidden');

@@ -2082,10 +2082,29 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   if (!email || !senha) return res.status(400).json({ error: 'Email e senha obrigatórios' });
   const db = readDB();
   const usuarios = db.store['sl_usuarios'] || [];
-  const user = usuarios.find(u => u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
+  // ── MULTI-TENANT: filtra usuários pelo tenant do host ──
+  // O middleware injetou req.tenantId baseado no subdomínio acessado.
+  // Se você abrir cliente1.axcend.com, req.tenantId === id-do-cliente1
+  // Aí só users desse tenant podem logar.
+  const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+  const usuariosDoTenant = usuarios.filter(u => getItemTenant(u) === tenantId);
+
+  const user = usuariosDoTenant.find(u => u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
   if (!user) {
-    audit(db, 'login_falhou', { email }, { ip: req.ip }, null);
+    // Pra evitar leak: verifica se existe esse email em OUTRO tenant pra dar mensagem útil
+    const emailOutroTenant = usuarios.find(u => u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
+    audit(db, 'login_falhou', { email, tenantId, motivoTenant: emailOutroTenant ? 'email_em_outro_tenant' : 'email_nao_existe' }, { ip: req.ip }, null);
     writeDB(db);
+    if (emailOutroTenant) {
+      // Encontra o slug do tenant correto pra orientar o user
+      const tenantCorreto = (db.store['sl_saas_tenants'] || []).find(t => t.id === emailOutroTenant.tenant_id);
+      const dicaSlug = tenantCorreto && tenantCorreto.slug ? `https://${tenantCorreto.slug}.${SAAS_ROOT_DOMAIN}` : null;
+      return res.status(401).json({
+        error: 'Esse email está cadastrado em outra empresa.' + (dicaSlug ? ` Acesse ${dicaSlug} pra logar.` : ''),
+        codigo: 'WRONG_TENANT',
+        urlCorreta: dicaSlug
+      });
+    }
     return res.status(401).json({ error: 'Email ou senha inválidos' });
   }
 
@@ -2103,17 +2122,45 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
     }
   }
   if (!match) {
-    audit(db, 'login_falhou', { email, userId: user.id }, { motivo: 'senha_incorreta', ip: req.ip }, null);
+    audit(db, 'login_falhou', { email, userId: user.id, tenantId }, { motivo: 'senha_incorreta', ip: req.ip }, null);
     writeDB(db);
     return res.status(401).json({ error: 'Email ou senha inválidos' });
   }
 
+  // ── Verificações pós-auth ──
+  // Se o tenant está suspenso/cancelado, bloqueia
+  const tenantInfo = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+  if (tenantInfo && tenantInfo.status === 'suspenso') {
+    audit(db, 'login_bloqueado', { userId: user.id, tenantId, motivo: 'tenant_suspenso' }, { ip: req.ip }, null);
+    writeDB(db);
+    return res.status(403).json({ error: 'Conta suspensa. Entre em contato com suporte ou regularize o pagamento.', codigo: 'TENANT_SUSPENSO' });
+  }
+
+  // Se trial expirou, alerta mas não bloqueia (deixa o frontend decidir)
+  let trialExpirado = false;
+  if (tenantInfo && tenantInfo.plano === 'trial' && tenantInfo.trial && tenantInfo.trial.expira) {
+    trialExpirado = new Date(tenantInfo.trial.expira) < new Date();
+  }
+
   const token = criarSessao(db, user.id);
-  audit(db, 'login', { userId: user.id, email: user.email }, { ip: req.ip }, { id: user.id, nome: user.nome, cargo: user.cargo });
+  audit(db, 'login', { userId: user.id, email: user.email, tenantId }, { ip: req.ip }, { id: user.id, nome: user.nome, cargo: user.cargo });
   writeDB(db);
 
   const { senha: _s, senhaHash: _h, ...safeUser } = user;
-  res.json({ user: safeUser, token, expiraEm: new Date(Date.now() + SESSION_TTL_MS).toISOString() });
+  res.json({
+    user: safeUser,
+    token,
+    expiraEm: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    tenant: tenantInfo ? {
+      id: tenantInfo.id,
+      slug: tenantInfo.slug,
+      nome: tenantInfo.nome,
+      plano: tenantInfo.plano,
+      status: tenantInfo.status,
+      trial: tenantInfo.trial || null,
+      trialExpirado
+    } : null
+  });
 });
 
 // POST /api/auth/logout — invalida sessão
