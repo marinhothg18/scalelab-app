@@ -17273,7 +17273,36 @@ async function renderIntegracoesTab(){
       }).join('');
     }
 
+    // Check RedTrack status (já existe, vamos só mostrar status)
+    var rtKey = '';
+    try { rtKey = getRtApiKey() || ''; } catch(e) {}
+    var rtConfigurado = !!rtKey;
+
     el.innerHTML =
+      // CARD REDTRACK (já existe, atalho de status)
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:14px;">'+
+          '<div style="display:flex;align-items:center;gap:14px;">'+
+            '<div style="width:48px;height:48px;background:linear-gradient(135deg,#DC2626,#FF5926);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📊</div>'+
+            '<div>'+
+              '<div style="font-size:17px;font-weight:700;">RedTrack</div>'+
+              '<div style="font-size:11px;color:var(--text2);">Tracking de ads · métricas de campanhas Meta/Google/TikTok · ROAS por criativo</div>'+
+            '</div>'+
+          '</div>'+
+          (rtConfigurado
+            ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ CONFIGURADO</span>'
+            : '<span style="background:rgba(156,163,175,.15);color:#9CA3AF;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">○ NÃO CONFIGURADO</span>')+
+        '</div>'+
+        '<div style="background:rgba(220,38,38,.06);border-left:3px solid #DC2626;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px;">'+
+          '<b>🎯 O que faz:</b><br>'+
+          '✓ Importa métricas de campanhas (Meta Ads, Google Ads, TikTok Ads) em tempo real<br>'+
+          '✓ Calcula ROAS por oferta/criativo<br>'+
+          '✓ Mostra investimento, faturamento, lucro<br>'+
+          '✓ Aparece em <b>Ads / Métricas</b> e <b>ROI</b>'+
+        '</div>'+
+        '<button class="btn btn-ghost" onclick="switchCfgTab(\'apis\', document.getElementById(\'cfg-tab-apis\'))">⚙️ '+(rtConfigurado ? 'Editar' : 'Configurar')+' em APIs externas →</button>'+
+      '</div>'+
+
       // CARD UTMIFY
       '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:14px;">'+
@@ -17333,11 +17362,13 @@ async function renderIntegracoesTab(){
 
       // CARDS DE INTEGRAÇÕES FUTURAS (placeholder)
       '<div style="background:var(--bg2);border:1px dashed var(--border);border-radius:14px;padding:22px;">'+
-        '<div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text2);">⏳ Em breve</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:6px;color:var(--text2);">⏳ Em breve</div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:14px;">Integrações que estão no roadmap. RedTrack já cobre métricas de Meta/Google/TikTok.</div>'+
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;">'+
-          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">📢</div><b style="font-size:13px;">Meta Ads</b><div style="font-size:10px;color:var(--text2);">Importar campanhas + métricas</div></div>'+
-          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">🔍</div><b style="font-size:13px;">Google Ads</b><div style="font-size:10px;color:var(--text2);">Importar campanhas + custo</div></div>'+
-          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">🎵</div><b style="font-size:13px;">TikTok Ads</b><div style="font-size:10px;color:var(--text2);">Em desenvolvimento</div></div>'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">📧</div><b style="font-size:13px;">Email transacional</b><div style="font-size:10px;color:var(--text2);">SendGrid / Resend</div></div>'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">💳</div><b style="font-size:13px;">Stripe</b><div style="font-size:10px;color:var(--text2);">Cobrança internacional</div></div>'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">📊</div><b style="font-size:13px;">Google Analytics</b><div style="font-size:10px;color:var(--text2);">Eventos GA4</div></div>'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">🛒</div><b style="font-size:13px;">Hotmart / Eduzz / Kiwify</b><div style="font-size:10px;color:var(--text2);">Webhook de vendas</div></div>'+
         '</div>'+
       '</div>';
 
