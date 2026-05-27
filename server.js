@@ -1350,6 +1350,108 @@ app.get('/reset-senha', (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── MINHA CONTA (usuário edita dados próprios) ──
+// ══════════════════════════════════════════════
+function _authUser(req, db) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (!token) return null;
+  const sess = validarSessao(db, token);
+  if (!sess) return null;
+  const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+  return user || null;
+}
+
+// POST /api/me/trocar-senha — usuário troca a própria senha (precisa senha atual)
+app.post('/api/me/trocar-senha', (req, res) => {
+  try {
+    const db = readDB();
+    const user = _authUser(req, db);
+    if (!user) return res.status(401).json({ error: 'Não autenticado' });
+    const { senhaAtual, novaSenha } = req.body || {};
+    if (!senhaAtual || !novaSenha) return res.status(400).json({ error: 'Senha atual e nova senha obrigatórios' });
+    if (novaSenha.length < 6) return res.status(400).json({ error: 'Nova senha precisa ter no mínimo 6 caracteres' });
+
+    // Valida senha atual
+    let ok = false;
+    if (user.senhaHash) {
+      try { ok = bcrypt.compareSync(String(senhaAtual), user.senhaHash); } catch { ok = false; }
+    } else if (user.senha) {
+      ok = (user.senha === senhaAtual);
+    }
+    if (!ok) {
+      audit(db, 'me_trocar_senha_falhou', { userId: user.id }, null, { id: user.id, nome: user.nome, cargo: user.cargo });
+      writeDB(db);
+      return res.status(401).json({ error: 'Senha atual incorreta' });
+    }
+
+    user.senhaHash = bcrypt.hashSync(String(novaSenha), BCRYPT_ROUNDS);
+    delete user.senha;
+    user._updatedAt = Date.now();
+    db.timestamps['sl_usuarios'] = now();
+    audit(db, 'me_trocar_senha', { userId: user.id }, null, { id: user.id, nome: user.nome, cargo: user.cargo });
+    writeDB(db);
+    res.json({ ok: true, mensagem: 'Senha alterada com sucesso!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/me — atualiza dados do próprio usuário (nome, telefone, foto)
+app.put('/api/me', (req, res) => {
+  try {
+    const db = readDB();
+    const user = _authUser(req, db);
+    if (!user) return res.status(401).json({ error: 'Não autenticado' });
+    const body = req.body || {};
+    if (body.nome) user.nome = String(body.nome).trim().slice(0, 100);
+    if (body.whatsapp !== undefined) user.whatsapp = String(body.whatsapp).trim().slice(0, 30);
+    if (body.fotoUrl !== undefined) user.fotoUrl = String(body.fotoUrl).trim().slice(0, 500);
+    user._updatedAt = Date.now();
+    db.timestamps['sl_usuarios'] = now();
+    audit(db, 'me_editar', { userId: user.id, campos: Object.keys(body) }, null, { id: user.id, nome: user.nome, cargo: user.cargo });
+    writeDB(db);
+    const { senha, senhaHash, resetSenha, ...safeUser } = user;
+    res.json({ ok: true, user: safeUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/me/sessoes — lista sessões ativas do usuário
+app.get('/api/me/sessoes', (req, res) => {
+  try {
+    const db = readDB();
+    const user = _authUser(req, db);
+    if (!user) return res.status(401).json({ error: 'Não autenticado' });
+    const sessoes = (db.sessions || []).filter(s => s.userId === user.id).map(s => ({
+      id: s.tokenHash.slice(0, 12) + '...',
+      criadaEm: s.criadaEm,
+      ultimaAtividade: s.lastActivity,
+      atual: s.tokenHash === crypto.createHash('sha256').update((req.headers.authorization||'').split(' ')[1]||'').digest('hex')
+    }));
+    res.json({ ok: true, sessoes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/me/logout-all — invalida todas as sessões do usuário
+app.post('/api/me/logout-all', (req, res) => {
+  try {
+    const db = readDB();
+    const user = _authUser(req, db);
+    if (!user) return res.status(401).json({ error: 'Não autenticado' });
+    db.sessions = (db.sessions || []).filter(s => s.userId !== user.id);
+    audit(db, 'me_logout_all', { userId: user.id }, null, { id: user.id, nome: user.nome, cargo: user.cargo });
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ── INTEGRAÇÃO UTMIFY (por tenant) ──
 // Cada cliente conecta SUA conta Utmify pelo painel.
 // Axcend dispara eventos de conversão automaticamente (lead, qualified, opportunity, conversion).
@@ -2176,6 +2278,13 @@ app.get('/signup', (req, res) => {
 app.get('/termos', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'termos.html'));
 });
+
+// GET /ajuda — serve Central de Ajuda (Help Center)
+app.get('/ajuda', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'ajuda.html'));
+});
+app.get('/help', (req, res) => res.redirect('/ajuda'));
+app.get('/docs', (req, res) => res.redirect('/ajuda'));
 
 // GET /landing — landing page pública pra vendas
 app.get('/landing', (req, res) => {

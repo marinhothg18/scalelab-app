@@ -1499,9 +1499,17 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Configurações
     </div>
-    <div class="nav-item" id="user-nav">
+    <div class="nav-item" id="user-nav" onclick="abrirMinhaConta()" title="Editar perfil e trocar senha">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       <span id="user-name-nav">Usuário</span>
+    </div>
+    <div class="nav-item" onclick="window.open('/ajuda','_blank')" title="Central de Ajuda">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Ajuda
+    </div>
+    <div class="nav-item" onclick="iniciarOnboarding(true)" title="Repetir tour guiado">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Tour
     </div>
     <div class="nav-item nav-item-sair" onclick="if(confirm('Sair da conta?'))logout()">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -23934,6 +23942,282 @@ function logout(){
   location.reload();
 }
 
+// ══════════════════════════════════════════════
+// ── MINHA CONTA (perfil do usuário) ──
+// ══════════════════════════════════════════════
+function abrirMinhaConta(){
+  if(!currentUser) return;
+  var html =
+    '<div id="minha-conta-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto;" onclick="if(event.target===this)fecharMinhaConta()">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:520px;width:100%;margin:20px auto;padding:28px;color:var(--text);">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">'+
+          '<div>'+
+            '<div style="font-size:20px;font-weight:700;">👤 Minha conta</div>'+
+            '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Dados pessoais, segurança e sessões</div>'+
+          '</div>'+
+          '<button onclick="fecharMinhaConta()" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
+        '</div>'+
+
+        // SEÇÃO: Dados básicos
+        '<div style="background:var(--bg);padding:18px;border-radius:10px;margin-bottom:16px;">'+
+          '<div style="font-size:13px;font-weight:700;margin-bottom:14px;">📝 Dados básicos</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nome</label><input id="mc-nome" class="fi" value="'+_esc(currentUser.nome||'')+'"></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Email</label><input id="mc-email" class="fi" value="'+_esc(currentUser.email||'')+'" disabled style="opacity:.6;cursor:not-allowed;"><div style="font-size:11px;color:var(--text2);margin-top:4px;">Email não pode ser alterado. Contate o suporte se precisar.</div></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">WhatsApp</label><input id="mc-whatsapp" class="fi" value="'+_esc(currentUser.whatsapp||'')+'" placeholder="+55 11 99999-9999"></div>'+
+          '<div class="fg"><label class="fl">Cargo</label><input class="fi" value="'+_esc(currentUser.cargo||'')+'" disabled style="opacity:.6;cursor:not-allowed;"></div>'+
+          '<button class="btn btn-primary" onclick="salvarMinhaConta()" style="margin-top:12px;">💾 Salvar alterações</button>'+
+        '</div>'+
+
+        // SEÇÃO: Trocar senha
+        '<div style="background:var(--bg);padding:18px;border-radius:10px;margin-bottom:16px;">'+
+          '<div style="font-size:13px;font-weight:700;margin-bottom:14px;">🔐 Trocar senha</div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Senha atual</label><input id="mc-senha-atual" type="password" class="fi" placeholder="Sua senha atual"></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nova senha</label><input id="mc-senha-nova" type="password" class="fi" minlength="6" placeholder="Mín 6 caracteres"></div>'+
+          '<div class="fg" style="margin-bottom:12px;"><label class="fl">Confirmar nova senha</label><input id="mc-senha-nova2" type="password" class="fi" minlength="6" placeholder="Digite de novo"></div>'+
+          '<button class="btn btn-primary" onclick="trocarSenha()">🔑 Trocar senha</button>'+
+        '</div>'+
+
+        // SEÇÃO: Sessões
+        '<div style="background:var(--bg);padding:18px;border-radius:10px;margin-bottom:16px;">'+
+          '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">🖥️ Sessões ativas</div>'+
+          '<div id="mc-sessoes" style="font-size:12px;color:var(--text2);">⏳ Carregando...</div>'+
+          '<button class="btn btn-ghost" onclick="logoutAll()" style="margin-top:12px;color:#DC2626;font-size:12px;">🚪 Sair de TODOS os dispositivos</button>'+
+        '</div>'+
+
+        // SEÇÃO: Zona perigo
+        '<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.25);padding:16px;border-radius:10px;">'+
+          '<div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#DC2626;">⚠️ Zona de perigo</div>'+
+          '<div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;">Pra deletar sua conta ou exportar todos seus dados (LGPD), entre em contato com o suporte.</div>'+
+          '<a href="mailto:privacidade@centralaxcend.com?subject=Solicita%C3%A7%C3%A3o%20LGPD" style="color:#DC2626;font-size:12px;">📧 Falar com suporte</a>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('minha-conta-modal'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+  // Carrega sessões
+  carregarSessoes();
+}
+
+function fecharMinhaConta(){ var m=document.getElementById('minha-conta-modal'); if(m) m.remove(); }
+
+async function salvarMinhaConta(){
+  var nome = (document.getElementById('mc-nome')||{}).value.trim();
+  var whatsapp = (document.getElementById('mc-whatsapp')||{}).value.trim();
+  try {
+    var r = await fetch(API_BASE+'/api/me', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')},
+      body: JSON.stringify({ nome, whatsapp })
+    });
+    var data = await r.json();
+    if(data.ok){
+      currentUser.nome = nome;
+      currentUser.whatsapp = whatsapp;
+      document.getElementById('user-name-nav').textContent = nome;
+      alert('✅ Dados atualizados!');
+    } else {
+      alert('❌ ' + (data.error||'Erro'));
+    }
+  } catch(err){ alert('❌ ' + err.message); }
+}
+
+async function trocarSenha(){
+  var atual = (document.getElementById('mc-senha-atual')||{}).value;
+  var nova = (document.getElementById('mc-senha-nova')||{}).value;
+  var nova2 = (document.getElementById('mc-senha-nova2')||{}).value;
+  if(!atual || !nova){ alert('Preencha senha atual e nova'); return; }
+  if(nova !== nova2){ alert('Nova senha e confirmação não batem'); return; }
+  if(nova.length < 6){ alert('Senha precisa ter no mínimo 6 caracteres'); return; }
+  try {
+    var r = await fetch(API_BASE+'/api/me/trocar-senha', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')},
+      body: JSON.stringify({ senhaAtual: atual, novaSenha: nova })
+    });
+    var data = await r.json();
+    if(data.ok){
+      alert('✅ ' + (data.mensagem||'Senha alterada!'));
+      document.getElementById('mc-senha-atual').value='';
+      document.getElementById('mc-senha-nova').value='';
+      document.getElementById('mc-senha-nova2').value='';
+    } else {
+      alert('❌ ' + (data.error||'Erro'));
+    }
+  } catch(err){ alert('❌ ' + err.message); }
+}
+
+async function carregarSessoes(){
+  var el = document.getElementById('mc-sessoes');
+  if(!el) return;
+  try {
+    var r = await fetch(API_BASE+'/api/me/sessoes', {
+      headers:{'Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')}
+    });
+    var data = await r.json();
+    if(data.ok && data.sessoes){
+      el.innerHTML = data.sessoes.length === 0
+        ? '<div style="color:var(--text2);font-style:italic;">Nenhuma sessão ativa.</div>'
+        : data.sessoes.map(function(s){
+            return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;">'+
+              '<div><code style="font-family:monospace;font-size:10px;">'+s.id+'</code>'+(s.atual?' <span style="background:#16A34A;color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;">ESTA</span>':'')+'</div>'+
+              '<div style="color:var(--text2);font-size:10px;">'+(s.ultimaAtividade?new Date(s.ultimaAtividade).toLocaleString('pt-BR'):'—')+'</div>'+
+            '</div>';
+          }).join('');
+    }
+  } catch(e){ el.textContent = 'Erro ao carregar sessões'; }
+}
+
+async function logoutAll(){
+  if(!confirm('Deslogar de TODOS os dispositivos? Você precisará fazer login de novo em todos.')) return;
+  try {
+    await fetch(API_BASE+'/api/me/logout-all', {
+      method:'POST',
+      headers:{'Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')}
+    });
+    alert('✅ Logout em todos os dispositivos. Vai redirecionar pro login...');
+    setTimeout(function(){ logout(); }, 1500);
+  } catch(e){ alert('❌ ' + e.message); }
+}
+
+// ══════════════════════════════════════════════
+// ── ONBOARDING IN-APP (Tour guiado pro cliente novo) ──
+// ══════════════════════════════════════════════
+var ONBOARDING_PASSOS = [
+  {
+    titulo: '👋 Bem-vindo ao Axcend!',
+    texto: 'Esse tour rápido (1 min) vai te mostrar os principais módulos. Você pode pular a qualquer momento.',
+    selector: null,
+    acao: null
+  },
+  {
+    titulo: '📋 Demandas',
+    texto: 'Aqui você cria e gerencia tarefas do time. Crie demandas em segundos, atribua responsáveis e acompanhe o status.',
+    selector: '[data-section="tasks"]',
+    acao: function(){ try{ goTo('tasks'); }catch(e){} }
+  },
+  {
+    titulo: '👥 RH completo',
+    texto: 'Colaboradores, folha PJ, treinamentos, feedbacks, eNPS e até offboarding. Tudo num lugar só.',
+    selector: '[data-section="gestao"]',
+    acao: function(){ try{ goTo('gestao'); setTimeout(function(){ document.querySelector('[data-tab-id="rh"]')?.click(); }, 200); }catch(e){} }
+  },
+  {
+    titulo: '💰 Financeiro',
+    texto: 'DRE, conciliação OFX, NFs com OCR, impostos do Simples Nacional. Tudo automatizado.',
+    selector: '[data-section="gestao"]',
+    acao: function(){ try{ goTo('gestao'); setTimeout(function(){ document.querySelector('[data-tab-id="financeiro"]')?.click(); }, 200); }catch(e){} }
+  },
+  {
+    titulo: '🕵️ Spy + AdLib',
+    texto: 'Biblioteca de anúncios + Spy Wolf integrado pra monitorar concorrentes em vários nichos.',
+    selector: '[data-section="adlibrary"]',
+    acao: function(){ try{ goTo('adlibrary'); }catch(e){} }
+  },
+  {
+    titulo: '💬 Agente IA via WhatsApp',
+    texto: 'Crie demandas, peça relatórios, aprove candidatos — tudo pelo zap. Em Configurações → WhatsApp.',
+    selector: '[data-section="configuracoes"]',
+    acao: function(){ try{ goTo('configuracoes'); }catch(e){} }
+  },
+  {
+    titulo: '🎉 Pronto!',
+    texto: 'Você tá no plano TRIAL grátis por 14 dias. Em Configurações → Meu Plano você vê o uso e faz upgrade quando quiser.\n\nQualquer dúvida, fala com a gente no zap!',
+    selector: null,
+    acao: null
+  }
+];
+
+var _onbPasso = 0;
+var _onbAtivo = false;
+
+function iniciarOnboarding(forcar){
+  if(!currentUser) return;
+  // Só roda 1x por usuário (ou se forçado)
+  if(!forcar){
+    var feito = localStorage.getItem('sl_onb_'+currentUser.id);
+    if(feito === '1') return;
+    // Só pra users criados nas últimas 24h (signup recente)
+    var u = (g('sl_usuarios', [])||[]).find(function(x){ return x.id===currentUser.id; });
+    if(u && u.criadoEm){
+      var dtCriado = new Date(u.criadoEm).getTime();
+      if(Date.now() - dtCriado > 24*60*60*1000) return; // mais de 24h
+    } else {
+      return; // sem data de criação, assume que é antigo
+    }
+  }
+  _onbPasso = 0;
+  _onbAtivo = true;
+  mostrarPassoOnboarding();
+}
+
+function mostrarPassoOnboarding(){
+  var p = ONBOARDING_PASSOS[_onbPasso];
+  if(!p){ encerrarOnboarding(true); return; }
+  // Executa ação (navegar pra tela)
+  if(p.acao){ try{ p.acao(); }catch(e){} }
+  // Remove modal antigo
+  var ant = document.getElementById('onb-modal');
+  if(ant) ant.remove();
+  // Cria modal
+  var html =
+    '<div id="onb-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;animation:onbFadeIn .2s;">'+
+      '<div style="background:linear-gradient(135deg,#1A1A1A,#0F0F0F);border:1px solid #5b5ef4;border-radius:18px;max-width:480px;width:100%;padding:30px;color:#fff;text-align:center;box-shadow:0 30px 80px rgba(91,94,244,.3);">'+
+        '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:18px;">'+
+          ONBOARDING_PASSOS.map(function(_,i){
+            return '<div style="width:'+(i===_onbPasso?'24px':'8px')+';height:8px;border-radius:4px;background:'+(i<=_onbPasso?'#5b5ef4':'#2a2a2a')+';transition:all .3s;"></div>';
+          }).join('')+
+        '</div>'+
+        '<div style="font-size:22px;font-weight:700;margin-bottom:12px;">'+_esc(p.titulo)+'</div>'+
+        '<div style="font-size:14px;color:#d1d5db;line-height:1.6;white-space:pre-wrap;margin-bottom:24px;">'+_esc(p.texto)+'</div>'+
+        '<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;">'+
+          '<button onclick="encerrarOnboarding(false)" style="background:transparent;border:none;color:#9CA3AF;cursor:pointer;font-size:13px;text-decoration:underline;">Pular tour</button>'+
+          '<div style="display:flex;gap:8px;">'+
+            (_onbPasso > 0 ? '<button onclick="onbVoltar()" style="background:#2a2a2a;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:13px;">← Voltar</button>' : '')+
+            '<button onclick="onbProximo()" style="background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">'+(_onbPasso === ONBOARDING_PASSOS.length - 1 ? 'Concluir 🎉' : 'Próximo →')+'</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function onbProximo(){
+  _onbPasso++;
+  if(_onbPasso >= ONBOARDING_PASSOS.length){
+    encerrarOnboarding(true);
+  } else {
+    mostrarPassoOnboarding();
+  }
+}
+
+function onbVoltar(){
+  if(_onbPasso > 0){ _onbPasso--; mostrarPassoOnboarding(); }
+}
+
+function encerrarOnboarding(concluido){
+  _onbAtivo = false;
+  var m = document.getElementById('onb-modal'); if(m) m.remove();
+  if(currentUser){
+    localStorage.setItem('sl_onb_'+currentUser.id, '1');
+  }
+  if(concluido && currentUser){
+    // Toast de sucesso
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:30px;right:30px;background:linear-gradient(135deg,#16A34A,#1B9CFA);color:#fff;padding:14px 22px;border-radius:10px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 10px 40px rgba(22,163,74,.4);';
+    t.textContent = '✅ Tour concluído! Bom uso, '+currentUser.nome+'.';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .3s'; }, 4000);
+    setTimeout(function(){ t.remove(); }, 4500);
+  }
+}
+
+// Adiciona CSS de animação
+(function(){
+  var s = document.createElement('style');
+  s.textContent = '@keyframes onbFadeIn { from{opacity:0;transform:scale(.95);} to{opacity:1;transform:scale(1);} }';
+  document.head.appendChild(s);
+})();
+
 function restoreSession(){
   const uid = localStorage.getItem('sl_user_id');
   if(!uid) return false;
@@ -23952,6 +24236,8 @@ function restoreSession(){
   setTimeout(function(){ try{ renderDash(); }catch(e){} }, 1500);
   setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 2000);
   setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 5000);
+  // 🎓 Dispara onboarding se for usuário novo (criado <24h)
+  setTimeout(function(){ try{ iniciarOnboarding(false); }catch(e){} }, 2500);
   return true;
 }
 

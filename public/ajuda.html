@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Central de Ajuda · Axcend</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    html{scroll-behavior:smooth;}
+    body{background:#0F0F0F;color:#fff;line-height:1.6;}
+    .container{max-width:1080px;margin:0 auto;padding:30px 20px;}
+
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;padding-bottom:24px;border-bottom:1px solid #2a2a2a;}
+    .logo{font-size:22px;font-weight:800;background:linear-gradient(135deg,#5b5ef4,#3E1493);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .topbar a{color:#9CA3AF;text-decoration:none;font-size:13px;}
+    .topbar a:hover{color:#fff;}
+
+    .hero{text-align:center;padding:40px 0 30px;}
+    .hero h1{font-size:38px;font-weight:800;margin-bottom:12px;}
+    .hero p{font-size:16px;color:#9CA3AF;}
+    .search{max-width:560px;margin:24px auto 0;}
+    .search input{width:100%;padding:14px 20px;background:#1A1A1A;border:1px solid #2a2a2a;border-radius:10px;color:#fff;font-size:14px;outline:none;}
+    .search input:focus{border-color:#5b5ef4;}
+
+    .categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:30px 0;}
+    .cat-card{background:#1A1A1A;border:1px solid #2a2a2a;border-radius:12px;padding:22px;cursor:pointer;transition:transform .15s,border-color .15s;}
+    .cat-card:hover{transform:translateY(-2px);border-color:#5b5ef4;}
+    .cat-card .icon{font-size:32px;margin-bottom:10px;}
+    .cat-card h3{font-size:16px;font-weight:700;margin-bottom:6px;}
+    .cat-card p{font-size:12px;color:#9CA3AF;}
+    .cat-card .count{font-size:11px;color:#5b5ef4;margin-top:8px;}
+
+    .section{margin:40px 0;}
+    .section h2{font-size:24px;font-weight:800;margin-bottom:20px;display:flex;align-items:center;gap:10px;}
+    .article{background:#1A1A1A;border:1px solid #2a2a2a;border-radius:10px;margin-bottom:10px;overflow:hidden;}
+    .article summary{padding:18px 22px;cursor:pointer;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;list-style:none;}
+    .article summary::-webkit-details-marker{display:none;}
+    .article summary::after{content:'+';font-size:22px;color:#5b5ef4;font-weight:700;}
+    .article[open] summary::after{content:'−';}
+    .article-body{padding:0 22px 18px;font-size:14px;color:#d1d5db;line-height:1.7;}
+    .article-body strong{color:#fff;}
+    .article-body ul,.article-body ol{padding-left:24px;margin:10px 0;}
+    .article-body code{background:#0F0F0F;padding:2px 8px;border-radius:4px;font-size:12px;color:#5b5ef4;font-family:Menlo,monospace;}
+    .article-body a{color:#5b5ef4;text-decoration:none;}
+    .article-body a:hover{text-decoration:underline;}
+
+    .cta{background:linear-gradient(135deg,rgba(91,94,244,.15),rgba(62,20,147,.10));border:1px solid #5b5ef4;border-radius:14px;padding:30px;text-align:center;margin:40px 0;}
+    .cta h2{font-size:22px;margin-bottom:8px;}
+    .cta p{color:#d1d5db;margin-bottom:20px;}
+    .btn{display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:14px;}
+    .btn-ghost{background:transparent;border:1px solid #2a2a2a;}
+
+    .footer{padding:30px 0;border-top:1px solid #2a2a2a;text-align:center;color:#6B7280;font-size:12px;}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="logo">Axcend</div>
+      <div>
+        <a href="/">← Voltar pro painel</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h1>📚 Central de Ajuda</h1>
+      <p>Tudo que você precisa saber pra dominar o Axcend</p>
+      <div class="search">
+        <input type="text" id="search-input" placeholder="🔍 Buscar... (ex: como criar demanda, WhatsApp, Utmify)" oninput="filtrarArtigos()">
+      </div>
+    </div>
+
+    <div class="categories">
+      <a class="cat-card" href="#primeiros-passos"><div class="icon">🚀</div><h3>Primeiros passos</h3><p>Comece por aqui se você é novo</p><div class="count">5 artigos</div></a>
+      <a class="cat-card" href="#demandas-rituais"><div class="icon">📋</div><h3>Demandas e Rituais</h3><p>Gestão de tarefas do time</p><div class="count">4 artigos</div></a>
+      <a class="cat-card" href="#rh"><div class="icon">👥</div><h3>RH</h3><p>Colaboradores, folha, treinamentos</p><div class="count">4 artigos</div></a>
+      <a class="cat-card" href="#financeiro"><div class="icon">💰</div><h3>Financeiro</h3><p>DRE, NFs, impostos, OFX</p><div class="count">5 artigos</div></a>
+      <a class="cat-card" href="#vagas"><div class="icon">🏢</div><h3>Vagas e Recrutamento</h3><p>Funil de candidatos + IA Score</p><div class="count">4 artigos</div></a>
+      <a class="cat-card" href="#integracoes"><div class="icon">🔌</div><h3>Integrações</h3><p>WhatsApp, Utmify, RedTrack</p><div class="count">5 artigos</div></a>
+      <a class="cat-card" href="#conta"><div class="icon">⚙️</div><h3>Conta e Pagamento</h3><p>Plano, billing, segurança</p><div class="count">5 artigos</div></a>
+      <a class="cat-card" href="#spy"><div class="icon">🕵️</div><h3>Spy e AdLib</h3><p>Monitoramento de concorrentes</p><div class="count">3 artigos</div></a>
+    </div>
+
+    <div class="section" id="primeiros-passos">
+      <h2>🚀 Primeiros passos</h2>
+
+      <details class="article"><summary>Como criar minha conta no Axcend</summary>
+        <div class="article-body">
+          <p>Acesse <a href="/signup">/signup</a> e preencha:</p>
+          <ul>
+            <li><strong>Nome da empresa</strong> — vai aparecer no painel</li>
+            <li><strong>Subdomínio</strong> — escolha um nome (ex: <code>acme</code>). Seu painel ficará em <code>acme.centralaxcend.com</code></li>
+            <li><strong>Seu nome</strong> e <strong>email</strong> — você vira admin (Diretoria)</li>
+            <li><strong>Senha</strong> — mínimo 6 caracteres</li>
+          </ul>
+          <p>Após criar, você ganha <strong>14 dias grátis</strong> sem cartão de crédito.</p>
+        </div>
+      </details>
+
+      <details class="article"><summary>O que tá incluído no Trial?</summary>
+        <div class="article-body">
+          <p>Trial de 14 dias inclui:</p>
+          <ul>
+            <li>Até 5 usuários</li>
+            <li>Até 100 demandas</li>
+            <li>RH, Financeiro, Spy, AdLib completos</li>
+            <li>Sem IA WhatsApp (precisa Pro)</li>
+            <li>Sem Spy Wolf Master (precisa Basic+)</li>
+          </ul>
+          <p>Veja todos os limites em <strong>Configurações → 💎 Meu Plano</strong>.</p>
+        </div>
+      </details>
+
+      <details class="article"><summary>Como adicionar minha equipe</summary>
+        <div class="article-body">
+          <p>Vai em <strong>⚙️ Configurações → 👥 Usuários</strong>:</p>
+          <ol>
+            <li>Clique em <strong>"+ Novo usuário"</strong></li>
+            <li>Preencha nome, email, senha</li>
+            <li>Escolha o cargo (Diretoria, Copy, Editor, Gestor de Tráfego, Spy, Infra)</li>
+            <li>Coloque o WhatsApp pra receber notificações</li>
+            <li>Salvar</li>
+          </ol>
+          <p>O novo usuário pode logar imediatamente com o email/senha que você definiu.</p>
+        </div>
+      </details>
+
+      <details class="article"><summary>Como personalizar cores e logo (Branding)</summary>
+        <div class="article-body">
+          <p>Disponível no plano Pro+. Vai em <strong>⚙️ Configurações → 🎨 Branding</strong>:</p>
+          <ul>
+            <li>Cor primária (botões, destaques)</li>
+            <li>Cor secundária (gradientes)</li>
+            <li>Cor de fundo</li>
+            <li>Logo (URL pública da imagem)</li>
+            <li>Favicon</li>
+          </ul>
+          <p>As mudanças aparecem pra todos os usuários do seu tenant imediatamente.</p>
+        </div>
+      </details>
+
+      <details class="article"><summary>Como navegar pelo painel</summary>
+        <div class="article-body">
+          <p>Menu lateral esquerdo tem todos os módulos:</p>
+          <ul>
+            <li><strong>🏠 Início</strong> — dashboard com KPIs</li>
+            <li><strong>📋 Demandas</strong> — tarefas do time</li>
+            <li><strong>📅 Rituais</strong> — planejamento semanal</li>
+            <li><strong>👥 Gestão</strong> — RH, Financeiro, Vagas (sub-abas)</li>
+            <li><strong>🎨 Criativos / 🕵️ AdLib</strong> — gestão de criativos</li>
+            <li><strong>⚙️ Configurações</strong> — todas as configs do sistema</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+
+    <div class="section" id="demandas-rituais">
+      <h2>📋 Demandas e Rituais</h2>
+      <details class="article"><summary>Como criar uma demanda</summary>
+        <div class="article-body">
+          <p>Clique em <strong>📋 Demandas → "+ Nova Demanda"</strong>. Preencha:</p>
+          <ul>
+            <li><strong>Nome</strong> — descreva o que precisa ser feito</li>
+            <li><strong>Responsável(is)</strong> — quem vai fazer</li>
+            <li><strong>Prazo</strong> — quando precisa estar pronto</li>
+            <li><strong>Prioridade</strong> — alta/média/baixa</li>
+            <li><strong>Descrição</strong> — detalhes adicionais</li>
+          </ul>
+          <p>Dica: você pode criar pelo WhatsApp dizendo <code>"cria demanda pra Ana revisar VSL até sexta"</code> 🤖</p>
+        </div>
+      </details>
+      <details class="article"><summary>Como funcionam os status</summary>
+        <div class="article-body">
+          <p>4 status principais: <code>BACKLOG</code> → <code>EM_ANDAMENTO</code> → <code>REVISÃO</code> → <code>CONCLUIDO</code>. Arraste no kanban ou edite no modal.</p>
+        </div>
+      </details>
+      <details class="article"><summary>Como funciona o Ritual Semanal</summary>
+        <div class="article-body">
+          <p><strong>📅 Rituais</strong> tem ferramentas pra planejamento semanal: review de criativos, alocação do time, métricas, Spy manual. Toda sexta às 18h o sistema gera um relatório automático e envia pra Diretoria.</p>
+        </div>
+      </details>
+      <details class="article"><summary>Como delegar via WhatsApp</summary>
+        <div class="article-body">
+          <p>Configure WhatsApp em <strong>Configurações → 💬 WhatsApp</strong>. Aí você pode mandar:</p>
+          <ul>
+            <li><code>cria demanda pra Ana revisar VSL até sexta</code></li>
+            <li><code>delega #847 pra Carlos também</code></li>
+            <li><code>concluir #123</code></li>
+            <li><code>/relatorio copy semana</code></li>
+            <li><code>/minhas</code> (suas demandas)</li>
+            <li><code>/risco</code> (demandas atrasadas)</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+
+    <div class="section" id="rh">
+      <h2>👥 RH</h2>
+      <details class="article"><summary>Cadastrar colaborador</summary><div class="article-body"><p>Gestão → RH → Colaboradores → "+ Novo". Preencha dados pessoais, cargo, regime (CLT/PJ), salário, banco e admissão.</p></div></details>
+      <details class="article"><summary>Como funciona a Folha PJ</summary><div class="article-body"><p>RH → Folha PJ. Lista automática de todos os PJs ativos. Edite os dias trabalhados → cálculo proporcional. Cole link da NF. Aprove → "Exportar pro Financeiro" cria lançamento de despesa.</p></div></details>
+      <details class="article"><summary>Como rodar eNPS</summary><div class="article-body"><p>RH → eNPS → "+ Novo ciclo". Defina nome, datas, pergunta principal e mensagem WhatsApp. Anônimo. Histórico mostra evolução.</p></div></details>
+      <details class="article"><summary>Como fazer offboarding</summary><div class="article-body"><p>RH → Offboarding → "+ Iniciar". Modal completo: motivo detalhado, feedback do colab, pontos positivos, sugestões, avaliações, próximos passos. Checklist com 31 itens em 7 categorias.</p></div></details>
+    </div>
+
+    <div class="section" id="financeiro">
+      <h2>💰 Financeiro</h2>
+      <details class="article"><summary>Como criar um lançamento</summary><div class="article-body"><p>Gestão → Financeiro → Lançamentos → "+ Novo". Receita ou despesa, valor, data, categoria, conta, status (pago/pendente/atrasado).</p></div></details>
+      <details class="article"><summary>O que é o DRE</summary><div class="article-body"><p>Demonstrativo de Resultado: receitas vs despesas por categoria, mês a mês. Use pra ver lucro real, margem %, top categorias de despesa.</p></div></details>
+      <details class="article"><summary>Como conciliar OFX do banco</summary><div class="article-body"><p>Baixe extrato do banco em OFX (Nubank, Itaú, Inter, etc). Financeiro → OFX → Importar. Sistema bate data+valor com seus lançamentos pra conciliar automaticamente.</p></div></details>
+      <details class="article"><summary>Calcular impostos Simples Nacional</summary><div class="article-body"><p>Financeiro → Impostos. Cálculo automático do DAS Anexo III baseado na receita dos últimos 12 meses. Mostra alíquota efetiva e quanto pagar mês a mês.</p></div></details>
+      <details class="article"><summary>Como cadastrar NF</summary><div class="article-body"><p>Financeiro → NFs → "+ Nova NF". Número, tomador, descrição, valor. Ao marcar como Emitida, sistema oferece criar lançamento de receita automaticamente.</p></div></details>
+    </div>
+
+    <div class="section" id="vagas">
+      <h2>🏢 Vagas e Recrutamento</h2>
+      <details class="article"><summary>Como publicar uma vaga</summary><div class="article-body"><p>Gestão → Vagas → "+ Nova Vaga". Título, descrição, requisitos, perguntas customizadas, teste prático opcional. Marca como "publicada" → ela aparece em <code>/vagas</code> e candidatos podem se candidatar.</p></div></details>
+      <details class="article"><summary>Como funciona o IA Score</summary><div class="article-body"><p>No detalhe de cada candidato, clique em "✨ Analisar com IA". O Claude analisa as respostas + portfolio + teste prático e dá nota de 0-100 com prós/contras. Requer chave Anthropic configurada.</p></div></details>
+      <details class="article"><summary>Teste prático embutido</summary><div class="article-body"><p>No editor de vaga, ative "Teste prático". Briefing, critérios de avaliação, link de entrega. Candidatos acessam <code>/teste/[slug]</code> e enviam entrega. Você vê tudo no detalhe.</p></div></details>
+      <details class="article"><summary>Como usar o kanban de candidatos</summary><div class="article-body"><p>Drag & drop entre colunas: Triagem → Entrevista → Teste → Aprovado/Reprovado. Cada movimento dispara evento Utmify (se configurado).</p></div></details>
+    </div>
+
+    <div class="section" id="integracoes">
+      <h2>🔌 Integrações</h2>
+      <details class="article"><summary>Como conectar o WhatsApp (Z-API)</summary><div class="article-body"><p>Configurações → WhatsApp + Agente IA. Cole Instance ID e Token da Z-API. Configure o webhook <code>/api/whatsapp/webhook</code> no painel Z-API. Cadastre WhatsApp dos usuários em Configurações → Usuários.</p></div></details>
+      <details class="article"><summary>Como conectar o agente IA (Claude/OpenAI)</summary><div class="article-body"><p>Pegue API Key em <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. Configurações → WhatsApp → Agente IA. Cole o token. Cliente pode delegar e perguntar via zap em linguagem natural.</p></div></details>
+      <details class="article"><summary>Como conectar Utmify</summary><div class="article-body"><p>Pegue API Token em <a href="https://utmify.com.br" target="_blank">utmify.com.br</a>. Configurações → 🔌 Integrações → Utmify. Cole token + escolha quais eventos enviar (lead, qualified, opportunity, conversion).</p></div></details>
+      <details class="article"><summary>Como conectar RedTrack</summary><div class="article-body"><p>Configurações → APIs externas → RedTrack. Cole API Key. Sistema importa métricas de Meta/Google/TikTok Ads pra calcular ROAS por oferta/criativo.</p></div></details>
+      <details class="article"><summary>Como usar Spy Wolf</summary><div class="article-body"><p>AdLib → Spy Automático. Cadastre bibliotecas concorrentes. Use o gerador de plano pra encontrar novas. Importe entregas da skill Spy Wolf via webhook ou cola manual.</p></div></details>
+    </div>
+
+    <div class="section" id="conta">
+      <h2>⚙️ Conta e Pagamento</h2>
+      <details class="article"><summary>Como mudar minha senha</summary><div class="article-body"><p>Clique no seu nome no canto superior → "Minha conta" → "Trocar senha". Precisa da senha atual + nova senha (mín 6 chars).</p></div></details>
+      <details class="article"><summary>Esqueci minha senha</summary><div class="article-body"><p>Na tela de login, clique em "Esqueceu a senha?". Digite seu email → vai chegar um link de reset (válido 1h).</p></div></details>
+      <details class="article"><summary>Como fazer upgrade do plano</summary><div class="article-body"><p>Configurações → 💎 Meu Plano. Veja seu uso atual vs limite. Clique no plano superior → vai pro checkout do Pagar.me. Após pagamento, plano ativa automaticamente.</p></div></details>
+      <details class="article"><summary>Como cancelar minha assinatura</summary><div class="article-body"><p>Por enquanto, mande email pra <a href="mailto:suporte@centralaxcend.com">suporte@centralaxcend.com</a>. Em breve teremos botão direto no painel. Cancelamento mantém acesso até fim do ciclo já pago.</p></div></details>
+      <details class="article"><summary>Como exportar meus dados (LGPD)</summary><div class="article-body"><p>Direito da LGPD. Mande pedido pra <a href="mailto:privacidade@centralaxcend.com">privacidade@centralaxcend.com</a>. Em até 15 dias enviamos JSON com todos seus dados.</p></div></details>
+    </div>
+
+    <div class="section" id="spy">
+      <h2>🕵️ Spy e AdLib</h2>
+      <details class="article"><summary>Diferença entre AdLib e Spy Wolf</summary><div class="article-body"><p><strong>AdLib</strong>: cadastro manual dos anúncios de concorrentes que você quer arquivar. <strong>Spy Wolf</strong>: monitoramento automático de tracking domains de operações DR em vários nichos, com banco master atualizado diariamente.</p></div></details>
+      <details class="article"><summary>Como adicionar anúncio no AdLib</summary><div class="article-body"><p>AdLib → "+ Adicionar Anúncio". Anunciante, plataforma (FB/IG/TT/YT/Google), tipo, nicho, link, estrelas (rating), observações. Tudo vai pro Swipe File.</p></div></details>
+      <details class="article"><summary>Como funciona o Banco Master Spy</summary><div class="article-body"><p>O Axcend roda Spy Wolf diariamente em 10+ nichos populares e popula o "Banco Master". Todos os clientes do plano Basic+ veem esses dados automaticamente. Você não precisa rodar nada.</p></div></details>
+    </div>
+
+    <div class="cta">
+      <h2>💬 Não achou o que procurava?</h2>
+      <p>Manda mensagem pra gente que respondemos rápido</p>
+      <a href="mailto:suporte@centralaxcend.com?subject=Ajuda%20Axcend" class="btn">📧 Email do suporte</a>
+      <a href="/" class="btn btn-ghost" style="margin-left:8px;">← Voltar pro painel</a>
+    </div>
+
+    <div class="footer">
+      © 2026 Axcend · Sistema de gestão pra Direct Response
+    </div>
+  </div>
+
+  <script>
+    function filtrarArtigos(){
+      var q = (document.getElementById('search-input').value||'').toLowerCase();
+      document.querySelectorAll('.article').forEach(function(a){
+        var txt = a.textContent.toLowerCase();
+        a.style.display = (!q || txt.indexOf(q) >= 0) ? '' : 'none';
+      });
+      // Esconde seção se nenhum artigo visível
+      document.querySelectorAll('.section').forEach(function(s){
+        var visiveis = Array.from(s.querySelectorAll('.article')).filter(function(a){ return a.style.display !== 'none'; });
+        s.style.display = (!q || visiveis.length) ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>
