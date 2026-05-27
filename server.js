@@ -1436,6 +1436,190 @@ app.get('/api/me/sessoes', (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════
+// ── DOMÍNIO PRÓPRIO DO CLIENTE (8/8) ──
+// Cliente Pro+ pode configurar app.suaempresa.com em vez de
+// acme.centralaxcend.com. Sistema mostra instruções DNS, verifica
+// que o CNAME aponta certo e armazena o domínio em tenant.dominio
+// (que já é lido em _resolverTenantId).
+// ══════════════════════════════════════════════
+
+// POST /api/me/dominio — define domínio próprio do tenant
+// Body: { dominio: 'app.acme.com' }
+app.post('/api/me/dominio', authDiretoria, (req, res) => {
+  try {
+    const { dominio } = req.body || {};
+    if (!dominio) return res.status(400).json({ error: 'dominio obrigatório' });
+    const d = String(dominio).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    // Valida formato básico
+    if (!/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}$/.test(d)) return res.status(400).json({ error: 'Formato de domínio inválido' });
+    // Bloqueia tentativas óbvias
+    if (d.endsWith('.' + SAAS_ROOT_DOMAIN) || d === SAAS_ROOT_DOMAIN) return res.status(400).json({ error: 'Use um domínio próprio diferente de centralaxcend.com' });
+
+    const db = readDB();
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const tenants = db.store['sl_saas_tenants'] || [];
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) return res.status(404).json({ error: 'Tenant não encontrado' });
+
+    // Verifica plano (precisa Enterprise)
+    const plano = SAAS_PLANOS[tenant.plano];
+    if (!plano || !plano.features.dominioProprio) {
+      return res.status(403).json({ error: 'Domínio próprio disponível apenas no plano Enterprise. Faça upgrade pra ativar.', codigo: 'PLANO_INSUFICIENTE' });
+    }
+
+    // Verifica que ninguém mais usa esse dominio
+    const conflito = tenants.find(t => t.id !== tenantId && t.dominio && String(t.dominio).toLowerCase() === d);
+    if (conflito) return res.status(409).json({ error: 'Esse domínio já está em uso por outro cliente.' });
+
+    tenant.dominio = d;
+    tenant.dominioVerificado = false; // precisa ser verificado depois
+    tenant._updatedAt = Date.now();
+    db.timestamps['sl_saas_tenants'] = now();
+    writeDB(db);
+    // Invalida cache
+    _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
+
+    res.json({
+      ok: true,
+      dominio: d,
+      instrucoes: {
+        passo1: 'Vá no painel DNS do registrador do seu domínio (GoDaddy, Cloudflare, etc.)',
+        passo2: 'Adicione um registro CNAME:',
+        cname: { tipo: 'CNAME', nome: d.split('.')[0], valor: 'cname.centralaxcend.com' },
+        passo3: 'Aguarde 5-30 min de propagação',
+        passo4: 'Volte aqui e clique em "Verificar DNS"',
+        passo5: 'SSL é emitido automaticamente via Let\'s Encrypt'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/me/dominio/verificar — verifica DNS apontando certo
+app.post('/api/me/dominio/verificar', authDiretoria, async (req, res) => {
+  try {
+    const db = readDB();
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+    if (!tenant || !tenant.dominio) return res.status(400).json({ error: 'Configure o domínio primeiro' });
+
+    // Tenta resolver via DNS
+    const dns = require('dns').promises;
+    try {
+      const cnames = await dns.resolveCname(tenant.dominio);
+      // Aceita qualquer CNAME que termine em railway.app ou centralaxcend.com
+      const ok = cnames.some(c => /\.railway\.app$|centralaxcend\.com$/.test(c.toLowerCase()));
+      if (ok) {
+        tenant.dominioVerificado = true;
+        tenant._updatedAt = Date.now();
+        db.timestamps['sl_saas_tenants'] = now();
+        writeDB(db);
+        _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
+        return res.json({ ok: true, verificado: true, cnames, mensagem: 'DNS verificado! Acesse https://' + tenant.dominio + ' em 5-15 min (tempo do SSL).' });
+      }
+      return res.json({ ok: true, verificado: false, cnames, mensagem: 'CNAME encontrado mas não aponta pro Axcend. Esperado: cname.centralaxcend.com' });
+    } catch (e) {
+      return res.json({ ok: true, verificado: false, mensagem: 'DNS não propagou ainda. Tente novamente em 5-30 min.', erro: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/me/dominio — remove domínio próprio
+app.delete('/api/me/dominio', authDiretoria, (req, res) => {
+  try {
+    const db = readDB();
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+    if (!tenant) return res.status(404).json({ error: 'Tenant não encontrado' });
+    delete tenant.dominio;
+    delete tenant.dominioVerificado;
+    tenant._updatedAt = Date.now();
+    db.timestamps['sl_saas_tenants'] = now();
+    writeDB(db);
+    _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
+// ── PERMISSÕES CUSTOMIZÁVEIS (7/8) ──
+// Diretoria pode criar roles custom além dos 6 cargos default
+// (Diretoria, Copy, Editor, Gestor de Tráfego, Spy, Infra).
+// Cada role tem set de permissões por módulo.
+// ══════════════════════════════════════════════
+
+const MODULOS_PERMISSAO = [
+  { id:'demandas', label:'Demandas' },
+  { id:'criativos', label:'Criativos' },
+  { id:'rh', label:'RH' },
+  { id:'financeiro', label:'Financeiro' },
+  { id:'vagas', label:'Vagas' },
+  { id:'spy', label:'Spy + AdLib' },
+  { id:'roi', label:'ROI / Métricas' },
+  { id:'config', label:'Configurações' },
+  { id:'usuarios', label:'Usuários' },
+  { id:'billing', label:'Plano e cobrança' }
+];
+
+// GET /api/permissoes/roles — lista roles do tenant atual
+app.get('/api/permissoes/roles', (req, res) => {
+  try {
+    const db = readDB();
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const roles = (db.store['sl_permissoes_roles'] || []).filter(r => getItemTenant(r) === tenantId);
+    res.json({ ok: true, roles, modulos: MODULOS_PERMISSAO });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/permissoes/roles — cria/edita role custom (só Diretoria)
+app.post('/api/permissoes/roles', authDiretoria, (req, res) => {
+  try {
+    const { id, nome, descricao, permissoes } = req.body || {};
+    if (!nome) return res.status(400).json({ error: 'Nome obrigatório' });
+    const db = readDB();
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const roles = db.store['sl_permissoes_roles'] || [];
+    let role = id ? roles.find(r => r.id === id) : null;
+    if (!role) {
+      role = { id: 'role-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,5), tenant_id: tenantId, criadoEm: new Date().toISOString() };
+      roles.push(role);
+    }
+    role.nome = String(nome).trim().slice(0, 50);
+    role.descricao = String(descricao || '').trim().slice(0, 200);
+    role.permissoes = permissoes || {};
+    role._updatedAt = Date.now();
+    db.store['sl_permissoes_roles'] = roles;
+    db.timestamps['sl_permissoes_roles'] = now();
+    writeDB(db);
+    res.json({ ok: true, role });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/permissoes/roles/:id
+app.delete('/api/permissoes/roles/:id', authDiretoria, (req, res) => {
+  try {
+    const db = readDB();
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const roles = (db.store['sl_permissoes_roles'] || []).filter(r => !(r.id === req.params.id && getItemTenant(r) === tenantId));
+    db.store['sl_permissoes_roles'] = roles;
+    db.timestamps['sl_permissoes_roles'] = now();
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/me/logout-all — invalida todas as sessões do usuário
 app.post('/api/me/logout-all', (req, res) => {
   try {
