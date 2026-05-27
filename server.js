@@ -1108,6 +1108,197 @@ app.post('/api/spy/import', authAPI, (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── INTEGRAÇÃO UTMIFY (por tenant) ──
+// Cada cliente conecta SUA conta Utmify pelo painel.
+// Axcend dispara eventos de conversão automaticamente (lead, qualified, opportunity, conversion).
+// Docs: https://docs.utmify.com.br/
+// ══════════════════════════════════════════════
+
+const UTMIFY_API_BASE = 'https://api.utmify.com.br/api-credentials';
+
+// Helper: pega config Utmify do tenant
+function _getUtmifyConfig(tenantId, db) {
+  if (!db) db = readDB();
+  const configs = db.store['sl_integracoes_utmify'] || [];
+  return configs.find(c => c.tenant_id === tenantId) || null;
+}
+
+// Função reutilizável: envia evento de conversão pra Utmify
+// Outros endpoints chamam essa função quando algo importante acontece
+async function _enviarEventoUtmify(tenantId, tipoEvento, dadosEvento) {
+  try {
+    const db = readDB();
+    const cfg = _getUtmifyConfig(tenantId, db);
+    if (!cfg || !cfg.ativo || !cfg.apiToken) return { ok: false, motivo: 'Integração não configurada' };
+
+    // Filtra: evento deve estar habilitado nessa config
+    if (cfg.eventosHabilitados && !cfg.eventosHabilitados.includes(tipoEvento)) {
+      return { ok: false, motivo: 'Evento não habilitado pra esse tenant' };
+    }
+
+    // Monta payload pro Utmify
+    const payload = {
+      orderId: dadosEvento.orderId || ('axcend-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)),
+      platform: 'Axcend',
+      paymentMethod: dadosEvento.paymentMethod || 'other',
+      status: tipoEvento === 'conversion' ? 'paid' : 'pending',
+      createdAt: new Date().toISOString(),
+      approvedDate: tipoEvento === 'conversion' ? new Date().toISOString() : null,
+      refundedAt: null,
+      customer: {
+        name: dadosEvento.customerName || '',
+        email: dadosEvento.customerEmail || '',
+        phone: dadosEvento.customerPhone || '',
+        document: dadosEvento.customerDoc || '',
+        country: 'BR',
+        ip: dadosEvento.ip || ''
+      },
+      products: dadosEvento.products || [{
+        id: tipoEvento,
+        name: dadosEvento.productName || tipoEvento,
+        planId: dadosEvento.planId || tipoEvento,
+        planName: dadosEvento.planName || tipoEvento,
+        quantity: 1,
+        priceInCents: Math.round((dadosEvento.value || 0) * 100)
+      }],
+      trackingParameters: dadosEvento.utm || {
+        src: null, sck: null,
+        utm_source: dadosEvento.utm_source || null,
+        utm_campaign: dadosEvento.utm_campaign || null,
+        utm_medium: dadosEvento.utm_medium || null,
+        utm_content: dadosEvento.utm_content || null,
+        utm_term: dadosEvento.utm_term || null
+      },
+      commission: {
+        totalPriceInCents: Math.round((dadosEvento.value || 0) * 100),
+        gatewayFeeInCents: 0,
+        userCommissionInCents: Math.round((dadosEvento.value || 0) * 100),
+        currency: 'BRL'
+      },
+      isTest: false
+    };
+
+    // Faz a chamada
+    const resp = await fetch(UTMIFY_API_BASE + '/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-token': cfg.apiToken
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const txt = await resp.text();
+    let result;
+    try { result = JSON.parse(txt); } catch { result = { raw: txt }; }
+
+    // Loga no histórico
+    const historico = db.store['sl_integracoes_utmify_historico'] || [];
+    historico.unshift({
+      id: 'log-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+      tenant_id: tenantId,
+      tipoEvento,
+      payload,
+      response: result,
+      status: resp.ok ? 'sucesso' : 'erro',
+      httpStatus: resp.status,
+      timestamp: new Date().toISOString(),
+      _updatedAt: Date.now() / 1000
+    });
+    // Limita a 200 logs por tenant
+    const logsDessetenant = historico.filter(h => h.tenant_id === tenantId).slice(0, 200);
+    const outrosLogs = historico.filter(h => h.tenant_id !== tenantId);
+    db.store['sl_integracoes_utmify_historico'] = [...logsDessetenant, ...outrosLogs];
+    db.timestamps['sl_integracoes_utmify_historico'] = now();
+    writeDB(db);
+
+    return { ok: resp.ok, status: resp.status, response: result };
+  } catch (err) {
+    console.error('[utmify-evento]', err.message);
+    return { ok: false, erro: err.message };
+  }
+}
+
+// POST /api/integracoes/utmify/config — salva config Utmify do tenant atual
+// Body: { apiToken, ativo, eventosHabilitados: ['lead','qualified','opportunity','conversion'] }
+app.post('/api/integracoes/utmify/config', (req, res) => {
+  try {
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const { apiToken, ativo, eventosHabilitados } = req.body || {};
+    if (!apiToken) return res.status(400).json({ error: 'apiToken obrigatório' });
+
+    const db = readDB();
+    const configs = db.store['sl_integracoes_utmify'] || [];
+    let cfg = configs.find(c => c.tenant_id === tenantId);
+    if (!cfg) {
+      cfg = { id: 'utm-' + Date.now().toString(36), tenant_id: tenantId, criadoEm: new Date().toISOString() };
+      configs.push(cfg);
+    }
+    cfg.apiToken = String(apiToken).trim();
+    cfg.ativo = ativo === true;
+    cfg.eventosHabilitados = Array.isArray(eventosHabilitados) ? eventosHabilitados : ['lead', 'qualified', 'opportunity', 'conversion'];
+    cfg._updatedAt = Date.now();
+
+    db.store['sl_integracoes_utmify'] = configs;
+    db.timestamps['sl_integracoes_utmify'] = now();
+    writeDB(db);
+    res.json({ ok: true, config: { ...cfg, apiToken: cfg.apiToken.slice(0, 8) + '...' } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/integracoes/utmify/me — retorna config do tenant + último log
+app.get('/api/integracoes/utmify/me', (req, res) => {
+  try {
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const db = readDB();
+    const cfg = _getUtmifyConfig(tenantId, db);
+    const logs = (db.store['sl_integracoes_utmify_historico'] || []).filter(l => l.tenant_id === tenantId).slice(0, 50);
+    const stats = {
+      total: logs.length,
+      sucesso: logs.filter(l => l.status === 'sucesso').length,
+      erro: logs.filter(l => l.status === 'erro').length,
+      ultimoEvento: logs[0] ? logs[0].timestamp : null
+    };
+    res.json({
+      ok: true,
+      configurado: !!cfg,
+      ativo: cfg ? cfg.ativo : false,
+      eventosHabilitados: cfg ? cfg.eventosHabilitados : [],
+      apiTokenPreview: cfg ? cfg.apiToken.slice(0, 8) + '...' : null,
+      stats,
+      ultimosLogs: logs.slice(0, 20).map(l => ({
+        timestamp: l.timestamp,
+        tipoEvento: l.tipoEvento,
+        status: l.status,
+        httpStatus: l.httpStatus,
+        productName: l.payload?.products?.[0]?.name || '—'
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/integracoes/utmify/test — envia evento de teste
+app.post('/api/integracoes/utmify/test', async (req, res) => {
+  try {
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const r = await _enviarEventoUtmify(tenantId, 'lead', {
+      orderId: 'test-' + Date.now(),
+      customerName: 'Teste Axcend',
+      customerEmail: 'teste@axcend.com',
+      productName: 'Evento de teste',
+      value: 0
+    });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ── SAAS · PLANOS E LIMITES (Bloqueador 3/7) ──
 // Define os 3 planos comerciais com limites e features.
 // ══════════════════════════════════════════════
@@ -1407,6 +1598,21 @@ app.post('/api/billing/webhook', async (req, res) => {
         const db = readDB();
         const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
         if (tenant) {
+          // 🚀 Hook Utmify: cliente PAGOU → evento 'conversion' (venda fechada!)
+          // Envia pra Diretoria Axcend (você é o owner do funil) + pro próprio tenant (auto-conversão)
+          const valorPago = SAAS_PLANOS[planoId]?.precoBRL || 0;
+          _enviarEventoUtmify(TENANT_INTERNO_ID, 'conversion', {
+            orderId: 'pay-' + tenantId + '-' + Date.now(),
+            customerName: tenant.contato?.nomeAdmin || tenant.nome,
+            customerEmail: tenant.contato?.email || '',
+            customerPhone: tenant.contato?.telefone || '',
+            productName: 'Plano Axcend ' + SAAS_PLANOS[planoId]?.nome,
+            planId: planoId,
+            planName: SAAS_PLANOS[planoId]?.nome,
+            value: valorPago,
+            paymentMethod: 'credit_card'
+          }).catch(()=>{});
+
           tenant.plano = planoId;
           tenant.status = 'ativo';
           tenant.assinatura = {
@@ -1654,6 +1860,26 @@ app.post('/api/saas/signup', async (req, res) => {
         ).catch(()=>{});
       }
     } catch(e) { console.error('[signup notif WA]', e.message); }
+
+    // 🚀 Hook Utmify: envia evento 'lead' pra Diretoria Axcend (qualifica como lead)
+    // Esse signup conta como LEAD QUALIFICADO no funil do Axcend (você é o owner)
+    const utmSignup = req.body.utm || {};
+    _enviarEventoUtmify(TENANT_INTERNO_ID, 'qualified', {
+      orderId: 'signup-' + tenantId,
+      customerName: nomeAdmin,
+      customerEmail: email.toLowerCase(),
+      customerPhone: telefone || '',
+      productName: 'Trial Axcend · ' + empresa,
+      value: 0,
+      planId: 'trial',
+      planName: 'Trial 14 dias',
+      ip: req.ip || '',
+      utm_source: utmSignup.utm_source,
+      utm_campaign: utmSignup.utm_campaign,
+      utm_medium: utmSignup.utm_medium,
+      utm_content: utmSignup.utm_content,
+      utm_term: utmSignup.utm_term
+    }).catch(()=>{});
 
     res.json({
       ok: true,
@@ -2458,6 +2684,24 @@ app.post('/api/vagas/publica/:slug/aplicar', aplicarLimiter, (req, res) => {
     db.timestamps['sl_candidatos'] = now();
     writeDB(db);
     _broadcastSync('sl_candidatos', null);
+
+    // 🚀 Hook Utmify: envia evento 'lead' quando candidato se aplica
+    // Captura UTMs do body (se o form mandar) ou do referer
+    const utmData = body.utm || {};
+    _enviarEventoUtmify(req.tenantId, 'lead', {
+      orderId: 'cand-' + cand.id,
+      customerName: nome,
+      customerEmail: email,
+      customerPhone: whatsapp,
+      productName: 'Candidatura: ' + (v.titulo || v.slug),
+      value: 0,
+      ip: cand.ipOrigem,
+      utm_source: utmData.utm_source,
+      utm_campaign: utmData.utm_campaign,
+      utm_medium: utmData.utm_medium,
+      utm_content: utmData.utm_content,
+      utm_term: utmData.utm_term
+    }).catch(()=>{});
 
     res.json({ ok: true, mensagem: 'Candidatura recebida com sucesso!' });
   } catch (e) {

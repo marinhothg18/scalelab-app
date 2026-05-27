@@ -2398,6 +2398,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         <button id="cfg-tab-lembretes"></button>
         <button id="cfg-tab-relatorio"></button>
         <button id="cfg-tab-whatsapp"></button>
+        <button id="cfg-tab-integracoes"></button>
         <button id="cfg-tab-branding"></button>
         <button id="cfg-tab-meuplano"></button>
         <button id="cfg-tab-dados"></button>
@@ -2804,6 +2805,17 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div style="font-size:12px;color:var(--text2);">Personalize as cores, logo e identidade visual do painel da sua empresa. Aplicado em todos os usuários do seu time.</div>
         </div>
         <div id="branding-container">
+          <div style="text-align:center;padding:40px;color:var(--text2);">Carregando...</div>
+        </div>
+      </div>
+
+      <!-- TAB: INTEGRAÇÕES EXTERNAS -->
+      <div id="cfg-panel-integracoes" style="display:none;max-width:1100px;">
+        <div style="background:linear-gradient(135deg,rgba(22,163,74,.15),rgba(27,156,250,.10));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">🔌 Integrações externas</div>
+          <div style="font-size:12px;color:var(--text2);">Conecte o Axcend com ferramentas que você já usa: Utmify (atribuição de UTMs e ROI), Meta Ads, Google Ads, e outras.</div>
+        </div>
+        <div id="integracoes-container">
           <div style="text-align:center;padding:40px;color:var(--text2);">Carregando...</div>
         </div>
       </div>
@@ -4265,7 +4277,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -17210,6 +17222,197 @@ async function renderMeuPlanoTab(){
   }
 }
 
+// ══════════════════════════════════════════════
+// ── INTEGRAÇÕES EXTERNAS ──
+// Hoje: Utmify. Futuro: Meta Ads, Google Ads, etc.
+// ══════════════════════════════════════════════
+async function renderIntegracoesTab(){
+  var el = document.getElementById('integracoes-container');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">⏳ Carregando integrações...</div>';
+
+  try {
+    var r = await fetch(API_BASE+'/api/integracoes/utmify/me', {
+      headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
+    });
+    var u = await r.json();
+
+    // Card Utmify
+    var statusBadge = u.configurado && u.ativo
+      ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ ATIVO</span>'
+      : u.configurado
+        ? '<span style="background:rgba(251,191,36,.15);color:#FBBF24;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">⏸ DESATIVADO</span>'
+        : '<span style="background:rgba(156,163,175,.15);color:#9CA3AF;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">○ NÃO CONFIGURADO</span>';
+
+    // Lista de eventos
+    var eventos = [
+      { id:'lead',         label:'📥 Lead capturado',        desc:'Quando alguém envia candidatura numa vaga sua' },
+      { id:'qualified',    label:'⭐ Lead qualificado',       desc:'Quando candidato passa pra próxima etapa' },
+      { id:'opportunity',  label:'🎯 Oportunidade',          desc:'Candidato chega na fase de entrevista/teste' },
+      { id:'conversion',   label:'💰 Conversão (venda)',     desc:'Cliente paga plano OU candidato é contratado' }
+    ];
+    var habilitados = u.eventosHabilitados || ['lead','qualified','opportunity','conversion'];
+    var checksHtml = eventos.map(function(ev){
+      var ativo = habilitados.indexOf(ev.id) >= 0;
+      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;cursor:pointer;">'+
+        '<input type="checkbox" id="utm-ev-'+ev.id+'"'+(ativo?' checked':'')+' style="margin-top:2px;">'+
+        '<div><b style="font-size:13px;">'+ev.label+'</b><div style="font-size:11px;color:var(--text2);">'+ev.desc+'</div></div>'+
+      '</label>';
+    }).join('');
+
+    // Logs recentes
+    var logsHtml = '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:14px;">Nenhum evento enviado ainda.</div>';
+    if(u.ultimosLogs && u.ultimosLogs.length){
+      logsHtml = u.ultimosLogs.map(function(l){
+        var cor = l.status === 'sucesso' ? '#16A34A' : '#DC2626';
+        var icone = l.status === 'sucesso' ? '✅' : '❌';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">'+
+          '<div><span>'+icone+' <b>'+_esc(l.tipoEvento)+'</b></span><div style="font-size:10px;color:var(--text2);margin-top:2px;">'+_esc(l.productName)+'</div></div>'+
+          '<div style="text-align:right;"><span style="color:'+cor+';font-size:10px;font-weight:700;">HTTP '+l.httpStatus+'</span><div style="font-size:10px;color:var(--text3);">'+new Date(l.timestamp).toLocaleString('pt-BR')+'</div></div>'+
+        '</div>';
+      }).join('');
+    }
+
+    el.innerHTML =
+      // CARD UTMIFY
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:14px;">'+
+          '<div style="display:flex;align-items:center;gap:14px;">'+
+            '<div style="width:48px;height:48px;background:linear-gradient(135deg,#FF5926,#C52C58);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📈</div>'+
+            '<div>'+
+              '<div style="font-size:17px;font-weight:700;">Utmify</div>'+
+              '<div style="font-size:11px;color:var(--text2);">Atribuição de UTMs · ROI de campanhas · centraliza checkout</div>'+
+            '</div>'+
+          '</div>'+
+          statusBadge+
+        '</div>'+
+
+        '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px;">'+
+          '<b>🎯 O que essa integração faz:</b><br>'+
+          '✓ Toda candidatura nova nas suas vagas vira evento "lead" no Utmify<br>'+
+          '✓ Quando você move candidato pra entrevista → vira "qualified"<br>'+
+          '✓ Quando candidato é aprovado → "conversion"<br>'+
+          '✓ Tudo com UTMs preservados pra atribuir corretamente à campanha de origem'+
+        '</div>'+
+
+        '<div class="fg" style="margin-bottom:14px;">'+
+          '<label class="fl">API Token Utmify</label>'+
+          '<input type="password" id="utm-token" class="fi" placeholder="'+(u.apiTokenPreview ? u.apiTokenPreview+' (já configurado · cole novo pra trocar)' : 'Cole seu API Token aqui')+'" autocomplete="off">'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:4px;">Pega no painel Utmify → Configurações → API → Gerar Token. <a href="https://docs.utmify.com.br/" target="_blank" style="color:var(--accent);">Ver docs</a></div>'+
+        '</div>'+
+
+        '<label style="display:flex;align-items:center;gap:8px;margin-bottom:18px;cursor:pointer;">'+
+          '<input type="checkbox" id="utm-ativo"'+(u.ativo?' checked':'')+'>'+
+          '<span style="font-size:13px;">Ativar integração (envia eventos automaticamente)</span>'+
+        '</label>'+
+
+        '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Eventos a enviar</div>'+
+        checksHtml +
+
+        '<div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">'+
+          '<button class="btn btn-primary" onclick="salvarUtmifyConfig()">💾 Salvar configuração</button>'+
+          (u.configurado ? '<button class="btn btn-ghost" onclick="testarUtmify()">🧪 Enviar evento de teste</button>' : '')+
+        '</div>'+
+      '</div>'+
+
+      // STATS + LOGS
+      (u.configurado ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:18px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'+
+          '<div style="font-size:14px;font-weight:700;">📊 Estatísticas e logs</div>'+
+          '<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="renderIntegracoesTab()">🔄 Atualizar</button>'+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Total enviados</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+u.stats.total+'</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Sucesso</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+u.stats.sucesso+'</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Erros</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#DC2626;">'+u.stats.erro+'</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Último</div><div style="font-size:13px;font-weight:700;margin-top:6px;">'+(u.stats.ultimoEvento ? new Date(u.stats.ultimoEvento).toLocaleString('pt-BR') : '—')+'</div></div>'+
+        '</div>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Últimos 20 eventos</div>'+
+        logsHtml+
+      '</div>' : '')+
+
+      // CARDS DE INTEGRAÇÕES FUTURAS (placeholder)
+      '<div style="background:var(--bg2);border:1px dashed var(--border);border-radius:14px;padding:22px;">'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text2);">⏳ Em breve</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;">'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">📢</div><b style="font-size:13px;">Meta Ads</b><div style="font-size:10px;color:var(--text2);">Importar campanhas + métricas</div></div>'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">🔍</div><b style="font-size:13px;">Google Ads</b><div style="font-size:10px;color:var(--text2);">Importar campanhas + custo</div></div>'+
+          '<div style="background:var(--bg);padding:12px;border-radius:10px;opacity:.5;"><div style="font-size:24px;margin-bottom:6px;">🎵</div><b style="font-size:13px;">TikTok Ads</b><div style="font-size:10px;color:var(--text2);">Em desenvolvimento</div></div>'+
+        '</div>'+
+      '</div>';
+
+  } catch(err){
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:#DC2626;">❌ Erro: '+err.message+'</div>';
+  }
+}
+
+async function salvarUtmifyConfig(){
+  var token = (document.getElementById('utm-token')||{}).value.trim();
+  var ativo = (document.getElementById('utm-ativo')||{}).checked;
+  var eventosHabilitados = [];
+  ['lead','qualified','opportunity','conversion'].forEach(function(ev){
+    var chk = document.getElementById('utm-ev-'+ev);
+    if(chk && chk.checked) eventosHabilitados.push(ev);
+  });
+
+  if(!token){
+    // Se já estava configurado e não digitou nada, só atualiza ativo + eventos
+    try {
+      var status = await (await fetch(API_BASE+'/api/integracoes/utmify/me', {
+        headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
+      })).json();
+      if(!status.configurado){
+        alert('❌ Cole o API Token do Utmify primeiro.');
+        return;
+      }
+      // tem token salvo já, manda só os outros campos
+      token = 'KEEP_EXISTING'; // placeholder, backend precisa entender — vou refazer
+    } catch(e){}
+    if(token === 'KEEP_EXISTING'){
+      alert('⚠️ Por segurança, cole novamente o API Token pra confirmar a alteração.');
+      return;
+    }
+  }
+
+  try {
+    var r = await fetch(API_BASE+'/api/integracoes/utmify/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'')
+      },
+      body: JSON.stringify({ apiToken: token, ativo, eventosHabilitados })
+    });
+    var data = await r.json();
+    if(data.ok){
+      alert('✅ Configuração salva!');
+      renderIntegracoesTab();
+    } else {
+      alert('❌ Erro: '+(data.error||'desconhecido'));
+    }
+  } catch(err){
+    alert('❌ Erro: '+err.message);
+  }
+}
+
+async function testarUtmify(){
+  try {
+    var r = await fetch(API_BASE+'/api/integracoes/utmify/test', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
+    });
+    var data = await r.json();
+    if(data.ok){
+      alert('✅ Evento de teste enviado! Veja em Logs.\n\nHTTP '+data.status);
+      renderIntegracoesTab();
+    } else {
+      alert('❌ Erro: '+(data.erro||data.motivo||'desconhecido'));
+    }
+  } catch(err){
+    alert('❌ '+err.message);
+  }
+}
+
 async function iniciarUpgrade(planoId){
   if(!confirm('Deseja fazer upgrade para o plano '+planoId.toUpperCase()+'?\n\nVocê será redirecionado pro checkout seguro do Pagar.me.')) return;
   try {
@@ -17412,13 +17615,16 @@ const _CFG_GRUPOS = {
   branding:    { tabs: ['branding'],
                  headers: { branding: ['🎨','Branding & White-label','Cores, logo e identidade visual do painel'] },
                  grad: 'linear-gradient(135deg,#5b5ef4,#3E1493)' },
+  integracoes: { tabs: ['integracoes'],
+                 headers: { integracoes: ['🔌','Integrações externas','Conecte Utmify, Meta Ads, Google Ads e outras ferramentas'] },
+                 grad: 'linear-gradient(135deg,#16A34A,#1B9CFA)' },
   meuplano:    { tabs: ['meuplano'],
                  headers: { meuplano: ['💎','Meu Plano','Plano atual, uso vs limite, upgrade'] },
                  grad: 'linear-gradient(135deg,#FBBF24,#FF5926)' },
   dados:       { tabs: ['dados'], headers: {}, grad: 'linear-gradient(135deg,#10B981,#1B9CFA)' },
   avancado:    { tabs: [], headers: {}, grad: 'linear-gradient(135deg,#7C3AED,#3E1493)' },
 };
-const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','branding','meuplano','dados'];
+const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','integracoes','branding','meuplano','dados'];
 
 function _injectCfgSectionHeader(panelId, headerCfg, grad){
   if (!headerCfg) return;
@@ -17473,6 +17679,7 @@ function switchCfgGrupo(grupo, btn){
     else if (t === 'whatsapp') { try{ renderWhatsAppConfig(); }catch(e){} }
     else if (t === 'branding') { try{ renderBrandingTab(); }catch(e){} }
     else if (t === 'meuplano') { try{ renderMeuPlanoTab(); }catch(e){} }
+    else if (t === 'integracoes') { try{ renderIntegracoesTab(); }catch(e){} }
     else if (t === 'apis') {
       const k = (typeof getRtApiKey === 'function') ? getRtApiKey() : '';
       const inp = document.getElementById('ads-api-key-input');
@@ -17564,6 +17771,7 @@ function switchCfgTab(tab, btn){
   if(tab==='whatsapp') renderWhatsAppConfig();
   if(tab==='branding') renderBrandingTab();
   if(tab==='meuplano') renderMeuPlanoTab();
+  if(tab==='integracoes') renderIntegracoesTab();
   if(tab==='apis'){
     const k = getRtApiKey();
     const inp = document.getElementById('ads-api-key-input');
