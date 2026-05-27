@@ -1580,7 +1580,7 @@ ${entregasFmt}
 Avalia e responde com o JSON.`;
 
     const body = {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
@@ -2044,7 +2044,7 @@ ${JSON.stringify(tasksRecentes)}
 Responda agora com o JSON.`;
 
   const body = {
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 800,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }]
@@ -3241,7 +3241,7 @@ CONFIRMAÇÃO: depois de criar/delegar/concluir, confirme em formato estruturado
 Se faltar info importante (responsável, prazo), execute mesmo assim com valores razoáveis e pergunte ao final se quer ajustar.`;
 
   const body = {
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 1024,
     system: systemPrompt,
     messages: [{ role: 'user', content: texto }],
