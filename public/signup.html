@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Criar conta · Axcend</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+    body{background:#0F0F0F;color:#fff;min-height:100vh;display:flex;flex-direction:column;}
+    .container{max-width:520px;margin:0 auto;padding:40px 20px;width:100%;}
+    .logo{text-align:center;margin-bottom:30px;}
+    .logo h1{font-size:32px;font-weight:800;background:linear-gradient(135deg,#5b5ef4,#3E1493);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+    .logo p{color:#9CA3AF;font-size:13px;margin-top:4px;}
+    .card{background:#1A1A1A;border:1px solid #2a2a2a;border-radius:14px;padding:30px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+    .card h2{font-size:22px;margin-bottom:6px;}
+    .card .sub{color:#9CA3AF;font-size:13px;margin-bottom:24px;line-height:1.5;}
+    .field{margin-bottom:16px;}
+    .field label{display:block;font-size:11px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+    .field input{width:100%;padding:11px 14px;background:#0F0F0F;border:1px solid #2a2a2a;border-radius:8px;color:#fff;font-size:14px;outline:none;transition:border-color .15s;}
+    .field input:focus{border-color:#5b5ef4;}
+    .field .hint{font-size:11px;color:#9CA3AF;margin-top:4px;line-height:1.5;}
+    .slug-wrapper{display:flex;align-items:center;background:#0F0F0F;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;}
+    .slug-wrapper input{flex:1;border:none;background:transparent;padding:11px 14px;}
+    .slug-suffix{padding:0 14px;font-size:13px;color:#9CA3AF;background:#1a1a1a;height:100%;display:flex;align-items:center;}
+    .slug-status{font-size:11px;margin-top:4px;min-height:14px;}
+    .slug-status.ok{color:#16A34A;}
+    .slug-status.err{color:#DC2626;}
+    .checkbox-field{display:flex;align-items:flex-start;gap:10px;margin:20px 0;cursor:pointer;}
+    .checkbox-field input{margin-top:3px;cursor:pointer;}
+    .checkbox-field label{font-size:13px;color:#9CA3AF;line-height:1.6;cursor:pointer;}
+    .checkbox-field label a{color:#5b5ef4;text-decoration:none;}
+    .checkbox-field label a:hover{text-decoration:underline;}
+    .btn{width:100%;padding:14px;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .1s;}
+    .btn:hover{transform:translateY(-1px);}
+    .btn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+    .alert{padding:12px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;}
+    .alert.error{background:rgba(220,38,38,.1);border:1px solid #DC2626;color:#fca5a5;}
+    .alert.success{background:rgba(22,163,74,.1);border:1px solid #16A34A;color:#86efac;}
+    .footer{text-align:center;margin-top:24px;font-size:13px;color:#9CA3AF;}
+    .footer a{color:#5b5ef4;text-decoration:none;}
+    .badges{display:flex;gap:8px;justify-content:center;margin-bottom:18px;flex-wrap:wrap;}
+    .badge{background:rgba(91,94,244,.1);border:1px solid rgba(91,94,244,.3);color:#a5a8ff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    @media(max-width:480px){.row{grid-template-columns:1fr;}}
+    #success-screen{display:none;text-align:center;padding:40px 20px;}
+    #success-screen .check{width:80px;height:80px;background:linear-gradient(135deg,#16A34A,#1B9CFA);border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;font-size:40px;}
+    #success-screen h2{font-size:24px;margin-bottom:10px;}
+    #success-screen p{color:#9CA3AF;font-size:14px;margin-bottom:20px;line-height:1.6;}
+    .tenant-url{background:#0F0F0F;border:1px solid #5b5ef4;border-radius:10px;padding:14px;font-family:Menlo,monospace;color:#5b5ef4;font-size:14px;margin:14px 0;word-break:break-all;}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <h1>Axcend</h1>
+      <p>Sistema de gestão de tráfego pago · DR/Marketing</p>
+    </div>
+
+    <div class="card" id="form-card">
+      <h2>🚀 Crie sua conta grátis</h2>
+      <div class="sub">14 dias de teste · sem cartão de crédito · cancele quando quiser</div>
+
+      <div class="badges">
+        <span class="badge">✅ Demandas</span>
+        <span class="badge">✅ RH</span>
+        <span class="badge">✅ Financeiro</span>
+        <span class="badge">✅ Spy Wolf</span>
+        <span class="badge">✅ WhatsApp</span>
+      </div>
+
+      <div id="alert-box"></div>
+
+      <form id="signup-form">
+        <div class="field">
+          <label for="empresa">Nome da empresa *</label>
+          <input type="text" id="empresa" required placeholder="Ex: Marketing Detox LTDA" minlength="2" maxlength="100">
+        </div>
+
+        <div class="field">
+          <label for="slug">Subdomínio *</label>
+          <div class="slug-wrapper">
+            <input type="text" id="slug" required placeholder="suaempresa" minlength="3" maxlength="30" autocomplete="off" pattern="[a-z0-9-]+">
+            <span class="slug-suffix">.axcend.com</span>
+          </div>
+          <div class="slug-status" id="slug-status"></div>
+          <div class="hint">Só letras minúsculas, números e hífen. Seu painel ficará em <code>suaempresa.axcend.com</code></div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="nomeAdmin">Seu nome *</label>
+            <input type="text" id="nomeAdmin" required placeholder="João Silva" minlength="2" maxlength="60">
+          </div>
+          <div class="field">
+            <label for="telefone">WhatsApp</label>
+            <input type="tel" id="telefone" placeholder="(11) 99999-9999">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="email">Email *</label>
+          <input type="email" id="email" required placeholder="seu@email.com">
+        </div>
+
+        <div class="field">
+          <label for="senha">Senha *</label>
+          <input type="password" id="senha" required minlength="6" placeholder="Mínimo 6 caracteres">
+        </div>
+
+        <label class="checkbox-field">
+          <input type="checkbox" id="termos" required>
+          <span>Li e aceito os <a href="/termos" target="_blank">Termos de Uso</a> e a <a href="/termos#privacidade" target="_blank">Política de Privacidade</a> (LGPD)</span>
+        </label>
+
+        <button type="submit" class="btn" id="submit-btn">Criar minha conta grátis</button>
+      </form>
+
+      <div class="footer">
+        Já tem conta? <a href="/">Fazer login</a>
+      </div>
+    </div>
+
+    <div class="card" id="success-screen">
+      <div class="check">🎉</div>
+      <h2>Conta criada com sucesso!</h2>
+      <p>Sua empresa <b id="success-empresa"></b> agora tem 14 dias grátis pra explorar o Axcend.</p>
+      <div class="tenant-url" id="success-url"></div>
+      <p style="margin:14px 0;">Você vai ser redirecionado em <b id="redirect-timer">5</b> segundos...</p>
+      <a href="" id="success-link" class="btn" style="display:inline-block;text-decoration:none;text-align:center;">Ir pro meu painel agora</a>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    let slugCheckTimer = null;
+    let slugDisponivel = false;
+
+    // Auto-gera slug a partir do nome da empresa
+    $('empresa').addEventListener('input', e => {
+      const slugField = $('slug');
+      if (slugField.dataset.userEdited === 'true') return;
+      const auto = e.target.value.toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+      slugField.value = auto;
+      verificarSlug();
+    });
+
+    $('slug').addEventListener('input', e => {
+      e.target.dataset.userEdited = 'true';
+      const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+      if (sanitized !== e.target.value) e.target.value = sanitized;
+      verificarSlug();
+    });
+
+    function verificarSlug() {
+      const slug = $('slug').value.trim();
+      const status = $('slug-status');
+      if (slugCheckTimer) clearTimeout(slugCheckTimer);
+      if (!slug || slug.length < 3) {
+        status.textContent = '';
+        slugDisponivel = false;
+        return;
+      }
+      status.textContent = '⏳ Verificando disponibilidade...';
+      status.className = 'slug-status';
+      slugCheckTimer = setTimeout(async () => {
+        try {
+          const r = await fetch('/api/saas/signup/check-slug?slug=' + encodeURIComponent(slug));
+          const data = await r.json();
+          if (data.disponivel) {
+            status.textContent = '✅ Disponível! Seu painel: ' + data.url;
+            status.className = 'slug-status ok';
+            slugDisponivel = true;
+          } else {
+            status.textContent = '❌ ' + (data.motivo || 'Indisponível');
+            status.className = 'slug-status err';
+            slugDisponivel = false;
+          }
+        } catch (e) {
+          status.textContent = '⚠️ Erro ao verificar';
+          status.className = 'slug-status err';
+        }
+      }, 400);
+    }
+
+    function showAlert(msg, type='error') {
+      const box = $('alert-box');
+      box.innerHTML = `<div class="alert ${type}">${msg}</div>`;
+      window.scrollTo({top:0, behavior:'smooth'});
+    }
+
+    $('signup-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = $('submit-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Criando sua conta...';
+
+      const data = {
+        empresa: $('empresa').value.trim(),
+        slug: $('slug').value.trim(),
+        nomeAdmin: $('nomeAdmin').value.trim(),
+        telefone: $('telefone').value.trim(),
+        email: $('email').value.trim().toLowerCase(),
+        senha: $('senha').value,
+        aceitouTermos: $('termos').checked
+      };
+
+      try {
+        const r = await fetch('/api/saas/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const result = await r.json();
+        if (!r.ok || !result.ok) {
+          showAlert('❌ ' + (result.error || 'Erro ao criar conta'));
+          btn.disabled = false;
+          btn.textContent = 'Criar minha conta grátis';
+          return;
+        }
+
+        // Sucesso!
+        $('form-card').style.display = 'none';
+        const sc = $('success-screen');
+        sc.style.display = 'block';
+        $('success-empresa').textContent = result.tenant.nome;
+        $('success-url').textContent = result.tenant.url;
+        $('success-link').href = result.tenant.url + '/?token=' + result.token;
+
+        // Salva token no localStorage pra login auto se acessar o subdomínio depois
+        try {
+          localStorage.setItem('axcend_signup_token', result.token);
+          localStorage.setItem('axcend_signup_tenant', JSON.stringify(result.tenant));
+        } catch(e){}
+
+        // Redireciona em 5s
+        let timer = 5;
+        const tInt = setInterval(() => {
+          timer--;
+          $('redirect-timer').textContent = timer;
+          if (timer <= 0) {
+            clearInterval(tInt);
+            window.location.href = result.tenant.url + '/?token=' + result.token;
+          }
+        }, 1000);
+      } catch (err) {
+        showAlert('❌ Erro de conexão: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Criar minha conta grátis';
+      }
+    });
+  </script>
+</body>
+</html>

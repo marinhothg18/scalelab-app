@@ -1106,6 +1106,185 @@ app.post('/api/spy/import', authAPI, (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════
+// ── SAAS · SIGNUP PÚBLICO (Bloqueador 1/7) ──
+// Permite que qualquer pessoa se cadastre como cliente novo:
+// cria tenant + usuário admin + trial de 14d.
+// ══════════════════════════════════════════════
+
+// Slugs reservados que ninguém pode usar (conflitam com subdomínios da plataforma)
+const SLUGS_RESERVADOS_SIGNUP = new Set([
+  ...SUBDOMINIOS_RESERVADOS,
+  'axcend', 'central', 'centralaxcend', 'painel', 'master', 'root', 'sys', 'system',
+  'support', 'suporte', 'contato', 'ajuda', 'pricing', 'precos', 'planos', 'signup',
+  'login', 'logout', 'register', 'registro', 'cadastro', 'home', 'index'
+]);
+
+// GET /api/saas/signup/check-slug?slug=acme — verifica se slug está disponível
+app.get('/api/saas/signup/check-slug', (req, res) => {
+  const slugRaw = String(req.query.slug || '').toLowerCase().trim();
+  // Sanitiza: só letras, números e hífen
+  const slug = slugRaw.replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '');
+  if (!slug || slug.length < 3) return res.json({ ok: false, disponivel: false, motivo: 'Slug muito curto (mínimo 3 caracteres)' });
+  if (slug.length > 30) return res.json({ ok: false, disponivel: false, motivo: 'Slug muito longo (máximo 30)' });
+  if (SLUGS_RESERVADOS_SIGNUP.has(slug)) return res.json({ ok: false, disponivel: false, motivo: 'Slug reservado pela plataforma' });
+  const db = readDB();
+  const tenants = db.store['sl_saas_tenants'] || [];
+  const existe = tenants.find(t => t && t.slug && String(t.slug).toLowerCase() === slug);
+  if (existe) return res.json({ ok: false, disponivel: false, motivo: 'Slug já em uso por outra empresa' });
+  res.json({ ok: true, disponivel: true, slug, url: `https://${slug}.${SAAS_ROOT_DOMAIN}` });
+});
+
+// POST /api/saas/signup — cria novo cliente (tenant + admin + trial)
+// Body: { empresa, slug, nomeAdmin, email, senha, telefone?, aceitouTermos: true }
+app.post('/api/saas/signup', async (req, res) => {
+  try {
+    const { empresa, slug: slugRaw, nomeAdmin, email, senha, telefone, aceitouTermos } = req.body || {};
+
+    // Validações
+    if (!empresa || empresa.length < 2) return res.status(400).json({ error: 'Nome da empresa obrigatório' });
+    if (!nomeAdmin || nomeAdmin.length < 2) return res.status(400).json({ error: 'Nome do admin obrigatório' });
+    if (!email || !email.includes('@')) return res.status(400).json({ error: 'Email inválido' });
+    if (!senha || senha.length < 6) return res.status(400).json({ error: 'Senha precisa ter no mínimo 6 caracteres' });
+    if (!aceitouTermos) return res.status(400).json({ error: 'É obrigatório aceitar os Termos de Uso e Política de Privacidade' });
+
+    // Sanitiza e valida slug
+    const slug = String(slugRaw || '').toLowerCase().trim().replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '');
+    if (!slug || slug.length < 3) return res.status(400).json({ error: 'Slug do subdomínio inválido (mínimo 3 caracteres)' });
+    if (slug.length > 30) return res.status(400).json({ error: 'Slug muito longo (máximo 30)' });
+    if (SLUGS_RESERVADOS_SIGNUP.has(slug)) return res.status(400).json({ error: 'Slug reservado, escolha outro' });
+
+    const db = readDB();
+    const tenants = db.store['sl_saas_tenants'] || [];
+    const usuarios = db.store['sl_usuarios'] || [];
+
+    // Verifica unicidade de slug
+    if (tenants.find(t => t && t.slug && String(t.slug).toLowerCase() === slug)) {
+      return res.status(409).json({ error: 'Esse subdomínio já está em uso por outra empresa' });
+    }
+    // Verifica unicidade de email
+    if (usuarios.find(u => u && u.email && u.email.toLowerCase() === email.toLowerCase())) {
+      return res.status(409).json({ error: 'Email já cadastrado. Faça login em vez de criar nova conta.' });
+    }
+
+    // Cria tenant
+    const tenantId = 'tenant-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex');
+    const trialDias = 14;
+    const agora = new Date();
+    const trialFim = new Date(agora.getTime() + trialDias * 24 * 60 * 60 * 1000);
+
+    const novoTenant = {
+      id: tenantId,
+      slug: slug,
+      nome: empresa,
+      criado: agora.toISOString(),
+      criadoPor: 'signup_publico',
+      plano: 'trial',
+      status: 'ativo',
+      trial: {
+        iniciado: agora.toISOString(),
+        expira: trialFim.toISOString(),
+        diasTotais: trialDias
+      },
+      contato: {
+        email: email.toLowerCase(),
+        telefone: telefone || '',
+        nomeAdmin: nomeAdmin
+      },
+      termosAceitos: {
+        versao: '1.0',
+        aceitoEm: agora.toISOString(),
+        ip: req.ip || req.headers['x-forwarded-for'] || '',
+        userAgent: req.headers['user-agent'] || ''
+      },
+      branding: {
+        nome: empresa,
+        primary: '#5b5ef4',
+        secondary: '#3E1493',
+        bgDark: '#0F0F0F',
+        logoUrl: '',
+        faviconUrl: ''
+      },
+      _updatedAt: Date.now()
+    };
+
+    // Cria usuário admin (Diretoria)
+    const adminId = 'u-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex');
+    const senhaHash = bcrypt.hashSync(String(senha), BCRYPT_ROUNDS);
+    const novoAdmin = {
+      id: adminId,
+      nome: nomeAdmin,
+      email: email.toLowerCase(),
+      senhaHash: senhaHash,
+      cargo: 'Diretoria',
+      whatsapp: telefone || '',
+      ativo: true,
+      tenant_id: tenantId,
+      criadoEm: agora.toISOString(),
+      criadoPor: 'signup_publico',
+      _updatedAt: Date.now()
+    };
+
+    // Salva
+    tenants.push(novoTenant);
+    usuarios.push(novoAdmin);
+    db.store['sl_saas_tenants'] = tenants;
+    db.store['sl_usuarios'] = usuarios;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_saas_tenants'] = now();
+    db.timestamps['sl_usuarios'] = now();
+
+    // Audit log
+    audit(db, 'saas_signup', { tenantId, slug, empresa, email: email.toLowerCase() }, { ip: req.ip }, { id: adminId, nome: nomeAdmin, cargo: 'Diretoria' });
+
+    // Cria sessão automaticamente (login direto)
+    const token = criarSessao(db, adminId);
+
+    writeDB(db);
+
+    // Invalida cache de tenants pra resolução por host funcionar imediatamente
+    _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
+
+    // Notifica admin do Axcend via WhatsApp (se configurado)
+    try {
+      const cfg = db.store['sl_whatsapp_config'] || {};
+      const adminInterno = (db.store['sl_usuarios'] || []).find(u => u.cargo === 'Diretoria' && u.tenant_id === TENANT_INTERNO_ID && u.whatsapp);
+      if (cfg.ativo && adminInterno && adminInterno.whatsapp) {
+        sendWhatsAppMessage(adminInterno.whatsapp,
+          `🎉 *Novo cliente no Axcend!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
+        ).catch(()=>{});
+      }
+    } catch(e) { console.error('[signup notif WA]', e.message); }
+
+    res.json({
+      ok: true,
+      tenant: {
+        id: tenantId,
+        slug,
+        nome: empresa,
+        url: `https://${slug}.${SAAS_ROOT_DOMAIN}`,
+        trial: { dias: trialDias, expira: trialFim.toISOString() }
+      },
+      user: {
+        id: adminId,
+        nome: nomeAdmin,
+        email: email.toLowerCase(),
+        cargo: 'Diretoria'
+      },
+      token: token,
+      mensagem: `Conta criada! Seu painel está em https://${slug}.${SAAS_ROOT_DOMAIN}`
+    });
+  } catch (err) {
+    console.error('[/api/saas/signup]', err);
+    res.status(500).json({ error: 'Erro ao criar conta: ' + err.message });
+  }
+});
+
+// GET /signup — serve a página pública de signup
+app.get('/signup', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'signup.html'));
+});
+
 // GET /api/spy/master — bibliotecas mestre (qualquer usuário autenticado pode ler)
 // Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência Axcend"
 app.get('/api/spy/master', (req, res) => {
