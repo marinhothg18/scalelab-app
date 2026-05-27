@@ -3045,13 +3045,16 @@ app.post('/api/relatorio-diario/rodar', authDiretoria, (req, res) => {
 function _waCleanPhone(phone) {
   if (!phone) return '';
   let p = String(phone).replace(/\D/g, '');
-  // Remove 9 extra do Brasil se tiver 14 digitos (55 + DDD + 9 + 8 dig)
+  // Adiciona 55 se faltar
+  if (p.length === 11) p = '55' + p;       // DDD + 9 + 8 dig
+  else if (p.length === 10) p = '55' + p;  // DDD + 8 dig (sem nono dígito)
+
+  // Normaliza pra formato CANÔNICO sem o "nono dígito" do celular brasileiro
+  // (Z-API às vezes manda com, às vezes sem — pra evitar mismatch sempre tira)
+  // 13 dígitos: 55 + DDD(2) + 9 + 8 dig → vira 12 dígitos (55 + DDD + 8 dig)
   if (p.length === 13 && p.startsWith('55')) {
-    // está ok
-  } else if (p.length === 11) {
-    p = '55' + p; // DDD + 9 digitos → adiciona 55
-  } else if (p.length === 10) {
-    p = '55' + p; // DDD + 8 digitos (sem 9)
+    // Verifica se o 5º dígito é '9' (nono dígito do celular)
+    if (p[4] === '9') p = p.slice(0, 4) + p.slice(5);
   }
   return p;
 }
