@@ -17166,7 +17166,7 @@ async function renderMeuPlanoTab(){
           (po.features.apiTokens?'<li>✅ API Tokens</li>':'')+
           (po.features.brandingCustom?'<li>✅ White-label</li>':'')+
         '</ul>'+
-        '<button onclick="alert(\'⚠️ Billing Pagar.me em implementação. Em breve!\')" style="width:100%;padding:10px;background:'+corOutro+';color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;">'+(maisCaro?'⬆️ Fazer Upgrade':'Mudar pra '+po.nome)+'</button>'+
+        '<button onclick="iniciarUpgrade(\''+po.id+'\')" style="width:100%;padding:10px;background:'+corOutro+';color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;">'+(maisCaro?'⬆️ Fazer Upgrade':'Mudar pra '+po.nome)+'</button>'+
       '</div>';
     }).join('');
 
@@ -17207,6 +17207,31 @@ async function renderMeuPlanoTab(){
       '</div>';
   } catch(err){
     el.innerHTML = '<div style="text-align:center;padding:40px;color:#DC2626;">❌ Erro: '+err.message+'</div>';
+  }
+}
+
+async function iniciarUpgrade(planoId){
+  if(!confirm('Deseja fazer upgrade para o plano '+planoId.toUpperCase()+'?\n\nVocê será redirecionado pro checkout seguro do Pagar.me.')) return;
+  try {
+    var r = await fetch(API_BASE+'/api/billing/checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'')
+      },
+      body: JSON.stringify({ planoId })
+    });
+    var data = await r.json();
+    if(data.ok && data.checkoutUrl){
+      window.open(data.checkoutUrl, '_blank');
+      alert('✅ Checkout aberto em nova aba.\n\nAssim que o pagamento for confirmado, seu plano será atualizado automaticamente.');
+    } else if(data.modo === 'mock'){
+      alert('⚠️ ' + (data.message || 'Billing não configurado.') + '\n\nContate o suporte pra ativar manualmente.');
+    } else {
+      alert('❌ Erro: ' + (data.error || 'Não foi possível iniciar checkout'));
+    }
+  } catch(err){
+    alert('❌ Erro de conexão: ' + err.message);
   }
 }
 

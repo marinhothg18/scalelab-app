@@ -1279,6 +1279,198 @@ app.get('/api/saas/planos', (req, res) => {
   res.json({ ok: true, planos: Object.values(SAAS_PLANOS) });
 });
 
+// ══════════════════════════════════════════════
+// ── BILLING · Pagar.me (Bloqueador 4/7) ──
+// Cobrança recorrente mensal via Pagar.me v5.
+// Configure PAGARME_API_KEY no Railway pra ativar.
+// ══════════════════════════════════════════════
+
+const PAGARME_API_KEY = process.env.PAGARME_API_KEY || '';
+const PAGARME_API_BASE = 'https://api.pagar.me/core/v5';
+
+// POST /api/billing/checkout — cria checkout de assinatura pro tenant logado
+// Body: { planoId: 'basic'|'pro'|'enterprise' }
+app.post('/api/billing/checkout', async (req, res) => {
+  try {
+    const { planoId } = req.body || {};
+    if (!planoId || !['basic','pro','enterprise'].includes(planoId)) {
+      return res.status(400).json({ error: 'planoId inválido' });
+    }
+    if (!PAGARME_API_KEY) {
+      // Modo de desenvolvimento — retorna link mock
+      return res.json({
+        ok: false,
+        modo: 'mock',
+        message: 'Billing não está configurado. Defina PAGARME_API_KEY no Railway. Por enquanto, contate suporte@axcend.com pra fazer upgrade.',
+        suporteUrl: 'mailto:suporte@axcend.com?subject=Upgrade%20pra%20'+planoId
+      });
+    }
+
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const db = readDB();
+    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+    if (!tenant) return res.status(404).json({ error: 'Tenant não encontrado' });
+
+    const plano = SAAS_PLANOS[planoId];
+
+    // Cria/recupera customer no Pagar.me
+    let customerId = tenant.pagarmeCustomerId;
+    if (!customerId) {
+      const cust = await fetch(PAGARME_API_BASE + '/customers', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(PAGARME_API_KEY + ':').toString('base64'),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: tenant.contato?.nomeAdmin || tenant.nome,
+          email: tenant.contato?.email || '',
+          type: 'individual',
+          country: 'BR',
+          metadata: { tenantId: tenant.id, slug: tenant.slug }
+        })
+      });
+      if (!cust.ok) {
+        const err = await cust.text();
+        return res.status(500).json({ error: 'Erro Pagar.me: ' + err.slice(0,200) });
+      }
+      const custData = await cust.json();
+      customerId = custData.id;
+      tenant.pagarmeCustomerId = customerId;
+      tenant._updatedAt = Date.now();
+      db.timestamps['sl_saas_tenants'] = now();
+      writeDB(db);
+    }
+
+    // Cria checkout link
+    const cents = Math.round(plano.precoBRL * 100);
+    const orderRes = await fetch(PAGARME_API_BASE + '/orders', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(PAGARME_API_KEY + ':').toString('base64'),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        customer_id: customerId,
+        items: [{
+          amount: cents,
+          description: 'Axcend ' + plano.nome + ' — Assinatura mensal',
+          quantity: 1
+        }],
+        payments: [{
+          payment_method: 'checkout',
+          checkout: {
+            expires_in: 120, // minutos
+            accepted_payment_methods: ['credit_card', 'pix', 'boleto'],
+            success_url: `https://${tenant.slug}.${SAAS_ROOT_DOMAIN}/?billing=success&plano=${planoId}`,
+            billing_address_editable: true,
+            customer_editable: true
+          }
+        }],
+        metadata: { tenantId: tenant.id, slug: tenant.slug, planoId }
+      })
+    });
+    if (!orderRes.ok) {
+      const err = await orderRes.text();
+      return res.status(500).json({ error: 'Erro ao criar order Pagar.me: ' + err.slice(0,200) });
+    }
+    const orderData = await orderRes.json();
+    const checkoutUrl = orderData.checkouts?.[0]?.payment_url || orderData.checkout_url;
+
+    res.json({
+      ok: true,
+      checkoutUrl,
+      orderId: orderData.id,
+      plano: plano.nome,
+      valor: plano.precoBRL
+    });
+  } catch (err) {
+    console.error('[billing/checkout]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/billing/webhook — Pagar.me chama quando pagamento muda de status
+// Configurar URL no painel Pagar.me: https://app.centralaxcend.com/api/billing/webhook
+app.post('/api/billing/webhook', async (req, res) => {
+  try {
+    const evento = req.body || {};
+    console.log('[Pagar.me webhook]', evento.type, evento.id);
+
+    // Tipos relevantes: order.paid, subscription.canceled, charge.paid, charge.refused
+    if (evento.type === 'order.paid' || evento.type === 'charge.paid') {
+      const meta = evento.data?.metadata || evento.data?.order?.metadata || {};
+      const tenantId = meta.tenantId;
+      const planoId = meta.planoId;
+      if (tenantId && planoId) {
+        const db = readDB();
+        const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+        if (tenant) {
+          tenant.plano = planoId;
+          tenant.status = 'ativo';
+          tenant.assinatura = {
+            ativa: true,
+            ativadaEm: new Date().toISOString(),
+            ultimoPagamento: new Date().toISOString(),
+            proximoPagamento: new Date(Date.now() + 30*24*60*60*1000).toISOString(),
+            valorMensal: SAAS_PLANOS[planoId].precoBRL,
+            tentativasFalhadas: 0
+          };
+          tenant._updatedAt = Date.now();
+          db.timestamps['sl_saas_tenants'] = now();
+          audit(db, 'billing_pagamento_aprovado', { tenantId, planoId, eventoId: evento.id }, null, { id: 'sistema', nome: 'Sistema', cargo: 'sistema' });
+          writeDB(db);
+          // Invalida cache
+          _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
+        }
+      }
+    } else if (evento.type === 'charge.refused' || evento.type === 'charge.payment_failed') {
+      const meta = evento.data?.metadata || {};
+      const tenantId = meta.tenantId;
+      if (tenantId) {
+        const db = readDB();
+        const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+        if (tenant) {
+          tenant.assinatura = tenant.assinatura || {};
+          tenant.assinatura.tentativasFalhadas = (tenant.assinatura.tentativasFalhadas || 0) + 1;
+          if (tenant.assinatura.tentativasFalhadas >= 3) {
+            tenant.status = 'suspenso';
+            audit(db, 'billing_tenant_suspenso', { tenantId, tentativas: 3 }, null, { id: 'sistema', nome: 'Sistema', cargo: 'sistema' });
+          }
+          tenant._updatedAt = Date.now();
+          db.timestamps['sl_saas_tenants'] = now();
+          writeDB(db);
+        }
+      }
+    }
+
+    res.json({ ok: true, received: true });
+  } catch (err) {
+    console.error('[billing/webhook]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/billing/me — info da assinatura do tenant
+app.get('/api/billing/me', (req, res) => {
+  try {
+    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
+    const db = readDB();
+    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
+    if (!tenant) return res.json({ ok: true, assinatura: null });
+    res.json({
+      ok: true,
+      plano: tenant.plano,
+      status: tenant.status,
+      trial: tenant.trial,
+      assinatura: tenant.assinatura || null,
+      pagarmeConfigurado: !!PAGARME_API_KEY
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/saas/meu-plano — retorna plano atual + uso vs limite
 app.get('/api/saas/meu-plano', (req, res) => {
   try {
