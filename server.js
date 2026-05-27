@@ -25,8 +25,9 @@ const HOSTS_INTERNO = new Set([
   'localhost:3000',
   '127.0.0.1:3001'
 ]);
-// Domínio raiz do SaaS — qualquer subdomínio disso vira tenant (acme.axcend.com → 'acme')
-const SAAS_ROOT_DOMAIN = 'axcend.com';
+// Domínio raiz do SaaS — qualquer subdomínio disso vira tenant (acme.centralaxcend.com → 'acme')
+// Configurável via env SAAS_ROOT_DOMAIN — default centralaxcend.com (domínio que o usuário já tem)
+const SAAS_ROOT_DOMAIN = process.env.SAAS_ROOT_DOMAIN || 'centralaxcend.com';
 
 // Cache de tenants em memória (refresh a cada 30s). Evita ler o db.json em
 // CADA request — só atualiza periodicamente. Quando um tenant é criado/editado,
