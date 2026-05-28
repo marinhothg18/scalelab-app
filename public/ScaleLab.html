@@ -1444,6 +1444,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 011.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
       Criativos
     </div>
+    <div class="nav-item" id="nav-iacopy" onclick="goTo('iacopy')" title="IA de Copy · Direct Response">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      IA Copy
+    </div>
     <div class="nav-item" onclick="goTo('arquivos')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
       Projetos
@@ -1951,6 +1955,11 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
     <!-- ARQUIVOS / CENTRAL DE ARQUIVOS -->
     <div class="page" id="page-arquivos">
       <div id="arquivos-central"></div>
+    </div>
+
+    <!-- IA DE COPY (Direct Response) -->
+    <div class="page" id="page-iacopy">
+      <div id="iacopy-content"></div>
     </div>
 
     <!-- EDUCACIONAL -->
@@ -4285,7 +4294,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -4388,6 +4397,7 @@ function _rerenderCurrentPage(){
   else if(cur === 'chat') safe(window.renderChat);
   else if(cur === 'notificacoes') safe(window.renderNotificacoes);
   else if(cur === 'arquivos') safe(window.renderArquivos);
+  else if(cur === 'iacopy') safe(window.renderIaCopy);
   else if(cur === 'rituais') safe(window.renderRituais);
   else if(cur === 'metricas') {
     safe(window.renderTrafegoContent);
@@ -23940,6 +23950,287 @@ function logout(){
   localStorage.removeItem('sl_user_id');
   localStorage.removeItem('sl_session_token');
   location.reload();
+}
+
+// ══════════════════════════════════════════════
+// ── IA REAL DE COPY (Direct Response) ──
+// ══════════════════════════════════════════════
+var _iaCopyAba = 'headlines'; // headlines | anuncio | variacoes | analise | advertorial
+
+var IACOPY_NICHOS_TEMPLATE = {
+  'Emagrecimento': { dor:'gordura localizada, dificuldade pra emagrecer mesmo com dieta', promessa:'queimar gordura em 21 dias sem dieta restritiva', prova:'aprovado por nutricionista' },
+  'Disfunção Erétil': { dor:'baixa libido, ereção fraca, vergonha com a parceira', promessa:'recuperar performance natural em 7 dias', prova:'método usado por +50 mil homens' },
+  'Diabetes': { dor:'açúcar alto, medo de complicações, dependência de remédio', promessa:'baixar glicemia naturalmente', prova:'estudo da Harvard' },
+  'Renda Extra': { dor:'salário não cobre as contas, vontade de parar de trabalhar pros outros', promessa:'fazer R$ 500-2k por mês com 1h/dia', prova:'+10mil alunos faturando' },
+  'Memória / Alzheimer': { dor:'esquecimento, medo de virar peso pros filhos', promessa:'recuperar memória em 30 dias', prova:'baseado em pesquisa neurológica' },
+  'Relacionamento': { dor:'crise no casamento, ex que não esquece, solidão', promessa:'reconquistar amor real', prova:'consultora há 15 anos' },
+  'Dor Articular': { dor:'dores que limitam tudo, joelho ruim, coluna travada', promessa:'eliminar dor sem remédio', prova:'método de fisioterapeuta esportiva' },
+  'Pele / Rugas': { dor:'rugas, manchas, autoestima baixa pela aparência', promessa:'pele 10 anos mais nova em 60 dias', prova:'dermatologista famosa' }
+};
+
+window.renderIaCopy = function(){
+  var el = document.getElementById('iacopy-content');
+  if(!el) return;
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:24px;font-weight:800;background:linear-gradient(135deg,var(--accent),#C52C58);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">🤖 IA de Copy</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:4px;">Gere e analise copy de Direct Response com Claude · 8 nichos com templates</div></div>'+
+      '<button class="btn btn-ghost" onclick="iaCopyAbrirFavoritos()">⭐ Meus favoritos</button>'+
+    '</div>'+
+
+    // ABAS
+    '<div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:10px;overflow-x:auto;">'+
+      ['headlines','anuncio','variacoes','analise','advertorial'].map(function(aba){
+        var labels = { headlines:'📰 10 Headlines', anuncio:'📢 Anúncio completo', variacoes:'🔁 Variações', analise:'🔬 Analisar copy', advertorial:'📝 Advertorial' };
+        var ativo = _iaCopyAba === aba;
+        return '<div onclick="_iaCopyAba=\''+aba+'\';window.renderIaCopy();" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(ativo?'700':'500')+';color:'+(ativo?'#fff':'var(--text2)')+';background:'+(ativo?'var(--accent)':'transparent')+';white-space:nowrap;">'+labels[aba]+'</div>';
+      }).join('')+
+    '</div>'+
+
+    // FORM (varia por aba)
+    '<div id="iacopy-form">'+_iaCopyFormHtml()+'</div>'+
+
+    // OUTPUT
+    '<div id="iacopy-output" style="margin-top:24px;"></div>';
+};
+
+function _iaCopyFormHtml(){
+  var nichoOpts = '<option value="">— Escolha ou digite custom —</option>'+
+    Object.keys(IACOPY_NICHOS_TEMPLATE).map(function(n){ return '<option value="'+n+'">'+n+'</option>'; }).join('');
+
+  if(_iaCopyAba === 'headlines' || _iaCopyAba === 'anuncio' || _iaCopyAba === 'advertorial'){
+    var titulo = _iaCopyAba === 'headlines' ? 'Gerar 10 Headlines' : _iaCopyAba === 'anuncio' ? 'Gerar Anúncio Completo' : 'Gerar Advertorial';
+    var camposExtra = '';
+    if(_iaCopyAba === 'anuncio'){
+      camposExtra = '<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">'+
+        '<div class="fg"><label class="fl">Plataforma</label><select id="ia-plat" class="fs"><option value="meta">Meta (FB/IG)</option><option value="tiktok">TikTok</option><option value="google">Google Ads</option></select></div>'+
+        '<div class="fg"><label class="fl">Formato</label><select id="ia-fmt" class="fs"><option value="feed_image">Feed (imagem)</option><option value="feed_video">Feed (vídeo)</option><option value="reels">Reels</option><option value="stories">Stories</option></select></div>'+
+      '</div>';
+    }
+    if(_iaCopyAba === 'advertorial'){
+      camposExtra = '<div class="fg" style="margin-bottom:12px;"><label class="fl">Persona principal (opcional)</label><input id="ia-persona" class="fi" placeholder="Ex: mulher 45-60 anos com gordura abdominal teimosa"></div>';
+    }
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+      '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">'+titulo+'</div>'+
+      '<div class="row" style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:12px;">'+
+        '<div class="fg"><label class="fl">Nicho (template)</label><select id="ia-nicho" class="fs" onchange="_iaCopyAplicarTemplate()">'+nichoOpts+'</select></div>'+
+        '<div class="fg"><label class="fl">Produto / Oferta *</label><input id="ia-produto" class="fi" placeholder="Ex: SugarBalance — suplemento natural pra glicose"></div>'+
+      '</div>'+
+      '<div class="fg" style="margin-bottom:12px;"><label class="fl">Dor que resolve</label><input id="ia-dor" class="fi" placeholder="Ex: medo de complicações da diabetes"></div>'+
+      '<div class="fg" style="margin-bottom:12px;"><label class="fl">Promessa principal</label><input id="ia-promessa" class="fi" placeholder="Ex: baixar glicemia em 30 dias sem remédio"></div>'+
+      '<div class="fg" style="margin-bottom:12px;"><label class="fl">Prova / Diferencial</label><input id="ia-prova" class="fi" placeholder="Ex: estudo de Harvard com 287 pessoas"></div>'+
+      camposExtra+
+      (_iaCopyAba === 'headlines' ? '<div class="fg" style="margin-bottom:12px;"><label class="fl">Ângulo desejado (opcional)</label><input id="ia-angulo" class="fi" placeholder="Ex: curiosidade, prova social, contraste"></div>' : '')+
+      '<button class="btn btn-primary" onclick="iaCopyGerar()" style="margin-top:6px;">🤖 Gerar com Claude</button>'+
+    '</div>';
+  }
+
+  if(_iaCopyAba === 'variacoes'){
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+      '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">Variar Copy Existente</div>'+
+      '<div class="fg" style="margin-bottom:12px;"><label class="fl">Copy original *</label><textarea id="ia-copy-orig" class="fi" rows="6" placeholder="Cole sua copy aqui..."></textarea></div>'+
+      '<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">'+
+        '<div class="fg"><label class="fl">Quantidade</label><select id="ia-qtd" class="fs"><option>3</option><option selected>5</option><option>7</option><option>10</option></select></div>'+
+        '<div class="fg"><label class="fl">Tipo de variação</label><select id="ia-tipo" class="fs"><option value="estrutura">Estrutura</option><option value="angulo">Ângulo</option><option value="tom">Tom</option><option value="comprimento">Comprimento</option><option value="gancho">Gancho/Hook</option></select></div>'+
+      '</div>'+
+      '<button class="btn btn-primary" onclick="iaCopyGerar()">🤖 Gerar variações</button>'+
+    '</div>';
+  }
+
+  if(_iaCopyAba === 'analise'){
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+      '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">Analisar Copy (forças, fraquezas, sugestões)</div>'+
+      '<div class="fg" style="margin-bottom:12px;"><label class="fl">Copy a analisar *</label><textarea id="ia-copy-analise" class="fi" rows="8" placeholder="Cole sua copy aqui pra análise crítica..."></textarea></div>'+
+      '<div class="fg" style="margin-bottom:12px;"><label class="fl">Contexto (opcional)</label><input id="ia-contexto" class="fi" placeholder="Ex: anúncio Meta pra suplemento de memória, público 55+"></div>'+
+      '<button class="btn btn-primary" onclick="iaCopyGerar()">🔬 Analisar</button>'+
+    '</div>';
+  }
+}
+
+function _iaCopyAplicarTemplate(){
+  var nicho = (document.getElementById('ia-nicho')||{}).value;
+  if(!nicho || !IACOPY_NICHOS_TEMPLATE[nicho]) return;
+  var t = IACOPY_NICHOS_TEMPLATE[nicho];
+  var f = function(id, v){ var e = document.getElementById(id); if(e && !e.value) e.value = v; };
+  f('ia-dor', t.dor);
+  f('ia-promessa', t.promessa);
+  f('ia-prova', t.prova);
+}
+
+async function iaCopyGerar(){
+  var out = document.getElementById('iacopy-output');
+  out.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">⏳ Gerando com Claude... (10-30 seg)</div>';
+
+  var endpoint = '/api/ia/copy/' + _iaCopyAba;
+  var body = {};
+  if(_iaCopyAba === 'headlines' || _iaCopyAba === 'anuncio' || _iaCopyAba === 'advertorial'){
+    body.nicho = (document.getElementById('ia-nicho')||{}).value || '';
+    body.produto = (document.getElementById('ia-produto')||{}).value || '';
+    body.dor = (document.getElementById('ia-dor')||{}).value || '';
+    body.promessa = (document.getElementById('ia-promessa')||{}).value || '';
+    body.prova = (document.getElementById('ia-prova')||{}).value || '';
+    if(_iaCopyAba === 'headlines') body.angulo = (document.getElementById('ia-angulo')||{}).value || '';
+    if(_iaCopyAba === 'anuncio'){
+      body.formato = (document.getElementById('ia-fmt')||{}).value;
+      body.plataforma = (document.getElementById('ia-plat')||{}).value;
+    }
+    if(_iaCopyAba === 'advertorial'){
+      body.persona = (document.getElementById('ia-persona')||{}).value || '';
+    }
+  } else if(_iaCopyAba === 'variacoes'){
+    body.copyOriginal = (document.getElementById('ia-copy-orig')||{}).value || '';
+    body.quantidade = parseInt((document.getElementById('ia-qtd')||{}).value) || 5;
+    body.tipoVariacao = (document.getElementById('ia-tipo')||{}).value;
+  } else if(_iaCopyAba === 'analise'){
+    body.copy = (document.getElementById('ia-copy-analise')||{}).value || '';
+    body.contexto = (document.getElementById('ia-contexto')||{}).value || '';
+  }
+
+  try {
+    var r = await fetch(API_BASE + endpoint, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')},
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    if(!data.ok){
+      out.innerHTML = '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:18px;border-radius:10px;color:#fca5a5;">❌ Erro: '+(data.error||'desconhecido')+'</div>';
+      return;
+    }
+    _iaCopyRenderOutput(data);
+  } catch(err){
+    out.innerHTML = '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:18px;border-radius:10px;color:#fca5a5;">❌ '+err.message+'</div>';
+  }
+}
+
+function _iaCopyRenderOutput(data){
+  var out = document.getElementById('iacopy-output');
+  var html = '';
+
+  if(data.headlines){
+    html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">📰 '+data.headlines.length+' Headlines geradas:</div>'+
+      data.headlines.map(function(h, i){
+        return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">'+
+          '<div style="flex:1;"><div style="font-size:15px;font-weight:600;margin-bottom:6px;">'+_esc(h.texto)+'</div><div style="font-size:11px;color:var(--text2);">🎯 '+_esc(h.gatilho||'')+(h.tom?' · '+_esc(h.tom):'')+'</div></div>'+
+          '<div style="display:flex;gap:6px;flex-shrink:0;">'+
+            '<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="iaCopyCopiar(\''+_esc(h.texto).replace(/'/g,"\\'")+'\')">📋</button>'+
+            '<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="iaCopySalvar(\'headline\',\''+_esc(h.texto).replace(/'/g,"\\'")+'\')">⭐</button>'+
+          '</div>'+
+        '</div>';
+      }).join('');
+  } else if(data.anuncio){
+    var a = data.anuncio;
+    html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">📢 Anúncio Completo:</div>'+
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;">'+
+        '<div style="margin-bottom:18px;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Headline</div><div style="font-size:18px;font-weight:700;">'+_esc(a.headline||'')+'</div></div>'+
+        (a.subheadline?'<div style="margin-bottom:18px;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Subheadline</div><div style="font-size:14px;">'+_esc(a.subheadline)+'</div></div>':'')+
+        '<div style="margin-bottom:18px;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Primary Text</div><div style="font-size:14px;line-height:1.7;white-space:pre-wrap;">'+_esc(a.primary_text||'')+'</div></div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">'+
+          '<div><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Description</div><div style="font-size:13px;">'+_esc(a.description||'')+'</div></div>'+
+          '<div><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:4px;">CTA</div><div style="font-size:13px;font-weight:700;color:var(--accent);">'+_esc(a.cta_button||'')+'</div></div>'+
+        '</div>'+
+        (a.angulo?'<div style="background:rgba(91,94,244,.06);padding:10px 12px;border-radius:7px;font-size:12px;color:var(--text2);"><b>🎯 Ângulo:</b> '+_esc(a.angulo)+'</div>':'')+
+        (a.observacoes?'<div style="background:rgba(251,191,36,.06);border-left:3px solid #FBBF24;padding:10px 12px;border-radius:7px;font-size:12px;color:var(--text2);margin-top:8px;"><b>💡 Dicas:</b> '+_esc(a.observacoes)+'</div>':'')+
+        '<div style="margin-top:14px;display:flex;gap:8px;"><button class="btn btn-ghost" onclick="iaCopyCopiar(\''+_esc(JSON.stringify(a)).replace(/'/g,"\\'")+'\')">📋 Copiar JSON</button><button class="btn btn-primary" onclick="iaCopySalvar(\'anuncio\', JSON.stringify(arguments[0]||'+JSON.stringify(a).replace(/'/g,"\\'")+'))">⭐ Salvar</button></div>'+
+      '</div>';
+  } else if(data.variacoes){
+    html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">🔁 '+data.variacoes.length+' variações:</div>'+
+      data.variacoes.map(function(v){
+        return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:10px;">'+
+          '<div style="display:flex;justify-content:space-between;margin-bottom:10px;"><b style="color:var(--accent);">Variação '+v.id+'</b><div style="display:flex;gap:6px;"><button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" onclick="iaCopyCopiar(\''+_esc(v.texto).replace(/'/g,"\\'")+'\')">📋</button></div></div>'+
+          '<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;margin-bottom:10px;">'+_esc(v.texto)+'</div>'+
+          (v.mudancaPrincipal?'<div style="font-size:11px;color:var(--text2);font-style:italic;">↳ '+_esc(v.mudancaPrincipal)+'</div>':'')+
+        '</div>';
+      }).join('');
+  } else if(data.analise){
+    var an = data.analise;
+    var corNota = an.nota >= 80 ? '#16A34A' : an.nota >= 60 ? '#FBBF24' : '#DC2626';
+    html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">🔬 Análise:</div>'+
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;">'+
+        '<div style="display:flex;align-items:center;gap:18px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border);">'+
+          '<div style="font-size:42px;font-weight:800;color:'+corNota+';">'+an.nota+'<span style="font-size:18px;color:var(--text2);">/100</span></div>'+
+          '<div style="flex:1;"><div style="font-size:13px;font-weight:600;">'+_esc(an.veredito||'')+'</div></div>'+
+        '</div>'+
+        (an.forcas?'<div style="margin-bottom:14px;"><div style="font-size:12px;font-weight:700;color:#16A34A;margin-bottom:6px;">✅ FORÇAS</div><ul style="margin:0;padding-left:20px;font-size:13px;color:var(--text2);line-height:1.7;">'+an.forcas.map(function(f){return '<li>'+_esc(f)+'</li>';}).join('')+'</ul></div>':'')+
+        (an.fraquezas?'<div style="margin-bottom:14px;"><div style="font-size:12px;font-weight:700;color:#DC2626;margin-bottom:6px;">⚠️ FRAQUEZAS</div><ul style="margin:0;padding-left:20px;font-size:13px;color:var(--text2);line-height:1.7;">'+an.fraquezas.map(function(f){return '<li>'+_esc(f)+'</li>';}).join('')+'</ul></div>':'')+
+        (an.sugestoes?'<div style="margin-bottom:14px;"><div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:6px;">💡 SUGESTÕES</div><ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7;">'+an.sugestoes.map(function(f){return '<li>'+_esc(f)+'</li>';}).join('')+'</ul></div>':'')+
+        (an.elementos?'<div style="background:var(--bg);padding:14px;border-radius:8px;margin-top:14px;">'+
+          '<div style="font-size:12px;font-weight:700;margin-bottom:8px;">📊 Elementos da Copy</div>'+
+          Object.keys(an.elementos).map(function(k){return '<div style="font-size:12px;color:var(--text2);margin-bottom:4px;"><b>'+k+':</b> '+_esc(an.elementos[k])+'</div>';}).join('')+
+        '</div>':'')+
+        (an.riscos_compliance?'<div style="background:rgba(220,38,38,.06);border-left:3px solid #DC2626;padding:10px 14px;border-radius:6px;font-size:12px;color:var(--text2);margin-top:14px;"><b>⚖️ Compliance:</b> '+_esc(an.riscos_compliance)+'</div>':'')+
+      '</div>';
+  } else if(data.advertorial){
+    var ad = data.advertorial;
+    html = '<div style="font-size:15px;font-weight:700;margin-bottom:14px;">📝 Advertorial Completo:</div>'+
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:28px;">'+
+        '<h1 style="font-size:26px;font-weight:800;line-height:1.3;margin-bottom:14px;">'+_esc(ad.headline||'')+'</h1>'+
+        (ad.lead?'<p style="font-size:15px;color:var(--text2);font-style:italic;margin-bottom:24px;line-height:1.7;">'+_esc(ad.lead)+'</p>':'')+
+        (ad.secoes?ad.secoes.map(function(s){return '<div style="margin-bottom:22px;"><h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--accent);">'+_esc(s.titulo)+'</h3><p style="font-size:14px;line-height:1.8;white-space:pre-wrap;">'+_esc(s.texto)+'</p></div>';}).join(''):'')+
+        (ad.cta_final?'<div style="background:linear-gradient(135deg,var(--accent),#3E1493);color:#fff;padding:18px;border-radius:10px;text-align:center;margin-top:24px;"><div style="font-size:15px;font-weight:700;">'+_esc(ad.cta_final)+'</div></div>':'')+
+        (ad.observacoes?'<div style="background:rgba(251,191,36,.06);border-left:3px solid #FBBF24;padding:10px 14px;border-radius:6px;font-size:12px;color:var(--text2);margin-top:14px;"><b>💡 Dicas:</b> '+_esc(ad.observacoes)+'</div>':'')+
+        '<div style="margin-top:18px;display:flex;gap:8px;"><button class="btn btn-ghost" onclick="iaCopyCopiar(\''+_esc(JSON.stringify(ad)).replace(/'/g,"\\'")+'\')">📋 Copiar tudo</button></div>'+
+      '</div>';
+  } else if(data.raw){
+    html = '<div style="background:rgba(251,191,36,.06);border:1px solid #FBBF24;border-radius:10px;padding:18px;">'+
+      '<div style="font-weight:700;margin-bottom:10px;color:#FBBF24;">⚠️ Claude retornou em formato não-JSON. Resposta crua:</div>'+
+      '<pre style="font-family:Menlo,monospace;font-size:12px;white-space:pre-wrap;color:var(--text2);">'+_esc(data.raw)+'</pre>'+
+    '</div>';
+  }
+
+  out.innerHTML = html;
+}
+
+function iaCopyCopiar(txt){
+  navigator.clipboard.writeText(txt).then(function(){
+    var t = document.createElement('div');
+    t.style.cssText='position:fixed;bottom:30px;right:30px;background:#16A34A;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:700;z-index:9999;';
+    t.textContent='✅ Copiado!';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 2000);
+  });
+}
+
+function iaCopySalvar(tipo, conteudo){
+  var favs = g('sl_ia_copy', []);
+  favs.unshift({
+    id: 'ia-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),
+    tipo, conteudo,
+    criadoEm: new Date().toISOString(),
+    autor: currentUser?.nome,
+    _updatedAt: Date.now()/1000
+  });
+  s('sl_ia_copy', favs.slice(0, 200));
+  alert('⭐ Salvo nos favoritos!');
+}
+
+function iaCopyAbrirFavoritos(){
+  var favs = g('sl_ia_copy', []);
+  var html =
+    '<div id="ia-favs-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'ia-favs-modal\').remove();">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:760px;width:100%;margin:20px auto;padding:28px;color:var(--text);">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:18px;"><div style="font-size:18px;font-weight:700;">⭐ Copies favoritas ('+favs.length+')</div><button onclick="document.getElementById(\'ia-favs-modal\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button></div>'+
+        (favs.length === 0
+          ? '<div style="text-align:center;padding:40px;color:var(--text2);">Nenhuma copy salva ainda. Use o botão ⭐ nos resultados pra salvar.</div>'
+          : favs.map(function(f){
+              var c = f.conteudo;
+              if(typeof c === 'string' && c.startsWith('{')){ try{ c = JSON.parse(c); }catch(e){} }
+              var resumo = typeof c === 'string' ? c : (c.headline || c.texto || JSON.stringify(c).slice(0,100));
+              return '<div style="background:var(--bg);padding:14px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'+
+                '<div style="flex:1;"><div style="font-size:11px;color:var(--text2);margin-bottom:4px;">'+f.tipo+' · '+new Date(f.criadoEm).toLocaleString('pt-BR')+'</div><div style="font-size:13px;">'+_esc(String(resumo).slice(0,200))+'</div></div>'+
+                '<div style="display:flex;gap:6px;"><button onclick="iaCopyCopiar(\''+_esc(typeof f.conteudo === 'string'?f.conteudo:JSON.stringify(f.conteudo)).replace(/'/g,"\\'")+'\')" style="background:transparent;border:1px solid var(--border);padding:4px 10px;border-radius:5px;cursor:pointer;color:var(--text);font-size:11px;">📋</button>'+
+                '<button onclick="iaCopyRemoverFav(\''+f.id+'\')" style="background:transparent;border:1px solid #DC2626;color:#DC2626;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:11px;">🗑</button></div>'+
+              '</div>';
+            }).join(''))+
+      '</div>'+
+    '</div>';
+  var ex = document.getElementById('ia-favs-modal'); if(ex) ex.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function iaCopyRemoverFav(id){
+  s('sl_ia_copy', g('sl_ia_copy', []).filter(function(f){ return f.id !== id; }));
+  iaCopyAbrirFavoritos();
 }
 
 // ══════════════════════════════════════════════

@@ -1437,6 +1437,263 @@ app.get('/api/me/sessoes', (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── IA REAL DE COPY (Direct Response) ──
+// Geração + análise de copy especializada em DR usando Claude.
+// 5 endpoints: headlines, anúncio completo, variações, análise, advertorial.
+// ══════════════════════════════════════════════
+
+const IA_COPY_MODEL = 'claude-sonnet-4-5-20250929';
+
+// Helper genérico pra chamar Claude com prompt do sistema + user
+async function _chamarClaudeCopy(systemPrompt, userPrompt, maxTokens = 2000) {
+  const aiKey = _getAIKey();
+  if (!aiKey) throw new Error('Configure ANTHROPIC_API_KEY no Railway pra usar IA de copy');
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': aiKey,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: IA_COPY_MODEL,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    })
+  });
+  if (!r.ok) { const err = await r.text(); throw new Error(`Claude ${r.status}: ${err.slice(0,300)}`); }
+  const data = await r.json();
+  return data.content[0]?.text || '';
+}
+
+// System prompt base — define a expertise do agente
+const SYSTEM_PROMPT_DR = `Você é um copywriter expert em Direct Response Marketing (DR), especializado em copy brasileiro pra Meta Ads, Google Ads, advertoriais e VSLs.
+
+Seu estilo:
+- Direto e emocional, não corporativo
+- Usa gatilhos comprovados de DR (curiosidade, urgência, prova social, autoridade, contraste)
+- PT-BR coloquial, sem jargão técnico
+- Hooks em até 8 palavras, com tensão narrativa
+- Promessas específicas (números, prazos) > genéricas
+- Adapta tom ao nicho (mais médico em saúde, mais agressivo em emagrecimento, etc.)
+
+NUNCA faça:
+- Promessas absurdas que infringem políticas Meta (curas milagrosas, garantias de renda)
+- Copy genérico sem ângulo claro
+- Linguagem corporativa ("solução inovadora", "tecnologia de ponta")
+- Listas grandes sem priorizar
+
+SEMPRE responda em formato JSON quando solicitado, sem markdown extra.`;
+
+// POST /api/ia/copy/headlines — gera 10 headlines pra um produto
+app.post('/api/ia/copy/headlines', async (req, res) => {
+  try {
+    const { nicho, produto, dor, promessa, prova, angulo } = req.body || {};
+    if (!produto && !nicho) return res.status(400).json({ error: 'Informe ao menos produto ou nicho' });
+
+    const userPrompt = `Gere 10 HEADLINES de Direct Response pra:
+
+Nicho: ${nicho || 'não especificado'}
+Produto: ${produto || '—'}
+Dor que resolve: ${dor || '—'}
+Promessa principal: ${promessa || '—'}
+Prova/diferencial: ${prova || '—'}
+Ângulo desejado: ${angulo || 'variar entre curiosidade, prova social, contraste, urgência'}
+
+Cada headline deve ter no MÁXIMO 12 palavras, em PT-BR coloquial. Varie os gatilhos.
+
+Responda APENAS com JSON neste formato exato (sem markdown):
+{
+  "headlines": [
+    {"texto": "...", "gatilho": "curiosidade|prova-social|urgencia|contraste|autoridade", "tom": "..."},
+    ...
+  ]
+}`;
+    const txt = await _chamarClaudeCopy(SYSTEM_PROMPT_DR, userPrompt, 1500);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, ...parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ia/copy/anuncio — gera anúncio completo pronto pra Meta
+app.post('/api/ia/copy/anuncio', async (req, res) => {
+  try {
+    const { nicho, produto, dor, promessa, prova, formato, plataforma } = req.body || {};
+    if (!produto) return res.status(400).json({ error: 'Produto obrigatório' });
+    const fmt = formato || 'feed_image';
+    const plat = plataforma || 'meta';
+
+    const userPrompt = `Gere um ANÚNCIO COMPLETO de Direct Response pra ${plat.toUpperCase()} (formato: ${fmt}):
+
+Nicho: ${nicho || '—'}
+Produto: ${produto}
+Dor: ${dor || '—'}
+Promessa: ${promessa || '—'}
+Prova: ${prova || '—'}
+
+Responda APENAS com JSON neste formato (sem markdown):
+{
+  "headline": "máx 8 palavras",
+  "subheadline": "máx 15 palavras (opcional, pra reforço)",
+  "primary_text": "texto principal que aparece acima do criativo, 3-5 parágrafos curtos, com hooks, dor amplificada, promessa e CTA",
+  "description": "máx 20 palavras (aparece embaixo da imagem)",
+  "cta_button": "Saiba mais | Comprar agora | Inscrever-se | Baixar | Cadastrar",
+  "angulo": "qual gatilho/ângulo usado",
+  "observacoes": "dicas de teste A/B"
+}`;
+    const txt = await _chamarClaudeCopy(SYSTEM_PROMPT_DR, userPrompt, 2000);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, anuncio: parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ia/copy/variacoes — varia uma copy existente em N versões
+app.post('/api/ia/copy/variacoes', async (req, res) => {
+  try {
+    const { copyOriginal, quantidade, tipoVariacao } = req.body || {};
+    if (!copyOriginal) return res.status(400).json({ error: 'copyOriginal obrigatório' });
+    const qtd = Math.min(10, Math.max(3, parseInt(quantidade) || 5));
+    const tipo = tipoVariacao || 'estrutura';
+
+    const userPrompt = `Crie ${qtd} VARIAÇÕES dessa copy mudando o ${tipo}:
+
+COPY ORIGINAL:
+"""
+${copyOriginal}
+"""
+
+Tipos possíveis:
+- estrutura: muda como a copy é montada (ordem dos elementos)
+- angulo: muda o ângulo de venda (de curiosidade pra prova, etc)
+- tom: muda o tom (mais agressivo, mais médico, mais informal, etc)
+- comprimento: faz versões mais curtas e mais longas
+- gancho: testa novos hooks de abertura
+
+Mantenha a essência da promessa mas varie a abordagem. Responda APENAS com JSON:
+{
+  "variacoes": [
+    {"id": 1, "texto": "...", "mudancaPrincipal": "..."},
+    ...
+  ]
+}`;
+    const txt = await _chamarClaudeCopy(SYSTEM_PROMPT_DR, userPrompt, 3000);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, ...parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ia/copy/analise — analisa copy existente (forças, fraquezas, sugestões)
+app.post('/api/ia/copy/analise', async (req, res) => {
+  try {
+    const { copy, contexto } = req.body || {};
+    if (!copy) return res.status(400).json({ error: 'copy obrigatório' });
+
+    const userPrompt = `Analise essa copy de Direct Response criticamente:
+
+COPY:
+"""
+${copy}
+"""
+
+Contexto adicional: ${contexto || 'não informado'}
+
+Dê uma análise estruturada como expert em DR. Responda APENAS com JSON:
+{
+  "nota": "0-100 (avaliação geral)",
+  "veredito": "1 frase resumo",
+  "forcas": ["3-5 pontos fortes específicos da copy"],
+  "fraquezas": ["3-5 pontos fracos específicos"],
+  "sugestoes": ["5-7 sugestões CONCRETAS de melhoria"],
+  "elementos": {
+    "hook": "avaliação do hook (1-10) + comentário",
+    "promessa": "avaliação da promessa + comentário",
+    "prova": "avaliação da prova social/autoridade",
+    "cta": "avaliação do CTA"
+  },
+  "publico_alvo_provavel": "quem essa copy mira",
+  "riscos_compliance": "alertas sobre políticas Meta (se houver)"
+}`;
+    const txt = await _chamarClaudeCopy(SYSTEM_PROMPT_DR, userPrompt, 2500);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, analise: parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ia/copy/advertorial — gera advertorial completo
+app.post('/api/ia/copy/advertorial', async (req, res) => {
+  try {
+    const { nicho, produto, persona, dor, promessa, prova } = req.body || {};
+    if (!produto) return res.status(400).json({ error: 'Produto obrigatório' });
+
+    const userPrompt = `Crie um ADVERTORIAL completo (formato matéria-jornalística) pra Direct Response:
+
+Nicho: ${nicho || '—'}
+Produto: ${produto}
+Persona principal: ${persona || 'pessoa comum sofrendo da dor'}
+Dor: ${dor || '—'}
+Promessa: ${promessa || '—'}
+Prova: ${prova || '—'}
+
+Estrutura clássica de advertorial DR:
+1. Headline + lead intrigante (dor amplificada + curiosidade)
+2. Identificação com a persona (1-2 parágrafos)
+3. Causa raiz do problema (educação que muda perspectiva)
+4. Descoberta/solução (introdução do mecanismo)
+5. Prova/case stories (1-2 histórias específicas)
+6. Como funciona (explicação simples)
+7. CTA com urgência
+
+Tom: matéria de portal/blog, NÃO comercial óbvio. 600-900 palavras.
+
+Responda APENAS com JSON:
+{
+  "headline": "...",
+  "lead": "primeiro parágrafo intrigante",
+  "secoes": [
+    {"titulo": "...", "texto": "..."},
+    ...
+  ],
+  "cta_final": "...",
+  "observacoes": "dicas pra teste"
+}`;
+    const txt = await _chamarClaudeCopy(SYSTEM_PROMPT_DR, userPrompt, 4000);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, advertorial: parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ── DOMÍNIO PRÓPRIO DO CLIENTE (8/8) ──
 // Cliente Pro+ pode configurar app.suaempresa.com em vez de
 // acme.centralaxcend.com. Sistema mostra instruções DNS, verifica
