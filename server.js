@@ -1644,6 +1644,66 @@ Dê uma análise estruturada como expert em DR. Responda APENAS com JSON:
   }
 });
 
+// POST /api/ia/analise-ads — análise preditiva de criativo (escalar/pausar/manter)
+app.post('/api/ia/analise-ads', async (req, res) => {
+  try {
+    const { nome, formato, ctr, cpm, cpc, roas, hookRate, holdRate, convCheckout, diasRodando, investido, faturado, tendenciaCpm, tendenciaCtr, comentarios } = req.body || {};
+    if (!nome) return res.status(400).json({ error: 'Nome do anúncio obrigatório' });
+
+    const systemPrompt = `Você é um analista expert em tráfego pago de Direct Response. Analisa métricas de criativos e prevê se devem ESCALAR, PAUSAR ou MANTER, baseado em padrões de performance de DR.
+
+Critérios de decisão:
+- ESCALAR: CTR crescendo, CPM estável/caindo, ROAS > 2x e subindo, hook rate alto (>25%), comentários positivos
+- PAUSAR: CPM subindo forte, CTR/hook caindo 3+ dias, ROAS < 1.5x, saturação de audiência
+- MANTER: métricas estáveis, ainda dentro do CPA alvo, sem sinais claros de escala ou queda
+
+Seja DIRETO e ACIONÁVEL. Use a experiência de DR brasileiro. Responda APENAS JSON.`;
+
+    const userPrompt = `Analise esse criativo e preveja a ação:
+
+Anúncio: ${nome}
+Formato: ${formato || '—'}
+Dias rodando: ${diasRodando || '—'}
+
+MÉTRICAS:
+- CTR: ${ctr != null ? ctr + '%' : '—'}
+- CPM: ${cpm != null ? 'R$ ' + cpm : '—'}
+- CPC: ${cpc != null ? 'R$ ' + cpc : '—'}
+- ROAS: ${roas != null ? roas + 'x' : '—'}
+- Hook Rate: ${hookRate != null ? hookRate + '%' : '—'}
+- Hold Rate: ${holdRate != null ? holdRate + '%' : '—'}
+- Conv. Checkout: ${convCheckout != null ? convCheckout + '%' : '—'}
+- Investido: ${investido != null ? 'R$ ' + investido : '—'}
+- Faturado: ${faturado != null ? 'R$ ' + faturado : '—'}
+
+TENDÊNCIAS:
+- CPM: ${tendenciaCpm || 'não informado'}
+- CTR/Hook: ${tendenciaCtr || 'não informado'}
+- Comentários: ${comentarios || 'não informado'}
+
+Responda APENAS com JSON:
+{
+  "previsao": "ESCALAR | PAUSAR | MANTER",
+  "confianca": "0-100 (quão confiante você está)",
+  "recomendacao": "1-2 frases acionáveis (ex: 'Aumentar budget 40% nas próximas 48h')",
+  "janela": "prazo da ação (ex: 'próximas 48h', 'imediato', 'monitorar 3 dias')",
+  "sinais_positivos": ["sinais que apoiam escalar/manter"],
+  "sinais_negativos": ["red flags / sinais de alerta"],
+  "diagnostico": "análise técnica em 2-3 frases do que está acontecendo com esse criativo",
+  "proximo_passo": "ação concreta sugerida"
+}`;
+    const txt = await _chamarClaudeCopy(systemPrompt, userPrompt, 1500);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, analise: parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/ia/copy/advertorial — gera advertorial completo
 app.post('/api/ia/copy/advertorial', async (req, res) => {
   try {

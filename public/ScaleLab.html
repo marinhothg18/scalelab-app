@@ -1444,9 +1444,9 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 011.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
       Criativos
     </div>
-    <div class="nav-item" id="nav-iacopy" onclick="goTo('iacopy')" title="IA de Copy · Direct Response">
+    <div class="nav-item" id="nav-iacopy" onclick="goTo('iacopy')" title="IA · Copy + Análise de Ads">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      IA Copy
+      IA
     </div>
     <div class="nav-item" onclick="goTo('arquivos')">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
@@ -5170,7 +5170,7 @@ const titles={
   criativos:{t:'Criativos',s:'Gerencie seus materiais criativos.'},
   chat:{t:'Chat',s:''},swipe:{t:'Swipe',s:'Biblioteca de swipes e referências'},
   arquivos:{t:'Projetos',s:'Central de arquivos por projeto.'},educacional:{t:'Educacional',s:'Conteúdos de aprendizagem da equipe'},
-  iacopy:{t:'IA de Copy',s:'Geração e análise de copy de Direct Response com IA'},
+  iacopy:{t:'IA',s:'Copy de Direct Response + Análise preditiva de ads'},
   notificacoes:{t:'Notificações',s:''},configuracoes:{t:'Configurações',s:''},
   adsmetrics:{t:'Métricas de Ads',s:'Performance de campanhas via RedTrack'},
   rituais:{t:'Rituais',s:'Rotinas e processos recorrentes da equipe.'},
@@ -23957,6 +23957,7 @@ function logout(){
 // ══════════════════════════════════════════════
 // ── IA REAL DE COPY (Direct Response) ──
 // ══════════════════════════════════════════════
+var _iaModo = 'copy'; // 'copy' | 'ads'
 var _iaCopyAba = 'headlines'; // headlines | anuncio | variacoes | analise | advertorial
 
 var IACOPY_NICHOS_TEMPLATE = {
@@ -23973,14 +23974,33 @@ var IACOPY_NICHOS_TEMPLATE = {
 window.renderIaCopy = function(){
   var el = document.getElementById('iacopy-content');
   if(!el) return;
-  el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:18px;flex-wrap:wrap;">'+
-      '<div><div style="font-size:24px;font-weight:800;background:linear-gradient(135deg,var(--accent),#C52C58);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">🤖 IA de Copy</div>'+
-      '<div style="font-size:13px;color:var(--text2);margin-top:4px;">Gere e analise copy de Direct Response com Claude · 8 nichos com templates</div></div>'+
-      '<button class="btn btn-ghost" onclick="iaCopyAbrirFavoritos()">⭐ Meus favoritos</button>'+
-    '</div>'+
 
-    // ABAS
+  // Header + seletor de MODO (Copy / Análise de Ads)
+  var header =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:18px;flex-wrap:wrap;">'+
+      '<div><div style="font-size:24px;font-weight:800;background:linear-gradient(135deg,var(--accent),#C52C58);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">🤖 IA</div>'+
+      '<div style="font-size:13px;color:var(--text2);margin-top:4px;">Inteligência artificial pra Direct Response com Claude</div></div>'+
+      (_iaModo === 'copy' ? '<button class="btn btn-ghost" onclick="iaCopyAbrirFavoritos()">⭐ Meus favoritos</button>' : '')+
+    '</div>'+
+    // SELETOR DE MODO (pílulas grandes)
+    '<div style="display:flex;gap:10px;margin-bottom:20px;">'+
+      '<div onclick="_iaModo=\'copy\';window.renderIaCopy();" style="flex:1;padding:16px;border-radius:12px;cursor:pointer;border:2px solid '+(_iaModo==='copy'?'var(--accent)':'var(--border)')+';background:'+(_iaModo==='copy'?'rgba(91,94,244,.1)':'var(--bg2)')+';transition:all .15s;">'+
+        '<div style="font-size:18px;font-weight:700;">📝 Copy</div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-top:2px;">Headlines, anúncios, variações, análise, advertorial</div>'+
+      '</div>'+
+      '<div onclick="_iaModo=\'ads\';window.renderIaCopy();" style="flex:1;padding:16px;border-radius:12px;cursor:pointer;border:2px solid '+(_iaModo==='ads'?'var(--accent)':'var(--border)')+';background:'+(_iaModo==='ads'?'rgba(91,94,244,.1)':'var(--bg2)')+';transition:all .15s;">'+
+        '<div style="font-size:18px;font-weight:700;">🔮 Análise de Ads</div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-top:2px;">Prevê escalar/pausar/manter baseado nas métricas</div>'+
+      '</div>'+
+    '</div>';
+
+  if(_iaModo === 'ads'){
+    el.innerHTML = header + _iaAdsHtml() + '<div id="iacopy-output" style="margin-top:24px;"></div>';
+    return;
+  }
+
+  // Modo COPY (5 abas)
+  el.innerHTML = header +
     '<div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:10px;overflow-x:auto;">'+
       ['headlines','anuncio','variacoes','analise','advertorial'].map(function(aba){
         var labels = { headlines:'📰 10 Headlines', anuncio:'📢 Anúncio completo', variacoes:'🔁 Variações', analise:'🔬 Analisar copy', advertorial:'📝 Advertorial' };
@@ -23988,13 +24008,94 @@ window.renderIaCopy = function(){
         return '<div onclick="_iaCopyAba=\''+aba+'\';window.renderIaCopy();" style="padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(ativo?'700':'500')+';color:'+(ativo?'#fff':'var(--text2)')+';background:'+(ativo?'var(--accent)':'transparent')+';white-space:nowrap;">'+labels[aba]+'</div>';
       }).join('')+
     '</div>'+
-
-    // FORM (varia por aba)
     '<div id="iacopy-form">'+_iaCopyFormHtml()+'</div>'+
-
-    // OUTPUT
     '<div id="iacopy-output" style="margin-top:24px;"></div>';
 };
+
+// Form da Análise de Ads
+function _iaAdsHtml(){
+  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+    '<div style="font-size:15px;font-weight:700;margin-bottom:6px;">🔮 Análise preditiva de criativo</div>'+
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:18px;">Insira as métricas do anúncio. A IA prevê se você deve escalar, pausar ou manter.</div>'+
+    '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nome do anúncio *</label><input id="ads-nome" class="fi" placeholder="Ex: Detox 21d · VSL Test 04"></div>'+
+    '<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">'+
+      '<div class="fg"><label class="fl">Formato</label><select id="ads-formato" class="fs"><option value="">—</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>'+
+      '<div class="fg"><label class="fl">Dias rodando</label><input id="ads-dias" class="fi" type="number" placeholder="Ex: 7"></div>'+
+    '</div>'+
+    '<div class="row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">'+
+      '<div class="fg"><label class="fl">CTR (%)</label><input id="ads-ctr" class="fi" type="number" step="0.01" placeholder="2.4"></div>'+
+      '<div class="fg"><label class="fl">CPM (R$)</label><input id="ads-cpm" class="fi" type="number" step="0.01" placeholder="28"></div>'+
+      '<div class="fg"><label class="fl">CPC (R$)</label><input id="ads-cpc" class="fi" type="number" step="0.01" placeholder="1.20"></div>'+
+    '</div>'+
+    '<div class="row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">'+
+      '<div class="fg"><label class="fl">ROAS (x)</label><input id="ads-roas" class="fi" type="number" step="0.1" placeholder="4.8"></div>'+
+      '<div class="fg"><label class="fl">Hook Rate (%)</label><input id="ads-hook" class="fi" type="number" step="0.1" placeholder="28"></div>'+
+      '<div class="fg"><label class="fl">Hold Rate (%)</label><input id="ads-hold" class="fi" type="number" step="0.1" placeholder="15"></div>'+
+    '</div>'+
+    '<div class="row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">'+
+      '<div class="fg"><label class="fl">Conv. Checkout (%)</label><input id="ads-conv" class="fi" type="number" step="0.01" placeholder="3.2"></div>'+
+      '<div class="fg"><label class="fl">Investido (R$)</label><input id="ads-inv" class="fi" type="number" placeholder="5000"></div>'+
+      '<div class="fg"><label class="fl">Faturado (R$)</label><input id="ads-fat" class="fi" type="number" placeholder="24000"></div>'+
+    '</div>'+
+    '<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">'+
+      '<div class="fg"><label class="fl">Tendência do CPM</label><select id="ads-tcpm" class="fs"><option value="">—</option><option value="caindo">Caindo (bom)</option><option value="estável">Estável</option><option value="subindo">Subindo (alerta)</option></select></div>'+
+      '<div class="fg"><label class="fl">Tendência CTR/Hook</label><select id="ads-tctr" class="fs"><option value="">—</option><option value="crescendo">Crescendo (bom)</option><option value="estável">Estável</option><option value="caindo">Caindo (alerta)</option></select></div>'+
+    '</div>'+
+    '<div class="fg" style="margin-bottom:14px;"><label class="fl">Comentários do público (opcional)</label><input id="ads-comentarios" class="fi" placeholder="Ex: maioria positivos, alguns reclamando do preço"></div>'+
+    '<button class="btn btn-primary" onclick="iaAnalisarAd()">🔮 Analisar com IA</button>'+
+  '</div>';
+}
+
+async function iaAnalisarAd(){
+  var out = document.getElementById('iacopy-output');
+  out.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">🔮 Analisando o criativo... (10-20 seg)</div>';
+  var num = function(id){ var v = (document.getElementById(id)||{}).value; return v === '' ? null : Number(v); };
+  var body = {
+    nome: (document.getElementById('ads-nome')||{}).value || '',
+    formato: (document.getElementById('ads-formato')||{}).value || '',
+    diasRodando: num('ads-dias'),
+    ctr: num('ads-ctr'), cpm: num('ads-cpm'), cpc: num('ads-cpc'),
+    roas: num('ads-roas'), hookRate: num('ads-hook'), holdRate: num('ads-hold'),
+    convCheckout: num('ads-conv'), investido: num('ads-inv'), faturado: num('ads-fat'),
+    tendenciaCpm: (document.getElementById('ads-tcpm')||{}).value || '',
+    tendenciaCtr: (document.getElementById('ads-tctr')||{}).value || '',
+    comentarios: (document.getElementById('ads-comentarios')||{}).value || ''
+  };
+  if(!body.nome){ alert('Nome do anúncio é obrigatório'); out.innerHTML=''; return; }
+  try {
+    var r = await fetch(API_BASE+'/api/ia/analise-ads', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')},
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    if(!data.ok){ out.innerHTML = '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:18px;border-radius:10px;color:#fca5a5;">❌ '+(data.error||'Erro')+'</div>'; return; }
+    if(data.raw){ out.innerHTML = '<pre style="background:var(--bg2);padding:18px;border-radius:10px;white-space:pre-wrap;font-size:12px;">'+_esc(data.raw)+'</pre>'; return; }
+    var a = data.analise;
+    var prev = (a.previsao||'').toUpperCase();
+    var cor = prev === 'ESCALAR' ? '#16A34A' : prev === 'PAUSAR' ? '#DC2626' : '#FBBF24';
+    var icone = prev === 'ESCALAR' ? '🚀' : prev === 'PAUSAR' ? '⚠️' : '⏸';
+    out.innerHTML =
+      '<div style="background:var(--bg2);border:2px solid '+cor+';border-radius:14px;padding:24px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">'+
+          '<div style="font-size:24px;font-weight:800;color:'+cor+';">'+icone+' PREVISÃO: '+prev+'</div>'+
+          '<div style="text-align:right;"><div style="font-size:11px;color:var(--text2);">Confiança</div><div style="font-size:22px;font-weight:700;color:'+cor+';">'+(a.confianca||'—')+'%</div></div>'+
+        '</div>'+
+        '<div style="background:'+cor+'22;border-left:3px solid '+cor+';padding:14px;border-radius:8px;margin-bottom:16px;">'+
+          '<div style="font-size:11px;font-weight:700;color:'+cor+';text-transform:uppercase;margin-bottom:4px;">Recomendação · '+_esc(a.janela||'')+'</div>'+
+          '<div style="font-size:15px;font-weight:600;">'+_esc(a.recomendacao||'')+'</div>'+
+        '</div>'+
+        (a.diagnostico?'<div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:16px;"><b>📊 Diagnóstico:</b> '+_esc(a.diagnostico)+'</div>':'')+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">'+
+          (a.sinais_positivos&&a.sinais_positivos.length?'<div style="background:rgba(22,163,74,.06);padding:14px;border-radius:8px;"><div style="font-size:12px;font-weight:700;color:#16A34A;margin-bottom:8px;">✅ Sinais positivos</div><ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text2);line-height:1.7;">'+a.sinais_positivos.map(function(s){return '<li>'+_esc(s)+'</li>';}).join('')+'</ul></div>':'')+
+          (a.sinais_negativos&&a.sinais_negativos.length?'<div style="background:rgba(220,38,38,.06);padding:14px;border-radius:8px;"><div style="font-size:12px;font-weight:700;color:#DC2626;margin-bottom:8px;">⚠️ Red flags</div><ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text2);line-height:1.7;">'+a.sinais_negativos.map(function(s){return '<li>'+_esc(s)+'</li>';}).join('')+'</ul></div>':'')+
+        '</div>'+
+        (a.proximo_passo?'<div style="background:linear-gradient(135deg,var(--accent),#3E1493);color:#fff;padding:14px;border-radius:8px;"><div style="font-size:11px;opacity:.85;text-transform:uppercase;font-weight:700;margin-bottom:4px;">🎯 Próximo passo</div><div style="font-size:14px;font-weight:600;">'+_esc(a.proximo_passo)+'</div></div>':'')+
+      '</div>';
+  } catch(err){
+    out.innerHTML = '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:18px;border-radius:10px;color:#fca5a5;">❌ '+err.message+'</div>';
+  }
+}
 
 function _iaCopyFormHtml(){
   var nichoOpts = '<option value="">— Escolha ou digite custom —</option>'+
