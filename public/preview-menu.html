@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Conceitos de Menu · Axcend</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  :root{
+    --bg:#0F0F0F; --bg2:#1a1a1a; --bg3:#242424; --card:#1a1a1a;
+    --text:#fff; --text2:#9CA3AF; --text3:#6B7280; --border:#2a2a2a; --accent:#5b5ef4;
+  }
+  body.light{
+    --bg:#F4F5F7; --bg2:#fff; --bg3:#EEF0F3; --card:#fff;
+    --text:#1F2937; --text2:#6B7280; --text3:#9CA3AF; --border:#E5E7EB; --accent:#5b5ef4;
+  }
+  body{background:var(--bg);color:var(--text);transition:background .2s;padding:24px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;max-width:1400px;margin:0 auto 24px;}
+  .topbar h1{font-size:24px;font-weight:800;}
+  .topbar p{font-size:13px;color:var(--text2);margin-top:2px;}
+  .theme-toggle{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;max-width:1400px;margin:0 auto;}
+  @media(max-width:1000px){.grid{grid-template-columns:1fr;}}
+  .concept{background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+  .concept-head{padding:16px 20px;border-bottom:1px solid var(--border);}
+  .concept-head h2{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;}
+  .concept-head p{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.5;}
+  .concept-body{padding:16px;display:flex;gap:16px;min-height:480px;}
+
+  /* Sidebar base */
+  .sb{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 8px;display:flex;flex-direction:column;gap:2px;flex-shrink:0;}
+  .sb-logo{display:flex;align-items:center;gap:8px;padding:8px 10px 14px;}
+  .sb-logo .ico{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#5b5ef4,#3E1493);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;}
+  .sb-logo .name{font-weight:800;font-size:16px;}
+  .item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);transition:all .12s;white-space:nowrap;}
+  .item:hover{background:var(--bg3);color:var(--text);}
+  .item.active{background:var(--accent);color:#fff;font-weight:600;}
+  .item .i{width:18px;text-align:center;flex-shrink:0;}
+  .grp-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);padding:14px 12px 6px;}
+  .sb-divider{height:1px;background:var(--border);margin:8px 4px;}
+  .fake-content{flex:1;background:var(--card);border:1px dashed var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px;}
+
+  /* Conceito B - mini */
+  .sb-mini{width:60px;align-items:center;}
+  .sb-mini .item{justify-content:center;padding:11px;width:44px;}
+  .sb-mini .item .label{display:none;}
+  .sb-mini .sb-logo{justify-content:center;padding:8px 0 14px;}
+  .sb-mini .sb-logo .name{display:none;}
+
+  /* Conceito C - accordion */
+  .acc-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.4px;}
+  .acc-head:hover{background:var(--bg3);}
+  .acc-head .chev{font-size:10px;color:var(--text3);transition:transform .2s;}
+  .acc-body{overflow:hidden;transition:max-height .25s;}
+  .acc-group.collapsed .acc-body{max-height:0 !important;}
+  .acc-group.collapsed .chev{transform:rotate(-90deg);}
+
+  /* Conceito D - busca + fav */
+  .sb-search{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text2);margin:0 4px 8px;display:flex;align-items:center;gap:6px;}
+
+  .pros{padding:12px 20px;background:var(--bg3);font-size:12px;color:var(--text2);line-height:1.6;}
+  .pros b{color:var(--text);}
+  .choose{display:flex;gap:10px;justify-content:center;margin:30px auto;max-width:1400px;flex-wrap:wrap;}
+  .choose-btn{background:var(--accent);color:#fff;border:none;padding:14px 28px;border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;}
+  .note{max-width:1400px;margin:0 auto 24px;background:rgba(91,94,244,.08);border-left:3px solid var(--accent);padding:14px 18px;border-radius:8px;font-size:13px;color:var(--text2);line-height:1.6;}
+</style>
+</head>
+<body class="">
+<div class="topbar">
+  <div>
+    <h1>🎨 4 Conceitos de Menu</h1>
+    <p>Escolha 1 pra virar o padrão do Axcend. Clica no botão de tema pra ver claro/escuro.</p>
+  </div>
+  <button class="theme-toggle" onclick="document.body.classList.toggle('light');this.textContent=document.body.classList.contains('light')?'🌙 Tema escuro':'☀️ Tema claro';">☀️ Tema claro</button>
+</div>
+
+<div class="note">
+  💡 <b>Sobre o problema do tema:</b> alguns textos somem no tema claro porque têm cor "preto fixo" no código em vez de usar variável que adapta. Vou auditar e corrigir isso junto com o layout escolhido. Aqui TODOS os 4 conceitos usam variáveis que adaptam automaticamente — note como ficam legíveis nos 2 temas.
+</div>
+
+<div class="grid">
+
+  <!-- CONCEITO A: AGRUPADO POR SEÇÕES -->
+  <div class="concept">
+    <div class="concept-head">
+      <h2>🅰️ Agrupado por seções</h2>
+      <p>Mesmos itens, mas organizados em grupos com rótulos. Reduz a sensação de "lista infinita".</p>
+    </div>
+    <div class="concept-body">
+      <div class="sb" style="width:210px;">
+        <div class="sb-logo"><div class="ico">A</div><div class="name">Axcend</div></div>
+        <div class="grp-label">Visão geral</div>
+        <div class="item active"><span class="i">📊</span><span class="label">Dashboard</span></div>
+        <div class="grp-label">Operação</div>
+        <div class="item"><span class="i">✅</span><span class="label">Demandas</span></div>
+        <div class="item"><span class="i">🎨</span><span class="label">Criativos</span></div>
+        <div class="item"><span class="i">⭐</span><span class="label">Rituais</span></div>
+        <div class="item"><span class="i">📁</span><span class="label">Projetos</span></div>
+        <div class="grp-label">Inteligência</div>
+        <div class="item"><span class="i">🤖</span><span class="label">IA</span></div>
+        <div class="item"><span class="i">📈</span><span class="label">Tráfego</span></div>
+        <div class="item"><span class="i">📡</span><span class="label">Métricas Ads</span></div>
+        <div class="item"><span class="i">🔎</span><span class="label">Ad Library</span></div>
+        <div class="grp-label">Gestão</div>
+        <div class="item"><span class="i">📋</span><span class="label">Gestão</span></div>
+        <div class="item"><span class="i">🖥️</span><span class="label">Infra</span></div>
+        <div class="grp-label">Time</div>
+        <div class="item"><span class="i">💬</span><span class="label">Chat</span></div>
+        <div class="item"><span class="i">🎓</span><span class="label">Educacional</span></div>
+      </div>
+      <div class="fake-content">conteúdo da página</div>
+    </div>
+    <div class="pros"><b>✅ Prós:</b> familiar, tudo visível, fácil achar. <b>⚠️ Contra:</b> ainda é uma lista longa (mas organizada).</div>
+  </div>
+
+  <!-- CONCEITO B: MINI SIDEBAR (ÍCONES) -->
+  <div class="concept">
+    <div class="concept-head">
+      <h2>🅱️ Mini sidebar (só ícones)</h2>
+      <p>Barra estreita só com ícones. Passa o mouse → aparece o nome. Maximiza espaço da tela.</p>
+    </div>
+    <div class="concept-body">
+      <div class="sb sb-mini">
+        <div class="sb-logo"><div class="ico">A</div></div>
+        <div class="item active" title="Dashboard"><span class="i">📊</span></div>
+        <div class="item" title="Demandas"><span class="i">✅</span></div>
+        <div class="item" title="Criativos"><span class="i">🎨</span></div>
+        <div class="item" title="IA"><span class="i">🤖</span></div>
+        <div class="item" title="Projetos"><span class="i">📁</span></div>
+        <div class="item" title="Chat"><span class="i">💬</span></div>
+        <div class="item" title="Rituais"><span class="i">⭐</span></div>
+        <div class="item" title="Tráfego"><span class="i">📈</span></div>
+        <div class="item" title="Métricas"><span class="i">📡</span></div>
+        <div class="item" title="Gestão"><span class="i">📋</span></div>
+        <div class="item" title="Infra"><span class="i">🖥️</span></div>
+        <div class="item" title="Ad Library"><span class="i">🔎</span></div>
+        <div class="item" title="Educacional"><span class="i">🎓</span></div>
+      </div>
+      <div class="fake-content">conteúdo ganha +150px de largura</div>
+    </div>
+    <div class="pros"><b>✅ Prós:</b> super limpo, muito espaço pro conteúdo. <b>⚠️ Contra:</b> precisa memorizar ícones (mostra nome só no hover).</div>
+  </div>
+
+  <!-- CONCEITO C: ACCORDION -->
+  <div class="concept">
+    <div class="concept-head">
+      <h2>🅲 Grupos retráteis (accordion)</h2>
+      <p>Grupos que abrem/fecham. Você expande só o que usa. Menu sempre curto.</p>
+    </div>
+    <div class="concept-body">
+      <div class="sb" style="width:210px;">
+        <div class="sb-logo"><div class="ico">A</div><div class="name">Axcend</div></div>
+        <div class="item active"><span class="i">📊</span><span class="label">Dashboard</span></div>
+        <div class="acc-group" onclick="this.classList.toggle('collapsed')">
+          <div class="acc-head">Operação <span class="chev">▼</span></div>
+          <div class="acc-body" style="max-height:200px;">
+            <div class="item"><span class="i">✅</span><span class="label">Demandas</span></div>
+            <div class="item"><span class="i">🎨</span><span class="label">Criativos</span></div>
+            <div class="item"><span class="i">⭐</span><span class="label">Rituais</span></div>
+            <div class="item"><span class="i">📁</span><span class="label">Projetos</span></div>
+          </div>
+        </div>
+        <div class="acc-group collapsed" onclick="this.classList.toggle('collapsed')">
+          <div class="acc-head">Inteligência <span class="chev">▼</span></div>
+          <div class="acc-body" style="max-height:200px;">
+            <div class="item"><span class="i">🤖</span><span class="label">IA</span></div>
+            <div class="item"><span class="i">📈</span><span class="label">Tráfego</span></div>
+            <div class="item"><span class="i">📡</span><span class="label">Métricas Ads</span></div>
+            <div class="item"><span class="i">🔎</span><span class="label">Ad Library</span></div>
+          </div>
+        </div>
+        <div class="acc-group collapsed" onclick="this.classList.toggle('collapsed')">
+          <div class="acc-head">Gestão <span class="chev">▼</span></div>
+          <div class="acc-body" style="max-height:200px;">
+            <div class="item"><span class="i">📋</span><span class="label">Gestão</span></div>
+            <div class="item"><span class="i">🖥️</span><span class="label">Infra</span></div>
+          </div>
+        </div>
+        <div class="acc-group collapsed" onclick="this.classList.toggle('collapsed')">
+          <div class="acc-head">Time <span class="chev">▼</span></div>
+          <div class="acc-body" style="max-height:200px;">
+            <div class="item"><span class="i">💬</span><span class="label">Chat</span></div>
+            <div class="item"><span class="i">🎓</span><span class="label">Educacional</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="fake-content">clica nos grupos pra abrir/fechar</div>
+    </div>
+    <div class="pros"><b>✅ Prós:</b> menu sempre curto, foco no que usa. <b>⚠️ Contra:</b> 1 clique extra pra abrir grupo fechado.</div>
+  </div>
+
+  <!-- CONCEITO D: BUSCA + FAVORITOS -->
+  <div class="concept">
+    <div class="concept-head">
+      <h2>🅳 Busca + Favoritos</h2>
+      <p>Barra de busca no topo + seus itens fixados + resto agrupado. Estilo Linear/Notion.</p>
+    </div>
+    <div class="concept-body">
+      <div class="sb" style="width:210px;">
+        <div class="sb-logo"><div class="ico">A</div><div class="name">Axcend</div></div>
+        <div class="sb-search">🔍 Buscar... <span style="margin-left:auto;font-size:10px;color:var(--text3);">⌘K</span></div>
+        <div class="grp-label">⭐ Favoritos</div>
+        <div class="item active"><span class="i">📊</span><span class="label">Dashboard</span></div>
+        <div class="item"><span class="i">✅</span><span class="label">Demandas</span></div>
+        <div class="item"><span class="i">🤖</span><span class="label">IA</span></div>
+        <div class="item"><span class="i">📈</span><span class="label">Tráfego</span></div>
+        <div class="sb-divider"></div>
+        <div class="grp-label">Todos os módulos</div>
+        <div class="item"><span class="i">🎨</span><span class="label">Criativos</span></div>
+        <div class="item"><span class="i">📁</span><span class="label">Projetos</span></div>
+        <div class="item"><span class="i">⭐</span><span class="label">Rituais</span></div>
+        <div class="item"><span class="i">📡</span><span class="label">Métricas Ads</span></div>
+        <div class="item"><span class="i">📋</span><span class="label">Gestão</span></div>
+        <div class="item"><span class="i">💬</span><span class="label">Chat</span></div>
+        <div class="item" style="color:var(--text3);font-size:12px;"><span class="i">···</span><span class="label">Ver mais (4)</span></div>
+      </div>
+      <div class="fake-content">busca rápida + fixar favoritos</div>
+    </div>
+    <div class="pros"><b>✅ Prós:</b> moderno, busca rápida (⌘K), cada um fixa o que usa. <b>⚠️ Contra:</b> mais complexo de implementar.</div>
+  </div>
+
+</div>
+
+<div class="choose">
+  <div style="text-align:center;color:var(--text2);font-size:13px;width:100%;margin-bottom:8px;">Qual conceito você prefere? Me fala "quero o A/B/C/D" que eu implemento no sistema real.</div>
+</div>
+</body>
+</html>

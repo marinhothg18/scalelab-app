@@ -2839,6 +2839,11 @@ app.get('/termos', (req, res) => {
 app.get('/ajuda', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ajuda.html'));
 });
+
+// GET /preview-menu — 4 conceitos de layout de menu pra escolher
+app.get('/preview-menu', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'preview-menu.html'));
+});
 app.get('/help', (req, res) => res.redirect('/ajuda'));
 app.get('/docs', (req, res) => res.redirect('/ajuda'));
 
