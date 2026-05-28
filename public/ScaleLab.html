@@ -24012,11 +24012,41 @@ window.renderIaCopy = function(){
     '<div id="iacopy-output" style="margin-top:24px;"></div>';
 };
 
-// Form da Análise de Ads
+var _iaAdsModo = 'auto'; // 'auto' (RedTrack) | 'manual'
+
+// Form da Análise de Ads — com 2 sub-modos: Automático (RedTrack) e Manual
 function _iaAdsHtml(){
-  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
-    '<div style="font-size:15px;font-weight:700;margin-bottom:6px;">🔮 Análise preditiva de criativo</div>'+
-    '<div style="font-size:12px;color:var(--text2);margin-bottom:18px;">Insira as métricas do anúncio. A IA prevê se você deve escalar, pausar ou manter.</div>'+
+  // Sub-toggle Automático / Manual
+  var subToggle =
+    '<div style="display:flex;gap:8px;margin-bottom:18px;">'+
+      '<div onclick="_iaAdsModo=\'auto\';window.renderIaCopy();" style="padding:10px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(_iaAdsModo==='auto'?'700':'500')+';color:'+(_iaAdsModo==='auto'?'#fff':'var(--text2)')+';background:'+(_iaAdsModo==='auto'?'var(--accent)':'var(--bg3)')+';">📊 Automático (RedTrack)</div>'+
+      '<div onclick="_iaAdsModo=\'manual\';window.renderIaCopy();" style="padding:10px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(_iaAdsModo==='manual'?'700':'500')+';color:'+(_iaAdsModo==='manual'?'#fff':'var(--text2)')+';background:'+(_iaAdsModo==='manual'?'var(--accent)':'var(--bg3)')+';">✍️ Manual (1 anúncio)</div>'+
+    '</div>';
+
+  if(_iaAdsModo === 'auto'){
+    var ads = (typeof adsAnunciosData !== 'undefined' && Array.isArray(adsAnunciosData)) ? adsAnunciosData : [];
+    var temDados = ads.length > 0;
+    return subToggle +
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:14px;">'+
+          '<div><div style="font-size:15px;font-weight:700;">🔮 Análise automática (do RedTrack)</div>'+
+          '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Puxa os anúncios direto das suas Métricas de Ads e ranqueia tudo de uma vez.</div></div>'+
+        '</div>'+
+        (temDados
+          ? '<div style="background:rgba(22,163,74,.08);border-left:3px solid #16A34A;padding:12px 14px;border-radius:7px;font-size:13px;margin-bottom:16px;">✅ <b>'+ads.length+' anúncios</b> carregados do RedTrack. Clique abaixo pra analisar todos.</div>'+
+            '<button class="btn btn-primary" onclick="iaAnalisarLote()" style="font-size:15px;padding:12px 24px;">🔮 Analisar os '+ads.length+' anúncios com IA</button>'
+          : '<div style="background:rgba(251,191,36,.08);border-left:3px solid #FBBF24;padding:14px;border-radius:7px;font-size:13px;margin-bottom:16px;">'+
+              '⚠️ Nenhum anúncio carregado ainda. Abra primeiro a aba <b>Métricas de Ads</b> (RedTrack) pra carregar os dados, depois volte aqui.<br><br>'+
+              '<button class="btn btn-ghost" onclick="goTo(\'adsmetrics\')">📊 Ir pra Métricas de Ads →</button>'+
+            '</div>')+
+      '</div>';
+  }
+
+  // Modo MANUAL (1 anúncio detalhado)
+  return subToggle +
+    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">'+
+    '<div style="font-size:15px;font-weight:700;margin-bottom:6px;">🔮 Análise preditiva de criativo (manual)</div>'+
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:18px;">Insira as métricas de UM anúncio. A IA prevê se você deve escalar, pausar ou manter.</div>'+
     '<div class="fg" style="margin-bottom:12px;"><label class="fl">Nome do anúncio *</label><input id="ads-nome" class="fi" placeholder="Ex: Detox 21d · VSL Test 04"></div>'+
     '<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">'+
       '<div class="fg"><label class="fl">Formato</label><select id="ads-formato" class="fs"><option value="">—</option><option>VSL</option><option>UGC</option><option>Carrossel</option><option>Estático</option><option>Reels</option></select></div>'+
@@ -24044,6 +24074,66 @@ function _iaAdsHtml(){
     '<div class="fg" style="margin-bottom:14px;"><label class="fl">Comentários do público (opcional)</label><input id="ads-comentarios" class="fi" placeholder="Ex: maioria positivos, alguns reclamando do preço"></div>'+
     '<button class="btn btn-primary" onclick="iaAnalisarAd()">🔮 Analisar com IA</button>'+
   '</div>';
+}
+
+async function iaAnalisarLote(){
+  var out = document.getElementById('iacopy-output');
+  var ads = (typeof adsAnunciosData !== 'undefined' && Array.isArray(adsAnunciosData)) ? adsAnunciosData : [];
+  if(!ads.length){ alert('Nenhum anúncio carregado. Abra Métricas de Ads primeiro.'); return; }
+  out.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">🔮 Analisando '+ads.length+' anúncios com IA... (15-40 seg)</div>';
+
+  // Mapeia pro formato esperado pelo backend
+  var payload = ads.map(function(a){
+    return {
+      nome: (a._name || a.nome || 'sem nome').trim(),
+      revenue: Number(a.total_revenue || a.revenue || 0),
+      cost: Number(a.cost || 0),
+      vendas: Number(a.vendas || 0),
+      cpa: Number(a.cpa || 0)
+    };
+  }).filter(function(a){ return a.nome && (a.revenue > 0 || a.cost > 0); });
+
+  if(!payload.length){ out.innerHTML = '<div style="background:rgba(251,191,36,.1);border:1px solid #FBBF24;padding:18px;border-radius:10px;">⚠️ Os anúncios carregados não têm dados de investimento/faturamento suficientes pra análise.</div>'; return; }
+
+  try {
+    var r = await fetch(API_BASE+'/api/ia/analise-ads-lote', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')},
+      body: JSON.stringify({ ads: payload })
+    });
+    var data = await r.json();
+    if(!data.ok){ out.innerHTML = '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:18px;border-radius:10px;color:#fca5a5;">❌ '+(data.error||'Erro')+'</div>'; return; }
+    if(data.raw){ out.innerHTML = '<pre style="background:var(--bg2);padding:18px;border-radius:10px;white-space:pre-wrap;font-size:12px;">'+_esc(data.raw)+'</pre>'; return; }
+
+    var lista = data.ads || [];
+    var escalar = lista.filter(function(a){ return (a.veredito||'').toUpperCase()==='ESCALAR'; });
+    var manter = lista.filter(function(a){ return (a.veredito||'').toUpperCase()==='MANTER'; });
+    var pausar = lista.filter(function(a){ return (a.veredito||'').toUpperCase()==='PAUSAR'; });
+
+    var cardAd = function(a, cor){
+      return '<div style="background:var(--bg);border-left:3px solid '+cor+';padding:14px;border-radius:8px;margin-bottom:8px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">'+
+          '<div style="flex:1;"><div style="font-size:14px;font-weight:700;">'+_esc(a.nome)+'</div>'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:2px;">ROAS '+(a.roas||0).toFixed(1)+'x · Lucro R$ '+Math.round(a.lucro||0).toLocaleString('pt-BR')+'</div></div>'+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text2);margin-top:8px;">'+_esc(a.motivo||'')+'</div>'+
+        '<div style="font-size:12px;font-weight:600;color:'+cor+';margin-top:6px;">🎯 '+_esc(a.acao||'')+'</div>'+
+      '</div>';
+    };
+
+    out.innerHTML =
+      (data.resumo ? '<div style="background:linear-gradient(135deg,rgba(91,94,244,.1),transparent);border:1px solid var(--accent);padding:16px;border-radius:10px;margin-bottom:18px;font-size:14px;line-height:1.6;">🤖 '+_esc(data.resumo)+'</div>' : '')+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;">'+
+        '<div style="background:rgba(22,163,74,.1);border:1px solid #16A34A;padding:14px;border-radius:10px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#16A34A;">'+escalar.length+'</div><div style="font-size:11px;color:var(--text2);">🚀 ESCALAR</div></div>'+
+        '<div style="background:rgba(251,191,36,.1);border:1px solid #FBBF24;padding:14px;border-radius:10px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#FBBF24;">'+manter.length+'</div><div style="font-size:11px;color:var(--text2);">⏸ MANTER</div></div>'+
+        '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:14px;border-radius:10px;text-align:center;"><div style="font-size:28px;font-weight:800;color:#DC2626;">'+pausar.length+'</div><div style="font-size:11px;color:var(--text2);">⚠️ PAUSAR</div></div>'+
+      '</div>'+
+      (escalar.length ? '<div style="font-size:14px;font-weight:700;color:#16A34A;margin:18px 0 10px;">🚀 Escalar agora ('+escalar.length+')</div>'+escalar.map(function(a){return cardAd(a,'#16A34A');}).join('') : '')+
+      (manter.length ? '<div style="font-size:14px;font-weight:700;color:#FBBF24;margin:18px 0 10px;">⏸ Manter e monitorar ('+manter.length+')</div>'+manter.map(function(a){return cardAd(a,'#FBBF24');}).join('') : '')+
+      (pausar.length ? '<div style="font-size:14px;font-weight:700;color:#DC2626;margin:18px 0 10px;">⚠️ Pausar ('+pausar.length+')</div>'+pausar.map(function(a){return cardAd(a,'#DC2626');}).join('') : '');
+  } catch(err){
+    out.innerHTML = '<div style="background:rgba(220,38,38,.1);border:1px solid #DC2626;padding:18px;border-radius:10px;color:#fca5a5;">❌ '+err.message+'</div>';
+  }
 }
 
 async function iaAnalisarAd(){

@@ -1704,6 +1704,61 @@ Responda APENAS com JSON:
   }
 });
 
+// POST /api/ia/analise-ads-lote — analisa VÁRIOS anúncios de uma vez (do RedTrack)
+// e retorna ranking: quais escalar, manter, pausar
+app.post('/api/ia/analise-ads-lote', async (req, res) => {
+  try {
+    const { ads } = req.body || {};
+    if (!Array.isArray(ads) || !ads.length) return res.status(400).json({ error: 'Envie array de ads' });
+    // Limita a 30 ads por análise pra não estourar tokens
+    const lista = ads.slice(0, 30);
+
+    const systemPrompt = `Você é um analista expert em tráfego pago de Direct Response. Recebe uma lista de criativos com métricas reais e classifica CADA UM como ESCALAR, MANTER ou PAUSAR, com base em ROAS, CPA, volume de vendas e investimento.
+
+Critérios:
+- ESCALAR: ROAS alto (>2.5x), CPA saudável, volume relevante de vendas, lucro positivo forte
+- PAUSAR: ROAS < 1.5x, CPA alto demais, queimando dinheiro sem retorno
+- MANTER: ROAS ok (1.5-2.5x), ainda lucrativo mas sem espaço claro pra escala agressiva
+
+Seja DIRETO. Priorize lucro real (revenue - cost). Responda APENAS JSON.`;
+
+    const adsResumo = lista.map((a, i) => {
+      const roas = a.cost > 0 ? (a.revenue / a.cost) : 0;
+      return `${i+1}. "${a.nome}" — Investido: R$${(a.cost||0).toFixed(0)} | Faturado: R$${(a.revenue||0).toFixed(0)} | Vendas: ${a.vendas||0} | ROAS: ${roas.toFixed(2)}x | CPA: R$${(a.cpa||0).toFixed(0)}`;
+    }).join('\n');
+
+    const userPrompt = `Analise esses ${lista.length} criativos e classifique cada um:
+
+${adsResumo}
+
+Responda APENAS com JSON neste formato:
+{
+  "resumo": "1-2 frases sobre o conjunto (quantos escalar, quanto lucro total, etc)",
+  "ads": [
+    {
+      "nome": "nome exato do ad",
+      "veredito": "ESCALAR | MANTER | PAUSAR",
+      "roas": número,
+      "lucro": número (revenue - cost),
+      "motivo": "1 frase curta justificando",
+      "acao": "ação concreta (ex: 'aumentar budget 40%', 'pausar já', 'manter e monitorar')"
+    }
+  ]
+}
+
+Ordene o array: ESCALAR primeiro, depois MANTER, depois PAUSAR.`;
+    const txt = await _chamarClaudeCopy(systemPrompt, userPrompt, 3000);
+    try {
+      const parsed = JSON.parse(txt.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ ok: true, ...parsed });
+    } catch (e) {
+      res.json({ ok: true, raw: txt, _parseErr: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/ia/copy/advertorial — gera advertorial completo
 app.post('/api/ia/copy/advertorial', async (req, res) => {
   try {
