@@ -16024,8 +16024,20 @@ function renderSwipe(){
 
 function delSwipe(id){if(!confirm('Remover este swipe? Ficará na Lixeira por 30 dias.'))return;sDelete('swipes',id,'Swipe');swipes=g('swipes',[]);renderSwipe();}
 
-// ══ CENTRAL DE ARQUIVOS (por Projetos) ══
-var _arqNav = { projetoId:null, setor:null, subpasta:null };
+// ══ CENTRAL DE ARQUIVOS (por Nichos → Projetos) ══
+var _arqNav = { nicho:null, projetoId:null, setor:null, subpasta:null };
+
+// Descobre o nichoId de um projeto via a oferta vinculada (ofertaId → sl_ofertas_v2 → nichoId).
+// Projetos sem oferta ou sem nicho caem no bucket '__sem__'.
+function arqNichoDoProjeto(p){
+  if(!p) return '__sem__';
+  if(p.nichoId) return p.nichoId;
+  if(p.ofertaId){
+    var of = g('sl_ofertas_v2',[]).find(function(o){ return o.id===p.ofertaId; });
+    if(of && of.nichoId) return of.nichoId;
+  }
+  return '__sem__';
+}
 
 var ARQ_SETORES = [
   {id:'copywriting', label:'01 - Copywriting', icon:'✍️'},
@@ -16117,6 +16129,8 @@ function arqSaveProjeto(){
   var proj = getArqProjetos();
   var novoProjeto = {id:Date.now(), nome:nome, items:{}};
   if(_arqCapaBase64) novoProjeto.capa = _arqCapaBase64;
+  // Se está criando dentro de um nicho, herda o nicho (pra aparecer na pasta certa)
+  if(_arqNav.nicho && _arqNav.nicho!=='__sem__') novoProjeto.nichoId = _arqNav.nicho;
   proj.push(novoProjeto);
   saveArqProjetos(proj);
   _arqCapaBase64 = null;
@@ -16133,11 +16147,18 @@ function arqDelProjeto(id){
   renderArquivos();
 }
 
-function arqNavProjeto(id){ _arqNav = {projetoId:id, setor:null, subpasta:null}; renderArquivos(); }
+function arqNavNicho(id){ _arqNav = {nicho:id, projetoId:null, setor:null, subpasta:null}; renderArquivos(); }
+function arqNavProjeto(id){
+  // Se entrar direto num projeto, deriva o nicho pra manter o breadcrumb consistente
+  var pr = getArqProjetos().find(function(x){ return x.id==id; });
+  _arqNav = {nicho: arqNichoDoProjeto(pr), projetoId:id, setor:null, subpasta:null};
+  renderArquivos();
+}
 function arqNavSetor(setor){ _arqNav.setor = setor; _arqNav.subpasta = null; renderArquivos(); }
 function arqNavSubpasta(sub){ _arqNav.subpasta = sub; renderArquivos(); }
 function arqNavBack(level){
-  if(level==='home') _arqNav = {projetoId:null,setor:null,subpasta:null};
+  if(level==='home') _arqNav = {nicho:null,projetoId:null,setor:null,subpasta:null};
+  else if(level==='nicho'){ _arqNav.projetoId=null; _arqNav.setor=null; _arqNav.subpasta=null; }
   else if(level==='projeto'){ _arqNav.setor=null; _arqNav.subpasta=null; }
   else if(level==='setor'){ _arqNav.subpasta=null; }
   renderArquivos();
@@ -16351,9 +16372,16 @@ function renderArquivos(){
   var tipoCor = {PDF:'#EF4444',Video:'#8B5CF6',Planilha:'#22C55E',Imagem:'#3B82F6',Documento:'#F97316',Link:'#3B82F6',Outro:'#FBBF24'};
   var h = '';
 
+  var _nichos = g('sl_nichos',[]);
+  var _nomeNicho = function(id){ if(id==='__sem__') return 'Sem nicho'; var n=_nichos.find(function(x){return x.id===id;}); return n?n.nome:'Nicho'; };
+
   // Breadcrumb
   h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;font-size:13px;flex-wrap:wrap;">';
   h += '<span onclick="arqNavBack(\'home\')" style="cursor:pointer;color:var(--accent);font-weight:600;">📁 Central de Arquivos</span>';
+  if(_arqNav.nicho){
+    h += '<span style="color:var(--text2);">›</span>';
+    h += '<span onclick="arqNavBack(\'nicho\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+_nomeNicho(_arqNav.nicho)+'</span>';
+  }
   if(_arqNav.projetoId){
     var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
     if(p){
@@ -16372,10 +16400,10 @@ function renderArquivos(){
   }
   h += '</div>';
 
-  // NÍVEL 1: Lista de projetos
-  if(!_arqNav.projetoId){
+  // NÍVEL 0: Nichos (igual Criativos)
+  if(!_arqNav.nicho){
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
-    h += '<div style="font-size:24px;font-weight:800;">Projetos</div>';
+    h += '<div style="font-size:24px;font-weight:800;">Nichos</div>';
     if(_isDir){
       h += '<div style="display:flex;gap:8px;">';
       h += '<button onclick="arqSincronizarOfertas()" class="btn btn-ghost" style="font-size:13px;" title="Cria projeto pra cada oferta cadastrada que ainda não tem">🔁 Sincronizar com Ofertas</button>';
@@ -16384,12 +16412,60 @@ function renderArquivos(){
       h += '</div>';
     }
     h += '</div>';
-    if(!proj.length){
-      h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum projeto. Clique em "+ Novo Projeto".</div></div>';
+    // Agrupa projetos por nicho
+    var porNicho = {};
+    for(var pix=0; pix<proj.length; pix++){
+      var nid = arqNichoDoProjeto(proj[pix]);
+      (porNicho[nid] = porNicho[nid] || []).push(proj[pix]);
+    }
+    // Lista ordenada: nichos cadastrados primeiro, "Sem nicho" por último (só se tiver projeto)
+    var nichosLista = _nichos.slice();
+    var temSemNicho = (porNicho['__sem__']||[]).length > 0;
+    if(!_nichos.length && !temSemNicho){
+      h += '<div class="empty"><div class="empty-icon">🏷️</div><div class="empty-text">Nenhum nicho cadastrado.<br>Cadastre em Configurações → Nichos, ou clique em "Sincronizar com Ofertas".</div></div>';
     } else {
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
-      for(var pi=0;pi<proj.length;pi++){
-        var pr = proj[pi];
+      for(var ni=0; ni<nichosLista.length; ni++){
+        var nc = nichosLista[ni];
+        var qProj = (porNicho[nc.id]||[]).length;
+        var ncIdSafe = String(nc.id).replace(/'/g, "\\'");
+        h += '<div onclick="arqNavNicho(\''+ncIdSafe+'\')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
+        h += '<div style="width:100%;height:140px;background:linear-gradient(135deg,#E0E7FF,#C7D2FE);display:flex;align-items:center;justify-content:center;font-size:48px;">📁</div>';
+        h += '<div style="padding:16px;text-align:center;">';
+        h += '<div style="font-size:16px;font-weight:700;margin-bottom:4px;">'+nc.nome+'</div>';
+        h += '<div style="font-size:12px;color:var(--text2);">'+qProj+' projeto'+(qProj!==1?'s':'')+'</div>';
+        h += '</div></div>';
+      }
+      // Card "Sem nicho" no fim (projetos sem oferta/nicho vinculado)
+      if(temSemNicho){
+        var qSem = porNicho['__sem__'].length;
+        h += '<div onclick="arqNavNicho(\'__sem__\')" style="background:var(--bg2);border:1px dashed var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\'">';
+        h += '<div style="width:100%;height:140px;background:linear-gradient(135deg,#F3F4F6,#E5E7EB);display:flex;align-items:center;justify-content:center;font-size:48px;">📁</div>';
+        h += '<div style="padding:16px;text-align:center;">';
+        h += '<div style="font-size:16px;font-weight:700;margin-bottom:4px;color:var(--text2);">Sem nicho</div>';
+        h += '<div style="font-size:12px;color:var(--text2);">'+qSem+' projeto'+(qSem!==1?'s':'')+'</div>';
+        h += '</div></div>';
+      }
+      h += '</div>';
+    }
+  }
+  // NÍVEL 1: Projetos do nicho selecionado
+  else if(!_arqNav.projetoId){
+    var projDoNicho = proj.filter(function(x){ return arqNichoDoProjeto(x)===_arqNav.nicho; });
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
+    h += '<div style="font-size:24px;font-weight:800;">'+_nomeNicho(_arqNav.nicho)+'</div>';
+    if(_isDir){
+      h += '<div style="display:flex;gap:8px;">';
+      h += '<button onclick="arqAddProjeto()" class="btn btn-primary" style="font-size:13px;">+ Novo Projeto</button>';
+      h += '</div>';
+    }
+    h += '</div>';
+    if(!projDoNicho.length){
+      h += '<div class="empty"><div class="empty-icon">📂</div><div class="empty-text">Nenhum projeto nesse nicho.<br>Crie ofertas nesse nicho e clique em "Sincronizar com Ofertas".</div></div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
+      for(var pi=0;pi<projDoNicho.length;pi++){
+        var pr = projDoNicho[pi];
         // Contar items
         var totalItems = 0;
         if(pr.items) for(var k in pr.items) totalItems += (pr.items[k]||[]).length;
@@ -21251,7 +21327,8 @@ function enviarArquivoChat(input){
 // ── RITUAIS ──
 let rituais = g('rituais', []);
 let ritualTipoFiltro = 'Análise de dados';
-let ritualProjetoSel = null; // projeto selecionado em Análise de dados (null = tela de projetos)
+let ritualNichoSel = null;   // nicho selecionado em Análise de dados (null = tela de nichos)
+let ritualProjetoSel = null; // projeto/oferta selecionado (null = tela de ofertas do nicho)
 const RITUAL_TIPOS = ['Análise de dados', 'Weekly de criativo', 'Planejamento estratégico'];
 
 const RITUAL_TIPO_COR = {'Análise de dados':'#38BDF8','Weekly de criativo':'#818CF8','Planejamento estratégico':'#F97316'};
@@ -21271,6 +21348,7 @@ function renderRituaisFiltros(){
 
 function setRitualTipo(t){
   ritualTipoFiltro = t;
+  ritualNichoSel = null;
   ritualProjetoSel = null;
   renderRituais();
 }
@@ -21292,12 +21370,27 @@ function ritDelProjeto(id){
   ritSaveProjetos(list);
   renderRituais();
 }
+function ritAbrirNicho(id){
+  ritualNichoSel = id;
+  ritualProjetoSel = null;
+  renderRituais();
+}
+function ritVoltarNichos(){
+  ritualNichoSel = null;
+  ritualProjetoSel = null;
+  renderRituais();
+}
 function ritAbrirProjeto(id){
   ritualProjetoSel = id;
+  // deriva o nicho da oferta se ainda não estiver selecionado (robustez)
+  if(ritualNichoSel===null){
+    const o = g('sl_ofertas_v2',[]).find(x=>x.id===id);
+    if(o && o.nichoId) ritualNichoSel = o.nichoId;
+  }
   renderRituais();
 }
 function ritVoltarProjetos(){
-  ritualProjetoSel = null;
+  ritualProjetoSel = null; // mantém ritualNichoSel — volta pras ofertas do nicho
   renderRituais();
 }
 
@@ -21333,49 +21426,56 @@ function renderRituais(){
   rituais = g('rituais', []);
   renderRituaisFiltros();
 
-  // Tela de projetos para Análise de dados (quando nenhum projeto aberto)
-  // Projetos = Ofertas cadastradas em Configurações > Ofertas
+  // Tela de Análise de dados: navegação por NICHOS → OFERTAS → análises (igual Criativos)
   if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel===null){
-    // Mostrar filtros Nicho/Oferta na tela de Projetos, esconder mês/semana
+    // Navegação por pastas — esconde os dropdowns de filtro (a navegação é por clique)
     const blocoFiltros = document.getElementById('rituais-analise-filtros');
-    const nichoWrap  = document.getElementById('rit-f-nicho-wrap');
-    const ofertaWrap = document.getElementById('rit-f-oferta-wrap');
-    const mesWrap    = document.getElementById('rit-f-mes-wrap');
-    const semWrap    = document.getElementById('rit-f-semana-wrap');
-    if(blocoFiltros) blocoFiltros.style.display = 'flex';
-    if(nichoWrap)  nichoWrap.style.display  = 'inline';
-    if(ofertaWrap) ofertaWrap.style.display = 'inline';
-    if(mesWrap)    mesWrap.style.display    = 'none';
-    if(semWrap)    semWrap.style.display    = 'none';
-    popularFiltrosAnalise();
-
-    let ofertas = g('sl_ofertas_v2', []);
-    const fN=(document.getElementById('rit-f-nicho')||{}).value||'';
-    const fO=(document.getElementById('rit-f-oferta')||{}).value||'';
-    if(fN) ofertas = ofertas.filter(o=>o.nichoId===fN);
-    if(fO) ofertas = ofertas.filter(o=>o.id===fO);
+    if(blocoFiltros) blocoFiltros.style.display = 'none';
 
     const isDir = currentUser && currentUser.cargo==='Diretoria';
     const meuNome = (currentUser&&currentUser.nome)||'';
+    const nichos = g('sl_nichos', []);
+    const ofertas = g('sl_ofertas_v2', []);
     const countEl = document.getElementById('rituais-count');
-    if(countEl) countEl.textContent = ofertas.length + ' projeto'+(ofertas.length!==1?'s':'');
-    let html = '<div style="font-size:22px;font-weight:800;margin-bottom:14px;">Projetos</div>';
-    if(!ofertas.length){
-      html += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhuma oferta encontrada.</div></div>';
-      el.innerHTML = html;
-      return;
+
+    // ── NÍVEL 1: NICHOS ──
+    if(ritualNichoSel===null){
+      if(countEl) countEl.textContent = nichos.length + ' nicho'+(nichos.length!==1?'s':'');
+      let html = '<div style="font-size:22px;font-weight:800;margin-bottom:14px;">Nichos</div>';
+      if(!nichos.length){
+        html += '<div class="empty"><div class="empty-icon">🏷️</div><div class="empty-text">Nenhum nicho cadastrado.<br>Cadastre em Configurações → Nichos.</div></div>';
+        el.innerHTML = html; return;
+      }
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
+      nichos.forEach(nc=>{
+        const qOfertas = ofertas.filter(o=>o.nichoId===nc.id).length;
+        const qAnalises = rituais.filter(r=> r.tipo==='Análise de dados' && r.nichoId===nc.id && (isDir || (r.participantes&&r.participantes.includes(meuNome)))).length;
+        html += `<div onclick="ritAbrirNicho('${nc.id}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+          <div style="height:110px;background:#E0E7FF;display:flex;align-items:center;justify-content:center;font-size:56px;">📁</div>
+          <div style="padding:14px 16px;text-align:center;">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${nc.nome}</div>
+            <div style="font-size:12px;color:var(--text2);">${qOfertas} oferta${qOfertas!==1?'s':''} · ${qAnalises} análise${qAnalises!==1?'s':''}</div>
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+      el.innerHTML = html; return;
+    }
+
+    // ── NÍVEL 2: OFERTAS DO NICHO ──
+    const nichoObj = nichos.find(n=>n.id===ritualNichoSel);
+    const ofs = ofertas.filter(o=>o.nichoId===ritualNichoSel);
+    if(countEl) countEl.textContent = ofs.length + ' oferta'+(ofs.length!==1?'s':'');
+    let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;"><span onclick="ritVoltarNichos()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Nichos</span><span style="color:var(--text2);">/</span><span style="font-weight:700;font-size:15px;">${nichoObj?nichoObj.nome:'Nicho'}</span></div>`;
+    if(!ofs.length){
+      html += '<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">Nenhuma oferta nesse nicho.</div></div>';
+      el.innerHTML = html; return;
     }
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">';
-    ofertas.forEach(o=>{
-      // Contar análises dessa oferta visíveis para o usuário
-      const qtde = rituais.filter(r=>{
-        if(r.tipo!=='Análise de dados') return false;
-        if(r.ofertaId!==o.id) return false;
-        if(isDir) return true;
-        return r.participantes && r.participantes.includes(meuNome);
-      }).length;
+    ofs.forEach(o=>{
+      const qtde = rituais.filter(r=> r.tipo==='Análise de dados' && r.ofertaId===o.id && (isDir || (r.participantes&&r.participantes.includes(meuNome)))).length;
       html += `<div onclick="ritAbrirProjeto('${o.id}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
-        <div style="height:110px;background:#E0E7FF;display:flex;align-items:center;justify-content:center;font-size:56px;">📁</div>
+        <div style="height:110px;background:#E0E7FF;display:flex;align-items:center;justify-content:center;font-size:56px;">📦</div>
         <div style="padding:14px 16px;text-align:center;">
           <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${o.nome}</div>
           <div style="font-size:12px;color:var(--text2);">${qtde} análise${qtde!==1?'s':''}</div>
@@ -21383,8 +21483,7 @@ function renderRituais(){
       </div>`;
     });
     html += '</div>';
-    el.innerHTML = html;
-    return;
+    el.innerHTML = html; return;
   }
 
   // Mostrar/ocultar filtros
@@ -21438,7 +21537,12 @@ function renderRituais(){
   let headerHtml = '';
   if(ritualTipoFiltro==='Análise de dados' && ritualProjetoSel!==null){
     const proj = g('sl_ofertas_v2',[]).find(o=>o.id===ritualProjetoSel);
-    headerHtml = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><span onclick="ritVoltarProjetos()" style="cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;">← Projetos</span><span style="color:var(--text2);">/</span><span style="font-size:15px;font-weight:700;">${proj?proj.nome:'Projeto'}</span></div>`;
+    const nc = g('sl_nichos',[]).find(n=>n.id===ritualNichoSel);
+    headerHtml = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;">`+
+      `<span onclick="ritVoltarNichos()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Nichos</span>`+
+      (nc?`<span style="color:var(--text2);">/</span><span onclick="ritVoltarProjetos()" style="cursor:pointer;color:var(--accent);">${nc.nome}</span>`:'')+
+      `<span style="color:var(--text2);">/</span><span style="font-weight:700;font-size:15px;">${proj?proj.nome:'Projeto'}</span>`+
+    `</div>`;
   }
 
   if(!lista.length){
