@@ -3270,7 +3270,7 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
             <div style="display:flex;align-items:center;gap:10px;">
               <div id="rt-pulse" style="width:10px;height:10px;background:var(--green);border-radius:50%;box-shadow:0 0 0 0 rgba(34,197,94,.4);animation:rtpulse 2s infinite;"></div>
-              <span style="font-size:13px;font-weight:700;color:var(--text);">Atualizando a cada 30s</span>
+              <span id="rt-live-label" style="font-size:13px;font-weight:700;color:var(--text);">Atualizando a cada 30s</span>
               <span id="rt-countdown" style="font-size:12px;color:var(--text2);"></span>
             </div>
             <div style="display:flex;gap:10px;align-items:center;">
@@ -25141,6 +25141,11 @@ function setAdsFilter(preset, btn){
   document.querySelectorAll('.ads-filter-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
   loadAdsMetrics();
+  // Se a aba Tempo Real estiver aberta, recarrega o feed no período escolhido
+  if(rtActive){
+    loadRealtime(true);
+    if(rtPeriodInfo().isLive) startRtTimer(); else stopRtTimer();
+  }
 }
 
 let relatorioSortKey = 'roas';
@@ -25168,14 +25173,43 @@ function setRelatorioSort(key, btn){
 // ── TEMPO REAL ──────────────────────────────────────────
 let rtTimer = null, rtCountdown = 30, rtLastIds = new Set(), rtActive = false;
 
+// Período selecionado (Hoje/Ontem/7d/...) aplicado também ao Tempo Real.
+// isLive = o período inclui HOJE → fica atualizando ao vivo. Senão, vira histórico.
+function rtTodayStr(){ return new Date().toISOString().split('T')[0]; }
+function rtPeriodInfo(){
+  const d = (typeof getAdsDates==='function') ? getAdsDates() : null;
+  const from = (d && d.from) || rtTodayStr();
+  const to   = (d && d.to)   || rtTodayStr();
+  return { from, to, isLive: to >= rtTodayStr() };
+}
+function rtFmtDia(s){ const d=new Date(s+'T12:00:00'); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+function rtUpdateHeader(isLive, from, to){
+  const label = document.getElementById('rt-live-label');
+  const pulse = document.getElementById('rt-pulse');
+  const cd    = document.getElementById('rt-countdown');
+  if(isLive){
+    if(label) label.textContent = 'Atualizando a cada 30s';
+    if(pulse){ pulse.style.background = 'var(--green)'; pulse.style.animation = 'rtpulse 2s infinite'; }
+  } else {
+    if(label) label.textContent = (from===to) ? ('📅 Histórico de '+rtFmtDia(from)) : ('📅 Histórico '+rtFmtDia(from)+'–'+rtFmtDia(to));
+    if(pulse){ pulse.style.background = 'var(--text2)'; pulse.style.animation = 'none'; }
+    if(cd) cd.textContent = '';
+  }
+}
+function stopRtTimer(){
+  clearInterval(rtTimer);
+  rtTimer = null;
+  const cd = document.getElementById('rt-countdown');
+  if(cd) cd.textContent = '';
+}
+
 function switchAdsTabRealtime(active){
   rtActive = active;
   if(active){
     loadRealtime(true);
-    startRtTimer();
+    if(rtPeriodInfo().isLive) startRtTimer(); else stopRtTimer();
   } else {
-    clearInterval(rtTimer);
-    rtTimer = null;
+    stopRtTimer();
   }
 }
 
@@ -25201,9 +25235,10 @@ function updateRtCountdown(){
 async function loadRealtime(reset){
   const key = getRtApiKey();
   if(!key) return;
-  const today = new Date().toISOString().split('T')[0];
+  const { from, to, isLive } = rtPeriodInfo();
+  rtUpdateHeader(isLive, from, to);
   try {
-    const res = await fetch(`https://api.redtrack.io/conversions?api_key=${key}&date_from=${today}&date_to=${today}&limit=100`);
+    const res = await fetch(`https://api.redtrack.io/conversions?api_key=${key}&date_from=${from}&date_to=${to}&limit=1000`);
     if(!res.ok) return;
     const data = await res.json();
     const items = (data.items || data || []).filter(c=>c.status==='approved'||c.status==='other'||c.status==='declined');
@@ -25215,9 +25250,10 @@ async function loadRealtime(reset){
     const ticket    = approved.length>0 ? revenue/approved.length : 0;
     const fmtUSD = v=>'$ '+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
+    const vendasLbl = isLive ? 'Vendas hoje' : 'Vendas no período';
     const rtStats = document.getElementById('rt-stats');
     if(rtStats) rtStats.innerHTML = `
-      <div style="text-align:center;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:2px;">Vendas hoje</div><div style="font-size:20px;font-weight:800;color:var(--green);">${approved.length}</div></div>
+      <div style="text-align:center;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:2px;">${vendasLbl}</div><div style="font-size:20px;font-weight:800;color:var(--green);">${approved.length}</div></div>
       <div style="text-align:center;"><div style="font-size:10px;color:#f97316;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Initiate Checkouts</div><div style="font-size:20px;font-weight:800;color:#f97316;">${initCheck.length}</div></div>
       <div style="text-align:center;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:2px;">Receita total</div><div style="font-size:20px;font-weight:800;color:var(--green);">${fmtUSD(revenue)}</div></div>
       <div style="text-align:center;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:2px;">Ticket médio</div><div style="font-size:20px;font-weight:800;">${ticket>0?fmtUSD(ticket):'—'}</div></div>
@@ -25232,7 +25268,7 @@ async function loadRealtime(reset){
     if(reset) feed.innerHTML = '';
 
     if(!items.length){
-      feed.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2);">Nenhuma conversão hoje ainda.</div>';
+      feed.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2);">'+(isLive?'Nenhuma conversão hoje ainda.':'Nenhuma conversão nesse período.')+'</div>';
       return;
     }
 
