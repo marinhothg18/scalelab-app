@@ -25010,6 +25010,8 @@ function fmtAds(val){
 }
 let adsNamesMap = {};
 let adsTrueApproved = 0;
+let adsTrueICs = 0;       // ICs reais contados do /conversions (mesma fonte do Tempo Real)
+let adsLoadSeq = 0;       // token anti-corrida: só o load mais recente aplica resultado
 
 // ── API TOKENS MANAGEMENT ──
 function gerarApiToken(){
@@ -25334,10 +25336,10 @@ function renderResumo(){
 function renderFunil(){
   const data = adsCampanhasData;
   if(!data||!data.length) return;
-  const ofData        = adsOfertasData[0] || {};
   const totalClicks   = data.reduce((s,c)=>s+c.clicks,0);
   const totalLpViews  = data.reduce((s,c)=>s+c.lp_views,0);
-  const totalICs      = ofData.convtype1 || 0;
+  // ICs do /conversions (todas as ofertas), com fallback pro relatório por oferta
+  const totalICs      = adsTrueICs || (adsOfertasData||[]).reduce((s,o)=>s+(o.convtype1||0),0);
   const totalApproved = adsTrueApproved || data.reduce((s,c)=>s+c.approved,0);
 
   const steps = [
@@ -25655,6 +25657,7 @@ async function loadAdsMetrics(){
   if(!key){ showAdsError('Configure a API Key do RedTrack acima.'); return; }
   // Auto-sync da API key pro servidor (pra compartilhar com outros usuários com acesso)
   pushRtApiKeyToServer(key);
+  const mySeq = ++adsLoadSeq;   // marca este load como o mais recente
   const { from, to } = getAdsDates();
   const base = 'https://api.redtrack.io';
   const loading = document.getElementById('ads-loading');
@@ -25678,11 +25681,16 @@ async function loadAdsMetrics(){
     const convsData      = await convsRes.json();
     const repAd          = reportAdRes.ok ? await reportAdRes.json() : [];
 
+    // Se outro "Atualizar" foi disparado depois deste, descarta este resultado (evita corrida/dados trocados)
+    if(mySeq !== adsLoadSeq) return;
+
     const allConvItems = convsData.items || (Array.isArray(convsData) ? convsData : []);
 
     // True approved count (excluding duplicate_status=2)
     adsTrueApproved = allConvItems.filter(c=>c.status==='approved' && c.duplicate_status!==2).length;
     const trueApproved = adsTrueApproved;
+    // ICs reais — mesma fonte/lógica do Tempo Real (status 'other', sem duplicados)
+    adsTrueICs = allConvItems.filter(c=>c.status==='other' && c.duplicate_status!==2).length;
 
     // Build offer names map
     const offerNames = {};
@@ -25812,9 +25820,9 @@ async function loadAdsMetrics(){
     renderResumo();
     renderAnuncios();
   } catch(e){
-    showAdsError('Erro: '+e.message+'. Verifique a API Key ou tente novamente.');
+    if(mySeq === adsLoadSeq) showAdsError('Erro: '+e.message+'. Verifique a API Key ou tente novamente.');
   } finally {
-    loading.style.display='none';
+    if(mySeq === adsLoadSeq) loading.style.display='none';
   }
 }
 
