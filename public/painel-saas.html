@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0a0a0a">
-<title>Painel SaaS · Axcend</title>
+<title>Painel SaaS · TMX Digital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -215,10 +215,10 @@
 <div id="gate" class="gate">
   <div class="gate-box">
     <div class="brand-logo" style="width:54px;height:54px;font-size:22px;margin:0 auto 18px;">A</div>
-    <h1>Painel SaaS · Axcend</h1>
+    <h1>Painel SaaS · TMX Digital</h1>
     <p id="gate-msg">Validando acesso...</p>
     <div id="gate-actions" style="display:none;">
-      <a href="/" class="btn btn-primary">Voltar ao Axcend</a>
+      <a href="/" class="btn btn-primary">Voltar ao TMX Digital</a>
     </div>
   </div>
 </div>
@@ -230,7 +230,7 @@
       <div class="brand-logo">A</div>
       <div>
         <div class="brand-name">Painel SaaS</div>
-        <div class="brand-sub">Axcend Holdings</div>
+        <div class="brand-sub">TMX Digital Holdings</div>
       </div>
     </div>
     <div class="nav-item ativo" data-screen="dashboard" onclick="goScreen('dashboard')"><span class="ico">📊</span><span>Dashboard</span></div>
@@ -244,7 +244,7 @@
     <div class="nav-item" data-screen="utmify" onclick="goScreen('utmify')"><span class="ico">📈</span><span>Integração Utmify</span></div>
 
     <div style="margin-top:auto;">
-      <a href="/" class="nav-item" style="margin-top:14px;"><span class="ico">←</span><span>Voltar ao Axcend</span></a>
+      <a href="/" class="nav-item" style="margin-top:14px;"><span class="ico">←</span><span>Voltar ao TMX Digital</span></a>
     </div>
   </aside>
 
@@ -319,7 +319,7 @@ var currentUser = null;
 function checkAuth(){
   var token = localStorage.getItem('sl_session_token');
   if(!token){
-    return showGateErro('Você precisa fazer login no Axcend primeiro.', true);
+    return showGateErro('Você precisa fazer login no TMX Digital primeiro.', true);
   }
   fetch(API_BASE+'/api/auth/me', { headers: { 'Authorization': 'Bearer '+token } })
     .then(function(r){ if(!r.ok) throw new Error('Sessão expirada'); return r.json(); })
@@ -334,7 +334,7 @@ function checkAuth(){
       iniciarApp();
     })
     .catch(function(){
-      showGateErro('Sessão expirada. Faça login no Axcend novamente.', true);
+      showGateErro('Sessão expirada. Faça login no TMX Digital novamente.', true);
     });
 }
 
@@ -352,21 +352,21 @@ function iniciarApp(){
   document.getElementById('user-nome').textContent = currentUser.nome || currentUser.email;
   // Inicializa storage padrão (config inicial se vazia)
   if(!g('sl_saas_config', null)) s('sl_saas_config', defaultConfig());
-  // Seed: se não houver tenants, cria o "Axcend interno" com dados reais do sistema
+  // Seed: se não houver tenants, cria o "TMX Digital interno" com dados reais do sistema
   seedAxcendComoTenant();
   // Sincroniza dados reais do tenant interno (toda vez que abre, atualiza usuários/vagas/candidatos)
   atualizarTenantInterno();
   goScreen('dashboard');
 }
 
-// Cria automaticamente o tenant "Axcend interno" se ainda não existir
+// Cria automaticamente o tenant "TMX Digital interno" se ainda não existir
 function seedAxcendComoTenant(){
   var ts = getTenants();
   if(ts.some(function(t){ return t.id==='tenant-axcend-interno'; })) return; // já existe
   var d = new Date(); d.setFullYear(d.getFullYear()+1); // renovação muito longe
   var tenant = {
     id: 'tenant-axcend-interno',
-    nome: 'Axcend (operação interna)',
+    nome: 'TMX Digital (operação interna)',
     slug: 'axcend',
     dominio: 'app.centralaxcend.com',
     ownerEmail: currentUser.email || '',
@@ -391,7 +391,7 @@ function seedAxcendComoTenant(){
   saveTenants(ts);
 }
 
-// Atualiza os contadores do tenant interno com dados REAIS do Axcend
+// Atualiza os contadores do tenant interno com dados REAIS do TMX Digital
 function atualizarTenantInterno(){
   var ts = getTenants();
   var idx = ts.findIndex(function(t){ return t.id==='tenant-axcend-interno'; });
@@ -410,7 +410,7 @@ function atualizarTenantInterno(){
 
 function defaultConfig(){
   return {
-    produto: { nome: 'Axcend SaaS', logoUrl: '' },
+    produto: { nome: 'TMX Digital SaaS', logoUrl: '' },
     planos: [
       { id:'starter',    nome:'Starter',    preco:590,  moeda:'BRL', maxUsuarios:5,    maxVagas:3,    features:['Até 5 usuários','3 vagas ativas','500 candidatos/mês','Subdomínio .axcend.com','Suporte email'] },
       { id:'pro',        nome:'Pro',        preco:1890, moeda:'BRL', maxUsuarios:20,   maxVagas:null, features:['Até 20 usuários','Vagas ilimitadas','5.000 candidatos/mês','Domínio próprio','White-label completo','Integração Utmify','Suporte WhatsApp'], destaque:true },
@@ -878,7 +878,7 @@ function renderTenantGeral(t, p, dr){
       '<div class="kpi"><div class="kpi-label">Candidatos</div><div class="kpi-valor">'+(t.candidatosTotal||0)+'</div></div>';
   }
   return ''+
-    (t.interno ? '<div style="background:rgba(91,94,244,.08);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-bottom:18px;font-size:13px;color:var(--text);">👑 <b>Esse é VOCÊ</b> — seu próprio Centralaxcend cadastrado automaticamente como tenant interno. Os contadores de usuários/vagas/candidatos são atualizados em tempo real a partir dos dados do Axcend.</div>' : '')+
+    (t.interno ? '<div style="background:rgba(91,94,244,.08);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-bottom:18px;font-size:13px;color:var(--text);">👑 <b>Esse é VOCÊ</b> — seu próprio Centralaxcend cadastrado automaticamente como tenant interno. Os contadores de usuários/vagas/candidatos são atualizados em tempo real a partir dos dados do TMX Digital.</div>' : '')+
     '<div class="kpi-grid">'+kpis+'</div>'+
     '<div class="row-side">'+
       '<div>'+
@@ -1506,8 +1506,8 @@ function renderUtmify(){
     '</div>'+
     '<div class="card">'+
       '<div class="card-title">Mapeamento de eventos</div>'+
-      '<div class="card-sub">Cada evento no Axcend dispara um evento no Utmify quando ativo.</div>'+
-      '<table><thead><tr><th>Evento Axcend</th><th>→</th><th>Evento Utmify</th><th>Tipo</th><th>Ativo</th></tr></thead><tbody>'+
+      '<div class="card-sub">Cada evento no TMX Digital dispara um evento no Utmify quando ativo.</div>'+
+      '<table><thead><tr><th>Evento TMX Digital</th><th>→</th><th>Evento Utmify</th><th>Tipo</th><th>Ativo</th></tr></thead><tbody>'+
       u.eventos.map(function(ev, i){
         var tipos = {lead:'<span class="chip info">Lead</span>', oportunidade:'<span class="chip warn">Oportun.</span>', conversao:'<span class="chip ok">Conversão</span>', receita:'<span class="chip ok">Receita</span>', activity:'<span class="chip neutro">Activity</span>'};
         return '<tr>'+

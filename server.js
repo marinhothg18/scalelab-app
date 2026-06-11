@@ -1113,7 +1113,7 @@ app.post('/api/spy/import', authAPI, (req, res) => {
 // Free tier: 100 emails/dia, 3000/mês
 // ══════════════════════════════════════════════
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const RESEND_FROM = process.env.RESEND_FROM || 'Axcend <noreply@centralaxcend.com>';
+const RESEND_FROM = process.env.RESEND_FROM || 'TMX Digital <noreply@centralaxcend.com>';
 
 async function _enviarEmail({ to, subject, html, text, replyTo }) {
   try {
@@ -1157,13 +1157,13 @@ function _emailTemplateBase(corpo) {
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
     <div style="background:linear-gradient(135deg,#5b5ef4,#3E1493);padding:24px;text-align:center;">
-      <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;">Axcend</h1>
+      <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;">TMX Digital</h1>
     </div>
     <div style="padding:32px 28px;color:#333;line-height:1.6;font-size:15px;">
       ${corpo}
     </div>
     <div style="background:#f9f9f9;padding:18px;text-align:center;font-size:12px;color:#999;border-top:1px solid #eee;">
-      Axcend · Sistema de gestão pra Direct Response<br>
+      TMX Digital · Sistema de gestão pra Direct Response<br>
       <a href="https://app.centralaxcend.com" style="color:#5b5ef4;text-decoration:none;">app.centralaxcend.com</a>
     </div>
   </div>
@@ -1174,7 +1174,7 @@ function _emailTemplateResetSenha(nome, linkReset) {
   return _emailTemplateBase(`
     <h2 style="margin:0 0 16px 0;font-size:22px;">🔐 Resetar sua senha</h2>
     <p>Oi ${nome || 'tudo bem'}!</p>
-    <p>Recebemos um pedido pra resetar a senha da sua conta no Axcend.</p>
+    <p>Recebemos um pedido pra resetar a senha da sua conta no TMX Digital.</p>
     <p>Clica no botão abaixo pra criar uma nova senha (link válido por <b>1 hora</b>):</p>
     <p style="text-align:center;margin:28px 0;">
       <a href="${linkReset}" style="display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;">Criar nova senha</a>
@@ -1187,7 +1187,7 @@ function _emailTemplateResetSenha(nome, linkReset) {
 
 function _emailTemplateBoasVindas(nome, urlPainel) {
   return _emailTemplateBase(`
-    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo ao Axcend, ${nome || 'tudo bem'}!</h2>
+    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo ao TMX Digital, ${nome || 'tudo bem'}!</h2>
     <p>Sua conta foi criada com sucesso. Você tem <b>14 dias grátis</b> pra testar tudo.</p>
     <p>Acesse seu painel:</p>
     <p style="text-align:center;margin:28px 0;">
@@ -1237,8 +1237,8 @@ app.post('/api/email/test', authDiretoria, async (req, res) => {
     if (!to || !to.includes('@')) return res.status(400).json({ error: 'email destinatário inválido' });
     const r = await _enviarEmail({
       to,
-      subject: '🧪 Teste do Axcend',
-      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado do Axcend. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
+      subject: '🧪 Teste do TMX Digital',
+      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado do TMX Digital. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
     });
     res.json(r);
   } catch (err) {
@@ -1297,7 +1297,7 @@ app.post('/api/auth/forgot', loginLimiter, async (req, res) => {
     // Envia email
     const emailResult = await _enviarEmail({
       to: user.email,
-      subject: '🔐 Resetar senha · Axcend',
+      subject: '🔐 Resetar senha · TMX Digital',
       html: _emailTemplateResetSenha(user.nome, linkReset)
     });
 
@@ -1891,7 +1891,7 @@ app.post('/api/me/dominio/verificar', authDiretoria, async (req, res) => {
         _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
         return res.json({ ok: true, verificado: true, cnames, mensagem: 'DNS verificado! Acesse https://' + tenant.dominio + ' em 5-15 min (tempo do SSL).' });
       }
-      return res.json({ ok: true, verificado: false, cnames, mensagem: 'CNAME encontrado mas não aponta pro Axcend. Esperado: cname.centralaxcend.com' });
+      return res.json({ ok: true, verificado: false, cnames, mensagem: 'CNAME encontrado mas não aponta pro TMX Digital. Esperado: cname.centralaxcend.com' });
     } catch (e) {
       return res.json({ ok: true, verificado: false, mensagem: 'DNS não propagou ainda. Tente novamente em 5-30 min.', erro: e.message });
     }
@@ -2010,7 +2010,7 @@ app.post('/api/me/logout-all', (req, res) => {
 // ══════════════════════════════════════════════
 // ── INTEGRAÇÃO UTMIFY (por tenant) ──
 // Cada cliente conecta SUA conta Utmify pelo painel.
-// Axcend dispara eventos de conversão automaticamente (lead, qualified, opportunity, conversion).
+// TMX Digital dispara eventos de conversão automaticamente (lead, qualified, opportunity, conversion).
 // Docs: https://docs.utmify.com.br/
 // ══════════════════════════════════════════════
 
@@ -2039,7 +2039,7 @@ async function _enviarEventoUtmify(tenantId, tipoEvento, dadosEvento) {
     // Monta payload pro Utmify
     const payload = {
       orderId: dadosEvento.orderId || ('axcend-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)),
-      platform: 'Axcend',
+      platform: 'TMX Digital',
       paymentMethod: dadosEvento.paymentMethod || 'other',
       status: tipoEvento === 'conversion' ? 'paid' : 'pending',
       createdAt: new Date().toISOString(),
@@ -2187,7 +2187,7 @@ app.post('/api/integracoes/utmify/test', async (req, res) => {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const r = await _enviarEventoUtmify(tenantId, 'lead', {
       orderId: 'test-' + Date.now(),
-      customerName: 'Teste Axcend',
+      customerName: 'Teste TMX Digital',
       customerEmail: 'teste@axcend.com',
       productName: 'Evento de teste',
       value: 0
@@ -2446,7 +2446,7 @@ app.post('/api/billing/checkout', async (req, res) => {
         customer_id: customerId,
         items: [{
           amount: cents,
-          description: 'Axcend ' + plano.nome + ' — Assinatura mensal',
+          description: 'TMX Digital ' + plano.nome + ' — Assinatura mensal',
           quantity: 1
         }],
         payments: [{
@@ -2501,19 +2501,19 @@ app.post('/api/billing/webhook', async (req, res) => {
           // 📧 Hook email: confirma pagamento
           _enviarEmail({
             to: tenant.contato?.email,
-            subject: '✅ Pagamento confirmado · Axcend',
+            subject: '✅ Pagamento confirmado · TMX Digital',
             html: _emailTemplatePagamentoConfirmado(tenant.contato?.nomeAdmin || tenant.nome, SAAS_PLANOS[planoId]?.nome, SAAS_PLANOS[planoId]?.precoBRL || 0)
           }).catch(()=>{});
 
           // 🚀 Hook Utmify: cliente PAGOU → evento 'conversion' (venda fechada!)
-          // Envia pra Diretoria Axcend (você é o owner do funil) + pro próprio tenant (auto-conversão)
+          // Envia pra Diretoria TMX Digital (você é o owner do funil) + pro próprio tenant (auto-conversão)
           const valorPago = SAAS_PLANOS[planoId]?.precoBRL || 0;
           _enviarEventoUtmify(TENANT_INTERNO_ID, 'conversion', {
             orderId: 'pay-' + tenantId + '-' + Date.now(),
             customerName: tenant.contato?.nomeAdmin || tenant.nome,
             customerEmail: tenant.contato?.email || '',
             customerPhone: tenant.contato?.telefone || '',
-            productName: 'Plano Axcend ' + SAAS_PLANOS[planoId]?.nome,
+            productName: 'Plano TMX Digital ' + SAAS_PLANOS[planoId]?.nome,
             planId: planoId,
             planName: SAAS_PLANOS[planoId]?.nome,
             value: valorPago,
@@ -2550,7 +2550,7 @@ app.post('/api/billing/webhook', async (req, res) => {
           // 📧 Hook email: avisa cliente que cobrança falhou
           _enviarEmail({
             to: tenant.contato?.email,
-            subject: '⚠️ Pagamento falhou · Axcend',
+            subject: '⚠️ Pagamento falhou · TMX Digital',
             html: _emailTemplatePagamentoFalhado(tenant.contato?.nomeAdmin || tenant.nome, SAAS_PLANOS[tenant.plano]?.nome || tenant.plano, tenant.assinatura.tentativasFalhadas, 3)
           }).catch(()=>{});
           if (tenant.assinatura.tentativasFalhadas >= 3) {
@@ -2763,13 +2763,13 @@ app.post('/api/saas/signup', async (req, res) => {
     // Invalida cache de tenants pra resolução por host funcionar imediatamente
     _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
 
-    // Notifica admin do Axcend via WhatsApp (se configurado)
+    // Notifica admin do TMX Digital via WhatsApp (se configurado)
     try {
       const cfg = db.store['sl_whatsapp_config'] || {};
       const adminInterno = (db.store['sl_usuarios'] || []).find(u => u.cargo === 'Diretoria' && u.tenant_id === TENANT_INTERNO_ID && u.whatsapp);
       if (cfg.ativo && adminInterno && adminInterno.whatsapp) {
         sendWhatsAppMessage(adminInterno.whatsapp,
-          `🎉 *Novo cliente no Axcend!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
+          `🎉 *Novo cliente no TMX Digital!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
         ).catch(()=>{});
       }
     } catch(e) { console.error('[signup notif WA]', e.message); }
@@ -2777,19 +2777,19 @@ app.post('/api/saas/signup', async (req, res) => {
     // 📧 Hook email: envia boas-vindas pro novo admin
     _enviarEmail({
       to: email.toLowerCase(),
-      subject: `🎉 Bem-vindo ao Axcend, ${nomeAdmin}!`,
+      subject: `🎉 Bem-vindo ao TMX Digital, ${nomeAdmin}!`,
       html: _emailTemplateBoasVindas(nomeAdmin, `https://${slug}.${SAAS_ROOT_DOMAIN}/?token=${token}`)
     }).catch(()=>{});
 
-    // 🚀 Hook Utmify: envia evento 'lead' pra Diretoria Axcend (qualifica como lead)
-    // Esse signup conta como LEAD QUALIFICADO no funil do Axcend (você é o owner)
+    // 🚀 Hook Utmify: envia evento 'lead' pra Diretoria TMX Digital (qualifica como lead)
+    // Esse signup conta como LEAD QUALIFICADO no funil do TMX Digital (você é o owner)
     const utmSignup = req.body.utm || {};
     _enviarEventoUtmify(TENANT_INTERNO_ID, 'qualified', {
       orderId: 'signup-' + tenantId,
       customerName: nomeAdmin,
       customerEmail: email.toLowerCase(),
       customerPhone: telefone || '',
-      productName: 'Trial Axcend · ' + empresa,
+      productName: 'Trial TMX Digital · ' + empresa,
       value: 0,
       planId: 'trial',
       planName: 'Trial 14 dias',
@@ -2858,7 +2858,7 @@ app.get('/privacidade', (req, res) => res.redirect('/termos#privacidade'));
 app.get('/lgpd', (req, res) => res.redirect('/termos#privacidade'));
 
 // GET /api/spy/master — bibliotecas mestre (qualquer usuário autenticado pode ler)
-// Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência Axcend"
+// Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência TMX Digital"
 app.get('/api/spy/master', (req, res) => {
   try {
     const db = readDB();
@@ -2902,7 +2902,7 @@ app.get('/api/spy/nichos', authAPI, (req, res) => {
 // branding (não toda a info do tenant), pra qualquer um logado.
 // ══════════════════════════════════════════════
 const BRANDING_DEFAULT = {
-  nome: 'Axcend',
+  nome: 'TMX Digital',
   primary: '#5b5ef4',
   secondary: '#3E1493',
   bgDark: '#0F0F0F',
@@ -2918,7 +2918,7 @@ app.get('/api/tenant/branding', (req, res) => {
     const branding = (t && t.branding) ? t.branding : {};
     res.json({
       tenantId: req.tenantId,
-      tenantNome: (t && t.nome) || 'Axcend',
+      tenantNome: (t && t.nome) || 'TMX Digital',
       branding: Object.assign({}, BRANDING_DEFAULT, branding)
     });
   } catch (e) {
@@ -2955,7 +2955,7 @@ app.put('/api/tenant/branding', (req, res) => {
     if (idx < 0) {
       // Tenant não existe na tabela (pode ser tenant interno que ainda não foi criado)
       // Cria entrada mínima
-      tenants.push({ id: req.tenantId, nome: 'Axcend', branding: novo, _updatedAt: Date.now() });
+      tenants.push({ id: req.tenantId, nome: 'TMX Digital', branding: novo, _updatedAt: Date.now() });
     } else {
       tenants[idx].branding = novo;
       tenants[idx]._updatedAt = Date.now();
@@ -3476,7 +3476,7 @@ app.post('/api/teste/publica/:slug/enviar', testeLimiter, (req, res) => {
         diretoria.forEach(d => {
           if (!d.whatsapp) return;
           const titulo = '📝 Teste prático recebido!';
-          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja no Axcend.`;
+          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja no TMX Digital.`;
           _notificarViaWhatsApp(d.id, titulo, texto).catch(()=>{});
         });
       } catch (e) { console.error('[WA teste]', e.message); }
@@ -3818,7 +3818,7 @@ async function _iaAnalisarDemanda(texto, db) {
       data: t.data || null
     }));
 
-  const systemPrompt = `Você é um assistente que analisa descrições de tarefas e sugere campos estruturados para criação no sistema Axcend (gestão de tráfego pago).
+  const systemPrompt = `Você é um assistente que analisa descrições de tarefas e sugere campos estruturados para criação no sistema TMX Digital (gestão de tráfego pago).
 
 IMPORTANTE: responda APENAS com JSON válido, sem markdown, sem explicação. Use exatamente esta estrutura:
 {
@@ -4592,7 +4592,7 @@ function _gerarRelatorioSemanal(forcado) {
     if (cfg.enviarWhatsApp !== false) {
       const fmtBR = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
       const linhas = [];
-      linhas.push('📊 *Relatório Semanal Axcend*');
+      linhas.push('📊 *Relatório Semanal TMX Digital*');
       linhas.push(`_${periodo_ini.split('-').reverse().join('/')} a ${periodo_fim.split('-').reverse().join('/')}_`);
       linhas.push('');
       linhas.push('*💰 KPIs*');
@@ -4756,7 +4756,7 @@ function _gerarRelatorioDiario(forcado) {
     const fmtBR = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
     const dataBR = hojeStr.split('-').reverse().join('/');
     const linhas = [];
-    linhas.push(`📋 *Relatório Diário Axcend — ${dataBR}*`);
+    linhas.push(`📋 *Relatório Diário TMX Digital — ${dataBR}*`);
     linhas.push('');
     linhas.push('*✅ Demandas hoje*');
     linhas.push(`• Concluídas hoje: ${concluidasHoje.length}`);
@@ -4911,7 +4911,7 @@ app.post('/api/whatsapp/test', authDiretoria, async (req, res) => {
   const { phone, message } = req.body || {};
   const to = phone || (req.user && req.user.whatsapp);
   if (!to) return res.status(400).json({ error: 'Informe um telefone ou cadastre o seu no perfil.' });
-  const r = await sendWhatsAppMessage(to, message || '🤖 Teste do Axcend! Está funcionando.');
+  const r = await sendWhatsAppMessage(to, message || '🤖 Teste do TMX Digital! Está funcionando.');
   res.json(r);
 });
 
@@ -4949,7 +4949,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
     );
 
     if (!user) {
-      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado no Axcend. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
+      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado no TMX Digital. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
       return res.json({ ok: true, skipped: 'user-nao-encontrado' });
     }
 
@@ -5027,7 +5027,7 @@ async function _chamarClaude(texto, user, cfg) {
   if (!aiKey) throw new Error('IA não configurada (defina ANTHROPIC_API_KEY no Railway)');
   const tools = _agentTools();
   const hojeStr = new Date().toLocaleDateString('pt-BR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const systemPrompt = `Você é o assistente operacional do Axcend (sistema de gestão de tráfego pago em centralaxcend.com).
+  const systemPrompt = `Você é o assistente operacional do TMX Digital (sistema de gestão de tráfego pago em centralaxcend.com).
 Usuário falando: ${user.nome} (cargo: ${user.cargo}, ID: ${user.id}).
 Hoje: ${hojeStr}.
 
@@ -5113,7 +5113,7 @@ async function _chamarOpenAI(texto, user, cfg) {
   const body = {
     model: 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: `Você é o assistente do Axcend. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
+      { role: 'system', content: `Você é o assistente do TMX Digital. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
       { role: 'user', content: texto }
     ]
   };
@@ -5623,7 +5623,7 @@ async function _notificarViaWhatsApp(destId, titulo, texto) {
 app.post('/api/whatsapp/notificar', async (req, res) => {
   const { destId, titulo, texto } = req.body || {};
   if (!destId || !texto) return res.status(400).json({ error: 'destId + texto obrigatórios' });
-  await _notificarViaWhatsApp(destId, titulo || 'Notificação Axcend', texto);
+  await _notificarViaWhatsApp(destId, titulo || 'Notificação TMX Digital', texto);
   res.json({ ok: true });
 });
 setTimeout(_tickBackupRemoto, 2*60*1000);   // primeira tentativa 2min após boot

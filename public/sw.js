@@ -1,6 +1,6 @@
-// Service Worker do Axcend — Fase 1 (PWA instalável, sem push ainda)
+// Service Worker da TMX Digital — Fase 1 (PWA instalável, sem push ainda)
 // v2 (novo design 2026): bumpou cache pra invalidar versões antigas
-const CACHE_NAME = 'axcend-v2';
+const CACHE_NAME = 'tmx-v3';
 const SHELL = [
   '/manifest.json',
   '/icon-192.png',
