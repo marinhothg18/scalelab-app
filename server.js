@@ -2851,6 +2851,10 @@ app.get('/docs', (req, res) => res.redirect('/ajuda'));
 app.get('/landing', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'landing.html'));
 });
+// GET /site e /vendas — página de vendas institucional TMX Digital
+app.get(['/site', '/vendas'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'site.html'));
+});
 // /pricing e /planos viram alias pra /landing#pricing
 app.get('/pricing', (req, res) => res.redirect('/landing#pricing'));
 app.get('/planos', (req, res) => res.redirect('/landing#pricing'));
