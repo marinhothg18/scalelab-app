@@ -7323,7 +7323,7 @@ function cdSeed(){
 function renderCentralDiretoria(){
   var el=document.getElementById('gestao-content'); if(!el) return;
   if(!(currentUser&&currentUser.cargo==='Diretoria')){ _gestaoTab='prog_demanda'; renderGestaoSidebar(); renderProgDemanda(); return; }
-  cdSeed();
+  cdSeed(); cdInjectStyle();
   el.innerHTML='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">'+cdTab('anot','📝 Anotações')+cdTab('pastas','📁 Pastas & Links')+'</div><div id="cd-body"></div>';
   cdRenderBody();
 }
@@ -7365,12 +7365,62 @@ function cdRenderAnot(){
   var filhos=notas.filter(function(x){return x.parentId===n.id;});
   var path=[],cur=n; while(cur){path.unshift(cur);cur=cur.parentId?notas.filter(function(x){return x.id===cur.parentId;})[0]:null;}
   var bc=path.map(function(p,i){var last=i===path.length-1;return last?'<span style="color:var(--text2)">'+cdEsc(p.titulo)+'</span>':'<span onclick="cdAbrir(\''+p.id+'\')" style="cursor:pointer;color:var(--accent)">'+cdEsc(p.titulo)+'</span>';}).join(' <span style="color:var(--text3)">/</span> ');
-  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:12px;color:var(--text3);flex-wrap:wrap;"><span onclick="_cdNota=null;cdRenderAnot()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Anotações</span><span>/</span>'+bc+'<button onclick="cdDelNota(\''+n.id+'\')" style="margin-left:auto;background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;">🗑 excluir</button></div>'
-    +'<input value="'+cdEsc(n.titulo)+'" onchange="cdSalvarTitulo(\''+n.id+'\',this.value)" placeholder="Sem título" style="width:100%;background:transparent;border:none;font-size:28px;font-weight:800;color:var(--text);outline:none;margin-bottom:12px;">'
-    +'<textarea oninput="cdSalvarCorpo(\''+n.id+'\',this.value)" placeholder="Escreva aqui… (o que quiser)" style="width:100%;min-height:calc(100vh - 340px);background:transparent;border:none;color:var(--text);font-size:16px;line-height:1.75;outline:none;resize:vertical;font-family:inherit;">'+cdEsc(n.corpo||'')+'</textarea>'
-    +'<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Subpáginas</div>'+(filhos.length?filhos.map(function(f){return cdLinha(f,notas);}).join(''):'<div style="color:var(--text3);font-size:13px;padding:4px 0 10px;">Nenhuma subpágina.</div>')+'<button onclick="cdNovaNota(\''+n.id+'\')" class="btn btn-ghost" style="font-size:12px;padding:7px 13px;margin-top:8px;">＋ Nova subpágina</button></div>';
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:12px;color:var(--text3);flex-wrap:wrap;"><span onclick="_cdNota=null;cdRenderAnot()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Anotações</span><span>/</span>'+bc+'<button onclick="cdCompartilhar(\''+n.id+'\')" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer;">🔗 Compartilhar</button><button onclick="cdDelNota(\''+n.id+'\')" style="background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;">🗑 excluir</button></div>'
+    +'<input value="'+cdEsc(n.titulo)+'" onchange="cdSalvarTitulo(\''+n.id+'\',this.value)" placeholder="Sem título" style="width:100%;background:transparent;border:none;font-size:28px;font-weight:800;color:var(--text);outline:none;margin-bottom:14px;">'
+    +cdBlocosHTML()
+    +'<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Subpáginas</div>'+(filhos.length?filhos.map(function(f){return cdLinha(f,notas);}).join(''):'<div style="color:var(--text3);font-size:13px;padding:4px 0 10px;">Nenhuma subpágina.</div>')+'<button onclick="cdNovaNota(\''+n.id+'\')" class="btn btn-ghost" style="font-size:12px;padding:7px 13px;margin-top:8px;">＋ Nova subpágina</button></div>';
+  cdFocarBloco();
 }
 function cdLinha(n,notas){var q=notas.filter(function(x){return x.parentId===n.id;}).length;return '<div onclick="cdAbrir(\''+n.id+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background .12s;"><span style="color:var(--text3)">📄</span><span style="font-size:14px;font-weight:500;flex:1;color:var(--text);">'+cdEsc(n.titulo)+'</span>'+(q?'<span style="font-size:11px;color:var(--text3);">'+q+' subpág.</span>':'')+'<span style="color:var(--text3)">›</span></div>';}
+/* ---- EDITOR DE BLOCOS (Notion-like) ---- */
+var _cdBloco=null, _cdFocusBloco=null;
+var CD_TIPOS=[{id:'texto',label:'Texto',ic:'T'},{id:'h1',label:'Título 1',ic:'H1'},{id:'h2',label:'Título 2',ic:'H2'},{id:'h3',label:'Título 3',ic:'H3'},{id:'bullet',label:'Lista com marcadores',ic:'•'},{id:'todo',label:'Lista de tarefas',ic:'☑'},{id:'codigo',label:'Código',ic:'</>'}];
+function cdInjectStyle(){ if(document.getElementById('cd-style'))return; var s=document.createElement('style'); s.id='cd-style'; s.textContent='#cd-blocos [contenteditable][data-ph]:empty:before{content:attr(data-ph);color:var(--text3);}#cd-blocos [contenteditable]{word-break:break-word;}#cd-blocos a{color:var(--accent);text-decoration:underline;}'; document.head.appendChild(s); }
+function cdNotaAtual(notas){ return (notas||cdGet('cd_notas',[])).filter(function(x){return x.id===_cdNota;})[0]; }
+function cdSalvaN(mut){ var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return; mut(n,notas); cdSet('cd_notas',notas); }
+function cdEnsureB(n){ if(!n.blocks){ var t=(n.corpo!=null&&n.corpo!=='')?cdEsc(String(n.corpo)):''; n.blocks=[{id:cdUID('b'),tipo:'texto',texto:t}]; if('corpo' in n) delete n.corpo; } if(!n.blocks.length) n.blocks=[{id:cdUID('b'),tipo:'texto',texto:''}]; }
+function cdBlocosHTML(){
+  var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return '';
+  if(!n.blocks){ cdEnsureB(n); cdSet('cd_notas',notas); }
+  var h='<div id="cd-blocos" style="min-height:calc(100vh - 420px);">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
+  h+='<button onclick="cdAddBloco(\'texto\',9999)" style="margin-top:4px;background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button>';
+  return h;
+}
+function cdBlocoHTML(b,i){
+  var ctrl='<span onclick="cdBlocoMenu(event,'+i+')" title="Tipo / excluir" style="cursor:pointer;color:var(--text3);opacity:.45;font-size:15px;flex-shrink:0;width:16px;text-align:center;user-select:none;line-height:1.6;">⋮</span>';
+  var ce='contenteditable="true" data-bi="'+i+'" oninput="cdSaveBloco('+i+',this.innerHTML)" onkeydown="cdBlocoKey(event,'+i+')" onfocus="_cdBloco='+i+'"';
+  var t=b.texto||'';
+  if(b.tipo==='h1') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:16px 0 4px;">'+ctrl+'<div '+ce+' data-ph="Título 1" style="outline:none;flex:1;font-size:26px;font-weight:800;line-height:1.2;color:var(--text);">'+t+'</div></div>';
+  if(b.tipo==='h2') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:14px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 2" style="outline:none;flex:1;font-size:21px;font-weight:700;line-height:1.25;color:var(--text);">'+t+'</div></div>';
+  if(b.tipo==='h3') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:12px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 3" style="outline:none;flex:1;font-size:17px;font-weight:700;line-height:1.3;color:var(--text);">'+t+'</div></div>';
+  if(b.tipo==='bullet') return '<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;">'+ctrl+'<span style="color:var(--text2);line-height:1.6;">•</span><div '+ce+' data-ph="Item" style="outline:none;flex:1;font-size:15px;line-height:1.6;color:var(--text);">'+t+'</div></div>';
+  if(b.tipo==='todo') return '<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;">'+ctrl+'<input type="checkbox" '+(b.done?'checked':'')+' onclick="cdToggleBloco('+i+')" style="accent-color:var(--accent);margin-top:4px;"><div '+ce+' data-ph="Tarefa" style="outline:none;flex:1;font-size:15px;line-height:1.6;color:var(--text);'+(b.done?'text-decoration:line-through;opacity:.5;':'')+'">'+t+'</div></div>';
+  if(b.tipo==='codigo') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;">'+ctrl+'<div '+ce+' data-ph="Código" style="outline:none;flex:1;font-family:monospace;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;line-height:1.5;color:var(--text);white-space:pre-wrap;">'+t+'</div></div>';
+  return '<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;">'+ctrl+'<div '+ce+' data-ph="Escreva algo…  (clique no ⋮ pra escolher o tipo)" style="outline:none;flex:1;font-size:15px;line-height:1.7;color:var(--text);">'+t+'</div></div>';
+}
+function cdSaveBloco(i,html){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].texto=html; }); }
+function cdToggleBloco(i){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].done=!n.blocks[i].done; }); cdRenderAnot(); }
+function cdAddBloco(tipo,after){ cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:tipo,texto:''}); _cdFocusBloco=pos; }); cdRenderAnot(); }
+function cdDelBloco(i){ cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
+function cdTipoBloco(i,tipo){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
+function cdBlocoKey(e,i){
+  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); cdSaveBloco(i,e.target.innerHTML); cdAddBloco('texto',i); return; }
+  if((e.metaKey||e.ctrlKey)&&(e.key==='b'||e.key==='B')){ e.preventDefault(); document.execCommand('bold'); cdSaveBloco(i,e.target.innerHTML); return; }
+  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); var u=prompt('URL do link:'); if(u){document.execCommand('createLink',false,u); cdSaveBloco(i,e.target.innerHTML);} return; }
+  if(e.key==='Backspace'&&(e.target.textContent||'')===''&&i>0){ e.preventDefault(); cdDelBloco(i); return; }
+}
+function cdFocarBloco(){ if(_cdFocusBloco==null)return; var idx=_cdFocusBloco; _cdFocusBloco=null; setTimeout(function(){ var elb=document.querySelector('#cd-blocos [data-bi="'+idx+'"]'); if(elb){ elb.focus(); try{ var r=document.createRange(); r.selectNodeContents(elb); r.collapse(false); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} } },30); }
+function cdBlocoMenu(e,i){
+  e.stopPropagation(); cdFecharMenu();
+  var m=document.createElement('div'); m.id='cd-bmenu';
+  m.style.cssText='position:fixed;z-index:13500;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 16px 50px rgba(0,0,0,.5);min-width:190px;';
+  m.innerHTML='<div style="font-size:10px;font-weight:800;color:var(--text3);padding:6px 10px 4px;letter-spacing:.5px;">TIPO DO BLOCO</div>'+CD_TIPOS.map(function(t){return '<div onclick="cdTipoBloco('+i+',\''+t.id+'\');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);"><span style="width:22px;text-align:center;color:var(--text2);font-size:12px;">'+t.ic+'</span>'+t.label+'</div>';}).join('')+'<div style="height:1px;background:var(--border);margin:4px 6px;"></div><div onclick="cdDelBloco('+i+');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--red);"><span style="width:22px;text-align:center;">🗑</span>Excluir bloco</div>';
+  document.body.appendChild(m);
+  m.style.left=Math.min(e.clientX, window.innerWidth-210)+'px'; m.style.top=Math.min(e.clientY, window.innerHeight-340)+'px';
+  setTimeout(function(){ document.addEventListener('click',cdFecharMenu,{once:true}); },10);
+}
+function cdFecharMenu(){ var m=document.getElementById('cd-bmenu'); if(m)m.remove(); }
+function cdCompartilhar(id){ var link='https://app.centralaxcend.com/nota/'+id; try{navigator.clipboard.writeText(link);}catch(e){} if(typeof notif==='function')notif('🔗 Link copiado! O compartilhamento real ativa quando ligarmos a sincronização.'); }
 function cdAbrir(id){_cdNota=id;cdRenderAnot();}
 function cdNovaNota(parentId){ cdModal(parentId?'Nova subpágina':'Nova nota',[{label:'Título',key:'titulo',placeholder:'Ex: Metas do trimestre'}],function(v){ var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:v.titulo||'Sem título',parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada'); }); }
 function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;cdSet('cd_notas',notas);}}
