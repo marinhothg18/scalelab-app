@@ -1457,10 +1457,6 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Dashboard
     </div>
-    <div class="nav-item" id="nav-diretoria" onclick="window.open('/central-diretoria.html','_blank')" title="Central da Diretoria (protótipo)" style="display:none;background:linear-gradient(135deg,rgba(62,20,147,.25),rgba(197,44,88,.15));border:1px solid rgba(124,58,237,.35);">
-      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/><circle cx="6.5" cy="6.5" r="1"/></svg>
-      🎛️ Central da Diretoria
-    </div>
 
     <div class="nav-group" data-group="operacao">
       <div class="nav-section nav-acc-head" onclick="toggleNavGroup(this)">Operação <span class="nav-chev">▼</span></div>
@@ -7260,13 +7256,15 @@ var GESTAO_TABS = [
   { id:'pulse',        label:'Pulse — Tempo Real',     icon:'📡', color:'#16A34A' },
   { id:'vagas',        label:'Vagas',                    icon:'💼', color:'#5B5EF4' },
   { id:'rh',           label:'RH',                       icon:'👥', color:'#1B9CFA' },
-  { id:'financeiro',   label:'Financeiro',               icon:'💰', color:'#16A34A' }
+  { id:'financeiro',   label:'Financeiro',               icon:'💰', color:'#16A34A' },
+  { id:'diretoria',    label:'Central da Diretoria',     icon:'🎛️', color:'#7C3AED', soDir:true }
 ];
 
 function renderGestaoSidebar(){
   var el = document.getElementById('gestao-tipo-filtros');
   if(!el) return;
-  el.innerHTML = GESTAO_TABS.map(function(t){
+  var _isDirG = currentUser && currentUser.cargo === 'Diretoria';
+  el.innerHTML = GESTAO_TABS.filter(function(t){ return !t.soDir || _isDirG; }).map(function(t){
     var active = _gestaoTab === t.id;
     var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+t.color+';margin-right:8px;flex-shrink:0;"></span>';
     return '<div onclick="_gestaoTab=\''+t.id+'\';renderGestaoSidebar();renderGestaoContent();" style="display:flex;align-items:center;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(active?'700':'500')+';color:'+(active?'#fff':'var(--text2)')+';background:'+(active?'var(--accent)':'transparent')+';transition:all .15s;">'+dot+t.icon+' '+t.label+'</div>';
@@ -7283,6 +7281,14 @@ function renderGestaoContent(){
   else if(_gestaoTab === 'vagas'){ renderVagas(); }
   else if(_gestaoTab === 'rh'){ renderRh(); }
   else if(_gestaoTab === 'financeiro'){ renderFinanceiro(); }
+  else if(_gestaoTab === 'diretoria'){ renderCentralDiretoria(); }
+}
+function renderCentralDiretoria(){
+  var el=document.getElementById('gestao-content'); if(!el) return;
+  var isDir = currentUser && currentUser.cargo === 'Diretoria';
+  if(!isDir){ _gestaoTab='prog_demanda'; renderGestaoSidebar(); renderProgDemanda(); return; }
+  el.innerHTML='<div style="height:calc(100vh - 150px);min-height:620px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#0b0b0f;">'
+    +'<iframe src="/central-diretoria.html" title="Central da Diretoria" style="width:100%;height:100%;border:0;display:block;"></iframe></div>';
 }
 
 // ══════════════════════════════════════════════
@@ -26306,13 +26312,6 @@ function _cmdkGlobalKey(e){
     return;
   }
 }
-</script>
-<script>
-// Mostra "Central da Diretoria" (protótipo) só pra Diretoria
-(function(){
-  function chk(){ try{ if(typeof currentUser!=='undefined' && currentUser){ var n=document.getElementById('nav-diretoria'); if(n) n.style.display=(currentUser.cargo==='Diretoria')?'flex':'none'; return true; } }catch(e){} return false; }
-  var i=setInterval(function(){ if(chk()) clearInterval(i); }, 600);
-})();
 </script>
 </body>
 </html>
