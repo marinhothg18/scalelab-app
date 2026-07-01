@@ -7358,7 +7358,7 @@ function cdRenderAnot(){
   var notas=cdGet('cd_notas',[]);
   if(!_cdNota){
     var raiz=notas.filter(function(n){return !n.parentId;});
-    el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><span style="font-size:17px;font-weight:800;">Anotações</span><span style="background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;">'+raiz.length+'</span><button onclick="cdNovaNota(null)" class="btn btn-primary" style="margin-left:auto;font-size:12px;padding:7px 13px;">＋ Nova nota</button></div>'+(raiz.length?raiz.map(function(n){return cdLinha(n,notas);}).join(''):'<div style="color:var(--text3);padding:24px;text-align:center;">Sem notas ainda. Clique em “Nova nota”.</div>');
+    el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><span style="font-size:17px;font-weight:800;">Anotações</span><span style="background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;">'+raiz.length+'</span><button onclick="cdAbrirImport()" class="btn btn-ghost" style="margin-left:auto;font-size:12px;padding:7px 13px;">⤵ Importar</button><button onclick="cdNovaNota(null)" class="btn btn-primary" style="font-size:12px;padding:7px 13px;">＋ Nova nota</button></div>'+(raiz.length?raiz.map(function(n){return cdLinha(n,notas);}).join(''):'<div style="color:var(--text3);padding:24px;text-align:center;">Sem notas ainda. Clique em “Nova nota”.</div>');
     return;
   }
   var n=notas.filter(function(x){return x.id===_cdNota;})[0]; if(!n){_cdNota=null;return cdRenderAnot();}
@@ -7484,6 +7484,53 @@ function cdCompartilhar(id){
 function cdSetShare(id,val){ var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===id;})[0]; if(n){ n.share=val; cdSet('cd_notas',notas); } var c=document.getElementById('cd-share-card'); if(c&&c._cdrender)c._cdrender(); cdPublicarAtual(id); }
 function cdAbrir(id){_cdNota=id;cdRenderAnot();}
 function cdNovaNota(parentId){ cdModal(parentId?'Nova subpágina':'Nova nota',[{label:'Título',key:'titulo',placeholder:'Ex: Metas do trimestre'}],function(v){ var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:v.titulo||'Sem título',parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada'); }); }
+function cdAbrirImport(){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  var card=document.createElement('div');
+  card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:470px;max-width:100%;box-shadow:0 24px 70px rgba(0,0,0,.55);';
+  card.innerHTML='<div style="font-size:17px;font-weight:800;margin-bottom:6px;">⤵ Importar do Notion</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:16px;">Escolha o arquivo <b>.json</b> gerado a partir do seu Notion (ex.: <code style="background:var(--bg3);padding:1px 6px;border-radius:5px;">notion-empresa-axcend.json</code> na Área de Trabalho). Cada página vira uma nota nativa, com as subpáginas na hierarquia. Reimportar substitui a versão anterior.</div>'
+    +'<input id="cd-imp-file" type="file" accept=".json,application/json" style="width:100%;box-sizing:border-box;font-size:13px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px;">'
+    +'<div id="cd-imp-status" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:14px;"></div>'
+    +'<div style="display:flex;gap:10px;justify-content:flex-end;"><button id="cd-imp-cancel" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 18px;font-size:14px;cursor:pointer;">Fechar</button><button id="cd-imp-ok" style="background:var(--accent-grad);border:none;color:#fff;border-radius:9px;padding:9px 22px;font-size:14px;font-weight:700;cursor:pointer;opacity:.5;pointer-events:none;">Importar</button></div>';
+  ov.appendChild(card); document.body.appendChild(ov);
+  var file=null;
+  var inp=card.querySelector('#cd-imp-file');
+  var ok=card.querySelector('#cd-imp-ok');
+  var st=card.querySelector('#cd-imp-status');
+  inp.onchange=function(){ file=(inp.files&&inp.files[0])||null; if(file){ ok.style.opacity='1'; ok.style.pointerEvents='auto'; st.textContent='Arquivo: '+file.name; st.style.color='var(--text2)'; } };
+  card.querySelector('#cd-imp-cancel').onclick=function(){ ov.remove(); };
+  ok.onclick=function(){
+    if(!file)return;
+    st.textContent='⏳ Lendo…'; st.style.color='var(--text3)';
+    var rd=new FileReader();
+    rd.onload=function(){
+      var payload; try{ payload=JSON.parse(rd.result); }catch(e){ st.textContent='⚠️ Arquivo inválido (não é JSON).'; st.style.color='var(--red)'; return; }
+      if(!payload || !Array.isArray(payload.notas) || !payload.notas.length){ st.textContent='⚠️ JSON sem lista de notas.'; st.style.color='var(--red)'; return; }
+      var r=cdImportarNotas(payload);
+      st.textContent='✅ '+r.n+' páginas importadas!'; st.style.color='var(--green)';
+      setTimeout(function(){ ov.remove(); _cdView='anot'; _cdNota=null; cdRenderBody(); if(r.rootId){ cdAbrir(r.rootId); } if(typeof notif==='function')notif('📥 Importado do Notion: '+r.n+' páginas'); }, 700);
+    };
+    rd.onerror=function(){ st.textContent='⚠️ Não consegui ler o arquivo.'; st.style.color='var(--red)'; };
+    rd.readAsText(file);
+  };
+}
+function cdImportarNotas(payload){
+  var notas=cdGet('cd_notas',[]);
+  var origem=payload.origem||'import';
+  notas=notas.filter(function(n){ return n._imp!==origem; });
+  var rootId=null;
+  payload.notas.forEach(function(p){
+    if(!p||!p.id)return;
+    var nota={ id:p.id, titulo:p.titulo||'Sem título', parentId:p.parentId||null, blocks:(Array.isArray(p.blocks)&&p.blocks.length)?p.blocks:[{id:cdUID('b'),tipo:'texto',texto:''}], _imp:origem };
+    notas.push(nota);
+    if(!nota.parentId && !rootId) rootId=nota.id;
+  });
+  cdSet('cd_notas',notas);
+  return { n:payload.notas.length, rootId:rootId };
+}
 function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;cdSet('cd_notas',notas);}}
 function cdSalvarCorpo(id,c){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.corpo=c;cdSet('cd_notas',notas);}}
 function cdDelNota(id){if(!confirm('Excluir esta nota e todas as subpáginas?'))return;var notas=cdGet('cd_notas',[]);var rem={};(function mk(i){rem[i]=1;notas.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);var n=notas.filter(function(x){return x.id===id;})[0];notas=notas.filter(function(x){return !rem[x.id];});cdSet('cd_notas',notas);_cdNota=(n&&n.parentId)?n.parentId:null;cdRenderAnot();}
