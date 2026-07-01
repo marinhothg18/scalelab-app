@@ -7597,34 +7597,42 @@ function cdCopiarCred(id){
 
 /* ---- 🗓️ AGENDA (Google Agenda · fase 1 só leitura via iCal) ---- */
 var _cdAgendaEditar=false;
-function cdGcalUrl(){ try{return localStorage.getItem('cd_gcal_url')||'';}catch(e){return '';} }
-function cdSalvarGcal(u){ try{localStorage.setItem('cd_gcal_url',u||'');}catch(e){} }
+var _cdAgendaCores=['#1B9CFA','#639922','#C52C58','#FF5926','#5b5ef4','#e0a100','#00b3a4','#d43cc9'];
+function cdGcalUrls(){ try{ var a=JSON.parse(localStorage.getItem('cd_gcal_urls')||'null'); if(Array.isArray(a)) return a; var old=localStorage.getItem('cd_gcal_url'); return old?[old]:[]; }catch(e){return [];} }
+function cdSalvarGcalUrls(arr){ try{localStorage.setItem('cd_gcal_urls',JSON.stringify(arr||[]));}catch(e){} }
 function cdRenderAgenda(){
   var el=document.getElementById('cd-agenda'); if(!el)return;
-  var url=cdGcalUrl();
-  if(!url || _cdAgendaEditar){ _cdAgendaEditar=false; el.innerHTML=cdAgendaSetupHTML(url); return; }
-  el.innerHTML='<div style="'+CDCARD+'"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;"><span style="font-size:17px;font-weight:800;">🗓️ Agenda</span><span style="font-size:12px;color:var(--text3);">Google Agenda · próximos 30 dias</span><button onclick="cdAgendaConfig()" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;">⚙️ Trocar link</button><button onclick="cdRenderAgenda()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;">↻ Atualizar</button></div><div id="cd-agenda-lista"><div style="color:var(--text3);padding:24px;text-align:center;">⏳ Carregando sua agenda…</div></div></div>';
+  var urls=cdGcalUrls();
+  if(!urls.length || _cdAgendaEditar){ _cdAgendaEditar=false; el.innerHTML=cdAgendaSetupHTML(urls); return; }
+  el.innerHTML='<div style="'+CDCARD+'"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;"><span style="font-size:17px;font-weight:800;">🗓️ Agenda</span><span style="font-size:12px;color:var(--text3);">'+urls.length+' agenda(s) · próximos 30 dias</span><button onclick="cdAgendaConfig()" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;">⚙️ Agendas</button><button onclick="cdRenderAgenda()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;">↻ Atualizar</button></div><div id="cd-agenda-lista"><div style="color:var(--text3);padding:24px;text-align:center;">⏳ Carregando suas agendas…</div></div></div>';
   var token=localStorage.getItem('sl_session_token')||'';
-  fetch('/api/cd/agenda',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({url:url,dias:30})})
+  fetch('/api/cd/agenda',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({urls:urls,dias:30})})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){ var lista=document.getElementById('cd-agenda-lista'); if(!lista)return; if(!res.ok||!res.j||!res.j.ok){ lista.innerHTML='<div style="color:var(--red);padding:16px;">⚠️ '+cdEsc((res.j&&res.j.error)||'Erro ao carregar')+'</div><div style="color:var(--text3);font-size:12px;padding:0 16px 12px;">Confira se o link secreto está certo (⚙️ Trocar link).</div>'; return; } lista.innerHTML=cdAgendaEventosHTML(res.j.eventos||[]); })
+    .then(function(res){ var lista=document.getElementById('cd-agenda-lista'); if(!lista)return; if(!res.ok||!res.j||!res.j.ok){ lista.innerHTML='<div style="color:var(--red);padding:16px;">⚠️ '+cdEsc((res.j&&res.j.error)||'Erro ao carregar')+'</div><div style="color:var(--text3);font-size:12px;padding:0 16px 12px;">Confira se os links secretos estão certos (⚙️ Agendas).</div>'; return; } lista.innerHTML=cdAgendaFontesHTML(res.j.fontes||[])+cdAgendaEventosHTML(res.j.eventos||[]); })
     .catch(function(){ var lista=document.getElementById('cd-agenda-lista'); if(lista)lista.innerHTML='<div style="color:var(--red);padding:16px;">⚠️ Erro de conexão ao carregar a agenda.</div>'; });
 }
-function cdAgendaSetupHTML(prefill){
+function cdAgendaFontesHTML(fontes){
+  if(!fontes.length) return '';
+  return '<div style="display:flex;gap:14px;flex-wrap:wrap;padding:2px 0 12px;">'+fontes.map(function(f,i){ var cor=_cdAgendaCores[i%_cdAgendaCores.length]; return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:'+(f.ok?'var(--text2)':'var(--red)')+';"><span style="width:9px;height:9px;border-radius:50%;background:'+(f.ok?cor:'var(--red)')+';"></span>'+cdEsc(f.nome)+(f.ok?' <span style="color:var(--text3)">('+f.n+')</span>':' — falhou')+'</span>'; }).join('')+'</div>';
+}
+function cdAgendaSetupHTML(prefillArr){
+  var val=(prefillArr&&prefillArr.length)?prefillArr.join('\n'):'';
   return '<div style="'+CDCARD+'">'
     +'<div style="font-size:17px;font-weight:800;margin-bottom:6px;">🗓️ Conectar o Google Agenda</div>'
-    +'<div style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:16px;">Cole aqui o <b>endereço secreto no formato iCal</b> da sua agenda. Onde achar:<br>1. Abra o <b>Google Agenda</b> no computador.<br>2. Passe o mouse na sua agenda (lista à esquerda) → <b>⋮</b> → <b>Configurações e compartilhamento</b>.<br>3. Role até <b>“Integrar agenda”</b> → copie o <b>“Endereço secreto no formato iCal”</b> (termina em <code style="background:var(--bg3);padding:1px 5px;border-radius:4px;">.ics</code>).</div>'
-    +'<input id="cd-gcal-input" value="'+cdEsc(prefill||'')+'" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--text);outline:none;font-family:monospace;margin-bottom:10px;">'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:14px;">Cole os <b>endereços secretos no formato iCal</b> das suas agendas — <b>um por linha</b>. Onde achar cada um:<br>1. No <b>Google Agenda</b> (computador), passe o mouse na agenda (lista à esquerda) → <b>⋮</b> → <b>Configurações e compartilhamento</b>.<br>2. Rola até <b>“Integrar agenda”</b> → copia o <b>“Endereço secreto no formato iCal”</b> (termina em <code style="background:var(--bg3);padding:1px 5px;border-radius:4px;">.ics</code>).<br>3. Repete pra cada agenda e cola uma por linha aqui.</div>'
+    +'<textarea id="cd-gcal-input" rows="4" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics&#10;https://calendar.google.com/calendar/ical/.../basic.ics" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:12px;color:var(--text);outline:none;font-family:monospace;margin-bottom:10px;resize:vertical;">'+cdEsc(val)+'</textarea>'
     +'<div id="cd-gcal-msg" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:10px;"></div>'
     +'<button onclick="cdConectarGcal()" style="background:var(--accent-grad);border:none;color:#fff;border-radius:9px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;">Conectar</button>'
-    +'<div style="font-size:11px;color:var(--text3);margin-top:16px;line-height:1.6;">🔒 O link fica guardado só no seu navegador (é secreto — não compartilhe). Depois ligamos a versão completa: criar e editar eventos direto daqui.</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-top:16px;line-height:1.6;">🔒 Os links ficam guardados só no seu navegador (são secretos — não compartilhe). Obs: agendas do Google como Feriados/Aniversários às vezes não têm esse endereço secreto; a “Thiago Marinho” é a principal.</div>'
   +'</div>';
 }
 function cdConectarGcal(){
-  var inp=document.getElementById('cd-gcal-input'); var msg=document.getElementById('cd-gcal-msg'); var u=((inp&&inp.value)||'').trim();
-  if(!u){ if(msg){msg.textContent='Cole o link primeiro.';msg.style.color='var(--red)';} return; }
-  if(u.replace(/^webcal:/i,'https:').indexOf('calendar.google.com')<0){ if(msg){msg.textContent='Precisa ser o link do Google (calendar.google.com …/.ics).';msg.style.color='var(--red)';} return; }
-  cdSalvarGcal(u); cdRenderAgenda();
+  var inp=document.getElementById('cd-gcal-input'); var msg=document.getElementById('cd-gcal-msg');
+  var linhas=((inp&&inp.value)||'').split('\n').map(function(s){return s.trim();}).filter(Boolean);
+  if(!linhas.length){ if(msg){msg.textContent='Cole pelo menos um link.';msg.style.color='var(--red)';} return; }
+  var invalidas=linhas.filter(function(u){return u.replace(/^webcal:/i,'https:').indexOf('calendar.google.com')<0;});
+  if(invalidas.length){ if(msg){msg.textContent='Todos os links precisam ser do Google (calendar.google.com …/.ics).';msg.style.color='var(--red)';} return; }
+  cdSalvarGcalUrls(linhas); cdRenderAgenda();
 }
 function cdAgendaConfig(){ _cdAgendaEditar=true; cdRenderAgenda(); }
 function cdAgendaEventosHTML(evs){
@@ -7648,7 +7656,7 @@ function cdAgendaEventosHTML(evs){
         +'<div style="font-size:22px;font-weight:800;color:'+(isHoje?'var(--accent)':'var(--text)')+';line-height:1.05;">'+d.getDate()+'</div>'
         +'<div style="font-size:10px;color:var(--text3);">'+meses[d.getMonth()]+'</div>'
       +'</div>'
-      +'<div style="flex:1;min-width:0;">'+grupos[g.ch].map(function(o){ var e=o.e; var hora=e.allDay?'dia todo':(('0'+o.dt.getHours()).slice(-2)+':'+('0'+o.dt.getMinutes()).slice(-2)); return '<div style="display:flex;gap:11px;align-items:baseline;padding:4px 0;"><span style="font-size:12px;color:var(--text2);min-width:54px;flex-shrink:0;">'+hora+'</span><span style="font-size:14px;color:var(--text);">'+cdEsc(e.titulo)+(e.local?' <span style="color:var(--text3);font-size:12px;">· '+cdEsc(e.local)+'</span>':'')+'</span></div>'; }).join('')+'</div>'
+      +'<div style="flex:1;min-width:0;">'+grupos[g.ch].map(function(o){ var e=o.e; var cor=_cdAgendaCores[(e.ci||0)%_cdAgendaCores.length]; var hora=e.allDay?'dia todo':(('0'+o.dt.getHours()).slice(-2)+':'+('0'+o.dt.getMinutes()).slice(-2)); return '<div style="display:flex;gap:9px;align-items:center;padding:4px 0;"><span style="width:8px;height:8px;border-radius:50%;background:'+cor+';flex-shrink:0;"></span><span style="font-size:12px;color:var(--text2);min-width:52px;flex-shrink:0;">'+hora+'</span><span style="font-size:14px;color:var(--text);">'+cdEsc(e.titulo)+(e.local?' <span style="color:var(--text3);font-size:12px;">· '+cdEsc(e.local)+'</span>':'')+'</span></div>'; }).join('')+'</div>'
       +(isHoje?'<span style="align-self:flex-start;font-size:10px;font-weight:800;color:#fff;background:var(--accent);padding:1px 7px;border-radius:10px;">HOJE</span>':'')
     +'</div>';
   });

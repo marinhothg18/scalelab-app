@@ -385,6 +385,7 @@ function _cdIcsDate(val) {
 function _cdDtMs(dt) { return Date.UTC(dt.y, dt.mo - 1, dt.d, dt.h, dt.mi, dt.s || 0); }
 function _cdParseAgenda(txt, diasJanela) {
   txt = String(txt).replace(/\r\n/g, '\n').replace(/\n[ \t]/g, ''); // desdobra linhas
+  const _nm = txt.match(/^X-WR-CALNAME:(.+)$/m); const _calNome = _nm ? _cdUnescICS(_nm[1].trim()) : '';
   const linhas = txt.split('\n');
   const eventos = []; let cur = null;
   for (const ln of linhas) {
@@ -424,18 +425,30 @@ function _cdParseAgenda(txt, diasJanela) {
     } else { const ms = _cdDtMs(b); if (ms >= janIni && ms <= janFim) push(b, ev); }
   }
   out.sort((a, b) => (a.y - b.y) || (a.mo - b.mo) || (a.d - b.d) || (a.h - b.h) || (a.mi - b.mi));
-  return out.slice(0, 400);
+  return { nome: _calNome, eventos: out.slice(0, 400) };
 }
 app.post('/api/cd/agenda', authDiretoria, async (req, res) => {
-  const { url, dias } = req.body || {};
-  if (!url) return res.status(400).json({ error: 'Informe o link secreto (iCal) do Google Agenda.' });
-  try {
-    const ics = await _cdFetchICS(url, 0);
-    if (!/BEGIN:VCALENDAR/.test(ics)) return res.status(400).json({ error: 'O link não retornou um calendário válido.' });
-    res.json({ ok: true, eventos: _cdParseAgenda(ics, dias || 30) });
-  } catch (e) {
-    res.status(400).json({ error: (e && e.message) ? e.message : 'Não consegui ler o calendário.' });
+  const body = req.body || {};
+  let urls = Array.isArray(body.urls) ? body.urls : (body.url ? [body.url] : []);
+  urls = urls.map(u => String(u || '').trim()).filter(Boolean).slice(0, 12);
+  if (!urls.length) return res.status(400).json({ error: 'Informe ao menos um link secreto (iCal) do Google Agenda.' });
+  const dias = body.dias || 30;
+  const todos = []; const fontes = [];
+  for (let i = 0; i < urls.length; i++) {
+    try {
+      const ics = await _cdFetchICS(urls[i], 0);
+      if (!/BEGIN:VCALENDAR/.test(ics)) throw new Error('não é um calendário válido');
+      const r = _cdParseAgenda(ics, dias);
+      const nome = r.nome || ('Agenda ' + (i + 1));
+      r.eventos.forEach(e => { e.cal = nome; e.ci = i; });
+      for (const e of r.eventos) todos.push(e);
+      fontes.push({ nome: nome, ok: true, n: r.eventos.length });
+    } catch (e) {
+      fontes.push({ nome: 'Agenda ' + (i + 1), ok: false, erro: (e && e.message) ? e.message : 'erro' });
+    }
   }
+  todos.sort((a, b) => (a.y - b.y) || (a.mo - b.mo) || (a.d - b.d) || (a.h - b.h) || (a.mi - b.mi));
+  res.json({ ok: true, eventos: todos.slice(0, 700), fontes: fontes });
 });
 
 // ── BANCO DE DADOS ──
