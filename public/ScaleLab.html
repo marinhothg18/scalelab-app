@@ -7331,8 +7331,25 @@ function cdTab(id,label){var a=_cdView===id;return '<button onclick="_cdView=\''
 function cdRenderBody(){
   var el=document.getElementById('cd-body'); if(!el){renderCentralDiretoria();return;}
   if(_cdView==='pastas'){ el.innerHTML='<div id="cd-pastas"></div>'; cdRenderPastas(); return; }
-  el.innerHTML='<div style="'+CDCARD+'margin-bottom:16px;" id="cd-anot"></div><div style="'+CDCARD+'" id="cd-rot"></div>';
-  cdRenderAnot(); cdRenderRot();
+  var _rot = _cdNota ? '' : '<div style="'+CDCARD+'margin-top:16px;" id="cd-rot"></div>';
+  el.innerHTML='<div style="'+CDCARD+'" id="cd-anot"></div>'+_rot;
+  cdRenderAnot(); if(!_cdNota) cdRenderRot();
+}
+function cdModal(titulo,campos,onOk){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  var campHtml=campos.map(function(c,i){return '<div style="margin-bottom:12px;"><label style="display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;">'+c.label+'</label><input data-cdf="'+i+'" placeholder="'+(c.placeholder||'')+'" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:14px;color:var(--text);outline:none;"></div>';}).join('');
+  var card=document.createElement('div');
+  card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:430px;max-width:100%;box-shadow:0 24px 70px rgba(0,0,0,.55);';
+  card.innerHTML='<div style="font-size:17px;font-weight:800;margin-bottom:18px;">'+titulo+'</div>'+campHtml+'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px;"><button id="cdm-cancel" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 18px;font-size:14px;cursor:pointer;">Cancelar</button><button id="cdm-ok" style="background:var(--accent-grad);border:none;color:#fff;border-radius:9px;padding:9px 22px;font-size:14px;font-weight:700;cursor:pointer;">Criar</button></div>';
+  ov.appendChild(card); document.body.appendChild(ov);
+  var inputs=card.querySelectorAll('input[data-cdf]');
+  if(inputs[0]) setTimeout(function(){ inputs[0].focus(); },40);
+  function ok(){ var vals={}; campos.forEach(function(c,i){ vals[c.key]=(inputs[i].value||'').trim(); }); if(campos[0].req!==false && !vals[campos[0].key]){ inputs[0].style.borderColor='var(--red)'; inputs[0].focus(); return; } ov.remove(); onOk(vals); }
+  card.querySelector('#cdm-ok').onclick=ok;
+  card.querySelector('#cdm-cancel').onclick=function(){ ov.remove(); };
+  ov.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); ok(); } if(e.key==='Escape'){ ov.remove(); } });
 }
 
 /* ---- ANOTAÇÕES ---- */
@@ -7350,12 +7367,12 @@ function cdRenderAnot(){
   var bc=path.map(function(p,i){var last=i===path.length-1;return last?'<span style="color:var(--text2)">'+cdEsc(p.titulo)+'</span>':'<span onclick="cdAbrir(\''+p.id+'\')" style="cursor:pointer;color:var(--accent)">'+cdEsc(p.titulo)+'</span>';}).join(' <span style="color:var(--text3)">/</span> ');
   el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:12px;color:var(--text3);flex-wrap:wrap;"><span onclick="_cdNota=null;cdRenderAnot()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Anotações</span><span>/</span>'+bc+'<button onclick="cdDelNota(\''+n.id+'\')" style="margin-left:auto;background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;">🗑 excluir</button></div>'
     +'<input value="'+cdEsc(n.titulo)+'" onchange="cdSalvarTitulo(\''+n.id+'\',this.value)" placeholder="Sem título" style="width:100%;background:transparent;border:none;font-size:28px;font-weight:800;color:var(--text);outline:none;margin-bottom:12px;">'
-    +'<textarea oninput="cdSalvarCorpo(\''+n.id+'\',this.value)" placeholder="Escreva aqui… (o que quiser)" style="width:100%;min-height:200px;background:transparent;border:none;color:var(--text);font-size:15px;line-height:1.7;outline:none;resize:vertical;font-family:inherit;">'+cdEsc(n.corpo||'')+'</textarea>'
+    +'<textarea oninput="cdSalvarCorpo(\''+n.id+'\',this.value)" placeholder="Escreva aqui… (o que quiser)" style="width:100%;min-height:calc(100vh - 340px);background:transparent;border:none;color:var(--text);font-size:16px;line-height:1.75;outline:none;resize:vertical;font-family:inherit;">'+cdEsc(n.corpo||'')+'</textarea>'
     +'<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Subpáginas</div>'+(filhos.length?filhos.map(function(f){return cdLinha(f,notas);}).join(''):'<div style="color:var(--text3);font-size:13px;padding:4px 0 10px;">Nenhuma subpágina.</div>')+'<button onclick="cdNovaNota(\''+n.id+'\')" class="btn btn-ghost" style="font-size:12px;padding:7px 13px;margin-top:8px;">＋ Nova subpágina</button></div>';
 }
 function cdLinha(n,notas){var q=notas.filter(function(x){return x.parentId===n.id;}).length;return '<div onclick="cdAbrir(\''+n.id+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background .12s;"><span style="color:var(--text3)">📄</span><span style="font-size:14px;font-weight:500;flex:1;color:var(--text);">'+cdEsc(n.titulo)+'</span>'+(q?'<span style="font-size:11px;color:var(--text3);">'+q+' subpág.</span>':'')+'<span style="color:var(--text3)">›</span></div>';}
 function cdAbrir(id){_cdNota=id;cdRenderAnot();}
-function cdNovaNota(parentId){var t=prompt('Título da nota:'); if(t===null)return; t=(t||'').trim()||'Sem título'; var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:t,parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada');}
+function cdNovaNota(parentId){ cdModal(parentId?'Nova subpágina':'Nova nota',[{label:'Título',key:'titulo',placeholder:'Ex: Metas do trimestre'}],function(v){ var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:v.titulo||'Sem título',parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada'); }); }
 function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;cdSet('cd_notas',notas);}}
 function cdSalvarCorpo(id,c){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.corpo=c;cdSet('cd_notas',notas);}}
 function cdDelNota(id){if(!confirm('Excluir esta nota e todas as subpáginas?'))return;var notas=cdGet('cd_notas',[]);var rem={};(function mk(i){rem[i]=1;notas.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);var n=notas.filter(function(x){return x.id===id;})[0];notas=notas.filter(function(x){return !rem[x.id];});cdSet('cd_notas',notas);_cdNota=(n&&n.parentId)?n.parentId:null;cdRenderAnot();}
@@ -7366,7 +7383,7 @@ function cdRenderRot(){
   var rot=cdGet('cd_rotina',{}); var dias=['Segunda','Terça','Quarta','Quinta','Sexta'];
   el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><span style="font-size:17px;font-weight:800;">Rotina da semana</span><button onclick="cdLimpar()" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">🧹 Limpar semana</button></div><div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;">'+dias.map(function(d){var ts=rot[d]||[];return '<div style="min-width:180px;flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px;"><div style="display:flex;justify-content:space-between;margin-bottom:9px;"><span style="font-size:13px;font-weight:700;">'+d+'</span><span style="font-size:11px;color:var(--text2);background:var(--bg2);padding:0 7px;border-radius:10px;">'+ts.length+'</span></div>'+ts.map(function(t,i){return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 9px;margin-bottom:6px;font-size:12px;display:flex;gap:7px;align-items:flex-start;"><input type="checkbox" '+(t.d?'checked':'')+' onclick="cdTog(\''+d+'\','+i+')" style="accent-color:var(--green);margin-top:1px;"><span style="flex:1;color:var(--text2);'+(t.d?'text-decoration:line-through;opacity:.5;':'')+'">'+cdEsc(t.t)+'</span><span onclick="cdDelT(\''+d+'\','+i+')" style="cursor:pointer;color:var(--text3);">✕</span></div>';}).join('')+'<button onclick="cdAddT(\''+d+'\')" style="background:none;border:1px dashed var(--border);border-radius:7px;color:var(--text3);font-size:11px;cursor:pointer;padding:6px;width:100%;margin-top:2px;">＋ tarefa</button></div>';}).join('')+'</div>';
 }
-function cdAddT(d){var t=prompt('Tarefa de '+d+':');if(t===null||!t.trim())return;var rot=cdGet('cd_rotina',{});if(!rot[d])rot[d]=[];rot[d].push({t:t.trim(),d:false});cdSet('cd_rotina',rot);cdRenderRot();}
+function cdAddT(d){ cdModal('Tarefa de '+d,[{label:'Tarefa',key:'t',placeholder:'O que fazer…'}],function(v){ var rot=cdGet('cd_rotina',{}); if(!rot[d])rot[d]=[]; rot[d].push({t:v.t,d:false}); cdSet('cd_rotina',rot); cdRenderRot(); }); }
 function cdTog(d,i){var rot=cdGet('cd_rotina',{});if(rot[d]&&rot[d][i]){rot[d][i].d=!rot[d][i].d;cdSet('cd_rotina',rot);cdRenderRot();}}
 function cdDelT(d,i){var rot=cdGet('cd_rotina',{});if(rot[d]){rot[d].splice(i,1);cdSet('cd_rotina',rot);cdRenderRot();}}
 function cdLimpar(){if(!confirm('Limpar todas as tarefas da semana?'))return;cdSet('cd_rotina',{});cdRenderRot();}
@@ -7392,12 +7409,10 @@ function cdItem(f,itens){
   return '<div style="'+CDCARD+'margin-bottom:10px;"><div '+main+' style="display:flex;align-items:flex-start;gap:14px;cursor:pointer;"><div style="width:38px;height:38px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'+ic+'</div><div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:700;">'+cdEsc(f.nome)+'</div>'+(f.desc?'<div style="font-size:12px;color:var(--text3);margin-top:2px;">'+cdEsc(f.desc)+'</div>':'')+(q?'<div style="font-size:11px;color:var(--text3);margin-top:4px;">'+q+' item(ns)</div>':'')+'</div><span onclick="event.stopPropagation();cdDelItem(\''+f.id+'\')" style="cursor:pointer;color:var(--text3);font-size:13px;">🗑</span></div>'+cred+'</div>';
 }
 function cdNovoItem(tipo){
-  var lbl=tipo==='pasta'?'Nome da pasta':tipo==='link'?'Nome do link':'Nome da credencial';
-  var nome=prompt(lbl+':'); if(nome===null||!nome.trim())return;
-  var it={id:cdUID('p'),nome:nome.trim(),tipo:tipo,parentId:_cdPasta||null};
-  if(tipo==='link'){ it.url=(prompt('URL (https://...):')||'').trim(); }
-  if(tipo==='cred'){ it.login=(prompt('Login / e-mail:')||'').trim(); it.senha=(prompt('Senha:')||'').trim(); it.desc=(prompt('Descrição (opcional):')||'').trim(); }
-  var itens=cdGet('cd_pastas',[]); itens.push(it); cdSet('cd_pastas',itens); cdRenderPastas(); if(typeof notif==='function')notif('Criado');
+  var campos=[{label:'Nome',key:'nome',placeholder:tipo==='cred'?'Ex: Meta Business':'Nome'}];
+  if(tipo==='link') campos.push({label:'URL',key:'url',placeholder:'https://...',req:false});
+  if(tipo==='cred'){ campos.push({label:'Login / e-mail',key:'login',req:false}); campos.push({label:'Senha',key:'senha',req:false}); campos.push({label:'Descrição (opcional)',key:'desc',req:false}); }
+  cdModal(tipo==='pasta'?'Nova pasta':tipo==='link'?'Novo link':'Nova credencial',campos,function(v){ var it={id:cdUID('p'),nome:v.nome,tipo:tipo,parentId:_cdPasta||null}; if(tipo==='link')it.url=v.url||''; if(tipo==='cred'){it.login=v.login||'';it.senha=v.senha||'';it.desc=v.desc||'';} var itens=cdGet('cd_pastas',[]); itens.push(it); cdSet('cd_pastas',itens); cdRenderPastas(); if(typeof notif==='function')notif('Criado'); });
 }
 function cdDelItem(id){if(!confirm('Excluir este item (e o que estiver dentro)?'))return;var itens=cdGet('cd_pastas',[]);var rem={};(function mk(i){rem[i]=1;itens.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);itens=itens.filter(function(x){return !rem[x.id];});cdSet('cd_pastas',itens);cdRenderPastas();}
 function cdCopiar(txt){try{navigator.clipboard.writeText(txt);}catch(e){} if(typeof notif==='function')notif('📋 Copiado: '+txt);}
