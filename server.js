@@ -353,6 +353,91 @@ app.post('/api/cd/compartilhar', authDiretoria, (req, res) => {
   res.json({ ok: true, url: '/nota/' + (rootId || subtree[0].id), share: sh });
 });
 
+// ── GOOGLE AGENDA (fase 1: só leitura via link secreto iCal) ──
+// Busca o .ics no Google, expande recorrências simples e devolve os eventos
+// da janela pedida. Restrito a calendar.google.com (evita SSRF).
+function _cdFetchICS(urlStr, depth) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    if ((depth || 0) > 3) return reject(new Error('Muitos redirecionamentos'));
+    let u;
+    try { u = new URL(String(urlStr).replace(/^webcal:/i, 'https:')); } catch (e) { return reject(new Error('URL inválida')); }
+    if (u.protocol !== 'https:') return reject(new Error('Só aceito https'));
+    if (u.hostname !== 'calendar.google.com') return reject(new Error('Só aceito link do Google Agenda (calendar.google.com)'));
+    https.get(u, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return _cdFetchICS(res.headers.location, (depth || 0) + 1).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('Google respondeu HTTP ' + res.statusCode + ' (confira o link secreto)')); }
+      let data = ''; res.setEncoding('utf8');
+      res.on('data', c => { data += c; if (data.length > 8 * 1024 * 1024) { res.destroy(); reject(new Error('Calendário grande demais')); } });
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
+function _cdUnescICS(s) { return String(s || '').replace(/\\n/gi, ' ').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\'); }
+function _cdIcsDate(val) {
+  const m = String(val || '').trim().match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/);
+  if (!m) return null;
+  return { y: +m[1], mo: +m[2], d: +m[3], h: m[4] ? +m[4] : 0, mi: m[5] ? +m[5] : 0, s: m[6] ? +m[6] : 0, utc: !!m[7], allDay: !m[4] };
+}
+function _cdDtMs(dt) { return Date.UTC(dt.y, dt.mo - 1, dt.d, dt.h, dt.mi, dt.s || 0); }
+function _cdParseAgenda(txt, diasJanela) {
+  txt = String(txt).replace(/\r\n/g, '\n').replace(/\n[ \t]/g, ''); // desdobra linhas
+  const linhas = txt.split('\n');
+  const eventos = []; let cur = null;
+  for (const ln of linhas) {
+    if (ln === 'BEGIN:VEVENT') { cur = {}; continue; }
+    if (ln === 'END:VEVENT') { if (cur && cur.inicio) eventos.push(cur); cur = null; continue; }
+    if (!cur) continue;
+    const idx = ln.indexOf(':'); if (idx < 0) continue;
+    const left = ln.slice(0, idx), val = ln.slice(idx + 1), key = left.split(';')[0];
+    if (key === 'SUMMARY') cur.titulo = _cdUnescICS(val);
+    else if (key === 'LOCATION') cur.local = _cdUnescICS(val);
+    else if (key === 'DTSTART') { cur.inicio = _cdIcsDate(val); if (cur.inicio) cur.inicio.allDay = /VALUE=DATE/i.test(left) || cur.inicio.allDay; }
+    else if (key === 'DTEND') cur.fim = _cdIcsDate(val);
+    else if (key === 'RRULE') cur.rrule = val;
+  }
+  const dias = Math.min(Math.max(diasJanela || 30, 1), 120);
+  const hoje = new Date(); const janIni = Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate()) - 86400000;
+  const janFim = janIni + (dias + 1) * 86400000;
+  const WD = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+  const out = [];
+  function push(dt, ev) { out.push({ titulo: ev.titulo || '(sem título)', local: ev.local || '', allDay: !!dt.allDay, y: dt.y, mo: dt.mo, d: dt.d, h: dt.h, mi: dt.mi, utc: !!dt.utc }); }
+  for (const ev of eventos) {
+    const b = ev.inicio; if (!b) continue;
+    if (!ev.rrule) { const ms = _cdDtMs(b); if (ms >= janIni && ms <= janFim) push(b, ev); continue; }
+    const parts = {}; ev.rrule.split(';').forEach(p => { const kv = p.split('='); parts[kv[0]] = kv[1]; });
+    const freq = parts.FREQ, interval = parts.INTERVAL ? +parts.INTERVAL : 1;
+    const untilMs = parts.UNTIL ? _cdDtMs(_cdIcsDate(parts.UNTIL)) : Infinity;
+    const byday = parts.BYDAY ? parts.BYDAY.split(',').map(x => WD[x.slice(-2)]).filter(x => x != null) : null;
+    if (freq === 'DAILY' || freq === 'WEEKLY') {
+      for (let t = Math.max(janIni, _cdDtMs(b)); t <= janFim; t += 86400000) {
+        if (t > untilMs) break;
+        const dd = new Date(t); const wd = dd.getUTCDay();
+        let ok = false;
+        if (freq === 'DAILY') ok = ((Math.round((t - _cdDtMs({ y: b.y, mo: b.mo, d: b.d, h: 0, mi: 0 })) / 86400000)) % interval === 0);
+        else ok = byday ? byday.indexOf(wd) >= 0 : wd === (new Date(_cdDtMs(b))).getUTCDay();
+        if (ok) push({ y: dd.getUTCFullYear(), mo: dd.getUTCMonth() + 1, d: dd.getUTCDate(), h: b.h, mi: b.mi, allDay: b.allDay, utc: b.utc }, ev);
+      }
+    } else { const ms = _cdDtMs(b); if (ms >= janIni && ms <= janFim) push(b, ev); }
+  }
+  out.sort((a, b) => (a.y - b.y) || (a.mo - b.mo) || (a.d - b.d) || (a.h - b.h) || (a.mi - b.mi));
+  return out.slice(0, 400);
+}
+app.post('/api/cd/agenda', authDiretoria, async (req, res) => {
+  const { url, dias } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'Informe o link secreto (iCal) do Google Agenda.' });
+  try {
+    const ics = await _cdFetchICS(url, 0);
+    if (!/BEGIN:VCALENDAR/.test(ics)) return res.status(400).json({ error: 'O link não retornou um calendário válido.' });
+    res.json({ ok: true, eventos: _cdParseAgenda(ics, dias || 30) });
+  } catch (e) {
+    res.status(400).json({ error: (e && e.message) ? e.message : 'Não consegui ler o calendário.' });
+  }
+});
+
 // ── BANCO DE DADOS ──
 function readDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
