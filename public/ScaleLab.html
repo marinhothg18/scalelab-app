@@ -7283,88 +7283,124 @@ function renderGestaoContent(){
   else if(_gestaoTab === 'financeiro'){ renderFinanceiro(); }
   else if(_gestaoTab === 'diretoria'){ renderCentralDiretoria(); }
 }
-// ===== CENTRAL DA DIRETORIA (nativo, mesmo design do app) =====
-var _cdView='painel', _cdNota='novo', _cdPasta='raiz';
-var CDCARD='background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;';
-var CD_APROV=[{t:'Criativo AD848 — Gelatina v5',m:'Duda · há 2h'},{t:'Copy Advertorial — Nervo Vago',m:'Ana · há 4h'},{t:'Página VSL — Protocolo 21d',m:'Infra · ontem'}];
-var CD_NOTAS=[{id:'empresa',t:'Empresa TMX'},{id:'plan3',t:'Planejamento empresa 3 meses'},{id:'estudos',t:'Estudos'},{id:'g4',t:'Evento do G4'},{id:'proc',t:'Processos e acessos'},{id:'metas',t:'Metas 2026'},{id:'rotinap',t:'Rotina pessoal'},{id:'demandas',t:'Demandas e planejamento da semana'},{id:'viagem',t:'Viagem'},{id:'pessoal',t:'Pessoal'},{id:'casa',t:'Planejamento sobre casa'},{id:'novo',t:'Novo Thiago (10 milhões)'},{id:'pend',t:'Coisas pendentes'},{id:'analise',t:'Análise'},{id:'claude',t:'Claude'}];
-var CD_DIAS=[['Segunda',true],['Terça',false],['Quarta',false],['Quinta',false],['Sexta',false]];
-var CD_TAREFAS={Segunda:['Reunião de planejamento (16h)','Revisar métricas RedTrack'],Terça:[],Quarta:['Aprovar criativos','Call sócios','Alinhamento liderança'],Quinta:['Weekly de performance'],Sexta:['Fechar relatório da semana','Definir OKRs']};
-var CD_CONT={
-  novo:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Novo Thiago (10 milhões)</h1><h2 style="font-size:20px;font-weight:700;margin:20px 0 8px;">Protocolo de Elite: o caminho do titã</h2><p style="color:var(--text2);line-height:1.7;">Foco: autodesenvolvimento acelerado, dominação de mercado e conquista de R$ 10 milhões em 2 anos.</p><p style="color:var(--text2);line-height:1.7;margin-top:10px;">Este não é um manual. É o seu <b style="color:var(--text)">Protocolo de Elite</b> — um sistema de treinamento intensivo, projetado pra te transformar no titã que você está destinado a ser. Integra Tony Robbins, Grant Cardone, Hélio Couto e GaryVee num plano de ação coeso.</p><h2 style="font-size:20px;font-weight:700;margin:20px 0 8px;">1. Engenharia de identidade</h2><p style="color:var(--text2);line-height:1.7;"><b style="color:var(--text)">Objetivo:</b> construir uma identidade inabalável, alinhada com a meta de R$ 10 milhões.</p>'+cdTodo('Reescrever a identidade de titã (manhã)',false)+cdTodo('Definir os 3 pilares de dominação',true),
-  demandas:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Demandas e planejamento da semana</h1>'+cdSub('Fevereiro')+cdSub('Fazer')+cdSub('Urgente')+'<h3 style="font-size:15px;font-weight:700;margin:18px 0 8px;color:var(--text2)">O que eu tenho que estudar</h3><ul style="list-style:none;padding-left:4px;">'+cdLi('<span style="color:var(--red);font-weight:600;">Fazer resumo do livro de Tony Robbins — Poder sem Limite</span>')+cdLi('Assistir aulas de Hélio: <span style="color:var(--red)">Clube da Luta</span> / <span style="color:var(--red)">Estar no mundo</span> / Crenças criativas')+cdLi('Assistir Lewis Howes: <a style="color:var(--accent);text-decoration:underline;cursor:pointer">Bob Proctor — Lei da Vibração</a>')+cdLi('Aula G4: estruturação de times')+'</ul><h3 style="font-size:15px;font-weight:700;margin:18px 0 8px;color:var(--text2)">Fazer essa segunda</h3>'+cdTodo('Definir até onde vamos com essa VSL',false)+cdTodo('Analisar as ofertas que rodamos até aqui',false),
-  empresa:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Empresa TMX</h1>'+['Concluído','Pontos de dezembro','Red flag','Rituais','Financeiro','O que eu tenho que acompanhar','Alinhamento liderança','Implementações','Análise empresa','Call sócios'].map(function(s){return cdSub(s);}).join(''),
-  metas:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Metas 2026</h1><h2 style="font-size:20px;font-weight:700;margin:16px 0 8px;">🎯 A meta grande</h2><p style="color:var(--text2);line-height:1.7;"><span style="color:var(--orange);font-weight:600;">R$ 10 milhões de faturamento</span> e ser referência em Direct Response no Brasil e nos EUA.</p><h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;color:var(--text2)">Metas do trimestre</h3>'+cdTodo('Escalar a oferta v5 pra R$ 100k/dia',false)+cdTodo('Fechar contratação do time de tráfego',true)+cdTodo('Estruturar o setor de RH e cultura',false)+cdTodo('Lançar 3 ofertas novas de nutracêutico',false),
-  estudos:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Estudos</h1>'+cdSub('Copywriting DR')+cdSub('Gestão & liderança')+'<h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;color:var(--text2)">Fila de estudo</h3>'+cdTodo('Stefan Georgi — RMBC method',false)+cdTodo('Aula G4 — estruturação de times',false)+cdTodo('Hélio Couto — crenças criativas',true),
-  proc:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Processos e acessos</h1><p style="color:var(--text2);line-height:1.7;">Todos os acessos ficam no módulo <b style="color:var(--text)">Pastas & Links → Ferramentas</b> (login/senha com copiar e enviar).</p>'+cdSub('Onboarding de novo colaborador')+cdSub('Processo de aprovação de criativo')+cdTodo('Revisar quem tem acesso ao Meta Business',false),
-  rotinap:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Rotina pessoal</h1><h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;color:var(--text2)">Manhã</h3><ul style="list-style:none;padding-left:4px;">'+cdLi('Treino + leitura (30 min)')+cdLi('Revisar métricas do dia anterior')+cdLi('Definir as 3 prioridades do dia')+'</ul><h3 style="font-size:15px;font-weight:700;margin:16px 0 8px;color:var(--text2)">Acompanhar</h3>'+cdTodo('ROAS e escala das ofertas',false)+cdTodo('Entregas dos líderes',false),
-  pend:'<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">Coisas pendentes</h1>'+cdTodo('<span style="color:var(--red)">Responder proposta do fornecedor</span>',false)+cdTodo('Marcar call com sócios',false)+cdTodo('Pagar impostos do mês',true)+cdTodo('Revisar contrato do BPO financeiro',false)
-};
-var CD_PASTAS={
-  raiz:{nome:'Raiz',filhos:['rhfin','rituais','ferr','gestao','pessoalp']},
-  rhfin:{nome:'RH / Financeiro',tipo:'pasta',filhos:[]},
-  rituais:{nome:'Rituais / Análise de ofertas',tipo:'pasta',filhos:['l1','l2','l3']},
-  ferr:{nome:'Ferramentas | TMX',tipo:'pasta',desc:'Onde ficam as ferramentas de cada área',tag:'ferramentas',filhos:['t1','c1','c2']},
-  gestao:{nome:'Gestão | TMX',tipo:'pasta',desc:'Central de tudo o que fazemos',tag:'gestão',filhos:[]},
-  pessoalp:{nome:'Pessoal',tipo:'pasta',filhos:[]},
-  l1:{nome:'Estratégico',tipo:'link'},l2:{nome:'Reunião de Análise de Dados',tipo:'link'},l3:{nome:'Relatório da semana',tipo:'link'},
-  t1:{nome:'RedTrack — Dashboard',tipo:'tool',desc:'Rastreamento de campanhas'},
-  c1:{nome:'Meta Business Manager',tipo:'cred',desc:'Conta de anúncios principal',login:'ads@tmxdigital.com',senhaReal:'Tmx#Meta2026'},
-  c2:{nome:'CartPanda — Checkout',tipo:'cred',desc:'Plataforma de checkout',login:'financeiro@tmxdigital.com',senhaReal:'Cp@Tmx!2026'}
-};
-function cdTodo(txt,done){return '<div style="display:flex;align-items:center;gap:9px;padding:5px 0;"><input type="checkbox" '+(done?'checked':'')+' onclick="this.nextSibling.style.textDecoration=this.checked?\'line-through\':\'none\';this.nextSibling.style.opacity=this.checked?.5:1" style="accent-color:var(--accent);width:16px;height:16px;"><span style="color:var(--text);'+(done?'text-decoration:line-through;opacity:.5;':'')+'">'+txt+'</span></div>';}
-function cdSub(t){return '<div onclick="notif(\'Abrir subpágina: '+t.replace(/'/g,'')+'\')" style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;width:fit-content;"><span style="color:var(--text3)">📄</span>'+t+'</div>';}
-function cdLi(html){return '<li style="padding:4px 0 4px 18px;color:var(--text2);position:relative;line-height:1.6;"><span style="position:absolute;left:2px;color:var(--text3)">•</span>'+html+'</li>';}
-function cdTab(id,label){var a=_cdView===id;return '<button onclick="_cdView=\''+id+'\';cdRenderBody();" style="background:'+(a?'var(--accent)':'var(--bg2)')+';color:'+(a?'#fff':'var(--text2)')+';border:1px solid var(--border);border-radius:9px;padding:8px 14px;font-size:13px;font-weight:'+(a?'700':'500')+';cursor:pointer;">'+label+'</button>';}
+// ===== CENTRAL DA DIRETORIA (nativo + funcional, localStorage) =====
+var _cdView='anot', _cdNota=null, _cdPasta=null;
+var CDCARD='background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;';
+function cdEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function cdGet(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
+function cdSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function cdUID(p){return (p||'x')+Date.now().toString(36)+Math.floor(Math.random()*100000).toString(36);}
+function cdSeed(){
+  if(!localStorage.getItem('cd_notas')){
+    var e='n_emp';
+    cdSet('cd_notas',[
+      {id:e,titulo:'Empresa TMX',parentId:null,corpo:'Visão geral da empresa. Use as subpáginas abaixo pra organizar cada área.'},
+      {id:cdUID('n'),titulo:'Concluído',parentId:e,corpo:''},
+      {id:cdUID('n'),titulo:'Pontos de dezembro',parentId:e,corpo:'Cultura e gestão · Cultura (melhorias) · Melhoria líder · KPIs que temos que observar.'},
+      {id:cdUID('n'),titulo:'Red flag',parentId:e,corpo:''},
+      {id:cdUID('n'),titulo:'Rituais',parentId:e,corpo:''},
+      {id:cdUID('n'),titulo:'Financeiro',parentId:e,corpo:''},
+      {id:cdUID('n'),titulo:'Implementações',parentId:e,corpo:'Definir OKR · Nossa daily · Reunião semanal de planejamento (sexta 16h, 60min).'},
+      {id:cdUID('n'),titulo:'Novo Thiago (10 milhões)',parentId:null,corpo:'PROTOCOLO DE ELITE — foco: R$ 10 milhões em 2 anos. Integra Tony Robbins, Grant Cardone, Hélio Couto e GaryVee num plano de ação coeso.'},
+      {id:cdUID('n'),titulo:'Metas 2026',parentId:null,corpo:'Meta grande: R$ 10 milhões de faturamento. Escalar a oferta v5, estruturar RH e cultura, lançar 3 ofertas novas.'},
+      {id:cdUID('n'),titulo:'Estudos',parentId:null,corpo:'Stefan Georgi (RMBC) · Aula G4: estruturação de times · Hélio Couto: crenças criativas.'},
+      {id:cdUID('n'),titulo:'Processos e acessos',parentId:null,corpo:'Acessos ficam em Pastas & Links > Ferramentas (login/senha com copiar e enviar).'},
+      {id:cdUID('n'),titulo:'Rotina pessoal',parentId:null,corpo:''},
+      {id:cdUID('n'),titulo:'Demandas e planejamento da semana',parentId:null,corpo:''},
+      {id:cdUID('n'),titulo:'Coisas pendentes',parentId:null,corpo:''}
+    ]);
+  }
+  if(!localStorage.getItem('cd_rotina')) cdSet('cd_rotina',{Segunda:[{t:'Reunião de planejamento (16h)',d:false},{t:'Revisar métricas RedTrack',d:false}],'Terça':[],Quarta:[{t:'Aprovar criativos',d:false},{t:'Call sócios',d:false}],Quinta:[{t:'Weekly de performance',d:false}],'Sexta':[{t:'Fechar relatório da semana',d:false},{t:'Definir OKRs',d:false}]});
+  if(!localStorage.getItem('cd_pastas')) cdSet('cd_pastas',[
+    {id:'p_ferr',nome:'Ferramentas | TMX',tipo:'pasta',parentId:null,desc:'Acessos e ferramentas de cada área'},
+    {id:cdUID('p'),nome:'Rituais / Análise de ofertas',tipo:'pasta',parentId:null},
+    {id:cdUID('p'),nome:'RedTrack — Dashboard',tipo:'link',parentId:'p_ferr',url:'https://redtrack.io'},
+    {id:cdUID('p'),nome:'Meta Business Manager',tipo:'cred',parentId:'p_ferr',login:'ads@tmxdigital.com',senha:'Tmx#Meta2026',desc:'Conta de anúncios principal'},
+    {id:cdUID('p'),nome:'CartPanda — Checkout',tipo:'cred',parentId:'p_ferr',login:'financeiro@tmxdigital.com',senha:'Cp@Tmx!2026'}
+  ]);
+}
 
 function renderCentralDiretoria(){
   var el=document.getElementById('gestao-content'); if(!el) return;
   if(!(currentUser&&currentUser.cargo==='Diretoria')){ _gestaoTab='prog_demanda'; renderGestaoSidebar(); renderProgDemanda(); return; }
-  el.innerHTML=''
-    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">'
-      +cdTab('painel','🎛️ Painel')+cdTab('pastas','📁 Pastas & Links')
-      +'<div style="margin-left:auto;display:flex;gap:8px;">'
-        +'<button class="btn btn-ghost" style="font-size:13px;" onclick="notif(\'Nova anotação (protótipo)\')">＋ Nota</button>'
-        +'<button class="btn btn-primary" style="font-size:13px;" onclick="notif(\'Novo link/atalho (protótipo)\')">🔗 Link</button>'
-      +'</div></div><div id="cd-body"></div>';
+  cdSeed();
+  el.innerHTML='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">'+cdTab('anot','📝 Anotações')+cdTab('pastas','📁 Pastas & Links')+'</div><div id="cd-body"></div>';
   cdRenderBody();
 }
+function cdTab(id,label){var a=_cdView===id;return '<button onclick="_cdView=\''+id+'\';_cdNota=null;_cdPasta=null;cdRenderBody();" style="background:'+(a?'var(--accent)':'var(--bg2)')+';color:'+(a?'#fff':'var(--text2)')+';border:1px solid var(--border);border-radius:9px;padding:8px 15px;font-size:13px;font-weight:'+(a?'700':'500')+';cursor:pointer;">'+label+'</button>';}
 function cdRenderBody(){
-  renderCentralDiretoria._skip||renderCentralDiretoria;
-  var host=document.getElementById('cd-body'); if(!host){ renderCentralDiretoria(); return; }
-  // atualiza os botões de aba
-  var tabs=host.parentNode.querySelectorAll('button');
-  if(_cdView==='pastas'){ host.innerHTML='<div id="cd-pastas"></div>'; cdRenderPastas('raiz'); return; }
-  host.innerHTML=''
-    +'<div style="display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:16px;align-items:start;">'
-      +'<div style="display:flex;flex-direction:column;gap:16px;min-width:0;">'
-        +'<div style="'+CDCARD+'" id="cd-aprov"></div>'
-        +'<div style="'+CDCARD+'" id="cd-notas"></div>'
-        +'<div style="'+CDCARD+'" id="cd-rotina"></div>'
-      +'</div>'
-      +'<div style="'+CDCARD+'padding:26px 30px;min-height:540px;" id="cd-note"></div>'
-    +'</div>';
-  cdRenderAprov(); cdRenderNotas(); cdRenderRotina(); cdAbrirNota(_cdNota);
-  cdSyncTabs();
+  var el=document.getElementById('cd-body'); if(!el){renderCentralDiretoria();return;}
+  if(_cdView==='pastas'){ el.innerHTML='<div id="cd-pastas"></div>'; cdRenderPastas(); return; }
+  el.innerHTML='<div style="'+CDCARD+'margin-bottom:16px;" id="cd-anot"></div><div style="'+CDCARD+'" id="cd-rot"></div>';
+  cdRenderAnot(); cdRenderRot();
 }
-function cdSyncTabs(){ /* mantém realce das abas */ }
-function cdHead(t,extra){return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--text);">'+t+'</span>'+(extra||'')+'</div>';}
-function cdRenderAprov(){var el=document.getElementById('cd-aprov'); if(!el)return; el.innerHTML=cdHead('Aprovar','<span style=\"background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px;\">'+CD_APROV.length+'</span>')+CD_APROV.map(function(a){return '<div style="display:flex;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;"></span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+a.t+'</div><div style="font-size:11px;color:var(--text3);">'+a.m+'</div></div><button onclick="notif(\'✅ Aprovado\')" style="background:var(--green);border:none;color:#fff;font-weight:700;border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer;">Aprovar</button></div>';}).join('');}
-function cdRenderNotas(){var el=document.getElementById('cd-notas'); if(!el)return; el.innerHTML=cdHead('Anotações','<span style=\"background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px;\">'+CD_NOTAS.length+'</span>')+'<div style="max-height:300px;overflow-y:auto;">'+CD_NOTAS.map(function(n){var s=n.id===_cdNota;return '<div onclick="cdAbrirNota(\''+n.id+'\')" style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;cursor:pointer;background:'+(s?'color-mix(in srgb,var(--accent) 16%,transparent)':'transparent')+';"><span style="color:var(--text3);font-size:14px;">📄</span><span style="font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+n.t+'</span></div>';}).join('')+'</div><div onclick="notif(\'Nova página\')" style="color:var(--text3);font-size:12px;padding:8px 4px 0;cursor:pointer;">＋ Nova página</div>';}
-function cdRenderRotina(){var el=document.getElementById('cd-rotina'); if(!el)return; el.innerHTML=cdHead('Rotina da semana','<div style=\"margin-left:auto;\"><button onclick=\"notif(\'Limpar semana\')\" style=\"background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:4px 9px;font-size:11px;cursor:pointer;\">🧹 Limpar</button></div>')+'<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;">'+CD_DIAS.map(function(d){var ts=CD_TAREFAS[d[0]]||[];return '<div style="min-width:140px;flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:9px;"><div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="font-size:12px;font-weight:700;color:'+(d[1]?'var(--accent)':'var(--text)')+'">'+d[0]+'</span><span style="font-size:10px;color:var(--text2);">'+ts.length+'</span></div>'+ts.map(function(t){return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:7px 8px;margin-bottom:6px;font-size:12px;display:flex;gap:7px;align-items:flex-start;"><input type="checkbox" onclick="this.nextSibling.style.textDecoration=this.checked?\'line-through\':\'none\'" style="accent-color:var(--green);margin-top:1px;"><span style="color:var(--text2)">'+t+'</span></div>';}).join('')+'<div onclick="notif(\'Nova tarefa\')" style="color:var(--text3);font-size:11px;cursor:pointer;padding:2px;">＋</div></div>';}).join('')+'</div>';}
-function cdAbrirNota(id){_cdNota=id; var el=document.getElementById('cd-note'); if(!el)return; var nome=(CD_NOTAS.filter(function(n){return n.id===id;})[0]||{}).t||'Nota'; var body=CD_CONT[id]||('<h1 style="font-size:30px;font-weight:800;margin-bottom:14px;">'+nome+'</h1><p style="color:var(--text2);line-height:1.7;">Nota de exemplo — editor rico (títulos, listas, cores, to-dos, links e subpáginas).</p>'+cdSub('Subpágina de exemplo')+cdTodo('Item a fazer',false)); el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;font-size:12px;color:var(--text3);"><span>Anotações</span><span>/</span><span style="color:var(--text2)">'+nome+'</span><a onclick="notif(\'🔗 Link da nota copiado\')" style="margin-left:auto;color:var(--accent);cursor:pointer;">🔗 gerar link</a></div>'+body; cdRenderNotas();}
 
-function cdRenderPastas(id){_cdPasta=id||_cdPasta; var el=document.getElementById('cd-pastas'); if(!el)return; var p=CD_PASTAS[_cdPasta]||CD_PASTAS.raiz; var filhos=(_cdPasta==='raiz')?CD_PASTAS.raiz.filhos:(p.filhos||[]);
-  var side='<div style="'+CDCARD+'padding:12px;"><div onclick="cdRenderPastas(\'raiz\')" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:'+(_cdPasta==='raiz'?'var(--accent)':'var(--text2)')+';">🏠 Raiz</div><div style="font-size:10px;font-weight:800;color:var(--text3);padding:8px 8px 4px;letter-spacing:.6px;">PASTAS</div>'+CD_PASTAS.raiz.filhos.map(function(fid){var f=CD_PASTAS[fid];var s=fid===_cdPasta;return '<div onclick="cdRenderPastas(\''+fid+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;color:'+(s?'var(--accent)':'var(--text2)')+';">📁 '+f.nome+'</div>';}).join('')+'</div>';
-  var bread='<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);margin-bottom:14px;"><span onclick="cdRenderPastas(\'raiz\')" style="cursor:pointer;color:var(--accent)">Raiz</span>'+(_cdPasta!=='raiz'?' <span>/</span> <span style="color:var(--text2)">'+p.nome+'</span>':'')+'</div>';
-  var itens=filhos.length?filhos.map(function(fid){return cdItem(fid,CD_PASTAS[fid]);}).join(''):'<div style="color:var(--text3);padding:30px;text-align:center;">Pasta vazia.</div>';
-  el.innerHTML='<div style="display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:start;"><div>'+side+'</div><div>'+bread+itens+'</div></div>';
+/* ---- ANOTAÇÕES ---- */
+function cdRenderAnot(){
+  var el=document.getElementById('cd-anot'); if(!el)return;
+  var notas=cdGet('cd_notas',[]);
+  if(!_cdNota){
+    var raiz=notas.filter(function(n){return !n.parentId;});
+    el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><span style="font-size:17px;font-weight:800;">Anotações</span><span style="background:var(--bg3);color:var(--text2);font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;">'+raiz.length+'</span><button onclick="cdNovaNota(null)" class="btn btn-primary" style="margin-left:auto;font-size:12px;padding:7px 13px;">＋ Nova nota</button></div>'+(raiz.length?raiz.map(function(n){return cdLinha(n,notas);}).join(''):'<div style="color:var(--text3);padding:24px;text-align:center;">Sem notas ainda. Clique em “Nova nota”.</div>');
+    return;
+  }
+  var n=notas.filter(function(x){return x.id===_cdNota;})[0]; if(!n){_cdNota=null;return cdRenderAnot();}
+  var filhos=notas.filter(function(x){return x.parentId===n.id;});
+  var path=[],cur=n; while(cur){path.unshift(cur);cur=cur.parentId?notas.filter(function(x){return x.id===cur.parentId;})[0]:null;}
+  var bc=path.map(function(p,i){var last=i===path.length-1;return last?'<span style="color:var(--text2)">'+cdEsc(p.titulo)+'</span>':'<span onclick="cdAbrir(\''+p.id+'\')" style="cursor:pointer;color:var(--accent)">'+cdEsc(p.titulo)+'</span>';}).join(' <span style="color:var(--text3)">/</span> ');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:12px;color:var(--text3);flex-wrap:wrap;"><span onclick="_cdNota=null;cdRenderAnot()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Anotações</span><span>/</span>'+bc+'<button onclick="cdDelNota(\''+n.id+'\')" style="margin-left:auto;background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;">🗑 excluir</button></div>'
+    +'<input value="'+cdEsc(n.titulo)+'" onchange="cdSalvarTitulo(\''+n.id+'\',this.value)" placeholder="Sem título" style="width:100%;background:transparent;border:none;font-size:28px;font-weight:800;color:var(--text);outline:none;margin-bottom:12px;">'
+    +'<textarea oninput="cdSalvarCorpo(\''+n.id+'\',this.value)" placeholder="Escreva aqui… (o que quiser)" style="width:100%;min-height:200px;background:transparent;border:none;color:var(--text);font-size:15px;line-height:1.7;outline:none;resize:vertical;font-family:inherit;">'+cdEsc(n.corpo||'')+'</textarea>'
+    +'<div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Subpáginas</div>'+(filhos.length?filhos.map(function(f){return cdLinha(f,notas);}).join(''):'<div style="color:var(--text3);font-size:13px;padding:4px 0 10px;">Nenhuma subpágina.</div>')+'<button onclick="cdNovaNota(\''+n.id+'\')" class="btn btn-ghost" style="font-size:12px;padding:7px 13px;margin-top:8px;">＋ Nova subpágina</button></div>';
 }
-function cdItem(fid,f){var ic=f.tipo==='link'?'🔗':f.tipo==='cred'?'🔑':f.tipo==='tool'?'🔧':'📁';var click=(f.tipo==='pasta'||!f.tipo)?'onclick="cdRenderPastas(\''+fid+'\')"':(f.tipo==='cred'?'onclick="var c=document.getElementById(\'cf-'+fid+'\');c.style.display=c.style.display==\'flex\'?\'none\':\'flex\'"':'onclick="notif(\'Abrindo '+(f.nome||'').replace(/\x27/g,'')+'\')"');
-  var tag=f.tag?'<span style="display:inline-block;background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:10px;padding:2px 8px;border-radius:6px;margin-top:7px;">'+f.tag+'</span>':'';
-  var cred=f.tipo==='cred'?'<div id="cf-'+fid+'" style="display:none;gap:8px;margin-top:10px;flex-wrap:wrap;"><div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">login</span><span style="font-family:monospace">'+f.login+'</span><button onclick="event.stopPropagation();cdCopiar(\''+f.login+'\')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">copiar</button></div><div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">senha</span><span style="font-family:monospace" id="sv-'+fid+'">••••••••</span><button onclick="event.stopPropagation();var v=document.getElementById(\'sv-'+fid+'\');v.textContent=v.textContent.indexOf(\'•\')>-1?\''+f.senhaReal+'\':\'••••••••\'" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">ver</button><button onclick="event.stopPropagation();cdCopiar(\''+f.senhaReal+'\')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">copiar</button></div><button onclick="event.stopPropagation();notif(\'📨 Credencial enviada pro colaborador\')" style="background:var(--accent-grad);border:none;color:#fff;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;">Enviar pro colaborador</button></div>':'';
-  return '<div '+click+' style="display:flex;align-items:flex-start;gap:14px;'+CDCARD+'margin-bottom:10px;cursor:pointer;"><div style="width:40px;height:40px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;">'+ic+'</div><div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:700;">'+f.nome+'</div>'+(f.desc?'<div style="font-size:12px;color:var(--text3);margin-top:2px;">'+f.desc+'</div>':'')+tag+cred+'</div><span style="color:var(--text3)">›</span></div>';}
-function cdCopiar(txt){try{navigator.clipboard.writeText(txt);}catch(e){} notif('📋 Copiado: '+txt);}
+function cdLinha(n,notas){var q=notas.filter(function(x){return x.parentId===n.id;}).length;return '<div onclick="cdAbrir(\''+n.id+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background .12s;"><span style="color:var(--text3)">📄</span><span style="font-size:14px;font-weight:500;flex:1;color:var(--text);">'+cdEsc(n.titulo)+'</span>'+(q?'<span style="font-size:11px;color:var(--text3);">'+q+' subpág.</span>':'')+'<span style="color:var(--text3)">›</span></div>';}
+function cdAbrir(id){_cdNota=id;cdRenderAnot();}
+function cdNovaNota(parentId){var t=prompt('Título da nota:'); if(t===null)return; t=(t||'').trim()||'Sem título'; var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:t,parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada');}
+function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;cdSet('cd_notas',notas);}}
+function cdSalvarCorpo(id,c){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.corpo=c;cdSet('cd_notas',notas);}}
+function cdDelNota(id){if(!confirm('Excluir esta nota e todas as subpáginas?'))return;var notas=cdGet('cd_notas',[]);var rem={};(function mk(i){rem[i]=1;notas.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);var n=notas.filter(function(x){return x.id===id;})[0];notas=notas.filter(function(x){return !rem[x.id];});cdSet('cd_notas',notas);_cdNota=(n&&n.parentId)?n.parentId:null;cdRenderAnot();}
+
+/* ---- ROTINA ---- */
+function cdRenderRot(){
+  var el=document.getElementById('cd-rot'); if(!el)return;
+  var rot=cdGet('cd_rotina',{}); var dias=['Segunda','Terça','Quarta','Quinta','Sexta'];
+  el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;"><span style="font-size:17px;font-weight:800;">Rotina da semana</span><button onclick="cdLimpar()" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">🧹 Limpar semana</button></div><div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;">'+dias.map(function(d){var ts=rot[d]||[];return '<div style="min-width:180px;flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px;"><div style="display:flex;justify-content:space-between;margin-bottom:9px;"><span style="font-size:13px;font-weight:700;">'+d+'</span><span style="font-size:11px;color:var(--text2);background:var(--bg2);padding:0 7px;border-radius:10px;">'+ts.length+'</span></div>'+ts.map(function(t,i){return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 9px;margin-bottom:6px;font-size:12px;display:flex;gap:7px;align-items:flex-start;"><input type="checkbox" '+(t.d?'checked':'')+' onclick="cdTog(\''+d+'\','+i+')" style="accent-color:var(--green);margin-top:1px;"><span style="flex:1;color:var(--text2);'+(t.d?'text-decoration:line-through;opacity:.5;':'')+'">'+cdEsc(t.t)+'</span><span onclick="cdDelT(\''+d+'\','+i+')" style="cursor:pointer;color:var(--text3);">✕</span></div>';}).join('')+'<button onclick="cdAddT(\''+d+'\')" style="background:none;border:1px dashed var(--border);border-radius:7px;color:var(--text3);font-size:11px;cursor:pointer;padding:6px;width:100%;margin-top:2px;">＋ tarefa</button></div>';}).join('')+'</div>';
+}
+function cdAddT(d){var t=prompt('Tarefa de '+d+':');if(t===null||!t.trim())return;var rot=cdGet('cd_rotina',{});if(!rot[d])rot[d]=[];rot[d].push({t:t.trim(),d:false});cdSet('cd_rotina',rot);cdRenderRot();}
+function cdTog(d,i){var rot=cdGet('cd_rotina',{});if(rot[d]&&rot[d][i]){rot[d][i].d=!rot[d][i].d;cdSet('cd_rotina',rot);cdRenderRot();}}
+function cdDelT(d,i){var rot=cdGet('cd_rotina',{});if(rot[d]){rot[d].splice(i,1);cdSet('cd_rotina',rot);cdRenderRot();}}
+function cdLimpar(){if(!confirm('Limpar todas as tarefas da semana?'))return;cdSet('cd_rotina',{});cdRenderRot();}
+
+/* ---- PASTAS & LINKS ---- */
+function cdRenderPastas(){
+  var el=document.getElementById('cd-pastas'); if(!el)return;
+  var itens=cdGet('cd_pastas',[]); var atual=_cdPasta;
+  var pastaObj=atual?itens.filter(function(x){return x.id===atual;})[0]:null;
+  var filhos=itens.filter(function(x){return (x.parentId||null)===(atual||null);});
+  var path=[],cur=pastaObj;while(cur){path.unshift(cur);cur=cur.parentId?itens.filter(function(x){return x.id===cur.parentId;})[0]:null;}
+  var bc='<span onclick="_cdPasta=null;cdRenderPastas()" style="cursor:pointer;color:var(--accent)">Raiz</span>'+path.map(function(p){return ' <span style="color:var(--text3)">/</span> <span onclick="_cdPasta=\''+p.id+'\';cdRenderPastas()" style="cursor:pointer;color:var(--text2)">'+cdEsc(p.nome)+'</span>';}).join('');
+  el.innerHTML='<div style="'+CDCARD+'"><div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;"><div style="font-size:12px;color:var(--text3);flex:1;min-width:160px;">'+bc+'</div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button onclick="cdNovoItem(\'pasta\')" class="btn btn-ghost" style="font-size:12px;padding:6px 11px;">＋ Pasta</button><button onclick="cdNovoItem(\'link\')" class="btn btn-ghost" style="font-size:12px;padding:6px 11px;">🔗 Link</button><button onclick="cdNovoItem(\'cred\')" class="btn btn-primary" style="font-size:12px;padding:6px 11px;">🔑 Credencial</button></div></div>'+(filhos.length?filhos.map(function(f){return cdItem(f,itens);}).join(''):'<div style="color:var(--text3);padding:34px;text-align:center;">Vazio — crie uma pasta, link ou credencial acima.</div>')+'</div>';
+}
+function cdItem(f,itens){
+  var ic=f.tipo==='link'?'🔗':f.tipo==='cred'?'🔑':f.tipo==='tool'?'🔧':'📁';
+  var q=(f.tipo==='pasta'||!f.tipo)?itens.filter(function(x){return x.parentId===f.id;}).length:0;
+  var main=(f.tipo==='pasta'||!f.tipo)?'onclick="_cdPasta=\''+f.id+'\';cdRenderPastas()"':(f.tipo==='cred'?'onclick="var c=document.getElementById(\'cf-'+f.id+'\');c.style.display=(c.style.display==\'flex\')?\'none\':\'flex\'"':(f.url?'onclick="window.open(\''+f.url+'\',\'_blank\')"':''));
+  var cred=f.tipo==='cred'?'<div id="cf-'+f.id+'" style="display:none;gap:8px;margin-top:12px;flex-wrap:wrap;">'
+    +'<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">login</span><span style="font-family:monospace">'+cdEsc(f.login||'')+'</span><button onclick="event.stopPropagation();cdCopiar(\''+cdEsc(f.login||'')+'\')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">copiar</button></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">senha</span><span style="font-family:monospace" id="sv-'+f.id+'">••••••••</span><button onclick="event.stopPropagation();var v=document.getElementById(\'sv-'+f.id+'\');v.textContent=(v.textContent.indexOf(\'•\')>-1)?\''+cdEsc(f.senha||'')+'\':\'••••••••\'" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">ver</button><button onclick="event.stopPropagation();cdCopiar(\''+cdEsc(f.senha||'')+'\')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">copiar</button></div>'
+    +'<button onclick="event.stopPropagation();notif(\'📨 Credencial pronta pra enviar\')" style="background:var(--accent-grad);border:none;color:#fff;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;">Enviar pro colaborador</button></div>':'';
+  return '<div style="'+CDCARD+'margin-bottom:10px;"><div '+main+' style="display:flex;align-items:flex-start;gap:14px;cursor:pointer;"><div style="width:38px;height:38px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'+ic+'</div><div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:700;">'+cdEsc(f.nome)+'</div>'+(f.desc?'<div style="font-size:12px;color:var(--text3);margin-top:2px;">'+cdEsc(f.desc)+'</div>':'')+(q?'<div style="font-size:11px;color:var(--text3);margin-top:4px;">'+q+' item(ns)</div>':'')+'</div><span onclick="event.stopPropagation();cdDelItem(\''+f.id+'\')" style="cursor:pointer;color:var(--text3);font-size:13px;">🗑</span></div>'+cred+'</div>';
+}
+function cdNovoItem(tipo){
+  var lbl=tipo==='pasta'?'Nome da pasta':tipo==='link'?'Nome do link':'Nome da credencial';
+  var nome=prompt(lbl+':'); if(nome===null||!nome.trim())return;
+  var it={id:cdUID('p'),nome:nome.trim(),tipo:tipo,parentId:_cdPasta||null};
+  if(tipo==='link'){ it.url=(prompt('URL (https://...):')||'').trim(); }
+  if(tipo==='cred'){ it.login=(prompt('Login / e-mail:')||'').trim(); it.senha=(prompt('Senha:')||'').trim(); it.desc=(prompt('Descrição (opcional):')||'').trim(); }
+  var itens=cdGet('cd_pastas',[]); itens.push(it); cdSet('cd_pastas',itens); cdRenderPastas(); if(typeof notif==='function')notif('Criado');
+}
+function cdDelItem(id){if(!confirm('Excluir este item (e o que estiver dentro)?'))return;var itens=cdGet('cd_pastas',[]);var rem={};(function mk(i){rem[i]=1;itens.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);itens=itens.filter(function(x){return !rem[x.id];});cdSet('cd_pastas',itens);cdRenderPastas();}
+function cdCopiar(txt){try{navigator.clipboard.writeText(txt);}catch(e){} if(typeof notif==='function')notif('📋 Copiado: '+txt);}
 
 // ══════════════════════════════════════════════
 // PLANEJAMENTO SEMANAL (Gestão → Planejamento Semanal)
