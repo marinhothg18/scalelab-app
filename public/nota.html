@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nota · Central da Diretoria</title>
+<style>
+  :root{
+    --bg:#0f0f0f; --bg2:#1c1c1c; --bg3:#252525; --text:#fff; --text2:#888; --text3:#6b6b6b;
+    --border:rgba(255,255,255,.06); --accent:#1B9CFA; --grad:linear-gradient(135deg,#3E1493,#1B9CFA);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);}
+  .top{position:sticky;top:0;background:rgba(15,15,15,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:10px;z-index:10;}
+  .top .brand{font-size:13px;font-weight:800;letter-spacing:.3px;}
+  .badge{font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;border:1px solid var(--border);color:var(--text2);}
+  .wrap{max-width:760px;margin:0 auto;padding:36px 24px 120px;}
+  h1.tit{font-size:34px;font-weight:800;line-height:1.15;margin:0 0 22px;}
+  .blk{margin:2px 0;}
+  .b-h1{font-size:28px;font-weight:800;line-height:1.2;margin:18px 0 4px;}
+  .b-h2{font-size:22px;font-weight:700;line-height:1.25;margin:15px 0 3px;}
+  .b-h3{font-size:18px;font-weight:700;line-height:1.3;margin:13px 0 3px;}
+  .b-txt{font-size:16px;line-height:1.75;color:#eaeaea;margin:3px 0;}
+  .b-bullet{display:flex;gap:10px;font-size:16px;line-height:1.7;color:#eaeaea;padding:2px 0;}
+  .b-bullet .dot{color:var(--text2);}
+  .b-todo{display:flex;gap:10px;font-size:16px;line-height:1.7;color:#eaeaea;padding:2px 0;align-items:flex-start;}
+  .b-todo input{margin-top:5px;accent-color:var(--accent);}
+  .b-done{text-decoration:line-through;opacity:.5;}
+  .b-code{font-family:Menlo,monospace;font-size:13.5px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px;line-height:1.55;white-space:pre-wrap;margin:8px 0;color:#eaeaea;}
+  .b-txt a,.b-bullet a,.b-todo a{color:var(--accent);}
+  .pagelink{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;text-decoration:none;color:var(--text);margin:7px 0;transition:background .12s;}
+  .pagelink:hover{background:var(--bg2);}
+  .pagelink .arw{margin-left:auto;color:var(--text3);}
+  .state{max-width:520px;margin:80px auto;text-align:center;padding:0 24px;}
+  .state .big{font-size:44px;margin-bottom:14px;}
+  .state h2{font-size:20px;font-weight:800;margin:0 0 8px;}
+  .state p{color:var(--text2);font-size:14px;line-height:1.6;margin:0 0 18px;}
+  .btn{display:inline-block;background:var(--grad);color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:10px;}
+  .foot{max-width:760px;margin:0 auto;padding:0 24px;color:var(--text3);font-size:12px;border-top:1px solid var(--border);padding-top:16px;}
+</style>
+</head>
+<body>
+  <div class="top">
+    <span class="brand">🎛️ Central da Diretoria</span>
+    <span id="badge" class="badge" style="display:none;"></span>
+  </div>
+  <div id="app"></div>
+
+<script>
+(function(){
+  var app = document.getElementById('app');
+  var badge = document.getElementById('badge');
+  var id = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function stateHTML(icon, titulo, texto, comBotao){
+    return '<div class="state"><div class="big">'+icon+'</div><h2>'+esc(titulo)+'</h2><p>'+esc(texto)+'</p>'+(comBotao?'<a class="btn" href="/">Abrir a Central</a>':'')+'</div>';
+  }
+
+  function blocoHTML(b){
+    var t = b.texto || '';
+    if(b.tipo==='pagina'){
+      return '<a class="pagelink" href="/nota/'+encodeURIComponent(b.ref||'')+'"><span style="font-size:17px;">📄</span><span style="font-weight:600;">'+esc(b._tit||'Subpágina')+'</span><span class="arw">›</span></a>';
+    }
+    if(b.tipo==='h1') return '<div class="b-h1">'+t+'</div>';
+    if(b.tipo==='h2') return '<div class="b-h2">'+t+'</div>';
+    if(b.tipo==='h3') return '<div class="b-h3">'+t+'</div>';
+    if(b.tipo==='bullet') return '<div class="b-bullet"><span class="dot">•</span><div>'+t+'</div></div>';
+    if(b.tipo==='todo') return '<div class="b-todo"><input type="checkbox" disabled '+(b.done?'checked':'')+'><div class="'+(b.done?'b-done':'')+'">'+t+'</div></div>';
+    if(b.tipo==='codigo') return '<div class="b-code">'+t+'</div>';
+    return '<div class="b-txt">'+t+'</div>';
+  }
+
+  function render(data){
+    if(data.share){
+      badge.style.display='';
+      badge.textContent = data.share==='externo' ? '🌐 Link público' : '🏢 Interno';
+    }
+    var blocks = (data.blocks||[]);
+    // Se algum bloco de página não tiver título embutido, tenta casar com filhas
+    var filhasById = {}; (data.filhas||[]).forEach(function(f){ filhasById[f.id]=f.titulo; });
+    var body = blocks.map(function(b){
+      if(b.tipo==='pagina' && b.ref && filhasById[b.ref]) b._tit = filhasById[b.ref];
+      return blocoHTML(b);
+    }).join('');
+    // Subpáginas que não apareceram como bloco inline
+    var refsInline = {}; blocks.forEach(function(b){ if(b.tipo==='pagina'&&b.ref) refsInline[b.ref]=1; });
+    var extras = (data.filhas||[]).filter(function(f){ return !refsInline[f.id]; });
+    var extraHTML = extras.length ? ('<div style="margin-top:28px;border-top:1px solid var(--border);padding-top:18px;"><div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;margin-bottom:10px;">Subpáginas</div>'+extras.map(function(f){ return '<a class="pagelink" href="/nota/'+encodeURIComponent(f.id)+'"><span style="font-size:17px;">📄</span><span style="font-weight:600;">'+esc(f.titulo||'Subpágina')+'</span><span class="arw">›</span></a>'; }).join('')+'</div>') : '';
+    app.innerHTML = '<div class="wrap"><h1 class="tit">'+esc(data.titulo||'Sem título')+'</h1>'+(body||'<div class="b-txt" style="color:var(--text3);">(Sem conteúdo.)</div>')+extraHTML+'</div>'
+      + '<div class="foot">'+(data.by?('Compartilhado por '+esc(data.by)+' · '):'')+'Central da Diretoria · Axcend</div>';
+    document.title = (data.titulo||'Nota')+' · Central da Diretoria';
+  }
+
+  if(!id){ app.innerHTML = stateHTML('🤔','Link inválido','Não consegui identificar a nota nesse endereço.',true); return; }
+
+  var headers = {};
+  try{ var tk = localStorage.getItem('sl_session_token'); if(tk) headers['Authorization']='Bearer '+tk; }catch(e){}
+
+  fetch('/api/cd/nota-publica/'+encodeURIComponent(id), { headers: headers })
+    .then(function(r){
+      if(r.status===404){ app.innerHTML = stateHTML('🔎','Nota não encontrada','Essa nota não existe ou ainda não foi compartilhada. Peça pra quem enviou compartilhar de novo.',false); throw 0; }
+      if(r.status===403){ app.innerHTML = stateHTML('🔒','Nota interna','Essa nota é só pra pessoas da Central. Faça login na ferramenta com sua conta pra abrir.',true); throw 0; }
+      if(!r.ok){ app.innerHTML = stateHTML('⚠️','Não deu pra carregar','Tenta de novo em instantes.',false); throw 0; }
+      return r.json();
+    })
+    .then(render)
+    .catch(function(e){ if(e!==0){ app.innerHTML = stateHTML('⚠️','Erro','Não foi possível carregar a nota agora.',false); } });
+})();
+</script>
+</body>
+</html>

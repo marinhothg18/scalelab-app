@@ -303,6 +303,56 @@ app.get('/teste/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'teste.html'));
 });
 
+// ── COMPARTILHAMENTO DE NOTAS (Central da Diretoria) ──
+// /nota/:id → página pública read-only (busca os dados via API abaixo)
+app.get('/nota/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'nota.html'));
+});
+// Snapshot público de uma nota compartilhada. Se for 'interno', exige sessão válida.
+app.get('/api/cd/nota-publica/:id', (req, res) => {
+  const db = readDB();
+  const shares = db.store['cd_shares'] || [];
+  const nota = shares.find(x => x.id === req.params.id);
+  if (!nota) return res.status(404).json({ error: 'Nota não encontrada ou não compartilhada.' });
+  if (nota.share === 'interno') {
+    const authHeader = req.headers.authorization || '';
+    let ok = false;
+    if (authHeader.startsWith('Bearer ')) { try { if (validarSessao(db, authHeader.split(' ')[1])) ok = true; } catch {} }
+    if (!ok) return res.status(403).json({ error: 'interno', msg: 'Essa nota é interna — faça login na Central pra abrir.' });
+  }
+  const filhas = shares.filter(x => x.parentId === nota.id).map(x => ({ id: x.id, titulo: x.titulo }));
+  res.json({ id: nota.id, titulo: nota.titulo, blocks: nota.blocks || [], share: nota.share, filhas: filhas, ts: nota.ts, by: nota.by });
+});
+// App empurra o snapshot da nota + subpáginas ao compartilhar (só Diretoria).
+app.post('/api/cd/compartilhar', authDiretoria, (req, res) => {
+  const { subtree, rootId, share } = req.body || {};
+  if (!Array.isArray(subtree) || !subtree.length) return res.status(400).json({ error: 'subtree vazio' });
+  const db = readDB();
+  if (!Array.isArray(db.store['cd_shares'])) db.store['cd_shares'] = [];
+  const shares = db.store['cd_shares'];
+  const ts = now();
+  const sh = (share === 'externo') ? 'externo' : 'interno';
+  subtree.forEach(item => {
+    if (!item || !item.id) return;
+    const entry = {
+      id: item.id,
+      titulo: item.titulo || 'Sem título',
+      blocks: Array.isArray(item.blocks) ? item.blocks : [],
+      parentId: item.parentId || null,
+      rootId: rootId || item.id,
+      share: sh, ts: ts,
+      by: req.user.nome || req.user.email || ''
+    };
+    const idx = shares.findIndex(x => x.id === item.id);
+    if (idx >= 0) shares[idx] = entry; else shares.push(entry);
+  });
+  db.timestamps = db.timestamps || {};
+  db.timestamps['cd_shares'] = ts;
+  audit(db, 'cd_compartilhar', { rootId: rootId }, { share: sh, itens: subtree.length }, { id: req.user.id, nome: req.user.nome, cargo: req.user.cargo });
+  writeDB(db);
+  res.json({ ok: true, url: '/nota/' + (rootId || subtree[0].id), share: sh });
+});
+
 // ── BANCO DE DADOS ──
 function readDB() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }

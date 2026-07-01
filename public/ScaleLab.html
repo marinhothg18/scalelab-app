@@ -7433,6 +7433,28 @@ function cdInserirSubpagina(i){
   else { var pos=(i>=p.blocks.length)?p.blocks.length:i+1; p.blocks.splice(pos,0,{id:cdUID('b'),tipo:'pagina',ref:nid,texto:''}); }
   cdSet('cd_notas',notas); cdRenderAnot();
 }
+function cdColetarSubtree(rootId){
+  var notas=cdGet('cd_notas',[]); var out=[];
+  (function walk(nid){ var n=notas.filter(function(x){return x.id===nid;})[0]; if(!n)return; var blocks=n.blocks; if(!blocks){ blocks=[{id:'b',tipo:'texto',texto:(n.corpo!=null&&n.corpo!==''?cdEsc(String(n.corpo)):'')}]; } out.push({id:n.id,titulo:n.titulo||'Sem título',parentId:n.parentId||null,blocks:blocks}); notas.filter(function(x){return x.parentId===nid;}).forEach(function(c){ walk(c.id); }); })(rootId);
+  return out;
+}
+function cdShareStatus(txt,cor){ var e=document.getElementById('cd-share-status'); if(e){ e.innerHTML=txt; e.style.color=cor||'var(--text3)'; } }
+function cdPublicarNota(rootId,share,cb){
+  var subtree=cdColetarSubtree(rootId);
+  var token=localStorage.getItem('sl_session_token')||'';
+  fetch('/api/cd/compartilhar',{ method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token}, body:JSON.stringify({subtree:subtree,rootId:rootId,share:share}) })
+    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+    .then(function(res){ if(cb) cb(res.ok&&res.j&&res.j.ok?null:((res.j&&res.j.error)||'erro'),res.j); })
+    .catch(function(){ if(cb) cb('rede'); });
+}
+function cdPublicarAtual(rootId){
+  var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===rootId;})[0]; var share=(n&&n.share)||'interno';
+  cdShareStatus('⏳ Ativando o link…','var(--text3)');
+  cdPublicarNota(rootId,share,function(err,j){
+    if(err){ cdShareStatus('⚠️ Não consegui ativar o link agora. Confira seu login e a conexão e reabra o Compartilhar.','var(--red)'); return; }
+    cdShareStatus((j&&j.share==='externo')?'✅ Link público ativo — qualquer pessoa com o link abre esta nota.':'✅ Link ativo — abre pra quem está logado na Central. Pra liberar gente de fora, escolha “Qualquer pessoa com o link”.','var(--green)');
+  });
+}
 function cdCompartilhar(id){
   var link='https://app.centralaxcend.com/nota/'+id;
   var ov=document.createElement('div');
@@ -7449,7 +7471,7 @@ function cdCompartilhar(id){
       +opt(sh,'externo','🌐','Qualquer pessoa com o link','Pessoas de fora da empresa também abrem, em modo leitura.')
       +'<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin:16px 0 8px;">LINK DA NOTA</div>'
       +'<div style="display:flex;gap:8px;"><input id="cd-share-link" readonly value="'+link+'" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--text);outline:none;font-family:monospace;"><button id="cd-share-copy" style="background:var(--accent-grad);border:none;color:#fff;border-radius:10px;padding:0 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Copiar</button></div>'
-      +'<div style="font-size:12px;color:var(--text3);line-height:1.5;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:14px;">ℹ️ '+(sh==='externo'?'O acesso externo de verdade liga junto com a sincronização em nuvem — a escolha já fica salva na nota.':'Por enquanto abre pra quem já tem acesso à Central. A escolha fica salva pra quando ligarmos a sincronização.')+'</div>'
+      +'<div id="cd-share-status" style="font-size:12px;color:var(--text3);line-height:1.5;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:14px;">⏳ Ativando o link…</div>'
       +'<div style="display:flex;justify-content:flex-end;margin-top:18px;"><button id="cd-share-close" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 18px;font-size:14px;cursor:pointer;">Fechar</button></div>';
     var inp=card.querySelector('#cd-share-link');
     card.querySelector('#cd-share-copy').onclick=function(){ try{navigator.clipboard.writeText(link);}catch(e){} try{inp.select();document.execCommand('copy');}catch(e){} var b=card.querySelector('#cd-share-copy'); b.textContent='Copiado ✓'; setTimeout(function(){ if(b) b.textContent='Copiar'; },1600); };
@@ -7457,8 +7479,9 @@ function cdCompartilhar(id){
   }
   card._cdrender=render; render();
   ov.appendChild(card); document.body.appendChild(ov);
+  cdPublicarAtual(id);
 }
-function cdSetShare(id,val){ var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===id;})[0]; if(n){ n.share=val; cdSet('cd_notas',notas); } var c=document.getElementById('cd-share-card'); if(c&&c._cdrender)c._cdrender(); }
+function cdSetShare(id,val){ var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===id;})[0]; if(n){ n.share=val; cdSet('cd_notas',notas); } var c=document.getElementById('cd-share-card'); if(c&&c._cdrender)c._cdrender(); cdPublicarAtual(id); }
 function cdAbrir(id){_cdNota=id;cdRenderAnot();}
 function cdNovaNota(parentId){ cdModal(parentId?'Nova subpágina':'Nova nota',[{label:'Título',key:'titulo',placeholder:'Ex: Metas do trimestre'}],function(v){ var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:v.titulo||'Sem título',parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada'); }); }
 function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;cdSet('cd_notas',notas);}}
