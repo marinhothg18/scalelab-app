@@ -7363,12 +7363,14 @@ function cdRenderAnot(){
   }
   var n=notas.filter(function(x){return x.id===_cdNota;})[0]; if(!n){_cdNota=null;return cdRenderAnot();}
   var filhos=notas.filter(function(x){return x.parentId===n.id;});
+  var _refIds={}; (n.blocks||[]).forEach(function(b){ if(b.tipo==='pagina'&&b.ref) _refIds[b.ref]=1; });
+  var orfaos=filhos.filter(function(f){ return !_refIds[f.id]; });
   var path=[],cur=n; while(cur){path.unshift(cur);cur=cur.parentId?notas.filter(function(x){return x.id===cur.parentId;})[0]:null;}
   var bc=path.map(function(p,i){var last=i===path.length-1;return last?'<span style="color:var(--text2)">'+cdEsc(p.titulo)+'</span>':'<span onclick="cdAbrir(\''+p.id+'\')" style="cursor:pointer;color:var(--accent)">'+cdEsc(p.titulo)+'</span>';}).join(' <span style="color:var(--text3)">/</span> ');
   el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;font-size:12px;color:var(--text3);flex-wrap:wrap;"><span onclick="_cdNota=null;cdRenderAnot()" style="cursor:pointer;color:var(--accent);font-weight:600;">← Anotações</span><span>/</span>'+bc+'<button onclick="cdCompartilhar(\''+n.id+'\')" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:12px;padding:5px 12px;border-radius:8px;cursor:pointer;">🔗 Compartilhar</button><button onclick="cdDelNota(\''+n.id+'\')" style="background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;">🗑 excluir</button></div>'
     +'<input value="'+cdEsc(n.titulo)+'" onchange="cdSalvarTitulo(\''+n.id+'\',this.value)" placeholder="Sem título" style="width:100%;background:transparent;border:none;font-size:28px;font-weight:800;color:var(--text);outline:none;margin-bottom:14px;">'
     +cdBlocosHTML()
-    +'<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Subpáginas</div>'+(filhos.length?filhos.map(function(f){return cdLinha(f,notas);}).join(''):'<div style="color:var(--text3);font-size:13px;padding:4px 0 10px;">Nenhuma subpágina.</div>')+'<button onclick="cdNovaNota(\''+n.id+'\')" class="btn btn-ghost" style="font-size:12px;padding:7px 13px;margin-top:8px;">＋ Nova subpágina</button></div>';
+    +(orfaos.length?'<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Outras subpáginas</div>'+orfaos.map(function(f){return cdLinha(f,notas);}).join('')+'</div>':'');
   cdFocarBloco();
 }
 function cdLinha(n,notas){var q=notas.filter(function(x){return x.parentId===n.id;}).length;return '<div onclick="cdAbrir(\''+n.id+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background .12s;"><span style="color:var(--text3)">📄</span><span style="font-size:14px;font-weight:500;flex:1;color:var(--text);">'+cdEsc(n.titulo)+'</span>'+(q?'<span style="font-size:11px;color:var(--text3);">'+q+' subpág.</span>':'')+'<span style="color:var(--text3)">›</span></div>';}
@@ -7382,7 +7384,7 @@ function cdEnsureB(n){ if(!n.blocks){ var t=(n.corpo!=null&&n.corpo!=='')?cdEsc(
 function cdBlocosHTML(){
   var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return '';
   if(!n.blocks){ cdEnsureB(n); cdSet('cd_notas',notas); }
-  var h='<div id="cd-blocos" style="min-height:calc(100vh - 420px);">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
+  var h='<div id="cd-blocos" onclick="if(event.target.id===\'cd-blocos\')cdEscreverAbaixo()" style="min-height:calc(100vh - 420px);cursor:text;">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
   h+='<div style="display:flex;gap:16px;margin-top:4px;"><button onclick="cdAddBloco(\'texto\',9999)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button><button onclick="cdInserirSubpagina(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📄 Nova subpágina</button></div>';
   return h;
 }
@@ -7402,6 +7404,7 @@ function cdBlocoHTML(b,i){
 function cdSaveBloco(i,html){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].texto=html; }); }
 function cdToggleBloco(i){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].done=!n.blocks[i].done; }); cdRenderAnot(); }
 function cdAddBloco(tipo,after){ cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:tipo,texto:''}); _cdFocusBloco=pos; }); cdRenderAnot(); }
+function cdEscreverAbaixo(){ cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
 function cdDelBloco(i){ cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
 function cdTipoBloco(i,tipo){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
 function cdBlocoKey(e,i){
@@ -7431,20 +7434,31 @@ function cdInserirSubpagina(i){
   cdSet('cd_notas',notas); cdRenderAnot();
 }
 function cdCompartilhar(id){
-  var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===id;})[0]; var tit=n?(n.titulo||'Sem título'):'Nota';
   var link='https://app.centralaxcend.com/nota/'+id;
   var ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;display:flex;align-items:center;justify-content:center;padding:20px;';
   ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
-  var card=document.createElement('div');
-  card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:460px;max-width:100%;box-shadow:0 24px 70px rgba(0,0,0,.55);';
-  card.innerHTML='<div style="font-size:17px;font-weight:800;margin-bottom:6px;">🔗 Compartilhar nota</div><div style="font-size:13px;color:var(--text2);margin-bottom:16px;">“'+cdEsc(tit)+'”</div><div style="display:flex;gap:8px;margin-bottom:14px;"><input id="cd-share-link" readonly value="'+link+'" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--text);outline:none;font-family:monospace;"><button id="cd-share-copy" style="background:var(--accent-grad);border:none;color:#fff;border-radius:10px;padding:0 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Copiar</button></div><div style="font-size:12px;color:var(--text3);line-height:1.5;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 13px;">ℹ️ Este link abre a nota pra quem tem acesso à Central da Diretoria. O acesso externo (fora do time) fica disponível quando ligarmos a sincronização em nuvem.</div><div style="display:flex;justify-content:flex-end;margin-top:18px;"><button id="cd-share-close" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 18px;font-size:14px;cursor:pointer;">Fechar</button></div>';
+  var card=document.createElement('div'); card.id='cd-share-card';
+  card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:480px;max-width:100%;box-shadow:0 24px 70px rgba(0,0,0,.55);';
+  function opt(sh,val,ic,titulo,desc){ var on=sh===val; return '<div onclick="cdSetShare(\''+id+'\',\''+val+'\')" style="display:flex;gap:11px;align-items:flex-start;padding:12px;border-radius:11px;cursor:pointer;border:1.5px solid '+(on?'var(--accent)':'var(--border)')+';background:'+(on?'rgba(27,156,250,.08)':'var(--bg)')+';margin-bottom:9px;"><span style="font-size:18px;">'+ic+'</span><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);">'+titulo+'</div><div style="font-size:12px;color:var(--text3);margin-top:2px;line-height:1.4;">'+desc+'</div></div><span style="width:18px;height:18px;border-radius:50%;border:2px solid '+(on?'var(--accent)':'var(--text3)')+';flex-shrink:0;margin-top:2px;position:relative;">'+(on?'<span style="position:absolute;inset:3px;border-radius:50%;background:var(--accent);"></span>':'')+'</span></div>'; }
+  function render(){
+    var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===id;})[0]; var tit=n?(n.titulo||'Sem título'):'Nota'; var sh=(n&&n.share)||'interno';
+    card.innerHTML='<div style="font-size:17px;font-weight:800;margin-bottom:6px;">🔗 Compartilhar</div><div style="font-size:13px;color:var(--text2);margin-bottom:16px;">“'+cdEsc(tit)+'”</div>'
+      +'<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:8px;">QUEM PODE ABRIR</div>'
+      +opt(sh,'interno','🏢','Somente pessoas da Central','Só quem tem login na ferramenta consegue abrir a nota.')
+      +opt(sh,'externo','🌐','Qualquer pessoa com o link','Pessoas de fora da empresa também abrem, em modo leitura.')
+      +'<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin:16px 0 8px;">LINK DA NOTA</div>'
+      +'<div style="display:flex;gap:8px;"><input id="cd-share-link" readonly value="'+link+'" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:13px;color:var(--text);outline:none;font-family:monospace;"><button id="cd-share-copy" style="background:var(--accent-grad);border:none;color:#fff;border-radius:10px;padding:0 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Copiar</button></div>'
+      +'<div style="font-size:12px;color:var(--text3);line-height:1.5;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:14px;">ℹ️ '+(sh==='externo'?'O acesso externo de verdade liga junto com a sincronização em nuvem — a escolha já fica salva na nota.':'Por enquanto abre pra quem já tem acesso à Central. A escolha fica salva pra quando ligarmos a sincronização.')+'</div>'
+      +'<div style="display:flex;justify-content:flex-end;margin-top:18px;"><button id="cd-share-close" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 18px;font-size:14px;cursor:pointer;">Fechar</button></div>';
+    var inp=card.querySelector('#cd-share-link');
+    card.querySelector('#cd-share-copy').onclick=function(){ try{navigator.clipboard.writeText(link);}catch(e){} try{inp.select();document.execCommand('copy');}catch(e){} var b=card.querySelector('#cd-share-copy'); b.textContent='Copiado ✓'; setTimeout(function(){ if(b) b.textContent='Copiar'; },1600); };
+    card.querySelector('#cd-share-close').onclick=function(){ ov.remove(); };
+  }
+  card._cdrender=render; render();
   ov.appendChild(card); document.body.appendChild(ov);
-  var inp=card.querySelector('#cd-share-link');
-  card.querySelector('#cd-share-copy').onclick=function(){ try{navigator.clipboard.writeText(link);}catch(e){} try{inp.select();document.execCommand('copy');}catch(e){} var b=card.querySelector('#cd-share-copy'); b.textContent='Copiado ✓'; setTimeout(function(){ if(b) b.textContent='Copiar'; },1600); };
-  card.querySelector('#cd-share-close').onclick=function(){ ov.remove(); };
-  setTimeout(function(){ inp.focus(); inp.select(); },40);
 }
+function cdSetShare(id,val){ var notas=cdGet('cd_notas',[]); var n=notas.filter(function(x){return x.id===id;})[0]; if(n){ n.share=val; cdSet('cd_notas',notas); } var c=document.getElementById('cd-share-card'); if(c&&c._cdrender)c._cdrender(); }
 function cdAbrir(id){_cdNota=id;cdRenderAnot();}
 function cdNovaNota(parentId){ cdModal(parentId?'Nova subpágina':'Nova nota',[{label:'Título',key:'titulo',placeholder:'Ex: Metas do trimestre'}],function(v){ var notas=cdGet('cd_notas',[]); var id=cdUID('n'); notas.push({id:id,titulo:v.titulo||'Sem título',parentId:parentId||null,corpo:''}); cdSet('cd_notas',notas); if(parentId){cdRenderAnot();}else{cdAbrir(id);} if(typeof notif==='function')notif('Nota criada'); }); }
 function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;cdSet('cd_notas',notas);}}
@@ -7480,7 +7494,7 @@ function cdItem(f,itens){
     +(f.url?'<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">link</span><a href="'+cdEsc(f.url)+'" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none;">Abrir site ↗</a></div>':'')
     +'<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">login</span><span style="font-family:monospace">'+cdEsc(f.login||'')+'</span><button onclick="event.stopPropagation();cdCopiar(\''+cdEsc(f.login||'')+'\')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">copiar</button></div>'
     +'<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;"><span style="color:var(--text3)">senha</span><span style="font-family:monospace" id="sv-'+f.id+'">••••••••</span><button onclick="event.stopPropagation();var v=document.getElementById(\'sv-'+f.id+'\');v.textContent=(v.textContent.indexOf(\'•\')>-1)?\''+cdEsc(f.senha||'')+'\':\'••••••••\'" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">ver</button><button onclick="event.stopPropagation();cdCopiar(\''+cdEsc(f.senha||'')+'\')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;">copiar</button></div>'
-    +'<button onclick="event.stopPropagation();notif(\'📨 Credencial pronta pra enviar\')" style="background:var(--accent-grad);border:none;color:#fff;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;">Enviar pro colaborador</button></div>':'';
+    +'<button onclick="event.stopPropagation();cdCopiarCred(\''+f.id+'\')" style="background:var(--accent-grad);border:none;color:#fff;border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;">📋 Copiar tudo (pro WhatsApp)</button></div>':'';
   return '<div style="'+CDCARD+'margin-bottom:10px;"><div '+main+' style="display:flex;align-items:flex-start;gap:14px;cursor:pointer;"><div style="width:38px;height:38px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'+ic+'</div><div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:700;">'+cdEsc(f.nome)+'</div>'+(f.desc?'<div style="font-size:12px;color:var(--text3);margin-top:2px;">'+cdEsc(f.desc)+'</div>':'')+(q?'<div style="font-size:11px;color:var(--text3);margin-top:4px;">'+q+' item(ns)</div>':'')+'</div><div style="display:flex;gap:10px;flex-shrink:0;"><span onclick="event.stopPropagation();cdEditItem(\''+f.id+'\')" title="Editar" style="cursor:pointer;color:var(--text3);font-size:13px;">✏️</span><span onclick="event.stopPropagation();cdDelItem(\''+f.id+'\')" title="Excluir" style="cursor:pointer;color:var(--text3);font-size:13px;">🗑</span></div></div>'+cred+'</div>';
 }
 function cdNovoItem(tipo){
@@ -7499,6 +7513,16 @@ function cdEditItem(id){
 }
 function cdDelItem(id){if(!confirm('Excluir este item (e o que estiver dentro)?'))return;var itens=cdGet('cd_pastas',[]);var rem={};(function mk(i){rem[i]=1;itens.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);itens=itens.filter(function(x){return !rem[x.id];});cdSet('cd_pastas',itens);cdRenderPastas();}
 function cdCopiar(txt){try{navigator.clipboard.writeText(txt);}catch(e){} if(typeof notif==='function')notif('📋 Copiado: '+txt);}
+function cdCopiarCred(id){
+  var itens=cdGet('cd_pastas',[]); var f=itens.filter(function(x){return x.id===id;})[0]; if(!f)return;
+  var linhas=['🔑 '+(f.nome||'Credencial')];
+  if(f.url) linhas.push('🔗 Link: '+f.url);
+  if(f.login) linhas.push('👤 Login: '+f.login);
+  if(f.senha) linhas.push('🔒 Senha: '+f.senha);
+  var txt=linhas.join('\n');
+  try{navigator.clipboard.writeText(txt);}catch(e){}
+  if(typeof notif==='function')notif('📋 Credencial copiada — é só colar no WhatsApp');
+}
 
 // ══════════════════════════════════════════════
 // PLANEJAMENTO SEMANAL (Gestão → Planejamento Semanal)
