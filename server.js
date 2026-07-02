@@ -353,6 +353,35 @@ app.post('/api/cd/compartilhar', authDiretoria, (req, res) => {
   res.json({ ok: true, url: '/nota/' + (rootId || subtree[0].id), share: sh });
 });
 
+// ── SINCRONIZAÇÃO DA CENTRAL entre aparelhos (notas/pastas/rotina/lixeira/agenda) ──
+// O cliente faz a união por id e manda o resultado já mesclado; o servidor guarda.
+app.get('/api/cd/data', authDiretoria, (req, res) => {
+  const db = readDB();
+  res.json({
+    ok: true,
+    cd_notas: db.store['cd_notas'] || [],
+    cd_pastas: db.store['cd_pastas'] || [],
+    cd_rotina: db.store['cd_rotina'] || null,
+    cd_rotina_ts: (db.timestamps && db.timestamps['cd_rotina']) || 0,
+    cd_del: db.store['cd_del'] || [],
+    cd_gcal: db.store['cd_gcal'] || []
+  });
+});
+app.put('/api/cd/data', authDiretoria, (req, res) => {
+  const b = req.body || {}; const db = readDB();
+  db.timestamps = db.timestamps || {};
+  if (Array.isArray(b.cd_notas)) db.store['cd_notas'] = b.cd_notas.slice(0, 5000);
+  if (Array.isArray(b.cd_pastas)) db.store['cd_pastas'] = b.cd_pastas.slice(0, 5000);
+  if (Array.isArray(b.cd_del)) db.store['cd_del'] = b.cd_del.slice(0, 20000);
+  if (Array.isArray(b.cd_gcal)) db.store['cd_gcal'] = b.cd_gcal.slice(0, 50);
+  if (b.cd_rotina && typeof b.cd_rotina === 'object') {
+    db.store['cd_rotina'] = b.cd_rotina;
+    db.timestamps['cd_rotina'] = (b.cd_rotina_ts && b.cd_rotina_ts > (db.timestamps['cd_rotina'] || 0)) ? b.cd_rotina_ts : Date.now();
+  }
+  writeDB(db);
+  res.json({ ok: true });
+});
+
 // ── GOOGLE AGENDA (fase 1: só leitura via link secreto iCal) ──
 // Busca o .ics no Google, expande recorrências simples e devolve os eventos
 // da janela pedida. Restrito a calendar.google.com (evita SSRF).
