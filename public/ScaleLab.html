@@ -7385,7 +7385,7 @@ function cdEnsureB(n){ if(!n.blocks){ var t=(n.corpo!=null&&n.corpo!=='')?cdEsc(
 function cdBlocosHTML(){
   var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return '';
   if(!n.blocks){ cdEnsureB(n); cdSet('cd_notas',notas); }
-  var h='<div id="cd-blocos" onclick="if(event.target.id===\'cd-blocos\')cdEscreverAbaixo()" style="min-height:calc(100vh - 420px);cursor:text;">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
+  var h='<div id="cd-blocos" onclick="cdBlocosClick(event)" style="min-height:calc(100vh - 420px);cursor:text;">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
   h+='<div style="display:flex;gap:16px;margin-top:4px;"><button onclick="cdAddBloco(\'texto\',9999)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button><button onclick="cdInserirSubpagina(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📄 Nova subpágina</button></div>';
   return h;
 }
@@ -7406,6 +7406,7 @@ function cdSaveBloco(i,html){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].
 function cdToggleBloco(i){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].done=!n.blocks[i].done; }); cdRenderAnot(); }
 function cdAddBloco(tipo,after){ cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:tipo,texto:''}); _cdFocusBloco=pos; }); cdRenderAnot(); }
 function cdEscreverAbaixo(){ cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
+function cdBlocosClick(e){ var a=(e.target&&e.target.closest)?e.target.closest('a'):null; if(a&&a.href){ e.preventDefault(); e.stopPropagation(); try{window.open(a.href,'_blank','noopener');}catch(err){location.href=a.href;} return; } if(e.target&&e.target.id==='cd-blocos') cdEscreverAbaixo(); }
 function cdDelBloco(i){ cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
 function cdTipoBloco(i,tipo){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
 function cdBlocoKey(e,i){
