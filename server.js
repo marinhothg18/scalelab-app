@@ -200,6 +200,8 @@ const PORT = process.env.PORT || 3001;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const CD_UPLOAD_DIR = path.join(DATA_DIR, 'cd_uploads');
+try { if (!fs.existsSync(CD_UPLOAD_DIR)) fs.mkdirSync(CD_UPLOAD_DIR, { recursive: true }); } catch (e) {}
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 1h (Time Machine style)
 // Retenção em camadas: tudo da última 48h + 1/dia (90d) + 1/semana (12m) + 1/mês (forever)
 const RET_HOURS   = 48;        // horas mantidas hora-a-hora
@@ -380,6 +382,36 @@ app.put('/api/cd/data', authDiretoria, (req, res) => {
   }
   writeDB(db);
   res.json({ ok: true });
+});
+
+// ── ANEXOS DA CENTRAL (upload/download de arquivo dentro das notas) ──
+// Arquivo guardado no volume (DATA_DIR/cd_uploads); a nota guarda só a referência.
+app.post('/api/cd/upload', authDiretoria, express.raw({ type: () => true, limit: '90mb' }), (req, res) => {
+  try {
+    const buf = req.body;
+    if (!buf || !buf.length) return res.status(400).json({ error: 'Arquivo vazio.' });
+    let nome = 'arquivo';
+    try { nome = decodeURIComponent(req.headers['x-nome'] || 'arquivo'); } catch (e) { nome = req.headers['x-nome'] || 'arquivo'; }
+    nome = String(nome).replace(/[\r\n]/g, '').slice(0, 200);
+    const mime = String(req.headers['x-mime'] || req.headers['content-type'] || 'application/octet-stream').slice(0, 120);
+    const id = 'f_' + Date.now().toString(36) + Math.floor(Math.random() * 1e9).toString(36);
+    fs.writeFileSync(path.join(CD_UPLOAD_DIR, id), buf);
+    const db = readDB();
+    if (!Array.isArray(db.store['cd_arquivos'])) db.store['cd_arquivos'] = [];
+    db.store['cd_arquivos'].push({ id: id, nome: nome, mime: mime, tamanho: buf.length, por: (req.user && req.user.nome) || '', ts: now() });
+    writeDB(db);
+    res.json({ ok: true, id: id, nome: nome, mime: mime, tamanho: buf.length });
+  } catch (e) { res.status(500).json({ error: 'Falha ao salvar o arquivo.' }); }
+});
+app.get('/api/cd/arquivo/:id', authDiretoria, (req, res) => {
+  const db = readDB();
+  const meta = (db.store['cd_arquivos'] || []).find(x => x.id === req.params.id);
+  if (!meta || !/^f_[a-z0-9]+$/i.test(meta.id)) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  const fp = path.join(CD_UPLOAD_DIR, meta.id);
+  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Arquivo não está mais no servidor.' });
+  res.setHeader('Content-Type', meta.mime || 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(meta.nome || 'arquivo') + '"');
+  fs.createReadStream(fp).on('error', () => { try { res.status(500).end(); } catch (e) {} }).pipe(res);
 });
 
 // ── GOOGLE AGENDA (fase 1: só leitura via link secreto iCal) ──

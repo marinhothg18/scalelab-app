@@ -7438,7 +7438,7 @@ function cdBlocosHTML(){
   var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return '';
   if(!n.blocks){ cdEnsureB(n); cdSet('cd_notas',notas); }
   var h='<div id="cd-blocos" onclick="cdBlocosClick(event)" style="min-height:calc(100vh - 420px);cursor:text;">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
-  h+='<div style="display:flex;gap:16px;margin-top:4px;"><button onclick="cdAddBloco(\'texto\',9999)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button><button onclick="cdInserirSubpagina(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📄 Nova subpágina</button></div>';
+  h+='<div style="display:flex;gap:16px;margin-top:4px;flex-wrap:wrap;"><button onclick="cdAddBloco(\'texto\',9999)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button><button onclick="cdInserirSubpagina(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📄 Nova subpágina</button><button onclick="cdAnexarArquivo(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📎 Anexar arquivo</button></div>';
   return h;
 }
 function cdBlocoHTML(b,i){
@@ -7446,6 +7446,7 @@ function cdBlocoHTML(b,i){
   var ce='contenteditable="true" data-bi="'+i+'" oninput="cdSaveBloco('+i+',this.innerHTML)" onkeydown="cdBlocoKey(event,'+i+')" onfocus="_cdBloco='+i+'"';
   var t=b.texto||'';
   if(b.tipo==='pagina'){ var _ns=cdGet('cd_notas',[]); var _sub=_ns.filter(function(x){return x.id===b.ref;})[0]; var _tt=_sub?cdEsc(_sub.titulo||'Sem título'):'(subpágina removida)'; return '<div style="display:flex;gap:8px;align-items:center;margin:5px 0;">'+ctrl+'<div onclick="cdAbrir(\''+(b.ref||'')+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid var(--border);transition:background .12s;"><span style="font-size:17px;">📄</span><span style="font-size:15px;font-weight:600;color:var(--text);">'+_tt+'</span><span style="margin-left:auto;color:var(--text3);">›</span></div></div>'; }
+  if(b.tipo==='arquivo'){ var _ai=/pdf/i.test(b.mime||'')?'📕':(/image|png|jpe?g|gif|webp/i.test(b.mime||'')?'🖼️':(/zip|rar|7z/i.test(b.mime||'')?'🗜️':(/sheet|excel|csv/i.test(b.mime||'')?'📊':(/word|document/i.test(b.mime||'')?'📄':'📎')))); return '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;">'+ctrl+'<div style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--bg3);min-width:0;"><span style="font-size:22px;flex-shrink:0;">'+_ai+'</span><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;">'+cdEsc(b.nome||'arquivo')+'</div><div style="font-size:11px;color:var(--text3);">'+cdFmtTam(b.tamanho)+'</div></div><button data-aid="'+cdEsc(b.arqId||'')+'" data-nome="'+cdEsc(b.nome||'arquivo')+'" onclick="cdBaixarArquivo(this.getAttribute(\'data-aid\'),this.getAttribute(\'data-nome\'))" style="background:var(--accent-grad);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">⬇ Baixar</button></div></div>'; }
   if(b.tipo==='h1') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:16px 0 4px;">'+ctrl+'<div '+ce+' data-ph="Título 1" style="outline:none;flex:1;font-size:26px;font-weight:800;line-height:1.2;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h2') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:14px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 2" style="outline:none;flex:1;font-size:21px;font-weight:700;line-height:1.25;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h3') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:12px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 3" style="outline:none;flex:1;font-size:17px;font-weight:700;line-height:1.3;color:var(--text);">'+t+'</div></div>';
@@ -7460,6 +7461,33 @@ function cdAddBloco(tipo,after){ cdSalvaN(function(n){ var pos=(after>=n.blocks.
 function cdEscreverAbaixo(){ cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
 function cdBlocosClick(e){ var a=(e.target&&e.target.closest)?e.target.closest('a'):null; if(a&&a.href){ e.preventDefault(); e.stopPropagation(); try{window.open(a.href,'_blank','noopener');}catch(err){location.href=a.href;} return; } if(e.target&&e.target.id==='cd-blocos') cdEscreverAbaixo(); }
 function cdDelBloco(i){ cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
+function cdFmtTam(b){ b=b||0; if(b<1024)return b+' B'; if(b<1048576)return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function cdAnexarArquivo(after){
+  var inp=document.createElement('input'); inp.type='file';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0]; if(!f)return;
+    if(f.size>90*1024*1024){ if(typeof notif==='function')notif('⚠️ Arquivo grande demais (máx 90 MB). Pra maiores, use um link do Drive.'); return; }
+    if(typeof notif==='function')notif('⏳ Enviando '+f.name+'…');
+    var token=localStorage.getItem('sl_session_token')||'';
+    fetch(API_BASE+'/api/cd/upload',{ method:'POST', headers:{ 'Authorization':'Bearer '+token, 'Content-Type':f.type||'application/octet-stream', 'x-nome':encodeURIComponent(f.name), 'x-mime':f.type||'application/octet-stream' }, body:f })
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(!j||!j.ok){ if(typeof notif==='function')notif('⚠️ '+((j&&j.error)||'Falha no upload')); return; }
+        cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:'arquivo',arqId:j.id,nome:j.nome,mime:j.mime,tamanho:j.tamanho,texto:''}); }); cdRenderAnot();
+        if(typeof notif==='function')notif('✅ Arquivo anexado');
+      })
+      .catch(function(){ if(typeof notif==='function')notif('⚠️ Erro de conexão no upload'); });
+  };
+  inp.click();
+}
+function cdBaixarArquivo(arqId,nome){
+  if(!arqId)return; if(typeof notif==='function')notif('⏳ Baixando…');
+  var token=localStorage.getItem('sl_session_token')||'';
+  fetch(API_BASE+'/api/cd/arquivo/'+encodeURIComponent(arqId),{ headers:{'Authorization':'Bearer '+token} })
+    .then(function(r){ if(!r.ok) throw new Error('http'); return r.blob(); })
+    .then(function(blob){ var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=nome||'arquivo'; document.body.appendChild(a); a.click(); setTimeout(function(){ try{URL.revokeObjectURL(u);a.remove();}catch(e){} },1500); })
+    .catch(function(){ if(typeof notif==='function')notif('⚠️ Não consegui baixar (o arquivo pode não estar mais no servidor).'); });
+}
 function cdTipoBloco(i,tipo){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
 function cdBlocoKey(e,i){
   if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); cdSaveBloco(i,e.target.innerHTML); cdAddBloco('texto',i); return; }
@@ -7472,7 +7500,7 @@ function cdBlocoMenu(e,i){
   e.stopPropagation(); cdFecharMenu();
   var m=document.createElement('div'); m.id='cd-bmenu';
   m.style.cssText='position:fixed;z-index:13500;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 16px 50px rgba(0,0,0,.5);min-width:220px;';
-  m.innerHTML='<div onclick="cdInserirSubpagina('+i+');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--accent);"><span style="width:22px;text-align:center;font-size:16px;">📄</span>Página / Subpágina</div><div style="height:1px;background:var(--border);margin:4px 6px;"></div><div style="font-size:10px;font-weight:800;color:var(--text3);padding:6px 10px 4px;letter-spacing:.5px;">TIPO DO BLOCO</div>'+CD_TIPOS.map(function(t){return '<div onclick="cdTipoBloco('+i+',\''+t.id+'\');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--text);"><span style="width:22px;text-align:center;color:var(--text2);font-size:13px;">'+t.ic+'</span>'+t.label+'</div>';}).join('')+'<div style="height:1px;background:var(--border);margin:4px 6px;"></div><div onclick="cdDelBloco('+i+');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--red);"><span style="width:22px;text-align:center;">🗑</span>Excluir bloco</div>';
+  m.innerHTML='<div onclick="cdInserirSubpagina('+i+');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--accent);"><span style="width:22px;text-align:center;font-size:16px;">📄</span>Página / Subpágina</div><div onclick="cdAnexarArquivo('+i+');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--accent);"><span style="width:22px;text-align:center;font-size:16px;">📎</span>Anexar arquivo</div><div style="height:1px;background:var(--border);margin:4px 6px;"></div><div style="font-size:10px;font-weight:800;color:var(--text3);padding:6px 10px 4px;letter-spacing:.5px;">TIPO DO BLOCO</div>'+CD_TIPOS.map(function(t){return '<div onclick="cdTipoBloco('+i+',\''+t.id+'\');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--text);"><span style="width:22px;text-align:center;color:var(--text2);font-size:13px;">'+t.ic+'</span>'+t.label+'</div>';}).join('')+'<div style="height:1px;background:var(--border);margin:4px 6px;"></div><div onclick="cdDelBloco('+i+');cdFecharMenu()" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--red);"><span style="width:22px;text-align:center;">🗑</span>Excluir bloco</div>';
   document.body.appendChild(m);
   m.style.left=Math.min(e.clientX, window.innerWidth-240)+'px'; m.style.top=Math.min(e.clientY, window.innerHeight-430)+'px';
   setTimeout(function(){ document.addEventListener('click',cdFecharMenu,{once:true}); },10);
