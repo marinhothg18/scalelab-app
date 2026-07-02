@@ -413,6 +413,17 @@ app.get('/api/cd/arquivo/:id', authDiretoria, (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(meta.nome || 'arquivo') + '"');
   fs.createReadStream(fp).on('error', () => { try { res.status(500).end(); } catch (e) {} }).pipe(res);
 });
+// Exibição inline de imagem (público; id aleatório = obscuro). Pra <img src>.
+app.get('/api/cd/img/:id', (req, res) => {
+  const db = readDB();
+  const meta = (db.store['cd_arquivos'] || []).find(x => x.id === req.params.id);
+  if (!meta || !/^f_[a-z0-9]+$/i.test(meta.id)) return res.status(404).end();
+  const fp = path.join(CD_UPLOAD_DIR, meta.id);
+  if (!fs.existsSync(fp)) return res.status(404).end();
+  res.setHeader('Content-Type', meta.mime || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  fs.createReadStream(fp).on('error', () => { try { res.status(500).end(); } catch (e) {} }).pipe(res);
+});
 
 // ── GOOGLE AGENDA (fase 1: só leitura via link secreto iCal) ──
 // Busca o .ics no Google, expande recorrências simples e devolve os eventos

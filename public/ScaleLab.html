@@ -7447,6 +7447,7 @@ function cdBlocoHTML(b,i){
   var t=b.texto||'';
   if(b.tipo==='pagina'){ var _ns=cdGet('cd_notas',[]); var _sub=_ns.filter(function(x){return x.id===b.ref;})[0]; var _tt=_sub?cdEsc(_sub.titulo||'Sem título'):'(subpágina removida)'; return '<div style="display:flex;gap:8px;align-items:center;margin:5px 0;">'+ctrl+'<div onclick="cdAbrir(\''+(b.ref||'')+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid var(--border);transition:background .12s;"><span style="font-size:17px;">📄</span><span style="font-size:15px;font-weight:600;color:var(--text);">'+_tt+'</span><span style="margin-left:auto;color:var(--text3);">›</span></div></div>'; }
   if(b.tipo==='arquivo'){ var _ai=/pdf/i.test(b.mime||'')?'📕':(/image|png|jpe?g|gif|webp/i.test(b.mime||'')?'🖼️':(/zip|rar|7z/i.test(b.mime||'')?'🗜️':(/sheet|excel|csv/i.test(b.mime||'')?'📊':(/word|document/i.test(b.mime||'')?'📄':'📎')))); return '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;">'+ctrl+'<div style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--bg3);min-width:0;"><span style="font-size:22px;flex-shrink:0;">'+_ai+'</span><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;">'+cdEsc(b.nome||'arquivo')+'</div><div style="font-size:11px;color:var(--text3);">'+cdFmtTam(b.tamanho)+'</div></div><button data-aid="'+cdEsc(b.arqId||'')+'" data-nome="'+cdEsc(b.nome||'arquivo')+'" onclick="cdBaixarArquivo(this.getAttribute(\'data-aid\'),this.getAttribute(\'data-nome\'))" style="background:var(--accent-grad);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">⬇ Baixar</button></div></div>'; }
+  if(b.tipo==='imagem'){ var _isr=b.arqId?(API_BASE+'/api/cd/img/'+encodeURIComponent(b.arqId)):(b._imgData||''); return '<div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;">'+ctrl+'<img src="'+_isr+'" alt="'+cdEsc(b.nome||'')+'" loading="lazy" style="max-width:100%;border-radius:10px;border:1px solid var(--border);display:block;">'+'</div>'; }
   if(b.tipo==='h1') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:16px 0 4px;">'+ctrl+'<div '+ce+' data-ph="Título 1" style="outline:none;flex:1;font-size:26px;font-weight:800;line-height:1.2;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h2') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:14px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 2" style="outline:none;flex:1;font-size:21px;font-weight:700;line-height:1.25;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h3') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:12px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 3" style="outline:none;flex:1;font-size:17px;font-weight:700;line-height:1.3;color:var(--text);">'+t+'</div></div>';
@@ -7591,27 +7592,50 @@ function cdAbrirImport(){
     rd.onload=function(){
       var payload; try{ payload=JSON.parse(rd.result); }catch(e){ st.textContent='⚠️ Arquivo inválido (não é JSON).'; st.style.color='var(--red)'; return; }
       if(!payload || !Array.isArray(payload.notas) || !payload.notas.length){ st.textContent='⚠️ JSON sem lista de notas.'; st.style.color='var(--red)'; return; }
-      var r=cdImportarNotas(payload);
-      st.textContent='✅ '+r.n+' páginas importadas!'; st.style.color='var(--green)';
-      setTimeout(function(){ ov.remove(); _cdView='anot'; _cdNota=null; cdRenderBody(); if(r.rootId){ cdAbrir(r.rootId); } if(typeof notif==='function')notif('📥 Importado do Notion: '+r.n+' páginas'); }, 700);
+      ok.style.pointerEvents='none'; ok.style.opacity='.5'; st.textContent='⏳ Importando…'; st.style.color='var(--text3)';
+      cdImportarNotas(payload, function(d,t){ if(t) st.textContent='⏳ Enviando imagens… '+d+'/'+t; }).then(function(r){
+        st.textContent='✅ '+r.n+' páginas importadas!'; st.style.color='var(--green)';
+        setTimeout(function(){ ov.remove(); _cdView='anot'; _cdNota=null; cdRenderBody(); if(r.rootId){ cdAbrir(r.rootId); } if(typeof notif==='function')notif('📥 Importado do Notion: '+r.n+' páginas'); }, 700);
+      });
     };
     rd.onerror=function(){ st.textContent='⚠️ Não consegui ler o arquivo.'; st.style.color='var(--red)'; };
     rd.readAsText(file);
   };
 }
-function cdImportarNotas(payload){
-  var notas=cdGet('cd_notas',[]);
-  var origem=payload.origem||'import';
-  notas=notas.filter(function(n){ return n._imp!==origem; });
-  var rootId=null;
-  payload.notas.forEach(function(p){
-    if(!p||!p.id)return;
-    var nota={ id:p.id, titulo:p.titulo||'Sem título', parentId:p.parentId||null, blocks:(Array.isArray(p.blocks)&&p.blocks.length)?p.blocks:[{id:cdUID('b'),tipo:'texto',texto:''}], _imp:origem, _updatedAt:Date.now() };
-    notas.push(nota);
-    if(!nota.parentId && !rootId) rootId=nota.id;
+function cdDataURLtoBlob(d){ var parts=String(d).split(','); var mime=(parts[0].match(/:(.*?);/)||[])[1]||'application/octet-stream'; var bin=atob(parts[1]||''); var arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i); return new Blob([arr],{type:mime}); }
+function cdImportarNotas(payload, onProg){
+  return new Promise(function(resolve){
+    var notas=cdGet('cd_notas',[]);
+    var origem=payload.origem||'import';
+    var incoming=(payload.notas||[]).slice();
+    var incIds={}; incoming.forEach(function(p){ if(p&&p.id) incIds[p.id]=1; });
+    // tira import anterior da mesma origem E qualquer id que vá ser substituído
+    notas=notas.filter(function(n){ return n._imp!==origem && !incIds[n.id]; });
+    // lixeira sincronizada (remove placeholders antigos)
+    if(Array.isArray(payload.del)&&payload.del.length){ var dd=cdGet('cd_del',[]); payload.del.forEach(function(id){dd.push(id);}); cdSet('cd_del',cdUniq(dd)); }
+    // coleta imagens embutidas pra subir
+    var imgs=[]; incoming.forEach(function(p){ (p.blocks||[]).forEach(function(b){ if(b&&b.tipo==='imagem'&&b._imgData) imgs.push(b); }); });
+    var total=imgs.length, done=0;
+    var token=localStorage.getItem('sl_session_token')||'';
+    function finalize(){
+      var rootId=null;
+      incoming.forEach(function(p){ if(!p||!p.id)return; var nota={ id:p.id, titulo:p.titulo||'Sem título', parentId:p.parentId||null, blocks:(Array.isArray(p.blocks)&&p.blocks.length)?p.blocks:[{id:cdUID('b'),tipo:'texto',texto:''}], _imp:origem, _updatedAt:Date.now() }; notas.push(nota); if(!nota.parentId && !rootId) rootId=nota.id; });
+      cdSet('cd_notas',notas);
+      resolve({ n:incoming.length, rootId:rootId });
+    }
+    function upNext(i){
+      if(i>=imgs.length){ finalize(); return; }
+      var b=imgs[i], blob;
+      try{ blob=cdDataURLtoBlob(b._imgData); }catch(e){ delete b._imgData; done++; if(onProg)onProg(done,total); return upNext(i+1); }
+      fetch(API_BASE+'/api/cd/upload',{ method:'POST', headers:{ 'Authorization':'Bearer '+token, 'Content-Type':b.mime||'image/jpeg', 'x-nome':encodeURIComponent(b.nome||'imagem'), 'x-mime':b.mime||'image/jpeg' }, body:blob })
+        .then(function(r){return r.json();})
+        .then(function(j){ if(j&&j.ok){ b.arqId=j.id; } delete b._imgData; done++; if(onProg)onProg(done,total); upNext(i+1); })
+        .catch(function(){ delete b._imgData; done++; if(onProg)onProg(done,total); upNext(i+1); });
+    }
+    if(!total){ finalize(); return; }
+    if(onProg)onProg(0,total);
+    upNext(0);
   });
-  cdSet('cd_notas',notas);
-  return { n:payload.notas.length, rootId:rootId };
 }
 function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
 function cdSalvarCorpo(id,c){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.corpo=c;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
