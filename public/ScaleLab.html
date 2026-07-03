@@ -7337,7 +7337,7 @@ function cdSyncAgora(rerender){
       fetch(API_BASE+'/api/cd/data',{method:'PUT',headers:cdAuthH(),body:JSON.stringify({cd_notas:mN,cd_pastas:mP,cd_rotina:rot,cd_rotina_ts:rotTs,cd_del:delArr,cd_gcal:gcal})})
         .then(function(){ _cdSyncBusy=false; if(_cdSyncPend){_cdSyncPend=false; setTimeout(function(){cdSyncAgora(false);},50);} })
         .catch(function(){ _cdSyncBusy=false; });
-      if(rerender){ try{ if(typeof _cdView!=='undefined' && document.getElementById('cd-body')) cdRenderBody(); }catch(e){} }
+      if(rerender && !cdEditando()){ try{ if(typeof _cdView!=='undefined' && document.getElementById('cd-body')) cdRenderBody(); }catch(e){} }
     })
     .catch(function(){ _cdSyncBusy=false; });
 }
@@ -7374,6 +7374,7 @@ function cdSeed(){
 function renderCentralDiretoria(){
   var el=document.getElementById('gestao-content'); if(!el) return;
   if(!(currentUser&&currentUser.cargo==='Diretoria')){ _gestaoTab='prog_demanda'; renderGestaoSidebar(); renderProgDemanda(); return; }
+  if(cdEditando() && document.getElementById('cd-body')) return; // não recria o editor enquanto escreve
   cdSeed(); cdInjectStyle();
   el.innerHTML='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">'+cdTab('anot','📝 Anotações')+cdTab('pastas','📁 Pastas & Links')+cdTab('agenda','🗓️ Agenda')+'</div><div id="cd-body"></div>';
   cdRenderBody();
@@ -7460,6 +7461,7 @@ function cdBlocoHTML(b,i){
 var _cdSaveT=null, _cdSavePend=null;
 function cdSaveBloco(i,html){ _cdSavePend={i:i,html:html}; if(_cdSaveT)clearTimeout(_cdSaveT); _cdSaveT=setTimeout(cdFlushBloco,450); }
 function cdFlushBloco(){ if(_cdSaveT){clearTimeout(_cdSaveT);_cdSaveT=null;} var p=_cdSavePend; if(!p)return; _cdSavePend=null; cdSalvaN(function(n){ if(n.blocks[p.i]) n.blocks[p.i].texto=p.html; }); }
+function cdEditando(){ try{ var a=document.activeElement; return !!(a && a.closest && a.closest('#cd-anot')); }catch(e){ return false; } }
 function cdToggleBloco(i){ cdFlushBloco(); cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].done=!n.blocks[i].done; }); cdRenderAnot(); }
 function cdAddBloco(tipo,after){ cdFlushBloco(); cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:tipo,texto:''}); _cdFocusBloco=pos; }); cdRenderAnot(); }
 function cdEscreverAbaixo(){ cdFlushBloco(); cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
