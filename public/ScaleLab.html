@@ -7407,6 +7407,7 @@ function cdModal(titulo,campos,onOk,okLabel){
 
 /* ---- ANOTAÇÕES ---- */
 function cdRenderAnot(){
+  if(typeof cdFlushBloco==='function') cdFlushBloco();
   var el=document.getElementById('cd-anot'); if(!el)return;
   var notas=cdGet('cd_notas',[]);
   if(!_cdNota){
@@ -7443,7 +7444,7 @@ function cdBlocosHTML(){
 }
 function cdBlocoHTML(b,i){
   var ctrl='<span onclick="cdBlocoMenu(event,'+i+')" title="Tipo, subpágina, excluir" onmouseover="this.style.opacity=1;this.style.background=\'var(--bg3)\'" onmouseout="this.style.opacity=.55;this.style.background=\'transparent\'" style="cursor:pointer;color:var(--text2);opacity:.55;font-size:20px;flex-shrink:0;width:24px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px;user-select:none;line-height:1;">⋮</span>';
-  var ce='contenteditable="true" data-bi="'+i+'" oninput="cdSaveBloco('+i+',this.innerHTML)" onkeydown="cdBlocoKey(event,'+i+')" onfocus="_cdBloco='+i+'"';
+  var ce='contenteditable="true" data-bi="'+i+'" oninput="cdSaveBloco('+i+',this.innerHTML)" onkeydown="cdBlocoKey(event,'+i+')" onfocus="_cdBloco='+i+'" onblur="cdFlushBloco()"';
   var t=b.texto||'';
   if(b.tipo==='pagina'){ var _ns=cdGet('cd_notas',[]); var _sub=_ns.filter(function(x){return x.id===b.ref;})[0]; var _tt=_sub?cdEsc(_sub.titulo||'Sem título'):'(subpágina removida)'; return '<div style="display:flex;gap:8px;align-items:center;margin:5px 0;">'+ctrl+'<div onclick="cdAbrir(\''+(b.ref||'')+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid var(--border);transition:background .12s;"><span style="font-size:17px;">📄</span><span style="font-size:15px;font-weight:600;color:var(--text);">'+_tt+'</span><span style="margin-left:auto;color:var(--text3);">›</span></div></div>'; }
   if(b.tipo==='arquivo'){ var _ai=/pdf/i.test(b.mime||'')?'📕':(/image|png|jpe?g|gif|webp/i.test(b.mime||'')?'🖼️':(/zip|rar|7z/i.test(b.mime||'')?'🗜️':(/sheet|excel|csv/i.test(b.mime||'')?'📊':(/word|document/i.test(b.mime||'')?'📄':'📎')))); return '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;">'+ctrl+'<div style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--bg3);min-width:0;"><span style="font-size:22px;flex-shrink:0;">'+_ai+'</span><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;">'+cdEsc(b.nome||'arquivo')+'</div><div style="font-size:11px;color:var(--text3);">'+cdFmtTam(b.tamanho)+'</div></div><button data-aid="'+cdEsc(b.arqId||'')+'" data-nome="'+cdEsc(b.nome||'arquivo')+'" onclick="cdBaixarArquivo(this.getAttribute(\'data-aid\'),this.getAttribute(\'data-nome\'))" style="background:var(--accent-grad);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">⬇ Baixar</button></div></div>'; }
@@ -7456,12 +7457,14 @@ function cdBlocoHTML(b,i){
   if(b.tipo==='codigo') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;">'+ctrl+'<div '+ce+' data-ph="Código" style="outline:none;flex:1;font-family:monospace;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;line-height:1.5;color:var(--text);white-space:pre-wrap;">'+t+'</div></div>';
   return '<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;">'+ctrl+'<div '+ce+' data-ph="Escreva algo…  (clique no ⋮ pra escolher o tipo)" style="outline:none;flex:1;font-size:15px;line-height:1.7;color:var(--text);">'+t+'</div></div>';
 }
-function cdSaveBloco(i,html){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].texto=html; }); }
-function cdToggleBloco(i){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].done=!n.blocks[i].done; }); cdRenderAnot(); }
-function cdAddBloco(tipo,after){ cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:tipo,texto:''}); _cdFocusBloco=pos; }); cdRenderAnot(); }
-function cdEscreverAbaixo(){ cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
+var _cdSaveT=null, _cdSavePend=null;
+function cdSaveBloco(i,html){ _cdSavePend={i:i,html:html}; if(_cdSaveT)clearTimeout(_cdSaveT); _cdSaveT=setTimeout(cdFlushBloco,450); }
+function cdFlushBloco(){ if(_cdSaveT){clearTimeout(_cdSaveT);_cdSaveT=null;} var p=_cdSavePend; if(!p)return; _cdSavePend=null; cdSalvaN(function(n){ if(n.blocks[p.i]) n.blocks[p.i].texto=p.html; }); }
+function cdToggleBloco(i){ cdFlushBloco(); cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].done=!n.blocks[i].done; }); cdRenderAnot(); }
+function cdAddBloco(tipo,after){ cdFlushBloco(); cdSalvaN(function(n){ var pos=(after>=n.blocks.length)?n.blocks.length:after+1; n.blocks.splice(pos,0,{id:cdUID('b'),tipo:tipo,texto:''}); _cdFocusBloco=pos; }); cdRenderAnot(); }
+function cdEscreverAbaixo(){ cdFlushBloco(); cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
 function cdBlocosClick(e){ var a=(e.target&&e.target.closest)?e.target.closest('a'):null; if(a&&a.href){ e.preventDefault(); e.stopPropagation(); try{window.open(a.href,'_blank','noopener');}catch(err){location.href=a.href;} return; } if(e.target&&e.target.id==='cd-blocos') cdEscreverAbaixo(); }
-function cdDelBloco(i){ cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
+function cdDelBloco(i){ cdFlushBloco(); cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
 function cdFmtTam(b){ b=b||0; if(b<1024)return b+' B'; if(b<1048576)return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
 function cdAnexarArquivo(after){
   var inp=document.createElement('input'); inp.type='file';
@@ -7489,7 +7492,7 @@ function cdBaixarArquivo(arqId,nome){
     .then(function(blob){ var u=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=u; a.download=nome||'arquivo'; document.body.appendChild(a); a.click(); setTimeout(function(){ try{URL.revokeObjectURL(u);a.remove();}catch(e){} },1500); })
     .catch(function(){ if(typeof notif==='function')notif('⚠️ Não consegui baixar (o arquivo pode não estar mais no servidor).'); });
 }
-function cdTipoBloco(i,tipo){ cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
+function cdTipoBloco(i,tipo){ cdFlushBloco(); cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
 function cdBlocoKey(e,i){
   if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); cdSaveBloco(i,e.target.innerHTML); cdAddBloco('texto',i); return; }
   if((e.metaKey||e.ctrlKey)&&(e.key==='b'||e.key==='B')){ e.preventDefault(); document.execCommand('bold'); cdSaveBloco(i,e.target.innerHTML); return; }
@@ -7508,6 +7511,7 @@ function cdBlocoMenu(e,i){
 }
 function cdFecharMenu(){ var m=document.getElementById('cd-bmenu'); if(m)m.remove(); }
 function cdInserirSubpagina(i){
+  cdFlushBloco();
   var notas=cdGet('cd_notas',[]); var p=cdNotaAtual(notas); if(!p)return;
   if(!p.blocks){ cdEnsureB(p); }
   var nid=cdUID('n'); notas.push({id:nid,titulo:'Nova subpágina',parentId:p.id,blocks:[{id:cdUID('b'),tipo:'texto',texto:''}],_updatedAt:Date.now()});
@@ -7637,7 +7641,7 @@ function cdImportarNotas(payload, onProg){
     upNext(0);
   });
 }
-function cdSalvarTitulo(id,t){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
+function cdSalvarTitulo(id,t){cdFlushBloco();var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
 function cdSalvarCorpo(id,c){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.corpo=c;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
 function cdDelNota(id){if(!confirm('Excluir esta nota e todas as subpáginas?'))return;var notas=cdGet('cd_notas',[]);var rem={};(function mk(i){rem[i]=1;notas.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);var n=notas.filter(function(x){return x.id===id;})[0];notas=notas.filter(function(x){return !rem[x.id];});var _del=cdGet('cd_del',[]);Object.keys(rem).forEach(function(rid){_del.push(rid);});cdSet('cd_del',cdUniq(_del));cdSet('cd_notas',notas);_cdNota=(n&&n.parentId)?n.parentId:null;cdRenderAnot();}
 
