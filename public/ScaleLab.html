@@ -25,16 +25,16 @@
 :root {
   /* TMX Digital Theme — Novo design (manual identidade visual Giovana, 2026)
      Base dark mais escura, accent roxo-sidebar #5b5ef4, fonte Inter */
-  --bg: #0f0f0f; --bg2: #1c1c1c; --bg3: #252525;
-  --card: #1c1c1c;
-  --accent: #1B9CFA; --accent2: #5b5ef4; --text: #ffffff; --text2: #888888;
-  --text3: #6b6b6b;
-  --border: rgba(255,255,255,.06); --green: #639922; --red: #E24B4A;
+  --bg: #080a12; --bg2: #111524; --bg3: #171b2e;
+  --card: #111524;
+  --accent: #1B9CFA; --accent2: #5b5ef4; --text: #ffffff; --text2: #8b93ab;
+  --text3: #5f6884;
+  --border: rgba(255,255,255,.08); --green: #639922; --red: #E24B4A;
   --vermelho: #DC2626;
   --blue: #1B9CFA; --purple: #5b5ef4; --yellow: #FF5926; --orange: #FF5926; --pink: #C52C58;
   --blue-deep: #3E1493;
   --accent-grad: linear-gradient(135deg,#3E1493,#1B9CFA);
-  --sidebar-bg: #0f0f0f;
+  --sidebar-bg: #0a0c16;
 }
 body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 .light-mode {
@@ -72,7 +72,7 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans
 .light-mode .nav-item-sair { color:#DC2626 !important; }
 .light-mode .nav-item-sair .nav-svg { stroke:#DC2626 !important; opacity:1 !important; }
 * { margin:0; padding:0; box-sizing:border-box; transition: background-color .2s, border-color .2s, color .2s; }
-body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-serif; display:flex; min-height:100vh; }
+body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),transparent 60%),radial-gradient(820px 520px at 98% 2%,rgba(27,156,250,.12),transparent 55%),radial-gradient(760px 720px at 82% 116%,rgba(197,44,88,.10),transparent 55%),var(--bg); background-attachment:fixed; color:var(--text); font-family:'Segoe UI',sans-serif; display:flex; min-height:100vh; }
 
 /* ── MÉTRICAS DE ADS ── */
 .ads-kpi-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
@@ -1518,6 +1518,10 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
           Gestão
         </div>
+        <div class="nav-item" id="nav-protocolo" onclick="goTo('protocolo')" style="display:none;">
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4.09 12.97a1 1 0 00.78 1.63H11l-1 7.4 8.91-10.97a1 1 0 00-.78-1.63H12z"/></svg>
+          Meu Protocolo
+        </div>
         <div class="nav-item" id="nav-infra" onclick="goTo('infra')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
           Infra
@@ -1878,6 +1882,11 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-seri
         </div>
         <div style="flex:1;min-width:0;" id="gestao-content"></div>
       </div>
+    </div>
+
+    <!-- MEU PROTOCOLO -->
+    <div class="page" id="page-protocolo">
+      <div id="protocolo-mount" style="height:calc(100vh - 120px);min-height:560px;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#080a12;"></div>
     </div>
 
     <!-- TRÁFEGO -->
@@ -5251,6 +5260,7 @@ function notif(t){
 // NAVIGATION
 const titles={
   dashboard:{t:'Dashboard',s:'Visão geral do projeto'},
+  protocolo:{t:'Meu Protocolo',s:'Seu painel pessoal'},
   task:{t:'Task',s:''},
   metricas:{t:'Tráfego',s:'Gestão e controle de tráfego pago.'},
   criativos:{t:'Criativos',s:'Gerencie seus materiais criativos.'},
@@ -5337,6 +5347,7 @@ function goTo(id){
   if(id==='lixeira')renderLixeira();
   if(id==='auditoria')renderAuditoria();
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
+  if(id==='protocolo')renderProtocolo();
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
   // Mobile: atualiza título e bottom nav
@@ -7266,8 +7277,7 @@ var GESTAO_TABS = [
   { id:'vagas',        label:'Vagas',                    icon:'💼', color:'#5B5EF4' },
   { id:'rh',           label:'RH',                       icon:'👥', color:'#1B9CFA' },
   { id:'financeiro',   label:'Financeiro',               icon:'💰', color:'#16A34A' },
-  { id:'diretoria',    label:'Central da Diretoria',     icon:'🎛️', color:'#7C3AED', soDir:true },
-  { id:'protocolo',    label:'Meu Protocolo',            icon:'⚡', color:'#3E1493', soDir:true }
+  { id:'diretoria',    label:'Central da Diretoria',     icon:'🎛️', color:'#7C3AED', soDir:true }
 ];
 
 function renderGestaoSidebar(){
@@ -7292,13 +7302,11 @@ function renderGestaoContent(){
   else if(_gestaoTab === 'rh'){ renderRh(); }
   else if(_gestaoTab === 'financeiro'){ renderFinanceiro(); }
   else if(_gestaoTab === 'diretoria'){ renderCentralDiretoria(); }
-  else if(_gestaoTab === 'protocolo'){ renderProtocolo(); }
 }
 function renderProtocolo(){
-  var el = document.getElementById('gestao-content');
-  if(!el) return;
-  el.innerHTML = '<div style="height:82vh;min-height:560px;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#080a12;">'
-    + '<iframe src="/meu-protocolo.html?app=1" style="width:100%;height:100%;border:0;display:block;" title="Meu Protocolo"></iframe></div>';
+  var el = document.getElementById('protocolo-mount');
+  if(!el || el.querySelector('iframe')) return;
+  el.innerHTML = '<iframe src="/meu-protocolo.html?app=1" style="width:100%;height:100%;border:0;display:block;" title="Meu Protocolo"></iframe>';
 }
 if(!window._mpSyncListener){
   window._mpSyncListener = true;
@@ -24597,6 +24605,8 @@ function _applyNavPermissions(cargo){
 
   // Gestão — apenas Diretoria
   setDisp('nav-gestao', isDir);
+  // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
+  setDisp('nav-protocolo', isDir);
 
   // Infra — apenas Diretoria e Infra
   setDisp('nav-infra', isDir || isInfra);
