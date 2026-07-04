@@ -8,13 +8,13 @@
   :root{--bg:#0f0f0f;--bg2:#1c1c1c;--bg3:#252525;--text:#fff;--text2:#888;--text3:#6b6b6b;--border:rgba(255,255,255,.07);--accent:#1B9CFA;--purple:#5b5ef4;--green:#639922;--red:#E24B4A;--grad:linear-gradient(135deg,#3E1493,#1B9CFA);}
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
-  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 90px;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 100px;}
   .top{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap;}
   .top h1{font-size:22px;font-weight:800;margin:0;}
   .badge{font-size:11px;font-weight:700;color:var(--text2);background:var(--bg2);border:1px solid var(--border);padding:3px 9px;border-radius:20px;}
   .sub{color:var(--text2);font-size:13px;margin:0 0 16px;}
   .tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:18px;-webkit-overflow-scrolling:touch;}
-  .tab{flex-shrink:0;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .tab{flex-shrink:0;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
   .tab.on{background:var(--accent);color:#fff;border-color:transparent;}
   .card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px;}
   .card h3{font-size:16px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:8px;}
@@ -29,7 +29,7 @@
   .del{color:var(--text3);cursor:pointer;font-size:13px;flex-shrink:0;}
   input,textarea{background:var(--bg);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px 11px;font-size:13px;font-family:inherit;outline:none;}
   input:focus,textarea:focus{border-color:var(--accent);}
-  .addrow{display:flex;gap:8px;margin-top:10px;}
+  .addrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
   .btn{background:var(--grad);border:none;color:#fff;border-radius:9px;padding:9px 15px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
   .btn.ghost{background:var(--bg3);color:var(--text2);}
   .decl{font-size:14px;line-height:1.5;padding:7px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;}
@@ -47,13 +47,20 @@
   .kv .k{color:var(--text3);width:120px;flex-shrink:0;}
   .ord{display:flex;flex-direction:column;gap:2px;}
   .arrow{cursor:pointer;color:var(--text3);font-size:11px;line-height:1;}
+  .refl{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--border);font-size:13px;}
+  .refl:first-child{border-top:none;}
+  .refl .c{color:var(--red);flex:1;}
+  .refl .a{color:var(--green);flex:1;}
+  .dots{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+  .dot{width:22px;height:22px;border-radius:6px;background:var(--bg);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text3);}
+  .dot.on{background:var(--green);border-color:var(--green);color:#fff;}
   .save-hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:12px;padding:7px 14px;border-radius:20px;opacity:0;transition:opacity .3s;}
   .save-hint.show{opacity:1;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><h1>🎯 Meu Protocolo</h1><span class="badge">protótipo · Thiago Marinho</span></div>
+  <div class="top"><h1>🎯 Meu Protocolo</h1><span class="badge">protótipo v2 · Playbook Thiago Marinho v6</span></div>
   <p class="sub" id="hoje-data"></p>
   <div class="tabs" id="tabs"></div>
   <div id="view"></div>
@@ -61,12 +68,14 @@
 <div class="save-hint" id="hint">salvo ✓</div>
 
 <script>
-var TABS=[["hoje","📅 Hoje"],["ident","🧭 Identidade"],["crencas","🧠 Crenças"],["valores","⚖️ Valores"],["sonhos","✨ Sonhos"],["ancoras","🎬 Âncoras"]];
+var TABS=[["hoje","📅 Hoje"],["ident","🧭 Identidade"],["mente","🌌 Lei da Atração / Mente"],["crencas","🧠 Crenças"],["valores","⚖️ Valores"],["lideranca","👑 Liderança"],["habitos","🔁 Hábitos (21 dias)"],["sonhos","✨ Sonhos"],["ancoras","🎬 Âncoras"]];
 var DEFAULTS={
-  identidadeAlvo:"Construtor com paciência — ação intensa (Cardone) com estado interior sereno (Lei da Atração). Trabalho intenso, decisão dolorosa cedo, cobrança alta de si e dos outros — mas em paz, com gratidão genuína e fé real.",
+  identidadeAlvo:"Construtor com paciência — ação intensa (Cardone) com estado interior sereno (Lei da Atração). Trabalho intenso, decisão dolorosa cedo, cobrança alta de si e dos outros — mas em paz, com gratidão genuína e fé real. Quem chega aos 50 milhões consistente faz exatamente isso.",
   agenda:[["05:30","Gratidão + visualização",false],["06:00","Treino",false],["08:30","Deep work — oferta",false],["12:00","Fé — leitura/oração",false],["16:00","Call de análise",false],["19:00","Bloqueio com a filha (sem celular)",false]],
   objetivos:[["Fechar financeiro do mês",false],["1:1 com a liderança",false],["Definir OKR do trimestre",false]],
-  rituais:[["Diário de gratidão (manhã)",false],["Visualização 10 min",false],["Ler as declarações da manhã",false],["Treino",false],["Bloqueio 19h-20h com a filha",false],["Decisão do dia registrada (noite)",false]],
+  rituais:[["Diário de gratidão (manhã)",false],["Visualização 10 min",false],["Ler as declarações da manhã (voz alta)",false],["Treino",false],["3 mensagens pro time (8h/12h30/18h)",false],["Bloqueio 19h-20h com a filha",false],["Decisão do dia registrada (noite)",false]],
+  perguntasManha:["Pelo que sou grato hoje?","O que estou empolgado em fazer hoje?","Quem eu amo e quem me ama?","Como vou usar essa empolgação?","Como vou contribuir hoje?","Como isso vai me deixar mais forte?"],
+  perguntasCheck:[false,false,false,false,false,false],
   declaracoes:["Decisão dolorosa cedo é o presente que dou a mim mesmo amanhã.","Ativo proprietário é a única forma de liberdade real.","Cobrança é a maior demonstração de crença que ofereço ao meu time.","Esposa e filha são Tipo 1 — irreversíveis. Todo o resto é Tipo 2.","Aplicar > consumir. Conhecimento sem aplicação é peso.","Estado interior sereno é vantagem competitiva.","Eu construo o que sobra, não o que brilha."],
   declCheck:[false,false,false,false,false,false,false],
   decisaoHoje:"",
@@ -91,6 +100,14 @@ var DEFAULTS={
     ["Mais um conteúdo vai resolver","Aplico antes de buscar mais"]
   ],
   nac:["Decida o que quer + o que te impede (1 frase cada).","Use uma alavanca: DOR + PRAZER massivos (5 min sentindo, não pensando).","Interrompa o padrão limitador (algo inesperado físico — levantar, bater palmas, água gelada).","Crie alternativa fortalecedora (nova crença, 10x em voz alta, postura firme).","Condicione 21 dias (toda manhã, 5 min: ler + visualizar + sentir).","Experimente em situação real. Mudança é instantânea; preparo leva 21 dias."],
+  alavancas:[["Foco","Pra onde você dirige a atenção, vai a vida. Foco na solução = caminho. Foco na abundância = abundância."],["Significado","O evento não importa — o significado que você dá importa. 'Fim do mundo' (depressão) ou 'fase ensinou' (estratégia). Você escolhe."],["Linguagem","A palavra cria o mundo. 'Eu sou um fracasso' ativa a mente em estado de ameaça. Audita a linguagem."]],
+  tecnicas:["Pergunta 'Como?' não 'Por quê?' — 'por quê' traz justificativa/vítima; 'como' traz processo, agência, futuro.","Reframe imediato — toda frase negativa: 5 positivas em sequência.","Visualização imersiva (5 min/dia) — sente como se já fosse real. O cérebro não diferencia realidade de imaginação vívida.","Modificação de diálogos internos — voz crítica em tom cômico/lento. Tira o poder, vira piada.","Fisiologia controla emoção — postura, respiração, expressão mudam o estado em segundos. Antes de decisão: 1 min postura ereta, respiração profunda."],
+  reframe:[["tô na luta","tô construindo"],["perdemos","essa fase ensinou"],["tá apertado","tô em transição"],["não tenho tempo","minha prioridade é outra"],["preciso urgentemente","estou alinhando"],["se der certo","quando se concretizar"],["tomara que","estou criando"],["tô tentando","estou fazendo"],["não sei se vou conseguir","estou no caminho"],["tô cansado","estou recarregando"],["tá difícil","estou aprendendo"],["vou tentar","vou fazer"]],
+  ancoragens:[["Calma firme","Aperta polegar contra dedo médio + respiração profunda","Pra conversas difíceis (sócios, demissão, cliente)",false],["Foco laser","Posição específica na cadeira + música de foco","Pra deep work",false],["Pai presente","Tocar a maçaneta da porta de casa + 3 respirações + 'presente agora'","Pra entrar em casa e largar o trabalho",false]],
+  papeis:[["Estratégia",3,7,"5 NÃOs em 7 dias + 3-5 prioridades anuais em 30 dias"],["Cultura",3,7,"Valores + NÃO em 30 dias + ritual diário de vitórias + 1:1 mensal com cultura"],["Pessoas certas",4,8,"Avaliação de capacidade em 14 dias + decisões em 21 + demissões em 30"],["Tecnologia",7,8,"Manter — cuidado com over-engineering"],["Indicadores",5,8,"KPIs por papel em 60 dias + painel + revisão semanal"]],
+  msgsTime:[["8h00","Celebração","'Time, ontem o [nome] entregou [vitória]. Isso significa [impacto]. Bom dia, vamos pra cima.'",false],["12h30","Direção","'Foco da tarde: [prioridade da semana]. Bloqueios? Me chama.'",false],["18h00","Reconhecimento","'Encerrando o dia. Hoje vi [coisa específica de alguém]. Obrigado a todos. Amanhã 8h, vamos.'",false]],
+  pilaresObc:["Rejeição do equilíbrio — obsessão é ter tudo, não fazer trocas","Superação de críticos internos — você é seu maior obstáculo","Objetivos grandiosos — metas que pareçam loucas","Enfrentamento de pessimistas — eles protegem a própria medianidade","Domínio do tempo — arranja tempo pro que importa, não desculpa","Domínio financeiro — dê um jeito na forma de pensar sobre dinheiro","Sair da zona de conforto — o conforto é o inimigo dos obcecados","Manter-se perigoso — seja a pessoa mais competente da sua área","Criação de cultura — estabeleça valores e comportamentos esperados","Liderança obcecada — seja o exemplo mais obcecado da equipe","Exercer controle — não espere permissão pra tomar ação","Persistência — aja como um chefe, não tenha pena de si","Propósito contínuo — reabasteça suas obsessões"],
+  senhorEscravo:[["Senhor","Entrega mais que pediram, antecipa, propõe"],["Cumpridor","Entrega o pedido, não mais"],["Escravo","Entrega menos, precisa cobrança constante"]],
   valores:[
     ["Família","Esposa + filha = Tipo 1. Irreversível. O playbook reseta isso."],
     ["Integridade","Coerência entre o que pensa, fala e faz (Tchekhov: 'o homem é o que acredita')."],
@@ -103,6 +120,11 @@ var DEFAULTS={
     ["Contribuição / Impacto","Riqueza que não impacta é vazia. Ajude antes de receber (LdA)."],
     ["Liberdade","Por trás dos R$ 50M existe liberdade — de tempo, geografia, escolha."]
   ],
+  habitos:[
+    ["Declarações da manhã (voz alta)",[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]],
+    ["Bloqueio 19h-20h com a filha",[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]],
+    ["Diário noturno: o que esse dia me ensinou",[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]]
+  ],
   sonhos:[["Porsche 911 Carrera S preta","Em progresso",""],["Apartamento em Alphaville","Em progresso",""],["R$ 20 milhões de patrimônio","Meta 2026",""],["Casar na igreja","Planejado",""],["Trip Europa","Sonho",""],["20 mil seguidores","Meta 2026",""]],
   ancoras:[["Exemplo — vídeo que dá fé","https://youtube.com"]]
 };
@@ -111,38 +133,57 @@ function load(){ try{var v=localStorage.getItem('mp_data'); if(v) return Object.
 function save(){ try{localStorage.setItem('mp_data',JSON.stringify(S));}catch(e){} var h=document.getElementById('hint'); h.classList.add('show'); clearTimeout(window._ht); window._ht=setTimeout(function(){h.classList.remove('show');},900); }
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 var cur='hoje';
-function ckHTML(on){return '<span class="ck '+(on?'on':'')+'">'+(on?'✓':'')+'</span>';}
-
 function renderTabs(){ document.getElementById('tabs').innerHTML=TABS.map(function(t){return '<div class="tab '+(cur===t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</div>';}).join(''); }
 function go(t){cur=t;renderTabs();render();window.scrollTo(0,0);}
-
-function render(){ var el=document.getElementById('view'); el.innerHTML=({hoje:vHoje,ident:vIdent,crencas:vCrencas,valores:vValores,sonhos:vSonhos,ancoras:vAncoras}[cur])(); }
+function render(){ var el=document.getElementById('view'); el.innerHTML=({hoje:vHoje,ident:vIdent,mente:vMente,crencas:vCrencas,valores:vValores,lideranca:vLideranca,habitos:vHabitos,sonhos:vSonhos,ancoras:vAncoras}[cur])(); }
 
 function vHoje(){
   var h='';
   h+='<div class="card" style="background:var(--bg3);"><div class="muted">Identidade alvo</div><div style="font-size:14px;margin-top:4px;line-height:1.5;">'+esc(S.identidadeAlvo)+'</div></div>';
+  h+='<div class="card"><h3>🌅 6 perguntas da manhã <span class="muted" style="font-weight:400">· Robbins — reprogramação ativa</span></h3>'+S.perguntasManha.map(function(p,i){return '<div class="row"><span class="ck '+(S.perguntasCheck[i]?'on':'')+'" onclick="tgArr(\'perguntasCheck\','+i+')">'+(S.perguntasCheck[i]?'✓':'')+'</span><span class="txt">'+esc(p)+'</span></div>';}).join('')+'</div>';
   h+='<div class="card"><h3>📅 Agenda do dia</h3>'+S.agenda.map(function(r,i){return '<div class="row"><span class="hora">'+esc(r[0])+'</span><span class="ck '+(r[2]?'on':'')+'" onclick="tg(\'agenda\','+i+')">'+(r[2]?'✓':'')+'</span><span class="txt '+(r[2]?'done':'')+'">'+esc(r[1])+'</span><span class="del" onclick="rm(\'agenda\','+i+')">✕</span></div>';}).join('')+'<div class="addrow"><input id="ag-h" placeholder="09:00" style="width:70px"><input id="ag-t" placeholder="O que fazer…" style="flex:1"><button class="btn" onclick="addAgenda()">＋</button></div></div>';
   h+='<div class="card"><h3>🎯 Objetivos de hoje</h3>'+S.objetivos.map(function(r,i){return '<div class="row"><span class="ck '+(r[1]?'on':'')+'" onclick="tg(\'objetivos\','+i+',1)">'+(r[1]?'✓':'')+'</span><span class="txt '+(r[1]?'done':'')+'">'+esc(r[0])+'</span><span class="del" onclick="rm(\'objetivos\','+i+')">✕</span></div>';}).join('')+'<div class="addrow"><input id="ob-t" placeholder="Objetivo principal do dia…" style="flex:1"><button class="btn" onclick="addObj()">＋</button></div></div>';
   h+='<div class="card"><h3>🔥 Rituais do dia <span class="muted" style="font-weight:400">· reseta todo dia</span></h3>'+S.rituais.map(function(r,i){return '<div class="row"><span class="ck '+(r[1]?'on':'')+'" onclick="tg(\'rituais\','+i+',1)">'+(r[1]?'✓':'')+'</span><span class="txt '+(r[1]?'done':'')+'">'+esc(r[0])+'</span></div>';}).join('')+'</div>';
-  h+='<div class="card"><h3>🌅 Declarações da manhã</h3><div class="muted" style="margin-bottom:8px">7 crenças a instalar — leia em voz alta e marque</div>'+S.declaracoes.map(function(d,i){return '<div class="decl"><span class="ck '+(S.declCheck[i]?'on':'')+'" onclick="tgDecl('+i+')">'+(S.declCheck[i]?'✓':'')+'</span><span>“'+esc(d)+'”</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🗣️ Declarações da manhã</h3><div class="muted" style="margin-bottom:8px">7 crenças a instalar — leia em voz alta e marque</div>'+S.declaracoes.map(function(d,i){return '<div class="decl"><span class="ck '+(S.declCheck[i]?'on':'')+'" onclick="tgArr(\'declCheck\','+i+')">'+(S.declCheck[i]?'✓':'')+'</span><span>“'+esc(d)+'”</span></div>';}).join('')+'</div>';
   h+='<div class="card"><h3>🌙 Decisão do dia</h3><div class="muted" style="margin-bottom:8px">O que esse dia me ensinou? / Que decisão tomei e por quê?</div><textarea id="dec-t" style="width:100%;min-height:70px" placeholder="Escreva…">'+esc(S.decisaoHoje)+'</textarea><div class="addrow"><button class="btn" onclick="salvarDecisao()">Registrar decisão do dia</button></div>'+(S.decisoes.length?'<div style="margin-top:12px">'+S.decisoes.slice(0,6).map(function(d){return '<div class="kv"><span class="k">'+esc(d[0])+'</span><span>'+esc(d[1])+'</span></div>';}).join('')+'</div>':'')+'</div>';
   return h;
 }
 function vIdent(){
   var media=(S.caracteristicas.reduce(function(a,c){return a+c[1];},0)/S.caracteristicas.length).toFixed(1);
-  var h='<div class="card"><h3>🧭 Identidade alvo</h3><textarea id="id-alvo" style="width:100%;min-height:80px" oninput="S.identidadeAlvo=this.value;save()">'+esc(S.identidadeAlvo)+'</textarea></div>';
-  h+='<div class="card"><h3>📊 7 características fundamentais <span class="muted" style="font-weight:400">· média '+media+'/10</span></h3>'+S.caracteristicas.map(function(c,i){return '<div style="padding:9px 0;border-top:1px solid var(--border)"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;font-weight:600;width:130px;flex-shrink:0">'+esc(c[0])+'</span><span class="bar"><span style="width:'+(c[1]*10)+'%"></span></span><input type="range" min="0" max="10" value="'+c[1]+'" oninput="setNota('+i+',this.value)" style="width:110px;padding:0"><span style="font-size:12px;color:var(--text2);width:36px;text-align:right">'+c[1]+'/10</span></div><div class="muted" style="margin-top:4px;margin-left:0">Prioridade: <b style="color:var(--text2)">'+esc(c[2])+'</b> — '+esc(c[3])+'</div></div>';}).join('')+'</div>';
-  h+='<div class="card"><h3>🪞 Coerência — hoje × alvo</h3><div class="muted" style="margin-bottom:8px">Onde estiver em incoerência, ajusta agora — e marca</div>'+S.coerencia.map(function(c,i){return '<div style="padding:9px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start"><span class="ck '+(c[3]?'on':'')+'" onclick="tgCoer('+i+')" style="margin-top:2px">'+(c[3]?'✓':'')+'</span><div style="flex:1"><div style="font-size:13px;font-weight:700">'+esc(c[0])+'</div><div class="muted" style="color:var(--red)">hoje: '+esc(c[1])+'</div><div class="muted" style="color:var(--green)">alvo: '+esc(c[2])+'</div></div></div>';}).join('')+'</div>';
+  var h='<div class="card"><h3>🧭 Identidade alvo</h3><textarea id="id-alvo" style="width:100%;min-height:90px" oninput="S.identidadeAlvo=this.value;save()">'+esc(S.identidadeAlvo)+'</textarea></div>';
+  h+='<div class="card"><h3>📊 7 características fundamentais <span class="muted" style="font-weight:400">· média '+media+'/10</span></h3>'+S.caracteristicas.map(function(c,i){return '<div style="padding:9px 0;border-top:1px solid var(--border)"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:14px;font-weight:600;width:130px;flex-shrink:0">'+esc(c[0])+'</span><span class="bar"><span style="width:'+(c[1]*10)+'%"></span></span><input type="range" min="0" max="10" value="'+c[1]+'" oninput="setNota('+i+',this.value)" style="width:110px;padding:0"><span style="font-size:12px;color:var(--text2);width:36px;text-align:right">'+c[1]+'/10</span></div><div class="muted" style="margin-top:4px">Prioridade: <b style="color:var(--text2)">'+esc(c[2])+'</b> — '+esc(c[3])+'</div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🪞 Coerência — hoje × alvo</h3><div class="muted" style="margin-bottom:8px">Onde estiver em incoerência, ajusta agora — e marca</div>'+S.coerencia.map(function(c,i){return '<div style="padding:9px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start"><span class="ck '+(c[3]?'on':'')+'" onclick="tg(\'coerencia\','+i+',3)" style="margin-top:2px">'+(c[3]?'✓':'')+'</span><div style="flex:1"><div style="font-size:13px;font-weight:700">'+esc(c[0])+'</div><div class="muted" style="color:var(--red)">hoje: '+esc(c[1])+'</div><div class="muted" style="color:var(--green)">alvo: '+esc(c[2])+'</div></div></div>';}).join('')+'</div>';
+  return h;
+}
+function vMente(){
+  var h='<div class="card"><h3>🎛️ 3 alavancas pra dirigir o cérebro</h3><div class="muted" style="margin-bottom:6px">Robbins: '+"'"+'Cérebro é como qualquer máquina. Se você não dirige, ele dirige você.'+"'"+'</div>'+S.alavancas.map(function(a){return '<div style="padding:9px 0;border-top:1px solid var(--border)"><div style="font-size:14px;font-weight:700">'+esc(a[0])+'</div><div class="muted">'+esc(a[1])+'</div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🔄 Tabela de bolso — carência → abundância</h3><div class="muted" style="margin-bottom:8px">Toda frase de carência: troca na hora. Linguagem cria realidade.</div>'+S.reframe.map(function(r){return '<div class="refl"><span class="c">✗ '+esc(r[0])+'</span><span style="color:var(--text3)">→</span><span class="a">✓ '+esc(r[1])+'</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🧪 5 técnicas pra dirigir a mente</h3>'+S.tecnicas.map(function(t,i){return '<div class="row"><span class="hora" style="color:var(--purple)">'+(i+1)+'</span><span class="txt">'+esc(t)+'</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>⚓ Ancoragens (PNL) <span class="muted" style="font-weight:400">· gatilho → estado</span></h3><div class="muted" style="margin-bottom:6px">Marque quando usar hoje</div>'+S.ancoragens.map(function(a,i){return '<div style="padding:9px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start"><span class="ck '+(a[3]?'on':'')+'" onclick="tg(\'ancoragens\','+i+',3)" style="margin-top:2px">'+(a[3]?'✓':'')+'</span><div style="flex:1"><div style="font-size:14px;font-weight:700">'+esc(a[0])+' <span class="muted" style="font-weight:400">— '+esc(a[2])+'</span></div><div class="muted">Gatilho: '+esc(a[1])+'</div></div></div>';}).join('')+'</div>';
   return h;
 }
 function vCrencas(){
-  var h='<div class="card"><h3>🧠 As 7 crenças do sucesso</h3><div class="muted" style="margin-bottom:6px">Marque as que está instalando</div>'+S.crencas.map(function(c,i){return '<div style="padding:11px 0;border-top:1px solid var(--border);display:flex;gap:10px"><span class="ck '+(c[4]?'on':'')+'" onclick="tgCrenca('+i+')" style="margin-top:2px">'+(c[4]?'✓':'')+'</span><div style="flex:1"><div style="font-size:14px;font-weight:700">'+(i+1)+'. '+esc(c[0])+'</div><div style="font-size:13px;color:var(--text2);margin:3px 0">'+esc(c[1])+'</div><div class="muted">Onde estou: '+esc(c[2])+'</div><div class="muted">Como instalar: '+esc(c[3])+'</div></div></div>';}).join('')+'</div>';
+  var h='<div class="card"><h3>🧠 As 7 crenças do sucesso</h3><div class="muted" style="margin-bottom:6px">Marque as que está instalando</div>'+S.crencas.map(function(c,i){return '<div style="padding:11px 0;border-top:1px solid var(--border);display:flex;gap:10px"><span class="ck '+(c[4]?'on':'')+'" onclick="tg(\'crencas\','+i+',4)" style="margin-top:2px">'+(c[4]?'✓':'')+'</span><div style="flex:1"><div style="font-size:14px;font-weight:700">'+(i+1)+'. '+esc(c[0])+'</div><div style="font-size:13px;color:var(--text2);margin:3px 0">'+esc(c[1])+'</div><div class="muted">Onde estou: '+esc(c[2])+'</div><div class="muted">Como instalar: '+esc(c[3])+'</div></div></div>';}).join('')+'</div>';
   h+='<div class="card"><h3>🔁 Crenças a desinstalar</h3>'+S.desinstalar.map(function(d){return '<div style="padding:8px 0;border-top:1px solid var(--border)"><div style="font-size:13px;color:var(--red)">✗ '+esc(d[0])+'</div><div style="font-size:13px;color:var(--green)">✓ '+esc(d[1])+'</div></div>';}).join('')+'</div>';
-  h+='<div class="card"><h3>⚡ NAC — mudar uma crença de verdade</h3><div class="muted" style="margin-bottom:6px">Os 6 passos (Condicionamento Neuroassociativo)</div>'+S.nac.map(function(n,i){return '<div class="row"><span class="hora" style="color:var(--purple)">'+(i+1)+'</span><span class="txt">'+esc(n)+'</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>⚡ NAC — mudar uma crença de verdade</h3><div class="muted" style="margin-bottom:6px">Os 6 passos (Condicionamento Neuroassociativo). Instalar leva 21 dias — acompanhe na aba Hábitos.</div>'+S.nac.map(function(n,i){return '<div class="row"><span class="hora" style="color:var(--purple)">'+(i+1)+'</span><span class="txt">'+esc(n)+'</span></div>';}).join('')+'</div>';
   return h;
 }
 function vValores(){
   var h='<div class="card"><h3>⚖️ Meus valores <span class="muted" style="font-weight:400">· ordenados = decisão automática</span></h3><div class="muted" style="margin-bottom:8px">Quando dois valores conflitam, o de cima vence. Use as setas pra ordenar.</div>'+S.valores.map(function(v,i){return '<div style="display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><div class="ord"><span class="arrow" onclick="mv(\'valores\','+i+',-1)">▲</span><span class="arrow" onclick="mv(\'valores\','+i+',1)">▼</span></div><span style="font-size:15px;font-weight:800;color:var(--accent);width:22px">'+(i+1)+'</span><div style="flex:1"><div style="font-size:14px;font-weight:700">'+esc(v[0])+'</div><div class="muted">'+esc(v[1])+'</div></div></div>';}).join('')+'</div>';
+  return h;
+}
+function vLideranca(){
+  var h='<div class="card"><h3>👑 Os 5 papéis do líder <span class="muted" style="font-weight:400">· nota atual → meta 90 dias</span></h3>'+S.papeis.map(function(p,i){return '<div style="padding:9px 0;border-top:1px solid var(--border)"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:14px;font-weight:600;width:120px;flex-shrink:0">'+esc(p[0])+'</span><span class="bar"><span style="width:'+(p[1]*10)+'%"></span></span><input type="range" min="0" max="10" value="'+p[1]+'" oninput="setPapel('+i+',this.value)" style="width:100px;padding:0"><span style="font-size:12px;color:var(--text2);width:60px;text-align:right">'+p[1]+' → '+p[2]+'</span></div><div class="muted" style="margin-top:4px">'+esc(p[3])+'</div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>💬 3 mensagens diárias pro time <span class="muted" style="font-weight:400">· Cardone — cultura constrói</span></h3>'+S.msgsTime.map(function(m,i){return '<div style="padding:9px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start"><span class="hora">'+esc(m[0])+'</span><span class="ck '+(m[3]?'on':'')+'" onclick="tg(\'msgsTime\','+i+',3)" style="margin-top:1px">'+(m[3]?'✓':'')+'</span><div style="flex:1"><div style="font-size:13px;font-weight:700">'+esc(m[1])+'</div><div class="muted">'+esc(m[2])+'</div></div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🎚️ Senhor × Cumpridor × Escravo</h3><div class="muted" style="margin-bottom:6px">Saudável: 60/30/10 · Perigoso: 0/70/30</div>'+S.senhorEscravo.map(function(s){return '<div class="kv"><span class="k" style="width:100px;font-weight:700;color:var(--text)">'+esc(s[0])+'</span><span>'+esc(s[1])+'</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🗯️ Franqueza radical (Kim Scott)</h3><div class="muted">Empatia nociva (hoje) → Franqueza radical (alvo). Auto-pergunta antes de todo feedback: <b style="color:var(--text2)">"Estou cuidando OU evitando atrito?"</b> Se evitando = empatia nociva. Feedback SCI: Situação → Comportamento → Impacto → pedido.</div></div>';
+  h+='<div class="card"><h3>🔥 Os 13 pilares da obcecação (Cardone)</h3>'+S.pilaresObc.map(function(p,i){return '<div class="row"><span class="hora" style="color:var(--red)">'+(i+1)+'</span><span class="txt">'+esc(p)+'</span></div>';}).join('')+'</div>';
+  return h;
+}
+function vHabitos(){
+  var h='<div class="card" style="background:var(--bg3)"><div class="muted">Mudança é instantânea — o preparo leva <b style="color:var(--text2)">21 dias</b> (NAC / Robbins). Escolha 1-2 hábitos por vez e marque cada dia. Não tente instalar 5 ao mesmo tempo.</div></div>';
+  h+=S.habitos.map(function(ht,i){var feitos=ht[1].filter(Boolean).length;return '<div class="card"><h3>🔁 '+esc(ht[0])+' <span class="muted" style="font-weight:400">· '+feitos+'/21</span> <span class="del" style="margin-left:auto" onclick="rm(\'habitos\','+i+')">✕</span></h3><span class="bar" style="display:block"><span style="width:'+Math.round(feitos/21*100)+'%"></span></span><div class="dots">'+ht[1].map(function(d,j){return '<span class="dot '+(d?'on':'')+'" onclick="tgHabito('+i+','+j+')">'+(j+1)+'</span>';}).join('')+'</div></div>';}).join('');
+  h+='<div class="card"><div class="addrow"><input id="hb-t" placeholder="Novo hábito / crença / protocolo pra instalar em 21 dias…" style="flex:1"><button class="btn" onclick="addHabito()">＋</button></div></div>';
   return h;
 }
 function vSonhos(){
@@ -154,17 +195,18 @@ function vAncoras(){
   return h;
 }
 
-function tg(k,i,idx){ var col=(idx||2); S[k][i][col]=!S[k][i][col]; save(); render(); }
-function tgDecl(i){ S.declCheck[i]=!S.declCheck[i]; save(); render(); }
-function tgCoer(i){ S.coerencia[i][3]=!S.coerencia[i][3]; save(); render(); }
-function tgCrenca(i){ S.crencas[i][4]=!S.crencas[i][4]; save(); render(); }
+function tg(k,i,idx){ var col=(idx==null?2:idx); S[k][i][col]=!S[k][i][col]; save(); render(); }
+function tgArr(k,i){ S[k][i]=!S[k][i]; save(); render(); }
+function tgHabito(i,j){ S.habitos[i][1][j]=!S.habitos[i][1][j]; save(); render(); }
 function rm(k,i){ S[k].splice(i,1); save(); render(); }
 function mv(k,i,d){ var j=i+d; if(j<0||j>=S[k].length)return; var t=S[k][i]; S[k][i]=S[k][j]; S[k][j]=t; save(); render(); }
 function addAgenda(){ var hh=document.getElementById('ag-h').value.trim(), tt=document.getElementById('ag-t').value.trim(); if(!tt)return; S.agenda.push([hh||'',tt,false]); S.agenda.sort(function(a,b){return (a[0]||'~')<(b[0]||'~')?-1:1;}); save(); render(); }
 function addObj(){ var tt=document.getElementById('ob-t').value.trim(); if(!tt)return; S.objetivos.push([tt,false]); save(); render(); }
 function addSonho(){ var tt=document.getElementById('so-t').value.trim(); if(!tt)return; S.sonhos.push([tt,'Sonho','']); save(); render(); }
 function addAncora(){ var tt=document.getElementById('an-t').value.trim(), uu=document.getElementById('an-u').value.trim(); if(!tt)return; S.ancoras.push([tt,uu||'#']); save(); render(); }
+function addHabito(){ var tt=document.getElementById('hb-t').value.trim(); if(!tt)return; var arr=[]; for(var k=0;k<21;k++)arr.push(false); S.habitos.push([tt,arr]); save(); render(); }
 function setNota(i,v){ S.caracteristicas[i][1]=+v; save(); render(); }
+function setPapel(i,v){ S.papeis[i][1]=+v; save(); render(); }
 function salvarDecisao(){ var t=document.getElementById('dec-t').value.trim(); S.decisaoHoje=t; if(t){ var d=new Date(); S.decisoes.unshift([('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2), t]); } save(); render(); }
 function setImg(i,inp){ var f=inp.files&&inp.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ S.sonhos[i][2]=r.result; save(); render(); }; r.readAsDataURL(f); }
 
