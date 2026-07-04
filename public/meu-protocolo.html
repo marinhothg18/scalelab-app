@@ -123,6 +123,10 @@
   <button data-tab="manha">Manhã</button>
   <button data-tab="noite">Noite</button>
   <button data-tab="analise">Análise</button>
+  <button data-tab="metas">Metas</button>
+  <button data-tab="pessoas">Pessoas</button>
+  <button data-tab="corpo">Corpo</button>
+  <button data-tab="modelos">Modelos</button>
   <button data-tab="rituais">Rituais</button>
   <button data-tab="decisoes">Decisões</button>
   <button data-tab="identidade">Identidade</button>
@@ -172,10 +176,31 @@
     <div class="card"><h2>📆 Esta semana <span class="sub">rituais cumpridos + paz por dia</span></h2><div id="weekStrip"></div></div>
     <div class="card"><h2>📊 Últimos 30 dias</h2><div id="metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px"></div></div>
     <div class="card"><h2>🔎 Onde melhorar <span class="sub">análise automática da sua rotina</span></h2><div id="analise"></div></div>
+    <div class="card"><h2>🧠 Coach <span class="sub">leitura da rotina + a pergunta que você evita</span></h2><div id="coachOut" class="muted" style="line-height:1.6">Clique pra gerar a leitura da sua rotina.</div><div class="btn-row" style="margin-top:10px"><button class="btn sm" onclick="coachLeitura()">Gerar leitura do coach</button></div></div>
+    <div class="card"><h2>🔄 Revisão da semana</h2><label class="muted">O que comprometi essa semana?</label><input type="text" id="rev-c"><label class="muted">O que realmente fiz?</label><input type="text" id="rev-f"><label class="muted">Prioridades da próxima semana:</label><input type="text" id="rev-p"><div class="btn-row"><button class="btn sm" onclick="saveRevisao()">Salvar revisão</button></div><div id="revHist" style="margin-top:12px"></div></div>
     <div class="card"><h2>🗂️ Histórico <span class="sub">últimos dias registrados</span></h2><div id="histFull"></div></div>
   </section>
 
+  <section class="tab" id="tab-metas">
+    <div class="meta-box"><div class="lbl">A META</div><div class="big">R$ 50 milhões</div><div class="lbl">antes dos 30 — pra liberdade da minha família</div></div>
+    <div class="card"><h2>💰 Patrimônio → R$ 50 milhões</h2><span class="bar" id="patrBar" style="display:block;margin-bottom:6px"></span><div class="muted" id="patrTxt"></div><div class="flex" style="margin-top:8px"><input type="number" id="patrIn" placeholder="patrimônio atual (R$)"><button class="btn sm" onclick="setPatr()">Atualizar</button></div></div>
+    <div id="metas"></div>
+  </section>
+
+  <section class="tab" id="tab-pessoas">
+    <div class="card" style="background:var(--panel2)"><p class="muted">Pessoas são seu maior recurso — e seu GAP MAIOR. Mantenha a cadência com cada uma. Empresa reconstrói; relações não têm rewind.</p></div>
+    <div id="pessoas"></div>
+  </section>
+
+  <section class="tab" id="tab-corpo"><div id="corpo"></div></section>
+
+  <section class="tab" id="tab-modelos">
+    <div class="card" style="background:var(--panel2)"><p class="muted">Sucesso deixa pistas. Modele quem já chegou — decifre crenças, fisiologia, foco, linguagem e hábitos. 1 modelo por vez, 30 dias cada.</p></div>
+    <div id="modelos"></div>
+  </section>
+
   <section class="tab" id="tab-rituais">
+    <div class="card"><h2>🔔 Lembretes <span class="sub">horários que te avisam</span></h2><div id="lembretes"></div></div>
     <div class="card"><h2>🔁 Meus rituais <span class="sub">crie e marque no dia</span></h2><p class="muted" style="margin-bottom:14px">Rituais tiram a decisão do automático. Monte os seus, adicione passos e marque.</p><div id="rituais"></div>
       <div class="sec-title">Criar novo ritual</div><div class="flex"><input type="text" id="ritNome" placeholder="Nome (ex: Ritual pré-treino)"><button class="btn sm" onclick="addRitual()">Criar</button></div></div>
     <div class="card"><h2>✅ Itens do check diário <span class="sub">aparecem na aba Hoje</span></h2><div id="checkEdit"></div><div class="flex"><input type="text" id="chkIn" placeholder="Novo item de check diário"><button class="btn sm" onclick="addCheckItem()">+</button></div></div>
@@ -295,7 +320,33 @@ const SEED={
   rituais:[{nome:"Ritual da manhã",passos:["Beber água ao acordar","Ler as 7 declarações em voz alta","Espelho de coerência","Visualização imersiva 5 min","Definir os 3 objetivos do dia"]},{nome:"Antes de uma decisão importante",passos:["1 min postura ereta + respiração","É Tipo 1 (irreversível) ou Tipo 2?","Fere algum valor de cima?","Qual o pior cenário — eu aceito?","Tô com clareza ou movido por medo?"]},{nome:"Ritual da noite",passos:["O que esse dia me ensinou?","Que valor eu vivi hoje?","Nota de paz interior (0-10)","Documentei a decisão do dia?"]},{nome:"Ritual de fé",passos:["Momento de oração / silêncio","Assistir 1 vídeo que fortalece a fé","Gratidão: 3 coisas boas do dia"]}],
   palavras:[{elimina:"Tô na luta",usa:"Tô construindo"},{elimina:"Perdemos",usa:"Essa fase ensinou"},{elimina:"Tá apertado",usa:"Tô em transição"},{elimina:"Não tenho tempo",usa:"Minha prioridade é outra"},{elimina:"Se der certo",usa:"Quando se concretizar"},{elimina:"Tô tentando",usa:"Estou fazendo"},{elimina:"Não sei se vou conseguir",usa:"Estou no caminho"},{elimina:"Tô cansado",usa:"Estou recarregando"},{elimina:"Tá difícil",usa:"Estou aprendendo"},{elimina:"Vou tentar",usa:"Vou fazer"},{elimina:"Não consigo",usa:"Ainda não domino"},{elimina:"Sou um fracasso",usa:"Isso foi feedback"}],
   afirmacoes:["EU SOU próspero e capaz.","EU SOU um construtor com paciência.","Minha família é a fundação que sustenta tudo.","Estado interior sereno é minha vantagem competitiva.","Eu já comecei do zero várias vezes — sou capaz independente de tudo.","O que eu foco, eu atraio. Eu foco em abundância."],
-  declaracoesFe:["Deus é a minha fonte, não o mercado.","Eu confio no processo e ando em paz.","Sou grato pelo que já tenho e pelo que ainda vem."]
+  declaracoesFe:["Deus é a minha fonte, não o mercado.","Eu confio no processo e ando em paz.","Sou grato pelo que já tenho e pelo que ainda vem."],
+  metas:[
+    {nome:"R$ 50 milhões (Axcend / negócios)",pct:10,prazo:"antes dos 30",q1:"Patrimônio sólido em ativos proprietários e uma operação que roda sem mim no gargalo",q2:"Liberdade de tempo, geografia e escolha pra minha família — nunca mais decidir por medo de dinheiro",q3:"Empresa estável, processos claros, eu fora do operacional e dentro da estratégia",q4:"Conforto, dispersão em projeto novo brilhante, decisões difíceis adiadas"},
+    {nome:"Casamento sólido com a Izamara",pct:55,prazo:"contínuo",q1:"Parceira de visão, comunicação de verdade, casar na igreja, mesmo time",q2:"A família é a fundação que sustenta os próximos 50 anos — sem ela o resto não tem pra quê",q3:"Jantar semanal só nós dois, presença total, sem celular na mesa",q4:"Deixar o trabalho contaminar a mesa e a conversa virar só logística"},
+    {nome:"Filha presente (bloqueio diário)",pct:40,prazo:"todo dia",q1:"1h sagrada 19h-20h sem celular, brincando de verdade do jeito dela",q2:"Ela tem 7 e vira adolescente em 5 anos — esse tempo não tem rewind",q3:"Ela escolhe a brincadeira; pergunta aberta no jantar; presença sem tela",q4:"A 1h a mais de trabalho que não muda o resultado do mês"},
+    {nome:"Corpo saudável e energia alta",pct:30,prazo:"2026",q1:"Treino 5x/semana, ~15% de gordura, disposição constante o dia inteiro",q2:"Energia é a base — sem ela, paixão e estratégia não viram execução",q3:"Sono de 7h, comida de verdade, água, treino inegociável",q4:"Madrugada trabalhando e alimentação no automático"},
+    {nome:"Patrimônio pessoal diversificado",pct:20,prazo:"2026",q1:"Reserva intocável + alocação em classes (renda fixa, ações, imóveis, cripto, empresa)",q2:"Segurança total pra família — distribuir só com colchão de 6 meses garantido",q3:"DRE pessoal mensal, alocação definida, distribuição só com caixa protegido",q4:"Gasto sem controle e distribuição antes da hora"}
+  ],
+  patrimonioAtual:0,patrimonioMeta:50000000,
+  pessoas:[
+    {nome:"Izamara (esposa)",rel:"Esposa · Tipo 1 · jantar semanal só nós dois",cad:7,ultima:""},
+    {nome:"Filha",rel:"Filha · Tipo 1 · bloqueio sagrado diário",cad:1,ultima:""},
+    {nome:"Sócio 1",rel:"Sócio · 1:1 mensal + conversa franca pendente",cad:30,ultima:""},
+    {nome:"Sócio 2",rel:"Sócio · 1:1 mensal",cad:30,ultima:""},
+    {nome:"Mentor",rel:"Não tem ativo — achar 1-2 que você admira e se aproximar",cad:30,ultima:""}
+  ],
+  modelos:[
+    {nome:"Tallis Gomes",foco:"Decisão de venda, pivot, moat, M&A",aplicado:""},
+    {nome:"Alex Hormozi",foco:"Engenharia de oferta + escala via processo",aplicado:""},
+    {nome:"Naval Ravikant",foco:"Modelos mentais, identidade, alavancas",aplicado:""},
+    {nome:"Charlie Munger",foco:"Modelos mentais + patrimônio longevo",aplicado:""}
+  ],
+  lembretes:[
+    {hora:"08:00",txt:"Declarações da manhã + espelho de coerência",on:true},
+    {hora:"19:00",txt:"Bloqueio sagrado com a filha (sem celular)",on:true},
+    {hora:"22:30",txt:"Check-in noturno + decisão do dia",on:true}
+  ]
 };
 const KEY="painel_novo_thiago_v2";let LS_OK=true;let S=null;
 try{S=JSON.parse(localStorage.getItem(KEY)||"null");}catch(e){LS_OK=false;}
@@ -306,6 +357,11 @@ var C=S.config;
 if(C.visionBoard===undefined)C.visionBoard="";
 (C.caracteristicas||[]).forEach((c,i)=>{if(!c.sig&&SEED.caracteristicas[i])c.sig=SEED.caracteristicas[i].sig;});
 C.habitos=C.habitos.map(function(h){var arr=h[1]||[];while(arr.length<21)arr.push(false);return [h[0],arr.slice(0,21)];});
+["metas","pessoas","modelos","lembretes"].forEach(function(k){ if(!C[k]) C[k]=JSON.parse(JSON.stringify(SEED[k])); });
+if(C.patrimonioAtual===undefined)C.patrimonioAtual=0;
+if(C.patrimonioMeta===undefined)C.patrimonioMeta=50000000;
+if(!C.limpoDesde)C.limpoDesde="";
+if(!S.revisoes)S.revisoes={};
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){LS_OK=false;}flash();}
 function saveSafe(){try{localStorage.setItem(KEY,JSON.stringify(S));flash();}catch(e){LS_OK=false;alert('A foto ficou grande demais. Tenta uma imagem menor.');}}
 function flash(){const f=document.getElementById('flash');f.classList.add('show');clearTimeout(window._f);window._f=setTimeout(()=>f.classList.remove('show'),900);}
@@ -316,7 +372,7 @@ const dsem=["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feir
 (function(){const d=new Date();document.getElementById('hoje').textContent=dsem[d.getDay()]+", "+d.getDate()+" de "+mes[d.getMonth()]+" de "+d.getFullYear();})();
 document.getElementById('idAlvo').textContent=C.identidade;
 (function(){try{localStorage.setItem("__t","1");localStorage.removeItem("__t");}catch(e){LS_OK=false;}if(!LS_OK){const w=document.createElement('div');w.style.cssText="background:#3b2f15;color:#fcd34d;padding:9px 16px;font-size:12.5px;text-align:center;border-bottom:1px solid var(--line)";w.innerHTML="⚠️ Esse navegador não salva localmente. Abra no <b>Chrome</b> (ou no app) pra guardar entre os dias.";document.body.insertBefore(w,document.getElementById('nav'));}})();
-document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('tab-'+b.dataset.tab).classList.add('active');if(b.dataset.tab==='analise')renderAnalise();window.scrollTo(0,0);});
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('tab-'+b.dataset.tab).classList.add('active');var t=b.dataset.tab;if(t==='analise')renderAnalise();if(t==='corpo')renderCorpo();if(t==='pessoas')renderPessoas();window.scrollTo(0,0);});
 function fmt(k){const p=k.split("-");return p[2]+"/"+p[1];}
 function val(id){return document.getElementById(id).value.trim();}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -458,6 +514,81 @@ function renderAnalise(){
   if(!hk.length){hf.innerHTML='<p class="muted">Ainda sem histórico. Marque os rituais e o check-in noturno que ele começa a encher.</p>';}
   else{hf.innerHTML=hk.map(function(k){var s=dayStat(k);if(!s)return '';return '<div class="hist"><b>'+fmt(k)+'</b> · rituais '+s.rit+'/'+s.tot+(s.paz!=null?' · paz '+s.paz+'/10':'')+(s.valor?' · valor: '+esc(s.valor):'')+(s.ensinou?'<br><span style="color:var(--muted)">'+esc(s.ensinou)+'</span>':'')+'</div>';}).filter(Boolean).join('');}
 }
+
+/* ===================== 7 MÓDULOS NOVOS ===================== */
+function diasDesde(k){if(!k)return null;var a=new Date(k+'T12:00:00'),b=new Date();return Math.floor((b-a)/86400000);}
+function brl(n){return 'R$ '+(Number(n)||0).toLocaleString('pt-BR');}
+
+/* --- 1. METAS 2026 --- */
+function renderMetas(){var c=document.getElementById('metas');if(!c)return;c.innerHTML=C.metas.map(function(m,i){return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:15px">'+esc(m.nome)+'</b><span style="font-size:11px;color:var(--muted);background:var(--panel2);padding:3px 9px;border-radius:20px">'+esc(m.prazo||'')+'</span></div><div style="display:flex;align-items:center;gap:10px;margin:10px 0"><span class="bar" style="flex:1"><span style="width:'+m.pct+'%"></span></span><input type="range" min="0" max="100" value="'+m.pct+'" oninput="setMetaPct('+i+',this.value)" style="width:92px"><b style="font-size:13px;width:38px;text-align:right">'+m.pct+'%</b></div><details><summary style="cursor:pointer;color:var(--muted);font-size:13px">As 4 perguntas do playbook</summary><div style="margin-top:8px;line-height:1.65;font-size:13.5px"><b style="color:var(--accent2)">O que quero:</b> '+esc(m.q1)+'<br><b style="color:var(--accent2)">Por quê:</b> '+esc(m.q2)+'<br><b style="color:var(--accent2)">Como vai ser:</b> '+esc(m.q3)+'<br><b style="color:var(--accent2)">O que sacrifico:</b> '+esc(m.q4)+'</div></details></div>';}).join('');}
+function setMetaPct(i,v){C.metas[i].pct=+v;save();var d=document.querySelectorAll('#metas .card')[i];if(d){d.querySelector('.bar>span').style.width=v+'%';d.querySelector('b[style*="width:38px"]').textContent=v+'%';}}
+
+/* --- 7b. PATRIMÔNIO --- */
+function renderPatr(){var a=C.patrimonioAtual||0,m=C.patrimonioMeta||50000000;var pct=Math.min(100,Math.round(a/m*100));var bar=document.getElementById('patrBar');if(bar)bar.innerHTML='<span style="width:'+pct+'%"></span>';var t=document.getElementById('patrTxt');if(t)t.textContent=brl(a)+' de '+brl(m)+' ('+pct+'%)';var inp=document.getElementById('patrIn');if(inp&&document.activeElement!==inp)inp.value=a||'';}
+function setPatr(){C.patrimonioAtual=+(document.getElementById('patrIn').value||0);save();renderPatr();}
+
+/* --- 4. PESSOAS / RELAÇÕES --- */
+function renderPessoas(){var c=document.getElementById('pessoas');if(!c)return;c.innerHTML=C.pessoas.map(function(p,i){var dd=diasDesde(p.ultima);var atras=dd!=null&&dd>p.cad;var cor=p.ultima?(atras?'var(--red,#f87171)':'var(--ok,#34d399)'):'var(--muted)';var txt=p.ultima?('última conversa real há '+dd+' dia(s)'+(atras?' — passou da cadência de '+p.cad+'d ⚠️':' · cadência '+p.cad+'d')):'sem registro ainda · cadência '+p.cad+'d';return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>'+esc(p.nome)+'</b><div style="color:var(--muted);font-size:13px">'+esc(p.rel)+'</div></div><span class="del-x" onclick="delPessoa('+i+')">×</span></div><div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap"><span style="font-size:13px;color:'+cor+'">'+txt+'</span><button class="btn sm ghost" onclick="convHoje('+i+')" style="margin-left:auto">Conversei hoje</button></div></div>';}).join('')+'<div class="card"><div class="flex"><input id="pes-n" placeholder="Nome"><input id="pes-c" type="number" placeholder="cadência (dias)" style="max-width:140px"></div><input id="pes-r" placeholder="Relação / observação" style="margin-top:8px"><div class="btn-row"><button class="btn sm" onclick="addPessoa()">+ pessoa</button></div></div>';}
+function convHoje(i){C.pessoas[i].ultima=TK;save();renderPessoas();}
+function delPessoa(i){if(!confirm('Remover '+C.pessoas[i].nome+'?'))return;C.pessoas.splice(i,1);save();renderPessoas();}
+function addPessoa(){var n=val('pes-n');if(!n)return;C.pessoas.push({nome:n,rel:val('pes-r'),cad:+(document.getElementById('pes-c').value||7),ultima:''});save();renderPessoas();}
+
+/* --- 5. CORPO / ENERGIA --- */
+function renderCorpo(){var host=document.getElementById('corpo');if(!host)return;var d=dia();if(!d.corpo)d.corpo={treino:false,sono:'',agua:0};if(!C.limpoDesde)C.limpoDesde=TK;var wd=weekDates();var treinos=0;wd.forEach(function(k){var x=S.dias[k];if(x&&x.corpo&&x.corpo.treino)treinos++;});var streak=diasDesde(C.limpoDesde);if(streak==null||streak<0)streak=0;
+  host.innerHTML=
+  '<div class="card"><h2>💪 Hoje</h2>'
+  +'<div class="chk'+(d.corpo.treino?' done':'')+'" onclick="tgTreino(this)"><div class="box">'+(d.corpo.treino?'✓':'')+'</div><span>Treino feito</span></div>'
+  +'<label style="color:var(--muted);font-size:13px;display:block;margin-top:12px">Sono na noite passada (horas)</label><input type="number" step="0.5" id="c-sono" value="'+(d.corpo.sono||'')+'" oninput="setCorpo(\'sono\',this.value)" placeholder="7">'
+  +'<label style="color:var(--muted);font-size:13px;display:block;margin-top:8px">Água hoje: <b id="aguaN">'+(d.corpo.agua||0)+'</b> copo(s)</label><div class="btn-row"><button class="btn sm ghost" onclick="agua(-1)">−</button><button class="btn sm" onclick="agua(1)">+ copo</button></div></div>'
+  +'<div class="card"><h2>📆 Semana</h2><div class="mcard"><div class="l">Treinos essa semana (meta 5)</div><div class="v">'+treinos+'/7</div></div></div>'
+  +'<div class="card"><h2>🚭 Dias limpos <span class="sub">sem recaída</span></h2><div class="paz-val">'+streak+'</div><div style="text-align:center;color:var(--muted);font-size:13px">dias firmes</div><div class="btn-row" style="justify-content:center;margin-top:10px"><button class="btn sm ghost" onclick="recai()">Registrar recaída (zerar)</button></div></div>';}
+function tgTreino(el){var d=dia();if(!d.corpo)d.corpo={};d.corpo.treino=!d.corpo.treino;save();renderCorpo();}
+function setCorpo(k,v){var d=dia();if(!d.corpo)d.corpo={};d.corpo[k]=v;save();}
+function agua(n){var d=dia();if(!d.corpo)d.corpo={agua:0};d.corpo.agua=Math.max(0,(d.corpo.agua||0)+n);save();var el=document.getElementById('aguaN');if(el)el.textContent=d.corpo.agua;}
+function recai(){if(!confirm('Zerar o contador de dias limpos? (registra recaída hoje)'))return;C.limpoDesde=TK;save();renderCorpo();}
+
+/* --- 7a. MODELOS --- */
+function renderModelos(){var c=document.getElementById('modelos');if(!c)return;c.innerHTML=C.modelos.map(function(m,i){return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(m.nome)+'</b><span class="del-x" onclick="delModelo('+i+')">×</span></div><div style="color:var(--muted);font-size:13px;margin:3px 0 8px">Foco: '+esc(m.foco)+'</div><label style="color:var(--muted);font-size:12px">O que apliquei dele (1 crença / 1 hábito / 1 fala):</label><input type="text" value="'+esc(m.aplicado||'')+'" oninput="setModelo('+i+',this.value)" placeholder="o que copiei e testei"></div>';}).join('')+'<div class="card"><div class="flex"><input id="mod-n" placeholder="Novo modelo"><input id="mod-f" placeholder="Foco"></div><div class="btn-row"><button class="btn sm" onclick="addModelo()">+ modelo</button></div></div>';}
+function setModelo(i,v){C.modelos[i].aplicado=v;save();}
+function delModelo(i){C.modelos.splice(i,1);save();renderModelos();}
+function addModelo(){var n=val('mod-n');if(!n)return;C.modelos.push({nome:n,foco:val('mod-f'),aplicado:''});save();renderModelos();}
+
+/* --- 2. LEMBRETES --- */
+function renderLembretes(){var c=document.getElementById('lembretes');if(!c)return;c.innerHTML=C.lembretes.map(function(l,i){return '<div class="edit-row"><span onclick="tgLemb('+i+',this)" style="cursor:pointer;font-size:17px;flex-shrink:0">'+(l.on?'🔔':'🔕')+'</span><input type="text" value="'+esc(l.hora)+'" style="max-width:74px" oninput="C.lembretes['+i+'].hora=this.value;save()"><input type="text" value="'+esc(l.txt)+'" oninput="C.lembretes['+i+'].txt=this.value;save()"><span class="del-x" onclick="delLemb('+i+')">×</span></div>';}).join('')+'<div class="flex" style="margin-top:6px"><input id="lb-h" placeholder="08:00" style="max-width:74px"><input id="lb-t" placeholder="Novo lembrete"></div><div class="btn-row"><button class="btn sm" onclick="addLemb()">+ lembrete</button><button class="btn sm ghost" onclick="ativarNotif()">🔔 Ativar no navegador</button></div><p style="color:var(--muted);font-size:12px;margin-top:8px;line-height:1.5">No protótipo a notificação toca enquanto esta aba estiver aberta. Quando isso entrar no app, viram lembretes de verdade (push + WhatsApp) nos horários — mesmo com o app fechado.</p>';}
+function tgLemb(i,el){C.lembretes[i].on=!C.lembretes[i].on;el.textContent=C.lembretes[i].on?'🔔':'🔕';save();}
+function delLemb(i){C.lembretes.splice(i,1);save();renderLembretes();}
+function addLemb(){var t=val('lb-t');if(!t)return;C.lembretes.push({hora:val('lb-h')||'08:00',txt:t,on:true});save();renderLembretes();}
+function ativarNotif(){if(!('Notification'in window)){alert('Esse navegador não suporta notificações.');return;}Notification.requestPermission().then(function(p){if(p==='granted'){new Notification('Meu Protocolo',{body:'Notificações ativadas ✓ Vou te avisar nos horários enquanto esta aba estiver aberta.'});agendarLembretes();}else{alert('Permissão negada. Ative nas configurações do navegador pra testar.');}});}
+var _lembFired={};
+function agendarLembretes(){if(window._lembInt)clearInterval(window._lembInt);window._lembInt=setInterval(function(){if(!('Notification'in window)||Notification.permission!=='granted')return;var now=new Date();var hm=('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2);C.lembretes.forEach(function(l,i){var key=todayKey()+hm+i;if(l.on&&l.hora===hm&&!_lembFired[key]){_lembFired[key]=1;new Notification('⚡ '+l.txt,{body:l.hora});}});},30000);}
+if(('Notification'in window)&&Notification.permission==='granted')agendarLembretes();
+
+/* --- 3. COACH (heurístico; a IA real do app entra depois) --- */
+function coachLeitura(){var d30=lastNDates(30).map(dayStat).filter(Boolean);var pazArr=d30.filter(function(s){return s.paz!=null;}).map(function(s){return s.paz;});var paz=pazArr.length?avg(pazArr).toFixed(1):'—';var ritPct=d30.length?Math.round(avg(d30.map(function(s){return s.rit/Math.max(1,s.tot);}))*100):0;
+  var idxF=-1;C.dailyChecks.forEach(function(t,i){if(idxF<0&&/filha/i.test(t))idxF=i;});var cntF=0;weekDates().forEach(function(k){var dd=S.dias[k];if(dd&&dd.checks&&dd.checks[idxF])cntF++;});
+  var dec7=S.decisoes.filter(function(x){return lastNDates(7).indexOf(x.data)>=0;}).length;
+  var atrasados=C.pessoas.filter(function(p){var dd=diasDesde(p.ultima);return p.ultima&&dd>p.cad;}).map(function(p){return p.nome;});
+  var t='';
+  t+='<b style="color:var(--accent2)">📊 Leitura da sua rotina</b><br>';
+  t+=(d30.length?('Nos últimos 30 dias você registrou '+d30.length+' dias, com '+ritPct+'% dos rituais cumpridos e paz média '+paz+'/10. '):'Ainda tem pouco registro — quanto mais você marcar os dias, mais afiada fica esta leitura. ');
+  t+=(ritPct&&ritPct<60?'A consistência ainda é o gargalo — e o playbook é claro: não falta talento, falta consistência sistêmica.':(ritPct?'A consistência está boa — segura o ritmo.':''));
+  t+='<br><br><b style="color:var(--accent2)">🎯 Seu gap maior</b><br>';
+  if(idxF>=0){t+=(cntF<5?('O bloqueio com a filha saiu '+cntF+'/7 essa semana. Esse é o ponto que mais te custa em 5 anos — empresa reconstrói, filha de 7 vira adolescente uma vez só. Se for pra blindar UMA coisa essa semana, é essa.'):('O bloqueio com a filha está firme ('+cntF+'/7) — o hábito mais importante e você está segurando. 🔥'));}
+  else{t+='Marque o bloqueio com a filha nos checks pra eu acompanhar seu GAP maior aqui.';}
+  if(atrasados.length){t+='<br>Fora da cadência agora: <b>'+esc(atrasados.join(', '))+'</b>. Marca uma conversa real.';}
+  t+='<br><br><b style="color:var(--accent2)">❓ A pergunta que você está evitando</b><br>';
+  var qs=['Qual decisão Tipo 1 você já sabe a resposta e continua adiando?','Se a Axcend zerasse amanhã, você começaria o mesmo de novo? Se não, o que isso diz da sua paixão hoje?','Você está cuidando das pessoas ou fugindo do atrito? (empatia nociva também é fuga)','O que você está tolerando que já virou parte da cultura — sua e da empresa?','Onde seu discurso e sua agenda não batem essa semana?'];
+  t+='<i>"'+qs[d30.length%qs.length]+'"</i>';
+  if(dec7===0)t+='<br><br>👉 E registra pelo menos 1 decisão essa semana. 1 decisão difícil = 1 músculo.';
+  document.getElementById('coachOut').innerHTML=t;}
+
+/* --- 6. REVISÃO DA SEMANA --- */
+function weekKeyMon(){return weekDates()[0];}
+function renderRevisao(){if(!S.revisoes)S.revisoes={};var wk=weekKeyMon();var r=S.revisoes[wk]||{};var g=function(id){return document.getElementById(id);};if(g('rev-c')&&document.activeElement!==g('rev-c'))g('rev-c').value=r.comprometido||'';if(g('rev-f')&&document.activeElement!==g('rev-f'))g('rev-f').value=r.feito||'';if(g('rev-p')&&document.activeElement!==g('rev-p'))g('rev-p').value=r.proxima||'';var keys=Object.keys(S.revisoes).sort().reverse().slice(0,4);var hh=g('revHist');if(hh)hh.innerHTML=keys.map(function(k){var x=S.revisoes[k];if(!x||(!x.feito&&!x.proxima))return '';return '<div class="hist"><b>semana de '+fmt(k)+'</b><br><span style="color:var(--muted)">Fiz: '+esc(x.feito||'—')+' · Próxima: '+esc(x.proxima||'—')+'</span></div>';}).filter(Boolean).join('');}
+function saveRevisao(){if(!S.revisoes)S.revisoes={};S.revisoes[weekKeyMon()]={comprometido:val('rev-c'),feito:val('rev-f'),proxima:val('rev-p')};save();renderRevisao();alert('Revisão da semana salva. 🔄');}
+
+/* boot dos módulos novos */
+renderMetas();renderPatr();renderPessoas();renderCorpo();renderModelos();renderLembretes();renderRevisao();
 </script>
 </body>
 </html>
