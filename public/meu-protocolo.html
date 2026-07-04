@@ -54,6 +54,8 @@ main{padding:24px 28px 64px;max-width:1080px;width:100%}
 .chk.done span{color:var(--muted);text-decoration:line-through}
 .chk span{font-size:14px}
 input[type=text],textarea,input[type=number],input[type=time],input[type=date]{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:11px 12px;font-size:14px;font-family:inherit;margin-bottom:8px}
+select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:9px 11px;font-size:13.5px;font-family:inherit;cursor:pointer}
+.repb{display:inline-block;margin-left:8px;font-size:10.5px;font-weight:700;color:var(--azul);background:rgba(27,156,250,.14);padding:2px 7px;border-radius:20px;vertical-align:middle}
 textarea{resize:vertical;min-height:70px}
 input:focus,textarea:focus{outline:none;border-color:var(--azul)}
 input[type=range]{width:100%;accent-color:var(--azul);margin-bottom:0}
@@ -227,7 +229,7 @@ body.mp-light .filha,body.mp-light .filha .s,body.mp-light .filha .cd small{colo
     <div class="card"><h2>🗓️ Minhas demandas <span class="sub">toque num dia e adicione</span></h2>
       <div class="wkstrip" id="agWeek"></div>
       <div class="flex"><input type="time" id="agHora" style="max-width:120px" value="09:00"><input type="text" id="agTxt" placeholder="Nova demanda / compromisso"></div>
-      <div class="btn-row"><button class="btn sm" onclick="agAdd()">+ adicionar no dia</button></div>
+      <div class="flex" style="margin-top:2px;align-items:center;flex-wrap:wrap;gap:8px"><span class="muted" style="font-size:12.5px">Repetir:</span><select id="agRep"><option value="once">Só neste dia</option><option value="daily">Todo dia</option><option value="weekly" id="agRepWeekly">Toda semana</option></select><button class="btn sm" onclick="agAdd()">+ adicionar</button></div>
       <div id="agList" style="margin-top:14px"></div></div>
     <div class="card"><h2>⏰ Rotina fixa <span class="sub">seu dia ideal</span></h2><div id="agenda"></div></div>
   </section>
@@ -710,8 +712,8 @@ function renderDashboard(){var host=document.getElementById('dashRings');if(!hos
  var bh=fil?fil.h:'19:00';var now=new Date();var pp=bh.split(':');var tg=new Date();tg.setHours(+pp[0],+pp[1],0,0);var dm=Math.round((tg-now)/60000);
  var cd=dm>0?('faltam '+(dm>=60?(Math.floor(dm/60)+'h'+(dm%60?(' '+(dm%60)+'m'):'')):(dm+'min'))):('foi às '+bh);
  var db=document.getElementById('dashBloqueio');if(db)db.innerHTML='<div class="k">Bloqueio sagrado</div><div class="hh">'+bh+'</div><div class="d">1 hora com a filha</div><div class="s">🔒 celular longe · ela escolhe a brincadeira</div><div class="cd"><b>'+cd+'</b><small>não tem rewind</small></div>';
- var today=(C.demandas||[]).filter(function(x){return x.data===TK;}).sort(function(a,b){if(!!a.done!==!!b.done)return a.done?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
- var ah='';if(!today.length)ah='<p class="muted">Sem demandas pra hoje. Adicione na aba Agenda.</p>';else today.forEach(function(x){ah+='<div class="dem'+(x.done?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\')">'+(x.done?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+'</div></div>';});
+ var today=(C.demandas||[]).filter(function(x){return demOccursOn(x,TK);}).sort(function(a,b){var da=demIsDone(a,TK),db=demIsDone(b,TK);if(da!==db)return da?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
+ var ah='';if(!today.length)ah='<p class="muted">Sem demandas pra hoje. Adicione na aba Agenda.</p>';else today.forEach(function(x){var dn=demIsDone(x,TK);ah+='<div class="dem'+(dn?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\',\''+TK+'\')">'+(dn?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+demBadge(x)+'</div></div>';});
  var da=document.getElementById('dashAgenda');if(da)da.innerHTML=ah;
  var dmets=document.getElementById('dashMetas');if(dmets)dmets.innerHTML=C.metas.slice(0,4).map(function(m){return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:5px"><span>'+esc(m.nome.split('(')[0].trim())+'</span><span class="muted">'+m.pct+'%</span></div><span class="bar" style="display:block"><span style="width:'+m.pct+'%"></span></span></div>';}).join('');
  var qs=['Qual decisão Tipo 1 você já sabe a resposta e continua adiando?','Você está cuidando das pessoas ou fugindo do atrito?','Onde seu discurso e sua agenda não batem essa semana?'];
@@ -719,16 +721,20 @@ function renderDashboard(){var host=document.getElementById('dashRings');if(!hos
  var dp=document.getElementById('dashPessoas');if(dp)dp.innerHTML=C.pessoas.map(function(p){var dd=diasDesde(p.ultima);var atras=dd!=null&&dd>p.cad;var cls=p.ultima?(atras?'warn':'ok'):'off';var st=p.ultima?(atras?(dd+' dias sem falar ⚠️'):('em dia · há '+dd+'d')):'sem registro';return '<div class="pes"><span class="sdot '+cls+'"></span><b>'+esc(p.nome)+'</b><span class="st'+(atras?' a':'')+'">'+st+'</span></div>';}).join('');
 }
 var agSelKey=TK;
-function renderAgenda(){var w=document.getElementById('agWeek');if(!w)return;if(!C.demandas)C.demandas=[];var wd=weekDates();var nm=['dom','seg','ter','qua','qui','sex','sáb'];
- w.innerHTML=wd.map(function(k){var dd=new Date(k+'T12:00:00');var c=C.demandas.filter(function(x){return x.data===k;}).length;return '<div class="wkday'+(k===agSelKey?' sel':'')+'" onclick="agSel(\''+k+'\')"><div class="wn">'+nm[dd.getDay()]+'</div><div class="wd">'+dd.getDate()+'</div><div class="wc">'+(c?(c+' item'+(c>1?'s':'')):'—')+'</div></div>';}).join('');
- var list=C.demandas.filter(function(x){return x.data===agSelKey;}).sort(function(a,b){if(!!a.done!==!!b.done)return a.done?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
+function demOccursOn(dm,k){var rep=dm.rep||'once';if(rep==='once')return dm.data===k;if(rep==='daily')return true;if(rep==='weekly')return new Date(dm.data+'T12:00:00').getDay()===new Date(k+'T12:00:00').getDay();return false;}
+function demIsDone(dm,k){if((dm.rep||'once')==='once')return !!dm.done;var d=S.dias[k];return !!(d&&d.demDone&&d.demDone[dm.id]);}
+function demBadge(dm){var DOWL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];var r=dm.rep||'once';if(r==='daily')return '<span class="repb">🔁 todo dia</span>';if(r==='weekly')return '<span class="repb">🔁 toda '+DOWL[new Date(dm.data+'T12:00:00').getDay()]+'</span>';return '';}
+function renderAgenda(){var w=document.getElementById('agWeek');if(!w)return;if(!C.demandas)C.demandas=[];var wd=weekDates();var nm=['dom','seg','ter','qua','qui','sex','sáb'];var DOWL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+ w.innerHTML=wd.map(function(k){var dd=new Date(k+'T12:00:00');var c=C.demandas.filter(function(x){return demOccursOn(x,k);}).length;return '<div class="wkday'+(k===agSelKey?' sel':'')+'" onclick="agSel(\''+k+'\')"><div class="wn">'+nm[dd.getDay()]+'</div><div class="wd">'+dd.getDate()+'</div><div class="wc">'+(c?(c+' item'+(c>1?'s':'')):'—')+'</div></div>';}).join('');
+ var rw=document.getElementById('agRepWeekly');if(rw)rw.textContent='Toda '+DOWL[new Date(agSelKey+'T12:00:00').getDay()];
+ var list=C.demandas.filter(function(x){return demOccursOn(x,agSelKey);}).sort(function(a,b){var da=demIsDone(a,agSelKey),db=demIsDone(b,agSelKey);if(da!==db)return da?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
  var L=document.getElementById('agList');
  if(!list.length){L.innerHTML='<p class="muted">Nada nesse dia ainda.</p>';}
- else{L.innerHTML=list.map(function(x){return '<div class="dem'+(x.done?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\')">'+(x.done?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+'</div><span class="del-x" onclick="agDel(\''+x.id+'\')">×</span></div>';}).join('');}
+ else{L.innerHTML=list.map(function(x){var dn=demIsDone(x,agSelKey);return '<div class="dem'+(dn?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\',\''+agSelKey+'\')">'+(dn?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+demBadge(x)+'</div><span class="del-x" onclick="agDel(\''+x.id+'\')">×</span></div>';}).join('');}
 }
 function agSel(k){agSelKey=k;renderAgenda();}
-function agAdd(){var t=val('agTxt');if(!t)return;var h=document.getElementById('agHora').value||'';if(!C.demandas)C.demandas=[];C.demandas.push({id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),data:agSelKey,hora:h,txt:t,done:false});document.getElementById('agTxt').value='';save();renderAgenda();renderDashboard();}
-function agToggle(id){var x=null;C.demandas.forEach(function(y){if(y.id===id)x=y;});if(x){x.done=!x.done;save();renderAgenda();renderDashboard();}}
+function agAdd(){var t=val('agTxt');if(!t)return;var h=document.getElementById('agHora').value||'';var rep=(document.getElementById('agRep')||{}).value||'once';if(!C.demandas)C.demandas=[];C.demandas.push({id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),data:agSelKey,hora:h,txt:t,done:false,rep:rep});document.getElementById('agTxt').value='';save();renderAgenda();renderDashboard();}
+function agToggle(id,k){var dm=null;C.demandas.forEach(function(y){if(y.id===id)dm=y;});if(!dm)return;if((dm.rep||'once')==='once'){dm.done=!dm.done;}else{if(!S.dias[k])S.dias[k]={obj:['','',''],checks:{},demDone:{}};if(!S.dias[k].demDone)S.dias[k].demDone={};S.dias[k].demDone[id]=!S.dias[k].demDone[id];}save();renderAgenda();renderDashboard();}
 function agDel(id){C.demandas=C.demandas.filter(function(y){return y.id!==id;});save();renderAgenda();renderDashboard();}
 renderAgenda();renderDashboard();
 
