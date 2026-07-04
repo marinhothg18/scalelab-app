@@ -415,7 +415,9 @@ const SEED={
     {hora:"22:30",txt:"Check-in noturno + decisão do dia",on:true}
   ]
 };
-const KEY="painel_novo_thiago_v2";let LS_OK=true;let S=null;
+const KEY="sl_protocolo";let LS_OK=true;let S=null;
+try{ if(!localStorage.getItem(KEY)){ var _oldMP=localStorage.getItem("painel_novo_thiago_v2"); if(_oldMP) localStorage.setItem(KEY,_oldMP); } }catch(e){}
+function mpPush(){try{ if(window.parent&&window.parent!==window){ window.parent.postMessage({__mp:'push'},location.origin); } }catch(e){}}
 try{S=JSON.parse(localStorage.getItem(KEY)||"null");}catch(e){LS_OK=false;}
 if(!S){S={config:JSON.parse(JSON.stringify(SEED)),dias:{},decisoes:[],aprendizados:[]};}
 S.decisoes=S.decisoes||[];S.aprendizados=S.aprendizados||[];
@@ -429,8 +431,8 @@ if(C.patrimonioAtual===undefined)C.patrimonioAtual=0;
 if(C.patrimonioMeta===undefined)C.patrimonioMeta=50000000;
 if(!C.limpoDesde)C.limpoDesde="";
 if(!S.revisoes)S.revisoes={};
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){LS_OK=false;}flash();}
-function saveSafe(){try{localStorage.setItem(KEY,JSON.stringify(S));flash();}catch(e){LS_OK=false;alert('A foto ficou grande demais. Tenta uma imagem menor.');}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){LS_OK=false;}mpPush();flash();}
+function saveSafe(){try{localStorage.setItem(KEY,JSON.stringify(S));mpPush();flash();}catch(e){LS_OK=false;alert('A foto ficou grande demais. Tenta uma imagem menor.');}}
 function flash(){const f=document.getElementById('flash');f.classList.add('show');clearTimeout(window._f);window._f=setTimeout(()=>f.classList.remove('show'),900);}
 function todayKey(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 const TK=todayKey();
