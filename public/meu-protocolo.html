@@ -56,6 +56,8 @@ main{padding:24px 28px 64px;max-width:1080px;width:100%}
 input[type=text],textarea,input[type=number],input[type=time],input[type=date]{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:11px 12px;font-size:14px;font-family:inherit;margin-bottom:8px}
 select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:9px 11px;font-size:13.5px;font-family:inherit;cursor:pointer}
 .repb{display:inline-block;margin-left:8px;font-size:10.5px;font-weight:700;color:var(--azul);background:rgba(27,156,250,.14);padding:2px 7px;border-radius:20px;vertical-align:middle}
+.urge{margin-top:12px;padding:14px;border-radius:12px;background:linear-gradient(150deg,rgba(27,156,250,.16),rgba(47,210,122,.09));border:1px solid rgba(27,156,250,.28)}
+.pchip{display:inline-block;margin:3px 4px 3px 0}
 textarea{resize:vertical;min-height:70px}
 input:focus,textarea:focus{outline:none;border-color:var(--azul)}
 input[type=range]{width:100%;accent-color:var(--azul);margin-bottom:0}
@@ -276,6 +278,8 @@ body.mp-light .filha,body.mp-light .filha .s,body.mp-light .filha .cd small{colo
   </section>
 
   <section class="tab" id="tab-corpo"><div id="corpo"></div></section>
+  <section class="tab" id="tab-vicios"><div id="vicios"></div></section>
+  <section class="tab" id="tab-foco"><div id="focoBox"></div></section>
 
   <section class="tab" id="tab-modelos">
     <div class="card" style="background:var(--panel2)"><p class="muted">Sucesso deixa pistas. Modele quem já chegou — decifre crenças, fisiologia, foco, linguagem e hábitos. 1 modelo por vez, 30 dias cada.</p></div>
@@ -431,6 +435,10 @@ const SEED={
     {hora:"08:00",txt:"Declarações da manhã + espelho de coerência",on:true},
     {hora:"19:00",txt:"Bloqueio sagrado com a filha (sem celular)",on:true},
     {hora:"22:30",txt:"Check-in noturno + decisão do dia",on:true}
+  ],
+  vicios:[
+    {id:"v1",nome:"Rolar rede social sem fim",porque:"Fragmenta minha atenção e come horas que eram pra construir o que importa. Quero foco, não dopamina barata.",gatilho:"Ansiedade, tédio, pausa entre tarefas",troca:"Guardo o celular em outro cômodo e respiro 3x fundo",limpoDesde:""},
+    {id:"v2",nome:"Procrastinar no difícil",porque:"Adiar o que dói é adiar a vida. Decisão dolorosa cedo é o presente que dou pra mim amanhã.",gatilho:"Tarefa grande ou que dá medo",troca:"Faço só o primeiro micro-passo por 5 minutos",limpoDesde:""}
   ]
 };
 const KEY="sl_protocolo";let LS_OK=true;let S=null;
@@ -444,7 +452,7 @@ var C=S.config;
 if(C.visionBoard===undefined)C.visionBoard="";
 (C.caracteristicas||[]).forEach((c,i)=>{if(!c.sig&&SEED.caracteristicas[i])c.sig=SEED.caracteristicas[i].sig;});
 C.habitos=C.habitos.map(function(h){var arr=h[1]||[];while(arr.length<21)arr.push(false);return [h[0],arr.slice(0,21)];});
-["metas","pessoas","modelos","lembretes"].forEach(function(k){ if(!C[k]) C[k]=JSON.parse(JSON.stringify(SEED[k])); });
+["metas","pessoas","modelos","lembretes","vicios"].forEach(function(k){ if(!C[k]) C[k]=JSON.parse(JSON.stringify(SEED[k])); });
 if(C.patrimonioAtual===undefined)C.patrimonioAtual=0;
 if(C.patrimonioMeta===undefined)C.patrimonioMeta=50000000;
 if(!C.limpoDesde)C.limpoDesde="";
@@ -467,11 +475,12 @@ var GROUPS=[
  {g:'metas',label:'Metas',ic:'◆',tabs:[['metas','Metas 2026'],['sonhos','Sonhos']]},
  {g:'pessoas',label:'Pessoas',ic:'♥',tabs:[['pessoas','Pessoas']]},
  {g:'corpo',label:'Corpo',ic:'⚡',tabs:[['corpo','Corpo']]},
+ {g:'dominio',label:'Domínio',ic:'◈',tabs:[['vicios','Vícios'],['foco','Foco']]},
  {g:'mente',label:'Mente',ic:'✦',tabs:[['mente','Mente / LdA'],['identidade','Identidade'],['valores','Valores'],['lideranca','Liderança'],['fe','Fé']]},
  {g:'decisoes',label:'Decisões',ic:'⚑',tabs:[['decisoes','Decisões']]},
  {g:'analise',label:'Análise',ic:'▣',tabs:[['analise','Análise']]}
 ];
-var TITLES={hoje:['painel pessoal','Bom dia, Thiago 👊'],agenda:['sua semana','Agenda'],manha:['comece bem','Manhã'],noite:['feche o dia','Noite'],rituais:['execução','Rituais & lembretes'],habitos:['21 dias','Hábitos'],metas:['direção','Metas 2026'],sonhos:['visão','Sonhos'],pessoas:['seu gap maior','Pessoas & relações'],corpo:['energia','Corpo'],mente:['fundamentos','Mente / LdA'],identidade:['quem eu sou','Identidade'],valores:['bússola','Valores'],lideranca:['líder','Liderança'],fe:['força','Fé'],decisoes:['músculo','Decisões'],analise:['o espelho','Análise']};
+var TITLES={hoje:['painel pessoal','Bom dia, Thiago 👊'],agenda:['sua semana','Agenda'],manha:['comece bem','Manhã'],noite:['feche o dia','Noite'],rituais:['execução','Rituais & lembretes'],habitos:['21 dias','Hábitos'],metas:['direção','Metas 2026'],sonhos:['visão','Sonhos'],pessoas:['seu gap maior','Pessoas & relações'],corpo:['energia','Corpo'],vicios:['autodomínio','Vícios & desejos'],foco:['sem procrastinar','Foco'],mente:['fundamentos','Mente / LdA'],identidade:['quem eu sou','Identidade'],valores:['bússola','Valores'],lideranca:['líder','Liderança'],fe:['força','Fé'],decisoes:['músculo','Decisões'],analise:['o espelho','Análise']};
 function buildNav(){var n=document.getElementById('nav');n.innerHTML='';GROUPS.forEach(function(gr){var b=document.createElement('button');b.innerHTML='<span class="ic">'+gr.ic+'</span> '+gr.label;b.dataset.g=gr.g;b.onclick=function(){openGroup(gr.g);};n.appendChild(b);});}
 function openGroup(g){var gr=null;GROUPS.forEach(function(x){if(x.g===g)gr=x;});if(!gr)return;
  document.querySelectorAll('#nav button').forEach(function(b){b.classList.toggle('on',b.dataset.g===g);});
@@ -481,7 +490,7 @@ function openGroup(g){var gr=null;GROUPS.forEach(function(x){if(x.g===g)gr=x;});
 function setSub(t){document.querySelectorAll('#subnav button').forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});}
 function goTab(id){document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});var el=document.getElementById('tab-'+id);if(el)el.classList.add('active');
  var t=TITLES[id]||['','']; var eb=document.getElementById('eyebrow'),pt=document.getElementById('ptitle');if(eb)eb.textContent=t[0];if(pt)pt.textContent=t[1];
- if(id==='hoje')renderDashboard();if(id==='agenda')renderAgenda();if(id==='analise')renderAnalise();if(id==='corpo')renderCorpo();if(id==='pessoas')renderPessoas();}
+ if(id==='hoje')renderDashboard();if(id==='agenda')renderAgenda();if(id==='analise')renderAnalise();if(id==='corpo')renderCorpo();if(id==='pessoas')renderPessoas();if(id==='vicios')renderVicios();if(id==='foco')renderFoco();}
 buildNav();openGroup('hoje');
 function fmt(k){const p=k.split("-");return p[2]+"/"+p[1];}
 function val(id){return document.getElementById(id).value.trim();}
@@ -696,6 +705,40 @@ function coachLeitura(){var d30=lastNDates(30).map(dayStat).filter(Boolean);var 
 function weekKeyMon(){return weekDates()[0];}
 function renderRevisao(){if(!S.revisoes)S.revisoes={};var wk=weekKeyMon();var r=S.revisoes[wk]||{};var g=function(id){return document.getElementById(id);};if(g('rev-c')&&document.activeElement!==g('rev-c'))g('rev-c').value=r.comprometido||'';if(g('rev-f')&&document.activeElement!==g('rev-f'))g('rev-f').value=r.feito||'';if(g('rev-p')&&document.activeElement!==g('rev-p'))g('rev-p').value=r.proxima||'';var keys=Object.keys(S.revisoes).sort().reverse().slice(0,4);var hh=g('revHist');if(hh)hh.innerHTML=keys.map(function(k){var x=S.revisoes[k];if(!x||(!x.feito&&!x.proxima))return '';return '<div class="hist"><b>semana de '+fmt(k)+'</b><br><span style="color:var(--muted)">Fiz: '+esc(x.feito||'—')+' · Próxima: '+esc(x.proxima||'—')+'</span></div>';}).filter(Boolean).join('');}
 function saveRevisao(){if(!S.revisoes)S.revisoes={};S.revisoes[weekKeyMon()]={comprometido:val('rev-c'),feito:val('rev-f'),proxima:val('rev-p')};save();renderRevisao();alert('Revisão da semana salva. 🔄');}
+
+/* ===== DOMÍNIO: Vícios & Foco ===== */
+if(window._pomInt){clearInterval(window._pomInt);window._pomInt=null;}if(window._pomState)window._pomState.running=false;
+var _urgeOpen=null;
+function renderVicios(){var c=document.getElementById('vicios');if(!c)return;
+ C.vicios.forEach(function(v){if(!v.limpoDesde)v.limpoDesde=TK;});
+ var venc=(S.dias[TK]&&S.dias[TK].vencidas)||0;
+ var head='<div class="card" style="background:var(--card2)"><p class="muted">Vontade é uma <b style="color:var(--txt)">onda</b> 🌊 — sobe, atinge o pico e passa em ~15 min. Você não é a vontade; você é quem observa ela passar. Quando bater: interrompe o padrão, lembra do porquê, faz a troca.</p></div>';
+ var counter='<div class="card" style="text-align:center"><div class="paz-val" style="color:var(--ok);font-size:40px">'+venc+'</div><div class="muted">vontades vencidas hoje 💪</div></div>';
+ var cards=C.vicios.map(function(v,i){var streak=diasDesde(v.limpoDesde);if(streak==null||streak<0)streak=0;var open=(_urgeOpen===v.id);
+  var panel=open?('<div class="urge"><div style="font-weight:700;margin-bottom:8px">Respira fundo. Deixa a onda passar. 🌊</div><div class="mini"><b style="color:var(--txt)">Seu porquê:</b> '+esc(v.porque||"—")+'</div><div class="mini" style="margin-top:6px"><b style="color:var(--txt)">Faz isso agora:</b> '+esc(v.troca||"sai da situação e respira 3x")+'</div><div class="btn-row" style="margin-top:11px"><button class="btn sm" onclick="vicioResisti(\''+v.id+'\')">Passou — resisti 💪</button><button class="btn sm ghost" onclick="vicioRecaida(\''+v.id+'\')">Cedi 😔</button></div></div>'):'';
+  return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:16px">'+esc(v.nome)+'</b><span class="del-x" onclick="delVicio('+i+')">×</span></div><div style="display:flex;align-items:center;gap:14px;margin:10px 0"><div class="paz-val" style="font-size:32px;color:var(--ok)">'+streak+'</div><div class="muted">dias firme<br><span style="color:var(--laranja)">🔥 sem ceder</span></div></div><div class="mini"><b style="color:var(--txt)">Gatilho:</b> '+esc(v.gatilho||"—")+' → <b style="color:var(--txt)">Troca:</b> '+esc(v.troca||"—")+'</div><div class="btn-row" style="margin-top:11px"><button class="btn sm" onclick="vicioUrge(\''+v.id+'\')">🌊 Tô com vontade</button><button class="btn sm ghost" onclick="vicioRecaida(\''+v.id+'\')">Registrar recaída</button></div>'+panel+'</div>';}).join('');
+ var form='<div class="card"><div class="sec-title">Adicionar vício / desejo pra largar</div><input type="text" id="vic-n" placeholder="Nome (ex: pornografia, açúcar, rolar feed, bebida)"><input type="text" id="vic-p" placeholder="Por que você quer largar (seu porquê profundo)"><div class="flex"><input type="text" id="vic-g" placeholder="Gatilho (quando bate)"><input type="text" id="vic-t" placeholder="Troca (o que fazer no lugar)"></div><div class="btn-row"><button class="btn sm" onclick="addVicio()">+ adicionar</button></div></div>';
+ c.innerHTML=head+counter+cards+form;}
+function vicioUrge(id){_urgeOpen=(_urgeOpen===id?null:id);renderVicios();}
+function vicioResisti(id){var d=dia();d.vencidas=(d.vencidas||0)+1;_urgeOpen=null;save();renderVicios();renderDashboard();}
+function vicioRecaida(id){if(!confirm('Registrar recaída e zerar o contador? Sem culpa — recaída faz parte da subida. Só volta pro jogo.'))return;var v=null;C.vicios.forEach(function(x){if(x.id===id)v=x;});if(v)v.limpoDesde=TK;_urgeOpen=null;save();renderVicios();}
+function addVicio(){var n=val('vic-n');if(!n)return;C.vicios.push({id:'vc'+Date.now().toString(36),nome:n,porque:val('vic-p'),gatilho:val('vic-g'),troca:val('vic-t'),limpoDesde:TK});save();renderVicios();}
+function delVicio(i){if(!confirm('Remover?'))return;C.vicios.splice(i,1);save();renderVicios();}
+function pomS(){if(!window._pomState)window._pomState={sec:25*60,running:false,mode:'foco'};return window._pomState;}
+function pomFmt(s){var m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+function pomRender(){var p=pomS();var d=document.getElementById('pomDisp');if(d)d.textContent=pomFmt(p.sec);var md=document.getElementById('pomMode');if(md)md.textContent=(p.mode==='foco'?'foco':'pausa')+' · '+(p.mode==='foco'?'25':'5')+' min';var b=document.getElementById('pomBtn');if(b)b.textContent=p.running?'⏸ Pausar':'▶ Começar';}
+function pomStart(){var p=pomS();if(p.running){p.running=false;if(window._pomInt)clearInterval(window._pomInt);pomRender();return;}p.running=true;if(window._pomInt)clearInterval(window._pomInt);window._pomInt=setInterval(pomTick,1000);pomRender();}
+function pomTick(){var p=pomS();if(p.sec>0){p.sec--;pomRender();return;}clearInterval(window._pomInt);p.running=false;if(p.mode==='foco'){var dd=dia();dd.pomo=(dd.pomo||0)+1;save();var pc=document.getElementById('pomCount');if(pc)pc.textContent=dd.pomo;try{if('Notification'in window&&Notification.permission==='granted')new Notification('Foco concluído! 🔥',{body:'25 min feitos. Faz 5 min de pausa.'});}catch(e){}p.mode='pausa';p.sec=5*60;}else{p.mode='foco';p.sec=25*60;}pomRender();}
+function pomReset(){if(window._pomInt)clearInterval(window._pomInt);window._pomState={sec:25*60,running:false,mode:'foco'};pomRender();}
+function setSapo(v){dia().sapo=v;save();}
+function tgSapo(el){var d=dia();d.sapoFeito=!d.sapoFeito;el.classList.toggle('done');el.querySelector('.box').textContent=d.sapoFeito?'✓':'';save();}
+function procDiag(i){var r=['<b>É medo (de falhar ou de julgamento).</b> Qual o PIOR cenário? Você sobrevive? Age mesmo com medo — coragem é agir apesar dele. Postura ereta, respira, começa.','<b>Falta clareza do próximo passo.</b> Escreve o PRÓXIMO micro-passo físico (abrir o doc, escrever 1 frase). Não a tarefa inteira — só o primeiro clique.','<b>Tá grande demais.</b> Quebra em blocos de 25 min e faz só o primeiro agora. A pergunta certa é "como eu começo?", não "como eu termino?".'][i];var el=document.getElementById('procResp');if(el){el.style.display='block';el.className='obs warn';el.innerHTML=r;}}
+function renderFoco(){var c=document.getElementById('focoBox');if(!c)return;var d=dia();var pomo=d.pomo||0;
+ c.innerHTML='<div class="card"><h2>🐸 O sapo do dia <span class="sub">a tarefa que você mais tá evitando</span></h2><p class="muted" style="margin-bottom:8px">Come o sapo primeiro. Se tem UMA coisa difícil pra hoje, é essa — faz antes de tudo, quando sua energia tá no pico.</p><input type="text" id="foco-sapo" placeholder="Qual a tarefa que você tá adiando?" value="'+esc(d.sapo||"")+'" oninput="setSapo(this.value)"><label class="chk'+(d.sapoFeito?' done':'')+'" onclick="tgSapo(this)" style="margin-top:8px"><div class="box">'+(d.sapoFeito?'✓':'')+'</div><span>Comi o sapo hoje 🔥</span></label></div>'
+ +'<div class="card" style="text-align:center"><h2 style="justify-content:center">⏱️ Timer de foco</h2><div id="pomDisp" style="font-size:48px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:1px">25:00</div><div class="muted" id="pomMode">foco · 25 min</div><div class="btn-row" style="justify-content:center;margin-top:12px"><button class="btn sm" id="pomBtn" onclick="pomStart()">▶ Começar</button><button class="btn sm ghost" onclick="pomReset()">↺ Zerar</button></div><div class="muted" style="margin-top:10px"><b id="pomCount" style="color:var(--txt)">'+pomo+'</b> sessões de foco hoje</div></div>'
+ +'<div class="card"><h2>⚡ Regra dos 5 minutos</h2><p class="muted">Não precisa fazer tudo. Só <b style="color:var(--txt)">começa</b> — compromete com 5 minutos. Depois que começou, continuar é fácil: a inércia vira a seu favor. Procrastinação morre no primeiro passo.</p></div>'
+ +'<div class="card"><h2>🧭 Por que tô adiando?</h2><div><button class="btn sm ghost pchip" onclick="procDiag(0)">É medo</button><button class="btn sm ghost pchip" onclick="procDiag(1)">Não sei o próximo passo</button><button class="btn sm ghost pchip" onclick="procDiag(2)">Tá grande demais</button></div><div id="procResp" class="obs warn" style="display:none;margin-top:10px"></div></div>';
+ pomRender();}
 
 /* boot dos módulos novos */
 renderMetas();renderPatr();renderPessoas();renderCorpo();renderModelos();renderLembretes();renderRevisao();
