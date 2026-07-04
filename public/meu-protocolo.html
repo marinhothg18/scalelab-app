@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meu Protocolo · Thiago Marinho (protótipo)</title>
+<style>
+  :root{--bg:#0f0f0f;--bg2:#1c1c1c;--bg3:#252525;--text:#fff;--text2:#888;--text3:#6b6b6b;--border:rgba(255,255,255,.07);--accent:#1B9CFA;--purple:#5b5ef4;--green:#639922;--red:#E24B4A;--grad:linear-gradient(135deg,#3E1493,#1B9CFA);}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:900px;margin:0 auto;padding:22px 18px 90px;}
+  .top{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap;}
+  .top h1{font-size:22px;font-weight:800;margin:0;}
+  .badge{font-size:11px;font-weight:700;color:var(--text2);background:var(--bg2);border:1px solid var(--border);padding:3px 9px;border-radius:20px;}
+  .sub{color:var(--text2);font-size:13px;margin:0 0 16px;}
+  .tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:18px;-webkit-overflow-scrolling:touch;}
+  .tab{flex-shrink:0;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .tab.on{background:var(--accent);color:#fff;border-color:transparent;}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px;}
+  .card h3{font-size:16px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:8px;}
+  .muted{color:var(--text3);font-size:12px;}
+  .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);}
+  .row:first-child{border-top:none;}
+  .ck{width:20px;height:20px;flex-shrink:0;border-radius:6px;border:2px solid var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;}
+  .ck.on{background:var(--green);border-color:var(--green);}
+  .hora{font-size:12px;color:var(--accent);font-weight:800;width:46px;flex-shrink:0;font-variant-numeric:tabular-nums;}
+  .txt{flex:1;font-size:14px;}
+  .txt.done{color:var(--text3);text-decoration:line-through;}
+  .del{color:var(--text3);cursor:pointer;font-size:13px;flex-shrink:0;}
+  input,textarea{background:var(--bg);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:9px 11px;font-size:13px;font-family:inherit;outline:none;}
+  input:focus,textarea:focus{border-color:var(--accent);}
+  .addrow{display:flex;gap:8px;margin-top:10px;}
+  .btn{background:var(--grad);border:none;color:#fff;border-radius:9px;padding:9px 15px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .btn.ghost{background:var(--bg3);color:var(--text2);}
+  .decl{font-size:14px;line-height:1.5;padding:7px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;}
+  .decl:first-child{border-top:none;}
+  .bar{flex:1;height:7px;background:var(--bg);border-radius:6px;overflow:hidden;}
+  .bar>span{display:block;height:7px;background:var(--grad);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
+  .son{background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .son .ph{height:110px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:26px;background-size:cover;background-position:center;}
+  .son .bd{padding:10px 12px;}
+  .pill{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;background:var(--bg);color:var(--text2);border:1px solid var(--border);}
+  a{color:var(--accent);}
+  .kv{display:flex;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid var(--border);}
+  .kv:first-child{border-top:none;}
+  .kv .k{color:var(--text3);width:120px;flex-shrink:0;}
+  .ord{display:flex;flex-direction:column;gap:2px;}
+  .arrow{cursor:pointer;color:var(--text3);font-size:11px;line-height:1;}
+  .save-hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border);color:var(--text2);font-size:12px;padding:7px 14px;border-radius:20px;opacity:0;transition:opacity .3s;}
+  .save-hint.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>🎯 Meu Protocolo</h1><span class="badge">protótipo · Thiago Marinho</span></div>
+  <p class="sub" id="hoje-data"></p>
+  <div class="tabs" id="tabs"></div>
+  <div id="view"></div>
+</div>
+<div class="save-hint" id="hint">salvo ✓</div>
+
+<script>
+var TABS=[["hoje","📅 Hoje"],["ident","🧭 Identidade"],["crencas","🧠 Crenças"],["valores","⚖️ Valores"],["sonhos","✨ Sonhos"],["ancoras","🎬 Âncoras"]];
+var DEFAULTS={
+  identidadeAlvo:"Construtor com paciência — ação intensa (Cardone) com estado interior sereno (Lei da Atração). Trabalho intenso, decisão dolorosa cedo, cobrança alta de si e dos outros — mas em paz, com gratidão genuína e fé real.",
+  agenda:[["05:30","Gratidão + visualização",false],["06:00","Treino",false],["08:30","Deep work — oferta",false],["12:00","Fé — leitura/oração",false],["16:00","Call de análise",false],["19:00","Bloqueio com a filha (sem celular)",false]],
+  objetivos:[["Fechar financeiro do mês",false],["1:1 com a liderança",false],["Definir OKR do trimestre",false]],
+  rituais:[["Diário de gratidão (manhã)",false],["Visualização 10 min",false],["Ler as declarações da manhã",false],["Treino",false],["Bloqueio 19h-20h com a filha",false],["Decisão do dia registrada (noite)",false]],
+  declaracoes:["Decisão dolorosa cedo é o presente que dou a mim mesmo amanhã.","Ativo proprietário é a única forma de liberdade real.","Cobrança é a maior demonstração de crença que ofereço ao meu time.","Esposa e filha são Tipo 1 — irreversíveis. Todo o resto é Tipo 2.","Aplicar > consumir. Conhecimento sem aplicação é peso.","Estado interior sereno é vantagem competitiva.","Eu construo o que sobra, não o que brilha."],
+  declCheck:[false,false,false,false,false,false,false],
+  decisaoHoje:"",
+  decisoes:[],
+  caracteristicas:[["Paixão",6,"Média","Definir 2-3 atividades que dão energia (estudar oferta, criativo vencedor, ler dados)."],["Crença",5,"Alta","Identificar as 3 crenças que mais limitam e aplicar NAC (21 dias cada)."],["Estratégia",3,"MÁXIMA","Escrever os 5 NÃOs da Axcend em 7 dias. Usar os 9 cursos destilados."],["Clareza de Valores",2,"MÁXIMA","Documentar e ordenar a lista de valores (aba Valores)."],["Energia",5,"Alta","Protocolo físico: sono 7h, treino 5x/sem, alimentação, hidratação."],["Poder de União",4,"Alta","Conversa franca com sócios; 2-3 msgs de vitória/dia pro time; 1:1 mensal."],["Comunicação",4,"Alta","Comunicação interna clara; confrontar sócios; escutar mais que falar."]],
+  coerencia:[["Vestuário","Cara correndo, casual sempre","Cuidado, alinhamento, intenção",false],["Fala","'tô na luta', 'tá apertado'","'tô construindo', 'essa fase ensinou'",false],["Decisão","Pressa, ansiedade, evita conflito","Pausa, paciência, confronta com cuidado",false],["Postura","Corpo curvado no telefone","Peito aberto, voz firme, contato visual",false],["Ritmo","Reativo, pula de tarefa em tarefa","Bloqueado, deep work, foco singular",false],["Família","Funcional, distraído","Presença total, escuta ativa, afeto deliberado",false]],
+  crencas:[
+    ["Tudo acontece por uma razão e um fim, e isso nos serve","Toda adversidade carrega a semente de um benefício equivalente ou maior.","Parcial — vira justificativa.","Diário noturno: 'o que esse dia me ensinou?' + como aplico amanhã.",false],
+    ["Não há fracassos, só resultados","Resultado ruim é feedback, não veredicto (Edison: 9.999 formas).","Parcial — falta responsabilidade.","Após decisão errada, documentar: resultado / hipótese errada / lição / próxima decisão.",false],
+    ["Aceite a responsabilidade pelos resultados","Se você não é a causa, não tem o controle. 'A culpa é minha' sem drama.","Forte — um dos pontos fortes reais.","Documentar TODA decisão importante e reabrir na data de revisão.",false],
+    ["Não é necessário entender tudo para usar tudo","Não precisa dominar 100% pra começar a usar 70%. Age com informação parcial.","Forte — mas calibrar: rápido em Tipo 2, paciente em Tipo 1.","Antes de cada decisão, classificar Tipo 1 (irreversível) ou Tipo 2.",false],
+    ["Pessoas são seu maior recurso — SEU GAP MAIOR","Sucesso duradouro não existe sem relação humana de qualidade.","Fraca — gap MAIOR (filha, esposa, sócios, mentor, time).","Auditoria das 5 pessoas próximas + bloqueio diário com a filha + achar mentor real.",false],
+    ["Trabalho é prazer","Casar o que faz com o que ama — propósito profundo na atividade central.","Parcial — virou peso.","Auditar as 10 atividades (energiza/neutro/drena); proteger 2-3 que energizam.",false],
+    ["Não há sucesso permanente sem confiança","Confiança = certeza da capacidade de sair de qualquer situação.","Forte na superfície, com sombra (síndrome do impostor).","Listar 20+ evidências de capacidade; 1 decisão difícil por semana.",false]
+  ],
+  desinstalar:[
+    ["Sempre arranjei várias vezes, vai dar certo","Confiança real toma decisão dolorosa hoje"],
+    ["Não posso ferir os sócios","Eu confronto com cuidado e firmeza, porque me importo"],
+    ["Família espera, agora é trabalho","Família é a fundação que sustenta o trabalho durável"],
+    ["Equilíbrio é mito, tenho que trabalhar muito","Ação intensa + estado interior sereno"],
+    ["Sou o cara que faz dinheiro surfando ondas","Eu construo o que sobra, não o que brilha"],
+    ["Mais um conteúdo vai resolver","Aplico antes de buscar mais"]
+  ],
+  nac:["Decida o que quer + o que te impede (1 frase cada).","Use uma alavanca: DOR + PRAZER massivos (5 min sentindo, não pensando).","Interrompa o padrão limitador (algo inesperado físico — levantar, bater palmas, água gelada).","Crie alternativa fortalecedora (nova crença, 10x em voz alta, postura firme).","Condicione 21 dias (toda manhã, 5 min: ler + visualizar + sentir).","Experimente em situação real. Mudança é instantânea; preparo leva 21 dias."],
+  valores:[
+    ["Família","Esposa + filha = Tipo 1. Irreversível. O playbook reseta isso."],
+    ["Integridade","Coerência entre o que pensa, fala e faz (Tchekhov: 'o homem é o que acredita')."],
+    ["Saúde / Energia","Filemon: quem ganha muito tem energia alta sempre. Sem isso, nada."],
+    ["Disciplina","Decisão dolorosa cedo. Cardone sem perder a serenidade da LdA."],
+    ["Aprendizado aplicado","Você consome pra evitar aplicar. Esse valor inverte o jogo."],
+    ["Verdade / Franqueza","Empatia nociva é mentira. Conversa difícil é cuidado."],
+    ["Construção (ativo permanente)","Cash flow é meio. Patrimônio que sobra é fim."],
+    ["Fé","Davi/Leonardo. Estado interior sereno depende disso."],
+    ["Contribuição / Impacto","Riqueza que não impacta é vazia. Ajude antes de receber (LdA)."],
+    ["Liberdade","Por trás dos R$ 50M existe liberdade — de tempo, geografia, escolha."]
+  ],
+  sonhos:[["Porsche 911 Carrera S preta","Em progresso",""],["Apartamento em Alphaville","Em progresso",""],["R$ 20 milhões de patrimônio","Meta 2026",""],["Casar na igreja","Planejado",""],["Trip Europa","Sonho",""],["20 mil seguidores","Meta 2026",""]],
+  ancoras:[["Exemplo — vídeo que dá fé","https://youtube.com"]]
+};
+var S=load();
+function load(){ try{var v=localStorage.getItem('mp_data'); if(v) return Object.assign(JSON.parse(JSON.stringify(DEFAULTS)),JSON.parse(v));}catch(e){} return JSON.parse(JSON.stringify(DEFAULTS)); }
+function save(){ try{localStorage.setItem('mp_data',JSON.stringify(S));}catch(e){} var h=document.getElementById('hint'); h.classList.add('show'); clearTimeout(window._ht); window._ht=setTimeout(function(){h.classList.remove('show');},900); }
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+var cur='hoje';
+function ckHTML(on){return '<span class="ck '+(on?'on':'')+'">'+(on?'✓':'')+'</span>';}
+
+function renderTabs(){ document.getElementById('tabs').innerHTML=TABS.map(function(t){return '<div class="tab '+(cur===t[0]?'on':'')+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</div>';}).join(''); }
+function go(t){cur=t;renderTabs();render();window.scrollTo(0,0);}
+
+function render(){ var el=document.getElementById('view'); el.innerHTML=({hoje:vHoje,ident:vIdent,crencas:vCrencas,valores:vValores,sonhos:vSonhos,ancoras:vAncoras}[cur])(); }
+
+function vHoje(){
+  var h='';
+  h+='<div class="card" style="background:var(--bg3);"><div class="muted">Identidade alvo</div><div style="font-size:14px;margin-top:4px;line-height:1.5;">'+esc(S.identidadeAlvo)+'</div></div>';
+  h+='<div class="card"><h3>📅 Agenda do dia</h3>'+S.agenda.map(function(r,i){return '<div class="row"><span class="hora">'+esc(r[0])+'</span><span class="ck '+(r[2]?'on':'')+'" onclick="tg(\'agenda\','+i+')">'+(r[2]?'✓':'')+'</span><span class="txt '+(r[2]?'done':'')+'">'+esc(r[1])+'</span><span class="del" onclick="rm(\'agenda\','+i+')">✕</span></div>';}).join('')+'<div class="addrow"><input id="ag-h" placeholder="09:00" style="width:70px"><input id="ag-t" placeholder="O que fazer…" style="flex:1"><button class="btn" onclick="addAgenda()">＋</button></div></div>';
+  h+='<div class="card"><h3>🎯 Objetivos de hoje</h3>'+S.objetivos.map(function(r,i){return '<div class="row"><span class="ck '+(r[1]?'on':'')+'" onclick="tg(\'objetivos\','+i+',1)">'+(r[1]?'✓':'')+'</span><span class="txt '+(r[1]?'done':'')+'">'+esc(r[0])+'</span><span class="del" onclick="rm(\'objetivos\','+i+')">✕</span></div>';}).join('')+'<div class="addrow"><input id="ob-t" placeholder="Objetivo principal do dia…" style="flex:1"><button class="btn" onclick="addObj()">＋</button></div></div>';
+  h+='<div class="card"><h3>🔥 Rituais do dia <span class="muted" style="font-weight:400">· reseta todo dia</span></h3>'+S.rituais.map(function(r,i){return '<div class="row"><span class="ck '+(r[1]?'on':'')+'" onclick="tg(\'rituais\','+i+',1)">'+(r[1]?'✓':'')+'</span><span class="txt '+(r[1]?'done':'')+'">'+esc(r[0])+'</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🌅 Declarações da manhã</h3><div class="muted" style="margin-bottom:8px">7 crenças a instalar — leia em voz alta e marque</div>'+S.declaracoes.map(function(d,i){return '<div class="decl"><span class="ck '+(S.declCheck[i]?'on':'')+'" onclick="tgDecl('+i+')">'+(S.declCheck[i]?'✓':'')+'</span><span>“'+esc(d)+'”</span></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🌙 Decisão do dia</h3><div class="muted" style="margin-bottom:8px">O que esse dia me ensinou? / Que decisão tomei e por quê?</div><textarea id="dec-t" style="width:100%;min-height:70px" placeholder="Escreva…">'+esc(S.decisaoHoje)+'</textarea><div class="addrow"><button class="btn" onclick="salvarDecisao()">Registrar decisão do dia</button></div>'+(S.decisoes.length?'<div style="margin-top:12px">'+S.decisoes.slice(0,6).map(function(d){return '<div class="kv"><span class="k">'+esc(d[0])+'</span><span>'+esc(d[1])+'</span></div>';}).join('')+'</div>':'')+'</div>';
+  return h;
+}
+function vIdent(){
+  var media=(S.caracteristicas.reduce(function(a,c){return a+c[1];},0)/S.caracteristicas.length).toFixed(1);
+  var h='<div class="card"><h3>🧭 Identidade alvo</h3><textarea id="id-alvo" style="width:100%;min-height:80px" oninput="S.identidadeAlvo=this.value;save()">'+esc(S.identidadeAlvo)+'</textarea></div>';
+  h+='<div class="card"><h3>📊 7 características fundamentais <span class="muted" style="font-weight:400">· média '+media+'/10</span></h3>'+S.caracteristicas.map(function(c,i){return '<div style="padding:9px 0;border-top:1px solid var(--border)"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:14px;font-weight:600;width:130px;flex-shrink:0">'+esc(c[0])+'</span><span class="bar"><span style="width:'+(c[1]*10)+'%"></span></span><input type="range" min="0" max="10" value="'+c[1]+'" oninput="setNota('+i+',this.value)" style="width:110px;padding:0"><span style="font-size:12px;color:var(--text2);width:36px;text-align:right">'+c[1]+'/10</span></div><div class="muted" style="margin-top:4px;margin-left:0">Prioridade: <b style="color:var(--text2)">'+esc(c[2])+'</b> — '+esc(c[3])+'</div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🪞 Coerência — hoje × alvo</h3><div class="muted" style="margin-bottom:8px">Onde estiver em incoerência, ajusta agora — e marca</div>'+S.coerencia.map(function(c,i){return '<div style="padding:9px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-start"><span class="ck '+(c[3]?'on':'')+'" onclick="tgCoer('+i+')" style="margin-top:2px">'+(c[3]?'✓':'')+'</span><div style="flex:1"><div style="font-size:13px;font-weight:700">'+esc(c[0])+'</div><div class="muted" style="color:var(--red)">hoje: '+esc(c[1])+'</div><div class="muted" style="color:var(--green)">alvo: '+esc(c[2])+'</div></div></div>';}).join('')+'</div>';
+  return h;
+}
+function vCrencas(){
+  var h='<div class="card"><h3>🧠 As 7 crenças do sucesso</h3><div class="muted" style="margin-bottom:6px">Marque as que está instalando</div>'+S.crencas.map(function(c,i){return '<div style="padding:11px 0;border-top:1px solid var(--border);display:flex;gap:10px"><span class="ck '+(c[4]?'on':'')+'" onclick="tgCrenca('+i+')" style="margin-top:2px">'+(c[4]?'✓':'')+'</span><div style="flex:1"><div style="font-size:14px;font-weight:700">'+(i+1)+'. '+esc(c[0])+'</div><div style="font-size:13px;color:var(--text2);margin:3px 0">'+esc(c[1])+'</div><div class="muted">Onde estou: '+esc(c[2])+'</div><div class="muted">Como instalar: '+esc(c[3])+'</div></div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>🔁 Crenças a desinstalar</h3>'+S.desinstalar.map(function(d){return '<div style="padding:8px 0;border-top:1px solid var(--border)"><div style="font-size:13px;color:var(--red)">✗ '+esc(d[0])+'</div><div style="font-size:13px;color:var(--green)">✓ '+esc(d[1])+'</div></div>';}).join('')+'</div>';
+  h+='<div class="card"><h3>⚡ NAC — mudar uma crença de verdade</h3><div class="muted" style="margin-bottom:6px">Os 6 passos (Condicionamento Neuroassociativo)</div>'+S.nac.map(function(n,i){return '<div class="row"><span class="hora" style="color:var(--purple)">'+(i+1)+'</span><span class="txt">'+esc(n)+'</span></div>';}).join('')+'</div>';
+  return h;
+}
+function vValores(){
+  var h='<div class="card"><h3>⚖️ Meus valores <span class="muted" style="font-weight:400">· ordenados = decisão automática</span></h3><div class="muted" style="margin-bottom:8px">Quando dois valores conflitam, o de cima vence. Use as setas pra ordenar.</div>'+S.valores.map(function(v,i){return '<div style="display:flex;gap:11px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><div class="ord"><span class="arrow" onclick="mv(\'valores\','+i+',-1)">▲</span><span class="arrow" onclick="mv(\'valores\','+i+',1)">▼</span></div><span style="font-size:15px;font-weight:800;color:var(--accent);width:22px">'+(i+1)+'</span><div style="flex:1"><div style="font-size:14px;font-weight:700">'+esc(v[0])+'</div><div class="muted">'+esc(v[1])+'</div></div></div>';}).join('')+'</div>';
+  return h;
+}
+function vSonhos(){
+  var h='<div class="card"><h3>✨ Quadro dos sonhos</h3><div class="grid">'+S.sonhos.map(function(s,i){return '<div class="son"><div class="ph" style="'+(s[2]?'background-image:url('+esc(s[2])+')':'')+'">'+(s[2]?'':'✨')+'<input type="file" accept="image/*" onchange="setImg('+i+',this)" style="display:none" id="sf'+i+'"></div><div class="bd"><div style="font-size:14px;font-weight:700;margin-bottom:5px">'+esc(s[0])+'</div><span class="pill">'+esc(s[1])+'</span> <span class="del" onclick="document.getElementById(\'sf'+i+'\').click()" style="font-size:11px">📷 foto</span> <span class="del" onclick="rm(\'sonhos\','+i+')">✕</span></div></div>';}).join('')+'</div><div class="addrow"><input id="so-t" placeholder="Novo sonho…" style="flex:1"><button class="btn" onclick="addSonho()">＋</button></div></div>';
+  return h;
+}
+function vAncoras(){
+  var h='<div class="card"><h3>🎬 Âncoras — vídeos que dão fé, ambientes, playlists</h3>'+S.ancoras.map(function(a,i){return '<div class="row"><span class="txt">🔗 <a href="'+esc(a[1])+'" target="_blank">'+esc(a[0])+'</a></span><span class="del" onclick="rm(\'ancoras\','+i+')">✕</span></div>';}).join('')+'<div class="addrow"><input id="an-t" placeholder="Título" style="flex:1"><input id="an-u" placeholder="https://…" style="flex:1"><button class="btn" onclick="addAncora()">＋</button></div></div>';
+  return h;
+}
+
+function tg(k,i,idx){ var col=(idx||2); S[k][i][col]=!S[k][i][col]; save(); render(); }
+function tgDecl(i){ S.declCheck[i]=!S.declCheck[i]; save(); render(); }
+function tgCoer(i){ S.coerencia[i][3]=!S.coerencia[i][3]; save(); render(); }
+function tgCrenca(i){ S.crencas[i][4]=!S.crencas[i][4]; save(); render(); }
+function rm(k,i){ S[k].splice(i,1); save(); render(); }
+function mv(k,i,d){ var j=i+d; if(j<0||j>=S[k].length)return; var t=S[k][i]; S[k][i]=S[k][j]; S[k][j]=t; save(); render(); }
+function addAgenda(){ var hh=document.getElementById('ag-h').value.trim(), tt=document.getElementById('ag-t').value.trim(); if(!tt)return; S.agenda.push([hh||'',tt,false]); S.agenda.sort(function(a,b){return (a[0]||'~')<(b[0]||'~')?-1:1;}); save(); render(); }
+function addObj(){ var tt=document.getElementById('ob-t').value.trim(); if(!tt)return; S.objetivos.push([tt,false]); save(); render(); }
+function addSonho(){ var tt=document.getElementById('so-t').value.trim(); if(!tt)return; S.sonhos.push([tt,'Sonho','']); save(); render(); }
+function addAncora(){ var tt=document.getElementById('an-t').value.trim(), uu=document.getElementById('an-u').value.trim(); if(!tt)return; S.ancoras.push([tt,uu||'#']); save(); render(); }
+function setNota(i,v){ S.caracteristicas[i][1]=+v; save(); render(); }
+function salvarDecisao(){ var t=document.getElementById('dec-t').value.trim(); S.decisaoHoje=t; if(t){ var d=new Date(); S.decisoes.unshift([('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2), t]); } save(); render(); }
+function setImg(i,inp){ var f=inp.files&&inp.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ S.sonhos[i][2]=r.result; save(); render(); }; r.readAsDataURL(f); }
+
+var d=new Date(); var dias=['domingo','segunda','terça','quarta','quinta','sexta','sábado']; var meses=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+document.getElementById('hoje-data').textContent=dias[d.getDay()]+', '+d.getDate()+' de '+meses[d.getMonth()]+' de '+d.getFullYear();
+renderTabs(); render();
+</script>
+</body>
+</html>
