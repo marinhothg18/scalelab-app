@@ -104,6 +104,7 @@ label.muted{display:block;margin:2px 0 4px}
 .vid .play{width:38px;height:38px;border-radius:10px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;color:#fff}
 .vid .info{flex:1;min-width:0}.vid .info .t{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}.vid .info .u{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .del-x{color:var(--muted);cursor:pointer;font-size:18px;padding:4px}
+.edit-i{cursor:pointer;font-size:14px;padding:4px;opacity:.65}.edit-i:hover{opacity:1}
 .paz-val{font-size:36px;font-weight:900;color:var(--azul);text-align:center;font-variant-numeric:tabular-nums}
 .hist{font-size:13px;color:var(--muted);padding:9px 0;border-bottom:1px solid var(--line)}.hist b{color:var(--txt)}
 .muted{color:var(--muted);font-size:13px}
@@ -773,9 +774,15 @@ function renderAgenda(){var w=document.getElementById('agWeek');if(!w)return;if(
  var list=C.demandas.filter(function(x){return demOccursOn(x,agSelKey);}).sort(function(a,b){var da=demIsDone(a,agSelKey),db=demIsDone(b,agSelKey);if(da!==db)return da?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
  var L=document.getElementById('agList');
  if(!list.length){L.innerHTML='<p class="muted">Nada nesse dia ainda.</p>';}
- else{L.innerHTML=list.map(function(x){var dn=demIsDone(x,agSelKey);return '<div class="dem'+(dn?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\',\''+agSelKey+'\')">'+(dn?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+demBadge(x)+'</div><span class="del-x" onclick="agDel(\''+x.id+'\')">×</span></div>';}).join('');}
+ else{L.innerHTML=list.map(function(x){var dn=demIsDone(x,agSelKey);
+   if(_editDem===x.id){return '<div class="dem" style="flex-wrap:wrap;gap:8px"><input type="time" value="'+esc(x.hora||'')+'" id="edh_'+x.id+'" style="max-width:110px;margin:0"><input type="text" value="'+esc(x.txt)+'" id="edt_'+x.id+'" style="margin:0;flex:1;min-width:150px"><div class="btn-row" style="margin:0;width:100%"><button class="btn sm" onclick="agEditSave(\''+x.id+'\')">Salvar</button><button class="btn sm ghost" onclick="agEditCancel()">Cancelar</button></div></div>';}
+   return '<div class="dem'+(dn?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\',\''+agSelKey+'\')">'+(dn?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+demBadge(x)+'</div><span class="edit-i" onclick="agEdit(\''+x.id+'\')" title="editar">✏️</span><span class="del-x" onclick="agDel(\''+x.id+'\')">×</span></div>';}).join('');}
 }
-function agSel(k){agSelKey=k;renderAgenda();}
+function agSel(k){agSelKey=k;_editDem=null;renderAgenda();}
+var _editDem=null;
+function agEdit(id){_editDem=id;renderAgenda();}
+function agEditCancel(){_editDem=null;renderAgenda();}
+function agEditSave(id){var dm=null;C.demandas.forEach(function(x){if(x.id===id)dm=x;});if(dm){var h=document.getElementById('edh_'+id),t=document.getElementById('edt_'+id);if(h)dm.hora=h.value;if(t&&t.value.trim())dm.txt=t.value.trim();}_editDem=null;save();renderAgenda();renderDashboard();}
 function agAdd(){var t=val('agTxt');if(!t)return;var h=document.getElementById('agHora').value||'';var rep=(document.getElementById('agRep')||{}).value||'once';if(!C.demandas)C.demandas=[];C.demandas.push({id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),data:agSelKey,hora:h,txt:t,done:false,rep:rep});document.getElementById('agTxt').value='';save();renderAgenda();renderDashboard();}
 function agToggle(id,k){var dm=null;C.demandas.forEach(function(y){if(y.id===id)dm=y;});if(!dm)return;if((dm.rep||'once')==='once'){dm.done=!dm.done;}else{if(!S.dias[k])S.dias[k]={obj:['','',''],checks:{},demDone:{}};if(!S.dias[k].demDone)S.dias[k].demDone={};S.dias[k].demDone[id]=!S.dias[k].demDone[id];}save();renderAgenda();renderDashboard();}
 function agDel(id){C.demandas=C.demandas.filter(function(y){return y.id!==id;});save();renderAgenda();renderDashboard();}
