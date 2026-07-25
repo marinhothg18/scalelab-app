@@ -230,6 +230,7 @@ body.mp-light .filha,body.mp-light .filha .s,body.mp-light .filha .cd small{colo
 
   <section class="tab" id="tab-agenda">
     <div class="card"><h2>🗓️ Minhas demandas <span class="sub">toque num dia e adicione</span></h2>
+      <div class="flex" id="agNav" style="align-items:center;gap:6px;margin-bottom:10px"></div>
       <div class="wkstrip" id="agWeek"></div>
       <div class="flex"><input type="time" id="agHora" style="max-width:120px" value="09:00"><input type="text" id="agTxt" placeholder="Nova demanda / compromisso"></div>
       <div class="flex" style="margin-top:2px;align-items:center;flex-wrap:wrap;gap:8px"><span class="muted" style="font-size:12.5px">Repetir:</span><select id="agRep"><option value="once">Só neste dia</option><option value="daily">Todo dia</option><option value="weekly" id="agRepWeekly">Toda semana</option></select><button class="btn sm" onclick="agAdd()">+ adicionar</button></div>
@@ -499,7 +500,7 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 
 const D=dia();
 [0,1,2].forEach(i=>{const el=document.getElementById('obj'+i);el.value=D.obj[i]||"";el.oninput=()=>{dia().obj[i]=el.value;save();};});
-function renderChecks(){const c=document.getElementById('dailyChecks');c.innerHTML="";C.dailyChecks.forEach((txt,i)=>{const done=dia().checks[i];const div=document.createElement('div');div.className="chk"+(done?" done":"");div.innerHTML='<div class="box">'+(done?"✓":"")+'</div><span>'+esc(txt)+'</span>';div.onclick=()=>{dia().checks[i]=!dia().checks[i];save();renderChecks();};c.appendChild(div);});}
+function renderChecks(){const c=document.getElementById('dailyChecks');c.innerHTML="";C.dailyChecks.forEach((txt,i)=>{const done=dia().checks[i];const div=document.createElement('div');div.className="chk"+(done?" done":"");div.innerHTML='<div class="box">'+(done?"✓":"")+'</div><span>'+esc(txt)+'</span>';div.onclick=()=>{dia().checks[i]=!dia().checks[i];save();renderChecks();renderDashboard();};c.appendChild(div);});}
 renderChecks();
 (function(){const a=document.getElementById('agenda');a.innerHTML="";C.agenda.forEach(r=>{const div=document.createElement('div');div.className="ag-row"+(r.sacred?" sacred":"");div.innerHTML='<div class="h">'+r.h+'</div><div class="a">'+esc(r.a)+'</div>';a.appendChild(div);});})();
 const dec=document.getElementById('decisao');dec.value=dia().decisao||"";dec.oninput=()=>{dia().decisao=dec.value;save();};
@@ -654,7 +655,7 @@ function delPessoa(i){if(!confirm('Remover '+C.pessoas[i].nome+'?'))return;C.pes
 function addPessoa(){var n=val('pes-n');if(!n)return;C.pessoas.push({nome:n,rel:val('pes-r'),cad:+(document.getElementById('pes-c').value||7),ultima:''});save();renderPessoas();}
 
 /* --- 5. CORPO / ENERGIA --- */
-function renderCorpo(){var host=document.getElementById('corpo');if(!host)return;var d=dia();if(!d.corpo)d.corpo={treino:false,sono:'',agua:0};if(!C.limpoDesde)C.limpoDesde=TK;var wd=weekDates();var treinos=0;wd.forEach(function(k){var x=S.dias[k];if(x&&x.corpo&&x.corpo.treino)treinos++;});var streak=diasDesde(C.limpoDesde);if(streak==null||streak<0)streak=0;
+function renderCorpo(){var host=document.getElementById('corpo');if(!host)return;var d=dia();if(!d.corpo)d.corpo={treino:false,sono:'',agua:0};if(!C.limpoDesde)C.limpoDesde=TK;var treinos=treinosNaSemana();var streak=diasDesde(C.limpoDesde);if(streak==null||streak<0)streak=0;
   host.innerHTML=
   '<div class="card"><h2>💪 Hoje</h2>'
   +'<div class="chk'+(d.corpo.treino?' done':'')+'" onclick="tgTreino(this)"><div class="box">'+(d.corpo.treino?'✓':'')+'</div><span>Treino feito</span></div>'
@@ -746,10 +747,12 @@ renderMetas();renderPatr();renderPessoas();renderCorpo();renderModelos();renderL
 
 /* ===== DASHBOARD + AGENDA (novo) ===== */
 function ring(p,c,valn,lbl){return '<div class="stat"><div class="ring" style="--p:'+Math.max(0,Math.min(100,p))+';--c:'+c+'"><i>'+valn+'</i></div><div><div class="lbl">'+lbl+'</div></div></div>';}
+function idxTreino(){var idx=-1;C.dailyChecks.forEach(function(t,i){if(idx<0&&/treino/i.test(t))idx=i;});return idx;}
+function treinosNaSemana(){var it=idxTreino();var n=0;weekDates().forEach(function(k){var x=S.dias[k];if(x&&((x.corpo&&x.corpo.treino)||(it>=0&&x.checks&&x.checks[it])))n++;});return n;}
 function renderDashboard(){var host=document.getElementById('dashRings');if(!host)return;var d=dia();
  var ritDone=0;for(var i=0;i<C.dailyChecks.length;i++)if(d.checks[i])ritDone++;var ritPct=Math.round(ritDone/Math.max(1,C.dailyChecks.length)*100);
  if(!C.limpoDesde)C.limpoDesde=TK;var streak=diasDesde(C.limpoDesde);if(streak==null||streak<0)streak=0;
- var wd=weekDates();var treinos=0;wd.forEach(function(k){var x=S.dias[k];if(x&&x.corpo&&x.corpo.treino)treinos++;});
+ var treinos=treinosNaSemana();
  var paz='–';if(d.night&&d.night.paz!=null){paz=d.night.paz;}else{var a=lastNDates(7).map(dayStat).filter(Boolean).filter(function(s){return s.paz!=null;}).map(function(s){return s.paz;});if(a.length)paz=avg(a).toFixed(1);}
  host.innerHTML=ring(ritPct,'var(--azul)',ritDone+'/'+C.dailyChecks.length,'rituais<br>de hoje')+ring(100,'var(--laranja)',streak+'🔥','dias<br>limpos')+ring(Math.min(100,treinos/5*100),'var(--roxo)',treinos+'/5','treino<br>na semana')+ring(paz==='–'?0:paz*10,'var(--rosa)',paz,'paz<br>interior');
  var fil=null;C.agenda.forEach(function(r){if(!fil&&/filha/i.test(r.a))fil=r;});if(!fil)C.agenda.forEach(function(r){if(!fil&&r.sacred)fil=r;});
@@ -757,18 +760,21 @@ function renderDashboard(){var host=document.getElementById('dashRings');if(!hos
  var cd=dm>0?('faltam '+(dm>=60?(Math.floor(dm/60)+'h'+(dm%60?(' '+(dm%60)+'m'):'')):(dm+'min'))):('foi às '+bh);
  var db=document.getElementById('dashBloqueio');if(db)db.innerHTML='<div class="k">Bloqueio sagrado</div><div class="hh">'+bh+'</div><div class="d">1 hora com a filha</div><div class="s">🔒 celular longe · ela escolhe a brincadeira</div><div class="cd"><b>'+cd+'</b><small>não tem rewind</small></div>';
  var today=(C.demandas||[]).filter(function(x){return demOccursOn(x,TK);}).sort(function(a,b){var da=demIsDone(a,TK),db=demIsDone(b,TK);if(da!==db)return da?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
- var ah='';if(!today.length)ah='<p class="muted">Sem demandas pra hoje. Adicione na aba Agenda.</p>';else today.forEach(function(x){var dn=demIsDone(x,TK);ah+='<div class="dem'+(dn?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\',\''+TK+'\')">'+(dn?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+demBadge(x)+'</div></div>';});
+ var ah='';today.forEach(function(x){var dn=demIsDone(x,TK);if(_editDem===x.id){ah+='<div class="dem" style="flex-wrap:wrap;gap:8px"><input type="time" value="'+esc(x.hora||'')+'" id="dedh_'+x.id+'" style="max-width:110px;margin:0"><input type="text" value="'+esc(x.txt)+'" id="dedt_'+x.id+'" style="margin:0;flex:1;min-width:140px"><div class="btn-row" style="margin:0;width:100%"><button class="btn sm" onclick="agEditSaveDash(\''+x.id+'\')">Salvar</button><button class="btn sm ghost" onclick="agEditCancel()">Cancelar</button></div></div>';return;}ah+='<div class="dem'+(dn?' done':'')+'"><div class="cbox" onclick="agToggle(\''+x.id+'\',\''+TK+'\')">'+(dn?'✓':'')+'</div><div class="hh">'+esc(x.hora||'')+'</div><div class="tx">'+esc(x.txt)+demBadge(x)+'</div><span class="edit-i" onclick="agEdit(\''+x.id+'\')" title="editar">✏️</span></div>';});if(!today.length)ah='<p class="muted">Sem demandas pra hoje.</p>';ah+='<div class="flex" style="margin-top:12px;gap:6px"><input type="time" id="dashAgHora" value="09:00" style="max-width:104px"><input type="text" id="dashAgTxt" placeholder="Demanda rápida de hoje" onkeydown="if(event.key===\'Enter\')agAddDash()"><button class="btn sm" onclick="agAddDash()">+</button></div>';
  var da=document.getElementById('dashAgenda');if(da)da.innerHTML=ah;
  var dmets=document.getElementById('dashMetas');if(dmets)dmets.innerHTML=C.metas.slice(0,4).map(function(m){return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:5px"><span>'+esc(m.nome.split('(')[0].trim())+'</span><span class="muted">'+m.pct+'%</span></div><span class="bar" style="display:block"><span style="width:'+m.pct+'%"></span></span></div>';}).join('');
  var qs=['Qual decisão Tipo 1 você já sabe a resposta e continua adiando?','Você está cuidando das pessoas ou fugindo do atrito?','Onde seu discurso e sua agenda não batem essa semana?'];
  var dc=document.getElementById('dashCoach');if(dc)dc.innerHTML='<div class="lead">🧠 Coach · a pergunta que você está evitando</div><div class="q">"'+qs[new Date().getDate()%qs.length]+'"</div>';
  var dp=document.getElementById('dashPessoas');if(dp)dp.innerHTML=C.pessoas.map(function(p){var dd=diasDesde(p.ultima);var atras=dd!=null&&dd>p.cad;var cls=p.ultima?(atras?'warn':'ok'):'off';var st=p.ultima?(atras?(dd+' dias sem falar ⚠️'):('em dia · há '+dd+'d')):'sem registro';return '<div class="pes"><span class="sdot '+cls+'"></span><b>'+esc(p.nome)+'</b><span class="st'+(atras?' a':'')+'">'+st+'</span></div>';}).join('');
 }
-var agSelKey=TK;
+var agSelKey=TK;var agWeekOffset=0;
 function demOccursOn(dm,k){var rep=dm.rep||'once';if(rep==='once')return dm.data===k;if(rep==='daily')return true;if(rep==='weekly')return new Date(dm.data+'T12:00:00').getDay()===new Date(k+'T12:00:00').getDay();return false;}
 function demIsDone(dm,k){if((dm.rep||'once')==='once')return !!dm.done;var d=S.dias[k];return !!(d&&d.demDone&&d.demDone[dm.id]);}
 function demBadge(dm){var DOWL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];var r=dm.rep||'once';if(r==='daily')return '<span class="repb">🔁 todo dia</span>';if(r==='weekly')return '<span class="repb">🔁 toda '+DOWL[new Date(dm.data+'T12:00:00').getDay()]+'</span>';return '';}
-function renderAgenda(){var w=document.getElementById('agWeek');if(!w)return;if(!C.demandas)C.demandas=[];var wd=weekDates();var nm=['dom','seg','ter','qua','qui','sex','sáb'];var DOWL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+function agWeekDates(){var d=new Date();var day=d.getDay();var diff=(day===0?-6:1-day)+agWeekOffset*7;var mon=new Date(d);mon.setDate(d.getDate()+diff);var out=[];for(var i=0;i<7;i++){var x=new Date(mon);x.setDate(mon.getDate()+i);out.push(keyOf(x));}return out;}
+function agWeekNav(delta){agWeekOffset+=delta;var wd=agWeekDates();if(wd.indexOf(agSelKey)<0)agSelKey=wd[0];_editDem=null;renderAgenda();}
+function agHoje(){agWeekOffset=0;agSelKey=TK;_editDem=null;renderAgenda();}
+function renderAgenda(){var w=document.getElementById('agWeek');if(!w)return;if(!C.demandas)C.demandas=[];var wd=agWeekDates();var nm=['dom','seg','ter','qua','qui','sex','sáb'];var DOWL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];var MES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];var d0=new Date(wd[0]+'T12:00:00'),d6=new Date(wd[6]+'T12:00:00');var lbl=(d0.getMonth()===d6.getMonth())?(MES[d0.getMonth()]+' '+d0.getFullYear()):(MES[d0.getMonth()]+'–'+MES[d6.getMonth()]+' '+d6.getFullYear());var nv=document.getElementById('agNav');if(nv)nv.innerHTML='<button class="btn sm ghost" onclick="agWeekNav(-1)" style="min-width:34px">‹</button><div style="flex:1;text-align:center;font-weight:700;font-size:14px">'+lbl+(agWeekOffset===0?' · esta semana':'')+'</div><button class="btn sm ghost" onclick="agWeekNav(1)" style="min-width:34px">›</button><button class="btn sm ghost" onclick="agHoje()">hoje</button>';
  w.innerHTML=wd.map(function(k){var dd=new Date(k+'T12:00:00');var c=C.demandas.filter(function(x){return demOccursOn(x,k);}).length;return '<div class="wkday'+(k===agSelKey?' sel':'')+'" onclick="agSel(\''+k+'\')"><div class="wn">'+nm[dd.getDay()]+'</div><div class="wd">'+dd.getDate()+'</div><div class="wc">'+(c?(c+' item'+(c>1?'s':'')):'—')+'</div></div>';}).join('');
  var rw=document.getElementById('agRepWeekly');if(rw)rw.textContent='Toda '+DOWL[new Date(agSelKey+'T12:00:00').getDay()];
  var list=C.demandas.filter(function(x){return demOccursOn(x,agSelKey);}).sort(function(a,b){var da=demIsDone(a,agSelKey),db=demIsDone(b,agSelKey);if(da!==db)return da?1:-1;return (a.hora||'').localeCompare(b.hora||'');});
@@ -780,10 +786,12 @@ function renderAgenda(){var w=document.getElementById('agWeek');if(!w)return;if(
 }
 function agSel(k){agSelKey=k;_editDem=null;renderAgenda();}
 var _editDem=null;
-function agEdit(id){_editDem=id;renderAgenda();}
-function agEditCancel(){_editDem=null;renderAgenda();}
+function agEdit(id){_editDem=id;renderAgenda();renderDashboard();}
+function agEditCancel(){_editDem=null;renderAgenda();renderDashboard();}
 function agEditSave(id){var dm=null;C.demandas.forEach(function(x){if(x.id===id)dm=x;});if(dm){var h=document.getElementById('edh_'+id),t=document.getElementById('edt_'+id);if(h)dm.hora=h.value;if(t&&t.value.trim())dm.txt=t.value.trim();}_editDem=null;save();renderAgenda();renderDashboard();}
 function agAdd(){var t=val('agTxt');if(!t)return;var h=document.getElementById('agHora').value||'';var rep=(document.getElementById('agRep')||{}).value||'once';if(!C.demandas)C.demandas=[];C.demandas.push({id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),data:agSelKey,hora:h,txt:t,done:false,rep:rep});document.getElementById('agTxt').value='';save();renderAgenda();renderDashboard();}
+function agAddDash(){var t=val('dashAgTxt');if(!t)return;var h=document.getElementById('dashAgHora').value||'';if(!C.demandas)C.demandas=[];C.demandas.push({id:'d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),data:TK,hora:h,txt:t,done:false,rep:'once'});save();renderDashboard();renderAgenda();}
+function agEditSaveDash(id){var dm=null;C.demandas.forEach(function(x){if(x.id===id)dm=x;});if(dm){var h=document.getElementById('dedh_'+id),t=document.getElementById('dedt_'+id);if(h)dm.hora=h.value;if(t&&t.value.trim())dm.txt=t.value.trim();}_editDem=null;save();renderDashboard();renderAgenda();}
 function agToggle(id,k){var dm=null;C.demandas.forEach(function(y){if(y.id===id)dm=y;});if(!dm)return;if((dm.rep||'once')==='once'){dm.done=!dm.done;}else{if(!S.dias[k])S.dias[k]={obj:['','',''],checks:{},demDone:{}};if(!S.dias[k].demDone)S.dias[k].demDone={};S.dias[k].demDone[id]=!S.dias[k].demDone[id];}save();renderAgenda();renderDashboard();}
 function agDel(id){C.demandas=C.demandas.filter(function(y){return y.id!==id;});save();renderAgenda();renderDashboard();}
 renderAgenda();renderDashboard();
