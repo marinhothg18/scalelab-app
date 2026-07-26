@@ -215,11 +215,13 @@ body.mp-light .filha,body.mp-light .filha .s,body.mp-light .filha .cd small{colo
         <div class="obj-row"><div class="num">1</div><input type="text" id="obj0" placeholder="Objetivo mais importante"></div>
         <div class="obj-row"><div class="num">2</div><input type="text" id="obj1" placeholder="Segundo objetivo"></div>
         <div class="obj-row"><div class="num">3</div><input type="text" id="obj2" placeholder="Terceiro objetivo"></div></div>
+      <div class="card span2"><h2>🪞 Espelho de coerência <span class="sub">diga em voz alta, olhando no espelho</span></h2><div id="dashEspelho"></div></div>
       <div class="card filha" id="dashBloqueio"></div>
       <div class="card"><h2>📅 Agenda de hoje <span class="sub">suas demandas</span></h2><div id="dashAgenda"></div></div>
       <div class="card"><h2>✅ Rituais do dia</h2><div id="dailyChecks"></div></div>
       <div class="card"><h2>🎯 Metas 2026</h2><div id="dashMetas"></div></div>
       <div class="card"><h2>🌅 Declarações da manhã <span class="sub">leia em voz alta</span></h2><div id="dashDeclara"></div></div>
+      <div class="card"><h2>🙏 Declarações de fé <span class="sub">força quando precisar</span></h2><div id="dashFe"></div></div>
       <div class="card" style="text-align:center"><h2 style="justify-content:center">⏱️ Foco rápido <span class="sub">pomodoro</span></h2><div id="dashFoco"></div></div>
       <div class="card coachbox span2" id="dashCoach"></div>
       <div class="card span2"><h2>👥 Pessoas · reconectar <span class="sub">cadência com quem importa</span></h2><div id="dashPessoas"></div></div>
@@ -244,7 +246,7 @@ body.mp-light .filha,body.mp-light .filha .s,body.mp-light .filha .cd small{colo
   <section class="tab" id="tab-manha">
     <div class="card"><h2>🌅 Declarações da manhã <span class="sub">leia em voz alta</span></h2><div id="declaracoes"></div></div>
     <div class="card"><h2>☀️ 6 perguntas da manhã <span class="sub">Robbins — reprogramação ativa</span></h2><div id="pManha"></div></div>
-    <div class="card"><h2>🪞 Espelho de coerência</h2><p class="muted" style="margin-bottom:10px">Antes de sair do quarto: "O cara que vê no espelho é o cara da identidade alvo?" Ajusta UMA coisa. Sai apresentando aquilo.</p><div class="muted" style="font-size:12.5px;margin:2px 0 6px">Diga em voz alta, olhando no espelho:</div><div style="background:rgba(245,197,66,.07);border-left:3px solid var(--gold);border-radius:10px;padding:14px 16px;margin-bottom:12px;line-height:1.75;font-size:14px">O dinheiro flui até mim de diversas formas e fontes, e permanece comigo, construindo a riqueza da minha família. Eu sou um homem de 10 milhões de reais, e realizo todos os meus sonhos. As ideias, as oportunidades, a abundância e a prosperidade vêm até mim de forma natural e constante. Eu transformo cada obstáculo em trampolim, e as soluções se revelam pra mim com facilidade. Eu sou um marido amado e presente, parceiro leal da minha esposa, e um pai que transborda amor e lealdade a toda a minha família. Deus é a minha fonte de tudo: eu ando em paz, com fé e gratidão, sabendo que nunca caminho sozinho.</div><label class="chk" onclick="toggleMorning(this)"><div class="box"></div><span>Fiz o espelho de coerência hoje</span></label></div>
+    <div class="card"><h2>🪞 Espelho de coerência</h2><p class="muted" style="margin-bottom:10px">Antes de sair do quarto: "O cara que vê no espelho é o cara da identidade alvo?" Ajusta UMA coisa. Sai apresentando aquilo.</p><div class="muted" style="font-size:12.5px;margin:2px 0 6px">Diga em voz alta, olhando no espelho:</div><div id="espelhoM"></div><label class="chk" onclick="toggleMorning(this)" style="margin-top:12px"><div class="box"></div><span>Fiz o espelho de coerência hoje</span></label></div>
     <div class="card"><h2>🧠 Dirigir a mente hoje <span class="sub">Foco · Significado · Linguagem</span></h2>
       <p class="muted" style="margin-bottom:6px"><b>Foco:</b> seus 3 objetivos da aba Hoje.</p>
       <label class="muted">Se algo der errado hoje, que significado eu vou dar?</label><input type="text" id="significado" placeholder="'essa fase me ensinou X' — não 'fim do mundo'">
@@ -762,6 +764,8 @@ function renderFoco(){var c=document.getElementById('focoBox');if(!c)return;var 
 renderMetas();renderPatr();renderPessoas();renderCorpo();renderModelos();renderLembretes();renderRevisao();
 
 /* ===== DASHBOARD + AGENDA (novo) ===== */
+var ESPELHO_TXT="O dinheiro flui até mim de diversas formas e fontes, e permanece comigo, construindo a riqueza da minha família. Eu sou um homem de 10 milhões de reais, e realizo todos os meus sonhos. As ideias, as oportunidades, a abundância e a prosperidade vêm até mim de forma natural e constante. Eu transformo cada obstáculo em trampolim, e as soluções se revelam pra mim com facilidade. Eu sou um marido amado e presente, parceiro leal da minha esposa, e um pai que transborda amor e lealdade a toda a minha família. Deus é a minha fonte de tudo: eu ando em paz, com fé e gratidão, sabendo que nunca caminho sozinho.";
+function espelhoHTML(){return '<div style="background:rgba(245,197,66,.07);border-left:3px solid var(--gold);border-radius:10px;padding:14px 16px;line-height:1.75;font-size:14px">'+esc(ESPELHO_TXT)+'</div>';}
 function ring(p,c,valn,lbl){return '<div class="stat"><div class="ring" style="--p:'+Math.max(0,Math.min(100,p))+';--c:'+c+'"><i>'+valn+'</i></div><div><div class="lbl">'+lbl+'</div></div></div>';}
 function idxTreino(){var idx=-1;C.dailyChecks.forEach(function(t,i){if(idx<0&&/treino/i.test(t))idx=i;});return idx;}
 function treinosNaSemana(){var it=idxTreino();var n=0;weekDates().forEach(function(k){var x=S.dias[k];if(x&&((x.corpo&&x.corpo.treino)||(it>=0&&x.checks&&x.checks[it])))n++;});return n;}
@@ -785,6 +789,8 @@ function renderDashboard(){var host=document.getElementById('dashRings');if(!hos
  var dcl=document.getElementById('dashDeclara');if(dcl)dcl.innerHTML=(C.declaracoes||[]).map(function(t,i){return '<div class="decl" style="font-size:12.5px;padding:8px 11px;margin-bottom:6px">'+(i+1)+'. '+esc(t)+'</div>';}).join('');
  var ddr=document.getElementById('dashDreams');if(ddr)ddr.innerHTML=(C.dreams&&C.dreams.length)?('<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px">'+C.dreams.map(function(d){var im=d.img?'<img src="'+d.img+'" style="width:100%;height:78px;object-fit:cover;border-radius:8px">':'<div style="height:78px;display:flex;align-items:center;justify-content:center;font-size:34px;background:var(--panel2);border-radius:8px">'+(d.emoji||'⭐')+'</div>';return '<div style="min-width:118px;max-width:118px;flex-shrink:0">'+im+'<div style="font-size:12px;font-weight:600;margin-top:5px;line-height:1.3">'+esc(d.tit)+'</div></div>';}).join('')+'</div>'):'<p class="muted">Nenhum sonho ainda. Adicione em Metas › Sonhos.</p>';
  var dfc=document.getElementById('dashFoco');if(dfc){dfc.innerHTML=pomWidget();pomRender();}
+ var _eh=espelhoHTML();var de1=document.getElementById('dashEspelho');if(de1)de1.innerHTML=_eh;var de2=document.getElementById('espelhoM');if(de2)de2.innerHTML=_eh;
+ var dfe=document.getElementById('dashFe');if(dfe)dfe.innerHTML=(C.declaracoesFe||[]).map(function(t){return '<div style="background:rgba(245,197,66,.06);border-left:3px solid var(--gold);border-radius:8px;padding:9px 12px;margin-bottom:6px;font-size:13px">'+esc(t)+'</div>';}).join('');
 }
 var agSelKey=TK;var agWeekOffset=0;
 function demOccursOn(dm,k){var rep=dm.rep||'once';if(rep==='once')return dm.data===k;if(rep==='daily')return true;if(rep==='weekly')return new Date(dm.data+'T12:00:00').getDay()===new Date(k+'T12:00:00').getDay();return false;}
