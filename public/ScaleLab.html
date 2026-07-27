@@ -9872,19 +9872,39 @@ function vagasAbrirCandidato(candId){
     return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
   }).join('');
 
+  // devolve {vazia, html, chips} — chips=true quando a resposta é multipla escolha
   function _fmtResposta(p, r){
-    if(r == null) return '—';
-    if(Array.isArray(r)) return r.length ? r.map(_esc).join(', ') : '—';
+    if(r == null) return { vazia:true, html:'', chips:false };
+    if(Array.isArray(r)){
+      if(!r.length) return { vazia:true, html:'', chips:false };
+      return { vazia:false, chips:true, html: r.map(function(x){
+        return '<span style="display:inline-block;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12.5px;margin:0 6px 6px 0;">'+_esc(String(x))+'</span>';
+      }).join('') };
+    }
     var s = String(r);
-    if(!s.trim()) return '—';
-    return _esc(s);
+    if(!s.trim()) return { vazia:true, html:'', chips:false };
+    return { vazia:false, chips:false, html:_esc(s) };
   }
+  var _respondidas = 0;
+  perguntas.forEach(function(p){ if(!_fmtResposta(p, resp[p.id]).vazia) _respondidas++; });
   var perguntasHtml = perguntas.length
-    ? perguntas.map(function(p){
+    ? perguntas.map(function(p, idx){
         var tipoLabel = (VAGAS_TIPOS_PERGUNTA.find(function(t){ return t.id===(p.tipo||'curta'); })||{}).label || 'Texto';
-        return '<div style="margin-bottom:14px;">'+
-          '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">'+_esc(p.label)+' <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7;">('+tipoLabel+')</span></div>'+
-          '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.5;">'+_fmtResposta(p, resp[p.id])+'</div>'+
+        var R = _fmtResposta(p, resp[p.id]);
+        var longa = !R.chips && !R.vazia && R.html.length > 220;
+        return '<div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:12px;background:var(--card);">'+
+          // cabecalho da pergunta
+          '<div style="display:flex;gap:11px;align-items:flex-start;padding:12px 15px;background:var(--bg);border-bottom:1px solid var(--border);">'+
+            '<span style="flex-shrink:0;width:23px;height:23px;border-radius:7px;background:var(--accent);color:#fff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;">'+(idx+1)+'</span>'+
+            '<div style="flex:1;min-width:0;">'+
+              '<div style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.45;">'+_esc(p.label)+'</div>'+
+              '<div style="font-size:10.5px;color:var(--text2);margin-top:4px;letter-spacing:.3px;">'+tipoLabel+(longa?' · resposta longa':'')+'</div>'+
+            '</div>'+
+          '</div>'+
+          // resposta
+          '<div style="padding:14px 16px 15px 49px;font-size:14px;line-height:1.75;color:'+(R.vazia?'var(--text2)':'var(--text)')+';'+(R.chips?'':'white-space:pre-wrap;')+(R.vazia?'font-style:italic;':'')+'">'+
+            (R.vazia ? 'não respondeu' : R.html)+
+          '</div>'+
         '</div>';
       }).join('')
     : '<div style="font-size:12px;color:var(--text2);font-style:italic;">Sem perguntas custom nessa vaga.</div>';
@@ -9897,7 +9917,7 @@ function vagasAbrirCandidato(candId){
 
   var html = ''+
     '<div id="vagas-modal-cand" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)vagasFecharModalCandidato()">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:680px;width:100%;max-height:90vh;overflow:auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:820px;width:100%;max-height:90vh;overflow:auto;">'+
         // header
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:20px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:2;">'+
           '<div style="flex:1;">'+
@@ -9912,7 +9932,7 @@ function vagasAbrirCandidato(candId){
           // IA SCORE (se já analisado)
           _vagasRenderIaScore(c)+
           // info contato
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;margin-bottom:20px;padding:15px 16px;background:var(--bg);border:1px solid var(--border);border-radius:11px;">'+
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div><div style="font-size:13px;color:var(--text);word-break:break-all;">'+_esc(c.email||'—')+'</div></div>'+
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">WhatsApp</div><div style="font-size:13px;color:var(--text);">'+_esc(c.whatsapp||'—')+'</div></div>'+
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Instagram</div><div style="font-size:13px;color:var(--text);">'+_esc(c.instagram||'—')+'</div></div>'+
@@ -9935,7 +9955,10 @@ function vagasAbrirCandidato(candId){
           '</div>'+
           // respostas custom
           '<div style="margin-bottom:20px;">'+
-            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Respostas do formulário</div>'+
+            '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;padding-bottom:9px;border-bottom:2px solid var(--border);">'+
+              '<div style="font-size:14px;font-weight:700;color:var(--text);">📝 Respostas do formulário</div>'+
+              (perguntas.length?'<div style="font-size:11.5px;color:var(--text2);">'+_respondidas+' de '+perguntas.length+' respondidas</div>':'')+
+            '</div>'+
             perguntasHtml+
           '</div>'+
           // teste prático (entregas vinculadas por email)
