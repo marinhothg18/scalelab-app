@@ -9830,7 +9830,7 @@ function _renderVagasDetalhe(el){
 function _vagasPretensao(c, v){
   var resp = (c && c.respostasCustom) || {};
   var perguntas = (v && v.perguntasCustom) || [];
-  var re = /pretens|remunera|sal[aá]ri|faixa salarial|quanto (voc[eê] )?(ganha|recebe|cobra)/i;
+  var re = /pretens|remunera|sal[aá]ri|cach[eê]|quanto (voc[eê] )?(ganha|ganhava|recebe|recebia|cobra|cobraria|pretende|vale)/i;
   for(var i=0;i<perguntas.length;i++){
     var p = perguntas[i];
     if(!p || !re.test(String(p.label||''))) continue;
@@ -9972,22 +9972,7 @@ function vagasAbrirCandidato(candId){
                 '</div>'
               : '')+
           '</div>'+
-          // score
-          '<div style="margin-bottom:20px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">'+
-            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Score</div>'+
-            '<div id="vagas-modal-stars">'+starsBtn+'</div>'+
-          '</div>'+
-          // status
-          '<div style="margin-bottom:20px;">'+
-            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Status no funil</div>'+
-            '<select id="vagas-modal-status" class="fs" style="max-width:200px;">'+statusOpts+'</select>'+
-          '</div>'+
-          // anotações
-          '<div style="margin-bottom:20px;">'+
-            '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Anotações internas</div>'+
-            '<textarea id="vagas-modal-anotacoes" class="fi" rows="4" style="resize:vertical;" placeholder="Ex: muito boa pra área X, falar com Ana, agendar entrevista em…">'+_esc(c.anotacoes||'')+'</textarea>'+
-          '</div>'+
-          // respostas custom
+          // respostas custom — vem antes da avaliacao: primeiro se le, depois se julga
           '<div style="margin-bottom:20px;">'+
             '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;padding-bottom:9px;border-bottom:2px solid var(--border);">'+
               '<div style="font-size:14px;font-weight:700;color:var(--text);">📝 Respostas do formulário</div>'+
@@ -9997,6 +9982,24 @@ function vagasAbrirCandidato(candId){
           '</div>'+
           // teste prático (entregas vinculadas por email)
           _vagasRenderEntregasCandidato(c, v)+
+          // avaliacao (score + status + anotacoes) — no fim, depois de ler tudo
+          '<div style="margin-top:22px;padding-top:18px;border-top:2px solid var(--border);">'+
+            '<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;">⭐ Sua avaliação</div>'+
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">'+
+              '<div style="padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">'+
+                '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Score</div>'+
+                '<div id="vagas-modal-stars">'+starsBtn+'</div>'+
+              '</div>'+
+              '<div style="padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">'+
+                '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Status no funil</div>'+
+                '<select id="vagas-modal-status" class="fs" style="width:100%;">'+statusOpts+'</select>'+
+              '</div>'+
+            '</div>'+
+            '<div>'+
+              '<div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Anotações internas</div>'+
+              '<textarea id="vagas-modal-anotacoes" class="fi" rows="4" style="resize:vertical;" placeholder="Ex: muito boa pra área X, falar com Ana, agendar entrevista em…">'+_esc(c.anotacoes||'')+'</textarea>'+
+            '</div>'+
+          '</div>'+
         '</div>'+
         // footer
         '<div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;position:sticky;bottom:0;background:var(--card);">'+
