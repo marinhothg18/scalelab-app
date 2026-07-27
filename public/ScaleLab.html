@@ -9825,8 +9825,32 @@ function _renderVagasDetalhe(el){
     '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;">'+kanban+'</div>';
 }
 
+// A pretensao salarial nao e campo fixo — vem das respostas do formulario.
+// Acha a pergunta de salario/remuneracao e devolve {pergunta, texto, curto}.
+function _vagasPretensao(c, v){
+  var resp = (c && c.respostasCustom) || {};
+  var perguntas = (v && v.perguntasCustom) || [];
+  var re = /pretens|remunera|sal[aá]ri|faixa salarial|quanto (voc[eê] )?(ganha|recebe|cobra)/i;
+  for(var i=0;i<perguntas.length;i++){
+    var p = perguntas[i];
+    if(!p || !re.test(String(p.label||''))) continue;
+    var r = resp[p.id];
+    if(Array.isArray(r)) r = r.join(', ');
+    r = (r==null?'':String(r)).trim();
+    if(!r) continue;
+    var curto = r;
+    if(r.length > 24){
+      var m = r.match(/\d[\d.,]*/);
+      curto = m ? ('R$ '+m[0]) : (r.slice(0,24)+'…');
+    }
+    return { pergunta: String(p.label||''), texto: r, curto: curto };
+  }
+  return null;
+}
+
 function _vagasCardCandidato(c, v){
   var nome = _esc(c.nome || c.email || '(sem nome)');
+  var _pret = _vagasPretensao(c, v);
   var statusOpts = VAGAS_KANBAN_COLUNAS.map(function(col){
     return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
   }).join('');
@@ -9839,6 +9863,7 @@ function _vagasCardCandidato(c, v){
       (c.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;word-break:break-all;">✉️ '+_esc(c.email)+'</div>' : '')+
       (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
       (c.portfolio ? '<div style="font-size:11px;color:var(--accent);margin-bottom:2px;word-break:break-all;"><a href="'+_esc(c.portfolio)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📎 Portfólio</a></div>' : '')+
+      (_pret ? '<div style="margin-top:6px;"><span title="'+_esc(_pret.texto)+'" style="display:inline-block;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.35);border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;">💰 '+_esc(_pret.curto)+'</span></div>' : '')+
       (c.anotacoes ? '<div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic;border-left:2px solid var(--border);padding-left:6px;">'+_esc(c.anotacoes.slice(0,80))+(c.anotacoes.length>80?'…':'')+'</div>' : '')+
       '<div style="display:flex;gap:4px;margin-top:8px;">'+
         '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" onclick="event.stopPropagation()" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
@@ -9867,6 +9892,7 @@ function vagasAbrirCandidato(candId){
   var resp = c.respostasCustom || {};
   var perguntas = (v && v.perguntasCustom) || [];
   var scoreAtual = Number(c.score)||0;
+  var _pret = _vagasPretensao(c, v);
 
   var statusOpts = VAGAS_KANBAN_COLUNAS.map(function(col){
     return '<option value="'+col.id+'"'+(((c.status||'Novo')===col.id)?' selected':'')+'>'+col.id+'</option>';
@@ -9937,6 +9963,14 @@ function vagasAbrirCandidato(candId){
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">WhatsApp</div><div style="font-size:13px;color:var(--text);">'+_esc(c.whatsapp||'—')+'</div></div>'+
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Instagram</div><div style="font-size:13px;color:var(--text);">'+_esc(c.instagram||'—')+'</div></div>'+
             '<div><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Portfólio</div><div style="font-size:13px;color:var(--text);word-break:break-all;">'+(c.portfolio?'<a href="'+_esc(c.portfolio)+'" target="_blank" rel="noopener" style="color:var(--accent);">📎 Abrir</a>':'—')+'</div></div>'+
+            // pretensao salarial em destaque (vem das respostas do formulario)
+            (_pret
+              ? '<div style="grid-column:1/-1;margin-top:2px;padding:11px 13px;background:rgba(16,185,129,.09);border:1px solid rgba(16,185,129,.32);border-radius:9px;">'+
+                  '<div style="font-size:11px;color:var(--green);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">💰 Pretensão salarial</div>'+
+                  '<div style="font-size:15px;font-weight:700;color:var(--text);">'+_esc(_pret.curto)+'</div>'+
+                  (_pret.texto!==_pret.curto ? '<div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.5;">'+_esc(_pret.texto)+'</div>' : '')+
+                '</div>'
+              : '')+
           '</div>'+
           // score
           '<div style="margin-bottom:20px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;">'+
@@ -10163,6 +10197,7 @@ function _renderVagasTalentos(el){
               (c.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;word-break:break-all;">✉️ '+_esc(c.email)+'</div>' : '')+
               (c.whatsapp ? '<div style="font-size:11px;color:var(--text2);margin-bottom:2px;">📱 '+_esc(c.whatsapp)+'</div>' : '')+
               (c.portfolio ? '<div style="font-size:11px;color:var(--accent);margin-bottom:2px;word-break:break-all;"><a href="'+_esc(c.portfolio)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">📎 Portfólio</a></div>' : '')+
+              (function(){ var _p=_vagasPretensao(c, v); return _p ? '<div style="margin-top:6px;"><span title="'+_esc(_p.texto)+'" style="display:inline-block;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.35);border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;">💰 '+_esc(_p.curto)+'</span></div>' : ''; })()+
               (c.anotacoes ? '<div style="font-size:11px;color:var(--text2);margin-top:4px;font-style:italic;border-left:2px solid var(--border);padding-left:6px;">'+_esc(c.anotacoes.slice(0,80))+(c.anotacoes.length>80?'…':'')+'</div>' : '')+
               '<div style="display:flex;gap:4px;margin-top:8px;">'+
                 '<select onchange="vagasMoverCandidato(\''+c.id+'\', this.value)" onclick="event.stopPropagation()" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">'+statusOpts+'</select>'+
