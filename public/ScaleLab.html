@@ -1536,7 +1536,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           Chat
         </div>
-        <div class="nav-item" onclick="goTo('educacional')">
+        <div class="nav-item" id="nav-educacional" onclick="goTo('educacional')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
           Educacional
         </div>
@@ -1565,11 +1565,11 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       <span id="user-name-nav">Usuário</span>
     </div>
-    <div class="nav-item" onclick="window.open('/ajuda','_blank')" title="Central de Ajuda">
+    <div class="nav-item" id="nav-ajuda" onclick="window.open('/ajuda','_blank')" title="Central de Ajuda">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       Ajuda
     </div>
-    <div class="nav-item" onclick="iniciarOnboarding(true)" title="Repetir tour guiado">
+    <div class="nav-item" id="nav-tour" onclick="iniciarOnboarding(true)" title="Repetir tour guiado">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       Tour
     </div>
@@ -3012,6 +3012,14 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
       </div>
 
       <!-- TAB: LEMBRETES AUTOMÁTICOS -->
+      <div id="cfg-panel-arquivados" style="display:none;max-width:1100px;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;">📦 Módulos arquivados</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.55;">Arquivar tira o módulo do menu de <b>todo mundo</b> (inclusive de você) e bloqueia a página — mas <b>não apaga nada</b>. Os dados continuam salvos e é só reativar aqui pra voltar exatamente como estava.</div>
+          <div id="arquivados-lista" style="margin-top:18px;"></div>
+        </div>
+      </div>
+
       <div id="cfg-panel-lembretes" style="display:none;max-width:900px;">
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;">
@@ -4357,7 +4365,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados'];
 let _lastSync = 0;
 let _syncInterval = null;
 
@@ -5293,6 +5301,12 @@ const addBtns={
 let cur='dashboard';
 
 function goTo(id){
+  // Módulo arquivado: bloqueia a página (link antigo, aba velha, digitar na URL).
+  // Diretoria consegue abrir pra conferir antes de reativar — os outros voltam pro dashboard.
+  try{
+    var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
+    if(_mArq && !(currentUser && currentUser.cargo==='Diretoria')) id = 'dashboard';
+  }catch(e){}
   // Antes de trocar de página, garante que o page-roi não fique órfão dentro de outras páginas
   // (evita bug da tela branca em Tráfego > Controle de ROI)
   try { if (typeof _devolveRoiParaOrigem === 'function' && id !== 'metricas' && id !== 'roi') _devolveRoiParaOrigem(); } catch(e){}
@@ -18472,9 +18486,11 @@ const _CFG_GRUPOS = {
                  headers: { meuplano: ['💎','Meu Plano','Plano atual, uso vs limite, upgrade'] },
                  grad: 'linear-gradient(135deg,#FBBF24,#FF5926)' },
   dados:       { tabs: ['dados'], headers: {}, grad: 'linear-gradient(135deg,#10B981,#1B9CFA)' },
-  avancado:    { tabs: [], headers: {}, grad: 'linear-gradient(135deg,#7C3AED,#3E1493)' },
+  avancado:    { tabs: ['arquivados'],
+                 headers: { arquivados: ['📦','Módulos arquivados','Tire um módulo do ar sem apagar nada — e traga de volta quando quiser'] },
+                 grad: 'linear-gradient(135deg,#7C3AED,#3E1493)' },
 };
-const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','integracoes','branding','meuplano','dados'];
+const _CFG_TODAS_TABS = ['geral','usuarios','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','integracoes','branding','meuplano','dados','arquivados'];
 
 function _injectCfgSectionHeader(panelId, headerCfg, grad){
   if (!headerCfg) return;
@@ -18518,7 +18534,8 @@ function switchCfgGrupo(grupo, btn){
     p.style.maxWidth = '1100px';
     p.style.marginBottom = '24px';
     // Triggers de render dos painéis
-    if (t === 'usuarios') renderUsuarios();
+    if (t === 'arquivados') renderArquivadosCfg();
+    else if (t === 'usuarios') renderUsuarios();
     else if (t === 'nichos') renderNichos();
     else if (t === 'ofertas-cfg') renderOfertasCfg();
     else if (t === 'checklists') renderChecklistsCfg();
@@ -24636,6 +24653,81 @@ async function tentarLogin(){
   }
 }
 
+// ══════════════════════════════════════════════
+// ── MÓDULOS ARQUIVADOS ──
+// ══════════════════════════════════════════════
+// Permite tirar um módulo do ar sem apagar código: some da sidebar pra TODO MUNDO
+// (inclusive Diretoria) e a página fica bloqueada. Diretoria gerencia e traz de volta
+// em Configurações > Avançado > Módulos arquivados. Chave sincronizada: sl_modulos_arquivados.
+var MODULOS_ARQUIVAVEIS = [
+  { id:'iacopy',      nav:'nav-iacopy',      page:'iacopy',      label:'IA',          desc:'Copy + Análise de Ads com IA' },
+  { id:'educacional', nav:'nav-educacional', page:'educacional', label:'Educacional', desc:'Área de treinamentos do time' },
+  // porCargo: a visibilidade normal dele já é decidida por _applyNavPermissions —
+  // ao desarquivar NÃO forçamos exibir, senão quebraria a regra de cargo.
+  { id:'infra',       nav:'nav-infra',       page:'infra',       label:'Infra',       desc:'Contas, domínios e infraestrutura', porCargo:true },
+  { id:'ajuda',       nav:'nav-ajuda',       page:null,          label:'Ajuda',       desc:'Link pra Central de Ajuda' },
+  { id:'tour',        nav:'nav-tour',        page:null,          label:'Tour',        desc:'Tour guiado de onboarding' }
+];
+function _modulosArquivados(){
+  try{ var a = g('sl_modulos_arquivados', []); return Array.isArray(a) ? a : []; }catch(e){ return []; }
+}
+function _moduloArquivado(id){ return _modulosArquivados().indexOf(id) >= 0; }
+// devolve o modulo arquivado dono daquela pagina (ou null)
+function _moduloArquivadoDaPagina(page){
+  for(var i=0;i<MODULOS_ARQUIVAVEIS.length;i++){
+    var m = MODULOS_ARQUIVAVEIS[i];
+    if(m.page && m.page===page && _moduloArquivado(m.id)) return m;
+  }
+  return null;
+}
+function _aplicarModulosArquivados(){
+  var arq = _modulosArquivados();
+  MODULOS_ARQUIVAVEIS.forEach(function(m){
+    var el = document.getElementById(m.nav);
+    if(!el) return;
+    if(arq.indexOf(m.id)>=0) el.style.display = 'none';
+    else if(!m.porCargo) el.style.display = '';  // desarquivou → volta pro menu
+  });
+}
+// Configurações > Avançado > Módulos arquivados
+function renderArquivadosCfg(){
+  var box = document.getElementById('arquivados-lista');
+  if(!box) return;
+  var arq = _modulosArquivados();
+  box.innerHTML = MODULOS_ARQUIVAVEIS.map(function(m){
+    var off = arq.indexOf(m.id)>=0;
+    return '<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;background:'+(off?'var(--bg3)':'var(--card)')+';">'+
+      '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:14px;font-weight:700;color:'+(off?'var(--text2)':'var(--text)')+';">'+_esc(m.label)+
+          (off?' <span style="font-size:10.5px;font-weight:700;background:rgba(148,163,184,.18);color:var(--text2);border-radius:20px;padding:2px 9px;margin-left:6px;vertical-align:middle;">ARQUIVADO</span>'
+              :' <span style="font-size:10.5px;font-weight:700;background:rgba(16,185,129,.14);color:var(--green);border-radius:20px;padding:2px 9px;margin-left:6px;vertical-align:middle;">NO AR</span>')+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text2);margin-top:3px;">'+_esc(m.desc)+'</div>'+
+      '</div>'+
+      '<button class="btn '+(off?'btn-primary':'btn-ghost')+'" onclick="toggleModuloArquivado(\''+m.id+'\')" style="font-size:12px;padding:8px 14px;white-space:nowrap;">'+
+        (off?'↩ Reativar':'📦 Arquivar')+
+      '</button>'+
+    '</div>';
+  }).join('');
+}
+function toggleModuloArquivado(id){
+  var m = MODULOS_ARQUIVAVEIS.find(function(x){ return x.id===id; });
+  if(!m) return;
+  var arq = _modulosArquivados();
+  var i = arq.indexOf(id);
+  if(i>=0){
+    arq.splice(i,1);
+  } else {
+    if(!confirm('Arquivar "'+m.label+'"?\n\nEle some do menu de todo mundo (inclusive do seu) e a página fica bloqueada.\nNenhum dado é apagado — dá pra reativar aqui quando quiser.')) return;
+    arq.push(id);
+  }
+  s('sl_modulos_arquivados', arq);
+  // reaplica permissões (que terminam chamando _aplicarModulosArquivados):
+  // esconde o que entrou no arquivo e traz de volta o que saiu
+  try{ _applyNavPermissions(currentUser && currentUser.cargo); }catch(e){}
+  renderArquivadosCfg();
+}
+
 function _applyNavPermissions(cargo){
   var isDir = cargo==='Diretoria';
   var isInfra = cargo==='Infra';
@@ -24691,6 +24783,9 @@ function _applyNavPermissions(cargo){
 
   // Novo Ritual: apenas Diretoria
   setDisp('btn-novo-ritual', isDir);
+
+  // Arquivados por último: o que está arquivado some pra todo mundo, mesmo Diretoria
+  try{ _aplicarModulosArquivados(); }catch(e){}
 }
 
 function _loginOk(user){
