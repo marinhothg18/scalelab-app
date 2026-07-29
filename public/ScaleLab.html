@@ -4366,6 +4366,65 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
 const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados'];
+// ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
+// As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
+// pontos de fetch espalhados pelo arquivo (fácil esquecer um e quebrar o sync sem
+// perceber), o token é injetado aqui, num único lugar.
+(function(){
+  if(window._fetchAuthWrap) return;
+  window._fetchAuthWrap = 1;
+  var _fetchOrig = window.fetch.bind(window);
+  function _ehChamadaApi(url){
+    if(!url) return false;
+    if(url.indexOf('/api/') !== 0 && url.indexOf('/api/') < 0) return false;
+    // só same-origin (ou o próprio backend) — nunca vaza token pra terceiros
+    return url.charAt(0)==='/' || (API_BASE && url.indexOf(API_BASE)===0) || url.indexOf(location.origin)===0;
+  }
+  window.fetch = function(input, init){
+    var url = '';
+    try{ url = (typeof input === 'string') ? input : (input && input.url) || ''; }catch(e){}
+    var ehApi = false;
+    try{ ehApi = _ehChamadaApi(url); }catch(e){}
+    if(ehApi){
+      try{
+        var token = localStorage.getItem('sl_session_token') || '';
+        if(token){
+          init = Object.assign({}, init || {});   // não muta o objeto de quem chamou
+          var h = new Headers((init && init.headers) || (typeof input!=='string' && input && input.headers) || {});
+          if(!h.has('Authorization')) h.set('Authorization', 'Bearer ' + token);
+          init.headers = h;
+        }
+      }catch(e){}
+    }
+    var p = _fetchOrig(input, init);
+    if(ehApi && url.indexOf('/api/auth/') < 0){
+      p = p.then(function(resp){
+        // 401 = sessão expirada/inválida. Manda pro login em vez de deixar o app
+        // "logado" só na aparência, sem sincronizar nada.
+        if(resp && resp.status === 401) { try{ _sessaoExpirou(); }catch(e){} }
+        return resp;
+      });
+    }
+    return p;
+  };
+})();
+var _sessaoAvisada = 0;
+function _sessaoExpirou(){
+  if(_sessaoAvisada) return;             // uma vez só, senão vira loop
+  if(localStorage.getItem('sl_auth') !== '1') return;
+  _sessaoAvisada = 1;
+  try{ localStorage.removeItem('sl_auth'); localStorage.removeItem('sl_session_token'); }catch(e){}
+  try{ if(_syncInterval) clearInterval(_syncInterval); }catch(e){}
+  setTimeout(function(){
+    try{
+      var ls = document.getElementById('login-screen');
+      if(ls) ls.classList.remove('hidden');
+      var er = document.getElementById('login-error');
+      if(er) er.textContent = 'Sua sessão expirou. Entre novamente.';
+    }catch(e){}
+  }, 100);
+}
+
 let _lastSync = 0;
 let _syncInterval = null;
 

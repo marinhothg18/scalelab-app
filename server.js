@@ -3196,26 +3196,30 @@ app.put('/api/tenant/branding', (req, res) => {
   }
 });
 
-app.get('/api/store', (req, res) => {
+app.get('/api/store', authUsuario, (req, res) => {
   const db = readDB();
   // Multi-tenancy: filtra o store pelo tenant da request.
   // Super-admin com ?_super=1 vê tudo (pro painel SaaS poder consultar
   // dados de qualquer tenant quando precisar).
   const bypass = req.query._super === '1' && _isSuperAdmin(req);
   const baseStore = bypass ? db.store : _aplicarFiltroTenant(db.store, req.tenantId);
-  const safe = Object.assign({}, baseStore);
+  const safe = _filtrarKeysPorCargo(Object.assign({}, baseStore), req);
   if (safe['sl_usuarios']) safe['sl_usuarios'] = _stripSenhas(safe['sl_usuarios']);
   res.json(safe);
 });
 
-app.get('/api/updates/:since', (req, res) => {
+app.get('/api/updates/:since', authUsuario, (req, res) => {
   const since = parseInt(req.params.since) || 0;
   const db = readDB();
   const bypass = req.query._super === '1' && _isSuperAdmin(req);
   const isInterno = req.tenantId === TENANT_INTERNO_ID;
+  const soDiretoria = _ehDiretoria(req);
   const data = {};
   Object.entries(db.timestamps || {}).forEach(([k, ts]) => {
     if (ts > since) {
+      // Chaves sensíveis (RH, financeiro, protocolo) não saem no sync incremental
+      // de quem não é Diretoria — mesma regra do GET /api/store.
+      if (KEYS_DIRETORIA.has(k) && !soDiretoria) return;
       let valor = db.store[k];
       if (!bypass) {
         // Chaves da plataforma: só pro interno
@@ -3266,11 +3270,18 @@ function _mergeArrayById(existing, incoming) {
   return Array.from(map.values());
 }
 
-app.put('/api/store/:key', (req, res) => {
+app.put('/api/store/:key', authUsuario, (req, res) => {
   const db = readDB();
   const key = req.params.key;
   let incoming = req.body;
   const existing = db.store[key];
+
+  // Chave restrita: só Diretoria escreve. Bloquear a escrita é tão importante
+  // quanto a leitura — sem isso um cliente com cópia velha em cache poderia
+  // sobrescrever RH/financeiro/protocolo com dados desatualizados.
+  if (KEYS_DIRETORIA.has(key) && !_ehDiretoria(req)) {
+    return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  }
 
   // ── MULTI-TENANCY PR 5: protege escritas ──
   // 1. Chaves da plataforma: só super-admin (Diretoria do tenant interno) escreve.
@@ -3381,7 +3392,7 @@ const LIXEIRA_MAX_DIAS = 30;
 
 // Remove item de uma key e joga na lixeira global
 // Body: { itemId, tipo, deletedBy, deletedByNome }
-app.post('/api/lixeira/soft-delete', (req, res) => {
+app.post('/api/lixeira/soft-delete', authUsuario, (req, res) => {
   const { key, itemId, tipo, deletedBy, deletedByNome } = req.body || {};
   if (!key || itemId === undefined) return res.status(400).json({ error: 'key e itemId obrigatórios' });
 
@@ -3419,7 +3430,7 @@ app.post('/api/lixeira/soft-delete', (req, res) => {
 });
 
 // Restaura item da lixeira de volta ao array original
-app.post('/api/lixeira/restore/:lixeiraId', (req, res) => {
+app.post('/api/lixeira/restore/:lixeiraId', authUsuario, (req, res) => {
   const db = readDB();
   const lix = db.store['sl_lixeira'] || [];
   const idx = lix.findIndex(x => String(x.id) === String(req.params.lixeiraId));
@@ -3445,7 +3456,7 @@ app.post('/api/lixeira/restore/:lixeiraId', (req, res) => {
 });
 
 // Apaga permanentemente da lixeira
-app.delete('/api/lixeira/:lixeiraId', (req, res) => {
+app.delete('/api/lixeira/:lixeiraId', authUsuario, (req, res) => {
   const db = readDB();
   const lix = db.store['sl_lixeira'] || [];
   const entry = lix.find(x => String(x.id) === String(req.params.lixeiraId));
@@ -4215,6 +4226,72 @@ app.get('/api/v1/docs', (req, res) => {
 // ══════════════════════════════════════════════
 
 // Middleware: só Diretoria pode acessar backup. Aceita Bearer token (preferido) ou email+senha (legado).
+// Chaves que só a Diretoria lê/escreve pelo /api/store.
+// São os módulos que vivem dentro de Gestão (RH, Financeiro, Vagas) e o painel pessoal.
+// Sem isso, estar logado como Editor já daria acesso a folha de pagamento e afins.
+const KEYS_DIRETORIA = new Set([
+  'sl_protocolo',
+  'sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding',
+  'sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps',
+  'sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes',
+  'sl_fin_nfs','sl_fin_ofx','sl_fin_impostos',
+  'sl_candidatos'
+]);
+function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
+// Remove do payload as chaves restritas quando quem pede não é Diretoria.
+function _filtrarKeysPorCargo(obj, req) {
+  if (_ehDiretoria(req)) return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (!KEYS_DIRETORIA.has(k)) out[k] = v;
+  }
+  return out;
+}
+
+// Só persiste lastActivity de hora em hora: as rotas de sync são chamadas o tempo
+// todo e reescrever o db.json inteiro a cada poll seria caro demais.
+const SESSAO_BUMP_MS = 60 * 60 * 1000;
+
+// Qualquer usuário logado e ativo (não só Diretoria).
+// Usado nas rotas de sync, que antes eram abertas — o banco inteiro era legível
+// por qualquer um que soubesse a URL, sem login nenhum.
+function authUsuario(req, res, next) {
+  const db = readDB();
+
+  // 1) Bearer token (preferido)
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const sess = _getSessions(db).find(s => s.tokenHash === tokenHash);
+    if (sess && (sess.lastActivity || sess.createdAt) + SESSION_TTL_MS >= Date.now()) {
+      const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+      if (user && user.ativo !== false) {
+        const ultimo = sess.lastActivity || sess.createdAt || 0;
+        if (Date.now() - ultimo > SESSAO_BUMP_MS) { sess.lastActivity = Date.now(); writeDB(db); }
+        req.user = user;
+        return next();
+      }
+    }
+  }
+
+  // 2) Legado: email+senha nos headers (mesma transição aceita por authDiretoria)
+  const email = req.headers['x-user-email'];
+  const senha = req.headers['x-user-senha'];
+  if (email && senha) {
+    const user = (db.store['sl_usuarios'] || []).find(u =>
+      u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
+    if (user) {
+      let match = false;
+      if (user.senhaHash) { try { match = bcrypt.compareSync(String(senha), user.senhaHash); } catch {} }
+      else if (user.senha) { match = (user.senha === senha); }
+      if (match) { req.user = user; return next(); }
+    }
+  }
+
+  return res.status(401).json({ error: 'Não autenticado. Faça login novamente.' });
+}
+
 function authDiretoria(req, res, next) {
   const db = readDB();
 
