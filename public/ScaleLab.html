@@ -5300,12 +5300,21 @@ const addBtns={
 };
 let cur='dashboard';
 
+// Páginas exclusivas da Diretoria. O menu já é escondido em _applyNavPermissions,
+// mas esconder não bloqueia — o guard de verdade é o do goTo() logo abaixo.
+// Declarado aqui (antes do goTo) pra não depender da ordem de execução do script.
+var PAGINAS_DIRETORIA = ['gestao','protocolo','configuracoes'];
+
 function goTo(id){
   // Módulo arquivado: bloqueia a página (link antigo, aba velha, digitar na URL).
   // Diretoria consegue abrir pra conferir antes de reativar — os outros voltam pro dashboard.
   try{
+    var _ehDir = !!(currentUser && currentUser.cargo==='Diretoria');
+    // Páginas restritas à Diretoria: esconder do menu não basta — sem esse guard
+    // qualquer um abre por link antigo, aba velha, busca interna ou console.
+    if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
-    if(_mArq && !(currentUser && currentUser.cargo==='Diretoria')) id = 'dashboard';
+    if(_mArq && !_ehDir) id = 'dashboard';
   }catch(e){}
   // Antes de trocar de página, garante que o page-roi não fique órfão dentro de outras páginas
   // (evita bug da tela branca em Tráfego > Controle de ROI)
