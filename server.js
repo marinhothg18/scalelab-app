@@ -2419,6 +2419,266 @@ app.post('/api/integracoes/utmify/test', authDiretoria, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// ── TRACKING PRÓPRIO: META ADS + VENDAS ──
+// ══════════════════════════════════════════════
+// A Utmify não tem API de leitura (só POST /orders), então não dá pra "puxar" o
+// painel dela. A saída é montar o número na fonte, que é o que ela mesma faz:
+//   INVESTIMENTO ← API do Meta Ads (Graph API)
+//   FATURAMENTO  ← postback do checkout/gateway (mesmo que já alimenta a Utmify)
+//   ROAS         = faturamento / investimento, calculado aqui.
+// Os tokens ficam em chaves FORA do SYNC_KEYS: nunca são enviados pro browser.
+
+const META_API_VER  = 'v25.0';
+const META_API_BASE = `https://graph.facebook.com/${META_API_VER}`;
+const KEY_META      = 'sl_integracoes_meta';     // server-only (token)
+const KEY_VENDAS    = 'sl_vendas';               // vendas normalizadas
+const KEY_VENDAS_RAW= 'sl_vendas_raw';           // últimos payloads crus (debug/mapeamento)
+const VENDAS_RAW_MAX = 50;
+const VENDAS_RETENCAO_DIAS = 365;
+
+function _metaCfg(db) {
+  const c = (db || readDB()).store[KEY_META];
+  return (c && typeof c === 'object') ? c : null;
+}
+// act_123 e 123 são aceitos; a Graph API exige o prefixo act_
+function _metaActId(id) {
+  const s = String(id || '').trim();
+  if (!s) return '';
+  return s.startsWith('act_') ? s : ('act_' + s.replace(/^act/, ''));
+}
+
+// ── Config ──
+app.get('/api/integracoes/meta/me', authDiretoria, (req, res) => {
+  try {
+    const cfg = _metaCfg();
+    res.json({
+      ok: true,
+      configurado: !!(cfg && cfg.accessToken),
+      ativo: !!(cfg && cfg.ativo),
+      adAccountId: cfg ? (cfg.adAccountId || '') : '',
+      tokenPreview: (cfg && cfg.accessToken) ? String(cfg.accessToken).slice(0, 10) + '…' : null,
+      ultimoTeste: cfg ? (cfg.ultimoTeste || null) : null,
+      ultimoErro: cfg ? (cfg.ultimoErro || null) : null,
+      versaoApi: META_API_VER
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/integracoes/meta/config', authDiretoria, (req, res) => {
+  try {
+    const { accessToken, adAccountId, ativo } = req.body || {};
+    const db = readDB();
+    const cfg = _metaCfg(db) || { criadoEm: new Date().toISOString() };
+    // token em branco = manter o que já está salvo (o campo vem vazio na tela)
+    if (accessToken && String(accessToken).trim()) cfg.accessToken = String(accessToken).trim();
+    if (adAccountId !== undefined) cfg.adAccountId = _metaActId(adAccountId);
+    cfg.ativo = ativo === true;
+    cfg._updatedAt = Date.now();
+    if (!cfg.accessToken) return res.status(400).json({ error: 'Cole o token de acesso do Meta.' });
+    db.store[KEY_META] = cfg;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_META] = now();
+    audit(db, 'integracao.meta.config', KEY_META, { adAccountId: cfg.adAccountId, ativo: cfg.ativo }, req.user);
+    writeDB(db);   // depois do audit, senão o registro fica só na memória
+    res.json({ ok: true, adAccountId: cfg.adAccountId, ativo: cfg.ativo });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Chamada crua na Graph API, com erro legível (o do Meta vem aninhado)
+async function _metaGet(pathRel, params, cfg) {
+  const qs = new URLSearchParams(Object.assign({ access_token: cfg.accessToken }, params || {}));
+  const url = `${META_API_BASE}/${pathRel}?${qs}`;
+  const r = await fetch(url);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) {
+    const e = j.error || {};
+    const msg = e.error_user_msg || e.message || `HTTP ${r.status}`;
+    const err = new Error(msg);
+    err.metaCode = e.code;
+    err.httpStatus = r.status;
+    throw err;
+  }
+  return j;
+}
+
+app.post('/api/integracoes/meta/test', authDiretoria, async (req, res) => {
+  const db = readDB();
+  const cfg = _metaCfg(db);
+  if (!cfg || !cfg.accessToken) return res.status(400).json({ error: 'Configure o token primeiro.' });
+  if (!cfg.adAccountId) return res.status(400).json({ error: 'Informe o ID da conta de anúncios.' });
+  try {
+    const j = await _metaGet(cfg.adAccountId, { fields: 'name,account_status,currency,timezone_name' }, cfg);
+    cfg.ultimoTeste = new Date().toISOString();
+    cfg.ultimoErro = null;
+    db.store[KEY_META] = cfg; writeDB(db);
+    res.json({ ok: true, conta: { nome: j.name, moeda: j.currency, fuso: j.timezone_name, status: j.account_status } });
+  } catch (err) {
+    cfg.ultimoErro = err.message;
+    db.store[KEY_META] = cfg; writeDB(db);
+    res.status(400).json({ error: err.message, metaCode: err.metaCode });
+  }
+});
+
+// ── Investimento por campanha ──
+// level: campaign | adset | ad
+app.get('/api/integracoes/meta/insights', authDiretoria, async (req, res) => {
+  const cfg = _metaCfg();
+  if (!cfg || !cfg.accessToken || !cfg.adAccountId) {
+    return res.status(400).json({ error: 'Integração do Meta não configurada.' });
+  }
+  const from = String(req.query.from || '').slice(0, 10);
+  const to   = String(req.query.to   || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: 'Use from e to no formato AAAA-MM-DD.' });
+  }
+  const level = ['campaign', 'adset', 'ad'].includes(req.query.level) ? req.query.level : 'campaign';
+  try {
+    const j = await _metaGet(`${cfg.adAccountId}/insights`, {
+      level,
+      fields: 'campaign_id,campaign_name,adset_name,ad_name,spend,impressions,clicks,ctr,cpc,cpm,date_start,date_stop',
+      time_range: JSON.stringify({ since: from, until: to }),
+      time_increment: '1',
+      limit: '500'
+    }, cfg);
+    const linhas = (j.data || []).map(d => ({
+      data: d.date_start,
+      campanhaId: d.campaign_id || '',
+      campanha: d.campaign_name || '',
+      adset: d.adset_name || '',
+      anuncio: d.ad_name || '',
+      investimento: Number(d.spend || 0),
+      impressoes: Number(d.impressions || 0),
+      cliques: Number(d.clicks || 0),
+      ctr: Number(d.ctr || 0),
+      cpc: Number(d.cpc || 0),
+      cpm: Number(d.cpm || 0)
+    }));
+    res.json({ ok: true, level, de: from, ate: to, linhas });
+  } catch (err) {
+    res.status(400).json({ error: err.message, metaCode: err.metaCode });
+  }
+});
+
+// ── Vendas via postback do checkout ──
+// O gateway que hoje alimenta a Utmify passa a mandar a mesma venda pra cá também.
+// A URL carrega um token secreto (gateways não mandam header Authorization).
+function _vendasCfg(db) {
+  const c = (db || readDB()).store['sl_integracoes_vendas'];
+  return (c && typeof c === 'object') ? c : null;
+}
+app.get('/api/integracoes/vendas/me', authDiretoria, (req, res) => {
+  try {
+    const db = readDB();
+    const cfg = _vendasCfg(db);
+    const vendas = db.store[KEY_VENDAS] || [];
+    const raw = db.store[KEY_VENDAS_RAW] || [];
+    res.json({
+      ok: true,
+      configurado: !!(cfg && cfg.token),
+      urlWebhook: cfg && cfg.token ? `/api/webhook/vendas/${cfg.token}` : null,
+      totalVendas: vendas.length,
+      ultimaVenda: vendas.length ? vendas[vendas.length - 1].recebidoEm : null,
+      ultimosBrutos: raw.slice(-10).reverse()
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/integracoes/vendas/gerar-token', authDiretoria, (req, res) => {
+  try {
+    const db = readDB();
+    const cfg = _vendasCfg(db) || {};
+    cfg.token = crypto.randomBytes(24).toString('hex');
+    cfg._updatedAt = Date.now();
+    db.store['sl_integracoes_vendas'] = cfg;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_integracoes_vendas'] = now();
+    audit(db, 'integracao.vendas.token', 'sl_integracoes_vendas', {}, req.user);
+    writeDB(db);   // depois do audit
+    res.json({ ok: true, urlWebhook: `/api/webhook/vendas/${cfg.token}` });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Extrai os campos que interessam de payloads de gateways diferentes.
+// Cada gateway nomeia do seu jeito; aqui a gente tenta os nomes mais comuns e
+// guarda o payload cru pra ajustar depois vendo o formato real.
+function _num(v) {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+// devolve {valor, caminho} — o caminho importa pra saber se o número veio em centavos
+function _pegaCom(obj, caminhos) {
+  for (const c of caminhos) {
+    const v = c.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
+    if (v !== undefined && v !== null && v !== '') return { valor: v, caminho: c };
+  }
+  return { valor: undefined, caminho: '' };
+}
+function _pega(obj, caminhos) { return _pegaCom(obj, caminhos).valor; }
+
+function _normalizarVenda(p) {
+  const achado = _pegaCom(p, [
+    'commission.totalPriceInCents','totalPriceInCents','amount_in_cents','price_in_cents',
+    'valor','value','amount','total','price','transaction.amount','data.amount','order.total'
+  ]);
+  let valor = _num(achado.valor);
+  // Gateways que mandam em centavos deixam isso explícito no nome do campo
+  if (valor !== null && /cents/i.test(achado.caminho)) valor = valor / 100;
+  return {
+    id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    pedidoId: String(_pega(p, ['orderId','order_id','id','transaction_id','codigo','code']) || ''),
+    status: String(_pega(p, ['status','order_status','payment_status','situacao']) || '').toLowerCase(),
+    valor: valor,
+    moeda: String(_pega(p, ['currency','moeda']) || 'BRL'),
+    produto: String(_pega(p, ['products.0.name','product.name','produto','product_name','plan_name']) || ''),
+    cliente: String(_pega(p, ['customer.name','cliente.nome','customer_name','buyer.name']) || ''),
+    email: String(_pega(p, ['customer.email','cliente.email','customer_email','buyer.email']) || ''),
+    utmSource:   String(_pega(p, ['trackingParameters.utm_source','utm_source','tracking.utm_source','src']) || ''),
+    utmMedium:   String(_pega(p, ['trackingParameters.utm_medium','utm_medium','tracking.utm_medium']) || ''),
+    utmCampaign: String(_pega(p, ['trackingParameters.utm_campaign','utm_campaign','tracking.utm_campaign','campaign']) || ''),
+    utmContent:  String(_pega(p, ['trackingParameters.utm_content','utm_content','tracking.utm_content']) || ''),
+    utmTerm:     String(_pega(p, ['trackingParameters.utm_term','utm_term','tracking.utm_term']) || ''),
+    recebidoEm: new Date().toISOString()
+  };
+}
+
+app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parseado pelo express.json global
+  try {
+    const db = readDB();
+    const cfg = _vendasCfg(db);
+    if (!cfg || !cfg.token) return res.status(404).json({ error: 'Webhook não configurado.' });
+    // comparação em tempo constante — o token vem na URL
+    const a = Buffer.from(String(req.params.token || ''));
+    const b = Buffer.from(String(cfg.token));
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(401).json({ error: 'Token inválido.' });
+    }
+    const payload = req.body || {};
+    // guarda o cru (limitado) pra conseguir mapear os campos do gateway real
+    const raw = db.store[KEY_VENDAS_RAW] || [];
+    raw.push({ em: new Date().toISOString(), payload });
+    db.store[KEY_VENDAS_RAW] = raw.slice(-VENDAS_RAW_MAX);
+
+    const venda = _normalizarVenda(payload);
+    const vendas = db.store[KEY_VENDAS] || [];
+    // dedupe por pedidoId (gateways reenviam o mesmo evento)
+    const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
+    if (!jaTem) vendas.push(venda);
+    // retenção
+    const corte = Date.now() - VENDAS_RETENCAO_DIAS * 86400000;
+    db.store[KEY_VENDAS] = vendas.filter(v => new Date(v.recebidoEm).getTime() >= corte);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_VENDAS] = now();
+    writeDB(db);
+    res.json({ ok: true, duplicada: !!jaTem });
+  } catch (err) {
+    // nunca devolve 500 pro gateway sem contexto — muitos desativam o webhook após erros
+    res.status(200).json({ ok: false, erro: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ── SAAS · PLANOS E LIMITES (Bloqueador 3/7) ──
 // Define os 3 planos comerciais com limites e features.
 // ══════════════════════════════════════════════
@@ -3217,8 +3477,8 @@ app.get('/api/updates/:since', authUsuario, (req, res) => {
   const data = {};
   Object.entries(db.timestamps || {}).forEach(([k, ts]) => {
     if (ts > since) {
-      // Chaves sensíveis (RH, financeiro, protocolo) não saem no sync incremental
-      // de quem não é Diretoria — mesma regra do GET /api/store.
+      // Mesma regra do GET /api/store: segredo nunca sai; sensível só pra Diretoria.
+      if (KEYS_SERVIDOR.has(k)) return;
       if (KEYS_DIRETORIA.has(k) && !soDiretoria) return;
       let valor = db.store[k];
       if (!bypass) {
@@ -4235,15 +4495,28 @@ const KEYS_DIRETORIA = new Set([
   'sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps',
   'sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes',
   'sl_fin_nfs','sl_fin_ofx','sl_fin_impostos',
-  'sl_candidatos'
+  'sl_candidatos',
+  // guarda o API token da Utmify — não pode sincronizar pro browser do time
+  'sl_integracoes_utmify','sl_integracoes_utmify_historico',
+  'sl_vendas'
+]);
+// Chaves que guardam SEGREDO (tokens de API) e nunca devem sair pro navegador —
+// nem pra Diretoria. Ficam só no servidor; a tela conversa com elas por rotas
+// dedicadas, que devolvem no máximo um preview do token.
+const KEYS_SERVIDOR = new Set([
+  'sl_integracoes_meta',    // access token do Meta Ads
+  'sl_integracoes_vendas',  // token secreto da URL de webhook
+  'sl_vendas_raw'           // payloads crus dos gateways (dados de cliente)
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
 function _filtrarKeysPorCargo(obj, req) {
-  if (_ehDiretoria(req)) return obj;
+  const soDir = _ehDiretoria(req);
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
-    if (!KEYS_DIRETORIA.has(k)) out[k] = v;
+    if (KEYS_SERVIDOR.has(k)) continue;              // segredo: nunca sai, nem pra Diretoria
+    if (!soDir && KEYS_DIRETORIA.has(k)) continue;   // dado sensível: só Diretoria
+    out[k] = v;
   }
   return out;
 }
