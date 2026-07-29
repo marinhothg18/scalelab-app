@@ -2341,7 +2341,7 @@ async function _enviarEventoUtmify(tenantId, tipoEvento, dadosEvento) {
 
 // POST /api/integracoes/utmify/config — salva config Utmify do tenant atual
 // Body: { apiToken, ativo, eventosHabilitados: ['lead','qualified','opportunity','conversion'] }
-app.post('/api/integracoes/utmify/config', (req, res) => {
+app.post('/api/integracoes/utmify/config', authDiretoria, (req, res) => {
   try {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const { apiToken, ativo, eventosHabilitados } = req.body || {};
@@ -2369,7 +2369,7 @@ app.post('/api/integracoes/utmify/config', (req, res) => {
 });
 
 // GET /api/integracoes/utmify/me — retorna config do tenant + último log
-app.get('/api/integracoes/utmify/me', (req, res) => {
+app.get('/api/integracoes/utmify/me', authDiretoria, (req, res) => {
   try {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const db = readDB();
@@ -2402,7 +2402,7 @@ app.get('/api/integracoes/utmify/me', (req, res) => {
 });
 
 // POST /api/integracoes/utmify/test — envia evento de teste
-app.post('/api/integracoes/utmify/test', async (req, res) => {
+app.post('/api/integracoes/utmify/test', authDiretoria, async (req, res) => {
   try {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const r = await _enviarEventoUtmify(tenantId, 'lead', {
