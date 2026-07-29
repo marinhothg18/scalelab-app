@@ -18077,6 +18077,142 @@ async function renderMeuPlanoTab(){
 // ── INTEGRAÇÕES EXTERNAS ──
 // Hoje: Utmify. Futuro: Meta Ads, Google Ads, etc.
 // ══════════════════════════════════════════════
+// ── Cards do tracking próprio (Meta Ads + Vendas) ──
+// A Utmify não devolve dados por API, então o ROAS é montado aqui:
+// investimento vem do Meta, faturamento vem do postback do checkout.
+function _badgeInt(ok, txtOk, txtOff){
+  return ok
+    ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">'+txtOk+'</span>'
+    : '<span style="background:rgba(156,163,175,.15);color:#9CA3AF;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">'+txtOff+'</span>';
+}
+function _cardMetaAds(m){
+  m = m || {};
+  var conectado = !!m.configurado;
+  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:14px;">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+
+        '<div style="width:48px;height:48px;background:linear-gradient(135deg,#1877F2,#0866FF);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📘</div>'+
+        '<div><div style="font-size:17px;font-weight:700;">Meta Ads</div>'+
+        '<div style="font-size:11px;color:var(--text2);">Investimento real por campanha · direto da fonte</div></div>'+
+      '</div>'+
+      _badgeInt(conectado && m.ativo, '✅ ATIVO', conectado ? '⏸ INATIVO' : '○ NÃO CONFIGURADO')+
+    '</div>'+
+    '<div style="background:rgba(24,119,242,.06);border-left:3px solid #1877F2;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px;">'+
+      '<b>🎯 O que faz:</b><br>'+
+      '✓ Puxa o <b>investimento</b> de cada campanha, conjunto e anúncio, dia a dia<br>'+
+      '✓ Traz impressões, cliques, CPC, CPM e CTR<br>'+
+      '✓ Junto com as vendas (card abaixo), o sistema calcula o <b>ROAS sozinho</b><br>'+
+      '✓ Não depende de RedTrack nem de Utmify'+
+    '</div>'+
+    '<div class="fg" style="margin-bottom:12px;">'+
+      '<label class="fl">ID da conta de anúncios</label>'+
+      '<input type="text" id="meta-acc" class="fi" value="'+_esc(m.adAccountId||'')+'" placeholder="act_123456789 (ou só os números)" autocomplete="off">'+
+      '<div style="font-size:11px;color:var(--text2);margin-top:4px;">No Gerenciador de Anúncios, aparece na URL como <code>act_...</code>.</div>'+
+    '</div>'+
+    '<div class="fg" style="margin-bottom:14px;">'+
+      '<label class="fl">Token de acesso</label>'+
+      '<input type="password" id="meta-token" class="fi" placeholder="'+(m.tokenPreview ? _esc(m.tokenPreview)+' (já salvo · cole novo pra trocar)' : 'Cole o access token aqui')+'" autocomplete="off">'+
+      '<div style="font-size:11px;color:var(--text2);margin-top:4px;">Gere em <a href="https://developers.facebook.com/tools/explorer/" target="_blank" style="color:var(--accent);">Graph API Explorer</a> com a permissão <code>ads_read</code>. O token fica só no servidor — nunca vai pro navegador.</div>'+
+    '</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer;">'+
+      '<input type="checkbox" id="meta-ativo"'+(m.ativo?' checked':'')+'>'+
+      '<span style="font-size:13px;">Ativar (usar esses dados nas telas de Tráfego e ROI)</span>'+
+    '</label>'+
+    (m.ultimoErro ? '<div style="background:rgba(220,38,38,.08);border-left:3px solid #DC2626;padding:10px 12px;border-radius:7px;font-size:12px;margin-bottom:14px;"><b>Último erro do Meta:</b><br>'+_esc(m.ultimoErro)+'</div>' : '')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+      '<button class="btn btn-primary" onclick="salvarMetaConfig()">💾 Salvar</button>'+
+      (conectado ? '<button class="btn btn-ghost" onclick="testarMetaAds()">🧪 Testar conexão</button>' : '')+
+    '</div>'+
+    '<div id="meta-resultado" style="margin-top:12px;"></div>'+
+  '</div>';
+}
+function _cardVendas(v){
+  v = v || {};
+  var url = v.urlWebhook ? (location.origin + v.urlWebhook) : '';
+  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:14px;">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+
+        '<div style="width:48px;height:48px;background:linear-gradient(135deg,#16A34A,#059669);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">💰</div>'+
+        '<div><div style="font-size:17px;font-weight:700;">Vendas do checkout</div>'+
+        '<div style="font-size:11px;color:var(--text2);">Faturamento em tempo real · via postback</div></div>'+
+      '</div>'+
+      _badgeInt(!!v.configurado && v.totalVendas>0, '✅ RECEBENDO', v.configurado ? '⏳ AGUARDANDO 1ª VENDA' : '○ NÃO CONFIGURADO')+
+    '</div>'+
+    '<div style="background:rgba(22,163,74,.06);border-left:3px solid #16A34A;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px;">'+
+      '<b>🎯 Como funciona:</b><br>'+
+      'Seu checkout já manda as vendas pra Utmify por postback. Aqui você aponta <b>o mesmo postback</b> pra cá também — os dois recebem, em paralelo.<br>'+
+      '✓ Nada muda na Utmify · ✓ Captura os UTMs da venda · ✓ Vira faturamento por campanha'+
+    '</div>'+
+    (v.configurado
+      ? '<div class="fg" style="margin-bottom:14px;">'+
+          '<label class="fl">URL de postback (cole no seu checkout)</label>'+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+            '<input type="text" class="fi" id="vendas-url" readonly value="'+_esc(url)+'" style="flex:1;min-width:240px;font-family:Menlo,monospace;font-size:11.5px;">'+
+            '<button class="btn btn-ghost" onclick="copiarUrlWebhook()">📋 Copiar</button>'+
+          '</div>'+
+          '<div style="font-size:11px;color:#DC2626;margin-top:6px;">⚠️ Essa URL é secreta — quem tiver ela consegue lançar vendas no sistema.</div>'+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px;">'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Vendas recebidas</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+(v.totalVendas||0)+'</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Última</div><div style="font-size:13px;font-weight:700;margin-top:6px;">'+(v.ultimaVenda ? new Date(v.ultimaVenda).toLocaleString('pt-BR') : '—')+'</div></div>'+
+        '</div>'+
+        ((v.ultimosBrutos && v.ultimosBrutos.length)
+          ? '<details style="margin-bottom:12px;"><summary style="cursor:pointer;font-size:12px;color:var(--text2);">Ver os últimos webhooks recebidos (pra conferir o formato)</summary>'+
+            '<pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:10.5px;overflow-x:auto;max-height:260px;margin-top:8px;">'+_esc(JSON.stringify(v.ultimosBrutos,null,1))+'</pre></details>'
+          : '<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Nenhum webhook recebido ainda. Assim que a primeira venda chegar, ela aparece aqui.</div>')
+      : '<div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Gere a URL secreta pra colar no postback do seu checkout.</div>')+
+    '<button class="btn '+(v.configurado?'btn-ghost':'btn-primary')+'" onclick="gerarTokenVendas()">'+(v.configurado?'🔄 Gerar nova URL':'🔗 Gerar URL de postback')+'</button>'+
+  '</div>';
+}
+async function salvarMetaConfig(){
+  var out = document.getElementById('meta-resultado');
+  var acc = (document.getElementById('meta-acc')||{}).value || '';
+  var tok = (document.getElementById('meta-token')||{}).value || '';
+  var ativo = !!(document.getElementById('meta-ativo')||{}).checked;
+  if(!acc.trim()){ alert('Informe o ID da conta de anúncios.'); return; }
+  try{
+    var r = await fetch(API_BASE+'/api/integracoes/meta/config', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ accessToken: tok, adAccountId: acc, ativo: ativo })
+    });
+    var j = await r.json();
+    if(!r.ok) throw new Error(j.error||'falhou');
+    if(out) out.innerHTML = '<div style="color:#16A34A;font-size:12.5px;">✅ Salvo. Use "Testar conexão" pra confirmar que o token funciona.</div>';
+    renderIntegracoesTab();
+  }catch(e){
+    if(out) out.innerHTML = '<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>';
+  }
+}
+async function testarMetaAds(){
+  var out = document.getElementById('meta-resultado');
+  if(out) out.innerHTML = '<div style="color:var(--text2);font-size:12.5px;">⏳ Falando com o Meta…</div>';
+  try{
+    var r = await fetch(API_BASE+'/api/integracoes/meta/test', { method:'POST' });
+    var j = await r.json();
+    if(!r.ok) throw new Error(j.error||'falhou');
+    var c = j.conta||{};
+    if(out) out.innerHTML = '<div style="color:#16A34A;font-size:12.5px;">✅ Conectado em <b>'+_esc(c.nome||'—')+'</b> · moeda '+_esc(c.moeda||'—')+' · fuso '+_esc(c.fuso||'—')+'</div>';
+  }catch(e){
+    if(out) out.innerHTML = '<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>';
+  }
+}
+async function gerarTokenVendas(){
+  if(!confirm('Gerar uma URL nova?\n\nSe já existir uma configurada no checkout, ela para de funcionar e você precisa colar a nova lá.')) return;
+  try{
+    var r = await fetch(API_BASE+'/api/integracoes/vendas/gerar-token', { method:'POST' });
+    var j = await r.json();
+    if(!r.ok) throw new Error(j.error||'falhou');
+    renderIntegracoesTab();
+  }catch(e){ alert('Erro: '+e.message); }
+}
+function copiarUrlWebhook(){
+  var i = document.getElementById('vendas-url');
+  if(!i) return;
+  i.select();
+  try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); }
+  var b = event && event.target; if(b){ var t=b.textContent; b.textContent='✅ Copiado'; setTimeout(function(){ b.textContent=t; },1500); }
+}
+
 async function renderIntegracoesTab(){
   var el = document.getElementById('integracoes-container');
   if(!el) return;
@@ -18087,6 +18223,12 @@ async function renderIntegracoesTab(){
       headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
     });
     var u = await r.json();
+
+    // Meta Ads (investimento) e Vendas (faturamento) — as duas metades do ROAS próprio.
+    // Se uma falhar, a tela continua: cada card sabe se virar sem dados.
+    var _mt = {}, _vd = {};
+    try { _mt = await (await fetch(API_BASE+'/api/integracoes/meta/me')).json(); } catch(e){ _mt = {erroCarga:true}; }
+    try { _vd = await (await fetch(API_BASE+'/api/integracoes/vendas/me')).json(); } catch(e){ _vd = {erroCarga:true}; }
 
     // Card Utmify
     var statusBadge = u.configurado && u.ativo
@@ -18153,6 +18295,10 @@ async function renderIntegracoesTab(){
         '</div>'+
         '<button class="btn btn-ghost" onclick="switchCfgTab(\'apis\', document.getElementById(\'cfg-tab-apis\'))">⚙️ '+(rtConfigurado ? 'Editar' : 'Configurar')+' em APIs externas →</button>'+
       '</div>'+
+
+      // CARD META ADS (investimento) + CARD VENDAS (faturamento) → ROAS próprio
+      _cardMetaAds(_mt)+
+      _cardVendas(_vd)+
 
       // CARD UTMIFY
       '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
