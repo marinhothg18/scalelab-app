@@ -16786,71 +16786,122 @@ function _arqEditarProj(fn){
   return true;
 }
 
+// Caixinhas centralizadas, no visual do app — no lugar de alert()/confirm() do
+// navegador, que aparecem grudados no topo com "app.centraltmx.com diz".
+function _arqCaixa(titulo, corpoHtml, botoes){
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:13000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:440px;max-width:100%;box-shadow:0 24px 70px rgba(0,0,0,.55);';
+  card.innerHTML = '<div style="font-size:17px;font-weight:800;margin-bottom:12px;">'+titulo+'</div>'+
+    '<div style="font-size:13.5px;color:var(--text2);line-height:1.65;margin-bottom:20px;">'+corpoHtml+'</div>'+
+    '<div id="arq-cx-btns" style="display:flex;gap:10px;justify-content:flex-end;"></div>';
+  ov.appendChild(card); document.body.appendChild(ov);
+  var bar = card.querySelector('#arq-cx-btns');
+  botoes.forEach(function(b){
+    var el = document.createElement('button');
+    el.textContent = b.label;
+    el.style.cssText = b.primario
+      ? 'background:'+(b.perigo?'var(--red)':'var(--accent-grad)')+';border:none;color:#fff;border-radius:9px;padding:9px 22px;font-size:14px;font-weight:700;cursor:pointer;'
+      : 'background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 18px;font-size:14px;cursor:pointer;';
+    el.onclick = function(){ ov.remove(); if(b.onClick) b.onClick(); };
+    bar.appendChild(el);
+  });
+  ov.addEventListener('keydown', function(e){ if(e.key==='Escape') ov.remove(); });
+  setTimeout(function(){ var p=bar.querySelector('button:last-child'); if(p) p.focus(); }, 40);
+}
+function arqAviso(msg){ _arqCaixa('Aviso', msg, [{label:'Entendi', primario:true}]); }
+function arqConfirmar(titulo, corpoHtml, onOk){
+  _arqCaixa(titulo, corpoHtml, [
+    { label:'Cancelar' },
+    { label:'Excluir', primario:true, perigo:true, onClick:onOk }
+  ]);
+}
+
 // ── Criar ──
 function arqNovaSubpasta(){
   var setorId = _arqNav.setor;
-  if(!arqPodeEditar(setorId)) { alert('Você não tem permissão pra criar pasta nessa área.'); return; }
-  var nome = (prompt('Nome da nova pasta:') || '').trim();
-  if(!nome) return;
-  _arqEditarProj(function(pr){
-    if(arqSubpastasDe(pr, setorId).indexOf(nome) >= 0){ alert('Já existe uma pasta com esse nome aqui.'); return false; }
-    if(!pr.extras) pr.extras = {};
-    if(!pr.extras.subpastas) pr.extras.subpastas = {};
-    if(!Array.isArray(pr.extras.subpastas[setorId])) pr.extras.subpastas[setorId] = [];
-    pr.extras.subpastas[setorId].push(nome);
-  });
+  if(!arqPodeEditar(setorId)) { arqAviso('Você não tem permissão pra criar pasta nessa área.'); return; }
+  cdModal('📁 Nova pasta', [
+    { key:'nome', label:'Nome da pasta', placeholder:'Ex: 07 - Pesquisa de Concorrentes' }
+  ], function(v){
+    var nome = (v.nome||'').trim();
+    if(!nome) return;
+    _arqEditarProj(function(pr){
+      if(arqSubpastasDe(pr, setorId).indexOf(nome) >= 0){ arqAviso('Já existe uma pasta com esse nome aqui.'); return false; }
+      if(!pr.extras) pr.extras = {};
+      if(!pr.extras.subpastas) pr.extras.subpastas = {};
+      if(!Array.isArray(pr.extras.subpastas[setorId])) pr.extras.subpastas[setorId] = [];
+      pr.extras.subpastas[setorId].push(nome);
+    });
+  }, 'Criar pasta');
 }
 function arqNovaArea(){
-  if(!arqPodeEditar(null)) { alert('Só a Diretoria pode criar uma área nova.'); return; }
-  var nome = (prompt('Nome da nova área:') || '').trim();
-  if(!nome) return;
-  var icon = (prompt('Um emoji pra ela (opcional):') || '📁').trim() || '📁';
-  var id = 'x' + Date.now().toString(36);   // id próprio, não colide com os padrão
-  _arqEditarProj(function(pr){
-    if(!pr.extras) pr.extras = {};
-    if(!Array.isArray(pr.extras.setores)) pr.extras.setores = [];
-    pr.extras.setores.push({ id:id, label:nome, icon:icon });
-  });
+  if(!arqPodeEditar(null)) { arqAviso('Só a Diretoria pode criar uma área nova.'); return; }
+  // Nome e emoji numa janela só — antes eram dois prompts em sequência
+  cdModal('🗂️ Nova área', [
+    { key:'nome', label:'Nome da área',              placeholder:'Ex: 06 - Jurídico' },
+    { key:'icon', label:'Emoji (opcional)', req:false, placeholder:'⚖️' }
+  ], function(v){
+    var nome = (v.nome||'').trim();
+    if(!nome) return;
+    var icon = (v.icon||'').trim() || '📁';
+    var id = 'x' + Date.now().toString(36);   // id próprio, não colide com os padrão
+    _arqEditarProj(function(pr){
+      if(arqSetoresDe(pr).some(function(s){ return s.label === nome; })){
+        arqAviso('Já existe uma área com esse nome.'); return false;
+      }
+      if(!pr.extras) pr.extras = {};
+      if(!Array.isArray(pr.extras.setores)) pr.extras.setores = [];
+      pr.extras.setores.push({ id:id, label:nome, icon:icon });
+    });
+  }, 'Criar área');
 }
 
 // ── Renomear (move os arquivos junto — senão ficam órfãos) ──
 function arqRenomearSubpasta(setorId, antigo){
-  if(!arqPodeEditar(setorId)) { alert('Você não tem permissão pra editar essa área.'); return; }
+  if(!arqPodeEditar(setorId)) { arqAviso('Você não tem permissão pra editar essa área.'); return; }
   var atual = _arqProjAtual();
   if(!atual || !_arqEhExtra(atual, setorId, antigo)){
-    alert('Essa pasta faz parte do padrão da operação e não dá pra renomear só aqui.\n\nPra mudar o padrão de todas as ofertas, fale comigo que eu ajusto.');
+    arqAviso('Essa pasta faz parte do padrão da operação e não dá pra renomear só aqui.');
     return;
   }
-  var novo = (prompt('Novo nome:', antigo) || '').trim();
-  if(!novo || novo === antigo) return;
-  _arqEditarProj(function(pr){
-    if(arqSubpastasDe(pr, setorId).indexOf(novo) >= 0){ alert('Já existe uma pasta com esse nome.'); return false; }
-    var lista = pr.extras.subpastas[setorId];
-    lista[lista.indexOf(antigo)] = novo;
-    // leva os arquivos junto: a chave muda de "setor|antigo" pra "setor|novo"
-    if(pr.items){
-      var de = setorId+'|'+antigo, para = setorId+'|'+novo;
-      if(pr.items[de]){ pr.items[para] = (pr.items[para]||[]).concat(pr.items[de]); delete pr.items[de]; }
-    }
-  });
+  cdModal('✏️ Renomear pasta', [
+    { key:'nome', label:'Novo nome', value: antigo }
+  ], function(v){
+    var novo = (v.nome||'').trim();
+    if(!novo || novo === antigo) return;
+    _arqEditarProj(function(pr){
+      if(arqSubpastasDe(pr, setorId).indexOf(novo) >= 0){ arqAviso('Já existe uma pasta com esse nome.'); return false; }
+      var lista = pr.extras.subpastas[setorId];
+      lista[lista.indexOf(antigo)] = novo;
+      // leva os arquivos junto: a chave muda de "setor|antigo" pra "setor|novo"
+      if(pr.items){
+        var de = setorId+'|'+antigo, para = setorId+'|'+novo;
+        if(pr.items[de]){ pr.items[para] = (pr.items[para]||[]).concat(pr.items[de]); delete pr.items[de]; }
+      }
+    });
+  }, 'Salvar');
 }
 
 // ── Excluir ──
 function arqExcluirSubpasta(setorId, nome){
-  if(!arqPodeEditar(setorId)) { alert('Você não tem permissão pra excluir pasta nessa área.'); return; }
+  if(!arqPodeEditar(setorId)) { arqAviso('Você não tem permissão pra excluir pasta nessa área.'); return; }
   var atual = _arqProjAtual();
   if(!atual || !_arqEhExtra(atual, setorId, nome)){
-    alert('Essa pasta faz parte do padrão da operação e não pode ser excluída só aqui.');
+    arqAviso('Essa pasta faz parte do padrão da operação e não pode ser excluída só aqui.');
     return;
   }
   var qtd = (atual.items && atual.items[setorId+'|'+nome]) ? atual.items[setorId+'|'+nome].length : 0;
-  var aviso = qtd
-    ? 'A pasta "'+nome+'" tem '+qtd+' arquivo(s).\n\nExcluir a pasta NÃO apaga os arquivos, mas eles somem da tela.\nQuer mesmo excluir?'
-    : 'Excluir a pasta "'+nome+'"?';
-  if(!confirm(aviso)) return;
-  _arqEditarProj(function(pr){
-    var lista = pr.extras.subpastas[setorId];
-    lista.splice(lista.indexOf(nome), 1);
+  var corpo = qtd
+    ? 'A pasta <b>'+cdEsc(nome)+'</b> tem <b>'+qtd+' arquivo(s)</b>.<br><br>Excluir a pasta <b>não apaga</b> os arquivos, mas eles somem da tela.'
+    : 'Excluir a pasta <b>'+cdEsc(nome)+'</b>?';
+  arqConfirmar('Excluir pasta', corpo, function(){
+    _arqEditarProj(function(pr){
+      var lista = pr.extras.subpastas[setorId];
+      lista.splice(lista.indexOf(nome), 1);
+    });
   });
 }
 
