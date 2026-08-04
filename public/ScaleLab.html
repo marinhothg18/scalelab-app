@@ -16984,9 +16984,21 @@ function arqAddItem(){
 var _arqFileBase64 = null;
 var _arqFileName = '';
 
+// Limite de tamanho: o arquivo é guardado em base64 DENTRO do banco, que sincroniza
+// pra todos os navegadores. Sem trava, um vídeo grande estoura o limite do servidor
+// (20MB) e a gravação falha sem avisar — levando junto as outras alterações do lote.
+var ARQ_MAX_MB = 5;
 function arqFileSelected(input){
   var file = input.files[0];
   if(!file) return;
+  if(file.size > ARQ_MAX_MB * 1024 * 1024){
+    alert('Esse arquivo tem '+(file.size/1048576).toFixed(1)+' MB — o limite aqui é '+ARQ_MAX_MB+' MB.\n\n'+
+          'Pra arquivos grandes (vídeo, material bruto), suba no Drive e cole o link no campo "Link (URL)" acima. '+
+          'Fica mais rápido pra todo mundo e não pesa o sistema.');
+    input.value = '';
+    document.getElementById('arq-add-file-name').textContent = '';
+    return;
+  }
   _arqFileName = file.name;
   document.getElementById('arq-add-file-name').textContent = file.name;
   // Auto-detect type
@@ -17188,7 +17200,8 @@ function renderArquivos(){
       h += '<span onclick="arqNavBack(\'projeto\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+p.nome+'</span>';
     }
     if(_arqNav.setor){
-      var setorObj = ARQ_SETORES.find(function(s){ return s.id===_arqNav.setor; });
+      // usa a lista da oferta (padrão + extras) — senão área criada aqui vira o id cru
+      var setorObj = arqSetoresDe(p).find(function(s){ return s.id===_arqNav.setor; });
       h += '<span style="color:var(--text2);">›</span>';
       h += '<span onclick="arqNavBack(\'setor\')" style="cursor:pointer;color:var(--accent);font-weight:600;">'+(setorObj?setorObj.label:_arqNav.setor)+'</span>';
     }
@@ -17342,12 +17355,12 @@ function renderArquivos(){
     var items = (pr3&&pr3.items&&pr3.items[itemKey]) ? pr3.items[itemKey] : [];
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
     h += '<div style="font-size:20px;font-weight:700;">📁 '+_arqNav.subpasta+'</div>';
-    if(_isDir){
-      h += '<div style="display:flex;gap:8px;">';
-      h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
-      h += '<button onclick="arqAddItem()" class="btn btn-primary" style="font-size:13px;">+ Adicionar Arquivo</button>';
-      h += '</div>';
-    }
+    // Subir arquivo: liberado pro time todo (é ação aditiva).
+    // Lixeira continua só pra Diretoria — de lá se restaura e se apaga de vez.
+    h += '<div style="display:flex;gap:8px;">';
+    if(_isDir) h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
+    h += '<button onclick="arqAddItem()" class="btn btn-primary" style="font-size:13px;">+ Adicionar Arquivo</button>';
+    h += '</div>';
     h += '</div>';
     if(!items.length){
       h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum arquivo nesta pasta.</div></div>';
