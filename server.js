@@ -4556,8 +4556,12 @@ function authUsuario(req, res, next) {
     if (sess && (sess.lastActivity || sess.createdAt) + SESSION_TTL_MS >= Date.now()) {
       const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
       if (user && user.ativo !== false) {
-        const ultimo = sess.lastActivity || sess.createdAt || 0;
-        if (Date.now() - ultimo > SESSAO_BUMP_MS) { sess.lastActivity = Date.now(); writeDB(db); }
+        // ⚠️ NUNCA gravar o banco aqui.
+        // writeDB grava o arquivo INTEIRO a partir do snapshot lido no começo desta
+        // requisição. Como isto roda em toda sincronização, qualquer dado salvo por
+        // outra pessoa entre o readDB() acima e a gravação seria APAGADO.
+        // O lastActivity da sessão é renovado no /api/auth/me (a cada abertura do app),
+        // o que é suficiente pro TTL de 30 dias.
         req.user = user;
         return next();
       }
@@ -4592,7 +4596,9 @@ function authDiretoria(req, res, next) {
     if (sess) {
       const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
       if (user && user.ativo !== false && user.cargo === 'Diretoria') {
-        writeDB(db); // persiste lastActivity
+        // Mesmo motivo do authUsuario: gravar o banco inteiro aqui, a partir de um
+        // snapshot já lido, apagaria o que outra pessoa salvou nesse meio-tempo.
+        // O lastActivity é renovado no /api/auth/me.
         req.user = user;
         return next();
       }
