@@ -541,8 +541,19 @@ app.post('/api/cd/agenda', authDiretoria, async (req, res) => {
 
 // ── BANCO DE DADOS ──
 function readDB() {
+  // ⚠️ NUNCA devolver banco vazio quando o arquivo EXISTE mas não deu pra ler.
+  // Antes, qualquer falha de leitura caía num {store:{}} silencioso — e como quase
+  // todo handler faz readDB() → mexe → writeDB(), esse vazio era gravado POR CIMA
+  // de tudo. Foi assim que a Central da Diretoria (270 arquivos) foi zerada.
+  // Melhor a requisição falhar alto do que destruir o banco em silêncio.
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-  catch { return { store: {}, timestamps: {}, api_tokens: [], api_logs: [] }; }
+  catch (e) {
+    if (!fs.existsSync(DB_FILE)) {
+      return { store: {}, timestamps: {}, api_tokens: [], api_logs: [] };  // 1ª execução
+    }
+    console.error('[DB] LEITURA FALHOU — abortando pra não sobrescrever:', e.message);
+    throw new Error('Banco temporariamente ilegível. Nada foi gravado.');
+  }
 }
 
 function writeDB(db) {
