@@ -25155,7 +25155,10 @@ async function tentarLogin(){
       if(data.token) localStorage.setItem('sl_session_token', data.token);
       _loginOk(data.user);
     } else if(res.status === 429){
-      err.textContent='Muitas tentativas. Aguarde 10 minutos.';
+      // O bloqueio é POR CONTA, não do sistema — usa a mensagem do servidor pra
+      // não dar a impressão de que o app inteiro travou pro time.
+      var m429 = ''; try{ m429 = (await res.json()).error || ''; }catch(e){}
+      err.textContent = m429 || 'Muitas tentativas nessa conta. Aguarde 10 minutos.';
       pwdInp.value='';
     } else {
       err.textContent='E-mail ou senha inválidos.';
