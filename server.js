@@ -546,7 +546,14 @@ function readDB() {
 }
 
 function writeDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  // Gravação ATÔMICA: escreve num temporário e só então troca o arquivo de lugar.
+  // Antes era writeFileSync direto no db.json — isso ZERA o arquivo antes de
+  // escrever, e quem lesse nesse intervalo (o backup de hora em hora, outro
+  // request) pegava um arquivo vazio ou pela metade. Era a origem dos snapshots
+  // de 0 KB. O rename é atômico no mesmo disco: ninguém vê estado intermediário.
+  const tmp = DB_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+  fs.renameSync(tmp, DB_FILE);
 }
 
 function now() { return Math.floor(Date.now() / 1000); }
@@ -4720,6 +4727,17 @@ function criarSnapshotBackup(motivo) {
     const fname = `db-${stamp}${motivo ? '-' + motivo : ''}.json`;
     const fpath = path.join(BACKUP_DIR, fname);
     const conteudo = fs.readFileSync(DB_FILE, 'utf8');
+    // Nunca gravar snapshot vazio/quebrado: um backup inválido dá falsa sensação
+    // de segurança — só se descobre que não presta na hora de precisar dele.
+    if (!conteudo || !conteudo.trim()) {
+      console.error('[BACKUP] abortado: db.json veio vazio.');
+      return { ok: false, erro: 'db vazio' };
+    }
+    try { JSON.parse(conteudo); }
+    catch (e) {
+      console.error('[BACKUP] abortado: db.json não é JSON válido.');
+      return { ok: false, erro: 'db inválido' };
+    }
     fs.writeFileSync(fpath, conteudo);
     const ret = _aplicarRetencaoBackup();
     console.log(`[BACKUP] ${fname} criado. Retenção: ${ret.mantidos} mantidos, ${ret.apagados||0} apagados.`);
