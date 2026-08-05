@@ -241,10 +241,26 @@ const apiLimiter = rateLimit({ windowMs: 60*1000, max: 60, message: { error: 'Li
 app.use('/api/v1/', apiLimiter);
 
 // Rate limiting crítico para login: 5 tentativas por 10min por IP
+// O limite de login era 5 por IP a cada 10min. Como o time todo divide o mesmo IP
+// do escritório, bastavam 5 tentativas SOMADAS pra bloquear a empresa inteira.
+// Agora a proteção contra força bruta é POR CONTA (é o que importa: proteger a senha
+// de alguém), e o teto por IP fica alto o bastante pra um time inteiro logar junto.
+const { ipKeyGenerator } = require('express-rate-limit');
 const loginLimiter = rateLimit({
   windowMs: 10*60*1000,
   max: 5,
-  message: { error: 'Muitas tentativas de login. Aguarde 10 minutos.' },
+  keyGenerator: (req) => {
+    const email = req.body && req.body.email ? String(req.body.email).trim().toLowerCase() : '';
+    return email ? 'email:' + email : ipKeyGenerator(req);   // sem email informado, cai no IP
+  },
+  message: { error: 'Muitas tentativas nessa conta. Aguarde 10 minutos.' },
+  skipSuccessfulRequests: true
+});
+// Teto por IP: continua barrando ataque automatizado, sem punir o escritório.
+const loginLimiterIp = rateLimit({
+  windowMs: 10*60*1000,
+  max: 60,
+  message: { error: 'Muitas tentativas de login. Aguarde alguns minutos.' },
   skipSuccessfulRequests: true
 });
 
@@ -4162,7 +4178,7 @@ function _limparLixeiraAntiga() {
 setInterval(_limparLixeiraAntiga, 6 * 60 * 60 * 1000);
 setTimeout(_limparLixeiraAntiga, 60 * 1000); // primeira execução 1min após boot
 
-app.post('/api/auth/login', loginLimiter, (req, res) => {
+app.post('/api/auth/login', loginLimiterIp, loginLimiter, (req, res) => {
   const { email, senha } = req.body || {};
   if (!email || !senha) return res.status(400).json({ error: 'Email e senha obrigatórios' });
   const db = readDB();
