@@ -25129,7 +25129,17 @@ async function tentarLogin(){
   const btn = document.querySelector('#login-screen button[type="submit"], #login-screen button.btn-login');
   const email = (emailInp ? emailInp.value : '').trim().toLowerCase();
   const senha = pwdInp.value.trim();
-  if(!email||!senha){ err.textContent='Preencha e-mail e senha.'; return; }
+  // Aviso específico: "preencha os dois" não ajuda a achar qual campo ficou vazio
+  // (o preenchimento automático do navegador às vezes mostra a senha sem gravar o valor).
+  if(!email || !senha){
+    err.textContent = (!email && !senha) ? 'Preencha e-mail e senha.'
+                    : (!email ? 'Digite seu e-mail.' : 'Digite sua senha (o campo está vazio).');
+    var alvo = !email ? emailInp : pwdInp;
+    if(alvo){ alvo.style.borderColor='var(--red)'; alvo.focus(); }
+    return;
+  }
+  if(emailInp) emailInp.style.borderColor='';
+  if(pwdInp) pwdInp.style.borderColor='';
   if(btn) btn.disabled = true;
   err.textContent = '';
 
