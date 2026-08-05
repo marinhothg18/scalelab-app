@@ -16772,6 +16772,22 @@ function _arqEhExtra(proj, setorId, nome){
   return !!(proj && proj.extras && proj.extras.subpastas && Array.isArray(proj.extras.subpastas[setorId])
     && proj.extras.subpastas[setorId].indexOf(nome) >= 0);
 }
+// As subpastas deixaram de existir: agora os arquivos ficam direto na área.
+// Os antigos foram gravados em "setor|subpasta" — então a leitura junta os dois
+// formatos, pra nenhum material sumir da tela. Item novo vai só em "setor".
+function arqItensDaArea(proj, setorId){
+  if(!proj || !proj.items) return [];
+  var out = [];
+  Object.keys(proj.items).forEach(function(k){
+    if(k === setorId || k.indexOf(setorId + '|') === 0){
+      (proj.items[k] || []).forEach(function(it){
+        // guarda de onde veio, pra edição/exclusão acharem o item depois
+        out.push(Object.assign({}, it, { _chave: k }));
+      });
+    }
+  });
+  return out;
+}
 function _arqProjAtual(){
   var proj = getArqProjetos();
   return proj.find(function(x){ return x.id == _arqNav.projetoId; });
@@ -17111,6 +17127,20 @@ function arqFileSelected(input){
   reader.readAsDataURL(file);
 }
 
+// Acha um item dentro da área, esteja ele na chave nova ("setor") ou numa
+// antiga ("setor|subpasta"). Devolve {chave, item, lista} pra quem for editar/excluir.
+function _arqAcharItem(proj, setorId, itemId){
+  if(!proj || !proj.items) return null;
+  var chaves = Object.keys(proj.items).filter(function(k){
+    return k === setorId || k.indexOf(setorId + '|') === 0;
+  });
+  for(var i=0;i<chaves.length;i++){
+    var lista = proj.items[chaves[i]] || [];
+    var it = lista.find(function(x){ return String(x.id) === String(itemId); });
+    if(it) return { chave: chaves[i], item: it, lista: lista };
+  }
+  return null;
+}
 function arqSaveItem(){
   var nome = document.getElementById('arq-add-nome').value.trim();
   var url = document.getElementById('arq-add-url').value.trim();
@@ -17123,7 +17153,7 @@ function arqSaveItem(){
   var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
   if(!p) return;
   if(!p.items) p.items = {};
-  var key = _arqNav.setor + '|' + _arqNav.subpasta;
+  var key = _arqNav.setor;   // sem subpasta: fica direto na área
   if(!p.items[key]) p.items[key] = [];
   var item = {id:Date.now(), nome:nome, url:url||'', desc:desc, tipo:tipo, data:new Date().toLocaleDateString('pt-BR')};
   if(fileData){ item.arquivo = {nome:_arqFileName, base64:fileData}; }
@@ -17162,10 +17192,9 @@ function arqEditItem(itemId){
   var proj = getArqProjetos();
   var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
   if(!p) return;
-  var key = _arqNav.setor + '|' + _arqNav.subpasta;
-  var items = (p.items && p.items[key]) || [];
-  var item = items.find(function(i){ return i.id==itemId; });
-  if(!item) return;
+  var _a = _arqAcharItem(p, _arqNav.setor, itemId);
+  if(!_a) return;
+  var key = _a.chave, items = _a.lista, item = _a.item;
   cdModal('✏️ Editar', [
     { key:'nome', label:'Nome',           value:item.nome||'' },
     { key:'url',  label:'Link (URL)',     value:item.url||'',  req:false, placeholder:'https://…' },
@@ -17190,10 +17219,9 @@ function arqDelItem(itemId){
   var proj = getArqProjetos();
   var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
   if(!p) return;
-  var key = _arqNav.setor + '|' + _arqNav.subpasta;
-  var items = (p.items && p.items[key]) || [];
-  var item = items.find(function(i){ return i.id==itemId; });
-  if(!item) return;
+  var _a = _arqAcharItem(p, _arqNav.setor, itemId);
+  if(!_a) return;
+  var key = _a.chave, items = _a.lista, item = _a.item;
   // Popup de confirmação
   var wrap = document.createElement('div');
   wrap.id = 'arq-del-confirm';
@@ -17216,10 +17244,11 @@ function arqConfirmDel(itemId){
   var proj = getArqProjetos();
   var p = proj.find(function(x){ return x.id==_arqNav.projetoId; });
   if(!p) return;
-  var key = _arqNav.setor + '|' + _arqNav.subpasta;
+  var _a = _arqAcharItem(p, _arqNav.setor, itemId);
+  var key = _a ? _a.chave : _arqNav.setor;
   // Mover pra lixeira
-  var items = (p.items && p.items[key]) || [];
-  var item = items.find(function(i){ return i.id==itemId; });
+  var items = _a ? _a.lista : ((p.items && p.items[key]) || []);
+  var item = _a ? _a.item : null;
   if(item){
     var lixeira = g('sl_arq_lixeira',[]);
     lixeira.unshift(Object.assign({}, item, {_deletedAt:Date.now(), _projeto:p.nome, _setor:_arqNav.setor, _subpasta:_arqNav.subpasta}));
@@ -17439,58 +17468,20 @@ function renderArquivos(){
       h += '</div>';
     }
   }
-  // NÍVEL 3: Subpastas do setor
-  else if(!_arqNav.subpasta){
+  // NÍVEL 3: Arquivos da área — as subpastas foram removidas, o material fica
+  // direto aqui. Itens antigos (gravados dentro de subpastas) continuam aparecendo.
+  else {
     var _pr2 = proj.find(function(x){ return x.id==_arqNav.projetoId; });
     var setorObj = arqSetoresDe(_pr2).find(function(s){ return s.id===_arqNav.setor; });
-    var _podeEd = arqPodeEditar(_arqNav.setor);
+    var items = arqItensDaArea(_pr2, _arqNav.setor);
     h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px;">';
-    h += '<div style="font-size:20px;font-weight:700;">'+(setorObj?setorObj.icon+' '+setorObj.label:'Setor')+'</div>';
-    if(_podeEd) h += '<button class="btn btn-ghost" style="font-size:13px;" onclick="arqNovaSubpasta()">+ Nova pasta</button>';
-    h += '</div>';
-    var subs = arqSubpastasDe(_pr2, _arqNav.setor);
-    if(!subs.length){
-      h += '<div style="color:var(--text2);font-size:14px;padding:30px 0;">Nenhuma pasta aqui ainda.'+(_podeEd?' Use <b>+ Nova pasta</b> pra criar a primeira.':'')+'</div>';
-    }
-    for(var sbi=0;sbi<subs.length;sbi++){
-      var sub = subs[sbi];
-      // Contar items nessa subpasta
-      var pr2 = proj.find(function(x){ return x.id==_arqNav.projetoId; });
-      var itemKey = _arqNav.setor+'|'+sub;
-      var subCount = (pr2&&pr2.items&&pr2.items[itemKey]) ? pr2.items[itemKey].length : 0;
-      h += '<div onclick="arqNavSubpasta(\''+sub.replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:14px;padding:14px 20px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:all .15s;background:var(--bg2);" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
-      h += '<span style="font-size:20px;">📁</span>';
-      h += '<span style="font-size:14px;font-weight:600;">'+sub+'</span>';
-      h += '<span style="margin-left:auto;display:flex;align-items:center;gap:8px;">';
-      if(subCount) h += '<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;">'+subCount+'</span>';
-      var _sSafe = sub.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      var _ehExtra = _arqEhExtra(_pr2, _arqNav.setor, sub);
-      // renomear: só nas pastas criadas aqui (renomear uma do padrão confundiria as outras ofertas)
-      if(_podeEd && _ehExtra)
-        h += '<span onclick="event.stopPropagation();arqRenomearSubpasta(\''+_arqNav.setor+'\',\''+_sSafe+'\')" title="Renomear" style="cursor:pointer;font-size:14px;opacity:.7;">✏️</span>';
-      // excluir: quem criou (na sua área) tira a sua; Diretoria tira qualquer uma
-      if((_podeEd && _ehExtra) || _isDir)
-        h += '<span onclick="event.stopPropagation();arqExcluirSubpasta(\''+_arqNav.setor+'\',\''+_sSafe+'\')" title="Excluir" style="cursor:pointer;font-size:16px;color:var(--red);opacity:.7;">×</span>';
-      h += '<span style="color:var(--text2);font-size:14px;">›</span></span>';
-      h += '</div>';
-    }
-  }
-  // NÍVEL 4: Conteúdo da subpasta
-  else {
-    var pr3 = proj.find(function(x){ return x.id==_arqNav.projetoId; });
-    var itemKey = _arqNav.setor+'|'+_arqNav.subpasta;
-    var items = (pr3&&pr3.items&&pr3.items[itemKey]) ? pr3.items[itemKey] : [];
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
-    h += '<div style="font-size:20px;font-weight:700;">📁 '+_arqNav.subpasta+'</div>';
-    // Subir arquivo: liberado pro time todo (é ação aditiva).
-    // Lixeira continua só pra Diretoria — de lá se restaura e se apaga de vez.
+    h += '<div style="font-size:20px;font-weight:700;">'+(setorObj?setorObj.icon+' '+setorObj.label:'Área')+'</div>';
     h += '<div style="display:flex;gap:8px;">';
     if(_isDir) h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
     h += '<button onclick="arqAddItem()" class="btn btn-primary" style="font-size:13px;">+ Adicionar Arquivo</button>';
-    h += '</div>';
-    h += '</div>';
+    h += '</div></div>';
     if(!items.length){
-      h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nenhum arquivo nesta pasta.</div></div>';
+      h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nada aqui ainda. Use <b>+ Adicionar Arquivo</b>.</div></div>';
     } else {
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">';
       for(var ii=0;ii<items.length;ii++){
@@ -17499,17 +17490,16 @@ function renderArquivos(){
         var cor = tipoCor[item.tipo]||'#3B82F6';
         h += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:8px;text-align:center;">';
         h += '<div style="font-size:36px;">'+ic+'</div>';
-        h += '<div style="font-size:14px;font-weight:700;">'+item.nome+'</div>';
+        h += '<div style="font-size:14px;font-weight:700;color:var(--text);word-break:break-word;">'+_esc(item.nome||'')+'</div>';
         h += '<div style="display:flex;gap:6px;justify-content:center;">';
         h += '<span style="background:'+cor+'22;color:'+cor+';padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">'+item.tipo+'</span>';
         h += '</div>';
         if(item.desc) h += '<div style="font-size:12px;color:var(--text2);">'+item.desc+'</div>';
         h += '<div style="font-size:11px;color:var(--text2);">'+item.data+'</div>';
-        h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:6px;">';
+        h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:6px;flex-wrap:wrap;">';
         if(item.url) h += '<a href="'+item.url+'" target="_blank" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">🔗 Abrir</a>';
         if(item.arquivo) h += '<a href="'+item.arquivo.base64+'" download="'+item.arquivo.nome+'" class="btn btn-primary" style="font-size:12px;padding:6px 16px;">⬇ Baixar</a>';
         if(item.url) h += '<button onclick="arqCopyLink(\''+item.url.replace(/'/g,"\\'")+'\')" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;" title="Copiar link">📋</button>';
-        // lápis: qualquer um do time corrige o que subiu (link errado, nome, descrição)
         h += '<button onclick="arqEditItem('+item.id+')" title="Editar" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;">✏️</button>';
         if(_isDir) h += '<button onclick="arqDelItem('+item.id+')" title="Excluir" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text2);font-size:12px;">🗑</button>';
         h += '</div></div>';
