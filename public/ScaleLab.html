@@ -24822,12 +24822,32 @@ function roiDeleteRow(idx){
 function baixarRoiPdf(){
   const o=roiOfertas.find(x=>x.id===roiOfertaSel);
   if(!o){notif('Selecione uma oferta primeiro.');return;}
-  const dias=o.dias||[];
-  const totFat=dias.reduce((s,d)=>s+(+d.fatBruto||0),0);
-  const totInv=dias.reduce((s,d)=>s+(+d.inv||0),0);
-  const totLucro=dias.reduce((s,d)=>s+(+d.lucro||0),0);
-  const roasMed=totInv>0?(totFat/totInv).toFixed(2):0;
-  const roiMed=totInv>0?(totLucro/totInv).toFixed(2):0;
+  // Os campos gravados sao fat/inv/taxa/imp — o PDF lia fatBruto/imposto/lucro
+  // (nomes dos dados de demonstracao), por isso vinha tudo NaN.
+  // Derivados calculados igual a tela, pra o relatorio bater com o que voce ve.
+  const _mesSel = (document.getElementById('roi-det-mes')||{}).value || '';
+  const _gesSel = (document.getElementById('roi-det-gestor')||{}).value || '';
+  let dias = (o.dias||[]).slice();
+  if(_gesSel) dias = dias.filter(d => (d.gestor||'') === _gesSel);
+  dias.sort((a,b)=> String(a.data).localeCompare(String(b.data)));
+  const _n = v => Number(v) || 0;
+  const calc = d => {
+    const fat=_n(d.fat), inv=_n(d.inv), taxa=_n(d.taxa), imp=_n(d.imp);
+    const fatLiq = fat - taxa - imp;
+    const lucro  = fatLiq - inv;
+    return { fat, inv, taxa, imp, fatLiq, lucro,
+             roas: inv>0 ? fat/inv : 0,
+             roi:  inv>0 ? lucro/inv : 0 };
+  };
+  const linhas = dias.map(d => Object.assign({ data:d.data, gestor:d.gestor||'' }, calc(d)));
+  const totFat   = linhas.reduce((s,l)=>s+l.fat,0);
+  const totInv   = linhas.reduce((s,l)=>s+l.inv,0);
+  const totTaxa  = linhas.reduce((s,l)=>s+l.taxa,0);
+  const totImp   = linhas.reduce((s,l)=>s+l.imp,0);
+  const totLiq   = linhas.reduce((s,l)=>s+l.fatLiq,0);
+  const totLucro = linhas.reduce((s,l)=>s+l.lucro,0);
+  const roasMed=totInv>0?(totFat/totInv).toFixed(2):'0.00';
+  const roiMed=totInv>0?(totLucro/totInv).toFixed(2):'0.00';
   const R=v=>typeof v==='number'?'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):v||'—';
   const P=v=>v?Number(v).toFixed(2)+'x':v||'—';
   const w=window.open('','_blank');
@@ -24862,25 +24882,25 @@ function baixarRoiPdf(){
     <div class="kpi"><div class="kpi-label">Lucro Líquido</div><div class="kpi-val green">${R(totLucro)}</div></div>
     <div class="kpi"><div class="kpi-label">ROAS Médio</div><div class="kpi-val orange">${roasMed}x</div></div>
     <div class="kpi"><div class="kpi-label">ROI Médio</div><div class="kpi-val orange">${roiMed}x</div></div>
-    <div class="kpi"><div class="kpi-label">Dias registrados</div><div class="kpi-val">${dias.length}</div></div>
+    <div class="kpi"><div class="kpi-label">Dias registrados</div><div class="kpi-val">${linhas.length}</div></div>
   </div>
   <table>
     <thead><tr><th>Data</th><th>Fat. Bruto</th><th>Investimento</th><th>Taxa</th><th>Imposto</th><th>Fat. Líq.</th><th>Lucro</th><th>ROAS</th><th>ROI</th></tr></thead>
     <tbody>
-      ${dias.map(d=>`<tr>
-        <td><b>${d.data}</b></td>
-        <td>${R(+d.fatBruto)}</td><td>${R(+d.inv)}</td>
-        <td>${R(+d.taxa)}</td><td>${R(+d.imposto)}</td>
-        <td>${R(+d.fatLiq)}</td>
-        <td style="color:${(+d.lucro)>=0?'#16a34a':'#dc2626'};font-weight:600;">${R(+d.lucro)}</td>
-        <td><span class="badge ${(+d.roas)>=3?'g':'r'}">${(+d.roas||0).toFixed(2)}x</span></td>
-        <td><span class="badge ${(+d.roi)>=1?'g':'r'}">${(+d.roi||0).toFixed(2)}x</span></td>
+      ${linhas.map(l=>`<tr>
+        <td><b>${l.data}</b></td>
+        <td>${R(l.fat)}</td><td>${R(l.inv)}</td>
+        <td>${R(l.taxa)}</td><td>${R(l.imp)}</td>
+        <td>${R(l.fatLiq)}</td>
+        <td style="color:${l.lucro>=0?'#16a34a':'#dc2626'};font-weight:600;">${R(l.lucro)}</td>
+        <td><span class="badge ${l.roas>=3?'g':'r'}">${l.roas.toFixed(2)}x</span></td>
+        <td><span class="badge ${l.roi>=1?'g':'r'}">${l.roi.toFixed(2)}x</span></td>
       </tr>`).join('')}
       <tr class="tot">
         <td>TOTAL</td><td>${R(totFat)}</td><td>${R(totInv)}</td>
-        <td>${R(dias.reduce((s,d)=>s+(+d.taxa||0),0))}</td>
-        <td>${R(dias.reduce((s,d)=>s+(+d.imposto||0),0))}</td>
-        <td>${R(dias.reduce((s,d)=>s+(+d.fatLiq||0),0))}</td>
+        <td>${R(totTaxa)}</td>
+        <td>${R(totImp)}</td>
+        <td>${R(totLiq)}</td>
         <td>${R(totLucro)}</td>
         <td>${roasMed}x</td><td>${roiMed}x</td>
       </tr>
