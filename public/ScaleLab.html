@@ -2253,7 +2253,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
             <!-- Action buttons -->
             <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;margin-bottom:4px;">
-              <button class="btn btn-ghost" style="font-size:12px;border:1px solid var(--border);" onclick="notif('Conecte ao Meta Ads API para importar dados.')">⬆ Importar Meta Ads</button>
+              <button class="btn btn-ghost" style="font-size:12px;border:1px solid var(--border);" onclick="roiImportarMetaAds()">⬆ Importar Meta Ads</button>
               <button style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;" onclick="baixarRoiPdf()">⬇ Baixar PDF</button>
             </div>
 
@@ -24817,6 +24817,86 @@ function roiDeleteRow(idx){
   // Compara por (data + gestor) pra não deletar dias de outros gestores na mesma data
   o.dias = o.dias.filter(x=>!(x.data===d.data && (x.gestor||'')===(d.gestor||'')));
   s('roi_ofertas',roiOfertas); notif('Dia removido.'); renderRoiDetalhe();
+}
+
+// ══════════════════════════════════════════════
+// ── IMPORTAR INVESTIMENTO DO META ADS ──
+// ══════════════════════════════════════════════
+// Faz o que o RedTrack fazia: traz o investimento real de cada dia pra dentro do
+// ROI. A Utmify nao serve pra isso (a API dela so recebe, nao devolve), entao o
+// numero vem direto da fonte — a Graph API do Meta.
+// O casamento campanha->oferta e por um texto que voce define uma vez ("filtro"),
+// porque so voce sabe como nomeia suas campanhas.
+async function roiImportarMetaAds(){
+  const o = roiOfertas.find(x=>x.id===roiOfertaSel);
+  if(!o){ notif('Selecione uma oferta primeiro.'); return; }
+  const mes = (document.getElementById('roi-det-mes')||{}).value || '';
+  const mesMap={Janeiro:0,Fevereiro:1,Março:2,Abril:3,Maio:4,Junho:5,Julho:6,Agosto:7,Setembro:8,Outubro:9,Novembro:10,Dezembro:11};
+  if(!(mes && mesMap[mes]!==undefined)){ notif('Escolha um mês primeiro (seletor ao lado do título).'); return; }
+  const ano = new Date().getFullYear(), m = mesMap[mes];
+  const p2 = n => String(n).padStart(2,'0');
+  const de  = `${ano}-${p2(m+1)}-01`;
+  const ate = `${ano}-${p2(m+1)}-${p2(new Date(ano,m+1,0).getDate())}`;
+
+  cdModal('📘 Importar do Meta Ads', [
+    { key:'filtro', label:'Trecho do nome das campanhas desta oferta', req:false,
+      value: o.metaFiltro || '', placeholder:'ex: KALEBE  (vazio = todas as campanhas)' }
+  ], async function(v){
+    const filtro = (v.filtro||'').trim();
+    notif('Buscando no Meta Ads…');
+    let dados;
+    try{
+      const r = await fetch(`${API_BASE}/api/integracoes/meta/insights?from=${de}&to=${ate}&level=campaign`);
+      dados = await r.json();
+      if(!r.ok) throw new Error(dados.error || 'falhou');
+    }catch(e){
+      arqAviso('Não consegui falar com o Meta: '+_esc(e.message)+
+               '<br><br>Confira o token em <b>Configurações → Integrações → Meta Ads</b>.');
+      return;
+    }
+    let linhas = dados.linhas || [];
+    if(filtro) linhas = linhas.filter(l => String(l.campanha||'').toLowerCase().indexOf(filtro.toLowerCase())>=0);
+    if(!linhas.length){
+      arqAviso('Nenhuma campanha encontrada nesse período'+(filtro?' com "'+_esc(filtro)+'" no nome':'')+'.');
+      return;
+    }
+    // soma o investimento por dia (uma oferta costuma ter varias campanhas)
+    const porDia = {};
+    linhas.forEach(l => { porDia[l.data] = (porDia[l.data]||0) + (Number(l.investimento)||0); });
+    const dias = Object.keys(porDia).sort();
+    const total = dias.reduce((s,d)=>s+porDia[d],0);
+    const campanhas = Array.from(new Set(linhas.map(l=>l.campanha))).slice(0,8);
+
+    // Preview antes de gravar — nunca sobrescrever sem você ver
+    let corpo = '<b>'+dias.length+' dia(s)</b> · total <b>'+fmtCurrency(total)+'</b><br>'+
+      '<div style="font-size:11.5px;margin-top:6px;color:var(--text2)">Campanhas: '+_esc(campanhas.join(', '))+'</div>'+
+      '<div style="max-height:190px;overflow:auto;margin-top:10px;border:1px solid var(--border);border-radius:8px;">'+
+      dias.map(d=>{
+        const atual = (o.dias||[]).find(x=>x.data===d);
+        const antes = atual ? Number(atual.inv)||0 : 0;
+        return '<div style="display:flex;justify-content:space-between;padding:5px 10px;font-size:12px;border-bottom:1px solid var(--border);">'+
+               '<span>'+d.split('-').reverse().join('/')+'</span>'+
+               '<span>'+(antes?('<span style="color:var(--text2)">'+fmtCurrency(antes)+' → </span>'):'')+
+               '<b>'+fmtCurrency(porDia[d])+'</b></span></div>';
+      }).join('')+'</div>'+
+      '<div style="margin-top:10px;font-size:12px;">Isso substitui o <b>investimento</b> desses dias. Faturamento, taxa e imposto não são tocados.</div>';
+
+    arqConfirmar('Aplicar investimento do Meta?', corpo, function(){
+      o.metaFiltro = filtro;                 // lembra o filtro pra próxima vez
+      if(!o.dias) o.dias = [];
+      const gestor = (document.getElementById('roi-det-gestor')||{}).value || '';
+      let novos=0, atualizados=0;
+      dias.forEach(d=>{
+        let linha = o.dias.find(x => x.data===d && (x.gestor||'')===gestor);
+        if(linha){ linha.inv = porDia[d]; atualizados++; }
+        else { o.dias.push({data:d, fat:0, inv:porDia[d], taxa:0, imp:0, gestor:gestor}); novos++; }
+      });
+      o._updatedAt = Date.now();
+      s('roi_ofertas', roiOfertas);
+      renderRoiDetalhe();
+      notif('Meta Ads importado: '+atualizados+' atualizado(s), '+novos+' novo(s).');
+    });
+  }, 'Buscar no Meta');
 }
 
 function baixarRoiPdf(){
