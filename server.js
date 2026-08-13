@@ -2908,6 +2908,58 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── API INTERNA DA UTMIFY (a mesma que o painel deles usa) ──
+// Descoberta inspecionando o painel: POST server.utmify.com.br/orders/search-objects
+// com Authorization: Bearer <JWT da sessao>. E a mesma API que o MCP embrulha —
+// mesmo dashboardId, mesmo formato de dateRange e level.
+// Vantagem: funciona com o token que voce ja tem, sem depender de integracao MCP.
+// Custo: o JWT expira, entao a tela avisa quando precisar renovar.
+const UTMIFY_API_URL = 'https://server.utmify.com.br';
+
+async function _utmifyApi(jwt, caminho, corpo) {
+  const r = await fetch(UTMIFY_API_URL + caminho, {
+    method: corpo ? 'POST' : 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + jwt,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept': 'application/json',
+      'User-Agent': 'CentralTMX/1.0'
+    },
+    body: corpo ? JSON.stringify(corpo) : undefined
+  });
+  const texto = await r.text();
+  if (r.status === 401 || r.status === 403) {
+    const e = new Error('Sessão da Utmify expirou. Pegue o token novo no painel (F12 > Network > qualquer chamada > Authorization) e cole aqui de novo.');
+    e.expirou = true; throw e;
+  }
+  if (!r.ok) throw new Error('Utmify ' + r.status + ': ' + texto.slice(0, 160));
+  try { return JSON.parse(texto); } catch (e) { return texto; }
+}
+
+// Lista os dashboards — serve tambem pra validar o token
+async function _utmifyApiDashboards(jwt) {
+  const d = await _utmifyApi(jwt, '/dashboards/actives', null);
+  const lista = Array.isArray(d) ? d : (d && (d.dashboards || d.results || d.data)) || [];
+  return lista.map(x => ({
+    id: x.id || x._id, nome: x.name || x.nome || '(sem nome)',
+    moeda: x.currency || 'BRL',
+    tz: (x.timeZone !== undefined && x.timeZone !== null) ? x.timeZone : -3
+  })).filter(x => x.id);
+}
+
+// Campanhas com gasto/faturamento/lucro de um periodo
+async function _utmifyApiCampanhas(jwt, dashboardId, deIso, ateIso) {
+  const d = await _utmifyApi(jwt, '/orders/search-objects', {
+    accountStatuses: null, adObjectStatuses: null, adsetIds: null, campaignIds: null,
+    dashboardId: dashboardId,
+    dateRange: { from: deIso, to: ateIso },
+    level: 'campaign',
+    metaAdAccountIds: null, nameContains: null,
+    orderBy: 'greater_profit', productNames: null
+  });
+  return (d && (d.results || d.data || d.objects)) || (Array.isArray(d) ? d : []);
+}
+
 // ── Configuracao e sincronizacao da Utmify ──
 app.get('/api/integracoes/utmify-mcp/me', authDiretoria, (req, res) => {
   try {
@@ -2922,6 +2974,7 @@ app.get('/api/integracoes/utmify-mcp/me', authDiretoria, (req, res) => {
       configurado: !!(cfg && cfg.token && (cfg.dashboards || []).length),
       tokenSalvo: !!(cfg && cfg.token),
       origemToken: (cfg && cfg.origemToken) || null,
+      modo: (cfg && cfg.modo) || null,
       tokenPreview: (cfg && cfg.token) ? String(cfg.token).slice(0, 8) + '...' : null,
       dashboards: (cfg && cfg.dashboards) || [],
       ultimaSync: (cfg && cfg.ultimaSync) || null,
@@ -2946,11 +2999,17 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
       if (antigo) { cfg.token = String(antigo).trim(); cfg.origemToken = 'reaproveitado'; }
     }
     if (!cfg.token) return res.status(400).json({ error: 'Cole o token de acesso da Utmify.' });
-    // valida ja na hora, listando os dashboards
+    // Dois caminhos: JWT da sessao (começa com "ey", API interna) ou token de
+    // integracao MCP. Detecta sozinho pra você não precisar escolher.
+    cfg.modo = String(cfg.token).startsWith('ey') ? 'api' : 'mcp';
     let dashboards = [];
     try {
-      const d = await _utmifyChamarTool(cfg.token, 'get_dashboards', {});
-      dashboards = (Array.isArray(d) ? d : []).map(x => ({ id: x.id, nome: x.name, moeda: x.currency, tz: x.timeZone }));
+      if (cfg.modo === 'api') {
+        dashboards = await _utmifyApiDashboards(cfg.token);
+      } else {
+        const d = await _utmifyChamarTool(cfg.token, 'get_dashboards', {});
+        dashboards = (Array.isArray(d) ? d : []).map(x => ({ id: x.id, nome: x.name, moeda: x.currency, tz: x.timeZone }));
+      }
       cfg.ultimoErro = null;
     } catch (e) {
       cfg.ultimoErro = e.message;
@@ -2987,11 +3046,20 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
     const tz = (meta.tz === undefined || meta.tz === null) ? -3 : meta.tz;
     const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
     try {
-      const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
-        dashboardId: dashId, level: 'campaign',
-        dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
-      });
-      (r && r.results ? r.results : []).forEach(c => {
+      let campanhas;
+      if (cfg.modo === 'api') {
+        // a API interna espera UTC (o painel manda assim)
+        const dIni = new Date(de + 'T00:00:00' + off).toISOString();
+        const dFim = new Date(ate + 'T23:59:59' + off).toISOString();
+        campanhas = await _utmifyApiCampanhas(cfg.token, dashId, dIni, dFim);
+      } else {
+        const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+          dashboardId: dashId, level: 'campaign',
+          dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
+        });
+        campanhas = (r && r.results) ? r.results : [];
+      }
+      (campanhas || []).forEach(c => {
         const inv = cent(c.spend), fat = cent(c.grossRevenue);
         if (!inv && !fat) return;
         linhas.push({
