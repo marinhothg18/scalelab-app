@@ -2793,7 +2793,7 @@ async function _utmifyChamarTool(token, tool, args) {
   if (falhou) {
     const motivo = (dados && dados.reason) || 'ERRO';
     const amigavel = {
-      MCP_INTEGRATION_NOT_FOUND: 'Token não reconhecido pela Utmify. Confira se copiou o token do MCP (no painel da Utmify), e não o token de API de envio de vendas.',
+      MCP_INTEGRATION_NOT_FOUND: 'Token não reconhecido pela Utmify — provavelmente foi revogado. Gere um novo token de MCP no painel da Utmify (Integrações › MCP) e cole aqui. Atenção: não é o token de API de envio de vendas.',
       UNAUTHORIZED: 'Token sem permissão para essa consulta.'
     }[motivo];
     throw new Error(amigavel || ('Utmify recusou: ' + motivo));
@@ -3034,6 +3034,17 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
 // Puxa as metricas da Utmify e grava em sl_metricas_ads (a mesma base que a tela le)
 // Sincroniza um periodo e grava em sl_metricas_ads. Usada tanto pelo botao
 // quanto pela rotina automatica.
+function _diasEntre(de, ate) {
+  const out = [];
+  let d = new Date(de + 'T12:00:00Z');
+  const fim = new Date(ate + 'T12:00:00Z');
+  while (d <= fim && out.length < 92) {   // teto de ~3 meses por chamada
+    out.push(d.toISOString().slice(0, 10));
+    d = new Date(d.getTime() + 86400000);
+  }
+  return out.length ? out : [ate];
+}
+
 async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   const cfg = _utmifyMcpCfg();
   if (!cfg || !cfg.token) throw new Error('Utmify não configurada.');
@@ -3044,21 +3055,25 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   const cent = v => (Number(v) || 0) / 100;   // a Utmify devolve em centavos
   const linhas = [];
   const erros = [];
+  const dias = _diasEntre(de, ate);
   for (const dashId of dashboards) {
     const meta = (cfg.dashboards || []).find(d => d.id === dashId) || {};
     const tz = (meta.tz === undefined || meta.tz === null) ? -3 : meta.tz;
     const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+    // dia a dia: numa busca de periodo a Utmify devolve o total somado, e todas as
+    // linhas acabariam carimbadas com a data final (perdendo a quebra por dia)
+    for (const dia of dias) {
     try {
       let campanhas;
       if (cfg.modo === 'api') {
         // a API interna espera UTC (o painel manda assim)
-        const dIni = new Date(de + 'T00:00:00' + off).toISOString();
-        const dFim = new Date(ate + 'T23:59:59' + off).toISOString();
+        const dIni = new Date(dia + 'T00:00:00' + off).toISOString();
+        const dFim = new Date(dia + 'T23:59:59' + off).toISOString();
         campanhas = await _utmifyApiCampanhas(cfg.token, dashId, dIni, dFim);
       } else {
         const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
           dashboardId: dashId, level: 'campaign',
-          dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
+          dateRange: { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off }
         });
         campanhas = (r && r.results) ? r.results : [];
       }
@@ -3066,7 +3081,7 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
         const inv = cent(c.spend), fat = cent(c.grossRevenue);
         if (!inv && !fat) return;
         linhas.push({
-          data: ate, fonte: 'utmify', dashboard: meta.nome || dashId,
+          data: dia, fonte: 'utmify', dashboard: meta.nome || dashId,
           campanhaId: String(c.campaignId || c.id || ''), campanha: String(c.name || ''),
           adsetId: '', adset: '', adId: '', anuncio: '',
           investimento: inv, faturamento: fat,
@@ -3079,7 +3094,8 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
           roas: Number(c.roas) || 0
         });
       });
-    } catch (e) { erros.push((meta.nome || dashId) + ': ' + e.message); }
+    } catch (e) { erros.push((meta.nome || dashId) + ' ' + dia + ': ' + e.message); }
+    }
   }
 
   const db = readDB();
