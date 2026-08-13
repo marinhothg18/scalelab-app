@@ -3331,10 +3331,23 @@ Valor  scalelab-web.up.railway.app</div>
             <button class="vs-ab on" id="vs-ab-painel" onclick="vsAba('painel')">📊 Painel</button>
             <button class="vs-ab" id="vs-ab-analise" onclick="vsAba('analise')">🔬 Análise</button>
           </div>
-          <select id="vs-periodo" onchange="vsCarregar(true)"
+          <select id="vs-periodo" onchange="vsTrocarPeriodo(this.value)"
             style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 11px;color:var(--text);font-size:13px;outline:none">
-            <option value="hoje">Hoje</option><option value="7d" selected>7 dias</option><option value="30d">30 dias</option>
+            <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
+            <option value="3d">Últimos 3 dias</option>
+            <option value="7d" selected>7 dias</option>
+            <option value="15d">15 dias</option>
+            <option value="30d">30 dias</option>
+            <option value="custom">Personalizado…</option>
           </select>
+          <span id="vs-datas" style="display:none;gap:6px;align-items:center">
+            <input type="date" id="vs-de" onchange="vsCarregar(true)"
+              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 9px;color:var(--text);font-size:12.5px;outline:none">
+            <span style="color:var(--text2)">→</span>
+            <input type="date" id="vs-ate" onchange="vsCarregar(true)"
+              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 9px;color:var(--text);font-size:12.5px;outline:none">
+          </span>
           <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
             <button class="vs-btn g" onclick="vsAbrirMetas()">🎯 Metas</button>
             <button class="vs-btn g" onclick="vsAbrirVsls()">⚙ VSLs rodando</button>
@@ -26836,18 +26849,39 @@ function vsSelo(k,v){
 
 function renderVsl(){ if(!vsDados) vsCarregar(false); else vsPintar(); }
 
+function vsDia(voltar){
+  return new Date(Date.now()-3*3600000-(voltar||0)*86400000).toISOString().slice(0,10);
+}
 function vsPeriodo(){
   var per=(document.getElementById('vs-periodo')||{}).value||'7d';
-  var hoje=new Date(Date.now()-3*3600000).toISOString().slice(0,10);
-  var de=hoje;
-  if(per==='7d')  de=new Date(Date.now()-3*3600000-6*86400000).toISOString().slice(0,10);
-  if(per==='30d') de=new Date(Date.now()-3*3600000-29*86400000).toISOString().slice(0,10);
-  return {de:de, ate:hoje};
+  if(per==='custom'){
+    var a=(document.getElementById('vs-de')||{}).value, b=(document.getElementById('vs-ate')||{}).value;
+    if(a && b) return { de:(a<=b?a:b), ate:(a<=b?b:a) };      // aceita invertido
+    return { de:vsDia(6), ate:vsDia(0) };
+  }
+  if(per==='hoje')  return { de:vsDia(0),  ate:vsDia(0) };
+  if(per==='ontem') return { de:vsDia(1),  ate:vsDia(1) };
+  if(per==='3d')    return { de:vsDia(2),  ate:vsDia(0) };
+  if(per==='15d')   return { de:vsDia(14), ate:vsDia(0) };
+  if(per==='30d')   return { de:vsDia(29), ate:vsDia(0) };
+  return { de:vsDia(6), ate:vsDia(0) };
+}
+function vsTrocarPeriodo(v){
+  var caixa=document.getElementById('vs-datas');
+  if(v==='custom'){
+    caixa.style.display='flex';
+    var de=document.getElementById('vs-de'), ate=document.getElementById('vs-ate');
+    if(!de.value) de.value=vsDia(6);
+    if(!ate.value) ate.value=vsDia(0);
+    if(!de.value || !ate.value) return;
+  } else caixa.style.display='none';
+  vsCarregar(true);
 }
 
 function vsCarregar(forcar){
   if(vsCarregando) return;
   vsCarregando=true;
+  if(forcar){ vsCurvas={}; vsConv={}; vsCri={}; }
   var el=document.getElementById('vs-conteudo');
   if(el && (forcar||!vsDados)) el.innerHTML=
     '<div style="text-align:center;padding:40px;color:var(--text2)">'+
@@ -27070,7 +27104,57 @@ function vsHtmlAnalise(){
   '<div class="vs-cx" style="margin-top:15px"><div class="vs-cab"><div><h2>Curva de retenção</h2>'+
     '<p>Quantos ainda assistem a cada minuto. A linha vermelha é o pitch, aos '+vsMmss(v.pitch||0)+'.</p></div></div>'+
     '<div id="vs-graf"></div></div>'+
-  '<div class="vs-tit">Maior abandono</div><div class="vs-diag" id="vs-quedas"></div>';
+  '<div class="vs-tit">Maior abandono</div><div class="vs-diag" id="vs-quedas"></div>'+
+
+  '<div class="vs-tit">Quem trouxe cada pessoa</div>'+
+  '<div class="vs-cx"><div class="vs-cab"><div><h2>Retenção por criativo</h2>'+
+    '<p>A mesma VSL, separada pelo anúncio que trouxe a pessoa. Vem da utm_content, '+
+    'que carrega o nome do anúncio.</p></div></div>'+
+    '<div id="vs-lgcri"></div><div id="vs-grafcri"></div></div>'+
+
+  '<div class="vs-cx"><div class="vs-cab"><div><h2>Em que minuto a venda acontece</h2>'+
+    '<p>Mesma linha do tempo do gráfico acima, pra comparar de cima a baixo.</p></div></div>'+
+    '<div id="vs-grafconv"></div></div>'+
+
+  '<div class="vs-cx"><div class="vs-cab"><div><h2>Do clique ao pitch</h2>'+
+    '<p>Custo e CTR vêm da Meta; play rate e retenção vêm da VTurb.</p></div></div>'+
+    '<div style="overflow-x:auto"><table class="vs-tb" id="vs-tcri"></table></div></div>'+
+
+  '<div class="vs-tit">O que os dados estão dizendo</div><div class="vs-diag" id="vs-diag"></div>'+
+
+  '<div class="vs-tit">O caminho inteiro</div>'+
+  '<div class="vs-cx"><div class="vs-cab"><div><h2>Da impressão à venda</h2>'+
+    '<p>Cada etapa vem de uma fonte diferente.</p></div></div><div id="vs-funil"></div></div>';
+}
+
+var vsConv={};
+
+// A VTurb devolve, por segundo, QUANTAS PESSOAS PARARAM ali — é um histograma de
+// abandono, não a curva de quem continua. Tratar um como o outro dava uma curva
+// que despencava e depois SUBIA no fim (o pico de quem assistiu tudo).
+// A retenção real é a soma de todo mundo que parou naquele segundo ou depois.
+function vsCurvaDe(bruto){
+  var pts=(bruto||[]).map(function(x){ return { t:Number(x.timed)||0, n:Number(x.total_users)||0 }; })
+    .sort(function(a,b){ return a.t-b.t; });
+  if(!pts.length) return [];
+
+  // Curva de sobrevivência NUNCA sobe: se subir mais que um ruído em qualquer
+  // ponto, o que veio é histograma de abandono. Contar "quantas subidas" era
+  // frouxo — com poucos pontos, um pico no fim passava batido.
+  var ehSobrevivencia = true;
+  for(var i=1;i<pts.length;i++){
+    if(pts[i].n > pts[i-1].n*1.02 + 1){ ehSobrevivencia = false; break; }
+  }
+  if(ehSobrevivencia){
+    var topo=pts[0].n||1;
+    return pts.map(function(p){ return { t:p.t, y:Math.min(100,p.n/topo*100) }; });
+  }
+
+  // histograma: soma de trás pra frente
+  var acum=0, saida=[];
+  for(var j=pts.length-1;j>=0;j--){ acum+=pts[j].n; saida.unshift({ t:pts[j].t, n:acum }); }
+  var total=saida[0].n||1;
+  return saida.map(function(p){ return { t:p.t, y:p.n/total*100 }; });
 }
 
 function vsDesenhar(){
@@ -27085,10 +27169,8 @@ function vsDesenhar(){
         .then(function(r){ return r.ok?r.json():null; })
         .then(function(d){
           var g=(d&&d.engajamento&&d.engajamento.grouped_timed)||[];
-          var maior=g.reduce(function(a,x){ return Math.max(a,Number(x.total_users)||0); },0)||1;
-          vsCurvas[v.id]=g.map(function(x){
-            return { t:Number(x.timed)||0, y:(Number(x.total_users)||0)/maior*100 }; })
-            .sort(function(a,b){ return a.t-b.t; });
+          vsCurvas[v.id]=vsCurvaDe(g);
+          vsConv[v.id]=(d&&d.conversoesNoVideo&&d.conversoesNoVideo.grouped_timed)||[];
           var um=vsCurvas[v.id].filter(function(x){ return x.t<=60; }).pop();
           v.ret1min = um? um.y : 0;
         }).catch(function(){ vsCurvas[v.id]=[]; });
@@ -27138,7 +27220,196 @@ function vsDesenharAgora(){
        vsEsc(x.nome.slice(0,14))+' <tspan opacity=".75">'+x.valor.toFixed(1)+'%</tspan></text>';
   });
   el.innerHTML=s+'</svg>';
-  if(vs.length===1) vsQuedas(vs[0]);
+  if(vs.length===1){ vsQuedas(vs[0]); vsConversao(vs[0]); vsFunil(vs[0]); vsCriativos(vs[0]); }
+}
+
+// ── conversão por minuto (mesma linha do tempo da curva) ──
+function vsConversao(v){
+  var el=document.getElementById('vs-grafconv'); if(!el) return;
+  var g=vsConv[v.id]||[];
+  if(!g.length){ el.innerHTML='<div class="vs-nota">A VTurb não devolveu conversões por segundo neste período.</div>'; return; }
+  var dur=v.duracao||1, W=el.clientWidth||820, HH=170, L=52,R=112,TT=14,BB=34;
+  var porMin={};
+  g.forEach(function(x){
+    var m=Math.floor((Number(x.timed)||0)/60);
+    porMin[m]=(porMin[m]||0)+(Number(x.timed_conversions)||0);
+  });
+  var mins=Math.ceil(dur/60), maxV=0;
+  for(var m=0;m<mins;m++) maxV=Math.max(maxV,porMin[m]||0);
+  if(!maxV){ el.innerHTML='<div class="vs-nota">Nenhuma conversão registrada dentro do vídeo neste período.</div>'; return; }
+  var lg=(W-L-R)/mins;
+  var out='<svg viewBox="0 0 '+W+' '+HH+'" height="'+HH+'"><g class="grade">';
+  for(var i=0;i<=2;i++){ var y=TT+(HH-TT-BB)*(i/2); out+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
+  out+='</g><g class="eixo"><line x1="'+L+'" y1="'+(HH-BB)+'" x2="'+(W-R)+'" y2="'+(HH-BB)+'"/></g>';
+  for(var i=0;i<=2;i++){ var y=TT+(HH-TT-BB)*(i/2);
+    out+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+Math.round(maxV*(1-i/2))+'</text>'; }
+  for(var m=0;m<mins;m++){
+    var q=porMin[m]||0; if(!q) continue;
+    var h=(HH-TT-BB)*(q/maxV);
+    out+='<rect x="'+(L+lg*m+1).toFixed(1)+'" y="'+(HH-BB-h).toFixed(1)+'" width="'+Math.max(1,lg-2).toFixed(1)+
+         '" height="'+h.toFixed(1)+'" rx="2" fill="var(--green)" opacity=".9"/>';
+  }
+  for(var m=0;m<mins;m+=5)
+    out+='<text class="rot" x="'+(L+lg*m+lg/2)+'" y="'+(HH-BB+16)+'" text-anchor="middle">'+m+'min</text>';
+  if(v.pitch){
+    var xp=L+lg*(v.pitch/60)+lg/2;
+    out+='<g class="pitch"><line x1="'+xp+'" y1="'+TT+'" x2="'+xp+'" y2="'+(HH-BB)+'"/>'+
+         '<text x="'+(xp-7)+'" y="'+(TT+11)+'" text-anchor="end">PITCH</text></g>';
+  }
+  el.innerHTML=out+'</svg>';
+}
+
+// ── funil ──
+function vsFunil(v){
+  var el=document.getElementById('vs-funil'); if(!el) return;
+  var um=Math.round(v.play*(v.ret1min||0)/100);
+  var et=[['Viram a página',v.viram,'VTurb'],['Deram play',v.play,'VTurb'],
+    ['Passaram do 1º min',um,'VTurb'],['Chegaram no pitch',v.noPitch,'VTurb'],
+    ['Clicaram no botão',v.clicaram,'VTurb'],['Venda aprovada',v.vendas,'Utmify']];
+  var topo=et[0][1]||1;
+  var tons=['#86b6ef','#6da7ec','#5598e7','#3987e5','#2a78d6','#1c5cab'];
+  el.innerHTML=et.map(function(e,i){
+    var pc=e[1]/topo*100, queda=i?(100-e[1]/Math.max(et[i-1][1],1)*100):0;
+    return '<div style="display:flex;align-items:center;gap:12px;margin-bottom:9px">'+
+      '<div style="width:150px;flex:0 0 auto;font-size:12.5px">'+e[0]+
+        '<div style="font-size:10px;color:var(--text2)">'+e[2]+'</div></div>'+
+      '<div style="flex:1;height:24px;background:var(--bg3);border-radius:5px;overflow:hidden">'+
+        '<i style="display:block;height:100%;border-radius:5px;width:'+Math.max(pc,.4)+'%;background:'+tons[i]+'"></i></div>'+
+      '<div style="width:126px;flex:0 0 auto;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums">'+
+        '<b>'+vsNum(e[1])+'</b> <span style="color:var(--text2)">'+pc.toFixed(2)+'%</span>'+
+        (i?'<div style="font-size:10.5px;color:var(--red)">−'+queda.toFixed(0)+'%</div>':'')+'</div></div>';
+  }).join('');
+}
+
+// ── criativos: junta a retenção da VTurb com o custo da Utmify ──
+var vsCri={};
+function vsCriativos(v){
+  var lg=document.getElementById('vs-lgcri'), gr=document.getElementById('vs-grafcri'),
+      tb=document.getElementById('vs-tcri'), dg=document.getElementById('vs-diag');
+  if(!gr) return;
+  if(vsCri[v.id]){ vsPintarCriativos(v); return; }
+  gr.innerHTML='<div style="text-align:center;padding:24px;color:var(--text2)">⏳ Cruzando com os anúncios...</div>';
+  var p=vsPeriodo();
+  Promise.all([
+    fetch('/api/vturb/retencao-por-origem?player='+encodeURIComponent(v.id)+'&de='+p.de+'&ate='+p.ate)
+      .then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }),
+    fetch('/api/metricas/utmify/anuncios?de='+p.de+'&ate='+p.ate)
+      .then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; })
+  ]).then(function(res){
+    var origens=(res[0]&&res[0].origens&&res[0].origens.data)||[];
+    var anuncios=(res[1]&&res[1].anuncios)||[];
+    var porNome={};
+    origens.forEach(function(o){
+      var nome=String(o.group_key||'').trim(); if(!nome) return;
+      porNome[nome]={ nome:nome, curva:vsCurvaDe((o.group_values||[]).map(function(x){
+        return { timed:x.timed, total_users:x.total_users }; })) };
+    });
+    anuncios.forEach(function(a){
+      var nome=String(a.nome||'').trim(); if(!nome) return;
+      if(!porNome[nome]) porNome[nome]={ nome:nome, curva:[] };
+      var c=porNome[nome];
+      c.inv=a.investimento||0; c.ctr=a.ctr||0; c.cpc=a.cpc||0;
+      c.vendas=a.vendas||0; c.receita=a.receita||0; c.roas=a.roas||0; c.ics=a.ics||0;
+    });
+    vsCri[v.id]=Object.keys(porNome).map(function(k){ return porNome[k]; })
+      .sort(function(a,b){ return (b.inv||0)-(a.inv||0); }).slice(0,8);
+    vsPintarCriativos(v);
+  });
+}
+function vsPintarCriativos(v){
+  var lista=vsCri[v.id]||[];
+  var lg=document.getElementById('vs-lgcri'), gr=document.getElementById('vs-grafcri'),
+      tb=document.getElementById('vs-tcri'), dg=document.getElementById('vs-diag');
+  var cores=['var(--accent)','#eb6834','#1baf7a','#eda100','#e87ba4','#4a3aa7','#e34948','#008300'];
+  var comCurva=lista.filter(function(c){ return c.curva && c.curva.length>1; });
+  if(!comCurva.length){
+    if(gr) gr.innerHTML='<div class="vs-nota">A VTurb não separou a retenção por origem neste período. '+
+      'Isso depende das UTMs chegarem na página da VSL — confira se o link do anúncio leva utm_content.</div>';
+    if(lg) lg.innerHTML='';
+  } else if(gr){
+    var W=gr.clientWidth||820, L=52,R=112,T=16,B=34,H=250, dur=v.duracao||1;
+    var out='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'"><g class="grade">';
+    for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4); out+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
+    out+='</g><g class="eixo"><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/></g>';
+    for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4);
+      out+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+Math.round(100*(1-i/4))+'%</text>'; }
+    for(var m=0;m<=Math.floor(dur/60);m+=5)
+      out+='<text class="rot" x="'+(L+(W-L-R)*((m*60)/dur))+'" y="'+(H-B+16)+'" text-anchor="middle">'+m+'min</text>';
+    if(v.pitch){ var xp=L+(W-L-R)*(v.pitch/dur);
+      out+='<g class="pitch"><line x1="'+xp+'" y1="'+T+'" x2="'+xp+'" y2="'+(H-B)+'"/></g>'; }
+    comCurva.forEach(function(c,i){
+      out+='<path class="serie" style="stroke:'+cores[i%8]+'" d="'+c.curva.map(function(pt,j){
+        return (j?'L':'M')+(L+(W-L-R)*(pt.t/dur)).toFixed(1)+' '+(T+(H-T-B)*(1-pt.y/100)).toFixed(1);
+      }).join(' ')+'"/>';
+    });
+    gr.innerHTML=out+'</svg>';
+    if(lg) lg.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 4px">'+
+      comCurva.map(function(c,i){ return '<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)">'+
+        '<i style="width:11px;height:11px;border-radius:3px;background:'+cores[i%8]+'"></i>'+vsEsc(c.nome)+'</span>'; }).join('')+'</div>';
+  }
+
+  // tabela
+  if(tb){
+    var comCusto=lista.filter(function(c){ return c.inv>0; });
+    if(!comCusto.length){ tb.innerHTML='<tbody><tr><td style="padding:14px;color:var(--text2);font-size:12.5px">'+
+      'Sem custo por anúncio no período — a Utmify não devolveu anúncios com gasto.</td></tr></tbody>'; }
+    else {
+      var pitchDe=function(c){
+        if(!c.curva||!c.curva.length||!v.pitch) return null;
+        var achado=null; c.curva.forEach(function(p){ if(p.t<=v.pitch) achado=p; });
+        return achado?achado.y:null;
+      };
+      tb.innerHTML='<thead><tr><th>Criativo</th><th class="num">Investido</th><th class="num">CTR</th>'+
+        '<th class="num">CPC</th><th class="num">Chega no pitch</th><th class="num">ICs</th>'+
+        '<th class="num">Vendas</th><th class="num">ROAS</th></tr></thead><tbody>'+
+        comCusto.map(function(c,i){
+          var pp=pitchDe(c);
+          var corRoas=(c.roas>=1.5)?'color:var(--green)':((c.roas>=1)?'color:#f59e0b':'color:var(--red)');
+          return '<tr><td><span style="display:inline-flex;align-items:center;gap:7px">'+
+            '<i style="width:9px;height:9px;border-radius:2px;background:'+cores[i%8]+'"></i>'+vsEsc(c.nome)+'</span></td>'+
+            '<td class="num">'+vsBrl(c.inv)+'</td>'+
+            '<td class="num">'+(c.ctr||0).toFixed(2)+'%</td>'+
+            '<td class="num">'+vsBrl(c.cpc||0)+'</td>'+
+            '<td class="num">'+(pp!==null?pp.toFixed(1)+'%':'—')+'</td>'+
+            '<td class="num">'+(c.ics||0)+'</td>'+
+            '<td class="num">'+(c.vendas||0)+'</td>'+
+            '<td class="num" style="'+corRoas+';font-weight:700">'+(c.roas||0).toFixed(2)+'x</td></tr>';
+        }).join('')+'</tbody>';
+    }
+  }
+
+  // diagnósticos
+  if(dg){
+    var d=[];
+    var comCusto2=lista.filter(function(c){ return c.inv>0; });
+    if(comCusto2.length){
+      var medCtr=comCusto2.reduce(function(a,c){return a+(c.ctr||0);},0)/comCusto2.length;
+      comCusto2.forEach(function(c){
+        if(c.inv>0 && !c.vendas)
+          d.push(['red','💸','Gastou sem vender · '+c.nome,
+            'Investiu '+vsBrl(c.inv)+' no período e não trouxe nenhuma venda.','Candidato a corte.']);
+        else if((c.ctr||0)>medCtr && (c.roas||0)<1)
+          d.push(['red','🎣','Tráfego curioso · '+c.nome,
+            'CTR de '+(c.ctr||0).toFixed(2)+'% (acima da média) mas ROAS de '+(c.roas||0).toFixed(2)+'x. '+
+            'Faz clicar e não faz comprar.','Gastou '+vsBrl(c.inv)+'.']);
+      });
+      var melhor=comCusto2.slice().sort(function(a,b){ return (b.roas||0)-(a.roas||0); })[0];
+      if(melhor && melhor.roas>1)
+        d.push(['green','📈','Melhor retorno · '+melhor.nome,
+          'ROAS de '+melhor.roas.toFixed(2)+'x com '+vsBrl(melhor.inv)+' investidos.','Candidato a escalar.']);
+    }
+    if(v.pitch && v.pctPitch<12)
+      d.push(['orange','⏱','O pitch pode estar tarde',
+        'Aos '+vsMmss(v.pitch)+' só '+(v.pctPitch||0).toFixed(1)+'% ainda estão assistindo. '+
+        'Quem já estava convencido esperou meia hora pra poder comprar.','Testar uma versão com oferta mais cedo.']);
+    var cores2={green:'var(--green)',orange:'#f59e0b',red:'var(--red)'};
+    dg.innerHTML = d.length ? d.map(function(x){
+      return '<div class="vs-dc" style="border-left-color:'+cores2[x[0]]+'">'+
+        '<div class="t"><span>'+x[1]+'</span>'+vsEsc(x[2])+'</div>'+
+        '<div class="d">'+x[3]+'</div>'+
+        '<div class="a" style="color:'+cores2[x[0]]+'">'+x[4]+'</div></div>';
+    }).join('') : '<div class="vs-nota">Nada fora do esperado nos criativos deste período.</div>';
+  }
 }
 
 // mede em % de quem restou: perto do pitch a retenção já é baixa e quedas graves
@@ -27201,12 +27472,46 @@ function vsMetasPadrao(){ s('sl_vsl_metas',Object.assign({},VS_PADRAO)); vsAbrir
 // ── QUAIS VSLs RODAM ──
 function vsAbrirVsls(){
   if(!vsDados) return;
-  document.getElementById('vs-lista-vsls').innerHTML = vsDados.vsls.map(function(v){
-    return '<div class="vs-lreg"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
-      '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+' · '+v.vendas+' venda(s)</small></div>'+
-      '<div class="vs-sw '+(v.rodando?'on':'')+'" onclick="vsLigar(\''+v.id+'\',this)"><i></i></div></div>';
+  // Agrupa por pasta, como a própria VTurb organiza — com 36 vídeos numa lista
+  // corrida não dá pra achar nada.
+  var pastas={}, ordem=[];
+  vsDados.vsls.forEach(function(v){
+    var k=v.pasta||'Sem pasta';
+    if(!pastas[k]){ pastas[k]=[]; ordem.push(k); }
+    pastas[k].push(v);
+  });
+  ordem.sort(function(a,b){
+    if(a==='Sem pasta') return 1; if(b==='Sem pasta') return -1;
+    return a.localeCompare(b);
+  });
+  document.getElementById('vs-lista-vsls').innerHTML = ordem.map(function(k){
+    var lista=pastas[k];
+    var ligadas=lista.filter(function(v){return v.rodando;}).length;
+    return '<div style="margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">'+
+        '<span style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">📁 '+vsEsc(k)+'</span>'+
+        '<span style="font-size:10.5px;color:var(--text2)">'+ligadas+' de '+lista.length+' ligadas</span>'+
+        '<button class="vs-btn g sm" style="margin-left:auto" onclick="vsLigarPasta(\''+encodeURIComponent(k)+'\')">'+
+          (ligadas===lista.length?'Desligar todas':'Ligar todas')+'</button>'+
+      '</div>'+
+      lista.map(function(v){
+        return '<div class="vs-lreg"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
+          '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+' · '+v.vendas+' venda(s)</small></div>'+
+          '<div class="vs-sw '+(v.rodando?'on':'')+'" onclick="vsLigar(\''+v.id+'\',this)"><i></i></div></div>';
+      }).join('')+'</div>';
   }).join('');
   openModal('modal-vs-vsls');
+}
+function vsLigarPasta(k){
+  var pasta=decodeURIComponent(k);
+  var lista=vsDados.vsls.filter(function(v){ return (v.pasta||'Sem pasta')===pasta; });
+  var ligar = lista.some(function(v){ return !v.rodando; });
+  lista.forEach(function(v){ v.rodando=ligar; });
+  var lig=vsDados.vsls.filter(function(v){return v.rodando;}).map(function(v){return v.id;});
+  s('sl_vsl_ativas',lig);
+  vsSel=vsSel.filter(function(id){ return lig.indexOf(id)>=0; });
+  if(!vsSel.length && lig.length) vsSel=[lig[0]];
+  vsAbrirVsls();
 }
 function vsLigar(id,el){
   var v=vsDados.vsls.filter(function(x){return x.id===id;})[0]; if(!v) return;

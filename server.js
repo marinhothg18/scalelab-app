@@ -7491,9 +7491,14 @@ async function _vturbApi(token, caminho, corpo, metodo) {
 async function _vturbPlayers(token) {
   const d = await _vturbApi(token, '/players/list', null, 'GET');
   const bruto = Array.isArray(d) ? d : (d && (d.players || d.data || d.results)) || [];
+  // A VTurb organiza os videos em pastas (Concurso Kalebe, RENDA EXTRA...).
+  // O nome do campo nao esta documentado, entao aceita as variacoes comuns.
+  const pastaDe = x => x.folder_name || x.folderName || x.folder || x.directory ||
+                       x.parent_name || (x.parent && (x.parent.name || x.parent)) || '';
   return bruto.map(x => ({
     id: x.id || x.player_id, nome: x.name || x.nome || '(sem nome)',
     duracao: Number(x.duration) || 0, pitch: Number(x.pitch_time) || 0,
+    pasta: String(pastaDe(x) || ''),
     criadoEm: x.created_at || null
   })).filter(x => x.id);
 }
@@ -7654,7 +7659,7 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
         }, per);
         const cent = v => (Number(v) || 0) / 100;
         linhas.push({
-          id: p.id, nome: p.nome, duracao: p.duracao, pitch: p.pitch,
+          id: p.id, nome: p.nome, duracao: p.duracao, pitch: p.pitch, pasta: p.pasta || '',
           viram:      Number(st.total_viewed_device_uniq || st.total_viewed) || 0,
           play:       Number(st.total_started_device_uniq || st.total_started) || 0,
           playRate:   Number(st.play_rate) || 0,
