@@ -26849,10 +26849,17 @@ function vsCarregar(forcar){
   if(vsCarregando) return;
   vsCarregando=true;
   var el=document.getElementById('vs-conteudo');
-  if(el && (forcar||!vsDados)) el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2)">⏳ Buscando na VTurb...</div>';
+  if(el && (forcar||!vsDados)) el.innerHTML=
+    '<div style="text-align:center;padding:40px;color:var(--text2)">'+
+    '<div style="font-size:15px;font-weight:700;margin-bottom:6px">⏳ Buscando na VTurb…</div>'+
+    '<div style="font-size:12.5px">Uma consulta por VSL. Na primeira vez costuma levar alguns segundos; '+
+    'depois fica guardado por 2 minutos.</div></div>';
   var p=vsPeriodo();
-  fetch('/api/vturb/painel?de='+p.de+'&ate='+p.ate)
-    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+  // sem teto de tempo a tela ficaria "carregando" pra sempre se a VTurb travasse
+  var corta=new AbortController();
+  var relogio=setTimeout(function(){ corta.abort(); }, 75000);
+  fetch('/api/vturb/painel?de='+p.de+'&ate='+p.ate,{signal:corta.signal})
+    .then(function(r){ clearTimeout(relogio); return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
     .then(function(x){
       vsCarregando=false;
       if(!x.ok) throw new Error(x.d.error||'erro');
@@ -26868,10 +26875,18 @@ function vsCarregar(forcar){
       vsCruzarCusto(p);
     })
     .catch(function(e){
+      clearTimeout(relogio);
       vsCarregando=false;
-      if(el) el.innerHTML='<div class="vs-dc" style="border-left-color:var(--red)"><div class="t">Não consegui carregar</div>'+
-        '<div class="d">'+vsEsc(e.message)+'</div>'+
-        '<div class="a">Confira o token em Configurações → Integrações → VTurb.</div></div>';
+      var demorou = (e && e.name==='AbortError');
+      if(el) el.innerHTML='<div class="vs-dc" style="border-left-color:var(--red)">'+
+        '<div class="t">'+(demorou?'A VTurb demorou demais':'Não consegui carregar')+'</div>'+
+        '<div class="d">'+(demorou
+          ? 'A busca passou de 75 segundos e foi interrompida. Pode ser instabilidade lá ou VSLs demais ligadas de uma vez.'
+          : vsEsc(e.message))+'</div>'+
+        '<div class="a">'+(demorou
+          ? 'Tente de novo, ou desligue algumas em "⚙ VSLs rodando".'
+          : 'Confira o token em Configurações → Integrações → VTurb.')+'</div>'+
+        '<div style="margin-top:11px"><button class="vs-btn" onclick="vsCarregar(true)">Tentar de novo</button></div></div>';
     });
 }
 

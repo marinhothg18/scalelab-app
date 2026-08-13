@@ -7447,15 +7447,22 @@ function _vturbCfg(db) {
   return cfg;
 }
 
-// Se a VTurb reclamar da data, repete com o outro formato documentado. Nao da
-// pra testar isso daqui sem o token, entao a tela se vira sozinha em vez de falhar.
+// Se a VTurb reclamar da data, repete com o outro formato documentado — e GUARDA
+// qual funcionou. Sem isso, com o formato errado toda chamada viraria duas, e o
+// painel (uma por VSL) demoraria o dobro.
+let _vturbFormato = null;      // null = ainda nao sei | 'utc' | 'iso'
 async function _vturbApiData(token, caminho, corpo, per) {
+  const comISO = () => Object.assign({}, corpo, { start_date: per.ini2, end_date: per.fim2 });
+  if (_vturbFormato === 'iso') return await _vturbApi(token, caminho, comISO());
   try {
-    return await _vturbApi(token, caminho, corpo);
+    const r = await _vturbApi(token, caminho, corpo);
+    _vturbFormato = 'utc';
+    return r;
   } catch (e) {
     if (!per || !/valid datetime|Start date|End date/i.test(e.message || '')) throw e;
-    const alt = Object.assign({}, corpo, { start_date: per.ini2, end_date: per.fim2 });
-    return await _vturbApi(token, caminho, alt);
+    const r = await _vturbApi(token, caminho, comISO());
+    _vturbFormato = 'iso';
+    return r;
   }
 }
 
@@ -7636,7 +7643,9 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
     players = players.slice(0, 12);          // teto: cada uma é uma chamada na VTurb
 
     const linhas = [], erros = [];
-    for (const p of players) {
+    // Em fila, 12 VSLs viravam 12 idas e voltas e a tela ficava ~20s carregando.
+    // De 4 em 4 fica rapido e ainda cabe folgado no limite de requisicoes da VTurb.
+    async function buscar(p) {
       try {
         const st = await _vturbApiData(cfg.token, '/sessions/stats', {
           player_id: p.id, start_date: per.ini, end_date: per.fim,
@@ -7660,6 +7669,14 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
         });
       } catch (e) { erros.push(p.nome + ': ' + e.message); }
     }
+    // a primeira sozinha: ela descobre o formato de data que a VTurb aceita,
+    // e as demais ja saem com o formato certo de primeira
+    if (players.length) await buscar(players[0]);
+    const resto = players.slice(1);
+    for (let i = 0; i < resto.length; i += 4) {
+      await Promise.all(resto.slice(i, i + 4).map(buscar));
+    }
+    linhas.sort((a, b) => b.receita - a.receita);
     linhas.forEach(l => { l.ticket = l.vendas ? l.receita / l.vendas : 0; });
     const saida = { ok: true, de: per.de, ate: per.ate, vsls: linhas, erros };
     _vivoSet(chave, saida);
