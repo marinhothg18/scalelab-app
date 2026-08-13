@@ -5496,7 +5496,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_integracoes_meta',    // access token do Meta Ads
   'sl_integracoes_vendas',  // token secreto da URL de webhook
   'sl_vendas_raw',          // payloads crus dos gateways (dados de cliente)
-  'sl_integracoes_utmify_mcp' // token de acesso do MCP da Utmify
+  'sl_integracoes_utmify_mcp', // token de acesso do MCP da Utmify
+  'sl_vturb'                // token da API de analytics da VTurb
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -7427,6 +7428,159 @@ app.post('/api/backup/restore/:nome', authDiretoria, (req, res) => {
 });
 
 // ── INICIA ──
+// ══════════════════════════════════════════════
+// ── VTURB (Analytics da VSL) ──
+// ══════════════════════════════════════════════
+// Doc: https://vturb.gitbook.io/analytics-api
+// Autenticacao por dois headers; quase tudo e POST, menos players/list e quota.
+const VTURB_URL = 'https://analytics.vturb.net';
+const KEY_VTURB = 'sl_vturb';
+
+function _vturbCfg(db) {
+  const c = (db || readDB()).store[KEY_VTURB];
+  const cfg = (c && typeof c === 'object') ? c : null;
+  const doEnv = process.env.VTURB_API_TOKEN;
+  if (doEnv && String(doEnv).trim()) {
+    return Object.assign({}, cfg || { criadoEm: new Date().toISOString() },
+      { token: String(doEnv).trim(), origemToken: 'env' });
+  }
+  return cfg;
+}
+
+async function _vturbApi(token, caminho, corpo, metodo) {
+  const r = await fetch(VTURB_URL + caminho, {
+    method: metodo || (corpo ? 'POST' : 'GET'),
+    headers: { 'X-Api-Token': token, 'X-Api-Version': 'v1',
+               'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: corpo ? JSON.stringify(corpo) : undefined
+  });
+  const txt = await r.text();
+  let dados = null;
+  try { dados = JSON.parse(txt); } catch (e) {}
+  if (!r.ok) {
+    const motivo = (dados && (dados.message || dados.error)) || txt.slice(0, 160);
+    if (r.status === 401 || r.status === 403) {
+      throw new Error('A VTurb recusou o token. Confira em app.vturb.com › Configurações › Analytics API.');
+    }
+    if (r.status === 429) throw new Error('Limite de requisições da VTurb atingido. Tente de novo em um minuto.');
+    throw new Error('VTurb respondeu ' + r.status + ': ' + motivo);
+  }
+  return dados;
+}
+
+// Lista as VSLs da conta — evita ter que catar player_id na mão
+async function _vturbPlayers(token) {
+  const d = await _vturbApi(token, '/players/list', null, 'GET');
+  const bruto = Array.isArray(d) ? d : (d && (d.players || d.data || d.results)) || [];
+  return bruto.map(x => ({
+    id: x.id || x.player_id, nome: x.name || x.nome || '(sem nome)',
+    duracao: Number(x.duration) || 0, pitch: Number(x.pitch_time) || 0,
+    criadoEm: x.created_at || null
+  })).filter(x => x.id);
+}
+
+function _vturbPeriodo(req) {
+  const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+  const de  = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.de  || '')) ? req.query.de  : hoje;
+  const ate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.ate || '')) ? req.query.ate : hoje;
+  return { de, ate };
+}
+function _vturbExige() {
+  const cfg = _vturbCfg();
+  if (!cfg || !cfg.token) throw new Error('VTurb ainda não conectada. Cole o token em Integrações.');
+  return cfg;
+}
+
+// ── configuracao ──
+app.get('/api/integracoes/vturb/me', authDiretoria, (req, res) => {
+  const cfg = _vturbCfg() || {};
+  res.json({ ok: true, conectado: !!cfg.token, origemToken: cfg.origemToken || 'tela',
+             players: cfg.players || [], ultimoErro: cfg.ultimoErro || null,
+             validadoEm: cfg.validadoEm || null });
+});
+
+app.post('/api/integracoes/vturb/config', authDiretoria, async (req, res) => {
+  try {
+    const token = String((req.body && req.body.token) || '').trim();
+    if (!token) return res.status(400).json({ error: 'Informe o token da VTurb.' });
+    // Valida antes de salvar: token que nao lista player nao serve pra nada,
+    // e salvar assim mesmo faria a tela mentir que esta conectada.
+    let players;
+    try { players = await _vturbPlayers(token); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+
+    const db = readDB();
+    const cfg = _vturbCfg(db) || { criadoEm: new Date().toISOString() };
+    cfg.token = token; cfg.players = players; cfg.ultimoErro = null;
+    cfg.validadoEm = new Date().toISOString(); cfg._updatedAt = Date.now();
+    db.store[KEY_VTURB] = cfg;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_VTURB] = now();
+    audit(db, 'integracao.vturb.config', KEY_VTURB, { players: players.length }, req.user);
+    writeDB(db);
+    res.json({ ok: true, players });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/vturb/players', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const players = await _vturbPlayers(cfg.token);
+    res.json({ ok: true, players });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── curva de retenção da VSL ──
+app.get('/api/vturb/retencao', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const { de, ate } = _vturbPeriodo(req);
+    const player = String(req.query.player || '');
+    if (!player) return res.status(400).json({ error: 'Informe o player.' });
+    const meta = (cfg.players || []).find(p => String(p.id) === player) || {};
+    const dur = Number(req.query.duracao) || meta.duracao || 0;
+    const base = { player_id: player, start_date: de, end_date: ate, timezone: 'America/Sao_Paulo' };
+
+    const [eng, conv, ses] = await Promise.all([
+      _vturbApi(cfg.token, '/times/user_engagement', Object.assign({ video_duration: dur }, base)).catch(e => ({ _erro: e.message })),
+      _vturbApi(cfg.token, '/conversions/video_timed', Object.assign({ video_duration: dur }, base)).catch(e => ({ _erro: e.message })),
+      _vturbApi(cfg.token, '/sessions/stats', Object.assign({ video_duration: dur, pitch_time: meta.pitch || 0 }, base)).catch(e => ({ _erro: e.message }))
+    ]);
+    res.json({ ok: true, player, nome: meta.nome || '', duracao: dur, pitch: meta.pitch || 0,
+               de, ate, engajamento: eng, conversoesNoVideo: conv, sessoes: ses });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── retenção separada por origem do tráfego = por criativo ──
+// (as UTMs levam o nome do anúncio, então dá pra ver qual criativo segura mais)
+app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const { de, ate } = _vturbPeriodo(req);
+    const player = String(req.query.player || '');
+    if (!player) return res.status(400).json({ error: 'Informe o player.' });
+    const meta = (cfg.players || []).find(p => String(p.id) === player) || {};
+    const d = await _vturbApi(cfg.token, '/times/user_engagement_by_traffic_origin', {
+      player_id: player, video_duration: Number(req.query.duracao) || meta.duracao || 0,
+      start_date: de, end_date: ate, timezone: 'America/Sao_Paulo'
+    });
+    res.json({ ok: true, player, nome: meta.nome || '', de, ate, origens: d });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── panorama: ranking das VSLs e quota da API ──
+app.get('/api/vturb/resumo', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const { de, ate } = _vturbPeriodo(req);
+    const [rank, quota] = await Promise.all([
+      _vturbApi(cfg.token, '/events/leaderboard', { start_date: de, end_date: ate, timezone: 'America/Sao_Paulo' }).catch(e => ({ _erro: e.message })),
+      _vturbApi(cfg.token, '/quota/usage', null, 'GET').catch(e => ({ _erro: e.message }))
+    ]);
+    res.json({ ok: true, de, ate, ranking: rank, quota });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ══════════════════════════════════════════════
 // ── FUNIS: pixel de rastreamento + redirecionador ──
 // ══════════════════════════════════════════════

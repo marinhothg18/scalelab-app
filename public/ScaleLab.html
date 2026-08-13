@@ -4605,7 +4605,7 @@ Valor  scalelab-web.up.railway.app</div>
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores'];   // sl_vturb fica só no servidor: guarda token
 // ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
 // As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
 // pontos de fetch espalhados pelo arquivo (fácil esquecer um e quebrar o sync sem
@@ -18727,6 +18727,67 @@ async function sincronizarUtmify(){
     renderIntegracoesTab();
   }catch(e){ if(out) out.innerHTML='<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>'; }
 }
+function _cardVturb(v){
+  v = v || {};
+  var lig = !!v.conectado, qtd = (v.players||[]).length;
+  var selo = lig
+    ? '<span style="background:rgba(34,197,94,.14);color:var(--green);padding:4px 11px;border-radius:20px;font-size:11px;font-weight:800;">CONECTADO</span>'
+    : '<span style="background:rgba(139,147,171,.14);color:var(--text2);padding:4px 11px;border-radius:20px;font-size:11px;font-weight:800;">NÃO CONECTADO</span>';
+  var lista = qtd
+    ? '<div style="margin-top:14px">'+
+      '<div style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">'+qtd+' VSL(s) encontrada(s)</div>'+
+      (v.players||[]).slice(0,8).map(function(p){
+        var min = p.duracao ? (Math.floor(p.duracao/60)+'min'+String(p.duracao%60).padStart(2,'0')) : '—';
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">'+
+          '<span>'+_esc(p.nome)+'</span><span style="color:var(--text2)">'+min+
+          (p.pitch?(' · pitch '+Math.floor(p.pitch/60)+'min'+String(p.pitch%60).padStart(2,'0')):'')+'</span></div>';
+      }).join('')+
+      (qtd>8?('<div style="font-size:11.5px;color:var(--text2);margin-top:6px">… e mais '+(qtd-8)+'</div>'):'')+
+      '</div>'
+    : '';
+  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:14px;">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+
+        '<div style="width:48px;height:48px;background:linear-gradient(135deg,#3E1493,#1B9CFA);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">🎬</div>'+
+        '<div><div style="font-size:17px;font-weight:700;">VTurb · Analytics da VSL</div>'+
+        '<div style="font-size:12.5px;color:var(--text2);">Retenção segundo a segundo, play rate e conversão dentro do vídeo</div></div>'+
+      '</div>'+selo+
+    '</div>'+
+    (v.ultimoErro?('<div style="background:rgba(226,75,74,.1);border-left:3px solid var(--red);border-radius:8px;padding:10px 13px;font-size:12.5px;color:var(--red);margin-bottom:12px">'+_esc(v.ultimoErro)+'</div>'):'')+
+    '<div style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-bottom:12px">'+
+      'Pegue o token em <b style="color:var(--text)">app.vturb.com › Configurações › Analytics API</b> e cole abaixo. '+
+      'Com ele dá pra ver onde a pessoa abandona a VSL e comparar a retenção entre criativos.</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<input id="vturb-token" type="password" placeholder="'+(lig?'Token salvo — cole outro pra trocar':'Cole o token da VTurb')+'" '+
+        'style="flex:1;min-width:240px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none">'+
+      '<button onclick="salvarVturb()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Conectar</button>'+
+    '</div>'+
+    (v.validadoEm?('<div style="font-size:11px;color:var(--text2);margin-top:9px">Validado em '+new Date(v.validadoEm).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})+
+      (v.origemToken==='env'?' · token vindo do ambiente':'')+'</div>'):'')+
+    lista+
+  '</div>';
+}
+
+async function salvarVturb(){
+  var inp = document.getElementById('vturb-token');
+  var token = (inp && inp.value || '').trim();
+  if(!token){ alert('Cole o token da VTurb.'); return; }
+  var bt = inp.nextElementSibling;
+  if(bt){ bt.disabled = true; bt.textContent = 'Validando...'; }
+  try{
+    var r = await fetch(API_BASE+'/api/integracoes/vturb/config', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: token })
+    });
+    var d = await r.json().catch(function(){ return {}; });
+    if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    alert('VTurb conectada — '+((d.players||[]).length)+' VSL(s) encontrada(s).');
+    renderIntegracoes();
+  }catch(e){
+    alert('Não consegui conectar: '+e.message);
+    if(bt){ bt.disabled = false; bt.textContent = 'Conectar'; }
+  }
+}
+
 function _cardMetaAds(m){
   m = m || {};
   var conectado = !!m.configurado;
@@ -18868,9 +18929,12 @@ async function renderIntegracoesTab(){
     var _um = {};
     try { _um = await (await fetch(API_BASE+'/api/integracoes/utmify-mcp/me')).json(); } catch(e){ _um = {erroCarga:true}; }
     try { _vd = await (await fetch(API_BASE+'/api/integracoes/vendas/me')).json(); } catch(e){ _vd = {erroCarga:true}; }
+    var _vt = {};
+    try { _vt = await (await fetch(API_BASE+'/api/integracoes/vturb/me')).json(); } catch(e){ _vt = {erroCarga:true}; }
 
     el.innerHTML =
       _cardUtmifyMcp(_um)+
+      _cardVturb(_vt)+
       _cardMetaAds(_mt)+
       _cardVendas(_vd)+
 
