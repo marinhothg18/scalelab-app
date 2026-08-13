@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Funis · Protótipo — Central TMX</title>
+<style>
+  :root{
+    --roxo:#3E1493; --azul:#1B9CFA; --rosa:#C52C58; --laranja:#FF5926; --azulp:#2509E4;
+    --bg:#0B0E17; --bg2:#131826; --bg3:#1B2233; --borda:#252C3F;
+    --txt:#E8ECF5; --txt2:#8A94AC; --verde:#22C55E; --vermelho:#EF4444; --amarelo:#F59E0B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .topo{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--borda);background:var(--bg2);flex-wrap:wrap}
+  .marca{font-weight:800;letter-spacing:-.4px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .ponto{width:9px;height:9px;border-radius:50%;background:var(--verde);box-shadow:0 0 0 0 rgba(34,197,94,.5);animation:pulso 2s infinite}
+  @keyframes pulso{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 9px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+  .abas{display:flex;gap:4px;margin-left:8px}
+  .aba{padding:7px 15px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--txt2);border:1px solid transparent;background:none;font-family:inherit}
+  .aba:hover{color:var(--txt)}
+  .aba.on{background:linear-gradient(135deg,var(--roxo),var(--azulp));color:#fff;border-color:transparent}
+  .dir{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  select,input,textarea{background:var(--bg3);border:1px solid var(--borda);border-radius:8px;padding:7px 11px;color:var(--txt);font-size:13px;outline:none;font-family:inherit}
+  select:focus,input:focus,textarea:focus{border-color:var(--azul)}
+  .btn{background:linear-gradient(135deg,var(--roxo),var(--azulp));color:#fff;border:none;border-radius:8px;padding:8px 15px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn:hover{filter:brightness(1.15)}
+  .btn.sec{background:var(--bg3);border:1px solid var(--borda);color:var(--txt)}
+  .btn.mini{padding:5px 10px;font-size:12px}
+  .painel{display:none;padding:20px 22px}
+  .painel.on{display:block}
+
+  /* ── faixa de etapas ── */
+  .faixa{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:18px}
+  .fcard{background:var(--bg2);border:1px solid var(--borda);border-radius:11px;padding:12px 14px;position:relative;overflow:hidden;cursor:pointer;transition:transform .12s}
+  .fcard:hover{transform:translateY(-2px);border-color:var(--azul)}
+  .fcard .rot{font-size:9.5px;font-weight:800;color:var(--txt2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px}
+  .fcard .pc{font-size:23px;font-weight:800;letter-spacing:-.8px;line-height:1}
+  .fcard .qt{font-size:11px;color:var(--txt2);margin-top:3px}
+  .fcard .barra{height:4px;background:var(--bg3);border-radius:3px;margin-top:9px;overflow:hidden}
+  .fcard .barra i{display:block;height:100%;border-radius:3px}
+
+  /* ── mapa ── */
+  .mapa-caixa{background:var(--bg2);border:1px solid var(--borda);border-radius:14px;position:relative;overflow:hidden;height:520px}
+  .grade{position:absolute;inset:0;background-image:radial-gradient(circle,#232B3D 1px,transparent 1px);background-size:22px 22px;opacity:.55}
+  .palco{position:absolute;inset:0;transform-origin:0 0}
+  .no{position:absolute;background:var(--bg3);border:1.5px solid var(--borda);border-radius:11px;padding:9px 12px;min-width:132px;cursor:grab;user-select:none;box-shadow:0 5px 16px rgba(0,0,0,.35)}
+  .no:active{cursor:grabbing}
+  .no.sel{border-color:var(--azul);box-shadow:0 0 0 3px rgba(27,156,250,.2),0 5px 16px rgba(0,0,0,.35)}
+  .no .cab{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+  .no .nm{font-size:11px;font-weight:800;letter-spacing:.2px}
+  .no .tag{font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px}
+  .no .vl{font-size:17px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+  .no .sub{font-size:10px;color:var(--txt2);margin-top:1px}
+  .no.fonte{border-style:dashed;min-width:112px}
+  svg.fios{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .zoom{position:absolute;left:14px;bottom:14px;display:flex;align-items:center;gap:9px;background:var(--bg3);border:1px solid var(--borda);border-radius:9px;padding:5px 11px;font-size:12px;font-weight:700}
+  .zoom button{background:none;border:none;color:var(--txt);font-size:16px;cursor:pointer;line-height:1;font-family:inherit}
+  .dica{position:absolute;right:14px;bottom:14px;font-size:11px;color:var(--txt2);background:var(--bg3);border:1px solid var(--borda);border-radius:8px;padding:6px 11px}
+
+  /* ── detalhe lateral ── */
+  .colunas{display:grid;grid-template-columns:1fr 300px;gap:16px}
+  @media(max-width:1000px){.colunas{grid-template-columns:1fr}}
+  .cx{background:var(--bg2);border:1px solid var(--borda);border-radius:13px;padding:16px 18px;margin-bottom:14px}
+  .cx h3{font-size:13px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+  .lin{display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .lin:last-child{border:none}
+  .lin span:first-child{color:var(--txt2)}
+  .lin span:last-child{font-weight:700}
+  .campo{margin-bottom:11px}
+  .campo label{display:block;font-size:10.5px;font-weight:800;color:var(--txt2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+  .campo input,.campo select,.campo textarea{width:100%}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre{background:#080B12;border:1px solid var(--borda);border-radius:10px;padding:14px;font-size:11.5px;overflow-x:auto;color:#B7E3FF;line-height:1.65}
+  .tabela{width:100%;border-collapse:collapse;font-size:13px}
+  .tabela th{text-align:left;padding:9px 10px;font-size:10px;font-weight:800;color:var(--txt2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--borda)}
+  .tabela td{padding:10px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .pill{display:inline-block;font-size:10px;font-weight:800;padding:3px 8px;border-radius:20px}
+  .aviso{background:rgba(27,156,250,.08);border-left:3px solid var(--azul);border-radius:8px;padding:11px 14px;font-size:12.5px;color:var(--txt2);margin-bottom:16px}
+  .aviso b{color:var(--txt)}
+  .barra-split{height:26px;border-radius:7px;overflow:hidden;display:flex;margin:12px 0 6px}
+  .barra-split i{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--verde);color:#04210F;padding:11px 20px;border-radius:10px;font-weight:800;font-size:13px;transition:transform .25s;z-index:99}
+  .toast.on{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div class="marca"><span class="ponto"></span> FUNIS <span style="color:var(--txt2);font-weight:600">· protótipo</span></div>
+  <div class="abas">
+    <button class="aba on" onclick="irPara('mapa',this)">🧭 Mapa do funil</button>
+    <button class="aba" onclick="irPara('pixel',this)">📡 Pixel</button>
+    <button class="aba" onclick="irPara('split',this)">🔀 Redirecionador</button>
+  </div>
+  <div class="dir">
+    <select id="sel-funil" onchange="trocarFunil(this.value)">
+      <option value="0">Funil · Apostilai</option>
+      <option value="1">Funil · VSL Renda Extra</option>
+    </select>
+    <select id="sel-periodo" onchange="recalcular()">
+      <option value="hoje">Hoje</option>
+      <option value="ontem">Ontem</option>
+      <option value="7d">7 dias</option>
+    </select>
+    <button class="btn sec mini" onclick="simular()">▶ Simular tráfego</button>
+  </div>
+</div>
+
+<!-- ══════════ MAPA ══════════ -->
+<div class="painel on" id="p-mapa">
+  <div class="faixa" id="faixa"></div>
+  <div class="colunas">
+    <div>
+      <div class="mapa-caixa" id="mapa">
+        <div class="grade"></div>
+        <div class="palco" id="palco">
+          <svg class="fios" id="fios"></svg>
+        </div>
+        <div class="zoom">
+          <button onclick="zoom(-10)">−</button>
+          <span id="zoom-vl">80%</span>
+          <button onclick="zoom(10)">+</button>
+        </div>
+        <div class="dica">Arraste os blocos · clique pra ver os números</div>
+      </div>
+    </div>
+    <div>
+      <div class="cx" id="detalhe"></div>
+      <div class="cx">
+        <h3>➕ Adicionar etapa</h3>
+        <div class="campo"><label>Nome</label><input id="nova-nome" placeholder="Ex: Página de Upsell 2"></div>
+        <div class="campo"><label>Tipo</label>
+          <select id="nova-tipo">
+            <option value="pagina">Página</option>
+            <option value="vsl">VSL</option>
+            <option value="checkout">Checkout</option>
+            <option value="upsell">Upsell</option>
+            <option value="obrigado">Obrigado</option>
+          </select>
+        </div>
+        <div class="campo"><label>Vem depois de</label><select id="nova-pai"></select></div>
+        <button class="btn" style="width:100%" onclick="addEtapa()">Adicionar ao funil</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PIXEL ══════════ -->
+<div class="painel" id="p-pixel">
+  <div class="aviso">
+    Cole este código em <b>cada página do funil</b>, antes do <code>&lt;/head&gt;</code>. Ele registra a passagem da
+    pessoa, mantém o mesmo identificador do primeiro clique até o checkout e repassa as UTMs automaticamente —
+    é assim que o mapa consegue ligar um passo no outro.
+  </div>
+  <div class="colunas">
+    <div>
+      <div class="cx">
+        <h3>📡 Código do pixel</h3>
+        <div class="campo"><label>Etapa desta página</label><select id="px-etapa" onchange="montarPixel()"></select></div>
+        <pre id="px-code"></pre>
+        <button class="btn" style="margin-top:12px" onclick="copiar('px-code')">Copiar código</button>
+      </div>
+      <div class="cx">
+        <h3>🧪 Eventos chegando (simulação)</h3>
+        <div id="px-eventos" style="max-height:240px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div>
+      <div class="cx">
+        <h3>🔗 O que ele rastreia</h3>
+        <div class="lin"><span>Visitante único</span><span>ID no cookie</span></div>
+        <div class="lin"><span>Origem</span><span>UTM + referrer</span></div>
+        <div class="lin"><span>Anúncio</span><span>utm_content</span></div>
+        <div class="lin"><span>Tempo na página</span><span>segundos</span></div>
+        <div class="lin"><span>Rolagem</span><span>% da página</span></div>
+        <div class="lin"><span>Play na VSL</span><span>evento</span></div>
+        <div class="lin"><span>Saída</span><span>pra onde foi</span></div>
+      </div>
+      <div class="cx">
+        <h3>⚙️ Como liga um passo no outro</h3>
+        <p style="font-size:12.5px;color:var(--txt2);line-height:1.7">
+          No primeiro acesso o pixel gera um <b style="color:var(--txt)">ID</b> e guarda as UTMs.
+          Nas páginas seguintes ele reencontra esse ID e manda o par
+          <code>(id, etapa)</code>. O mapa monta o caminho ligando os pares na ordem em que chegaram —
+          por isso dá pra saber quantos saíram da Tela 2 e chegaram no checkout.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ REDIRECIONADOR ══════════ -->
+<div class="painel" id="p-split">
+  <div class="aviso">
+    Cria <b>um link só</b> que distribui quem clica entre vários destinos, no peso que você definir.
+    Serve pra testar VSL contra VSL, página contra página, sem mexer no anúncio.
+  </div>
+  <div class="colunas">
+    <div>
+      <div class="cx">
+        <h3>🔀 Destinos</h3>
+        <table class="tabela">
+          <thead><tr><th>Destino</th><th style="width:96px">Peso</th><th style="width:76px;text-align:right">Fatia</th><th style="width:86px;text-align:right">Recebeu</th><th style="width:34px"></th></tr></thead>
+          <tbody id="split-corpo"></tbody>
+        </table>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <input id="split-url" placeholder="https://minhapagina.com/vsl-c" style="flex:1;min-width:220px">
+          <input id="split-peso" type="number" value="1" min="1" style="width:84px">
+          <button class="btn" onclick="addDestino()">Adicionar</button>
+        </div>
+        <div class="barra-split" id="split-barra"></div>
+        <div style="font-size:11px;color:var(--txt2)">Distribuição atual</div>
+      </div>
+      <div class="cx">
+        <h3>🧪 Testar a divisão</h3>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="split-qtd" type="number" value="10" min="1" max="10000" style="width:110px">
+          <span style="font-size:12.5px;color:var(--txt2)">pessoas clicando</span>
+          <button class="btn sec" onclick="rodarSplit()">Rodar</button>
+          <button class="btn sec" onclick="zerarSplit()">Zerar</button>
+        </div>
+        <div id="split-log" style="margin-top:12px;font-size:12px;color:var(--txt2);max-height:150px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div>
+      <div class="cx">
+        <h3>🔗 Seu link</h3>
+        <pre id="split-link" style="font-size:12px"></pre>
+        <button class="btn" style="margin-top:10px;width:100%" onclick="copiar('split-link')">Copiar link</button>
+        <p style="font-size:11.5px;color:var(--txt2);margin-top:11px;line-height:1.6">
+          Use este endereço no anúncio. Ele repassa as UTMs pro destino sorteado, então o rastreamento não se perde.
+        </p>
+      </div>
+      <div class="cx">
+        <h3>📊 Resultado por destino</h3>
+        <div id="split-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Copiado</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// DADOS DE EXEMPLO — no sistema isso virá do banco
+// ══════════════════════════════════════════════════════════
+const CORES = { pagina:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926', upsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC' };
+const ROTULO = { pagina:'PÁGINA', vsl:'VSL', checkout:'CHECKOUT', upsell:'UPSELL', obrigado:'OBRIGADO', fonte:'ORIGEM' };
+
+const FUNIS = [
+  {
+    nome:'Funil · Apostilai',
+    fontes:[
+      { id:'f1', nome:'Facebook Ads', v:3217, x:30,  y:120 },
+      { id:'f2', nome:'Instagram',    v:1043, x:30,  y:210 },
+      { id:'f3', nome:'Direto',       v:186,  x:30,  y:300 }
+    ],
+    etapas:[
+      { id:'e1', nome:'Landing',      tipo:'pagina',   v:1952, x:250, y:150 },
+      { id:'e2', nome:'Tela 2',       tipo:'pagina',   v:1582, x:450, y:100 },
+      { id:'e3', nome:'Tela 3',       tipo:'pagina',   v:1546, x:650, y:100 },
+      { id:'e4', nome:'VSL',          tipo:'vsl',      v:1482, x:450, y:250 },
+      { id:'e5', nome:'Checkout',     tipo:'checkout', v:489,  x:650, y:250 },
+      { id:'e6', nome:'Upsell',       tipo:'upsell',   v:144,  x:850, y:190 },
+      { id:'e7', nome:'Obrigado',     tipo:'obrigado', v:98,   x:850, y:310 }
+    ],
+    ligacoes:[['f1','e1'],['f2','e1'],['f3','e1'],['e1','e2'],['e2','e3'],['e1','e4'],['e4','e5'],['e5','e6'],['e6','e7']]
+  },
+  {
+    nome:'Funil · VSL Renda Extra',
+    fontes:[ { id:'f1', nome:'Facebook Ads', v:1840, x:30, y:170 } ],
+    etapas:[
+      { id:'e1', nome:'Advertorial', tipo:'pagina',   v:1204, x:250, y:170 },
+      { id:'e2', nome:'VSL',         tipo:'vsl',      v:868,  x:470, y:170 },
+      { id:'e3', nome:'Checkout',    tipo:'checkout', v:212,  x:690, y:170 },
+      { id:'e4', nome:'Obrigado',    tipo:'obrigado', v:57,   x:900, y:170 }
+    ],
+    ligacoes:[['f1','e1'],['e1','e2'],['e2','e3'],['e3','e4']]
+  }
+];
+
+let iFunil = 0, escala = .8, selecionado = null;
+const F = () => FUNIS[iFunil];
+const todos = () => F().fontes.map(f=>({...f,tipo:'fonte'})).concat(F().etapas);
+const acha = id => todos().find(n=>n.id===id);
+const nfmt = n => Number(n).toLocaleString('pt-BR');
+
+// ══════════ NAVEGAÇÃO ══════════
+function irPara(qual, bt){
+  document.querySelectorAll('.painel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('p-'+qual).classList.add('on');
+  document.querySelectorAll('.aba').forEach(a=>a.classList.remove('on'));
+  bt.classList.add('on');
+  if(qual==='mapa') setTimeout(desenharFios,30);
+}
+
+function trocarFunil(i){ iFunil=+i; selecionado=null; render(); }
+
+// ══════════ FAIXA DE ETAPAS ══════════
+function faixa(){
+  const base = F().etapas[0].v || 1;
+  document.getElementById('faixa').innerHTML = F().etapas.map(e=>{
+    const pc = (e.v/base)*100;
+    const cor = CORES[e.tipo];
+    return `<div class="fcard" onclick="selecionar('${e.id}')">
+      <div class="rot">${e.nome}</div>
+      <div class="pc" style="color:${cor}">${pc.toFixed(0)}%</div>
+      <div class="qt">${nfmt(e.v)} pessoas</div>
+      <div class="barra"><i style="width:${Math.max(pc,1.5)}%;background:${cor}"></i></div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════ MAPA ══════════
+function nos(){
+  const palco = document.getElementById('palco');
+  palco.querySelectorAll('.no').forEach(n=>n.remove());
+  const base = F().etapas[0].v || 1;
+  todos().forEach(n=>{
+    const el = document.createElement('div');
+    const ehFonte = n.tipo==='fonte';
+    el.className = 'no'+(ehFonte?' fonte':'')+(selecionado===n.id?' sel':'');
+    el.style.left = n.x+'px'; el.style.top = n.y+'px';
+    el.dataset.id = n.id;
+    const cor = CORES[n.tipo];
+    const pc = ehFonte ? null : (n.v/base)*100;
+    el.innerHTML = `<div class="cab">
+        <span class="nm">${n.nome}</span>
+        <span class="tag" style="background:${cor}22;color:${cor}">${ROTULO[n.tipo]}</span>
+      </div>
+      <div class="vl" style="color:${ehFonte?'var(--txt)':cor}">${nfmt(n.v)}</div>
+      <div class="sub">${ehFonte?'cliques':pc.toFixed(1)+'% de quem entrou'}</div>`;
+    palco.appendChild(el);
+    arrastavel(el, n);
+  });
+}
+
+function arrastavel(el, dado){
+  let ox=0, oy=0, movendo=false, moveu=false;
+  el.addEventListener('mousedown', ev=>{
+    movendo=true; moveu=false;
+    ox = ev.clientX/escala - dado.x; oy = ev.clientY/escala - dado.y;
+    el.style.zIndex = 20; ev.preventDefault();
+  });
+  window.addEventListener('mousemove', ev=>{
+    if(!movendo) return;
+    moveu = true;
+    dado.x = Math.max(0, ev.clientX/escala - ox);
+    dado.y = Math.max(0, ev.clientY/escala - oy);
+    el.style.left = dado.x+'px'; el.style.top = dado.y+'px';
+    desenharFios();
+  });
+  window.addEventListener('mouseup', ()=>{
+    if(movendo){ el.style.zIndex=''; if(!moveu) selecionar(dado.id); }
+    movendo=false;
+  });
+}
+
+function desenharFios(){
+  const svg = document.getElementById('fios');
+  const base = F().etapas[0].v || 1;
+  svg.innerHTML = '';
+  F().ligacoes.forEach(([a,b])=>{
+    const na = acha(a), nb = acha(b);
+    if(!na || !nb) return;
+    const ea = document.querySelector(`.no[data-id="${a}"]`);
+    const eb = document.querySelector(`.no[data-id="${b}"]`);
+    if(!ea || !eb) return;
+    const x1 = na.x + ea.offsetWidth, y1 = na.y + ea.offsetHeight/2;
+    const x2 = nb.x,                  y2 = nb.y + eb.offsetHeight/2;
+    const meio = (x2-x1)/2;
+    const d = `M ${x1} ${y1} C ${x1+meio} ${y1}, ${x2-meio} ${y2}, ${x2} ${y2}`;
+    // espessura conta a passagem: fio grosso = muita gente passando
+    const passou = nb.v/ (na.tipo==='fonte' ? base : (na.v||1));
+    const grossura = Math.max(1.4, Math.min(5, passou*5));
+    const cor = nb.v/base > .5 ? '#22C55E' : (nb.v/base > .15 ? '#1B9CFA' : '#475069');
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d', d); p.setAttribute('fill','none');
+    p.setAttribute('stroke', cor); p.setAttribute('stroke-width', grossura);
+    p.setAttribute('opacity','.75');
+    svg.appendChild(p);
+    // rótulo com a taxa de passagem
+    if(na.tipo!=='fonte'){
+      const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x', (x1+x2)/2); t.setAttribute('y', (y1+y2)/2 - 7);
+      t.setAttribute('fill', cor); t.setAttribute('font-size','10');
+      t.setAttribute('font-weight','800'); t.setAttribute('text-anchor','middle');
+      t.textContent = (passou*100).toFixed(0)+'%';
+      svg.appendChild(t);
+    }
+  });
+}
+
+function zoom(d){
+  escala = Math.max(.4, Math.min(1.4, escala + d/100));
+  document.getElementById('palco').style.transform = 'scale('+escala+')';
+  document.getElementById('zoom-vl').textContent = Math.round(escala*100)+'%';
+}
+
+function selecionar(id){
+  selecionado = id; nos(); desenharFios(); detalhe();
+}
+
+function detalhe(){
+  const cx = document.getElementById('detalhe');
+  const n = acha(selecionado);
+  if(!n){ cx.innerHTML = '<h3>👆 Clique num bloco</h3><p style="font-size:12.5px;color:var(--txt2)">Os números daquele passo aparecem aqui.</p>'; return; }
+  const base = F().etapas[0].v || 1;
+  const entra = F().ligacoes.filter(l=>l[1]===n.id).map(l=>acha(l[0])).filter(Boolean);
+  const sai   = F().ligacoes.filter(l=>l[0]===n.id).map(l=>acha(l[1])).filter(Boolean);
+  // quem parou AQUI = chegou nesta etapa menos quem seguiu adiante.
+  // (antes eu partia de quem entrou na etapa anterior, e o número saía inflado)
+  const seguiram = sai.reduce((s,x)=>s+x.v,0);
+  const perdidos = Math.max(0, n.v - seguiram);
+  cx.innerHTML = `<h3>${n.nome} <span class="pill" style="background:${CORES[n.tipo]}22;color:${CORES[n.tipo]}">${ROTULO[n.tipo]}</span></h3>
+    <div class="lin"><span>Pessoas</span><span>${nfmt(n.v)}</span></div>
+    ${n.tipo!=='fonte'?`<div class="lin"><span>% de quem entrou</span><span>${((n.v/base)*100).toFixed(1)}%</span></div>`:''}
+    ${entra.length?`<div class="lin"><span>Vem de</span><span>${entra.map(e=>e.nome).join(', ')}</span></div>`:''}
+    ${sai.length?`<div class="lin"><span>Segue pra</span><span>${sai.map(e=>e.nome).join(', ')}</span></div>`:''}
+    ${sai.length?`<div class="lin"><span>Passou adiante</span><span style="color:var(--verde)">${nfmt(seguiram)} · ${((seguiram/(n.v||1))*100).toFixed(1)}%</span></div>
+    <div class="lin"><span>Parou aqui</span><span style="color:var(--vermelho)">${nfmt(perdidos)}</span></div>`:''}
+    ${n.tipo!=='fonte'?`<div class="campo" style="margin-top:13px"><label>Endereço da página</label>
+      <input value="https://apostilai.com/${n.nome.toLowerCase().replace(/ /g,'-')}" readonly></div>
+      <button class="btn sec mini" onclick="irPixelDe('${n.id}')">Ver pixel desta etapa</button>`:''}`;
+}
+
+function addEtapa(){
+  const nome = document.getElementById('nova-nome').value.trim();
+  if(!nome){ aviso('Dê um nome pra etapa'); return; }
+  const tipo = document.getElementById('nova-tipo').value;
+  const pai  = document.getElementById('nova-pai').value;
+  const anterior = acha(pai);
+  const id = 'e'+Date.now();
+  F().etapas.push({ id, nome, tipo, v: Math.round((anterior?anterior.v:100)*0.4),
+                    x: (anterior?anterior.x:200)+200, y: (anterior?anterior.y:150)+70 });
+  F().ligacoes.push([pai, id]);
+  document.getElementById('nova-nome').value='';
+  selecionado = id;
+  render(); aviso('Etapa adicionada');
+}
+
+// ══════════ PIXEL ══════════
+function opcoesEtapas(){
+  const html = F().etapas.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  document.getElementById('px-etapa').innerHTML = html;
+  document.getElementById('nova-pai').innerHTML =
+    todos().map(n=>`<option value="${n.id}">${n.nome}</option>`).join('');
+}
+
+function montarPixel(){
+  const id = document.getElementById('px-etapa').value;
+  const e = acha(id) || F().etapas[0];
+  document.getElementById('px-code').textContent =
+`<!-- Pixel TMX · ${e.nome} -->
+<script>
+(function(w,d){
+  var FUNIL = '${F().nome.replace(/[^a-z0-9]/gi,'-').toLowerCase()}';
+  var ETAPA = '${e.id}';
+  var API   = 'https://app.centraltmx.com/api/funil/evento';
+
+  // 1. identidade: cria no 1o acesso e mantem ate o checkout
+  var id = (d.cookie.match(/tmx_id=([^;]+)/)||[])[1];
+  if(!id){
+    id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+    d.cookie = 'tmx_id=' + id + ';path=/;max-age=7776000;SameSite=Lax';
+  }
+
+  // 2. guarda as UTMs do primeiro clique (o anuncio que trouxe)
+  var q = new URLSearchParams(location.search), utm = {};
+  ['source','medium','campaign','content','term'].forEach(function(k){
+    var v = q.get('utm_'+k);
+    if(v) localStorage.setItem('tmx_utm_'+k, v);
+    utm[k] = v || localStorage.getItem('tmx_utm_'+k) || '';
+  });
+
+  // 3. avisa que essa pessoa chegou nesta etapa
+  var entrou = Date.now();
+  function manda(tipo, extra){
+    var dados = Object.assign({
+      id: id, funil: FUNIL, etapa: ETAPA, tipo: tipo,
+      utm: utm, ref: d.referrer, tela: innerWidth + 'x' + innerHeight
+    }, extra || {});
+    navigator.sendBeacon
+      ? navigator.sendBeacon(API, new Blob([JSON.stringify(dados)], {type:'application/json'}))
+      : fetch(API, {method:'POST', body:JSON.stringify(dados), keepalive:true});
+  }
+  manda('entrou');
+
+  // 4. rolagem e tempo ate sair
+  var fundo = 0;
+  w.addEventListener('scroll', function(){
+    var p = (scrollY + innerHeight) / d.body.scrollHeight * 100;
+    if(p > fundo) fundo = p;
+  }, {passive:true});
+  w.addEventListener('pagehide', function(){
+    manda('saiu', { segundos: Math.round((Date.now()-entrou)/1000), rolagem: Math.round(fundo) });
+  });
+
+  // 5. eventos manuais: TMX('play') ou TMX('clique_comprar')
+  w.TMX = function(nome, extra){ manda(nome, extra); };
+})(window, document);
+<\/script>`;
+}
+
+function irPixelDe(id){
+  document.querySelectorAll('.aba')[1].click();
+  document.getElementById('px-etapa').value = id;
+  montarPixel();
+}
+
+function eventosFalsos(){
+  const nomes = F().etapas;
+  const tipos = [['entrou','#1B9CFA'],['rolou 75%','#8A94AC'],['play na VSL','#3E1493'],['clicou comprar','#FF5926'],['saiu','#8A94AC']];
+  let html = '';
+  for(let i=0;i<9;i++){
+    const e = nomes[Math.floor(Math.random()*nomes.length)];
+    const t = tipos[Math.floor(Math.random()*tipos.length)];
+    const seg = Math.floor(Math.random()*50)+3;
+    const d = new Date(Date.now() - i*Math.floor(Math.random()*40000));
+    const p = n=>String(n).padStart(2,'0');
+    html += `<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:var(--bg3);border-left:3px solid ${t[1]};border-radius:7px;margin-bottom:5px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:${t[1]}">${t[0]}</div>
+        <div style="font-size:11px;color:var(--txt2)">${e.nome} · v${Math.random().toString(36).slice(2,8)} · ${seg}s</div>
+      </div>
+      <div style="font-size:11px;color:var(--txt2)">${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}</div>
+    </div>`;
+  }
+  document.getElementById('px-eventos').innerHTML = html;
+}
+
+// ══════════ REDIRECIONADOR ══════════
+let DESTINOS = [
+  { url:'https://apostilai.com/vsl-a', peso:3, recebeu:0 },
+  { url:'https://apostilai.com/vsl-b', peso:3, recebeu:0 },
+  { url:'https://apostilai.com/vsl-c', peso:4, recebeu:0 }
+];
+const PALETA = ['#3E1493','#1B9CFA','#FF5926','#C52C58','#22C55E','#F59E0B'];
+
+function pintarSplit(){
+  const total = DESTINOS.reduce((s,d)=>s+d.peso,0) || 1;
+  document.getElementById('split-corpo').innerHTML = DESTINOS.map((d,i)=>`
+    <tr>
+      <td style="font-size:12px">${d.url}</td>
+      <td><input type="number" min="1" value="${d.peso}" onchange="mudarPeso(${i},this.value)" style="width:70px"></td>
+      <td style="text-align:right;font-weight:800;color:${PALETA[i%6]}">${((d.peso/total)*100).toFixed(0)}%</td>
+      <td style="text-align:right;font-weight:700">${nfmt(d.recebeu)}</td>
+      <td style="text-align:right"><button class="btn sec mini" onclick="tirarDestino(${i})">✕</button></td>
+    </tr>`).join('');
+  document.getElementById('split-barra').innerHTML = DESTINOS.map((d,i)=>
+    `<i style="width:${(d.peso/total)*100}%;background:${PALETA[i%6]}">${((d.peso/total)*100).toFixed(0)}%</i>`).join('');
+  document.getElementById('split-link').textContent =
+    'https://app.centraltmx.com/r/' + F().nome.replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,10) + '-split';
+  const recebidos = DESTINOS.reduce((s,d)=>s+d.recebeu,0);
+  document.getElementById('split-result').innerHTML = recebidos===0
+    ? '<p style="font-size:12.5px;color:var(--txt2)">Rode a simulação pra ver a divisão acontecendo.</p>'
+    : DESTINOS.map((d,i)=>`<div class="lin"><span>${d.url.split('/').pop()}</span>
+        <span style="color:${PALETA[i%6]}">${nfmt(d.recebeu)} · ${((d.recebeu/recebidos)*100).toFixed(1)}%</span></div>`).join('');
+}
+
+function mudarPeso(i,v){ DESTINOS[i].peso = Math.max(1,+v||1); pintarSplit(); }
+function tirarDestino(i){ if(DESTINOS.length<2){ aviso('Precisa de pelo menos 2 destinos'); return; } DESTINOS.splice(i,1); pintarSplit(); }
+function addDestino(){
+  const url = document.getElementById('split-url').value.trim();
+  if(!url){ aviso('Informe o endereço'); return; }
+  DESTINOS.push({ url, peso: Math.max(1,+document.getElementById('split-peso').value||1), recebeu:0 });
+  document.getElementById('split-url').value='';
+  pintarSplit(); aviso('Destino adicionado');
+}
+function zerarSplit(){ DESTINOS.forEach(d=>d.recebeu=0); document.getElementById('split-log').innerHTML=''; pintarSplit(); }
+
+function rodarSplit(){
+  const qtd = Math.max(1, Math.min(10000, +document.getElementById('split-qtd').value||10));
+  const total = DESTINOS.reduce((s,d)=>s+d.peso,0);
+  let log = '';
+  for(let i=0;i<qtd;i++){
+    let r = Math.random()*total, esc = 0;
+    for(let j=0;j<DESTINOS.length;j++){ r -= DESTINOS[j].peso; if(r<=0){ esc=j; break; } }
+    DESTINOS[esc].recebeu++;
+    if(i<12) log += `<div>pessoa ${i+1} → <b style="color:${PALETA[esc%6]}">${DESTINOS[esc].url.split('/').pop()}</b></div>`;
+  }
+  if(qtd>12) log += `<div style="opacity:.6">… e mais ${qtd-12}</div>`;
+  document.getElementById('split-log').innerHTML = log;
+  pintarSplit();
+}
+
+// ══════════ APOIO ══════════
+function simular(){
+  // mexe nos números como se o tráfego tivesse andado
+  F().fontes.forEach(f=> f.v += Math.floor(Math.random()*40));
+  F().etapas.forEach((e,i)=> e.v += Math.floor(Math.random()*30/(i+1)));
+  render(); eventosFalsos(); aviso('Tráfego simulado');
+}
+function recalcular(){ render(); }
+function copiar(id){
+  const t = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(t).then(()=>aviso('Copiado')).catch(()=>aviso('Não consegui copiar'));
+}
+function aviso(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('on'), 1900);
+}
+
+function render(){
+  faixa(); nos(); desenharFios(); detalhe(); opcoesEtapas(); montarPixel(); pintarSplit();
+}
+
+render();
+eventosFalsos();
+zoom(0);
+setInterval(()=>{ if(document.getElementById('p-pixel').classList.contains('on')) eventosFalsos(); }, 6000);
+</script>
+</body>
+</html>
