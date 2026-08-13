@@ -2730,7 +2730,11 @@ function _utmifyMcpCfg(db) {
   if (doEnv && String(doEnv).trim()) {
     const base = cfg || { criadoEm: new Date().toISOString() };
     // o do ambiente tem prioridade: e o mais explicito
-    return Object.assign({}, base, { token: String(doEnv).trim(), origemToken: 'env' });
+    const c2 = Object.assign({}, base, { token: String(doEnv).trim(), origemToken: 'env' });
+    // Botar o token no ambiente ja e dizer "quero puxando sozinho". So vale como
+    // padrao: se alguem desmarcar na tela, o false salvo continua mandando.
+    if (c2.autoSync === undefined || c2.autoSync === null) c2.autoSync = true;
+    return c2;
   }
   return cfg;
 }
