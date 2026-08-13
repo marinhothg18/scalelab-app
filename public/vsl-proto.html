@@ -229,6 +229,34 @@ var VSLS=[
 ];
 var sel=['v1'];
 
+// Criativos que alimentam cada VSL. É o que liga a Meta (custo, CTR, hook) à
+// VTurb (retenção): o mesmo anúncio aparece dos dois lados pela utm_content.
+var CRIATIVOS={
+  v1:[{n:'ADTOP',  inv:414.2,imp:32520,cli:731,ctr:2.25,hook:96.7,play:74.1,k:.00085,vd:2,rc:1994},
+      {n:'AD18HK3',inv:482.3,imp:41400,cli:401,ctr:0.97,hook:95.3,play:69.8,k:.00098,vd:1,rc:997},
+      {n:'AD16HK1',inv:183.9,imp:21200,cli:188,ctr:0.89,hook:94.1,play:52.4,k:.00142,vd:0,rc:0},
+      {n:'AD38.1', inv:100.0,imp: 9900,cli:111,ctr:1.12,hook:95.9,play:78.0,k:.00074,vd:1,rc:997}],
+  v2:[{n:'ADTOP',  inv:390.1,imp:29800,cli:520,ctr:1.74,hook:96.7,play:70.2,k:.00112,vd:1,rc:897},
+      {n:'AD29.2', inv:312.0,imp:24100,cli:401,ctr:1.66,hook:92.8,play:65.1,k:.00126,vd:1,rc:897},
+      {n:'AD16H3', inv:200.0,imp:18700,cli:269,ctr:1.44,hook:93.4,play:61.0,k:.00138,vd:0,rc:0}],
+  v3:[{n:'ADTOP',  inv:401.0,imp:30100,cli:492,ctr:1.63,hook:96.7,play:78.2,k:.00070,vd:3,rc:3291},
+      {n:'AD38.1', inv:275.1,imp:20400,cli:340,ctr:1.67,hook:95.9,play:74.0,k:.00078,vd:2,rc:2194},
+      {n:'AD36.1', inv:200.0,imp:15900,cli:212,ctr:1.33,hook:91.2,play:66.8,k:.00098,vd:0,rc:0}],
+  v4:[{n:'AD29.3', inv:230.7,imp:18200,cli:352,ctr:1.93,hook:89.4,play:57.0,k:.00178,vd:1,rc:997},
+      {n:'AD16HK1',inv:180.0,imp:16400,cli:260,ctr:1.59,hook:94.1,play:59.8,k:.00156,vd:0,rc:0}],
+  v5:[{n:'ADTOP',  inv:250.0,imp:19000,cli:380,ctr:2.00,hook:96.7,play:63.0,k:.00110,vd:1,rc:997}],
+  v6:[{n:'AD36.3', inv:198.3,imp:15100,cli:290,ctr:1.92,hook:90.1,play:60.4,k:.00135,vd:0,rc:0}]
+};
+// slot fixo por nome: o mesmo criativo tem a mesma cor em qualquer VSL
+var NOMES=[]; Object.keys(CRIATIVOS).forEach(function(k){
+  CRIATIVOS[k].forEach(function(c){ if(NOMES.indexOf(c.n)<0) NOMES.push(c.n); }); });
+function corCri(nome){ return SLOTS[NOMES.indexOf(nome)%8]; }
+
+// dispositivo: o peso do celular numa VSL longa é o ponto cego clássico
+var DISPO=[{n:'Celular',share:78.4,play:59.2,mult:1.42},
+           {n:'Computador',share:18.1,play:74.8,mult:0.72},
+           {n:'Tablet',share:3.5,play:66.0,mult:1.05}];
+
 function fator(v,t){
   var f=1;
   (v.degraus||[]).forEach(function(d){
@@ -446,6 +474,32 @@ function htmlIndividual(){
     '<p>Círculos vermelhos são quedas fora do normal. Passe o mouse pra ver minuto a minuto.</p></div>'+
     botoesZoom()+'</div><div id="g1"></div></div>'+
   '<div class="tit">Todas as quedas</div><div class="diag" id="quedas"></div>'+
+
+  '<div class="tit">Quem trouxe cada pessoa</div>'+
+  '<div class="cartao"><div class="cab"><div><h2>Retenção por criativo</h2>'+
+    '<p>A mesma VSL, separada pelo anúncio que trouxe a pessoa. Curvas diferentes '+
+    'significam públicos diferentes — ou promessas diferentes.</p></div></div>'+
+    '<div class="legenda" id="lg-cri"></div><div id="g-cri"></div></div>'+
+
+  '<div class="cartao"><div class="cab"><div><h2>Em que minuto a venda acontece</h2>'+
+    '<p>Mesma linha do tempo do gráfico acima, pra comparar de cima a baixo. '+
+    'Venda antes do pitch significa que dava pra ofertar mais cedo.</p></div></div>'+
+    '<div id="g-conv"></div></div>'+
+
+  '<div class="cartao"><div class="cab"><div><h2>Do clique ao pitch</h2>'+
+    '<p>Clique no cabeçalho pra ordenar. <b>Custo por pitch</b> é o número que decide.</p>'+
+    '</div></div><div style="overflow-x:auto"><table id="tcri"></table></div>'+
+    '<div class="nota">CTR, CPC e hook vêm da Meta (via Utmify). Play rate e retenção vêm da VTurb. '+
+    'A ligação entre os dois é a <b>utm_content</b>, que carrega o nome do anúncio.</div></div>'+
+
+  '<div class="tit">O que os dados estão dizendo</div><div class="diag" id="diag"></div>'+
+
+  '<div class="tit">Quem assiste de onde</div>'+
+  '<div class="cartao"><div class="cab"><div><h2>Retenção por dispositivo</h2>'+
+    '<p>Celular e computador se comportam diferente numa VSL de 36 minutos. '+
+    'Se a diferença for grande, a decisão é de mídia, não de copy.</p></div></div>'+
+    '<div id="dispo"></div></div>'+
+
   '<div class="tit">O caminho inteiro</div>'+
   '<div class="cartao"><div class="cab"><div><h2>Da impressão à venda</h2>'+
     '<p>Cada etapa vem de uma fonte diferente.</p></div></div><div class="funil" id="funil"></div></div>';
@@ -497,7 +551,10 @@ function pintar(){
   s+=rotulos(series,W,janela)+'</svg>';
   el.innerHTML=s;
   hover(el,W,series,janela);
-  if(vs.length===1){ cartoesQuedas(vs[0]); funil(vs[0]); } else { comparativo(vs); quedasDeCada(vs); }
+  if(vs.length===1){
+    cartoesQuedas(vs[0]); gCriativos(vs[0]); gConversao(vs[0]);
+    tabelaCriativos(vs[0]); diagnosticos(vs[0]); dispositivos(vs[0]); funil(vs[0]);
+  } else { comparativo(vs); quedasDeCada(vs); }
 }
 
 function cartoesQuedas(v){
@@ -584,6 +641,160 @@ function funil(v){
       '<div class="vl"><b>'+num(e[1])+'</b> <span>'+pc.toFixed(2)+'%</span>'+
       (i?'<div style="font-size:10.5px;color:var(--critico)">−'+queda.toFixed(0)+'%</div>':'')+'</div></div>';
   }).join('');
+}
+
+// ══ RETENÇÃO POR CRIATIVO ══
+function retCri(c,t){
+  var inicio=1-0.34*(1-Math.exp(-t/9));
+  return Math.max(0, inicio*Math.exp(-c.k*t)*100);
+}
+function gCriativos(v){
+  var el=document.getElementById('g-cri'); if(!el) return;
+  var cris=CRIATIVOS[v.id]||[], W=el.clientWidth||820;
+  var janela = zoom==='1min'?60:DUR, passo = zoom==='1min'?1:20;
+  var ticks = zoom==='1min'?[0,10,20,30,40,50,60]:[0,300,600,900,1200,1500,1740,2100];
+  var series=cris.map(function(c){
+    var pts=[]; for(var t=0;t<=janela;t+=passo) pts.push({t:t,y:retCri(c,t)});
+    return {nome:c.n,cor:corCri(c.n),pts:pts};
+  });
+  var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'">'+eixos(W,ticks,janela)+marcaPitch(W,janela,false);
+  series.forEach(function(se){ s+='<path class="serie" style="stroke:'+se.cor+'" d="'+traco(se.pts,W,janela)+'"/>'; });
+  el.innerHTML=s+rotulos(series,W,janela)+'</svg>';
+  hover(el,W,series,janela);
+  document.getElementById('lg-cri').innerHTML=cris.map(function(c){
+    return '<span class="lg"><i style="background:'+corCri(c.n)+'"></i>'+c.n+'</span>'; }).join('');
+}
+
+// ══ CONVERSÃO POR MINUTO ══
+function gConversao(v){
+  var el=document.getElementById('g-conv'); if(!el) return;
+  var W=el.clientWidth||820, HH=170, BB=34, TT=14;
+  var barras=[], maxV=0;
+  for(var m=0;m<Math.ceil(DUR/60);m++){
+    var t=m*60, val=0;
+    if(t>=PITCH-120) val = v.vendas*3.4*Math.exp(-Math.pow((t-(PITCH+180))/420,2));
+    else if(t>600)   val = v.vendas*0.5*Math.exp(-Math.pow((t-1200)/500,2));
+    barras.push({m:m,v:val}); if(val>maxV) maxV=val;
+  }
+  var lg=(W-L-R)/barras.length;
+  var s='<svg viewBox="0 0 '+W+' '+HH+'" height="'+HH+'"><g class="grade">';
+  for(var i=0;i<=2;i++){ var y=TT+(HH-TT-BB)*(i/2); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
+  s+='</g><g class="eixo"><line x1="'+L+'" y1="'+(HH-BB)+'" x2="'+(W-R)+'" y2="'+(HH-BB)+'"/></g>';
+  for(var i=0;i<=2;i++){ var y=TT+(HH-TT-BB)*(i/2);
+    s+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+(maxV*(1-i/2)).toFixed(1)+'</text>'; }
+  barras.forEach(function(b){
+    if(b.v<=0.01||!maxV) return;
+    var h=(HH-TT-BB)*(b.v/maxV), x=L+lg*b.m+1;
+    s+='<rect x="'+x.toFixed(1)+'" y="'+(HH-BB-h).toFixed(1)+'" width="'+Math.max(1,lg-2).toFixed(1)+
+       '" height="'+h.toFixed(1)+'" rx="2" fill="var(--s3)" opacity=".9"/>';
+  });
+  [0,5,10,15,20,25,29,35].forEach(function(m){
+    s+='<text class="rot" x="'+(L+lg*m+lg/2)+'" y="'+(HH-BB+16)+'" text-anchor="middle">'+m+'min</text>'; });
+  var xp=L+lg*(PITCH/60)+lg/2;
+  s+='<g class="pitch"><line x1="'+xp+'" y1="'+TT+'" x2="'+xp+'" y2="'+(HH-BB)+'"/>'+
+     '<text x="'+(xp-7)+'" y="'+(TT+11)+'" text-anchor="end">PITCH</text></g></svg>';
+  el.innerHTML=s;
+}
+
+// ══ TABELA POR CRIATIVO ══
+var ordCri={col:'custoPitch',asc:true};
+function dadosCri(v){
+  return (CRIATIVOS[v.id]||[]).map(function(c){
+    var pessoas=Math.round(c.cli*(c.play/100));
+    var pctPitch=retCri(c,PITCH);
+    var noPitch=Math.round(pessoas*pctPitch/100);
+    return { nome:c.n, inv:c.inv, ctr:c.ctr, hook:c.hook, play:c.play,
+      cpc: c.cli? c.inv/c.cli : 0, pessoas:pessoas, pctPitch:pctPitch, noPitch:noPitch,
+      custoPitch: noPitch? c.inv/noPitch : 0, vendas:c.vd, receita:c.rc,
+      roas: c.inv? c.rc/c.inv : 0, ret1:retCri(c,60) };
+  });
+}
+function tabelaCriativos(v){
+  var el=document.getElementById('tcri'); if(!el) return;
+  var cols=[['nome','Criativo',0],['inv','Investido',1],['ctr','CTR',1],['cpc','CPC',1],
+    ['ret1','1º min',1],['play','Play rate',1],['pctPitch','Chega no pitch',1],
+    ['custoPitch','Custo por pitch',1],['vendas','Vendas',1],['roas','ROAS',1]];
+  var linhas=dadosCri(v).sort(function(a,b){
+    var x=a[ordCri.col],y=b[ordCri.col];
+    if(typeof x==='string') return ordCri.asc?x.localeCompare(y):y.localeCompare(x);
+    return ordCri.asc?x-y:y-x;
+  });
+  var f={ inv:brl,cpc:brl,custoPitch:brl,ctr:function(x){return x.toFixed(2)+'%';},
+    ret1:function(x){return x.toFixed(1)+'%';},play:function(x){return x.toFixed(1)+'%';},
+    pctPitch:function(x){return x.toFixed(1)+'%';},roas:function(x){return x.toFixed(2)+'x';},vendas:String };
+  var h='<thead><tr>'+cols.map(function(c){
+    return '<th class="'+(c[2]?'num':'')+'" onclick="ordCriativos(\''+c[0]+'\')">'+c[1]+
+      (ordCri.col===c[0]?(ordCri.asc?' ↑':' ↓'):'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+  linhas.forEach(function(c){
+    h+='<tr>'+cols.map(function(col){
+      var k=col[0];
+      if(k==='nome') return '<td><span style="display:inline-flex;align-items:center;gap:7px">'+
+        '<i style="width:9px;height:9px;border-radius:2px;background:'+corCri(c.nome)+'"></i>'+c.nome+'</span></td>';
+      var cor='';
+      if(k==='roas') cor = c.roas>=1.5?'color:var(--bom)':(c.roas>=1?'color:var(--serio)':'color:var(--critico)');
+      if(k==='custoPitch' && c.noPitch===0) cor='color:var(--critico)';
+      return '<td class="num" style="'+cor+'">'+(f[k]?f[k](c[k]):c[k])+'</td>';
+    }).join('')+'</tr>';
+  });
+  el.innerHTML=h+'</tbody>';
+}
+function ordCriativos(col){
+  if(ordCri.col===col) ordCri.asc=!ordCri.asc; else { ordCri.col=col; ordCri.asc=(col==='nome'); }
+  tabelaCriativos(selecionadas()[0]);
+}
+
+// ══ DIAGNÓSTICOS ══
+function diagnosticos(v){
+  var el=document.getElementById('diag'); if(!el) return;
+  var cris=dadosCri(v), d=[];
+  if(!cris.length){ el.innerHTML='<div class="nota">Sem criativos cadastrados nesta VSL.</div>'; return; }
+  var medCtr=cris.reduce(function(a,c){return a+c.ctr;},0)/cris.length;
+  var medPitch=cris.reduce(function(a,c){return a+c.pctPitch;},0)/cris.length;
+  cris.forEach(function(c){
+    if(c.ctr>medCtr && c.pctPitch<medPitch*0.8)
+      d.push(['critico','🎣','Tráfego curioso · '+c.nome,
+        'CTR de '+c.ctr.toFixed(2)+'% (acima da média) mas só '+c.pctPitch.toFixed(1)+
+        '% chegam no pitch. O criativo faz clicar e não faz assistir.',
+        'Gastou '+brl(c.inv)+' e trouxe '+(c.vendas?c.vendas+' venda(s)':'nenhuma venda')+'.']);
+    if(c.hook>90 && c.play<60)
+      d.push(['atencao','▶️','A página está travando · '+c.nome,
+        'O anúncio segura '+c.hook.toFixed(0)+'% nos 3 primeiros segundos, mas só '+c.play.toFixed(0)+
+        '% dão play na VSL. O problema não é o criativo, é o que vem depois do clique.',
+        'Olhar headline, thumbnail e autoplay da página.']);
+  });
+  var bons=cris.filter(function(c){return c.noPitch>0;}).sort(function(a,b){return a.custoPitch-b.custoPitch;});
+  if(bons.length) d.push(['bom','📈','Mais barato pra chegar na oferta · '+bons[0].nome,
+    'Custa '+brl(bons[0].custoPitch)+' pra colocar uma pessoa na frente do pitch — o menor desta VSL. '+
+    'ROAS de '+bons[0].roas.toFixed(2)+'x.','Candidato natural a escalar.']);
+  d.push(['atencao','⏱','O pitch pode estar tarde',
+    'Aos 29min só '+v.pctPitch.toFixed(1)+'% ainda estão assistindo. '+
+    'Quem já estava convencido esperou meia hora pra poder comprar.',
+    'Testar uma versão com oferta aos 22min.']);
+  var cores={bom:'var(--bom)',atencao:'var(--atencao)',critico:'var(--critico)'};
+  el.innerHTML=d.map(function(x){
+    return '<div class="dcard" style="border-left-color:'+cores[x[0]]+'">'+
+      '<div class="t"><span>'+x[1]+'</span>'+x[2]+'</div><div class="d">'+x[3]+'</div>'+
+      '<div class="a" style="color:'+cores[x[0]]+'">'+x[4]+'</div></div>';
+  }).join('');
+}
+
+// ══ DISPOSITIVO ══
+function dispositivos(v){
+  var el=document.getElementById('dispo'); if(!el) return;
+  var linhas=DISPO.map(function(d){
+    var pct=Math.max(0, ret({k:v.k*d.mult,degraus:v.degraus},PITCH));
+    return { n:d.n, share:d.share, play:d.play, pitch:pct };
+  });
+  var melhor=linhas.slice().sort(function(a,b){return a.pitch-b.pitch;}).pop();
+  el.innerHTML='<div class="tiles" style="margin-bottom:14px">'+linhas.map(function(d){
+      return tile(d.n, d.pitch.toFixed(1)+'%', 'chegam no pitch · '+d.share.toFixed(1)+
+        '% do tráfego<br>play rate '+d.play.toFixed(0)+'%'); }).join('')+'</div>'+
+    '<div class="dcard" style="border-left-color:var(--atencao)">'+
+      '<div class="t">📱 O peso está no lado que retém menos</div>'+
+      '<div class="d">'+linhas[0].share.toFixed(0)+'% do tráfego é celular, e ele leva '+
+        linhas[0].pitch.toFixed(1)+'% até o pitch — contra '+melhor.pitch.toFixed(1)+'% no '+
+        melhor.n.toLowerCase()+'. Uma VSL de 36min pesa mais em quem assiste no celular.</div>'+
+      '<div class="a" style="color:var(--atencao)">Vale testar uma versão mais curta só para celular.</div></div>';
 }
 
 function trocarTema(){
