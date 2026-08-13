@@ -3290,7 +3290,12 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
       porCampanha:  agrupar('campanha'),
       porAnuncio:   agrupar('anuncio'),
       porDia:       agrupar('data', baseKpi).sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
-      porDashboard: agrupar('dashboard', baseKpi)
+      porDashboard: agrupar('dashboard', baseKpi),
+      // conta de anuncio: so as linhas de nivel conta tem esse dado. As gravadas
+      // antes do campo 'conta' existir caem no 'campanha', que guardava o nome.
+      porConta: agrupar('conta', deConta.map(l => Object.assign({}, l, {
+        conta: l.conta || l.campanha || '—'
+      })))
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3488,6 +3493,7 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
         if (!inv && !fat) return;
         linhas.push({
           data: dia, fonte: 'utmify', nivel: 'conta', dashboard: meta.nome || dashId,
+          conta: String(c.name || ''),
           campanhaId: '', campanha: String(c.name || ''),
           adsetId: '', adset: '', adId: '', anuncio: '',
           investimento: inv, faturamento: fat,

@@ -3199,6 +3199,26 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <div id="ads-funil-labels" style="display:flex;margin-top:12px;"></div>
           </div>
 
+          <!-- POR CONTA DE ANUNCIO (fonte Utmify) -->
+          <div id="ads-contaads-box" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
+            <div style="font-size:13px;font-weight:700;margin-bottom:14px;">🏦 Resultado por Conta de Anúncio</div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <th style="text-align:left;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Conta</th>
+                    <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Investimento</th>
+                    <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Faturamento</th>
+                    <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Lucro</th>
+                    <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">ROAS</th>
+                    <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Vendas</th>
+                  </tr>
+                </thead>
+                <tbody id="ads-body-contaads"></tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- LUCRO POR HORA (fonte Utmify) -->
           <div id="ads-lucro-hora-box" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
             <div style="font-size:13px;font-weight:700;margin-bottom:16px;">⏱ Lucro por hora</div>
@@ -26575,6 +26595,28 @@ function _feedEventos(evs){
     }).join('')+'</div>';
 }
 
+// Conta de anuncio e coisa diferente de projeto: um projeto roda em varias contas.
+function _contasDeAnuncio(lista){
+  const caixa = document.getElementById('ads-contaads-box');
+  const corpo = document.getElementById('ads-body-contaads');
+  if(!caixa || !corpo) return;
+  if(!lista.length){ caixa.style.display='none'; return; }
+  caixa.style.display='block';
+  corpo.innerHTML = lista.map(function(c){
+    const roas = Number(c.roas)||0;
+    const corRoas = roas>=1.5?'var(--green)':(roas>=1?'#f97316':'var(--red)');
+    const lucro = Number(c.lucro)||0;
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">'+
+      '<td style="padding:10px;font-weight:600;">'+_esc(c.nome)+'</td>'+
+      '<td style="text-align:right;padding:10px;">'+fmtAds(c.investimento||0)+'</td>'+
+      '<td style="text-align:right;padding:10px;color:var(--green);">'+fmtAds(c.faturamento||0)+'</td>'+
+      '<td style="text-align:right;padding:10px;color:'+(lucro>=0?'var(--green)':'var(--red)')+';font-weight:700;">'+fmtAds(lucro)+'</td>'+
+      '<td style="text-align:right;padding:10px;color:'+corRoas+';font-weight:800;">'+(roas>0?roas.toFixed(2)+'x':'—')+'</td>'+
+      '<td style="text-align:right;padding:10px;">'+(c.vendas||0)+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
 // Barras de lucro por hora — usadas no Resumo
 function _barrasHora(horas, limitarHoraAtual){
   const lista = limitarHoraAtual ? horas.filter(h=>h.hora<=new Date().getHours()) : horas;
@@ -27107,6 +27149,8 @@ function _pintarFonteAds(){
   // Na Utmify a quebra e por PROJETO (dashboard), nao por conta de anuncio
   const tit = document.getElementById('ads-titulo-conta');
   if(tit) tit.textContent = (f==='utmify') ? '📦 Resultado por Projeto' : '🏦 Resultado por Conta de Anúncio';
+  const cx = document.getElementById('ads-contaads-box');
+  if(cx && f!=='utmify') cx.style.display='none';
   if(f==='utmify') _carregarProjetosUtmify();
 }
 
@@ -27199,6 +27243,7 @@ async function loadAdsMetricsUtmify(forcar){
       label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
     })), 'Gestor', ()=>'—');
     _msgTabela('ads-body-gestor', 6, 'A Utmify não separa por gestor — use a aba Por Campanha.');
+    _contasDeAnuncio(d.porConta||[]);
     _painelResumoUtmify();
 
     if(!adsCampanhasData.length){
