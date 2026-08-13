@@ -2727,14 +2727,17 @@ function _utmifyMcpCfg(db) {
 }
 
 async function _utmifyRpc(token, metodo, params, sessionId) {
+  // O token vai na QUERY STRING — testei todos os formatos de header
+  // (Authorization Bearer, x-api-token, x-api-key...) e todos devolvem
+  // "O token de acesso é obrigatório". Só ?token= funciona.
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
-    'Authorization': 'Bearer ' + token,
     'User-Agent': 'CentralTMX/1.0'
   };
   if (sessionId) headers['Mcp-Session-Id'] = sessionId;
-  const r = await fetch(UTMIFY_MCP_URL, {
+  const url = UTMIFY_MCP_URL + '?token=' + encodeURIComponent(token);
+  const r = await fetch(url, {
     method: 'POST', headers,
     body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: metodo, params: params || {} })
   });
@@ -2772,7 +2775,21 @@ async function _utmifyChamarTool(token, tool, args) {
   const res = r.resultado || {};
   const bloco = (res.content || []).find(c => c && c.type === 'text');
   if (!bloco) return res.structuredContent || res;
-  try { return JSON.parse(bloco.text); } catch (e) { return bloco.text; }
+  let dados;
+  try { dados = JSON.parse(bloco.text); } catch (e) { dados = bloco.text; }
+  // Atenção: erro da Utmify vem com HTTP 200 e isError:true no corpo.
+  // Sem tratar isso, token inválido passaria como "conectado".
+  const falhou = res.isError === true ||
+                 (dados && typeof dados === 'object' && dados.result === 'ERROR');
+  if (falhou) {
+    const motivo = (dados && dados.reason) || 'ERRO';
+    const amigavel = {
+      MCP_INTEGRATION_NOT_FOUND: 'Token não reconhecido pela Utmify. Confira se copiou o token do MCP (no painel da Utmify), e não o token de API de envio de vendas.',
+      UNAUTHORIZED: 'Token sem permissão para essa consulta.'
+    }[motivo];
+    throw new Error(amigavel || ('Utmify recusou: ' + motivo));
+  }
+  return dados;
 }
 
 // ══════════════════════════════════════════════
