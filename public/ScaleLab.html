@@ -18430,6 +18430,7 @@ function _cardUtmifyMcp(u){
       : '')+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
       '<button class="btn btn-primary" onclick="salvarUtmifyMcp()">💾 Salvar e conectar</button>'+
+      (conectado ? '' : '<button class="btn btn-ghost" onclick="salvarUtmifyMcp(true)">🔑 Tentar com o token que já tenho</button>')+
       (conectado ? '<button class="btn btn-ghost" onclick="sincronizarUtmify()">⬇ Puxar métricas agora</button>' : '')+
     '</div>'+
     '<div id="utmcp-resultado" style="margin-top:12px;"></div>'+
@@ -18446,15 +18447,16 @@ async function salvarAutoUtmify(){
     if(out) out.innerHTML='<div style="color:#16A34A;font-size:12.5px;">'+(j.autoSync?('✅ Automático ligado — atualiza a cada '+j.minutos+' min.'):'⏸ Automático desligado.')+'</div>';
   }catch(e){ if(out) out.innerHTML='<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>'; }
 }
-async function salvarUtmifyMcp(){
+async function salvarUtmifyMcp(reaproveitar){
   var out=document.getElementById('utmcp-resultado');
-  var tok=(document.getElementById('utmcp-token')||{}).value||'';
+  // reaproveitar = manda vazio de propósito, pro servidor tentar o token que já existe
+  var tok = reaproveitar===true ? '' : ((document.getElementById('utmcp-token')||{}).value||'');
   if(out) out.innerHTML='<div style="color:var(--text2);font-size:12.5px;">⏳ Conectando na Utmify…</div>';
   try{
     var r=await fetch(API_BASE+'/api/integracoes/utmify-mcp/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok})});
     var j=await r.json();
     if(!r.ok) throw new Error(j.error||'falhou');
-    if(out) out.innerHTML='<div style="color:#16A34A;font-size:12.5px;">✅ Conectado. '+(j.dashboards||[]).length+' dashboard(s) encontrado(s).</div>';
+    if(out) out.innerHTML='<div style="color:#16A34A;font-size:12.5px;">✅ Conectado'+(j.reaproveitado?' (usando o token que você já tinha)':'')+'. '+(j.dashboards||[]).length+' dashboard(s) encontrado(s).</div>';
     renderIntegracoesTab();
   }catch(e){ if(out) out.innerHTML='<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>'; }
 }

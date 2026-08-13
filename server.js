@@ -2924,6 +2924,14 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
     const db = readDB();
     const cfg = _utmifyMcpCfg(db) || { criadoEm: new Date().toISOString() };
     if (token && String(token).trim()) cfg.token = String(token).trim();
+    // Se nao veio token e ainda nao ha um salvo, tenta o da integracao de ENVIO
+    // que ja existe. A Utmify nao documenta token separado pra MCP — pode ser o
+    // mesmo, e assim voce nao precisa sair procurando outro.
+    if (!cfg.token) {
+      const antigo = (db.store['sl_integracoes_utmify'] || [])
+        .map(c => c && c.apiToken).filter(Boolean)[0];
+      if (antigo) { cfg.token = String(antigo).trim(); cfg.origemToken = 'reaproveitado'; }
+    }
     if (!cfg.token) return res.status(400).json({ error: 'Cole o token de acesso da Utmify.' });
     // valida ja na hora, listando os dashboards
     let dashboards = [];
@@ -2943,7 +2951,7 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
     db.timestamps[KEY_UTMIFY_MCP] = now();
     audit(db, 'integracao.utmify_mcp.config', KEY_UTMIFY_MCP, { dashboards: dashboards.length }, req.user);
     writeDB(db);
-    res.json({ ok: true, dashboards });
+    res.json({ ok: true, dashboards, reaproveitado: cfg.origemToken === 'reaproveitado' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
