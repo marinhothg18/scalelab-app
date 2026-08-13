@@ -26881,7 +26881,7 @@ function vsTrocarPeriodo(v){
 function vsCarregar(forcar){
   if(vsCarregando) return;
   vsCarregando=true;
-  if(forcar){ vsCurvas={}; vsConv={}; vsCri={}; }
+  if(forcar){ vsCurvas={}; vsConv={}; vsCri={}; vsDisp={}; }
   var el=document.getElementById('vs-conteudo');
   if(el && (forcar||!vsDados)) el.innerHTML=
     '<div style="text-align:center;padding:40px;color:var(--text2)">'+
@@ -27138,6 +27138,11 @@ function vsHtmlAnalise(){
 
   '<div class="vs-tit">O que os dados estão dizendo</div><div class="vs-diag" id="vs-diag"></div>'+
 
+  '<div class="vs-tit">Quem assiste de onde</div>'+
+  '<div class="vs-cx"><div class="vs-cab"><div><h2>Retenção por dispositivo</h2>'+
+    '<p>Celular e computador se comportam diferente numa VSL longa. Se a diferença for grande, '+
+    'a decisão é de mídia, não de copy.</p></div></div><div id="vs-dispo"></div></div>'+
+
   '<div class="vs-tit">O caminho inteiro</div>'+
   '<div class="vs-cx"><div class="vs-cab"><div><h2>Da impressão à venda</h2>'+
     '<p>Cada etapa vem de uma fonte diferente.</p></div></div><div id="vs-funil"></div></div>';
@@ -27204,7 +27209,15 @@ function vsDesenharAgora(){
   var cores=['var(--accent)','#eb6834','#1baf7a','#eda100','#e87ba4'];
   var series=vs.map(function(v,i){ return { nome:v.nome, cor:cores[i%5], pts:vsCurvas[v.id]||[] }; })
               .filter(function(se){ return se.pts.length; });
-  if(!series.length){ el.innerHTML='<div class="vs-nota">Sem dados de retenção no período.</div>'; return; }
+  if(!series.length){
+    // Sair aqui derrubava TODO o resto da página (quedas, criativos, funil,
+    // diagnósticos, dispositivo), porque eles são desenhados logo abaixo.
+    el.innerHTML='<div class="vs-nota">A VTurb não devolveu retenção para esta VSL no período. '+
+      'Pode ser que ela não tenha tido audiência nesses dias.</div>';
+    if(vs.length===1){ vsQuedas(vs[0]); vsConversao(vs[0]); vsFunil(vs[0]);
+                       vsCriativos(vs[0]); vsDispositivos(vs[0]); }
+    return;
+  }
   var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'"><g class="grade">';
   for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
   s+='</g><g class="eixo"><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/></g>';
@@ -27236,7 +27249,7 @@ function vsDesenharAgora(){
        vsEsc(x.nome.slice(0,14))+' <tspan opacity=".75">'+x.valor.toFixed(1)+'%</tspan></text>';
   });
   el.innerHTML=s+'</svg>';
-  if(vs.length===1){ vsQuedas(vs[0]); vsConversao(vs[0]); vsFunil(vs[0]); vsCriativos(vs[0]); }
+  if(vs.length===1){ vsQuedas(vs[0]); vsConversao(vs[0]); vsFunil(vs[0]); vsCriativos(vs[0]); vsDispositivos(vs[0]); }
 }
 
 // ── conversão por minuto (mesma linha do tempo da curva) ──
@@ -27460,6 +27473,57 @@ function vsQuedas(v){
       '<div class="a" style="color:var(--red)">São '+vsNum(pessoas)+' pessoas'+
         (vendas>0.05?(' · recuperando metade: +'+vendas.toFixed(1)+' venda(s)'):'')+'</div></div>';
   }).join('');
+}
+
+// ── DISPOSITIVO ──
+var vsDisp={};
+function vsDispositivos(v){
+  var el=document.getElementById('vs-dispo'); if(!el) return;
+  if(vsDisp[v.id]){ vsPintarDispositivos(v); return; }
+  el.innerHTML='<div style="color:var(--text2);font-size:12.5px">⏳ Separando por dispositivo...</div>';
+  var p=vsPeriodo();
+  fetch('/api/vturb/por-campo?player='+encodeURIComponent(v.id)+'&campo=device_type&de='+p.de+'&ate='+p.ate)
+    .then(function(r){ return r.ok?r.json():null; })
+    .then(function(d){ vsDisp[v.id]=(d&&d.grupos)||[]; vsPintarDispositivos(v); })
+    .catch(function(){ vsDisp[v.id]=[]; vsPintarDispositivos(v); });
+}
+function vsPintarDispositivos(v){
+  var el=document.getElementById('vs-dispo'); if(!el) return;
+  var gs=(vsDisp[v.id]||[]).map(function(gr){
+    var curva=vsCurvaDe(gr.pontos||[]);
+    var noPitch=null, umMin=null;
+    curva.forEach(function(pt){
+      if(v.pitch && pt.t<=v.pitch) noPitch=pt.y;
+      if(pt.t<=60) umMin=pt.y;
+    });
+    return { nome:gr.nome, curva:curva, pitch:noPitch, umMin:umMin,
+             pessoas:(gr.pontos&&gr.pontos.length)?(Number(gr.pontos[0].total_users)||0):0 };
+  }).filter(function(x){ return x.curva.length>1; });
+  if(!gs.length){
+    el.innerHTML='<div class="vs-nota">A VTurb não separou por dispositivo neste período.</div>'; return;
+  }
+  var total=gs.reduce(function(a,x){ return a+x.pessoas; },0)||1;
+  var nomeBonito={ mobile:'Celular', desktop:'Computador', tablet:'Tablet', other:'Outros' };
+  gs.sort(function(a,b){ return b.pessoas-a.pessoas; });
+  var pior=gs.slice().sort(function(a,b){ return (a.pitch||0)-(b.pitch||0); })[0];
+  var melhor=gs.slice().sort(function(a,b){ return (b.pitch||0)-(a.pitch||0); })[0];
+  var html='<div class="vs-tiles">'+gs.map(function(x){
+    return vsTile(nomeBonito[String(x.nome).toLowerCase()]||x.nome,
+      (x.pitch!==null?x.pitch.toFixed(1)+'%':'—'),
+      'chegam no pitch · '+(x.pessoas/total*100).toFixed(1)+'% do tráfego<br>1º min '+
+      (x.umMin!==null?x.umMin.toFixed(0)+'%':'—'));
+  }).join('')+'</div>';
+  if(gs.length>1 && melhor && pior && melhor!==pior && (melhor.pitch-pior.pitch)>2){
+    var nomePior=nomeBonito[String(pior.nome).toLowerCase()]||pior.nome;
+    var nomeMelhor=nomeBonito[String(melhor.nome).toLowerCase()]||melhor.nome;
+    var pesoPior=pior.pessoas/total*100;
+    html+='<div class="vs-dc" style="border-left-color:#f59e0b;margin-top:12px">'+
+      '<div class="t">📱 '+(pesoPior>50?'O peso está no lado que retém menos':'Diferença grande entre dispositivos')+'</div>'+
+      '<div class="d">'+pesoPior.toFixed(0)+'% do tráfego é '+nomePior.toLowerCase()+', e ele leva '+
+        pior.pitch.toFixed(1)+'% até o pitch — contra '+melhor.pitch.toFixed(1)+'% no '+nomeMelhor.toLowerCase()+'.</div>'+
+      '<div class="a" style="color:#f59e0b">Vale testar uma versão mais curta para '+nomePior.toLowerCase()+'.</div></div>';
+  }
+  el.innerHTML=html;
 }
 
 // ── METAS ──

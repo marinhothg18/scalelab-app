@@ -7630,6 +7630,61 @@ app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ── retenção separada por um campo (dispositivo, país, navegador, utm) ──
+// A rota da VTurb exige a lista de valores a comparar, entao pra device_type
+// mandamos os tres conhecidos; pros utm_* descobrimos os que existem no periodo.
+app.get('/api/vturb/por-campo', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const per = _vturbPeriodo(req);
+    const player = String(req.query.player || '');
+    if (!player) return res.status(400).json({ error: 'Informe o player.' });
+    const campo = String(req.query.campo || 'device_type');
+    const permitidos = ['country','browser','device_type','utm_campain','utm_source',
+                        'utm_medium','utm_content','utm_term'];
+    if (permitidos.indexOf(campo) < 0) return res.status(400).json({ error: 'Campo não suportado.' });
+
+    const chave = 'vturb-campo|' + player + '|' + campo + '|' + per.de + '|' + per.ate;
+    const pronto = _vivoGet(chave, 120 * 1000);
+    if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+
+    let valores = String(req.query.valores || '').split(',').map(v => v.trim()).filter(Boolean);
+    if (!valores.length) {
+      if (campo === 'device_type') valores = ['mobile', 'desktop', 'tablet'];
+      else if (campo === 'browser') valores = ['Chrome', 'Safari', 'Firefox', 'Edge'];
+      else {
+        try {
+          const vu = await _vturbApiData(cfg.token, '/traffic_origin/valid_utms', {
+            player_id: player, start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
+          }, per);
+          const bruto = (vu && (vu[campo] || vu.data || vu.utms)) || [];
+          valores = (Array.isArray(bruto) ? bruto : [])
+            .map(x => (typeof x === 'string') ? x : (x && (x.value || x.name)))
+            .filter(Boolean).slice(0, 10);
+        } catch (e) { valores = []; }
+      }
+    }
+    if (!valores.length) return res.json({ ok: true, player, campo, grupos: [],
+      aviso: 'Nenhum valor encontrado para esse campo no período.' });
+
+    const meta = (cfg.players || []).find(p => String(p.id) === player) || {};
+    const d = await _vturbApiData(cfg.token, '/times/user_engagement_by_field', {
+      player_id: player, field: campo, values: valores,
+      video_duration: Number(req.query.duracao) || meta.duracao || 0,
+      start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
+    }, per);
+
+    const bruto = (d && (d.data || d)) || [];
+    const grupos = (Array.isArray(bruto) ? bruto : []).map(g => ({
+      nome: g.group_key || '(sem valor)',
+      pontos: (g.group_values || []).map(x => ({ timed: x.timed, total_users: x.total_users }))
+    })).filter(g => g.pontos.length);
+    const saida = { ok: true, player, campo, valores, de: per.de, ate: per.ate, grupos };
+    _vivoSet(chave, saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ── painel: uma linha por VSL, numa chamada só ──
 // A tela precisa de todas as VSLs de uma vez; sem isso seriam N requisições do
 // navegador e a página abriria devagar.
