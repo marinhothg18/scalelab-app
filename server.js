@@ -942,6 +942,7 @@ function initDB() {
 }
 _liberarEspacoSeNecessario(80);   // antes de qualquer gravação
 initDB();
+_comprimirSnapshotsAntigos();     // encolhe o acervo cru que lotou o volume
 // Migra senhas existentes para bcrypt na inicialização
 _migrarSenhasParaHash();
 // Atribui gestor padrão (1º da oferta) a dias antigos do ROI que não têm o campo
@@ -5257,6 +5258,37 @@ function _aplicarRetencaoBackup() {
   } catch (err) {
     console.error('[BACKUP] erro na retenção:', err.message);
     return { erro: err.message };
+  }
+}
+
+// Migracao unica: comprime os snapshots crus que ja estao no volume. Sao eles
+// que ocupam o disco hoje (~1,9MB cada); comprimidos ficam ~400KB. Conservador:
+// so apaga o original depois de reler o .gz e confirmar que o JSON esta intacto.
+function _comprimirSnapshotsAntigos() {
+  const zlib = require('zlib');
+  let convertidos = 0, liberadoMB = 0, falhas = 0;
+  let arqs;
+  try { arqs = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.json')); }
+  catch (e) { return; }
+  if (!arqs.length) return;
+  for (const f of arqs) {
+    const cru = path.join(BACKUP_DIR, f);
+    const alvo = cru + '.gz';
+    try {
+      if (fs.existsSync(alvo)) { fs.unlinkSync(cru); continue; }   // ja convertido antes
+      const texto = fs.readFileSync(cru, 'utf8');
+      JSON.parse(texto);                                  // original precisa estar sao
+      const tam = fs.statSync(cru).size;
+      fs.writeFileSync(alvo, zlib.gzipSync(texto));
+      const volta = zlib.gunzipSync(fs.readFileSync(alvo)).toString('utf8');
+      if (volta !== texto) { fs.unlinkSync(alvo); falhas++; continue; }
+      fs.unlinkSync(cru);                                 // so agora o original sai
+      convertidos++; liberadoMB += (tam - fs.statSync(alvo).size) / (1024 * 1024);
+    } catch (e) { falhas++; try { if (fs.existsSync(alvo)) fs.unlinkSync(alvo); } catch (e2) {} }
+  }
+  if (convertidos || falhas) {
+    console.log(`[BACKUP] compressao do acervo: ${convertidos} convertido(s), ` +
+                `${Math.round(liberadoMB)}MB liberados` + (falhas ? `, ${falhas} pulado(s)` : '') + '.');
   }
 }
 
