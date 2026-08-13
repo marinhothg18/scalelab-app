@@ -3007,12 +3007,7 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
     cfg.modo = String(cfg.token).startsWith('ey') ? 'api' : 'mcp';
     let dashboards = [];
     try {
-      if (cfg.modo === 'api') {
-        dashboards = await _utmifyApiDashboards(cfg.token);
-      } else {
-        const d = await _utmifyChamarTool(cfg.token, 'get_dashboards', {});
-        dashboards = (Array.isArray(d) ? d : []).map(x => ({ id: x.id, nome: x.name, moeda: x.currency, tz: x.timeZone }));
-      }
+      dashboards = await _utmifyListarDashboards(cfg);
       cfg.ultimoErro = null;
     } catch (e) {
       cfg.ultimoErro = e.message;
@@ -3034,6 +3029,12 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
 // Puxa as metricas da Utmify e grava em sl_metricas_ads (a mesma base que a tela le)
 // Sincroniza um periodo e grava em sl_metricas_ads. Usada tanto pelo botao
 // quanto pela rotina automatica.
+async function _utmifyListarDashboards(cfg) {
+  if (cfg.modo === 'api') return await _utmifyApiDashboards(cfg.token);
+  const d = await _utmifyChamarTool(cfg.token, 'get_dashboards', {});
+  return (Array.isArray(d) ? d : []).map(x => ({ id: x.id, nome: x.name, moeda: x.currency, tz: x.timeZone }));
+}
+
 function _diasEntre(de, ate) {
   const out = [];
   let d = new Date(de + 'T12:00:00Z');
@@ -3048,9 +3049,19 @@ function _diasEntre(de, ate) {
 async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   const cfg = _utmifyMcpCfg();
   if (!cfg || !cfg.token) throw new Error('Utmify não configurada.');
-  const dashboards = (dashboardsPedidos && dashboardsPedidos.length)
+  if (!cfg.modo) cfg.modo = String(cfg.token).startsWith('ey') ? 'api' : 'mcp';
+  let dashboards = (dashboardsPedidos && dashboardsPedidos.length)
     ? dashboardsPedidos : (cfg.dashboards || []).map(d => d.id);
-  if (!dashboards.length) throw new Error('Nenhum dashboard encontrado. Clique em "Salvar e conectar" primeiro para validar o token.');
+  // Sem lista salva (token vindo do ambiente, por exemplo): descobre sozinho,
+  // pra nao depender de alguem ter clicado em "Salvar e conectar" antes.
+  if (!dashboards.length) {
+    const achados = await _utmifyListarDashboards(cfg);
+    if (achados.length) {
+      cfg.dashboards = achados;
+      dashboards = achados.map(d => d.id);
+    }
+  }
+  if (!dashboards.length) throw new Error('Nenhum dashboard encontrado na Utmify com esse token.');
 
   const cent = v => (Number(v) || 0) / 100;   // a Utmify devolve em centavos
   const linhas = [];
@@ -3103,6 +3114,8 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   const mantidos = atual.filter(l => !(l.fonte === 'utmify' && l.data >= de && l.data <= ate));
   db.store[KEY_METRICAS] = mantidos.concat(linhas);
   const c2 = _utmifyMcpCfg(db) || cfg;
+  if (!(c2.dashboards || []).length && (cfg.dashboards || []).length) c2.dashboards = cfg.dashboards;
+  if (!c2.modo) c2.modo = cfg.modo;
   c2.ultimaSync = new Date().toISOString();
   c2.ultimoErro = erros.length ? erros.join(' | ') : null;
   db.store[KEY_UTMIFY_MCP] = c2;
