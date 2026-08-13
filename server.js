@@ -2955,11 +2955,14 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
         cliques: soma('cliques'), impressoes: soma('impressoes'),
         roas: inv > 0 ? fat / inv : 0,
         cpc: soma('cliques') > 0 ? inv / soma('cliques') : 0,
-        cpm: soma('impressoes') > 0 ? (inv / soma('impressoes')) * 1000 : 0
+        cpm: soma('impressoes') > 0 ? (inv / soma('impressoes')) * 1000 : 0,
+        cpa: soma('vendas') > 0 ? inv / soma('vendas') : 0
       },
-      porCampanha: agrupar('campanha'),
-      porAnuncio:  agrupar('anuncio'),
-      porDia:      agrupar('data')
+      atualizadoEm: (_utmifyMcpCfg(db) || {}).ultimaSync || null,
+      porCampanha:  agrupar('campanha'),
+      porAnuncio:   agrupar('anuncio'),
+      porDia:       agrupar('data').sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
+      porDashboard: agrupar('dashboard')
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

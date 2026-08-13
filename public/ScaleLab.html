@@ -3130,7 +3130,15 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <input type="date" id="ads-date-to" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;" />
             <button onclick="setAdsFilter('custom',null)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;">Aplicar</button>
           </div>
-          <button onclick="loadAdsMetrics()" id="ads-refresh-btn" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">🔄 Atualizar</button>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--text2);font-weight:600;">FONTE:</span>
+            <div class="roi-currency-toggle">
+              <button class="roi-currency-btn" id="ads-fonte-redtrack" onclick="setAdsFonte('redtrack')">RedTrack</button>
+              <button class="roi-currency-btn" id="ads-fonte-utmify" onclick="setAdsFonte('utmify')">Utmify</button>
+            </div>
+            <button id="ads-puxar-utmify" onclick="puxarUtmifyPeriodo()" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;" title="Busca esse período direto na Utmify agora">⤓ Puxar período</button>
+          </div>
+          <button onclick="loadAdsMetrics()" id="ads-refresh-btn" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">🔄 Atualizar</button>
           <!-- Moeda + Cotação -->
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="roi-currency-toggle">
@@ -3158,6 +3166,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <button class="ads-filter-btn" id="rsort-gasto" onclick="setRelatorioSort('gasto',this)">Gasto</button>
           </div>
         </div>
+
+        <div id="ads-selo-utmify" style="font-size:11px;color:var(--text2);margin:-8px 0 14px 0;"></div>
 
         <!-- LOADING / ERROR -->
         <div id="ads-loading" style="display:none;text-align:center;padding:40px;color:var(--text2);">⏳ Carregando dados do RedTrack...</div>
@@ -26208,6 +26218,11 @@ function syncRoiCotacao(){
 })();
 
 function convertAds(val){
+  // A Utmify entrega em BRL; o RedTrack, em USD. Sem isso os valores da Utmify
+  // seriam multiplicados pela cotação e apareceriam ~5x maiores.
+  if(_adsFonte()==='utmify'){
+    return adsCurrency==='usd' ? (val / (getAdsCotacao()||1)) : val;
+  }
   if(adsCurrency==='brl') return val * getAdsCotacao();
   return val; // USD — valor original
 }
@@ -26319,7 +26334,9 @@ function renderAdsMetrics(){
   const key = getRtApiKey();
   const inp = document.getElementById('ads-api-key-input');
   if(inp) inp.value = key;
-  if(key) loadAdsMetrics();
+  _pintarFonteAds();
+  if(_adsFonte()==='utmify') loadAdsMetrics();
+  else if(key) loadAdsMetrics();
 }
 
 function getAdsDates(){
@@ -26863,9 +26880,118 @@ function editAdInvestimento(encKey){
   renderAnuncios();
 }
 
+// ══ FONTE DOS DADOS: RedTrack (USD, direto na API deles) ou Utmify (BRL, já
+// sincronizada pelo servidor a cada 30min e guardada em sl_metricas_ads) ══
+function _adsFonte(){ return localStorage.getItem('ads_fonte') || 'redtrack'; }
+
+function setAdsFonte(f){
+  localStorage.setItem('ads_fonte', f==='utmify' ? 'utmify' : 'redtrack');
+  _pintarFonteAds();
+  loadAdsMetrics();
+}
+
+function _pintarFonteAds(){
+  const f = _adsFonte();
+  const bt = (id,on)=>{ const e=document.getElementById(id); if(e) e.classList.toggle('active', on); };
+  bt('ads-fonte-redtrack', f==='redtrack');
+  bt('ads-fonte-utmify',   f==='utmify');
+  const puxar = document.getElementById('ads-puxar-utmify');
+  if(puxar) puxar.style.display = (f==='utmify') ? '' : 'none';
+}
+
+// Busca o período direto na Utmify agora (o automático só cobre hoje e ontem —
+// pra ver meses anteriores é preciso puxar uma vez).
+async function puxarUtmifyPeriodo(){
+  const { from, to } = getAdsDates();
+  const bt = document.getElementById('ads-puxar-utmify');
+  const txt = bt ? bt.textContent : '';
+  if(bt){ bt.disabled=true; bt.textContent='⏳ Puxando...'; }
+  try{
+    const r = await fetch('/api/integracoes/utmify-mcp/sync', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ de: from, ate: to })
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    const selo = document.getElementById('ads-selo-utmify');
+    if(selo) selo.textContent = '✅ '+(d.importadas||0)+' campanha(s) importada(s) da Utmify.';
+    if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
+    loadAdsMetrics();
+  }catch(e){
+    showAdsError('Não consegui puxar da Utmify: '+e.message);
+  }finally{
+    if(bt){ bt.disabled=false; bt.textContent = txt || '⤓ Puxar período'; }
+  }
+}
+
+async function loadAdsMetricsUtmify(){
+  const mySeq = ++adsLoadSeq;
+  const { from, to } = getAdsDates();
+  const loading = document.getElementById('ads-loading');
+  const errEl   = document.getElementById('ads-error');
+  if(loading){ loading.textContent='⏳ Carregando dados da Utmify...'; loading.style.display='block'; }
+  if(errEl) errEl.style.display='none';
+  resetAdsKpis();
+  try{
+    const r = await fetch('/api/metricas/consolidado?de='+from+'&ate='+to);
+    if(r.status===401) throw new Error('sua sessão expirou — entre novamente.');
+    if(!r.ok) throw new Error('o servidor respondeu '+r.status);
+    const d = await r.json();
+    if(mySeq !== adsLoadSeq) return;   // outro Atualizar veio depois: descarta
+
+    // mesma forma que a tela ja usa pro RedTrack, pra reaproveitar tabela e KPIs
+    adsCampanhasData = (d.porCampanha||[]).map(c=>({
+      _id: String(c.nome||''), _name: String(c.nome||'—'),
+      clicks: c.cliques||0, lp_views: 0,
+      cost: c.investimento||0, total_revenue: c.faturamento||0,
+      profit: c.lucro||0, approved: c.vendas||0,
+      cpa: c.vendas>0 ? c.investimento/c.vendas : 0,
+      cr:  c.cliques>0 ? (c.vendas/c.cliques)*100 : 0,
+      roas: c.roas||0
+    }));
+    adsTrueApproved = (d.kpis&&d.kpis.vendas)||0;
+
+    renderAdsKpis(adsCampanhasData, adsTrueApproved);
+    renderAdsTable('campanhas', adsCampanhasData, null, '_name');
+
+    // Resumo: por dashboard da Utmify (o equivalente a "conta")
+    renderGroupTable('ads-body-conta', (d.porDashboard||[]).map(x=>({
+      label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
+    })), 'Gestor', ()=>'—');
+    _msgTabela('ads-body-gestor', 6, 'A Utmify não separa por gestor — use a aba Por Campanha.');
+
+    if(!adsCampanhasData.length){
+      showAdsError('Nenhum dado da Utmify nesse período. Clique em "⤓ Puxar período" pra buscar agora — o automático cobre só hoje e ontem.');
+    }
+    _selosUtmify(d);
+  }catch(e){
+    if(mySeq === adsLoadSeq) showAdsError('Erro ao ler as métricas da Utmify: '+e.message);
+  }finally{
+    if(mySeq === adsLoadSeq && loading) loading.style.display='none';
+  }
+}
+
+function _msgTabela(id, cols, msg){
+  const t = document.getElementById(id);
+  if(t) t.innerHTML = '<tr><td colspan="'+cols+'" style="text-align:center;padding:20px;color:var(--text2);">'+msg+'</td></tr>';
+}
+
+// Deixa claro na tela de onde vieram os números e quando foi a última sincronização
+function _selosUtmify(d){
+  _msgTabela('ads-anuncio-body', 6, 'A Utmify entrega no nível de campanha — sem quebra por anúncio.');
+  const quando = d && d.atualizadoEm ? new Date(d.atualizadoEm).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : null;
+  const el = document.getElementById('ads-selo-utmify');
+  if(el) el.innerHTML = quando
+    ? 'Fonte: Utmify · '+(d.linhas||0)+' registro(s) · atualizado em '+quando
+    : 'Fonte: Utmify';
+}
+
 async function loadAdsMetrics(){
+  if(_adsFonte()==='utmify') return loadAdsMetricsUtmify();
   const key = getRtApiKey();
   if(!key){ showAdsError('Configure a API Key do RedTrack acima.'); return; }
+  const ld = document.getElementById('ads-loading');
+  if(ld) ld.textContent='⏳ Carregando dados do RedTrack...';
   // Auto-sync da API key pro servidor (pra compartilhar com outros usuários com acesso)
   pushRtApiKeyToServer(key);
   const mySeq = ++adsLoadSeq;   // marca este load como o mais recente
@@ -27085,6 +27211,9 @@ function renderAdsTable(tipo, data, namesMap, idField){
   const tbody = document.getElementById('ads-body-'+tipo);
   if(!data.length){ tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text2);">Nenhum dado no período</td></tr>'; return; }
   const fmtM = v=>Number(v)>0?fmtAds(Number(v)):'<span style="color:var(--text2)">—</span>';
+  // Lucro precisa mostrar negativo: com fmtM, campanha no prejuizo aparecia como
+  // "—" e a coluna ficava vazia justamente onde mais importa enxergar.
+  const fmtL = v=>Number(v)!==0?fmtAds(Number(v)):'<span style="color:var(--text2)">—</span>';
   const fmtN = v=>Number(v)>0?Number(v).toLocaleString('pt-BR'):'<span style="color:var(--text2)">0</span>';
   // Sort by cost desc
   const sorted = [...data].sort((a,b)=>(b.cost||0)-(a.cost||0));
@@ -27104,7 +27233,7 @@ function renderAdsTable(tipo, data, namesMap, idField){
       <td style="text-align:right;padding:9px 10px;">${fmtN(r.clicks)}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtM(r.cost)}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtM(r.total_revenue||r.revenue||0)}</td>
-      <td style="text-align:right;padding:9px 10px;color:${profColor};font-weight:600;">${fmtM(r.profit||0)}</td>
+      <td style="text-align:right;padding:9px 10px;color:${profColor};font-weight:600;">${fmtL(r.profit||0)}</td>
       <td style="text-align:right;padding:9px 10px;color:${roasColor};font-weight:700;">${roasVal>0?roasVal.toFixed(2)+'x':'—'}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtN(r.approved)}</td>
       <td style="text-align:right;padding:9px 10px;">${r.cpa>0?fmtAds(r.cpa):'—'}</td>
