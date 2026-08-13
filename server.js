@@ -2952,6 +2952,148 @@ app.post('/api/v1/metricas/importar', authAPI, (req, res) => {
 });
 
 // Consulta consolidada — é daqui que a tela de Métricas de Ads vai ler
+// ── CONSULTAS AO VIVO NA UTMIFY (nao passam pelo banco) ──────────────
+// Nivel de anuncio gera ~320 linhas por dia por dashboard. Gravar isso no
+// db.json incharia o banco (foi disco cheio que derrubou a aplicacao hoje).
+// Essas telas sao "de agora", entao consultam direto e guardam so em memoria.
+const _utmifyCacheVivo = new Map();
+function _vivoGet(chave, ms) {
+  const c = _utmifyCacheVivo.get(chave);
+  if (c && (Date.now() - c.quando) < ms) return c.dados;
+  return null;
+}
+function _vivoSet(chave, dados) {
+  _utmifyCacheVivo.set(chave, { quando: Date.now(), dados });
+  if (_utmifyCacheVivo.size > 40) _utmifyCacheVivo.delete(_utmifyCacheVivo.keys().next().value);
+}
+
+async function _utmifyDashboardsAtivos() {
+  const cfg = _utmifyMcpCfg();
+  if (!cfg || !cfg.token) throw new Error('Utmify não configurada.');
+  if (!cfg.modo) cfg.modo = String(cfg.token).startsWith('ey') ? 'api' : 'mcp';
+  if (cfg.modo !== 'mcp') throw new Error('Essa tela precisa do token de MCP da Utmify (o token de sessão não serve).');
+  let lista = cfg.dashboards || [];
+  if (!lista.length) lista = await _utmifyListarDashboards(cfg);
+  return { cfg, lista };
+}
+
+// Anuncios do periodo, agregados entre os dashboards
+app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
+  const de  = String(req.query.de  || '').slice(0, 10);
+  const ate = String(req.query.ate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  }
+  const chave = 'anuncios|' + de + '|' + ate;
+  const pronto = _vivoGet(chave, 60 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  try {
+    const { cfg, lista } = await _utmifyDashboardsAtivos();
+    const cent = v => (Number(v) || 0) / 100;
+    const mapa = {};
+    const erros = [];
+    for (const d of lista) {
+      const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      try {
+        const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+          dashboardId: d.id, level: 'ad',
+          dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
+        });
+        ((r && r.results) || []).forEach(a => {
+          const inv = cent(a.spend), rec = cent(a.grossRevenue);
+          if (!inv && !rec) return;
+          const k = String(a.adId || a.id || a.name || '') + '|' + d.id;
+          if (!mapa[k]) mapa[k] = {
+            nome: String(a.name || '(sem nome)'), dashboard: d.nome || d.id,
+            investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0
+          };
+          const m = mapa[k];
+          m.investimento += inv; m.receita += rec; m.lucro += cent(a.profit);
+          m.vendas   += Number(a.approvedOrdersCount) || 0;
+          m.ics      += Number(a.initiateCheckout) || 0;
+          m.cliques  += Number(a.inlineLinkClicks) || 0;
+          m.impressoes += Number(a.impressions) || 0;
+        });
+      } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
+    }
+    const anuncios = Object.values(mapa).map(m => Object.assign(m, {
+      roas: m.investimento > 0 ? m.receita / m.investimento : 0,
+      cpa:  m.vendas > 0 ? m.investimento / m.vendas : 0
+    })).sort((a, b) => b.investimento - a.investimento);
+    const saida = { ok: true, de, ate, anuncios, erros };
+    _vivoSet(chave, saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Panorama de hoje, somando os dashboards (funil, pedidos, lucro por hora)
+app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
+  const pronto = _vivoGet('tempo-real', 25 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  try {
+    const { cfg, lista } = await _utmifyDashboardsAtivos();
+    const cent = v => (Number(v) || 0) / 100;
+    const tot = {
+      investimento: 0, receita: 0, lucro: 0,
+      cliques: 0, visitas: 0, ics: 0,
+      pedidos: { total: 0, aprovadas: 0, pendentes: 0, reembolsadas: 0, recusadas: 0 }
+    };
+    const porHora = Array.from({ length: 24 }, (_, h) => ({ hora: h, lucro: 0 }));
+    const porUtm = {}, porDash = [];
+    const erros = [];
+    for (const d of lista) {
+      const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      const hoje = new Date(Date.now() + tz * 3600000).toISOString().slice(0, 10);
+      try {
+        const s = await _utmifyChamarTool(cfg.token, 'get_dashboard_summary', {
+          dashboardId: d.id,
+          dateRange: { from: hoje + 'T00:00:00' + off, to: hoje + 'T23:59:59' + off }
+        });
+        const ads = s.ads || {}, an = s.analytics || {}, oc = s.ordersCount || {};
+        const inv = cent(ads.spent), luc = cent(an.profit);
+        // receita pelo ROAS e exata; gasto+lucro erra quando ha taxa ou custo de produto
+        const rec = Number(an.roas) > 0 ? inv * Number(an.roas) : (inv + luc);
+        tot.investimento += inv; tot.lucro += luc; tot.receita += rec;
+        tot.cliques += Number(ads.clicks) || 0;
+        tot.visitas += Number(ads.pageViews) || 0;
+        tot.ics     += Number(ads.initiateCheckouts) || 0;
+        tot.pedidos.total        += Number(oc.total) || 0;
+        tot.pedidos.aprovadas    += Number(oc.approved) || 0;
+        tot.pedidos.pendentes    += Number(oc.pending) || 0;
+        tot.pedidos.reembolsadas += Number(oc.refunded) || 0;
+        tot.pedidos.recusadas    += Number(oc.refusedCreditCard) || 0;
+        (s.profitByHourNet || []).forEach(h => {
+          const i = Number(h.hour);
+          if (i >= 0 && i < 24) porHora[i].lucro += cent(h.cents);
+        });
+        (oc.byUtmTerm || []).forEach(u => {
+          const k = u.utmTerm || '(sem origem)';
+          porUtm[k] = (porUtm[k] || 0) + (Number(u.count) || 0);
+        });
+        porDash.push({ nome: d.nome || d.id, investimento: inv, lucro: luc,
+                       receita: rec, vendas: Number(oc.approved) || 0,
+                       roas: inv > 0 ? rec / inv : 0 });
+      } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
+    }
+    const saida = {
+      ok: true, momento: new Date().toISOString(),
+      kpis: Object.assign({}, tot, {
+        roas: tot.investimento > 0 ? tot.receita / tot.investimento : 0,
+        ticket: tot.pedidos.aprovadas > 0 ? tot.receita / tot.pedidos.aprovadas : 0,
+        cpa: tot.pedidos.aprovadas > 0 ? tot.investimento / tot.pedidos.aprovadas : 0
+      }),
+      porHora,
+      porUtm: Object.entries(porUtm).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd),
+      porDashboard: porDash.sort((a, b) => b.investimento - a.investimento),
+      erros
+    };
+    _vivoSet('tempo-real', saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
   try {
     const de  = String(req.query.de  || '').slice(0,10);

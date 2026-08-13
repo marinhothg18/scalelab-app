@@ -3284,7 +3284,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <div id="ads-tab-anuncio" class="ads-tab-panel" style="display:none;">
           <div id="anuncio-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;"></div>
           <div style="margin-bottom:14px;">
-            <input id="anuncio-search" type="text" placeholder="🔍  Buscar anúncio..." oninput="renderAnuncios()" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
+            <input id="anuncio-search" type="text" placeholder="🔍  Buscar anúncio..." oninput="_adsFonte()==='utmify' ? pintarAnunciosUtmify() : renderAnuncios()" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
           </div>
           <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -26389,9 +26389,10 @@ function switchAdsTab(tab, btn){
   document.getElementById('ads-tab-'+tab).style.display='block';
   const sortBar = document.getElementById('relatorio-sort-bar');
   if(sortBar) sortBar.style.display = tab==='relatorio' ? 'flex' : 'none';
+  const utmify = _adsFonte()==='utmify';
   if(tab==='relatorio') renderRelatorio();
-  if(tab==='anuncio')   renderAnuncios();
-  if(tab==='ofertas')   renderResumo();
+  if(tab==='anuncio')   utmify ? carregarAnunciosUtmify() : renderAnuncios();
+  if(tab==='ofertas' && !utmify) renderResumo();
   switchAdsTabRealtime(tab==='realtime');
 }
 
@@ -26464,7 +26465,121 @@ function updateRtCountdown(){
   if(el) el.textContent = `(próxima em ${rtCountdown}s)`;
 }
 
+// ── TEMPO REAL (Utmify) ───────────────────────────────────────────
+// A Utmify nao expoe venda a venda como o RedTrack fazia. Em compensacao ela
+// entrega o funil do dia, lucro hora a hora, status dos pedidos e a origem das
+// vendas — que e o que serve pra decidir o que cortar e o que escalar agora.
+async function carregarTempoRealUtmify(){
+  const feed  = document.getElementById('rt-feed');
+  const stats = document.getElementById('rt-stats');
+  try{
+    const r = await fetch('/api/metricas/utmify/tempo-real');
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    const k = d.kpis||{}, p = k.pedidos||{};
+
+    if(stats) stats.innerHTML =
+      _rtNum('Vendas hoje', p.aprovadas||0, 'var(--green)') +
+      _rtNum('ICs', k.ics||0, '#f97316') +
+      _rtNum('Receita', fmtAds(k.receita||0), 'var(--green)') +
+      _rtNum('Ticket médio', (k.ticket>0?fmtAds(k.ticket):'—'), 'var(--text)');
+    if(!feed) return;
+
+    const cartao = (titulo, dentro) =>
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;">'+
+      '<div style="font-size:13px;font-weight:700;margin-bottom:12px;">'+titulo+'</div>'+dentro+'</div>';
+
+    // funil do dia
+    const etapas = [['Cliques',k.cliques||0],['Visitas na página',k.visitas||0],['Checkouts iniciados',k.ics||0],['Vendas aprovadas',p.aprovadas||0]];
+    const topo = etapas[0][1] || 1;
+    const funil = etapas.map(([rot,v])=>{
+      const perc = Math.min(100, (v/topo)*100);
+      return '<div style="margin-bottom:9px;">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">'+
+          '<span>'+rot+'</span><span style="font-weight:700;">'+v.toLocaleString('pt-BR')+
+          ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(1)+'%)</span></span></div>'+
+        '<div style="background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;">'+
+          '<div style="width:'+Math.max(perc,0.6)+'%;height:100%;background:linear-gradient(90deg,#3E1493,#1B9CFA);"></div></div></div>';
+    }).join('');
+
+    // lucro por hora (so ate a hora atual)
+    const agoraH = new Date().getHours();
+    const horas = (d.porHora||[]).filter(h=>h.hora<=agoraH);
+    const maior = Math.max(1, ...horas.map(h=>Math.abs(h.lucro)));
+    const barras = horas.map(h=>{
+      const alt = Math.max(2, (Math.abs(h.lucro)/maior)*60);
+      const pos = h.lucro>=0;
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;" title="'+String(h.hora).padStart(2,'0')+'h · '+fmtAds(h.lucro)+'">'+
+        '<div style="height:64px;display:flex;align-items:flex-end;width:100%;justify-content:center;">'+
+        '<div style="width:70%;height:'+alt+'px;background:'+(pos?'var(--green)':'var(--red)')+';border-radius:2px;opacity:.85;"></div></div>'+
+        '<div style="font-size:9px;color:var(--text2);">'+String(h.hora).padStart(2,'0')+'</div></div>';
+    }).join('');
+
+    const st = [['Aprovadas',p.aprovadas||0,'var(--green)'],['Pendentes',p.pendentes||0,'#f97316'],
+                ['Recusadas',p.recusadas||0,'var(--red)'],['Reembolsadas',p.reembolsadas||0,'var(--text2)']];
+    const status = '<div style="display:flex;gap:18px;flex-wrap:wrap;">'+st.map(([r,v,c])=>
+      '<div><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;">'+r+'</div>'+
+      '<div style="font-size:19px;font-weight:800;color:'+c+';">'+v+'</div></div>').join('')+'</div>';
+
+    const origem = (d.porUtm||[]).length
+      ? (d.porUtm||[]).slice(0,8).map(u=>
+          '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;">'+
+          '<span>'+_esc(u.nome)+'</span><span style="font-weight:700;">'+u.qtd+'</span></div>').join('')
+      : '<div style="color:var(--text2);font-size:13px;">Nenhuma venda com origem identificada hoje.</div>';
+
+    const contas = (d.porDashboard||[]).map(x=>
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px;">'+
+      '<span style="font-weight:600;">'+_esc(x.nome)+'</span>'+
+      '<span style="display:flex;gap:16px;">'+
+        '<span style="color:var(--text2);">'+fmtAds(x.investimento)+'</span>'+
+        '<span style="color:'+((x.lucro>=0)?'var(--green)':'var(--red)')+';font-weight:700;">'+fmtAds(x.lucro)+'</span>'+
+        '<span style="font-weight:800;color:'+((x.roas>=1)?'var(--green)':'var(--red)')+';">'+(Number(x.roas)||0).toFixed(2)+'x</span>'+
+      '</span></div>').join('');
+
+    feed.innerHTML =
+      cartao('📊 Funil de hoje', funil) +
+      cartao('⏱ Lucro por hora', horas.length ? '<div style="display:flex;gap:2px;align-items:flex-end;">'+barras+'</div>' : '<div style="color:var(--text2);font-size:13px;">Sem movimento ainda hoje.</div>') +
+      cartao('🧾 Situação dos pedidos', status) +
+      cartao('🎯 Origem das vendas', origem) +
+      cartao('🏦 Por dashboard', contas || '<div style="color:var(--text2);font-size:13px;">Sem dados.</div>');
+
+    if(d.erros && d.erros.length){
+      feed.innerHTML += '<div style="color:var(--red);font-size:12px;">Alguns dashboards falharam: '+_esc(d.erros.join(' | '))+'</div>';
+    }
+  }catch(e){
+    if(feed) feed.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">Não consegui carregar o tempo real: '+_esc(e.message)+'</div>';
+  }
+}
+
+// O funil completo (visitas e checkouts) so vem no resumo do dia, entao aqui
+// mostramos o que existe pro periodo escolhido e apontamos onde ver o resto.
+function _funilUtmify(k){
+  const alvo = document.getElementById('ads-funil');
+  const rot  = document.getElementById('ads-funil-labels');
+  if(!alvo) return;
+  const etapas = [['Cliques', Number(k.cliques)||0], ['Vendas aprovadas', Number(k.vendas)||0]];
+  const topo = etapas[0][1] || 1;
+  alvo.style.display='block';
+  alvo.innerHTML = etapas.map(function(e){
+    var perc = Math.min(100, (e[1]/topo)*100);
+    return '<div style="margin-bottom:10px;">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">'+
+        '<span>'+e[0]+'</span><span style="font-weight:700;">'+e[1].toLocaleString('pt-BR')+
+        ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(2)+'%)</span></span></div>'+
+      '<div style="background:var(--bg3);border-radius:4px;height:10px;overflow:hidden;">'+
+        '<div style="width:'+Math.max(perc,0.6)+'%;height:100%;background:linear-gradient(90deg,#3E1493,#1B9CFA);"></div></div></div>';
+  }).join('') +
+  '<div style="font-size:11px;color:var(--text2);margin-top:10px;">Visitas na página e checkouts iniciados aparecem no funil completo da aba <b>Tempo Real</b> (dados de hoje).</div>';
+  if(rot) rot.innerHTML='';
+}
+
+function _rtNum(rotulo, valor, cor){
+  return '<div style="text-align:center;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:2px;">'+rotulo+
+         '</div><div style="font-size:20px;font-weight:800;color:'+cor+';">'+valor+'</div></div>';
+}
+
 async function loadRealtime(reset){
+  if(_adsFonte()==='utmify') return carregarTempoRealUtmify();
   const key = getRtApiKey();
   if(!key) return;
   const { from, to, isLive } = rtPeriodInfo();
@@ -26992,6 +27107,7 @@ async function loadAdsMetricsUtmify(forcar){
       label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
     })), 'Gestor', ()=>'—');
     _msgTabela('ads-body-gestor', 6, 'A Utmify não separa por gestor — use a aba Por Campanha.');
+    _funilUtmify(d.kpis||{});
 
     if(!adsCampanhasData.length){
       showAdsError('Nenhum dado da Utmify nesse período. Clique em "⤓ Puxar período" pra buscar agora — o automático cobre só hoje e ontem.');
@@ -27003,6 +27119,59 @@ async function loadAdsMetricsUtmify(forcar){
     _adsCarregando = false;
     if(mySeq === adsLoadSeq && loading) loading.style.display='none';
   }
+}
+
+// ── POR ANUNCIO (Utmify) ──────────────────────────────────────────
+// Consulta ao vivo: nivel de anuncio sao centenas de linhas por dia e nao vale
+// gravar no banco. O servidor guarda 60s em memoria pra nao martelar a Utmify.
+let _anunciosUtmify = [];
+let _anunciosCarregando = false;
+
+async function carregarAnunciosUtmify(forcar){
+  const { from, to } = getAdsDates();
+  const corpo = document.getElementById('ads-anuncio-body');
+  if(_anunciosCarregando) return;
+  if(!forcar && _anunciosUtmify.length && _anunciosPeriodo === from+'|'+to){ pintarAnunciosUtmify(); return; }
+  _anunciosCarregando = true;
+  if(corpo) _msgTabela('ads-anuncio-body', 6, '⏳ Buscando anúncios na Utmify...');
+  try{
+    const r = await fetch('/api/metricas/utmify/anuncios?de='+from+'&ate='+to);
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    _anunciosUtmify = d.anuncios || [];
+    _anunciosPeriodo = from+'|'+to;
+    if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
+    pintarAnunciosUtmify();
+  }catch(e){
+    _msgTabela('ads-anuncio-body', 6, 'Não consegui buscar os anúncios: '+_esc(e.message));
+  }finally{ _anunciosCarregando = false; }
+}
+let _anunciosPeriodo = '';
+
+function pintarAnunciosUtmify(){
+  const busca = (document.getElementById('anuncio-search')||{}).value || '';
+  const termo = busca.trim().toLowerCase();
+  const lista = termo
+    ? _anunciosUtmify.filter(a => String(a.nome).toLowerCase().includes(termo) || String(a.dashboard).toLowerCase().includes(termo))
+    : _anunciosUtmify;
+  if(!lista.length){
+    _msgTabela('ads-anuncio-body', 6, termo ? 'Nenhum anúncio com esse termo.' : 'Nenhum anúncio com movimento no período.');
+    return;
+  }
+  const corpo = document.getElementById('ads-anuncio-body');
+  corpo.innerHTML = lista.map(a=>{
+    const roas = Number(a.roas)||0;
+    const corRoas = roas>=1.5?'var(--green)':(roas>=1?'#f97316':'var(--red)');
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);">'+
+      '<td style="padding:9px 10px;font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(a.nome)+' · '+_esc(a.dashboard)+'">'+
+        _esc(a.nome)+' <span style="color:var(--text2);font-size:11px;">· '+_esc(a.dashboard)+'</span></td>'+
+      '<td style="text-align:right;padding:9px 10px;font-weight:600;">'+(a.vendas||0)+'</td>'+
+      '<td style="text-align:right;padding:9px 10px;color:#f97316;">'+(a.ics||0)+'</td>'+
+      '<td style="text-align:right;padding:9px 10px;">'+fmtAds(a.investimento||0)+'</td>'+
+      '<td style="text-align:right;padding:9px 10px;color:var(--green);">'+fmtAds(a.receita||0)+'</td>'+
+      '<td style="text-align:right;padding:9px 10px;color:'+corRoas+';font-weight:700;">'+(roas>0?roas.toFixed(2)+'x':'—')+'</td>'+
+    '</tr>';
+  }).join('');
 }
 
 function _kpisUtmify(k){
