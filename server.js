@@ -7483,7 +7483,10 @@ function _vturbPeriodo(req) {
   const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
   const de  = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.de  || '')) ? req.query.de  : hoje;
   const ate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.ate || '')) ? req.query.ate : hoje;
-  return { de, ate };
+  // A VTurb espera data-hora completa com fuso; so AAAA-MM-DD ela nao aceita.
+  return { de, ate,
+           ini: de  + 'T00:00:00.000-03:00',
+           fim: ate + 'T23:59:59.999-03:00' };
 }
 function _vturbExige() {
   const cfg = _vturbCfg();
@@ -7534,16 +7537,16 @@ app.get('/api/vturb/players', authUsuario, async (req, res) => {
 app.get('/api/vturb/retencao', authUsuario, async (req, res) => {
   try {
     const cfg = _vturbExige();
-    const { de, ate } = _vturbPeriodo(req);
+    const per = _vturbPeriodo(req); const de = per.de, ate = per.ate;
     const player = String(req.query.player || '');
     if (!player) return res.status(400).json({ error: 'Informe o player.' });
     const meta = (cfg.players || []).find(p => String(p.id) === player) || {};
     const dur = Number(req.query.duracao) || meta.duracao || 0;
-    const base = { player_id: player, start_date: de, end_date: ate, timezone: 'America/Sao_Paulo' };
+    const base = { player_id: player, start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo' };
 
     const [eng, conv, ses] = await Promise.all([
       _vturbApi(cfg.token, '/times/user_engagement', Object.assign({ video_duration: dur }, base)).catch(e => ({ _erro: e.message })),
-      _vturbApi(cfg.token, '/conversions/video_timed', Object.assign({ video_duration: dur }, base)).catch(e => ({ _erro: e.message })),
+      _vturbApi(cfg.token, '/conversions/video_timed', base).catch(e => ({ _erro: e.message })),
       _vturbApi(cfg.token, '/sessions/stats', Object.assign({ video_duration: dur, pitch_time: meta.pitch || 0 }, base)).catch(e => ({ _erro: e.message }))
     ]);
     res.json({ ok: true, player, nome: meta.nome || '', duracao: dur, pitch: meta.pitch || 0,
@@ -7556,15 +7559,38 @@ app.get('/api/vturb/retencao', authUsuario, async (req, res) => {
 app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
   try {
     const cfg = _vturbExige();
-    const { de, ate } = _vturbPeriodo(req);
+    const per = _vturbPeriodo(req);
     const player = String(req.query.player || '');
     if (!player) return res.status(400).json({ error: 'Informe o player.' });
     const meta = (cfg.players || []).find(p => String(p.id) === player) || {};
+    // utm_content carrega o nome do anuncio nas campanhas daqui — por isso e o
+    // padrao: agrupar por ele e comparar retencao POR CRIATIVO.
+    const chave = String(req.query.chave || 'utm_content');
+
+    // A rota exige a lista de valores a comparar; descobre quais existem no periodo.
+    let valores = String(req.query.valores || '').split(',').map(v => v.trim()).filter(Boolean);
+    let disponiveis = [];
+    try {
+      const vu = await _vturbApi(cfg.token, '/traffic_origin/valid_utms', {
+        player_id: player, start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
+      });
+      const bruto = (vu && (vu[chave] || vu.data || vu.utms || vu)) || [];
+      disponiveis = (Array.isArray(bruto) ? bruto : [])
+        .map(x => (typeof x === 'string') ? x : (x && (x.value || x.name || x[chave])))
+        .filter(Boolean);
+    } catch (e) { disponiveis = []; }
+    if (!valores.length) valores = disponiveis.slice(0, 12);   // teto: a resposta cresce rapido
+    if (!valores.length) {
+      return res.json({ ok: true, player, nome: meta.nome || '', de: per.de, ate: per.ate,
+        chave, valores: [], disponiveis, origens: { data: [] },
+        aviso: 'Nenhuma origem identificada no período — confira se as UTMs estão chegando na página da VSL.' });
+    }
     const d = await _vturbApi(cfg.token, '/times/user_engagement_by_traffic_origin', {
-      player_id: player, video_duration: Number(req.query.duracao) || meta.duracao || 0,
-      start_date: de, end_date: ate, timezone: 'America/Sao_Paulo'
+      player_id: player, query_key: chave, values: valores,
+      start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
     });
-    res.json({ ok: true, player, nome: meta.nome || '', de, ate, origens: d });
+    res.json({ ok: true, player, nome: meta.nome || '', de: per.de, ate: per.ate,
+               chave, valores, disponiveis, duracao: meta.duracao || 0, pitch: meta.pitch || 0, origens: d });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -7572,9 +7598,9 @@ app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
 app.get('/api/vturb/resumo', authUsuario, async (req, res) => {
   try {
     const cfg = _vturbExige();
-    const { de, ate } = _vturbPeriodo(req);
+    const per = _vturbPeriodo(req); const de = per.de, ate = per.ate;
     const [rank, quota] = await Promise.all([
-      _vturbApi(cfg.token, '/events/leaderboard', { start_date: de, end_date: ate, timezone: 'America/Sao_Paulo' }).catch(e => ({ _erro: e.message })),
+      _vturbApi(cfg.token, '/events/leaderboard', { start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo' }).catch(e => ({ _erro: e.message })),
       _vturbApi(cfg.token, '/quota/usage', null, 'GET').catch(e => ({ _erro: e.message }))
     ]);
     res.json({ ok: true, de, ate, ranking: rank, quota });
