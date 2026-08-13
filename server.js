@@ -7594,6 +7594,55 @@ app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ── painel: uma linha por VSL, numa chamada só ──
+// A tela precisa de todas as VSLs de uma vez; sem isso seriam N requisições do
+// navegador e a página abriria devagar.
+app.get('/api/vturb/painel', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const per = _vturbPeriodo(req);
+    const chave = 'vturb-painel|' + per.de + '|' + per.ate;
+    const pronto = _vivoGet(chave, 120 * 1000);
+    if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+
+    let players = cfg.players || [];
+    if (!players.length) players = await _vturbPlayers(cfg.token);
+    const pedidos = String(req.query.players || '').split(',').map(x => x.trim()).filter(Boolean);
+    if (pedidos.length) players = players.filter(p => pedidos.indexOf(String(p.id)) >= 0);
+    players = players.slice(0, 12);          // teto: cada uma é uma chamada na VTurb
+
+    const linhas = [], erros = [];
+    for (const p of players) {
+      try {
+        const st = await _vturbApi(cfg.token, '/sessions/stats', {
+          player_id: p.id, start_date: per.ini, end_date: per.fim,
+          video_duration: p.duracao || 0, pitch_time: p.pitch || 0,
+          timezone: 'America/Sao_Paulo'
+        });
+        const cent = v => (Number(v) || 0) / 100;
+        linhas.push({
+          id: p.id, nome: p.nome, duracao: p.duracao, pitch: p.pitch,
+          viram:      Number(st.total_viewed_device_uniq || st.total_viewed) || 0,
+          play:       Number(st.total_started_device_uniq || st.total_started) || 0,
+          playRate:   Number(st.play_rate) || 0,
+          terminaram: Number(st.total_finished_device_uniq || st.total_finished) || 0,
+          engajamento:Number(st.engagement_rate) || 0,
+          noPitch:    Number(st.total_over_pitch) || 0,
+          pctPitch:   Number(st.over_pitch_rate) || 0,
+          clicaram:   Number(st.total_clicked_device_uniq || st.total_clicked) || 0,
+          vendas:     Number(st.total_conversions) || 0,
+          conversao:  Number(st.overall_conversion_rate) || 0,
+          receita:    cent(st.total_amount_brl)
+        });
+      } catch (e) { erros.push(p.nome + ': ' + e.message); }
+    }
+    linhas.forEach(l => { l.ticket = l.vendas ? l.receita / l.vendas : 0; });
+    const saida = { ok: true, de: per.de, ate: per.ate, vsls: linhas, erros };
+    _vivoSet(chave, saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ── panorama: ranking das VSLs e quota da API ──
 app.get('/api/vturb/resumo', authUsuario, async (req, res) => {
   try {
