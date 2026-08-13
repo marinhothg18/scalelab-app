@@ -26898,9 +26898,11 @@ function fnPixel(){
 '  function manda(tipo, extra){\n'+
 '    var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm, ref:d.referrer }, extra||{});\n'+
 '    var corpo = JSON.stringify(dados);\n'+
+'    // text/plain de proposito: evita o preflight do navegador, entao o evento\n'+
+'    // sai mesmo quando a pessoa esta fechando a pagina.\n'+
 '    navigator.sendBeacon\n'+
-'      ? navigator.sendBeacon(API, new Blob([corpo],{type:"application/json"}))\n'+
-'      : fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:corpo,keepalive:true});\n'+
+'      ? navigator.sendBeacon(API, new Blob([corpo],{type:"text/plain;charset=UTF-8"}))\n'+
+'      : fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:corpo,keepalive:true});\n'+
 '  }\n'+
 '  manda("entrou");\n\n'+
 '  var fundo = 0;\n'+

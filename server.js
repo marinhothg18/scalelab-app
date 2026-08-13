@@ -237,8 +237,13 @@ const globalLimiter = rateLimit({
   windowMs: 60*1000,
   max: 200,
   message: { error: 'Muitas requisições. Tente novamente em 1 minuto.' },
-  skip: (req) => req.path === '/api/sync/stream'
+  // o pixel tem limite proprio: um visitante dispara varios eventos por pagina
+  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento'
 });
+// Continua limitado, so que com folga pra trafego real (e por IP do visitante)
+const pixelLimiter = rateLimit({ windowMs: 60*1000, max: 120,
+  message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
+app.use('/api/funil/evento', pixelLimiter);
 app.use('/api/', globalLimiter);
 
 // Rate limiting mais agressivo pra API v1
@@ -278,6 +283,19 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3001'
 ];
+// O pixel roda nas SUAS paginas de funil, em dominios de terceiros. O CORS global
+// abaixo so aceita a whitelist — correto pro resto do sistema, mas bloquearia o
+// pixel. Este endpoint nao le cookie, sessao nem devolve dado: so recebe
+// contador. Por isso e liberado aqui, e so ele.
+app.use('/api/funil/evento', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use((req, res, next) => {
   const origin = req.headers.origin || '';
   if (ALLOWED_ORIGINS.includes(origin)) {
@@ -7443,14 +7461,14 @@ const _fFeed = [];
 function _fFeedPush(ev) { _fFeed.unshift(ev); if (_fFeed.length > 200) _fFeed.length = 200; }
 
 // ── Recepcao do pixel ── (publico: roda no navegador de quem visita a pagina)
-app.options('/api/funil/evento', (req, res) => {
-  res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS' }).sendStatus(204);
-});
-app.post('/api/funil/evento', express.json({ limit: '16kb' }), (req, res) => {
+app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   try {
-    const c = req.body || {};
+    // sendBeacon manda como text/plain de proposito: assim o navegador nao faz
+    // preflight e o evento nunca se perde. Aceita os dois formatos.
+    let c = req.body;
+    if (typeof c === 'string') { try { c = JSON.parse(c); } catch (e) { c = {}; } }
+    c = c || {};
     const funil = String(c.funil || '').slice(0, 80);
     const etapa = String(c.etapa || '').slice(0, 60);
     const tipo  = String(c.tipo  || 'entrou').slice(0, 30);
