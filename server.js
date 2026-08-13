@@ -3060,9 +3060,16 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
         });
       } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
     }
+    // Metricas calculadas em cima da SOMA, nao pela media das veiculacoes:
+    // media de medias distorce quando uma veiculacao gasta muito mais que a outra.
     const anuncios = Object.values(mapa).map(m => Object.assign(m, {
-      roas: m.investimento > 0 ? m.receita / m.investimento : 0,
-      cpa:  m.vendas > 0 ? m.investimento / m.vendas : 0
+      roas:      m.investimento > 0 ? m.receita / m.investimento : 0,
+      cpa:       m.vendas   > 0 ? m.investimento / m.vendas : 0,
+      cpc:       m.cliques  > 0 ? m.investimento / m.cliques : 0,
+      cpm:       m.impressoes > 0 ? (m.investimento / m.impressoes) * 1000 : 0,
+      ctr:       m.impressoes > 0 ? (m.cliques / m.impressoes) * 100 : 0,
+      custoPorIc: m.ics    > 0 ? m.investimento / m.ics : 0,
+      lucro:     m.receita - m.investimento
     })).sort((a, b) => b.investimento - a.investimento);
     const saida = { ok: true, de, ate, anuncios, erros };
     _vivoSet(chave, saida);
@@ -3075,20 +3082,54 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
 // entao comparamos leituras seguidas: quando o contador de um anuncio sobe, isso
 // E o evento. Da o mesmo que o RedTrack mostrava: o que aconteceu e em qual criativo.
 let _evFoto = null;              // ultima leitura { chave: {vendas, ics, receita} }
-const _evFeed = [];              // eventos mais recentes primeiro
+let _evFeed = [];                // eventos mais recentes primeiro
 let _evUltimoInteresse = 0;      // quando alguem olhou a tela pela ultima vez
 let _evRodando = false;
+let _evSujo = false;
+const KEY_EVENTOS = 'sl_funil_eventos';
+
+// O feed precisa sobreviver a quem fecha a tela e ao restart do servidor: sem
+// isso as vendas e checkouts que acontecem de madrugada simplesmente sumiam.
+function _evCarregar() {
+  try {
+    const db = readDB();
+    const l = db.store[KEY_EVENTOS];
+    if (Array.isArray(l)) _evFeed = l.slice(0, 400);
+  } catch (e) {}
+}
+function _evGravar() {
+  if (!_evSujo) return;
+  _evSujo = false;
+  try {
+    const db = readDB();
+    const corte = Date.now() - 5 * 86400000;         // 5 dias de historico
+    db.store[KEY_EVENTOS] = _evFeed
+      .filter(e => new Date(e.momento).getTime() >= corte)
+      .slice(0, 400);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_EVENTOS] = now();
+    writeDB(db);
+  } catch (e) { console.error('[FUNIL] não consegui gravar o feed:', e.message); }
+}
+setTimeout(_evCarregar, 2500);
+setInterval(_evGravar, 60 * 1000);
 
 function _evRegistrar(ev) {
   _evFeed.unshift(ev);
-  if (_evFeed.length > 250) _evFeed.length = 250;
+  if (_evFeed.length > 400) _evFeed.length = 400;
+  _evSujo = true;
 }
 
+let _evUltimaColeta = 0;
 async function _tickEventosUtmify() {
   if (_evRodando) return;
-  // So vale gastar chamada se alguem esteve olhando nos ultimos 5 minutos
+  // Antes so coletava com alguem olhando — e as vendas de quando ninguem estava
+  // na tela nunca eram registradas. Agora nao para nunca: so fica mais espacada
+  // quando ninguem esta olhando, o que muda a precisao do horario, nao o registro.
   const olhando = (Date.now() - _evUltimoInteresse) < 5 * 60 * 1000;
-  if (!olhando) return;
+  const intervalo = olhando ? 45 * 1000 : 3 * 60 * 1000;
+  if (Date.now() - _evUltimaColeta < intervalo) return;
+  _evUltimaColeta = Date.now();
   _evRodando = true;
   try {
     const { cfg, lista } = await _utmifyDashboardsAtivos();
@@ -3138,7 +3179,8 @@ async function _tickEventosUtmify() {
     // silencioso: e rotina de fundo, o erro real aparece na tela pelo endpoint
   } finally { _evRodando = false; }
 }
-setInterval(_tickEventosUtmify, 45 * 1000);
+setInterval(_tickEventosUtmify, 20 * 1000);   // confere de perto; o ritmo real e decidido dentro
+setTimeout(_tickEventosUtmify, 40 * 1000);   // no boot ja monta a base de comparacao
 
 // Panorama de hoje, somando os dashboards (funil, pedidos, lucro por hora)
 // Panorama de um periodo (sem data = hoje). Serve o Resumo e o Tempo Real.
