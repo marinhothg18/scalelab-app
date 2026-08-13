@@ -2934,11 +2934,21 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
     let linhas = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
     if (de)  linhas = linhas.filter(l => l.data >= de);
     if (ate) linhas = linhas.filter(l => l.data <= ate);
-    const soma = c => linhas.reduce((s, l) => s + (Number(l[c]) || 0), 0);
+    // Duas camadas: linhas de CONTA dao o total exato (igual a tela da Utmify,
+    // que inclui gasto nao atribuido a campanha); linhas de CAMPANHA dao o detalhe.
+    // Sem linha de conta (dados antigos ou modo api), cai no detalhe.
+    const deConta   = linhas.filter(l => l.nivel === 'conta');
+    const deCampanha= linhas.filter(l => l.nivel !== 'conta');
+    const baseKpi   = deConta.length ? deConta : deCampanha;
+    const soma  = c => baseKpi.reduce((s, l) => s + (Number(l[c]) || 0), 0);
+    // vendas aprovadas: e o que a Utmify chama de "Vendas Apr.". O total inclui
+    // pendente/recusada, e usar ele inflava a contagem e derrubava o CPA.
+    const aprov = baseKpi.reduce((s, l) => s + (Number(
+      l.vendasAprovadas !== undefined ? l.vendasAprovadas : l.vendas) || 0), 0);
     const inv = soma('investimento'), fat = soma('faturamento');
-    const agrupar = campo => {
+    const agrupar = (campo, fonte) => {
       const m = {};
-      linhas.forEach(l => {
+      (fonte || deCampanha).forEach(l => {
         const k = l[campo] || '—';
         if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0 };
         m[k].investimento += Number(l.investimento)||0;
@@ -2956,18 +2966,18 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
       ok: true, de, ate, linhas: linhas.length,
       kpis: {
         investimento: inv, faturamento: fat,
-        lucro: soma('lucro'), vendas: soma('vendas'),
+        lucro: soma('lucro'), vendas: aprov, vendasTotais: soma('vendas'),
         cliques: soma('cliques'), impressoes: soma('impressoes'),
         roas: inv > 0 ? fat / inv : 0,
         cpc: soma('cliques') > 0 ? inv / soma('cliques') : 0,
         cpm: soma('impressoes') > 0 ? (inv / soma('impressoes')) * 1000 : 0,
-        cpa: soma('vendas') > 0 ? inv / soma('vendas') : 0
+        cpa: aprov > 0 ? inv / aprov : 0
       },
       atualizadoEm: (_utmifyMcpCfg(db) || {}).ultimaSync || null,
       porCampanha:  agrupar('campanha'),
       porAnuncio:   agrupar('anuncio'),
-      porDia:       agrupar('data').sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
-      porDashboard: agrupar('dashboard')
+      porDia:       agrupar('data', baseKpi).sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
+      porDashboard: agrupar('dashboard', baseKpi)
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3139,29 +3149,56 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
     // linhas acabariam carimbadas com a data final (perdendo a quebra por dia)
     for (const dia of dias) {
     try {
-      let campanhas;
+      let campanhas, contas = [];
       if (cfg.modo === 'api') {
         // a API interna espera UTC (o painel manda assim)
         const dIni = new Date(dia + 'T00:00:00' + off).toISOString();
         const dFim = new Date(dia + 'T23:59:59' + off).toISOString();
         campanhas = await _utmifyApiCampanhas(cfg.token, dashId, dIni, dFim);
       } else {
+        const faixa = { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off };
         const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
-          dashboardId: dashId, level: 'campaign',
-          dateRange: { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off }
+          dashboardId: dashId, level: 'campaign', dateRange: faixa
         });
         campanhas = (r && r.results) ? r.results : [];
+        // Nivel conta tambem: parte do gasto nao cai em campanha nenhuma, e e o
+        // total da conta que a tela da Utmify exibe. Sem isso os KPIs ficam menores.
+        try {
+          const rc = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+            dashboardId: dashId, level: 'account', dateRange: faixa
+          });
+          contas = (rc && rc.results) ? rc.results : [];
+        } catch (e) { contas = []; }
       }
+      (contas || []).forEach(c => {
+        const inv = cent(c.spend), fat = cent(c.grossRevenue);
+        if (!inv && !fat) return;
+        linhas.push({
+          data: dia, fonte: 'utmify', nivel: 'conta', dashboard: meta.nome || dashId,
+          campanhaId: '', campanha: String(c.name || ''),
+          adsetId: '', adset: '', adId: '', anuncio: '',
+          investimento: inv, faturamento: fat,
+          faturamentoLiquido: cent(c.revenue), lucro: cent(c.profit),
+          vendas: Number(c.totalOrdersCount) || 0,
+          vendasAprovadas: Number(c.approvedOrdersCount) || 0,
+          impressoes: Number(c.impressions) || 0,
+          cliques: Number(c.inlineLinkClicks) || 0,
+          ctr: Number(c.inlineLinkClickCtr) || 0,
+          cpc: cent(c.costPerInlineLinkClick), cpm: cent(c.cpm),
+          roas: Number(c.roas) || 0
+        });
+      });
       (campanhas || []).forEach(c => {
         const inv = cent(c.spend), fat = cent(c.grossRevenue);
         if (!inv && !fat) return;
         linhas.push({
-          data: dia, fonte: 'utmify', dashboard: meta.nome || dashId,
+          data: dia, fonte: 'utmify', nivel: 'campanha', dashboard: meta.nome || dashId,
           campanhaId: String(c.campaignId || c.id || ''), campanha: String(c.name || ''),
           adsetId: '', adset: '', adId: '', anuncio: '',
           investimento: inv, faturamento: fat,
           faturamentoLiquido: cent(c.revenue), lucro: cent(c.profit),
           vendas: Number(c.totalOrdersCount) || 0,
+          vendasAprovadas: Number(c.approvedOrdersCount) || 0,
           impressoes: Number(c.impressions) || 0,
           cliques: Number(c.inlineLinkClicks) || 0,
           ctr: Number(c.inlineLinkClickCtr) || 0,
@@ -3225,7 +3262,7 @@ async function _tickUtmifyAuto() {
   let cfg;
   try { cfg = _utmifyMcpCfg(); } catch (e) { return; }
   if (!cfg || !cfg.token || !cfg.autoSync) return;
-  const min = Number(cfg.autoMin) || 30;
+  const min = Number(cfg.autoMin) || 15;   // o gasto sobe o dia todo: 30min defasava demais
   const ultima = cfg.ultimaSyncAuto ? new Date(cfg.ultimaSyncAuto).getTime() : 0;
   if (Date.now() - ultima < min * 60 * 1000) return;  // ainda não deu a hora
   _utmifyRodando = true;

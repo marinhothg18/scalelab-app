@@ -26903,7 +26903,7 @@ function _pintarFonteAds(){
 
 // Busca o período direto na Utmify agora (o automático só cobre hoje e ontem —
 // pra ver meses anteriores é preciso puxar uma vez).
-async function puxarUtmifyPeriodo(){
+async function puxarUtmifyPeriodo(silencioso){
   const { from, to } = getAdsDates();
   const bt = document.getElementById('ads-puxar-utmify');
   const txt = bt ? bt.textContent : '';
@@ -26914,11 +26914,17 @@ async function puxarUtmifyPeriodo(){
       body: JSON.stringify({ de: from, ate: to })
     });
     const d = await r.json().catch(()=>({}));
+    // Só a Diretoria pode disparar a busca. Pros demais a tela segue lendo o que
+    // a rotina automática já trouxe — sem erro vermelho por algo fora do alcance deles.
+    if(r.status===403 || r.status===401){
+      if(!silencioso) showAdsError('Só a Diretoria pode buscar direto na Utmify. Os dados abaixo vêm da última sincronização automática.');
+      return;
+    }
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     const selo = document.getElementById('ads-selo-utmify');
     if(selo) selo.textContent = '✅ '+(d.importadas||0)+' campanha(s) importada(s) da Utmify.';
     if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
-    loadAdsMetrics();
+    if(!silencioso) loadAdsMetrics();   // no modo silencioso quem chamou ja vai ler
   }catch(e){
     showAdsError('Não consegui puxar da Utmify: '+e.message);
   }finally{
@@ -26926,9 +26932,15 @@ async function puxarUtmifyPeriodo(){
   }
 }
 
-async function loadAdsMetricsUtmify(){
+// Atualizar de verdade: pra periodos curtos busca na Utmify antes de ler, senao
+// a tela repete o que o automatico trouxe ha ate 15min (e o gasto ja subiu).
+async function loadAdsMetricsUtmify(forcar){
   const mySeq = ++adsLoadSeq;
   const { from, to } = getAdsDates();
+  if(forcar){
+    const dias = Math.round((new Date(to) - new Date(from))/86400000) + 1;
+    if(dias >= 1 && dias <= 3){ await puxarUtmifyPeriodo(true); }
+  }
   const loading = document.getElementById('ads-loading');
   const errEl   = document.getElementById('ads-error');
   if(loading){ loading.textContent='⏳ Carregando dados da Utmify...'; loading.style.display='block'; }
@@ -26953,7 +26965,10 @@ async function loadAdsMetricsUtmify(){
     }));
     adsTrueApproved = (d.kpis&&d.kpis.vendas)||0;
 
-    renderAdsKpis(adsCampanhasData, adsTrueApproved);
+    // KPIs direto do servidor: ele soma pelo nível de CONTA, que é o total que a
+    // Utmify mostra. Somar a tabela de campanhas deixa de fora o gasto que não
+    // caiu em campanha nenhuma, e os números não batiam com o painel deles.
+    _kpisUtmify(d.kpis||{});
     renderAdsTable('campanhas', adsCampanhasData, null, '_name');
 
     // Resumo: por dashboard da Utmify (o equivalente a "conta")
@@ -26973,6 +26988,18 @@ async function loadAdsMetricsUtmify(){
   }
 }
 
+function _kpisUtmify(k){
+  const set=(id,val,cor)=>{ const e=document.querySelector('#'+id+' .ads-kpi-val'); if(e){ e.textContent=val; if(cor) e.style.color=cor; } };
+  const lucro=Number(k.lucro)||0, roas=Number(k.roas)||0, vendas=Number(k.vendas)||0;
+  set('kpi-cost',    fmtAds(Number(k.investimento)||0));
+  set('kpi-revenue', fmtAds(Number(k.faturamento)||0));
+  set('kpi-profit',  fmtAds(lucro), lucro>=0?'var(--green)':'var(--red)');
+  set('kpi-roas',    roas.toFixed(2)+'x', roas>=1?'var(--green)':'var(--red)');
+  set('kpi-conv',    vendas.toLocaleString('pt-BR'));
+  set('kpi-cpa',     (Number(k.cpa)||0)>0?fmtAds(k.cpa):'—');
+  set('kpi-clicks',  (Number(k.cliques)||0).toLocaleString('pt-BR'));
+}
+
 function _msgTabela(id, cols, msg){
   const t = document.getElementById(id);
   if(t) t.innerHTML = '<tr><td colspan="'+cols+'" style="text-align:center;padding:20px;color:var(--text2);">'+msg+'</td></tr>';
@@ -26981,15 +27008,20 @@ function _msgTabela(id, cols, msg){
 // Deixa claro na tela de onde vieram os números e quando foi a última sincronização
 function _selosUtmify(d){
   _msgTabela('ads-anuncio-body', 6, 'A Utmify entrega no nível de campanha — sem quebra por anúncio.');
-  const quando = d && d.atualizadoEm ? new Date(d.atualizadoEm).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : null;
   const el = document.getElementById('ads-selo-utmify');
-  if(el) el.innerHTML = quando
-    ? 'Fonte: Utmify · '+(d.linhas||0)+' registro(s) · atualizado em '+quando
-    : 'Fonte: Utmify';
+  if(!el) return;
+  if(!(d && d.atualizadoEm)){ el.textContent='Fonte: Utmify'; return; }
+  const dt = new Date(d.atualizadoEm);
+  const min = Math.max(0, Math.round((Date.now()-dt.getTime())/60000));
+  // O gasto sobe o dia inteiro: dado velho aparece menor que o painel da Utmify.
+  const idade = min<2 ? 'agora mesmo' : ('há '+(min<60 ? min+' min' : Math.round(min/60)+'h'));
+  const alerta = min>=20 ? ';color:var(--orange,#f97316)' : '';
+  el.innerHTML = '<span style="'+(alerta?alerta.slice(1):'')+'">Fonte: Utmify · atualizado '+idade+
+    (min>=20 ? ' — clique em Atualizar pra buscar agora' : '')+'</span>';
 }
 
 async function loadAdsMetrics(){
-  if(_adsFonte()==='utmify') return loadAdsMetricsUtmify();
+  if(_adsFonte()==='utmify') return loadAdsMetricsUtmify(true);
   const key = getRtApiKey();
   if(!key){ showAdsError('Configure a API Key do RedTrack acima.'); return; }
   const ld = document.getElementById('ads-loading');
