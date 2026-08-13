@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Criativos & VSL · Protótipo — Central TMX</title>
+<style>
+  :root{
+    color-scheme: light;
+    --sup:#FFFFFF; --plano:#F6F7F9; --linha:#E4E7EC;
+    --tinta:#0B0B0B; --tinta2:#52514E; --tinta3:#898781;
+    --grade:#E9EBEF; --eixo:#C3C2BD;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+    --bom:#0ca30c; --atencao:#fab219; --serio:#ec835a; --critico:#d03b3b;
+    --marca:#3E1493; --marca2:#2509E4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])){
+      color-scheme: dark;
+      --sup:#131826; --plano:#0B0E17; --linha:#252C3F;
+      --tinta:#FFFFFF; --tinta2:#C3C2B7; --tinta3:#898781;
+      --grade:#1E2536; --eixo:#39415A;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --sup:#131826; --plano:#0B0E17; --linha:#252C3F;
+    --tinta:#FFFFFF; --tinta2:#C3C2B7; --tinta3:#898781;
+    --grade:#1E2536; --eixo:#39415A;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--plano);color:var(--tinta);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+
+  .topo{display:flex;align-items:center;gap:12px;padding:13px 22px;background:var(--sup);
+    border-bottom:1px solid var(--linha);position:sticky;top:0;z-index:30;flex-wrap:wrap}
+  .marca{font-weight:800;font-size:15px;letter-spacing:-.3px}
+  .marca small{color:var(--tinta3);font-weight:600}
+  select,button,input{font-family:inherit}
+  select{background:var(--plano);border:1px solid var(--linha);border-radius:8px;
+    padding:7px 11px;color:var(--tinta);font-size:13px;outline:none;cursor:pointer}
+  .bt{background:var(--marca);color:#fff;border:none;border-radius:8px;padding:7px 14px;
+    font-size:12.5px;font-weight:700;cursor:pointer}
+  .bt.g{background:transparent;border:1px solid var(--linha);color:var(--tinta2)}
+  .bt.g.on{border-color:var(--marca);color:var(--marca)}
+  .tema{margin-left:auto;display:flex;gap:7px;align-items:center}
+
+  main{padding:20px 22px 60px;max-width:1240px;margin:0 auto}
+  .tit{font-size:12px;font-weight:800;color:var(--tinta3);text-transform:uppercase;
+    letter-spacing:.9px;margin:26px 0 11px}
+  .tit:first-child{margin-top:0}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px}
+  .tile{background:var(--sup);border:1px solid var(--linha);border-radius:12px;padding:14px 16px}
+  .tile .r{font-size:10.5px;font-weight:800;color:var(--tinta3);text-transform:uppercase;
+    letter-spacing:.6px;margin-bottom:6px}
+  .tile .v{font-size:25px;font-weight:800;letter-spacing:-.9px;line-height:1.05}
+  .tile .s{font-size:11.5px;color:var(--tinta2);margin-top:4px}
+  .tile.destaque{border-color:var(--marca);box-shadow:0 0 0 2px color-mix(in srgb,var(--marca) 14%,transparent)}
+  .tile.destaque .v{font-size:30px;color:var(--marca)}
+
+  .cartao{background:var(--sup);border:1px solid var(--linha);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+  .cab{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:4px;flex-wrap:wrap}
+  .cab h2{font-size:15px;font-weight:800;letter-spacing:-.2px}
+  .cab p{font-size:12.5px;color:var(--tinta2);margin-top:3px;max-width:640px}
+  .acoes{display:flex;gap:6px}
+
+  .legenda{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0 4px}
+  .lg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tinta2);cursor:pointer;
+    padding:3px 7px;border-radius:6px}
+  .lg:hover{background:var(--plano)}
+  .lg.off{opacity:.35}
+  .lg i{width:11px;height:11px;border-radius:3px;display:block}
+
+  svg{display:block;width:100%;overflow:visible}
+  .grade line{stroke:var(--grade);stroke-width:1}
+  .eixo line{stroke:var(--eixo);stroke-width:1}
+  .rot{font-size:10.5px;fill:var(--tinta3);font-variant-numeric:tabular-nums}
+  .serie{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+  .dl{font-size:11px;font-weight:700}
+  .pitch line{stroke:var(--critico);stroke-width:1.5}
+  .pitch text{font-size:10.5px;fill:var(--critico);font-weight:800}
+
+  .dica{position:fixed;pointer-events:none;background:var(--sup);border:1px solid var(--linha);
+    border-radius:9px;padding:9px 12px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.16);
+    opacity:0;transition:opacity .1s;z-index:50;min-width:150px}
+  .dica.on{opacity:1}
+  .dica .h{font-weight:800;margin-bottom:5px;font-variant-numeric:tabular-nums}
+  .dica .l{display:flex;align-items:center;gap:7px;padding:2px 0;font-size:11.5px}
+  .dica .l i{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+  .dica .l b{margin-left:auto;font-variant-numeric:tabular-nums}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;padding:9px 10px;font-size:10px;font-weight:800;color:var(--tinta3);
+    text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--linha);
+    cursor:pointer;white-space:nowrap}
+  th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td{padding:10px;border-bottom:1px solid var(--linha)}
+  tbody tr:hover{background:var(--plano)}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;
+    padding:3px 8px;border-radius:20px}
+  .oculto{display:none}
+
+  .diag{display:grid;grid-template-columns:repeat(auto-fit,minmax(288px,1fr));gap:12px}
+  .dcard{background:var(--sup);border:1px solid var(--linha);border-left-width:3px;
+    border-radius:12px;padding:14px 16px}
+  .dcard .t{font-size:13px;font-weight:800;margin-bottom:5px;display:flex;align-items:center;gap:7px}
+  .dcard .d{font-size:12.5px;color:var(--tinta2);line-height:1.6}
+  .dcard .a{font-size:12px;margin-top:9px;font-weight:700}
+
+  .funil .et{display:flex;align-items:center;gap:12px;margin-bottom:9px}
+  .funil .nm{width:172px;flex:0 0 auto;font-size:12.5px}
+  .funil .barra{flex:1;height:26px;background:var(--plano);border-radius:5px;overflow:hidden}
+  .funil .barra i{display:block;height:100%;border-radius:5px}
+  .funil .vl{width:132px;flex:0 0 auto;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums}
+  .funil .vl b{font-weight:800}
+  .funil .vl span{color:var(--tinta3)}
+
+  .nota{font-size:11.5px;color:var(--tinta3);margin-top:10px;line-height:1.6}
+  @media(max-width:720px){
+    main{padding:16px 14px 50px}
+    .funil .nm{width:104px;font-size:11.5px}
+    .funil .vl{width:96px;font-size:11.5px}
+  }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div class="marca">Criativos &amp; VSL <small>· protótipo</small></div>
+  <select id="f-projeto"><option>CONCURSO</option><option>RENDA EXTRA</option><option>Principal</option></select>
+  <select id="f-vsl"><option>top VSL — KALEB — Lead 01</option><option>PAG 01 — VSL KALEB</option><option>NVPG VSL — KALEB</option></select>
+  <select id="f-periodo" onchange="montar()">
+    <option value="hoje">Hoje</option><option value="7d" selected>7 dias</option><option value="30d">30 dias</option>
+  </select>
+  <div class="tema">
+    <button class="bt g" onclick="trocarTema()" id="bt-tema">🌙 Escuro</button>
+  </div>
+</div>
+
+<main>
+  <!-- ══ NÚMEROS DE TOPO ══ -->
+  <div class="tit">Do anúncio até a venda</div>
+  <div class="tiles" id="tiles"></div>
+
+  <!-- ══ CURVA DE RETENÇÃO ══ -->
+  <div class="tit">Onde as pessoas abandonam</div>
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Retenção da VSL</h2>
+        <p>Quantos ainda estão assistindo a cada minuto. A linha vermelha é o pitch, aos 29min —
+           quem não chega lá nunca vê a oferta.</p>
+      </div>
+    </div>
+    <div id="g-retencao"></div>
+  </div>
+
+  <!-- ══ POR CRIATIVO ══ -->
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Retenção por criativo</h2>
+        <p>A mesma VSL, separada pelo anúncio que trouxe a pessoa. Curvas diferentes significam
+           públicos diferentes — ou promessas diferentes.</p>
+      </div>
+      <div class="acoes">
+        <button class="bt g on" id="bt-graf" onclick="verComo('grafico')">Gráfico</button>
+        <button class="bt g" id="bt-tab" onclick="verComo('tabela')">Tabela</button>
+      </div>
+    </div>
+    <div class="legenda" id="legenda"></div>
+    <div id="g-criativos"></div>
+    <div id="t-criativos" class="oculto" style="overflow-x:auto"></div>
+  </div>
+
+  <!-- ══ CONVERSÃO POR SEGUNDO ══ -->
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Em que minuto a venda acontece</h2>
+        <p>Mesma linha do tempo do gráfico acima, para você comparar de cima a baixo.
+           Venda antes do pitch significa que dava para ofertar mais cedo.</p>
+      </div>
+    </div>
+    <div id="g-conversao"></div>
+  </div>
+
+  <!-- ══ TABELA MESTRA ══ -->
+  <div class="tit">Um criativo por linha</div>
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Do clique ao pitch</h2>
+        <p>Clique no cabeçalho para ordenar. <b>Custo por pitch</b> é o número que decide:
+           quanto custa colocar uma pessoa na frente da oferta.</p>
+      </div>
+    </div>
+    <div style="overflow-x:auto"><table id="mestra"></table></div>
+    <div class="nota">CTR e custo vêm da Meta (via Utmify). Play rate, retenção e pitch vêm da VTurb.
+      A ligação entre os dois é a <b>utm_content</b>, que carrega o nome do anúncio.</div>
+  </div>
+
+  <!-- ══ DIAGNÓSTICOS ══ -->
+  <div class="tit">O que os dados estão dizendo</div>
+  <div class="diag" id="diag"></div>
+
+  <!-- ══ FUNIL ══ -->
+  <div class="tit">O caminho inteiro</div>
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Da impressão à venda aprovada</h2>
+        <p>Cada etapa vem de uma fonte diferente. Onde a queda é maior, é onde está o dinheiro.</p>
+      </div>
+    </div>
+    <div class="funil" id="funil"></div>
+  </div>
+</main>
+
+<div class="dica" id="dica"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// DADOS SIMULADOS — no sistema virão da VTurb + Utmify.
+// Números na ordem de grandeza dos reais: VSL de 36min52, pitch aos 29min.
+// ══════════════════════════════════════════════════════════
+var DUR = 2212, PITCH = 1740;                 // segundos
+var CORES = ['var(--s1)','var(--s2)','var(--s3)','var(--s4)','var(--s5)'];
+
+// Cor segue o CRIATIVO, nunca a posição na lista — filtrar não repinta ninguém.
+var CRIATIVOS = [
+  { nome:'ADTOP',   slot:0, inv:814.17,  imp:62520, cliques:1431, ctr:2.29, hook:96.7, playRate:71.2, k:.00092, vendas:2, receita:2198.20 },
+  { nome:'AD18HK3', slot:1, inv:1182.27, imp:95400, cliques:1901, ctr:1.99, hook:95.3, playRate:64.8, k:.00118, vendas:2, receita:2402.40 },
+  { nome:'AD16HK1', slot:2, inv:358.78,  imp:41200, cliques:1088, ctr:2.64, hook:94.1, playRate:38.4, k:.00206, vendas:0, receita:0 },
+  { nome:'AD29.2',  slot:3, inv:436.85,  imp:22800, cliques:389,  ctr:1.71, hook:92.8, playRate:69.5, k:.00101, vendas:2, receita:294.00 },
+  { nome:'AD38.1',  slot:4, inv:166.56,  imp:14900, cliques:268,  ctr:1.80, hook:95.9, playRate:73.1, k:.00081, vendas:1, receita:997.00 }
+];
+var ativos = {}; CRIATIVOS.forEach(function(c){ ativos[c.nome] = true; });
+
+// Curva de retenção: queda forte no começo, depois decaimento suave.
+function curva(k, ate){
+  var pts = [], passo = 20;
+  for(var t=0; t<=(ate||DUR); t+=passo){
+    var inicio = 1 - 0.34*(1 - Math.exp(-t/9));     // desistência dos primeiros segundos
+    var y = inicio * Math.exp(-k*t);
+    pts.push({ t:t, y: Math.max(0, y*100) });
+  }
+  return pts;
+}
+function retencaoEm(c, t){
+  var inicio = 1 - 0.34*(1 - Math.exp(-t/9));
+  return Math.max(0, inicio * Math.exp(-c.k*t) * 100);
+}
+CRIATIVOS.forEach(function(c){
+  c.pessoas   = Math.round(c.cliques * (c.playRate/100));
+  c.noPitch   = Math.round(c.pessoas * retencaoEm(c, PITCH)/100);
+  c.custoPitch= c.noPitch ? c.inv / c.noPitch : 0;
+  c.cpc       = c.cliques ? c.inv / c.cliques : 0;
+  c.roas      = c.inv ? c.receita / c.inv : 0;
+  c.retPitch  = retencaoEm(c, PITCH);
+});
+
+var TOT = CRIATIVOS.reduce(function(a,c){
+  a.inv+=c.inv; a.imp+=c.imp; a.cliques+=c.cliques; a.pessoas+=c.pessoas;
+  a.noPitch+=c.noPitch; a.vendas+=c.vendas; a.receita+=c.receita; return a;
+},{inv:0,imp:0,cliques:0,pessoas:0,noPitch:0,vendas:0,receita:0});
+
+var brl = function(v){ return 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+var num = function(v){ return Number(Math.round(v)).toLocaleString('pt-BR'); };
+var mmss = function(s){ var m=Math.floor(s/60); return m+'min'+String(Math.round(s%60)).padStart(2,'0'); };
+
+// ══ TILES ══
+function tiles(){
+  var playRate = TOT.cliques ? (TOT.pessoas/TOT.cliques*100) : 0;
+  var pitchRate= TOT.pessoas ? (TOT.noPitch/TOT.pessoas*100) : 0;
+  var custoPitch = TOT.noPitch ? TOT.inv/TOT.noPitch : 0;
+  var t = [
+    ['Investido', brl(TOT.inv), num(TOT.cliques)+' cliques', ''],
+    ['Deram play', playRate.toFixed(1)+'%', num(TOT.pessoas)+' de '+num(TOT.cliques), ''],
+    ['Chegaram no pitch', pitchRate.toFixed(1)+'%', num(TOT.noPitch)+' pessoas', ''],
+    ['Custo por pitch', brl(custoPitch), 'pra 1 pessoa ver a oferta', 'destaque'],
+    ['Vendas', num(TOT.vendas), brl(TOT.receita), ''],
+    ['ROAS', (TOT.inv?TOT.receita/TOT.inv:0).toFixed(2)+'x', brl(TOT.receita-TOT.inv)+' de lucro', '']
+  ];
+  document.getElementById('tiles').innerHTML = t.map(function(x){
+    return '<div class="tile '+x[3]+'"><div class="r">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="s">'+x[2]+'</div></div>';
+  }).join('');
+}
+
+// ══ MOTOR DE GRÁFICO ══
+var L=52, R=118, T=16, B=34, H=250;
+function eixos(g, W, maxY, ticksX){
+  var s='<g class="grade">';
+  for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
+  s+='</g><g class="eixo"><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/></g>';
+  for(var i=0;i<=4;i++){
+    var y=T+(H-T-B)*(i/4), v=maxY*(1-i/4);
+    s+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+Math.round(v)+'%</text>';
+  }
+  ticksX.forEach(function(tk){
+    var x=L+(W-L-R)*(tk/DUR);
+    s+='<text class="rot" x="'+x+'" y="'+(H-B+16)+'" text-anchor="middle">'+Math.round(tk/60)+'min</text>';
+  });
+  return s;
+}
+function linhaPitch(W, rotulo){
+  var x=L+(W-L-R)*(PITCH/DUR);
+  return '<g class="pitch"><line x1="'+x+'" y1="'+T+'" x2="'+x+'" y2="'+(H-B)+'"/>'+
+    (rotulo?'<text x="'+(x-7)+'" y="'+(T+11)+'" text-anchor="end">PITCH '+mmss(PITCH)+'</text>':'')+'</g>';
+}
+function caminho(pts, W, maxY){
+  return pts.map(function(p,i){
+    var x=L+(W-L-R)*(p.t/DUR), y=T+(H-T-B)*(1-p.y/maxY);
+    return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);
+  }).join(' ');
+}
+
+// ══ RETENÇÃO GERAL ══
+function gRetencao(){
+  var el=document.getElementById('g-retencao'), W=el.clientWidth||820;
+  // média ponderada pelas pessoas de cada criativo
+  var pts=[], passo=20;
+  for(var t=0;t<=DUR;t+=passo){
+    var soma=0, peso=0;
+    CRIATIVOS.forEach(function(c){ soma += retencaoEm(c,t)*c.pessoas; peso += c.pessoas; });
+    pts.push({ t:t, y: peso?soma/peso:0 });
+  }
+  var noPitch = pts.find(function(p){ return p.t>=PITCH; });
+  var x=L+(W-L-R)*(PITCH/DUR), y=T+(H-T-B)*(1-noPitch.y/100);
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'">'+
+    eixos(null,W,100,[0,300,600,900,1200,1500,1740,2100])+
+    linhaPitch(W,true)+
+    '<path class="serie" style="stroke:var(--s1)" d="'+caminho(pts,W,100)+'"/>'+
+    '<circle cx="'+x+'" cy="'+y+'" r="4.5" fill="var(--s1)" stroke="var(--sup)" stroke-width="2"/>'+
+    '<text class="dl" x="'+(x+9)+'" y="'+(y+4)+'" fill="var(--s1)">'+noPitch.y.toFixed(1)+'% no pitch</text>'+
+    '</svg>';
+  hover(el, W, [{nome:'Retenção', cor:'var(--s1)', pts:pts}], '%');
+}
+
+// ══ POR CRIATIVO ══
+function gCriativos(){
+  var el=document.getElementById('g-criativos'), W=el.clientWidth||820;
+  var vis=CRIATIVOS.filter(function(c){ return ativos[c.nome]; });
+  var series=vis.map(function(c){ return { nome:c.nome, cor:CORES[c.slot], pts:curva(c.k) }; });
+  var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'">'+eixos(null,W,100,[0,300,600,900,1200,1500,1740,2100])+linhaPitch(W,false);
+  series.forEach(function(se){ s+='<path class="serie" style="stroke:'+se.cor+'" d="'+caminho(se.pts,W,100)+'"/>'; });
+  // Rótulo direto no fim de cada linha — é o que compensa o contraste baixo no tema
+  // claro. As curvas terminam quase juntas, então os textos se empilhariam:
+  // afasta cada um do vizinho até caber, mantendo a ordem.
+  var marcas = series.map(function(se){
+    var u=se.pts[se.pts.length-1];
+    return { nome:se.nome, cor:se.cor, valor:u.y,
+             x:L+(W-L-R)*(u.t/DUR), yLinha:T+(H-T-B)*(1-u.y/100) };
+  }).sort(function(a,b){ return a.yLinha-b.yLinha; });
+  var minEspaco=13, anterior=-99;
+  marcas.forEach(function(m){
+    m.yTexto = Math.max(m.yLinha, anterior+minEspaco);
+    anterior = m.yTexto;
+  });
+  // se estourou embaixo, empurra o conjunto pra cima
+  // -6 e nao -2: o texto e desenhado 3.5px abaixo da coordenada (linha de base)
+  var excesso = marcas.length ? (marcas[marcas.length-1].yTexto - (H-B-6)) : 0;
+  if(excesso>0) marcas.forEach(function(m){ m.yTexto-=excesso; });
+  marcas.forEach(function(m){
+    // fio ligando a linha ao texto quando ele foi deslocado
+    if(Math.abs(m.yTexto-m.yLinha)>1.5){
+      s+='<path d="M '+(m.x+2)+' '+m.yLinha.toFixed(1)+' L '+(m.x+6)+' '+m.yTexto.toFixed(1)+
+         '" stroke="'+m.cor+'" stroke-width="1" fill="none" opacity=".5"/>';
+    }
+    s+='<text class="dl" x="'+(m.x+9)+'" y="'+(m.yTexto+3.5).toFixed(1)+'" fill="'+m.cor+'">'+
+       m.nome+' <tspan opacity=".75">'+m.valor.toFixed(1)+'%</tspan></text>';
+  });
+  s+='</svg>';
+  el.innerHTML=s;
+  hover(el, W, series, '%');
+  document.getElementById('legenda').innerHTML = CRIATIVOS.map(function(c){
+    return '<span class="lg '+(ativos[c.nome]?'':'off')+'" onclick="alternar(\''+c.nome+'\')">'+
+      '<i style="background:'+CORES[c.slot]+'"></i>'+c.nome+'</span>';
+  }).join('');
+}
+function alternar(nome){
+  var vis=CRIATIVOS.filter(function(c){ return ativos[c.nome]; });
+  if(ativos[nome] && vis.length<=1) return;      // nunca esvazia o gráfico
+  ativos[nome]=!ativos[nome]; gCriativos();
+}
+function verComo(qual){
+  var g=qual==='grafico';
+  document.getElementById('g-criativos').classList.toggle('oculto',!g);
+  document.getElementById('legenda').classList.toggle('oculto',!g);
+  document.getElementById('t-criativos').classList.toggle('oculto',g);
+  document.getElementById('bt-graf').classList.toggle('on',g);
+  document.getElementById('bt-tab').classList.toggle('on',!g);
+}
+
+// ══ CONVERSÃO POR MINUTO ══
+function gConversao(){
+  var el=document.getElementById('g-conversao'), W=el.clientWidth||820, HH=170, BB=34, TT=14;
+  // vendas concentram logo após o pitch, com alguma antes
+  var barras=[], maxV=0;
+  for(var m=0;m<Math.ceil(DUR/60);m++){
+    var t=m*60, v=0;
+    if(t>=PITCH-120) v = 14*Math.exp(-Math.pow((t-(PITCH+180))/420,2));
+    else if(t>600)   v = 2.1*Math.exp(-Math.pow((t-1200)/500,2));
+    barras.push({m:m,v:v}); if(v>maxV) maxV=v;
+  }
+  var lg=(W-L-R)/barras.length;
+  var s='<svg viewBox="0 0 '+W+' '+HH+'" height="'+HH+'">';
+  s+='<g class="grade">';
+  for(var i=0;i<=2;i++){ var y=TT+(HH-TT-BB)*(i/2); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
+  s+='</g><g class="eixo"><line x1="'+L+'" y1="'+(HH-BB)+'" x2="'+(W-R)+'" y2="'+(HH-BB)+'"/></g>';
+  for(var i=0;i<=2;i++){
+    var y=TT+(HH-TT-BB)*(i/2), v=maxV*(1-i/2);
+    s+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+v.toFixed(0)+'</text>';
+  }
+  barras.forEach(function(b){
+    if(b.v<=0.02) return;
+    var h=(HH-TT-BB)*(b.v/maxV), x=L+lg*b.m+1, y=HH-BB-h;
+    s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+Math.max(1,lg-2).toFixed(1)+'" height="'+h.toFixed(1)+
+       '" rx="2" fill="var(--s3)" opacity=".9"/>';
+  });
+  [0,5,10,15,20,25,29,35].forEach(function(m){
+    var x=L+lg*m+lg/2;
+    s+='<text class="rot" x="'+x+'" y="'+(HH-BB+16)+'" text-anchor="middle">'+m+'min</text>';
+  });
+  var xp=L+lg*(PITCH/60)+lg/2;
+  s+='<g class="pitch"><line x1="'+xp+'" y1="'+TT+'" x2="'+xp+'" y2="'+(HH-BB)+'"/>'+
+     '<text x="'+(xp-7)+'" y="'+(TT+11)+'" text-anchor="end">PITCH</text></g></svg>';
+  el.innerHTML=s;
+}
+
+// ══ TOOLTIP ══
+function hover(el, W, series, sufixo){
+  var svg=el.querySelector('svg'), dica=document.getElementById('dica');
+  var linha=document.createElementNS('http://www.w3.org/2000/svg','line');
+  linha.setAttribute('stroke','var(--eixo)'); linha.setAttribute('stroke-width','1');
+  linha.setAttribute('y1',T); linha.setAttribute('y2',H-B); linha.style.opacity=0;
+  svg.appendChild(linha);
+  svg.addEventListener('mousemove', function(ev){
+    var cx=svg.getBoundingClientRect(), rel=(ev.clientX-cx.left)/cx.width*W;
+    if(rel<L||rel>W-R){ dica.classList.remove('on'); linha.style.opacity=0; return; }
+    var t=Math.round((rel-L)/(W-L-R)*DUR);
+    var px=L+(W-L-R)*(t/DUR);
+    linha.setAttribute('x1',px); linha.setAttribute('x2',px); linha.style.opacity=.85;
+    var itens=series.map(function(se){
+      var p=se.pts.reduce(function(a,b){ return Math.abs(b.t-t)<Math.abs(a.t-t)?b:a; });
+      return '<div class="l"><i style="background:'+se.cor+'"></i>'+se.nome+'<b>'+p.y.toFixed(1)+sufixo+'</b></div>';
+    }).join('');
+    dica.innerHTML='<div class="h">'+mmss(t)+(t>=PITCH?' · após o pitch':'')+'</div>'+itens;
+    dica.classList.add('on');
+    dica.style.left=Math.min(window.innerWidth-190, ev.clientX+16)+'px';
+    dica.style.top=(ev.clientY-14)+'px';
+  });
+  svg.addEventListener('mouseleave', function(){ dica.classList.remove('on'); linha.style.opacity=0; });
+}
+
+// ══ TABELA MESTRA ══
+var ordem={col:'custoPitch', asc:true};
+function mestra(){
+  var cols=[
+    ['nome','Criativo',0],['inv','Investido',1],['ctr','CTR',1],['cpc','CPC',1],
+    ['playRate','Play rate',1],['retPitch','Chega no pitch',1],['custoPitch','Custo por pitch',1],
+    ['vendas','Vendas',1],['roas','ROAS',1]
+  ];
+  var linhas=CRIATIVOS.slice().sort(function(a,b){
+    var x=a[ordem.col], y=b[ordem.col];
+    if(typeof x==='string') return ordem.asc? x.localeCompare(y) : y.localeCompare(x);
+    return ordem.asc ? x-y : y-x;
+  });
+  var fmt={ inv:brl, cpc:brl, custoPitch:brl,
+    ctr:function(v){return v.toFixed(2)+'%';}, playRate:function(v){return v.toFixed(1)+'%';},
+    retPitch:function(v){return v.toFixed(1)+'%';}, roas:function(v){return v.toFixed(2)+'x';},
+    vendas:function(v){return String(v);} };
+  var h='<thead><tr>'+cols.map(function(c){
+    var seta = ordem.col===c[0] ? (ordem.asc?' ↑':' ↓') : '';
+    return '<th class="'+(c[2]?'num':'')+'" onclick="ordenar(\''+c[0]+'\')">'+c[1]+seta+'</th>';
+  }).join('')+'</tr></thead><tbody>';
+  linhas.forEach(function(c){
+    h+='<tr>';
+    cols.forEach(function(col){
+      var k=col[0], v=c[k];
+      if(k==='nome'){
+        h+='<td><span style="display:inline-flex;align-items:center;gap:7px">'+
+           '<i style="width:9px;height:9px;border-radius:2px;background:'+CORES[c.slot]+'"></i>'+v+'</span></td>';
+      } else {
+        var cor='';
+        if(k==='roas') cor = v>=1.5?'color:var(--bom)':(v>=1?'color:var(--serio)':'color:var(--critico)');
+        if(k==='custoPitch' && c.noPitch===0) cor='color:var(--critico)';
+        h+='<td class="num" style="'+cor+'">'+(fmt[k]?fmt[k](v):v)+'</td>';
+      }
+    });
+    h+='</tr>';
+  });
+  document.getElementById('mestra').innerHTML=h+'</tbody>';
+  // a mesma tabela serve de "table view" do gráfico de curvas
+  document.getElementById('t-criativos').innerHTML='<table>'+
+    '<thead><tr><th>Criativo</th><th class="num">1min</th><th class="num">5min</th><th class="num">15min</th>'+
+    '<th class="num">25min</th><th class="num">Pitch (29min)</th><th class="num">Fim</th></tr></thead><tbody>'+
+    CRIATIVOS.map(function(c){
+      return '<tr><td><span style="display:inline-flex;align-items:center;gap:7px">'+
+        '<i style="width:9px;height:9px;border-radius:2px;background:'+CORES[c.slot]+'"></i>'+c.nome+'</span></td>'+
+        [60,300,900,1500,PITCH,DUR].map(function(t){
+          return '<td class="num">'+retencaoEm(c,t).toFixed(1)+'%</td>';
+        }).join('')+'</tr>';
+    }).join('')+'</tbody></table>';
+}
+function ordenar(col){
+  if(ordem.col===col) ordem.asc=!ordem.asc; else { ordem.col=col; ordem.asc=(col==='nome'); }
+  mestra();
+}
+
+// ══ DIAGNÓSTICOS ══
+function diagnosticos(){
+  var d=[];
+  var medRet = CRIATIVOS.reduce(function(a,c){ return a+c.retPitch; },0)/CRIATIVOS.length;
+  var medCtr = CRIATIVOS.reduce(function(a,c){ return a+c.ctr; },0)/CRIATIVOS.length;
+
+  CRIATIVOS.forEach(function(c){
+    if(c.ctr > medCtr && c.retPitch < medRet*0.75){
+      d.push(['critico','🎣','Tráfego curioso · '+c.nome,
+        'CTR de '+c.ctr.toFixed(2)+'% (acima da média) mas só '+c.retPitch.toFixed(1)+'% chegam no pitch. '+
+        'O criativo faz clicar e não faz assistir — está comprando curiosidade.',
+        'Já gastou '+brl(c.inv)+' e trouxe '+(c.vendas?c.vendas+' venda(s)':'nenhuma venda')+'.']);
+    }
+    if(c.hook > 90 && c.playRate < 50){
+      d.push(['atencao','▶️','A página está travando · '+c.nome,
+        'O anúncio segura '+c.hook.toFixed(0)+'% nos 3 primeiros segundos, mas só '+c.playRate.toFixed(0)+
+        '% dão play na VSL. O problema não é o criativo, é o que acontece depois do clique.',
+        'Olhar headline, thumbnail e autoplay da página.']);
+    }
+  });
+  var melhor = CRIATIVOS.filter(function(c){return c.noPitch>0;})
+    .sort(function(a,b){ return a.custoPitch-b.custoPitch; })[0];
+  if(melhor) d.push(['bom','📈','Mais barato pra chegar na oferta · '+melhor.nome,
+    'Custa '+brl(melhor.custoPitch)+' pra colocar uma pessoa na frente do pitch — o menor da conta. '+
+    'ROAS de '+melhor.roas.toFixed(2)+'x.', 'Candidato natural a escalar.']);
+
+  var antesPitch = 18;
+  d.push(['atencao','⏱','O pitch pode estar tarde',
+    'Aos 29min só '+ (CRIATIVOS.reduce(function(a,c){return a+c.retPitch;},0)/CRIATIVOS.length).toFixed(1) +
+    '% ainda estão assistindo, e '+antesPitch+'% das vendas acontecem antes dele. '+
+    'Quem já estava convencido esperou meia hora pra poder comprar.',
+    'Testar uma versão com oferta aos 22min.']);
+
+  var cores={bom:'var(--bom)',atencao:'var(--atencao)',critico:'var(--critico)'};
+  document.getElementById('diag').innerHTML = d.map(function(x){
+    return '<div class="dcard" style="border-left-color:'+cores[x[0]]+'">'+
+      '<div class="t"><span>'+x[1]+'</span>'+x[2]+'</div>'+
+      '<div class="d">'+x[3]+'</div>'+
+      '<div class="a" style="color:'+cores[x[0]]+'">'+x[4]+'</div></div>';
+  }).join('');
+}
+
+// ══ FUNIL ══
+function funil(){
+  var etapas=[
+    ['Impressões', TOT.imp, 'Meta'],
+    ['Cliques no anúncio', TOT.cliques, 'Meta'],
+    ['Deram play na VSL', TOT.pessoas, 'VTurb'],
+    ['Chegaram no pitch', TOT.noPitch, 'VTurb'],
+    ['Clicaram no botão', Math.round(TOT.noPitch*0.42), 'VTurb'],
+    ['Iniciaram checkout', Math.round(TOT.noPitch*0.29), 'Utmify'],
+    ['Venda aprovada', TOT.vendas, 'Utmify']
+  ];
+  var topo=etapas[0][1];
+  // rampa ordinal de um só tom — etapas têm ordem natural
+  var tons=['#86b6ef','#6da7ec','#5598e7','#3987e5','#2a78d6','#256abf','#1c5cab'];
+  document.getElementById('funil').innerHTML = etapas.map(function(e,i){
+    var pc=e[1]/topo*100;
+    var queda = i ? (100 - e[1]/etapas[i-1][1]*100) : 0;
+    return '<div class="et"><div class="nm">'+e[0]+
+      '<div style="font-size:10px;color:var(--tinta3)">'+e[2]+'</div></div>'+
+      '<div class="barra"><i style="width:'+Math.max(pc,0.4)+'%;background:'+tons[i]+'"></i></div>'+
+      '<div class="vl"><b>'+num(e[1])+'</b> <span>'+pc.toFixed(2)+'%</span>'+
+      (i?('<div style="font-size:10.5px;color:var(--critico)">−'+queda.toFixed(0)+'%</div>'):'')+
+      '</div></div>';
+  }).join('');
+}
+
+// ══ TEMA ══
+function trocarTema(){
+  var atual=document.documentElement.getAttribute('data-theme');
+  var novo = atual==='dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', novo);
+  document.getElementById('bt-tema').textContent = novo==='dark' ? '☀️ Claro' : '🌙 Escuro';
+  montar();
+}
+
+function montar(){ tiles(); gRetencao(); gCriativos(); gConversao(); mestra(); diagnosticos(); funil(); }
+montar();
+addEventListener('resize', function(){ gRetencao(); gCriativos(); gConversao(); });
+</script>
+</body>
+</html>
