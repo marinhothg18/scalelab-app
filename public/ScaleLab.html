@@ -3130,6 +3130,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <input type="date" id="ads-date-to" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;" />
             <button onclick="setAdsFilter('custom',null)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;">Aplicar</button>
           </div>
+          <div id="ads-projeto-wrap" style="display:none;align-items:center;gap:6px;">
+            <span style="font-size:11px;color:var(--text2);font-weight:600;">PROJETO:</span>
+            <select id="ads-projeto" onchange="setAdsProjeto(this.value)" style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:6px 10px;color:var(--text);font-size:12px;font-weight:600;outline:none;cursor:pointer;">
+              <option value="">Todos os projetos</option>
+            </select>
+          </div>
           <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
             <span style="font-size:11px;color:var(--text2);font-weight:600;">FONTE:</span>
             <div class="roi-currency-toggle">
@@ -3221,7 +3227,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
           <!-- POR CONTA -->
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;">
-            <div style="font-size:13px;font-weight:700;margin-bottom:14px;">🏦 Resultado por Conta de Anúncio</div>
+            <div style="font-size:13px;font-weight:700;margin-bottom:14px;" id="ads-titulo-conta">🏦 Resultado por Conta de Anúncio</div>
             <div style="overflow-x:auto;">
               <table style="width:100%;border-collapse:collapse;font-size:13px;">
                 <thead>
@@ -26480,7 +26486,7 @@ async function carregarTempoRealUtmify(){
   const feed  = document.getElementById('rt-feed');
   const stats = document.getElementById('rt-stats');
   try{
-    const r = await fetch('/api/metricas/utmify/tempo-real');
+    const r = await fetch('/api/metricas/utmify/tempo-real?x=1'+_qsProjeto());
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     const k = d.kpis||{}, p = k.pedidos||{};
@@ -26595,7 +26601,7 @@ async function _painelResumoUtmify(){
   if(rot) rot.innerHTML='';
   if(alvo){ alvo.style.display='block'; alvo.innerHTML='<div style="color:var(--text2);font-size:13px;">⏳ Carregando funil...</div>'; }
   try{
-    const r = await fetch('/api/metricas/utmify/panorama?de='+from+'&ate='+to);
+    const r = await fetch('/api/metricas/utmify/panorama?de='+from+'&ate='+to+_qsProjeto());
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     const k = d.kpis||{}, p = k.pedidos||{};
@@ -27050,6 +27056,36 @@ function editAdInvestimento(encKey){
 // sincronizada pelo servidor a cada 30min e guardada em sl_metricas_ads) ══
 // Padrao Utmify: e a fonte em uso hoje. Quem preferir RedTrack troca no seletor
 // e a escolha fica salva. Sem isso a tela abria com erro de API Key do RedTrack.
+function _adsProjeto(){ return localStorage.getItem('ads_projeto') || ''; }
+
+function setAdsProjeto(id){
+  localStorage.setItem('ads_projeto', id || '');
+  _adsPeriodoCarregado = '';     // obriga releitura com o novo recorte
+  _anunciosPeriodo = '';
+  loadAdsMetricsUtmify(false);
+  const aba = document.querySelector('.ads-tab.active');
+  const nome = aba ? aba.textContent : '';
+  if(/Anúncio/i.test(nome)) carregarAnunciosUtmify(true);
+  if(/Tempo Real/i.test(nome)) carregarTempoRealUtmify();
+}
+
+// Query string com o projeto escolhido (vazio = todos)
+function _qsProjeto(){ const p=_adsProjeto(); return p ? ('&projeto='+encodeURIComponent(p)) : ''; }
+
+async function _carregarProjetosUtmify(){
+  const sel = document.getElementById('ads-projeto');
+  if(!sel || sel.dataset.pronto==='1') return;
+  try{
+    const r = await fetch('/api/metricas/utmify/projetos');
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.projetos) return;
+    sel.innerHTML = '<option value="">Todos os projetos</option>' +
+      d.projetos.map(function(p){ return '<option value="'+_esc(p.id)+'">'+_esc(p.nome)+'</option>'; }).join('');
+    sel.value = _adsProjeto();
+    sel.dataset.pronto = '1';
+  }catch(e){}
+}
+
 function _adsFonte(){ return localStorage.getItem('ads_fonte') || 'utmify'; }
 
 function setAdsFonte(f){
@@ -27066,6 +27102,12 @@ function _pintarFonteAds(){
   bt('ads-fonte-utmify',   f==='utmify');
   const puxar = document.getElementById('ads-puxar-utmify');
   if(puxar) puxar.style.display = (f==='utmify') ? '' : 'none';
+  const proj = document.getElementById('ads-projeto-wrap');
+  if(proj) proj.style.display = (f==='utmify') ? 'flex' : 'none';
+  // Na Utmify a quebra e por PROJETO (dashboard), nao por conta de anuncio
+  const tit = document.getElementById('ads-titulo-conta');
+  if(tit) tit.textContent = (f==='utmify') ? '📦 Resultado por Projeto' : '🏦 Resultado por Conta de Anúncio';
+  if(f==='utmify') _carregarProjetosUtmify();
 }
 
 // Busca o período direto na Utmify agora (o automático só cobre hoje e ontem —
@@ -27106,7 +27148,7 @@ let _adsPeriodoCarregado = '';   // ultimo periodo ja em tela
 
 async function loadAdsMetricsUtmify(forcar){
   const { from, to } = getAdsDates();
-  const periodo = from+'|'+to;
+  const periodo = from+'|'+to+'|'+_adsProjeto();
   // Sem isso a tela entrava em ciclo: _rerenderCurrentPage chama renderAdsMetrics
   // a cada dado novo do servidor, e cada chamada disparava uma busca inteira —
   // ficava piscando entre "sem dados" e os numeros certos.
@@ -27130,7 +27172,7 @@ async function loadAdsMetricsUtmify(forcar){
       const dias = Math.round((new Date(to) - new Date(from))/86400000) + 1;
       if(dias >= 1 && dias <= 3) await puxarUtmifyPeriodo(true);
     }
-    const r = await fetch('/api/metricas/consolidado?de='+from+'&ate='+to);
+    const r = await fetch('/api/metricas/consolidado?de='+from+'&ate='+to+_qsProjeto());
     if(r.status===401) throw new Error('sua sessão expirou — entre novamente.');
     if(!r.ok) throw new Error('o servidor respondeu '+r.status);
     const d = await r.json();
@@ -27181,17 +27223,17 @@ async function carregarAnunciosUtmify(forcar){
   const { from, to } = getAdsDates();
   const corpo = document.getElementById('ads-anuncio-body');
   if(_anunciosCarregando) return;
-  if(!forcar && _anunciosUtmify.length && _anunciosPeriodo === from+'|'+to){ pintarAnunciosUtmify(); return; }
+  if(!forcar && _anunciosUtmify.length && _anunciosPeriodo === from+'|'+to+'|'+_adsProjeto()){ pintarAnunciosUtmify(); return; }
 
   _anunciosCarregando = true;
   const g = document.getElementById('ads-anuncio-cards');
   if(g){ g.style.display='block'; g.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2);">⏳ Buscando anúncios na Utmify...</div>'; }
   try{
-    const r = await fetch('/api/metricas/utmify/anuncios?de='+from+'&ate='+to);
+    const r = await fetch('/api/metricas/utmify/anuncios?de='+from+'&ate='+to+_qsProjeto());
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     _anunciosUtmify = d.anuncios || [];
-    _anunciosPeriodo = from+'|'+to;
+    _anunciosPeriodo = from+'|'+to+'|'+_adsProjeto();
     if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
     pintarAnunciosUtmify();
   }catch(e){

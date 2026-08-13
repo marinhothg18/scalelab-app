@@ -2977,6 +2977,25 @@ async function _utmifyDashboardsAtivos() {
   return { cfg, lista };
 }
 
+// Lista os projetos (dashboards) da Utmify — alimenta o filtro da tela
+app.get('/api/metricas/utmify/projetos', authUsuario, async (req, res) => {
+  const pronto = _vivoGet('projetos', 10 * 60 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  try {
+    const { lista } = await _utmifyDashboardsAtivos();
+    const saida = { ok: true, projetos: lista.map(d => ({ id: d.id, nome: (d.nome || '').trim() || d.id })) };
+    _vivoSet('projetos', saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Reduz a lista de dashboards ao projeto pedido (vazio = todos)
+function _filtrarProjeto(lista, projeto) {
+  if (!projeto) return lista;
+  const alvo = lista.filter(d => String(d.id) === String(projeto));
+  return alvo.length ? alvo : lista;
+}
+
 // Anuncios do periodo, agregados entre os dashboards
 app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
   const de  = String(req.query.de  || '').slice(0, 10);
@@ -2984,11 +3003,13 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
     return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
   }
-  const chave = 'anuncios|' + de + '|' + ate;
+  const projeto = String(req.query.projeto || '').slice(0, 40);
+  const chave = 'anuncios|' + de + '|' + ate + '|' + projeto;
   const pronto = _vivoGet(chave, 60 * 1000);
   if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
   try {
-    const { cfg, lista } = await _utmifyDashboardsAtivos();
+    const achado = await _utmifyDashboardsAtivos();
+    const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
     const cent = v => (Number(v) || 0) / 100;
     const mapa = {};
     const erros = [];
@@ -3103,9 +3124,10 @@ setInterval(_tickEventosUtmify, 45 * 1000);
 
 // Panorama de hoje, somando os dashboards (funil, pedidos, lucro por hora)
 // Panorama de um periodo (sem data = hoje). Serve o Resumo e o Tempo Real.
-async function _utmifyPanorama(deQuery, ateQuery) {
+async function _utmifyPanorama(deQuery, ateQuery, projeto) {
   {
-    const { cfg, lista } = await _utmifyDashboardsAtivos();
+    const achado = await _utmifyDashboardsAtivos();
+    const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
     const cent = v => (Number(v) || 0) / 100;
     const tot = {
       investimento: 0, receita: 0, lucro: 0,
@@ -3169,13 +3191,25 @@ async function _utmifyPanorama(deQuery, ateQuery) {
 
 app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
   _evUltimoInteresse = Date.now();     // liga a coleta de eventos em segundo plano
-  const pronto = _vivoGet('tempo-real', 25 * 1000);
-  if (pronto) return res.json(Object.assign({ doCache: true, eventos: _evFeed.slice(0, 60) }, pronto));
+  const projeto = String(req.query.projeto || '').slice(0, 40);
+  // o feed guarda o nome do projeto; converte o id pedido pra nome pra filtrar
+  let nomeProj = '';
   try {
-    const saida = await _utmifyPanorama(null, null);
-    _vivoSet('tempo-real', saida);
+    const { lista } = await _utmifyDashboardsAtivos();
+    const d = lista.find(x => String(x.id) === projeto);
+    if (d) nomeProj = (d.nome || '').trim();
+  } catch (e) {}
+  const eventos = (nomeProj
+    ? _evFeed.filter(e => String(e.dashboard).trim() === nomeProj)
+    : _evFeed).slice(0, 60);
+  const chave = 'tempo-real|' + projeto;
+  const pronto = _vivoGet(chave, 25 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true, eventos }, pronto));
+  try {
+    const saida = await _utmifyPanorama(null, null, projeto);
+    _vivoSet(chave, saida);
     if (!_evFoto) _tickEventosUtmify();          // primeira leitura: comeca a base de comparacao
-    res.json(Object.assign({ eventos: _evFeed.slice(0, 60) }, saida));
+    res.json(Object.assign({ eventos }, saida));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -3186,11 +3220,12 @@ app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
     return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
   }
-  const chave = 'panorama|' + de + '|' + ate;
+  const projeto = String(req.query.projeto || '').slice(0, 40);
+  const chave = 'panorama|' + de + '|' + ate + '|' + projeto;
   const pronto = _vivoGet(chave, 60 * 1000);
   if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
   try {
-    const saida = await _utmifyPanorama(de, ate);
+    const saida = await _utmifyPanorama(de, ate, projeto);
     _vivoSet(chave, saida);
     res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -3204,6 +3239,14 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
     let linhas = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
     if (de)  linhas = linhas.filter(l => l.data >= de);
     if (ate) linhas = linhas.filter(l => l.data <= ate);
+    // filtro por projeto: as linhas gravadas guardam o NOME do dashboard
+    const projeto = String(req.query.projeto || '').slice(0, 40);
+    if (projeto) {
+      const cfgP = _utmifyMcpCfg(db) || {};
+      const dP = (cfgP.dashboards || []).find(x => String(x.id) === projeto);
+      const nomeP = dP ? String(dP.nome || '').trim() : '';
+      if (nomeP) linhas = linhas.filter(l => String(l.dashboard || '').trim() === nomeP);
+    }
     // Duas camadas: linhas de CONTA dao o total exato (igual a tela da Utmify,
     // que inclui gasto nao atribuido a campanha); linhas de CAMPANHA dao o detalhe.
     // Sem linha de conta (dados antigos ou modo api), cai no detalhe.
