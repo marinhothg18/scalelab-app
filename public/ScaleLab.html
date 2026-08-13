@@ -18577,11 +18577,6 @@ async function renderIntegracoesTab(){
   el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">⏳ Carregando integrações...</div>';
 
   try {
-    var r = await fetch(API_BASE+'/api/integracoes/utmify/me', {
-      headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
-    });
-    var u = await r.json();
-
     // Meta Ads (investimento) e Vendas (faturamento) — as duas metades do ROAS próprio.
     // Se uma falhar, a tela continua: cada card sabe se virar sem dados.
     var _mt = {}, _vd = {};
@@ -18590,133 +18585,10 @@ async function renderIntegracoesTab(){
     try { _um = await (await fetch(API_BASE+'/api/integracoes/utmify-mcp/me')).json(); } catch(e){ _um = {erroCarga:true}; }
     try { _vd = await (await fetch(API_BASE+'/api/integracoes/vendas/me')).json(); } catch(e){ _vd = {erroCarga:true}; }
 
-    // Card Utmify
-    var statusBadge = u.configurado && u.ativo
-      ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ ATIVO</span>'
-      : u.configurado
-        ? '<span style="background:rgba(251,191,36,.15);color:#FBBF24;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">⏸ DESATIVADO</span>'
-        : '<span style="background:rgba(156,163,175,.15);color:#9CA3AF;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">○ NÃO CONFIGURADO</span>';
-
-    // Lista de eventos
-    var eventos = [
-      { id:'lead',         label:'📥 Lead capturado',        desc:'Quando alguém envia candidatura numa vaga sua' },
-      { id:'qualified',    label:'⭐ Lead qualificado',       desc:'Quando candidato passa pra próxima etapa' },
-      { id:'opportunity',  label:'🎯 Oportunidade',          desc:'Candidato chega na fase de entrevista/teste' },
-      { id:'conversion',   label:'💰 Conversão (venda)',     desc:'Cliente paga plano OU candidato é contratado' }
-    ];
-    var habilitados = u.eventosHabilitados || ['lead','qualified','opportunity','conversion'];
-    var checksHtml = eventos.map(function(ev){
-      var ativo = habilitados.indexOf(ev.id) >= 0;
-      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;cursor:pointer;">'+
-        '<input type="checkbox" id="utm-ev-'+ev.id+'"'+(ativo?' checked':'')+' style="margin-top:2px;">'+
-        '<div><b style="font-size:13px;">'+ev.label+'</b><div style="font-size:11px;color:var(--text2);">'+ev.desc+'</div></div>'+
-      '</label>';
-    }).join('');
-
-    // Logs recentes
-    var logsHtml = '<div style="font-size:12px;color:var(--text2);font-style:italic;text-align:center;padding:14px;">Nenhum evento enviado ainda.</div>';
-    if(u.ultimosLogs && u.ultimosLogs.length){
-      logsHtml = u.ultimosLogs.map(function(l){
-        var cor = l.status === 'sucesso' ? '#16A34A' : '#DC2626';
-        var icone = l.status === 'sucesso' ? '✅' : '❌';
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--border);font-size:12px;">'+
-          '<div><span>'+icone+' <b>'+_esc(l.tipoEvento)+'</b></span><div style="font-size:10px;color:var(--text2);margin-top:2px;">'+_esc(l.productName)+'</div></div>'+
-          '<div style="text-align:right;"><span style="color:'+cor+';font-size:10px;font-weight:700;">HTTP '+l.httpStatus+'</span><div style="font-size:10px;color:var(--text3);">'+new Date(l.timestamp).toLocaleString('pt-BR')+'</div></div>'+
-        '</div>';
-      }).join('');
-    }
-
-    // Check RedTrack status (já existe, vamos só mostrar status)
-    var rtKey = '';
-    try { rtKey = getRtApiKey() || ''; } catch(e) {}
-    var rtConfigurado = !!rtKey;
-
     el.innerHTML =
-      // CARD REDTRACK (já existe, atalho de status)
-      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:14px;">'+
-          '<div style="display:flex;align-items:center;gap:14px;">'+
-            '<div style="width:48px;height:48px;background:linear-gradient(135deg,#DC2626,#FF5926);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📊</div>'+
-            '<div>'+
-              '<div style="font-size:17px;font-weight:700;">RedTrack</div>'+
-              '<div style="font-size:11px;color:var(--text2);">Tracking de ads · métricas de campanhas Meta/Google/TikTok · ROAS por criativo</div>'+
-            '</div>'+
-          '</div>'+
-          (rtConfigurado
-            ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ CONFIGURADO</span>'
-            : '<span style="background:rgba(156,163,175,.15);color:#9CA3AF;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">○ NÃO CONFIGURADO</span>')+
-        '</div>'+
-        '<div style="background:rgba(220,38,38,.06);border-left:3px solid #DC2626;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px;">'+
-          '<b>🎯 O que faz:</b><br>'+
-          '✓ Importa métricas de campanhas (Meta Ads, Google Ads, TikTok Ads) em tempo real<br>'+
-          '✓ Calcula ROAS por oferta/criativo<br>'+
-          '✓ Mostra investimento, faturamento, lucro<br>'+
-          '✓ Aparece em <b>Ads / Métricas</b> e <b>ROI</b>'+
-        '</div>'+
-        '<button class="btn btn-ghost" onclick="switchCfgTab(\'apis\', document.getElementById(\'cfg-tab-apis\'))">⚙️ '+(rtConfigurado ? 'Editar' : 'Configurar')+' em APIs externas →</button>'+
-      '</div>'+
-
-      // CARD META ADS (investimento) + CARD VENDAS (faturamento) → ROAS próprio
       _cardUtmifyMcp(_um)+
       _cardMetaAds(_mt)+
       _cardVendas(_vd)+
-
-      // CARD UTMIFY
-      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:14px;">'+
-          '<div style="display:flex;align-items:center;gap:14px;">'+
-            '<div style="width:48px;height:48px;background:linear-gradient(135deg,#FF5926,#C52C58);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📈</div>'+
-            '<div>'+
-              '<div style="font-size:17px;font-weight:700;">Utmify · enviar eventos</div>'+
-              '<div style="font-size:11px;color:var(--text2);">Manda eventos do seu funil PARA a Utmify (não traz métricas)</div>'+
-            '</div>'+
-          '</div>'+
-          statusBadge+
-        '</div>'+
-
-        '<div style="background:rgba(91,94,244,.06);border-left:3px solid var(--accent);padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px;">'+
-          '<b>🎯 O que essa integração faz:</b><br>'+
-          '✓ Candidatura nova numa vaga sua → evento "lead" na Utmify<br>'+
-          '✓ Novo cliente cadastrado no TMX como SaaS → "qualified"<br>'+
-          '✓ Cliente do SaaS paga → "conversion"<br>'+
-          '<br><b>⚠️ Isso só ENVIA.</b> Pra trazer gasto/faturamento da Utmify pro sistema, use o card <b>“Utmify · puxar métricas”</b> lá em cima.'+
-        '</div>'+
-
-        '<div class="fg" style="margin-bottom:14px;">'+
-          '<label class="fl">API Token Utmify</label>'+
-          '<input type="password" id="utm-token" class="fi" placeholder="'+(u.apiTokenPreview ? u.apiTokenPreview+' (já configurado · cole novo pra trocar)' : 'Cole seu API Token aqui')+'" autocomplete="off">'+
-          '<div style="font-size:11px;color:var(--text2);margin-top:4px;">Pega no painel Utmify → Configurações → API → Gerar Token. <a href="https://docs.utmify.com.br/" target="_blank" style="color:var(--accent);">Ver docs</a></div>'+
-        '</div>'+
-
-        '<label style="display:flex;align-items:center;gap:8px;margin-bottom:18px;cursor:pointer;">'+
-          '<input type="checkbox" id="utm-ativo"'+(u.ativo?' checked':'')+'>'+
-          '<span style="font-size:13px;">Ativar integração (envia eventos automaticamente)</span>'+
-        '</label>'+
-
-        '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Eventos a enviar</div>'+
-        checksHtml +
-
-        '<div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">'+
-          '<button class="btn btn-primary" onclick="salvarUtmifyConfig()">💾 Salvar configuração</button>'+
-          (u.configurado ? '<button class="btn btn-ghost" onclick="testarUtmify()">🧪 Enviar evento de teste</button>' : '')+
-        '</div>'+
-      '</div>'+
-
-      // STATS + LOGS
-      (u.configurado ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:18px;">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'+
-          '<div style="font-size:14px;font-weight:700;">📊 Estatísticas e logs</div>'+
-          '<button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="renderIntegracoesTab()">🔄 Atualizar</button>'+
-        '</div>'+
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;">'+
-          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Total enviados</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+u.stats.total+'</div></div>'+
-          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Sucesso</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+u.stats.sucesso+'</div></div>'+
-          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Erros</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#DC2626;">'+u.stats.erro+'</div></div>'+
-          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Último</div><div style="font-size:13px;font-weight:700;margin-top:6px;">'+(u.stats.ultimoEvento ? new Date(u.stats.ultimoEvento).toLocaleString('pt-BR') : '—')+'</div></div>'+
-        '</div>'+
-        '<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Últimos 20 eventos</div>'+
-        logsHtml+
-      '</div>' : '')+
 
       // CARD EMAIL TRANSACIONAL (Resend)
       '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
@@ -18763,55 +18635,6 @@ async function renderIntegracoesTab(){
   }
 }
 
-async function salvarUtmifyConfig(){
-  var token = (document.getElementById('utm-token')||{}).value.trim();
-  var ativo = (document.getElementById('utm-ativo')||{}).checked;
-  var eventosHabilitados = [];
-  ['lead','qualified','opportunity','conversion'].forEach(function(ev){
-    var chk = document.getElementById('utm-ev-'+ev);
-    if(chk && chk.checked) eventosHabilitados.push(ev);
-  });
-
-  if(!token){
-    // Se já estava configurado e não digitou nada, só atualiza ativo + eventos
-    try {
-      var status = await (await fetch(API_BASE+'/api/integracoes/utmify/me', {
-        headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
-      })).json();
-      if(!status.configurado){
-        alert('❌ Cole o API Token do Utmify primeiro.');
-        return;
-      }
-      // tem token salvo já, manda só os outros campos
-      token = 'KEEP_EXISTING'; // placeholder, backend precisa entender — vou refazer
-    } catch(e){}
-    if(token === 'KEEP_EXISTING'){
-      alert('⚠️ Por segurança, cole novamente o API Token pra confirmar a alteração.');
-      return;
-    }
-  }
-
-  try {
-    var r = await fetch(API_BASE+'/api/integracoes/utmify/config', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'')
-      },
-      body: JSON.stringify({ apiToken: token, ativo, eventosHabilitados })
-    });
-    var data = await r.json();
-    if(data.ok){
-      alert('✅ Configuração salva!');
-      renderIntegracoesTab();
-    } else {
-      alert('❌ Erro: '+(data.error||'desconhecido'));
-    }
-  } catch(err){
-    alert('❌ Erro: '+err.message);
-  }
-}
-
 async function testarEmail(){
   var to = (document.getElementById('email-test-to')||{}).value.trim();
   if(!to || !to.includes('@')){ alert('Digite um email válido'); return; }
@@ -18831,24 +18654,6 @@ async function testarEmail(){
     }
   } catch(err){
     alert('❌ ' + err.message);
-  }
-}
-
-async function testarUtmify(){
-  try {
-    var r = await fetch(API_BASE+'/api/integracoes/utmify/test', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
-    });
-    var data = await r.json();
-    if(data.ok){
-      alert('✅ Evento de teste enviado! Veja em Logs.\n\nHTTP '+data.status);
-      renderIntegracoesTab();
-    } else {
-      alert('❌ Erro: '+(data.erro||data.motivo||'desconhecido'));
-    }
-  } catch(err){
-    alert('❌ '+err.message);
   }
 }
 
