@@ -2939,7 +2939,10 @@ async function _utmifyApi(jwt, caminho, corpo) {
 // Lista os dashboards — serve tambem pra validar o token
 async function _utmifyApiDashboards(jwt) {
   const d = await _utmifyApi(jwt, '/dashboards/actives', null);
-  const lista = Array.isArray(d) ? d : (d && (d.dashboards || d.results || d.data)) || [];
+  // a resposta vem aninhada: { actives: [ { dashboard: {...} } ] }
+  const lista = (d && Array.isArray(d.actives))
+    ? d.actives.map(a => (a && a.dashboard) ? a.dashboard : a).filter(Boolean)
+    : (Array.isArray(d) ? d : (d && (d.dashboards || d.results || d.data)) || []);
   return lista.map(x => ({
     id: x.id || x._id, nome: x.name || x.nome || '(sem nome)',
     moeda: x.currency || 'BRL',
