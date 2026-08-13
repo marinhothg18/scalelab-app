@@ -160,6 +160,12 @@
             <option value="obrigado">Obrigado</option>
           </select>
         </div>
+        <div class="campo"><label>Link da página</label>
+          <input id="nova-url" placeholder="https://suapagina.com/upsell-2">
+          <div style="font-size:10.5px;color:var(--txt2);margin-top:5px;line-height:1.5">
+            É onde o pixel desta etapa vai ser colado. Sem o link, a etapa não é rastreada.
+          </div>
+        </div>
         <div class="campo"><label>Vem depois de</label><select id="nova-pai"></select></div>
         <button class="btn" style="width:100%" onclick="addEtapa()">Adicionar ao funil</button>
       </div>
@@ -332,6 +338,13 @@ const PROJETOS = [
       (()=>{ const f = montarFunil('Quiz Concurso — VSL 1','quiz');
              f.etapas[0].v=1952; f.etapas[1].v=1582; f.etapas[2].v=1546; f.etapas[3].v=1482;
              f.etapas[4].v=489;  f.etapas[5].v=98;
+             // links informados por quem cadastrou — o ultimo ficou faltando de proposito,
+             // pra mostrar como a etapa sem link aparece marcada
+             f.etapas[0].url='https://apostilai.com/quiz/1';
+             f.etapas[1].url='https://apostilai.com/quiz/2';
+             f.etapas[2].url='https://apostilai.com/quiz/3';
+             f.etapas[3].url='https://apostilai.com/apresentacao';
+             f.etapas[4].url='https://pay.payt.com.br/apostilai';
              f.fontes = [{id:'f1',nome:'Facebook Ads',v:3217,x:30,y:120},
                          {id:'f2',nome:'Instagram',v:1043,x:30,y:215},
                          {id:'f3',nome:'Direto',v:186,x:30,y:310}];
@@ -411,7 +424,8 @@ function nos(){
     el.innerHTML = `<div class="cab"><span class="nm">${n.nome}</span>
         <span class="tag" style="background:${cor}22;color:${cor}">${ROTULO[n.tipo]}</span></div>
       <div class="vl" style="color:${ehFonte?'var(--txt)':cor}">${nfmt(n.v)}</div>
-      <div class="sub">${ehFonte?'cliques':((n.v/base)*100).toFixed(1)+'% de quem entrou'}</div>`;
+      <div class="sub">${ehFonte?'cliques':((n.v/base)*100).toFixed(1)+'% de quem entrou'}</div>
+      ${(!ehFonte && !n.url)?'<div style="font-size:9.5px;color:var(--amarelo);margin-top:3px;font-weight:700">⚠ sem link</div>':''}`;
     palco.appendChild(el);
     arrastavel(el, n);
   });
@@ -512,9 +526,21 @@ function detalhe(){
     ${sai.length?`<div class="lin"><span>Segue pra</span><span>${sai.map(e=>e.nome).join(', ')}</span></div>
       <div class="lin"><span>Passou adiante</span><span style="color:var(--verde)">${nfmt(seguiram)} · ${((seguiram/(n.v||1))*100).toFixed(1)}%</span></div>
       <div class="lin"><span>Parou aqui</span><span style="color:var(--vermelho)">${nfmt(perdidos)}</span></div>`:''}
-    ${n.tipo!=='fonte'?`<div class="campo" style="margin-top:13px"><label>Endereço da página</label>
-      <input value="https://${P().nome.toLowerCase().replace(/ /g,'')}.com/${n.nome.toLowerCase().replace(/ /g,'-')}" readonly></div>
-      <button class="btn sec mini" onclick="irPixelDe('${n.id}')">Ver pixel desta etapa</button>`:''}`;
+    ${n.tipo!=='fonte'?`<div class="campo" style="margin-top:13px"><label>Link da página</label>
+      <input id="det-url" value="${(n.url||'').replace(/"/g,'&quot;')}" placeholder="https://suapagina.com/..."
+             onchange="salvarUrl('${n.id}', this.value)">
+      ${n.url?'':'<div style="font-size:10.5px;color:var(--amarelo);margin-top:5px">Informe o link pra esta etapa ser rastreada.</div>'}</div>
+      <button class="btn sec mini" onclick="irPixelDe('${n.id}')" ${n.url?'':'disabled style="opacity:.5;cursor:not-allowed"'}>Ver pixel desta etapa</button>`:''}`;
+}
+
+// O link e digitado por voce: o sistema nao tem como adivinhar o endereco da
+// pagina, e e ele que amarra o pixel a etapa certa.
+function salvarUrl(id, valor){
+  const e = acha(id);
+  if(!e) return;
+  e.url = (valor||'').trim();
+  nos(); detalhe(); montarPixel();
+  aviso(e.url ? 'Link salvo' : 'Link removido');
 }
 
 function addEtapa(){
@@ -524,10 +550,12 @@ function addEtapa(){
   const pai  = document.getElementById('nova-pai').value;
   const ant  = acha(pai);
   const id = 'e'+Date.now();
-  F().etapas.push({ id, nome, tipo, v: Math.round((ant?ant.v:100)*0.4),
+  const url = document.getElementById('nova-url').value.trim();
+  F().etapas.push({ id, nome, tipo, url, v: Math.round((ant?ant.v:100)*0.4),
                     x:(ant?ant.x:200)+195, y:(ant?ant.y:150)+70 });
   if(pai) F().ligacoes.push([pai,id]);
   document.getElementById('nova-nome').value='';
+  document.getElementById('nova-url').value='';
   selecionado = id; render(); aviso('Etapa adicionada');
 }
 
@@ -564,7 +592,8 @@ function montarPixel(){
   if(!e){ document.getElementById('px-code').textContent = 'Adicione uma etapa primeiro.'; return; }
   const slug = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/gi,'-').toLowerCase();
   document.getElementById('px-code').textContent =
-`<!-- Pixel TMX · ${P().nome} › ${F().nome} › ${e.nome} -->
+`<!-- Pixel TMX · ${P().nome} › ${F().nome} › ${e.nome}
+     Cole em: ${e.url || '(link ainda não informado nesta etapa)'} -->
 <script>
 (function(w,d){
   var PROJETO = '${slug(P().nome)}';
