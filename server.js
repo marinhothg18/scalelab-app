@@ -556,6 +556,41 @@ function readDB() {
   }
 }
 
+// ── ESPAÇO EM DISCO ──────────────────────────────────────────
+// O volume do Railway encheu e derrubou a aplicação: writeDB falhava no boot
+// (ENOSPC), o processo morria e o Railway reiniciava — em loop, site fora do ar.
+// Os snapshots de hora em hora crescem pra sempre; aqui está a válvula de escape.
+function _espacoLivreMB(dir) {
+  try { const s = fs.statfsSync(dir); return (s.bsize * s.bavail) / (1024 * 1024); }
+  catch (e) { return null; }
+}
+
+// Apaga os snapshots MAIS ANTIGOS até ter folga. Nunca toca no db.json e sempre
+// preserva os 3 mais recentes — melhor perder histórico velho que ficar fora do ar.
+function _liberarEspacoSeNecessario(minMB) {
+  const alvo = minMB || 40;
+  let livre = _espacoLivreMB(DATA_DIR);
+  if (livre === null || livre >= alvo) return { livre, apagados: 0 };
+  console.warn(`[DISCO] só ${Math.round(livre)}MB livres — limpando snapshots antigos.`);
+  let apagados = 0;
+  try {
+    const arqs = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.endsWith('.json') || f.endsWith('.json.gz'))
+      .map(f => { const caminho = path.join(BACKUP_DIR, f);
+                  try { return { caminho, t: fs.statSync(caminho).mtimeMs }; } catch (e) { return null; } })
+      .filter(Boolean)
+      .sort((a, b) => a.t - b.t);        // mais antigos primeiro
+    for (const a of arqs) {
+      if (arqs.length - apagados <= 3) break;
+      try { fs.unlinkSync(a.caminho); apagados++; } catch (e) { continue; }
+      livre = _espacoLivreMB(DATA_DIR);
+      if (livre !== null && livre >= alvo) break;
+    }
+  } catch (e) { console.error('[DISCO] limpeza falhou:', e.message); }
+  console.warn(`[DISCO] ${apagados} snapshot(s) apagados — ${Math.round(livre || 0)}MB livres agora.`);
+  return { livre, apagados };
+}
+
 function writeDB(db) {
   // Gravação ATÔMICA: escreve num temporário e só então troca o arquivo de lugar.
   // Antes era writeFileSync direto no db.json — isso ZERA o arquivo antes de
@@ -563,7 +598,15 @@ function writeDB(db) {
   // request) pegava um arquivo vazio ou pela metade. Era a origem dos snapshots
   // de 0 KB. O rename é atômico no mesmo disco: ninguém vê estado intermediário.
   const tmp = DB_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+  const dados = JSON.stringify(db, null, 2);
+  try {
+    fs.writeFileSync(tmp, dados);
+  } catch (e) {
+    if (!e || e.code !== 'ENOSPC') throw e;
+    // Disco cheio: abre espaço e tenta de novo antes de desistir.
+    _liberarEspacoSeNecessario(Math.max(60, Math.ceil(dados.length / (1024 * 1024)) * 3));
+    fs.writeFileSync(tmp, dados);
+  }
   fs.renameSync(tmp, DB_FILE);
 }
 
@@ -888,8 +931,16 @@ function initDB() {
   if (!db.api_tokens) db.api_tokens = [];
   if (!db.api_logs) db.api_logs = [];
   if (!db.sessions) db.sessions = [];
-  writeDB(db);
+  // Nunca deixar o boot morrer por causa de disco: sem isso o processo cai e o
+  // Railway reinicia em loop, deixando o site fora do ar.
+  try {
+    writeDB(db);
+  } catch (e) {
+    console.error('[BOOT] não consegui gravar o banco:', e.message);
+    console.error('[BOOT] subindo assim mesmo — leitura funciona, gravação pode falhar.');
+  }
 }
+_liberarEspacoSeNecessario(80);   // antes de qualquer gravação
 initDB();
 // Migra senhas existentes para bcrypt na inicialização
 _migrarSenhasParaHash();
@@ -5218,6 +5269,9 @@ function criarSnapshotBackup(motivo) {
     const fname = `db-${stamp}${motivo ? '-' + motivo : ''}.json`;
     const fpath = path.join(BACKUP_DIR, fname);
     const conteudo = fs.readFileSync(DB_FILE, 'utf8');
+    // Abre espaço ANTES de gravar: foi o acúmulo de snapshots que lotou o volume
+    // e derrubou a aplicação. O banco em si tem prioridade sobre o histórico.
+    _liberarEspacoSeNecessario(Math.max(80, Math.ceil(conteudo.length / (1024 * 1024)) * 4));
     // Nunca gravar snapshot vazio/quebrado: um backup inválido dá falsa sensação
     // de segurança — só se descobre que não presta na hora de precisar dele.
     if (!conteudo || !conteudo.trim()) {
