@@ -2834,14 +2834,40 @@ async function _utmifyRpc(token, metodo, params, sessionId) {
 }
 
 // Abre sessao e chama uma tool, devolvendo o JSON ja desembrulhado.
-async function _utmifyChamarTool(token, tool, args) {
+// Sessao reaproveitada: antes cada pergunta abria uma sessao nova (initialize +
+// initialized + tools/call = 3 requisicoes). Numa sincronizacao de 2 dias x 3
+// dashboards x 2 niveis isso virava ~36 requisicoes, e a tela ficava eterna.
+let _utmifySessao = null;   // { token, sid, quando }
+const UTMIFY_SESSAO_MS = 4 * 60 * 1000;
+
+async function _utmifyAbrirSessao(token) {
   const ini = await _utmifyRpc(token, 'initialize', {
     protocolVersion: '2024-11-05', capabilities: {},
     clientInfo: { name: 'central-tmx', version: '1.0' }
   });
   const sid = ini.sessionId;
   try { await _utmifyRpc(token, 'notifications/initialized', {}, sid); } catch (e) {}
-  const r = await _utmifyRpc(token, 'tools/call', { name: tool, arguments: args || {} }, sid);
+  _utmifySessao = { token, sid, quando: Date.now() };
+  return sid;
+}
+
+async function _utmifyChamarTool(token, tool, args) {
+  let sid;
+  const viva = _utmifySessao && _utmifySessao.token === token &&
+               (Date.now() - _utmifySessao.quando) < UTMIFY_SESSAO_MS;
+  if (viva) sid = _utmifySessao.sid;
+  else sid = await _utmifyAbrirSessao(token);
+
+  let r;
+  try {
+    r = await _utmifyRpc(token, 'tools/call', { name: tool, arguments: args || {} }, sid);
+  } catch (e) {
+    // Sessao reaproveitada pode ter morrido do outro lado: abre uma nova e repete.
+    if (!viva) throw e;
+    _utmifySessao = null;
+    sid = await _utmifyAbrirSessao(token);
+    r = await _utmifyRpc(token, 'tools/call', { name: tool, arguments: args || {} }, sid);
+  }
   const res = r.resultado || {};
   const bloco = (res.content || []).find(c => c && c.type === 'text');
   if (!bloco) return res.structuredContent || res;

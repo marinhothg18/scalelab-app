@@ -26335,7 +26335,9 @@ function renderAdsMetrics(){
   const inp = document.getElementById('ads-api-key-input');
   if(inp) inp.value = key;
   _pintarFonteAds();
-  if(_adsFonte()==='utmify') loadAdsMetrics();
+  // Sem forcar: essa funcao roda a cada sync do servidor. Buscar na Utmify aqui
+  // deixava a tela em ciclo infinito de carregamento.
+  if(_adsFonte()==='utmify') loadAdsMetricsUtmify(false);
   else if(key) loadAdsMetrics();
 }
 
@@ -26934,26 +26936,41 @@ async function puxarUtmifyPeriodo(silencioso){
 
 // Atualizar de verdade: pra periodos curtos busca na Utmify antes de ler, senao
 // a tela repete o que o automatico trouxe ha ate 15min (e o gasto ja subiu).
+let _adsCarregando = false;      // trava: o sync do servidor re-renderiza a pagina toda hora
+let _adsPeriodoCarregado = '';   // ultimo periodo ja em tela
+
 async function loadAdsMetricsUtmify(forcar){
-  const mySeq = ++adsLoadSeq;
   const { from, to } = getAdsDates();
-  if(forcar){
-    const dias = Math.round((new Date(to) - new Date(from))/86400000) + 1;
-    if(dias >= 1 && dias <= 3){ await puxarUtmifyPeriodo(true); }
-  }
-  const loading = document.getElementById('ads-loading');
-  const errEl   = document.getElementById('ads-error');
-  if(loading){ loading.textContent='⏳ Carregando dados da Utmify...'; loading.style.display='block'; }
+  const periodo = from+'|'+to;
+  // Sem isso a tela entrava em ciclo: _rerenderCurrentPage chama renderAdsMetrics
+  // a cada dado novo do servidor, e cada chamada disparava uma busca inteira —
+  // ficava piscando entre "sem dados" e os numeros certos.
+  if(_adsCarregando && !forcar) return;
+  if(!forcar && periodo === _adsPeriodoCarregado) return;   // vale tambem pra periodo sem dado
+
+  _adsCarregando = true;
+  const mySeq  = ++adsLoadSeq;
+  const loading= document.getElementById('ads-loading');
+  const errEl  = document.getElementById('ads-error');
+  const jaTem  = adsCampanhasData.length > 0 && periodo === _adsPeriodoCarregado;
+  // Mantem os numeros na tela enquanto atualiza: zerar tudo antes de ter o novo
+  // era o que fazia a pagina "sumir" e voltar.
+  if(!jaTem){ resetAdsKpis(); if(loading){ loading.textContent='⏳ Carregando dados da Utmify...'; loading.style.display='block'; } }
   if(errEl) errEl.style.display='none';
-  resetAdsKpis();
+  const selo = document.getElementById('ads-selo-utmify');
+  if(selo && forcar) selo.textContent='⏳ Buscando na Utmify...';
+
   try{
+    if(forcar){
+      const dias = Math.round((new Date(to) - new Date(from))/86400000) + 1;
+      if(dias >= 1 && dias <= 3) await puxarUtmifyPeriodo(true);
+    }
     const r = await fetch('/api/metricas/consolidado?de='+from+'&ate='+to);
     if(r.status===401) throw new Error('sua sessão expirou — entre novamente.');
     if(!r.ok) throw new Error('o servidor respondeu '+r.status);
     const d = await r.json();
-    if(mySeq !== adsLoadSeq) return;   // outro Atualizar veio depois: descarta
+    if(mySeq !== adsLoadSeq) return;   // outra atualizacao veio depois: descarta
 
-    // mesma forma que a tela ja usa pro RedTrack, pra reaproveitar tabela e KPIs
     adsCampanhasData = (d.porCampanha||[]).map(c=>({
       _id: String(c.nome||''), _name: String(c.nome||'—'),
       clicks: c.cliques||0, lp_views: 0,
@@ -26964,14 +26981,13 @@ async function loadAdsMetricsUtmify(forcar){
       roas: c.roas||0
     }));
     adsTrueApproved = (d.kpis&&d.kpis.vendas)||0;
+    _adsPeriodoCarregado = periodo;
 
     // KPIs direto do servidor: ele soma pelo nível de CONTA, que é o total que a
     // Utmify mostra. Somar a tabela de campanhas deixa de fora o gasto que não
     // caiu em campanha nenhuma, e os números não batiam com o painel deles.
     _kpisUtmify(d.kpis||{});
     renderAdsTable('campanhas', adsCampanhasData, null, '_name');
-
-    // Resumo: por dashboard da Utmify (o equivalente a "conta")
     renderGroupTable('ads-body-conta', (d.porDashboard||[]).map(x=>({
       label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
     })), 'Gestor', ()=>'—');
@@ -26984,6 +27000,7 @@ async function loadAdsMetricsUtmify(forcar){
   }catch(e){
     if(mySeq === adsLoadSeq) showAdsError('Erro ao ler as métricas da Utmify: '+e.message);
   }finally{
+    _adsCarregando = false;
     if(mySeq === adsLoadSeq && loading) loading.style.display='none';
   }
 }
