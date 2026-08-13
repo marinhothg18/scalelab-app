@@ -3003,12 +3003,16 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
         ((r && r.results) || []).forEach(a => {
           const inv = cent(a.spend), rec = cent(a.grossRevenue);
           if (!inv && !rec) return;
-          const k = String(a.adId || a.id || a.name || '') + '|' + d.id;
+          // Agrupa pela NOMENCLATURA, nao pelo id: o mesmo criativo roda em varios
+          // adsets/campanhas e aparecia repetido, sem mostrar o resultado real dele.
+          const nome = String(a.name || '(sem nome)').trim();
+          const k = nome.toLowerCase().replace(/\s+/g, ' ') + '|' + d.id;
           if (!mapa[k]) mapa[k] = {
-            nome: String(a.name || '(sem nome)'), dashboard: d.nome || d.id,
+            nome: nome || '(sem nome)', dashboard: d.nome || d.id, veiculacoes: 0,
             investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0
           };
           const m = mapa[k];
+          m.veiculacoes += 1;
           m.investimento += inv; m.receita += rec; m.lucro += cent(a.profit);
           m.vendas   += Number(a.approvedOrdersCount) || 0;
           m.ics      += Number(a.initiateCheckout) || 0;

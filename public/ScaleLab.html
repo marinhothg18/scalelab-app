@@ -27132,6 +27132,7 @@ async function carregarAnunciosUtmify(forcar){
   const corpo = document.getElementById('ads-anuncio-body');
   if(_anunciosCarregando) return;
   if(!forcar && _anunciosUtmify.length && _anunciosPeriodo === from+'|'+to){ pintarAnunciosUtmify(); return; }
+
   _anunciosCarregando = true;
   if(corpo) _msgTabela('ads-anuncio-body', 6, '⏳ Buscando anúncios na Utmify...');
   try{
@@ -27163,8 +27164,9 @@ function pintarAnunciosUtmify(){
     const roas = Number(a.roas)||0;
     const corRoas = roas>=1.5?'var(--green)':(roas>=1?'#f97316':'var(--red)');
     return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);">'+
-      '<td style="padding:9px 10px;font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(a.nome)+' · '+_esc(a.dashboard)+'">'+
-        _esc(a.nome)+' <span style="color:var(--text2);font-size:11px;">· '+_esc(a.dashboard)+'</span></td>'+
+      '<td style="padding:9px 10px;font-weight:500;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(a.nome)+' · '+_esc(a.dashboard)+((a.veiculacoes>1)?(' · soma de '+a.veiculacoes+' veiculações'):'')+'">'+
+        _esc(a.nome)+' <span style="color:var(--text2);font-size:11px;">· '+_esc(a.dashboard)+
+        ((a.veiculacoes>1)?(' · <b style="color:var(--text2)">'+a.veiculacoes+'x</b>'):'')+'</span></td>'+
       '<td style="text-align:right;padding:9px 10px;font-weight:600;">'+(a.vendas||0)+'</td>'+
       '<td style="text-align:right;padding:9px 10px;color:#f97316;">'+(a.ics||0)+'</td>'+
       '<td style="text-align:right;padding:9px 10px;">'+fmtAds(a.investimento||0)+'</td>'+
