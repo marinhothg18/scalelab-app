@@ -3102,11 +3102,9 @@ async function _tickEventosUtmify() {
 setInterval(_tickEventosUtmify, 45 * 1000);
 
 // Panorama de hoje, somando os dashboards (funil, pedidos, lucro por hora)
-app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
-  _evUltimoInteresse = Date.now();     // liga a coleta de eventos em segundo plano
-  const pronto = _vivoGet('tempo-real', 25 * 1000);
-  if (pronto) return res.json(Object.assign({ doCache: true, eventos: _evFeed.slice(0, 60) }, pronto));
-  try {
+// Panorama de um periodo (sem data = hoje). Serve o Resumo e o Tempo Real.
+async function _utmifyPanorama(deQuery, ateQuery) {
+  {
     const { cfg, lista } = await _utmifyDashboardsAtivos();
     const cent = v => (Number(v) || 0) / 100;
     const tot = {
@@ -3121,10 +3119,11 @@ app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
       const hoje = new Date(Date.now() + tz * 3600000).toISOString().slice(0, 10);
+      const ini = deQuery || hoje, fim = ateQuery || hoje;
       try {
         const s = await _utmifyChamarTool(cfg.token, 'get_dashboard_summary', {
           dashboardId: d.id,
-          dateRange: { from: hoje + 'T00:00:00' + off, to: hoje + 'T23:59:59' + off }
+          dateRange: { from: ini + 'T00:00:00' + off, to: fim + 'T23:59:59' + off }
         });
         const ads = s.ads || {}, an = s.analytics || {}, oc = s.ordersCount || {};
         const inv = cent(ads.spent), luc = cent(an.profit);
@@ -3164,9 +3163,36 @@ app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
       porDashboard: porDash.sort((a, b) => b.investimento - a.investimento),
       erros
     };
+    return saida;
+  }
+}
+
+app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
+  _evUltimoInteresse = Date.now();     // liga a coleta de eventos em segundo plano
+  const pronto = _vivoGet('tempo-real', 25 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true, eventos: _evFeed.slice(0, 60) }, pronto));
+  try {
+    const saida = await _utmifyPanorama(null, null);
     _vivoSet('tempo-real', saida);
     if (!_evFoto) _tickEventosUtmify();          // primeira leitura: comeca a base de comparacao
     res.json(Object.assign({ eventos: _evFeed.slice(0, 60) }, saida));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Mesmo panorama, mas do periodo escolhido na tela (alimenta o Resumo)
+app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
+  const de  = String(req.query.de  || '').slice(0, 10);
+  const ate = String(req.query.ate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  }
+  const chave = 'panorama|' + de + '|' + ate;
+  const pronto = _vivoGet(chave, 60 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  try {
+    const saida = await _utmifyPanorama(de, ate);
+    _vivoSet(chave, saida);
+    res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 

@@ -3193,6 +3193,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <div id="ads-funil-labels" style="display:flex;margin-top:12px;"></div>
           </div>
 
+          <!-- LUCRO POR HORA (fonte Utmify) -->
+          <div id="ads-lucro-hora-box" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
+            <div style="font-size:13px;font-weight:700;margin-bottom:16px;">⏱ Lucro por hora</div>
+            <div id="ads-lucro-hora"></div>
+          </div>
+
           <!-- POR GESTOR -->
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
             <div style="font-size:13px;font-weight:700;margin-bottom:14px;">👤 Resultado por Gestor</div>
@@ -26490,32 +26496,6 @@ async function carregarTempoRealUtmify(){
       '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;">'+
       '<div style="font-size:13px;font-weight:700;margin-bottom:12px;">'+titulo+'</div>'+dentro+'</div>';
 
-    // funil do dia
-    const etapas = [['Cliques',k.cliques||0],['Visitas na página',k.visitas||0],['Checkouts iniciados',k.ics||0],['Vendas aprovadas',p.aprovadas||0]];
-    const topo = etapas[0][1] || 1;
-    const funil = etapas.map(([rot,v])=>{
-      const perc = Math.min(100, (v/topo)*100);
-      return '<div style="margin-bottom:9px;">'+
-        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">'+
-          '<span>'+rot+'</span><span style="font-weight:700;">'+v.toLocaleString('pt-BR')+
-          ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(1)+'%)</span></span></div>'+
-        '<div style="background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;">'+
-          '<div style="width:'+Math.max(perc,0.6)+'%;height:100%;background:linear-gradient(90deg,#3E1493,#1B9CFA);"></div></div></div>';
-    }).join('');
-
-    // lucro por hora (so ate a hora atual)
-    const agoraH = new Date().getHours();
-    const horas = (d.porHora||[]).filter(h=>h.hora<=agoraH);
-    const maior = Math.max(1, ...horas.map(h=>Math.abs(h.lucro)));
-    const barras = horas.map(h=>{
-      const alt = Math.max(2, (Math.abs(h.lucro)/maior)*60);
-      const pos = h.lucro>=0;
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;" title="'+String(h.hora).padStart(2,'0')+'h · '+fmtAds(h.lucro)+'">'+
-        '<div style="height:64px;display:flex;align-items:flex-end;width:100%;justify-content:center;">'+
-        '<div style="width:70%;height:'+alt+'px;background:'+(pos?'var(--green)':'var(--red)')+';border-radius:2px;opacity:.85;"></div></div>'+
-        '<div style="font-size:9px;color:var(--text2);">'+String(h.hora).padStart(2,'0')+'</div></div>';
-    }).join('');
-
     const st = [['Aprovadas',p.aprovadas||0,'var(--green)'],['Pendentes',p.pendentes||0,'#f97316'],
                 ['Recusadas',p.recusadas||0,'var(--red)'],['Reembolsadas',p.reembolsadas||0,'var(--text2)']];
     const status = '<div style="display:flex;gap:18px;flex-wrap:wrap;">'+st.map(([r,v,c])=>
@@ -26539,8 +26519,6 @@ async function carregarTempoRealUtmify(){
 
     feed.innerHTML =
       cartao('⚡ Acontecendo agora', _feedEventos(d.eventos||[])) +
-      cartao('📊 Funil de hoje', funil) +
-      cartao('⏱ Lucro por hora', horas.length ? '<div style="display:flex;gap:2px;align-items:flex-end;">'+barras+'</div>' : '<div style="color:var(--text2);font-size:13px;">Sem movimento ainda hoje.</div>') +
       cartao('🧾 Situação dos pedidos', status) +
       cartao('🎯 Origem das vendas', origem) +
       cartao('🏦 Por dashboard', contas || '<div style="color:var(--text2);font-size:13px;">Sem dados.</div>');
@@ -26553,27 +26531,7 @@ async function carregarTempoRealUtmify(){
   }
 }
 
-// O funil completo (visitas e checkouts) so vem no resumo do dia, entao aqui
-// mostramos o que existe pro periodo escolhido e apontamos onde ver o resto.
-function _funilUtmify(k){
-  const alvo = document.getElementById('ads-funil');
-  const rot  = document.getElementById('ads-funil-labels');
-  if(!alvo) return;
-  const etapas = [['Cliques', Number(k.cliques)||0], ['Vendas aprovadas', Number(k.vendas)||0]];
-  const topo = etapas[0][1] || 1;
-  alvo.style.display='block';
-  alvo.innerHTML = etapas.map(function(e){
-    var perc = Math.min(100, (e[1]/topo)*100);
-    return '<div style="margin-bottom:10px;">'+
-      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">'+
-        '<span>'+e[0]+'</span><span style="font-weight:700;">'+e[1].toLocaleString('pt-BR')+
-        ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(2)+'%)</span></span></div>'+
-      '<div style="background:var(--bg3);border-radius:4px;height:10px;overflow:hidden;">'+
-        '<div style="width:'+Math.max(perc,0.6)+'%;height:100%;background:linear-gradient(90deg,#3E1493,#1B9CFA);"></div></div></div>';
-  }).join('') +
-  '<div style="font-size:11px;color:var(--text2);margin-top:10px;">Visitas na página e checkouts iniciados aparecem no funil completo da aba <b>Tempo Real</b> (dados de hoje).</div>';
-  if(rot) rot.innerHTML='';
-}
+
 
 // Feed de eventos: o servidor compara leituras seguidas e registra quando o
 // contador de um anuncio sobe. Cada linha aqui e um acontecimento real.
@@ -26609,6 +26567,59 @@ function _feedEventos(evs){
           '<div style="font-size:10px;color:var(--text2);">'+atras(e.momento)+'</div>'+
         '</div></div>';
     }).join('')+'</div>';
+}
+
+// Barras de lucro por hora — usadas no Resumo
+function _barrasHora(horas, limitarHoraAtual){
+  const lista = limitarHoraAtual ? horas.filter(h=>h.hora<=new Date().getHours()) : horas;
+  const comMov = lista.filter(h=>Math.abs(h.lucro)>0.009);
+  if(!comMov.length) return '<div style="color:var(--text2);font-size:13px;">Sem movimento no período.</div>';
+  const maior = Math.max(1, ...lista.map(h=>Math.abs(h.lucro)));
+  return '<div style="display:flex;gap:3px;align-items:flex-end;">'+lista.map(function(h){
+    const alt = Math.max(2, (Math.abs(h.lucro)/maior)*70);
+    const pos = h.lucro>=0;
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;" title="'+
+      String(h.hora).padStart(2,'0')+'h · '+fmtAds(h.lucro)+'">'+
+      '<div style="height:74px;display:flex;align-items:flex-end;width:100%;justify-content:center;">'+
+      '<div style="width:72%;height:'+alt+'px;background:'+(pos?'var(--green)':'var(--red)')+';border-radius:3px;opacity:.9;"></div></div>'+
+      '<div style="font-size:9px;color:var(--text2);">'+String(h.hora).padStart(2,'0')+'</div></div>';
+  }).join('')+'</div>';
+}
+
+// Funil completo + lucro por hora no Resumo, seguindo o periodo escolhido na tela
+async function _painelResumoUtmify(){
+  const { from, to } = getAdsDates();
+  const alvo = document.getElementById('ads-funil');
+  const rot  = document.getElementById('ads-funil-labels');
+  const caixaHora = document.getElementById('ads-lucro-hora-box');
+  if(rot) rot.innerHTML='';
+  if(alvo){ alvo.style.display='block'; alvo.innerHTML='<div style="color:var(--text2);font-size:13px;">⏳ Carregando funil...</div>'; }
+  try{
+    const r = await fetch('/api/metricas/utmify/panorama?de='+from+'&ate='+to);
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    const k = d.kpis||{}, p = k.pedidos||{};
+    const etapas = [['Cliques',k.cliques||0],['Visitas na página',k.visitas||0],
+                    ['Checkouts iniciados',k.ics||0],['Vendas aprovadas',p.aprovadas||0]];
+    const topo = etapas[0][1] || 1;
+    if(alvo) alvo.innerHTML = etapas.map(function(e){
+      const perc = Math.min(100, (e[1]/topo)*100);
+      return '<div style="margin-bottom:10px;">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">'+
+          '<span>'+e[0]+'</span><span style="font-weight:700;">'+e[1].toLocaleString('pt-BR')+
+          ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(1)+'%)</span></span></div>'+
+        '<div style="background:var(--bg3);border-radius:4px;height:10px;overflow:hidden;">'+
+          '<div style="width:'+Math.max(perc,0.6)+'%;height:100%;background:linear-gradient(90deg,#3E1493,#1B9CFA);"></div></div></div>';
+    }).join('');
+    if(caixaHora){
+      caixaHora.style.display='block';
+      const ehHoje = (from===to) && (typeof rtTodayStr==='function') && (to===rtTodayStr());
+      document.getElementById('ads-lucro-hora').innerHTML = _barrasHora(d.porHora||[], ehHoje);
+    }
+  }catch(e){
+    if(alvo) alvo.innerHTML = '<div style="color:var(--text2);font-size:13px;">Não consegui carregar o funil: '+_esc(e.message)+'</div>';
+    if(caixaHora) caixaHora.style.display='none';
+  }
 }
 
 function _rtNum(rotulo, valor, cor){
@@ -27146,7 +27157,7 @@ async function loadAdsMetricsUtmify(forcar){
       label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
     })), 'Gestor', ()=>'—');
     _msgTabela('ads-body-gestor', 6, 'A Utmify não separa por gestor — use a aba Por Campanha.');
-    _funilUtmify(d.kpis||{});
+    _painelResumoUtmify();
 
     if(!adsCampanhasData.length){
       showAdsError('Nenhum dado da Utmify nesse período. Clique em "⤓ Puxar período" pra buscar agora — o automático cobre só hoje e ontem.');
