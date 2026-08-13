@@ -5200,7 +5200,7 @@ function _aplicarRetencaoBackup() {
   try {
     const agora = new Date();
     const lista = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.endsWith('.json'))
+      .filter(f => f.endsWith('.json') || f.endsWith('.json.gz'))
       .map(f => ({ nome: f, data: _parseStamp(f) }))
       .filter(x => x.data)
       .sort((a,b) => b.data - a.data); // mais novo primeiro
@@ -5260,13 +5260,36 @@ function _aplicarRetencaoBackup() {
   }
 }
 
+// Le um snapshot, seja .json ou .json.gz. Os antigos continuam funcionando.
+function _lerSnapshot(fpath) {
+  const bruto = fs.readFileSync(fpath);
+  if (fpath.endsWith('.gz')) return require('zlib').gunzipSync(bruto).toString('utf8');
+  return bruto.toString('utf8');
+}
+
+// Grava o db.json de forma ATOMICA a partir de texto ja pronto (mesma razao do
+// writeDB: escrever direto zera o arquivo e quem ler no meio pega lixo).
+function _gravarDbTexto(txt) {
+  const tmp = DB_FILE + '.tmp';
+  try {
+    fs.writeFileSync(tmp, txt);
+  } catch (e) {
+    if (!e || e.code !== 'ENOSPC') throw e;
+    _liberarEspacoSeNecessario(Math.max(60, Math.ceil(txt.length / (1024 * 1024)) * 3));
+    fs.writeFileSync(tmp, txt);
+  }
+  fs.renameSync(tmp, DB_FILE);
+}
+
 // Grava snapshot e aplica retenção
 function criarSnapshotBackup(motivo) {
   try {
     const agora = new Date();
     const pad = n => String(n).padStart(2,'0');
     const stamp = `${agora.getUTCFullYear()}${pad(agora.getUTCMonth()+1)}${pad(agora.getUTCDate())}-${pad(agora.getUTCHours())}${pad(agora.getUTCMinutes())}${pad(agora.getUTCSeconds())}`;
-    const fname = `db-${stamp}${motivo ? '-' + motivo : ''}.json`;
+    // Comprimido: os dados encolhem ~4,6x e a retencao inteira passa a caber no
+    // volume. Foi o acumulo de snapshots crus que lotou o disco e derrubou o site.
+    const fname = `db-${stamp}${motivo ? '-' + motivo : ''}.json.gz`;
     const fpath = path.join(BACKUP_DIR, fname);
     const conteudo = fs.readFileSync(DB_FILE, 'utf8');
     // Abre espaço ANTES de gravar: foi o acúmulo de snapshots que lotou o volume
@@ -5283,7 +5306,7 @@ function criarSnapshotBackup(motivo) {
       console.error('[BACKUP] abortado: db.json não é JSON válido.');
       return { ok: false, erro: 'db inválido' };
     }
-    fs.writeFileSync(fpath, conteudo);
+    fs.writeFileSync(fpath, require('zlib').gzipSync(conteudo));
     const ret = _aplicarRetencaoBackup();
     console.log(`[BACKUP] ${fname} criado. Retenção: ${ret.mantidos} mantidos, ${ret.apagados||0} apagados.`);
     return { ok: true, arquivo: fname, mantidos: ret.mantidos };
@@ -6824,7 +6847,7 @@ app.get('/api/backup/list', authDiretoria, (req, res) => {
   try {
     const agora = new Date();
     const lista = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.endsWith('.json'))
+      .filter(f => f.endsWith('.json') || f.endsWith('.json.gz'))
       .map(f => {
         const st = fs.statSync(path.join(BACKUP_DIR, f));
         const data = _parseStamp(f) || st.mtime;
@@ -6884,9 +6907,11 @@ app.get('/api/backup/download/:nome', authDiretoria, (req, res) => {
   const nome = req.params.nome.replace(/[^\w.-]/g,'');
   const fpath = path.join(BACKUP_DIR, nome);
   if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Backup não encontrado.' });
+  // Descomprime na saida: quem baixa recebe JSON pronto pra usar/restaurar.
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
-  res.send(fs.readFileSync(fpath, 'utf8'));
+  res.setHeader('Content-Disposition', `attachment; filename="${nome.replace(/\.gz$/, '')}"`);
+  try { res.send(_lerSnapshot(fpath)); }
+  catch (e) { res.status(500).json({ error: 'Não consegui ler o backup: ' + e.message }); }
 });
 
 // POST /api/backup/snapshot — força um snapshot agora
@@ -6913,7 +6938,7 @@ app.post('/api/backup/restore', authDiretoria, (req, res) => {
     // Snapshot de segurança ANTES de substituir
     criarSnapshotBackup('pre-restore');
     // Escreve novo db
-    fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
+    _gravarDbTexto(JSON.stringify(dados, null, 2));
     // Audit (nota: logs do novo db serão no novo db)
     try { const ndb = readDB(); audit(ndb, 'backup_restore_upload', null, { tamanho: JSON.stringify(dados).length }, { id: req.user.id, nome: req.user.nome, cargo: req.user.cargo }); writeDB(ndb); } catch {}
     console.log(`[BACKUP] ${req.user.nome} restaurou o banco a partir de upload.`);
@@ -6934,8 +6959,9 @@ app.post('/api/backup/restore/:nome', authDiretoria, (req, res) => {
   if (!fs.existsSync(fpath)) return res.status(404).json({ error: 'Backup não encontrado.' });
   try {
     criarSnapshotBackup('pre-restore');
-    const conteudo = fs.readFileSync(fpath, 'utf8');
-    fs.writeFileSync(DB_FILE, conteudo);
+    const conteudo = _lerSnapshot(fpath);
+    JSON.parse(conteudo);          // nao restaura arquivo quebrado
+    _gravarDbTexto(conteudo);
     try { const ndb = readDB(); audit(ndb, 'backup_restore_snap', { snapshot: nome }, null, { id: req.user.id, nome: req.user.nome, cargo: req.user.cargo }); writeDB(ndb); } catch {}
     console.log(`[BACKUP] ${req.user.nome} restaurou a partir de ${nome}.`);
     res.json({ ok: true, message: `Banco restaurado de ${nome}.` });
