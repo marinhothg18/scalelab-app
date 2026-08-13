@@ -136,6 +136,24 @@
   .funil .vl span{color:var(--tinta3)}
 
   .nota{font-size:11.5px;color:var(--tinta3);margin-top:10px;line-height:1.6}
+  .meta{font-size:10px;font-weight:800;margin-top:5px}
+  .meta.ok{color:var(--bom)} .meta.nao{color:var(--critico)}
+  .abas{display:flex;gap:4px;background:var(--plano);padding:3px;border-radius:10px}
+  .ab{padding:6px 14px;border-radius:8px;border:none;background:none;color:var(--tinta2);
+    font-size:12.5px;font-weight:700;cursor:pointer}
+  .ab.on{background:var(--sup);color:var(--tinta);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+  .podio{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:15px}
+  .pod{background:var(--sup);border:1px solid var(--linha);border-radius:14px;padding:16px 18px;position:relative}
+  .pod.top{border-color:var(--bom);box-shadow:0 0 0 2px color-mix(in srgb,var(--bom) 16%,transparent)}
+  .pod .pos{font-size:10px;font-weight:800;color:var(--tinta3);text-transform:uppercase;letter-spacing:.6px}
+  .pod .nm{font-size:15px;font-weight:800;margin:5px 0 9px;display:flex;align-items:center;gap:7px}
+  .pod .big{font-size:27px;font-weight:800;letter-spacing:-1px;line-height:1}
+  .pod .sub{font-size:11.5px;color:var(--tinta2);margin-top:3px}
+  .rank .l{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+  .rank .n{width:150px;flex:0 0 auto;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rank .b{flex:1;height:23px;background:var(--plano);border-radius:5px;overflow:hidden}
+  .rank .b i{display:block;height:100%;border-radius:5px}
+  .rank .v{width:150px;flex:0 0 auto;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums}
   .fundo{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;
     justify-content:center;z-index:60;padding:20px}
   .fundo.on{display:flex}
@@ -171,21 +189,28 @@
   <select id="f-periodo" onchange="montar()">
     <option value="hoje">Hoje</option><option value="7d" selected>7 dias</option><option value="30d">30 dias</option>
   </select>
+  <div class="abas">
+    <button class="ab on" id="ab-painel" onclick="verAba('painel')">📊 Painel</button>
+    <button class="ab" id="ab-analise" onclick="verAba('analise')">🔬 Análise</button>
+  </div>
   <div class="dir">
+    <button class="bt g" onclick="abrirMetas()">🎯 Metas</button>
     <button class="bt g" onclick="abrirCadastro()">⚙ VSLs rodando</button>
     <button class="bt g" onclick="trocarTema()" id="bt-tema">🌙 Escuro</button>
   </div>
 </div>
 
 <main>
-  <div class="tit">Suas VSLs no ar
-    <span class="aux">
-      <button class="bt g sm" onclick="selTodas()">Selecionar todas</button>
-      <button class="bt g sm" onclick="selUma()">Só a primeira</button>
-    </span>
+  <div id="bloco-sel">
+    <div class="tit">Suas VSLs no ar
+      <span class="aux">
+        <button class="bt g sm" onclick="selTodas()">Selecionar todas</button>
+        <button class="bt g sm" onclick="selUma()">Só a primeira</button>
+      </span>
+    </div>
+    <div class="vfaixa" id="faixa-vsl"></div>
+    <div class="nota" id="dica-sel"></div>
   </div>
-  <div class="vfaixa" id="faixa-vsl"></div>
-  <div class="nota" id="dica-sel"></div>
   <div id="conteudo"></div>
 </main>
 
@@ -196,6 +221,19 @@
        existindo na VTurb — aqui você escolhe quais quer acompanhar.</p>
     <div id="lista-cad"></div>
     <button class="bt" style="width:100%;margin-top:16px" onclick="fecharCadastro()">Pronto</button>
+  </div>
+</div>
+
+<div class="fundo" id="m-metas">
+  <div class="modal">
+    <h2>Seus KPIs ideais</h2>
+    <p class="sub">O que você considera bom. A partir daqui a tela para de mostrar número solto
+       e passa a dizer o que está dentro e o que está fora.</p>
+    <div id="lista-metas"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="bt" style="flex:1" onclick="fecharMetas()">Salvar</button>
+      <button class="bt g" onclick="restaurarMetas()">Voltar ao padrão</button>
+    </div>
   </div>
 </div>
 
@@ -289,6 +327,53 @@ function selecionadas(){ return VSLS.filter(function(v){ return sel.indexOf(v.id
 var brl=function(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
 var num=function(v){ return Number(Math.round(v)).toLocaleString('pt-BR'); };
 var mmss=function(s){ return Math.floor(s/60)+'min'+String(Math.round(s%60)).padStart(2,'0'); };
+
+// ══ METAS (KPIs ideais) ══
+// Sem meta, número é só número. Com meta, a tela consegue dizer o que está fora.
+var METAS_PADRAO={ ret1min:55, playRate:65, pctPitch:12, custoPitch:10, ticket:900, roas:2, ctr:1.5 };
+var METAS=(function(){
+  try{ var g=JSON.parse(localStorage.getItem('tmx_metas_vsl')||'null'); return g||Object.assign({},METAS_PADRAO); }
+  catch(e){ return Object.assign({},METAS_PADRAO); }
+})();
+// pra cada KPI: o alvo é piso ou teto?
+var SENTIDO={ ret1min:'min', playRate:'min', pctPitch:'min', custoPitch:'max', ticket:'min', roas:'min', ctr:'min' };
+var ROTULO_KPI={ ret1min:'Retenção 1º min', playRate:'Play rate', pctPitch:'Chega no pitch',
+  custoPitch:'Custo por pitch', ticket:'Ticket médio', roas:'ROAS', ctr:'CTR' };
+var UNIDADE={ ret1min:'%', playRate:'%', pctPitch:'%', custoPitch:'R$', ticket:'R$', roas:'x', ctr:'%' };
+
+function bate(k,v){
+  var m=METAS[k]; if(m===undefined||m===null||m==='') return null;
+  if(v===0 && SENTIDO[k]==='max') return false;          // custo zero = ninguém chegou
+  return SENTIDO[k]==='max' ? (v<=m) : (v>=m);
+}
+function corMeta(k,v){ var b=bate(k,v); return b===null?'':(b?'color:var(--bom)':'color:var(--critico)'); }
+function selo(k,v){
+  var b=bate(k,v); if(b===null) return '';
+  var alvo = UNIDADE[k]==='R$' ? brl(METAS[k]) : (METAS[k]+(UNIDADE[k]==='x'?'x':UNIDADE[k]));
+  return '<div class="meta '+(b?'ok':'nao')+'">'+(b?'✓':'✗')+' meta '+
+    (SENTIDO[k]==='max'?'≤':'≥')+' '+alvo+'</div>';
+}
+function abrirMetas(){
+  document.getElementById('lista-metas').innerHTML = Object.keys(ROTULO_KPI).map(function(k){
+    var passo = (k==='roas')?'0.1':(UNIDADE[k]==='R$'?'1':'0.5');
+    return '<div class="lreg"><div class="info"><b>'+ROTULO_KPI[k]+'</b>'+
+      '<small>'+(SENTIDO[k]==='max'?'no máximo':'no mínimo')+' · em '+
+      (UNIDADE[k]==='R$'?'reais':(UNIDADE[k]==='x'?'vezes':'%'))+'</small></div>'+
+      '<input type="number" step="'+passo+'" value="'+METAS[k]+'" onchange="setMeta(\''+k+'\',this.value)" '+
+      'style="width:96px;background:var(--plano);border:1px solid var(--linha);border-radius:8px;'+
+      'padding:7px 10px;color:var(--tinta);font-size:13px;outline:none;text-align:right"></div>';
+  }).join('');
+  document.getElementById('m-metas').classList.add('on');
+}
+function setMeta(k,v){
+  var n=parseFloat(String(v).replace(',','.'));
+  METAS[k]= isNaN(n)?METAS_PADRAO[k]:n;
+  try{ localStorage.setItem('tmx_metas_vsl',JSON.stringify(METAS)); }catch(e){}
+}
+function fecharMetas(){ document.getElementById('m-metas').classList.remove('on'); montar(); }
+function restaurarMetas(){ METAS=Object.assign({},METAS_PADRAO);
+  try{ localStorage.setItem('tmx_metas_vsl',JSON.stringify(METAS)); }catch(e){}
+  abrirMetas(); }
 
 // ══ FAIXA DE SELEÇÃO ══
 function faixa(){
@@ -455,12 +540,12 @@ function htmlIndividual(){
   return '<div class="tit">'+v.nome+'</div>'+
   '<div class="tiles">'+
     tile('Investido',brl(v.inv),num(v.cliques)+' cliques')+
-    tile('Retenção 1º min',v.ret1min.toFixed(1)+'%','de quem deu play','destaque')+
-    tile('Deram play',v.playRate.toFixed(1)+'%',num(v.pessoas)+' pessoas')+
-    tile('Chegam no pitch',v.pctPitch.toFixed(1)+'%',num(v.noPitch)+' pessoas')+
-    tile('Ticket médio',v.ticket?brl(v.ticket):'—',v.vendas+' venda(s)')+
-    tile('Custo por pitch',brl(v.custoPitch),'pra 1 pessoa ver a oferta')+
-    tile('ROAS',v.roas.toFixed(2)+'x',brl(v.receita-v.inv)+' de lucro')+
+    tile('Retenção 1º min',v.ret1min.toFixed(1)+'%','de quem deu play'+selo('ret1min',v.ret1min),'destaque')+
+    tile('Deram play',v.playRate.toFixed(1)+'%',num(v.pessoas)+' pessoas'+selo('playRate',v.playRate))+
+    tile('Chegam no pitch',v.pctPitch.toFixed(1)+'%',num(v.noPitch)+' pessoas'+selo('pctPitch',v.pctPitch))+
+    tile('Ticket médio',v.ticket?brl(v.ticket):'—',v.vendas+' venda(s)'+selo('ticket',v.ticket))+
+    tile('Custo por pitch',brl(v.custoPitch),'pra 1 pessoa ver a oferta'+selo('custoPitch',v.custoPitch))+
+    tile('ROAS',v.roas.toFixed(2)+'x',brl(v.receita-v.inv)+' de lucro'+selo('roas',v.roas))+
   '</div>'+
   (q?('<div class="tit">Maior abandono</div>'+
   '<div class="dcard" style="border-left-color:var(--critico);margin-bottom:15px">'+
@@ -521,8 +606,120 @@ function htmlComparativo(){
   '<div class="tit">Maior abandono de cada uma</div><div class="diag" id="quedas"></div>';
 }
 
+var aba='painel';
+function verAba(a){
+  aba=a;
+  document.getElementById('ab-painel').classList.toggle('on',a==='painel');
+  document.getElementById('ab-analise').classList.toggle('on',a==='analise');
+  document.getElementById('bloco-sel').style.display = a==='analise'?'':'none';
+  montar();
+}
+
+function htmlPainel(){
+  var vs=ativos();
+  if(!vs.length) return '<div class="nota">Nenhuma VSL ligada. Use "⚙ VSLs rodando".</div>';
+  var porReceita=vs.slice().sort(function(a,b){ return b.receita-a.receita; });
+  var campea=porReceita[0];
+  var maisEficiente=vs.slice().filter(function(v){return v.custoPitch>0;})
+    .sort(function(a,b){ return a.custoPitch-b.custoPitch; })[0]||campea;
+  var maiorTicket=vs.slice().sort(function(a,b){ return b.ticket-a.ticket; })[0];
+  var tot=vs.reduce(function(a,v){ a.inv+=v.inv; a.rc+=v.receita; a.vd+=v.vendas; return a; },{inv:0,rc:0,vd:0});
+  var maxRc=Math.max.apply(null,vs.map(function(v){return v.receita;}))||1;
+
+  // quantas VSLs batem cada meta
+  var placar=Object.keys(ROTULO_KPI).filter(function(k){ return k!=='ctr'; }).map(function(k){
+    var n=vs.filter(function(v){ return bate(k,v[k]); }).length;
+    return { k:k, n:n, total:vs.length };
+  });
+
+  return '<div class="tit">Resumo · '+vs.length+' VSLs no ar</div>'+
+  '<div class="podio">'+
+    '<div class="pod top"><div class="pos">🏆 Vende mais</div>'+
+      '<div class="nm"><i style="width:10px;height:10px;border-radius:2px;background:'+corDe(campea)+'"></i>'+campea.nome+'</div>'+
+      '<div class="big" style="color:var(--bom)">'+brl(campea.receita)+'</div>'+
+      '<div class="sub">'+campea.vendas+' vendas · ROAS '+campea.roas.toFixed(2)+'x</div></div>'+
+    '<div class="pod"><div class="pos">⚡ Mais eficiente</div>'+
+      '<div class="nm"><i style="width:10px;height:10px;border-radius:2px;background:'+corDe(maisEficiente)+'"></i>'+maisEficiente.nome+'</div>'+
+      '<div class="big" style="'+corMeta('custoPitch',maisEficiente.custoPitch)+'">'+brl(maisEficiente.custoPitch)+'</div>'+
+      '<div class="sub">custo pra 1 pessoa ver a oferta</div>'+selo('custoPitch',maisEficiente.custoPitch)+'</div>'+
+    '<div class="pod"><div class="pos">💰 Maior ticket</div>'+
+      '<div class="nm"><i style="width:10px;height:10px;border-radius:2px;background:'+corDe(maiorTicket)+'"></i>'+maiorTicket.nome+'</div>'+
+      '<div class="big" style="'+corMeta('ticket',maiorTicket.ticket)+'">'+brl(maiorTicket.ticket)+'</div>'+
+      '<div class="sub">'+maiorTicket.vendas+' vendas</div>'+selo('ticket',maiorTicket.ticket)+'</div>'+
+    '<div class="pod"><div class="pos">Σ Conta toda</div>'+
+      '<div class="nm">Somando as '+vs.length+'</div>'+
+      '<div class="big">'+(tot.inv?(tot.rc/tot.inv).toFixed(2):'0')+'x</div>'+
+      '<div class="sub">'+brl(tot.rc)+' de '+brl(tot.inv)+' · '+tot.vd+' vendas</div></div>'+
+  '</div>'+
+
+  '<div class="cartao"><div class="cab"><div><h2>Quem está vendendo</h2>'+
+    '<p>Faturamento de cada VSL no período. Clique numa barra pra abrir a análise dela.</p></div></div>'+
+    '<div class="rank">'+porReceita.map(function(v){
+      return '<div class="l" style="cursor:pointer" onclick="abrirVsl(\''+v.id+'\')">'+
+        '<div class="n">'+v.nome+'</div>'+
+        '<div class="b"><i style="width:'+Math.max(v.receita/maxRc*100,1)+'%;background:'+corDe(v)+'"></i></div>'+
+        '<div class="v"><b>'+brl(v.receita)+'</b> <span style="color:var(--tinta3)">'+v.vendas+' vd</span></div></div>';
+    }).join('')+'</div></div>'+
+
+  '<div class="cartao"><div class="cab"><div><h2>Metas batidas</h2>'+
+    '<p>Quantas das '+vs.length+' VSLs estão dentro de cada KPI que você definiu.</p></div>'+
+    '<div class="acoes"><button class="bt g sm" onclick="abrirMetas()">🎯 Ajustar metas</button></div></div>'+
+    '<div class="rank" style="margin-top:12px">'+placar.map(function(p){
+      var pc=p.total?p.n/p.total*100:0;
+      var cor = pc>=70?'var(--bom)':(pc>=40?'var(--atencao)':'var(--critico)');
+      return '<div class="l"><div class="n">'+ROTULO_KPI[p.k]+'</div>'+
+        '<div class="b"><i style="width:'+Math.max(pc,1)+'%;background:'+cor+'"></i></div>'+
+        '<div class="v"><b style="color:'+cor+'">'+p.n+' de '+p.total+'</b> '+
+        '<span style="color:var(--tinta3)">alvo '+(SENTIDO[p.k]==='max'?'≤':'≥')+' '+
+        (UNIDADE[p.k]==='R$'?brl(METAS[p.k]):METAS[p.k]+(UNIDADE[p.k]==='x'?'x':'%'))+'</span></div></div>';
+    }).join('')+'</div></div>'+
+
+  '<div class="cartao"><div class="cab"><div><h2>Todas as VSLs</h2>'+
+    '<p>Verde está dentro da meta, vermelho fora. Clique no cabeçalho pra ordenar.</p></div></div>'+
+    '<div style="overflow-x:auto"><table id="tpainel"></table></div></div>';
+}
+function abrirVsl(id){ sel=[id]; verAba('analise'); }
+
+var ordP={col:'receita',asc:false};
+function tabelaPainel(){
+  var el=document.getElementById('tpainel'); if(!el) return;
+  var vs=ativos();
+  var cols=[['nome','VSL',0],['ret1min','1º min',1],['playRate','Play rate',1],['pctPitch','Chega no pitch',1],
+    ['inv','Investido',1],['receita','Faturamento',1],['ticket','Ticket médio',1],
+    ['custoPitch','Custo por pitch',1],['vendas','Vendas',1],['roas','ROAS',1]];
+  var lista=vs.slice().sort(function(a,b){
+    var x=a[ordP.col],y=b[ordP.col];
+    if(typeof x==='string') return ordP.asc?x.localeCompare(y):y.localeCompare(x);
+    return ordP.asc?x-y:y-x; });
+  var f={ inv:brl,receita:brl,ticket:function(v){return v?brl(v):'—';},custoPitch:brl,
+    ret1min:function(v){return v.toFixed(1)+'%';},playRate:function(v){return v.toFixed(1)+'%';},
+    pctPitch:function(v){return v.toFixed(1)+'%';},roas:function(v){return v.toFixed(2)+'x';},vendas:String };
+  var h='<thead><tr>'+cols.map(function(c){
+    return '<th class="'+(c[2]?'num':'')+'" onclick="ordPainel(\''+c[0]+'\')">'+c[1]+
+      (ordP.col===c[0]?(ordP.asc?' ↑':' ↓'):'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+  lista.forEach(function(v){
+    h+='<tr style="cursor:pointer" onclick="abrirVsl(\''+v.id+'\')">'+cols.map(function(c){
+      var k=c[0];
+      if(k==='nome') return '<td><span style="display:inline-flex;align-items:center;gap:7px">'+
+        '<i style="width:9px;height:9px;border-radius:2px;background:'+corDe(v)+'"></i>'+v.nome+'</span></td>';
+      var est = METAS[k]!==undefined ? corMeta(k,v[k])+';font-weight:700' : '';
+      return '<td class="num" style="'+est+'">'+(f[k]?f[k](v[k]):v[k])+'</td>';
+    }).join('')+'</tr>';
+  });
+  el.innerHTML=h+'</tbody>';
+}
+function ordPainel(col){
+  if(ordP.col===col) ordP.asc=!ordP.asc; else { ordP.col=col; ordP.asc=(col==='nome'); }
+  tabelaPainel();
+}
+
 function montar(){
   faixa();
+  if(aba==='painel'){
+    document.getElementById('conteudo').innerHTML = htmlPainel();
+    tabelaPainel();
+    return;
+  }
   document.getElementById('conteudo').innerHTML =
     selecionadas().length===1 ? htmlIndividual() : htmlComparativo();
   pintar();
@@ -805,6 +1002,8 @@ function trocarTema(){
   montar();
 }
 document.getElementById('m-cad').addEventListener('click',function(e){ if(e.target===this) fecharCadastro(); });
+document.getElementById('m-metas').addEventListener('click',function(e){ if(e.target===this) fecharMetas(); });
+document.getElementById('bloco-sel').style.display='none';
 montar();
 addEventListener('resize', pintar);
 </script>
