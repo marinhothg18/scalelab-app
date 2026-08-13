@@ -2908,7 +2908,10 @@ app.get('/api/integracoes/utmify-mcp/me', authDiretoria, (req, res) => {
     const daUtmify = linhas.filter(l => l.fonte === 'utmify');
     res.json({
       ok: true,
-      configurado: !!(cfg && cfg.token),
+      // 'configurado' exige token E dashboards: token salvo com validacao falha
+      // aparecia como CONECTADO e confundia
+      configurado: !!(cfg && cfg.token && (cfg.dashboards || []).length),
+      tokenSalvo: !!(cfg && cfg.token),
       tokenPreview: (cfg && cfg.token) ? String(cfg.token).slice(0, 8) + '...' : null,
       dashboards: (cfg && cfg.dashboards) || [],
       ultimaSync: (cfg && cfg.ultimaSync) || null,
@@ -2941,6 +2944,7 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
       cfg.ultimoErro = null;
     } catch (e) {
       cfg.ultimoErro = e.message;
+      cfg.dashboards = [];          // falhou: nao mantem lista antiga
       db.store[KEY_UTMIFY_MCP] = cfg; writeDB(db);
       return res.status(400).json({ error: e.message });
     }
@@ -2963,7 +2967,7 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   if (!cfg || !cfg.token) throw new Error('Utmify não configurada.');
   const dashboards = (dashboardsPedidos && dashboardsPedidos.length)
     ? dashboardsPedidos : (cfg.dashboards || []).map(d => d.id);
-  if (!dashboards.length) throw new Error('Nenhum dashboard disponível.');
+  if (!dashboards.length) throw new Error('Nenhum dashboard encontrado. Clique em "Salvar e conectar" primeiro para validar o token.');
 
   const cent = v => (Number(v) || 0) / 100;   // a Utmify devolve em centavos
   const linhas = [];

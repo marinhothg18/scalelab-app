@@ -18373,6 +18373,7 @@ function _badgeInt(ok, txtOk, txtOff){
 function _cardUtmifyMcp(u){
   u = u || {};
   var conectado = !!u.configurado;
+  var soTokenSalvo = !conectado && !!u.tokenSalvo;   // token gravado mas ainda não validado
   var hoje=new Date(), p2=function(n){return String(n).padStart(2,'0');};
   var ini=new Date(hoje.getFullYear(),hoje.getMonth(),1);
   var fmt=function(d){return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());};
@@ -18383,7 +18384,10 @@ function _cardUtmifyMcp(u){
         '<div><div style="font-size:17px;font-weight:700;">Utmify · puxar métricas</div>'+
         '<div style="font-size:11px;color:var(--text2);">Gasto, faturamento, lucro e ROAS por campanha</div></div>'+
       '</div>'+
-      _badgeInt(conectado, '✅ CONECTADO', '○ NÃO CONFIGURADO')+
+      (conectado ? _badgeInt(true,'✅ CONECTADO','')
+                 : (soTokenSalvo
+                    ? '<span style="background:rgba(251,191,36,.15);color:#D97706;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠ TOKEN NÃO VALIDADO</span>'
+                    : _badgeInt(false,'','○ NÃO CONFIGURADO')))+
     '</div>'+
     '<div style="background:rgba(255,89,38,.06);border-left:3px solid #FF5926;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px;">'+
       '<b>🎯 O que faz:</b><br>'+
@@ -18399,6 +18403,7 @@ function _cardUtmifyMcp(u){
     '</div>'+
     (u.dashboards && u.dashboards.length
       ? '<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Dashboards encontrados: <b>'+u.dashboards.map(function(d){return _esc(d.nome);}).join(', ')+'</b></div>' : '')+
+    (soTokenSalvo ? '<div style="background:rgba(251,191,36,.10);border-left:3px solid #D97706;padding:10px 12px;border-radius:7px;font-size:12px;margin-bottom:12px;">O token está salvo mas ainda não foi validado. Clique em <b>💾 Salvar e conectar</b> (pode deixar o campo vazio) para testar.</div>' : '')+
     (u.ultimoErro ? '<div style="background:rgba(220,38,38,.08);border-left:3px solid #DC2626;padding:10px 12px;border-radius:7px;font-size:12px;margin-bottom:14px;"><b>Último erro:</b><br>'+_esc(u.ultimoErro)+'</div>' : '')+
     (conectado
       ? '<div class="flex" style="gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
