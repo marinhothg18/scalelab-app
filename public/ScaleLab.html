@@ -4768,7 +4768,7 @@ Valor  scalelab-web.up.railway.app</div>
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas'];   // sl_vturb fica só no servidor: guarda token
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas','sl_vsl_grupos'];   // sl_vturb fica só no servidor: guarda token
 // ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
 // As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
 // pontos de fetch espalhados pelo arquivo (fácil esquecer um e quebrar o sync sem
@@ -27470,20 +27470,71 @@ function vsSalvarMetas(){
 function vsMetasPadrao(){ s('sl_vsl_metas',Object.assign({},VS_PADRAO)); vsAbrirMetas(); }
 
 // ── QUAIS VSLs RODAM ──
+// A API da VTurb nao devolve as pastas — /players/list traz so id, nome, duracao,
+// pitch e data. Entao o agrupamento e feito aqui: o nome do video ja carrega o
+// projeto (KALEB, IZAMARA, SlimTide), e o que for detectado pode ser corrigido.
+var VS_GENERICO=['vsl','lead','mp4','pag','copy','copia','de','da','do','top','novo','nova',
+  'teste','final','editado','v1','v2','v3','01','02','03','04','05','1','2','3','4','5'];
+function vsFatiar(nome){
+  return String(nome||'').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .split(/[^a-z0-9]+/).filter(function(t){
+      return t.length>2 && VS_GENERICO.indexOf(t)<0 && !/^\d+$/.test(t);
+    });
+}
+function vsAutoGrupo(vsls){
+  var freq={};
+  vsls.forEach(function(v){
+    var vistos={};
+    vsFatiar(v.nome).forEach(function(t){ if(!vistos[t]){ vistos[t]=1; freq[t]=(freq[t]||0)+1; } });
+  });
+  var mapa={};
+  vsls.forEach(function(v){
+    var melhor=null, melhorF=1;
+    vsFatiar(v.nome).forEach(function(t){
+      if(freq[t]>melhorF || (freq[t]===melhorF && melhor && t.length>melhor.length)){ melhor=t; melhorF=freq[t]; }
+    });
+    mapa[v.id] = melhor ? melhor.toUpperCase() : 'Sem grupo';
+  });
+  return mapa;
+}
+function vsGruposSalvos(){ var g=g_('sl_vsl_grupos'); return (g&&typeof g==='object')?g:{}; }
+function g_(k){ try{ return g(k,null); }catch(e){ return null; } }
+function vsGrupoDe(v){
+  var salvos=vsGruposSalvos();
+  if(salvos[v.id]) return salvos[v.id];
+  if(!vsDados._auto) vsDados._auto = vsAutoGrupo(vsDados.vsls);
+  return vsDados._auto[v.id] || 'Sem grupo';
+}
+function vsDefinirGrupo(id, nome){
+  var salvos=vsGruposSalvos();
+  nome=(nome||'').trim();
+  if(nome) salvos[id]=nome; else delete salvos[id];
+  s('sl_vsl_grupos', salvos);
+  vsAbrirVsls();
+}
+function vsReagrupar(){
+  if(!confirm('Refazer o agrupamento pelos nomes? Isso apaga os grupos que você ajustou à mão.')) return;
+  s('sl_vsl_grupos', {});
+  vsDados._auto = vsAutoGrupo(vsDados.vsls);
+  vsAbrirVsls();
+}
+
 function vsAbrirVsls(){
   if(!vsDados) return;
   // Agrupa por pasta, como a própria VTurb organiza — com 36 vídeos numa lista
   // corrida não dá pra achar nada.
   var pastas={}, ordem=[];
   vsDados.vsls.forEach(function(v){
-    var k=v.pasta||'Sem pasta';
+    var k=vsGrupoDe(v);
     if(!pastas[k]){ pastas[k]=[]; ordem.push(k); }
     pastas[k].push(v);
   });
   ordem.sort(function(a,b){
-    if(a==='Sem pasta') return 1; if(b==='Sem pasta') return -1;
-    return a.localeCompare(b);
+    if(a==='Sem grupo') return 1; if(b==='Sem grupo') return -1;
+    return pastas[b].length-pastas[a].length || a.localeCompare(b);
   });
+  var todosGrupos=ordem.slice();
   document.getElementById('vs-lista-vsls').innerHTML = ordem.map(function(k){
     var lista=pastas[k];
     var ligadas=lista.filter(function(v){return v.rodando;}).length;
@@ -27497,14 +27548,22 @@ function vsAbrirVsls(){
       lista.map(function(v){
         return '<div class="vs-lreg"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
           '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+' · '+v.vendas+' venda(s)</small></div>'+
+          '<input list="vs-grupos" value="'+vsEsc(vsGrupoDe(v))+'" title="Grupo desta VSL" '+
+            'onchange="vsDefinirGrupo(\''+v.id+'\',this.value)" '+
+            'style="width:112px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;'+
+            'padding:5px 8px;color:var(--text);font-size:11.5px;outline:none;font-family:inherit">'+
           '<div class="vs-sw '+(v.rodando?'on':'')+'" onclick="vsLigar(\''+v.id+'\',this)"><i></i></div></div>';
       }).join('')+'</div>';
-  }).join('');
+  }).join('') +
+  '<datalist id="vs-grupos">'+todosGrupos.map(function(k){ return '<option value="'+vsEsc(k)+'">'; }).join('')+'</datalist>'+
+  '<div class="vs-nota" style="margin-top:14px">A VTurb não entrega as pastas pela API — só nome, duração e '+
+  'pitch. O agrupamento acima é feito pelo nome do vídeo, e você pode corrigir digitando ao lado de cada um. '+
+  '<a href="#" onclick="vsReagrupar();return false" style="color:var(--accent)">Refazer pelos nomes</a></div>';
   openModal('modal-vs-vsls');
 }
 function vsLigarPasta(k){
   var pasta=decodeURIComponent(k);
-  var lista=vsDados.vsls.filter(function(v){ return (v.pasta||'Sem pasta')===pasta; });
+  var lista=vsDados.vsls.filter(function(v){ return vsGrupoDe(v)===pasta; });
   var ligar = lista.some(function(v){ return !v.rodando; });
   lista.forEach(function(v){ v.rodando=ligar; });
   var lig=vsDados.vsls.filter(function(v){return v.rodando;}).map(function(v){return v.id;});
