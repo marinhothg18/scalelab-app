@@ -7637,15 +7637,24 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
   try {
     const cfg = _vturbExige();
     const per = _vturbPeriodo(req);
-    const chave = 'vturb-painel|' + per.de + '|' + per.ate;
+    const chave = 'vturb-painel|' + per.de + '|' + per.ate + '|' + String(req.query.players || '');
     const pronto = _vivoGet(chave, 120 * 1000);
     if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
 
-    let players = cfg.players || [];
-    if (!players.length) players = await _vturbPlayers(cfg.token);
+    // Lista SEMPRE fresca: usar o cache da configuracao escondia videos criados
+    // depois que o token foi salvo.
+    let todos = await _vturbPlayers(cfg.token).catch(() => (cfg.players || []));
+    // mais novos primeiro — video recem-subido costuma ser o que esta no ar
+    todos = todos.slice().sort((a, b) =>
+      String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+
+    // A lista completa vai inteira pra tela (e o que povoa o "VSLs rodando").
+    // Consulta de metrica, que e uma chamada por video, so nas escolhidas.
     const pedidos = String(req.query.players || '').split(',').map(x => x.trim()).filter(Boolean);
-    if (pedidos.length) players = players.filter(p => pedidos.indexOf(String(p.id)) >= 0);
-    players = players.slice(0, 12);          // teto: cada uma é uma chamada na VTurb
+    let players = pedidos.length
+      ? todos.filter(p => pedidos.indexOf(String(p.id)) >= 0)
+      : todos.slice(0, 8);                   // 1o acesso: as 8 mais recentes
+    const limitado = !pedidos.length && todos.length > 8;
 
     const linhas = [], erros = [];
     // Em fila, 12 VSLs viravam 12 idas e voltas e a tela ficava ~20s carregando.
@@ -7683,7 +7692,11 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
     }
     linhas.sort((a, b) => b.receita - a.receita);
     linhas.forEach(l => { l.ticket = l.vendas ? l.receita / l.vendas : 0; });
-    const saida = { ok: true, de: per.de, ate: per.ate, vsls: linhas, erros };
+    const saida = { ok: true, de: per.de, ate: per.ate, vsls: linhas, erros,
+      // a tela precisa saber que existem outras, senao o corte fica invisivel
+      todos: todos.map(p => ({ id: p.id, nome: p.nome, duracao: p.duracao,
+                               pitch: p.pitch, criadoEm: p.criadoEm })),
+      limitado: limitado };
     _vivoSet(chave, saida);
     res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }

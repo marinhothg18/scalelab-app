@@ -26892,13 +26892,21 @@ function vsCarregar(forcar){
   // sem teto de tempo a tela ficaria "carregando" pra sempre se a VTurb travasse
   var corta=new AbortController();
   var relogio=setTimeout(function(){ corta.abort(); }, 75000);
-  fetch('/api/vturb/painel?de='+p.de+'&ate='+p.ate,{signal:corta.signal})
+  var lig=vsAtivas();
+  var qs = (lig && lig.length) ? ('&players='+encodeURIComponent(lig.join(','))) : '';
+  fetch('/api/vturb/painel?de='+p.de+'&ate='+p.ate+qs,{signal:corta.signal})
     .then(function(r){ clearTimeout(relogio); return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
     .then(function(x){
       vsCarregando=false;
       if(!x.ok) throw new Error(x.d.error||'erro');
       vsDados=x.d;
-      var lig=vsAtivas();
+      // 'todos' e a lista completa da VTurb; 'vsls' sao as que tiveram metrica buscada
+      vsDados.todos = vsDados.todos || vsDados.vsls;
+      var comMetrica={}; vsDados.vsls.forEach(function(v){ comMetrica[v.id]=v; });
+      vsDados.todos.forEach(function(t){
+        t.rodando = lig ? (lig.indexOf(t.id)>=0) : !!comMetrica[t.id];
+        if(comMetrica[t.id]) comMetrica[t.id].rodando = t.rodando;
+      });
       vsDados.vsls.forEach(function(v){
         v.rodando = lig ? (lig.indexOf(v.id)>=0) : true;
         v.ret1min = 0;                       // preenchido quando a curva chega
@@ -26999,6 +27007,14 @@ function vsTile(r,v,s,cls){
 function vsHtmlPainel(){
   var vs=vsRodando();
   if(!vs.length) return '<div class="vs-nota">Nenhuma VSL ligada. Use "⚙ VSLs rodando".</div>';
+  var aviso = vsDados.limitado
+    ? '<div class="vs-dc" style="border-left-color:#f59e0b;margin-bottom:14px">'+
+      '<div class="t">Mostrando as 8 mais recentes</div>'+
+      '<div class="d">Você tem '+(vsDados.todos||[]).length+' vídeos na VTurb. Cada um é uma consulta, '+
+      'então no primeiro acesso carrego só os mais novos.</div>'+
+      '<div class="a" style="color:#f59e0b"><a href="#" onclick="vsAbrirVsls();return false" '+
+      'style="color:inherit">Escolher quais acompanhar →</a></div></div>'
+    : '';
   var porRc=vs.slice().sort(function(a,b){return b.receita-a.receita;});
   var campea=porRc[0];
   var efic=vs.filter(function(v){return v.custoPitch>0;}).sort(function(a,b){return a.custoPitch-b.custoPitch;})[0]||campea;
@@ -27008,7 +27024,7 @@ function vsHtmlPainel(){
   var placar=['playRate','pctPitch','custoPitch','ticket','roas'].map(function(k){
     return { k:k, n:vs.filter(function(v){ return vsBate(k,v[k]); }).length, t:vs.length }; });
   var M=vsMetas();
-  return '<div class="vs-tit">Resumo · '+vs.length+' VSLs · '+vsDados.de+' a '+vsDados.ate+'</div>'+
+  return aviso+'<div class="vs-tit">Resumo · '+vs.length+' VSLs · '+vsDados.de+' a '+vsDados.ate+'</div>'+
   '<div class="vs-podio">'+
     '<div class="vs-pod top"><div class="pos">🏆 Vende mais</div><div class="nm">'+vsEsc(campea.nome)+'</div>'+
       '<div class="big" style="color:var(--green)">'+vsBrl(campea.receita)+'</div>'+
@@ -27488,10 +27504,26 @@ function vsAutoGrupo(vsls){
     var vistos={};
     vsFatiar(v.nome).forEach(function(t){ if(!vistos[t]){ vistos[t]=1; freq[t]=(freq[t]||0)+1; } });
   });
+  // KALEB e KALEBE sao o mesmo projeto escrito de dois jeitos. Une palavras em
+  // que uma e comeco da outra, ficando com a forma mais usada.
+  var chaves=Object.keys(freq).sort(function(a,b){ return freq[b]-freq[a] || a.length-b.length; });
+  var canon={};
+  chaves.forEach(function(t){
+    for(var i=0;i<chaves.length;i++){
+      var c=chaves[i];
+      if(c===t || canon[c]) continue;
+      var curto=Math.min(c.length,t.length);
+      if(curto>=5 && (t.indexOf(c)===0 || c.indexOf(t)===0)){ canon[t]=c; return; }
+    }
+  });
+  Object.keys(canon).forEach(function(t){
+    var alvo=canon[t]; freq[alvo]=(freq[alvo]||0)+freq[t]; delete freq[t];
+  });
   var mapa={};
   vsls.forEach(function(v){
     var melhor=null, melhorF=1;
-    vsFatiar(v.nome).forEach(function(t){
+    vsFatiar(v.nome).forEach(function(t0){
+      var t=canon[t0]||t0;
       if(freq[t]>melhorF || (freq[t]===melhorF && melhor && t.length>melhor.length)){ melhor=t; melhorF=freq[t]; }
     });
     mapa[v.id] = melhor ? melhor.toUpperCase() : 'Sem grupo';
@@ -27503,7 +27535,7 @@ function g_(k){ try{ return g(k,null); }catch(e){ return null; } }
 function vsGrupoDe(v){
   var salvos=vsGruposSalvos();
   if(salvos[v.id]) return salvos[v.id];
-  if(!vsDados._auto) vsDados._auto = vsAutoGrupo(vsDados.vsls);
+  if(!vsDados._auto) vsDados._auto = vsAutoGrupo(vsDados.todos||vsDados.vsls);
   return vsDados._auto[v.id] || 'Sem grupo';
 }
 function vsDefinirGrupo(id, nome){
@@ -27525,7 +27557,7 @@ function vsAbrirVsls(){
   // Agrupa por pasta, como a própria VTurb organiza — com 36 vídeos numa lista
   // corrida não dá pra achar nada.
   var pastas={}, ordem=[];
-  vsDados.vsls.forEach(function(v){
+  (vsDados.todos||vsDados.vsls).forEach(function(v){
     var k=vsGrupoDe(v);
     if(!pastas[k]){ pastas[k]=[]; ordem.push(k); }
     pastas[k].push(v);
@@ -27563,24 +27595,25 @@ function vsAbrirVsls(){
 }
 function vsLigarPasta(k){
   var pasta=decodeURIComponent(k);
-  var lista=vsDados.vsls.filter(function(v){ return vsGrupoDe(v)===pasta; });
+  var lista=(vsDados.todos||vsDados.vsls).filter(function(v){ return vsGrupoDe(v)===pasta; });
   var ligar = lista.some(function(v){ return !v.rodando; });
   lista.forEach(function(v){ v.rodando=ligar; });
-  var lig=vsDados.vsls.filter(function(v){return v.rodando;}).map(function(v){return v.id;});
+  var lig=(vsDados.todos||vsDados.vsls).filter(function(v){return v.rodando;}).map(function(v){return v.id;});
   s('sl_vsl_ativas',lig);
   vsSel=vsSel.filter(function(id){ return lig.indexOf(id)>=0; });
   if(!vsSel.length && lig.length) vsSel=[lig[0]];
   vsAbrirVsls();
 }
 function vsLigar(id,el){
-  var v=vsDados.vsls.filter(function(x){return x.id===id;})[0]; if(!v) return;
+  var base=vsDados.todos||vsDados.vsls;
+  var v=base.filter(function(x){return x.id===id;})[0]; if(!v) return;
   v.rodando=!v.rodando; el.classList.toggle('on',v.rodando);
   if(!v.rodando){ var i=vsSel.indexOf(id); if(i>=0) vsSel.splice(i,1); }
-  var lig=vsDados.vsls.filter(function(x){return x.rodando;}).map(function(x){return x.id;});
+  var lig=base.filter(function(x){return x.rodando;}).map(function(x){return x.id;});
   s('sl_vsl_ativas',lig);
   if(!vsSel.length && lig.length) vsSel=[lig[0]];
 }
-function vsFecharVsls(){ closeModal('modal-vs-vsls'); vsPintar(); }
+function vsFecharVsls(){ closeModal('modal-vs-vsls'); vsCarregar(true); }
 
 function renderFunis(){
   if(!fnFunis().length) fnSemear();
