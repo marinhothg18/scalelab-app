@@ -2948,19 +2948,16 @@ app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) =
 });
 
 // Puxa as metricas da Utmify e grava em sl_metricas_ads (a mesma base que a tela le)
-app.post('/api/integracoes/utmify-mcp/sync', authDiretoria, async (req, res) => {
-  const db0 = readDB();
-  const cfg = _utmifyMcpCfg(db0);
-  if (!cfg || !cfg.token) return res.status(400).json({ error: 'Configure o token primeiro.' });
-  const de  = String((req.body && req.body.de)  || '').slice(0, 10);
-  const ate = String((req.body && req.body.ate) || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
-    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
-  }
-  const dashboards = (req.body && req.body.dashboards) || (cfg.dashboards || []).map(d => d.id);
-  if (!dashboards.length) return res.status(400).json({ error: 'Nenhum dashboard selecionado.' });
+// Sincroniza um periodo e grava em sl_metricas_ads. Usada tanto pelo botao
+// quanto pela rotina automatica.
+async function _utmifySincronizar(de, ate, dashboardsPedidos) {
+  const cfg = _utmifyMcpCfg();
+  if (!cfg || !cfg.token) throw new Error('Utmify não configurada.');
+  const dashboards = (dashboardsPedidos && dashboardsPedidos.length)
+    ? dashboardsPedidos : (cfg.dashboards || []).map(d => d.id);
+  if (!dashboards.length) throw new Error('Nenhum dashboard disponível.');
 
-  const cent = v => (Number(v) || 0) / 100;   // a Utmify devolve valores em centavos
+  const cent = v => (Number(v) || 0) / 100;   // a Utmify devolve em centavos
   const linhas = [];
   const erros = [];
   for (const dashId of dashboards) {
@@ -2974,7 +2971,7 @@ app.post('/api/integracoes/utmify-mcp/sync', authDiretoria, async (req, res) => 
       });
       (r && r.results ? r.results : []).forEach(c => {
         const inv = cent(c.spend), fat = cent(c.grossRevenue);
-        if (!inv && !fat) return;   // ignora campanha sem movimento
+        if (!inv && !fat) return;
         linhas.push({
           data: ate, fonte: 'utmify', dashboard: meta.nome || dashId,
           campanhaId: String(c.campaignId || c.id || ''), campanha: String(c.name || ''),
@@ -2994,7 +2991,6 @@ app.post('/api/integracoes/utmify-mcp/sync', authDiretoria, async (req, res) => 
 
   const db = readDB();
   const atual = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
-  // reimportar o mesmo periodo substitui, nao duplica
   const mantidos = atual.filter(l => !(l.fonte === 'utmify' && l.data >= de && l.data <= ate));
   db.store[KEY_METRICAS] = mantidos.concat(linhas);
   const c2 = _utmifyMcpCfg(db) || cfg;
@@ -3004,8 +3000,70 @@ app.post('/api/integracoes/utmify-mcp/sync', authDiretoria, async (req, res) => 
   if (!db.timestamps) db.timestamps = {};
   db.timestamps[KEY_METRICAS] = now();
   writeDB(db);
-  res.json({ ok: true, importadas: linhas.length, substituidas: atual.length - mantidos.length, erros });
+  return { importadas: linhas.length, substituidas: atual.length - mantidos.length, erros };
+}
+
+app.post('/api/integracoes/utmify-mcp/sync', authDiretoria, async (req, res) => {
+  const de  = String((req.body && req.body.de)  || '').slice(0, 10);
+  const ate = String((req.body && req.body.ate) || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  }
+  try {
+    const r = await _utmifySincronizar(de, ate, (req.body && req.body.dashboards) || null);
+    res.json(Object.assign({ ok: true }, r));
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
+
+// Liga/desliga a atualizacao automatica
+app.post('/api/integracoes/utmify-mcp/auto', authDiretoria, (req, res) => {
+  try {
+    const db = readDB();
+    const cfg = _utmifyMcpCfg(db);
+    if (!cfg || !cfg.token) return res.status(400).json({ error: 'Configure o token primeiro.' });
+    cfg.autoSync = (req.body && req.body.ativo) === true;
+    const min = Number(req.body && req.body.minutos);
+    cfg.autoMin = (min >= 15 && min <= 720) ? min : 30;   // piso de 15min: a Utmify pede pra não abusar
+    db.store[KEY_UTMIFY_MCP] = cfg;
+    writeDB(db);
+    res.json({ ok: true, autoSync: cfg.autoSync, minutos: cfg.autoMin });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── ROTINA AUTOMÁTICA ──
+// Roda de tempos em tempos e atualiza HOJE + ONTEM (ontem porque venda de fim
+// de dia costuma ser atribuída depois). Reimportar substitui, não duplica.
+let _utmifyRodando = false;
+async function _tickUtmifyAuto() {
+  if (_utmifyRodando) return;                       // evita rodadas sobrepostas
+  let cfg;
+  try { cfg = _utmifyMcpCfg(); } catch (e) { return; }
+  if (!cfg || !cfg.token || !cfg.autoSync) return;
+  const min = Number(cfg.autoMin) || 30;
+  const ultima = cfg.ultimaSyncAuto ? new Date(cfg.ultimaSyncAuto).getTime() : 0;
+  if (Date.now() - ultima < min * 60 * 1000) return;  // ainda não deu a hora
+  _utmifyRodando = true;
+  try {
+    const tz = -3;
+    const agora = new Date(Date.now() + tz * 3600000);
+    const iso = d => d.toISOString().slice(0, 10);
+    const ontem = new Date(agora.getTime() - 86400000);
+    const r = await _utmifySincronizar(iso(ontem), iso(agora), null);
+    const db = readDB();
+    const c = _utmifyMcpCfg(db);
+    if (c) { c.ultimaSyncAuto = new Date().toISOString(); db.store[KEY_UTMIFY_MCP] = c; writeDB(db); }
+    console.log(`[UTMIFY] auto-sync: ${r.importadas} campanha(s).`);
+  } catch (e) {
+    console.error('[UTMIFY] auto-sync falhou:', e.message);
+    try {
+      const db = readDB(); const c = _utmifyMcpCfg(db);
+      if (c) { c.ultimoErro = e.message; c.ultimaSyncAuto = new Date().toISOString();
+               db.store[KEY_UTMIFY_MCP] = c; writeDB(db); }
+    } catch (e2) {}
+  } finally { _utmifyRodando = false; }
+}
+setInterval(_tickUtmifyAuto, 5 * 60 * 1000);   // confere a cada 5min; só roda quando dá a hora
+
 
 // ══════════════════════════════════════════════
 // ── SAAS · PLANOS E LIMITES (Bloqueador 3/7) ──

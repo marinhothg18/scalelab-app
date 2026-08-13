@@ -18409,12 +18409,42 @@ function _cardUtmifyMcp(u){
           (u.ultimaSync?'Última sincronização: <b>'+new Date(u.ultimaSync).toLocaleString('pt-BR')+'</b> · ':'')+
           '<b>'+(u.linhasImportadas||0)+'</b> linha(s) na base</div>'
       : '')+
+    (conectado
+      ? '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;">'+
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">'+
+            '<input type="checkbox" id="utmcp-auto"'+(u.autoSync?' checked':'')+' onchange="salvarAutoUtmify()">'+
+            '<span style="font-size:13px;font-weight:600;">🔄 Atualizar sozinho</span>'+
+          '</label>'+
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">'+
+            '<span style="font-size:12px;color:var(--text2);">a cada</span>'+
+            '<select id="utmcp-min" class="fs" style="max-width:130px;font-size:12px;" onchange="salvarAutoUtmify()">'+
+              [15,30,60,120,360].map(function(m){
+                var sel=((u.autoMin||30)===m)?' selected':'';
+                return '<option value="'+m+'"'+sel+'>'+(m<60?m+' min':(m/60)+'h')+'</option>';
+              }).join('')+
+            '</select>'+
+          '</div>'+
+          '<div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5;">Atualiza <b>hoje e ontem</b> automaticamente — ontem porque venda do fim do dia costuma ser atribuída depois.'+
+          (u.ultimaSyncAuto?'<br>Última automática: <b>'+new Date(u.ultimaSyncAuto).toLocaleString('pt-BR')+'</b>':'')+'</div>'+
+        '</div>'
+      : '')+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
       '<button class="btn btn-primary" onclick="salvarUtmifyMcp()">💾 Salvar e conectar</button>'+
       (conectado ? '<button class="btn btn-ghost" onclick="sincronizarUtmify()">⬇ Puxar métricas agora</button>' : '')+
     '</div>'+
     '<div id="utmcp-resultado" style="margin-top:12px;"></div>'+
   '</div>';
+}
+async function salvarAutoUtmify(){
+  var out=document.getElementById('utmcp-resultado');
+  var ativo=!!(document.getElementById('utmcp-auto')||{}).checked;
+  var min=Number((document.getElementById('utmcp-min')||{}).value)||30;
+  try{
+    var r=await fetch(API_BASE+'/api/integracoes/utmify-mcp/auto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ativo:ativo,minutos:min})});
+    var j=await r.json();
+    if(!r.ok) throw new Error(j.error||'falhou');
+    if(out) out.innerHTML='<div style="color:#16A34A;font-size:12.5px;">'+(j.autoSync?('✅ Automático ligado — atualiza a cada '+j.minutos+' min.'):'⏸ Automático desligado.')+'</div>';
+  }catch(e){ if(out) out.innerHTML='<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>'; }
 }
 async function salvarUtmifyMcp(){
   var out=document.getElementById('utmcp-resultado');
