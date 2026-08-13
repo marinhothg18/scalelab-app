@@ -7447,6 +7447,18 @@ function _vturbCfg(db) {
   return cfg;
 }
 
+// Se a VTurb reclamar da data, repete com o outro formato documentado. Nao da
+// pra testar isso daqui sem o token, entao a tela se vira sozinha em vez de falhar.
+async function _vturbApiData(token, caminho, corpo, per) {
+  try {
+    return await _vturbApi(token, caminho, corpo);
+  } catch (e) {
+    if (!per || !/valid datetime|Start date|End date/i.test(e.message || '')) throw e;
+    const alt = Object.assign({}, corpo, { start_date: per.ini2, end_date: per.fim2 });
+    return await _vturbApi(token, caminho, alt);
+  }
+}
+
 async function _vturbApi(token, caminho, corpo, metodo) {
   const r = await fetch(VTURB_URL + caminho, {
     method: metodo || (corpo ? 'POST' : 'GET'),
@@ -7479,14 +7491,26 @@ async function _vturbPlayers(token) {
   })).filter(x => x.id);
 }
 
+// A VTurb recusou "2026-08-07T00:00:00.000-03:00" com "Start date must be a valid
+// datetime with hours, minutes, and seconds". A doc lista duas formas; a que ela
+// aceita e "AAAA-MM-DD HH:MM:SS UTC". Convertemos o dia em Sao Paulo pra UTC.
+function _vturbInstante(dia, fimDoDia) {
+  const base = new Date(dia + (fimDoDia ? 'T23:59:59-03:00' : 'T00:00:00-03:00'));
+  const iso = base.toISOString();                    // 2026-08-07T03:00:00.000Z
+  return iso.slice(0, 10) + ' ' + iso.slice(11, 19) + ' UTC';
+}
+// formato alternativo, usado se a primeira forma for recusada
+function _vturbInstanteISO(dia, fimDoDia) {
+  const base = new Date(dia + (fimDoDia ? 'T23:59:59-03:00' : 'T00:00:00-03:00'));
+  return base.toISOString().replace('Z', '+00:00');
+}
 function _vturbPeriodo(req) {
   const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
   const de  = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.de  || '')) ? req.query.de  : hoje;
   const ate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.ate || '')) ? req.query.ate : hoje;
-  // A VTurb espera data-hora completa com fuso; so AAAA-MM-DD ela nao aceita.
   return { de, ate,
-           ini: de  + 'T00:00:00.000-03:00',
-           fim: ate + 'T23:59:59.999-03:00' };
+           ini: _vturbInstante(de, false),  fim: _vturbInstante(ate, true),
+           ini2:_vturbInstanteISO(de,false), fim2:_vturbInstanteISO(ate,true) };
 }
 function _vturbExige() {
   const cfg = _vturbCfg();
@@ -7545,9 +7569,9 @@ app.get('/api/vturb/retencao', authUsuario, async (req, res) => {
     const base = { player_id: player, start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo' };
 
     const [eng, conv, ses] = await Promise.all([
-      _vturbApi(cfg.token, '/times/user_engagement', Object.assign({ video_duration: dur }, base)).catch(e => ({ _erro: e.message })),
-      _vturbApi(cfg.token, '/conversions/video_timed', base).catch(e => ({ _erro: e.message })),
-      _vturbApi(cfg.token, '/sessions/stats', Object.assign({ video_duration: dur, pitch_time: meta.pitch || 0 }, base)).catch(e => ({ _erro: e.message }))
+      _vturbApiData(cfg.token, '/times/user_engagement', Object.assign({ video_duration: dur }, base), per).catch(e => ({ _erro: e.message })),
+      _vturbApiData(cfg.token, '/conversions/video_timed', base, per).catch(e => ({ _erro: e.message })),
+      _vturbApiData(cfg.token, '/sessions/stats', Object.assign({ video_duration: dur, pitch_time: meta.pitch || 0 }, base), per).catch(e => ({ _erro: e.message }))
     ]);
     res.json({ ok: true, player, nome: meta.nome || '', duracao: dur, pitch: meta.pitch || 0,
                de, ate, engajamento: eng, conversoesNoVideo: conv, sessoes: ses });
@@ -7571,9 +7595,9 @@ app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
     let valores = String(req.query.valores || '').split(',').map(v => v.trim()).filter(Boolean);
     let disponiveis = [];
     try {
-      const vu = await _vturbApi(cfg.token, '/traffic_origin/valid_utms', {
+      const vu = await _vturbApiData(cfg.token, '/traffic_origin/valid_utms', {
         player_id: player, start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
-      });
+      }, per);
       const bruto = (vu && (vu[chave] || vu.data || vu.utms || vu)) || [];
       disponiveis = (Array.isArray(bruto) ? bruto : [])
         .map(x => (typeof x === 'string') ? x : (x && (x.value || x.name || x[chave])))
@@ -7585,10 +7609,10 @@ app.get('/api/vturb/retencao-por-origem', authUsuario, async (req, res) => {
         chave, valores: [], disponiveis, origens: { data: [] },
         aviso: 'Nenhuma origem identificada no período — confira se as UTMs estão chegando na página da VSL.' });
     }
-    const d = await _vturbApi(cfg.token, '/times/user_engagement_by_traffic_origin', {
+    const d = await _vturbApiData(cfg.token, '/times/user_engagement_by_traffic_origin', {
       player_id: player, query_key: chave, values: valores,
       start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
-    });
+    }, per);
     res.json({ ok: true, player, nome: meta.nome || '', de: per.de, ate: per.ate,
                chave, valores, disponiveis, duracao: meta.duracao || 0, pitch: meta.pitch || 0, origens: d });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -7614,11 +7638,11 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
     const linhas = [], erros = [];
     for (const p of players) {
       try {
-        const st = await _vturbApi(cfg.token, '/sessions/stats', {
+        const st = await _vturbApiData(cfg.token, '/sessions/stats', {
           player_id: p.id, start_date: per.ini, end_date: per.fim,
           video_duration: p.duracao || 0, pitch_time: p.pitch || 0,
           timezone: 'America/Sao_Paulo'
-        });
+        }, per);
         const cent = v => (Number(v) || 0) / 100;
         linhas.push({
           id: p.id, nome: p.nome, duracao: p.duracao, pitch: p.pitch,
@@ -7649,7 +7673,7 @@ app.get('/api/vturb/resumo', authUsuario, async (req, res) => {
     const cfg = _vturbExige();
     const per = _vturbPeriodo(req); const de = per.de, ate = per.ate;
     const [rank, quota] = await Promise.all([
-      _vturbApi(cfg.token, '/events/leaderboard', { start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo' }).catch(e => ({ _erro: e.message })),
+      _vturbApiData(cfg.token, '/events/leaderboard', { start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo' }, per).catch(e => ({ _erro: e.message })),
       _vturbApi(cfg.token, '/quota/usage', null, 'GET').catch(e => ({ _erro: e.message }))
     ]);
     res.json({ ok: true, de, ate, ranking: rank, quota });
