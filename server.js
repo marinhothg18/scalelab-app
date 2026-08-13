@@ -2465,7 +2465,8 @@ app.post('/api/integracoes/utmify/test', authDiretoria, async (req, res) => {
 const META_API_VER  = 'v25.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VER}`;
 const KEY_META      = 'sl_integracoes_meta';     // server-only (token)
-const KEY_VENDAS    = 'sl_vendas';               // vendas normalizadas
+const KEY_VENDAS    = 'sl_vendas';
+const KEY_METRICAS  = 'sl_metricas_ads';   // métricas importadas (Utmify, Meta…)               // vendas normalizadas
 const KEY_VENDAS_RAW= 'sl_vendas_raw';           // últimos payloads crus (debug/mapeamento)
 const VENDAS_RAW_MAX = 50;
 const VENDAS_RETENCAO_DIAS = 365;
@@ -2710,6 +2711,283 @@ app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parsead
     // nunca devolve 500 pro gateway sem contexto — muitos desativam o webhook após erros
     res.status(200).json({ ok: false, erro: err.message });
   }
+});
+
+// ── CLIENTE MCP DA UTMIFY (servidor -> servidor) ──
+// A API publica da Utmify so RECEBE pedidos (POST /orders). Mas o servidor MCP
+// deles (https://mcp.utmify.com.br/mcp) EXPOE LEITURA e pede so um token de
+// acesso, sem OAuth. Entao da pra puxar as metricas direto daqui.
+// Protocolo: JSON-RPC sobre HTTP -> initialize, depois tools/call.
+const UTMIFY_MCP_URL = 'https://mcp.utmify.com.br/mcp';
+const KEY_UTMIFY_MCP = 'sl_integracoes_utmify_mcp';   // server-only: guarda o token
+
+function _utmifyMcpCfg(db) {
+  const c = (db || readDB()).store[KEY_UTMIFY_MCP];
+  return (c && typeof c === 'object') ? c : null;
+}
+
+async function _utmifyRpc(token, metodo, params, sessionId) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+    'Authorization': 'Bearer ' + token,
+    'User-Agent': 'CentralTMX/1.0'
+  };
+  if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+  const r = await fetch(UTMIFY_MCP_URL, {
+    method: 'POST', headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: metodo, params: params || {} })
+  });
+  const sid = r.headers.get('mcp-session-id') || sessionId || null;
+  const texto = await r.text();
+  if (!r.ok) {
+    const e = new Error('Utmify MCP ' + r.status + ': ' + texto.slice(0, 180));
+    e.httpStatus = r.status;
+    throw e;
+  }
+  let corpo = null;
+  if (texto.trim().startsWith('{')) {
+    corpo = JSON.parse(texto);
+  } else {
+    // resposta em SSE: linhas "data: {...}"
+    texto.split('\n').forEach(l => {
+      const t = l.trim();
+      if (t.startsWith('data:')) { try { corpo = JSON.parse(t.slice(5).trim()); } catch (e) {} }
+    });
+  }
+  if (!corpo) throw new Error('Resposta do MCP em formato inesperado.');
+  if (corpo.error) throw new Error(corpo.error.message || JSON.stringify(corpo.error));
+  return { resultado: corpo.result, sessionId: sid };
+}
+
+// Abre sessao e chama uma tool, devolvendo o JSON ja desembrulhado.
+async function _utmifyChamarTool(token, tool, args) {
+  const ini = await _utmifyRpc(token, 'initialize', {
+    protocolVersion: '2024-11-05', capabilities: {},
+    clientInfo: { name: 'central-tmx', version: '1.0' }
+  });
+  const sid = ini.sessionId;
+  try { await _utmifyRpc(token, 'notifications/initialized', {}, sid); } catch (e) {}
+  const r = await _utmifyRpc(token, 'tools/call', { name: tool, arguments: args || {} }, sid);
+  const res = r.resultado || {};
+  const bloco = (res.content || []).find(c => c && c.type === 'text');
+  if (!bloco) return res.structuredContent || res;
+  try { return JSON.parse(bloco.text); } catch (e) { return bloco.text; }
+}
+
+// ══════════════════════════════════════════════
+// ── INGESTÃO DE MÉTRICAS (Utmify e outras fontes) ──
+// ══════════════════════════════════════════════
+// A Utmify não deixa o servidor consultar direto (o MCP dela é autenticado na
+// conta do Claude, e o endpoint fica atrás de Cloudflare). Então a ponte é ao
+// contrário: quem tem acesso à Utmify EMPURRA os números pra cá, com um token
+// de API. Serve tanto pra importação manual quanto pra rotina automática.
+//
+// POST /api/v1/metricas/importar
+// body: { fonte:'utmify', periodo:{de,ate}, dashboard:'CONCURSO', linhas:[...] }
+// cada linha: { data, campanhaId, campanha, adsetId, adset, adId, anuncio,
+//               investimento, faturamento, faturamentoLiquido, lucro, vendas,
+//               impressoes, cliques, ctr, cpc, cpm, roas }
+app.post('/api/v1/metricas/importar', authAPI, (req, res) => {
+  try {
+    const { fonte, periodo, dashboard, linhas } = req.body || {};
+    if (!Array.isArray(linhas)) return res.status(400).json({ error: 'Envie "linhas" como lista.' });
+    if (linhas.length > 20000) return res.status(400).json({ error: 'Lote grande demais (máx 20000 linhas).' });
+
+    const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+    const norm = linhas.map(l => ({
+      data:        String(l.data || '').slice(0, 10),
+      fonte:       String(fonte || 'utmify'),
+      dashboard:   String(dashboard || ''),
+      campanhaId:  String(l.campanhaId || ''),
+      campanha:    String(l.campanha || ''),
+      adsetId:     String(l.adsetId || ''),
+      adset:       String(l.adset || ''),
+      adId:        String(l.adId || ''),
+      anuncio:     String(l.anuncio || ''),
+      investimento: num(l.investimento),
+      faturamento:  num(l.faturamento),
+      faturamentoLiquido: num(l.faturamentoLiquido),
+      lucro:        num(l.lucro),
+      vendas:       num(l.vendas),
+      impressoes:   num(l.impressoes),
+      cliques:      num(l.cliques),
+      ctr:          num(l.ctr),
+      cpc:          num(l.cpc),
+      cpm:          num(l.cpm),
+      roas:         num(l.roas)
+    })).filter(l => /^\d{4}-\d{2}-\d{2}$/.test(l.data));
+
+    const db = readDB();
+    const atual = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
+    // Substitui o que já existe do MESMO período/fonte/dashboard — reimportar não duplica
+    const de  = (periodo && periodo.de)  ? String(periodo.de).slice(0,10)  : null;
+    const ate = (periodo && periodo.ate) ? String(periodo.ate).slice(0,10) : null;
+    const mantidos = atual.filter(l => {
+      if (l.fonte !== (fonte || 'utmify')) return true;
+      if (dashboard && l.dashboard !== dashboard) return true;
+      if (de && ate) return !(l.data >= de && l.data <= ate);
+      return true;
+    });
+    db.store[KEY_METRICAS] = mantidos.concat(norm);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_METRICAS] = now();
+    writeDB(db);
+    res.json({ ok: true, recebidas: norm.length, substituidas: atual.length - mantidos.length,
+               total: db.store[KEY_METRICAS].length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Consulta consolidada — é daqui que a tela de Métricas de Ads vai ler
+app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
+  try {
+    const de  = String(req.query.de  || '').slice(0,10);
+    const ate = String(req.query.ate || '').slice(0,10);
+    const db = readDB();
+    let linhas = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
+    if (de)  linhas = linhas.filter(l => l.data >= de);
+    if (ate) linhas = linhas.filter(l => l.data <= ate);
+    const soma = c => linhas.reduce((s, l) => s + (Number(l[c]) || 0), 0);
+    const inv = soma('investimento'), fat = soma('faturamento');
+    const agrupar = campo => {
+      const m = {};
+      linhas.forEach(l => {
+        const k = l[campo] || '—';
+        if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0 };
+        m[k].investimento += Number(l.investimento)||0;
+        m[k].faturamento  += Number(l.faturamento)||0;
+        m[k].lucro        += Number(l.lucro)||0;
+        m[k].vendas       += Number(l.vendas)||0;
+        m[k].cliques      += Number(l.cliques)||0;
+        m[k].impressoes   += Number(l.impressoes)||0;
+      });
+      return Object.values(m).map(x => Object.assign(x, {
+        roas: x.investimento > 0 ? x.faturamento / x.investimento : 0
+      })).sort((a,b) => b.investimento - a.investimento);
+    };
+    res.json({
+      ok: true, de, ate, linhas: linhas.length,
+      kpis: {
+        investimento: inv, faturamento: fat,
+        lucro: soma('lucro'), vendas: soma('vendas'),
+        cliques: soma('cliques'), impressoes: soma('impressoes'),
+        roas: inv > 0 ? fat / inv : 0,
+        cpc: soma('cliques') > 0 ? inv / soma('cliques') : 0,
+        cpm: soma('impressoes') > 0 ? (inv / soma('impressoes')) * 1000 : 0
+      },
+      porCampanha: agrupar('campanha'),
+      porAnuncio:  agrupar('anuncio'),
+      porDia:      agrupar('data')
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Configuracao e sincronizacao da Utmify ──
+app.get('/api/integracoes/utmify-mcp/me', authDiretoria, (req, res) => {
+  try {
+    const cfg = _utmifyMcpCfg();
+    const db = readDB();
+    const linhas = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
+    const daUtmify = linhas.filter(l => l.fonte === 'utmify');
+    res.json({
+      ok: true,
+      configurado: !!(cfg && cfg.token),
+      tokenPreview: (cfg && cfg.token) ? String(cfg.token).slice(0, 8) + '...' : null,
+      dashboards: (cfg && cfg.dashboards) || [],
+      ultimaSync: (cfg && cfg.ultimaSync) || null,
+      ultimoErro: (cfg && cfg.ultimoErro) || null,
+      linhasImportadas: daUtmify.length
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/integracoes/utmify-mcp/config', authDiretoria, async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    const db = readDB();
+    const cfg = _utmifyMcpCfg(db) || { criadoEm: new Date().toISOString() };
+    if (token && String(token).trim()) cfg.token = String(token).trim();
+    if (!cfg.token) return res.status(400).json({ error: 'Cole o token de acesso da Utmify.' });
+    // valida ja na hora, listando os dashboards
+    let dashboards = [];
+    try {
+      const d = await _utmifyChamarTool(cfg.token, 'get_dashboards', {});
+      dashboards = (Array.isArray(d) ? d : []).map(x => ({ id: x.id, nome: x.name, moeda: x.currency, tz: x.timeZone }));
+      cfg.ultimoErro = null;
+    } catch (e) {
+      cfg.ultimoErro = e.message;
+      db.store[KEY_UTMIFY_MCP] = cfg; writeDB(db);
+      return res.status(400).json({ error: e.message });
+    }
+    cfg.dashboards = dashboards;
+    cfg._updatedAt = Date.now();
+    db.store[KEY_UTMIFY_MCP] = cfg;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_UTMIFY_MCP] = now();
+    audit(db, 'integracao.utmify_mcp.config', KEY_UTMIFY_MCP, { dashboards: dashboards.length }, req.user);
+    writeDB(db);
+    res.json({ ok: true, dashboards });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Puxa as metricas da Utmify e grava em sl_metricas_ads (a mesma base que a tela le)
+app.post('/api/integracoes/utmify-mcp/sync', authDiretoria, async (req, res) => {
+  const db0 = readDB();
+  const cfg = _utmifyMcpCfg(db0);
+  if (!cfg || !cfg.token) return res.status(400).json({ error: 'Configure o token primeiro.' });
+  const de  = String((req.body && req.body.de)  || '').slice(0, 10);
+  const ate = String((req.body && req.body.ate) || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  }
+  const dashboards = (req.body && req.body.dashboards) || (cfg.dashboards || []).map(d => d.id);
+  if (!dashboards.length) return res.status(400).json({ error: 'Nenhum dashboard selecionado.' });
+
+  const cent = v => (Number(v) || 0) / 100;   // a Utmify devolve valores em centavos
+  const linhas = [];
+  const erros = [];
+  for (const dashId of dashboards) {
+    const meta = (cfg.dashboards || []).find(d => d.id === dashId) || {};
+    const tz = (meta.tz === undefined || meta.tz === null) ? -3 : meta.tz;
+    const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+    try {
+      const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+        dashboardId: dashId, level: 'campaign',
+        dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
+      });
+      (r && r.results ? r.results : []).forEach(c => {
+        const inv = cent(c.spend), fat = cent(c.grossRevenue);
+        if (!inv && !fat) return;   // ignora campanha sem movimento
+        linhas.push({
+          data: ate, fonte: 'utmify', dashboard: meta.nome || dashId,
+          campanhaId: String(c.campaignId || c.id || ''), campanha: String(c.name || ''),
+          adsetId: '', adset: '', adId: '', anuncio: '',
+          investimento: inv, faturamento: fat,
+          faturamentoLiquido: cent(c.revenue), lucro: cent(c.profit),
+          vendas: Number(c.totalOrdersCount) || 0,
+          impressoes: Number(c.impressions) || 0,
+          cliques: Number(c.inlineLinkClicks) || 0,
+          ctr: Number(c.inlineLinkClickCtr) || 0,
+          cpc: cent(c.costPerInlineLinkClick), cpm: cent(c.cpm),
+          roas: Number(c.roas) || 0
+        });
+      });
+    } catch (e) { erros.push((meta.nome || dashId) + ': ' + e.message); }
+  }
+
+  const db = readDB();
+  const atual = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
+  // reimportar o mesmo periodo substitui, nao duplica
+  const mantidos = atual.filter(l => !(l.fonte === 'utmify' && l.data >= de && l.data <= ate));
+  db.store[KEY_METRICAS] = mantidos.concat(linhas);
+  const c2 = _utmifyMcpCfg(db) || cfg;
+  c2.ultimaSync = new Date().toISOString();
+  c2.ultimoErro = erros.length ? erros.join(' | ') : null;
+  db.store[KEY_UTMIFY_MCP] = c2;
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps[KEY_METRICAS] = now();
+  writeDB(db);
+  res.json({ ok: true, importadas: linhas.length, substituidas: atual.length - mantidos.length, erros });
 });
 
 // ══════════════════════════════════════════════
@@ -4540,7 +4818,8 @@ const KEYS_DIRETORIA = new Set([
 const KEYS_SERVIDOR = new Set([
   'sl_integracoes_meta',    // access token do Meta Ads
   'sl_integracoes_vendas',  // token secreto da URL de webhook
-  'sl_vendas_raw'           // payloads crus dos gateways (dados de cliente)
+  'sl_vendas_raw',          // payloads crus dos gateways (dados de cliente)
+  'sl_integracoes_utmify_mcp' // token de acesso do MCP da Utmify
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.

@@ -18370,6 +18370,79 @@ function _badgeInt(ok, txtOk, txtOff){
     ? '<span style="background:rgba(22,163,74,.15);color:#16A34A;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">'+txtOk+'</span>'
     : '<span style="background:rgba(156,163,175,.15);color:#9CA3AF;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">'+txtOff+'</span>';
 }
+function _cardUtmifyMcp(u){
+  u = u || {};
+  var conectado = !!u.configurado;
+  var hoje=new Date(), p2=function(n){return String(n).padStart(2,'0');};
+  var ini=new Date(hoje.getFullYear(),hoje.getMonth(),1);
+  var fmt=function(d){return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());};
+  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:18px;">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:14px;">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+
+        '<div style="width:48px;height:48px;background:linear-gradient(135deg,#FF5926,#C52C58);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">📈</div>'+
+        '<div><div style="font-size:17px;font-weight:700;">Utmify · puxar métricas</div>'+
+        '<div style="font-size:11px;color:var(--text2);">Gasto, faturamento, lucro e ROAS por campanha</div></div>'+
+      '</div>'+
+      _badgeInt(conectado, '✅ CONECTADO', '○ NÃO CONFIGURADO')+
+    '</div>'+
+    '<div style="background:rgba(255,89,38,.06);border-left:3px solid #FF5926;padding:12px;border-radius:7px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:18px;">'+
+      '<b>🎯 O que faz:</b><br>'+
+      '✓ Puxa da Utmify o <b>investimento, faturamento, lucro, vendas e ROAS</b> de cada campanha<br>'+
+      '✓ Traz também impressões, cliques, CTR, CPC e CPM<br>'+
+      '✓ Os números caem em <b>Métricas de Ads</b> e ficam disponíveis no ROI<br>'+
+      '✓ Servidor a servidor — sem planilha, sem copiar e colar'+
+    '</div>'+
+    '<div class="fg" style="margin-bottom:14px;">'+
+      '<label class="fl">Token de acesso da Utmify</label>'+
+      '<input type="password" id="utmcp-token" class="fi" placeholder="'+(u.tokenPreview?_esc(u.tokenPreview)+' (já salvo · cole novo pra trocar)':'Cole o token de acesso aqui')+'" autocomplete="off">'+
+      '<div style="font-size:11px;color:var(--text2);margin-top:4px;">É o token de acesso do MCP, no painel da Utmify. O token fica só no servidor — nunca vai pro navegador.</div>'+
+    '</div>'+
+    (u.dashboards && u.dashboards.length
+      ? '<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">Dashboards encontrados: <b>'+u.dashboards.map(function(d){return _esc(d.nome);}).join(', ')+'</b></div>' : '')+
+    (u.ultimoErro ? '<div style="background:rgba(220,38,38,.08);border-left:3px solid #DC2626;padding:10px 12px;border-radius:7px;font-size:12px;margin-bottom:14px;"><b>Último erro:</b><br>'+_esc(u.ultimoErro)+'</div>' : '')+
+    (conectado
+      ? '<div class="flex" style="gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
+          '<div><label class="fl" style="font-size:11px;">De</label><input type="date" id="utmcp-de" class="fi" value="'+fmt(ini)+'" style="max-width:170px;"></div>'+
+          '<div><label class="fl" style="font-size:11px;">Até</label><input type="date" id="utmcp-ate" class="fi" value="'+fmt(hoje)+'" style="max-width:170px;"></div>'+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">'+
+          (u.ultimaSync?'Última sincronização: <b>'+new Date(u.ultimaSync).toLocaleString('pt-BR')+'</b> · ':'')+
+          '<b>'+(u.linhasImportadas||0)+'</b> linha(s) na base</div>'
+      : '')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+      '<button class="btn btn-primary" onclick="salvarUtmifyMcp()">💾 Salvar e conectar</button>'+
+      (conectado ? '<button class="btn btn-ghost" onclick="sincronizarUtmify()">⬇ Puxar métricas agora</button>' : '')+
+    '</div>'+
+    '<div id="utmcp-resultado" style="margin-top:12px;"></div>'+
+  '</div>';
+}
+async function salvarUtmifyMcp(){
+  var out=document.getElementById('utmcp-resultado');
+  var tok=(document.getElementById('utmcp-token')||{}).value||'';
+  if(out) out.innerHTML='<div style="color:var(--text2);font-size:12.5px;">⏳ Conectando na Utmify…</div>';
+  try{
+    var r=await fetch(API_BASE+'/api/integracoes/utmify-mcp/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok})});
+    var j=await r.json();
+    if(!r.ok) throw new Error(j.error||'falhou');
+    if(out) out.innerHTML='<div style="color:#16A34A;font-size:12.5px;">✅ Conectado. '+(j.dashboards||[]).length+' dashboard(s) encontrado(s).</div>';
+    renderIntegracoesTab();
+  }catch(e){ if(out) out.innerHTML='<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>'; }
+}
+async function sincronizarUtmify(){
+  var out=document.getElementById('utmcp-resultado');
+  var de=(document.getElementById('utmcp-de')||{}).value||'';
+  var ate=(document.getElementById('utmcp-ate')||{}).value||'';
+  if(out) out.innerHTML='<div style="color:var(--text2);font-size:12.5px;">⏳ Puxando da Utmify… (pode levar alguns segundos)</div>';
+  try{
+    var r=await fetch(API_BASE+'/api/integracoes/utmify-mcp/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({de:de,ate:ate})});
+    var j=await r.json();
+    if(!r.ok) throw new Error(j.error||'falhou');
+    var msg='✅ '+j.importadas+' campanha(s) importada(s).';
+    if(j.erros && j.erros.length) msg+='<br><span style="color:#DC2626">Avisos: '+_esc(j.erros.join(' | '))+'</span>';
+    if(out) out.innerHTML='<div style="color:#16A34A;font-size:12.5px;">'+msg+'</div>';
+    renderIntegracoesTab();
+  }catch(e){ if(out) out.innerHTML='<div style="color:#DC2626;font-size:12.5px;">❌ '+_esc(e.message)+'</div>'; }
+}
 function _cardMetaAds(m){
   m = m || {};
   var conectado = !!m.configurado;
@@ -18513,6 +18586,8 @@ async function renderIntegracoesTab(){
     // Se uma falhar, a tela continua: cada card sabe se virar sem dados.
     var _mt = {}, _vd = {};
     try { _mt = await (await fetch(API_BASE+'/api/integracoes/meta/me')).json(); } catch(e){ _mt = {erroCarga:true}; }
+    var _um = {};
+    try { _um = await (await fetch(API_BASE+'/api/integracoes/utmify-mcp/me')).json(); } catch(e){ _um = {erroCarga:true}; }
     try { _vd = await (await fetch(API_BASE+'/api/integracoes/vendas/me')).json(); } catch(e){ _vd = {erroCarga:true}; }
 
     // Card Utmify
@@ -18582,6 +18657,7 @@ async function renderIntegracoesTab(){
       '</div>'+
 
       // CARD META ADS (investimento) + CARD VENDAS (faturamento) → ROAS próprio
+      _cardUtmifyMcp(_um)+
       _cardMetaAds(_mt)+
       _cardVendas(_vd)+
 
