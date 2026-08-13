@@ -152,11 +152,18 @@
       <div>
         <h2>Retenção da VSL</h2>
         <p>Quantos ainda estão assistindo a cada minuto. A linha vermelha é o pitch, aos 29min —
-           quem não chega lá nunca vê a oferta.</p>
+           quem não chega lá nunca vê a oferta. Os círculos vermelhos são quedas fora do normal.</p>
+      </div>
+      <div class="acoes">
+        <button class="bt g on" id="bt-z-tudo" onclick="setZoom('tudo')">VSL inteira</button>
+        <button class="bt g" id="bt-z-3" onclick="setZoom('3min')">Primeiros 3min</button>
       </div>
     </div>
     <div id="g-retencao"></div>
   </div>
+
+  <div class="tit">Onde vale mexer</div>
+  <div class="diag" id="quedas"></div>
 
   <!-- ══ POR CRIATIVO ══ -->
   <div class="cartao">
@@ -207,6 +214,38 @@
   <div class="tit">O que os dados estão dizendo</div>
   <div class="diag" id="diag"></div>
 
+  <!-- ══ VSL vs VSL ══ -->
+  <div class="tit">Uma versão contra a outra</div>
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Comparar versões da VSL</h2>
+        <p>Você tem 36 versões no ar. Aqui elas se enfrentam na mesma escala — o que separa
+           uma da outra costuma ser um trecho específico, não a VSL inteira.</p>
+      </div>
+      <div class="acoes">
+        <select id="vsl-a" onchange="gVersoes()"></select>
+        <select id="vsl-b" onchange="gVersoes()"></select>
+      </div>
+    </div>
+    <div class="legenda" id="lg-versoes"></div>
+    <div id="g-versoes"></div>
+    <div id="delta-versoes"></div>
+  </div>
+
+  <!-- ══ DISPOSITIVO ══ -->
+  <div class="tit">Quem assiste de onde</div>
+  <div class="cartao">
+    <div class="cab">
+      <div>
+        <h2>Retenção por dispositivo</h2>
+        <p>Celular e computador se comportam de forma diferente numa VSL longa.
+           Se a diferença for grande, a decisão é de mídia, não de copy.</p>
+      </div>
+    </div>
+    <div id="dispositivos"></div>
+  </div>
+
   <!-- ══ FUNIL ══ -->
   <div class="tit">O caminho inteiro</div>
   <div class="cartao">
@@ -245,14 +284,30 @@ function curva(k, ate){
   var pts = [], passo = 20;
   for(var t=0; t<=(ate||DUR); t+=passo){
     var inicio = 1 - 0.34*(1 - Math.exp(-t/9));     // desistência dos primeiros segundos
-    var y = inicio * Math.exp(-k*t);
-    pts.push({ t:t, y: Math.max(0, y*100) });
+    pts.push({ t:t, y: Math.max(0, inicio * Math.exp(-k*t) * fatorDegraus(t) * 100) });
   }
   return pts;
 }
+// VSL real nao cai de forma lisa: perde gente em pontos especificos — quando muda
+// de assunto, quando repete, quando o preco aparece. Sem isso a deteccao de quedas
+// nao teria o que achar, e a tela nao mostraria pra que serve.
+var DEGRAUS = [
+  { t: 262,  perda:.11 },   // fim da promessa inicial
+  { t: 688,  perda:.08 },   // trecho de credibilidade
+  { t:1262,  perda:.13 },   // depoimentos
+  { t:1748,  perda:.10 }    // o preco aparece
+];
+function fatorDegraus(t){
+  var f=1;
+  DEGRAUS.forEach(function(d){
+    if(t>=d.t) f *= (1-d.perda);
+    else if(t > d.t-16) f *= (1 - d.perda*((t-(d.t-16))/16));   // suaviza a borda
+  });
+  return f;
+}
 function retencaoEm(c, t){
   var inicio = 1 - 0.34*(1 - Math.exp(-t/9));
-  return Math.max(0, inicio * Math.exp(-c.k*t) * 100);
+  return Math.max(0, inicio * Math.exp(-c.k*t) * fatorDegraus(t) * 100);
 }
 CRIATIVOS.forEach(function(c){
   c.pessoas   = Math.round(c.cliques * (c.playRate/100));
@@ -292,7 +347,8 @@ function tiles(){
 
 // ══ MOTOR DE GRÁFICO ══
 var L=52, R=118, T=16, B=34, H=250;
-function eixos(g, W, maxY, ticksX){
+function eixos(g, W, maxY, ticksX, janela){
+  janela = janela || DUR;
   var s='<g class="grade">';
   for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
   s+='</g><g class="eixo"><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/></g>';
@@ -301,43 +357,148 @@ function eixos(g, W, maxY, ticksX){
     s+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+Math.round(v)+'%</text>';
   }
   ticksX.forEach(function(tk){
-    var x=L+(W-L-R)*(tk/DUR);
-    s+='<text class="rot" x="'+x+'" y="'+(H-B+16)+'" text-anchor="middle">'+Math.round(tk/60)+'min</text>';
+    var x=L+(W-L-R)*(tk/janela);
+    var rot = janela<=300 ? (mmss(tk).replace('min',':')) : (Math.round(tk/60)+'min');
+    s+='<text class="rot" x="'+x+'" y="'+(H-B+16)+'" text-anchor="middle">'+rot+'</text>';
   });
   return s;
 }
-function linhaPitch(W, rotulo){
-  var x=L+(W-L-R)*(PITCH/DUR);
+function linhaPitch(W, rotulo, janela){
+  janela = janela || DUR;
+  if(PITCH>janela) return '';
+  var x=L+(W-L-R)*(PITCH/janela);
   return '<g class="pitch"><line x1="'+x+'" y1="'+T+'" x2="'+x+'" y2="'+(H-B)+'"/>'+
     (rotulo?'<text x="'+(x-7)+'" y="'+(T+11)+'" text-anchor="end">PITCH '+mmss(PITCH)+'</text>':'')+'</g>';
 }
-function caminho(pts, W, maxY){
-  return pts.map(function(p,i){
-    var x=L+(W-L-R)*(p.t/DUR), y=T+(H-T-B)*(1-p.y/maxY);
+function caminho(pts, W, maxY, janela){
+  janela = janela || DUR;
+  return pts.filter(function(p){ return p.t<=janela; }).map(function(p,i){
+    var x=L+(W-L-R)*(p.t/janela), y=T+(H-T-B)*(1-p.y/maxY);
     return (i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);
   }).join(' ');
 }
 
+// ══ QUEDAS BRUSCAS ══
+// A curva sempre desce; o que interessa e onde ela desce MUITO MAIS que o normal.
+// Compara a perda de cada trecho com a perda tipica da vizinhanca.
+function quedas(pts){
+  var achados=[], jan=6;                       // vizinhanca de +-2min
+  for(var i=1;i<pts.length;i++){
+    if(pts[i].t < 25) continue;                // a saida do comeco e esperada, nao problema
+    var perda = pts[i-1].y - pts[i].y;
+    if(perda<=0) continue;
+    // Compara em PERCENTUAL DE QUEM RESTOU, não em pontos: no fim da VSL a
+    // retenção já é baixa, e uma queda grave ali vale poucos pontos — medindo em
+    // pontos, justamente as quedas perto do pitch passariam despercebidas.
+    var rel = perda / Math.max(pts[i-1].y, 0.01);
+    var ini=Math.max(1,i-jan), fim=Math.min(pts.length-1,i+jan), soma=0, n=0;
+    for(var j=ini;j<=fim;j++){
+      if(j===i) continue;
+      soma += Math.max(0, (pts[j-1].y-pts[j].y) / Math.max(pts[j-1].y,0.01)); n++;
+    }
+    var tipica = n? soma/n : 0;
+    if(tipica>0.0005 && rel > tipica*2.6 && rel > 0.035){
+      achados.push({ t0:pts[i-1].t, t1:pts[i].t, de:pts[i-1].y, para:pts[i].y,
+                     perda:perda, relativa:rel*100, severidade: rel/tipica });
+    }
+  }
+  // junta quedas coladas (mesma cena do video)
+  var juntos=[];
+  achados.sort(function(a,b){ return a.t0-b.t0; }).forEach(function(q){
+    var u=juntos[juntos.length-1];
+    if(u && q.t0 - u.t1 <= 40){
+      u.t1=q.t1; u.para=q.para; u.perda=u.de-u.para;
+      u.relativa = u.perda/Math.max(u.de,0.01)*100;
+      u.severidade=Math.max(u.severidade,q.severidade);
+    }
+    else juntos.push(Object.assign({},q));
+  });
+  return juntos.sort(function(a,b){ return b.relativa-a.relativa; }).slice(0,4);
+}
+
+// Quanto vale consertar cada queda
+function impacto(q){
+  var espectadores = TOT.pessoas;
+  var perdidos = espectadores * (q.perda/100);
+  // quem for recuperado segue a curva dali pra frente na mesma proporcao
+  var sobrevive = q.para>0 ? (retencaoMedia(PITCH)/q.para) : 0;
+  var recuperaveis = perdidos * 0.5;                 // metade, cenario conservador
+  var extraNoPitch = recuperaveis * sobrevive;
+  var porVenda = TOT.noPitch ? (TOT.vendas/TOT.noPitch) : 0;
+  var vendas = extraNoPitch * porVenda;
+  var ticket = TOT.vendas ? TOT.receita/TOT.vendas : 0;
+  return { perdidos:perdidos, extraNoPitch:extraNoPitch, vendas:vendas, receita:vendas*ticket };
+}
+function retencaoMedia(t){
+  var soma=0, peso=0;
+  CRIATIVOS.forEach(function(c){ soma += retencaoEm(c,t)*c.pessoas; peso += c.pessoas; });
+  return peso? soma/peso : 0;
+}
+
 // ══ RETENÇÃO GERAL ══
+var zoomRet='tudo';
+function setZoom(z){
+  zoomRet=z;
+  document.getElementById('bt-z-tudo').classList.toggle('on', z==='tudo');
+  document.getElementById('bt-z-3').classList.toggle('on', z==='3min');
+  gRetencao();
+}
+function pontosMedia(passo, ate){
+  var pts=[];
+  for(var t=0;t<=(ate||DUR);t+=passo) pts.push({ t:t, y:retencaoMedia(t) });
+  return pts;
+}
 function gRetencao(){
   var el=document.getElementById('g-retencao'), W=el.clientWidth||820;
-  // média ponderada pelas pessoas de cada criativo
-  var pts=[], passo=20;
-  for(var t=0;t<=DUR;t+=passo){
-    var soma=0, peso=0;
-    CRIATIVOS.forEach(function(c){ soma += retencaoEm(c,t)*c.pessoas; peso += c.pessoas; });
-    pts.push({ t:t, y: peso?soma/peso:0 });
+  var janela = zoomRet==='3min' ? 180 : DUR;
+  var passo  = zoomRet==='3min' ? 2 : 20;
+  var pts=pontosMedia(passo, janela);
+  var ticks = zoomRet==='3min' ? [0,30,60,90,120,150,180] : [0,300,600,900,1200,1500,1740,2100];
+  var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'">'+
+    eixos(null,W,100,ticks,janela)+linhaPitch(W,true,janela)+
+    '<path class="serie" style="stroke:var(--s1)" d="'+caminho(pts,W,100,janela)+'"/>';
+
+  // marca as quedas bruscas na propria curva
+  var qs = quedas(pontosMedia(passo, janela));
+  qs.forEach(function(q,i){
+    var xm=L+(W-L-R)*(((q.t0+q.t1)/2)/janela);
+    var ym=T+(H-T-B)*(1-((q.de+q.para)/2)/100);
+    var x0=L+(W-L-R)*(q.t0/janela), x1=L+(W-L-R)*(q.t1/janela);
+    s+='<rect x="'+x0.toFixed(1)+'" y="'+T+'" width="'+Math.max(2,(x1-x0)).toFixed(1)+'" height="'+(H-T-B)+
+       '" fill="var(--critico)" opacity=".10"/>'+
+       '<circle cx="'+xm.toFixed(1)+'" cy="'+ym.toFixed(1)+'" r="9" fill="var(--critico)"/>'+
+       '<text x="'+xm.toFixed(1)+'" y="'+(ym+3.6).toFixed(1)+'" text-anchor="middle" font-size="10.5" font-weight="800" fill="#fff">'+(i+1)+'</text>';
+  });
+
+  if(PITCH<=janela){
+    var np=retencaoMedia(PITCH);
+    var x=L+(W-L-R)*(PITCH/janela), y=T+(H-T-B)*(1-np/100);
+    s+='<circle cx="'+x+'" cy="'+y+'" r="4.5" fill="var(--s1)" stroke="var(--sup)" stroke-width="2"/>'+
+       '<text class="dl" x="'+(x+9)+'" y="'+(y+4)+'" fill="var(--s1)">'+np.toFixed(1)+'% no pitch</text>';
   }
-  var noPitch = pts.find(function(p){ return p.t>=PITCH; });
-  var x=L+(W-L-R)*(PITCH/DUR), y=T+(H-T-B)*(1-noPitch.y/100);
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'">'+
-    eixos(null,W,100,[0,300,600,900,1200,1500,1740,2100])+
-    linhaPitch(W,true)+
-    '<path class="serie" style="stroke:var(--s1)" d="'+caminho(pts,W,100)+'"/>'+
-    '<circle cx="'+x+'" cy="'+y+'" r="4.5" fill="var(--s1)" stroke="var(--sup)" stroke-width="2"/>'+
-    '<text class="dl" x="'+(x+9)+'" y="'+(y+4)+'" fill="var(--s1)">'+noPitch.y.toFixed(1)+'% no pitch</text>'+
-    '</svg>';
-  hover(el, W, [{nome:'Retenção', cor:'var(--s1)', pts:pts}], '%');
+  el.innerHTML=s+'</svg>';
+  hoverJan(el, W, [{nome:'Retenção', cor:'var(--s1)', pts:pts}], '%', janela);
+  cartaoQuedas(qs);
+}
+
+// ── as quedas viram dinheiro ──
+function cartaoQuedas(qs){
+  var el=document.getElementById('quedas');
+  if(!el) return;
+  if(!qs.length){ el.innerHTML='<div class="nota">Nenhuma queda fora do normal neste trecho — a curva desce de forma constante.</div>'; return; }
+  el.innerHTML = qs.map(function(q,i){
+    var im=impacto(q);
+    return '<div class="dcard" style="border-left-color:var(--critico)">'+
+      '<div class="t"><span style="background:var(--critico);color:#fff;width:19px;height:19px;border-radius:50%;'+
+        'display:inline-flex;align-items:center;justify-content:center;font-size:11px">'+(i+1)+'</span>'+
+        'Queda em '+mmss(q.t0)+' → '+mmss(q.t1)+'</div>'+
+      '<div class="d">Some <b>'+q.relativa.toFixed(0)+'% de quem ainda estava assistindo</b> em '+
+        Math.round(q.t1-q.t0)+'s — cerca de <b>'+Math.round(q.severidade)+'x</b> a saída normal desse trecho. '+
+        'São <b>'+num(im.perdidos)+' pessoas</b>, e a retenção cai de '+q.de.toFixed(1)+'% para '+q.para.toFixed(1)+'%.</div>'+
+      '<div class="a" style="color:var(--critico)">Recuperando metade: +'+num(im.extraNoPitch)+
+        ' no pitch · +'+im.vendas.toFixed(1)+' venda(s) · '+brl(im.receita)+'</div>'+
+    '</div>';
+  }).join('');
 }
 
 // ══ POR CRIATIVO ══
@@ -375,7 +536,7 @@ function gCriativos(){
   });
   s+='</svg>';
   el.innerHTML=s;
-  hover(el, W, series, '%');
+  hoverJan(el, W, series, '%', DUR);
   document.getElementById('legenda').innerHTML = CRIATIVOS.map(function(c){
     return '<span class="lg '+(ativos[c.nome]?'':'off')+'" onclick="alternar(\''+c.nome+'\')">'+
       '<i style="background:'+CORES[c.slot]+'"></i>'+c.nome+'</span>';
@@ -432,7 +593,8 @@ function gConversao(){
 }
 
 // ══ TOOLTIP ══
-function hover(el, W, series, sufixo){
+function hoverJan(el, W, series, sufixo, janela){
+  janela = janela || DUR;
   var svg=el.querySelector('svg'), dica=document.getElementById('dica');
   var linha=document.createElementNS('http://www.w3.org/2000/svg','line');
   linha.setAttribute('stroke','var(--eixo)'); linha.setAttribute('stroke-width','1');
@@ -441,8 +603,8 @@ function hover(el, W, series, sufixo){
   svg.addEventListener('mousemove', function(ev){
     var cx=svg.getBoundingClientRect(), rel=(ev.clientX-cx.left)/cx.width*W;
     if(rel<L||rel>W-R){ dica.classList.remove('on'); linha.style.opacity=0; return; }
-    var t=Math.round((rel-L)/(W-L-R)*DUR);
-    var px=L+(W-L-R)*(t/DUR);
+    var t=Math.round((rel-L)/(W-L-R)*janela);
+    var px=L+(W-L-R)*(t/janela);
     linha.setAttribute('x1',px); linha.setAttribute('x2',px); linha.style.opacity=.85;
     var itens=series.map(function(se){
       var p=se.pts.reduce(function(a,b){ return Math.abs(b.t-t)<Math.abs(a.t-t)?b:a; });
@@ -579,6 +741,83 @@ function funil(){
   }).join('');
 }
 
+// ══ VERSÕES DA VSL ══
+var VERSOES = [
+  { nome:'top VSL — Lead 01',  k:.00092, playRate:71.2, vendas:4, inv:1180.4 },
+  { nome:'PAG 01 — Lead 01',   k:.00121, playRate:66.9, vendas:2, inv: 902.1 },
+  { nome:'NVPG — Lead 01',     k:.00078, playRate:74.6, vendas:5, inv: 876.1 },
+  { nome:'PAG 03 — Lead 01',   k:.00164, playRate:58.2, vendas:1, inv: 410.7 }
+];
+function gVersoes(){
+  var sa=document.getElementById('vsl-a'), sb=document.getElementById('vsl-b');
+  if(!sa.options.length){
+    var op=VERSOES.map(function(v,i){ return '<option value="'+i+'">'+v.nome+'</option>'; }).join('');
+    sa.innerHTML=op; sb.innerHTML=op; sa.value='0'; sb.value='2';
+  }
+  var a=VERSOES[+sa.value], b=VERSOES[+sb.value];
+  var el=document.getElementById('g-versoes'), W=el.clientWidth||820;
+  // slots fixos: A sempre azul, B sempre laranja — não muda com a escolha
+  var series=[{nome:a.nome,cor:'var(--s1)',pts:curva(a.k)},{nome:b.nome,cor:'var(--s2)',pts:curva(b.k)}];
+  var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'">'+
+    eixos(null,W,100,[0,300,600,900,1200,1500,1740,2100],DUR)+linhaPitch(W,true,DUR);
+  series.forEach(function(se){ s+='<path class="serie" style="stroke:'+se.cor+'" d="'+caminho(se.pts,W,100,DUR)+'"/>'; });
+  // maior distância entre as duas = onde uma ganha da outra
+  var maiorD=0, tD=0;
+  for(var t=0;t<=DUR;t+=20){
+    var d=Math.abs(retIdx(a.k,t)-retIdx(b.k,t));
+    if(d>maiorD){ maiorD=d; tD=t; }
+  }
+  var xd=L+(W-L-R)*(tD/DUR);
+  var y1=T+(H-T-B)*(1-retIdx(a.k,tD)/100), y2=T+(H-T-B)*(1-retIdx(b.k,tD)/100);
+  s+='<line x1="'+xd+'" y1="'+Math.min(y1,y2)+'" x2="'+xd+'" y2="'+Math.max(y1,y2)+
+     '" stroke="var(--tinta3)" stroke-width="1.5"/>'+
+     '<text class="dl" x="'+(xd+7)+'" y="'+((y1+y2)/2)+'" fill="var(--tinta2)">'+maiorD.toFixed(1)+' pts em '+mmss(tD)+'</text>';
+  el.innerHTML=s+'</svg>';
+  hoverJan(el,W,series,'%',DUR);
+  document.getElementById('lg-versoes').innerHTML =
+    '<span class="lg"><i style="background:var(--s1)"></i>'+a.nome+'</span>'+
+    '<span class="lg"><i style="background:var(--s2)"></i>'+b.nome+'</span>';
+
+  var linhas=[['Play rate',a.playRate.toFixed(1)+'%',b.playRate.toFixed(1)+'%',b.playRate-a.playRate,'%'],
+    ['Chega no pitch',retIdx(a.k,PITCH).toFixed(1)+'%',retIdx(b.k,PITCH).toFixed(1)+'%',retIdx(b.k,PITCH)-retIdx(a.k,PITCH),'%'],
+    ['Investido',brl(a.inv),brl(b.inv),b.inv-a.inv,'R$'],
+    ['Vendas',a.vendas,b.vendas,b.vendas-a.vendas,'']];
+  document.getElementById('delta-versoes').innerHTML='<table style="margin-top:14px"><thead><tr>'+
+    '<th>Métrica</th><th class="num">'+a.nome+'</th><th class="num">'+b.nome+'</th><th class="num">Diferença</th></tr></thead><tbody>'+
+    linhas.map(function(l){
+      var bom=l[3]>0, cor=l[3]===0?'var(--tinta3)':(bom?'var(--bom)':'var(--critico)');
+      var d = l[4]==='R$' ? brl(Math.abs(l[3])) : (Math.abs(l[3]).toFixed(l[4]==='%'?1:0)+l[4]);
+      return '<tr><td>'+l[0]+'</td><td class="num">'+l[1]+'</td><td class="num">'+l[2]+'</td>'+
+        '<td class="num" style="color:'+cor+'">'+(l[3]===0?'—':(bom?'+':'−')+d)+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+function retIdx(k,t){ var i=1-0.34*(1-Math.exp(-t/9)); return Math.max(0,i*Math.exp(-k*t)*fatorDegraus(t)*100); }
+
+// ══ DISPOSITIVO ══
+var DISPOSITIVOS=[
+  { nome:'Celular',     share:78.4, playRate:59.2, k:.00131, vendas:4 },
+  { nome:'Computador',  share:18.1, playRate:74.8, k:.00081, vendas:3 },
+  { nome:'Tablet',      share: 3.5, playRate:66.0, k:.00104, vendas:0 }
+];
+function dispositivos(){
+  var el=document.getElementById('dispositivos'); if(!el) return;
+  var melhor=DISPOSITIVOS.slice().sort(function(a,b){ return retIdx(a.k,PITCH)-retIdx(b.k,PITCH); }).pop();
+  el.innerHTML='<div class="tiles" style="margin-bottom:14px">'+DISPOSITIVOS.map(function(d){
+      var pitch=retIdx(d.k,PITCH);
+      return '<div class="tile"><div class="r">'+d.nome+'</div>'+
+        '<div class="v">'+pitch.toFixed(1)+'%</div>'+
+        '<div class="s">chegam no pitch · '+d.share.toFixed(1)+'% do tráfego<br>play rate '+d.playRate.toFixed(0)+'%</div></div>';
+    }).join('')+'</div>'+
+    '<div class="dcard" style="border-left-color:var(--atencao)">'+
+      '<div class="t">📱 O peso está no lado que retém menos</div>'+
+      '<div class="d">'+DISPOSITIVOS[0].share.toFixed(0)+'% do tráfego é celular, e ele leva '+
+        retIdx(DISPOSITIVOS[0].k,PITCH).toFixed(1)+'% até o pitch — contra '+
+        retIdx(melhor.k,PITCH).toFixed(1)+'% no '+melhor.nome.toLowerCase()+'. '+
+        'A VSL de 36min pesa mais em quem assiste no celular.</div>'+
+      '<div class="a" style="color:var(--atencao)">Vale testar uma versão mais curta só para celular.</div>'+
+    '</div>';
+}
+
 // ══ TEMA ══
 function trocarTema(){
   var atual=document.documentElement.getAttribute('data-theme');
@@ -588,9 +827,9 @@ function trocarTema(){
   montar();
 }
 
-function montar(){ tiles(); gRetencao(); gCriativos(); gConversao(); mestra(); diagnosticos(); funil(); }
+function montar(){ tiles(); gRetencao(); gCriativos(); gConversao(); mestra(); diagnosticos(); gVersoes(); dispositivos(); funil(); }
 montar();
-addEventListener('resize', function(){ gRetencao(); gCriativos(); gConversao(); });
+addEventListener('resize', function(){ gRetencao(); gCriativos(); gConversao(); gVersoes(); });
 </script>
 </body>
 </html>
