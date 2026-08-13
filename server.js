@@ -2723,7 +2723,16 @@ const KEY_UTMIFY_MCP = 'sl_integracoes_utmify_mcp';   // server-only: guarda o t
 
 function _utmifyMcpCfg(db) {
   const c = (db || readDB()).store[KEY_UTMIFY_MCP];
-  return (c && typeof c === 'object') ? c : null;
+  const cfg = (c && typeof c === 'object') ? c : null;
+  // Alternativa ao token salvo pela tela: variavel de ambiente no Railway.
+  // Util pra quem prefere guardar credencial fora do banco (estilo .env).
+  const doEnv = process.env.UTMIFY_MCP_TOKEN;
+  if (doEnv && String(doEnv).trim()) {
+    const base = cfg || { criadoEm: new Date().toISOString() };
+    // o do ambiente tem prioridade: e o mais explicito
+    return Object.assign({}, base, { token: String(doEnv).trim(), origemToken: 'env' });
+  }
+  return cfg;
 }
 
 async function _utmifyRpc(token, metodo, params, sessionId) {
@@ -2912,6 +2921,7 @@ app.get('/api/integracoes/utmify-mcp/me', authDiretoria, (req, res) => {
       // aparecia como CONECTADO e confundia
       configurado: !!(cfg && cfg.token && (cfg.dashboards || []).length),
       tokenSalvo: !!(cfg && cfg.token),
+      origemToken: (cfg && cfg.origemToken) || null,
       tokenPreview: (cfg && cfg.token) ? String(cfg.token).slice(0, 8) + '...' : null,
       dashboards: (cfg && cfg.dashboards) || [],
       ultimaSync: (cfg && cfg.ultimaSync) || null,
