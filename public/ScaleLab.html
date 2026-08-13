@@ -1367,6 +1367,85 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 <!-- Libs para export PDF/Excel -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+/* ══ FUNIS ══ usa só as variáveis do sistema, então acompanha claro/escuro sozinho */
+.fn-topo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.fn-trilha{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:4px 6px;flex-wrap:wrap}
+.fn-trilha .sep{color:var(--text2);font-size:11px}
+.fn-abas{display:flex;gap:4px;flex-wrap:wrap}
+.fn-aba{padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text2);border:1px solid transparent;background:none;font-family:inherit;transition:.15s}
+.fn-aba:hover{color:var(--text);background:var(--bg3)}
+.fn-aba.on{background:var(--accent);color:#fff}
+.fn-painel{display:none}.fn-painel.on{display:block}
+.fn-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:11px;margin-bottom:16px}
+.fn-cx{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;cursor:pointer;transition:.15s}
+.fn-cx:hover{border-color:var(--accent);transform:translateY(-2px)}
+.fn-cx.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(27,156,250,.15)}
+.fn-cx .t{font-size:13px;font-weight:800;margin-bottom:5px}
+.fn-cx .n{font-size:11px;color:var(--text2)}
+.fn-novo{display:flex;align-items:center;justify-content:center;border-style:dashed;color:var(--text2);font-size:13px;font-weight:600}
+.fn-faixa{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:10px;margin-bottom:16px}
+.fn-et{background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:11px 13px;cursor:pointer;transition:.15s}
+.fn-et:hover{transform:translateY(-2px);border-color:var(--accent)}
+.fn-et.sel{border-color:var(--accent)}
+.fn-et .r{font-size:9.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fn-et .p{font-size:21px;font-weight:800;letter-spacing:-.7px;line-height:1}
+.fn-et .q{font-size:11px;color:var(--text2);margin-top:3px}
+.fn-et .b{height:4px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden}
+.fn-et .b i{display:block;height:100%;border-radius:3px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.fn-mapa{background:var(--bg2);border:1px solid var(--border);border-radius:14px;position:relative;overflow:hidden;height:480px}
+.fn-grade{position:absolute;inset:0;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:22px 22px;opacity:.8}
+.fn-palco{position:absolute;inset:0;transform-origin:0 0}
+.fn-no{position:absolute;background:var(--bg3);border:1.5px solid var(--border);border-radius:11px;padding:9px 12px;min-width:128px;cursor:grab;user-select:none;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.fn-no:active{cursor:grabbing}
+.fn-no.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.18)}
+.fn-no .c{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.fn-no .nm{font-size:11px;font-weight:800}
+.fn-no .tg{font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:5px}
+.fn-no .vl{font-size:17px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.fn-no .sb{font-size:10px;color:var(--text2);margin-top:1px}
+.fn-no.src{border-style:dashed;min-width:108px}
+.fn-fios{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.fn-zoom{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:9px;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:5px 11px;font-size:12px;font-weight:700}
+.fn-zoom button{background:none;border:none;color:var(--text);font-size:16px;cursor:pointer;line-height:1;font-family:inherit}
+.fn-vivo{position:absolute;right:12px;top:12px;display:flex;align-items:center;gap:7px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:var(--green);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800}
+.fn-pulsa{width:8px;height:8px;border-radius:50%;background:var(--green);animation:fnpulso 2s infinite}
+@keyframes fnpulso{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+.fn-cols{display:grid;grid-template-columns:1fr 300px;gap:16px}
+.fn-cx2{background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:16px 18px;margin-bottom:14px}
+.fn-cx2 h3{font-size:13px;font-weight:800;margin-bottom:12px}
+.fn-l{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
+.fn-l:last-child{border:none}
+.fn-l span:first-child{color:var(--text2)}
+.fn-l span:last-child{font-weight:700;text-align:right}
+.fn-campo{margin-bottom:11px}
+.fn-campo label{display:block;font-size:10.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.fn-campo input,.fn-campo select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.fn-campo input:focus,.fn-campo select:focus{border-color:var(--accent)}
+.fn-pre{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:13px;font-size:11.5px;overflow-x:auto;line-height:1.6;font-family:ui-monospace,Menlo,monospace;color:var(--text);white-space:pre;max-height:340px}
+.fn-tb{width:100%;border-collapse:collapse;font-size:13px}
+.fn-tb th{text-align:left;padding:9px 10px;font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+.fn-tb td{padding:10px;border-bottom:1px solid var(--border)}
+.fn-tb input{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:6px 9px;color:var(--text);font-size:12.5px;outline:none;font-family:inherit}
+.fn-nota{background:rgba(27,156,250,.08);border-left:3px solid var(--accent);border-radius:8px;padding:11px 14px;font-size:12.5px;color:var(--text2);margin-bottom:16px;line-height:1.65}
+.fn-nota b{color:var(--text)}
+.fn-split{height:26px;border-radius:7px;overflow:hidden;display:flex;margin:12px 0 6px}
+.fn-split i{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;transition:width .5s}
+.fn-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 15px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.fn-btn:hover{filter:brightness(1.12)}
+.fn-btn.g{background:var(--bg3);border:1px solid var(--border);color:var(--text)}
+.fn-btn.sm{padding:5px 10px;font-size:12px}
+.fn-ev{display:flex;align-items:center;gap:9px;padding:8px 11px;background:var(--bg3);border-radius:7px;margin-bottom:5px;border-left:3px solid var(--accent)}
+@media(max-width:1050px){.fn-cols{grid-template-columns:1fr}}
+@media(max-width:760px){
+  .fn-mapa{height:380px}
+  .fn-trilha{width:100%}
+  .fn-trilha select{flex:1;min-width:0}
+  .fn-faixa{grid-template-columns:repeat(auto-fit,minmax(108px,1fr))}
+  .fn-cards{grid-template-columns:1fr}
+}
+</style>
+
 </head>
 <body>
 
@@ -1503,6 +1582,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <div class="nav-item" id="nav-adsmetrics" onclick="goTo('adsmetrics')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           Métricas de Ads
+        </div>
+        <div class="nav-item" id="nav-funis" onclick="goTo('funis')">
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Funis
         </div>
         <div class="nav-item" id="nav-adlibrary" onclick="goTo('adlibrary')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -3040,6 +3123,120 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
     </div>
 
     <!-- AD LIBRARY -->
+    <div class="page" id="page-funis">
+      <div class="content">
+        <div class="fn-topo">
+          <div class="fn-trilha">
+            <select id="fn-projeto" onchange="fnTrocarProjeto(this.value)"></select>
+            <span class="sep">›</span>
+            <select id="fn-funil" onchange="fnTrocarFunil(this.value)"></select>
+            <button class="fn-btn sm" onclick="fnNovoFunil()">+ Novo funil</button>
+          </div>
+          <div class="fn-abas">
+            <button class="fn-aba on" onclick="fnAba('mapa',this)">🧭 Mapa</button>
+            <button class="fn-aba" onclick="fnAba('pixel',this)">📡 Pixel</button>
+            <button class="fn-aba" onclick="fnAba('redir',this)">🔀 Redirecionadores</button>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <select id="fn-periodo" class="fn-per" onchange="fnCarregarStats()"
+              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px;outline:none">
+              <option value="hoje">Hoje</option><option value="7d">7 dias</option><option value="30d">30 dias</option>
+            </select>
+            <button class="fn-btn g sm" onclick="fnCarregarStats()">🔄 Atualizar</button>
+          </div>
+        </div>
+
+        <div class="fn-painel on" id="fn-p-mapa">
+          <div class="fn-cards" id="fn-lista"></div>
+          <div class="fn-faixa" id="fn-etapas"></div>
+          <div class="fn-cols">
+            <div>
+              <div class="fn-mapa" id="fn-mapa">
+                <div class="fn-grade"></div>
+                <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
+                <div class="fn-vivo"><span class="fn-pulsa"></span> AO VIVO</div>
+                <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button></div>
+              </div>
+            </div>
+            <div>
+              <div class="fn-cx2" id="fn-detalhe"></div>
+              <div class="fn-cx2">
+                <h3>➕ Adicionar etapa</h3>
+                <div class="fn-campo"><label>Nome</label><input id="fn-n-nome" placeholder="Ex: Upsell 2"></div>
+                <div class="fn-campo"><label>Link da página</label><input id="fn-n-url" placeholder="https://suapagina.com/...">
+                  <div style="font-size:10.5px;color:var(--text2);margin-top:5px">É onde o pixel vai ser colado. Sem link, a etapa não é rastreada.</div>
+                </div>
+                <div class="fn-campo"><label>Tipo</label><select id="fn-n-tipo">
+                  <option value="pagina">Página</option><option value="vsl">VSL</option>
+                  <option value="checkout">Checkout</option><option value="upsell">Upsell</option>
+                  <option value="obrigado">Obrigado</option></select></div>
+                <div class="fn-campo"><label>Vem depois de</label><select id="fn-n-pai"></select></div>
+                <button class="fn-btn" style="width:100%" onclick="fnAddEtapa()">Adicionar ao funil</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fn-painel" id="fn-p-pixel">
+          <div class="fn-nota">Cole em <b>cada página do funil</b>, antes do <b>&lt;/head&gt;</b>. Ele cria um identificador no primeiro acesso e reencontra a mesma pessoa nas páginas seguintes — é isso que liga um passo no outro.</div>
+          <div class="fn-cols">
+            <div>
+              <div class="fn-cx2">
+                <h3>📡 Código do pixel</h3>
+                <div class="fn-campo"><label>Etapa desta página</label><select id="fn-px-etapa" onchange="fnPixel()"></select></div>
+                <div class="fn-pre" id="fn-px-code"></div>
+                <button class="fn-btn" style="margin-top:12px" onclick="fnCopiar('fn-px-code')">Copiar código</button>
+              </div>
+            </div>
+            <div>
+              <div class="fn-cx2"><h3>🧪 Eventos recebidos</h3><div id="fn-px-feed" style="max-height:340px;overflow-y:auto"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fn-painel" id="fn-p-redir">
+          <div class="fn-cards" id="fn-redlista"></div>
+          <div class="fn-cols">
+            <div>
+              <div class="fn-cx2">
+                <h3 id="fn-red-tit">🔀 Destinos</h3>
+                <div style="overflow-x:auto">
+                <table class="fn-tb"><thead><tr><th>Destino</th><th style="width:88px">Peso</th><th style="width:66px;text-align:right">Fatia</th><th style="width:36px"></th></tr></thead>
+                  <tbody id="fn-red-corpo"></tbody></table>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                  <input id="fn-red-url" placeholder="https://suapagina.com/vsl-c" style="flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none">
+                  <input id="fn-red-peso" type="number" value="1" min="1" style="width:78px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none">
+                  <button class="fn-btn" onclick="fnAddDestino()">Adicionar</button>
+                </div>
+                <div class="fn-split" id="fn-red-barra"></div>
+                <div style="font-size:11px;color:var(--text2)">Distribuição atual</div>
+              </div>
+            </div>
+            <div>
+              <div class="fn-cx2">
+                <h3>🔗 Link do anúncio</h3>
+                <div class="fn-campo"><label>Atalho</label><input id="fn-red-slug" onchange="fnMudarSlug(this.value)"></div>
+                <div class="fn-pre" id="fn-red-link" style="white-space:pre-wrap;word-break:break-all"></div>
+                <button class="fn-btn" style="margin-top:10px;width:100%" onclick="fnCopiar('fn-red-link')">Copiar link</button>
+              </div>
+              <div class="fn-cx2">
+                <h3>🌐 Domínio próprio</h3>
+                <p style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-bottom:10px">
+                  Pra não expor a Central no anúncio, aponte um subdomínio seu pra cá:</p>
+                <div class="fn-pre">Tipo   CNAME
+Nome   go
+Valor  scalelab-web.up.railway.app</div>
+                <p style="font-size:11.5px;color:var(--text2);margin-top:10px;line-height:1.6">
+                  Depois me avise o domínio pra eu liberar no servidor — o link vira <b style="color:var(--text)">go.seudominio.com/r/atalho</b>.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <div class="page" id="page-adlibrary">
 
       <!-- Sub-tabs: AdLib · Spy Automático -->
@@ -4408,7 +4605,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados'];
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores'];
 // ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
 // As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
 // pontos de fetch espalhados pelo arquivo (fácil esquecer um e quebrar o sync sem
@@ -5380,6 +5577,7 @@ const titles={
   iacopy:{t:'IA',s:'Copy de Direct Response + Análise preditiva de ads'},
   notificacoes:{t:'Notificações',s:''},configuracoes:{t:'Configurações',s:''},
   adsmetrics:{t:'Métricas de Ads',s:'Performance de campanhas via RedTrack'},
+  funis:{t:'Funis',s:'Mapa do funil, pixel de rastreamento e redirecionador'},
   rituais:{t:'Rituais',s:'Rotinas e processos recorrentes da equipe.'},
   gestao:{t:'Gestão',s:'Gestão e programação de demandas.'},
   infra:{t:'Infra',s:'Infraestrutura e controle de testes.'}
@@ -5468,6 +5666,7 @@ function goTo(id){
   if(id==='adlibrary')renderAdlib();
   if(id==='fila')renderFila();
   if(id==='adsmetrics')renderAdsMetrics();
+  if(id==='funis')renderFunis();
   if(id==='rituais')renderRituais();
   if(id==='notificacoes')renderNotificacoes();
   if(id==='lixeira')renderLixeira();
@@ -26362,6 +26561,449 @@ function saveAdsApiKey(){
   if(st) st.style.display = 'inline-block';
   notif('API Key salva e compartilhada com a equipe!');
 }
+
+// ══════════════════════════════════════════════
+// ── FUNIS ── projeto › funil › etapas
+// Os números vêm do pixel (sl_funil_stats no servidor); o desenho fica em sl_funis.
+// ══════════════════════════════════════════════
+var FN_CORES = { pagina:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926', upsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC' };
+var FN_ROT   = { pagina:'PÁGINA', vsl:'VSL', checkout:'CHECKOUT', upsell:'UPSELL', obrigado:'OBRIGADO', fonte:'ORIGEM' };
+var FN_MODELOS = [
+  { id:'vsl',  nome:'VSL direta',           etapas:[['Landing','pagina'],['VSL','vsl'],['Checkout','checkout'],['Obrigado','obrigado']] },
+  { id:'advo', nome:'Advertorial + VSL',    etapas:[['Advertorial','pagina'],['VSL','vsl'],['Checkout','checkout'],['Upsell','upsell'],['Obrigado','obrigado']] },
+  { id:'quiz', nome:'Quiz de várias telas', etapas:[['Tela 1','pagina'],['Tela 2','pagina'],['Tela 3','pagina'],['VSL','vsl'],['Checkout','checkout'],['Obrigado','obrigado']] },
+  { id:'zero', nome:'Vazio',                etapas:[] }
+];
+var fnProjetos = [], fnProj = '', fnIdx = 0, fnEscala = .8, fnSel = null, fnStats = {}, fnFeed = [], fnRedIdx = 0;
+
+function fnFunis(){ return g('sl_funis', []); }
+function fnSalvarFunis(v){ s('sl_funis', v); }
+function fnReds(){ return g('sl_redirecionadores', []); }
+function fnSalvarReds(v){ s('sl_redirecionadores', v); }
+function fnDoProjeto(){ return fnFunis().filter(function(f){ return f.projeto === fnProj; }); }
+function fnAtual(){ var l = fnDoProjeto(); return l[fnIdx] || l[0] || null; }
+function fnTodos(f){ return (f.fontes||[]).map(function(x){ var c={}; for(var k in x) c[k]=x[k]; c.tipo='fonte'; return c; }).concat(f.etapas||[]); }
+function fnAcha(f,id){ var t = fnTodos(f); for(var i=0;i<t.length;i++) if(t[i].id===id) return t[i]; return null; }
+function fnNum(n){ return Number(Math.round(n)||0).toLocaleString('pt-BR'); }
+function fnEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderFunis(){
+  if(!fnFunis().length) fnSemear();
+  fnCarregarProjetos();
+}
+
+// Primeiro acesso: deixa um funil de exemplo pra tela não abrir vazia
+function fnSemear(){
+  var f = fnMontar('Meu primeiro funil', 'vsl', '');
+  fnSalvarFunis([f]);
+}
+
+function fnMontar(nome, modeloId, projeto){
+  var m = null;
+  for(var i=0;i<FN_MODELOS.length;i++) if(FN_MODELOS[i].id===modeloId) m = FN_MODELOS[i];
+  m = m || FN_MODELOS[0];
+  var etapas = m.etapas.map(function(e,i){
+    return { id:'e'+i+'_'+Math.random().toString(36).slice(2,6), nome:e[0], tipo:e[1], url:'',
+             x: 250 + i*185, y: 140 + (i%2)*92 };
+  });
+  var ligacoes = etapas.slice(1).map(function(e,i){ return [etapas[i].id, e.id]; });
+  var fontes = [{ id:'f1', nome:'Tráfego pago', x:30, y:180 }];
+  if(etapas.length) ligacoes.unshift(['f1', etapas[0].id]);
+  return { id:'fn'+Date.now()+Math.random().toString(36).slice(2,5), projeto: projeto||fnProj||'',
+           nome:nome, fontes:fontes, etapas:etapas, ligacoes:ligacoes, _updatedAt: Date.now() };
+}
+
+// Projetos vêm dos dashboards da Utmify — a mesma divisão usada em Métricas de Ads
+function fnCarregarProjetos(){
+  fetch('/api/metricas/utmify/projetos').then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(d){
+    fnProjetos = (d && d.projetos) ? d.projetos.map(function(p){ return p.nome; }) : [];
+    if(!fnProjetos.length) fnProjetos = ['Geral'];
+    if(!fnProj || fnProjetos.indexOf(fnProj)<0) fnProj = fnProjetos[0];
+    // funis sem projeto herdam o primeiro
+    var mudou=false, l=fnFunis();
+    l.forEach(function(f){ if(!f.projeto){ f.projeto=fnProj; mudou=true; } });
+    if(mudou) fnSalvarFunis(l);
+    fnPintar(); fnCarregarStats();
+  }).catch(function(){ fnProjetos=['Geral']; fnProj='Geral'; fnPintar(); });
+}
+
+function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
+function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
+function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
+function fnAba(qual, bt){
+  ['mapa','pixel','redir'].forEach(function(k){ document.getElementById('fn-p-'+k).classList.remove('on'); });
+  document.getElementById('fn-p-'+qual).classList.add('on');
+  document.querySelectorAll('.fn-aba').forEach(function(a){ a.classList.remove('on'); });
+  if(bt) bt.classList.add('on');
+  if(qual==='mapa') setTimeout(fnFios, 40);
+  if(qual==='redir') fnPintarRed();
+}
+
+// ── números vindos do pixel ──
+function fnCarregarStats(){
+  var f = fnAtual(); if(!f) return;
+  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
+  var hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10);
+  var de = hoje;
+  if(per==='7d')  de = new Date(Date.now()-3*3600000-6*86400000).toISOString().slice(0,10);
+  if(per==='30d') de = new Date(Date.now()-3*3600000-29*86400000).toISOString().slice(0,10);
+  fetch('/api/funil/stats?funil='+encodeURIComponent(f.id)+'&de='+de+'&ate='+hoje)
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      fnStats = {}; fnFeed = (d && d.feed) || [];
+      ((d && d.etapas) || []).forEach(function(e){ fnStats[e.etapa] = e; });
+      fnPintar();
+    }).catch(function(){ fnPintar(); });
+}
+function fnVal(id){ var e = fnStats[id]; return e ? (e.unicos || e.entradas || 0) : 0; }
+function fnBase(f){ return (f.etapas && f.etapas.length) ? (fnVal(f.etapas[0].id) || 0) : 0; }
+
+// ── desenho ──
+function fnPintar(){
+  var f = fnAtual();
+  var selP = document.getElementById('fn-projeto');
+  if(selP) selP.innerHTML = fnProjetos.map(function(p){ return '<option '+(p===fnProj?'selected':'')+'>'+fnEsc(p)+'</option>'; }).join('');
+  var lista = fnDoProjeto();
+  var selF = document.getElementById('fn-funil');
+  if(selF) selF.innerHTML = lista.length
+    ? lista.map(function(x,i){ return '<option value="'+i+'" '+(i===fnIdx?'selected':'')+'>'+fnEsc(x.nome)+'</option>'; }).join('')
+    : '<option>— nenhum funil —</option>';
+  var el = document.getElementById('fn-lista');
+  if(el) el.innerHTML = lista.map(function(x,i){
+      var b = (x.etapas&&x.etapas.length) ? fnVal(x.etapas[0].id) : 0;
+      var fim = (x.etapas&&x.etapas.length) ? fnVal(x.etapas[x.etapas.length-1].id) : 0;
+      var tx = b ? (fim/b*100) : 0;
+      return '<div class="fn-cx '+(i===fnIdx?'on':'')+'" onclick="fnEscolher('+i+')"><div class="t">'+fnEsc(x.nome)+'</div>'+
+             '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
+    }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
+  fnFaixa(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPintarRed(); fnPintarFeed();
+}
+
+function fnFaixa(){
+  var f = fnAtual(), el = document.getElementById('fn-etapas');
+  if(!el) return;
+  if(!f || !f.etapas.length){ el.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:6px">Nenhuma etapa ainda — adicione a primeira ao lado.</div>'; return; }
+  var base = fnBase(f) || 1;
+  el.innerHTML = f.etapas.map(function(e){
+    var v = fnVal(e.id), pc = (v/base)*100, cor = FN_CORES[e.tipo];
+    return '<div class="fn-et '+(fnSel===e.id?'sel':'')+'" onclick="fnSelecionar(\''+e.id+'\')">'+
+      '<div class="r">'+fnEsc(e.nome)+'</div><div class="p" style="color:'+cor+'">'+pc.toFixed(0)+'%</div>'+
+      '<div class="q">'+fnNum(v)+' pessoas</div>'+
+      '<div class="b"><i style="width:'+Math.max(pc,1.5)+'%;background:'+cor+'"></i></div></div>';
+  }).join('');
+}
+
+function fnNos(){
+  var f = fnAtual(), palco = document.getElementById('fn-palco');
+  if(!f || !palco) return;
+  palco.querySelectorAll('.fn-no').forEach(function(n){ n.remove(); });
+  var base = fnBase(f) || 1;
+  fnTodos(f).forEach(function(n){
+    var el = document.createElement('div');
+    var src = n.tipo==='fonte';
+    el.className = 'fn-no'+(src?' src':'')+(fnSel===n.id?' sel':'');
+    el.style.left = (n.x||0)+'px'; el.style.top = (n.y||0)+'px';
+    el.dataset.id = n.id;
+    var cor = FN_CORES[n.tipo], v = src ? 0 : fnVal(n.id);
+    el.innerHTML = '<div class="c"><span class="nm">'+fnEsc(n.nome)+'</span>'+
+      '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+FN_ROT[n.tipo]+'</span></div>'+
+      (src ? '<div class="sb">origem do tráfego</div>'
+           : '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
+             '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou</div>'+
+             (n.url?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>'));
+    palco.appendChild(el);
+    fnArrastar(el, n, f);
+  });
+}
+
+function fnArrastar(el, dado, f){
+  var ox=0, oy=0, mov=false, moveu=false;
+  el.addEventListener('mousedown', function(ev){
+    mov=true; moveu=false;
+    ox = ev.clientX/fnEscala - (dado.x||0); oy = ev.clientY/fnEscala - (dado.y||0);
+    el.style.zIndex = 20; ev.preventDefault();
+  });
+  window.addEventListener('mousemove', function(ev){
+    if(!mov) return;
+    moveu = true;
+    dado.x = Math.max(0, ev.clientX/fnEscala - ox);
+    dado.y = Math.max(0, ev.clientY/fnEscala - oy);
+    el.style.left = dado.x+'px'; el.style.top = dado.y+'px';
+    fnFios();
+  });
+  window.addEventListener('mouseup', function(){
+    if(mov){ el.style.zIndex=''; if(moveu) fnGravar(f); else fnSelecionar(dado.id); }
+    mov=false;
+  });
+}
+
+function fnFios(){
+  var f = fnAtual(), svg = document.getElementById('fn-svg');
+  if(!f || !svg) return;
+  svg.innerHTML = '';
+  var base = fnBase(f) || 1;
+  (f.ligacoes||[]).forEach(function(par, idx){
+    var na = fnAcha(f,par[0]), nb = fnAcha(f,par[1]);
+    if(!na || !nb) return;
+    var ea = document.querySelector('.fn-no[data-id="'+par[0]+'"]');
+    var eb = document.querySelector('.fn-no[data-id="'+par[1]+'"]');
+    if(!ea || !eb) return;
+    var x1 = na.x + ea.offsetWidth, y1 = na.y + ea.offsetHeight/2;
+    var x2 = nb.x,                  y2 = nb.y + eb.offsetHeight/2;
+    var meio = (x2-x1)/2;
+    var vb = fnVal(nb.id), va = na.tipo==='fonte' ? base : fnVal(na.id);
+    var passou = va ? (vb/va) : 0;
+    var cor = (vb/base) > .5 ? 'var(--green)' : ((vb/base) > .15 ? 'var(--accent)' : 'var(--text2)');
+    var pid = 'fnfio'+idx;
+    var pa = document.createElementNS('http://www.w3.org/2000/svg','path');
+    pa.setAttribute('id', pid);
+    pa.setAttribute('d','M '+x1+' '+y1+' C '+(x1+meio)+' '+y1+', '+(x2-meio)+' '+y2+', '+x2+' '+y2);
+    pa.setAttribute('fill','none'); pa.setAttribute('stroke',cor);
+    pa.setAttribute('stroke-width', Math.max(1.4, Math.min(5, passou*5)));
+    pa.setAttribute('opacity','.7');
+    svg.appendChild(pa);
+    if(passou > 0){
+      var qtd = Math.max(1, Math.round(passou*3));
+      for(var k=0;k<qtd;k++){
+        var c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        c.setAttribute('r','3'); c.setAttribute('fill',cor);
+        var mo = document.createElementNS('http://www.w3.org/2000/svg','animateMotion');
+        mo.setAttribute('dur', (2.4+Math.random()*1.6)+'s');
+        mo.setAttribute('repeatCount','indefinite');
+        mo.setAttribute('begin', (k*(1.6/qtd)).toFixed(2)+'s');
+        var mp = document.createElementNS('http://www.w3.org/2000/svg','mpath');
+        mp.setAttribute('href','#'+pid);
+        mp.setAttributeNS('http://www.w3.org/1999/xlink','href','#'+pid);
+        mo.appendChild(mp); c.appendChild(mo); svg.appendChild(c);
+      }
+      if(na.tipo!=='fonte'){
+        var t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x',(x1+x2)/2); t.setAttribute('y',(y1+y2)/2-8);
+        t.setAttribute('fill',cor); t.setAttribute('font-size','10');
+        t.setAttribute('font-weight','800'); t.setAttribute('text-anchor','middle');
+        t.textContent = (passou*100).toFixed(0)+'%';
+        svg.appendChild(t);
+      }
+    }
+  });
+}
+
+function fnZoom(d){
+  fnEscala = Math.max(.4, Math.min(1.4, fnEscala + d/100));
+  document.getElementById('fn-palco').style.transform = 'scale('+fnEscala+')';
+  document.getElementById('fn-zoomv').textContent = Math.round(fnEscala*100)+'%';
+}
+function fnSelecionar(id){ fnSel = id; fnNos(); fnFios(); fnDetalhe(); fnFaixa(); }
+
+function fnDetalhe(){
+  var cx = document.getElementById('fn-detalhe'); if(!cx) return;
+  var f = fnAtual(), n = f ? fnAcha(f, fnSel) : null;
+  if(!n){ cx.innerHTML = '<h3>👆 Clique num bloco</h3><p style="font-size:12.5px;color:var(--text2)">Os números daquele passo aparecem aqui.</p>'; return; }
+  var base = fnBase(f) || 1, v = n.tipo==='fonte' ? 0 : fnVal(n.id);
+  var sai = (f.ligacoes||[]).filter(function(l){ return l[0]===n.id; }).map(function(l){ return fnAcha(f,l[1]); }).filter(Boolean);
+  var seguiram = sai.reduce(function(a,x){ return a + fnVal(x.id); },0);
+  var st = fnStats[n.id] || {};
+  cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
+    (n.tipo!=='fonte' ? '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
+      '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'+
+      (st.tempoMedio?'<div class="fn-l"><span>Tempo médio</span><span>'+st.tempoMedio+'s</span></div>':'')+
+      (sai.length?'<div class="fn-l"><span>Passou adiante</span><span style="color:var(--green)">'+fnNum(seguiram)+'</span></div>'+
+        '<div class="fn-l"><span>Parou aqui</span><span style="color:var(--red)">'+fnNum(Math.max(0,v-seguiram))+'</span></div>':'')+
+      '<div class="fn-campo" style="margin-top:13px"><label>Link da página</label>'+
+      '<input value="'+fnEsc(n.url||'')+'" placeholder="https://..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
+      (n.url?'':'<div style="font-size:10.5px;color:var(--red);margin-top:5px">Informe o link pra esta etapa ser rastreada.</div>')+'</div>'+
+      '<div style="display:flex;gap:7px"><button class="fn-btn g sm" onclick="fnIrPixel(\''+n.id+'\')">Ver pixel</button>'+
+      '<button class="fn-btn g sm" onclick="fnRemoverEtapa(\''+n.id+'\')" style="color:var(--red)">Remover</button></div>'
+    : '<p style="font-size:12.5px;color:var(--text2)">Origem do tráfego. Os cliques chegam pelo redirecionador ou direto pelo anúncio.</p>');
+}
+
+function fnSalvarUrl(id, valor){
+  var f = fnAtual(); if(!f) return;
+  var n = fnAcha(f,id); if(!n) return;
+  n.url = (valor||'').trim();
+  fnGravar(f); fnNos(); fnDetalhe(); fnPixel();
+  toastFn(n.url ? 'Link salvo' : 'Link removido');
+}
+function fnRemoverEtapa(id){
+  if(!confirm('Remover esta etapa do funil?')) return;
+  var f = fnAtual(); if(!f) return;
+  f.etapas = f.etapas.filter(function(e){ return e.id!==id; });
+  f.ligacoes = (f.ligacoes||[]).filter(function(l){ return l[0]!==id && l[1]!==id; });
+  fnSel = null; fnGravar(f); fnPintar(); toastFn('Etapa removida');
+}
+function fnAddEtapa(){
+  var f = fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
+  var nome = (document.getElementById('fn-n-nome').value||'').trim();
+  if(!nome){ toastFn('Dê um nome pra etapa'); return; }
+  var url = (document.getElementById('fn-n-url').value||'').trim();
+  var tipo = document.getElementById('fn-n-tipo').value;
+  var pai = document.getElementById('fn-n-pai').value;
+  var ant = fnAcha(f, pai);
+  var id = 'e'+Date.now();
+  f.etapas.push({ id:id, nome:nome, tipo:tipo, url:url,
+                  x:((ant&&ant.x)||200)+185, y:((ant&&ant.y)||140)+70 });
+  if(pai) f.ligacoes.push([pai,id]);
+  document.getElementById('fn-n-nome').value=''; document.getElementById('fn-n-url').value='';
+  fnSel = id; fnGravar(f); fnPintar(); toastFn('Etapa adicionada');
+}
+function fnGravar(f){
+  var l = fnFunis();
+  for(var i=0;i<l.length;i++) if(l[i].id===f.id){ f._updatedAt = Date.now(); l[i]=f; }
+  fnSalvarFunis(l);
+}
+function fnNovoFunil(){
+  var nome = prompt('Nome do novo funil (dentro de '+fnProj+'):');
+  if(!nome) return;
+  var modelo = prompt('Modelo: vsl · advo · quiz · zero','vsl') || 'vsl';
+  var l = fnFunis(); l.push(fnMontar(nome.trim(), modelo.trim(), fnProj));
+  fnSalvarFunis(l);
+  fnIdx = fnDoProjeto().length-1; fnSel=null;
+  fnPintar(); fnCarregarStats(); toastFn('Funil criado');
+}
+function fnOpcoes(){
+  var f = fnAtual();
+  var px = document.getElementById('fn-px-etapa'), pai = document.getElementById('fn-n-pai');
+  if(px) px.innerHTML = f ? f.etapas.map(function(e){ return '<option value="'+e.id+'">'+fnEsc(e.nome)+'</option>'; }).join('') : '';
+  if(pai) pai.innerHTML = f ? fnTodos(f).map(function(n){ return '<option value="'+n.id+'">'+fnEsc(n.nome)+'</option>'; }).join('') : '';
+}
+
+// ── pixel ──
+function fnPixel(){
+  var f = fnAtual(), cx = document.getElementById('fn-px-code');
+  if(!cx) return;
+  if(!f || !f.etapas.length){ cx.textContent = 'Adicione uma etapa primeiro.'; return; }
+  var id = (document.getElementById('fn-px-etapa')||{}).value;
+  var e = fnAcha(f,id) || f.etapas[0];
+  var base = location.origin;
+  cx.textContent =
+'<!-- Pixel TMX · '+f.nome+' › '+e.nome+'\n     Cole em: '+(e.url || '(link ainda não informado)')+' -->\n'+
+'<script>\n'+
+'(function(w,d){\n'+
+'  var FUNIL = "'+f.id+'";\n'+
+'  var ETAPA = "'+e.id+'";\n'+
+'  var API   = "'+base+'/api/funil/evento";\n\n'+
+'  var id = (d.cookie.match(/tmx_id=([^;]+)/)||[])[1];\n'+
+'  if(!id){\n'+
+'    id = "v" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);\n'+
+'    d.cookie = "tmx_id=" + id + ";path=/;max-age=7776000;SameSite=Lax";\n'+
+'  }\n\n'+
+'  var q = new URLSearchParams(location.search), utm = {};\n'+
+'  ["source","medium","campaign","content","term"].forEach(function(k){\n'+
+'    var v = q.get("utm_"+k);\n'+
+'    if(v) localStorage.setItem("tmx_utm_"+k, v);\n'+
+'    utm[k] = v || localStorage.getItem("tmx_utm_"+k) || "";\n'+
+'  });\n\n'+
+'  var entrou = Date.now();\n'+
+'  function manda(tipo, extra){\n'+
+'    var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm, ref:d.referrer }, extra||{});\n'+
+'    var corpo = JSON.stringify(dados);\n'+
+'    navigator.sendBeacon\n'+
+'      ? navigator.sendBeacon(API, new Blob([corpo],{type:"application/json"}))\n'+
+'      : fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:corpo,keepalive:true});\n'+
+'  }\n'+
+'  manda("entrou");\n\n'+
+'  var fundo = 0;\n'+
+'  w.addEventListener("scroll", function(){\n'+
+'    var p = (scrollY+innerHeight)/d.body.scrollHeight*100;\n'+
+'    if(p>fundo) fundo = p;\n'+
+'  },{passive:true});\n'+
+'  w.addEventListener("pagehide", function(){\n'+
+'    manda("saiu",{ segundos: Math.round((Date.now()-entrou)/1000), rolagem: Math.round(fundo) });\n'+
+'  });\n\n'+
+'  // eventos manuais: TMX("play") ou TMX("clique_comprar")\n'+
+'  w.TMX = function(nome, extra){ manda(nome, extra); };\n'+
+'})(window, document);\n'+
+'<\/script>';
+}
+function fnIrPixel(id){
+  fnAba('pixel', document.querySelectorAll('.fn-aba')[1]);
+  var px = document.getElementById('fn-px-etapa');
+  if(px){ px.value = id; fnPixel(); }
+}
+function fnPintarFeed(){
+  var el = document.getElementById('fn-px-feed'); if(!el) return;
+  if(!fnFeed.length){ el.innerHTML = '<div style="font-size:12.5px;color:var(--text2)">Nenhum evento ainda. Assim que o pixel estiver numa página e alguém acessar, aparece aqui.</div>'; return; }
+  var f = fnAtual();
+  el.innerHTML = fnFeed.slice(0,25).map(function(ev){
+    var n = f ? fnAcha(f, ev.etapa) : null;
+    var d = new Date(ev.momento), p = function(x){ return String(x).padStart(2,'0'); };
+    var cor = ev.tipo==='entrou' ? 'var(--accent)' : (ev.tipo==='saiu' ? 'var(--text2)' : 'var(--green)');
+    return '<div class="fn-ev" style="border-left-color:'+cor+'">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:'+cor+'">'+fnEsc(ev.tipo)+'</div>'+
+      '<div style="font-size:11px;color:var(--text2)">'+fnEsc(n?n.nome:ev.etapa)+' · '+fnEsc(ev.visitante)+
+      (ev.segundos?(' · '+ev.segundos+'s'):'')+'</div></div>'+
+      '<div style="font-size:11px;color:var(--text2)">'+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'</div></div>';
+  }).join('');
+}
+
+// ── redirecionadores ──
+function fnRedAtual(){ var l = fnReds(); return l[fnRedIdx] || l[0] || null; }
+function fnPintarRed(){
+  var lista = fnReds(), el = document.getElementById('fn-redlista');
+  if(!el) return;
+  el.innerHTML = lista.map(function(r,i){
+    return '<div class="fn-cx '+(i===fnRedIdx?'on':'')+'" onclick="fnEscolherRed('+i+')">'+
+      '<div class="t">'+fnEsc(r.nome)+'</div><div class="n">/r/'+fnEsc(r.slug)+' · '+(r.destinos||[]).length+' destinos</div></div>';
+  }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoRed()">+ Novo redirecionador</div>';
+  var r = fnRedAtual(), corpo = document.getElementById('fn-red-corpo');
+  if(!r){ if(corpo) corpo.innerHTML=''; document.getElementById('fn-red-link').textContent=''; return; }
+  document.getElementById('fn-red-tit').textContent = '🔀 ' + r.nome;
+  var total = (r.destinos||[]).reduce(function(a,d){ return a + (Number(d.peso)||1); },0) || 1;
+  var pal = ['#3E1493','#1B9CFA','#FF5926','#C52C58','#22C55E','#F59E0B'];
+  if(corpo) corpo.innerHTML = (r.destinos||[]).map(function(d,i){
+    return '<tr><td style="font-size:12px;word-break:break-all">'+fnEsc(d.url)+'</td>'+
+      '<td><input type="number" min="1" value="'+(d.peso||1)+'" onchange="fnPeso('+i+',this.value)" style="width:64px"></td>'+
+      '<td style="text-align:right;font-weight:800;color:'+pal[i%6]+'">'+(((Number(d.peso)||1)/total)*100).toFixed(0)+'%</td>'+
+      '<td style="text-align:right"><button class="fn-btn g sm" onclick="fnTirarDestino('+i+')">✕</button></td></tr>';
+  }).join('');
+  document.getElementById('fn-red-barra').innerHTML = (r.destinos||[]).map(function(d,i){
+    return '<i style="width:'+(((Number(d.peso)||1)/total)*100)+'%;background:'+pal[i%6]+'">'+(((Number(d.peso)||1)/total)*100).toFixed(0)+'%</i>';
+  }).join('');
+  document.getElementById('fn-red-slug').value = r.slug;
+  document.getElementById('fn-red-link').textContent = location.origin+'/r/'+r.slug+
+    '?utm_source=facebook&utm_campaign={{campaign.name}}&utm_content={{ad.name}}';
+}
+function fnEscolherRed(i){ fnRedIdx=i; fnPintarRed(); }
+function fnGravarRed(r){
+  var l = fnReds();
+  for(var i=0;i<l.length;i++) if(l[i].id===r.id){ r._updatedAt=Date.now(); l[i]=r; }
+  fnSalvarReds(l);
+}
+function fnPeso(i,v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].peso=Math.max(1,+v||1); fnGravarRed(r); fnPintarRed(); }
+function fnTirarDestino(i){
+  var r=fnRedAtual(); if(!r) return;
+  if((r.destinos||[]).length<2){ toastFn('Precisa de pelo menos 2 destinos'); return; }
+  r.destinos.splice(i,1); fnGravarRed(r); fnPintarRed();
+}
+function fnAddDestino(){
+  var r=fnRedAtual(); if(!r){ toastFn('Crie um redirecionador primeiro'); return; }
+  var url=(document.getElementById('fn-red-url').value||'').trim();
+  if(!url){ toastFn('Informe o endereço'); return; }
+  r.destinos = r.destinos||[];
+  r.destinos.push({ url:url, peso: Math.max(1, +document.getElementById('fn-red-peso').value||1) });
+  document.getElementById('fn-red-url').value='';
+  fnGravarRed(r); fnPintarRed(); toastFn('Destino adicionado');
+}
+function fnMudarSlug(v){
+  var r=fnRedAtual(); if(!r) return;
+  r.slug = (v||'').trim().replace(/[^a-z0-9-]/gi,'-').toLowerCase() || 'link';
+  fnGravarRed(r); fnPintarRed();
+}
+function fnNovoRed(){
+  var nome = prompt('Nome do redirecionador:'); if(!nome) return;
+  var slug = (prompt('Atalho do link (sem espaços):', nome.toLowerCase().replace(/[^a-z0-9]+/gi,'-')) || '').replace(/[^a-z0-9-]/gi,'-').toLowerCase();
+  if(!slug) return;
+  var l = fnReds();
+  l.push({ id:'r'+Date.now(), nome:nome.trim(), slug:slug, ativo:true, destinos:[], _updatedAt:Date.now() });
+  fnSalvarReds(l); fnRedIdx = l.length-1; fnPintarRed(); toastFn('Redirecionador criado');
+}
+
+function fnCopiar(id){
+  var t = document.getElementById(id).textContent;
+  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toastFn('Copiado'); });
+}
+function toastFn(msg){ try{ if(typeof toast==='function') return toast(msg); }catch(e){} console.log('[FUNIS]', msg); }
 
 function renderAdsMetrics(){
   const key = getRtApiKey();

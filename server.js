@@ -7367,6 +7367,153 @@ app.post('/api/backup/restore/:nome', authDiretoria, (req, res) => {
 });
 
 // ── INICIA ──
+// ══════════════════════════════════════════════
+// ── FUNIS: pixel de rastreamento + redirecionador ──
+// ══════════════════════════════════════════════
+// Um pixel dispara varios eventos por visitante. Gravar evento a evento no
+// db.json (que e lido e reescrito INTEIRO a cada operacao) derrubaria o sistema
+// em poucas horas — foi disco cheio que ja tirou a aplicacao do ar hoje.
+// Por isso: conta em memoria, agrega por dia, e grava em lote.
+const KEY_FUNIS   = 'sl_funis';
+const KEY_REDIRS  = 'sl_redirecionadores';
+const KEY_FSTATS  = 'sl_funil_stats';
+
+let _fBuffer = {};          // "funil|etapa|data" -> { entradas, unicos, segundos, saidas, eventos:{} }
+let _fVistos = new Map();   // "funil|etapa|data" -> Set(idVisitante), zerado na virada do dia
+let _fSujo = false;
+const _fChave = (f, e, d) => f + '|' + (e || '-') + '|' + d;
+const _hojeBR = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+
+function _fContar(funil, etapa, tipo, visitante, extra) {
+  const dia = _hojeBR();
+  const k = _fChave(funil, etapa, dia);
+  if (!_fBuffer[k]) _fBuffer[k] = { funil, etapa, data: dia, entradas: 0, unicos: 0, saidas: 0, segundos: 0, eventos: {} };
+  const b = _fBuffer[k];
+  if (tipo === 'entrou') {
+    b.entradas++;
+    if (visitante) {
+      if (!_fVistos.has(k)) _fVistos.set(k, new Set());
+      const set = _fVistos.get(k);
+      if (!set.has(visitante)) { set.add(visitante); b.unicos++; }
+    }
+  } else if (tipo === 'saiu') {
+    b.saidas++;
+    b.segundos += Number(extra && extra.segundos) || 0;
+  } else {
+    b.eventos[tipo] = (b.eventos[tipo] || 0) + 1;
+  }
+  _fSujo = true;
+}
+
+// Grava o acumulado de tempos em tempos — nunca a cada evento
+function _fGravar() {
+  if (!_fSujo) return;
+  const pendente = _fBuffer; _fBuffer = {}; _fSujo = false;
+  try {
+    const db = readDB();
+    const atual = Array.isArray(db.store[KEY_FSTATS]) ? db.store[KEY_FSTATS] : [];
+    const indice = {};
+    atual.forEach(l => { indice[_fChave(l.funil, l.etapa, l.data)] = l; });
+    Object.values(pendente).forEach(n => {
+      const k = _fChave(n.funil, n.etapa, n.data);
+      const v = indice[k];
+      if (!v) { atual.push(n); indice[k] = n; return; }
+      v.entradas = (v.entradas || 0) + n.entradas;
+      v.unicos   = (v.unicos   || 0) + n.unicos;
+      v.saidas   = (v.saidas   || 0) + n.saidas;
+      v.segundos = (v.segundos || 0) + n.segundos;
+      v.eventos  = v.eventos || {};
+      Object.keys(n.eventos).forEach(t => { v.eventos[t] = (v.eventos[t] || 0) + n.eventos[t]; });
+    });
+    // retencao: 180 dias de historico ja e bastante e mantem o banco pequeno
+    const corte = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    db.store[KEY_FSTATS] = atual.filter(l => l.data >= corte);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_FSTATS] = now();
+    writeDB(db);
+  } catch (e) {
+    console.error('[FUNIL] não consegui gravar as estatísticas:', e.message);
+  }
+}
+setInterval(_fGravar, 30 * 1000);
+setInterval(() => { _fVistos = new Map(); }, 6 * 3600000);   // solta a memoria dos ids
+
+// Feed ao vivo (so memoria — nao vale a pena gravar)
+const _fFeed = [];
+function _fFeedPush(ev) { _fFeed.unshift(ev); if (_fFeed.length > 200) _fFeed.length = 200; }
+
+// ── Recepcao do pixel ── (publico: roda no navegador de quem visita a pagina)
+app.options('/api/funil/evento', (req, res) => {
+  res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS' }).sendStatus(204);
+});
+app.post('/api/funil/evento', express.json({ limit: '16kb' }), (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  try {
+    const c = req.body || {};
+    const funil = String(c.funil || '').slice(0, 80);
+    const etapa = String(c.etapa || '').slice(0, 60);
+    const tipo  = String(c.tipo  || 'entrou').slice(0, 30);
+    if (!funil) return res.sendStatus(204);
+    _fContar(funil, etapa, tipo, String(c.id || '').slice(0, 40), c);
+    _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
+                 visitante: String(c.id || '').slice(0, 12),
+                 utm: (c.utm && c.utm.content) || '', segundos: Number(c.segundos) || 0 });
+    res.sendStatus(204);
+  } catch (e) { res.sendStatus(204); }
+});
+
+// ── Dados pra tela ──
+app.get('/api/funil/stats', authUsuario, (req, res) => {
+  try {
+    const de  = String(req.query.de  || '').slice(0, 10);
+    const ate = String(req.query.ate || '').slice(0, 10);
+    const funil = String(req.query.funil || '').slice(0, 80);
+    const db = readDB();
+    let linhas = Array.isArray(db.store[KEY_FSTATS]) ? db.store[KEY_FSTATS] : [];
+    if (funil) linhas = linhas.filter(l => l.funil === funil);
+    if (de)    linhas = linhas.filter(l => l.data >= de);
+    if (ate)   linhas = linhas.filter(l => l.data <= ate);
+    // soma o que ainda nao foi gravado, senao a tela fica pra tras
+    const extra = Object.values(_fBuffer).filter(l =>
+      (!funil || l.funil === funil) && (!de || l.data >= de) && (!ate || l.data <= ate));
+    const porEtapa = {};
+    linhas.concat(extra).forEach(l => {
+      if (!porEtapa[l.etapa]) porEtapa[l.etapa] = { etapa: l.etapa, entradas: 0, unicos: 0, saidas: 0, segundos: 0, eventos: {} };
+      const v = porEtapa[l.etapa];
+      v.entradas += l.entradas || 0; v.unicos += l.unicos || 0;
+      v.saidas   += l.saidas   || 0; v.segundos += l.segundos || 0;
+      Object.keys(l.eventos || {}).forEach(t => { v.eventos[t] = (v.eventos[t] || 0) + l.eventos[t]; });
+    });
+    res.json({ ok: true, funil, de, ate,
+      etapas: Object.values(porEtapa).map(e => Object.assign(e, {
+        tempoMedio: e.saidas > 0 ? Math.round(e.segundos / e.saidas) : 0 })),
+      feed: _fFeed.filter(f => !funil || f.funil === funil).slice(0, 40) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Redirecionador: divide o trafego entre destinos por peso ──
+app.get('/r/:slug', (req, res) => {
+  try {
+    const slug = String(req.params.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const db = readDB();
+    const lista = Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [];
+    const r = lista.find(x => String(x.slug || '').toLowerCase() === slug && x.ativo !== false);
+    if (!r || !Array.isArray(r.destinos) || !r.destinos.length) {
+      return res.status(404).send('Link não encontrado.');
+    }
+    const total = r.destinos.reduce((s, d) => s + (Number(d.peso) || 1), 0);
+    let x = Math.random() * total, escolhido = r.destinos[0];
+    for (const d of r.destinos) { x -= (Number(d.peso) || 1); if (x <= 0) { escolhido = d; break; } }
+    // repassa a query (utm_*) pro destino, senao o rastreamento se perde aqui
+    let destino = String(escolhido.url || '');
+    const qs = req.originalUrl.split('?')[1];
+    if (qs) destino += (destino.includes('?') ? '&' : '?') + qs;
+    _fContar('redir:' + slug, escolhido.url, 'entrou', null, null);
+    res.redirect(302, destino);
+  } catch (e) { res.status(500).send('Erro no redirecionamento.'); }
+});
+
 app.listen(PORT, () => {
   console.log('');
   console.log('  ✅  ScaleLab Backend v2.0 rodando!');
