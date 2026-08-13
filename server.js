@@ -196,6 +196,11 @@ const KEYS_PLATAFORMA = new Set([
 const KEYS_GLOBAIS = KEYS_PLATAFORMA;
 
 const app = express();
+// Atrás do proxy do Railway, sem isso req.ip é SEMPRE o IP do proxy: a empresa
+// inteira dividia a mesma cota de 200 req/min e um usuário sozinho podia
+// travar todo mundo. O 1 confia só no primeiro salto (o proxy do Railway) —
+// confiar na cadeia toda deixaria qualquer um forjar IP e furar o limite.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
 const DB_FILE = path.join(DATA_DIR, 'db.json');
