@@ -3282,6 +3282,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
         <!-- TAB: POR ANÚNCIO -->
         <div id="ads-tab-anuncio" class="ads-tab-panel" style="display:none;">
+          <div id="ads-anuncio-cards" style="display:none;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px;"></div>
           <div id="anuncio-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;"></div>
           <div style="margin-bottom:14px;">
             <input id="anuncio-search" type="text" placeholder="🔍  Buscar anúncio..." oninput="_adsFonte()==='utmify' ? pintarAnunciosUtmify() : renderAnuncios()" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
@@ -26537,6 +26538,7 @@ async function carregarTempoRealUtmify(){
       '</span></div>').join('');
 
     feed.innerHTML =
+      cartao('⚡ Acontecendo agora', _feedEventos(d.eventos||[])) +
       cartao('📊 Funil de hoje', funil) +
       cartao('⏱ Lucro por hora', horas.length ? '<div style="display:flex;gap:2px;align-items:flex-end;">'+barras+'</div>' : '<div style="color:var(--text2);font-size:13px;">Sem movimento ainda hoje.</div>') +
       cartao('🧾 Situação dos pedidos', status) +
@@ -26571,6 +26573,42 @@ function _funilUtmify(k){
   }).join('') +
   '<div style="font-size:11px;color:var(--text2);margin-top:10px;">Visitas na página e checkouts iniciados aparecem no funil completo da aba <b>Tempo Real</b> (dados de hoje).</div>';
   if(rot) rot.innerHTML='';
+}
+
+// Feed de eventos: o servidor compara leituras seguidas e registra quando o
+// contador de um anuncio sobe. Cada linha aqui e um acontecimento real.
+function _feedEventos(evs){
+  if(!evs.length){
+    return '<div style="color:var(--text2);font-size:13px;">Nada aconteceu desde que a tela abriu. '+
+           'Cada venda ou checkout iniciado aparece aqui em até 45 segundos.</div>';
+  }
+  const hora = iso => { const dt=new Date(iso); const p=n=>String(n).padStart(2,'0');
+                        return p(dt.getHours())+':'+p(dt.getMinutes())+':'+p(dt.getSeconds()); };
+  const atras = iso => { const m=Math.round((Date.now()-new Date(iso).getTime())/60000);
+                         return m<1?'agora':(m<60?('há '+m+' min'):('há '+Math.round(m/60)+'h')); };
+  return '<div style="display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto;">'+
+    evs.map(function(e){
+      const venda = e.tipo==='venda';
+      const receita = e.tipo==='receita';
+      const cor = venda ? 'var(--green)' : (receita ? 'var(--green)' : '#f97316');
+      const icone = venda ? '💰' : (receita ? '💵' : '🛒');
+      const rotulo = venda ? ('Venda aprovada'+(e.qtd>1?(' ×'+e.qtd):''))
+                   : receita ? 'Receita confirmada'
+                   : ('Checkout iniciado'+(e.qtd>1?(' ×'+e.qtd):''));
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg3);'+
+             'border-left:3px solid '+cor+';border-radius:7px;">'+
+        '<span style="font-size:16px;">'+icone+'</span>'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-size:13px;font-weight:700;color:'+cor+';">'+rotulo+
+            (e.valor>0 ? (' · '+fmtAds(e.valor)) : '')+'</div>'+
+          '<div style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+
+            _esc(e.anuncio)+' · '+_esc(e.dashboard)+'</div>'+
+        '</div>'+
+        '<div style="text-align:right;white-space:nowrap;">'+
+          '<div style="font-size:12px;font-weight:600;">'+hora(e.momento)+'</div>'+
+          '<div style="font-size:10px;color:var(--text2);">'+atras(e.momento)+'</div>'+
+        '</div></div>';
+    }).join('')+'</div>';
 }
 
 function _rtNum(rotulo, valor, cor){
@@ -27005,6 +27043,7 @@ function _adsFonte(){ return localStorage.getItem('ads_fonte') || 'utmify'; }
 
 function setAdsFonte(f){
   localStorage.setItem('ads_fonte', f==='utmify' ? 'utmify' : 'redtrack');
+  if(f!=='utmify') _tabelaAnuncio(true);   // RedTrack volta a usar a tabela
   _pintarFonteAds();
   loadAdsMetrics();
 }
@@ -27134,7 +27173,8 @@ async function carregarAnunciosUtmify(forcar){
   if(!forcar && _anunciosUtmify.length && _anunciosPeriodo === from+'|'+to){ pintarAnunciosUtmify(); return; }
 
   _anunciosCarregando = true;
-  if(corpo) _msgTabela('ads-anuncio-body', 6, '⏳ Buscando anúncios na Utmify...');
+  const g = document.getElementById('ads-anuncio-cards');
+  if(g){ g.style.display='block'; g.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2);">⏳ Buscando anúncios na Utmify...</div>'; }
   try{
     const r = await fetch('/api/metricas/utmify/anuncios?de='+from+'&ate='+to);
     const d = await r.json().catch(()=>({}));
@@ -27144,10 +27184,21 @@ async function carregarAnunciosUtmify(forcar){
     if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
     pintarAnunciosUtmify();
   }catch(e){
-    _msgTabela('ads-anuncio-body', 6, 'Não consegui buscar os anúncios: '+_esc(e.message));
+    const ge = document.getElementById('ads-anuncio-cards');
+    if(ge){ ge.style.display='block'; ge.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);">Não consegui buscar os anúncios: '+_esc(e.message)+'</div>'; }
   }finally{ _anunciosCarregando = false; }
 }
 let _anunciosPeriodo = '';
+
+// Alterna entre a tabela (RedTrack) e a grade de cards (Utmify)
+function _tabelaAnuncio(mostrar){
+  const corpo = document.getElementById('ads-anuncio-body');
+  const tab = corpo && corpo.closest ? corpo.closest('table') : null;
+  const caixa = tab && tab.parentElement ? tab.parentElement : tab;
+  if(caixa) caixa.style.display = mostrar ? '' : 'none';
+  const grade = document.getElementById('ads-anuncio-cards');
+  if(grade && mostrar) grade.style.display='none';
+}
 
 function pintarAnunciosUtmify(){
   const busca = (document.getElementById('anuncio-search')||{}).value || '';
@@ -27155,24 +27206,45 @@ function pintarAnunciosUtmify(){
   const lista = termo
     ? _anunciosUtmify.filter(a => String(a.nome).toLowerCase().includes(termo) || String(a.dashboard).toLowerCase().includes(termo))
     : _anunciosUtmify;
+  const grade0 = document.getElementById('ads-anuncio-cards');
   if(!lista.length){
-    _msgTabela('ads-anuncio-body', 6, termo ? 'Nenhum anúncio com esse termo.' : 'Nenhum anúncio com movimento no período.');
+    if(grade0){ grade0.style.display='block';
+      grade0.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text2);">'+
+        (termo ? 'Nenhum anúncio com esse termo.' : 'Nenhum anúncio com movimento no período.')+'</div>'; }
     return;
   }
-  const corpo = document.getElementById('ads-anuncio-body');
-  corpo.innerHTML = lista.map(a=>{
+  // Formato de card: cada criativo num quadro, com o ROAS em destaque e o resto
+  // embaixo. Fica muito mais rapido de bater o olho do que uma tabela longa.
+  const grade = document.getElementById('ads-anuncio-cards');
+  _tabelaAnuncio(false);          // esconde a tabela: nessa fonte usamos cards
+  if(!grade) return;
+  grade.style.display='grid';
+
+  grade.innerHTML = lista.map(a=>{
     const roas = Number(a.roas)||0;
-    const corRoas = roas>=1.5?'var(--green)':(roas>=1?'#f97316':'var(--red)');
-    return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);">'+
-      '<td style="padding:9px 10px;font-weight:500;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(a.nome)+' · '+_esc(a.dashboard)+((a.veiculacoes>1)?(' · soma de '+a.veiculacoes+' veiculações'):'')+'">'+
-        _esc(a.nome)+' <span style="color:var(--text2);font-size:11px;">· '+_esc(a.dashboard)+
-        ((a.veiculacoes>1)?(' · <b style="color:var(--text2)">'+a.veiculacoes+'x</b>'):'')+'</span></td>'+
-      '<td style="text-align:right;padding:9px 10px;font-weight:600;">'+(a.vendas||0)+'</td>'+
-      '<td style="text-align:right;padding:9px 10px;color:#f97316;">'+(a.ics||0)+'</td>'+
-      '<td style="text-align:right;padding:9px 10px;">'+fmtAds(a.investimento||0)+'</td>'+
-      '<td style="text-align:right;padding:9px 10px;color:var(--green);">'+fmtAds(a.receita||0)+'</td>'+
-      '<td style="text-align:right;padding:9px 10px;color:'+corRoas+';font-weight:700;">'+(roas>0?roas.toFixed(2)+'x':'—')+'</td>'+
-    '</tr>';
+    const inv  = Number(a.investimento)||0;
+    const rec  = Number(a.receita)||0;
+    const lucro= rec - inv;
+    const semVenda = !(a.vendas>0) && inv>0;
+    const cor = roas>=1.5?'var(--green)':(roas>=1?'#f97316':(roas>0?'var(--red)':(semVenda?'var(--red)':'var(--text2)')));
+    const borda = roas>=1.5?'var(--green)':(semVenda?'var(--red)':'var(--border)');
+    const linha = (rot,val,c)=>'<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">'+
+      '<span style="color:var(--text2);">'+rot+'</span><span style="font-weight:700;'+(c?('color:'+c+';'):'')+'">'+val+'</span></div>';
+    return '<div style="background:var(--bg2);border:1px solid '+borda+';border-radius:12px;padding:14px 16px;">'+
+      '<div style="font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(a.nome)+'">'+_esc(a.nome)+'</div>'+
+      '<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">'+_esc(a.dashboard)+
+        ((a.veiculacoes>1)?(' · soma de '+a.veiculacoes+' veiculações'):'')+'</div>'+
+      '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px;">'+
+        '<span style="font-size:26px;font-weight:800;color:'+cor+';letter-spacing:-.5px;">'+(roas>0?roas.toFixed(2)+'x':'—')+'</span>'+
+        '<span style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;">ROAS</span>'+
+      '</div>'+
+      linha('Investido', fmtAds(inv)) +
+      linha('Receita', fmtAds(rec), rec>0?'var(--green)':'') +
+      linha('Lucro', fmtAds(lucro), lucro>=0?'var(--green)':'var(--red)') +
+      linha('Vendas', String(a.vendas||0)) +
+      linha('Checkouts iniciados', String(a.ics||0), (a.ics>0)?'#f97316':'') +
+      (semVenda ? '<div style="margin-top:9px;font-size:11px;color:var(--red);font-weight:600;">Gastou sem vender</div>' : '') +
+    '</div>';
   }).join('');
 }
 
