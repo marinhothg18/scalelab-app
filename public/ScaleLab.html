@@ -7099,11 +7099,7 @@ async function _homeCalcKPIsFromRedTrack(){
   if(_homeKPICacheRT.data && (Date.now() - _homeKPICacheRT.ts) < 5*60*1000){
     return _homeKPICacheRT.data;
   }
-  function fmt(d){ return d.toISOString().slice(0,10); }
-  var agora = new Date();
-  var hoje = fmt(agora);
-  var ontemD = new Date(agora.getTime() - 24*60*60*1000);
-  var ontem = fmt(ontemD);
+  var hoje = hojeBR(0), ontem = hojeBR(1);   // Brasília: às 21h UTC já virou o dia
   try {
     // Usa /campaigns?with_stats=true (mesmo endpoint da página Métricas de Ads)
     // O /report?group_by=date às vezes retorna revenue=0; total_revenue de campaigns
@@ -26849,9 +26845,7 @@ function vsSelo(k,v){
 
 function renderVsl(){ if(!vsDados) vsCarregar(false); else vsPintar(); }
 
-function vsDia(voltar){
-  return new Date(Date.now()-3*3600000-(voltar||0)*86400000).toISOString().slice(0,10);
-}
+function vsDia(voltar){ return hojeBR(voltar); }
 function vsPeriodo(){
   var per=(document.getElementById('vs-periodo')||{}).value||'7d';
   if(per==='custom'){
@@ -28110,25 +28104,20 @@ function renderAdsMetrics(){
   else if(key) loadAdsMetrics();
 }
 
+// Data em BRASÍLIA, não em UTC. toISOString() devolve UTC: às 21h daqui já é o
+// dia seguinte lá, então "hoje" pulava pra amanhã e a tela zerava toda noite.
+function hojeBR(voltarDias){
+  return new Date(Date.now() - 3*3600000 - (voltarDias||0)*86400000).toISOString().slice(0,10);
+}
+function primeiroDiaDoMesBR(){
+  return hojeBR(0).slice(0,8) + '01';
+}
 function getAdsDates(){
-  const today = new Date();
-  const fmt = d => d.toISOString().split('T')[0];
-  if(adsFilter.preset==='today') return { from: fmt(today), to: fmt(today) };
-  if(adsFilter.preset==='yesterday'){
-    const y=new Date(today); y.setDate(y.getDate()-1);
-    return { from: fmt(y), to: fmt(y) };
-  }
-  if(adsFilter.preset==='7d'){
-    const s=new Date(today); s.setDate(s.getDate()-6);
-    return { from: fmt(s), to: fmt(today) };
-  }
-  if(adsFilter.preset==='30d'){
-    const s=new Date(today); s.setDate(s.getDate()-29);
-    return { from: fmt(s), to: fmt(today) };
-  }
-  if(adsFilter.preset==='month'){
-    return { from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), to: fmt(today) };
-  }
+  if(adsFilter.preset==='today')     return { from: hojeBR(0),  to: hojeBR(0) };
+  if(adsFilter.preset==='yesterday') return { from: hojeBR(1),  to: hojeBR(1) };
+  if(adsFilter.preset==='7d')        return { from: hojeBR(6),  to: hojeBR(0) };
+  if(adsFilter.preset==='30d')       return { from: hojeBR(29), to: hojeBR(0) };
+  if(adsFilter.preset==='month')     return { from: primeiroDiaDoMesBR(), to: hojeBR(0) };
   return { from: adsFilter.from, to: adsFilter.to };
 }
 
@@ -28177,7 +28166,7 @@ let rtTimer = null, rtCountdown = 30, rtLastIds = new Set(), rtActive = false;
 
 // Período selecionado (Hoje/Ontem/7d/...) aplicado também ao Tempo Real.
 // isLive = o período inclui HOJE → fica atualizando ao vivo. Senão, vira histórico.
-function rtTodayStr(){ return new Date().toISOString().split('T')[0]; }
+function rtTodayStr(){ return hojeBR(0); }   // Brasília, não UTC
 function rtPeriodInfo(){
   const d = (typeof getAdsDates==='function') ? getAdsDates() : null;
   const from = (d && d.from) || rtTodayStr();
