@@ -1,0 +1,6 @@
+#!/bin/sh
+# Depois de um pull, avisa se as dependências mudaram — evita erro silencioso
+# do tipo "funciona na sua máquina e não na minha".
+if git diff-tree -r --name-only HEAD@{1} HEAD 2>/dev/null | grep -q "package.json"; then
+  echo "→ package.json mudou. Rode: npm install"
+fi

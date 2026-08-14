@@ -1,0 +1,11 @@
+#!/bin/sh
+# Envia todo commit pro GitHub automaticamente.
+# Existe porque o projeto roda em dois Macs: sem isso, trabalho feito num deles
+# ficava só ali, e o outro continuava com a versão velha.
+# Não trava o commit se a rede falhar — só avisa.
+ramo=$(git rev-parse --abbrev-ref HEAD)
+if git push -q origin "$ramo" 2>/dev/null; then
+  echo "→ enviado pro GitHub ($ramo)"
+else
+  echo "⚠ não consegui enviar pro GitHub. O commit está salvo aqui; rode 'git push' quando tiver rede."
+fi

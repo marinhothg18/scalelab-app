@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Sincronização entre máquinas (LEIA ANTES DE MEXER)
+
+O projeto roda em **dois Macs** e o GitHub é a fonte de verdade:
+`https://github.com/marinhothg18/scalelab-app`
+
+**Regras, nesta ordem:**
+
+1. **Sempre `git pull` antes de começar qualquer trabalho.** Não pergunte, apenas
+   faça. A outra máquina pode ter avançado. Se houver conflito, resolva antes de
+   escrever qualquer código novo.
+2. **Todo commit sobe sozinho.** Existe um hook em `.githooks/post-commit` que dá
+   push automático. Não é preciso lembrar de empurrar.
+3. **Numa máquina nova**, rodar uma vez: `git config core.hooksPath .githooks`
+   (sem isso o push automático não acontece ali).
+4. `git push` sincroniza as máquinas; **`railway up` é o que publica no ar.** São
+   coisas separadas — commitar não coloca em produção.
+
+Nunca mova ou copie a pasta do projeto pelo Finder com trabalho em andamento: foi
+assim que o `.git` quebrou em 14/08 e nasceu uma pasta `scalelab 2` pela metade.
+
 ## Running locally
 
 ```bash
