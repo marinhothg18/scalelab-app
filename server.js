@@ -3664,7 +3664,12 @@ async function _tickUtmifyAuto() {
   if (!cfg || !cfg.token || !cfg.autoSync) return;
   const min = Number(cfg.autoMin) || 15;   // o gasto sobe o dia todo: 30min defasava demais
   const ultima = cfg.ultimaSyncAuto ? new Date(cfg.ultimaSyncAuto).getTime() : 0;
-  if (Date.now() - ultima < min * 60 * 1000) return;  // ainda não deu a hora
+  const faltam = min * 60 * 1000 - (Date.now() - ultima);
+  if (faltam > 0) return;                             // ainda não deu a hora
+  if (ultima) {
+    const atraso = Math.round((Date.now() - ultima) / 60000);
+    if (atraso > min * 2) console.warn('[UTMIFY] ficou ' + atraso + 'min sem sincronizar.');
+  }
   _utmifyRodando = true;
   try {
     const tz = -3;
@@ -3685,7 +3690,12 @@ async function _tickUtmifyAuto() {
     } catch (e2) {}
   } finally { _utmifyRodando = false; }
 }
-setInterval(_tickUtmifyAuto, 5 * 60 * 1000);   // confere a cada 5min; só roda quando dá a hora
+// Conferir de 5 em 5 minutos parecia suficiente, mas cada deploy reinicia o
+// servidor e zera o cronometro: numa sequencia de deploys curtos o timer nunca
+// chegava na primeira execucao e a sincronizacao simplesmente parava.
+// Agora confere logo depois de subir e com mais frequencia.
+setTimeout(_tickUtmifyAuto, 45 * 1000);        // pouco depois do boot
+setInterval(_tickUtmifyAuto, 2 * 60 * 1000);   // confere a cada 2min; só roda quando dá a hora
 
 
 // ══════════════════════════════════════════════
