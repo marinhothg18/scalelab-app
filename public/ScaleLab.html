@@ -3545,6 +3545,7 @@ Valor  scalelab-web.up.railway.app</div>
                 <tbody id="ads-body-contaads"></tbody>
               </table>
             </div>
+            <div id="ads-nao-atribuido" style="margin-top:11px"></div>
           </div>
 
           <!-- LUCRO POR HORA (fonte Utmify) -->
@@ -28381,6 +28382,32 @@ async function _painelResumoUtmify(){
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     const k = d.kpis||{}, p = k.pedidos||{};
+    // Os números de topo passam a vir DAQUI, não do consolidado. O consolidado
+    // soma o nível de conta de anúncio, que só enxerga venda atribuída à Meta —
+    // venda direta ou sem UTM ficava de fora, e a tela mostrava menos que a Utmify.
+    _kpisUtmify({
+      investimento: k.investimento, faturamento: k.receita, lucro: k.lucro,
+      roas: k.roas, vendas: p.aprovadas, cliques: k.cliques,
+      cpa: (p.aprovadas>0 ? (k.investimento/p.aprovadas) : 0)
+    });
+    // Diferença entre o total da conta e o que os anúncios conseguiram atribuir.
+    // Não é erro: é venda que entrou sem passar por anúncio rastreado.
+    const cx = document.getElementById('ads-nao-atribuido');
+    if(cx){
+      const dVendas = (p.aprovadas||0) - (_adsAtribuido.vendas||0);
+      const dReceita = (k.receita||0) - (_adsAtribuido.receita||0);
+      cx.innerHTML = (dVendas>0 || dReceita>1)
+        ? '<div style="background:rgba(27,156,250,.08);border-left:3px solid var(--accent);'+
+          'border-radius:8px;padding:10px 13px;font-size:12.5px;color:var(--text2);line-height:1.6">'+
+          '<b style="color:var(--text)">'+dVendas+' venda(s) · '+fmtAds(dReceita)+'</b> entraram sem estar '+
+          'ligadas a um anúncio — tráfego direto, orgânico ou link sem UTM. '+
+          'Elas contam nos números de cima, mas não aparecem na quebra por conta, campanha ou anúncio, '+
+          'porque a Meta não tem como reivindicá-las.</div>'
+        : '';
+    }
+    const notaFunil = document.getElementById('ads-nota-funil');
+    if(notaFunil) notaFunil.textContent =
+      'Cliques e visitas vêm da Meta; checkouts e vendas, do checkout. Total da conta, atribuído ou não.';
     const etapas = [['Cliques',k.cliques||0],['Visitas na página',k.visitas||0],
                     ['Checkouts iniciados',k.ics||0],['Vendas aprovadas',p.aprovadas||0]];
     const topo = etapas[0][1] || 1;
@@ -28972,6 +28999,7 @@ async function loadAdsMetricsUtmify(forcar){
     // Utmify mostra. Somar a tabela de campanhas deixa de fora o gasto que não
     // caiu em campanha nenhuma, e os números não batiam com o painel deles.
     _kpisUtmify(d.kpis||{});
+    _adsAtribuido = { vendas:(d.kpis&&d.kpis.vendas)||0, receita:(d.kpis&&d.kpis.faturamento)||0 };
     renderAdsTable('campanhas', adsCampanhasData, null, '_name');
     renderGroupTable('ads-body-conta', (d.porDashboard||[]).map(x=>({
       label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
@@ -29086,6 +29114,7 @@ function pintarAnunciosUtmify(){
   }).join('');
 }
 
+var _adsAtribuido={vendas:0,receita:0};
 function _kpisUtmify(k){
   const set=(id,val,cor)=>{ const e=document.querySelector('#'+id+' .ads-kpi-val'); if(e){ e.textContent=val; if(cor) e.style.color=cor; } };
   const lucro=Number(k.lucro)||0, roas=Number(k.roas)||0, vendas=Number(k.vendas)||0;
