@@ -2806,9 +2806,12 @@ function _utmifyMcpCfg(db) {
     const base = cfg || { criadoEm: new Date().toISOString() };
     // o do ambiente tem prioridade: e o mais explicito
     const c2 = Object.assign({}, base, { token: String(doEnv).trim(), origemToken: 'env' });
-    // Botar o token no ambiente ja e dizer "quero puxando sozinho". So vale como
-    // padrao: se alguem desmarcar na tela, o false salvo continua mandando.
-    if (c2.autoSync === undefined || c2.autoSync === null) c2.autoSync = true;
+    // Botar o token no ambiente e dizer "quero puxando sozinho". Antes isso valia
+    // so como padrao, e um false salvo na tela mantinha tudo parado em silencio —
+    // foi assim que a sincronizacao ficou horas sem rodar sem ninguem perceber.
+    // Com o token no ambiente, o automatico fica ligado; pra desligar de vez,
+    // basta remover a variavel UTMIFY_MCP_TOKEN do Railway.
+    if (!c2.autoSync) c2.autoSync = true;
     return c2;
   }
   return cfg;
@@ -3657,11 +3660,21 @@ app.post('/api/integracoes/utmify-mcp/auto', authDiretoria, (req, res) => {
 // Roda de tempos em tempos e atualiza HOJE + ONTEM (ontem porque venda de fim
 // de dia costuma ser atribuída depois). Reimportar substitui, não duplica.
 let _utmifyRodando = false;
+let _avisouDesligado = false;
 async function _tickUtmifyAuto() {
   if (_utmifyRodando) return;                       // evita rodadas sobrepostas
   let cfg;
   try { cfg = _utmifyMcpCfg(); } catch (e) { return; }
-  if (!cfg || !cfg.token || !cfg.autoSync) return;
+  if (!cfg || !cfg.token) return;
+  if (!cfg.autoSync) {
+    // Silencio aqui foi o que escondeu o problema por horas: a sincronizacao
+    // estava desligada e nada dizia isso em lugar nenhum.
+    if (!_avisouDesligado) {
+      console.warn('[UTMIFY] sincronização automática DESLIGADA — nada será atualizado sozinho.');
+      _avisouDesligado = true;
+    }
+    return;
+  }
   const min = Number(cfg.autoMin) || 15;   // o gasto sobe o dia todo: 30min defasava demais
   const ultima = cfg.ultimaSyncAuto ? new Date(cfg.ultimaSyncAuto).getTime() : 0;
   const faltam = min * 60 * 1000 - (Date.now() - ultima);
