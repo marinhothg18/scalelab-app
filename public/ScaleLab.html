@@ -1405,6 +1405,28 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-no .vl{font-size:17px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
 .fn-no .sb{font-size:10px;color:var(--text2);margin-top:1px}
 .fn-no.src{border-style:dashed;min-width:108px}
+.fn-no.ligando{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.3);animation:fnPisca 1.1s ease-in-out infinite}
+.fn-no.alvo{border-color:var(--green);border-style:dashed;cursor:crosshair}
+.fn-no.alvo:hover{background:rgba(52,199,89,.13);box-shadow:0 0 0 3px rgba(52,199,89,.25)}
+@keyframes fnPisca{0%,100%{opacity:1}50%{opacity:.62}}
+.fn-arrumar{position:absolute;top:12px;left:12px;z-index:5;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.fn-arrumar:hover{border-color:var(--accent)}
+.fn-aviso-lig{display:flex;align-items:center;gap:9px;background:rgba(27,156,250,.12);border:1px solid var(--accent);
+  border-radius:10px;padding:8px 12px;margin-bottom:9px;font-size:12px;font-weight:600}
+.fn-sec{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin:14px 0 7px}
+.fn-lig{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;padding:6px 9px;margin-bottom:5px;font-size:11.5px;font-weight:600}
+.fn-lig span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-lig button{background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;padding:0 2px}
+.fn-lig button:hover{color:var(--red)}
+.fn-fnt{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:9px;padding:8px 10px;margin-bottom:6px;cursor:pointer}
+.fn-fnt.on{border-color:var(--accent)}
+.fn-fnt .a{flex:1;min-width:0}
+.fn-fnt .n{font-size:11.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-fnt .s{font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-fnt .v{font-size:13px;font-weight:800}
 .fn-fios{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .fn-zoom{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:9px;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:5px 11px;font-size:12px;font-weight:700}
 .fn-zoom button{background:none;border:none;color:var(--text);font-size:16px;cursor:pointer;line-height:1;font-family:inherit}
@@ -3238,15 +3260,24 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div class="fn-faixa" id="fn-etapas"></div>
           <div class="fn-cols">
             <div>
+              <div class="fn-aviso-lig" id="fn-aviso-lig" style="display:none"></div>
               <div class="fn-mapa" id="fn-mapa">
                 <div class="fn-grade"></div>
                 <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
                 <div class="fn-vivo"><span class="fn-pulsa"></span> AO VIVO</div>
                 <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button></div>
+                <button class="fn-arrumar" onclick="fnArrumar()" title="Reorganiza os blocos seguindo as ligações">✨ Arrumar mapa</button>
               </div>
             </div>
             <div>
               <div class="fn-cx2" id="fn-detalhe"></div>
+              <div class="fn-cx2">
+                <h3>📣 Origens de tráfego</h3>
+                <div style="font-size:11.5px;color:var(--text2);margin-bottom:9px">De onde as pessoas chegam. Os cliques vêm da Utmify, por projeto.</div>
+                <div id="fn-fontes"></div>
+                <div class="fn-campo"><label>Nova origem</label><input id="fn-f-nome" placeholder="Ex: Facebook — campanha fria"></div>
+                <button class="fn-btn g" style="width:100%" onclick="fnAddFonte()">Cadastrar origem</button>
+              </div>
               <div class="fn-cx2">
                 <h3>➕ Adicionar etapa</h3>
                 <div class="fn-campo"><label>Nome</label><input id="fn-n-nome" placeholder="Ex: Upsell 2"></div>
@@ -26808,7 +26839,13 @@ function fnReds(){ return g('sl_redirecionadores', []); }
 function fnSalvarReds(v){ s('sl_redirecionadores', v); }
 function fnDoProjeto(){ return fnFunis().filter(function(f){ return f.projeto === fnProj; }); }
 function fnAtual(){ var l = fnDoProjeto(); return l[fnIdx] || l[0] || null; }
-function fnTodos(f){ return (f.fontes||[]).map(function(x){ var c={}; for(var k in x) c[k]=x[k]; c.tipo='fonte'; return c; }).concat(f.etapas||[]); }
+// Devolve os objetos de verdade. Antes isso copiava as fontes, entao arrastar,
+// renomear ou trocar a campanha de uma origem escrevia numa copia e sumia.
+function fnTodos(f){
+  var fs = f.fontes || [];
+  for(var i=0;i<fs.length;i++) if(fs[i].tipo !== 'fonte') fs[i].tipo = 'fonte';
+  return fs.concat(f.etapas || []);
+}
 function fnAcha(f,id){ var t = fnTodos(f); for(var i=0;i<t.length;i++) if(t[i].id===id) return t[i]; return null; }
 function fnNum(n){ return Number(Math.round(n)||0).toLocaleString('pt-BR'); }
 function fnEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -27701,10 +27738,14 @@ function fnMontar(nome, modeloId, projeto){
 }
 
 // Projetos vêm dos dashboards da Utmify — a mesma divisão usada em Métricas de Ads
+var fnProjetosFull = [];
+var fnCliques = null, fnCliquesLista = [];
+
 function fnCarregarProjetos(){
   fetch('/api/metricas/utmify/projetos').then(function(r){ return r.ok ? r.json() : null; })
   .then(function(d){
-    fnProjetos = (d && d.projetos) ? d.projetos.map(function(p){ return p.nome; }) : [];
+    fnProjetosFull = (d && d.projetos) || [];
+    fnProjetos = fnProjetosFull.map(function(p){ return p.nome; });
     if(!fnProjetos.length) fnProjetos = ['Geral'];
     if(!fnProj || fnProjetos.indexOf(fnProj)<0) fnProj = fnProjetos[0];
     // funis sem projeto herdam o primeiro
@@ -27715,6 +27756,10 @@ function fnCarregarProjetos(){
   }).catch(function(){ fnProjetos=['Geral']; fnProj='Geral'; fnPintar(); });
 }
 
+function fnProjId(){
+  var p = fnProjetosFull.filter(function(x){ return x.nome===fnProj; })[0];
+  return p ? p.id : '';
+}
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
@@ -27742,6 +27787,28 @@ function fnCarregarStats(){
       ((d && d.etapas) || []).forEach(function(e){ fnStats[e.etapa] = e; });
       fnPintar();
     }).catch(function(){ fnPintar(); });
+  fnCarregarCliques(de, hoje);
+}
+
+// Os cliques do anúncio quem tem é a Utmify — o nosso pixel só começa a contar
+// depois que a pessoa chega na página. Por isso a origem puxa de lá, por projeto.
+function fnCarregarCliques(de, ate){
+  var pid = fnProjId();
+  fetch('/api/metricas/consolidado?de='+de+'&ate='+ate+(pid?'&projeto='+encodeURIComponent(pid):''))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d || !d.ok) return;
+      fnCliques = { total: (d.kpis&&d.kpis.cliques)||0, campanhas: {} };
+      (d.porCampanha||[]).forEach(function(c){ fnCliques.campanhas[c.nome] = c.cliques||0; });
+      fnCliquesLista = (d.porCampanha||[]).map(function(c){ return c.nome; });
+      fnListaFontes(); fnNos(); fnFios(); fnDetalhe();
+    }).catch(function(){});
+}
+// cliques que chegam por uma origem: a campanha amarrada nela, ou o projeto todo
+function fnCliquesDe(n){
+  if(!fnCliques) return 0;
+  if(n.utmCampanha) return fnCliques.campanhas[n.utmCampanha] || 0;
+  return fnCliques.total || 0;
 }
 function fnVal(id){ var e = fnStats[id]; return e ? (e.unicos || e.entradas || 0) : 0; }
 function fnBase(f){ return (f.etapas && f.etapas.length) ? (fnVal(f.etapas[0].id) || 0) : 0; }
@@ -27764,7 +27831,7 @@ function fnPintar(){
       return '<div class="fn-cx '+(i===fnIdx?'on':'')+'" onclick="fnEscolher('+i+')"><div class="t">'+fnEsc(x.nome)+'</div>'+
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
     }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
-  fnFaixa(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPintarRed(); fnPintarFeed();
+  fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPintarRed(); fnPintarFeed();
 }
 
 function fnFaixa(){
@@ -27781,6 +27848,19 @@ function fnFaixa(){
   }).join('');
 }
 
+function fnListaFontes(){
+  var f = fnAtual(), el = document.getElementById('fn-fontes');
+  if(!el) return;
+  var fs = (f && f.fontes) || [];
+  if(!fs.length){ el.innerHTML = '<div style="font-size:11.5px;color:var(--text2);margin-bottom:9px">Nenhuma origem ainda.</div>'; return; }
+  el.innerHTML = fs.map(function(o){
+    return '<div class="fn-fnt '+(fnSel===o.id?'on':'')+'" onclick="fnSelecionar(\''+o.id+'\')">'+
+      '<div class="a"><div class="n">'+fnEsc(o.nome)+'</div>'+
+      '<div class="s">'+fnEsc(o.utmCampanha||'projeto todo')+'</div></div>'+
+      '<div class="v">'+fnNum(fnCliquesDe(o))+'</div></div>';
+  }).join('');
+}
+
 function fnNos(){
   var f = fnAtual(), palco = document.getElementById('fn-palco');
   if(!f || !palco) return;
@@ -27789,13 +27869,16 @@ function fnNos(){
   fnTodos(f).forEach(function(n){
     var el = document.createElement('div');
     var src = n.tipo==='fonte';
-    el.className = 'fn-no'+(src?' src':'')+(fnSel===n.id?' sel':'');
+    var alvo = fnLigando && fnPodeLigar(f, fnLigando, n.id);
+    el.className = 'fn-no'+(src?' src':'')+(fnSel===n.id?' sel':'')+
+                   (fnLigando===n.id?' ligando':'')+(alvo?' alvo':'');
     el.style.left = (n.x||0)+'px'; el.style.top = (n.y||0)+'px';
     el.dataset.id = n.id;
     var cor = FN_CORES[n.tipo], v = src ? 0 : fnVal(n.id);
     el.innerHTML = '<div class="c"><span class="nm">'+fnEsc(n.nome)+'</span>'+
       '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+FN_ROT[n.tipo]+'</span></div>'+
-      (src ? '<div class="sb">origem do tráfego</div>'
+      (src ? '<div class="vl" style="color:'+cor+'">'+fnNum(fnCliquesDe(n))+'</div>'+
+             '<div class="sb">cliques · '+fnEsc(n.utmCampanha||'projeto todo')+'</div>'
            : '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
              '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou</div>'+
              (n.url?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>'));
@@ -27850,6 +27933,19 @@ function fnFios(){
     pa.setAttribute('stroke-width', Math.max(1.4, Math.min(5, passou*5)));
     pa.setAttribute('opacity','.7');
     svg.appendChild(pa);
+    // faixa invisivel por cima do fio: da pra clicar sem ter que mirar em 2px
+    var alvo = document.createElementNS('http://www.w3.org/2000/svg','path');
+    alvo.setAttribute('d', pa.getAttribute('d'));
+    alvo.setAttribute('fill','none'); alvo.setAttribute('stroke','transparent');
+    alvo.setAttribute('stroke-width','16'); alvo.style.cursor='pointer';
+    alvo.setAttribute('pointer-events','stroke');
+    alvo.addEventListener('click', function(){
+      if(confirm('Desfazer a ligação '+na.nome+' → '+nb.nome+'?')) fnDesligar(par[0], par[1]);
+    });
+    var tt = document.createElementNS('http://www.w3.org/2000/svg','title');
+    tt.textContent = na.nome+' → '+nb.nome+' (clique pra desfazer)';
+    alvo.appendChild(tt);
+    svg.appendChild(alvo);
     if(passou > 0){
       var qtd = Math.max(1, Math.round(passou*3));
       for(var k=0;k<qtd;k++){
@@ -27876,33 +27972,215 @@ function fnFios(){
   });
 }
 
+// Depois de arrastar os blocos o desenho vira bagunca. Isso recoloca cada um
+// na coluna que corresponde a distancia dele ate a origem.
+function fnArrumar(){
+  var f = fnAtual(); if(!f) return;
+  var todos = fnTodos(f), nivel = {}, filhos = {};
+  todos.forEach(function(n){ filhos[n.id] = []; });
+  (f.ligacoes||[]).forEach(function(l){ if(filhos[l[0]]) filhos[l[0]].push(l[1]); });
+  // quem nunca aparece como destino comeca na coluna 0
+  var temPai = {};
+  (f.ligacoes||[]).forEach(function(l){ temPai[l[1]] = 1; });
+  var fila = todos.filter(function(n){ return !temPai[n.id] && (n.tipo==='fonte' || (filhos[n.id]||[]).length); })
+                  .map(function(n){ return n.id; });
+  fila.forEach(function(id){ nivel[id] = 0; });
+  var voltas = 0;
+  while(fila.length && voltas++ < 4000){
+    var id = fila.shift();
+    (filhos[id]||[]).forEach(function(fid){
+      var novo = nivel[id] + 1;
+      if(nivel[fid] === undefined || novo > nivel[fid]){ nivel[fid] = novo; fila.push(fid); }
+    });
+  }
+  // bloco solto nao trava o layout: vai pra ultima coluna
+  var maxN = 0;
+  todos.forEach(function(n){ if(nivel[n.id] !== undefined && nivel[n.id] > maxN) maxN = nivel[n.id]; });
+  todos.forEach(function(n){ if(nivel[n.id] === undefined) nivel[n.id] = maxN + 1; });
+
+  var colunas = {};
+  todos.forEach(function(n){ (colunas[nivel[n.id]] = colunas[nivel[n.id]] || []).push(n); });
+  Object.keys(colunas).forEach(function(k){
+    colunas[k].forEach(function(n, i){
+      n.x = 30 + Number(k) * 205;
+      n.y = 45 + i * 118;
+    });
+  });
+  fnGravar(f); fnPintar(); toastFn('Mapa reorganizado');
+}
+
 function fnZoom(d){
   fnEscala = Math.max(.4, Math.min(1.4, fnEscala + d/100));
   document.getElementById('fn-palco').style.transform = 'scale('+fnEscala+')';
   document.getElementById('fn-zoomv').textContent = Math.round(fnEscala*100)+'%';
 }
-function fnSelecionar(id){ fnSel = id; fnNos(); fnFios(); fnDetalhe(); fnFaixa(); }
+function fnSelecionar(id){
+  if(fnLigando){ fnLigarEm(id); return; }
+  fnSel = id; fnNos(); fnFios(); fnDetalhe(); fnFaixa();
+}
 
 function fnDetalhe(){
   var cx = document.getElementById('fn-detalhe'); if(!cx) return;
   var f = fnAtual(), n = f ? fnAcha(f, fnSel) : null;
-  if(!n){ cx.innerHTML = '<h3>👆 Clique num bloco</h3><p style="font-size:12.5px;color:var(--text2)">Os números daquele passo aparecem aqui.</p>'; return; }
-  var base = fnBase(f) || 1, v = n.tipo==='fonte' ? 0 : fnVal(n.id);
-  var sai = (f.ligacoes||[]).filter(function(l){ return l[0]===n.id; }).map(function(l){ return fnAcha(f,l[1]); }).filter(Boolean);
-  var seguiram = sai.reduce(function(a,x){ return a + fnVal(x.id); },0);
+  if(!n){ cx.innerHTML = '<h3>👆 Clique num bloco</h3><p style="font-size:12.5px;color:var(--text2)">Os números daquele passo aparecem aqui. Pra ligar um passo no outro, clique no bloco e depois em <b>Ligar em…</b>.</p>'; return; }
+  var base = fnBase(f) || 1;
+  var src = n.tipo==='fonte';
+  var v = src ? fnCliquesDe(n) : fnVal(n.id);
   var st = fnStats[n.id] || {};
+
+  var sai = (f.ligacoes||[]).filter(function(l){ return l[0]===n.id; });
+  var ent = (f.ligacoes||[]).filter(function(l){ return l[1]===n.id; });
+  var seguiram = sai.map(function(l){ return fnAcha(f,l[1]); }).filter(Boolean)
+                    .reduce(function(a,x){ return a + fnVal(x.id); },0);
+
+  function linhaLig(l, ondeVai){
+    var o = fnAcha(f, ondeVai ? l[1] : l[0]); if(!o) return '';
+    return '<div class="fn-lig"><span>'+(ondeVai?'→ ':'← ')+fnEsc(o.nome)+'</span>'+
+      '<button title="Desfazer" onclick="fnDesligar(\''+l[0]+'\',\''+l[1]+'\')">✕</button></div>';
+  }
+  var htmlLig =
+    '<div class="fn-sec">Ligações</div>'+
+    (ent.length ? ent.map(function(l){ return linhaLig(l,false); }).join('') : '')+
+    (sai.length ? sai.map(function(l){ return linhaLig(l,true); }).join('') : '')+
+    (!ent.length && !sai.length ? '<div style="font-size:11.5px;color:var(--text2);margin-bottom:7px">Este bloco está solto — não recebe nem manda ninguém.</div>' : '')+
+    '<button class="fn-btn '+(fnLigando===n.id?'':'g ')+'sm" style="width:100%" onclick="fnIniciarLigacao(\''+n.id+'\')">'+
+      (fnLigando===n.id ? '✕ Cancelar ligação' : '🔗 Ligar em outro bloco')+'</button>'+
+    (fnLigando===n.id ? '<div style="font-size:11px;color:var(--accent);margin-top:6px">Agora clique no bloco de destino, no mapa ou na faixa acima.</div>' : '');
+
+  if(src){
+    var opts = ['<option value="">Projeto todo ('+fnEsc(fnProj)+')</option>'].concat(
+      fnCliquesLista.map(function(c){
+        return '<option value="'+fnEsc(c)+'" '+(n.utmCampanha===c?'selected':'')+'>'+fnEsc(c)+'</option>';
+      })).join('');
+    cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
+      '<div class="fn-l"><span>Cliques (Utmify)</span><span>'+fnNum(v)+'</span></div>'+
+      (base ? '<div class="fn-l"><span>Chegaram na 1ª página</span><span>'+fnNum(base)+'</span></div>'+
+              '<div class="fn-l"><span>Clique → página</span><span style="color:'+(v&&base/v>.6?'var(--green)':'var(--red)')+'">'+
+              (v ? (base/v*100).toFixed(1) : '0.0')+'%</span></div>' : '')+
+      '<div class="fn-campo" style="margin-top:12px"><label>Nome da origem</label>'+
+      '<input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+      '<div class="fn-campo"><label>De onde vêm os cliques</label>'+
+      '<select onchange="fnAmarrarCampanha(\''+n.id+'\',this.value)">'+opts+'</select>'+
+      '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Os cliques saem da Utmify. Escolha uma campanha pra separar as origens.</div></div>'+
+      htmlLig+
+      '<button class="fn-btn g sm" style="width:100%;margin-top:9px;color:var(--red)" onclick="fnRemoverFonte(\''+n.id+'\')">Remover origem</button>';
+    return;
+  }
+
   cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
-    (n.tipo!=='fonte' ? '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
-      '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'+
-      (st.tempoMedio?'<div class="fn-l"><span>Tempo médio</span><span>'+st.tempoMedio+'s</span></div>':'')+
-      (sai.length?'<div class="fn-l"><span>Passou adiante</span><span style="color:var(--green)">'+fnNum(seguiram)+'</span></div>'+
-        '<div class="fn-l"><span>Parou aqui</span><span style="color:var(--red)">'+fnNum(Math.max(0,v-seguiram))+'</span></div>':'')+
-      '<div class="fn-campo" style="margin-top:13px"><label>Link da página</label>'+
-      '<input value="'+fnEsc(n.url||'')+'" placeholder="https://..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
-      (n.url?'':'<div style="font-size:10.5px;color:var(--red);margin-top:5px">Informe o link pra esta etapa ser rastreada.</div>')+'</div>'+
-      '<div style="display:flex;gap:7px"><button class="fn-btn g sm" onclick="fnIrPixel(\''+n.id+'\')">Ver pixel</button>'+
-      '<button class="fn-btn g sm" onclick="fnRemoverEtapa(\''+n.id+'\')" style="color:var(--red)">Remover</button></div>'
-    : '<p style="font-size:12.5px;color:var(--text2)">Origem do tráfego. Os cliques chegam pelo redirecionador ou direto pelo anúncio.</p>');
+    '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
+    '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'+
+    (st.tempoMedio?'<div class="fn-l"><span>Tempo médio</span><span>'+st.tempoMedio+'s</span></div>':'')+
+    (sai.length?'<div class="fn-l"><span>Passou adiante</span><span style="color:var(--green)">'+fnNum(seguiram)+'</span></div>'+
+      '<div class="fn-l"><span>Parou aqui</span><span style="color:var(--red)">'+fnNum(Math.max(0,v-seguiram))+'</span></div>':'')+
+    '<div class="fn-campo" style="margin-top:13px"><label>Nome</label>'+
+    '<input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+    '<div class="fn-campo"><label>Link da página</label>'+
+    '<input value="'+fnEsc(n.url||'')+'" placeholder="https://..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
+    (n.url?'':'<div style="font-size:10.5px;color:var(--red);margin-top:5px">Informe o link pra esta etapa ser rastreada.</div>')+'</div>'+
+    htmlLig+
+    '<div style="display:flex;gap:7px;margin-top:9px"><button class="fn-btn g sm" onclick="fnIrPixel(\''+n.id+'\')">Ver pixel</button>'+
+    '<button class="fn-btn g sm" onclick="fnRemoverEtapa(\''+n.id+'\')" style="color:var(--red)">Remover</button></div>';
+}
+
+function fnAmarrarCampanha(id, valor){
+  var f=fnAtual(); if(!f) return;
+  var n=fnAcha(f,id); if(!n) return;
+  n.utmCampanha = valor || '';
+  fnGravar(f); fnListaFontes(); fnNos(); fnDetalhe();
+  toastFn(valor ? 'Origem amarrada em '+valor : 'Origem usando o projeto todo');
+}
+
+// ── LIGAR UMA ETAPA NA OUTRA ──
+// Antes as ligacoes so nasciam quando a etapa era criada, e nao dava pra mudar:
+// arrastar o bloco movia o desenho mas o caminho continuava o mesmo.
+var fnLigando = null;         // id da etapa de origem enquanto liga
+
+function fnIniciarLigacao(id){
+  fnLigando = (fnLigando===id) ? null : id;
+  fnNos(); fnDetalhe(); fnAvisoLigacao();
+}
+function fnAvisoLigacao(){
+  var el = document.getElementById('fn-aviso-lig');
+  if(!el) return;
+  if(!fnLigando){ el.style.display='none'; return; }
+  var f=fnAtual(), n=fnAcha(f,fnLigando);
+  el.style.display='flex';
+  el.innerHTML = '<span>🔗 Ligando a partir de <b>'+fnEsc(n?n.nome:'')+'</b> — clique no bloco de destino</span>'+
+    '<button class="fn-btn g sm" style="margin-left:auto" onclick="fnCancelarLigacao()">Cancelar</button>';
+}
+function fnCancelarLigacao(){ fnLigando=null; fnNos(); fnDetalhe(); fnAvisoLigacao(); }
+document.addEventListener('keydown', function(ev){
+  if(ev.key==='Escape' && fnLigando) fnCancelarLigacao();
+});
+
+// destino serve? nao pode ser ele mesmo, nem origem, nem repetido, nem circular
+function fnPodeLigar(f, de, destino){
+  if(!f || de===destino) return false;
+  var alvo = fnAcha(f, destino);
+  if(!alvo || alvo.tipo==='fonte') return false;
+  if((f.ligacoes||[]).some(function(l){ return l[0]===de && l[1]===destino; })) return false;
+  return !fnAlcanca(f, destino, de);
+}
+
+function fnLigarEm(destino){
+  var f=fnAtual(); if(!f || !fnLigando) return;
+  var de=fnLigando;
+  if(de===destino){ fnCancelarLigacao(); return; }
+  var alvo=fnAcha(f,destino);
+  if(alvo && alvo.tipo==='fonte'){ toastFn('Origem de tráfego não recebe ligação'); return; }
+  f.ligacoes = f.ligacoes || [];
+  var existe = f.ligacoes.some(function(l){ return l[0]===de && l[1]===destino; });
+  if(existe){ toastFn('Essas duas já estão ligadas'); fnCancelarLigacao(); return; }
+  // evita caminho circular: A→B→A deixaria o funil sem inicio nem fim
+  if(fnAlcanca(f, destino, de)){ toastFn('Não dá: isso criaria um caminho circular'); fnCancelarLigacao(); return; }
+  f.ligacoes.push([de,destino]);
+  fnLigando=null;
+  fnGravar(f); fnPintar(); fnAvisoLigacao(); toastFn('Ligado');
+}
+// existe caminho de A ate B seguindo as setas?
+function fnAlcanca(f, de, ate){
+  var vistos={}, fila=[de];
+  while(fila.length){
+    var atual=fila.shift();
+    if(atual===ate) return true;
+    if(vistos[atual]) continue;
+    vistos[atual]=1;
+    (f.ligacoes||[]).forEach(function(l){ if(l[0]===atual) fila.push(l[1]); });
+  }
+  return false;
+}
+function fnDesligar(de, para){
+  var f=fnAtual(); if(!f) return;
+  f.ligacoes = (f.ligacoes||[]).filter(function(l){ return !(l[0]===de && l[1]===para); });
+  fnGravar(f); fnPintar(); toastFn('Ligação removida');
+}
+
+// ── ORIGENS DE TRÁFEGO ──
+function fnAddFonte(){
+  var f=fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
+  var nome=(document.getElementById('fn-f-nome').value||'').trim();
+  if(!nome){ toastFn('Dê um nome à origem'); return; }
+  var id='o'+Date.now();
+  f.fontes = f.fontes || []; f.ligacoes = f.ligacoes || [];
+  f.fontes.push({ id:id, nome:nome, x:30, y:120 + f.fontes.length*95 });
+  // já liga na primeira etapa, que é o destino natural
+  if(f.etapas && f.etapas.length) f.ligacoes.push([id, f.etapas[0].id]);
+  document.getElementById('fn-f-nome').value='';
+  fnSel=id; fnGravar(f); fnPintar(); toastFn('Origem criada');
+}
+function fnRemoverFonte(id){
+  var f=fnAtual(); if(!f) return;
+  if(!confirm('Remover esta origem de tráfego?')) return;
+  f.fontes=(f.fontes||[]).filter(function(x){ return x.id!==id; });
+  f.ligacoes=(f.ligacoes||[]).filter(function(l){ return l[0]!==id && l[1]!==id; });
+  fnSel=null; fnGravar(f); fnPintar(); toastFn('Origem removida');
+}
+function fnRenomear(id, valor){
+  var f=fnAtual(); if(!f) return;
+  var n=fnAcha(f,id); if(!n) return;
+  var novo=(valor||'').trim(); if(!novo) return;
+  n.nome=novo; fnGravar(f); fnPintar();
 }
 
 function fnSalvarUrl(id, valor){
@@ -27928,6 +28206,7 @@ function fnAddEtapa(){
   var pai = document.getElementById('fn-n-pai').value;
   var ant = fnAcha(f, pai);
   var id = 'e'+Date.now();
+  f.ligacoes = f.ligacoes || [];
   f.etapas.push({ id:id, nome:nome, tipo:tipo, url:url,
                   x:((ant&&ant.x)||200)+185, y:((ant&&ant.y)||140)+70 });
   if(pai) f.ligacoes.push([pai,id]);
@@ -27952,7 +28231,8 @@ function fnOpcoes(){
   var f = fnAtual();
   var px = document.getElementById('fn-px-etapa'), pai = document.getElementById('fn-n-pai');
   if(px) px.innerHTML = f ? f.etapas.map(function(e){ return '<option value="'+e.id+'">'+fnEsc(e.nome)+'</option>'; }).join('') : '';
-  if(pai) pai.innerHTML = f ? fnTodos(f).map(function(n){ return '<option value="'+n.id+'">'+fnEsc(n.nome)+'</option>'; }).join('') : '';
+  if(pai) pai.innerHTML = f ? (fnTodos(f).map(function(n){ return '<option value="'+n.id+'">'+fnEsc(n.nome)+'</option>'; }).join('')
+        + '<option value="">— solta, ligo depois —</option>') : '';
 }
 
 // ── pixel ──
