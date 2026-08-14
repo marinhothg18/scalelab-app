@@ -14,9 +14,14 @@ O projeto roda em **dois Macs** e o GitHub é a fonte de verdade:
    escrever qualquer código novo.
 2. **Todo commit sobe sozinho.** Existe um hook em `.githooks/post-commit` que dá
    push automático. Não é preciso lembrar de empurrar.
-3. **Numa máquina nova**, rodar uma vez: `git config core.hooksPath .githooks`
+3. **Commit com JavaScript quebrado é recusado.** O hook `.githooks/pre-commit`
+   roda `node .githooks/checar-js.js`, que valida `server.js` e o JS embutido em
+   todo `public/*.html`. Foi criado depois de duas versões quebradas irem ao ar em
+   14/08 (um `<style>` dentro do `<script>` e uma variável que apagou a função
+   `atras`). Pra rodar à mão a qualquer momento: `node .githooks/checar-js.js`.
+4. **Numa máquina nova**, rodar uma vez: `git config core.hooksPath .githooks`
    (sem isso o push automático não acontece ali).
-4. `git push` sincroniza as máquinas; **`railway up` é o que publica no ar.** São
+5. `git push` sincroniza as máquinas; **`railway up` é o que publica no ar.** São
    coisas separadas — commitar não coloca em produção.
 
 Nunca mova ou copie a pasta do projeto pelo Finder com trabalho em andamento: foi

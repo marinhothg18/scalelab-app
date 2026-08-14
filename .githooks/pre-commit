@@ -1,0 +1,11 @@
+#!/bin/sh
+# Recusa commit com JavaScript quebrado.
+# Existe porque em 14/08 subiram duas versões quebradas: um <style> colado dentro
+# do <script> e uma variável que apagou uma função ('atras is not a function').
+# Nos dois casos a checagem existia — só dependia de alguém lembrar de rodar.
+node .githooks/checar-js.js || {
+  echo ""
+  echo "Commit recusado: corrija o erro acima."
+  echo "Pra commitar mesmo assim (evite): git commit --no-verify"
+  exit 1
+}
