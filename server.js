@@ -3152,24 +3152,30 @@ async function _tickEventosUtmify() {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
       const hoje = new Date(Date.now() + tz * 3600000).toISOString().slice(0, 10);
-      let r;
-      try {
-        r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
-          dashboardId: d.id, level: 'ad',
-          dateRange: { from: hoje + 'T00:00:00' + off, to: hoje + 'T23:59:59' + off }
+      const ontem = new Date(Date.now() + tz * 3600000 - 86400000).toISOString().slice(0, 10);
+      // ONTEM tambem: a Utmify prende o pedido na data em que ele foi CRIADO.
+      // Pix gerado ontem e pago hoje vira aprovado na data de ontem — olhando so
+      // hoje, essa venda nunca aparecia no feed.
+      for (const dia of [hoje, ontem]) {
+        let r;
+        try {
+          r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+            dashboardId: d.id, level: 'ad',
+            dateRange: { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off }
+          });
+        } catch (e) { continue; }
+        const porNome = {};
+        ((r && r.results) || []).forEach(a => {
+          const nome = String(a.name || '(sem nome)').trim();
+          const k = d.id + '|' + dia + '|' + nome.toLowerCase().replace(/\s+/g, ' ');
+          if (!porNome[k]) porNome[k] = { nome, dashboard: d.nome || d.id, dia,
+                                          atrasada: dia !== hoje, vendas: 0, ics: 0, receita: 0 };
+          porNome[k].vendas  += Number(a.approvedOrdersCount) || 0;
+          porNome[k].ics     += Number(a.initiateCheckout) || 0;
+          porNome[k].receita += cent(a.grossRevenue);
         });
-      } catch (e) { continue; }
-      // agrega por nomenclatura, igual a tela de anuncios
-      const porNome = {};
-      ((r && r.results) || []).forEach(a => {
-        const nome = String(a.name || '(sem nome)').trim();
-        const k = d.id + '|' + nome.toLowerCase().replace(/\s+/g, ' ');
-        if (!porNome[k]) porNome[k] = { nome, dashboard: d.nome || d.id, vendas: 0, ics: 0, receita: 0 };
-        porNome[k].vendas  += Number(a.approvedOrdersCount) || 0;
-        porNome[k].ics     += Number(a.initiateCheckout) || 0;
-        porNome[k].receita += cent(a.grossRevenue);
-      });
-      Object.assign(foto, porNome);
+        Object.assign(foto, porNome);
+      }
     }
     if (_evFoto) {
       const agora = new Date().toISOString();
@@ -3182,11 +3188,16 @@ async function _tickEventosUtmify() {
         const dv = novo.vendas - velho.vendas;
         const di = novo.ics    - velho.ics;
         const dr = novo.receita - velho.receita;
+        // venda de dia anterior aprovada agora = Pix/boleto que caiu depois
+        const atras = !!novo.atrasada, diaOrig = novo.dia || '';
         if (dv > 0) _evRegistrar({ momento: agora, tipo: 'venda', anuncio: novo.nome,
-                                   dashboard: novo.dashboard, qtd: dv, valor: dr > 0 ? dr : 0 });
+                                   dashboard: novo.dashboard, qtd: dv, valor: dr > 0 ? dr : 0,
+                                   atrasada: atras, diaOriginal: diaOrig });
         else if (dr > 0.009) _evRegistrar({ momento: agora, tipo: 'receita', anuncio: novo.nome,
-                                   dashboard: novo.dashboard, qtd: 0, valor: dr });
-        if (di > 0) _evRegistrar({ momento: agora, tipo: 'ic', anuncio: novo.nome,
+                                   dashboard: novo.dashboard, qtd: 0, valor: dr,
+                                   atrasada: atras, diaOriginal: diaOrig });
+        // checkout iniciado de ontem nao interessa: o que importa e a aprovacao
+        if (di > 0 && !atras) _evRegistrar({ momento: agora, tipo: 'ic', anuncio: novo.nome,
                                    dashboard: novo.dashboard, qtd: di, valor: 0 });
       });
     }

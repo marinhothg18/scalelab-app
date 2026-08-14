@@ -28301,9 +28301,16 @@ function _feedEventos(evs){
       const receita = e.tipo==='receita';
       const cor = venda ? 'var(--green)' : (receita ? 'var(--green)' : '#f97316');
       const icone = venda ? '💰' : (receita ? '💵' : '🛒');
-      const rotulo = venda ? ('Venda aprovada'+(e.qtd>1?(' ×'+e.qtd):''))
+      // Pix costuma ser gerado num dia e pago no outro; a Utmify prende o pedido
+      // na data em que foi criado, então avisamos que a venda é de antes.
+      const atras = e.atrasada
+        ? (' <span style="font-weight:600;opacity:.8">· pedido de '+
+           (e.diaOriginal? e.diaOriginal.slice(8,10)+'/'+e.diaOriginal.slice(5,7) : 'ontem')+
+           ' (Pix/boleto)</span>')
+        : '';
+      const rotulo = (venda ? ('Venda aprovada'+(e.qtd>1?(' ×'+e.qtd):''))
                    : receita ? 'Receita confirmada'
-                   : ('Checkout iniciado'+(e.qtd>1?(' ×'+e.qtd):''));
+                   : ('Checkout iniciado'+(e.qtd>1?(' ×'+e.qtd):''))) + atras;
       return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg3);'+
              'border-left:3px solid '+cor+';border-radius:7px;">'+
         '<span style="font-size:16px;">'+icone+'</span>'+
