@@ -3090,11 +3090,21 @@ const KEY_EVENTOS = 'sl_funil_eventos';
 
 // O feed precisa sobreviver a quem fecha a tela e ao restart do servidor: sem
 // isso as vendas e checkouts que acontecem de madrugada simplesmente sumiam.
+const KEY_EV_FOTO = 'sl_funil_evfoto';
+// A foto anterior tambem precisa sobreviver ao restart. Sem isso, cada deploy
+// zerava a base de comparacao: a primeira leitura virava marco zero e tudo que
+// aconteceu no intervalo sumia do feed — foi assim que uma venda se perdeu.
 function _evCarregar() {
   try {
     const db = readDB();
     const l = db.store[KEY_EVENTOS];
     if (Array.isArray(l)) _evFeed = l.slice(0, 400);
+    const f = db.store[KEY_EV_FOTO];
+    // contador zera na virada do dia: foto de ontem nao serve de comparacao
+    if (f && f.dia === _hojeBR() && f.foto && typeof f.foto === 'object') {
+      _evFoto = f.foto;
+      console.log('[FUNIL] base de comparação recuperada (' + Object.keys(_evFoto).length + ' anúncios).');
+    }
   } catch (e) {}
 }
 function _evGravar() {
@@ -3161,8 +3171,11 @@ async function _tickEventosUtmify() {
     if (_evFoto) {
       const agora = new Date().toISOString();
       Object.keys(foto).forEach(k => {
-        const novo = foto[k], velho = _evFoto[k];
-        if (!velho) return;                       // anuncio novo: nao inventa evento
+        const novo = foto[k];
+        // Anuncio que ainda nao estava na foto anterior: se ja aparece com venda,
+        // e venda de verdade que aconteceu no intervalo. Ignorar tudo dele fazia a
+        // primeira venda de um criativo novo nunca chegar no feed.
+        const velho = _evFoto[k] || { vendas: 0, ics: 0, receita: 0 };
         const dv = novo.vendas - velho.vendas;
         const di = novo.ics    - velho.ics;
         const dr = novo.receita - velho.receita;
@@ -3175,6 +3188,14 @@ async function _tickEventosUtmify() {
       });
     }
     _evFoto = foto;
+    // grava junto com o dia, pra saber se ainda vale depois de um restart
+    try {
+      const db = readDB();
+      db.store[KEY_EV_FOTO] = { dia: _hojeBR(), foto: foto, em: new Date().toISOString() };
+      if (!db.timestamps) db.timestamps = {};
+      db.timestamps[KEY_EV_FOTO] = now();
+      writeDB(db);
+    } catch (e) {}
   } catch (e) {
     // silencioso: e rotina de fundo, o erro real aparece na tela pelo endpoint
   } finally { _evRodando = false; }
@@ -5497,7 +5518,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_integracoes_vendas',  // token secreto da URL de webhook
   'sl_vendas_raw',          // payloads crus dos gateways (dados de cliente)
   'sl_integracoes_utmify_mcp', // token de acesso do MCP da Utmify
-  'sl_vturb'                // token da API de analytics da VTurb
+  'sl_vturb',               // token da API de analytics da VTurb
+  'sl_funil_evfoto'         // foto interna dos contadores; nao serve pra tela
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
