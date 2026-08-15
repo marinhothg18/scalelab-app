@@ -27811,7 +27811,36 @@ function fnCliquesDe(n){
   return fnCliques.total || 0;
 }
 function fnVal(id){ var e = fnStats[id]; return e ? (e.unicos || e.entradas || 0) : 0; }
-function fnBase(f){ return (f.etapas && f.etapas.length) ? (fnVal(f.etapas[0].id) || 0) : 0; }
+// Quem entrou no funil. Com teste A/B (uma origem abrindo em duas VSLs) a
+// entrada e a SOMA das primeiras paginas, nao so a primeira da lista — senao
+// metade do trafego sumia da conta e todos os percentuais saiam inflados.
+function fnBase(f){
+  if(!f || !f.etapas || !f.etapas.length) return 0;
+  var portas = {};
+  (f.ligacoes||[]).forEach(function(l){
+    var de = fnAcha(f, l[0]);
+    if(de && de.tipo==='fonte') portas[l[1]] = 1;   // etapa ligada numa origem
+  });
+  if(!Object.keys(portas).length){
+    // sem origem no mapa: entrada e quem nao recebe seta de nenhuma etapa
+    var recebe = {};
+    (f.ligacoes||[]).forEach(function(l){ recebe[l[1]] = 1; });
+    f.etapas.forEach(function(e){ if(!recebe[e.id]) portas[e.id] = 1; });
+  }
+  if(!Object.keys(portas).length) return fnVal(f.etapas[0].id) || 0;
+  return Object.keys(portas).reduce(function(a, id){ return a + fnVal(id); }, 0);
+}
+
+// Fim do funil: as etapas que nao mandam ninguem adiante. Usar a ultima da
+// lista errava sempre que o mapa tinha ramo (dois checkouts, upsell paralelo).
+function fnFim(f){
+  if(!f || !f.etapas || !f.etapas.length) return 0;
+  var mandam = {};
+  (f.ligacoes||[]).forEach(function(l){ mandam[l[0]] = 1; });
+  var pontas = f.etapas.filter(function(e){ return !mandam[e.id]; });
+  if(!pontas.length) pontas = [f.etapas[f.etapas.length-1]];
+  return pontas.reduce(function(a, e){ return a + fnVal(e.id); }, 0);
+}
 
 // ── desenho ──
 function fnPintar(){
@@ -27825,8 +27854,7 @@ function fnPintar(){
     : '<option>— nenhum funil —</option>';
   var el = document.getElementById('fn-lista');
   if(el) el.innerHTML = lista.map(function(x,i){
-      var b = (x.etapas&&x.etapas.length) ? fnVal(x.etapas[0].id) : 0;
-      var fim = (x.etapas&&x.etapas.length) ? fnVal(x.etapas[x.etapas.length-1].id) : 0;
+      var b = fnBase(x), fim = fnFim(x);
       var tx = b ? (fim/b*100) : 0;
       return '<div class="fn-cx '+(i===fnIdx?'on':'')+'" onclick="fnEscolher('+i+')"><div class="t">'+fnEsc(x.nome)+'</div>'+
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
