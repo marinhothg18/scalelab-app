@@ -1406,6 +1406,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-no .fim{margin-top:7px;padding-top:6px;border-top:1px dashed var(--border);display:flex;
   justify-content:space-between;align-items:baseline;gap:8px;font-size:10.5px}
 .fn-no .fim b{font-size:13px;font-weight:800}
+.fn-no .via{background:rgba(27,156,250,.16);color:var(--accent);font-weight:800;font-size:9px;
+  padding:1px 5px;border-radius:4px;margin-left:4px;white-space:nowrap}
 .fn-alca{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;opacity:.45}
 .fn-alca::after{content:'';position:absolute;right:3px;bottom:3px;width:8px;height:8px;
   border-right:2px solid var(--text2);border-bottom:2px solid var(--text2);border-radius:0 0 3px 0}
@@ -3319,7 +3321,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         </div>
 
         <div class="fn-painel" id="fn-p-pixel">
-          <div class="fn-nota">Cole em <b>cada página do funil</b>, antes do <b>&lt;/head&gt;</b>. Ele cria um identificador no primeiro acesso e reencontra a mesma pessoa nas páginas seguintes — é isso que liga um passo no outro.</div>
+          <div class="fn-nota">Cole em <b>cada página que é sua</b>, antes do <b>&lt;/head&gt;</b>. Ele cria um identificador no primeiro acesso e reencontra a mesma pessoa nas páginas seguintes — é isso que liga um passo no outro.<br>
+            <b>Página de checkout do gateway você não consegue marcar assim</b> — use o bloco do botão, aqui embaixo. E se a venda nem volta pra uma página sua, o mapa puxa o número da Utmify e marca <b>via Utmify</b> no bloco.</div>
           <div class="fn-cols">
             <div>
               <div class="fn-cx2">
@@ -3327,6 +3330,16 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                 <div class="fn-campo"><label>Etapa desta página</label><select id="fn-px-etapa" onchange="fnPixel()"></select></div>
                 <div class="fn-pre" id="fn-px-code"></div>
                 <button class="fn-btn" style="margin-top:12px" onclick="fnCopiar('fn-px-code')">Copiar código</button>
+              </div>
+              <div class="fn-cx2">
+                <h3>🛒 Marcar o checkout no clique</h3>
+                <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:11px">
+                  O checkout da Payt/Kiwify é <b>deles</b> — nosso pixel não entra lá. Mas o
+                  <b>clique no botão de comprar</b> acontece na <b>sua</b> página. Cole isso na mesma
+                  página do botão, logo depois do pixel: a etapa de checkout passa a contar sozinha.
+                </div>
+                <div class="fn-pre" id="fn-px-botao"></div>
+                <button class="fn-btn g" style="margin-top:12px" onclick="fnCopiar('fn-px-botao')">Copiar código do botão</button>
               </div>
             </div>
             <div>
@@ -27843,7 +27856,21 @@ function fnCliquesDe(n){
   if(n.utmCampanha) return fnCliques.campanhas[n.utmCampanha] || 0;
   return fnCliques.total || 0;
 }
-function fnVal(id){ var e = fnStats[id]; return e ? (e.unicos || e.entradas || 0) : 0; }
+// Checkout de gateway (Payt, Kiwify...) nao aceita o nosso pixel, e muita venda
+// nem volta pra uma pagina de obrigado nossa. Entao quando o pixel nao tem nada
+// naquela etapa, o numero vem da Utmify — e a tela avisa de onde veio.
+function fnValFonte(id){
+  var e = fnStats[id];
+  var doPixel = e ? (e.unicos || e.entradas || 0) : 0;
+  if(doPixel) return { valor: doPixel, fonte: 'pixel' };
+  var f = fnAtual(), n = f ? fnAcha(f, id) : null;
+  if(n && fnCliques){
+    if(n.tipo === 'checkout' && fnCliques.ics)   return { valor: fnCliques.ics,   fonte: 'utmify' };
+    if(n.tipo === 'obrigado' && fnCliques.vendas) return { valor: fnCliques.vendas, fonte: 'utmify' };
+  }
+  return { valor: 0, fonte: 'pixel' };
+}
+function fnVal(id){ return fnValFonte(id).valor; }
 // Quem entrou no funil. Com teste A/B (uma origem abrindo em duas VSLs) a
 // entrada e a SOMA das primeiras paginas, nao so a primeira da lista — senao
 // metade do trafego sumia da conta e todos os percentuais saiam inflados.
@@ -27892,7 +27919,7 @@ function fnPintar(){
       return '<div class="fn-cx '+(i===fnIdx?'on':'')+'" onclick="fnEscolher('+i+')"><div class="t">'+fnEsc(x.nome)+'</div>'+
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
     }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
-  fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPintarRed(); fnPintarFeed();
+  fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPixelBotao(); fnPintarRed(); fnPintarFeed();
 }
 
 function fnFaixa(){
@@ -27966,7 +27993,9 @@ function fnNos(){
     if(n.w) el.style.width  = n.w+'px';
     if(n.h) el.style.height = n.h+'px';
     el.dataset.id = n.id;
-    var cor = FN_CORES[n.tipo], v = src ? fnCliquesDe(n) : fnVal(n.id);
+    var cor = FN_CORES[n.tipo];
+    var vf = src ? { valor: fnCliquesDe(n), fonte:'utmify' } : fnValFonte(n.id);
+    var v = vf.valor;
     var link = fnLinkCurto(n.url);
     var compraram = (!src && n.tipo==='checkout') ? fnCompraram(f, n) : null;
     var taxa = (compraram !== null && v > 0) ? (compraram/v)*100 : null;
@@ -27980,8 +28009,9 @@ function fnNos(){
                                         : 'cliques indisponíveis')+'</div>'
         : (link ? '<div class="lk" title="'+fnEsc(n.url)+'">'+fnEsc(link)+'</div>' : '')+
           '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
-          '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou</div>'+
-          (n.url?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>')+
+          '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou'+
+            (vf.fonte==='utmify' ? ' <span class="via" title="O pixel não alcança essa página — número vindo da Utmify">via Utmify</span>' : '')+'</div>'+
+          (n.url||vf.fonte==='utmify'?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>')+
           (compraram !== null
             ? '<div class="fim"><span style="color:var(--text2)">Compraram</span>'+
               '<span><b style="color:var(--green)">'+fnNum(compraram)+'</b>'+
@@ -28463,6 +28493,32 @@ function fnPixel(){
 '})(window, document);\n'+
 '<\/script>';
 }
+// Botao de compra: o gateway nao aceita o nosso pixel, mas o clique acontece
+// numa pagina nossa. Esse trecho marca a etapa de checkout no clique, antes do
+// navegador sair — e o que fecha o buraco entre a VSL e a venda.
+function fnPixelBotao(){
+  var f = fnAtual(), cx = document.getElementById('fn-px-botao');
+  if(!cx) return;
+  if(!f){ cx.textContent = 'Crie um funil primeiro.'; return; }
+  var chk = (f.etapas||[]).filter(function(e){ return e.tipo==='checkout'; })[0];
+  if(!chk){ cx.textContent = 'Adicione uma etapa do tipo Checkout pra gerar este trecho.'; return; }
+  cx.textContent =
+'<!-- Cole na MESMA página onde está o botão de compra, depois do pixel.\n'+
+'     Marca a etapa "'+chk.nome+'" no clique, sem precisar mexer no checkout. -->\n'+
+'<script>\n'+
+'(function(d){\n'+
+'  var ETAPA = "'+chk.id+'";\n'+
+'  // troque pelo seletor do seu botao: .btn-comprar, #comprar, a[href*="pay."]...\n'+
+'  var SELETOR = \'a[href*="pay."], a[href*="checkout"], .btn-comprar\';\n\n'+
+'  d.addEventListener("click", function(ev){\n'+
+'    var alvo = ev.target.closest(SELETOR);\n'+
+'    if(!alvo || !window.TMX) return;\n'+
+'    TMX("entrou", { etapa: ETAPA });\n'+
+'  }, true);\n'+
+'})(document);\n'+
+'<\/script>';
+}
+
 function fnIrPixel(id){
   fnAba('pixel', document.querySelectorAll('.fn-aba')[1]);
   var px = document.getElementById('fn-px-etapa');

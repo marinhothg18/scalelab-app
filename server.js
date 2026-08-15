@@ -3378,6 +3378,9 @@ app.get('/api/funil/cliques', authUsuario, async (req, res) => {
       total: Number(k.cliques) || 0,
       visitas: Number(k.visitas) || 0,
       ics: Number(k.ics) || 0,
+      // vendas aprovadas: usadas como rede de seguranca no mapa quando a pagina
+      // de obrigado nao tem pixel (checkout hospedado que nao volta pro site)
+      vendas: Number((k.pedidos || {}).aprovadas) || 0,
       campanhas: Object.values(mapa).filter(c => c.cliques > 0)
                        .sort((a, b) => b.cliques - a.cliques),
       erros
