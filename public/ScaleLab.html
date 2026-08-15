@@ -29341,15 +29341,17 @@ async function carregarAnunciosUtmify(forcar){
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     _anunciosUtmify = d.anuncios || [];
+    _anunciosDiag = d.diag || null;
+    _anunciosErros = d.erros || [];
     _anunciosPeriodo = from+'|'+to+'|'+_adsProjeto();
-    if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
     pintarAnunciosUtmify();
   }catch(e){
+    _anunciosDiag = null; _anunciosErros = ['Falha na consulta: '+e.message];
     const ge = document.getElementById('ads-anuncio-cards');
     if(ge){ ge.style.display='block'; ge.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);">Não consegui buscar os anúncios: '+_esc(e.message)+'</div>'; }
   }finally{ _anunciosCarregando = false; }
 }
-let _anunciosPeriodo = '';
+let _anunciosPeriodo = '', _anunciosDiag = null, _anunciosErros = [];
 
 // Alterna entre a tabela (RedTrack) e a grade de cards (Utmify)
 function _tabelaAnuncio(mostrar){
@@ -29361,6 +29363,31 @@ function _tabelaAnuncio(mostrar){
   if(grade && mostrar) grade.style.display='none';
 }
 
+// Vazio sem explicacao vira suporte. Aqui a tela conta o que o servidor viu:
+// quantos projetos consultou, quantas linhas a Utmify devolveu e quantas foram
+// descartadas por nao ter gasto nem receita.
+function _vazioAnuncios(termo){
+  if(termo) return '<div style="text-align:center;padding:30px;color:var(--text2);">Nenhum anúncio com esse termo.</div>';
+  const d = _anunciosDiag;
+  let porque;
+  if(_anunciosErros && _anunciosErros.length){
+    porque = '<div style="color:var(--red);font-weight:700;margin-bottom:6px">A Utmify não respondeu</div>'+
+             '<div style="font-size:12px;color:var(--text2)">'+_esc(_anunciosErros.join(' · '))+'</div>';
+  } else if(d && d.linhas > 0){
+    porque = '<div style="font-weight:700;margin-bottom:6px">Nenhum anúncio com gasto no período</div>'+
+             '<div style="font-size:12px;color:var(--text2)">A Utmify devolveu '+d.linhas+
+             ' anúncio(s), mas todos estavam sem investimento e sem receita.</div>';
+  } else if(d){
+    porque = '<div style="font-weight:700;margin-bottom:6px">A Utmify não devolveu nenhum anúncio</div>'+
+             '<div style="font-size:12px;color:var(--text2)">Consultei '+d.dashboards+
+             ' projeto(s) nesse período e a resposta veio vazia.</div>';
+  } else {
+    porque = '<div style="font-weight:700;margin-bottom:6px">Nenhum anúncio com movimento no período</div>';
+  }
+  return '<div style="text-align:center;padding:28px 20px;color:var(--text)">'+porque+
+    '<button class="ads-filter-btn" style="margin-top:14px" onclick="carregarAnunciosUtmify(true)">🔄 Tentar de novo</button></div>';
+}
+
 function pintarAnunciosUtmify(){
   const busca = (document.getElementById('anuncio-search')||{}).value || '';
   const termo = busca.trim().toLowerCase();
@@ -29369,9 +29396,8 @@ function pintarAnunciosUtmify(){
     : _anunciosUtmify;
   const grade0 = document.getElementById('ads-anuncio-cards');
   if(!lista.length){
-    if(grade0){ grade0.style.display='block';
-      grade0.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text2);">'+
-        (termo ? 'Nenhum anúncio com esse termo.' : 'Nenhum anúncio com movimento no período.')+'</div>'; }
+    _tabelaAnuncio(false);
+    if(grade0){ grade0.style.display='block'; grade0.innerHTML = _vazioAnuncios(termo); }
     return;
   }
   // Formato de card: cada criativo num quadro, com o ROAS em destaque e o resto
@@ -29435,7 +29461,10 @@ function _msgTabela(id, cols, msg){
 
 // Deixa claro na tela de onde vieram os números e quando foi a última sincronização
 function _selosUtmify(d){
-  _msgTabela('ads-anuncio-body', 6, 'A Utmify entrega no nível de campanha — sem quebra por anúncio.');
+  // A tabela e do RedTrack; na Utmify usamos cards. Antes aparecia aqui um aviso
+  // dizendo que a Utmify nao quebra por anuncio — ela quebra (level 'ad'), e o
+  // aviso ficava por baixo dos cards contando uma mentira.
+  _tabelaAnuncio(false);
   const el = document.getElementById('ads-selo-utmify');
   if(!el) return;
   if(!(d && d.atualizadoEm)){ el.textContent='Fonte: Utmify'; return; }

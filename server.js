@@ -3034,6 +3034,9 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
     const cent = v => (Number(v) || 0) / 100;
     const mapa = {};
     const erros = [];
+    // Contagem pra tela: sem isso, "nenhum anuncio" nao diferencia entre
+    // a Utmify nao ter devolvido nada e a gente ter descartado tudo.
+    const diag = { dashboards: lista.length, linhas: 0, semGasto: 0 };
     for (const d of lista) {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
@@ -3042,9 +3045,11 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
           dashboardId: d.id, level: 'ad',
           dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
         });
-        ((r && r.results) || []).forEach(a => {
+        const linhas = (r && r.results) || [];
+        diag.linhas += linhas.length;
+        linhas.forEach(a => {
           const inv = cent(a.spend), rec = cent(a.grossRevenue);
-          if (!inv && !rec) return;
+          if (!inv && !rec) { diag.semGasto++; return; }
           // Agrupa pela NOMENCLATURA, nao pelo id: o mesmo criativo roda em varios
           // adsets/campanhas e aparecia repetido, sem mostrar o resultado real dele.
           const nome = String(a.name || '(sem nome)').trim();
@@ -3074,8 +3079,10 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
       custoPorIc: m.ics    > 0 ? m.investimento / m.ics : 0,
       lucro:     m.receita - m.investimento
     })).sort((a, b) => b.investimento - a.investimento);
-    const saida = { ok: true, de, ate, anuncios, erros };
-    _vivoSet(chave, saida);
+    const saida = { ok: true, de, ate, anuncios, erros, diag };
+    // Resultado vazio nao entra em cache: se foi tropeço momentaneo, o proximo
+    // clique tem que tentar de novo em vez de repetir o vazio por um minuto.
+    if (anuncios.length) _vivoSet(chave, saida);
     res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
