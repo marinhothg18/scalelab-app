@@ -26889,11 +26889,11 @@ function fnEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</
 // ══════════════════════════════════════════════
 // ── CRIATIVOS & VSL ── retenção (VTurb) + custo (Utmify)
 // ══════════════════════════════════════════════
-var VS_PADRAO={ ret1min:55, playRate:65, pctPitch:12, custoPitch:10, ticket:900, roas:2 };
-var VS_SENT={ ret1min:'min', playRate:'min', pctPitch:'min', custoPitch:'max', ticket:'min', roas:'min' };
+var VS_PADRAO={ ret1min:55, playRate:65, pctPitch:12, ticket:900 };
+var VS_SENT={ ret1min:'min', playRate:'min', pctPitch:'min', ticket:'min' };
 var VS_ROT={ ret1min:'Retenção 1º min', playRate:'Play rate', pctPitch:'Chega no pitch',
-  custoPitch:'Custo por pitch', ticket:'Ticket médio', roas:'ROAS' };
-var VS_UN={ ret1min:'%', playRate:'%', pctPitch:'%', custoPitch:'R$', ticket:'R$', roas:'x' };
+  ticket:'Ticket médio' };
+var VS_UN={ ret1min:'%', playRate:'%', pctPitch:'%', ticket:'R$' };
 
 var vsAbaAtual='painel', vsDados=null, vsSel=[], vsCurvas={}, vsCarregando=false;
 
@@ -26978,11 +26978,11 @@ function vsCarregar(forcar){
       vsDados.vsls.forEach(function(v){
         v.rodando = lig ? (lig.indexOf(v.id)>=0) : true;
         v.ret1min = 0;                       // preenchido quando a curva chega
-        v.custoPitch = 0; v.inv = 0; v.roas = 0;
+        v.gargalo = null;                    // preenchido quando a curva chega
         if(!v.ticket) v.ticket = v.vendas ? (v.receita/v.vendas) : 0;   // rede de segurança
       });
       if(!vsSel.length){ var a=vsDados.vsls.filter(function(v){return v.rodando;}); if(a.length) vsSel=[a[0].id]; }
-      vsCruzarCusto(p);
+      vsCarregarInvestimentoDaConta(p);
     })
     .catch(function(e){
       clearTimeout(relogio);
@@ -27000,22 +27000,22 @@ function vsCarregar(forcar){
     });
 }
 
-// junta o custo da Utmify com a retenção da VTurb
-function vsCruzarCusto(p){
+// O investimento por VSL NAO EXISTE. A Utmify sabe quanto foi gasto na conta e
+// na campanha; ela nao sabe qual video a pessoa assistiu. O que havia aqui pegava
+// o gasto do periodo e dividia entre as VSLs na proporcao de quem chegou no pitch
+// — e com uma VSL so na tela, essa VSL levava 100% do gasto da conta inteira.
+// Foi assim que uma VSL apareceu com R$ 6.597 investidos num dia com 3 rodando.
+//
+// Pior que o numero errado: ele contaminava custo por pitch e ROAS, e ainda era
+// circular — quem retinha melhor recebia mais gasto e via o proprio ROAS cair.
+//
+// Gasto agora fica so onde e verdade: o total da conta, no painel, dito como
+// total da conta. Faturamento, vendas e ticket por VSL continuam, esses sao
+// reais: vem da conversao da propria VTurb, video a video.
+function vsCarregarInvestimentoDaConta(p){
   fetch('/api/metricas/consolidado?de='+p.de+'&ate='+p.ate)
     .then(function(r){ return r.ok?r.json():null; })
-    .then(function(d){
-      var inv=(d&&d.kpis&&d.kpis.investimento)||0;
-      var totPitch=vsDados.vsls.reduce(function(a,v){ return a+(v.noPitch||0); },0);
-      // rateia o investimento pelo peso de cada VSL — a Utmify não separa por player
-      vsDados.vsls.forEach(function(v){
-        v.inv = totPitch ? inv*(v.noPitch/totPitch) : 0;
-        v.custoPitch = v.noPitch ? v.inv/v.noPitch : 0;
-        v.roas = v.inv ? v.receita/v.inv : 0;
-      });
-      vsDados.investimentoTotal=inv;
-      vsPintar();
-    })
+    .then(function(d){ vsDados.investimentoTotal=(d&&d.kpis&&d.kpis.investimento)||0; vsPintar(); })
     .catch(function(){ vsPintar(); });
 }
 
@@ -27085,11 +27085,12 @@ function vsHtmlPainel(){
     : '';
   var porRc=vs.slice().sort(function(a,b){return b.receita-a.receita;});
   var campea=porRc[0];
-  var efic=vs.filter(function(v){return v.custoPitch>0;}).sort(function(a,b){return a.custoPitch-b.custoPitch;})[0]||campea;
+  var efic=vs.filter(function(v){return v.ret1min>0;}).sort(function(a,b){return b.ret1min-a.ret1min;})[0]||campea;
   var tick=vs.slice().sort(function(a,b){return b.ticket-a.ticket;})[0];
-  var tot=vs.reduce(function(a,v){ a.rc+=v.receita; a.vd+=v.vendas; a.inv+=v.inv; return a; },{rc:0,vd:0,inv:0});
+  var tot=vs.reduce(function(a,v){ a.rc+=v.receita; a.vd+=v.vendas; return a; },{rc:0,vd:0});
+  var invConta=vsDados.investimentoTotal||0;
   var maxRc=Math.max.apply(null,vs.map(function(v){return v.receita;}))||1;
-  var placar=['playRate','pctPitch','custoPitch','ticket','roas'].map(function(k){
+  var placar=['ret1min','playRate','pctPitch','ticket'].map(function(k){
     return { k:k, n:vs.filter(function(v){ return vsBate(k,v[k]); }).length, t:vs.length }; });
   var M=vsMetas();
   return aviso+'<div class="vs-tit">Resumo · '+vs.length+' VSLs · '+vsDados.de+' a '+vsDados.ate+'</div>'+
@@ -27097,15 +27098,15 @@ function vsHtmlPainel(){
     '<div class="vs-pod top"><div class="pos">🏆 Vende mais</div><div class="nm">'+vsEsc(campea.nome)+'</div>'+
       '<div class="big" style="color:var(--green)">'+vsBrl(campea.receita)+'</div>'+
       '<div class="sub">'+campea.vendas+' vendas · '+(campea.conversao||0).toFixed(2)+'% de conversão</div></div>'+
-    '<div class="vs-pod"><div class="pos">⚡ Mais eficiente</div><div class="nm">'+vsEsc(efic.nome)+'</div>'+
-      '<div class="big" style="'+vsCor('custoPitch',efic.custoPitch)+'">'+vsBrl(efic.custoPitch)+'</div>'+
-      '<div class="sub">custo pra 1 pessoa ver a oferta</div>'+vsSelo('custoPitch',efic.custoPitch)+'</div>'+
+    '<div class="vs-pod"><div class="pos">⚡ Segura melhor</div><div class="nm">'+vsEsc(efic.nome)+'</div>'+
+      '<div class="big" style="'+vsCor('ret1min',efic.ret1min)+'">'+(efic.ret1min||0).toFixed(1)+'%</div>'+
+      '<div class="sub">ainda assistindo no 1º minuto</div>'+vsSelo('ret1min',efic.ret1min)+'</div>'+
     '<div class="vs-pod"><div class="pos">💰 Maior ticket</div><div class="nm">'+vsEsc(tick.nome)+'</div>'+
       '<div class="big" style="'+vsCor('ticket',tick.ticket)+'">'+vsBrl(tick.ticket)+'</div>'+
       '<div class="sub">'+tick.vendas+' vendas</div>'+vsSelo('ticket',tick.ticket)+'</div>'+
     '<div class="vs-pod"><div class="pos">Σ Conta toda</div><div class="nm">Somando as '+vs.length+'</div>'+
-      '<div class="big">'+(tot.inv?(tot.rc/tot.inv).toFixed(2):'—')+'x</div>'+
-      '<div class="sub">'+vsBrl(tot.rc)+' · '+tot.vd+' vendas</div></div>'+
+      '<div class="big">'+vsBrl(tot.rc)+'</div>'+
+      '<div class="sub">'+tot.vd+' vendas'+(invConta?(' · conta gastou '+vsBrl(invConta)):'')+'</div></div>'+
   '</div>'+
   '<div class="vs-cx"><div class="vs-cab"><div><h2>Quem está vendendo</h2>'+
     '<p>Faturamento no período. Clique numa barra pra abrir a análise dela.</p></div></div>'+
@@ -27130,23 +27131,26 @@ function vsHtmlPainel(){
   '<div class="vs-cx"><div class="vs-cab"><div><h2>Todas as VSLs</h2>'+
     '<p>Verde dentro da meta, vermelho fora. Clique no cabeçalho pra ordenar.</p></div></div>'+
     '<div style="overflow-x:auto"><table class="vs-tb" id="vs-tpainel"></table></div>'+
-    '<div class="vs-nota">Retenção, play rate e pitch vêm da VTurb. O investimento vem da Utmify e é '+
-    'rateado entre as VSLs pelo peso de cada uma — a Utmify não separa gasto por vídeo.</div></div>';
+    '<div class="vs-nota">Retenção, play rate, pitch, venda e faturamento são desta VSL — todos vêm da VTurb. '+
+    '<b>Não existe coluna de gasto por VSL</b>: a Utmify separa gasto por conta e campanha, nunca por vídeo. '+
+    'Qualquer rateio aqui seria chute, então o gasto fica só no total da conta, acima.</div></div>';
 }
 
 var vsOrd={col:'receita',asc:false};
 function vsTabelaPainel(){
   var el=document.getElementById('vs-tpainel'); if(!el) return;
-  var cols=[['nome','VSL',0],['playRate','Play rate',1],['pctPitch','Chega no pitch',1],
-    ['engajamento','Engajamento',1],['inv','Investido',1],['receita','Faturamento',1],
-    ['ticket','Ticket',1],['custoPitch','Custo por pitch',1],['vendas','Vendas',1],['roas','ROAS',1]];
+  var cols=[['nome','VSL',0],['ret1min','Retenção 1º min',1],['playRate','Play rate',1],
+    ['pctPitch','Chega no pitch',1],['engajamento','Engajamento',1],['gargaloTxt','Maior gargalo',0],
+    ['receita','Faturamento',1],['vendas','Vendas',1],['ticket','Ticket',1]];
   var lista=vsRodando().slice().sort(function(a,b){
     var x=a[vsOrd.col],y=b[vsOrd.col];
     if(typeof x==='string') return vsOrd.asc?x.localeCompare(y):y.localeCompare(x);
     return vsOrd.asc?(x-y):(y-x); });
-  var f={ inv:vsBrl,receita:vsBrl,custoPitch:vsBrl,ticket:function(v){return v?vsBrl(v):'—';},
+  var f={ receita:vsBrl, ticket:function(v){return v?vsBrl(v):'—';},
+    ret1min:function(v){return (v||0).toFixed(1)+'%';},
     playRate:function(v){return (v||0).toFixed(1)+'%';},pctPitch:function(v){return (v||0).toFixed(1)+'%';},
-    engajamento:function(v){return (v||0).toFixed(1)+'%';},roas:function(v){return (v||0).toFixed(2)+'x';},vendas:String };
+    engajamento:function(v){return (v||0).toFixed(1)+'%';},
+    gargaloTxt:function(v){return v||'—';}, vendas:String };
   var h='<thead><tr>'+cols.map(function(c){
     return '<th class="'+(c[2]?'num':'')+'" onclick="vsOrdenar(\''+c[0]+'\')">'+c[1]+
       (vsOrd.col===c[0]?(vsOrd.asc?' ↑':' ↓'):'')+'</th>'; }).join('')+'</tr></thead><tbody>';
@@ -27154,6 +27158,9 @@ function vsTabelaPainel(){
     h+='<tr style="cursor:pointer" onclick="vsAbrirVsl(\''+v.id+'\')">'+cols.map(function(c){
       var k=c[0];
       if(k==='nome') return '<td>'+vsEsc(v.nome)+'</td>';
+      if(k==='gargaloTxt'){ var g=vsGargalo(v);
+        return '<td style="font-size:11.5px;color:'+(g?'var(--red)':'var(--text2)')+'">'+
+               (g?(vsMmss(g.t0)+' · −'+g.rel.toFixed(0)+'%'):'—')+'</td>'; }
       var est = VS_ROT[k] ? vsCor(k,v[k])+';font-weight:700' : '';
       return '<td class="num" style="'+est+'">'+(f[k]?f[k](v[k]):v[k])+'</td>';
     }).join('')+'</tr>';
@@ -27175,16 +27182,22 @@ function vsHtmlAnalise(){
       '<p>Mesma escala. Onde as linhas se separam é onde uma ganha da outra.</p></div></div>'+
       '<div id="vs-graf"></div></div>';
   }
-  var v=vs[0];
+  var v=vs[0], gg=vsGargalo(v);
   return '<div class="vs-tit">'+vsEsc(v.nome)+'</div>'+
   '<div class="vs-tiles">'+
-    vsTile('Investido',vsBrl(v.inv),'rateado pelo peso da VSL')+
+    vsTile('Retenção 1º minuto',(v.ret1min||0).toFixed(1)+'%',
+           vsNum(Math.round(v.play*(v.ret1min||0)/100))+' de '+vsNum(v.play)+' ainda assistindo'+vsSelo('ret1min',v.ret1min))+
+    vsTile('Maior gargalo', gg?vsMmss(gg.t0):'—',
+           gg?('perde '+gg.rel.toFixed(0)+'% de quem estava ali · '+Math.round(gg.sev)+'x o normal')
+             :'nenhuma queda fora do padrão')+
     vsTile('Deram play',(v.playRate||0).toFixed(1)+'%',vsNum(v.play)+' pessoas'+vsSelo('playRate',v.playRate))+
     vsTile('Chegam no pitch',(v.pctPitch||0).toFixed(1)+'%',vsNum(v.noPitch)+' pessoas'+vsSelo('pctPitch',v.pctPitch))+
+    vsTile('Vendas',vsNum(v.vendas),vsBrl(v.receita)+' de faturamento')+
     vsTile('Ticket médio',v.ticket?vsBrl(v.ticket):'—',v.vendas+' venda(s)'+vsSelo('ticket',v.ticket))+
-    vsTile('Custo por pitch',vsBrl(v.custoPitch),'pra 1 pessoa ver a oferta'+vsSelo('custoPitch',v.custoPitch))+
-    vsTile('ROAS',(v.roas||0).toFixed(2)+'x',vsBrl(v.receita)+' de faturamento'+vsSelo('roas',v.roas))+
   '</div>'+
+  '<div class="vs-nota" style="margin-top:-4px">Tudo aqui é desta VSL: retenção e play vêm da VTurb, '+
+  'venda e faturamento vêm da conversão do próprio player. <b>Gasto não aparece por VSL de propósito</b> — '+
+  'a Utmify sabe quanto a conta gastou, não qual vídeo a pessoa assistiu. O gasto da conta está no Painel.</div>'+
   '<div class="vs-cx" style="margin-top:15px"><div class="vs-cab"><div><h2>Curva de retenção</h2>'+
     '<p>Quantos ainda assistem a cada minuto. A linha vermelha é o pitch, aos '+vsMmss(v.pitch||0)+'.</p></div></div>'+
     '<div id="vs-graf"></div></div>'+
@@ -27511,10 +27524,11 @@ function vsPintarCriativos(v){
 
 // mede em % de quem restou: perto do pitch a retenção já é baixa e quedas graves
 // valem poucos pontos — em pontos absolutos elas passariam despercebidas
-function vsQuedas(v){
-  var el=document.getElementById('vs-quedas'); if(!el) return;
+// Quedas fora do padrao da curva. Uma VSL sempre perde gente; o que interessa e
+// onde ela perde MUITO mais que o normal dela — por isso compara com a vizinhanca.
+function vsAchaQuedas(v){
   var pts=vsCurvas[v.id]||[];
-  if(pts.length<6){ el.innerHTML='<div class="vs-nota">Poucos pontos pra detectar quedas.</div>'; return; }
+  if(pts.length<6) return [];
   var achados=[];
   for(var i=1;i<pts.length;i++){
     if(pts[i].t<25) continue;
@@ -27528,7 +27542,15 @@ function vsQuedas(v){
       achados.push({t0:pts[i-1].t,t1:pts[i].t,de:pts[i-1].y,para:pts[i].y,rel:rel*100,sev:rel/tip});
   }
   achados.sort(function(a,b){ return b.rel-a.rel; });
-  var top=achados.slice(0,4);
+  return achados;
+}
+function vsGargalo(v){ return vsAchaQuedas(v)[0] || null; }
+
+function vsQuedas(v){
+  var el=document.getElementById('vs-quedas'); if(!el) return;
+  var pts=vsCurvas[v.id]||[];
+  if(pts.length<6){ el.innerHTML='<div class="vs-nota">Poucos pontos pra detectar quedas.</div>'; return; }
+  var top=vsAchaQuedas(v).slice(0,4);
   if(!top.length){ el.innerHTML='<div class="vs-nota">Nenhuma queda fora do normal — a curva desce de forma constante.</div>'; return; }
   el.innerHTML=top.map(function(q,i){
     var pessoas=v.play*(q.de-q.para)/100;
@@ -27598,10 +27620,10 @@ function vsPintarDispositivos(v){
 function vsAbrirMetas(){
   var M=vsMetas();
   document.getElementById('vs-lista-metas').innerHTML = Object.keys(VS_ROT).map(function(k){
-    var passo=(k==='roas')?'0.1':(VS_UN[k]==='R$'?'1':'0.5');
+    var passo=(VS_UN[k]==='R$')?'10':'0.5';
     return '<div class="vs-lreg"><div class="info"><b>'+VS_ROT[k]+'</b>'+
       '<small>'+(VS_SENT[k]==='max'?'no máximo':'no mínimo')+' · em '+
-      (VS_UN[k]==='R$'?'reais':(VS_UN[k]==='x'?'vezes':'%'))+'</small></div>'+
+      (VS_UN[k]==='R$'?'reais':'%')+'</small></div>'+
       '<input class="vs-in" type="number" step="'+passo+'" id="vsm-'+k+'" value="'+M[k]+'"></div>';
   }).join('');
   openModal('modal-vs-metas');
