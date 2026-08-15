@@ -1503,8 +1503,13 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   letter-spacing:.9px;margin:22px 0 11px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .vs-tit .aux{margin-left:auto;display:flex;gap:6px;text-transform:none;letter-spacing:0}
 .vs-podio{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:12px;margin-bottom:15px}
-.vs-pod{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
-.vs-pod.top{border-color:var(--green);box-shadow:0 0 0 2px rgba(34,197,94,.16)}
+.vs-pod{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+  padding:16px 18px 17px;overflow:hidden;transition:transform .15s}
+.vs-pod::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:.7}
+.vs-pod:hover{transform:translateY(-1px)}
+.vs-pod.top::before{background:var(--green);opacity:1}
+.vs-pod.top{border-color:rgba(34,197,94,.45);background:linear-gradient(180deg,rgba(34,197,94,.09),transparent 60%)}
+.vs-pod .big{margin-top:2px}
 .vs-pod .pos{font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px}
 .vs-pod .nm{font-size:14px;font-weight:800;margin:5px 0 9px;display:flex;align-items:center;gap:7px}
 .vs-pod .big{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1}
@@ -1515,15 +1520,29 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .vs-cab p{font-size:12.5px;color:var(--text2);margin-top:3px;max-width:640px}
 .vs-rank .l{display:flex;align-items:center;gap:11px;margin-bottom:8px}
 .vs-rank .n{width:158px;flex:0 0 auto;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vs-rank .b{flex:1;height:23px;background:var(--bg3);border-radius:5px;overflow:hidden}
-.vs-rank .b i{display:block;height:100%;border-radius:5px}
+.vs-rank .b{flex:1;height:24px;background:var(--bg3);border-radius:6px;overflow:hidden;
+  border:1px solid var(--border)}
+.vs-rank .b i{display:block;height:100%;border-radius:5px;opacity:.9;transition:width .35s}
+.vs-rank .l:hover .b i{opacity:1}
 .vs-rank .v{width:158px;flex:0 0 auto;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums}
 .vs-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
-.vs-tile{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
-.vs-tile .r{font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px}
-.vs-tile .v{font-size:23px;font-weight:800;letter-spacing:-.9px;line-height:1.05}
-.vs-tile .s{font-size:11px;color:var(--text2);margin-top:4px}
-.vs-meta{font-size:10px;font-weight:800;margin-top:5px}
+.vs-tile{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+  padding:14px 16px 15px;overflow:hidden;transition:border-color .15s,transform .15s}
+.vs-tile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}
+.vs-tile:hover{transform:translateY(-1px)}
+.vs-tile.ok::before{background:var(--green)}
+.vs-tile.ok{background:linear-gradient(180deg,rgba(34,197,94,.09),transparent 62%)}
+.vs-tile.nao::before{background:var(--red)}
+.vs-tile.nao{background:linear-gradient(180deg,rgba(239,68,68,.10),transparent 62%)}
+.vs-tile.alerta::before{background:#f59e0b}
+.vs-tile.alerta{background:linear-gradient(180deg,rgba(245,158,11,.11),transparent 62%)}
+.vs-tile .r{font-size:9.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px}
+.vs-tile .v{font-size:29px;font-weight:800;letter-spacing:-1.2px;line-height:1}
+.vs-tile .s{font-size:11px;color:var(--text2);margin-top:5px;line-height:1.45}
+/* barra da meta: mostra de relance o quanto falta, sem precisar ler o numero */
+.vs-alvo{height:4px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:9px}
+.vs-alvo i{display:block;height:100%;border-radius:3px;transition:width .35s}
+.vs-meta{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;margin-top:6px}
 .vs-meta.ok{color:var(--green)} .vs-meta.nao{color:var(--red)}
 .vs-faixa{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
 .vs-card{background:var(--bg2);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;
@@ -1550,9 +1569,17 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .vs-dc .a{font-size:12px;margin-top:9px;font-weight:700}
 .vs-nota{font-size:11.5px;color:var(--text2);margin-top:10px;line-height:1.6}
 #page-vsl svg{display:block;width:100%;overflow:visible}
-#page-vsl .grade line{stroke:var(--border);stroke-width:1}
-#page-vsl .eixo line{stroke:var(--text2);stroke-width:1;opacity:.5}
+#page-vsl .grade line{stroke:var(--border);stroke-width:1;opacity:.65}
+#page-vsl .eixo line{stroke:var(--text2);stroke-width:1;opacity:.45}
 #page-vsl .rot{font-size:10.5px;fill:var(--text2);font-variant-numeric:tabular-nums}
+#page-vsl .serie{stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round;fill:none}
+#page-vsl .marco line{stroke-width:1.4;stroke-dasharray:3 4;opacity:.75}
+#page-vsl .marco text{font-size:9.5px;font-weight:800;letter-spacing:.4px}
+#page-vsl .zona{opacity:.07}
+#page-vsl .ponto{stroke:var(--bg2);stroke-width:2.5}
+#page-vsl .gargalo rect{fill:var(--red);opacity:.13}
+#page-vsl .gargalo line{stroke:var(--red);stroke-width:1.4;opacity:.6}
+#page-vsl .gargalo text{font-size:9.5px;font-weight:800;fill:var(--red);letter-spacing:.4px}
 #page-vsl .serie{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 #page-vsl .dl{font-size:11px;font-weight:700}
 #page-vsl .pitch line{stroke:var(--red);stroke-width:1.5}
@@ -27072,6 +27099,26 @@ function vsFaixa(){
 function vsTile(r,v,s,cls){
   return '<div class="vs-tile '+(cls||'')+'"><div class="r">'+r+'</div><div class="v">'+v+'</div><div class="s">'+s+'</div></div>';
 }
+// Tile com meta: a caixa inteira ganha cor e uma barra de quanto falta pro alvo.
+// Antes o unico sinal era um '✗ meta ≥ 65%' minusculo no rodape — dava pra ler a
+// tela toda sem notar que metade dos numeros estava fora.
+function vsTileM(rot, k, valorNum, valorTxt, sub){
+  var b = vsBate(k, valorNum);
+  var cls = b===null ? '' : (b ? 'ok' : 'nao');
+  var M = vsMetas(), alvo = M[k];
+  var barra = '';
+  if(b !== null && alvo){
+    // quanto do alvo foi cumprido; em meta de teto, o inverso
+    var frac = VS_SENT[k]==='max' ? (valorNum ? Math.min(1, alvo/valorNum) : 1)
+                                  : Math.min(1, (valorNum||0)/alvo);
+    var cor = b ? 'var(--green)' : (frac>=.7 ? '#f59e0b' : 'var(--red)');
+    if(!b && frac>=.7) cls = 'alerta';
+    barra = '<div class="vs-alvo"><i style="width:'+(frac*100).toFixed(1)+'%;background:'+cor+'"></i></div>';
+  }
+  return '<div class="vs-tile '+cls+'"><div class="r">'+rot+'</div>'+
+    '<div class="v"'+(b===null?'':' style="'+vsCor(k,valorNum)+'"')+'>'+valorTxt+'</div>'+
+    '<div class="s">'+sub+'</div>'+barra+vsSelo(k,valorNum)+'</div>';
+}
 
 function vsHtmlPainel(){
   var vs=vsRodando();
@@ -27214,17 +27261,20 @@ function vsOrdenar(col){
 function vsTilesHtml(v){
   var gg = vsGargalo(v);
   var r1 = vsRet1min(v), temCurva = r1 !== null;
-  return vsTile('Retenção 1º minuto', temCurva ? r1.toFixed(1)+'%' : '…',
-           temCurva ? (vsNum(Math.round(v.play*r1/100))+' de '+vsNum(v.play)+' ainda assistindo'+vsSelo('ret1min',r1))
-                    : 'buscando a curva na VTurb')+
+  return (temCurva
+      ? vsTileM('Retenção 1º minuto','ret1min',r1,r1.toFixed(1)+'%',
+                vsNum(Math.round(v.play*r1/100))+' de '+vsNum(v.play)+' ainda assistindo')
+      : vsTile('Retenção 1º minuto','…','buscando a curva na VTurb'))+
     vsTile('Maior gargalo', temCurva ? (gg?vsMmss(gg.t0):'—') : '…',
            !temCurva ? 'buscando a curva na VTurb'
-             : (gg?('perde '+gg.rel.toFixed(0)+'% de quem estava ali · '+Math.round(gg.sev)+'x o normal')
-                  :'nenhuma queda fora do padrão'))+
-    vsTile('Deram play',(v.playRate||0).toFixed(1)+'%',vsNum(v.play)+' pessoas'+vsSelo('playRate',v.playRate))+
-    vsTile('Chegam no pitch',(v.pctPitch||0).toFixed(1)+'%',vsNum(v.noPitch)+' pessoas'+vsSelo('pctPitch',v.pctPitch))+
+             : (gg?('perde <b style="color:var(--red)">'+gg.rel.toFixed(0)+'%</b> de quem estava ali · '+
+                    Math.round(gg.sev)+'x a saída normal')
+                  :'nenhuma queda fora do padrão'),
+           gg?'nao':'')+
+    vsTileM('Deram play','playRate',v.playRate,(v.playRate||0).toFixed(1)+'%',vsNum(v.play)+' pessoas')+
+    vsTileM('Chegam no pitch','pctPitch',v.pctPitch,(v.pctPitch||0).toFixed(1)+'%',vsNum(v.noPitch)+' pessoas')+
     vsTile('Vendas',vsNum(v.vendas),vsBrl(v.receita)+' de faturamento')+
-    vsTile('Ticket médio',v.ticket?vsBrl(v.ticket):'—',v.vendas+' venda(s)'+vsSelo('ticket',v.ticket));
+    vsTileM('Ticket médio','ticket',v.ticket,v.ticket?vsBrl(v.ticket):'—',v.vendas+' venda(s)');
 }
 function vsRepintarTiles(){
   var el=document.getElementById('vs-tiles'); if(!el) return;
@@ -27332,7 +27382,7 @@ function vsDesenhar(){
 function vsDesenharAgora(){
   vsRepintarTiles();               // agora os dois tiles têm de onde sair
   var vs=vsEscolhidas(), el=document.getElementById('vs-graf'); if(!el) return;
-  var W=el.clientWidth||820, L=52,R=112,T=16,B=34,H=250;
+  var W=el.clientWidth||820, L=52,R=118,T=22,B=36,H=330;
   var dur=Math.max.apply(null,vs.map(function(v){ return v.duracao||0; }))||1;
   var pitch=vs[0].pitch||0;
   var cores=['var(--accent)','#eb6834','#1baf7a','#eda100','#e87ba4'];
@@ -27347,28 +27397,72 @@ function vsDesenharAgora(){
                        vsCriativos(vs[0]); vsDispositivos(vs[0]); }
     return;
   }
-  var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'"><g class="grade">';
-  for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
+  var px=function(t){ return L+(W-L-R)*(t/dur); };
+  var py=function(y){ return T+(H-T-B)*(1-y/100); };
+  var s='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'"><defs>';
+  // um degradê por série, pra área embaixo da linha
+  series.forEach(function(se,i){
+    s+='<linearGradient id="vsg'+i+'" x1="0" y1="0" x2="0" y2="1">'+
+       '<stop offset="0%" stop-color="'+se.cor+'" stop-opacity=".28"/>'+
+       '<stop offset="100%" stop-color="'+se.cor+'" stop-opacity="0"/></linearGradient>';
+  });
+  s+='</defs>';
+  // depois do pitch é outra fase do vídeo: sombreia pra separar visualmente
+  if(pitch>0 && pitch<dur)
+    s+='<rect class="zona" x="'+px(pitch)+'" y="'+T+'" width="'+(px(dur)-px(pitch))+'" height="'+(H-T-B)+'" fill="var(--text2)"/>';
+  s+='<g class="grade">';
+  for(var i=0;i<=4;i++){ var y=py(100*(1-i/4)); s+='<line x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>'; }
   s+='</g><g class="eixo"><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/></g>';
-  for(var i=0;i<=4;i++){ var y=T+(H-T-B)*(i/4);
+  for(var i=0;i<=4;i++){ var y=py(100*(1-i/4));
     s+='<text class="rot" x="'+(L-9)+'" y="'+(y+3.5)+'" text-anchor="end">'+Math.round(100*(1-i/4))+'%</text>'; }
-  for(var m=0;m<=Math.floor(dur/60);m+=5){
-    var x=L+(W-L-R)*((m*60)/dur);
-    s+='<text class="rot" x="'+x+'" y="'+(H-B+16)+'" text-anchor="middle">'+m+'min</text>';
+  var passo = dur>1500 ? 5 : (dur>600 ? 2 : 1);
+  for(var m=0;m<=Math.floor(dur/60);m+=passo){
+    s+='<text class="rot" x="'+px(m*60)+'" y="'+(H-B+16)+'" text-anchor="middle">'+m+'min</text>';
+  }
+  // área embaixo da linha primeiro, pra não cobrir as marcas
+  series.forEach(function(se,i){
+    var d=se.pts.map(function(p,j){ return (j?'L':'M')+px(p.t).toFixed(1)+' '+py(p.y).toFixed(1); }).join(' ');
+    var u=se.pts[se.pts.length-1];
+    s+='<path d="'+d+' L '+px(u.t).toFixed(1)+' '+(H-B)+' L '+px(se.pts[0].t).toFixed(1)+' '+(H-B)+' Z" '+
+       'fill="url(#vsg'+i+')" stroke="none"/>';
+  });
+  // marco do 1º minuto: é a métrica que mais olhamos, tem que dar pra ver na curva
+  if(dur>60){
+    var x1=px(60);
+    s+='<g class="marco"><line x1="'+x1+'" y1="'+T+'" x2="'+x1+'" y2="'+(H-B)+'" stroke="var(--accent)"/>'+
+       '<text x="'+(x1+6)+'" y="'+(T-7)+'" fill="var(--accent)">1º MIN</text></g>';
   }
   if(pitch>0 && pitch<=dur){
-    var xp=L+(W-L-R)*(pitch/dur);
+    var xp=px(pitch);
     s+='<g class="pitch"><line x1="'+xp+'" y1="'+T+'" x2="'+xp+'" y2="'+(H-B)+'"/>'+
-       '<text x="'+(xp-7)+'" y="'+(T+11)+'" text-anchor="end">PITCH '+vsMmss(pitch)+'</text></g>';
+       '<text x="'+(xp-7)+'" y="'+(T-7)+'" text-anchor="end">PITCH '+vsMmss(pitch)+'</text></g>';
+  }
+  // o gargalo marcado NA curva: o tile diz o minuto, aqui você vê onde é
+  if(vs.length===1){
+    var gg=vsGargalo(vs[0]);
+    if(gg){
+      var xa=px(gg.t0), xb=Math.max(px(gg.t1), xa+3);
+      s+='<g class="gargalo"><rect x="'+xa+'" y="'+T+'" width="'+(xb-xa)+'" height="'+(H-T-B)+'"/>'+
+         '<line x1="'+xa+'" y1="'+T+'" x2="'+xa+'" y2="'+(H-B)+'"/>'+
+         '<text x="'+xa+'" y="'+(H-B+28)+'" text-anchor="middle">▼ '+gg.rel.toFixed(0)+'%</text></g>';
+    }
   }
   series.forEach(function(se){
     s+='<path class="serie" style="stroke:'+se.cor+'" d="'+se.pts.map(function(p,i){
-      return (i?'L':'M')+(L+(W-L-R)*(p.t/dur)).toFixed(1)+' '+(T+(H-T-B)*(1-p.y/100)).toFixed(1);
+      return (i?'L':'M')+px(p.t).toFixed(1)+' '+py(p.y).toFixed(1);
     }).join(' ')+'"/>';
+    // bolinha no 1º minuto, com o número do lado
+    var um=se.pts.filter(function(x){ return x.t<=60; }).pop();
+    if(um && dur>60){
+      s+='<circle class="ponto" cx="'+px(um.t)+'" cy="'+py(um.y)+'" r="4.5" fill="'+se.cor+'"/>';
+      if(series.length===1)
+        s+='<text class="rot" x="'+(px(um.t)+10)+'" y="'+(py(um.y)-9)+'" '+
+           'style="font-size:12px;font-weight:800;fill:'+se.cor+'">'+um.y.toFixed(1)+'%</text>';
+    }
   });
   var marcas=series.map(function(se){
     var u=se.pts[se.pts.length-1];
-    return { nome:se.nome, cor:se.cor, valor:u.y, x:L+(W-L-R)*(u.t/dur), yl:T+(H-T-B)*(1-u.y/100) };
+    return { nome:se.nome, cor:se.cor, valor:u.y, x:px(u.t), yl:py(u.y) };
   }).sort(function(a,b){ return a.yl-b.yl; });
   var ant=-99; marcas.forEach(function(x){ x.yt=Math.max(x.yl,ant+13); ant=x.yt; });
   var exc=marcas.length?(marcas[marcas.length-1].yt-(H-B-6)):0;
