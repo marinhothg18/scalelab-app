@@ -1393,23 +1393,36 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-et .q{font-size:11px;color:var(--text2);margin-top:3px}
 .fn-et .b{height:4px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden}
 .fn-et .b i{display:block;height:100%;border-radius:3px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
-.fn-mapa{background:var(--bg2);border:1px solid var(--border);border-radius:14px;position:relative;overflow:hidden;height:480px}
-.fn-grade{position:absolute;inset:0;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:22px 22px;opacity:.8}
-.fn-palco{position:absolute;inset:0;transform-origin:0 0}
-.fn-no{position:absolute;background:var(--bg3);border:1.5px solid var(--border);border-radius:11px;padding:9px 12px;min-width:128px;cursor:grab;user-select:none;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.fn-mapa{background:var(--bg2);border:1px solid var(--border);border-radius:14px;position:relative;
+  overflow:auto;height:clamp(460px,68vh,900px);resize:vertical;min-height:340px}
+.fn-grade{position:absolute;top:0;left:0;width:2400px;height:1400px;min-width:100%;min-height:100%;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:22px 22px;opacity:.8}
+/* o palco cresce junto com o mapa e ainda deixa espaco pra arrastar bloco pra fora */
+.fn-palco{position:absolute;top:0;left:0;min-width:100%;min-height:100%;width:2400px;height:1400px;transform-origin:0 0}
+.fn-no{position:absolute;background:var(--bg3);border:1.5px solid var(--border);border-radius:12px;
+  padding:11px 14px;min-width:170px;cursor:grab;user-select:none;box-shadow:0 4px 14px rgba(0,0,0,.18);
+  box-sizing:border-box;overflow:hidden}
+.fn-no .lk{font-size:10px;color:var(--text2);margin:-2px 0 6px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.fn-no .fim{margin-top:7px;padding-top:6px;border-top:1px dashed var(--border);display:flex;
+  justify-content:space-between;align-items:baseline;gap:8px;font-size:10.5px}
+.fn-no .fim b{font-size:13px;font-weight:800}
+.fn-alca{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;opacity:.45}
+.fn-alca::after{content:'';position:absolute;right:3px;bottom:3px;width:8px;height:8px;
+  border-right:2px solid var(--text2);border-bottom:2px solid var(--text2);border-radius:0 0 3px 0}
+.fn-no:hover .fn-alca{opacity:1}
 .fn-no:active{cursor:grabbing}
 .fn-no.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.18)}
 .fn-no .c{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
-.fn-no .nm{font-size:11px;font-weight:800}
+.fn-no .nm{font-size:12.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fn-no .tg{font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:5px}
-.fn-no .vl{font-size:17px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
-.fn-no .sb{font-size:10px;color:var(--text2);margin-top:1px}
-.fn-no.src{border-style:dashed;min-width:108px}
+.fn-no .vl{font-size:22px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.fn-no .sb{font-size:10.5px;color:var(--text2);margin-top:2px}
+.fn-no.src{border-style:dashed;min-width:150px}
 .fn-no.ligando{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.3);animation:fnPisca 1.1s ease-in-out infinite}
 .fn-no.alvo{border-color:var(--green);border-style:dashed;cursor:crosshair}
 .fn-no.alvo:hover{background:rgba(52,199,89,.13);box-shadow:0 0 0 3px rgba(52,199,89,.25)}
 @keyframes fnPisca{0%,100%{opacity:1}50%{opacity:.62}}
-.fn-arrumar{position:absolute;top:12px;left:12px;z-index:5;background:var(--bg3);border:1px solid var(--border);
+.fn-arrumar{background:var(--bg3);border:1px solid var(--border);
   color:var(--text);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
 .fn-arrumar:hover{border-color:var(--accent)}
 .fn-aviso-lig{display:flex;align-items:center;gap:9px;background:rgba(27,156,250,.12);border:1px solid var(--accent);
@@ -1427,13 +1440,18 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-fnt .n{font-size:11.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fn-fnt .s{font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fn-fnt .v{font-size:13px;font-weight:800}
-.fn-fios{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
-.fn-zoom{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:9px;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:5px 11px;font-size:12px;font-weight:700}
+.fn-fios{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.fn-mapa-wrap{position:relative}
+/* barra em cima do mapa: flutuando, os botoes tapavam os blocos do canto */
+.fn-barra{display:flex;align-items:center;gap:10px;margin-bottom:9px;flex-wrap:wrap}
+.fn-barra .fn-vivo{margin-left:auto}
+.fn-zoom{display:flex;align-items:center;gap:9px;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:5px 11px;font-size:12px;font-weight:700}
 .fn-zoom button{background:none;border:none;color:var(--text);font-size:16px;cursor:pointer;line-height:1;font-family:inherit}
-.fn-vivo{position:absolute;right:12px;top:12px;display:flex;align-items:center;gap:7px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:var(--green);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800}
+.fn-vivo{display:flex;align-items:center;gap:7px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:var(--green);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800}
 .fn-pulsa{width:8px;height:8px;border-radius:50%;background:var(--green);animation:fnpulso 2s infinite}
 @keyframes fnpulso{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
-.fn-cols{display:grid;grid-template-columns:1fr 300px;gap:16px}
+.fn-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}
+@media(max-width:1100px){ .fn-cols{grid-template-columns:minmax(0,1fr)} }
 .fn-cx2{background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:16px 18px;margin-bottom:14px}
 .fn-cx2 h3{font-size:13px;font-weight:800;margin-bottom:12px}
 .fn-l{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
@@ -3261,12 +3279,17 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div class="fn-cols">
             <div>
               <div class="fn-aviso-lig" id="fn-aviso-lig" style="display:none"></div>
-              <div class="fn-mapa" id="fn-mapa">
-                <div class="fn-grade"></div>
-                <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
-                <div class="fn-vivo"><span class="fn-pulsa"></span> AO VIVO</div>
-                <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button></div>
-                <button class="fn-arrumar" onclick="fnArrumar()" title="Reorganiza os blocos seguindo as ligações">✨ Arrumar mapa</button>
+              <div class="fn-mapa-wrap">
+                <div class="fn-barra">
+                  <button class="fn-arrumar" onclick="fnArrumar()" title="Reorganiza os blocos seguindo as ligações">✨ Arrumar mapa</button>
+                  <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button>
+                    <button onclick="fnCaber()" title="Encaixa o mapa inteiro na tela">⤢</button></div>
+                  <div class="fn-vivo"><span class="fn-pulsa"></span> AO VIVO</div>
+                </div>
+                <div class="fn-mapa" id="fn-mapa">
+                  <div class="fn-grade"></div>
+                  <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
+                </div>
               </div>
             </div>
             <div>
@@ -27899,6 +27922,35 @@ function fnListaFontes(){
   }).join('');
 }
 
+// Quantos passaram do checkout pra pagina de obrigado. E o numero que interessa
+// nesse bloco: nao adianta saber que 110 chegaram se nao sei quantos compraram.
+function fnCompraram(f, n){
+  var vistos = {}, fila = [n.id], total = 0, achou = false;
+  while(fila.length){
+    var atual = fila.shift();
+    if(vistos[atual]) continue;
+    vistos[atual] = 1;
+    (f.ligacoes||[]).forEach(function(l){
+      if(l[0] !== atual) return;
+      var alvo = fnAcha(f, l[1]);
+      if(!alvo) return;
+      if(alvo.tipo === 'obrigado'){ total += fnVal(alvo.id); achou = true; }
+      else fila.push(alvo.id);
+    });
+  }
+  return achou ? total : null;
+}
+
+// Do link so interessa o que identifica a pagina — o dominio inteiro nao cabe
+function fnLinkCurto(url){
+  if(!url) return '';
+  try{
+    var u = new URL(url);
+    var caminho = (u.pathname || '').replace(/\/$/, '');
+    return (u.hostname.replace(/^www\./,'') + caminho) || u.hostname;
+  }catch(e){ return String(url).replace(/^https?:\/\//,'').replace(/\/$/,''); }
+}
+
 function fnNos(){
   var f = fnAtual(), palco = document.getElementById('fn-palco');
   if(!f || !palco) return;
@@ -27911,19 +27963,61 @@ function fnNos(){
     el.className = 'fn-no'+(src?' src':'')+(fnSel===n.id?' sel':'')+
                    (fnLigando===n.id?' ligando':'')+(alvo?' alvo':'');
     el.style.left = (n.x||0)+'px'; el.style.top = (n.y||0)+'px';
+    if(n.w) el.style.width  = n.w+'px';
+    if(n.h) el.style.height = n.h+'px';
     el.dataset.id = n.id;
-    var cor = FN_CORES[n.tipo], v = src ? 0 : fnVal(n.id);
+    var cor = FN_CORES[n.tipo], v = src ? fnCliquesDe(n) : fnVal(n.id);
+    var link = fnLinkCurto(n.url);
+    var compraram = (!src && n.tipo==='checkout') ? fnCompraram(f, n) : null;
+    var taxa = (compraram !== null && v > 0) ? (compraram/v)*100 : null;
+
     el.innerHTML = '<div class="c"><span class="nm">'+fnEsc(n.nome)+'</span>'+
       '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+FN_ROT[n.tipo]+'</span></div>'+
-      (src ? '<div class="vl" style="color:'+(fnCliques?cor:'var(--text2)')+'">'+
-               (fnCliques ? fnNum(fnCliquesDe(n)) : '—')+'</div>'+
-             '<div class="sb">'+(fnCliques ? 'cliques · '+fnEsc(n.utmCampanha||'projeto todo')
-                                           : 'cliques indisponíveis')+'</div>'
-           : '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
-             '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou</div>'+
-             (n.url?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>'));
+      (src
+        ? '<div class="vl" style="color:'+(fnCliques?cor:'var(--text2)')+'">'+
+            (fnCliques ? fnNum(v) : '—')+'</div>'+
+          '<div class="sb">'+(fnCliques ? 'cliques · '+fnEsc(n.utmCampanha||'projeto todo')
+                                        : 'cliques indisponíveis')+'</div>'
+        : (link ? '<div class="lk" title="'+fnEsc(n.url)+'">'+fnEsc(link)+'</div>' : '')+
+          '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
+          '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou</div>'+
+          (n.url?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>')+
+          (compraram !== null
+            ? '<div class="fim"><span style="color:var(--text2)">Compraram</span>'+
+              '<span><b style="color:var(--green)">'+fnNum(compraram)+'</b>'+
+              (taxa!==null?' <span style="color:var(--text2)">· '+taxa.toFixed(1)+'%</span>':'')+'</span></div>'
+            : ''));
+
+    var alca = document.createElement('div');
+    alca.className = 'fn-alca';
+    alca.title = 'Arraste pra mudar o tamanho do bloco';
+    el.appendChild(alca);
     palco.appendChild(el);
     fnArrastar(el, n, f);
+    fnRedimensionar(alca, el, n, f);
+  });
+}
+
+// Alca do canto: cresce/encolhe o bloco e guarda o tamanho junto com a posicao.
+function fnRedimensionar(alca, el, dado, f){
+  var ativo=false, x0=0, y0=0, w0=0, h0=0;
+  alca.addEventListener('mousedown', function(ev){
+    ativo=true; ev.preventDefault(); ev.stopPropagation();   // nao arrasta o bloco junto
+    x0=ev.clientX; y0=ev.clientY;
+    w0=el.offsetWidth; h0=el.offsetHeight;
+    el.style.zIndex=21;
+  });
+  window.addEventListener('mousemove', function(ev){
+    if(!ativo) return;
+    dado.w = Math.max(150, Math.round(w0 + (ev.clientX-x0)/fnEscala));
+    dado.h = Math.max(70,  Math.round(h0 + (ev.clientY-y0)/fnEscala));
+    el.style.width = dado.w+'px'; el.style.height = dado.h+'px';
+    fnFios();
+  });
+  window.addEventListener('mouseup', function(){
+    if(!ativo) return;
+    ativo=false; el.style.zIndex='';
+    fnGravar(f); fnFios();
   });
 }
 
@@ -28040,19 +28134,59 @@ function fnArrumar(){
 
   var colunas = {};
   todos.forEach(function(n){ (colunas[nivel[n.id]] = colunas[nivel[n.id]] || []).push(n); });
-  Object.keys(colunas).forEach(function(k){
-    colunas[k].forEach(function(n, i){
-      n.x = 30 + Number(k) * 205;
-      n.y = 45 + i * 118;
+  // largura da coluna = maior bloco dela, senao bloco redimensionado invade o vizinho
+  var chaves = Object.keys(colunas).map(Number).sort(function(a,b){ return a-b; });
+  var x = 26;
+  chaves.forEach(function(k){
+    var col = colunas[k], larg = 0, y = 26;
+    col.forEach(function(n){ larg = Math.max(larg, fnLargura(n)); });
+    col.forEach(function(n){
+      n.x = x; n.y = y;   // coluna a coluna, de cima pra baixo
+      y += fnAltura(n) + 34;
     });
+    x += larg + 90;
   });
   fnGravar(f); fnPintar(); toastFn('Mapa reorganizado');
 }
 
+// Tamanho de um bloco: o que o usuario definiu na alca, ou o que ele mede na
+// tela, ou uma estimativa (na hora do Arrumar o bloco pode nem estar desenhado).
+function fnLargura(n){
+  if(n.w) return n.w;
+  var el = document.querySelector('.fn-no[data-id="'+n.id+'"]');
+  return (el && el.offsetWidth) || 180;
+}
+function fnAltura(n){
+  if(n.h) return n.h;
+  var el = document.querySelector('.fn-no[data-id="'+n.id+'"]');
+  return (el && el.offsetHeight) || 96;
+}
+
 function fnZoom(d){
-  fnEscala = Math.max(.4, Math.min(1.4, fnEscala + d/100));
-  document.getElementById('fn-palco').style.transform = 'scale('+fnEscala+')';
-  document.getElementById('fn-zoomv').textContent = Math.round(fnEscala*100)+'%';
+  fnAplicarZoom(fnEscala + d/100);
+}
+function fnAplicarZoom(v){
+  fnEscala = Math.max(.3, Math.min(1.6, v));
+  var palco = document.getElementById('fn-palco');
+  if(palco) palco.style.transform = 'scale('+fnEscala+')';
+  var rot = document.getElementById('fn-zoomv');
+  if(rot) rot.textContent = Math.round(fnEscala*100)+'%';
+}
+// Encaixa o mapa inteiro na area visivel
+function fnCaber(){
+  var f = fnAtual(), mapa = document.getElementById('fn-mapa');
+  if(!f || !mapa) return;
+  var todos = fnTodos(f);
+  if(!todos.length) return;
+  var maxX = 0, maxY = 0;
+  todos.forEach(function(n){
+    maxX = Math.max(maxX, (n.x||0) + fnLargura(n));
+    maxY = Math.max(maxY, (n.y||0) + fnAltura(n));
+  });
+  var esc = Math.min((mapa.clientWidth - 40) / Math.max(1, maxX),
+                     (mapa.clientHeight - 40) / Math.max(1, maxY));
+  fnAplicarZoom(Math.min(1.6, Math.max(.3, esc)));
+  mapa.scrollTo(0, 0);
 }
 function fnSelecionar(id){
   if(fnLigando){ fnLigarEm(id); return; }
