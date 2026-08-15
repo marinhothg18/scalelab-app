@@ -26977,8 +26977,7 @@ function vsCarregar(forcar){
       });
       vsDados.vsls.forEach(function(v){
         v.rodando = lig ? (lig.indexOf(v.id)>=0) : true;
-        v.ret1min = 0;                       // preenchido quando a curva chega
-        v.gargalo = null;                    // preenchido quando a curva chega
+        // retenção e gargalo saem da curva (vsRet1min / vsGargalo), não de campo
         if(!v.ticket) v.ticket = v.vendas ? (v.receita/v.vendas) : 0;   // rede de segurança
       });
       if(!vsSel.length){ var a=vsDados.vsls.filter(function(v){return v.rodando;}); if(a.length) vsSel=[a[0].id]; }
@@ -27046,6 +27045,7 @@ function vsPintar(){
       '<div class="d">'+vsEsc(vsDados.erros.join(' | '))+'</div></div>'; return;
   }
   el.innerHTML = vsAbaAtual==='painel' ? vsHtmlPainel() : vsHtmlAnalise();
+  if(vsAbaAtual==='painel') vsCurvasDoPainel();
   if(vsAbaAtual==='painel') vsTabelaPainel(); else vsDesenhar();
 }
 
@@ -27085,6 +27085,7 @@ function vsHtmlPainel(){
     : '';
   var porRc=vs.slice().sort(function(a,b){return b.receita-a.receita;});
   var campea=porRc[0];
+  vs.forEach(function(v){ v.ret1min = vsRet1min(v) || 0; });   // pra ordenar e pontuar metas
   var efic=vs.filter(function(v){return v.ret1min>0;}).sort(function(a,b){return b.ret1min-a.ret1min;})[0]||campea;
   var tick=vs.slice().sort(function(a,b){return b.ticket-a.ticket;})[0];
   var tot=vs.reduce(function(a,v){ a.rc+=v.receita; a.vd+=v.vendas; return a; },{rc:0,vd:0});
@@ -27137,6 +27138,33 @@ function vsHtmlPainel(){
 }
 
 var vsOrd={col:'receita',asc:false};
+
+// No Painel a curva de ninguém tinha sido buscada — a coluna de retenção do 1º
+// minuto e a de gargalo ficariam vazias pra sempre. Busca em lotes de 4, igual
+// o servidor faz, e repinta a tabela conforme vão chegando.
+var vsBuscandoCurvas=false;
+function vsCurvasDoPainel(){
+  if(vsBuscandoCurvas) return;
+  var lista=vsRodando().filter(function(v){ return !vsCurvas[v.id]; });
+  if(!lista.length) return;
+  vsBuscandoCurvas=true;
+  var p=vsPeriodo(), i=0;
+  function lote(){
+    var bloco=lista.slice(i,i+4); i+=4;
+    if(!bloco.length){ vsBuscandoCurvas=false; vsTabelaPainel(); vsPintar(); return; }
+    Promise.all(bloco.map(function(v){
+      return fetch('/api/vturb/retencao?player='+encodeURIComponent(v.id)+'&de='+p.de+'&ate='+p.ate)
+        .then(function(r){ return r.ok?r.json():null; })
+        .then(function(d){
+          var g=(d&&d.engajamento&&d.engajamento.grouped_timed)||[];
+          vsCurvas[v.id]=vsCurvaDe(g);
+        })
+        .catch(function(){ vsCurvas[v.id]=[]; });   // marca como tentado, não repete
+    })).then(function(){ vsTabelaPainel(); lote(); });
+  }
+  lote();
+}
+
 function vsTabelaPainel(){
   var el=document.getElementById('vs-tpainel'); if(!el) return;
   var cols=[['nome','VSL',0],['ret1min','Retenção 1º min',1],['playRate','Play rate',1],
@@ -27158,9 +27186,15 @@ function vsTabelaPainel(){
     h+='<tr style="cursor:pointer" onclick="vsAbrirVsl(\''+v.id+'\')">'+cols.map(function(c){
       var k=c[0];
       if(k==='nome') return '<td>'+vsEsc(v.nome)+'</td>';
-      if(k==='gargaloTxt'){ var g=vsGargalo(v);
+      if(k==='gargaloTxt'){
+        if(!vsCurvas[v.id]) return '<td style="font-size:11.5px;color:var(--text2)">…</td>';
+        var g=vsGargalo(v);
         return '<td style="font-size:11.5px;color:'+(g?'var(--red)':'var(--text2)')+'">'+
                (g?(vsMmss(g.t0)+' · −'+g.rel.toFixed(0)+'%'):'—')+'</td>'; }
+      if(k==='ret1min'){
+        var r=vsRet1min(v);
+        return r===null ? '<td class="num" style="color:var(--text2)">…</td>'
+                        : '<td class="num" style="'+vsCor('ret1min',r)+';font-weight:700">'+r.toFixed(1)+'%</td>'; }
       var est = VS_ROT[k] ? vsCor(k,v[k])+';font-weight:700' : '';
       return '<td class="num" style="'+est+'">'+(f[k]?f[k](v[k]):v[k])+'</td>';
     }).join('')+'</tr>';
@@ -27173,6 +27207,30 @@ function vsOrdenar(col){
 }
 
 // ── ANÁLISE ──
+// Retenção do 1º minuto e gargalo só existem depois que a curva chega da VTurb,
+// e a curva é buscada DEPOIS que a tela é montada. Por isso os tiles ficam numa
+// função à parte: quando a curva chega, só esses dois são repintados.
+function vsTilesHtml(v){
+  var gg = vsGargalo(v);
+  var r1 = vsRet1min(v), temCurva = r1 !== null;
+  return vsTile('Retenção 1º minuto', temCurva ? r1.toFixed(1)+'%' : '…',
+           temCurva ? (vsNum(Math.round(v.play*r1/100))+' de '+vsNum(v.play)+' ainda assistindo'+vsSelo('ret1min',r1))
+                    : 'buscando a curva na VTurb')+
+    vsTile('Maior gargalo', temCurva ? (gg?vsMmss(gg.t0):'—') : '…',
+           !temCurva ? 'buscando a curva na VTurb'
+             : (gg?('perde '+gg.rel.toFixed(0)+'% de quem estava ali · '+Math.round(gg.sev)+'x o normal')
+                  :'nenhuma queda fora do padrão'))+
+    vsTile('Deram play',(v.playRate||0).toFixed(1)+'%',vsNum(v.play)+' pessoas'+vsSelo('playRate',v.playRate))+
+    vsTile('Chegam no pitch',(v.pctPitch||0).toFixed(1)+'%',vsNum(v.noPitch)+' pessoas'+vsSelo('pctPitch',v.pctPitch))+
+    vsTile('Vendas',vsNum(v.vendas),vsBrl(v.receita)+' de faturamento')+
+    vsTile('Ticket médio',v.ticket?vsBrl(v.ticket):'—',v.vendas+' venda(s)'+vsSelo('ticket',v.ticket));
+}
+function vsRepintarTiles(){
+  var el=document.getElementById('vs-tiles'); if(!el) return;
+  var vs=vsEscolhidas(); if(vs.length!==1) return;
+  el.innerHTML = vsTilesHtml(vs[0]);
+}
+
 function vsHtmlAnalise(){
   var vs=vsEscolhidas();
   if(!vs.length) return '<div class="vs-nota">Selecione uma VSL acima.</div>';
@@ -27182,19 +27240,9 @@ function vsHtmlAnalise(){
       '<p>Mesma escala. Onde as linhas se separam é onde uma ganha da outra.</p></div></div>'+
       '<div id="vs-graf"></div></div>';
   }
-  var v=vs[0], gg=vsGargalo(v);
+  var v=vs[0];
   return '<div class="vs-tit">'+vsEsc(v.nome)+'</div>'+
-  '<div class="vs-tiles">'+
-    vsTile('Retenção 1º minuto',(v.ret1min||0).toFixed(1)+'%',
-           vsNum(Math.round(v.play*(v.ret1min||0)/100))+' de '+vsNum(v.play)+' ainda assistindo'+vsSelo('ret1min',v.ret1min))+
-    vsTile('Maior gargalo', gg?vsMmss(gg.t0):'—',
-           gg?('perde '+gg.rel.toFixed(0)+'% de quem estava ali · '+Math.round(gg.sev)+'x o normal')
-             :'nenhuma queda fora do padrão')+
-    vsTile('Deram play',(v.playRate||0).toFixed(1)+'%',vsNum(v.play)+' pessoas'+vsSelo('playRate',v.playRate))+
-    vsTile('Chegam no pitch',(v.pctPitch||0).toFixed(1)+'%',vsNum(v.noPitch)+' pessoas'+vsSelo('pctPitch',v.pctPitch))+
-    vsTile('Vendas',vsNum(v.vendas),vsBrl(v.receita)+' de faturamento')+
-    vsTile('Ticket médio',v.ticket?vsBrl(v.ticket):'—',v.vendas+' venda(s)'+vsSelo('ticket',v.ticket))+
-  '</div>'+
+  '<div class="vs-tiles" id="vs-tiles">'+vsTilesHtml(v)+'</div>'+
   '<div class="vs-nota" style="margin-top:-4px">Tudo aqui é desta VSL: retenção e play vêm da VTurb, '+
   'venda e faturamento vêm da conversão do próprio player. <b>Gasto não aparece por VSL de propósito</b> — '+
   'a Utmify sabe quanto a conta gastou, não qual vídeo a pessoa assistiu. O gasto da conta está no Painel.</div>'+
@@ -27273,8 +27321,6 @@ function vsDesenhar(){
           var g=(d&&d.engajamento&&d.engajamento.grouped_timed)||[];
           vsCurvas[v.id]=vsCurvaDe(g);
           vsConv[v.id]=(d&&d.conversoesNoVideo&&d.conversoesNoVideo.grouped_timed)||[];
-          var um=vsCurvas[v.id].filter(function(x){ return x.t<=60; }).pop();
-          v.ret1min = um? um.y : 0;
         }).catch(function(){ vsCurvas[v.id]=[]; });
     })).then(vsDesenharAgora);
     return;
@@ -27283,6 +27329,7 @@ function vsDesenhar(){
 }
 
 function vsDesenharAgora(){
+  vsRepintarTiles();               // agora os dois tiles têm de onde sair
   var vs=vsEscolhidas(), el=document.getElementById('vs-graf'); if(!el) return;
   var W=el.clientWidth||820, L=52,R=112,T=16,B=34,H=250;
   var dur=Math.max.apply(null,vs.map(function(v){ return v.duracao||0; }))||1;
@@ -27545,6 +27592,16 @@ function vsAchaQuedas(v){
   return achados;
 }
 function vsGargalo(v){ return vsAchaQuedas(v)[0] || null; }
+
+// Lê da curva em vez de guardar num campo. Guardado, bastava a curva já estar
+// em cache pra vsDesenhar pular a busca e o campo ficar no 0 que vsCarregar
+// tinha acabado de escrever — era esse o 0,0% com a curva desenhada do lado.
+function vsRet1min(v){
+  var c = vsCurvas[v && v.id] || [];
+  if(!c.length) return null;
+  var um = c.filter(function(x){ return x.t<=60; }).pop();
+  return um ? um.y : 0;
+}
 
 function vsQuedas(v){
   var el=document.getElementById('vs-quedas'); if(!el) return;
