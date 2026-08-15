@@ -28656,7 +28656,10 @@ async function _painelResumoUtmify(){
   const rot  = document.getElementById('ads-funil-labels');
   const caixaHora = document.getElementById('ads-lucro-hora-box');
   if(rot) rot.innerHTML='';
-  if(alvo){ alvo.style.display='block'; alvo.innerHTML='<div style="color:var(--text2);font-size:13px;">⏳ Carregando funil...</div>'; }
+  // o container nasce com display:flex e altura fixa (era um funil em SVG);
+  // aqui sao linhas empilhadas, entao solta os dois
+  if(alvo){ alvo.style.display='block'; alvo.style.height='auto';
+    alvo.innerHTML='<div style="color:var(--text2);font-size:13px;">⏳ Carregando funil...</div>'; }
   try{
     const r = await fetch('/api/metricas/utmify/panorama?de='+from+'&ate='+to+_qsProjeto());
     const d = await r.json().catch(()=>({}));
@@ -28688,15 +28691,33 @@ async function _painelResumoUtmify(){
     const notaFunil = document.getElementById('ads-nota-funil');
     if(notaFunil) notaFunil.textContent =
       'Cliques e visitas vêm da Meta; checkouts e vendas, do checkout. Total da conta, atribuído ou não.';
-    const etapas = [['Cliques',k.cliques||0],['Visitas na página',k.visitas||0],
-                    ['Checkouts iniciados',k.ics||0],['Vendas aprovadas',p.aprovadas||0]];
+    // 'de' e como esse passo se chama quando vira base do proximo: dos 36 checkouts,
+    // quantos compraram. E esse numero que diz onde o funil vaza, nao o % do topo.
+    const etapas = [['Cliques',k.cliques||0,'dos cliques'],
+                    ['Visitas na página',k.visitas||0,'das visitas'],
+                    ['Checkouts iniciados',k.ics||0,'dos checkouts'],
+                    ['Vendas aprovadas',p.aprovadas||0,'']];
     const topo = etapas[0][1] || 1;
-    if(alvo) alvo.innerHTML = etapas.map(function(e){
+    if(alvo) alvo.innerHTML = etapas.map(function(e, i){
       const perc = Math.min(100, (e[1]/topo)*100);
+      var passo = '';
+      if(i > 0){
+        const ant = etapas[i-1], base = ant[1] || 0;
+        const taxa = base ? (e[1]/base)*100 : 0;
+        const perdeu = Math.max(0, base - e[1]);
+        // verde ate 1 em 2, laranja ate 1 em 10, vermelho abaixo disso
+        const cor = taxa >= 50 ? 'var(--green)' : (taxa >= 10 ? '#f97316' : 'var(--red)');
+        passo = '<span title="'+perdeu.toLocaleString('pt-BR')+' '+_esc(ant[0].toLowerCase())+
+          ' não chegaram aqui" style="font-size:11px;font-weight:800;color:'+cor+
+          ';background:'+(taxa>=50?'rgba(52,199,89,.12)':(taxa>=10?'rgba(249,115,22,.12)':'rgba(255,59,48,.12)'))+
+          ';border-radius:5px;padding:2px 7px;margin-left:8px;white-space:nowrap">'+
+          '↳ '+taxa.toFixed(1)+'% '+_esc(ant[2])+'</span>';
+      }
       return '<div style="margin-bottom:10px;">'+
-        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">'+
-          '<span>'+e[0]+'</span><span style="font-weight:700;">'+e[1].toLocaleString('pt-BR')+
-          ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(1)+'%)</span></span></div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;margin-bottom:4px;">'+
+          '<span style="display:flex;align-items:center;min-width:0"><span style="white-space:nowrap">'+e[0]+'</span>'+passo+'</span>'+
+          '<span style="font-weight:700;white-space:nowrap">'+e[1].toLocaleString('pt-BR')+
+          ' <span style="color:var(--text2);font-weight:400;">('+perc.toFixed(1)+'% do total)</span></span></div>'+
         '<div style="background:var(--bg3);border-radius:4px;height:10px;overflow:hidden;">'+
           '<div style="width:'+Math.max(perc,0.6)+'%;height:100%;background:linear-gradient(90deg,#3E1493,#1B9CFA);"></div></div></div>';
     }).join('');
