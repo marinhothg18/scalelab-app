@@ -2793,7 +2793,11 @@ app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parsead
 // deles (https://mcp.utmify.com.br/mcp) EXPOE LEITURA e pede so um token de
 // acesso, sem OAuth. Entao da pra puxar as metricas direto daqui.
 // Protocolo: JSON-RPC sobre HTTP -> initialize, depois tools/call.
-const UTMIFY_MCP_URL = 'https://mcp.utmify.com.br/mcp';
+// resources=gs,gm,gu libera get_utms_ad_objects (agrupamento por UTM), que sem
+// esse parametro nem aparece no tools/list. Mantem get_dashboards,
+// get_dashboard_summary e get_meta_ad_objects; so tira google/kwai/tiktok,
+// que nao usamos. Conferido em tools/list nos dois modos.
+const UTMIFY_MCP_URL = 'https://mcp.utmify.com.br/mcp?resources=gs,gm,gu';
 const KEY_UTMIFY_MCP = 'sl_integracoes_utmify_mcp';   // server-only: guarda o token
 
 function _utmifyMcpCfg(db) {
@@ -2827,7 +2831,7 @@ async function _utmifyRpc(token, metodo, params, sessionId) {
     'User-Agent': 'CentralTMX/1.0'
   };
   if (sessionId) headers['Mcp-Session-Id'] = sessionId;
-  const url = UTMIFY_MCP_URL + '?token=' + encodeURIComponent(token);
+  const url = UTMIFY_MCP_URL + '&token=' + encodeURIComponent(token);
   const r = await fetch(url, {
     method: 'POST', headers,
     body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: metodo, params: params || {} })
@@ -3386,6 +3390,70 @@ app.get('/api/funil/cliques', authUsuario, async (req, res) => {
       erros
     };
     if (saida.total || saida.campanhas.length) _vivoSet(chave, saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Quanto do gasto chega na pagina com utm_content. Sem essa UTM a VTurb nao
+// consegue separar retencao por criativo, o pixel nao sabe quem trouxe a pessoa,
+// e ate a Utmify enxerga o gasto como '__unattributed__'. A tela precisava dizer
+// QUAIS anuncios estao sem, nao so 'confira se as UTMs estao chegando'.
+app.get('/api/metricas/utmify/cobertura-utm', authUsuario, async (req, res) => {
+  const de  = String(req.query.de  || '').slice(0, 10);
+  const ate = String(req.query.ate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  }
+  const projeto = String(req.query.projeto || '').slice(0, 40);
+  const chave = 'coberturautm|' + de + '|' + ate + '|' + projeto;
+  const pronto = _vivoGet(chave, 5 * 60 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  try {
+    const achado = await _utmifyDashboardsAtivos();
+    const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
+    const cent = v => (Number(v) || 0) / 100;
+    let gastoTotal = 0, gastoComUtm = 0;
+    const semUtm = {}, erros = [];
+    for (const d of lista) {
+      const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      const faixa = { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off };
+      try {
+        const [anun, porUtm] = await Promise.all([
+          _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+            dashboardId: d.id, level: 'ad', dateRange: faixa }),
+          _utmifyChamarTool(cfg.token, 'get_utms_ad_objects', {
+            dashboardId: d.id, groupBy: 'utmContent', dateRange: faixa })
+        ]);
+        // quem TEM utm_content aparece no agrupamento com o adId preenchido
+        const temUtm = new Set(((porUtm && porUtm.results) || [])
+          .filter(u => u.adId).map(u => String(u.adId)));
+        ((anun && anun.results) || []).forEach(a => {
+          const gasto = cent(a.spend);
+          if (!gasto) return;
+          gastoTotal += gasto;
+          if (temUtm.has(String(a.adId || a.id))) { gastoComUtm += gasto; return; }
+          // junta pelo nome: o mesmo criativo roda em varias contas/campanhas
+          const nome = String(a.name || '(sem nome)').trim();
+          const k = nome.toLowerCase() + '|' + d.id;
+          if (!semUtm[k]) semUtm[k] = {
+            nome, dashboard: d.nome || d.id, conta: a.ca || '—',
+            gasto: 0, cliques: 0, veiculacoes: 0
+          };
+          semUtm[k].gasto += gasto;
+          semUtm[k].cliques += Number(a.inlineLinkClicks) || 0;
+          semUtm[k].veiculacoes += 1;
+        });
+      } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
+    }
+    const saida = {
+      ok: true, de, ate,
+      gastoTotal, gastoComUtm, gastoSemUtm: gastoTotal - gastoComUtm,
+      cobertura: gastoTotal > 0 ? (gastoComUtm / gastoTotal) * 100 : 0,
+      semUtm: Object.values(semUtm).sort((a, b) => b.gasto - a.gasto),
+      erros
+    };
+    if (gastoTotal) _vivoSet(chave, saida);
     res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });

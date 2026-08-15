@@ -27019,6 +27019,7 @@ function vsCarregarInvestimentoDaConta(p){
 }
 
 function vsAba(a){
+  vsCobCache=null;
   vsAbaAtual=a;
   document.getElementById('vs-ab-painel').classList.toggle('on',a==='painel');
   document.getElementById('vs-ab-analise').classList.toggle('on',a==='analise');
@@ -27473,6 +27474,55 @@ function vsCriativos(v){
     vsPintarCriativos(v);
   });
 }
+// "Confira se as UTMs estao chegando" nao ajuda ninguem. Aqui a tela mede
+// quanto do gasto chega sem utm_content e diz QUAIS anuncios corrigir.
+var vsCobCache=null, vsCobBuscando=false;
+function vsCobertura(){
+  var alvo=document.getElementById('vs-cobertura'); if(!alvo) return;
+  if(vsCobCache){ alvo.innerHTML=vsCoberturaHtml(vsCobCache); return; }
+  if(vsCobBuscando) return;
+  vsCobBuscando=true;
+  var p=vsPeriodo();
+  fetch('/api/metricas/utmify/cobertura-utm?de='+p.de+'&ate='+p.ate)
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      vsCobBuscando=false;
+      var el=document.getElementById('vs-cobertura'); if(!el) return;
+      if(!x.ok || !x.d.ok){ el.innerHTML='<div class="vs-nota">Não consegui medir a cobertura de UTM: '+
+        vsEsc((x.d&&x.d.error)||'erro')+'</div>'; return; }
+      vsCobCache=x.d; el.innerHTML=vsCoberturaHtml(x.d);
+    })
+    .catch(function(e){ vsCobBuscando=false; });
+}
+function vsCoberturaHtml(d){
+  if(!d.gastoTotal) return '<div class="vs-nota">Sem gasto no período pra medir.</div>';
+  var pc=d.cobertura, cor = pc>=80?'var(--green)':(pc>=40?'#f59e0b':'var(--red)');
+  var top=(d.semUtm||[]).slice(0,8);
+  return '<div class="vs-dc" style="border-left-color:'+cor+'">'+
+    '<div class="t">'+(100-pc).toFixed(0)+'% do gasto chega sem utm_content</div>'+
+    '<div class="d">De '+vsBrl(d.gastoTotal)+' investidos no período, <b>'+vsBrl(d.gastoSemUtm)+
+      '</b> vêm de anúncios cujo link não carrega <b>utm_content</b>. '+
+      'Por isso a VTurb não separa a retenção por criativo — ela não sabe quem trouxe cada pessoa.</div>'+
+    '<div class="a">Só '+vsBrl(d.gastoComUtm)+' ('+pc.toFixed(1)+'%) está rastreado.</div></div>'+
+    (top.length
+      ? '<div class="vs-cx" style="margin-top:12px"><div class="vs-cab"><div>'+
+        '<h2>Anúncios pra corrigir</h2><p>Maior gasto primeiro. É o link destes que precisa levar a UTM.</p>'+
+        '</div></div><div style="overflow-x:auto"><table class="vs-tb"><thead><tr>'+
+        '<th>Anúncio</th><th>Conta</th><th class="num">Gasto</th><th class="num">Cliques</th>'+
+        '<th class="num">Veiculações</th></tr></thead><tbody>'+
+        top.map(function(a){
+          return '<tr><td>'+vsEsc(a.nome)+'</td><td style="color:var(--text2)">'+vsEsc(a.conta)+'</td>'+
+            '<td class="num" style="font-weight:700;color:var(--red)">'+vsBrl(a.gasto)+'</td>'+
+            '<td class="num">'+vsNum(a.cliques)+'</td><td class="num">'+a.veiculacoes+'</td></tr>';
+        }).join('')+'</tbody></table></div>'+
+        ((d.semUtm.length>top.length)?('<div class="vs-nota">E mais '+(d.semUtm.length-top.length)+' anúncio(s).</div>'):'')+
+        '<div class="vs-nota">Como resolver: no destino do anúncio, acrescente '+
+        '<code>utm_content={{ad.name}}</code> na URL (a Meta troca sozinha pelo nome do anúncio). '+
+        'A partir daí a VTurb passa a separar a retenção por criativo, e o mapa de funil passa a saber '+
+        'qual anúncio trouxe cada visita.</div></div>'
+      : '');
+}
+
 function vsPintarCriativos(v){
   var lista=vsCri[v.id]||[];
   var lg=document.getElementById('vs-lgcri'), gr=document.getElementById('vs-grafcri'),
@@ -27480,9 +27530,11 @@ function vsPintarCriativos(v){
   var cores=['var(--accent)','#eb6834','#1baf7a','#eda100','#e87ba4','#4a3aa7','#e34948','#008300'];
   var comCurva=lista.filter(function(c){ return c.curva && c.curva.length>1; });
   if(!comCurva.length){
-    if(gr) gr.innerHTML='<div class="vs-nota">A VTurb não separou a retenção por origem neste período. '+
-      'Isso depende das UTMs chegarem na página da VSL — confira se o link do anúncio leva utm_content.</div>';
+    if(gr) gr.innerHTML='<div class="vs-nota">A VTurb não separou a retenção por origem neste período — '+
+      'isso depende da <b>utm_content</b> chegar na página da VSL. Conferindo quanto do seu gasto está sem ela…</div>'+
+      '<div id="vs-cobertura"></div>';
     if(lg) lg.innerHTML='';
+    vsCobertura();
   } else if(gr){
     var W=gr.clientWidth||820, L=52,R=112,T=16,B=34,H=250, dur=v.duracao||1;
     var out='<svg viewBox="0 0 '+W+' '+H+'" height="'+H+'"><g class="grade">';
