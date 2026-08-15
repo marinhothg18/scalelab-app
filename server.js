@@ -3333,6 +3333,60 @@ app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Cliques pro mapa de funil. O total sai do mesmo lugar que a tela de Metricas
+// de Ads usa (get_dashboard_summary), pra nao ter dois numeros diferentes de
+// clique no sistema. A quebra por campanha vem do nivel 'campaign' e serve pra
+// amarrar cada origem de trafego numa campanha especifica.
+app.get('/api/funil/cliques', authUsuario, async (req, res) => {
+  const de  = String(req.query.de  || '').slice(0, 10);
+  const ate = String(req.query.ate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  }
+  const projeto = String(req.query.projeto || '').slice(0, 40);
+  const chave = 'funilcliques|' + de + '|' + ate + '|' + projeto;
+  const pronto = _vivoGet(chave, 60 * 1000);
+  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  try {
+    const pano = await _utmifyPanorama(de, ate, projeto);
+    const achado = await _utmifyDashboardsAtivos();
+    const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
+    const mapa = {};
+    const erros = (pano.erros || []).slice();
+    for (const d of lista) {
+      const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      try {
+        const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
+          dashboardId: d.id, level: 'campaign',
+          dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off }
+        });
+        // A mesma campanha aparece mais de uma vez (uma linha por conta de
+        // anuncio), entao junta pelo nome — senao o seletor enche de repetido.
+        ((r && r.results) || []).forEach(c => {
+          const nome = String(c.name || '(sem nome)').trim();
+          const k = nome.toLowerCase().replace(/\s+/g, ' ');
+          if (!mapa[k]) mapa[k] = { nome, cliques: 0, investimento: 0 };
+          mapa[k].cliques += Number(c.inlineLinkClicks) || 0;
+          mapa[k].investimento += (Number(c.spend) || 0) / 100;
+        });
+      } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
+    }
+    const k = pano.kpis || {};
+    const saida = {
+      ok: true, de, ate,
+      total: Number(k.cliques) || 0,
+      visitas: Number(k.visitas) || 0,
+      ics: Number(k.ics) || 0,
+      campanhas: Object.values(mapa).filter(c => c.cliques > 0)
+                       .sort((a, b) => b.cliques - a.cliques),
+      erros
+    };
+    if (saida.total || saida.campanhas.length) _vivoSet(chave, saida);
+    res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
   try {
     const de  = String(req.query.de  || '').slice(0,10);

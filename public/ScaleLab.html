@@ -27739,7 +27739,7 @@ function fnMontar(nome, modeloId, projeto){
 
 // Projetos vêm dos dashboards da Utmify — a mesma divisão usada em Métricas de Ads
 var fnProjetosFull = [];
-var fnCliques = null, fnCliquesLista = [];
+var fnCliques = null, fnCliquesLista = [], fnCliquesErro = '';
 
 function fnCarregarProjetos(){
   fetch('/api/metricas/utmify/projetos').then(function(r){ return r.ok ? r.json() : null; })
@@ -27791,18 +27791,28 @@ function fnCarregarStats(){
 }
 
 // Os cliques do anúncio quem tem é a Utmify — o nosso pixel só começa a contar
-// depois que a pessoa chega na página. Por isso a origem puxa de lá, por projeto.
+// depois que a pessoa chega na página. Vem do mesmo lugar que Métricas de Ads
+// usa, pra não existir dois números de clique diferentes no sistema.
 function fnCarregarCliques(de, ate){
   var pid = fnProjId();
-  fetch('/api/metricas/consolidado?de='+de+'&ate='+ate+(pid?'&projeto='+encodeURIComponent(pid):''))
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){
-      if(!d || !d.ok) return;
-      fnCliques = { total: (d.kpis&&d.kpis.cliques)||0, campanhas: {} };
-      (d.porCampanha||[]).forEach(function(c){ fnCliques.campanhas[c.nome] = c.cliques||0; });
-      fnCliquesLista = (d.porCampanha||[]).map(function(c){ return c.nome; });
+  fnCliquesErro = '';
+  fetch('/api/funil/cliques?de='+de+'&ate='+ate+(pid?'&projeto='+encodeURIComponent(pid):''))
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+    .then(function(x){
+      if(!x.ok || !x.d || !x.d.ok){
+        fnCliquesErro = (x.d && x.d.error) || 'não consegui falar com a Utmify';
+        fnCliques = null; fnListaFontes(); fnNos(); fnDetalhe(); return;
+      }
+      var d = x.d;
+      fnCliques = { total: d.total||0, visitas: d.visitas||0, ics: d.ics||0, campanhas: {} };
+      (d.campanhas||[]).forEach(function(c){ fnCliques.campanhas[c.nome] = c.cliques||0; });
+      fnCliquesLista = (d.campanhas||[]).map(function(c){ return c.nome; });
+      if(d.erros && d.erros.length) fnCliquesErro = d.erros.join(' · ');
       fnListaFontes(); fnNos(); fnFios(); fnDetalhe();
-    }).catch(function(){});
+    }).catch(function(e){
+      fnCliquesErro = e.message; fnCliques = null;
+      fnListaFontes(); fnNos(); fnDetalhe();
+    });
 }
 // cliques que chegam por uma origem: a campanha amarrada nela, ou o projeto todo
 function fnCliquesDe(n){
@@ -27885,7 +27895,7 @@ function fnListaFontes(){
     return '<div class="fn-fnt '+(fnSel===o.id?'on':'')+'" onclick="fnSelecionar(\''+o.id+'\')">'+
       '<div class="a"><div class="n">'+fnEsc(o.nome)+'</div>'+
       '<div class="s">'+fnEsc(o.utmCampanha||'projeto todo')+'</div></div>'+
-      '<div class="v">'+fnNum(fnCliquesDe(o))+'</div></div>';
+      '<div class="v">'+(fnCliques ? fnNum(fnCliquesDe(o)) : '—')+'</div></div>';
   }).join('');
 }
 
@@ -27905,8 +27915,10 @@ function fnNos(){
     var cor = FN_CORES[n.tipo], v = src ? 0 : fnVal(n.id);
     el.innerHTML = '<div class="c"><span class="nm">'+fnEsc(n.nome)+'</span>'+
       '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+FN_ROT[n.tipo]+'</span></div>'+
-      (src ? '<div class="vl" style="color:'+cor+'">'+fnNum(fnCliquesDe(n))+'</div>'+
-             '<div class="sb">cliques · '+fnEsc(n.utmCampanha||'projeto todo')+'</div>'
+      (src ? '<div class="vl" style="color:'+(fnCliques?cor:'var(--text2)')+'">'+
+               (fnCliques ? fnNum(fnCliquesDe(n)) : '—')+'</div>'+
+             '<div class="sb">'+(fnCliques ? 'cliques · '+fnEsc(n.utmCampanha||'projeto todo')
+                                           : 'cliques indisponíveis')+'</div>'
            : '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
              '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou</div>'+
              (n.url?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>'));
@@ -28081,7 +28093,11 @@ function fnDetalhe(){
         return '<option value="'+fnEsc(c)+'" '+(n.utmCampanha===c?'selected':'')+'>'+fnEsc(c)+'</option>';
       })).join('');
     cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
-      '<div class="fn-l"><span>Cliques (Utmify)</span><span>'+fnNum(v)+'</span></div>'+
+      (fnCliquesErro ? '<div style="background:rgba(255,59,48,.1);border-left:3px solid var(--red);'+
+        'border-radius:7px;padding:8px 11px;font-size:11.5px;margin-bottom:10px">'+
+        'Não li os cliques da Utmify: '+fnEsc(fnCliquesErro)+
+        '<button class="fn-btn g sm" style="width:100%;margin-top:7px" onclick="fnCarregarStats()">Tentar de novo</button></div>' : '')+
+      '<div class="fn-l"><span>Cliques (Utmify)</span><span>'+(fnCliques?fnNum(v):'—')+'</span></div>'+
       (base ? '<div class="fn-l"><span>Chegaram na 1ª página</span><span>'+fnNum(base)+'</span></div>'+
               '<div class="fn-l"><span>Clique → página</span><span style="color:'+(v&&base/v>.6?'var(--green)':'var(--red)')+'">'+
               (v ? (base/v*100).toFixed(1) : '0.0')+'%</span></div>' : '')+
