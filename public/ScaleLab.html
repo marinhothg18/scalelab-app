@@ -5011,8 +5011,41 @@ async function syncFromServer(){
 // Re-renderiza a página atual sempre que dados novos chegam do servidor.
 // Cobre TODAS as páginas do app — adicionei novos cases conforme funções existem.
 // Cada chamada está em try/catch pra evitar quebrar o sync se uma página tiver erro.
+// Enquanto a pessoa mexe num campo, o sync NAO pode repintar a tela: o re-render
+// troca o <input> por outro e o que ela estava digitando (ou o seletor de data que
+// acabou de abrir) morre no meio. Era isso que travava o Controle de ROI — cada
+// clique caia junto com um tick do sync e a tabela era refeita por baixo.
+var _mexendoAte = 0;         // carencia depois da ultima digitacao
+var _renderDevendo = false;  // ficou um render pendente enquanto ela mexia
+
+function _pessoaMexendo(){
+  if(Date.now() < _mexendoAte) return true;
+  var a = document.activeElement;
+  if(!a) return false;
+  if(a.isContentEditable) return true;
+  var t = (a.tagName || '').toUpperCase();
+  return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
+}
+
+// qualquer digitacao segura o repaint por 3s depois da ultima tecla
+['input','keydown','focusin'].forEach(function(ev){
+  document.addEventListener(ev, function(e){
+    var t = e.target, tag = (t && t.tagName || '').toUpperCase();
+    if(tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT' || (t && t.isContentEditable))
+      _mexendoAte = Date.now() + 3000;
+  }, true);
+});
+// ao sair do campo, paga o render que ficou devendo
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    if(_renderDevendo && !_pessoaMexendo()){ _renderDevendo = false; _rerenderCurrentPage(); }
+  }, 400);
+}, true);
+
 function _rerenderCurrentPage(){
   if(typeof cur === 'undefined' || !cur) return;
+  if(_pessoaMexendo()){ _renderDevendo = true; return; }
+  _renderDevendo = false;
   var safe = function(fn){ try { if(typeof fn === 'function') fn(); } catch(e){ console.warn('render erro ('+cur+'):', e); } };
   // Mapa de páginas → função render
   if(cur === 'dashboard') { safe(window.renderDash); safe(window.renderHome); }
