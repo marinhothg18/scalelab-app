@@ -3083,7 +3083,24 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
       custoPorIc: m.ics    > 0 ? m.investimento / m.ics : 0,
       lucro:     m.receita - m.investimento
     })).sort((a, b) => b.investimento - a.investimento);
-    const saida = { ok: true, de, ate, anuncios, erros, diag };
+    // A conta sempre vende mais do que a soma dos anuncios: venda direta, organica
+    // ou com link sem UTM a Meta nao tem como reivindicar. Sem mostrar os dois
+    // lados, a tela parecia estar perdendo venda.
+    let contaVendas = null, contaReceita = null;
+    try {
+      const pano = await _utmifyPanorama(de, ate, projeto);
+      contaVendas  = Number(((pano.kpis || {}).pedidos || {}).aprovadas) || 0;
+      contaReceita = Number((pano.kpis || {}).receita) || 0;
+    } catch (e) { erros.push('total da conta: ' + e.message); }
+    const somaVendas  = anuncios.reduce((a, x) => a + (Number(x.vendas) || 0), 0);
+    const somaReceita = anuncios.reduce((a, x) => a + (Number(x.receita) || 0), 0);
+    const saida = { ok: true, de, ate, anuncios, erros, diag,
+      conciliacao: {
+        vendasAnuncios: somaVendas, vendasConta: contaVendas,
+        receitaAnuncios: somaReceita, receitaConta: contaReceita,
+        vendasSemAnuncio: (contaVendas === null) ? null : Math.max(0, contaVendas - somaVendas),
+        receitaSemAnuncio: (contaReceita === null) ? null : Math.max(0, contaReceita - somaReceita)
+      } };
     // Resultado vazio nao entra em cache: se foi tropeço momentaneo, o proximo
     // clique tem que tentar de novo em vez de repetir o vazio por um minuto.
     if (anuncios.length) _vivoSet(chave, saida);

@@ -29801,6 +29801,7 @@ async function carregarAnunciosUtmify(forcar){
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     _anunciosUtmify = d.anuncios || [];
     _anunciosDiag = d.diag || null;
+    _anunciosConc = d.conciliacao || null;
     _anunciosErros = d.erros || [];
     _anunciosPeriodo = from+'|'+to+'|'+_adsProjeto();
     pintarAnunciosUtmify();
@@ -29810,7 +29811,7 @@ async function carregarAnunciosUtmify(forcar){
     if(ge){ ge.style.display='block'; ge.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);">Não consegui buscar os anúncios: '+_esc(e.message)+'</div>'; }
   }finally{ _anunciosCarregando = false; }
 }
-let _anunciosPeriodo = '', _anunciosDiag = null, _anunciosErros = [];
+let _anunciosPeriodo = '', _anunciosDiag = null, _anunciosErros = [], _anunciosConc = null;
 
 // Alterna entre a tabela (RedTrack) e a grade de cards (Utmify)
 function _tabelaAnuncio(mostrar){
@@ -29847,6 +29848,44 @@ function _vazioAnuncios(termo){
     '<button class="ads-filter-btn" style="margin-top:14px" onclick="carregarAnunciosUtmify(true)">🔄 Tentar de novo</button></div>';
 }
 
+// "Tivemos 12 vendas e so marca 2 aqui" — porque a soma dos cards nunca vai
+// bater com o total da conta: venda direta, organica ou com link sem UTM a Meta
+// nao reivindica. A tela precisa dizer isso em vez de deixar a conta na mao.
+function _conciliacaoAnuncios(){
+  const c = _anunciosConc;
+  let el = document.getElementById('ads-anuncio-conc');
+  if(!el){
+    const grade = document.getElementById('ads-anuncio-cards');
+    if(!grade || !grade.parentElement) return;
+    el = document.createElement('div');
+    el.id = 'ads-anuncio-conc';
+    el.style.marginBottom = '14px';
+    grade.parentElement.insertBefore(el, grade);
+  }
+  if(!c || c.vendasConta === null || c.vendasConta === undefined){ el.innerHTML=''; return; }
+  const fora = c.vendasSemAnuncio || 0;
+  const pc = c.vendasConta ? (c.vendasAnuncios / c.vendasConta) * 100 : 0;
+  const cor = pc >= 90 ? 'var(--green)' : (pc >= 60 ? '#f97316' : 'var(--red)');
+  el.innerHTML =
+    '<div style="background:var(--bg2);border:1px solid var(--border);border-left:3px solid '+cor+
+      ';border-radius:10px;padding:12px 15px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">'+
+    '<div><div style="font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Vendas da conta</div>'+
+      '<div style="font-size:22px;font-weight:800;letter-spacing:-.6px">'+c.vendasConta+'</div></div>'+
+    '<div style="font-size:20px;color:var(--text2)">=</div>'+
+    '<div><div style="font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Ligadas a um anúncio</div>'+
+      '<div style="font-size:22px;font-weight:800;letter-spacing:-.6px;color:'+cor+'">'+c.vendasAnuncios+
+      ' <span style="font-size:12px;font-weight:700;color:var(--text2)">('+pc.toFixed(0)+'%)</span></div></div>'+
+    '<div style="font-size:20px;color:var(--text2)">+</div>'+
+    '<div><div style="font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Sem anúncio</div>'+
+      '<div style="font-size:22px;font-weight:800;letter-spacing:-.6px;color:var(--text2)">'+fora+'</div></div>'+
+    '<div style="flex:1;min-width:230px;font-size:11.5px;color:var(--text2);line-height:1.55">'+
+      (fora>0
+        ? 'Os cards abaixo somam <b>'+c.vendasAnuncios+'</b>. As outras <b>'+fora+
+          '</b> entraram por tráfego direto, orgânico ou link sem UTM — a Meta não consegue dizer de qual anúncio vieram.'
+        : 'Todas as vendas do período estão atribuídas a um anúncio.')+
+      '</div></div>';
+}
+
 function pintarAnunciosUtmify(){
   const busca = (document.getElementById('anuncio-search')||{}).value || '';
   const termo = busca.trim().toLowerCase();
@@ -29856,6 +29895,7 @@ function pintarAnunciosUtmify(){
   const grade0 = document.getElementById('ads-anuncio-cards');
   if(!lista.length){
     _tabelaAnuncio(false);
+    var conc=document.getElementById('ads-anuncio-conc'); if(conc) conc.innerHTML='';
     if(grade0){ grade0.style.display='block'; grade0.innerHTML = _vazioAnuncios(termo); }
     return;
   }
@@ -29865,6 +29905,7 @@ function pintarAnunciosUtmify(){
   _tabelaAnuncio(false);          // esconde a tabela: nessa fonte usamos cards
   if(!grade) return;
   grade.style.display='grid';
+  _conciliacaoAnuncios();
 
   grade.innerHTML = lista.map(a=>{
     const roas = Number(a.roas)||0;
