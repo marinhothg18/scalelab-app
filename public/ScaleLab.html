@@ -28184,11 +28184,12 @@ function fnFaixa(){
   var f = fnAtual(), el = document.getElementById('fn-etapas');
   if(!el) return;
   if(!f || !f.etapas.length){ el.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:6px">Nenhuma etapa ainda — adicione a primeira ao lado.</div>'; return; }
-  var base = fnBase(f) || 1;
+  var baseReal = fnBase(f), base = baseReal || 1;
   el.innerHTML = f.etapas.map(function(e){
     var v = fnVal(e.id), pc = (v/base)*100, cor = FN_CORES[e.tipo];
     return '<div class="fn-et '+(fnSel===e.id?'sel':'')+'" onclick="fnSelecionar(\''+e.id+'\')">'+
-      '<div class="r">'+fnEsc(e.nome)+'</div><div class="p" style="color:'+cor+'">'+pc.toFixed(0)+'%</div>'+
+      '<div class="r">'+fnEsc(e.nome)+'</div><div class="p" style="color:'+cor+'">'+
+        (baseReal ? pc.toFixed(0)+'%' : '—')+'</div>'+
       '<div class="q">'+fnNum(v)+' pessoas</div>'+
       '<div class="b"><i style="width:'+Math.max(pc,1.5)+'%;background:'+cor+'"></i></div></div>';
   }).join('');
@@ -28240,7 +28241,9 @@ function fnNos(){
   var f = fnAtual(), palco = document.getElementById('fn-palco');
   if(!f || !palco) return;
   palco.querySelectorAll('.fn-no').forEach(function(n){ n.remove(); });
-  var base = fnBase(f) || 1;
+  // Sem base (ninguem registrado na 1a pagina) nao existe "% de quem entrou".
+  // Com base 1 de mentira, o checkout vindo da Utmify virava 5200%.
+  var baseReal = fnBase(f), base = baseReal || 1;
   fnTodos(f).forEach(function(n){
     var el = document.createElement('div');
     var src = n.tipo==='fonte';
@@ -28267,7 +28270,8 @@ function fnNos(){
                                         : 'cliques indisponíveis')+'</div>'
         : (link ? '<div class="lk" title="'+fnEsc(n.url)+'">'+fnEsc(link)+'</div>' : '')+
           '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
-          '<div class="sb">'+((v/base)*100).toFixed(1)+'% de quem entrou'+
+          '<div class="sb">'+(baseReal ? ((v/base)*100).toFixed(1)+'% de quem entrou'
+                                       : 'sem base pra comparar')+
             (vf.fonte==='utmify' ? ' <span class="via" title="O pixel não alcança essa página — número vindo da Utmify">via Utmify</span>' : '')+'</div>'+
           (n.url||vf.fonte==='utmify'?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>')+
           (compraram !== null
@@ -28535,7 +28539,9 @@ function fnDetalhe(){
 
   cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
     '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
-    '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'+
+    (fnBase(f) ? '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'
+               : '<div class="fn-l"><span>% de quem entrou</span><span style="color:var(--text2)">'+
+                 'sem base — falta o pixel na 1ª página</span></div>')+
     (st.tempoMedio?'<div class="fn-l"><span>Tempo médio</span><span>'+st.tempoMedio+'s</span></div>':'')+
     (sai.length?'<div class="fn-l"><span>Passou adiante</span><span style="color:var(--green)">'+fnNum(seguiram)+'</span></div>'+
       '<div class="fn-l"><span>Parou aqui</span><span style="color:var(--red)">'+fnNum(Math.max(0,v-seguiram))+'</span></div>':'')+
