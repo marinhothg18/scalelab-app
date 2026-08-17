@@ -8067,6 +8067,7 @@ app.get('/api/vturb/resumo', authUsuario, async (req, res) => {
 const KEY_FUNIS   = 'sl_funis';
 const KEY_REDIRS  = 'sl_redirecionadores';
 const KEY_FSTATS  = 'sl_funil_stats';
+const KEY_ABSTATS = 'sl_ab_stats';        // contagem por teste × variante × dia
 
 let _fBuffer = {};          // "funil|etapa|data" -> { entradas, unicos, segundos, saidas, eventos:{} }
 let _fVistos = new Map();   // "funil|etapa|data" -> Set(idVisitante), zerado na virada do dia
@@ -8145,12 +8146,162 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     const etapa = String(c.etapa || '').slice(0, 60);
     const tipo  = String(c.tipo  || 'entrou').slice(0, 30);
     if (!funil) return res.sendStatus(204);
-    _fContar(funil, etapa, tipo, String(c.id || '').slice(0, 40), c);
+    const visitante = String(c.id || '').slice(0, 40);
+    _fContar(funil, etapa, tipo, visitante, c);
+
+    // Teste A/B: a variante chegou pela URL do redirecionador e o pixel a devolve
+    // em todo evento. 'entrou' na 1a pagina conta pessoa; alcancar a etapa que e
+    // a meta conta conversao — e a mesma pessoa nunca conta duas vezes.
+    const teste = String(c.teste || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
+    const variante = String(c.variante || '').slice(0, 40);
+    if (teste && variante && visitante && tipo === 'entrou') {
+      _abContar(teste, variante, 'entrou', visitante);
+      try {
+        const db = readDB();
+        const r = (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
+          .find(x => String(x.slug || '').toLowerCase() === teste);
+        // meta e uma etapa do funil: chegar nela e a conversao do teste
+        if (r && r.meta && String(r.meta) === etapa) _abContar(teste, variante, 'meta', visitante);
+      } catch (e) {}
+    }
+
     _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
                  visitante: String(c.id || '').slice(0, 12),
-                 utm: (c.utm && c.utm.content) || '', segundos: Number(c.segundos) || 0 });
+                 utm: (c.utm && c.utm.content) || '', segundos: Number(c.segundos) || 0,
+                 variante: variante || '' });
     res.sendStatus(204);
   } catch (e) { res.sendStatus(204); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── TESTE A/B ──
+// O link ja dividia o trafego; o que faltava era anotar quem levou qual e
+// reencontrar essa pessoa na conversao. A variante viaja na URL (tmx_v), o pixel
+// a guarda no dominio de destino e devolve em todo evento.
+// ══════════════════════════════════════════════════════
+let _abBuffer = {}, _abSujo = false;
+const _abVistos = new Map();          // por chave: quem ja foi contado como unico
+
+function _abChave(teste, variante, dia) { return teste + '|' + variante + '|' + dia; }
+
+// tipo: 'sorteio' (redirecionador) | 'entrou' | 'meta'
+function _abContar(teste, variante, tipo, visitante) {
+  if (!teste || !variante) return;
+  const dia = _hojeBR(), k = _abChave(teste, variante, dia);
+  if (!_abBuffer[k]) _abBuffer[k] = { teste, variante, data: dia, sorteios: 0, pessoas: 0, metas: 0 };
+  const b = _abBuffer[k];
+  if (tipo === 'sorteio') b.sorteios++;
+  else if (visitante) {
+    // pessoa e meta contam UMA vez por visitante: sem isso quem recarrega a
+    // pagina de obrigado vira duas vendas e o teste vira ficcao.
+    const kv = k + '|' + tipo;
+    if (!_abVistos.has(kv)) _abVistos.set(kv, new Set());
+    const set = _abVistos.get(kv);
+    if (!set.has(visitante)) {
+      set.add(visitante);
+      if (tipo === 'meta') b.metas++; else b.pessoas++;
+    }
+  }
+  _abSujo = true;
+}
+
+function _abGravar() {
+  if (!_abSujo) return;
+  const pendente = _abBuffer; _abBuffer = {}; _abSujo = false;
+  try {
+    const db = readDB();
+    const atual = Array.isArray(db.store[KEY_ABSTATS]) ? db.store[KEY_ABSTATS] : [];
+    const indice = {};
+    atual.forEach(l => { indice[_abChave(l.teste, l.variante, l.data)] = l; });
+    Object.values(pendente).forEach(n => {
+      const k = _abChave(n.teste, n.variante, n.data), v = indice[k];
+      if (v) { v.sorteios += n.sorteios; v.pessoas += n.pessoas; v.metas += n.metas; }
+      else { atual.push(n); indice[k] = n; }
+    });
+    const corte = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+    db.store[KEY_ABSTATS] = atual.filter(l => l.data >= corte);
+    db.timestamps[KEY_ABSTATS] = now();
+    writeDB(db);
+  } catch (e) { console.error('[ab] falhou ao gravar:', e.message); }
+}
+setInterval(_abGravar, 30 * 1000);
+
+// ── Estatística: a diferença é real ou é sorte? ──
+// Teste z de duas proporções. Sem isso a tela mostraria "A está na frente" e
+// deixaria a pessoa matar a variante certa por causa de ruído.
+function _abJulgar(a, b) {
+  const n1 = a.pessoas || 0, x1 = a.metas || 0;
+  const n2 = b.pessoas || 0, x2 = b.metas || 0;
+  if (n1 < 1 || n2 < 1) return { pronto: false, motivo: 'sem-gente' };
+  const p1 = x1 / n1, p2 = x2 / n2;
+  if (x1 + x2 === 0) return { pronto: false, motivo: 'sem-conversao', p1, p2 };
+  const pp = (x1 + x2) / (n1 + n2);
+  const se = Math.sqrt(pp * (1 - pp) * (1 / n1 + 1 / n2));
+  if (!se) return { pronto: false, motivo: 'sem-variacao', p1, p2 };
+  const z = Math.abs(p1 - p2) / se;
+  // 1.96 = 95% de confiança nos dois sentidos
+  const conf = z >= 2.576 ? 99 : (z >= 1.96 ? 95 : (z >= 1.645 ? 90 : 0));
+  // quantos faltam de cada lado pra essa diferença virar conclusão a 95%
+  const dif = Math.abs(p1 - p2);
+  let precisa = null;
+  if (dif > 0) {
+    const nAlvo = Math.ceil(
+      (Math.pow(1.96 + 0.84, 2) * (p1 * (1 - p1) + p2 * (1 - p2))) / (dif * dif));
+    precisa = Math.max(0, nAlvo - Math.min(n1, n2));
+  }
+  return {
+    pronto: z >= 1.96, z: Number(z.toFixed(3)), conf,
+    p1, p2, lider: p1 >= p2 ? 'a' : 'b',
+    ganho: (p1 && p2) ? Math.abs(p1 - p2) / Math.min(p1, p2) : 0,
+    faltamPorLado: precisa
+  };
+}
+
+// ── Números de um teste ──
+app.get('/api/ab/stats', authUsuario, (req, res) => {
+  try {
+    const slug = String(req.query.teste || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (!slug) return res.status(400).json({ error: 'Informe o teste.' });
+    const db = readDB();
+    const r = (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
+      .find(x => String(x.slug || '').toLowerCase() === slug);
+    if (!r) return res.status(404).json({ error: 'Teste não encontrado.' });
+
+    let linhas = Array.isArray(db.store[KEY_ABSTATS]) ? db.store[KEY_ABSTATS] : [];
+    linhas = linhas.filter(l => l.teste === slug)
+                   .concat(Object.values(_abBuffer).filter(l => l.teste === slug));
+    const de = String(req.query.de || '').slice(0, 10);
+    if (de) linhas = linhas.filter(l => l.data >= de);
+
+    const porVar = {};
+    (r.destinos || []).forEach((d, i) => {
+      porVar[String(d.id || ('v' + i))] = {
+        id: String(d.id || ('v' + i)), nome: d.nome || ('Variante ' + (i + 1)),
+        url: d.url || '', peso: Number(d.peso) || 1,
+        sorteios: 0, pessoas: 0, metas: 0
+      };
+    });
+    linhas.forEach(l => {
+      const v = porVar[l.variante];
+      if (!v) return;
+      v.sorteios += l.sorteios || 0; v.pessoas += l.pessoas || 0; v.metas += l.metas || 0;
+    });
+    const variantes = Object.values(porVar).map(v => Object.assign(v, {
+      conversao: v.pessoas > 0 ? (v.metas / v.pessoas) * 100 : 0
+    }));
+
+    // o veredito compara as duas melhores; com 3+ variantes ainda é o par que decide
+    const ord = variantes.slice().sort((x, y) => y.conversao - x.conversao);
+    const julgamento = (ord.length >= 2) ? _abJulgar(ord[0], ord[1]) : { pronto: false, motivo: 'uma-so' };
+
+    res.json({
+      ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '',
+      meta: r.meta || null, estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
+      criadoEm: r.criadoEm || null, variantes,
+      lider: ord[0] ? ord[0].id : null, segundo: ord[1] ? ord[1].id : null,
+      julgamento
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Dados pra tela ──
@@ -8195,11 +8346,21 @@ app.get('/r/:slug', (req, res) => {
     const total = r.destinos.reduce((s, d) => s + (Number(d.peso) || 1), 0);
     let x = Math.random() * total, escolhido = r.destinos[0];
     for (const d of r.destinos) { x -= (Number(d.peso) || 1); if (x <= 0) { escolhido = d; break; } }
-    // repassa a query (utm_*) pro destino, senao o rastreamento se perde aqui
+    // Cada destino precisa de um id estavel: sem ele nao da pra dizer quem levou
+    // qual depois. Slug de link antigo nao tem, entao cai na posicao.
+    const vid = String(escolhido.id || ('v' + r.destinos.indexOf(escolhido)));
+
     let destino = String(escolhido.url || '');
     const qs = req.originalUrl.split('?')[1];
+    // repassa a query (utm_*) pro destino, senao o rastreamento se perde aqui
     if (qs) destino += (destino.includes('?') ? '&' : '?') + qs;
+    // A variante viaja na URL, nao em cookie: o cookie seria de app.centraltmx.com
+    // e a pagina de destino e outro dominio — nunca chegaria la.
+    destino += (destino.includes('?') ? '&' : '?') +
+               'tmx_t=' + encodeURIComponent(slug) + '&tmx_v=' + encodeURIComponent(vid);
+
     _fContar('redir:' + slug, escolhido.url, 'entrou', null, null);
+    _abContar(slug, vid, 'sorteio');      // denominador do teste
     res.redirect(302, destino);
   } catch (e) { res.status(500).send('Erro no redirecionamento.'); }
 });
