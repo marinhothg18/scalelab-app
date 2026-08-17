@@ -1430,6 +1430,37 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-aviso-lig{display:flex;align-items:center;gap:9px;background:rgba(27,156,250,.12);border:1px solid var(--accent);
   border-radius:10px;padding:8px 12px;margin-bottom:9px;font-size:12px;font-weight:600}
 .fn-sec{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin:14px 0 7px}
+/* ── jornada e atenção ── */
+.fn-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.fn-filtro{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:6px 13px;
+  font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer;font-family:inherit}
+.fn-filtro:hover{color:var(--text)}
+.fn-filtro.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.fn-pessoa{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:15px 17px;margin-bottom:11px}
+.fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+.fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
+.fn-pessoa .de{font-size:11.5px;color:var(--text2);margin-left:auto}
+.fn-tagcri{background:rgba(27,156,250,.15);color:var(--accent);font-size:10px;font-weight:800;
+  padding:2px 7px;border-radius:5px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-tl{list-style:none;margin:0;padding:0}
+.fn-tl li{position:relative;padding-left:23px;padding-bottom:13px;border-left:2px solid var(--border);
+  margin-left:5px;font-size:12.5px}
+.fn-tl li:last-child{border-left-color:transparent;padding-bottom:0}
+.fn-tl li::before{content:'';position:absolute;left:-6px;top:5px;width:10px;height:10px;border-radius:50%;
+  background:var(--accent);border:2px solid var(--bg2)}
+.fn-tl li.venda::before{background:var(--green)}
+.fn-tl li.perdeu::before{background:var(--red)}
+.fn-tl .h{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text2);margin-right:8px}
+.fn-tl .o{display:block;color:var(--text2);font-size:11.5px;margin-top:2px}
+.fn-rb{display:flex;align-items:center;gap:12px;margin-bottom:9px;font-size:13px}
+.fn-rb .p{width:56px;flex:0 0 auto;color:var(--text2);font-size:12px}
+.fn-rb .t{flex:1;height:22px;background:var(--bg3);border-radius:5px;overflow:hidden}
+.fn-rb .t i{display:block;height:100%;border-radius:5px;transition:width .35s}
+.fn-rb .v{width:126px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text2)}
+.fn-rb .v b{color:var(--text)}
+.fn-marco{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:700;color:var(--red);
+  margin:6px 0 4px 68px}
+
 /* ── testes A/B ── */
 .ab-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:15px}
 .ab-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
@@ -3343,6 +3374,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <button class="fn-aba on" onclick="fnAba('mapa',this)">🧭 Mapa</button>
             <button class="fn-aba" onclick="fnAba('pixel',this)">📡 Pixel</button>
             <button class="fn-aba" onclick="fnAba('redir',this)">🔀 Testes A/B e links</button>
+            <button class="fn-aba" onclick="fnAba('jornada',this)">👣 Jornada</button>
+            <button class="fn-aba" onclick="fnAba('atencao',this)">👁 Atenção da página</button>
           </div>
           <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
             <select id="fn-periodo" class="fn-per" onchange="fnCarregarStats()"
@@ -3433,6 +3466,21 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
           <div id="ab-lista"></div>
           <div id="ab-detalhe" style="display:none"></div>
+        </div>
+
+        <div class="fn-painel" id="fn-p-jornada">
+          <div class="fn-nota">O caminho de cada visitante, do anúncio ao fim. O valor não é acompanhar uma pessoa —
+            é poder perguntar <b>“me mostra 10 que chegaram no checkout e não compraram”</b>. Guarda 7 dias.</div>
+          <div class="fn-filtros" id="jn-filtros"></div>
+          <div id="jn-lista"></div>
+        </div>
+
+        <div class="fn-painel" id="fn-p-atencao">
+          <div class="fn-nota">Até onde as pessoas descem na página e no que elas clicam.
+            <b>Sem mancha colorida de propósito</b> — o nome do que foi clicado é mais útil que a posição exata.</div>
+          <div class="fn-campo" style="max-width:340px"><label>Página</label>
+            <select id="at-etapa" onchange="atCarregar()"></select></div>
+          <div id="at-corpo"></div>
         </div>
 
       </div>
@@ -28060,6 +28108,7 @@ function fnCarregarProjetos(){
   .then(function(d){
     fnProjetosFull = (d && d.projetos) || [];
     fnProjetos = fnProjetosFull.map(function(p){ return p.nome; });
+    fnJuntarProjetosDosFunis();
     if(!fnProjetos.length) fnProjetos = ['Geral'];
     if(!fnProj || fnProjetos.indexOf(fnProj)<0) fnProj = fnProjetos[0];
     // funis sem projeto herdam o primeiro
@@ -28067,9 +28116,23 @@ function fnCarregarProjetos(){
     l.forEach(function(f){ if(!f.projeto){ f.projeto=fnProj; mudou=true; } });
     if(mudou) fnSalvarFunis(l);
     fnPintar(); fnCarregarStats();
-  }).catch(function(){ fnProjetos=['Geral']; fnProj='Geral'; fnPintar(); });
+  }).catch(function(){
+    // Utmify fora do ar nao pode sumir com os funis: monta a lista pelo que ja
+    // esta salvo, senao a tela abre vazia e parece que o trabalho se perdeu.
+    fnProjetos = [];
+    fnJuntarProjetosDosFunis();
+    if(!fnProjetos.length) fnProjetos = ['Geral'];
+    if(!fnProj || fnProjetos.indexOf(fnProj) < 0) fnProj = fnProjetos[0];
+    fnPintar(); fnCarregarStats();
+  });
 }
 
+// projeto que so existe nos funis salvos tambem entra na lista
+function fnJuntarProjetosDosFunis(){
+  fnFunis().forEach(function(f){
+    if(f.projeto && fnProjetos.indexOf(f.projeto) < 0) fnProjetos.push(f.projeto);
+  });
+}
 function fnProjId(){
   var p = fnProjetosFull.filter(function(x){ return x.nome===fnProj; })[0];
   return p ? p.id : '';
@@ -28078,12 +28141,15 @@ function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarreg
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnAba(qual, bt){
-  ['mapa','pixel','redir'].forEach(function(k){ document.getElementById('fn-p-'+k).classList.remove('on'); });
+  ['mapa','pixel','redir','jornada','atencao'].forEach(function(k){
+    var el = document.getElementById('fn-p-'+k); if(el) el.classList.remove('on'); });
   document.getElementById('fn-p-'+qual).classList.add('on');
   document.querySelectorAll('.fn-aba').forEach(function(a){ a.classList.remove('on'); });
   if(bt) bt.classList.add('on');
   if(qual==='mapa') setTimeout(fnFios, 40);
   if(qual==='redir') fnPintarRed();
+  if(qual==='jornada') jnCarregar();
+  if(qual==='atencao') atOpcoes();
 }
 
 // ── números vindos do pixel ──
@@ -28781,6 +28847,19 @@ function fnPixel(){
 '  w.addEventListener("pagehide", function(){\n'+
 '    manda("saiu",{ segundos: Math.round((Date.now()-entrou)/1000), rolagem: Math.round(fundo) });\n'+
 '  });\n\n'+
+'  // Onde clicam. O rotulo e o texto do que foi clicado — mais util que a\n'+
+'  // posicao exata, porque e o nome que voce reconhece na hora de mexer na pagina.\n'+
+'  d.addEventListener("click", function(ev){\n'+
+'    var el = ev.target && ev.target.closest ? ev.target.closest("a,button,[role=button],input[type=submit],img,video") : null;\n'+
+'    if(!el) el = ev.target;\n'+
+'    if(!el || !el.getBoundingClientRect) return;\n'+
+'    var rot = (el.getAttribute("aria-label") || el.innerText || el.alt || el.value || el.tagName || "").trim();\n'+
+'    rot = rot.replace(/\\s+/g," ").slice(0,70);\n'+
+'    if(!rot) rot = el.tagName;\n'+
+'    var alt = d.body.scrollHeight || 1;\n'+
+'    var y = el.getBoundingClientRect().top + scrollY;\n'+
+'    manda("clique", { rotulo: rot, posicao: Math.round(y/alt*100) });\n'+
+'  }, true);\n\n'+
 '  // eventos manuais: TMX("play") ou TMX("clique_comprar")\n'+
 '  w.TMX = function(nome, extra){ manda(nome, extra); };\n'+
 '})(window, document);\n'+
@@ -29110,6 +29189,166 @@ function fnGravarRed(r){
   var l = fnReds();
   for(var i=0;i<l.length;i++) if(l[i].id===r.id){ r._updatedAt=Date.now(); l[i]=r; }
   fnSalvarReds(l);
+}
+
+// ══════════════════════════════════════════════════════
+// ── JORNADA POR PESSOA ──
+// ══════════════════════════════════════════════════════
+var jnFiltro = 'checkout-sem-compra', jnDados = null;
+var JN_ROTULO = {
+  'checkout-sem-compra':'Chegou no checkout e não comprou',
+  'comprou':'Comprou',
+  'so-entrou':'Entrou e parou na primeira página',
+  'voltou':'Voltou mais de uma vez',
+  'todas':'Todas'
+};
+
+function jnCarregar(){
+  var f = fnAtual();
+  var el = document.getElementById('jn-lista');
+  if(!f){ if(el) el.innerHTML = '<div class="fn-nota">Escolha um funil primeiro.</div>'; return; }
+  if(el) el.innerHTML = '<div class="fn-nota">Buscando as jornadas…</div>';
+  fetch('/api/funil/jornadas?funil='+encodeURIComponent(f.id)+'&filtro='+encodeURIComponent(jnFiltro))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ jnDados = d; jnPintar(); })
+    .catch(function(e){ if(el) el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
+}
+function jnTrocar(f){ jnFiltro = f; jnCarregar(); }
+
+function jnPintar(){
+  var fl = document.getElementById('jn-filtros'), el = document.getElementById('jn-lista');
+  if(!fl || !el) return;
+  var d = jnDados;
+  if(!d || !d.ok){ el.innerHTML = '<div class="fn-nota">Sem dados de jornada ainda.</div>'; return; }
+
+  fl.innerHTML = Object.keys(JN_ROTULO).map(function(k){
+    var n = (d.contagem && d.contagem[k]) || 0;
+    return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" onclick="jnTrocar(\''+k+'\')">'+
+      JN_ROTULO[k]+' · '+fnNum(n)+'</button>';
+  }).join('');
+
+  var nomeEtapa = {}, tipoEtapa = {};
+  (d.etapas||[]).forEach(function(e){ nomeEtapa[e.id]=e.nome; tipoEtapa[e.id]=e.tipo; });
+
+  if(!d.jornadas.length){
+    el.innerHTML = '<div class="fn-nota">Nenhuma jornada nesse filtro. '+
+      'Se acabou de instalar o pixel, espere alguém acessar — as jornadas aparecem em segundos.</div>';
+    return;
+  }
+
+  el.innerHTML = d.jornadas.map(function(j){
+    var criativo = '';
+    for(var i=0;i<j.eventos.length;i++){ if(j.eventos[i].criativo){ criativo = j.eventos[i].criativo; break; } }
+    var comprou = j.eventos.some(function(e){ return tipoEtapa[e.etapa]==='obrigado'; });
+    var linhas = j.eventos.map(function(e){
+      var h = new Date(e.em), p = function(x){ return String(x).padStart(2,'0'); };
+      var cls = tipoEtapa[e.etapa]==='obrigado' ? 'venda' : '';
+      var txt;
+      if(e.tipo==='entrou')      txt = 'Chegou em <b>'+fnEsc(nomeEtapa[e.etapa]||e.etapa)+'</b>';
+      else if(e.tipo==='saiu')   txt = 'Saiu de '+fnEsc(nomeEtapa[e.etapa]||e.etapa)+
+                                       (e.segundos?(' depois de '+jnTempo(e.segundos)):'');
+      else if(e.tipo==='clique') txt = 'Clicou em <b>'+fnEsc(e.rotulo||'algo na página')+'</b>';
+      else                       txt = fnEsc(e.tipo)+' em '+fnEsc(nomeEtapa[e.etapa]||e.etapa);
+      return '<li class="'+cls+'"><span class="h">'+p(h.getHours())+':'+p(h.getMinutes())+'</span>'+txt+'</li>';
+    }).join('');
+    if(!comprou) linhas += '<li class="perdeu"><span class="h">—</span>Não comprou'+
+      '<span class="o">nenhuma venda registrada nesta jornada</span></li>';
+    return '<div class="fn-pessoa">'+
+      '<div class="top"><span class="id">'+fnEsc(j.id.slice(0,10))+'</span>'+
+        (criativo?('<span class="fn-tagcri">'+fnEsc(criativo)+'</span>'):'')+
+        '<span class="de">'+j.eventos.length+' passo(s)</span></div>'+
+      '<ul class="fn-tl">'+linhas+'</ul></div>';
+  }).join('');
+}
+function jnTempo(s){
+  s = Number(s)||0;
+  if(s < 60) return s+'s';
+  var m = Math.floor(s/60), r = s%60;
+  return m+'min'+(r?(' '+r+'s'):'');
+}
+
+// ══════════════════════════════════════════════════════
+// ── ATENÇÃO DA PÁGINA ──
+// ══════════════════════════════════════════════════════
+function atOpcoes(){
+  var f = fnAtual(), sel = document.getElementById('at-etapa');
+  if(!sel) return;
+  if(!f || !f.etapas.length){ sel.innerHTML = '<option>— nenhuma etapa —</option>';
+    document.getElementById('at-corpo').innerHTML = '<div class="fn-nota">Crie uma etapa no mapa primeiro.</div>'; return; }
+  sel.innerHTML = f.etapas.map(function(e){
+    return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
+  atCarregar();
+}
+
+function atCarregar(){
+  var etapa = (document.getElementById('at-etapa')||{}).value;
+  var el = document.getElementById('at-corpo');
+  if(!etapa || !el) return;
+  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
+  var hoje = hojeBR(), de = hoje;
+  if(per==='7d')  de = hojeBR(6);
+  if(per==='30d') de = hojeBR(29);
+  el.innerHTML = '<div class="fn-nota">Buscando…</div>';
+  fetch('/api/funil/atencao?etapa='+encodeURIComponent(etapa)+'&de='+de+'&ate='+hoje)
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ atPintar(d); })
+    .catch(function(e){ el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
+}
+
+function atPintar(d){
+  var el = document.getElementById('at-corpo'); if(!el) return;
+  if(!d || !d.ok){ el.innerHTML = '<div class="fn-nota">Sem dados.</div>'; return; }
+  var r = d.rolagem || {};
+  if(!r.saidas){
+    el.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período. '+
+      'A rolagem é medida quando a pessoa fecha ou troca de página — confira se o pixel está instalado nela.</div>';
+    return;
+  }
+  var f = fnAtual();
+  var etapa = (f && f.etapas.filter(function(e){ return e.id===d.etapa; })[0]) || {};
+
+  function faixa(rot, pc, n, cor){
+    return '<div class="fn-rb"><span class="p">'+rot+'</span>'+
+      '<span class="t"><i style="width:'+Math.max(pc,0.8)+'%;background:'+cor+'"></i></span>'+
+      '<span class="v"><b>'+fnNum(n)+'</b> · '+pc.toFixed(0)+'%</span></div>';
+  }
+  var azul = 'var(--accent)', verm = 'var(--red)';
+  var html = '<div class="fn-cx2"><h3>Até onde as pessoas descem</h3>'+
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+
+      fnEsc(etapa.url||etapa.nome||'')+' · '+fnNum(r.saidas)+' pessoa(s) medida(s)</div>'+
+    faixa('Topo', 100, r.saidas, azul)+
+    faixa('25%',  r.f25,  r.n25,  r.f25>=50?azul:verm)+
+    faixa('50%',  r.f50,  r.n50,  r.f50>=50?azul:verm)+
+    faixa('75%',  r.f75,  r.n75,  r.f75>=50?azul:verm)+
+    faixa('Fim',  r.f100, r.n100, r.f100>=50?azul:verm);
+
+  // O botao de comprar so importa se as pessoas chegam nele
+  var btn = (d.cliques||[]).filter(function(c){ return /compr|garant|quero|adquir|assinar/i.test(c.rotulo); })[0];
+  if(btn && btn.pos){
+    var alcanca = btn.pos<=25 ? r.f25 : (btn.pos<=50 ? r.f50 : (btn.pos<=75 ? r.f75 : r.f100));
+    html += '<div class="fn-marco">▲ “'+fnEsc(btn.rotulo.slice(0,34))+'” está a '+btn.pos+'% da página — '+
+      (100-alcanca).toFixed(0)+'% nunca chegam nele</div>';
+  }
+  html += '</div>';
+
+  if((d.cliques||[]).length){
+    html += '<div class="fn-cx2"><h3>Onde clicam</h3>'+
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Maior número de cliques primeiro.</div>'+
+      '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+      '<th>Elemento</th><th style="width:120px">Posição</th>'+
+      '<th style="width:80px;text-align:right">Cliques</th>'+
+      '<th style="width:96px;text-align:right">% de quem viu</th></tr></thead><tbody>'+
+      d.cliques.map(function(c){
+        return '<tr><td style="font-size:12.5px">'+fnEsc(c.rotulo)+'</td>'+
+          '<td style="color:var(--text2);font-size:12px">'+(c.pos?(c.pos+'% da altura'):'—')+'</td>'+
+          '<td style="text-align:right;font-weight:700">'+fnNum(c.n)+'</td>'+
+          '<td style="text-align:right;color:'+(c.pct>=15?'var(--green)':'var(--text2)')+'">'+c.pct.toFixed(1)+'%</td></tr>';
+      }).join('')+'</tbody></table></div></div>';
+  } else {
+    html += '<div class="fn-cx2"><h3>Onde clicam</h3>'+
+      '<div class="fn-nota" style="margin:0">Nenhum clique registrado ainda nessa página.</div></div>';
+  }
+  el.innerHTML = html;
 }
 
 function fnCopiar(id){

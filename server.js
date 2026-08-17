@@ -5785,7 +5785,9 @@ const KEYS_SERVIDOR = new Set([
   'sl_integracoes_utmify_mcp', // token de acesso do MCP da Utmify
   'sl_vturb',               // token da API de analytics da VTurb
   'sl_funil_evfoto',        // foto interna dos contadores; nao serve pra tela
-  'sl_ab_stats'             // contagem do teste A/B; a tela le por /api/ab/stats
+  'sl_ab_stats',            // contagem do teste A/B; a tela le por /api/ab/stats
+  'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
+  'sl_funil_atencao'        // rolagem e cliques; a tela le por /api/funil/atencao
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -8069,6 +8071,8 @@ const KEY_FUNIS   = 'sl_funis';
 const KEY_REDIRS  = 'sl_redirecionadores';
 const KEY_FSTATS  = 'sl_funil_stats';
 const KEY_ABSTATS = 'sl_ab_stats';        // contagem por teste × variante × dia
+const KEY_JORNADA = 'sl_funil_jornada';   // caminho de cada visitante, 7 dias
+const KEY_ATENCAO = 'sl_funil_atencao';   // rolagem e cliques por etapa × dia
 
 let _fBuffer = {};          // "funil|etapa|data" -> { entradas, unicos, segundos, saidas, eventos:{} }
 let _fVistos = new Map();   // "funil|etapa|data" -> Set(idVisitante), zerado na virada do dia
@@ -8166,12 +8170,211 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
       } catch (e) {}
     }
 
+    _jRegistrar(visitante, funil, etapa, tipo, c);
+    if (tipo === 'saiu') _atRolagem(etapa, c.rolagem);
+    if (tipo === 'clique') _atClique(etapa, c.rotulo, c.posicao);
+
     _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
                  visitante: String(c.id || '').slice(0, 12),
                  utm: (c.utm && c.utm.content) || '', segundos: Number(c.segundos) || 0,
                  variante: variante || '' });
     res.sendStatus(204);
   } catch (e) { res.sendStatus(204); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── JORNADA POR PESSOA ──
+// O pixel ja mandava o identificador do visitante em todo evento, mas o servidor
+// so somava. Aqui a gente guarda o caminho de cada um — e o valor nao e bisbilhotar
+// alguem, e poder perguntar "me mostra 10 que chegaram no checkout e nao compraram".
+// ══════════════════════════════════════════════════════
+const JORNADA_DIAS = 7, JORNADA_TETO = 4000, JORNADA_EVENTOS = 40;
+let _jBuffer = {}, _jSujo = false;
+
+function _jRegistrar(visitante, funil, etapa, tipo, extra) {
+  if (!visitante || !funil) return;
+  const k = funil + '|' + visitante;
+  if (!_jBuffer[k]) _jBuffer[k] = { id: visitante, funil, eventos: [] };
+  const j = _jBuffer[k];
+  const ev = { em: new Date().toISOString(), etapa, tipo };
+  if (extra && Number(extra.segundos)) ev.segundos = Number(extra.segundos);
+  if (extra && extra.utm && extra.utm.content) ev.criativo = String(extra.utm.content).slice(0, 80);
+  if (extra && extra.variante) ev.variante = String(extra.variante).slice(0, 40);
+  if (extra && extra.rotulo)   ev.rotulo = String(extra.rotulo).slice(0, 70);
+  j.eventos.push(ev);
+  if (j.eventos.length > JORNADA_EVENTOS) j.eventos = j.eventos.slice(-JORNADA_EVENTOS);
+  _jSujo = true;
+}
+
+function _jGravar() {
+  if (!_jSujo) return;
+  const pendente = _jBuffer; _jBuffer = {}; _jSujo = false;
+  try {
+    const db = readDB();
+    let atual = Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [];
+    const indice = {};
+    atual.forEach(j => { indice[j.funil + '|' + j.id] = j; });
+    Object.values(pendente).forEach(n => {
+      const k = n.funil + '|' + n.id, v = indice[k];
+      if (v) {
+        v.eventos = v.eventos.concat(n.eventos).slice(-JORNADA_EVENTOS);
+      } else { atual.push(n); indice[k] = n; }
+    });
+    // guarda os mais recentes primeiro, e corta pelo teto e pela idade
+    const corte = Date.now() - JORNADA_DIAS * 86400000;
+    atual = atual.filter(j => {
+      const ult = j.eventos[j.eventos.length - 1];
+      return ult && new Date(ult.em).getTime() >= corte;
+    }).sort((a, b) => {
+      const ua = a.eventos[a.eventos.length - 1].em, ub = b.eventos[b.eventos.length - 1].em;
+      return ub.localeCompare(ua);
+    }).slice(0, JORNADA_TETO);
+    db.store[KEY_JORNADA] = atual;
+    db.timestamps[KEY_JORNADA] = now();
+    writeDB(db);
+  } catch (e) { console.error('[jornada] falhou ao gravar:', e.message); }
+}
+setInterval(_jGravar, 45 * 1000);
+
+app.get('/api/funil/jornadas', authUsuario, (req, res) => {
+  try {
+    const funil = String(req.query.funil || '').slice(0, 80);
+    const filtro = String(req.query.filtro || 'todas').slice(0, 40);
+    const db = readDB();
+    const f = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
+      .find(x => String(x.id) === funil) || null;
+    // tipo de cada etapa: e o que deixa perguntar "chegou no checkout e nao comprou"
+    const tipo = {};
+    ((f && f.etapas) || []).forEach(e => { tipo[e.id] = e.tipo || 'pagina'; });
+
+    let lista = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      .filter(j => !funil || j.funil === funil)
+      .concat(Object.values(_jBuffer).filter(j => !funil || j.funil === funil));
+
+    const passou = (j, t) => j.eventos.some(e => tipo[e.etapa] === t);
+    const contagem = {
+      todas: lista.length,
+      'checkout-sem-compra': lista.filter(j => passou(j, 'checkout') && !passou(j, 'obrigado')).length,
+      comprou: lista.filter(j => passou(j, 'obrigado')).length,
+      voltou: lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length > 1).length,
+      'so-entrou': lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length === 1
+                                     && !passou(j, 'checkout')).length
+    };
+    if (filtro === 'checkout-sem-compra') lista = lista.filter(j => passou(j, 'checkout') && !passou(j, 'obrigado'));
+    else if (filtro === 'comprou') lista = lista.filter(j => passou(j, 'obrigado'));
+    else if (filtro === 'voltou') lista = lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length > 1);
+    else if (filtro === 'so-entrou') lista = lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length === 1
+                                                               && !passou(j, 'checkout'));
+
+    lista = lista.sort((a, b) => {
+      const ua = a.eventos[a.eventos.length - 1].em, ub = b.eventos[b.eventos.length - 1].em;
+      return ub.localeCompare(ua);
+    }).slice(0, 40);
+
+    res.json({ ok: true, funil, filtro, contagem,
+      etapas: ((f && f.etapas) || []).map(e => ({ id: e.id, nome: e.nome, tipo: e.tipo })),
+      jornadas: lista });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── ATENÇÃO DA PÁGINA ──
+// Rolagem em faixas e cliques por elemento. Sem imagem de propósito: a mancha
+// colorida quase nunca muda decisao; saber que metade nunca ve o botao muda.
+// ══════════════════════════════════════════════════════
+let _atBuffer = {}, _atSujo = false;
+
+function _atChave(etapa, dia) { return etapa + '|' + dia; }
+
+function _atRolagem(etapa, pct) {
+  if (!etapa) return;
+  const dia = _hojeBR(), k = _atChave(etapa, dia);
+  if (!_atBuffer[k]) _atBuffer[k] = { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0, cliques: {} };
+  const b = _atBuffer[k];
+  b.saidas++;
+  const p = Number(pct) || 0;
+  // faixas cumulativas: quem chegou a 75% tambem passou por 25 e 50
+  if (p >= 25) b.f25++;
+  if (p >= 50) b.f50++;
+  if (p >= 75) b.f75++;
+  if (p >= 95) b.f100++;
+  _atSujo = true;
+}
+
+function _atClique(etapa, rotulo, posicao) {
+  if (!etapa || !rotulo) return;
+  const dia = _hojeBR(), k = _atChave(etapa, dia);
+  if (!_atBuffer[k]) _atBuffer[k] = { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0, cliques: {} };
+  const b = _atBuffer[k];
+  const r = String(rotulo).slice(0, 70);
+  if (!b.cliques[r]) b.cliques[r] = { n: 0, pos: Number(posicao) || 0 };
+  b.cliques[r].n++;
+  if (Number(posicao)) b.cliques[r].pos = Number(posicao);
+  _atSujo = true;
+}
+
+function _atGravar() {
+  if (!_atSujo) return;
+  const pendente = _atBuffer; _atBuffer = {}; _atSujo = false;
+  try {
+    const db = readDB();
+    const atual = Array.isArray(db.store[KEY_ATENCAO]) ? db.store[KEY_ATENCAO] : [];
+    const indice = {};
+    atual.forEach(l => { indice[_atChave(l.etapa, l.data)] = l; });
+    Object.values(pendente).forEach(n => {
+      const k = _atChave(n.etapa, n.data), v = indice[k];
+      if (!v) { atual.push(n); indice[k] = n; return; }
+      v.saidas += n.saidas; v.f25 += n.f25; v.f50 += n.f50; v.f75 += n.f75; v.f100 += n.f100;
+      Object.keys(n.cliques).forEach(r => {
+        if (!v.cliques[r]) v.cliques[r] = { n: 0, pos: n.cliques[r].pos };
+        v.cliques[r].n += n.cliques[r].n;
+        if (n.cliques[r].pos) v.cliques[r].pos = n.cliques[r].pos;
+      });
+    });
+    const corte = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    db.store[KEY_ATENCAO] = atual.filter(l => l.data >= corte);
+    db.timestamps[KEY_ATENCAO] = now();
+    writeDB(db);
+  } catch (e) { console.error('[atencao] falhou ao gravar:', e.message); }
+}
+setInterval(_atGravar, 45 * 1000);
+
+app.get('/api/funil/atencao', authUsuario, (req, res) => {
+  try {
+    const etapa = String(req.query.etapa || '').slice(0, 60);
+    if (!etapa) return res.status(400).json({ error: 'Informe a etapa.' });
+    const de  = String(req.query.de  || '').slice(0, 10);
+    const ate = String(req.query.ate || '').slice(0, 10);
+    const db = readDB();
+    let linhas = (Array.isArray(db.store[KEY_ATENCAO]) ? db.store[KEY_ATENCAO] : [])
+      .concat(Object.values(_atBuffer))
+      .filter(l => l.etapa === etapa);
+    if (de)  linhas = linhas.filter(l => l.data >= de);
+    if (ate) linhas = linhas.filter(l => l.data <= ate);
+
+    const t = { saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0 };
+    const cl = {};
+    linhas.forEach(l => {
+      t.saidas += l.saidas; t.f25 += l.f25; t.f50 += l.f50; t.f75 += l.f75; t.f100 += l.f100;
+      Object.keys(l.cliques || {}).forEach(r => {
+        if (!cl[r]) cl[r] = { rotulo: r, n: 0, pos: l.cliques[r].pos };
+        cl[r].n += l.cliques[r].n;
+        if (l.cliques[r].pos) cl[r].pos = l.cliques[r].pos;
+      });
+    });
+    const base = t.saidas || 1;
+    res.json({ ok: true, etapa, de, ate,
+      rolagem: {
+        saidas: t.saidas,
+        f25: (t.f25 / base) * 100, f50: (t.f50 / base) * 100,
+        f75: (t.f75 / base) * 100, f100: (t.f100 / base) * 100,
+        n25: t.f25, n50: t.f50, n75: t.f75, n100: t.f100
+      },
+      cliques: Object.values(cl).map(c => Object.assign(c, {
+        pct: t.saidas > 0 ? (c.n / t.saidas) * 100 : 0
+      })).sort((a, b) => b.n - a.n).slice(0, 25)
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ══════════════════════════════════════════════════════
