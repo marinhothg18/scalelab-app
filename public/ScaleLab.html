@@ -1430,6 +1430,30 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-aviso-lig{display:flex;align-items:center;gap:9px;background:rgba(27,156,250,.12);border:1px solid var(--accent);
   border-radius:10px;padding:8px 12px;margin-bottom:9px;font-size:12px;font-weight:600}
 .fn-sec{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin:14px 0 7px}
+/* ── tela de projetos ── */
+.fn-proj-cab{margin:6px 0 20px}
+.fn-proj-cab h2{font-size:20px;font-weight:800;letter-spacing:-.02em;margin:0 0 4px}
+.fn-proj-cab p{font-size:13px;color:var(--text2);margin:0;max-width:62ch}
+.fn-projs{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:14px}
+.fn-proj{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+  padding:18px 20px 16px;cursor:pointer;transition:border-color .14s,transform .14s;overflow:hidden}
+.fn-proj::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:0;transition:opacity .14s}
+.fn-proj:hover{border-color:var(--accent);transform:translateY(-2px)}
+.fn-proj:hover::before{opacity:1}
+.fn-proj-t{font-size:16px;font-weight:800;letter-spacing:-.015em;margin-bottom:10px}
+.fn-proj-n{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-bottom:12px}
+.fn-proj-n b{color:var(--text);font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.fn-proj-r{display:flex;gap:6px;flex-wrap:wrap;min-height:22px}
+.fn-selo{font-size:10px;font-weight:800;padding:3px 8px;border-radius:5px;white-space:nowrap}
+.fn-selo.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.fn-selo.alerta{background:rgba(245,158,11,.15);color:#f59e0b}
+.fn-selo.neutro{background:var(--bg3);color:var(--text2)}
+.fn-proj-ir{margin-top:12px;font-size:12px;font-weight:700;color:var(--accent)}
+.fn-voltar{background:none;border:none;color:var(--text2);font-size:13px;font-weight:700;
+  cursor:pointer;font-family:inherit;padding:0 4px 0 0}
+.fn-voltar:hover{color:var(--text)}
+.fn-proj-nome{font-size:14px;font-weight:800;letter-spacing:-.01em}
+
 /* ── jornada e atenção ── */
 .fn-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .fn-filtro{background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:6px 13px;
@@ -3363,9 +3387,13 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
     <!-- AD LIBRARY -->
     <div class="page" id="page-funis">
       <div class="content">
-        <div class="fn-topo">
+        <!-- Tela 1: escolher o projeto. Tudo que vem depois e daquele projeto. -->
+        <div id="fn-projetos"></div>
+
+        <div class="fn-topo" id="fn-barra" style="display:none">
           <div class="fn-trilha">
-            <select id="fn-projeto" onchange="fnTrocarProjeto(this.value)"></select>
+            <button class="fn-voltar" onclick="fnSairProjeto()">‹ Projetos</button>
+            <span class="fn-proj-nome" id="fn-proj-nome"></span>
             <span class="sep">›</span>
             <select id="fn-funil" onchange="fnTrocarFunil(this.value)"></select>
             <button class="fn-btn sm" onclick="fnNovoFunil()">+ Novo funil</button>
@@ -3385,6 +3413,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <button class="fn-btn g sm" onclick="fnCarregarStats()">🔄 Atualizar</button>
           </div>
         </div>
+
+        <div id="fn-dentro" style="display:none">
 
         <div class="fn-painel on" id="fn-p-mapa">
           <div class="fn-cards" id="fn-lista"></div>
@@ -3482,6 +3512,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <select id="at-etapa" onchange="atCarregar()"></select></div>
           <div id="at-corpo"></div>
         </div>
+
+        </div><!-- /fn-dentro -->
 
       </div>
     </div>
@@ -28137,6 +28169,55 @@ function fnProjId(){
   var p = fnProjetosFull.filter(function(x){ return x.nome===fnProj; })[0];
   return p ? p.id : '';
 }
+// ══════════════════════════════════════════════════════
+// ── TELA DE PROJETOS ──
+// Antes o projeto era um seletor no meio da barra, e dava pra estar vendo o mapa
+// de um projeto com o teste A/B de outro. Agora ele e uma porta: escolheu, tudo
+// que aparece dali pra frente e daquele projeto.
+// ══════════════════════════════════════════════════════
+var fnDentro = false;
+
+function fnEntrarProjeto(nome){
+  fnProj = nome; fnDentro = true; fnIdx = 0; fnSel = null; abSel = null;
+  fnPintar(); fnCarregarStats();
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+function fnSairProjeto(){
+  fnDentro = false; abSel = null;
+  fnPintar();
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+function fnPintarProjetos(){
+  var el = document.getElementById('fn-projetos'); if(!el) return;
+  var todosFunis = fnFunis(), todosTestes = fnReds();
+  var cards = fnProjetos.map(function(nome){
+    var fs = todosFunis.filter(function(f){ return f.projeto===nome; });
+    var ts = todosTestes.filter(function(t){ return (t.projeto||'')===nome; });
+    var testando = ts.filter(function(t){ return t.meta && t.ativo!==false; }).length;
+    var etapas = fs.reduce(function(a,f){ return a + ((f.etapas||[]).length); }, 0);
+    var semLink = fs.reduce(function(a,f){
+      return a + (f.etapas||[]).filter(function(e){ return !e.url; }).length; }, 0);
+    return '<div class="fn-proj" onclick="fnEntrarProjeto(\''+fnEsc(nome).replace(/'/g,"\\'")+'\')">'+
+      '<div class="fn-proj-t">'+fnEsc(nome)+'</div>'+
+      '<div class="fn-proj-n">'+
+        '<span><b>'+fs.length+'</b> funil(is)</span>'+
+        '<span><b>'+etapas+'</b> etapa(s)</span>'+
+        '<span><b>'+ts.length+'</b> link(s)</span>'+
+      '</div>'+
+      '<div class="fn-proj-r">'+
+        (testando ? '<span class="fn-selo ok">'+testando+' teste(s) rodando</span>' : '')+
+        (semLink  ? '<span class="fn-selo alerta">'+semLink+' etapa(s) sem link</span>' : '')+
+        (!fs.length ? '<span class="fn-selo neutro">nenhum funil ainda</span>' : '')+
+      '</div>'+
+      '<div class="fn-proj-ir">Abrir ›</div></div>';
+  }).join('');
+  el.innerHTML =
+    '<div class="fn-proj-cab"><h2>Escolha o projeto</h2>'+
+      '<p>Tudo que aparecer depois — mapa, pixel, testes, jornada e atenção — é só deste projeto.</p></div>'+
+    '<div class="fn-projs">'+(cards || '<div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify.</div>')+'</div>';
+}
+
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
@@ -28248,9 +28329,22 @@ function fnFim(f){
 
 // ── desenho ──
 function fnPintar(){
+  var caixaProj = document.getElementById('fn-projetos');
+  var barra = document.getElementById('fn-barra'), dentro = document.getElementById('fn-dentro');
+  if(!fnDentro){
+    if(caixaProj) caixaProj.style.display='';
+    if(barra) barra.style.display='none';
+    if(dentro) dentro.style.display='none';
+    fnPintarProjetos();
+    return;
+  }
+  if(caixaProj) caixaProj.style.display='none';
+  if(barra) barra.style.display='';
+  if(dentro) dentro.style.display='';
+  var nome = document.getElementById('fn-proj-nome');
+  if(nome) nome.textContent = fnProj;
+
   var f = fnAtual();
-  var selP = document.getElementById('fn-projeto');
-  if(selP) selP.innerHTML = fnProjetos.map(function(p){ return '<option '+(p===fnProj?'selected':'')+'>'+fnEsc(p)+'</option>'; }).join('');
   var lista = fnDoProjeto();
   var selF = document.getElementById('fn-funil');
   if(selF) selF.innerHTML = lista.length
@@ -28920,11 +29014,22 @@ function fnPintarFeed(){
 // ══════════════════════════════════════════════════════
 var abSel = null, abDados = {}, abBuscando = {};
 
-function fnRedAtual(){ var l = fnReds(); return l.filter(function(r){ return r.slug===abSel; })[0] || null; }
+// Testes deste projeto. Link antigo (sem projeto) aparece em todos ate ser
+// aberto — na primeira vez ele e carimbado, e a partir dai fica no lugar certo.
+function abDoProjeto(){
+  return fnReds().filter(function(r){ return !r.projeto || r.projeto === fnProj; });
+}
+function fnRedAtual(){ return abDoProjeto().filter(function(r){ return r.slug===abSel; })[0] || null; }
 
 function abVoltar(){ abSel = null; fnPintarRed(); }
 
-function abEscolher(slug){ abSel = slug; fnPintarRed(); abCarregar(slug); }
+function abEscolher(slug){
+  abSel = slug;
+  var r = fnRedAtual();
+  // carimba o projeto no link antigo, pra ele parar de aparecer nos outros
+  if(r && !r.projeto && fnProj){ r.projeto = fnProj; fnGravarRed(r); }
+  fnPintarRed(); abCarregar(slug);
+}
 
 // Os numeros do teste vem do servidor: e la que mora a contagem por variante
 function abCarregar(slug){
@@ -28945,7 +29050,7 @@ function fnPintarRed(){
 
 // ── tela 1: a lista ──
 function abPintarLista(){
-  var l = fnReds();
+  var l = abDoProjeto();
   var cont = { rodando:0, dividindo:0, pausado:0 };
   l.forEach(function(r){
     var e = abEstado(r); cont[e] = (cont[e]||0) + 1;
@@ -29074,7 +29179,7 @@ function abPintarDetalhe(){
 
 function abOpcoesMeta(atual){
   var op = '<option value="">— sem meta (só divide) —</option>', achou = false;
-  fnFunis().forEach(function(f){
+  fnDoProjeto().forEach(function(f){
     (f.etapas||[]).forEach(function(et){
       if(atual===et.id) achou = true;
       op += '<option value="'+fnEsc(et.id)+'" '+(atual===et.id?'selected':'')+'>'+
@@ -29089,7 +29194,7 @@ function abOpcoesMeta(atual){
 }
 
 function abMetaExiste(id){
-  return fnFunis().some(function(f){ return (f.etapas||[]).some(function(e){ return e.id===id; }); });
+  return fnDoProjeto().some(function(f){ return (f.etapas||[]).some(function(e){ return e.id===id; }); });
 }
 function abVeredito(r, d){
   if(r.meta && !abMetaExiste(r.meta))
@@ -29140,9 +29245,15 @@ function abUrlVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].url=(v
 function abPeso(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].peso=Math.max(0,+v||0); fnGravarRed(r); fnPintarRed(); }
 function abTirarVar(i){
   var r=fnRedAtual(); if(!r) return;
-  if((r.destinos||[]).length<2){ toastFn('Um link precisa de pelo menos 1 destino'); return; }
-  if(!confirm('Remover esta variante? Os números dela somem do teste.')) return;
-  r.destinos.splice(i,1); delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
+  var d = (r.destinos||[])[i]; if(!d) return;
+  var ultima = (r.destinos||[]).length <= 1;
+  var aviso = ultima
+    ? 'Remover a última variante? O link para de funcionar até você adicionar outra.'
+    : 'Remover "'+(d.nome||d.url||'esta variante')+'"? Os números dela somem do teste.';
+  if(!confirm(aviso)) return;
+  r.destinos.splice(i,1);
+  delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
+  toastFn(ultima ? 'Variante removida — o link está sem destino' : 'Variante removida');
 }
 function abAddVar(){
   var r=fnRedAtual(); if(!r) return;
@@ -29180,8 +29291,8 @@ function abNovo(){
   if(!slug) return;
   if(fnReds().some(function(x){ return x.slug===slug; })){ toastFn('Já existe um link com esse atalho'); return; }
   var l = fnReds();
-  l.push({ id:'r'+Date.now(), nome:nome.trim(), slug:slug, ativo:true, hipotese:'', meta:'',
-           criadoEm:new Date().toISOString(), destinos:[], _updatedAt:Date.now() });
+  l.push({ id:'r'+Date.now(), nome:nome.trim(), slug:slug, projeto:fnProj, ativo:true,
+           hipotese:'', meta:'', criadoEm:new Date().toISOString(), destinos:[], _updatedAt:Date.now() });
   fnSalvarReds(l); abSel = slug; fnPintarRed();
   toastFn('Criado — agora adicione as variantes');
 }
