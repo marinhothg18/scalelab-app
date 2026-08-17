@@ -5784,7 +5784,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_vendas_raw',          // payloads crus dos gateways (dados de cliente)
   'sl_integracoes_utmify_mcp', // token de acesso do MCP da Utmify
   'sl_vturb',               // token da API de analytics da VTurb
-  'sl_funil_evfoto'         // foto interna dos contadores; nao serve pra tela
+  'sl_funil_evfoto',        // foto interna dos contadores; nao serve pra tela
+  'sl_ab_stats'             // contagem do teste A/B; a tela le por /api/ab/stats
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
