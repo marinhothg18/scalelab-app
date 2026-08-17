@@ -1562,6 +1562,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .ab-var-url{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;
   padding:7px 10px;color:var(--text);font-size:11.5px;font-family:ui-monospace,Menlo,monospace;outline:none;margin-bottom:11px}
 .ab-var-res{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-top:10px;border-top:1px solid var(--border)}
+.ab-var-res.quatro{grid-template-columns:repeat(4,1fr)}
+@media(max-width:620px){ .ab-var-res.quatro{grid-template-columns:repeat(2,1fr);row-gap:12px} }
+.ab-var-res .k small{display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;
+  border-radius:50%;background:var(--bg2);border:1px solid var(--border);font-size:8px;cursor:help;margin-left:3px}
 .ab-var-res .k{display:block;font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--text2)}
 .ab-var-res .v{display:block;font-size:16px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
 .fn-lig{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--border);
@@ -29150,6 +29154,8 @@ function abResumoCurto(r, d){
   if(!d) return { txt:'…', cor:'var(--text2)', extra:'' };
   var j = d.julgamento || {};
   var soma = (d.variantes||[]).reduce(function(a,v){ return a+v.pessoas; },0);
+  var cliq = (d.variantes||[]).reduce(function(a,v){ return a+(v.sorteios||0); },0);
+  if(!soma && cliq) return { txt:'Falta o pixel', cor:'var(--red)', extra:fnNum(cliq)+' cliques' };
   if(j.pronto){
     var lider = (d.variantes||[]).filter(function(v){ return v.id===d.lider; })[0];
     return { txt:(lider?fnEsc(lider.nome):'Uma variante')+' +'+Math.round(j.ganho*100)+'%',
@@ -29180,8 +29186,10 @@ function abPintarDetalhe(){
         '<span class="ab-var-pc">'+Math.round((Number(v.peso)||1)/pesoTot*100)+'%</span>'+
         '<button class="fn-btn g sm" onclick="abTirarVar('+i+')">✕</button></div>'+
       '<input class="ab-var-url" value="'+fnEsc(v.url||'')+'" placeholder="https://…" onchange="abUrlVar('+i+',this.value)">'+
-      '<div class="ab-var-res">'+
-        '<div><span class="k">Pessoas</span><span class="v">'+fnNum(v.pessoas)+'</span></div>'+
+      '<div class="ab-var-res quatro">'+
+        '<div><span class="k">Cliques no link</span><span class="v">'+fnNum(v.sorteios||0)+'</span></div>'+
+        '<div><span class="k">Pessoas <small title="Precisa do pixel na página">?</small></span>'+
+          '<span class="v"'+((v.sorteios>0 && !v.pessoas)?' style="color:var(--red)"':'')+'>'+fnNum(v.pessoas)+'</span></div>'+
         '<div><span class="k">'+(r.meta?'Conversões':'—')+'</span><span class="v">'+(r.meta?fnNum(v.metas):'—')+'</span></div>'+
         '<div><span class="k">Taxa</span><span class="v" style="color:'+pal[i%6]+'">'+
           (r.meta && v.pessoas ? v.conversao.toFixed(1)+'%' : '—')+'</span></div>'+
@@ -29266,10 +29274,19 @@ function abVeredito(r, d){
   if(!d) return '<div class="ab-ver neutro"><span class="ic">⏳</span><div><div class="t">Carregando os números…</div></div></div>';
   var j = d.julgamento || {};
   var soma = (d.variantes||[]).reduce(function(a,v){ return a+v.pessoas; },0);
+  var cliques = (d.variantes||[]).reduce(function(a,v){ return a+(v.sorteios||0); },0);
+  // Caso mais comum de "nao esta marcando": o link roda, mas a pagina de destino
+  // nao tem pixel. Antes a tela mostrava zero calado e parecia que estava quebrado.
+  if(!soma && cliques) return '<div class="ab-ver espera"><span class="ic">🔌</span><div>'+
+    '<div class="t">O link está funcionando — falta o pixel na página</div>'+
+    '<div class="d"><b>'+fnNum(cliques)+' pessoa(s)</b> já clicaram e foram sorteadas, mas nenhuma foi contada. '+
+    'O redirecionador conta sozinho; <b>quem conta gente é o pixel</b>, e ele precisa estar '+
+    'em cada página de variante. Vá na aba <b>Pixel</b>, escolha a etapa, e cole o código no '+
+    '<b>&lt;head&gt;</b> das '+((d.variantes||[]).length)+' páginas.</div></div></div>';
   if(!soma) return '<div class="ab-ver neutro"><span class="ic">🌱</span><div>'+
     '<div class="t">Ainda não passou ninguém</div>'+
-    '<div class="d">Cole o link no anúncio e confira se o pixel está nas páginas das variantes. '+
-    'Sem o pixel, o link divide mas ninguém conta.</div></div></div>';
+    '<div class="d">Ninguém clicou no link ainda. Cole ele no anúncio no lugar da URL da página — '+
+    'e confira se o pixel já está nas páginas das variantes.</div></div></div>';
   if(j.pronto){
     var lider = (d.variantes||[]).filter(function(v){ return v.id===d.lider; })[0];
     var perd  = (d.variantes||[]).filter(function(v){ return v.id===d.segundo; })[0];
