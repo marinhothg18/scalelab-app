@@ -2821,7 +2821,48 @@ function _utmifyMcpCfg(db) {
   return cfg;
 }
 
+// A Utmify fica atras da Cloudflare, que corta com 429 (erro 1015) quando as
+// requisicoes chegam muito juntas. Sem tratar isso, sincronizar um mes voltava
+// com o periodo inteiro vazio e a tela dizia so "Utmify recusou: ERRO".
+let _utmifyUltimaChamada = 0;
+// O espaco entre chamadas se ajusta sozinho: comeca curto (puxar "hoje" leva 2s)
+// e vai abrindo a cada recusa. Fixo nao serve — curto derruba periodo longo,
+// longo faria o uso do dia a dia esperar a toa.
+let _utmifyEspaco = 260;
+const UTMIFY_ESPACO_MIN = 260, UTMIFY_ESPACO_MAX = 1600;
+
+function _dormir(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function _utmifyPisarNoFreio() {
+  _utmifyEspaco = Math.min(UTMIFY_ESPACO_MAX, Math.round(_utmifyEspaco * 1.9) + 100);
+}
+function _utmifyAliviar() {
+  if (_utmifyEspaco > UTMIFY_ESPACO_MIN) _utmifyEspaco = Math.max(UTMIFY_ESPACO_MIN, _utmifyEspaco - 25);
+}
+
+async function _utmifyVezDeFalar() {
+  const desde = Date.now() - _utmifyUltimaChamada;
+  if (desde < _utmifyEspaco) await _dormir(_utmifyEspaco - desde);
+  _utmifyUltimaChamada = Date.now();
+}
+
 async function _utmifyRpc(token, metodo, params, sessionId) {
+  // ate 3 tentativas quando levar 429; a espera cresce, e respeita o Retry-After
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      return await _utmifyRpcUma(token, metodo, params, sessionId);
+    } catch (e) {
+      if (e.httpStatus !== 429 || tentativa >= 3) throw e;
+      _utmifyPisarNoFreio();
+      const espera = e.retryAfter ? (e.retryAfter * 1000) : [1500, 4000, 9000][tentativa];
+      console.log('[utmify] 429 — esperando ' + Math.round(espera / 1000) + 's e tentando de novo');
+      await _dormir(espera);
+    }
+  }
+}
+
+async function _utmifyRpcUma(token, metodo, params, sessionId) {
+  await _utmifyVezDeFalar();
   // O token vai na QUERY STRING — testei todos os formatos de header
   // (Authorization Bearer, x-api-token, x-api-key...) e todos devolvem
   // "O token de acesso é obrigatório". Só ?token= funciona.
@@ -2839,8 +2880,12 @@ async function _utmifyRpc(token, metodo, params, sessionId) {
   const sid = r.headers.get('mcp-session-id') || sessionId || null;
   const texto = await r.text();
   if (!r.ok) {
-    const e = new Error('Utmify MCP ' + r.status + ': ' + texto.slice(0, 180));
+    const e = r.status === 429
+      ? new Error('A Utmify limitou as requisições (429). Tentando mais devagar.')
+      : new Error('Utmify MCP ' + r.status + ': ' + texto.slice(0, 180));
     e.httpStatus = r.status;
+    const ra = Number(r.headers.get('retry-after'));
+    if (ra > 0 && ra < 120) e.retryAfter = ra;
     throw e;
   }
   let corpo = null;
@@ -2876,7 +2921,7 @@ async function _utmifyAbrirSessao(token) {
   return sid;
 }
 
-async function _utmifyChamarTool(token, tool, args) {
+async function _utmifyChamarTool(token, tool, args, _repetindo) {
   let sid;
   const viva = _utmifySessao && _utmifySessao.token === token &&
                (Date.now() - _utmifySessao.quando) < UTMIFY_SESSAO_MS;
@@ -2908,8 +2953,17 @@ async function _utmifyChamarTool(token, tool, args) {
       MCP_INTEGRATION_NOT_FOUND: 'Token não reconhecido pela Utmify — provavelmente foi revogado. Gere um novo token de MCP no painel da Utmify (Integrações › MCP) e cole aqui. Atenção: não é o token de API de envio de vendas.',
       UNAUTHORIZED: 'Token sem permissão para essa consulta.'
     }[motivo];
-    throw new Error(amigavel || ('Utmify recusou: ' + motivo));
+    if (amigavel) throw new Error(amigavel);       // problema de token: insistir nao resolve
+    // 'ERRO' seco quase sempre e aperto de limite disfarcado de HTTP 200.
+    // Freia e tenta mais uma vez antes de dar o dia por perdido.
+    if (!_repetindo) {
+      _utmifyPisarNoFreio();
+      await _dormir(1200);
+      try { return await _utmifyChamarTool(token, tool, args, true); } catch (e) { throw e; }
+    }
+    throw new Error('Utmify recusou: ' + motivo);
   }
+  _utmifyAliviar();
   return dados;
 }
 
@@ -3703,13 +3757,22 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   const linhas = [];
   const erros = [];
   const dias = _diasEntre(de, ate);
+  // dia a dia: numa busca de periodo a Utmify devolve o total somado, e todas as
+  // linhas acabariam carimbadas com a data final (perdendo a quebra por dia).
+  // Em fila isso eram 2 chamadas x cada dia x cada dashboard, uma esperando a
+  // outra — um mes passava de 2 minutos com o botao travado.
+  // Lotes de DOIS, medido contra a Utmify com 18 tarefas: 2 -> 6,3s e zero erro;
+  // 3 -> 5,1s e 2 erros; 4 -> 2,1s e 15 erros ("Utmify recusou: ERRO"). Ela
+  // rejeita rapido quando aperta, entao ir mais alto so parece mais rapido.
+  const tarefas = [];
   for (const dashId of dashboards) {
+    for (const dia of dias) tarefas.push({ dashId, dia });
+  }
+  async function _umDia(t) {
+    const dashId = t.dashId, dia = t.dia;
     const meta = (cfg.dashboards || []).find(d => d.id === dashId) || {};
     const tz = (meta.tz === undefined || meta.tz === null) ? -3 : meta.tz;
     const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
-    // dia a dia: numa busca de periodo a Utmify devolve o total somado, e todas as
-    // linhas acabariam carimbadas com a data final (perdendo a quebra por dia)
-    for (const dia of dias) {
     try {
       let campanhas, contas = [];
       if (cfg.modo === 'api') {
@@ -3770,6 +3833,25 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
         });
       });
     } catch (e) { erros.push((meta.nome || dashId) + ' ' + dia + ': ' + e.message); }
+  }
+  // a primeira sozinha: ela abre a sessao MCP, e as demais ja reaproveitam
+  if (tarefas.length) await _umDia(tarefas[0]);
+  const resto = tarefas.slice(1);
+  for (let i = 0; i < resto.length; i += 2) {
+    await Promise.all(resto.slice(i, i + 2).map(_umDia));
+  }
+  // Repescagem: o que falhou volta uma vez, em fila. Recusa por aperto passa
+  // na segunda, e assim um tropeco nao deixa buraco de um dia inteiro no banco.
+  if (erros.length) {
+    const falhou = erros.slice();
+    erros.length = 0;
+    // A recusa quase sempre e aperto de limite disfarçado. Esperar alguns
+    // segundos antes de insistir resolve mais do que tentar na hora.
+    await _dormir(6000);
+    for (const t of tarefas) {
+      const meta = (cfg.dashboards || []).find(d => d.id === t.dashId) || {};
+      const marca = (meta.nome || t.dashId) + ' ' + t.dia + ':';
+      if (falhou.some(m => m.indexOf(marca) === 0)) await _umDia(t);
     }
   }
 

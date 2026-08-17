@@ -29719,12 +29719,20 @@ function _pintarFonteAds(){
 async function puxarUtmifyPeriodo(silencioso){
   const { from, to } = getAdsDates();
   const bt = document.getElementById('ads-puxar-utmify');
-  const txt = bt ? bt.textContent : '';
-  if(bt){ bt.disabled=true; bt.textContent='⏳ Puxando...'; }
+  const txt = '⤓ Puxar período';
+  // Sem contador e sem teto, um período longo deixava o botão em "Puxando..."
+  // por minutos e parecia travado. Agora ele conta o tempo e desiste no limite.
+  let seg = 0, relogio = null;
+  if(bt){
+    bt.disabled = true; bt.textContent = '⏳ Puxando... 0s';
+    relogio = setInterval(function(){ seg++; bt.textContent = '⏳ Puxando... '+seg+'s'; }, 1000);
+  }
+  const corta = new AbortController();
+  const teto = setTimeout(function(){ corta.abort(); }, 180000);
   try{
     const r = await fetch('/api/integracoes/utmify-mcp/sync', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ de: from, ate: to })
+      body: JSON.stringify({ de: from, ate: to }), signal: corta.signal
     });
     const d = await r.json().catch(()=>({}));
     // Só a Diretoria pode disparar a busca. Pros demais a tela segue lendo o que
@@ -29739,9 +29747,13 @@ async function puxarUtmifyPeriodo(silencioso){
     if(d.erros && d.erros.length) showAdsError('Alguns dashboards falharam: '+d.erros.join(' | '));
     if(!silencioso) loadAdsMetrics();   // no modo silencioso quem chamou ja vai ler
   }catch(e){
-    showAdsError('Não consegui puxar da Utmify: '+e.message);
+    showAdsError(e && e.name==='AbortError'
+      ? 'A Utmify passou de 3 minutos e a busca foi interrompida. Tente um período menor — o automático já cobre hoje e ontem.'
+      : 'Não consegui puxar da Utmify: '+e.message);
   }finally{
-    if(bt){ bt.disabled=false; bt.textContent = txt || '⤓ Puxar período'; }
+    clearTimeout(teto);
+    if(relogio) clearInterval(relogio);
+    if(bt){ bt.disabled=false; bt.textContent = txt; }
   }
 }
 
