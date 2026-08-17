@@ -3497,7 +3497,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         </div>
 
         <div class="fn-painel" id="fn-p-pixel">
-          <div class="fn-nota">Cole em <b>cada página que é sua</b>, antes do <b>&lt;/head&gt;</b>. Ele cria um identificador no primeiro acesso e reencontra a mesma pessoa nas páginas seguintes — é isso que liga um passo no outro.<br>
+          <div class="fn-nota">Uma linha por página, antes do <b>&lt;/head&gt;</b>. O código de verdade fica no nosso servidor —
+            assim dá pra melhorar o pixel sem você recolar nada, e a sua página não carrega comentário nenhum.<br>
             <b>Página de checkout do gateway você não consegue marcar assim</b> — use o bloco do botão, aqui embaixo. E se a venda nem volta pra uma página sua, o mapa puxa o número da Utmify e marca <b>via Utmify</b> no bloco.</div>
           <div class="fn-cols">
             <div>
@@ -28955,74 +28956,14 @@ function fnPixel(){
   if(!f || !f.etapas.length){ cx.textContent = 'Adicione uma etapa primeiro.'; return; }
   var id = (document.getElementById('fn-px-etapa')||{}).value;
   var e = fnAcha(f,id) || f.etapas[0];
-  var base = location.origin;
-  cx.textContent =
-'<!-- Pixel TMX · '+f.nome+' › '+e.nome+'\n     Cole em: '+(e.url || '(link ainda não informado)')+' -->\n'+
-'<script>\n'+
-'(function(w,d){\n'+
-'  var FUNIL = "'+f.id+'";\n'+
-'  var ETAPA = "'+e.id+'";\n'+
-'  var API   = "'+base+'/api/funil/evento";\n\n'+
-'  var id = (d.cookie.match(/tmx_id=([^;]+)/)||[])[1];\n'+
-'  if(!id){\n'+
-'    id = "v" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);\n'+
-'    d.cookie = "tmx_id=" + id + ";path=/;max-age=7776000;SameSite=Lax";\n'+
-'  }\n\n'+
-'  var q = new URLSearchParams(location.search), utm = {};\n'+
-'  ["source","medium","campaign","content","term"].forEach(function(k){\n'+
-'    var v = q.get("utm_"+k);\n'+
-'    if(v) localStorage.setItem("tmx_utm_"+k, v);\n'+
-'    utm[k] = v || localStorage.getItem("tmx_utm_"+k) || "";\n'+
-'  });\n\n'+
-'  // Teste A/B: o redirecionador manda tmx_t e tmx_v na URL. Guardamos porque\n'+
-'  // nas paginas seguintes eles nao vem mais, e a conversao acontece la na frente.\n'+
-'  ["t","v"].forEach(function(k){\n'+
-'    var v = q.get("tmx_"+k);\n'+
-'    if(v) localStorage.setItem("tmx_ab_"+k, v);\n'+
-'  });\n'+
-'  var teste    = localStorage.getItem("tmx_ab_t") || "";\n'+
-'  var variante = localStorage.getItem("tmx_ab_v") || "";\n\n'+
-'  var entrou = Date.now();\n'+
-'  function manda(tipo, extra){\n'+
-'    var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,\n'+
-'                                teste:teste, variante:variante, ref:d.referrer }, extra||{});\n'+
-'    var corpo = JSON.stringify(dados);\n'+
-'    // text/plain de proposito: evita o preflight do navegador, entao o evento\n'+
-'    // sai mesmo quando a pessoa esta fechando a pagina.\n'+
-'    navigator.sendBeacon\n'+
-'      ? navigator.sendBeacon(API, new Blob([corpo],{type:"text/plain;charset=UTF-8"}))\n'+
-'      : fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=UTF-8"},body:corpo,keepalive:true});\n'+
-'  }\n'+
-'  manda("entrou");\n\n'+
-'  var fundo = 0;\n'+
-'  w.addEventListener("scroll", function(){\n'+
-'    var p = (scrollY+innerHeight)/d.body.scrollHeight*100;\n'+
-'    if(p>fundo) fundo = p;\n'+
-'  },{passive:true});\n'+
-'  w.addEventListener("pagehide", function(){\n'+
-'    manda("saiu",{ segundos: Math.round((Date.now()-entrou)/1000), rolagem: Math.round(fundo) });\n'+
-'  });\n\n'+
-'  // Onde clicam. O rotulo e o texto do que foi clicado — mais util que a\n'+
-'  // posicao exata, porque e o nome que voce reconhece na hora de mexer na pagina.\n'+
-'  d.addEventListener("click", function(ev){\n'+
-'    var el = ev.target && ev.target.closest ? ev.target.closest("a,button,[role=button],input[type=submit],img,video") : null;\n'+
-'    if(!el) el = ev.target;\n'+
-'    if(!el || !el.getBoundingClientRect) return;\n'+
-'    var rot = (el.getAttribute("aria-label") || el.innerText || el.alt || el.value || el.tagName || "").trim();\n'+
-'    rot = rot.replace(/\\s+/g," ").slice(0,70);\n'+
-'    if(!rot) rot = el.tagName;\n'+
-'    var alt = d.body.scrollHeight || 1;\n'+
-'    var y = el.getBoundingClientRect().top + scrollY;\n'+
-'    manda("clique", { rotulo: rot, posicao: Math.round(y/alt*100) });\n'+
-'  }, true);\n\n'+
-'  // eventos manuais: TMX("play") ou TMX("clique_comprar")\n'+
-'  w.TMX = function(nome, extra){ manda(nome, extra); };\n'+
-'})(window, document);\n'+
-'<\/script>';
+  // Uma linha. O codigo de verdade mora em /px.js, no nosso servidor: assim da
+  // pra corrigir o pixel sem ninguem recolar nada, e a pagina nao carrega um
+  // comentario dizendo o nome do funil pra quem abrir o codigo fonte.
+  cx.textContent = '<script src="'+location.origin+'/px.js" data-f="'+f.id+'" data-e="'+e.id+'" async><\/script>';
 }
+
 // Botao de compra: o gateway nao aceita o nosso pixel, mas o clique acontece
-// numa pagina nossa. Esse trecho marca a etapa de checkout no clique, antes do
-// navegador sair — e o que fecha o buraco entre a VSL e a venda.
+// numa pagina sua. Duas linhas, apoiadas no TMXBotao que o px.js ja traz.
 function fnPixelBotao(){
   var f = fnAtual(), cx = document.getElementById('fn-px-botao');
   if(!cx) return;
@@ -29030,19 +28971,8 @@ function fnPixelBotao(){
   var chk = (f.etapas||[]).filter(function(e){ return e.tipo==='checkout'; })[0];
   if(!chk){ cx.textContent = 'Adicione uma etapa do tipo Checkout pra gerar este trecho.'; return; }
   cx.textContent =
-'<!-- Cole na MESMA página onde está o botão de compra, depois do pixel.\n'+
-'     Marca a etapa "'+chk.nome+'" no clique, sem precisar mexer no checkout. -->\n'+
 '<script>\n'+
-'(function(d){\n'+
-'  var ETAPA = "'+chk.id+'";\n'+
-'  // troque pelo seletor do seu botao: .btn-comprar, #comprar, a[href*="pay."]...\n'+
-'  var SELETOR = \'a[href*="pay."], a[href*="checkout"], .btn-comprar\';\n\n'+
-'  d.addEventListener("click", function(ev){\n'+
-'    var alvo = ev.target.closest(SELETOR);\n'+
-'    if(!alvo || !window.TMX) return;\n'+
-'    TMX("entrou", { etapa: ETAPA });\n'+
-'  }, true);\n'+
-'})(document);\n'+
+'  TMXBotao(\'a[href*="pay."], a[href*="checkout"], .btn-comprar\', \''+chk.id+'\');\n'+
 '<\/script>';
 }
 

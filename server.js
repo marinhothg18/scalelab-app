@@ -8537,6 +8537,94 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════
+// ── O PIXEL, SERVIDO DAQUI ──
+// Antes o codigo inteiro era colado em cada pagina: ~40 linhas, com um
+// comentario em cima dizendo o nome do funil e a URL — que qualquer um lia no
+// "ver codigo fonte" do site. E, pior: corrigir qualquer coisa no pixel exigia
+// recolar em TODAS as paginas. Agora a pagina carrega este arquivo e passa so
+// os dois ids; o que muda aqui vale pra todo mundo no proximo carregamento.
+// ══════════════════════════════════════════════════════
+const PIXEL_JS = `(function(w,d){
+  var eu = d.currentScript;
+  if(!eu) { var ts = d.getElementsByTagName('script'); eu = ts[ts.length-1]; }
+  var FUNIL = eu.getAttribute('data-f') || '';
+  var ETAPA = eu.getAttribute('data-e') || '';
+  var API   = eu.src.replace(/\\/px\\.js.*$/, '') + '/api/funil/evento';
+  if(!FUNIL) return;
+
+  var id = (d.cookie.match(/tmx_id=([^;]+)/)||[])[1];
+  if(!id){
+    id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+    d.cookie = 'tmx_id=' + id + ';path=/;max-age=7776000;SameSite=Lax';
+  }
+
+  var q = new URLSearchParams(location.search), utm = {};
+  ['source','medium','campaign','content','term'].forEach(function(k){
+    var v = q.get('utm_'+k);
+    try{ if(v) localStorage.setItem('tmx_utm_'+k, v);
+         utm[k] = v || localStorage.getItem('tmx_utm_'+k) || ''; }catch(e){ utm[k] = v || ''; }
+  });
+  ['t','v'].forEach(function(k){
+    var v = q.get('tmx_'+k);
+    try{ if(v) localStorage.setItem('tmx_ab_'+k, v); }catch(e){}
+  });
+  var teste = '', variante = '';
+  try{ teste = localStorage.getItem('tmx_ab_t') || ''; variante = localStorage.getItem('tmx_ab_v') || ''; }catch(e){}
+
+  var entrou = Date.now();
+  function manda(tipo, extra){
+    var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
+                                teste:teste, variante:variante, ref:d.referrer }, extra||{});
+    var corpo = JSON.stringify(dados);
+    try{
+      navigator.sendBeacon
+        ? navigator.sendBeacon(API, new Blob([corpo],{type:'text/plain;charset=UTF-8'}))
+        : fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:corpo,keepalive:true});
+    }catch(e){}
+  }
+  manda('entrou');
+
+  var fundo = 0;
+  w.addEventListener('scroll', function(){
+    var p = (scrollY+innerHeight)/(d.body.scrollHeight||1)*100;
+    if(p>fundo) fundo = p;
+  },{passive:true});
+  w.addEventListener('pagehide', function(){
+    manda('saiu',{ segundos: Math.round((Date.now()-entrou)/1000), rolagem: Math.round(fundo) });
+  });
+
+  d.addEventListener('click', function(ev){
+    var el = ev.target && ev.target.closest ? ev.target.closest('a,button,[role=button],input[type=submit],img,video') : null;
+    if(!el) el = ev.target;
+    if(!el || !el.getBoundingClientRect) return;
+    var rot = (el.getAttribute && el.getAttribute('aria-label')) || el.innerText || el.alt || el.value || el.tagName || '';
+    rot = String(rot).replace(/\\s+/g,' ').trim().slice(0,70) || el.tagName;
+    var alt = d.body.scrollHeight || 1;
+    var y = el.getBoundingClientRect().top + scrollY;
+    manda('clique', { rotulo: rot, posicao: Math.round(y/alt*100) });
+  }, true);
+
+  // Marca uma etapa no clique de um botao — serve pro checkout do gateway,
+  // onde o nosso codigo nao entra mas o clique acontece numa pagina sua.
+  w.TMX = function(nome, extra){ manda(nome, extra); };
+  w.TMXBotao = function(seletor, etapa){
+    d.addEventListener('click', function(ev){
+      var alvo = ev.target && ev.target.closest ? ev.target.closest(seletor) : null;
+      if(alvo) manda('entrou', { etapa: etapa });
+    }, true);
+  };
+})(window, document);`;
+
+app.get('/px.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('Access-Control-Allow-Origin', '*');
+  // 1h: melhoria no pixel chega em todo mundo no dia seguinte sem recolar nada,
+  // e nao castiga a pagina com um download a cada acesso.
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(PIXEL_JS);
+});
+
 // ── Redirecionador: divide o trafego entre destinos por peso ──
 app.get('/r/:slug', (req, res) => {
   try {
