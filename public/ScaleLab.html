@@ -1430,6 +1430,34 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-aviso-lig{display:flex;align-items:center;gap:9px;background:rgba(27,156,250,.12);border:1px solid var(--accent);
   border-radius:10px;padding:8px 12px;margin-bottom:9px;font-size:12px;font-weight:600}
 .fn-sec{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin:14px 0 7px}
+/* ── cabeçalho: painel de contexto + segmentado ── */
+.fn-ctx{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:15px 17px;margin-bottom:13px}
+.fn-ctx-l1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.fn-ctx-l1 .sep{color:var(--text2);opacity:.6}
+.fn-ctx-l1 #fn-funil{background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  padding:6px 10px;color:var(--text);font-size:13px;font-weight:650;outline:none;font-family:inherit;max-width:230px}
+.fn-ctx-dir{margin-left:auto;display:flex;gap:8px;align-items:center}
+.fn-per{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;
+  color:var(--text);font-size:12.5px;font-weight:650;outline:none;font-family:inherit}
+.fn-vivo2{display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,.13);
+  border:1px solid rgba(34,197,94,.32);color:var(--green);border-radius:7px;padding:3px 9px;
+  font-size:10.5px;font-weight:800;letter-spacing:.03em}
+.fn-vivo2 .fn-pulsa{width:6px;height:6px;border-radius:50%;background:currentColor;display:block}
+.fn-ctx-num{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:1px;
+  background:var(--border);border-radius:10px;overflow:hidden}
+.fn-ctx-num > div{background:var(--bg2);padding:11px 13px}
+.fn-ctx-num .k{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
+.fn-ctx-num .v{font-size:21px;font-weight:800;letter-spacing:-.035em;margin-top:2px;
+  line-height:1.15;font-variant-numeric:tabular-nums}
+.fn-seg{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:11px;
+  padding:4px;gap:2px;overflow-x:auto;max-width:100%;margin-bottom:18px}
+.fn-seg .fn-aba{background:none;border:none;font-family:inherit;font-size:13px;font-weight:650;
+  color:var(--text2);padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;
+  display:flex;align-items:center;gap:7px}
+.fn-seg .fn-aba:hover{color:var(--text)}
+.fn-seg .fn-aba.on{background:var(--bg2);color:var(--text);font-weight:750;
+  box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
 /* ── tela de projetos ── */
 .fn-proj-cab{margin:6px 0 20px}
 .fn-proj-cab h2{font-size:20px;font-weight:800;letter-spacing:-.02em;margin:0 0 4px}
@@ -3390,27 +3418,31 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <!-- Tela 1: escolher o projeto. Tudo que vem depois e daquele projeto. -->
         <div id="fn-projetos"></div>
 
-        <div class="fn-topo" id="fn-barra" style="display:none">
-          <div class="fn-trilha">
-            <button class="fn-voltar" onclick="fnSairProjeto()">‹ Projetos</button>
-            <span class="fn-proj-nome" id="fn-proj-nome"></span>
-            <span class="sep">›</span>
-            <select id="fn-funil" onchange="fnTrocarFunil(this.value)"></select>
-            <button class="fn-btn sm" onclick="fnNovoFunil()">+ Novo funil</button>
+        <div id="fn-barra" style="display:none">
+          <div class="fn-ctx">
+            <div class="fn-ctx-l1">
+              <button class="fn-voltar" onclick="fnSairProjeto()">‹ Projetos</button>
+              <span class="fn-proj-nome" id="fn-proj-nome"></span>
+              <span class="sep">›</span>
+              <select id="fn-funil" onchange="fnTrocarFunil(this.value)"></select>
+              <button class="fn-btn sm" onclick="fnNovoFunil()">+ Novo funil</button>
+              <span class="fn-vivo2"><i class="fn-pulsa"></i> AO VIVO</span>
+              <div class="fn-ctx-dir">
+                <select id="fn-periodo" class="fn-per" onchange="fnCarregarStats()">
+                  <option value="hoje">Hoje</option><option value="7d">7 dias</option><option value="30d">30 dias</option>
+                </select>
+                <button class="fn-btn g sm" onclick="fnCarregarStats()" title="Atualizar">↻</button>
+              </div>
+            </div>
+            <div class="fn-ctx-num" id="fn-ctx-num"></div>
           </div>
-          <div class="fn-abas">
+
+          <div class="fn-seg">
             <button class="fn-aba on" onclick="fnAba('mapa',this)">🧭 Mapa</button>
             <button class="fn-aba" onclick="fnAba('pixel',this)">📡 Pixel</button>
-            <button class="fn-aba" onclick="fnAba('redir',this)">🔀 Testes A/B e links</button>
+            <button class="fn-aba" onclick="fnAba('redir',this)">🔀 Testes A/B</button>
             <button class="fn-aba" onclick="fnAba('jornada',this)">👣 Jornada</button>
-            <button class="fn-aba" onclick="fnAba('atencao',this)">👁 Atenção da página</button>
-          </div>
-          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-            <select id="fn-periodo" class="fn-per" onchange="fnCarregarStats()"
-              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px;outline:none">
-              <option value="hoje">Hoje</option><option value="7d">7 dias</option><option value="30d">30 dias</option>
-            </select>
-            <button class="fn-btn g sm" onclick="fnCarregarStats()">🔄 Atualizar</button>
+            <button class="fn-aba" onclick="fnAba('atencao',this)">👁 Atenção</button>
           </div>
         </div>
 
@@ -3427,8 +3459,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                   <button class="fn-arrumar" onclick="fnArrumar()" title="Reorganiza os blocos seguindo as ligações">✨ Arrumar mapa</button>
                   <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button>
                     <button onclick="fnCaber()" title="Encaixa o mapa inteiro na tela">⤢</button></div>
-                  <div class="fn-vivo"><span class="fn-pulsa"></span> AO VIVO</div>
-                </div>
+                  </div>
                 <div class="fn-mapa" id="fn-mapa">
                   <div class="fn-grade"></div>
                   <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
@@ -28188,6 +28219,31 @@ function fnSairProjeto(){
   window.scrollTo({ top:0, behavior:'smooth' });
 }
 
+// Os numeros do funil ficam no topo, visiveis em qualquer aba: antes voce
+// precisava voltar pro Mapa so pra saber como o funil estava.
+function fnPintarCtx(){
+  var el = document.getElementById('fn-ctx-num'); if(!el) return;
+  var f = fnAtual();
+  if(!f){ el.innerHTML = ''; return; }
+  var achaTipo = function(t){
+    var e = (f.etapas||[]).filter(function(x){ return x.tipo===t; })[0];
+    return e ? fnVal(e.id) : null;
+  };
+  var cliques = fnCliques ? (fnCliques.total||0) : null;
+  var chegaram = fnBase(f);
+  var chk = achaTipo('checkout'), obr = achaTipo('obrigado');
+  var testes = abDoProjeto().filter(function(r){ return r.meta && r.ativo!==false; }).length;
+  var cel = function(k, v, cor){
+    return '<div><div class="k">'+k+'</div><div class="v"'+(cor?(' style="color:'+cor+'"'):'')+'>'+v+'</div></div>';
+  };
+  el.innerHTML =
+    cel('Cliques',   cliques===null ? '—' : fnNum(cliques)) +
+    cel('Chegaram',  fnNum(chegaram)) +
+    (chk!==null ? cel('Checkout',  fnNum(chk), chk?'#f59e0b':'') : '') +
+    (obr!==null ? cel('Compraram', fnNum(obr), obr?'var(--green)':'') : '') +
+    cel('Testes',    fnNum(testes), testes?'var(--accent)':'');
+}
+
 function fnPintarProjetos(){
   var el = document.getElementById('fn-projetos'); if(!el) return;
   var todosFunis = fnFunis(), todosTestes = fnReds();
@@ -28269,7 +28325,7 @@ function fnCarregarCliques(de, ate){
       (d.campanhas||[]).forEach(function(c){ fnCliques.campanhas[c.nome] = c.cliques||0; });
       fnCliquesLista = (d.campanhas||[]).map(function(c){ return c.nome; });
       if(d.erros && d.erros.length) fnCliquesErro = d.erros.join(' · ');
-      fnListaFontes(); fnNos(); fnFios(); fnDetalhe();
+      fnPintarCtx(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe();
     }).catch(function(e){
       fnCliquesErro = e.message; fnCliques = null;
       fnListaFontes(); fnNos(); fnDetalhe();
@@ -28343,6 +28399,7 @@ function fnPintar(){
   if(dentro) dentro.style.display='';
   var nome = document.getElementById('fn-proj-nome');
   if(nome) nome.textContent = fnProj;
+  fnPintarCtx();
 
   var f = fnAtual();
   var lista = fnDoProjeto();
