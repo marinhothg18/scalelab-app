@@ -8205,10 +8205,21 @@ function _jRegistrar(visitante, funil, etapa, tipo, extra) {
   if (extra && extra.versao)  ev.versao  = String(extra.versao).slice(0, 40);
   if (extra && extra.utm && extra.utm.content) ev.criativo = String(extra.utm.content).slice(0, 80);
   if (extra && extra.variante) ev.variante = String(extra.variante).slice(0, 40);
+  if (extra && extra.teste)    ev.teste    = String(extra.teste).slice(0, 60);
   if (extra && extra.rotulo)   ev.rotulo = String(extra.rotulo).slice(0, 70);
   j.eventos.push(ev);
   if (j.eventos.length > JORNADA_EVENTOS) j.eventos = j.eventos.slice(-JORNADA_EVENTOS);
   _jSujo = true;
+}
+
+// Quando a jornada aconteceu, em ms. Aceita ISO, numero ou lixo — um evento
+// torto nunca pode derrubar a lista inteira com erro 500.
+function _jQuando(j) {
+  const evs = (j && j.eventos) || [];
+  const ult = evs[evs.length - 1];
+  const bruto = ult ? ult.em : (j && j.em);
+  const t = typeof bruto === 'number' ? bruto : Date.parse(bruto);
+  return Number.isFinite(t) ? t : 0;
 }
 
 function _jGravar() {
@@ -8227,12 +8238,8 @@ function _jGravar() {
     });
     // guarda os mais recentes primeiro, e corta pelo teto e pela idade
     const corte = Date.now() - JORNADA_DIAS * 86400000;
-    atual = atual.filter(j => {
-      const ult = j.eventos[j.eventos.length - 1];
-      return ult && new Date(ult.em).getTime() >= corte;
-    }).sort((a, b) => {
-      const ua = a.eventos[a.eventos.length - 1].em, ub = b.eventos[b.eventos.length - 1].em;
-      return ub.localeCompare(ua);
+    atual = atual.filter(j => _jQuando(j) >= corte).sort((a, b) => {
+      return _jQuando(b) - _jQuando(a);
     }).slice(0, JORNADA_TETO);
     db.store[KEY_JORNADA] = atual;
     db.timestamps[KEY_JORNADA] = now();
@@ -8240,6 +8247,46 @@ function _jGravar() {
   } catch (e) { console.error('[jornada] falhou ao gravar:', e.message); }
 }
 setInterval(_jGravar, 45 * 1000);
+
+// ── Diagnostico: pra onde o pixel esta mandando de verdade ──
+// Sem isso, pixel apontando pro funil errado vira zero calado — e zero calado
+// parece "nao funciona", quando na verdade o dado esta la, so noutro lugar.
+app.get('/api/funil/diagnostico', authUsuario, (req, res) => {
+  try {
+    const db = readDB();
+    const funis = Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [];
+    const nomeFunil = {}, nomeEtapa = {};
+    funis.forEach(f => {
+      nomeFunil[f.id] = f.nome || f.id;
+      (f.etapas || []).forEach(e => { nomeEtapa[e.id] = { nome: e.nome, funil: f.id }; });
+    });
+
+    const linhas = (Array.isArray(db.store[KEY_FSTATS]) ? db.store[KEY_FSTATS] : [])
+      .concat(Object.values(_fBuffer));
+    const corte = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const vistos = {};
+    linhas.filter(l => l.data >= corte && !String(l.funil || '').startsWith('redir:')).forEach(l => {
+      const k = l.funil + '|' + l.etapa;
+      if (!vistos[k]) vistos[k] = {
+        funil: l.funil, etapa: l.etapa,
+        funilNome: nomeFunil[l.funil] || null,
+        etapaNome: (nomeEtapa[l.etapa] && nomeEtapa[l.etapa].nome) || null,
+        // a etapa pode existir, mas noutro funil — e o engano mais comum
+        etapaDeOutroFunil: !!(nomeEtapa[l.etapa] && nomeEtapa[l.etapa].funil !== l.funil),
+        entradas: 0, unicos: 0
+      };
+      vistos[k].entradas += l.entradas || 0;
+      vistos[k].unicos   += l.unicos   || 0;
+    });
+
+    const lista = Object.values(vistos).sort((a, b) => b.entradas - a.entradas);
+    res.json({ ok: true, desde: corte, recebendo: lista,
+      // o que o pixel manda e nao casa com funil nenhum salvo
+      orfaos: lista.filter(x => !x.funilNome || !x.etapaNome),
+      funis: funis.map(f => ({ id: f.id, nome: f.nome,
+        etapas: (f.etapas || []).map(e => ({ id: e.id, nome: e.nome })) })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/api/funil/jornadas', authUsuario, (req, res) => {
   try {
@@ -8255,6 +8302,10 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     let lista = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
       .filter(j => !funil || j.funil === funil)
       .concat(Object.values(_jBuffer).filter(j => !funil || j.funil === funil));
+
+    // filtra por quem veio de um teste especifico — a variante viaja no evento
+    const teste = String(req.query.teste || '').slice(0, 60);
+    if (teste) lista = lista.filter(j => j.eventos.some(e => e.teste === teste || e.variante));
 
     const passou = (j, t) => j.eventos.some(e => tipo[e.etapa] === t);
 
@@ -8309,8 +8360,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     if (filtros[filtro]) lista = lista.filter(filtros[filtro]);
 
     lista = lista.sort((a, b) => {
-      const ua = a.eventos[a.eventos.length - 1].em, ub = b.eventos[b.eventos.length - 1].em;
-      return ub.localeCompare(ua);
+      return _jQuando(b) - _jQuando(a);
     }).slice(0, 40);
 
     res.json({ ok: true, funil, filtro, contagem,
@@ -8933,6 +8983,28 @@ app.get('/r/:slug', (req, res) => {
     res.redirect(302, destino);
   } catch (e) { res.status(500).send('Erro no redirecionamento.'); }
 });
+
+// ── Não perder métrica no deploy ────────────────────────────────────────────
+// Os contadores ficam em buffer na memória e só descem pro disco a cada 30–45s.
+// Numa atualização o Railway manda SIGTERM e mata o processo: sem isto aqui, o
+// que estava no buffer nesse instante ia embora — e é justamente o pico da hora
+// do deploy. Grava tudo antes de sair.
+let _saindo = false;
+function _gravarTudoESair(sinal) {
+  if (_saindo) return;
+  _saindo = true;
+  console.log(`[${sinal}] gravando métricas pendentes antes de encerrar…`);
+  const passos = [
+    ['funil',   _fGravar],  ['atencao', _atGravar],
+    ['ab',      _abGravar], ['jornada', _jGravar]
+  ];
+  for (const [nome, fn] of passos) {
+    try { fn(); } catch (e) { console.error(`[${sinal}] ${nome} falhou:`, e.message); }
+  }
+  console.log(`[${sinal}] métricas gravadas.`);
+  process.exit(0);
+}
+['SIGTERM', 'SIGINT'].forEach(s => process.on(s, () => _gravarTudoESair(s)));
 
 app.listen(PORT, () => {
   console.log('');

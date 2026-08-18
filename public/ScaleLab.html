@@ -3567,8 +3567,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <div class="fn-painel" id="fn-p-jornada">
           <div class="fn-nota">O caminho de cada visitante, do anúncio ao fim. O valor não é acompanhar uma pessoa —
             é poder perguntar <b>“me mostra 10 que chegaram no checkout e não compraram”</b>. Guarda 7 dias.</div>
-          <div class="fn-campo" style="max-width:340px"><label>Página</label>
-            <select id="jn-etapa" onchange="jnTempo()"></select></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+            <div class="fn-campo" style="min-width:250px;flex:1;max-width:340px"><label>Teste ou link</label>
+              <select id="jn-teste" onchange="jnCarregar()"></select></div>
+            <div class="fn-campo" style="min-width:200px;flex:1;max-width:290px"><label>Página do funil</label>
+              <select id="jn-etapa" onchange="jnTempo()"></select></div>
+          </div>
           <div id="jn-funil-tempo"></div>
           <div id="jn-piramide"></div>
           <div class="fn-filtros" id="jn-filtros"></div>
@@ -16604,16 +16608,6 @@ function copiarLinkModal(){
   }
 }
 
-function _fallbackCopy(text){
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position='fixed'; ta.style.opacity='0';
-  document.body.appendChild(ta);
-  ta.select(); document.execCommand('copy');
-  document.body.removeChild(ta);
-  notif('✅ Link copiado!');
-}
-
 function abrirRemessaPorUrl(){
   const params = new URLSearchParams(window.location.search);
   const remessaId = params.get('remessa');
@@ -29121,7 +29115,7 @@ function abPintarLista(){
     var resumo = abResumoCurto(r, d);
     return '<div class="ab-linha" onclick="abEscolher(\''+fnEsc(r.slug)+'\')">'+
       '<div><div class="t">'+fnEsc(r.nome||r.slug)+'</div>'+
-        '<div class="s">/r/'+fnEsc(r.slug)+' · '+((r.destinos||[]).length)+' variante(s)</div></div>'+
+        '<div class="s">/r/'+fnEsc(r.slug)+' · '+abLinhaVars(r, d)+'</div></div>'+
       '<div><span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
       '<div class="ab-res" style="color:'+resumo.cor+'">'+resumo.txt+'</div>'+
       '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div></div>';
@@ -29144,25 +29138,45 @@ function abPintarLista(){
   l.forEach(function(r){ if(!abDados[r.slug]) abCarregar(r.slug); });
 }
 
+// Uma linha por teste já dizendo quanto cada variante levou de clique e de gente.
+function abLinhaVars(r, d){
+  var vs = (d && d.variantes) || [];
+  if(!vs.length) return ((r.destinos||[]).length)+' variante(s)';
+  return vs.map(function(v){
+    var n = (v.nome||v.id);
+    return fnEsc(n.length>16 ? n.slice(0,15)+'…' : n)+' <b>'+fnNum(v.sorteios||0)+'</b>'+
+           (v.pessoas ? ('/'+fnNum(v.pessoas)) : '');
+  }).join(' · ');
+}
+
 var AB_SELO = { rodando:'TESTANDO', dividindo:'SÓ DIVIDINDO', pausado:'PAUSADO' };
 function abEstado(r){
   if(r.ativo === false) return 'pausado';
   return r.meta ? 'rodando' : 'dividindo';
 }
 function abResumoCurto(r, d){
-  if(!r.meta) return { txt:'—', cor:'var(--text2)', extra:'sem meta' };
   if(!d) return { txt:'…', cor:'var(--text2)', extra:'' };
   var j = d.julgamento || {};
   var soma = (d.variantes||[]).reduce(function(a,v){ return a+v.pessoas; },0);
   var cliq = (d.variantes||[]).reduce(function(a,v){ return a+(v.sorteios||0); },0);
+  // Sem meta o teste só divide — mas os números de tráfego valem do mesmo jeito,
+  // e antes era preciso abrir o teste só pra ver quantos cliques ele levou.
+  if(!r.meta) return { txt: cliq ? (fnNum(cliq)+' cliques') : 'sem cliques ainda',
+                       cor: cliq ? 'var(--text)' : 'var(--text2)',
+                       extra: soma ? (fnNum(soma)+' pessoas na página') : 'sem meta — só divide' };
   if(!soma && cliq) return { txt:'Falta o pixel', cor:'var(--red)', extra:fnNum(cliq)+' cliques' };
   if(j.pronto){
     var lider = (d.variantes||[]).filter(function(v){ return v.id===d.lider; })[0];
     return { txt:(lider?fnEsc(lider.nome):'Uma variante')+' +'+Math.round(j.ganho*100)+'%',
              cor:'var(--green)', extra:j.conf+'% conf.' };
   }
+  var metas = (d.variantes||[]).reduce(function(a,v){ return a+(v.metas||0); },0);
+  if(!soma) return { txt:'Sem conclusão', cor:'#f59e0b', extra:'sem gente ainda' };
+  // sem nenhuma conversão a conta de amostra não fecha — dizer "?" não ajuda ninguém
+  if(!metas) return { txt:'Sem conclusão', cor:'#f59e0b',
+                      extra:fnNum(soma)+' pessoas, nenhuma converteu ainda' };
   return { txt:'Sem conclusão', cor:'#f59e0b',
-           extra: soma ? ('faltam ~'+(j.faltamPorLado!=null?fnNum(j.faltamPorLado):'?')+'/lado') : 'sem gente ainda' };
+           extra:'faltam ~'+(j.faltamPorLado!=null?fnNum(j.faltamPorLado):'mais gente')+'/lado' };
 }
 
 // ── tela 2: o teste aberto ──
@@ -29404,7 +29418,7 @@ function fnGravarRed(r){
 // ══════════════════════════════════════════════════════
 // ── JORNADA POR PESSOA ──
 // ══════════════════════════════════════════════════════
-var jnFiltro = 'checkout-sem-compra', jnDados = null;
+var jnFiltro = 'todas', jnDados = null;   // abrir num filtro estreito faz a tela parecer vazia
 var JN_ROTULO = {
   'checkout-sem-compra':'Chegou no checkout e não comprou',
   'comprou':'Comprou',
@@ -29492,7 +29506,7 @@ function jnPintarTempo(d, et){
 function jnPiramide(d){
   var cx = document.getElementById('jn-piramide'); if(!cx) return;
   var c = d.contagem || {}, total = c.todas || 0;
-  if(!total){ cx.innerHTML = ''; return; }
+  if(!total){ cx.innerHTML = '<div id="jn-diag"></div>'; fnDiagnostico('jn-diag'); return; }
   var pc = function(n){ return total ? (n/total*100) : 0; };
 
   var degraus = [
@@ -29543,13 +29557,83 @@ function jnPiramide(d){
     '</div>';
 }
 
+// ── Quando a tela está zerada, mostra PARA ONDE o pixel está mandando ──
+var fnDiag = null, fnDiagBuscando = false;
+function fnDiagnostico(alvoId){
+  var alvo = document.getElementById(alvoId); if(!alvo) return;
+  if(fnDiag){ alvo.innerHTML = fnDiagHtml(); return; }
+  if(fnDiagBuscando) return;
+  fnDiagBuscando = true;
+  fetch('/api/funil/diagnostico')
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      fnDiagBuscando = false;
+      if(!d || !d.ok) return;
+      fnDiag = d;
+      var el = document.getElementById(alvoId);
+      if(el) el.innerHTML = fnDiagHtml();
+    }).catch(function(){ fnDiagBuscando = false; });
+}
+function fnDiagHtml(){
+  var f = fnAtual(); if(!f || !fnDiag) return '';
+  var meus = (fnDiag.recebendo||[]).filter(function(x){ return x.funil === f.id; });
+  if(meus.length) return '';   // este funil está recebendo — o vazio é outra coisa
+  var outros = (fnDiag.recebendo||[]).filter(function(x){ return x.entradas > 0; });
+  if(!outros.length){
+    return '<div class="fn-cx2" style="border-color:var(--border)">'+
+      '<h3>Nenhum evento chegou ainda</h3>'+
+      '<div style="font-size:12.5px;color:var(--text2);line-height:1.6">'+
+      'O pixel não mandou nada nos últimos 7 dias. Confira se o código está no '+
+      '<b>&lt;head&gt;</b> da página — a aba <b>Pixel</b> tem um feed ao vivo pra testar.</div></div>';
+  }
+  var linhas = outros.slice(0,8).map(function(x){
+    var qual = x.funilNome
+      ? ('funil <b>'+fnEsc(x.funilNome)+'</b>')
+      : ('funil <span class="mono">'+fnEsc(String(x.funil).slice(0,18))+'</span> <i>(não existe mais)</i>');
+    var et = x.etapaNome
+      ? ('etapa <b>'+fnEsc(x.etapaNome)+'</b>'+(x.etapaDeOutroFunil?' <i>(de outro funil)</i>':''))
+      : ('etapa <span class="mono">'+fnEsc(String(x.etapa).slice(0,18))+'</span> <i>(não existe mais)</i>');
+    return '<tr><td style="font-size:12.5px">'+qual+' › '+et+'</td>'+
+      '<td style="text-align:right;font-weight:700">'+fnNum(x.entradas)+'</td>'+
+      '<td style="text-align:right;color:var(--text2)">'+fnNum(x.unicos)+'</td></tr>';
+  }).join('');
+  return '<div class="fn-cx2" style="border-color:#f59e0b">'+
+    '<h3 style="color:#f59e0b">⚠ O pixel está mandando pra outro lugar</h3>'+
+    '<div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:12px">'+
+    'Está chegando evento, mas nenhum é deste funil (<b>'+fnEsc(f.nome)+'</b>). '+
+    'Quase sempre é o código colado antes de você recriar o funil ou a etapa — '+
+    'o <span class="mono">data-f</span> e o <span class="mono">data-e</span> do script ficaram velhos.</div>'+
+    '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+    '<th>Chegando em</th><th style="width:90px;text-align:right">Entradas</th>'+
+    '<th style="width:90px;text-align:right">Pessoas</th></tr></thead><tbody>'+
+    linhas+'</tbody></table></div>'+
+    '<div class="fn-nota" style="margin:12px 0 0"><b>Como resolver:</b> vá na aba <b>Pixel</b>, '+
+    'copie o código novo de cada etapa e substitua nas páginas. '+
+    'Os números antigos não se perdem — eles continuam guardados, só ficam no funil velho.</div></div>';
+}
+
+// O seletor de teste filtra as jornadas por quem veio daquele link — e assim a
+// pirâmide passa a responder "esse teste trouxe gente que presta atenção?".
+function jnOpcoesTeste(){
+  var sel = document.getElementById('jn-teste'); if(!sel) return '';
+  var antes = sel.value || '';
+  var testes = abDoProjeto();
+  sel.innerHTML = '<option value="">Todo o tráfego do funil</option>' +
+    testes.map(function(t){
+      return '<option value="'+fnEsc(t.slug)+'">'+fnEsc(t.nome||t.slug)+'</option>'; }).join('');
+  if(antes && testes.some(function(t){ return t.slug===antes; })) sel.value = antes;
+  return sel.value;
+}
+
 function jnCarregar(){
   jnTempo();
   var f = fnAtual();
   var el = document.getElementById('jn-lista');
   if(!f){ if(el) el.innerHTML = '<div class="fn-nota">Escolha um funil primeiro.</div>'; return; }
+  var teste = jnOpcoesTeste();
   if(el) el.innerHTML = '<div class="fn-nota">Buscando as jornadas…</div>';
-  fetch('/api/funil/jornadas?funil='+encodeURIComponent(f.id)+'&filtro='+encodeURIComponent(jnFiltro))
+  fetch('/api/funil/jornadas?funil='+encodeURIComponent(f.id)+'&filtro='+encodeURIComponent(jnFiltro)+
+        (teste?('&teste='+encodeURIComponent(teste)):''))
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){ jnDados = d; jnPintar(); })
     .catch(function(e){ if(el) el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
@@ -29571,7 +29655,11 @@ function jnPintar(){
   }).join('');
 
   var nomeEtapa = {}, tipoEtapa = {};
-  (d.etapas||[]).forEach(function(e){ nomeEtapa[e.id]=e.nome; tipoEtapa[e.id]=e.tipo; });
+  // o mapa local manda: se a etapa foi renomeada aqui, o nome novo é o que vale
+  ((fnAtual()||{}).etapas||[]).forEach(function(e){ nomeEtapa[e.id]=e.nome; tipoEtapa[e.id]=e.tipo; });
+  (d.etapas||[]).forEach(function(e){
+    if(!nomeEtapa[e.id]){ nomeEtapa[e.id]=e.nome; tipoEtapa[e.id]=e.tipo; }
+  });
 
   if(!d.jornadas.length){
     el.innerHTML = '<div class="fn-nota">Nenhuma jornada nesse filtro. '+
@@ -29589,7 +29677,7 @@ function jnPintar(){
       var txt;
       if(e.tipo==='entrou')      txt = 'Chegou em <b>'+fnEsc(nomeEtapa[e.etapa]||e.etapa)+'</b>';
       else if(e.tipo==='saiu')   txt = 'Saiu de '+fnEsc(nomeEtapa[e.etapa]||e.etapa)+
-                                       (e.segundos?(' depois de '+jnTempo(e.segundos)):'');
+                                       (e.segundos?(' depois de '+jnDuracao(e.segundos)):'');
       else if(e.tipo==='clique') txt = 'Clicou em <b>'+fnEsc(e.rotulo||'algo na página')+'</b>';
       else if(e.tipo==='friccao'){
         cls = 'perdeu';
@@ -29620,7 +29708,7 @@ function jnPintar(){
       '<ul class="fn-tl">'+linhas+'</ul></div>';
   }).join('');
 }
-function jnTempo(s){
+function jnDuracao(s){
   s = Number(s)||0;
   if(s < 60) return s+'s';
   var m = Math.floor(s/60), r = s%60;
@@ -29662,7 +29750,9 @@ function atPintar(d){
   var r = d.rolagem || {};
   if(!r.saidas){
     el.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período. '+
-      'A rolagem é medida quando a pessoa fecha ou troca de página — confira se o pixel está instalado nela.</div>';
+      'A rolagem é medida quando a pessoa fecha ou troca de página.</div>'+
+      '<div id="at-diag"></div>';
+    fnDiagnostico('at-diag');
     return;
   }
   var f = fnAtual();
