@@ -1510,6 +1510,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-rb .t i{display:block;height:100%;border-radius:5px;transition:width .35s}
 .fn-rb .v{width:126px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text2)}
 .fn-rb .v b{color:var(--text)}
+.fn-rb.forte .p{font-weight:800;color:var(--text)}
 .fn-minis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px}
 .fn-mini{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
 .fn-mini .r{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
@@ -3550,6 +3551,9 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <div class="fn-painel" id="fn-p-jornada">
           <div class="fn-nota">O caminho de cada visitante, do anúncio ao fim. O valor não é acompanhar uma pessoa —
             é poder perguntar <b>“me mostra 10 que chegaram no checkout e não compraram”</b>. Guarda 7 dias.</div>
+          <div class="fn-campo" style="max-width:340px"><label>Página</label>
+            <select id="jn-etapa" onchange="jnTempo()"></select></div>
+          <div id="jn-funil-tempo"></div>
           <div class="fn-filtros" id="jn-filtros"></div>
           <div id="jn-lista"></div>
         </div>
@@ -28802,6 +28806,12 @@ function fnDetalhe(){
       '<div class="fn-l"><span>Parou aqui</span><span style="color:var(--red)">'+fnNum(Math.max(0,v-seguiram))+'</span></div>':'')+
     '<div class="fn-campo" style="margin-top:13px"><label>Nome</label>'+
     '<input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+    '<div class="fn-campo"><label>Momento da oferta (pitch)</label>'+
+    '<input value="'+(n.pitch?fnMmss(n.pitch):'')+'" placeholder="29:00" '+
+      'title="Quando a oferta aparece. Serve pra saber quantos chegam nela." '+
+      'onchange="fnSalvarPitch(\''+n.id+'\',this.value)">'+
+    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Em minuto:segundo. '+
+      'Deixe vazio se a página não tem um momento de oferta.</div></div>'+
     '<div class="fn-campo"><label>Link da página</label>'+
     '<input value="'+fnEsc(n.url||'')+'" placeholder="https://..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
     (n.url?'':'<div style="font-size:10.5px;color:var(--red);margin-top:5px">Informe o link pra esta etapa ser rastreada.</div>')+'</div>'+
@@ -28908,6 +28918,25 @@ function fnRenomear(id, valor){
   var n=fnAcha(f,id); if(!n) return;
   var novo=(valor||'').trim(); if(!novo) return;
   n.nome=novo; fnGravar(f); fnPintar();
+}
+
+// mm:ss <-> segundos. O pitch e escrito como a pessoa fala: "29:00".
+function fnMmss(seg){
+  seg = Math.max(0, Math.round(Number(seg)||0));
+  return Math.floor(seg/60)+':'+String(seg%60).padStart(2,'0');
+}
+function fnSegundosDe(txt){
+  var t = String(txt||'').trim();
+  if(!t) return 0;
+  var p = t.split(':').map(function(x){ return parseInt(x,10)||0; });
+  return p.length>1 ? (p[0]*60 + p[1]) : p[0]*60;   // "29" sozinho vira 29 minutos
+}
+function fnSalvarPitch(id, valor){
+  var f = fnAtual(); if(!f) return;
+  var n = fnAcha(f,id); if(!n) return;
+  n.pitch = fnSegundosDe(valor);
+  fnGravar(f); fnDetalhe();
+  toastFn(n.pitch ? ('Pitch em '+fnMmss(n.pitch)) : 'Pitch removido');
 }
 
 function fnSalvarUrl(id, valor){
@@ -29364,7 +29393,80 @@ var JN_ROTULO = {
 var JN_COR = { 'checkout-sem-compra':'var(--red)', 'friccao':'var(--red)', 'abandono':'var(--red)',
                'comprou':'var(--green)', 'alta-intencao':'var(--green)', 'leitor':'var(--green)' };
 
+// ── Funil de tempo: quantos ainda estavam na página em cada marco ──
+// Vem do histograma que o servidor guarda, então o pitch pode mudar a qualquer
+// hora e o número é recalculado sem perder o histórico.
+function jnTempo(){
+  var f = fnAtual(), sel = document.getElementById('jn-etapa'), cx = document.getElementById('jn-funil-tempo');
+  if(!f || !sel || !cx) return;
+  // remonta sempre que estiver vazio ou o funil mudou, preservando a escolha
+  var querido = sel.value || sel.dataset.escolha || '';
+  if(!sel.options.length || sel.dataset.funil !== f.id){
+    sel.dataset.funil = f.id;
+    sel.innerHTML = (f.etapas||[]).map(function(e){
+      return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
+    if(querido && fnAcha(f, querido)) sel.value = querido;
+  }
+  var etapa = sel.value;
+  if(!etapa){
+    cx.innerHTML = '<div class="fn-nota">Adicione uma etapa no Mapa pra ver quanto tempo as pessoas ficam nela.</div>';
+    return;
+  }
+  sel.dataset.escolha = etapa;
+  var et = fnAcha(f, etapa) || {};
+  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
+  var hoje = hojeBR(), de = hoje;
+  if(per==='7d')  de = hojeBR(6);
+  if(per==='30d') de = hojeBR(29);
+  cx.innerHTML = '<div class="fn-nota">Buscando…</div>';
+  fetch('/api/funil/atencao?etapa='+encodeURIComponent(etapa)+'&de='+de+'&ate='+hoje+
+        (et.pitch?('&pitch='+et.pitch):''))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ jnPintarTempo(d, et); })
+    .catch(function(){ cx.innerHTML=''; });
+}
+
+function jnPintarTempo(d, et){
+  var cx = document.getElementById('jn-funil-tempo'); if(!cx) return;
+  var t = (d && d.tempo) || {};
+  var st = fnStats[et.id] || {};
+  var entradas = st.entradas || 0, unicos = st.unicos || 0;
+  if(!t.medidos && !entradas){
+    cx.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período — '+
+      'o tempo é medido quando a pessoa fecha ou troca de página.</div>';
+    return;
+  }
+  var base = t.medidos || 1;
+  function linha(rot, pessoas, pct, cor, forte){
+    return '<div class="fn-rb'+(forte?' forte':'')+'"><span class="p">'+rot+'</span>'+
+      '<span class="t"><i style="width:'+Math.max(pct,0.6)+'%;background:'+cor+'"></i></span>'+
+      '<span class="v"><b>'+fnNum(pessoas)+'</b> · '+pct.toFixed(0)+'%</span></div>';
+  }
+  var azul='var(--accent)', verm='var(--red)', verde='var(--green)';
+  var html = '<div class="fn-cx2"><h3>Quanto tempo ficam em '+fnEsc(et.nome||'')+'</h3>'+
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+
+      '<b>'+fnNum(entradas)+'</b> entrada(s) · <b>'+fnNum(unicos)+'</b> pessoa(s) diferente(s) · '+
+      fnNum(t.medidos||0)+' com tempo medido</div>'+
+    linha('Entrou', t.medidos||0, 100, azul);
+
+  (t.marcos||[]).forEach(function(m){
+    if(m.segundos < 60 && m.pct >= 99) return;   // marco de 30s só interessa se já cai aí
+    html += linha(fnMmss(m.segundos), m.pessoas, m.pct, m.pct>=40?azul:verm);
+  });
+
+  if(t.pitch){
+    html += '<div class="fn-marco" style="margin-left:0;color:'+(t.pitch.pct>=20?verde:verm)+'">'+
+      '▲ oferta aos '+fnMmss(t.pitch.segundos)+' — <b>'+fnNum(t.pitch.pessoas)+' pessoa(s)</b> chegaram nela ('+
+      t.pitch.pct.toFixed(1)+'%)</div>';
+  } else {
+    html += '<div class="fn-nota" style="margin:10px 0 0">Defina o <b>momento da oferta</b> no Mapa '+
+      '(clique na etapa) pra ver quantos chegam nela.</div>';
+  }
+  cx.innerHTML = html + '</div>';
+}
+
 function jnCarregar(){
+  jnTempo();
   var f = fnAtual();
   var el = document.getElementById('jn-lista');
   if(!f){ if(el) el.innerHTML = '<div class="fn-nota">Escolha um funil primeiro.</div>'; return; }

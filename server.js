@@ -8328,10 +8328,27 @@ let _atBuffer = {}, _atSujo = false;
 
 function _atChave(etapa, dia) { return etapa + '|' + dia; }
 
+const TEMPO_PASSO = 30, TEMPO_FAIXAS = 121;   // 0 a 60min, de 30 em 30 segundos
+function _tempoFaixa(seg) {
+  return Math.max(0, Math.min(TEMPO_FAIXAS - 1, Math.floor((Number(seg) || 0) / TEMPO_PASSO)));
+}
+// quantos ficaram ATE PELO MENOS este ponto
+function _quantosAte(tempos, segundos) {
+  if (!Array.isArray(tempos)) return 0;
+  const de = Math.ceil((Number(segundos) || 0) / TEMPO_PASSO);
+  let n = 0;
+  for (let i = de; i < tempos.length; i++) n += tempos[i] || 0;
+  return n;
+}
+
 function _atNovo(etapa, dia) {
   return { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0,
            cliques: {}, friccao: {},
            atencaoSoma: 0, atencaoN: 0, rapidos: 0,
+           // histograma de tempo em faixas de 30s ate 60min, + a ultima acumula
+           // o resto. Guardar assim deixa calcular QUALQUER marco depois — e o
+           // pitch muda de video pra video, entao marco fixo nao serviria.
+           tempos: new Array(TEMPO_FAIXAS).fill(0),
            lcp: [], cls: [], fcp: [], erros: 0 };
 }
 function _atPega(etapa) {
@@ -8353,7 +8370,11 @@ function _atSaida(etapa, c) {
 
   // atencao e o tempo com a aba VISIVEL, nao o tempo de parede
   const at = Number(c.atencao);
-  if (at >= 0 && at < 7200) { b.atencaoSoma += at; b.atencaoN++; }
+  if (at >= 0 && at < 7200) {
+    b.atencaoSoma += at; b.atencaoN++;
+    if (!b.tempos) b.tempos = new Array(TEMPO_FAIXAS).fill(0);
+    b.tempos[_tempoFaixa(at)]++;
+  }
   // quick-back: saiu nos primeiros 5s. Quase sempre e pagina errada ou lenta.
   if ((Number(c.segundos) || 0) <= 5) b.rapidos++;
 
@@ -8397,6 +8418,8 @@ function _atGravar() {
       const k = _atChave(n.etapa, n.data), v = indice[k];
       if (!v) { atual.push(n); indice[k] = n; return; }
       v.saidas += n.saidas; v.f25 += n.f25; v.f50 += n.f50; v.f75 += n.f75; v.f100 += n.f100;
+      if (!v.tempos) v.tempos = new Array(TEMPO_FAIXAS).fill(0);
+      (n.tempos || []).forEach((q, i) => { v.tempos[i] = (v.tempos[i] || 0) + q; });
       v.atencaoSoma = (v.atencaoSoma || 0) + (n.atencaoSoma || 0);
       v.atencaoN    = (v.atencaoN    || 0) + (n.atencaoN    || 0);
       v.rapidos     = (v.rapidos     || 0) + (n.rapidos     || 0);
@@ -8447,11 +8470,13 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
 
     const t = { saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0,
                 atencaoSoma: 0, atencaoN: 0, rapidos: 0, erros: 0 };
+    const tempos = new Array(TEMPO_FAIXAS).fill(0);
     const cl = {}, fr = {}, vit = { lcp: [], fcp: [], cls: [] };
     linhas.forEach(l => {
       t.saidas += l.saidas; t.f25 += l.f25; t.f50 += l.f50; t.f75 += l.f75; t.f100 += l.f100;
       t.atencaoSoma += l.atencaoSoma || 0; t.atencaoN += l.atencaoN || 0;
       t.rapidos += l.rapidos || 0; t.erros += l.erros || 0;
+      (l.tempos || []).forEach((q, i) => { tempos[i] += q; });
       ['lcp','fcp','cls'].forEach(m => { vit[m] = vit[m].concat(l[m] || []); });
       Object.keys(l.cliques || {}).forEach(r => {
         if (!cl[r]) cl[r] = { rotulo: r, n: 0, pos: l.cliques[r].pos };
@@ -8477,6 +8502,20 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
         medidos: t.atencaoN,
         rapidos: t.rapidos,
         pctRapidos: (t.rapidos / base) * 100
+      },
+      // funil de tempo: quantos ainda estavam na pagina em cada marco
+      tempo: {
+        medidos: t.atencaoN,
+        marcos: [30, 60, 300, 600, 900, 1200, 1800].map(seg => ({
+          segundos: seg,
+          pessoas: _quantosAte(tempos, seg),
+          pct: t.atencaoN ? (_quantosAte(tempos, seg) / t.atencaoN) * 100 : 0
+        })),
+        pitch: (Number(req.query.pitch) > 0) ? {
+          segundos: Number(req.query.pitch),
+          pessoas: _quantosAte(tempos, Number(req.query.pitch)),
+          pct: t.atencaoN ? (_quantosAte(tempos, Number(req.query.pitch)) / t.atencaoN) * 100 : 0
+        } : null
       },
       vitais: {
         lcp: _p75(vit.lcp), fcp: _p75(vit.fcp),
