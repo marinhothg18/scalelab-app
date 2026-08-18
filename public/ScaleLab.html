@@ -1511,6 +1511,22 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-rb .v{width:126px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text2)}
 .fn-rb .v b{color:var(--text)}
 .fn-rb.forte .p{font-weight:800;color:var(--text)}
+.jn-deg{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.jn-deg-r{width:170px;flex:0 0 auto;font-size:13px;font-weight:700;line-height:1.25}
+.jn-deg-r span{display:block;font-size:10.5px;font-weight:500;color:var(--text2);margin-top:1px}
+.jn-deg-b{flex:1;height:30px;background:var(--bg3);border-radius:7px;overflow:hidden;position:relative}
+.jn-deg-b i{display:block;height:100%;border-radius:7px;transition:width .4s}
+.jn-deg-p{position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  font-size:10.5px;font-weight:700;color:var(--text2)}
+.jn-deg-n{width:74px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums}
+.jn-deg-n b{display:block;font-size:16px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.jn-deg-n span{font-size:10.5px;color:var(--text2)}
+@media(max-width:640px){ .jn-deg-r{width:118px;font-size:12px} .jn-deg-r span{display:none} }
+.jn-probl{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:10px;
+  margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.jn-probl > div{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:10px 12px}
+.jn-probl .n{display:block;font-size:19px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.jn-probl .r{display:block;font-size:11px;color:var(--text2);line-height:1.35;margin-top:2px}
 .fn-minis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px}
 .fn-mini{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
 .fn-mini .r{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
@@ -3554,6 +3570,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div class="fn-campo" style="max-width:340px"><label>Página</label>
             <select id="jn-etapa" onchange="jnTempo()"></select></div>
           <div id="jn-funil-tempo"></div>
+          <div id="jn-piramide"></div>
           <div class="fn-filtros" id="jn-filtros"></div>
           <div id="jn-lista"></div>
         </div>
@@ -28985,6 +29002,17 @@ function fnNovoFunil(){
 }
 function fnOpcoes(){
   var f = fnAtual();
+  // Seletores de etapa das abas. Montar aqui — e nao so quando a aba abre —
+  // garante que eles existam independente da ordem em que a tela é desenhada;
+  // era por isso que o de Jornada aparecia vazio.
+  ['jn-etapa','at-etapa'].forEach(function(id){
+    var sel = document.getElementById(id); if(!sel) return;
+    var antes = sel.value || sel.dataset.escolha || '';
+    sel.innerHTML = (f && f.etapas || []).map(function(e){
+      return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
+    if(antes && f && fnAcha(f, antes)) sel.value = antes;
+    sel.dataset.escolha = sel.value || '';
+  });
   var px = document.getElementById('fn-px-etapa'), pai = document.getElementById('fn-n-pai');
   if(px) px.innerHTML = f ? f.etapas.map(function(e){ return '<option value="'+e.id+'">'+fnEsc(e.nome)+'</option>'; }).join('') : '';
   if(pai) pai.innerHTML = f ? (fnTodos(f).map(function(n){ return '<option value="'+n.id+'">'+fnEsc(n.nome)+'</option>'; }).join('')
@@ -29399,14 +29427,7 @@ var JN_COR = { 'checkout-sem-compra':'var(--red)', 'friccao':'var(--red)', 'aban
 function jnTempo(){
   var f = fnAtual(), sel = document.getElementById('jn-etapa'), cx = document.getElementById('jn-funil-tempo');
   if(!f || !sel || !cx) return;
-  // remonta sempre que estiver vazio ou o funil mudou, preservando a escolha
-  var querido = sel.value || sel.dataset.escolha || '';
-  if(!sel.options.length || sel.dataset.funil !== f.id){
-    sel.dataset.funil = f.id;
-    sel.innerHTML = (f.etapas||[]).map(function(e){
-      return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
-    if(querido && fnAcha(f, querido)) sel.value = querido;
-  }
+  if(!sel.options.length) fnOpcoes();       // rede de segurança
   var etapa = sel.value;
   if(!etapa){
     cx.innerHTML = '<div class="fn-nota">Adicione uma etapa no Mapa pra ver quanto tempo as pessoas ficam nela.</div>';
@@ -29465,6 +29486,63 @@ function jnPintarTempo(d, et){
   cx.innerHTML = html + '</div>';
 }
 
+// ── Pirâmide de atenção ──
+// As fichas são filtro, não retrato. Isto é o retrato: de quem entrou, quantos
+// passaram de "só abriu" pra "prestou atenção" e daí pra "quis comprar".
+function jnPiramide(d){
+  var cx = document.getElementById('jn-piramide'); if(!cx) return;
+  var c = d.contagem || {}, total = c.todas || 0;
+  if(!total){ cx.innerHTML = ''; return; }
+  var pc = function(n){ return total ? (n/total*100) : 0; };
+
+  var degraus = [
+    { r:'Entraram',        n:total,                    cor:'var(--accent)', d:'chegaram na página' },
+    { r:'Engajaram',       n:c.engajado||0,            cor:'#6366f1',       d:'clicaram, rolaram ou ficaram' },
+    { r:'Leram de verdade',n:c.leitor||0,              cor:'var(--roxo)',   d:'rolaram até o fim e ficaram' },
+    { r:'Quiseram comprar',n:c['alta-intencao']||0,    cor:'var(--green)',  d:'chegaram no checkout' },
+    { r:'Compraram',       n:c.comprou||0,             cor:'var(--green)',  d:'venda registrada' }
+  ];
+  var linhas = degraus.map(function(g, i){
+    var p = pc(g.n);
+    var ant = i ? degraus[i-1].n : 0;
+    var passou = (i && ant) ? (g.n/ant*100) : null;
+    return '<div class="jn-deg">'+
+      '<div class="jn-deg-r">'+g.r+'<span>'+g.d+'</span></div>'+
+      '<div class="jn-deg-b"><i style="width:'+Math.max(p,0.7)+'%;background:'+g.cor+'"></i>'+
+        (passou!==null && ant ? '<span class="jn-deg-p">'+passou.toFixed(0)+'% dos de cima</span>' : '')+
+      '</div>'+
+      '<div class="jn-deg-n"><b>'+fnNum(g.n)+'</b><span>'+p.toFixed(0)+'%</span></div></div>';
+  }).join('');
+
+  // o que está errado, separado do funil — são problemas, não degraus
+  var probl = [];
+  if(c['so-olhou'])  probl.push({ r:'Só abriram e saíram', n:c['so-olhou'], cor:'var(--text2)' });
+  if(c.abandono)     probl.push({ r:'Saíram em 5 segundos', n:c.abandono,   cor:'var(--red)' });
+  if(c.friccao)      probl.push({ r:'Clicaram em algo que não funciona', n:c.friccao, cor:'var(--red)' });
+  if(c['checkout-sem-compra']) probl.push({ r:'Chegaram no checkout e não compraram',
+                                            n:c['checkout-sem-compra'], cor:'var(--red)' });
+
+  var leitura = '';
+  var eng = pc(c.engajado||0);
+  if(total >= 20){
+    if(eng < 20) leitura = 'De cada 10 que entram, menos de 2 passam de olhar. <b>O problema está no começo da página</b> — '+
+                           'quem não passa daí nunca vai ver a oferta.';
+    else if(!(c['alta-intencao']||0)) leitura = 'Tem gente engajada, mas <b>ninguém chegou no checkout</b>. '+
+                           'O que trava não é a atenção, é a passagem pra oferta.';
+    else leitura = '';
+  }
+
+  cx.innerHTML = '<div class="fn-cx2"><h3>Pirâmide de atenção</h3>'+
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:15px">'+
+      'De '+fnNum(total)+' visitante(s) no período, quantos foram de "abriu" até "comprou".</div>'+
+    linhas +
+    (probl.length ? ('<div class="jn-probl">'+probl.map(function(x){
+      return '<div><span class="n" style="color:'+x.cor+'">'+fnNum(x.n)+'</span><span class="r">'+x.r+'</span></div>';
+    }).join('')+'</div>') : '')+
+    (leitura ? ('<div class="fn-nota" style="margin:14px 0 0">'+leitura+'</div>') : '')+
+    '</div>';
+}
+
 function jnCarregar(){
   jnTempo();
   var f = fnAtual();
@@ -29484,6 +29562,7 @@ function jnPintar(){
   var d = jnDados;
   if(!d || !d.ok){ el.innerHTML = '<div class="fn-nota">Sem dados de jornada ainda.</div>'; return; }
 
+  jnPiramide(d);
   fl.innerHTML = Object.keys(JN_ROTULO).map(function(k){
     var n = (d.contagem && d.contagem[k]) || 0;
     var cor = (n && JN_COR[k] && jnFiltro!==k) ? (';color:'+JN_COR[k]) : '';
@@ -29554,10 +29633,11 @@ function jnTempo(s){
 function atOpcoes(){
   var f = fnAtual(), sel = document.getElementById('at-etapa');
   if(!sel) return;
-  if(!f || !f.etapas.length){ sel.innerHTML = '<option>— nenhuma etapa —</option>';
-    document.getElementById('at-corpo').innerHTML = '<div class="fn-nota">Crie uma etapa no mapa primeiro.</div>'; return; }
-  sel.innerHTML = f.etapas.map(function(e){
-    return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
+  if(!f || !f.etapas.length){
+    document.getElementById('at-corpo').innerHTML = '<div class="fn-nota">Crie uma etapa no mapa primeiro.</div>';
+    return;
+  }
+  if(!sel.options.length) fnOpcoes();
   atCarregar();
 }
 
