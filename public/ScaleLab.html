@@ -1510,6 +1510,19 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-rb .t i{display:block;height:100%;border-radius:5px;transition:width .35s}
 .fn-rb .v{width:126px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text2)}
 .fn-rb .v b{color:var(--text)}
+.fn-minis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px}
+.fn-mini{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.fn-mini .r{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
+.fn-mini .v{font-size:21px;font-weight:800;letter-spacing:-.035em;line-height:1.15;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.fn-mini .s{font-size:10.5px;color:var(--text2);margin-top:2px}
+.fn-seg-s{background:var(--bg3);color:var(--text2);font-size:9.5px;font-weight:800;
+  padding:2px 7px;border-radius:5px;white-space:nowrap}
+.fn-seg-s.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.fn-seg-s.ruim{background:rgba(229,72,77,.15);color:var(--red)}
+.ab-var-rot{font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.ab-crit{font-size:10.5px;font-weight:800;background:var(--bg3);color:var(--text2);
+  padding:2px 7px;border-radius:5px;margin-left:5px;text-transform:none;letter-spacing:0}
 .fn-marco{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:700;color:var(--red);
   margin:6px 0 4px 68px}
 
@@ -29105,6 +29118,7 @@ function abPintarDetalhe(){
   });
   var pesoTot = vars.reduce(function(a,v){ return a+(Number(v.peso)||1); },0) || 1;
   var pal = ['#1B9CFA','#3E1493','#FF5926','#C52C58','#22C55E','#F59E0B'];
+  var temPreco = d && d.precoVaria;
 
   var caixas = vars.map(function(v,i){
     var venc = d && d.julgamento && d.julgamento.pronto && d.lider===v.id;
@@ -29112,8 +29126,13 @@ function abPintarDetalhe(){
       '<div class="ab-var-cab">'+
         '<input class="ab-var-nome" value="'+fnEsc(v.nome)+'" onchange="abNomeVar('+i+',this.value)">'+
         (venc?'<span class="ab-venc">VENCEDORA</span>':'')+
+        '<span class="ab-var-rot">peso</span>'+
         '<input class="ab-var-peso" type="number" min="0" value="'+(v.peso||1)+'" onchange="abPeso('+i+',this.value)">'+
         '<span class="ab-var-pc">'+Math.round((Number(v.peso)||1)/pesoTot*100)+'%</span>'+
+        '<span class="ab-var-rot">R$</span>'+
+        '<input class="ab-var-peso" type="number" min="0" step="0.01" value="'+(v.valor||'')+'" '+
+          'placeholder="—" title="Preço desta variante. Só preencha se as variantes têm preços diferentes." '+
+          'onchange="abValorVar('+i+',this.value)">'+
         '<button class="fn-btn g sm" onclick="abTirarVar('+i+')">✕</button></div>'+
       '<input class="ab-var-url" value="'+fnEsc(v.url||'')+'" placeholder="https://…" onchange="abUrlVar('+i+',this.value)">'+
       '<div class="ab-var-res quatro">'+
@@ -29123,6 +29142,8 @@ function abPintarDetalhe(){
         '<div><span class="k">'+(r.meta?'Conversões':'—')+'</span><span class="v">'+(r.meta?fnNum(v.metas):'—')+'</span></div>'+
         '<div><span class="k">Taxa</span><span class="v" style="color:'+pal[i%6]+'">'+
           (r.meta && v.pessoas ? v.conversao.toFixed(1)+'%' : '—')+'</span></div>'+
+        (temPreco ? '<div><span class="k">Por visitante</span><span class="v" style="color:'+pal[i%6]+'">'+
+          (v.rpv!=null ? vsBrl(v.rpv) : '—')+'</span></div>' : '')+
       '</div></div>';
   }).join('');
 
@@ -29220,16 +29241,28 @@ function abVeredito(r, d){
   if(j.pronto){
     var lider = (d.variantes||[]).filter(function(v){ return v.id===d.lider; })[0];
     var perd  = (d.variantes||[]).filter(function(v){ return v.id===d.segundo; })[0];
+    var porReceita = j.criterio === 'receita';
+    var viradaDeMesa = porReceita && j.liderConversao && j.liderConversao !== j.lider;
     return '<div class="ab-ver ganhou"><span class="ic">🏆</span><div>'+
-      '<div class="t">'+fnEsc(lider?lider.nome:'Uma variante')+' ganhou por '+Math.round(j.ganho*100)+'%</div>'+
-      '<div class="d">'+(lider?lider.conversao.toFixed(1):'0')+'% contra '+(perd?perd.conversao.toFixed(1):'0')+
-      '% de conversão, com '+fnNum(lider?lider.pessoas:0)+' e '+fnNum(perd?perd.pessoas:0)+' pessoas. '+
+      '<div class="t">'+fnEsc(lider?lider.nome:'Uma variante')+' ganhou por '+Math.round(j.ganho*100)+'%'+
+        (porReceita?' em receita':'')+'</div>'+
+      '<div class="d">'+
+      (porReceita
+        ? (vsBrl(lider?lider.rpv:0)+' contra '+vsBrl(perd?perd.rpv:0)+' <b>por visitante</b>, '+
+           'com '+fnNum(lider?lider.pessoas:0)+' e '+fnNum(perd?perd.pessoas:0)+' pessoas. ')
+        : ((lider?lider.conversao.toFixed(1):'0')+'% contra '+(perd?perd.conversao.toFixed(1):'0')+
+           '% de conversão, com '+fnNum(lider?lider.pessoas:0)+' e '+fnNum(perd?perd.pessoas:0)+' pessoas. '))+
       'A chance disso ser sorte é menor que '+(100-j.conf)+'%. '+
+      (viradaDeMesa
+        ? '<b>Atenção: pela taxa de conversão a outra pareceria melhor</b> — ela converte mais, '+
+          'mas fatura menos por visitante. O critério aqui é dinheiro. '
+        : '')+
       '<b>Pode mandar todo o tráfego pra ela.</b></div></div></div>';
   }
   var falta = (j.faltamPorLado != null) ? fnNum(j.faltamPorLado) : '?';
   return '<div class="ab-ver espera"><span class="ic">⏳</span><div>'+
-    '<div class="t">Ainda não dá pra concluir</div>'+
+    '<div class="t">Ainda não dá pra concluir'+
+      (j.criterio==='receita'?' <span class="ab-crit">por receita por visitante</span>':'')+'</div>'+
     '<div class="d">'+
       (j.motivo==='sem-conversao'
         ? 'Já passou gente, mas ninguém converteu ainda dos dois lados.'
@@ -29247,6 +29280,11 @@ function abCampo(campo, valor){
 function abNomeVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].nome=(v||'').trim(); fnGravarRed(r); }
 function abUrlVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].url=(v||'').trim(); fnGravarRed(r); fnPintarRed(); }
 function abPeso(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].peso=Math.max(0,+v||0); fnGravarRed(r); fnPintarRed(); }
+function abValorVar(i, v){
+  var r=fnRedAtual(); if(!r) return;
+  r.destinos[i].valor = Math.max(0, parseFloat(String(v).replace(',','.')) || 0);
+  delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
+}
 function abTirarVar(i){
   var r=fnRedAtual(); if(!r) return;
   var d = (r.destinos||[])[i]; if(!d) return;
@@ -29313,10 +29351,18 @@ var jnFiltro = 'checkout-sem-compra', jnDados = null;
 var JN_ROTULO = {
   'checkout-sem-compra':'Chegou no checkout e não comprou',
   'comprou':'Comprou',
-  'so-entrou':'Entrou e parou na primeira página',
+  'alta-intencao':'Alta intenção',
+  'friccao':'Travou em algo',
+  'leitor':'Leu de verdade',
+  'engajado':'Engajado',
+  'so-olhou':'Só olhou',
+  'abandono':'Saiu em 5 segundos',
   'voltou':'Voltou mais de uma vez',
   'todas':'Todas'
 };
+// vermelho no que e problema, verde no que e bom sinal
+var JN_COR = { 'checkout-sem-compra':'var(--red)', 'friccao':'var(--red)', 'abandono':'var(--red)',
+               'comprou':'var(--green)', 'alta-intencao':'var(--green)', 'leitor':'var(--green)' };
 
 function jnCarregar(){
   var f = fnAtual();
@@ -29338,7 +29384,8 @@ function jnPintar(){
 
   fl.innerHTML = Object.keys(JN_ROTULO).map(function(k){
     var n = (d.contagem && d.contagem[k]) || 0;
-    return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" onclick="jnTrocar(\''+k+'\')">'+
+    var cor = (n && JN_COR[k] && jnFiltro!==k) ? (';color:'+JN_COR[k]) : '';
+    return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" style="'+cor+'" onclick="jnTrocar(\''+k+'\')">'+
       JN_ROTULO[k]+' · '+fnNum(n)+'</button>';
   }).join('');
 
@@ -29363,14 +29410,31 @@ function jnPintar(){
       else if(e.tipo==='saiu')   txt = 'Saiu de '+fnEsc(nomeEtapa[e.etapa]||e.etapa)+
                                        (e.segundos?(' depois de '+jnTempo(e.segundos)):'');
       else if(e.tipo==='clique') txt = 'Clicou em <b>'+fnEsc(e.rotulo||'algo na página')+'</b>';
+      else if(e.tipo==='friccao'){
+        cls = 'perdeu';
+        txt = (e.motivo==='raiva' ? 'Clicou várias vezes em <b>' : 'Clicou em <b>')+
+              fnEsc(e.rotulo||'algo')+'</b>'+
+              '<span class="o">'+(e.motivo==='raiva'
+                ? 'três ou mais cliques seguidos no mesmo ponto — sinal de irritação'
+                : 'e nada aconteceu — o elemento parece clicável mas não é')+'</span>';
+      }
       else                       txt = fnEsc(e.tipo)+' em '+fnEsc(nomeEtapa[e.etapa]||e.etapa);
       return '<li class="'+cls+'"><span class="h">'+p(h.getHours())+':'+p(h.getMinutes())+'</span>'+txt+'</li>';
     }).join('');
     if(!comprou) linhas += '<li class="perdeu"><span class="h">—</span>Não comprou'+
       '<span class="o">nenhuma venda registrada nesta jornada</span></li>';
+    var sg = j.segmentos || {};
+    var selos = '';
+    if(sg.alta)     selos += '<span class="fn-seg-s ok">alta intenção</span>';
+    if(sg.leitor)   selos += '<span class="fn-seg-s ok">leu de verdade</span>';
+    else if(sg.engajado) selos += '<span class="fn-seg-s">engajado</span>';
+    else if(sg.soOlhou)  selos += '<span class="fn-seg-s">só olhou</span>';
+    if(sg.friccao)  selos += '<span class="fn-seg-s ruim">travou</span>';
+    if(sg.abandono) selos += '<span class="fn-seg-s ruim">saiu na hora</span>';
     return '<div class="fn-pessoa">'+
       '<div class="top"><span class="id">'+fnEsc(j.id.slice(0,10))+'</span>'+
         (criativo?('<span class="fn-tagcri">'+fnEsc(criativo)+'</span>'):'')+
+        selos+
         '<span class="de">'+j.eventos.length+' passo(s)</span></div>'+
       '<ul class="fn-tl">'+linhas+'</ul></div>';
   }).join('');
@@ -29445,6 +29509,55 @@ function atPintar(d){
       (100-alcanca).toFixed(0)+'% nunca chegam nele</div>';
   }
   html += '</div>';
+
+  // ── Fricção: clique que não fez nada. É a métrica que aponta sozinha o que
+  //    hoje só se descobre no olho, elemento por elemento.
+  if((d.friccao||[]).length){
+    var totalFr = d.friccao.reduce(function(a,f){ return a+f.total; },0);
+    html += '<div class="fn-cx2" style="border-color:var(--red)">'+
+      '<h3 style="color:var(--red)">⚠ Cliques que não levaram a nada</h3>'+
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">'+
+        '<b>'+fnNum(totalFr)+' clique(s)</b> em coisas que parecem clicáveis e não são, '+
+        'ou repetidos no mesmo ponto por irritação. Cada linha é um elemento pra arrumar.</div>'+
+      '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+      '<th>Elemento</th><th style="width:110px;text-align:right">Cliques mortos</th>'+
+      '<th style="width:110px;text-align:right">Cliques de raiva</th></tr></thead><tbody>'+
+      d.friccao.map(function(f){
+        return '<tr><td style="font-size:12.5px">'+fnEsc(f.rotulo)+'</td>'+
+          '<td style="text-align:right;font-weight:700;color:'+(f.mortos?'var(--red)':'var(--text2)')+'">'+fnNum(f.mortos)+'</td>'+
+          '<td style="text-align:right;font-weight:700;color:'+(f.raiva?'var(--red)':'var(--text2)')+'">'+fnNum(f.raiva)+'</td></tr>';
+      }).join('')+'</tbody></table></div>'+
+      '<div class="fn-nota" style="margin:12px 0 0">Ou você faz o elemento funcionar, ou tira a cara de botão dele. '+
+      'As duas resolvem — deixar como está é perder gente que <b>tentou</b> avançar.</div></div>';
+  }
+
+  // ── Atenção real e velocidade ──
+  var at = d.atencao || {}, vi = d.vitais || {};
+  if(at.medidos || vi.amostras){
+    var cx = function(rot, val, sub, cor){
+      return '<div class="fn-mini"><div class="r">'+rot+'</div>'+
+        '<div class="v"'+(cor?(' style="color:'+cor+'"'):'')+'>'+val+'</div>'+
+        '<div class="s">'+sub+'</div></div>';
+    };
+    var seg = function(n){ if(n==null) return '—'; return n<60 ? (n+'s') : (Math.floor(n/60)+'min'+(n%60?' '+(n%60)+'s':'')); };
+    // Limites do Web Vitals do Google: LCP bom ate 2,5s, ruim acima de 4s.
+    var corLcp = vi.lcp==null ? '' : (vi.lcp<=2500?'var(--green)':(vi.lcp<=4000?'#f59e0b':'var(--red)'));
+    var corCls = vi.cls==null ? '' : (vi.cls<=0.1?'var(--green)':(vi.cls<=0.25?'#f59e0b':'var(--red)'));
+    html += '<div class="fn-cx2"><h3>Atenção e velocidade</h3>'+
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:13px">'+
+        'Tempo com a aba <b>visível</b> — não o tempo que a página ficou aberta. '+
+        'A velocidade é medida no aparelho de quem acessou, não no seu.</div>'+
+      '<div class="fn-minis">'+
+        cx('Atenção média', seg(at.media), fnNum(at.medidos||0)+' medidos') +
+        cx('Saíram em 5s', (at.pctRapidos!=null?at.pctRapidos.toFixed(0)+'%':'—'),
+           fnNum(at.rapidos||0)+' pessoas', (at.pctRapidos>=25?'var(--red)':'')) +
+        cx('Carregou em (LCP)', vi.lcp!=null?(vi.lcp/1000).toFixed(1)+'s':'—',
+           vi.amostras?('P75 de '+fnNum(vi.amostras)):'sem amostra', corLcp) +
+        cx('Primeiro conteúdo', vi.fcp!=null?(vi.fcp/1000).toFixed(1)+'s':'—', 'P75', '') +
+        cx('Layout pulando', vi.cls!=null?vi.cls.toFixed(3):'—', 'CLS · P75', corCls) +
+        cx('Erros de JS', fnNum(vi.erros||0), 'no período', (vi.erros?'var(--red)':'')) +
+      '</div></div>';
+  }
 
   if((d.cliques||[]).length){
     html += '<div class="fn-cx2"><h3>Onde clicam</h3>'+

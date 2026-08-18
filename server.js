@@ -8171,8 +8171,9 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     }
 
     _jRegistrar(visitante, funil, etapa, tipo, c);
-    if (tipo === 'saiu') _atRolagem(etapa, c.rolagem);
-    if (tipo === 'clique') _atClique(etapa, c.rotulo, c.posicao);
+    if (tipo === 'saiu')    _atSaida(etapa, c);
+    if (tipo === 'clique')  _atClique(etapa, c.rotulo, c.posicao);
+    if (tipo === 'friccao') _atFriccao(etapa, c.rotulo, c.motivo);
 
     _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
                  visitante: String(c.id || '').slice(0, 12),
@@ -8198,6 +8199,10 @@ function _jRegistrar(visitante, funil, etapa, tipo, extra) {
   const j = _jBuffer[k];
   const ev = { em: new Date().toISOString(), etapa, tipo };
   if (extra && Number(extra.segundos)) ev.segundos = Number(extra.segundos);
+  if (extra && Number(extra.atencao))  ev.atencao  = Number(extra.atencao);
+  if (extra && Number(extra.rolagem))  ev.rolagem  = Number(extra.rolagem);
+  if (extra && extra.motivo)  ev.motivo  = String(extra.motivo).slice(0, 20);
+  if (extra && extra.versao)  ev.versao  = String(extra.versao).slice(0, 40);
   if (extra && extra.utm && extra.utm.content) ev.criativo = String(extra.utm.content).slice(0, 80);
   if (extra && extra.variante) ev.variante = String(extra.variante).slice(0, 40);
   if (extra && extra.rotulo)   ev.rotulo = String(extra.rotulo).slice(0, 70);
@@ -8252,19 +8257,56 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
       .concat(Object.values(_jBuffer).filter(j => !funil || j.funil === funil));
 
     const passou = (j, t) => j.eventos.some(e => tipo[e.etapa] === t);
+
+    // ── Segmentos: classifica cada visitante pelo que ele FEZ, nao pelo que a
+    //    media diz. E o funil de atencao — quem so olhou, quem leu, quem travou.
+    const maior = (j, campo) => j.eventos.reduce((m, e) => Math.max(m, Number(e[campo]) || 0), 0);
+    const seg = (j) => {
+      const cliques  = j.eventos.filter(e => e.tipo === 'clique').length;
+      const friccao  = j.eventos.filter(e => e.tipo === 'friccao').length;
+      const rolagem  = maior(j, 'rolagem');
+      const atencao  = maior(j, 'atencao');
+      const segundos = maior(j, 'segundos');
+      const saiu     = j.eventos.some(e => e.tipo === 'saiu');
+      return {
+        friccao:  friccao > 0,
+        // abandono so vale se a saida foi registrada; sem 'saiu' nao da pra saber
+        abandono: saiu && segundos > 0 && segundos <= 5,
+        cliques:  cliques > 0,
+        leitor:   rolagem >= 75 && atencao >= 45,
+        engajado: cliques > 0 || rolagem >= 50 || atencao >= 30,
+        alta:     passou(j, 'checkout') || passou(j, 'obrigado'),
+        soOlhou:  cliques === 0 && rolagem < 25 && atencao < 15
+      };
+    };
+    const cache = new Map();
+    const S = (j) => { if (!cache.has(j)) cache.set(j, seg(j)); return cache.get(j); };
+
     const contagem = {
       todas: lista.length,
       'checkout-sem-compra': lista.filter(j => passou(j, 'checkout') && !passou(j, 'obrigado')).length,
-      comprou: lista.filter(j => passou(j, 'obrigado')).length,
-      voltou: lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length > 1).length,
-      'so-entrou': lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length === 1
-                                     && !passou(j, 'checkout')).length
+      comprou:      lista.filter(j => passou(j, 'obrigado')).length,
+      'alta-intencao': lista.filter(j => S(j).alta).length,
+      leitor:       lista.filter(j => S(j).leitor).length,
+      engajado:     lista.filter(j => S(j).engajado).length,
+      'so-olhou':   lista.filter(j => S(j).soOlhou).length,
+      friccao:      lista.filter(j => S(j).friccao).length,
+      abandono:     lista.filter(j => S(j).abandono).length,
+      voltou:       lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length > 1).length
     };
-    if (filtro === 'checkout-sem-compra') lista = lista.filter(j => passou(j, 'checkout') && !passou(j, 'obrigado'));
-    else if (filtro === 'comprou') lista = lista.filter(j => passou(j, 'obrigado'));
-    else if (filtro === 'voltou') lista = lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length > 1);
-    else if (filtro === 'so-entrou') lista = lista.filter(j => j.eventos.filter(e => e.tipo === 'entrou').length === 1
-                                                               && !passou(j, 'checkout'));
+
+    const filtros = {
+      'checkout-sem-compra': j => passou(j, 'checkout') && !passou(j, 'obrigado'),
+      comprou:      j => passou(j, 'obrigado'),
+      'alta-intencao': j => S(j).alta,
+      leitor:       j => S(j).leitor,
+      engajado:     j => S(j).engajado,
+      'so-olhou':   j => S(j).soOlhou,
+      friccao:      j => S(j).friccao,
+      abandono:     j => S(j).abandono,
+      voltou:       j => j.eventos.filter(e => e.tipo === 'entrou').length > 1
+    };
+    if (filtros[filtro]) lista = lista.filter(filtros[filtro]);
 
     lista = lista.sort((a, b) => {
       const ua = a.eventos[a.eventos.length - 1].em, ub = b.eventos[b.eventos.length - 1].em;
@@ -8273,7 +8315,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
 
     res.json({ ok: true, funil, filtro, contagem,
       etapas: ((f && f.etapas) || []).map(e => ({ id: e.id, nome: e.nome, tipo: e.tipo })),
-      jornadas: lista });
+      jornadas: lista.map(j => Object.assign({}, j, { segmentos: S(j) })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -8286,26 +8328,56 @@ let _atBuffer = {}, _atSujo = false;
 
 function _atChave(etapa, dia) { return etapa + '|' + dia; }
 
-function _atRolagem(etapa, pct) {
-  if (!etapa) return;
+function _atNovo(etapa, dia) {
+  return { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0,
+           cliques: {}, friccao: {},
+           atencaoSoma: 0, atencaoN: 0, rapidos: 0,
+           lcp: [], cls: [], fcp: [], erros: 0 };
+}
+function _atPega(etapa) {
   const dia = _hojeBR(), k = _atChave(etapa, dia);
-  if (!_atBuffer[k]) _atBuffer[k] = { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0, cliques: {} };
-  const b = _atBuffer[k];
+  if (!_atBuffer[k]) _atBuffer[k] = _atNovo(etapa, dia);
+  return _atBuffer[k];
+}
+
+function _atSaida(etapa, c) {
+  if (!etapa) return;
+  const b = _atPega(etapa);
   b.saidas++;
-  const p = Number(pct) || 0;
+  const p = Number(c.rolagem) || 0;
   // faixas cumulativas: quem chegou a 75% tambem passou por 25 e 50
   if (p >= 25) b.f25++;
   if (p >= 50) b.f50++;
   if (p >= 75) b.f75++;
   if (p >= 95) b.f100++;
+
+  // atencao e o tempo com a aba VISIVEL, nao o tempo de parede
+  const at = Number(c.atencao);
+  if (at >= 0 && at < 7200) { b.atencaoSoma += at; b.atencaoN++; }
+  // quick-back: saiu nos primeiros 5s. Quase sempre e pagina errada ou lenta.
+  if ((Number(c.segundos) || 0) <= 5) b.rapidos++;
+
+  // Web Vitals: guarda as amostras pra calcular o percentil 75 depois.
+  // Media esconde o problema — o P75 e o que a maioria de fato sentiu.
+  if (Number(c.lcp) > 0 && b.lcp.length < 500) b.lcp.push(Number(c.lcp));
+  if (Number(c.fcp) > 0 && b.fcp.length < 500) b.fcp.push(Number(c.fcp));
+  if (Number(c.cls) >= 0 && b.cls.length < 500) b.cls.push(Number(c.cls));
+  b.erros += Number(c.erros) || 0;
+  _atSujo = true;
+}
+
+function _atFriccao(etapa, rotulo, motivo) {
+  if (!etapa || !rotulo) return;
+  const b = _atPega(etapa);
+  const r = String(rotulo).slice(0, 70);
+  if (!b.friccao[r]) b.friccao[r] = { mortos: 0, raiva: 0 };
+  if (motivo === 'raiva') b.friccao[r].raiva++; else b.friccao[r].mortos++;
   _atSujo = true;
 }
 
 function _atClique(etapa, rotulo, posicao) {
   if (!etapa || !rotulo) return;
-  const dia = _hojeBR(), k = _atChave(etapa, dia);
-  if (!_atBuffer[k]) _atBuffer[k] = { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0, cliques: {} };
-  const b = _atBuffer[k];
+  const b = _atPega(etapa);
   const r = String(rotulo).slice(0, 70);
   if (!b.cliques[r]) b.cliques[r] = { n: 0, pos: Number(posicao) || 0 };
   b.cliques[r].n++;
@@ -8325,10 +8397,23 @@ function _atGravar() {
       const k = _atChave(n.etapa, n.data), v = indice[k];
       if (!v) { atual.push(n); indice[k] = n; return; }
       v.saidas += n.saidas; v.f25 += n.f25; v.f50 += n.f50; v.f75 += n.f75; v.f100 += n.f100;
+      v.atencaoSoma = (v.atencaoSoma || 0) + (n.atencaoSoma || 0);
+      v.atencaoN    = (v.atencaoN    || 0) + (n.atencaoN    || 0);
+      v.rapidos     = (v.rapidos     || 0) + (n.rapidos     || 0);
+      v.erros       = (v.erros       || 0) + (n.erros       || 0);
+      ['lcp','fcp','cls'].forEach(m => {
+        v[m] = (v[m] || []).concat(n[m] || []).slice(-500);
+      });
       Object.keys(n.cliques).forEach(r => {
         if (!v.cliques[r]) v.cliques[r] = { n: 0, pos: n.cliques[r].pos };
         v.cliques[r].n += n.cliques[r].n;
         if (n.cliques[r].pos) v.cliques[r].pos = n.cliques[r].pos;
+      });
+      v.friccao = v.friccao || {};
+      Object.keys(n.friccao || {}).forEach(r => {
+        if (!v.friccao[r]) v.friccao[r] = { mortos: 0, raiva: 0 };
+        v.friccao[r].mortos += n.friccao[r].mortos;
+        v.friccao[r].raiva  += n.friccao[r].raiva;
       });
     });
     const corte = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
@@ -8338,6 +8423,14 @@ function _atGravar() {
   } catch (e) { console.error('[atencao] falhou ao gravar:', e.message); }
 }
 setInterval(_atGravar, 45 * 1000);
+
+// P75: o valor que 3 em cada 4 pessoas tiveram ou melhor. Media esconde
+// o problema quando um punhado de aparelhos ruins puxa a cauda.
+function _p75(lista) {
+  if (!lista || !lista.length) return null;
+  const l = lista.slice().sort((a, b) => a - b);
+  return l[Math.min(l.length - 1, Math.floor(l.length * 0.75))];
+}
 
 app.get('/api/funil/atencao', authUsuario, (req, res) => {
   try {
@@ -8352,14 +8445,23 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
     if (de)  linhas = linhas.filter(l => l.data >= de);
     if (ate) linhas = linhas.filter(l => l.data <= ate);
 
-    const t = { saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0 };
-    const cl = {};
+    const t = { saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0,
+                atencaoSoma: 0, atencaoN: 0, rapidos: 0, erros: 0 };
+    const cl = {}, fr = {}, vit = { lcp: [], fcp: [], cls: [] };
     linhas.forEach(l => {
       t.saidas += l.saidas; t.f25 += l.f25; t.f50 += l.f50; t.f75 += l.f75; t.f100 += l.f100;
+      t.atencaoSoma += l.atencaoSoma || 0; t.atencaoN += l.atencaoN || 0;
+      t.rapidos += l.rapidos || 0; t.erros += l.erros || 0;
+      ['lcp','fcp','cls'].forEach(m => { vit[m] = vit[m].concat(l[m] || []); });
       Object.keys(l.cliques || {}).forEach(r => {
         if (!cl[r]) cl[r] = { rotulo: r, n: 0, pos: l.cliques[r].pos };
         cl[r].n += l.cliques[r].n;
         if (l.cliques[r].pos) cl[r].pos = l.cliques[r].pos;
+      });
+      Object.keys(l.friccao || {}).forEach(r => {
+        if (!fr[r]) fr[r] = { rotulo: r, mortos: 0, raiva: 0 };
+        fr[r].mortos += l.friccao[r].mortos;
+        fr[r].raiva  += l.friccao[r].raiva;
       });
     });
     const base = t.saidas || 1;
@@ -8370,9 +8472,23 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
         f75: (t.f75 / base) * 100, f100: (t.f100 / base) * 100,
         n25: t.f25, n50: t.f50, n75: t.f75, n100: t.f100
       },
+      atencao: {
+        media: t.atencaoN ? Math.round(t.atencaoSoma / t.atencaoN) : null,
+        medidos: t.atencaoN,
+        rapidos: t.rapidos,
+        pctRapidos: (t.rapidos / base) * 100
+      },
+      vitais: {
+        lcp: _p75(vit.lcp), fcp: _p75(vit.fcp),
+        cls: vit.cls.length ? Math.round(_p75(vit.cls) * 1000) / 1000 : null,
+        amostras: vit.lcp.length, erros: t.erros
+      },
       cliques: Object.values(cl).map(c => Object.assign(c, {
         pct: t.saidas > 0 ? (c.n / t.saidas) * 100 : 0
-      })).sort((a, b) => b.n - a.n).slice(0, 25)
+      })).sort((a, b) => b.n - a.n).slice(0, 25),
+      friccao: Object.values(fr).map(f => Object.assign(f, {
+        total: f.mortos + f.raiva
+      })).sort((a, b) => b.total - a.total).slice(0, 20)
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -8439,13 +8555,46 @@ function _abJulgar(a, b) {
   if (n1 < 1 || n2 < 1) return { pronto: false, motivo: 'sem-gente' };
   const p1 = x1 / n1, p2 = x2 / n2;
   if (x1 + x2 === 0) return { pronto: false, motivo: 'sem-conversao', p1, p2 };
+
+  // Teste de PRECO: se as variantes valem valores diferentes, comparar taxa de
+  // conversao da a resposta errada. 5% a R$147 rende R$7,35 por visitante;
+  // 4% a R$197 rende R$7,88 — converte menos e fatura mais. O criterio passa a
+  // ser receita por visitante, e a variancia entra vezes o preco ao quadrado.
+  const v1 = Number(a.valor) || 0, v2 = Number(b.valor) || 0;
+  const porPreco = v1 > 0 && v2 > 0 && v1 !== v2;
+
+  if (porPreco) {
+    const m1 = p1 * v1, m2 = p2 * v2;
+    const va1 = (p1 * (1 - p1) * v1 * v1) / n1;
+    const va2 = (p2 * (1 - p2) * v2 * v2) / n2;
+    const se = Math.sqrt(va1 + va2);
+    if (!se) return { pronto: false, motivo: 'sem-variacao', p1, p2, criterio: 'receita' };
+    const z = Math.abs(m1 - m2) / se;
+    const conf = z >= 2.576 ? 99 : (z >= 1.96 ? 95 : (z >= 1.645 ? 90 : 0));
+    const dif = Math.abs(m1 - m2);
+    let precisa = null;
+    if (dif > 0) {
+      const nAlvo = Math.ceil(
+        (Math.pow(1.96 + 0.84, 2) * (p1*(1-p1)*v1*v1 + p2*(1-p2)*v2*v2)) / (dif * dif));
+      precisa = Math.max(0, nAlvo - Math.min(n1, n2));
+    }
+    return {
+      pronto: z >= 1.96, z: Number(z.toFixed(3)), conf, criterio: 'receita',
+      p1, p2, rpv1: m1, rpv2: m2,
+      lider: m1 >= m2 ? 'a' : 'b',
+      // o lider por conversao pode ser o OUTRO — a tela precisa contar isso
+      liderConversao: p1 >= p2 ? 'a' : 'b',
+      ganho: (m1 && m2) ? Math.abs(m1 - m2) / Math.min(m1, m2) : 0,
+      faltamPorLado: precisa
+    };
+  }
+
   const pp = (x1 + x2) / (n1 + n2);
   const se = Math.sqrt(pp * (1 - pp) * (1 / n1 + 1 / n2));
   if (!se) return { pronto: false, motivo: 'sem-variacao', p1, p2 };
   const z = Math.abs(p1 - p2) / se;
   // 1.96 = 95% de confiança nos dois sentidos
   const conf = z >= 2.576 ? 99 : (z >= 1.96 ? 95 : (z >= 1.645 ? 90 : 0));
-  // quantos faltam de cada lado pra essa diferença virar conclusão a 95%
   const dif = Math.abs(p1 - p2);
   let precisa = null;
   if (dif > 0) {
@@ -8454,8 +8603,8 @@ function _abJulgar(a, b) {
     precisa = Math.max(0, nAlvo - Math.min(n1, n2));
   }
   return {
-    pronto: z >= 1.96, z: Number(z.toFixed(3)), conf,
-    p1, p2, lider: p1 >= p2 ? 'a' : 'b',
+    pronto: z >= 1.96, z: Number(z.toFixed(3)), conf, criterio: 'conversao',
+    p1, p2, lider: p1 >= p2 ? 'a' : 'b', liderConversao: p1 >= p2 ? 'a' : 'b',
     ganho: (p1 && p2) ? Math.abs(p1 - p2) / Math.min(p1, p2) : 0,
     faltamPorLado: precisa
   };
@@ -8481,7 +8630,7 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
     (r.destinos || []).forEach((d, i) => {
       porVar[String(d.id || ('v' + i))] = {
         id: String(d.id || ('v' + i)), nome: d.nome || ('Variante ' + (i + 1)),
-        url: d.url || '', peso: Number(d.peso) || 1,
+        url: d.url || '', peso: Number(d.peso) || 1, valor: Number(d.valor) || 0,
         sorteios: 0, pessoas: 0, metas: 0
       };
     });
@@ -8491,11 +8640,18 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
       v.sorteios += l.sorteios || 0; v.pessoas += l.pessoas || 0; v.metas += l.metas || 0;
     });
     const variantes = Object.values(porVar).map(v => Object.assign(v, {
-      conversao: v.pessoas > 0 ? (v.metas / v.pessoas) * 100 : 0
+      conversao: v.pessoas > 0 ? (v.metas / v.pessoas) * 100 : 0,
+      // receita por visitante: so faz sentido com valor informado
+      rpv: (v.valor > 0 && v.pessoas > 0) ? (v.metas * v.valor) / v.pessoas : null
     }));
 
-    // o veredito compara as duas melhores; com 3+ variantes ainda é o par que decide
-    const ord = variantes.slice().sort((x, y) => y.conversao - x.conversao);
+    // Ordena pelo criterio certo: com precos diferentes, quem fatura mais por
+    // visitante; senao, quem converte mais.
+    const valores = variantes.map(v => v.valor).filter(v => v > 0);
+    const precoVaria = valores.length >= 2 && new Set(valores).size > 1;
+    const ord = variantes.slice().sort((x, y) => precoVaria
+      ? ((y.rpv || 0) - (x.rpv || 0))
+      : (y.conversao - x.conversao));
     const julgamento = (ord.length >= 2) ? _abJulgar(ord[0], ord[1]) : { pronto: false, motivo: 'uma-so' };
 
     res.json({
@@ -8503,7 +8659,7 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
       meta: r.meta || null, estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
       criadoEm: r.criadoEm || null, variantes,
       lider: ord[0] ? ord[0].id : null, segundo: ord[1] ? ord[1].id : null,
-      julgamento
+      precoVaria, julgamento
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -8550,6 +8706,7 @@ const PIXEL_JS = `(function(w,d){
   if(!eu) { var ts = d.getElementsByTagName('script'); eu = ts[ts.length-1]; }
   var FUNIL = eu.getAttribute('data-f') || '';
   var ETAPA = eu.getAttribute('data-e') || '';
+  var VERSAO = eu.getAttribute('data-v') || '';
   var API   = eu.src.replace(/\\/px\\.js.*$/, '') + '/api/funil/evento';
   if(!FUNIL) return;
 
@@ -8575,7 +8732,7 @@ const PIXEL_JS = `(function(w,d){
   var entrou = Date.now();
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
-                                teste:teste, variante:variante, ref:d.referrer }, extra||{});
+                                teste:teste, variante:variante, versao:VERSAO, ref:d.referrer }, extra||{});
     var corpo = JSON.stringify(dados);
     try{
       navigator.sendBeacon
@@ -8585,25 +8742,106 @@ const PIXEL_JS = `(function(w,d){
   }
   manda('entrou');
 
+  // ── rolagem ──
   var fundo = 0;
   w.addEventListener('scroll', function(){
     var p = (scrollY+innerHeight)/(d.body.scrollHeight||1)*100;
     if(p>fundo) fundo = p;
   },{passive:true});
-  w.addEventListener('pagehide', function(){
-    manda('saiu',{ segundos: Math.round((Date.now()-entrou)/1000), rolagem: Math.round(fundo) });
+
+  // ── atencao: so conta o tempo com a aba VISIVEL. Tempo de parede contava
+  //    quem abriu numa aba de fundo e esqueceu como se estivesse assistindo. ──
+  // Comeca contando: se o navegador nunca disparar visibilitychange, a atencao
+  // vira o tempo de parede — que e o melhor palpite honesto. Comecar em zero
+  // fazia a atencao ser sempre 0 quando o evento nao vinha.
+  var visivelDesde = Date.now();
+  var atencao = 0;
+  function fechaJanela(){ if(visivelDesde){ atencao += Date.now()-visivelDesde; visivelDesde = 0; } }
+  d.addEventListener('visibilitychange', function(){
+    if(d.visibilityState === 'visible'){ if(!visivelDesde) visivelDesde = Date.now(); }
+    else fechaJanela();
   });
 
+  // ── Web Vitals de campo: mede o aparelho do lead, nao o laboratorio ──
+  var lcp = 0, cls = 0, fcp = 0;
+  try{
+    new PerformanceObserver(function(l){
+      var e = l.getEntries(); if(e.length) lcp = Math.round(e[e.length-1].startTime);
+    }).observe({type:'largest-contentful-paint', buffered:true});
+    new PerformanceObserver(function(l){
+      l.getEntries().forEach(function(e){ if(!e.hadRecentInput) cls += e.value; });
+    }).observe({type:'layout-shift', buffered:true});
+    new PerformanceObserver(function(l){
+      l.getEntries().forEach(function(e){ if(e.name === 'first-contentful-paint') fcp = Math.round(e.startTime); });
+    }).observe({type:'paint', buffered:true});
+  }catch(e){}
+  var errosJs = 0;
+  w.addEventListener('error', function(){ errosJs++; });
+
+  // ── friccao: clique morto e rage click ──
+  var ultimos = [];
+  function rotuloDe(el){
+    var r = (el.getAttribute && el.getAttribute('aria-label')) || el.innerText || el.alt || el.value || el.tagName || '';
+    return String(r).replace(/\\s+/g,' ').trim().slice(0,70) || (el.tagName || '?');
+  }
+  function acionavel(el){
+    return !!(el.closest && el.closest('a[href],button,input,select,textarea,label,[onclick],[role=button],[type=submit]'));
+  }
   d.addEventListener('click', function(ev){
     var el = ev.target && ev.target.closest ? ev.target.closest('a,button,[role=button],input[type=submit],img,video') : null;
     if(!el) el = ev.target;
     if(!el || !el.getBoundingClientRect) return;
-    var rot = (el.getAttribute && el.getAttribute('aria-label')) || el.innerText || el.alt || el.value || el.tagName || '';
-    rot = String(rot).replace(/\\s+/g,' ').trim().slice(0,70) || el.tagName;
+    var rot = rotuloDe(el);
     var alt = d.body.scrollHeight || 1;
     var y = el.getBoundingClientRect().top + scrollY;
     manda('clique', { rotulo: rot, posicao: Math.round(y/alt*100) });
+
+    // rage click: 3+ no mesmo ponto em ~1s
+    var agora = Date.now();
+    ultimos = ultimos.filter(function(c){ return agora - c.t < 1000; });
+    ultimos.push({ t:agora, x:ev.clientX, y:ev.clientY });
+    var perto = ultimos.filter(function(c){
+      return Math.abs(c.x-ev.clientX) < 35 && Math.abs(c.y-ev.clientY) < 35; });
+    if(perto.length >= 3){
+      ultimos = [];
+      manda('friccao', { rotulo: rot, motivo: 'raiva' });
+      return;
+    }
+
+    // clique morto: elemento nao acionavel e nada mudou logo depois
+    if(acionavel(el)) return;
+    var urlAntes = location.href, focoAntes = d.activeElement, htmlAntes = d.body.childElementCount;
+    setTimeout(function(){
+      if(location.href === urlAntes && d.activeElement === focoAntes && d.body.childElementCount === htmlAntes)
+        manda('friccao', { rotulo: rot, motivo: 'morto', posicao: Math.round(y/alt*100) });
+    }, 450);
   }, true);
+
+  w.addEventListener('pagehide', function(){
+    fechaJanela();
+    // O observador as vezes ainda nao entregou nada quando a pessoa sai rapido.
+    // Ler a lista de entradas aqui pega o que ja foi medido de qualquer jeito.
+    try{
+      if(!lcp){
+        var e1 = performance.getEntriesByType('largest-contentful-paint');
+        if(e1 && e1.length) lcp = Math.round(e1[e1.length-1].startTime);
+      }
+      if(!fcp){
+        var e2 = performance.getEntriesByName('first-contentful-paint');
+        if(e2 && e2.length) fcp = Math.round(e2[0].startTime);
+      }
+      if(!lcp){
+        var nav = performance.getEntriesByType('navigation')[0];
+        if(nav && nav.domContentLoadedEventEnd) lcp = Math.round(nav.domContentLoadedEventEnd);
+      }
+    }catch(e){}
+    manda('saiu',{
+      segundos: Math.round((Date.now()-entrou)/1000),
+      atencao:  Math.round(atencao/1000),
+      rolagem:  Math.round(fundo),
+      lcp: lcp, cls: Math.round(cls*1000)/1000, fcp: fcp, erros: errosJs
+    });
+  });
 
   // Marca uma etapa no clique de um botao — serve pro checkout do gateway,
   // onde o nosso codigo nao entra mas o clique acontece numa pagina sua.
