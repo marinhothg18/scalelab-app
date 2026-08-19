@@ -29055,14 +29055,9 @@ function fnOpcoes(){
   // Seletores de etapa das abas. Montar aqui — e nao so quando a aba abre —
   // garante que eles existam independente da ordem em que a tela é desenhada;
   // era por isso que o de Jornada aparecia vazio.
-  ['at-etapa'].forEach(function(id){
-    var sel = document.getElementById(id); if(!sel) return;
-    var antes = sel.value || sel.dataset.escolha || '';
-    sel.innerHTML = (f && f.etapas || []).map(function(e){
-      return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
-    if(antes && f && fnAcha(f, antes)) sel.value = antes;
-    sel.dataset.escolha = sel.value || '';
-  });
+  // O at-etapa é montado por atOpcoesPagina(), que junta os links da campanha
+  // com o que o pixel mediu. Escrever as etapas cruas aqui deixava a lista cheia
+  // e a Atenção nunca chegava a montar a lista de páginas.
   var px = document.getElementById('fn-px-etapa'), pai = document.getElementById('fn-n-pai');
   if(px) px.innerHTML = f ? f.etapas.map(function(e){ return '<option value="'+e.id+'">'+fnEsc(e.nome)+'</option>'; }).join('') : '';
   if(pai) pai.innerHTML = f ? (fnTodos(f).map(function(n){ return '<option value="'+n.id+'">'+fnEsc(n.nome)+'</option>'; }).join('')
@@ -29171,7 +29166,7 @@ function abPintarLista(){
     var resumo = abResumoCurto(r, d);
     return '<div class="ab-linha" onclick="abEscolher(\''+fnEsc(r.slug)+'\')">'+
       '<div><div class="t">'+fnEsc(r.nome||r.slug)+'</div>'+
-        '<div class="s">/r/'+fnEsc(r.slug)+' · '+abLinhaVars(r, d)+'</div></div>'+
+        '<div class="s">'+fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,''))+' · '+abLinhaVars(r, d)+'</div></div>'+
       '<div><span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
       '<div class="ab-res" style="color:'+resumo.cor+'">'+resumo.txt+'</div>'+
       '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div></div>';
@@ -29288,7 +29283,7 @@ function abPintarDetalhe(){
           '<span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
         (r.hipotese ? '<div class="ab-hip">“'+fnEsc(r.hipotese)+'”</div>' : '')+
         '<div class="ab-link"><span class="rot">Link pra colar no anúncio</span>'+
-          '<span class="u" id="ab-url">'+location.origin+'/r/'+fnEsc(r.slug)+'</span>'+
+          '<span class="u" id="ab-url">'+fnEsc(abUrlDoTeste(r))+'</span>'+
           '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>'+
         abVeredito(r, d)+
         '<div class="fn-sec">Variantes · divisão do tráfego e resultado</div>'+
@@ -29306,6 +29301,12 @@ function abPintarDetalhe(){
             '<input value="'+fnEsc(r.nome||'')+'" onchange="abCampo(\'nome\',this.value)"></div>'+
           '<div class="fn-campo"><label>Atalho do link</label>'+
             '<input value="'+fnEsc(r.slug)+'" onchange="abMudarSlug(this.value)"></div>'+
+          '<div class="fn-campo"><label>Domínio do link</label>'+
+            '<input value="'+fnEsc(r.dominio||'')+'" placeholder="'+fnEsc(location.host)+'" '+
+              'onchange="abMudarDominio(this.value)">'+
+            '<div style="font-size:11px;color:var(--text2);margin-top:5px;line-height:1.5">'+
+              'Vazio usa <b>'+fnEsc(location.host)+'</b>. Pra usar domínio seu, aponte o DNS '+
+              'pro Railway e cadastre lá antes — só escrever aqui não faz o domínio existir.</div></div>'+
           '<div class="fn-campo"><label>Hipótese</label>'+
             '<input value="'+fnEsc(r.hipotese||'')+'" placeholder="O que você espera, e por quê" onchange="abCampo(\'hipotese\',this.value)"></div>'+
           '<div class="fn-campo"><label>Meta — o que conta como conversão</label>'+
@@ -29438,6 +29439,24 @@ function abAddVar(){
   delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
   toastFn('Variante adicionada');
 }
+// O link do teste pode morar num domínio seu — o servidor responde /r/:slug em
+// qualquer host que chegue nele, então só falta o DNS apontar pra cá.
+function abUrlDoTeste(r){
+  var d = String((r && r.dominio) || '').trim()
+            .replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return d ? ('https://' + d + '/r/' + r.slug) : (location.origin + '/r/' + r.slug);
+}
+function abMudarDominio(v){
+  var r = fnRedAtual(); if(!r) return;
+  var limpo = String(v||'').trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'').toLowerCase();
+  if(limpo && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(limpo)){
+    notif('❌ Domínio inválido. Use algo como links.seudominio.com.br');
+    fnPintarRed(); return;
+  }
+  r.dominio = limpo; fnGravarRed(r); fnPintarRed();
+  if(limpo) notif('Salvo. Só funciona depois que o DNS apontar pro Railway.');
+}
+
 function abMudarSlug(v){
   var r=fnRedAtual(); if(!r) return;
   var novo = (v||'').trim().replace(/[^a-z0-9-]/gi,'-').toLowerCase() || 'link';
@@ -29630,6 +29649,18 @@ function jnPiramide(d){
 
 // ── Quando a tela está zerada, mostra PARA ONDE o pixel está mandando ──
 var fnDiag = null, fnDiagBuscando = false, fnDiagAlvo = null;
+// A tela pode estar cheia de número e ainda assim o funil aberto não receber
+// nada — porque o filtro por página atravessa funil. Nesse caso o aviso
+// contradizia o que estava logo abaixo dele.
+var fnTemDadoNaTela = false;
+function fnMarcarDado(tem){
+  if(fnTemDadoNaTela === !!tem) return;
+  fnTemDadoNaTela = !!tem;
+  if(fnDiagAlvo && fnDiag){
+    var el = document.getElementById(fnDiagAlvo);
+    if(el) el.innerHTML = fnDiagHtml();
+  }
+}
 function fnDiagnostico(alvoId){
   var alvo = document.getElementById(alvoId); if(!alvo) return;
   // pinta o que já se sabe pra não piscar, mas confere de novo sempre: senão o
@@ -29657,7 +29688,7 @@ function fnDiagHtml(){
   var trazidosEventos = trazidos.reduce(function(a,x){ return a + (x.entradas||0); }, 0);
   // Só alarma se ESTE funil não está recebendo nada. Um funil vizinho rodando
   // bem no mesmo projeto não é problema — avisar disso seria alarme falso.
-  var fora = (meusEventos + trazidosEventos) > 0 ? [] : recebendo.filter(function(x){
+  var fora = ((meusEventos + trazidosEventos) > 0 || fnTemDadoNaTela) ? [] : recebendo.filter(function(x){
     return x.entradas > 0 && x.funil !== f.id && !(x.adotadaPor && x.adotadaPor.funil === f.id); });
 
   if(!recebendo.length){
@@ -29814,8 +29845,12 @@ function jnOpcoesPagina(){
              (p.medido ? (' · '+fnNum(p.pessoas||p.saidas||0)) : ' · sem dado ainda')+
              '</option>'; }).join('') + '</optgroup>';
   }
-  html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
-    return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
+  // As etapas do mapa só entram quando não há link nenhum pra escolher. Com as
+  // duas listas juntas a pergunta virava "etapa ou página?" a cada abertura.
+  if(!lista.length){
+    html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
+      return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
+  }
   // Só mexe no select se a lista mudou de verdade. Reconstruir sempre fazia a
   // resposta atrasada restaurar a opção ANTERIOR por cima da que você acabou de
   // escolher — a tela trocava de página sozinha.
@@ -29914,6 +29949,7 @@ function jnPintar(){
   if(!fl || !el) return;
   var d = jnDados;
   if(!d || !d.ok){ el.innerHTML = '<div class="fn-nota">Sem dados de jornada ainda.</div>'; return; }
+  fnMarcarDado(((d.contagem||{}).todas||0) > 0);
 
   jnPiramide(d);
   fl.innerHTML = Object.keys(JN_ROTULO).map(function(k){
@@ -30015,8 +30051,12 @@ function atOpcoesPagina(){
              (p.medido ? (' · '+fnNum(p.saidas||0)) : ' · sem dado ainda')+
              '</option>'; }).join('') + '</optgroup>';
   }
-  html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
-    return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
+  // As etapas do mapa só entram quando não há link nenhum pra escolher. Com as
+  // duas listas juntas a pergunta virava "etapa ou página?" a cada abertura.
+  if(!lista.length){
+    html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
+      return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
+  }
   if(sel.innerHTML === html) return;   // não repintar por cima da escolha
   sel.innerHTML = html;
   if(antes) sel.value = antes;
@@ -30030,7 +30070,7 @@ function atOpcoes(){
     document.getElementById('at-corpo').innerHTML = '<div class="fn-nota">Crie uma etapa no mapa primeiro.</div>';
     return;
   }
-  if(!sel.options.length) atOpcoesPagina();
+  atOpcoesPagina();
   atCarregar();
 }
 
@@ -30057,8 +30097,9 @@ function atPintar(d){
   var el = document.getElementById('at-corpo'); if(!el) return;
   if(!d || !d.ok){ el.innerHTML = '<div class="fn-nota">Sem dados.</div>'; return; }
   // a lista de páginas medidas vem junto e alimenta o seletor
-  if(d.paginas && d.paginas.length){ atPaginas = d.paginas; atOpcoesPagina(); }
+  if(d.paginas){ atPaginas = d.paginas; atOpcoesPagina(); }
   var r = d.rolagem || {};
+  fnMarcarDado((r.saidas||0) > 0);
   if(!r.saidas){
     el.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período. '+
       'A rolagem é medida quando a pessoa fecha ou troca de página.</div>';

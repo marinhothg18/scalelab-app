@@ -8410,10 +8410,16 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
       return Object.assign({}, j, { eventos: (j.eventos || []).map(e =>
         Object.assign({}, e, { etapa: adoJ.etapaDe({ funil: j.funil, etapa: e.etapa }) })) });
     };
+    // Escolher uma pagina JA e o recorte: o pixel pode estar reportando sob outro
+    // id de funil e a pagina continua sendo a mesma pagina. Filtrar por funil
+    // aqui fazia a jornada vir vazia enquanto a atencao — que sempre olhou por
+    // pagina — mostrava 30 pessoas na mesma tela.
+    const pg = String(req.query.pg || '').slice(0, 160);
+    const porFunil = j => !funil || pg ||
+      adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa });
     let lista = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
-      .filter(j => !funil || adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa }))
-      .concat(Object.values(_jBuffer).filter(j =>
-        !funil || adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa })))
+      .filter(porFunil)
+      .concat(Object.values(_jBuffer).filter(porFunil))
       .map(trazer);
 
     // O seletor de periodo do Funis nao chegava aqui: a tela dizia "Hoje" e a
@@ -8432,16 +8438,25 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     // O seletor de paginas sai daqui, ANTES do filtro por pagina. Montado depois,
     // sobrava so a pagina escolhida — o select se reconstruia com uma opcao so e
     // jogava fora as outras quatro, e a tela voltava sozinha pra pagina anterior.
+    // E monta a partir de TODAS as jornadas do periodo, nao so as deste funil:
+    // senao a pagina que reporta sob id antigo aparecia como "sem dado ainda".
     const paginas = {};
-    lista.forEach(j => (j.eventos || []).forEach(e => {
+    const paraLista = funil && !pg
+      ? (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+          .concat(Object.values(_jBuffer))
+          .filter(j => (j.eventos || []).some(e =>
+            (!de || emDia(e) >= de) && (!ate || emDia(e) <= ate)))
+      : lista;
+    paraLista.forEach(j => (j.eventos || []).forEach(e => {
       if (!e.pg) return;
+      if (de && emDia(e) < de) return;
+      if (ate && emDia(e) > ate) return;
       if (!paginas[e.pg]) paginas[e.pg] = { pg: e.pg, pessoas: new Set() };
       paginas[e.pg].pessoas.add(j.id);
     }));
 
     // Filtro por pagina: com 5 VSLs na mesma etapa, e a unica forma de saber
     // qual delas retem. Mantem a jornada inteira de quem passou pela pagina.
-    const pg = String(req.query.pg || '').slice(0, 160);
     if (pg) lista = lista.filter(j => (j.eventos || []).some(e => (e.pg || '') === pg));
 
     // filtra por quem veio de um teste especifico — a variante viaja no evento
@@ -9006,9 +9021,19 @@ const PIXEL_JS = `(function(w,d){
   manda('entrou');
 
   // ── rolagem ──
+  // So o evento de scroll alimentava isto, entao quem NAO rolava ficava com 0 —
+  // e numa VSL quase ninguem rola, a pessoa assiste. O numero dizia que 12 de 13
+  // nao passaram do topo quando na verdade tinham visto a pagina inteira.
+  // Agora tambem se mede na saida, com a altura final: se a pagina cabe na tela,
+  // quem nao rolou viu 100%; se e longa, viu a fracao que coube.
   var fundo = 0;
+  function fracaoVista(){
+    var alt = d.body.scrollHeight || d.documentElement.scrollHeight || 0;
+    if(!alt) return 0;
+    return Math.min(100, (scrollY + innerHeight) / alt * 100);
+  }
   w.addEventListener('scroll', function(){
-    var p = (scrollY+innerHeight)/(d.body.scrollHeight||1)*100;
+    var p = fracaoVista();
     if(p>fundo) fundo = p;
   },{passive:true});
 
@@ -9101,7 +9126,7 @@ const PIXEL_JS = `(function(w,d){
     manda('saiu',{
       segundos: Math.round((Date.now()-entrou)/1000),
       atencao:  Math.round(atencao/1000),
-      rolagem:  Math.round(fundo),
+      rolagem:  Math.round(Math.max(fundo, fracaoVista())),
       lcp: lcp, cls: Math.round(cls*1000)/1000, fcp: fcp, erros: errosJs
     });
   });
