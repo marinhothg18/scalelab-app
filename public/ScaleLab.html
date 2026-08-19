@@ -29506,12 +29506,10 @@ function fnGravarRed(r){
 // ── JORNADA POR PESSOA ──
 // ══════════════════════════════════════════════════════
 var jnFiltro = 'todas', jnDados = null;   // abrir num filtro estreito faz a tela parecer vazia
-// Duas fileiras com propósitos diferentes. A de cima é um FUNIL — a ordem é a
-// jornada de quem assiste, e cada degrau é sempre menor que o anterior. A de
-// baixo são recortes de comportamento, que se cruzam e não têm ordem nenhuma.
+// Uma fileira só, e é um FUNIL: a ordem é a jornada de quem assiste e cada
+// degrau é sempre menor que o anterior. Os selos de cada pessoa (leu de verdade,
+// travou, só olhou) continuam nos cartões — o que saiu foi a fileira de botões.
 var JN_DEGRAUS = ['todas','tempo-1m','tempo-5m','tempo-10m','tempo-20m','comprou'];
-var JN_RECORTES = ['checkout-sem-compra','alta-intencao','leitor','engajado',
-                   'so-olhou','friccao','abandono','voltou'];
 var JN_ROTULO = {
   'todas':'Abriu a página',
   'tempo-1m':'Passou de 1 min',
@@ -29985,11 +29983,12 @@ function jnPintar(){
     return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" style="'+cor+'" '+
       'onclick="jnTrocar(\''+k+'\')">'+JN_ROTULO[k]+' · '+fnNum(n)+pct+'</button>';
   }
+  // Se o filtro em uso não é mais um degrau do funil, volta pra "abriu a página":
+  // senão a tela ficaria presa num recorte que não tem mais botão pra sair.
+  if(JN_DEGRAUS.indexOf(jnFiltro) < 0){ jnFiltro = 'todas'; jnCarregar(); return; }
   fl.innerHTML =
     '<div class="jn-fila"><span class="jn-fila-r">Quanto tempo aguentaram</span>'+
-      '<div class="jn-fila-b">'+JN_DEGRAUS.map(function(k){ return pastilha(k, true); }).join('')+'</div></div>'+
-    '<div class="jn-fila"><span class="jn-fila-r">Recortes de comportamento</span>'+
-      '<div class="jn-fila-b">'+JN_RECORTES.map(function(k){ return pastilha(k, false); }).join('')+'</div></div>';
+      '<div class="jn-fila-b">'+JN_DEGRAUS.map(function(k){ return pastilha(k, true); }).join('')+'</div></div>';
 
   var nomeEtapa = {}, tipoEtapa = {};
   // o mapa local manda: se a etapa foi renomeada aqui, o nome novo é o que vale
