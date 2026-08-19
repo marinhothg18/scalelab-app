@@ -19,6 +19,37 @@ function checarJS(arquivo) {
   }
 }
 
+// O pixel vive dentro de um template literal em server.js e é ENTREGUE como
+// arquivo. `node --check server.js` acha aquilo tudo válido — é só uma string.
+// Mas a barra invertida some na avaliação: um /\/+$/ escrito com uma barra só
+// chega no navegador como //+$/, que é comentário, e o pixel inteiro para de
+// carregar. Foi assim que ele foi ao ar quebrado em 19/08. Aqui a gente avalia
+// o template e valida o resultado, que é o que a página realmente recebe.
+function checarPixelServido() {
+  const arquivo = 'server.js';
+  if (!fs.existsSync(arquivo)) return;
+  const src = fs.readFileSync(arquivo, 'utf8');
+  const ini = src.indexOf('const PIXEL_JS = `');
+  if (ini < 0) return;
+  const fim = src.indexOf('`;', ini);
+  if (fim < 0) return;
+  let js;
+  try {
+    js = eval(src.slice(ini + 'const PIXEL_JS = '.length, fim + 1));
+  } catch (e) {
+    falhas++;
+    console.error('✗ PIXEL_JS não montou: ' + e.message);
+    return;
+  }
+  try {
+    new Function(js);
+  } catch (e) {
+    falhas++;
+    console.error('✗ o /px.js entregue ao navegador está quebrado\n   ' + e.message +
+      '\n   (dentro do template literal a barra invertida precisa ser dobrada: \\\\. e \\\\/)');
+  }
+}
+
 function checarHTML(arquivo) {
   const html = fs.readFileSync(arquivo, 'utf8');
   // ignora <script src=...> (código externo) e blocos que não são JavaScript
@@ -40,6 +71,7 @@ function checarHTML(arquivo) {
 }
 
 ALVOS_JS.forEach(checarJS);
+checarPixelServido();
 if (fs.existsSync(PASTA_HTML)) {
   fs.readdirSync(PASTA_HTML)
     .filter(f => f.endsWith('.html'))

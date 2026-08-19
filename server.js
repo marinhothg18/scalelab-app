@@ -8991,7 +8991,7 @@ const PIXEL_JS = `(function(w,d){
   // link cadastrado no teste ("https://site.com/x/") — e o seletor mostraria as
   // duas como se fossem paginas diferentes.
   var PAGINA = (location.host + location.pathname)
-                 .replace(/^www\./i, '').replace(/\/+$/, '').slice(0, 160);
+                 .replace(/^www\\./i, '').replace(/\\/+$/, '').slice(0, 160);
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
                                 pg:PAGINA,
