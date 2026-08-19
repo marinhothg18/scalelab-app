@@ -8205,9 +8205,10 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     }
 
     _jRegistrar(visitante, funil, etapa, tipo, c);
-    if (tipo === 'saiu')    _atSaida(etapa, c);
-    if (tipo === 'clique')  _atClique(etapa, c.rotulo, c.posicao);
-    if (tipo === 'friccao') _atFriccao(etapa, c.rotulo, c.motivo);
+    const pg = String(c.pg || '').slice(0, 160);
+    if (tipo === 'saiu')    _atSaida(etapa, c, pg);
+    if (tipo === 'clique')  _atClique(etapa, c.rotulo, c.posicao, pg);
+    if (tipo === 'friccao') _atFriccao(etapa, c.rotulo, c.motivo, pg);
 
     _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
                  visitante: String(c.id || '').slice(0, 12),
@@ -8240,6 +8241,7 @@ function _jRegistrar(visitante, funil, etapa, tipo, extra) {
   if (extra && extra.utm && extra.utm.content) ev.criativo = String(extra.utm.content).slice(0, 80);
   if (extra && extra.variante) ev.variante = String(extra.variante).slice(0, 40);
   if (extra && extra.teste)    ev.teste    = String(extra.teste).slice(0, 60);
+  if (extra && extra.pg)       ev.pg       = String(extra.pg).slice(0, 160);
   if (extra && extra.rotulo)   ev.rotulo = String(extra.rotulo).slice(0, 70);
   j.eventos.push(ev);
   if (j.eventos.length > JORNADA_EVENTOS) j.eventos = j.eventos.slice(-JORNADA_EVENTOS);
@@ -8414,6 +8416,34 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
         !funil || adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa })))
       .map(trazer);
 
+    // O seletor de periodo do Funis nao chegava aqui: a tela dizia "Hoje" e a
+    // piramide somava os 7 dias inteiros. Numeros de dias diferentes lado a lado.
+    const de  = String(req.query.de  || '').slice(0, 10);
+    const ate = String(req.query.ate || '').slice(0, 10);
+    const emDia = e => String(e.em || '').slice(0, 10);
+    if (de || ate) {
+      lista = lista.map(j => {
+        const evs = (j.eventos || []).filter(e =>
+          (!de || emDia(e) >= de) && (!ate || emDia(e) <= ate));
+        return evs.length ? Object.assign({}, j, { eventos: evs }) : null;
+      }).filter(Boolean);
+    }
+
+    // O seletor de paginas sai daqui, ANTES do filtro por pagina. Montado depois,
+    // sobrava so a pagina escolhida — o select se reconstruia com uma opcao so e
+    // jogava fora as outras quatro, e a tela voltava sozinha pra pagina anterior.
+    const paginas = {};
+    lista.forEach(j => (j.eventos || []).forEach(e => {
+      if (!e.pg) return;
+      if (!paginas[e.pg]) paginas[e.pg] = { pg: e.pg, pessoas: new Set() };
+      paginas[e.pg].pessoas.add(j.id);
+    }));
+
+    // Filtro por pagina: com 5 VSLs na mesma etapa, e a unica forma de saber
+    // qual delas retem. Mantem a jornada inteira de quem passou pela pagina.
+    const pg = String(req.query.pg || '').slice(0, 160);
+    if (pg) lista = lista.filter(j => (j.eventos || []).some(e => (e.pg || '') === pg));
+
     // filtra por quem veio de um teste especifico — a variante viaja no evento
     const teste = String(req.query.teste || '').slice(0, 60);
     if (teste) lista = lista.filter(j => j.eventos.some(e => e.teste === teste || e.variante));
@@ -8474,7 +8504,9 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
       return _jQuando(b) - _jQuando(a);
     }).slice(0, 40);
 
-    res.json({ ok: true, funil, filtro, contagem,
+    res.json({ ok: true, funil, filtro, contagem, de, ate, pg,
+      paginas: Object.values(paginas).map(x => ({ pg: x.pg, pessoas: x.pessoas.size }))
+                     .sort((a, b) => b.pessoas - a.pessoas),
       etapas: ((f && f.etapas) || []).map(e => ({ id: e.id, nome: e.nome, tipo: e.tipo })),
       jornadas: lista.map(j => Object.assign({}, j, { segmentos: S(j) })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -8487,7 +8519,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
 // ══════════════════════════════════════════════════════
 let _atBuffer = {}, _atSujo = false;
 
-function _atChave(etapa, dia) { return etapa + '|' + dia; }
+function _atChave(etapa, dia, pg) { return etapa + '|' + dia + '|' + (pg || ''); }
 
 const TEMPO_PASSO = 30, TEMPO_FAIXAS = 121;   // 0 a 60min, de 30 em 30 segundos
 function _tempoFaixa(seg) {
@@ -8502,8 +8534,8 @@ function _quantosAte(tempos, segundos) {
   return n;
 }
 
-function _atNovo(etapa, dia) {
-  return { etapa, data: dia, saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0,
+function _atNovo(etapa, dia, pg) {
+  return { etapa, data: dia, pg: pg || '', saidas: 0, f25: 0, f50: 0, f75: 0, f100: 0,
            cliques: {}, friccao: {},
            atencaoSoma: 0, atencaoN: 0, rapidos: 0,
            // histograma de tempo em faixas de 30s ate 60min, + a ultima acumula
@@ -8512,15 +8544,15 @@ function _atNovo(etapa, dia) {
            tempos: new Array(TEMPO_FAIXAS).fill(0),
            lcp: [], cls: [], fcp: [], erros: 0 };
 }
-function _atPega(etapa) {
-  const dia = _hojeBR(), k = _atChave(etapa, dia);
-  if (!_atBuffer[k]) _atBuffer[k] = _atNovo(etapa, dia);
+function _atPega(etapa, pg) {
+  const dia = _hojeBR(), k = _atChave(etapa, dia, pg);
+  if (!_atBuffer[k]) _atBuffer[k] = _atNovo(etapa, dia, pg);
   return _atBuffer[k];
 }
 
-function _atSaida(etapa, c) {
+function _atSaida(etapa, c, pg) {
   if (!etapa) return;
-  const b = _atPega(etapa);
+  const b = _atPega(etapa, pg);
   b.saidas++;
   const p = Number(c.rolagem) || 0;
   // faixas cumulativas: quem chegou a 75% tambem passou por 25 e 50
@@ -8548,18 +8580,18 @@ function _atSaida(etapa, c) {
   _atSujo = true;
 }
 
-function _atFriccao(etapa, rotulo, motivo) {
+function _atFriccao(etapa, rotulo, motivo, pg) {
   if (!etapa || !rotulo) return;
-  const b = _atPega(etapa);
+  const b = _atPega(etapa, pg);
   const r = String(rotulo).slice(0, 70);
   if (!b.friccao[r]) b.friccao[r] = { mortos: 0, raiva: 0 };
   if (motivo === 'raiva') b.friccao[r].raiva++; else b.friccao[r].mortos++;
   _atSujo = true;
 }
 
-function _atClique(etapa, rotulo, posicao) {
+function _atClique(etapa, rotulo, posicao, pg) {
   if (!etapa || !rotulo) return;
-  const b = _atPega(etapa);
+  const b = _atPega(etapa, pg);
   const r = String(rotulo).slice(0, 70);
   if (!b.cliques[r]) b.cliques[r] = { n: 0, pos: Number(posicao) || 0 };
   b.cliques[r].n++;
@@ -8574,9 +8606,9 @@ function _atGravar() {
     const db = readDB();
     const atual = Array.isArray(db.store[KEY_ATENCAO]) ? db.store[KEY_ATENCAO] : [];
     const indice = {};
-    atual.forEach(l => { indice[_atChave(l.etapa, l.data)] = l; });
+    atual.forEach(l => { indice[_atChave(l.etapa, l.data, l.pg)] = l; });
     Object.values(pendente).forEach(n => {
-      const k = _atChave(n.etapa, n.data), v = indice[k];
+      const k = _atChave(n.etapa, n.data, n.pg), v = indice[k];
       if (!v) { atual.push(n); indice[k] = n; return; }
       v.saidas += n.saidas; v.f25 += n.f25; v.f50 += n.f50; v.f75 += n.f75; v.f100 += n.f100;
       if (!v.tempos) v.tempos = new Array(TEMPO_FAIXAS).fill(0);
@@ -8618,15 +8650,29 @@ function _p75(lista) {
 
 app.get('/api/funil/atencao', authUsuario, (req, res) => {
   try {
+    // Aceita por etapa OU por pagina. Com 5 VSLs na mesma etapa do mapa, so a
+    // pagina separa uma da outra — e e essa comparacao que decide qual fica.
     const etapa = String(req.query.etapa || '').slice(0, 60);
-    if (!etapa) return res.status(400).json({ error: 'Informe a etapa.' });
+    const soPg  = String(req.query.pg || '').slice(0, 160);
+    if (!etapa && !soPg) return res.status(400).json({ error: 'Informe a etapa ou a página.' });
     const de  = String(req.query.de  || '').slice(0, 10);
     const ate = String(req.query.ate || '').slice(0, 10);
     const db = readDB();
-    const idsEtapa = _idsDaEtapa(db, etapa);
+    const idsEtapa = etapa ? _idsDaEtapa(db, etapa) : null;
+    const pg = soPg;
     let linhas = (Array.isArray(db.store[KEY_ATENCAO]) ? db.store[KEY_ATENCAO] : [])
       .concat(Object.values(_atBuffer))
-      .filter(l => idsEtapa.has(l.etapa));
+      .filter(l => !idsEtapa || idsEtapa.has(l.etapa));
+    // quais paginas usam esta etapa — e o que deixa comparar 5 VSLs entre si
+    const paginas = {};
+    linhas.forEach(l => {
+      if (de && l.data < de) return;
+      if (ate && l.data > ate) return;
+      const k = l.pg || '';
+      if (!paginas[k]) paginas[k] = { pg: k, saidas: 0 };
+      paginas[k].saidas += l.saidas || 0;
+    });
+    if (pg) linhas = linhas.filter(l => (l.pg || '') === pg);
     if (de)  linhas = linhas.filter(l => l.data >= de);
     if (ate) linhas = linhas.filter(l => l.data <= ate);
 
@@ -8652,7 +8698,9 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
       });
     });
     const base = t.saidas || 1;
-    res.json({ ok: true, etapa, de, ate,
+    res.json({ ok: true, etapa, de, ate, pg,
+      paginas: Object.values(paginas).filter(x => x.saidas > 0)
+                     .sort((a, b) => b.saidas - a.saidas),
       rolagem: {
         saidas: t.saidas,
         f25: (t.f25 / base) * 100, f50: (t.f50 / base) * 100,
@@ -8824,8 +8872,11 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
     let linhas = Array.isArray(db.store[KEY_ABSTATS]) ? db.store[KEY_ABSTATS] : [];
     linhas = linhas.filter(l => l.teste === slug)
                    .concat(Object.values(_abBuffer).filter(l => l.teste === slug));
-    const de = String(req.query.de || '').slice(0, 10);
-    if (de) linhas = linhas.filter(l => l.data >= de);
+    // sem o 'ate' a tela dizia "Hoje" e somava tudo desde sempre
+    const de  = String(req.query.de  || '').slice(0, 10);
+    const ate = String(req.query.ate || '').slice(0, 10);
+    if (de)  linhas = linhas.filter(l => l.data >= de);
+    if (ate) linhas = linhas.filter(l => l.data <= ate);
 
     const porVar = {};
     (r.destinos || []).forEach((d, i) => {
@@ -8933,8 +8984,13 @@ const PIXEL_JS = `(function(w,d){
   try{ teste = localStorage.getItem('tmx_ab_t') || ''; variante = localStorage.getItem('tmx_ab_v') || ''; }catch(e){}
 
   var entrou = Date.now();
+  // A pagina, sem query nem hash: com ela da pra comparar 5 VSLs que usam a
+  // MESMA etapa do mapa. Query fora de proposito — leva utm e as vezes dado
+  // pessoal, e viraria uma chave diferente por visitante.
+  var PAGINA = (location.host + location.pathname).replace(/\/+$/, '').slice(0, 160);
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
+                                pg:PAGINA,
                                 teste:teste, variante:variante, versao:VERSAO, ref:d.referrer }, extra||{});
     var corpo = JSON.stringify(dados);
     try{

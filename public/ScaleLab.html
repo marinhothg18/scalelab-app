@@ -3570,8 +3570,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px">
             <div class="fn-campo" style="min-width:250px;flex:1;max-width:340px"><label>Teste ou link</label>
               <select id="jn-teste" onchange="jnCarregar()"></select></div>
-            <div class="fn-campo" style="min-width:200px;flex:1;max-width:290px"><label>Página do funil</label>
-              <select id="jn-etapa" onchange="jnTempo()"></select></div>
+            <div class="fn-campo" style="min-width:230px;flex:1;max-width:340px"><label>Página</label>
+              <select id="jn-etapa" onchange="jnCarregar()"></select></div>
           </div>
           <div id="jn-funil-tempo"></div>
           <div id="jn-diag"></div>
@@ -27095,6 +27095,17 @@ var FN_MODELOS = [
 ];
 var fnProjetos = [], fnProj = '', fnIdx = 0, fnEscala = .8, fnSel = null, fnStats = {}, fnFeed = [], fnRedIdx = 0;
 
+// O periodo escolhido no topo, uma vez so. Antes cada aba refazia essa conta —
+// e as que esqueciam mostravam numero de outro dia ao lado das que nao.
+function fnPeriodo(){
+  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
+  var ate = hojeBR(), de = ate;
+  if(per==='7d')  de = hojeBR(6);
+  if(per==='30d') de = hojeBR(29);
+  return { de:de, ate:ate, rotulo:per };
+}
+function fnQsPeriodo(){ var p = fnPeriodo(); return 'de='+p.de+'&ate='+p.ate; }
+
 function fnFunis(){ return g('sl_funis', []); }
 function fnSalvarFunis(v){ s('sl_funis', v); }
 function fnReds(){ return g('sl_redirecionadores', []); }
@@ -29001,7 +29012,7 @@ function fnOpcoes(){
   // Seletores de etapa das abas. Montar aqui — e nao so quando a aba abre —
   // garante que eles existam independente da ordem em que a tela é desenhada;
   // era por isso que o de Jornada aparecia vazio.
-  ['jn-etapa','at-etapa'].forEach(function(id){
+  ['at-etapa'].forEach(function(id){
     var sel = document.getElementById(id); if(!sel) return;
     var antes = sel.value || sel.dataset.escolha || '';
     sel.innerHTML = (f && f.etapas || []).map(function(e){
@@ -29092,7 +29103,7 @@ function abEscolher(slug){
 function abCarregar(slug){
   if(abBuscando[slug]) return;
   abBuscando[slug] = true;
-  fetch('/api/ab/stats?teste='+encodeURIComponent(slug))
+  fetch('/api/ab/stats?teste='+encodeURIComponent(slug)+'&'+fnQsPeriodo())
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){ abBuscando[slug]=false; if(d && d.ok){ abDados[slug]=d; fnPintarRed(); } })
     .catch(function(){ abBuscando[slug]=false; });
@@ -29376,7 +29387,11 @@ function abAddVar(){
   if(!url){ toastFn('Informe o endereço da variante'); return; }
   r.destinos = r.destinos||[];
   // id estavel: e por ele que o servidor sabe quem levou qual
-  r.destinos.push({ id:'v'+Date.now().toString(36), nome:'Variante '+(r.destinos.length+1), url:url, peso:1 });
+  // Numerar por quantidade repete nome depois de remover uma: sobra 1, a próxima
+  // vira "Variante 2" de novo e ficam duas iguais na tela. Pega o menor livre.
+  var usados = {}; (r.destinos||[]).forEach(function(d){ usados[String(d.nome||'').trim()] = 1; });
+  var n = 1; while(usados['Variante '+n]) n++;
+  r.destinos.push({ id:'v'+Date.now().toString(36), nome:'Variante '+n, url:url, peso:1 });
   delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
   toastFn('Variante adicionada');
 }
@@ -29440,34 +29455,40 @@ var JN_COR = { 'checkout-sem-compra':'var(--red)', 'friccao':'var(--red)', 'aban
 // ── Funil de tempo: quantos ainda estavam na página em cada marco ──
 // Vem do histograma que o servidor guarda, então o pitch pode mudar a qualquer
 // hora e o número é recalculado sem perder o histórico.
+var jnTempoPedido = 0, jnPedido = 0;
 function jnTempo(){
   var f = fnAtual(), sel = document.getElementById('jn-etapa'), cx = document.getElementById('jn-funil-tempo');
   if(!f || !sel || !cx) return;
-  if(!sel.options.length) fnOpcoes();       // rede de segurança
-  var etapa = sel.value;
-  if(!etapa){
+  if(!sel.options.length) jnOpcoesPagina();
+  var pg = jnPaginaEscolhida(), etapa = jnEtapaEscolhida();
+  if(!pg && !etapa){
     cx.innerHTML = '<div class="fn-nota">Adicione uma etapa no Mapa pra ver quanto tempo as pessoas ficam nela.</div>';
     return;
   }
-  sel.dataset.escolha = etapa;
-  var et = fnAcha(f, etapa) || {};
-  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
-  var hoje = hojeBR(), de = hoje;
-  if(per==='7d')  de = hojeBR(6);
-  if(per==='30d') de = hojeBR(29);
+  sel.dataset.escolha = sel.value;
+  // com a página escolhida o alvo é a URL; senão, a etapa do mapa
+  var et = etapa ? (fnAcha(f, etapa) || {}) : { nome: fnEncurtar(pg), url: pg };
   cx.innerHTML = '<div class="fn-nota">Buscando…</div>';
-  fetch('/api/funil/atencao?etapa='+encodeURIComponent(etapa)+'&de='+de+'&ate='+hoje+
+  // Trocar de página rápido deixava duas buscas no ar; a que voltasse por último
+  // pintava, mesmo sendo da página anterior. Só a última pedida vale.
+  var meu = ++jnTempoPedido;
+  fetch('/api/funil/atencao?'+fnQsPeriodo()+
+        (etapa?('&etapa='+encodeURIComponent(etapa)):'')+
+        (pg?('&pg='+encodeURIComponent(pg)):'')+
         (et.pitch?('&pitch='+et.pitch):''))
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){ jnPintarTempo(d, et); })
-    .catch(function(){ cx.innerHTML=''; });
+    .then(function(d){ if(meu === jnTempoPedido) jnPintarTempo(d, et, pg); })
+    .catch(function(){ if(meu === jnTempoPedido) cx.innerHTML=''; });
 }
 
-function jnPintarTempo(d, et){
+function jnPintarTempo(d, et, pg){
   var cx = document.getElementById('jn-funil-tempo'); if(!cx) return;
   var t = (d && d.tempo) || {};
-  var st = fnStats[et.id] || {};
-  var entradas = st.entradas || 0, unicos = st.unicos || 0;
+  // com uma página escolhida, quem manda é o que foi medido nela — o fnStats
+  // é por etapa e somaria as cinco páginas juntas.
+  var st = pg ? {} : (fnStats[et.id] || {});
+  var entradas = pg ? (t.medidos || 0) : (st.entradas || 0);
+  var unicos   = pg ? (t.medidos || 0) : (st.unicos   || 0);
   // Sem ninguém medido não há funil: desenhar uma pirâmide toda zerada ao lado
   // de "494 entradas" parece defeito. Uma frase explica melhor.
   if(!t.medidos){
@@ -29710,11 +29731,52 @@ function jnOpcoesTeste(){
   var sel = document.getElementById('jn-teste'); if(!sel) return '';
   var antes = sel.value || '';
   var testes = abDoProjeto();
-  sel.innerHTML = '<option value="">Todo o tráfego do funil</option>' +
+  var html = '<option value="">Todo o tráfego do funil</option>' +
     testes.map(function(t){
       return '<option value="'+fnEsc(t.slug)+'">'+fnEsc(t.nome||t.slug)+'</option>'; }).join('');
-  if(antes && testes.some(function(t){ return t.slug===antes; })) sel.value = antes;
+  if(sel.innerHTML !== html){
+    sel.innerHTML = html;
+    if(antes && testes.some(function(t){ return t.slug===antes; })) sel.value = antes;
+  }
   return sel.value;
+}
+
+// Quais URLs de verdade foram medidas. É o que deixa comparar /segredo1/ com
+// /segredo5/ quando as duas são a MESMA etapa "VSL" no mapa.
+var jnPaginas = [];
+function jnPaginaEscolhida(){
+  var v = (document.getElementById('jn-etapa')||{}).value || '';
+  return v.indexOf('p:')===0 ? v.slice(2) : '';
+}
+function jnEtapaEscolhida(){
+  var v = (document.getElementById('jn-etapa')||{}).value || '';
+  return v.indexOf('e:')===0 ? v.slice(2) : '';
+}
+function jnOpcoesPagina(){
+  var sel = document.getElementById('jn-etapa'), f = fnAtual();
+  if(!sel || !f) return;
+  var antes = sel.value || sel.dataset.escolha || '';
+  var html = '';
+  if(jnPaginas.length){
+    html += '<optgroup label="Páginas medidas pelo pixel">' + jnPaginas.map(function(p){
+      return '<option value="p:'+fnEsc(p.pg)+'">'+fnEsc(fnEncurtar(p.pg))+
+             ' · '+fnNum(p.pessoas||p.saidas||0)+'</option>'; }).join('') + '</optgroup>';
+  }
+  html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
+    return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
+  // Só mexe no select se a lista mudou de verdade. Reconstruir sempre fazia a
+  // resposta atrasada restaurar a opção ANTERIOR por cima da que você acabou de
+  // escolher — a tela trocava de página sozinha.
+  if(sel.innerHTML === html) return;
+  sel.innerHTML = html;
+  if(antes){ sel.value = antes; }
+  if(!sel.value) sel.selectedIndex = 0;
+  sel.dataset.escolha = sel.value || '';
+}
+// só o fim da URL importa na lista — o domínio é o mesmo nas cinco
+function fnEncurtar(u){
+  var t = String(u||'').replace(/^[^/]*\//, '/');
+  return t.length > 34 ? '…'+t.slice(-33) : (t || u);
 }
 
 function jnCarregar(){
@@ -29725,10 +29787,25 @@ function jnCarregar(){
   var teste = jnOpcoesTeste();
   fnDiagnostico('jn-diag');
   if(el) el.innerHTML = '<div class="fn-nota">Buscando as jornadas…</div>';
+  var pg = jnPaginaEscolhida();
+  var meuJn = ++jnPedido;
   fetch('/api/funil/jornadas?funil='+encodeURIComponent(f.id)+'&filtro='+encodeURIComponent(jnFiltro)+
-        (teste?('&teste='+encodeURIComponent(teste)):''))
+        '&'+fnQsPeriodo()+
+        (teste?('&teste='+encodeURIComponent(teste)):'')+
+        (pg?('&pg='+encodeURIComponent(pg)):''))
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){ jnDados = d; jnPintar(); })
+    .then(function(d){
+      if(meuJn !== jnPedido) return;    // chegou depois de eu já ter trocado
+      jnDados = d;
+      // A lista de páginas só existe depois que o servidor responde. Se isso
+      // mudar o que está escolhido, o funil de tempo em cima precisa refazer.
+      if(d && d.paginas){
+        var antes = (document.getElementById('jn-etapa')||{}).value;
+        jnPaginas = d.paginas; jnOpcoesPagina();
+        if((document.getElementById('jn-etapa')||{}).value !== antes) jnTempo();
+      }
+      jnPintar();
+    })
     .catch(function(e){ if(el) el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
 }
 function jnTrocar(f){ jnFiltro = f; jnCarregar(); }
@@ -29811,6 +29888,35 @@ function jnDuracao(s){
 // ══════════════════════════════════════════════════════
 // ── ATENÇÃO DA PÁGINA ──
 // ══════════════════════════════════════════════════════
+// Mesma ideia da Jornada: o que interessa comparar é a URL, não a etapa do
+// mapa — cinco VSLs diferentes moram todas na etapa "VSL".
+var atPaginas = [];
+function atPaginaEscolhida(){
+  var v = (document.getElementById('at-etapa')||{}).value || '';
+  return v.indexOf('p:')===0 ? v.slice(2) : '';
+}
+function atEtapaEscolhida(){
+  var v = (document.getElementById('at-etapa')||{}).value || '';
+  return v.indexOf('e:')===0 ? v.slice(2) : (v || '');
+}
+function atOpcoesPagina(){
+  var sel = document.getElementById('at-etapa'), f = fnAtual();
+  if(!sel || !f) return;
+  var antes = sel.value || '';
+  var html = '';
+  if(atPaginas.length){
+    html += '<optgroup label="Páginas medidas pelo pixel">' + atPaginas.map(function(p){
+      return '<option value="p:'+fnEsc(p.pg)+'">'+fnEsc(fnEncurtar(p.pg))+
+             ' · '+fnNum(p.saidas||0)+'</option>'; }).join('') + '</optgroup>';
+  }
+  html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
+    return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
+  if(sel.innerHTML === html) return;   // não repintar por cima da escolha
+  sel.innerHTML = html;
+  if(antes) sel.value = antes;
+  if(!sel.value) sel.selectedIndex = 0;
+}
+
 function atOpcoes(){
   var f = fnAtual(), sel = document.getElementById('at-etapa');
   if(!sel) return;
@@ -29818,29 +29924,34 @@ function atOpcoes(){
     document.getElementById('at-corpo').innerHTML = '<div class="fn-nota">Crie uma etapa no mapa primeiro.</div>';
     return;
   }
-  if(!sel.options.length) fnOpcoes();
+  if(!sel.options.length) atOpcoesPagina();
   atCarregar();
 }
 
+var atPedido = 0;
 function atCarregar(){
-  var etapa = (document.getElementById('at-etapa')||{}).value;
   var el = document.getElementById('at-corpo');
   fnDiagnostico('at-diag');
-  if(!etapa || !el) return;
-  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
-  var hoje = hojeBR(), de = hoje;
-  if(per==='7d')  de = hojeBR(6);
-  if(per==='30d') de = hojeBR(29);
+  if(!el) return;
+  var sel = document.getElementById('at-etapa');
+  if(sel && !sel.options.length) atOpcoesPagina();
+  var pg = atPaginaEscolhida(), etapa = atPaginaEscolhida() ? '' : atEtapaEscolhida();
+  if(!pg && !etapa) return;
   el.innerHTML = '<div class="fn-nota">Buscando…</div>';
-  fetch('/api/funil/atencao?etapa='+encodeURIComponent(etapa)+'&de='+de+'&ate='+hoje)
+  var meu = ++atPedido;   // só a última busca pedida vale (ver jnTempo)
+  fetch('/api/funil/atencao?'+fnQsPeriodo()+
+        (etapa?('&etapa='+encodeURIComponent(etapa)):'')+
+        (pg?('&pg='+encodeURIComponent(pg)):''))
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){ atPintar(d); })
-    .catch(function(e){ el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
+    .then(function(d){ if(meu === atPedido) atPintar(d); })
+    .catch(function(e){ if(meu === atPedido) el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
 }
 
 function atPintar(d){
   var el = document.getElementById('at-corpo'); if(!el) return;
   if(!d || !d.ok){ el.innerHTML = '<div class="fn-nota">Sem dados.</div>'; return; }
+  // a lista de páginas medidas vem junto e alimenta o seletor
+  if(d.paginas && d.paginas.length){ atPaginas = d.paginas; atOpcoesPagina(); }
   var r = d.rolagem || {};
   if(!r.saidas){
     el.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período. '+
@@ -29848,7 +29959,8 @@ function atPintar(d){
     return;
   }
   var f = fnAtual();
-  var etapa = (f && f.etapas.filter(function(e){ return e.id===d.etapa; })[0]) || {};
+  var etapa = (f && f.etapas.filter(function(e){ return e.id===d.etapa; })[0]) ||
+              (d.pg ? { nome: fnEncurtar(d.pg), url: d.pg } : {});
 
   function faixa(rot, pc, n, cor){
     return '<div class="fn-rb"><span class="p">'+rot+'</span>'+
