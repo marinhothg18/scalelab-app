@@ -1492,6 +1492,14 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
 .fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
 .fn-pessoa .de{font-size:11.5px;color:var(--text2);margin-left:auto}
+.jn-fila{margin-bottom:12px}
+.jn-fila-r{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text3);font-weight:700;margin-bottom:7px}
+.jn-fila-b{display:flex;flex-wrap:wrap;gap:7px}
+.fn-filtro .pc{opacity:.6;font-weight:600;margin-left:2px}
+.fn-tagorig{display:inline-flex;align-items:center;gap:4px;background:var(--bg3);color:var(--text2);
+  border:1px solid var(--border);font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;
+  white-space:nowrap;cursor:default}
 .fn-tagcri{background:rgba(27,156,250,.15);color:var(--accent);font-size:10px;font-weight:800;
   padding:2px 7px;border-radius:5px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fn-tl{list-style:none;margin:0;padding:0}
@@ -29498,17 +29506,27 @@ function fnGravarRed(r){
 // ── JORNADA POR PESSOA ──
 // ══════════════════════════════════════════════════════
 var jnFiltro = 'todas', jnDados = null;   // abrir num filtro estreito faz a tela parecer vazia
+// Duas fileiras com propósitos diferentes. A de cima é um FUNIL — a ordem é a
+// jornada de quem assiste, e cada degrau é sempre menor que o anterior. A de
+// baixo são recortes de comportamento, que se cruzam e não têm ordem nenhuma.
+var JN_DEGRAUS = ['todas','tempo-1m','tempo-5m','tempo-10m','tempo-20m','comprou'];
+var JN_RECORTES = ['checkout-sem-compra','alta-intencao','leitor','engajado',
+                   'so-olhou','friccao','abandono','voltou'];
 var JN_ROTULO = {
-  'checkout-sem-compra':'Chegou no checkout e não comprou',
+  'todas':'Abriu a página',
+  'tempo-1m':'Passou de 1 min',
+  'tempo-5m':'Passou de 5 min',
+  'tempo-10m':'Passou de 10 min',
+  'tempo-20m':'Passou de 20 min',
   'comprou':'Comprou',
+  'checkout-sem-compra':'Chegou no checkout e não comprou',
   'alta-intencao':'Alta intenção',
   'friccao':'Travou em algo',
   'leitor':'Leu de verdade',
   'engajado':'Engajado',
   'so-olhou':'Só olhou',
   'abandono':'Saiu em 5 segundos',
-  'voltou':'Voltou mais de uma vez',
-  'todas':'Todas'
+  'voltou':'Voltou mais de uma vez'
 };
 // vermelho no que e problema, verde no que e bom sinal
 var JN_COR = { 'checkout-sem-compra':'var(--red)', 'friccao':'var(--red)', 'abandono':'var(--red)',
@@ -29957,12 +29975,21 @@ function jnPintar(){
   fnMarcarDado(((d.contagem||{}).todas||0) > 0);
 
   jnPiramide(d);
-  fl.innerHTML = Object.keys(JN_ROTULO).map(function(k){
+  var base = (d.contagem && d.contagem.todas) || 0;
+  function pastilha(k, comQueda){
     var n = (d.contagem && d.contagem[k]) || 0;
     var cor = (n && JN_COR[k] && jnFiltro!==k) ? (';color:'+JN_COR[k]) : '';
-    return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" style="'+cor+'" onclick="jnTrocar(\''+k+'\')">'+
-      JN_ROTULO[k]+' · '+fnNum(n)+'</button>';
-  }).join('');
+    // no funil, o % é sobre quem abriu — é o que diz onde a audiência cai
+    var pct = (comQueda && base && k!=='todas') ? (' <span class="pc">'+
+              Math.round(n/base*100)+'%</span>') : '';
+    return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" style="'+cor+'" '+
+      'onclick="jnTrocar(\''+k+'\')">'+JN_ROTULO[k]+' · '+fnNum(n)+pct+'</button>';
+  }
+  fl.innerHTML =
+    '<div class="jn-fila"><span class="jn-fila-r">Quanto tempo aguentaram</span>'+
+      '<div class="jn-fila-b">'+JN_DEGRAUS.map(function(k){ return pastilha(k, true); }).join('')+'</div></div>'+
+    '<div class="jn-fila"><span class="jn-fila-r">Recortes de comportamento</span>'+
+      '<div class="jn-fila-b">'+JN_RECORTES.map(function(k){ return pastilha(k, false); }).join('')+'</div></div>';
 
   var nomeEtapa = {}, tipoEtapa = {};
   // o mapa local manda: se a etapa foi renomeada aqui, o nome novo é o que vale
@@ -29978,7 +30005,7 @@ function jnPintar(){
   }
 
   el.innerHTML = d.jornadas.map(function(j){
-    var criativo = '';
+    var criativo = '', origem = jnOrigemDe(j);
     for(var i=0;i<j.eventos.length;i++){ if(j.eventos[i].criativo){ criativo = j.eventos[i].criativo; break; } }
     var comprou = j.eventos.some(function(e){ return tipoEtapa[e.etapa]==='obrigado'; });
     var linhas = j.eventos.map(function(e){
@@ -30012,12 +30039,54 @@ function jnPintar(){
     if(sg.abandono) selos += '<span class="fn-seg-s ruim">saiu na hora</span>';
     return '<div class="fn-pessoa">'+
       '<div class="top"><span class="id">'+fnEsc(j.id.slice(0,10))+'</span>'+
+        (origem?('<span class="fn-tagorig" title="'+fnEsc(origem.titulo)+'">'+
+                 origem.icone+' '+fnEsc(origem.nome)+'</span>'):'')+
         (criativo?('<span class="fn-tagcri">'+fnEsc(criativo)+'</span>'):'')+
         selos+
         '<span class="de">'+j.eventos.length+' passo(s)</span></div>'+
       '<ul class="fn-tl">'+linhas+'</ul></div>';
   }).join('');
 }
+// De onde a pessoa veio. Prioriza a utm_source (o que VOCÊ marcou no anúncio);
+// sem ela, cai no referrer, que é o que o navegador informou. As duas juntas
+// cobrem tráfego pago e quem chegou por link de outro site.
+var JN_FONTES = [
+  { re:/^(ig|instagram)/i,        nome:'Instagram', icone:'📸' },
+  { re:/^(fb|facebook|meta)/i,    nome:'Facebook',  icone:'👥' },
+  { re:/^(yt|youtube)/i,          nome:'YouTube',   icone:'▶️' },
+  { re:/^(tt|tiktok)/i,           nome:'TikTok',    icone:'🎵' },
+  { re:/^(google|gads|adwords)/i, nome:'Google',    icone:'🔍' },
+  { re:/^(wpp|whats|whatsapp)/i,  nome:'WhatsApp',  icone:'💬' },
+  { re:/^(email|e-mail|mail)/i,   nome:'E-mail',    icone:'✉️' },
+  { re:/^(pinterest|pin)/i,       nome:'Pinterest', icone:'📌' }
+];
+function jnNomeDaFonte(v){
+  for(var i=0;i<JN_FONTES.length;i++) if(JN_FONTES[i].re.test(v)) return JN_FONTES[i];
+  return null;
+}
+function jnOrigemDe(j){
+  var src='', mid='', camp='', ref='';
+  (j.eventos||[]).forEach(function(e){
+    if(!src && e.origem)    src  = e.origem;
+    if(!mid && e.midia)     mid  = e.midia;
+    if(!camp && e.campanha) camp = e.campanha;
+    if(!ref && e.ref)       ref  = e.ref;
+  });
+  if(src){
+    var f = jnNomeDaFonte(src);
+    return { nome: f ? f.nome : src, icone: f ? f.icone : '🔗',
+             titulo: 'utm_source=' + src + (mid?(' · utm_medium='+mid):'') +
+                     (camp?(' · campanha '+camp):'') };
+  }
+  if(ref){
+    var host = '';
+    try{ host = new URL(ref).hostname.replace(/^www\./,''); }catch(e){ host = String(ref).slice(0,40); }
+    var f2 = jnNomeDaFonte(host);
+    return { nome: f2 ? f2.nome : host, icone: f2 ? f2.icone : '↗', titulo: 'veio de ' + ref };
+  }
+  return null;   // digitou a URL, salvou o link, ou o rastreio se perdeu no caminho
+}
+
 function jnDuracao(s){
   s = Number(s)||0;
   if(s < 60) return s+'s';

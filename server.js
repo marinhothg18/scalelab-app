@@ -8204,6 +8204,8 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
       } catch (e) {}
     }
 
+    // so na entrada: os outros eventos sao da mesma pessoa, no mesmo aparelho
+    if (tipo === 'entrou') c.quem = _quemE(req);
     _jRegistrar(visitante, funil, etapa, tipo, c);
     const pg = String(c.pg || '').slice(0, 160);
     if (tipo === 'saiu')    _atSaida(etapa, c, pg);
@@ -8227,6 +8229,46 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
 const JORNADA_DIAS = 7, JORNADA_TETO = 4000, JORNADA_EVENTOS = 40;
 let _jBuffer = {}, _jSujo = false;
 
+// ── Quem e o visitante: aparelho, navegador, sistema, pais ──────────────────
+// Sai do User-Agent que o navegador ja manda em toda requisicao — nao precisa
+// pedir nada a mais ao pixel, e nao guarda o UA cru (que e quase uma digital).
+// Se um dia isso mudar, o dado dos dias anteriores nao volta: por isso comeca a
+// ser guardado antes da tela que vai mostra-lo existir.
+function _quemE(req) {
+  const ua = String(req.headers['user-agent'] || '');
+  if (!ua) return null;
+  const toque = /Mobi|Android|iPhone|iPod/i.test(ua);
+  const tablet = /iPad|Tablet|PlayBook|Silk/i.test(ua) || (/Android/i.test(ua) && !/Mobi/i.test(ua));
+
+  let navegador = 'Outro';
+  // ordem importa: quase todo navegador se diz Chrome/Safari no UA
+  if (/Instagram/i.test(ua))            navegador = 'Instagram';
+  else if (/FBAN|FBAV|FB_IAB/i.test(ua)) navegador = 'Facebook';
+  else if (/EdgA?\//i.test(ua))         navegador = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua))     navegador = 'Opera';
+  else if (/SamsungBrowser/i.test(ua))  navegador = 'Samsung';
+  else if (/Firefox\//i.test(ua))       navegador = 'Firefox';
+  else if (/Chrome\//i.test(ua))        navegador = 'Chrome';
+  else if (/Safari\//i.test(ua))        navegador = 'Safari';
+
+  let sistema = 'Outro';
+  if (/iPhone|iPad|iPod/i.test(ua))     sistema = 'iOS';
+  else if (/Android/i.test(ua))         sistema = 'Android';
+  else if (/Windows/i.test(ua))         sistema = 'Windows';
+  else if (/Mac OS X/i.test(ua))        sistema = 'Mac';
+  else if (/Linux/i.test(ua))           sistema = 'Linux';
+
+  // Pais so existe se a borda entregar. Railway sozinho nao entrega; com
+  // Cloudflare na frente vem em cf-ipcountry. Sem isso fica vazio, e a tela
+  // simplesmente nao mostra a secao — melhor do que inventar.
+  const pais = String(req.headers['cf-ipcountry'] ||
+                      req.headers['x-vercel-ip-country'] ||
+                      req.headers['x-geo-country'] || '').toUpperCase().slice(0, 2);
+
+  return { aparelho: tablet ? 'Tablet' : (toque ? 'Celular' : 'Computador'),
+           navegador, sistema, pais: (pais && pais !== 'XX') ? pais : '' };
+}
+
 function _jRegistrar(visitante, funil, etapa, tipo, extra) {
   if (!visitante || !funil) return;
   const k = funil + '|' + visitante;
@@ -8238,7 +8280,24 @@ function _jRegistrar(visitante, funil, etapa, tipo, extra) {
   if (extra && Number(extra.rolagem))  ev.rolagem  = Number(extra.rolagem);
   if (extra && extra.motivo)  ev.motivo  = String(extra.motivo).slice(0, 20);
   if (extra && extra.versao)  ev.versao  = String(extra.versao).slice(0, 40);
-  if (extra && extra.utm && extra.utm.content) ev.criativo = String(extra.utm.content).slice(0, 80);
+  // O pixel sempre mandou as cinco utm e o referrer; so o criativo era guardado.
+  // Sem origem/midia nao da pra olhar uma jornada e dizer se a pessoa veio do
+  // Instagram, do Facebook ou de um site que linkou pra voce.
+  if (extra && extra.utm) {
+    const u = extra.utm;
+    if (u.content)  ev.criativo = String(u.content).slice(0, 80);
+    if (u.source)   ev.origem   = String(u.source).slice(0, 60);
+    if (u.medium)   ev.midia    = String(u.medium).slice(0, 60);
+    if (u.campaign) ev.campanha = String(u.campaign).slice(0, 80);
+  }
+  if (extra && extra.ref) ev.ref = String(extra.ref).slice(0, 200);
+  if (extra && extra.quem) {
+    const q = extra.quem;
+    if (q.aparelho)  ev.aparelho  = q.aparelho;
+    if (q.navegador) ev.navegador = q.navegador;
+    if (q.sistema)   ev.sistema   = q.sistema;
+    if (q.pais)      ev.pais      = q.pais;
+  }
   if (extra && extra.variante) ev.variante = String(extra.variante).slice(0, 40);
   if (extra && extra.teste)    ev.teste    = String(extra.teste).slice(0, 60);
   if (extra && extra.pg)       ev.pg       = String(extra.pg).slice(0, 160);
@@ -8489,8 +8548,19 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     const cache = new Map();
     const S = (j) => { if (!cache.has(j)) cache.set(j, seg(j)); return cache.get(j); };
 
+    // Degraus de tempo: a pergunta que ele faz e "de quem abriu, quantos passaram
+    // de 5 minutos?". Usa a atencao (aba visivel), nao o tempo de parede — quem
+    // deixou a aba aberta em segundo plano nao assistiu nada.
+    const seg1 = j => j.eventos.reduce((m, e) => Math.max(m, Number(e.atencao) || 0), 0);
+    const passouDe = (j, s) => seg1(j) >= s;
+
     const contagem = {
       todas: lista.length,
+      'abriu':      lista.length,
+      'tempo-1m':   lista.filter(j => passouDe(j, 60)).length,
+      'tempo-5m':   lista.filter(j => passouDe(j, 300)).length,
+      'tempo-10m':  lista.filter(j => passouDe(j, 600)).length,
+      'tempo-20m':  lista.filter(j => passouDe(j, 1200)).length,
       'checkout-sem-compra': lista.filter(j => passou(j, 'checkout') && !passou(j, 'obrigado')).length,
       comprou:      lista.filter(j => passou(j, 'obrigado')).length,
       'alta-intencao': lista.filter(j => S(j).alta).length,
@@ -8503,6 +8573,11 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     };
 
     const filtros = {
+      'abriu':     () => true,
+      'tempo-1m':  j => passouDe(j, 60),
+      'tempo-5m':  j => passouDe(j, 300),
+      'tempo-10m': j => passouDe(j, 600),
+      'tempo-20m': j => passouDe(j, 1200),
       'checkout-sem-compra': j => passou(j, 'checkout') && !passou(j, 'obrigado'),
       comprou:      j => passou(j, 'obrigado'),
       'alta-intencao': j => S(j).alta,
