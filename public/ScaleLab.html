@@ -3462,10 +3462,19 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               <button class="fn-btn sm" onclick="fnNovoFunil()">+ Novo funil</button>
               <span class="fn-vivo2"><i class="fn-pulsa"></i> AO VIVO</span>
               <div class="fn-ctx-dir">
-                <select id="fn-periodo" class="fn-per" onchange="fnCarregarStats()">
-                  <option value="hoje">Hoje</option><option value="7d">7 dias</option><option value="30d">30 dias</option>
+                <select id="fn-periodo" class="fn-per" onchange="fnTrocarPeriodo()">
+                  <option value="hoje">Hoje</option>
+                  <option value="ontem">Ontem</option>
+                  <option value="7d">7 dias</option>
+                  <option value="30d">30 dias</option>
+                  <option value="custom">Personalizado…</option>
                 </select>
-                <button class="fn-btn g sm" onclick="fnCarregarStats()" title="Atualizar">↻</button>
+                <span id="fn-per-custom" style="display:none;gap:6px;align-items:center">
+                  <input type="date" id="fn-per-de"  class="fn-per" onchange="fnAtualizar()">
+                  <span style="color:var(--text2);font-size:12px">até</span>
+                  <input type="date" id="fn-per-ate" class="fn-per" onchange="fnAtualizar()">
+                </span>
+                <button class="fn-btn g sm" onclick="fnAtualizar(this)" title="Atualizar">↻</button>
               </div>
             </div>
             <div class="fn-ctx-num" id="fn-ctx-num"></div>
@@ -3568,8 +3577,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div class="fn-nota">O caminho de cada visitante, do anúncio ao fim. O valor não é acompanhar uma pessoa —
             é poder perguntar <b>“me mostra 10 que chegaram no checkout e não compraram”</b>. Guarda 7 dias.</div>
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px">
-            <div class="fn-campo" style="min-width:250px;flex:1;max-width:340px"><label>Teste ou link</label>
-              <select id="jn-teste" onchange="jnCarregar()"></select></div>
+            <div class="fn-campo" style="min-width:250px;flex:1;max-width:340px"><label>Teste A/B do funil</label>
+              <select id="jn-teste" onchange="jnTrocarTeste()"></select></div>
             <div class="fn-campo" style="min-width:230px;flex:1;max-width:340px"><label>Página</label>
               <select id="jn-etapa" onchange="jnCarregar()"></select></div>
           </div>
@@ -27100,9 +27109,45 @@ var fnProjetos = [], fnProj = '', fnIdx = 0, fnEscala = .8, fnSel = null, fnStat
 function fnPeriodo(){
   var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
   var ate = hojeBR(), de = ate;
+  if(per==='ontem'){ de = hojeBR(1); ate = hojeBR(1); }
   if(per==='7d')  de = hojeBR(6);
   if(per==='30d') de = hojeBR(29);
+  if(per==='custom'){
+    var d1 = (document.getElementById('fn-per-de') ||{}).value;
+    var d2 = (document.getElementById('fn-per-ate')||{}).value;
+    if(d1) de = d1;
+    if(d2) ate = d2;
+    if(de > ate){ var t = de; de = ate; ate = t; }   // datas trocadas não podem zerar a tela
+  }
   return { de:de, ate:ate, rotulo:per };
+}
+
+function fnTrocarPeriodo(){
+  var per = (document.getElementById('fn-periodo')||{}).value;
+  var cx = document.getElementById('fn-per-custom');
+  if(cx) cx.style.display = (per==='custom') ? 'inline-flex' : 'none';
+  if(per==='custom'){
+    // começa nos últimos 7 dias pra não abrir com as duas datas vazias
+    var d1 = document.getElementById('fn-per-de'), d2 = document.getElementById('fn-per-ate');
+    if(d1 && !d1.value) d1.value = hojeBR(6);
+    if(d2 && !d2.value) d2.value = hojeBR();
+  }
+  fnAtualizar();
+}
+
+// O ↻ e a troca de período só refaziam os números do mapa — a aba aberta ficava
+// com o que já estava na tela. Agora tudo que está à vista busca de novo.
+function fnAtualizar(bt){
+  if(bt){ bt.disabled = true; setTimeout(function(){ bt.disabled = false; }, 700); }
+  fnDiag = null;
+  fnCarregarStats();
+  if(typeof abDados==='object'){ abDados = {}; abBuscando = {}; }
+  var aberta = document.querySelector('.fn-painel.on');
+  var id = aberta ? aberta.id.replace('fn-p-','') : '';
+  if(id==='redir')   fnPintarRed();
+  if(id==='jornada') jnCarregar();
+  if(id==='atencao') atCarregar();
+  if(id==='mapa')    setTimeout(fnFios, 40);
 }
 function fnQsPeriodo(){ var p = fnPeriodo(); return 'de='+p.de+'&ate='+p.ate; }
 
@@ -28338,19 +28383,17 @@ function fnAba(qual, bt){
 // ── números vindos do pixel ──
 function fnCarregarStats(){
   var f = fnAtual(); if(!f) return;
-  var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
-  var hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10);
-  var de = hoje;
-  if(per==='7d')  de = new Date(Date.now()-3*3600000-6*86400000).toISOString().slice(0,10);
-  if(per==='30d') de = new Date(Date.now()-3*3600000-29*86400000).toISOString().slice(0,10);
-  fetch('/api/funil/stats?funil='+encodeURIComponent(f.id)+'&de='+de+'&ate='+hoje)
+  // usava a própria conta de período aqui: "Ontem" e "Personalizado" não existiam
+  // nela, então o cabeçalho continuava mostrando hoje enquanto as abas mudavam
+  fetch('/api/funil/stats?funil='+encodeURIComponent(f.id)+'&'+fnQsPeriodo())
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
       fnStats = {}; fnFeed = (d && d.feed) || [];
       ((d && d.etapas) || []).forEach(function(e){ fnStats[e.etapa] = e; });
       fnPintar();
     }).catch(function(){ fnPintar(); });
-  fnCarregarCliques(de, hoje);
+  var p = fnPeriodo();
+  fnCarregarCliques(p.de, p.ate);
 }
 
 // Os cliques do anúncio quem tem é a Utmify — o nosso pixel só começa a contar
@@ -29757,10 +29800,19 @@ function jnOpcoesPagina(){
   if(!sel || !f) return;
   var antes = sel.value || sel.dataset.escolha || '';
   var html = '';
-  if(jnPaginas.length){
-    html += '<optgroup label="Páginas medidas pelo pixel">' + jnPaginas.map(function(p){
-      return '<option value="p:'+fnEsc(p.pg)+'">'+fnEsc(fnEncurtar(p.pg))+
-             ' · '+fnNum(p.pessoas||p.saidas||0)+'</option>'; }).join('') + '</optgroup>';
+  // sem teste escolhido, mostra os links de todos os testes do projeto —
+  // ficar sem opção nenhuma até escolher um teste não ajuda ninguém
+  var slug = (document.getElementById('jn-teste')||{}).value;
+  var links = [];
+  if(slug) links = fnLinksDoTeste(slug);
+  else abDoProjeto().forEach(function(t){ links = links.concat(fnLinksDoTeste(t.slug)); });
+  var lista = fnJuntarPaginas(jnPaginas, links);
+  if(lista.length){
+    html += '<optgroup label="Links da campanha">' + lista.map(function(p){
+      var rot = fnEsc(p.nome ? (p.nome+' · '+fnEncurtar(p.pg)) : fnEncurtar(p.pg));
+      return '<option value="p:'+fnEsc(p.pg)+'">'+rot+
+             (p.medido ? (' · '+fnNum(p.pessoas||p.saidas||0)) : ' · sem dado ainda')+
+             '</option>'; }).join('') + '</optgroup>';
   }
   html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
     return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';
@@ -29772,6 +29824,44 @@ function jnOpcoesPagina(){
   if(antes){ sel.value = antes; }
   if(!sel.value) sel.selectedIndex = 0;
   sel.dataset.escolha = sel.value || '';
+}
+// O pixel manda host+caminho sem barra no fim; os destinos do teste guardam a
+// URL inteira com https:// e barra. Sem passar as duas pela mesma forma, o link
+// registrado e o link medido nunca se encontram.
+function fnNormalizarUrl(u){
+  return String(u||'')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('?')[0].split('#')[0]
+    .replace(/\/+$/, '')
+    .slice(0, 160);
+}
+// Os links cadastrados no teste escolhido — aparecem no seletor mesmo antes de
+// o pixel ter medido qualquer coisa neles.
+function fnLinksDoTeste(slug){
+  if(!slug) return [];
+  var t = abDoProjeto().filter(function(x){ return x.slug === slug; })[0];
+  if(!t) return [];
+  return (t.destinos||[]).map(function(d){
+    return { pg: fnNormalizarUrl(d.url), nome: d.nome || '', registrado: true };
+  }).filter(function(x){ return x.pg; });
+}
+// Junta o que foi cadastrado com o que foi medido, sem repetir.
+function fnJuntarPaginas(medidas, links){
+  var por = {}, saida = [];
+  (links||[]).forEach(function(l){
+    por[l.pg] = { pg:l.pg, nome:l.nome, registrado:true, pessoas:0, saidas:0, medido:false };
+    saida.push(por[l.pg]);
+  });
+  (medidas||[]).forEach(function(m){
+    if(por[m.pg]){
+      por[m.pg].pessoas = m.pessoas||0; por[m.pg].saidas = m.saidas||0; por[m.pg].medido = true;
+    } else {
+      saida.push({ pg:m.pg, nome:'', registrado:false,
+                   pessoas:m.pessoas||0, saidas:m.saidas||0, medido:true });
+    }
+  });
+  return saida;
 }
 // só o fim da URL importa na lista — o domínio é o mesmo nas cinco
 function fnEncurtar(u){
@@ -29809,6 +29899,15 @@ function jnCarregar(){
     .catch(function(e){ if(el) el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
 }
 function jnTrocar(f){ jnFiltro = f; jnCarregar(); }
+// Trocar de teste muda quais links existem — a lista tem que ser refeita antes
+// da busca, senão a página escolhida continua a do teste anterior.
+function jnTrocarTeste(){
+  var sel = document.getElementById('jn-etapa');
+  if(sel){ sel.value = ''; sel.dataset.escolha = ''; }
+  jnPaginas = [];
+  jnOpcoesPagina();
+  jnCarregar();
+}
 
 function jnPintar(){
   var fl = document.getElementById('jn-filtros'), el = document.getElementById('jn-lista');
@@ -29904,10 +30003,17 @@ function atOpcoesPagina(){
   if(!sel || !f) return;
   var antes = sel.value || '';
   var html = '';
-  if(atPaginas.length){
-    html += '<optgroup label="Páginas medidas pelo pixel">' + atPaginas.map(function(p){
-      return '<option value="p:'+fnEsc(p.pg)+'">'+fnEsc(fnEncurtar(p.pg))+
-             ' · '+fnNum(p.saidas||0)+'</option>'; }).join('') + '</optgroup>';
+  // todos os links de todos os testes do projeto — em Atenção não há seletor de
+  // teste, e mesmo assim ele precisa poder escolher qual VSL olhar
+  var todos = [];
+  abDoProjeto().forEach(function(t){ todos = todos.concat(fnLinksDoTeste(t.slug)); });
+  var lista = fnJuntarPaginas(atPaginas, todos);
+  if(lista.length){
+    html += '<optgroup label="Links da campanha">' + lista.map(function(p){
+      var rot = fnEsc(p.nome ? (p.nome+' · '+fnEncurtar(p.pg)) : fnEncurtar(p.pg));
+      return '<option value="p:'+fnEsc(p.pg)+'">'+rot+
+             (p.medido ? (' · '+fnNum(p.saidas||0)) : ' · sem dado ainda')+
+             '</option>'; }).join('') + '</optgroup>';
   }
   html += '<optgroup label="Etapas do mapa">' + (f.etapas||[]).map(function(e){
     return '<option value="e:'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('') + '</optgroup>';

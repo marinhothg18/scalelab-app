@@ -8987,7 +8987,11 @@ const PIXEL_JS = `(function(w,d){
   // A pagina, sem query nem hash: com ela da pra comparar 5 VSLs que usam a
   // MESMA etapa do mapa. Query fora de proposito — leva utm e as vezes dado
   // pessoal, e viraria uma chave diferente por visitante.
-  var PAGINA = (location.host + location.pathname).replace(/\/+$/, '').slice(0, 160);
+  // Sem tirar o www aqui, a pagina medida ("www.site.com/x") nunca casaria com o
+  // link cadastrado no teste ("https://site.com/x/") — e o seletor mostraria as
+  // duas como se fossem paginas diferentes.
+  var PAGINA = (location.host + location.pathname)
+                 .replace(/^www\./i, '').replace(/\/+$/, '').slice(0, 160);
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
                                 pg:PAGINA,
