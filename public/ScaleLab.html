@@ -29549,8 +29549,12 @@ function jnPintarTempo(d, et, pg){
   // com uma página escolhida, quem manda é o que foi medido nela — o fnStats
   // é por etapa e somaria as cinco páginas juntas.
   var st = pg ? {} : (fnStats[et.id] || {});
-  var entradas = pg ? (t.medidos || 0) : (st.entradas || 0);
-  var unicos   = pg ? (t.medidos || 0) : (st.unicos   || 0);
+  // Com página escolhida, "entradas" vinha do que foi MEDIDO — e medido é quem
+  // saiu, porque o tempo só fecha na saída. O card dizia "6 entradas" ao lado de
+  // uma pirâmide dizendo 9, e os dois estavam certos falando de coisas
+  // diferentes. Quem entrou vem da jornada; quem foi medido, da atenção.
+  var entradas = pg ? (((jnDados||{}).contagem||{}).todas || 0) : (st.entradas || 0);
+  var unicos   = pg ? entradas : (st.unicos || 0);
   // Sem ninguém medido não há funil: desenhar uma pirâmide toda zerada ao lado
   // de "494 entradas" parece defeito. Uma frase explica melhor.
   if(!t.medidos){
@@ -29570,8 +29574,9 @@ function jnPintarTempo(d, et, pg){
   var azul='var(--accent)', verm='var(--red)', verde='var(--green)';
   var html = '<div class="fn-cx2"><h3>Quanto tempo ficam em '+fnEsc(et.nome||'')+'</h3>'+
     '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+
-      '<b>'+fnNum(entradas)+'</b> entrada(s) · <b>'+fnNum(unicos)+'</b> pessoa(s) diferente(s) · '+
-      fnNum(t.medidos||0)+' com tempo medido</div>'+
+      '<b>'+fnNum(entradas)+'</b> pessoa(s) entraram · <b>'+fnNum(t.medidos||0)+'</b> já saíram '+
+      '(só quem sai tem tempo fechado — é sobre esses '+fnNum(t.medidos||0)+' que as barras falam)'+
+      '</div>'+
     linha('Entrou', t.medidos||0, 100, azul);
 
   (t.marcos||[]).forEach(function(m){
