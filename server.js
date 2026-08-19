@@ -5787,7 +5787,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_funil_evfoto',        // foto interna dos contadores; nao serve pra tela
   'sl_ab_stats',            // contagem do teste A/B; a tela le por /api/ab/stats
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
-  'sl_funil_atencao'        // rolagem e cliques; a tela le por /api/funil/atencao
+  'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
+  'sl_funil_adocoes'        // so o servidor decide; o navegador sobrescreveria
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -8073,6 +8074,39 @@ const KEY_FSTATS  = 'sl_funil_stats';
 const KEY_ABSTATS = 'sl_ab_stats';        // contagem por teste × variante × dia
 const KEY_JORNADA = 'sl_funil_jornada';   // caminho de cada visitante, 7 dias
 const KEY_ATENCAO = 'sl_funil_atencao';   // rolagem e cliques por etapa × dia
+const KEY_ADOCOES = 'sl_funil_adocoes';   // etapa nova herdando os ids do pixel velho
+
+// ── Adoção de ids antigos ───────────────────────────────────────────────────
+// Quando o funil é recriado, o código colado nas páginas continua mandando pro
+// id velho e a tela nova nasce zerada — parece que "perdeu as métricas". Em vez
+// de obrigar a recolar o pixel em tudo, a etapa nova passa a aceitar também os
+// ids antigos. Nada é reescrito: o evento original fica intacto e dá pra desfazer.
+//
+// Fica numa chave SÓ DO SERVIDOR de propósito. Dentro de sl_funis, o próximo
+// push do navegador (merge por id, last-write-wins) apagaria isto sem avisar.
+function _adocoes(db) {
+  return Array.isArray(db.store[KEY_ADOCOES]) ? db.store[KEY_ADOCOES] : [];
+}
+// Predicado + tradutor pra um funil: aceita as linhas dele e as adotadas,
+// e diz em qual etapa do funil atual cada linha adotada deve cair.
+function _mapaAdocao(db, funilId) {
+  const para = {};                                  // "funilVelho|etapaVelha" -> etapa daqui
+  _adocoes(db).forEach(a => {
+    if (a.funil === funilId) para[(a.origemFunil || '') + '|' + a.origemEtapa] = a.etapa;
+  });
+  const chave = l => (l.funil || '') + '|' + l.etapa;
+  return {
+    aceita:  l => l.funil === funilId || para[chave(l)] != null,
+    etapaDe: l => (l.funil === funilId ? l.etapa : para[chave(l)]) || l.etapa,
+    tem:     Object.keys(para).length > 0
+  };
+}
+// Todos os ids que valem por uma etapa: o dela mais os adotados.
+function _idsDaEtapa(db, etapaId) {
+  const ids = new Set([etapaId]);
+  _adocoes(db).forEach(a => { if (a.etapa === etapaId && a.origemEtapa) ids.add(a.origemEtapa); });
+  return ids;
+}
 
 let _fBuffer = {};          // "funil|etapa|data" -> { entradas, unicos, segundos, saidas, eventos:{} }
 let _fVistos = new Map();   // "funil|etapa|data" -> Set(idVisitante), zerado na virada do dia
@@ -8251,6 +8285,64 @@ setInterval(_jGravar, 45 * 1000);
 // ── Diagnostico: pra onde o pixel esta mandando de verdade ──
 // Sem isso, pixel apontando pro funil errado vira zero calado — e zero calado
 // parece "nao funciona", quando na verdade o dado esta la, so noutro lugar.
+// Traz pra uma etapa daqui os eventos que o pixel manda pro id antigo.
+// Nao reescreve evento nenhum: so registra a equivalencia, e da pra desfazer.
+app.post('/api/funil/adotar', authUsuario, (req, res) => {
+  try {
+    const b = req.body || {};
+    const funil = String(b.funil || '').slice(0, 80);
+    const etapa = String(b.etapa || '').slice(0, 80);
+    const origemFunil = String(b.origemFunil || '').slice(0, 80);
+    const origemEtapa = String(b.origemEtapa || '').slice(0, 80);
+    if (!funil || !etapa || !origemEtapa) {
+      return res.status(400).json({ error: 'Informe o funil, a etapa e a origem.' });
+    }
+    if (origemFunil === funil && origemEtapa === etapa) {
+      return res.status(400).json({ error: 'A etapa já é ela mesma.' });
+    }
+    const db = readDB();
+    const f = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
+      .find(x => x.id === funil);
+    if (!f) return res.status(404).json({ error: 'Funil não encontrado.' });
+    if (!(f.etapas || []).some(e => e.id === etapa)) {
+      return res.status(404).json({ error: 'Essa etapa não é deste funil.' });
+    }
+    const lista = _adocoes(db);
+    // uma origem só pode alimentar uma etapa, senão o mesmo evento contaria duas vezes
+    const jaTem = lista.find(a =>
+      a.origemFunil === origemFunil && a.origemEtapa === origemEtapa);
+    if (jaTem) {
+      return res.status(409).json({ error: jaTem.etapa === etapa
+        ? 'Essa origem já está trazida pra cá.'
+        : 'Essa origem já está ligada a outra etapa. Desfaça lá primeiro.' });
+    }
+    lista.push({ id: 'ado_' + crypto.randomBytes(6).toString('hex'),
+      funil, etapa, origemFunil, origemEtapa,
+      em: new Date().toISOString(), por: req.user && req.user.nome });
+    db.store[KEY_ADOCOES] = lista;
+    db.timestamps[KEY_ADOCOES] = now();
+    audit(db, 'funil_adotar_origem', { funil, etapa },
+      { origemFunil, origemEtapa }, req.user);
+    writeDB(db);
+    res.json({ ok: true, adocoes: lista.filter(a => a.funil === funil) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/funil/adotar/:id', authUsuario, (req, res) => {
+  try {
+    const db = readDB();
+    const lista = _adocoes(db);
+    const alvo = lista.find(a => a.id === req.params.id);
+    if (!alvo) return res.status(404).json({ error: 'Não encontrado.' });
+    db.store[KEY_ADOCOES] = lista.filter(a => a.id !== alvo.id);
+    db.timestamps[KEY_ADOCOES] = now();
+    audit(db, 'funil_desfazer_origem', { funil: alvo.funil, etapa: alvo.etapa },
+      { origemFunil: alvo.origemFunil, origemEtapa: alvo.origemEtapa }, req.user);
+    writeDB(db);
+    res.json({ ok: true, adocoes: db.store[KEY_ADOCOES].filter(a => a.funil === alvo.funil) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/funil/diagnostico', authUsuario, (req, res) => {
   try {
     const db = readDB();
@@ -8279,8 +8371,18 @@ app.get('/api/funil/diagnostico', authUsuario, (req, res) => {
       vistos[k].unicos   += l.unicos   || 0;
     });
 
+    const funilAtual = String(req.query.funil || '').slice(0, 80);
+    const adotadas = _adocoes(db);
+    const chaveAdo = {};
+    adotadas.forEach(a => { chaveAdo[(a.origemFunil || '') + '|' + a.origemEtapa] = a; });
+    Object.values(vistos).forEach(v => {
+      const a = chaveAdo[(v.funil || '') + '|' + v.etapa];
+      v.adotadaPor = a ? { id: a.id, funil: a.funil, etapa: a.etapa } : null;
+    });
+
     const lista = Object.values(vistos).sort((a, b) => b.entradas - a.entradas);
     res.json({ ok: true, desde: corte, recebendo: lista,
+      adocoes: funilAtual ? adotadas.filter(a => a.funil === funilAtual) : adotadas,
       // o que o pixel manda e nao casa com funil nenhum salvo
       orfaos: lista.filter(x => !x.funilNome || !x.etapaNome),
       funis: funis.map(f => ({ id: f.id, nome: f.nome,
@@ -8299,9 +8401,18 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     const tipo = {};
     ((f && f.etapas) || []).forEach(e => { tipo[e.id] = e.tipo || 'pagina'; });
 
+    const adoJ = _mapaAdocao(db, funil);
+    // a jornada guarda o funil no topo e a etapa em cada passo — traduz os dois
+    const trazer = j => {
+      if (!funil || j.funil === funil || !adoJ.tem) return j;
+      return Object.assign({}, j, { eventos: (j.eventos || []).map(e =>
+        Object.assign({}, e, { etapa: adoJ.etapaDe({ funil: j.funil, etapa: e.etapa }) })) });
+    };
     let lista = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
-      .filter(j => !funil || j.funil === funil)
-      .concat(Object.values(_jBuffer).filter(j => !funil || j.funil === funil));
+      .filter(j => !funil || adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa }))
+      .concat(Object.values(_jBuffer).filter(j =>
+        !funil || adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa })))
+      .map(trazer);
 
     // filtra por quem veio de um teste especifico — a variante viaja no evento
     const teste = String(req.query.teste || '').slice(0, 60);
@@ -8512,9 +8623,10 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
     const de  = String(req.query.de  || '').slice(0, 10);
     const ate = String(req.query.ate || '').slice(0, 10);
     const db = readDB();
+    const idsEtapa = _idsDaEtapa(db, etapa);
     let linhas = (Array.isArray(db.store[KEY_ATENCAO]) ? db.store[KEY_ATENCAO] : [])
       .concat(Object.values(_atBuffer))
-      .filter(l => l.etapa === etapa);
+      .filter(l => idsEtapa.has(l.etapa));
     if (de)  linhas = linhas.filter(l => l.data >= de);
     if (ate) linhas = linhas.filter(l => l.data <= ate);
 
@@ -8760,15 +8872,17 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
     const ate = String(req.query.ate || '').slice(0, 10);
     const funil = String(req.query.funil || '').slice(0, 80);
     const db = readDB();
+    const ado = _mapaAdocao(db, funil);
     let linhas = Array.isArray(db.store[KEY_FSTATS]) ? db.store[KEY_FSTATS] : [];
-    if (funil) linhas = linhas.filter(l => l.funil === funil);
+    if (funil) linhas = linhas.filter(ado.aceita);
     if (de)    linhas = linhas.filter(l => l.data >= de);
     if (ate)   linhas = linhas.filter(l => l.data <= ate);
     // soma o que ainda nao foi gravado, senao a tela fica pra tras
     const extra = Object.values(_fBuffer).filter(l =>
-      (!funil || l.funil === funil) && (!de || l.data >= de) && (!ate || l.data <= ate));
+      (!funil || ado.aceita(l)) && (!de || l.data >= de) && (!ate || l.data <= ate));
     const porEtapa = {};
-    linhas.concat(extra).forEach(l => {
+    linhas.concat(extra).forEach(l0 => {
+      const l = funil ? Object.assign({}, l0, { etapa: ado.etapaDe(l0) }) : l0;
       if (!porEtapa[l.etapa]) porEtapa[l.etapa] = { etapa: l.etapa, entradas: 0, unicos: 0, saidas: 0, segundos: 0, eventos: {} };
       const v = porEtapa[l.etapa];
       v.entradas += l.entradas || 0; v.unicos += l.unicos || 0;
@@ -8778,7 +8892,7 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
     res.json({ ok: true, funil, de, ate,
       etapas: Object.values(porEtapa).map(e => Object.assign(e, {
         tempoMedio: e.saidas > 0 ? Math.round(e.segundos / e.saidas) : 0 })),
-      feed: _fFeed.filter(f => !funil || f.funil === funil).slice(0, 40) });
+      feed: _fFeed.filter(f => !funil || ado.aceita(f)).slice(0, 40) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -3574,6 +3574,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               <select id="jn-etapa" onchange="jnTempo()"></select></div>
           </div>
           <div id="jn-funil-tempo"></div>
+          <div id="jn-diag"></div>
           <div id="jn-piramide"></div>
           <div class="fn-filtros" id="jn-filtros"></div>
           <div id="jn-lista"></div>
@@ -3584,6 +3585,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <b>Sem mancha colorida de propósito</b> — o nome do que foi clicado é mais útil que a posição exata.</div>
           <div class="fn-campo" style="max-width:340px"><label>Página</label>
             <select id="at-etapa" onchange="atCarregar()"></select></div>
+          <div id="at-diag"></div>
           <div id="at-corpo"></div>
         </div>
 
@@ -29466,9 +29468,14 @@ function jnPintarTempo(d, et){
   var t = (d && d.tempo) || {};
   var st = fnStats[et.id] || {};
   var entradas = st.entradas || 0, unicos = st.unicos || 0;
-  if(!t.medidos && !entradas){
-    cx.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período — '+
-      'o tempo é medido quando a pessoa fecha ou troca de página.</div>';
+  // Sem ninguém medido não há funil: desenhar uma pirâmide toda zerada ao lado
+  // de "494 entradas" parece defeito. Uma frase explica melhor.
+  if(!t.medidos){
+    cx.innerHTML = '<div class="fn-nota">' + (entradas
+      ? ('<b>'+fnNum(entradas)+'</b> entrada(s) nessa página, mas ninguém saiu ainda no período — '+
+         'o tempo só fecha quando a pessoa fecha ou troca de página.')
+      : ('Ninguém saiu dessa página ainda no período — '+
+         'o tempo é medido quando a pessoa fecha ou troca de página.')) + '</div>';
     return;
   }
   var base = t.medidos || 1;
@@ -29506,7 +29513,7 @@ function jnPintarTempo(d, et){
 function jnPiramide(d){
   var cx = document.getElementById('jn-piramide'); if(!cx) return;
   var c = d.contagem || {}, total = c.todas || 0;
-  if(!total){ cx.innerHTML = '<div id="jn-diag"></div>'; fnDiagnostico('jn-diag'); return; }
+  if(!total){ cx.innerHTML = ''; return; }
   var pc = function(n){ return total ? (n/total*100) : 0; };
 
   var degraus = [
@@ -29558,13 +29565,16 @@ function jnPiramide(d){
 }
 
 // ── Quando a tela está zerada, mostra PARA ONDE o pixel está mandando ──
-var fnDiag = null, fnDiagBuscando = false;
+var fnDiag = null, fnDiagBuscando = false, fnDiagAlvo = null;
 function fnDiagnostico(alvoId){
   var alvo = document.getElementById(alvoId); if(!alvo) return;
-  if(fnDiag){ alvo.innerHTML = fnDiagHtml(); return; }
+  // pinta o que já se sabe pra não piscar, mas confere de novo sempre: senão o
+  // aviso continua na tela depois de você trazer os eventos pra cá.
+  if(fnDiag) alvo.innerHTML = fnDiagHtml();
   if(fnDiagBuscando) return;
   fnDiagBuscando = true;
-  fetch('/api/funil/diagnostico')
+  fnDiagAlvo = alvoId;
+  fetch('/api/funil/diagnostico?funil='+encodeURIComponent((fnAtual()||{}).id||''))
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
       fnDiagBuscando = false;
@@ -29576,40 +29586,122 @@ function fnDiagnostico(alvoId){
 }
 function fnDiagHtml(){
   var f = fnAtual(); if(!f || !fnDiag) return '';
-  var meus = (fnDiag.recebendo||[]).filter(function(x){ return x.funil === f.id; });
-  if(meus.length) return '';   // este funil está recebendo — o vazio é outra coisa
-  var outros = (fnDiag.recebendo||[]).filter(function(x){ return x.entradas > 0; });
-  if(!outros.length){
+  var recebendo = fnDiag.recebendo || [];
+  var meus = recebendo.filter(function(x){ return x.funil === f.id; });
+  var trazidos = recebendo.filter(function(x){ return x.adotadaPor && x.adotadaPor.funil === f.id; });
+  var meusEventos = meus.reduce(function(a,x){ return a + (x.entradas||0); }, 0);
+  var trazidosEventos = trazidos.reduce(function(a,x){ return a + (x.entradas||0); }, 0);
+  // Só alarma se ESTE funil não está recebendo nada. Um funil vizinho rodando
+  // bem no mesmo projeto não é problema — avisar disso seria alarme falso.
+  var fora = (meusEventos + trazidosEventos) > 0 ? [] : recebendo.filter(function(x){
+    return x.entradas > 0 && x.funil !== f.id && !(x.adotadaPor && x.adotadaPor.funil === f.id); });
+
+  if(!recebendo.length){
     return '<div class="fn-cx2" style="border-color:var(--border)">'+
       '<h3>Nenhum evento chegou ainda</h3>'+
       '<div style="font-size:12.5px;color:var(--text2);line-height:1.6">'+
       'O pixel não mandou nada nos últimos 7 dias. Confira se o código está no '+
       '<b>&lt;head&gt;</b> da página — a aba <b>Pixel</b> tem um feed ao vivo pra testar.</div></div>';
   }
-  var linhas = outros.slice(0,8).map(function(x){
-    var qual = x.funilNome
-      ? ('funil <b>'+fnEsc(x.funilNome)+'</b>')
-      : ('funil <span class="mono">'+fnEsc(String(x.funil).slice(0,18))+'</span> <i>(não existe mais)</i>');
-    var et = x.etapaNome
-      ? ('etapa <b>'+fnEsc(x.etapaNome)+'</b>'+(x.etapaDeOutroFunil?' <i>(de outro funil)</i>':''))
-      : ('etapa <span class="mono">'+fnEsc(String(x.etapa).slice(0,18))+'</span> <i>(não existe mais)</i>');
-    return '<tr><td style="font-size:12.5px">'+qual+' › '+et+'</td>'+
-      '<td style="text-align:right;font-weight:700">'+fnNum(x.entradas)+'</td>'+
-      '<td style="text-align:right;color:var(--text2)">'+fnNum(x.unicos)+'</td></tr>';
-  }).join('');
-  return '<div class="fn-cx2" style="border-color:#f59e0b">'+
-    '<h3 style="color:#f59e0b">⚠ O pixel está mandando pra outro lugar</h3>'+
-    '<div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:12px">'+
-    'Está chegando evento, mas nenhum é deste funil (<b>'+fnEsc(f.nome)+'</b>). '+
-    'Quase sempre é o código colado antes de você recriar o funil ou a etapa — '+
-    'o <span class="mono">data-f</span> e o <span class="mono">data-e</span> do script ficaram velhos.</div>'+
-    '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
-    '<th>Chegando em</th><th style="width:90px;text-align:right">Entradas</th>'+
-    '<th style="width:90px;text-align:right">Pessoas</th></tr></thead><tbody>'+
-    linhas+'</tbody></table></div>'+
-    '<div class="fn-nota" style="margin:12px 0 0"><b>Como resolver:</b> vá na aba <b>Pixel</b>, '+
-    'copie o código novo de cada etapa e substitua nas páginas. '+
-    'Os números antigos não se perdem — eles continuam guardados, só ficam no funil velho.</div></div>';
+
+  var html = '';
+
+  // ── o que está caindo fora deste funil, com o botão de trazer ──
+  if(fora.length){
+    var opcoes = (f.etapas||[]).map(function(e){
+      return '<option value="'+fnEsc(e.id)+'">'+fnEsc(e.nome)+'</option>'; }).join('');
+    var linhas = fora.slice(0,10).map(function(x, i){
+      var qual = x.funilNome
+        ? ('funil <b>'+fnEsc(x.funilNome)+'</b>')
+        : ('funil <span class="mono">'+fnEsc(String(x.funil).slice(0,16))+'</span> <i>(não existe mais)</i>');
+      var et = x.etapaNome
+        ? ('etapa <b>'+fnEsc(x.etapaNome)+'</b>'+(x.etapaDeOutroFunil?' <i>(de outro funil)</i>':''))
+        : ('etapa <span class="mono">'+fnEsc(String(x.etapa).slice(0,16))+'</span> <i>(não existe mais)</i>');
+      var arg = "'"+fnEsc(x.funil)+"','"+fnEsc(x.etapa)+"',"+i;
+      return '<tr><td style="font-size:12.5px">'+qual+' › '+et+'</td>'+
+        '<td style="text-align:right;font-weight:700">'+fnNum(x.entradas)+'</td>'+
+        '<td style="text-align:right;color:var(--text2)">'+fnNum(x.unicos)+'</td>'+
+        '<td style="text-align:right;white-space:nowrap">'+
+          '<select id="fn-ado-'+i+'" style="max-width:130px;font-size:12px;padding:4px 6px">'+opcoes+'</select> '+
+          '<button class="fn-btn" style="padding:5px 10px;font-size:12px" '+
+            'onclick="fnAdotar('+arg+')">Trazer pra cá</button></td></tr>';
+    }).join('');
+    html += '<div class="fn-cx2" style="border-color:#f59e0b">'+
+      '<h3 style="color:#f59e0b">⚠ O pixel está mandando pra outro lugar</h3>'+
+      '<div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:12px">'+
+      'Está chegando evento, mas não é deste funil (<b>'+fnEsc(f.nome)+'</b>). '+
+      'Quase sempre é o código colado antes de você recriar o funil ou a etapa — '+
+      'o <span class="mono">data-f</span> e o <span class="mono">data-e</span> do script ficaram velhos. '+
+      '<b>Nada se perdeu</b>: os números estão guardados, só sob o id antigo.</div>'+
+      '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+      '<th>Chegando em</th><th style="width:84px;text-align:right">Entradas</th>'+
+      '<th style="width:78px;text-align:right">Pessoas</th>'+
+      '<th style="width:250px;text-align:right">Vira qual etapa daqui</th></tr></thead><tbody>'+
+      linhas+'</tbody></table></div>'+
+      '<div class="fn-nota" style="margin:12px 0 0"><b>Trazer pra cá</b> faz esta tela passar a contar '+
+      'esses eventos como se fossem da etapa escolhida — sem recolar pixel em página nenhuma. '+
+      'Nenhum dado é reescrito e dá pra desfazer. '+
+      'Pra parar de acumular no id velho de vez, troque o código pelo da aba <b>Pixel</b>.</div></div>';
+  }
+
+  // ── o que já foi trazido, com o desfazer ──
+  if(trazidos.length){
+    var nomeDe = {};
+    (f.etapas||[]).forEach(function(e){ nomeDe[e.id] = e.nome; });
+    html += '<div class="fn-cx2" style="border-color:var(--green)">'+
+      '<h3 style="color:var(--green)">✓ Trazido pra este funil</h3>'+
+      '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+      '<th>Origem</th><th style="width:84px;text-align:right">Entradas</th>'+
+      '<th style="width:170px;text-align:right">Contando como</th></tr></thead><tbody>'+
+      trazidos.map(function(x){
+        return '<tr><td style="font-size:12.5px">'+
+            (x.funilNome ? fnEsc(x.funilNome) : '<span class="mono">'+fnEsc(String(x.funil).slice(0,16))+'</span>')+
+            ' › '+(x.etapaNome ? fnEsc(x.etapaNome) : '<span class="mono">'+fnEsc(String(x.etapa).slice(0,16))+'</span>')+'</td>'+
+          '<td style="text-align:right;font-weight:700">'+fnNum(x.entradas)+'</td>'+
+          '<td style="text-align:right;white-space:nowrap"><b>'+fnEsc(nomeDe[x.adotadaPor.etapa]||'—')+'</b> '+
+            '<button class="fn-btn" style="padding:5px 10px;font-size:12px;background:transparent;color:var(--text2);border:1px solid var(--border)" '+
+              'onclick="fnDesadotar(\''+fnEsc(x.adotadaPor.id)+'\')">desfazer</button></td></tr>';
+      }).join('')+'</tbody></table></div></div>';
+  }
+
+  return html;
+}
+
+function fnAdotar(origemFunil, origemEtapa, i){
+  var f = fnAtual(); if(!f) return;
+  var sel = document.getElementById('fn-ado-'+i);
+  var etapa = sel && sel.value;
+  if(!etapa){ notif('❌ Escolha a etapa daqui que vai receber esses eventos.'); return; }
+  // o wrapper global de fetch ja poe o Bearer em toda chamada /api/
+  fetch('/api/funil/adotar', { method:'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ funil:f.id, etapa:etapa, origemFunil:origemFunil, origemEtapa:origemEtapa }) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ notif('❌ '+(d.error||'Não deu.')); return; }
+      notif('✅ Trazido. Os números aparecem nesta tela agora.');
+      fnDiag = null; fnRecarregarTudo();
+    })
+    .catch(function(){ notif('❌ Falhou ao trazer.'); });
+}
+
+function fnDesadotar(id){
+  fetch('/api/funil/adotar/'+encodeURIComponent(id), { method:'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ notif('❌ '+(d.error||'Não deu.')); return; }
+      notif('Desfeito.');
+      fnDiag = null; fnRecarregarTudo();
+    })
+    .catch(function(){ notif('❌ Falhou ao desfazer.'); });
+}
+
+// Depois de trazer ou desfazer, tudo que le do servidor precisa buscar de novo.
+function fnRecarregarTudo(){
+  fnCarregarStats();
+  if(typeof jnCarregar==='function' && document.getElementById('jn-lista')) jnCarregar();
+  if(typeof atCarregar==='function' && document.getElementById('at-corpo')) atCarregar();
+  if(fnDiagAlvo) fnDiagnostico(fnDiagAlvo);
 }
 
 // O seletor de teste filtra as jornadas por quem veio daquele link — e assim a
@@ -29631,6 +29723,7 @@ function jnCarregar(){
   var el = document.getElementById('jn-lista');
   if(!f){ if(el) el.innerHTML = '<div class="fn-nota">Escolha um funil primeiro.</div>'; return; }
   var teste = jnOpcoesTeste();
+  fnDiagnostico('jn-diag');
   if(el) el.innerHTML = '<div class="fn-nota">Buscando as jornadas…</div>';
   fetch('/api/funil/jornadas?funil='+encodeURIComponent(f.id)+'&filtro='+encodeURIComponent(jnFiltro)+
         (teste?('&teste='+encodeURIComponent(teste)):''))
@@ -29732,6 +29825,7 @@ function atOpcoes(){
 function atCarregar(){
   var etapa = (document.getElementById('at-etapa')||{}).value;
   var el = document.getElementById('at-corpo');
+  fnDiagnostico('at-diag');
   if(!etapa || !el) return;
   var per = (document.getElementById('fn-periodo')||{}).value || 'hoje';
   var hoje = hojeBR(), de = hoje;
@@ -29750,9 +29844,7 @@ function atPintar(d){
   var r = d.rolagem || {};
   if(!r.saidas){
     el.innerHTML = '<div class="fn-nota">Ninguém saiu dessa página ainda no período. '+
-      'A rolagem é medida quando a pessoa fecha ou troca de página.</div>'+
-      '<div id="at-diag"></div>';
-    fnDiagnostico('at-diag');
+      'A rolagem é medida quando a pessoa fecha ou troca de página.</div>';
     return;
   }
   var f = fnAtual();
