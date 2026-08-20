@@ -30642,7 +30642,7 @@ async function _painelResumoUtmify(){
       const ehHoje = (from===to) && (typeof rtTodayStr==='function') && (to===rtTodayStr());
       document.getElementById('ads-lucro-hora').innerHTML = _barrasHora(d.porHora||[], ehHoje);
     }
-    _pintarPlanos(d.planos||[], d.produtos||[]);
+    _pintarPlanos(d.planos||[], d);
   }catch(e){
     if(alvo) alvo.innerHTML = '<div style="color:var(--text2);font-size:13px;">Não consegui carregar o funil: '+_esc(e.message)+'</div>';
     if(caixaHora) caixaHora.style.display='none';
@@ -30656,36 +30656,61 @@ async function _painelResumoUtmify(){
 function fmtQtd(n){ return Number(Math.round(n)||0).toLocaleString('pt-BR'); }
 var PLANO_COR = { anual:'#3E1493', semestral:'#2509E4', trimestral:'#1B9CFA',
                   mensal:'#5b5ef4', outros:'var(--text3)' };
-function _pintarPlanos(planos, produtos){
+function _pintarPlanos(planos, d){
+  d = d || {};
   var cx = document.getElementById('ads-cx-planos'), el = document.getElementById('ads-planos');
   if(!cx || !el) return;
-  if(!planos.length){ cx.style.display='none'; return; }
   cx.style.display='block';
+
+  var porValor = d.planosFonte === 'valor';
+  var cfg = d.planosCfg || {};
+  var precos = cfg.precos || [];
+  var temPreco = precos.some(function(p){ return Number(p.preco) > 0; });
+
+  // Sem preço definido não há como separar por valor — a tela pede o preço em
+  // vez de mostrar tudo como "não identificado", que é informação nenhuma.
+  if(!temPreco){
+    el.innerHTML = _formPrecos(precos, cfg.tolerancia||10,
+      '<div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:14px">'+
+      'Seu gateway manda um nome de produto só pras quatro assinaturas, então o '+
+      '<b>preço é o que separa uma da outra</b>. Preencha quanto custa cada plano '+
+      'e as vendas se dividem sozinhas.</div>');
+    return;
+  }
+
+  if(!planos.length){
+    el.innerHTML = '<div style="font-size:12.5px;color:var(--text2)">Nenhuma venda no período.</div>';
+    return;
+  }
 
   var totVendas = planos.reduce(function(a,p){ return a+(p.vendas||0); },0);
   var totRec    = planos.reduce(function(a,p){ return a+(p.receita||0); },0);
-  if(!totVendas){ cx.style.display='none'; return; }
+  if(!totVendas){ el.innerHTML = '<div style="font-size:12.5px;color:var(--text2)">Nenhuma venda no período.</div>'; return; }
 
-  var naoId = planos.filter(function(p){ return p.chave==='outros'; })[0];
+  var fora = planos.filter(function(p){ return p.chave==='fora' || p.chave==='outros'; })[0];
 
   var linhas = planos.map(function(p){
     var pcV = totVendas ? (p.vendas/totVendas*100) : 0;
     var pcR = totRec ? (p.receita/totRec*100) : 0;
-    var cor = PLANO_COR[p.chave] || 'var(--accent)';
+    var cor = PLANO_COR[p.chave] || 'var(--text3)';
+    var ticket = p.vendas ? (p.receita/p.vendas) : 0;
+    var porMes = (p.meses && p.vendas) ? (p.receita/p.vendas/p.meses) : null;
     return '<div style="display:grid;grid-template-columns:132px 1fr 92px 108px 92px;gap:12px;align-items:center;'+
              'padding:11px 0;border-bottom:1px solid var(--border);">'+
       '<div><div style="font-weight:700;font-size:13.5px;color:'+cor+'">'+_esc(p.rotulo)+'</div>'+
-        '<div style="font-size:11px;color:var(--text3)">'+(p.meses?(p.meses+(p.meses===1?' mês':' meses')):'sem plano no nome')+'</div></div>'+
+        '<div style="font-size:11px;color:var(--text3)">'+
+          (p.meses ? (p.meses+(p.meses===1?' mês · ':' meses · ')+fmtAds(p.preco)) : 'preço fora das faixas')+
+        '</div></div>'+
       '<div><div style="background:var(--bg3);border-radius:4px;height:9px;overflow:hidden">'+
           '<div style="width:'+Math.max(pcR,0.6)+'%;height:100%;background:'+cor+'"></div></div>'+
         '<div style="font-size:11px;color:var(--text2);margin-top:4px">'+pcR.toFixed(1)+'% do faturamento</div></div>'+
       '<div style="text-align:right"><div style="font-weight:800;font-size:15px;font-variant-numeric:tabular-nums">'+
           fmtQtd(p.vendas)+'</div><div style="font-size:11px;color:var(--text3)">'+pcV.toFixed(0)+'% das vendas</div></div>'+
       '<div style="text-align:right;font-variant-numeric:tabular-nums"><div style="font-weight:700;font-size:13.5px;color:var(--green)">'+
-          fmtAds(p.receita)+'</div><div style="font-size:11px;color:var(--text3)">ticket '+fmtAds(p.ticket)+'</div></div>'+
+          fmtAds(p.receita)+'</div><div style="font-size:11px;color:var(--text3)">ticket '+fmtAds(ticket)+'</div></div>'+
       '<div style="text-align:right;font-variant-numeric:tabular-nums">'+
-        (p.porMes!=null
-          ? ('<div style="font-weight:700;font-size:13.5px">'+fmtAds(p.porMes)+'</div>'+
+        (porMes!=null
+          ? ('<div style="font-weight:700;font-size:13.5px">'+fmtAds(porMes)+'</div>'+
              '<div style="font-size:11px;color:var(--text3)">por mês</div>')
           : '<div style="font-size:11px;color:var(--text3)">—</div>')+'</div>'+
     '</div>';
@@ -30697,25 +30722,88 @@ function _pintarPlanos(planos, produtos){
     '<div>Plano</div><div>Peso no faturamento</div><div style="text-align:right">Vendas</div>'+
     '<div style="text-align:right">Faturamento</div><div style="text-align:right">Valor/mês</div></div>';
 
-  // "valor por mês" e o que deixa comparar plano com plano: R$ 600 no anual nao
-  // sao R$ 600 no mensal — sao R$ 50/mes contra R$ 600/mes.
   var nota = '<div style="margin-top:12px;padding:10px 12px;background:var(--bg3);border-radius:8px;'+
     'font-size:11.5px;color:var(--text2);line-height:1.55">'+
-    '<b>Valor/mês</b> divide o ticket pelos meses do plano. É o que deixa comparar: uma venda anual '+
-    'de R$ 600 e uma mensal de R$ 600 entram igual no faturamento de hoje, mas uma vale R$ 50/mês e '+
-    'a outra R$ 600/mês.</div>';
+    '<b>Valor/mês</b> divide o ticket pelos meses do plano. Uma venda anual de R$ 600 e uma mensal de '+
+    'R$ 600 entram igual no faturamento de hoje, mas uma vale R$ 50/mês e a outra R$ 600/mês.</div>';
 
   var aviso = '';
-  if(naoId && naoId.vendas){
-    var exemplos = (naoId.produtos||[]).slice(0,3).map(_esc).join(', ');
-    aviso = '<div style="margin-top:9px;padding:10px 12px;border-left:3px solid var(--yellow);'+
+  if(fora && fora.vendas){
+    var vals = (fora.valores||[]).slice(0,6).map(function(v){ return fmtAds(v); }).join(', ');
+    aviso += '<div style="margin-top:9px;padding:10px 12px;border-left:3px solid var(--yellow);'+
       'background:var(--bg3);border-radius:0 8px 8px 0;font-size:11.5px;color:var(--text2);line-height:1.55">'+
-      '<b>'+fmtQtd(naoId.vendas)+' venda(s)</b> não dizem o plano no nome do produto'+
-      (exemplos?(' — '+exemplos):'')+'. Renomeie no gateway incluindo "mensal", "trimestral", '+
-      '"semestral" ou "anual" e elas se separam sozinhas aqui.</div>';
+      '<b>'+fmtQtd(fora.vendas)+' venda(s)</b> não caíram em nenhuma faixa de preço'+
+      (vals?(' — valores: '+vals):'')+'. Normalmente é cupom, order bump ou um plano que você '+
+      'ainda não cadastrou. Ajuste os preços ou a tolerância abaixo.</div>';
+  }
+  if(!porValor){
+    aviso += '<div style="margin-top:9px;padding:10px 12px;border-left:3px solid var(--yellow);'+
+      'background:var(--bg3);border-radius:0 8px 8px 0;font-size:11.5px;color:var(--text2);line-height:1.55">'+
+      '<b>Classificado pelo nome do produto, não pelo valor.</b> A Utmify só entrega o total e a '+
+      'quantidade de vendas — o valor de cada venda vem do postback do seu checkout. Ligue em '+
+      '<b>Configurações → Integrações → Vendas do checkout</b> e a divisão passa a ser por preço.</div>';
   }
 
-  el.innerHTML = cab + linhas + nota + aviso;
+  el.innerHTML = cab + linhas + nota + aviso +
+    _formPrecos(precos, cfg.tolerancia||10, '', true);
+}
+
+// Formulário de preços. Fica dentro do próprio cartão porque é onde a dúvida
+// aparece — mandar o usuário procurar em Configurações é perder ele no caminho.
+function _formPrecos(precos, tol, cabecalho, recolhido){
+  var campos = (precos.length?precos:[
+      {chave:'mensal',rotulo:'Mensal',meses:1,preco:0},
+      {chave:'trimestral',rotulo:'Trimestral',meses:3,preco:0},
+      {chave:'semestral',rotulo:'Semestral',meses:6,preco:0},
+      {chave:'anual',rotulo:'Anual',meses:12,preco:0}
+    ]).map(function(p){
+    return '<div style="flex:1;min-width:118px">'+
+      '<label style="display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;'+
+        'color:var(--text3);font-weight:700;margin-bottom:5px">'+_esc(p.rotulo)+'</label>'+
+      '<input type="number" step="0.01" min="0" id="plpreco-'+_esc(p.chave)+'" value="'+(Number(p.preco)||'')+'" '+
+        'placeholder="0,00" style="width:100%;background:var(--bg3);border:1px solid var(--border);'+
+        'border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none"></div>';
+  }).join('');
+
+  var corpo = (cabecalho||'')+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">'+campos+
+      '<div style="width:104px">'+
+        '<label style="display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;'+
+          'color:var(--text3);font-weight:700;margin-bottom:5px">Tolerância</label>'+
+        '<input type="number" step="1" min="1" max="40" id="pltol" value="'+(Number(tol)||10)+'" '+
+          'style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;'+
+          'padding:8px 10px;color:var(--text);font-size:13px;outline:none"></div>'+
+      '<button class="btn btn-primary" style="padding:9px 16px" onclick="salvarPlanos()">Salvar</button>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">'+
+      'A tolerância é o quanto o valor pode fugir do preço e ainda contar. Com 10%, uma venda de '+
+      'R$ 270 ainda entra num plano de R$ 297 — cobre cupom pequeno sem misturar os planos.</div>'+
+    '<div id="pl-msg" style="font-size:12px;margin-top:8px"></div>';
+
+  if(!recolhido) return corpo;
+  return '<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:var(--text2);'+
+    'font-weight:600;padding:6px 0">Ajustar preços dos planos</summary>'+
+    '<div style="padding-top:10px">'+corpo+'</div></details>';
+}
+
+function salvarPlanos(){
+  var chaves = ['mensal','trimestral','semestral','anual'];
+  var planos = chaves.map(function(k){
+    var i = document.getElementById('plpreco-'+k);
+    return { chave:k, preco: i ? Number(i.value)||0 : 0 };
+  });
+  var tol = Number((document.getElementById('pltol')||{}).value) || 10;
+  var msg = document.getElementById('pl-msg');
+  if(msg) msg.innerHTML = '<span style="color:var(--text2)">Salvando…</span>';
+  fetch('/api/planos',{ method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ planos:planos, tolerancia:tol }) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ if(msg) msg.innerHTML = '<span style="color:var(--red)">'+_esc(d.error||'Não deu.')+'</span>'; return; }
+      if(msg) msg.innerHTML = '<span style="color:var(--green)">Salvo. Atualizando…</span>';
+      if(typeof _painelResumoUtmify==='function') _painelResumoUtmify();
+    })
+    .catch(function(e){ if(msg) msg.innerHTML = '<span style="color:var(--red)">Falhou: '+_esc(e.message)+'</span>'; });
 }
 
 function _rtNum(rotulo, valor, cor){

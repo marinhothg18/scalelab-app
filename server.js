@@ -2543,6 +2543,7 @@ const KEY_META      = 'sl_integracoes_meta';     // server-only (token)
 const KEY_VENDAS    = 'sl_vendas';
 const KEY_METRICAS  = 'sl_metricas_ads';   // métricas importadas (Utmify, Meta…)               // vendas normalizadas
 const KEY_VENDAS_RAW= 'sl_vendas_raw';           // últimos payloads crus (debug/mapeamento)
+const KEY_PLANOS    = 'sl_planos';               // preço de cada plano, pra classificar venda por valor
 const VENDAS_RAW_MAX = 50;
 const VENDAS_RETENCAO_DIAS = 365;
 
@@ -2555,6 +2556,43 @@ function _metaActId(id) {
   const s = String(id || '').trim();
   if (!s) return '';
   return s.startsWith('act_') ? s : ('act_' + s.replace(/^act/, ''));
+}
+
+// ── Planos: classificar a venda pelo VALOR ──────────────────────────────────
+// O ideal seria o nome do produto dizer o plano, mas o gateway dele manda um
+// nome so ("Apostilai") pras quatro assinaturas. Entao o preco e a unica coisa
+// que separa. Funciona, com duas ressalvas que a tela precisa dizer em voz alta:
+// desconto/cupom tira a venda da faixa, e dois planos com o mesmo preco sao
+// indistinguiveis. Por isso a faixa tem tolerancia e sobra um balde "fora das
+// faixas" em vez de empurrar pro mais proximo a qualquer custo.
+const PLANOS_PADRAO = [
+  { chave: 'mensal',     rotulo: 'Mensal',     meses: 1,  preco: 0 },
+  { chave: 'trimestral', rotulo: 'Trimestral', meses: 3,  preco: 0 },
+  { chave: 'semestral',  rotulo: 'Semestral',  meses: 6,  preco: 0 },
+  { chave: 'anual',      rotulo: 'Anual',      meses: 12, preco: 0 }
+];
+function _planosCfg(db) {
+  const c = (db || readDB()).store[KEY_PLANOS];
+  const lista = Array.isArray(c && c.planos) ? c.planos : null;
+  return {
+    planos: lista && lista.length ? lista : PLANOS_PADRAO,
+    tolerancia: Number(c && c.tolerancia) > 0 ? Number(c.tolerancia) : 10   // %
+  };
+}
+// Devolve o plano cujo preco mais se aproxima, dentro da tolerancia. Fora dela
+// devolve null — chutar o mais proximo transformaria um order bump de R$ 47
+// num "mensal" e sujaria a conta toda.
+function _planoPorValor(valor, cfg) {
+  const v = Number(valor);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  let melhor = null, menorDist = Infinity;
+  for (const p of cfg.planos) {
+    const preco = Number(p.preco) || 0;
+    if (preco <= 0) continue;
+    const dist = Math.abs(v - preco) / preco * 100;
+    if (dist <= cfg.tolerancia && dist < menorDist) { menorDist = dist; melhor = p; }
+  }
+  return melhor;
 }
 
 // ── Config ──
@@ -3359,6 +3397,39 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
                        roas: inv > 0 ? rec / inv : 0 });
       } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
     }
+    // ── Vendas por plano ────────────────────────────────────────────────────
+    // Preferencia: as vendas individuais do webhook, classificadas por VALOR —
+    // e o unico caminho quando o gateway manda um nome de produto so pras
+    // quatro assinaturas. Sem webhook, cai no nome do produto, que ao menos
+    // separa quando os nomes ajudam.
+    const cfgPl = _planosCfg(db);
+    const vendasInd = (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [])
+      .filter(v => {
+        const dia = String(v.recebidoEm || '').slice(0, 10);
+        if (deQuery && dia < deQuery) return false;
+        if (ateQuery && dia > ateQuery) return false;
+        // so venda que entrou de fato; pendente e reembolso nao sao faturamento
+        return !/reembols|refund|charge|recus|cancel|estorn/i.test(String(v.status || ''));
+      });
+    const temPrecos = cfgPl.planos.some(p => Number(p.preco) > 0);
+    let porValor = null;
+    if (vendasInd.length && temPrecos) {
+      const acc = {};
+      cfgPl.planos.forEach(p => { acc[p.chave] = {
+        chave: p.chave, rotulo: p.rotulo, meses: p.meses, preco: Number(p.preco) || 0,
+        vendas: 0, receita: 0, produtos: [] }; });
+      acc['fora'] = { chave: 'fora', rotulo: 'Fora das faixas', meses: null, preco: 0,
+                      vendas: 0, receita: 0, produtos: [], valores: [] };
+      vendasInd.forEach(v => {
+        const pl = _planoPorValor(v.valor, cfgPl);
+        const alvo = pl ? acc[pl.chave] : acc['fora'];
+        alvo.vendas += 1;
+        alvo.receita += Number(v.valor) || 0;
+        if (!pl && Number(v.valor) > 0 && alvo.valores.length < 12) alvo.valores.push(Number(v.valor));
+      });
+      porValor = Object.values(acc).filter(p => p.vendas > 0);
+    }
+
     // O nome do produto e quem diz o plano. Adivinhar pelo VALOR quebra no dia
     // que voce roda promocao, cupom ou order bump — dois planos com o mesmo
     // preco viram um so. Se o nome nao disser, fica "outros" em vez de chutar.
@@ -3388,8 +3459,8 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
       porPlano[k].receita += pr.receita;
       porPlano[k].produtos.push(pr.produto);
     });
-    const ordem = { anual: 1, semestral: 2, trimestral: 3, mensal: 4, outros: 5 };
-    const planos = Object.values(porPlano)
+    const ordem = { anual: 1, semestral: 2, trimestral: 3, mensal: 4, outros: 5, fora: 6 };
+    const planos = (porValor || Object.values(porPlano))
       .map(p => Object.assign(p, {
         ticket: p.vendas > 0 ? p.receita / p.vendas : 0,
         // quanto essa venda vale por mes de contrato — compara plano com plano
@@ -3406,6 +3477,12 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
       }),
       porHora,
       planos,
+      // a tela precisa saber DE ONDE veio a classificacao pra nao mentir
+      planosFonte: porValor ? 'valor' : 'nome',
+      planosCfg: { tolerancia: cfgPl.tolerancia,
+                   precos: cfgPl.planos.map(p => ({ chave: p.chave, rotulo: p.rotulo,
+                                                    meses: p.meses, preco: Number(p.preco) || 0 })) },
+      vendasIndividuais: vendasInd.length,
       produtos: Object.values(porProduto).sort((a, b) => b.receita - a.receita),
       porUtm: Object.entries(porUtm).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd),
       porDashboard: porDash.sort((a, b) => b.investimento - a.investimento),
@@ -8450,6 +8527,37 @@ app.delete('/api/funil/adotar/:id', authUsuario, (req, res) => {
       { origemFunil: alvo.origemFunil, origemEtapa: alvo.origemEtapa }, req.user);
     writeDB(db);
     res.json({ ok: true, adocoes: db.store[KEY_ADOCOES].filter(a => a.funil === alvo.funil) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Preco de cada plano — e o que deixa dizer qual venda foi qual.
+app.get('/api/planos', authUsuario, (req, res) => {
+  const cfg = _planosCfg(readDB());
+  res.json({ ok: true, tolerancia: cfg.tolerancia,
+             planos: cfg.planos.map(p => ({ chave: p.chave, rotulo: p.rotulo,
+                                            meses: p.meses, preco: Number(p.preco) || 0 })) });
+});
+
+app.post('/api/planos', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {};
+    const entrada = Array.isArray(b.planos) ? b.planos : [];
+    // so aceita as quatro chaves conhecidas; o resto e ruido
+    const planos = PLANOS_PADRAO.map(base => {
+      const d = entrada.find(x => x && x.chave === base.chave) || {};
+      const preco = Number(d.preco);
+      return Object.assign({}, base, { preco: Number.isFinite(preco) && preco > 0 ? preco : 0 });
+    });
+    let tol = Number(b.tolerancia);
+    if (!Number.isFinite(tol) || tol < 1)  tol = 10;
+    if (tol > 40) tol = 40;   // acima disso as faixas se sobrepoem e a conta vira ficcao
+    const db = readDB();
+    db.store[KEY_PLANOS] = { planos, tolerancia: tol };
+    db.timestamps[KEY_PLANOS] = now();
+    audit(db, 'planos_precos', { tolerancia: tol },
+      { precos: planos.map(p => p.chave + '=' + p.preco).join(' ') }, req.user);
+    writeDB(db);
+    res.json({ ok: true, planos, tolerancia: tol });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
