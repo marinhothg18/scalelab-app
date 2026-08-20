@@ -2582,6 +2582,22 @@ function _planosCfg(db) {
 // Devolve o plano cujo preco mais se aproxima, dentro da tolerancia. Fora dela
 // devolve null — chutar o mais proximo transformaria um order bump de R$ 47
 // num "mensal" e sujaria a conta toda.
+// O plano dito no nome do produto. Mais confiavel que o preco: o nome nao muda
+// com cupom, promocao ou order bump, e dois planos de mesmo preco continuam
+// distinguiveis. So cai no preco quando o nome nao disser nada.
+const PLANO_NO_NOME = [
+  { chave: 'anual',      re: /anual|(?:12)\s*mes|(?:1|um)\s*ano/i },
+  { chave: 'semestral',  re: /semestral|(?:6|seis)\s*mes/i },
+  { chave: 'trimestral', re: /trimestral|(?:3|tres|três)\s*mes/i },
+  { chave: 'mensal',     re: /mensal|(?:1|um)\s*mes(?!\s*es\b)/i }
+];
+function _planoPorNome(nome) {
+  const n = String(nome || '');
+  if (!n) return null;
+  for (const p of PLANO_NO_NOME) if (p.re.test(n)) return p;
+  return null;
+}
+
 function _planoPorValor(valor, cfg) {
   const v = Number(valor);
   if (!Number.isFinite(v) || v <= 0) return null;
@@ -3429,8 +3445,9 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
         return !/reembols|refund|charge|recus|cancel|estorn/i.test(String(v.status || ''));
       });
     const temPrecos = cfgPl.planos.some(p => Number(p.preco) > 0);
+    // basta ter venda individual: o nome ja classifica sozinho na maioria dos casos
     let porValor = null;
-    if (vendasInd.length && temPrecos) {
+    if (vendasInd.length) {
       const acc = {};
       cfgPl.planos.forEach(p => { acc[p.chave] = {
         chave: p.chave, rotulo: p.rotulo, meses: p.meses, preco: Number(p.preco) || 0,
@@ -3438,8 +3455,11 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
       acc['fora'] = { chave: 'fora', rotulo: 'Fora das faixas', meses: null, preco: 0,
                       vendas: 0, receita: 0, produtos: [], valores: [] };
       vendasInd.forEach(v => {
-        const pl = _planoPorValor(v.valor, cfgPl);
-        const alvo = pl ? acc[pl.chave] : acc['fora'];
+        // O nome do produto manda: na Payt ele vem "Apostilai - mensal", e nome
+        // nao muda com cupom nem promocao. O preco entra so quando o nome cala.
+        const porNome = _planoPorNome(v.produto);
+        const pl = porNome || _planoPorValor(v.valor, cfgPl);
+        const alvo = (pl && acc[pl.chave]) ? acc[pl.chave] : acc['fora'];
         alvo.vendas += 1;
         alvo.receita += Number(v.valor) || 0;
         if (!pl && Number(v.valor) > 0 && alvo.valores.length < 12) alvo.valores.push(Number(v.valor));
