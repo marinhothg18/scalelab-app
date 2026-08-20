@@ -9463,11 +9463,24 @@ const PIXEL_JS = `(function(w,d){
       // e era isso que fazia venda de anuncio chegar na Utmify como organica.
       // Se a gente sabe de onde a pessoa veio, isso ganha do padrao do site.
       var VAZIO = /^(|organic|organico|orgânico|direct|direto|none|null|undefined|nao-informado|n\\/a)$/i;
+      // First-touch vence, ponto. Foi por ser conservador demais aqui que o
+      // utm_content do anuncio chegou no checkout como "link_in_bio::...": o
+      // link da bio tem utm propria, o script da pagina faz last-touch e
+      // sobrescreve, e eu so preenchia campo vazio. Se a pessoa veio de um
+      // anuncio, o anuncio e a origem — mesmo que ela tenha passado por outro
+      // lugar no meio. E o que "first-touch" quer dizer.
+      var MANDA = ['utm_campaign','utm_content','utm_term','utm_id','utm_medium','fbclid','gclid','ttclid'];
       LEVAR.forEach(function(k){
         if(!primeiro[k]) return;
-        var atual = u.searchParams.get(k) || '';
-        // template do gerenciador que nao foi substituido tambem e lixo
-        if(VAZIO.test(atual.trim()) || /^\\{\\{.*\\}\\}$/.test(atual.trim())){
+        var atual = (u.searchParams.get(k) || '').trim();
+        var ehLixo = VAZIO.test(atual) || /^\\{\\{.*\\}\\}$/.test(atual);
+        // utm_source fica de fora do atropelo: a pagina cola o id do lead nele
+        // (ig + id) e sobrescrever quebraria o rastreio deles.
+        if(ehLixo || MANDA.indexOf(k) >= 0){
+          if(atual && !ehLixo && atual !== primeiro[k]){
+            // nao joga fora o que estava la — guarda pra conferencia
+            u.searchParams.set('tmx_ult_' + k.replace(/^utm_/, ''), atual.slice(0, 120));
+          }
           u.searchParams.set(k, primeiro[k]);
         }
       });
