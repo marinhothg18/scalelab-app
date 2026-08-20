@@ -2787,8 +2787,21 @@ function _normalizarVenda(p) {
     utmCampaign: String(_pega(p, ['trackingParameters.utm_campaign','utm_campaign','tracking.utm_campaign','campaign']) || ''),
     utmContent:  String(_pega(p, ['trackingParameters.utm_content','utm_content','tracking.utm_content']) || ''),
     utmTerm:     String(_pega(p, ['trackingParameters.utm_term','utm_term','tracking.utm_term']) || ''),
+    // o visitante que o pixel anexou no link do checkout — e o que liga a venda
+    // a jornada inteira, mesmo quando a UTM se perdeu no caminho
+    vid: String(_pega(p, ['tmx_vid','trackingParameters.tmx_vid','tracking.tmx_vid',
+                          'metadata.tmx_vid','custom.tmx_vid']) || ''),
     recebidoEm: new Date().toISOString()
   };
+}
+
+// Como esta venda foi ligada a uma origem. Sem isso voce troca um numero ruim
+// por outro numero ruim sem saber qual e qual: 'vid' e confianca dura (o proprio
+// visitante), 'utm' e o parametro que sobreviveu, 'nenhum' e venda orfa.
+function _comoCasou(v) {
+  if (v.vid)       return 'vid';
+  if (v.utmContent || v.utmCampaign || v.utmSource) return 'utm';
+  return 'nenhum';
 }
 
 app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parseado pelo express.json global
@@ -2809,6 +2822,7 @@ app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parsead
     db.store[KEY_VENDAS_RAW] = raw.slice(-VENDAS_RAW_MAX);
 
     const venda = _normalizarVenda(payload);
+    venda.casadaPor = _comoCasou(venda);
     const vendas = db.store[KEY_VENDAS] || [];
     // dedupe por pedidoId (gateways reenviam o mesmo evento)
     const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
@@ -8417,6 +8431,17 @@ function _jRegistrar(visitante, funil, etapa, tipo, extra) {
     if (u.campaign) ev.campanha = String(u.campaign).slice(0, 80);
   }
   if (extra && extra.ref) ev.ref = String(extra.ref).slice(0, 200);
+  // A origem do PRIMEIRO acesso, que e a que vale. Guardada tambem aqui porque
+  // o navegador pode perder o storage (iOS limpa storage de script depois de 7
+  // dias sem interacao) — no servidor ela nao evapora.
+  if (extra && extra.primeiro && typeof extra.primeiro === 'object') {
+    const pr = extra.primeiro, out = {};
+    ['utm_source','utm_medium','utm_campaign','utm_content','utm_term',
+     'fbclid','gclid','src','sck','em','pg','ref'].forEach(k => {
+      if (pr[k]) out[k] = String(pr[k]).slice(0, 120);
+    });
+    if (Object.keys(out).length) ev.primeiro = out;
+  }
   if (extra && extra.quem) {
     const q = extra.quem;
     if (q.aparelho)  ev.aparelho  = q.aparelho;
@@ -9223,6 +9248,51 @@ const PIXEL_JS = `(function(w,d){
     try{ if(v) localStorage.setItem('tmx_utm_'+k, v);
          utm[k] = v || localStorage.getItem('tmx_utm_'+k) || ''; }catch(e){ utm[k] = v || ''; }
   });
+
+  // ── First-touch: a origem VERDADEIRA, gravada uma vez e nunca sobrescrita ──
+  // O bloco acima ja fazia a UTM sobreviver ao retorno sem parametro (e o que
+  // salva o caminho anuncio > perfil > bio). Mas ele e last-touch-com-UTM: um
+  // segundo clique em outro anuncio apaga o primeiro. Aqui fica o registro que
+  // nao muda, que e o que vai pro checkout.
+  var MARCAS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term',
+                'utm_id','fbclid','gclid','ttclid','src','sck','xcod'];
+  function bisc(n){
+    var m = d.cookie.match('(^|;)\\\\s*' + n + '\\\\s*=\\\\s*([^;]+)');
+    return m ? decodeURIComponent(m.pop()) : '';
+  }
+  function guarda(k, v){
+    try{ localStorage.setItem(k, v); }catch(e){}
+    // cookie tambem: no iOS o localStorage do WebView as vezes some antes
+    try{
+      d.cookie = k + '=' + encodeURIComponent(v) + ';path=/;max-age=7776000;SameSite=Lax' +
+                 (location.protocol === 'https:' ? ';Secure' : '');
+    }catch(e){}
+  }
+  function le(k){
+    var v = '';
+    try{ v = localStorage.getItem(k) || ''; }catch(e){}
+    return v || bisc(k);
+  }
+
+  var agora = {};
+  MARCAS.forEach(function(k){ var v = q.get(k); if(v) agora[k] = v; });
+  // _fbp e _fbc vem do pixel da Meta, se ele estiver na pagina
+  var _fbp = bisc('_fbp'), _fbc = bisc('_fbc');
+  if(_fbp) agora.fbp = _fbp;
+  if(_fbc) agora.fbc = _fbc;
+
+  if(Object.keys(agora).length){
+    agora.em = Date.now();
+    agora.pg = location.pathname;
+    agora.ref = d.referrer || '';
+    var txt = JSON.stringify(agora);
+    if(!le('tmx_first')) guarda('tmx_first', txt);   // uma vez, e so
+    guarda('tmx_last', txt);
+  }
+  var primeiro = {};
+  try{ primeiro = JSON.parse(le('tmx_first') || '{}'); }catch(e){ primeiro = {}; }
+  // pra quem quiser ler de fora (pixel da Meta, por exemplo)
+  w.TMXOrigem = { vid: id, primeiro: primeiro };
   ['t','v'].forEach(function(k){
     var v = q.get('tmx_'+k);
     try{ if(v) localStorage.setItem('tmx_ab_'+k, v); }catch(e){}
@@ -9241,7 +9311,7 @@ const PIXEL_JS = `(function(w,d){
                  .replace(/^www\\./i, '').replace(/\\/+$/, '').slice(0, 160);
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
-                                pg:PAGINA,
+                                pg:PAGINA, primeiro:primeiro,
                                 teste:teste, variante:variante, versao:VERSAO, ref:d.referrer }, extra||{});
     var corpo = JSON.stringify(dados);
     try{
@@ -9366,6 +9436,59 @@ const PIXEL_JS = `(function(w,d){
   // Marca uma etapa no clique de um botao — serve pro checkout do gateway,
   // onde o nosso codigo nao entra mas o clique acontece numa pagina sua.
   w.TMX = function(nome, extra){ manda(nome, extra); };
+  // ── Levar o first-touch ate o checkout ──────────────────────────────────
+  // localStorage e por dominio: quando a pessoa clica em comprar e vai pro
+  // gateway, a UTM fica pra tras e a venda chega sem origem. Aqui a gente
+  // reescreve o link de saida com o first-touch antes do clique acontecer.
+  //
+  // So mexe em host de checkout conhecido — sair anexando UTM em todo link
+  // externo vazaria dado de campanha pra qualquer site que voce linkar.
+  var CHECKOUTS = /payt|checkout|pay\\.|kiwify|hotmart|monetizze|eduzz|braip|perfectpay|cakto|ticto|kirvano|greenn|lastlink|pepper|yampi|appmax|doppus/i;
+  var extraCheckout = eu.getAttribute('data-checkout') || '';
+  if(extraCheckout){
+    try{ CHECKOUTS = new RegExp(CHECKOUTS.source + '|' + extraCheckout, 'i'); }catch(e){}
+  }
+  var LEVAR = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term',
+               'utm_id','fbclid','gclid','ttclid','src','sck','xcod'];
+
+  function enriquecer(href){
+    try{
+      var u = new URL(href, location.href);
+      if(!CHECKOUTS.test(u.host + u.pathname)) return href;
+      LEVAR.forEach(function(k){
+        // o que ja estiver no link do gateway manda — pode ter sido posto de proposito
+        if(primeiro[k] && !u.searchParams.get(k)) u.searchParams.set(k, primeiro[k]);
+      });
+      if(!u.searchParams.get('tmx_vid')) u.searchParams.set('tmx_vid', id);
+      return u.toString();
+    }catch(e){ return href; }
+  }
+
+  // Fase de captura: roda antes de qualquer handler da pagina ou do player.
+  d.addEventListener('click', function(ev){
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if(!a) return;
+    var novo = enriquecer(a.getAttribute('href') || a.href);
+    if(novo && novo !== a.href) a.href = novo;
+  }, true);
+
+  // Botao que navega por JS (player de VSL costuma fazer isso) nao passa pelo
+  // <a>, entao os dois caminhos de navegacao tambem sao cobertos.
+  try{
+    var _assign = w.location.assign.bind(w.location);
+    w.location.assign = function(u){ return _assign(enriquecer(String(u))); };
+    var _replace = w.location.replace.bind(w.location);
+    w.location.replace = function(u){ return _replace(enriquecer(String(u))); };
+  }catch(e){}
+  try{
+    var _open = w.open;
+    w.open = function(u){
+      var args = Array.prototype.slice.call(arguments);
+      if(u) args[0] = enriquecer(String(u));
+      return _open.apply(w, args);
+    };
+  }catch(e){}
+
   w.TMXBotao = function(seletor, etapa){
     d.addEventListener('click', function(ev){
       var alvo = ev.target && ev.target.closest ? ev.target.closest(seletor) : null;
