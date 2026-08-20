@@ -9455,9 +9455,18 @@ const PIXEL_JS = `(function(w,d){
     try{
       var u = new URL(href, location.href);
       if(!CHECKOUTS.test(u.host + u.pathname)) return href;
+      // Valor que o proprio site cravou no link e que NAO e informacao: a pagina
+      // do apostilai.ai sai com utm_source=organic fixo em todo botao de compra,
+      // e era isso que fazia venda de anuncio chegar na Utmify como organica.
+      // Se a gente sabe de onde a pessoa veio, isso ganha do padrao do site.
+      var VAZIO = /^(|organic|organico|orgânico|direct|direto|none|null|undefined|nao-informado|n\\/a)$/i;
       LEVAR.forEach(function(k){
-        // o que ja estiver no link do gateway manda — pode ter sido posto de proposito
-        if(primeiro[k] && !u.searchParams.get(k)) u.searchParams.set(k, primeiro[k]);
+        if(!primeiro[k]) return;
+        var atual = u.searchParams.get(k) || '';
+        // template do gerenciador que nao foi substituido tambem e lixo
+        if(VAZIO.test(atual.trim()) || /^\\{\\{.*\\}\\}$/.test(atual.trim())){
+          u.searchParams.set(k, primeiro[k]);
+        }
       });
       if(!u.searchParams.get('tmx_vid')) u.searchParams.set('tmx_vid', id);
       return u.toString();
