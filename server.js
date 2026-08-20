@@ -3416,8 +3416,11 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
     // e o unico caminho quando o gateway manda um nome de produto so pras
     // quatro assinaturas. Sem webhook, cai no nome do produto, que ao menos
     // separa quando os nomes ajudam.
-    const cfgPl = _planosCfg(db);
-    const vendasInd = (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [])
+    // _utmifyPanorama nao lia o banco — eu usei `db` aqui sem ele existir e
+    // derrubei a aba Tempo Real inteira com "db is not defined".
+    const dbPl = readDB();
+    const cfgPl = _planosCfg(dbPl);
+    const vendasInd = (Array.isArray(dbPl.store[KEY_VENDAS]) ? dbPl.store[KEY_VENDAS] : [])
       .filter(v => {
         const dia = String(v.recebidoEm || '').slice(0, 10);
         if (deQuery && dia < deQuery) return false;
