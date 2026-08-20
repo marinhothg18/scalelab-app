@@ -3861,6 +3861,15 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             </div>
           </div>
 
+          <!-- POR PLANO -->
+          <div id="ads-cx-planos" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px;">
+              <div style="font-size:13px;font-weight:700;">🗓️ Vendas por plano</div>
+              <div style="font-size:11.5px;color:var(--text2);">o plano vem do nome do produto no gateway</div>
+            </div>
+            <div id="ads-planos"></div>
+          </div>
+
           <!-- POR CONTA -->
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;">
             <div style="font-size:13px;font-weight:700;margin-bottom:14px;" id="ads-titulo-conta">🏦 Resultado por Conta de Anúncio</div>
@@ -30633,10 +30642,80 @@ async function _painelResumoUtmify(){
       const ehHoje = (from===to) && (typeof rtTodayStr==='function') && (to===rtTodayStr());
       document.getElementById('ads-lucro-hora').innerHTML = _barrasHora(d.porHora||[], ehHoje);
     }
+    _pintarPlanos(d.planos||[], d.produtos||[]);
   }catch(e){
     if(alvo) alvo.innerHTML = '<div style="color:var(--text2);font-size:13px;">Não consegui carregar o funil: '+_esc(e.message)+'</div>';
     if(caixaHora) caixaHora.style.display='none';
   }
+}
+
+// ── Vendas por plano ────────────────────────────────────────────────────────
+// O plano sai do NOME do produto que o gateway manda, não do valor. Adivinhar
+// pelo valor quebra no dia da promoção, do cupom ou do order bump — e dois
+// planos com o mesmo preço viram um só.
+function fmtQtd(n){ return Number(Math.round(n)||0).toLocaleString('pt-BR'); }
+var PLANO_COR = { anual:'#3E1493', semestral:'#2509E4', trimestral:'#1B9CFA',
+                  mensal:'#5b5ef4', outros:'var(--text3)' };
+function _pintarPlanos(planos, produtos){
+  var cx = document.getElementById('ads-cx-planos'), el = document.getElementById('ads-planos');
+  if(!cx || !el) return;
+  if(!planos.length){ cx.style.display='none'; return; }
+  cx.style.display='block';
+
+  var totVendas = planos.reduce(function(a,p){ return a+(p.vendas||0); },0);
+  var totRec    = planos.reduce(function(a,p){ return a+(p.receita||0); },0);
+  if(!totVendas){ cx.style.display='none'; return; }
+
+  var naoId = planos.filter(function(p){ return p.chave==='outros'; })[0];
+
+  var linhas = planos.map(function(p){
+    var pcV = totVendas ? (p.vendas/totVendas*100) : 0;
+    var pcR = totRec ? (p.receita/totRec*100) : 0;
+    var cor = PLANO_COR[p.chave] || 'var(--accent)';
+    return '<div style="display:grid;grid-template-columns:132px 1fr 92px 108px 92px;gap:12px;align-items:center;'+
+             'padding:11px 0;border-bottom:1px solid var(--border);">'+
+      '<div><div style="font-weight:700;font-size:13.5px;color:'+cor+'">'+_esc(p.rotulo)+'</div>'+
+        '<div style="font-size:11px;color:var(--text3)">'+(p.meses?(p.meses+(p.meses===1?' mês':' meses')):'sem plano no nome')+'</div></div>'+
+      '<div><div style="background:var(--bg3);border-radius:4px;height:9px;overflow:hidden">'+
+          '<div style="width:'+Math.max(pcR,0.6)+'%;height:100%;background:'+cor+'"></div></div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-top:4px">'+pcR.toFixed(1)+'% do faturamento</div></div>'+
+      '<div style="text-align:right"><div style="font-weight:800;font-size:15px;font-variant-numeric:tabular-nums">'+
+          fmtQtd(p.vendas)+'</div><div style="font-size:11px;color:var(--text3)">'+pcV.toFixed(0)+'% das vendas</div></div>'+
+      '<div style="text-align:right;font-variant-numeric:tabular-nums"><div style="font-weight:700;font-size:13.5px;color:var(--green)">'+
+          fmtAds(p.receita)+'</div><div style="font-size:11px;color:var(--text3)">ticket '+fmtAds(p.ticket)+'</div></div>'+
+      '<div style="text-align:right;font-variant-numeric:tabular-nums">'+
+        (p.porMes!=null
+          ? ('<div style="font-weight:700;font-size:13.5px">'+fmtAds(p.porMes)+'</div>'+
+             '<div style="font-size:11px;color:var(--text3)">por mês</div>')
+          : '<div style="font-size:11px;color:var(--text3)">—</div>')+'</div>'+
+    '</div>';
+  }).join('');
+
+  var cab = '<div style="display:grid;grid-template-columns:132px 1fr 92px 108px 92px;gap:12px;'+
+      'padding:0 0 7px;border-bottom:1px solid var(--border);font-size:10.5px;text-transform:uppercase;'+
+      'letter-spacing:.06em;color:var(--text3);font-weight:700">'+
+    '<div>Plano</div><div>Peso no faturamento</div><div style="text-align:right">Vendas</div>'+
+    '<div style="text-align:right">Faturamento</div><div style="text-align:right">Valor/mês</div></div>';
+
+  // "valor por mês" e o que deixa comparar plano com plano: R$ 600 no anual nao
+  // sao R$ 600 no mensal — sao R$ 50/mes contra R$ 600/mes.
+  var nota = '<div style="margin-top:12px;padding:10px 12px;background:var(--bg3);border-radius:8px;'+
+    'font-size:11.5px;color:var(--text2);line-height:1.55">'+
+    '<b>Valor/mês</b> divide o ticket pelos meses do plano. É o que deixa comparar: uma venda anual '+
+    'de R$ 600 e uma mensal de R$ 600 entram igual no faturamento de hoje, mas uma vale R$ 50/mês e '+
+    'a outra R$ 600/mês.</div>';
+
+  var aviso = '';
+  if(naoId && naoId.vendas){
+    var exemplos = (naoId.produtos||[]).slice(0,3).map(_esc).join(', ');
+    aviso = '<div style="margin-top:9px;padding:10px 12px;border-left:3px solid var(--yellow);'+
+      'background:var(--bg3);border-radius:0 8px 8px 0;font-size:11.5px;color:var(--text2);line-height:1.55">'+
+      '<b>'+fmtQtd(naoId.vendas)+' venda(s)</b> não dizem o plano no nome do produto'+
+      (exemplos?(' — '+exemplos):'')+'. Renomeie no gateway incluindo "mensal", "trimestral", '+
+      '"semestral" ou "anual" e elas se separam sozinhas aqui.</div>';
+  }
+
+  el.innerHTML = cab + linhas + nota + aviso;
 }
 
 function _rtNum(rotulo, valor, cor){

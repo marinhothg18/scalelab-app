@@ -3312,7 +3312,7 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
       pedidos: { total: 0, aprovadas: 0, pendentes: 0, reembolsadas: 0, recusadas: 0 }
     };
     const porHora = Array.from({ length: 24 }, (_, h) => ({ hora: h, lucro: 0 }));
-    const porUtm = {}, porDash = [];
+    const porUtm = {}, porDash = [], porProduto = {};
     const erros = [];
     for (const d of lista) {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
@@ -3345,11 +3345,58 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
           const k = u.utmTerm || '(sem origem)';
           porUtm[k] = (porUtm[k] || 0) + (Number(u.count) || 0);
         });
+        // Vendas por produto: a Utmify ja mandava isso e a gente ignorava.
+        // E o que permite separar mensal/trimestral/semestral/anual sem
+        // adivinhar plano pelo valor — o nome do produto vem do gateway.
+        (oc.byProductName || []).forEach(pn => {
+          const k = String(pn.productName || '(sem nome)').trim() || '(sem nome)';
+          if (!porProduto[k]) porProduto[k] = { produto: k, vendas: 0, receita: 0 };
+          porProduto[k].vendas  += Number(pn.count) || 0;
+          porProduto[k].receita += cent(pn.revenue);
+        });
         porDash.push({ nome: d.nome || d.id, investimento: inv, lucro: luc,
                        receita: rec, vendas: Number(oc.approved) || 0,
                        roas: inv > 0 ? rec / inv : 0 });
       } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
     }
+    // O nome do produto e quem diz o plano. Adivinhar pelo VALOR quebra no dia
+    // que voce roda promocao, cupom ou order bump — dois planos com o mesmo
+    // preco viram um so. Se o nome nao disser, fica "outros" em vez de chutar.
+    // Alternancia solta com \b no fim so aplicava a fronteira na ULTIMA opcao —
+    // "tres meses" passava e "três meses" nao, porque "mes\b" nao casa dentro de
+    // "meses". Agrupado, cada numero vale pra todas as escritas.
+    // A ordem tambem importa: "12 meses" tem que virar anual antes de bater em mensal.
+    const PLANOS = [
+      { chave: 'anual',      re: /anual|(?:12)\s*mes|(?:1|um)\s*ano/i,          rotulo: 'Anual',      meses: 12 },
+      { chave: 'semestral',  re: /semestral|(?:6|seis)\s*mes/i,                  rotulo: 'Semestral',  meses: 6 },
+      { chave: 'trimestral', re: /trimestral|(?:3|tres|três)\s*mes/i,            rotulo: 'Trimestral', meses: 3 },
+      { chave: 'mensal',     re: /mensal|(?:1|um)\s*mes(?!\s*es\b)/i,            rotulo: 'Mensal',     meses: 1 }
+    ];
+    function _planoDe(nome) {
+      for (const p of PLANOS) if (p.re.test(nome)) return p;
+      return null;
+    }
+    const porPlano = {};
+    Object.values(porProduto).forEach(pr => {
+      const pl = _planoDe(pr.produto);
+      const k = pl ? pl.chave : 'outros';
+      if (!porPlano[k]) porPlano[k] = {
+        chave: k, rotulo: pl ? pl.rotulo : 'Não identificado',
+        meses: pl ? pl.meses : null, vendas: 0, receita: 0, produtos: []
+      };
+      porPlano[k].vendas  += pr.vendas;
+      porPlano[k].receita += pr.receita;
+      porPlano[k].produtos.push(pr.produto);
+    });
+    const ordem = { anual: 1, semestral: 2, trimestral: 3, mensal: 4, outros: 5 };
+    const planos = Object.values(porPlano)
+      .map(p => Object.assign(p, {
+        ticket: p.vendas > 0 ? p.receita / p.vendas : 0,
+        // quanto essa venda vale por mes de contrato — compara plano com plano
+        porMes: (p.meses && p.vendas > 0) ? (p.receita / p.vendas / p.meses) : null
+      }))
+      .sort((a, b) => (ordem[a.chave] || 9) - (ordem[b.chave] || 9));
+
     const saida = {
       ok: true, momento: new Date().toISOString(),
       kpis: Object.assign({}, tot, {
@@ -3358,6 +3405,8 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
         cpa: tot.pedidos.aprovadas > 0 ? tot.investimento / tot.pedidos.aprovadas : 0
       }),
       porHora,
+      planos,
+      produtos: Object.values(porProduto).sort((a, b) => b.receita - a.receita),
       porUtm: Object.entries(porUtm).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd),
       porDashboard: porDash.sort((a, b) => b.investimento - a.investimento),
       erros
