@@ -9493,11 +9493,20 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       if (ado.aceita({ funil: j.funil, etapa: e.etapa })) return true;
       return e.pg && urlsDoFunil.has(_norm(e.pg));
     };
-    // e a etapa onde ele cai: a declarada, ou a dona daquela URL
+    // ── Em que etapa o evento cai: a URL cadastrada ganha do data-e ─────────
+    // Estava ao contrario, e isso apagava o teste A/B inteiro da tela. O data-e
+    // vai junto com o script quando voce duplica a pagina, entao /segredo e
+    // /segredo2 chegam com o MESMO data-e: o servidor jogava as duas na mesma
+    // etapa, um bloco somava tudo (3.886) e o outro ficava zerado — parecia que
+    // uma variante nao recebia trafego, quando na verdade tinha 2.412 pessoas.
+    // A URL o usuario cadastrou de proposito, uma em cada etapa, e e ela que o
+    // mapa desenha em cada bloco. Entao ela e a intencao mais forte das duas.
     const etapaDaqui = (j, e) => {
       if (!funil) return e.etapa;
+      const dona = etapaPorUrl[_norm(e.pg)];
+      if (dona) return dona;
       if (ado.aceita({ funil: j.funil, etapa: e.etapa })) return ado.etapaDe({ funil: j.funil, etapa: e.etapa });
-      return etapaPorUrl[_norm(e.pg)] || e.etapa;
+      return e.etapa;
     };
 
     const unicosJn = {};       // etapa -> Set(visitante)
@@ -9522,6 +9531,18 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
         if (!porPagina[et]) porPagina[et] = {};
         porPagina[et][pg] = (porPagina[et][pg] || 0) + 1;
       });
+    });
+
+    // ── Etapa que so a jornada conhece tambem entra na lista ────────────────
+    // porEtapa nasce dos contadores, e contador e chaveado pelo data-e. Num
+    // teste A/B as duas paginas chegam com o MESMO data-e: existe uma linha de
+    // contador so, e a segunda etapa nunca era criada — o bloco dela mostrava 0
+    // pra sempre, como se aquela variante nao recebesse ninguem. A jornada sabe
+    // quem esteve em cada URL; se ela viu gente numa etapa, a etapa existe.
+    Object.keys(unicosJn).forEach(et => {
+      if (!porEtapa[et]) {
+        porEtapa[et] = { etapa: et, entradas: 0, unicos: 0, saidas: 0, segundos: 0, eventos: {} };
+      }
     });
 
     res.json({ ok: true, funil, de, ate,
