@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0a0a">
+<title>Painel SaaS · Axcend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0a0a0a; --bg-1:#141414; --bg-2:#1c1c1c; --bg-3:#252525;
+    --border:#2a2a2a; --border-2:#333;
+    --text:#f5f5f5; --text2:#a3a3a3; --text3:#6b6b6b;
+    --accent:#5b5ef4; --accent-h:#4a4dd4;
+    --roxo:#3E1493; --azul:#1B9CFA; --rosa:#C52C58; --laranja:#FF5926;
+    --verde:#16A34A; --amarelo:#FBBF24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--bg-0);color:var(--text);font-family:'Inter',-apple-system,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;font-size:14px;}
+  a{color:inherit;text-decoration:none;}
+  button{font-family:inherit;cursor:pointer;}
+
+  /* APP LAYOUT */
+  .app{display:flex;min-height:100vh;}
+  .sidebar{
+    width:240px;flex-shrink:0;background:var(--bg-1);border-right:1px solid var(--border);
+    padding:18px 14px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;overflow:auto;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 10px 16px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+  .brand-logo{
+    width:32px;height:32px;border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),var(--roxo));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;
+  }
+  .brand-name{font-weight:700;font-size:14px;}
+  .brand-sub{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;}
+
+  .nav-item{
+    display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
+    font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .15s;
+  }
+  .nav-item:hover{background:var(--bg-2);color:var(--text);}
+  .nav-item.ativo{background:var(--accent);color:#fff;font-weight:600;}
+  .nav-item .ico{font-size:15px;width:20px;text-align:center;}
+  .nav-sep{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:14px 12px 6px;}
+
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .topbar{
+    background:var(--bg-1);border-bottom:1px solid var(--border);
+    padding:12px 24px;display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:5;
+  }
+  .topbar-info{font-size:12px;color:var(--text2);}
+  .topbar-user{
+    display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--bg-2);border-radius:8px;font-size:12px;
+  }
+  .topbar-avatar{
+    width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;
+  }
+
+  .content{padding:24px;flex:1;max-width:1280px;margin:0 auto;width:100%;}
+
+  /* CARDS */
+  .card{background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .card-title{font-size:15px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .card-sub{font-size:12px;color:var(--text2);margin-top:-8px;margin-bottom:14px;}
+
+  /* PAGE HEADER */
+  .page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
+  .page-title{font-size:24px;font-weight:700;letter-spacing:-.01em;}
+  .page-sub{color:var(--text2);font-size:13px;margin-top:4px;}
+
+  /* KPIs */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px;}
+  .kpi{background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:16px;}
+  .kpi-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+  .kpi-valor{font-size:24px;font-weight:700;letter-spacing:-.02em;}
+  .kpi-delta{font-size:11px;margin-top:4px;color:var(--verde);}
+  .kpi-delta.neg{color:var(--rosa);}
+
+  /* TABLE */
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:1px solid var(--border);}
+  td{padding:12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(91,94,244,.04);}
+
+  /* CHIPS */
+  .chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;}
+  .chip.ok{background:rgba(22,163,74,.15);color:#22c55e;}
+  .chip.warn{background:rgba(251,191,36,.15);color:#fbbf24;}
+  .chip.err{background:rgba(220,38,38,.15);color:#ef4444;}
+  .chip.info{background:rgba(91,94,244,.15);color:var(--accent);}
+  .chip.neutro{background:var(--bg-3);color:var(--text2);}
+
+  /* BUTTONS */
+  .btn{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid transparent;transition:all .15s;background:transparent;color:var(--text);}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn-primary:hover{background:var(--accent-h);}
+  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border);}
+  .btn-ghost:hover{border-color:var(--accent);}
+  .btn-danger{color:var(--rosa);border-color:var(--border);}
+  .btn-danger:hover{background:rgba(220,38,38,.08);}
+  .btn-sm{padding:5px 10px;font-size:12px;}
+
+  /* INPUTS */
+  .input, .select, textarea.input{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px 12px;font-family:inherit;font-size:13px;color:var(--text);
+  }
+  textarea.input{resize:vertical;line-height:1.5;}
+  .input:focus, .select:focus, textarea.input:focus{outline:none;border-color:var(--accent);}
+  .field{margin-bottom:14px;}
+  .field-label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block;}
+  .field-hint{font-size:11px;color:var(--text3);margin-top:4px;}
+
+  /* GRIDS */
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .row-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .row-side{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:flex-start;}
+
+  /* AVATAR */
+  .av{
+    width:32px;height:32px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:700;font-size:12px;flex-shrink:0;
+  }
+
+  /* MODAL */
+  .modal-bg{
+    position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9000;display:flex;
+    align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-box{background:var(--bg-1);border:1px solid var(--border);border-radius:14px;max-width:640px;width:100%;max-height:90vh;overflow:auto;}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:2;}
+  .modal-title{font-size:16px;font-weight:700;}
+  .modal-close{background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1;}
+  .modal-body{padding:20px 22px;}
+  .modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:var(--bg-1);}
+
+  /* TOGGLE */
+  .toggle{position:relative;display:inline-block;width:38px;height:22px;flex-shrink:0;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--bg-3);border-radius:99px;transition:.2s;}
+  .toggle-slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+  .toggle input:checked + .toggle-slider{background:var(--accent);}
+  .toggle input:checked + .toggle-slider::before{transform:translateX(16px);}
+
+  /* SUB-NAV */
+  .sub-nav{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:8px;}
+  .sub-link{padding:7px 14px;font-size:13px;border-radius:7px;color:var(--text2);font-weight:600;cursor:pointer;}
+  .sub-link.ativo{background:var(--bg-2);color:var(--accent);}
+  .sub-link:hover{color:var(--text);}
+
+  /* STEPS */
+  .steps{display:flex;gap:8px;margin-bottom:24px;}
+  .step{flex:1;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-1);}
+  .step.ativo{border-color:var(--accent);background:rgba(91,94,244,.08);}
+  .step.feito{border-color:var(--verde);}
+  .step-num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--bg-3);color:var(--text2);font-size:11px;font-weight:700;align-items:center;justify-content:center;margin-right:8px;}
+  .step.ativo .step-num{background:var(--accent);color:#fff;}
+  .step.feito .step-num{background:var(--verde);color:#fff;}
+  .step-label{font-size:12px;font-weight:600;display:inline-block;vertical-align:middle;}
+
+  /* AUTH GATE */
+  .gate{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:radial-gradient(circle at 30% 30%, rgba(91,94,244,.1), transparent 50%);
+  }
+  .gate-box{
+    background:var(--bg-1);border:1px solid var(--border);border-radius:14px;padding:40px;
+    max-width:420px;text-align:center;
+  }
+  .gate-box h1{font-size:22px;margin-bottom:8px;}
+  .gate-box p{font-size:13px;color:var(--text2);margin-bottom:20px;}
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px;}
+
+  /* PLANS */
+  .plans-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .plan-card{background:var(--bg-1);border:1px solid var(--border);border-radius:14px;padding:22px;}
+  .plan-card.destaque{border-color:var(--accent);}
+  .plan-nome{font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+  .plan-preco{font-size:32px;font-weight:800;letter-spacing:-.02em;}
+  .plan-preco span{font-size:13px;color:var(--text2);font-weight:500;}
+  .plan-features{list-style:none;margin:14px 0;}
+  .plan-features li{padding:5px 0;font-size:12px;color:var(--text);display:flex;gap:6px;}
+  .plan-features li::before{content:'✓';color:var(--verde);font-weight:700;}
+
+  /* BROWSER (preview) */
+  .browser{background:var(--bg-1);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .browser-bar{background:var(--bg-2);padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);}
+  .browser-dot{width:9px;height:9px;border-radius:50%;background:var(--border-2);}
+  .browser-url{flex:1;background:var(--bg-3);border-radius:5px;padding:4px 10px;font-size:10px;color:var(--text2);font-family:monospace;}
+
+  /* RESPONSIVE */
+  @media (max-width:900px){
+    .sidebar{width:60px;}
+    .nav-item span:not(.ico){display:none;}
+    .nav-sep{display:none;}
+    .brand-name,.brand-sub{display:none;}
+    .row-2,.row-3,.row-side,.plans-grid{grid-template-columns:1fr;}
+    .steps{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH GATE (mostra enquanto valida) -->
+<div id="gate" class="gate">
+  <div class="gate-box">
+    <div class="brand-logo" style="width:54px;height:54px;font-size:22px;margin:0 auto 18px;">A</div>
+    <h1>Painel SaaS · Axcend</h1>
+    <p id="gate-msg">Validando acesso...</p>
+    <div id="gate-actions" style="display:none;">
+      <a href="/" class="btn btn-primary">Voltar ao Axcend</a>
+    </div>
+  </div>
+</div>
+
+<!-- APP (escondido até auth passar) -->
+<div id="app" class="app" style="display:none;">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">A</div>
+      <div>
+        <div class="brand-name">Painel SaaS</div>
+        <div class="brand-sub">Axcend Holdings</div>
+      </div>
+    </div>
+    <div class="nav-item ativo" data-screen="dashboard" onclick="goScreen('dashboard')"><span class="ico">📊</span><span>Dashboard</span></div>
+    <div class="nav-item" data-screen="clientes" onclick="goScreen('clientes')"><span class="ico">👥</span><span>Clientes</span></div>
+    <div class="nav-item" data-screen="onboarding" onclick="goScreen('onboarding')"><span class="ico">🎯</span><span>Onboarding</span></div>
+
+    <div class="nav-sep">Configuração</div>
+    <div class="nav-item" data-screen="planos" onclick="goScreen('planos')"><span class="ico">💳</span><span>Planos & Faturamento</span></div>
+    <div class="nav-item" data-screen="whitelabel" onclick="goScreen('whitelabel')"><span class="ico">🎨</span><span>White-label</span></div>
+    <div class="nav-item" data-screen="config" onclick="goScreen('config')"><span class="ico">⚙️</span><span>Configurações</span></div>
+    <div class="nav-item" data-screen="utmify" onclick="goScreen('utmify')"><span class="ico">📈</span><span>Integração Utmify</span></div>
+
+    <div style="margin-top:auto;">
+      <a href="/" class="nav-item" style="margin-top:14px;"><span class="ico">←</span><span>Voltar ao Axcend</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-info">Master · gerenciamento de todos os clientes externos</div>
+      <div class="topbar-user">
+        <div class="topbar-avatar" id="user-avatar">?</div>
+        <span id="user-nome">—</span>
+      </div>
+    </div>
+    <div class="content" id="content">
+      <div style="text-align:center;padding:60px;color:var(--text2);">Carregando...</div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL DINÂMICO -->
+<div id="modal-root"></div>
+
+<script>
+'use strict';
+
+// ============================================================
+// API + STORAGE
+// ============================================================
+var API_BASE = '';
+
+function g(k, d){ try{ return JSON.parse(localStorage.getItem(k)) || d; }catch{ return d; } }
+function s(k, v){
+  if(Array.isArray(v)){
+    v = v.map(function(it){
+      if(it && typeof it==='object' && it.id!==undefined && it._updatedAt===undefined){
+        return Object.assign({}, it, { _updatedAt: Date.now() });
+      }
+      return it;
+    });
+  }
+  localStorage.setItem(k, JSON.stringify(v));
+  // Sincroniza com o servidor. Painel SaaS sempre escreve como super-admin
+  // (autenticado com Bearer + ?_super=1) pra poder gravar chaves da plataforma
+  // (sl_saas_tenants, sl_saas_config, sl_saas_faturas).
+  var token = localStorage.getItem('sl_session_token') || '';
+  fetch(API_BASE + '/api/store/' + encodeURIComponent(k) + '?_super=1', {
+    method:'PUT',
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization': token ? 'Bearer ' + token : ''
+    },
+    body: JSON.stringify(v)
+  }).catch(function(){});
+}
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function fmt(n){ if(n==null) return '—'; return Number(n).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function fmtMoney(n, moeda){
+  if(n==null) return '—';
+  var simbolo = {BRL:'R$',USD:'$',EUR:'€'}[moeda||'BRL'] || 'R$';
+  return simbolo+' '+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function newId(prefix){ return (prefix||'id')+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
+function diasEntre(d1, d2){
+  if(!d1 || !d2) return null;
+  return Math.round((new Date(d2)-new Date(d1))/(1000*60*60*24));
+}
+
+// ============================================================
+// AUTH GATE
+// ============================================================
+var currentUser = null;
+
+function checkAuth(){
+  var token = localStorage.getItem('sl_session_token');
+  if(!token){
+    return showGateErro('Você precisa fazer login no Axcend primeiro.', true);
+  }
+  fetch(API_BASE+'/api/auth/me', { headers: { 'Authorization': 'Bearer '+token } })
+    .then(function(r){ if(!r.ok) throw new Error('Sessão expirada'); return r.json(); })
+    .then(function(resp){
+      // /api/auth/me retorna { user: {...}, expiraEm }
+      var u = (resp && resp.user) ? resp.user : resp;
+      if(!u || u.cargo !== 'Diretoria'){
+        showGateErro('Esse painel é restrito à Diretoria.', true);
+        return;
+      }
+      currentUser = u;
+      iniciarApp();
+    })
+    .catch(function(){
+      showGateErro('Sessão expirada. Faça login no Axcend novamente.', true);
+    });
+}
+
+function showGateErro(msg, comBotao){
+  document.getElementById('gate-msg').textContent = msg;
+  if(comBotao) document.getElementById('gate-actions').style.display = 'block';
+}
+
+function iniciarApp(){
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  // Avatar e nome
+  var iniciais = (currentUser.nome||'?').split(' ').map(function(s){ return s[0]||''; }).join('').slice(0,2).toUpperCase();
+  document.getElementById('user-avatar').textContent = iniciais;
+  document.getElementById('user-nome').textContent = currentUser.nome || currentUser.email;
+  // Inicializa storage padrão (config inicial se vazia)
+  if(!g('sl_saas_config', null)) s('sl_saas_config', defaultConfig());
+  // Seed: se não houver tenants, cria o "Axcend interno" com dados reais do sistema
+  seedAxcendComoTenant();
+  // Sincroniza dados reais do tenant interno (toda vez que abre, atualiza usuários/vagas/candidatos)
+  atualizarTenantInterno();
+  goScreen('dashboard');
+}
+
+// Cria automaticamente o tenant "Axcend interno" se ainda não existir
+function seedAxcendComoTenant(){
+  var ts = getTenants();
+  if(ts.some(function(t){ return t.id==='tenant-axcend-interno'; })) return; // já existe
+  var d = new Date(); d.setFullYear(d.getFullYear()+1); // renovação muito longe
+  var tenant = {
+    id: 'tenant-axcend-interno',
+    nome: 'Axcend (operação interna)',
+    slug: 'axcend',
+    dominio: 'app.centralaxcend.com',
+    ownerEmail: currentUser.email || '',
+    ownerNome: currentUser.nome || '',
+    plano: 'enterprise',
+    status: 'ativo',
+    mrr: 0, // você não paga pra si mesmo
+    moeda: 'BRL',
+    pais: 'BR',
+    cadastroEm: new Date('2025-01-01').toISOString(),
+    renovaEm: d.toISOString(),
+    interno: true, // marca especial
+    notas: 'Esse é VOCÊ — seu próprio Centralaxcend. Cadastrado automaticamente. Não cobra MRR. Dados sincronizados em tempo real com o que existe no sistema.',
+    branding: {
+      primary: '#5b5ef4',
+      secondary: '#3E1493',
+      bgDark: '#0F0F0F'
+    },
+    _updatedAt: Date.now()
+  };
+  ts.unshift(tenant); // primeiro da lista
+  saveTenants(ts);
+}
+
+// Atualiza os contadores do tenant interno com dados REAIS do Axcend
+function atualizarTenantInterno(){
+  var ts = getTenants();
+  var idx = ts.findIndex(function(t){ return t.id==='tenant-axcend-interno'; });
+  if(idx<0) return;
+  var usuarios = (g('sl_usuarios', [])||[]).filter(function(u){ return u && u.ativo !== false; }).length;
+  var vagas = (g('sl_vagas', [])||[]).length;
+  var vagasAtivas = (g('sl_vagas', [])||[]).filter(function(v){ return v && v.status==='Ativa'; }).length;
+  var candidatos = (g('sl_candidatos', [])||[]).length;
+  ts[idx].usuarios = usuarios;
+  ts[idx].vagasTotal = vagas;
+  ts[idx].vagasAtivas = vagasAtivas;
+  ts[idx].candidatosTotal = candidatos;
+  ts[idx]._updatedAt = Date.now();
+  saveTenants(ts);
+}
+
+function defaultConfig(){
+  return {
+    produto: { nome: 'Axcend SaaS', logoUrl: '' },
+    planos: [
+      { id:'starter',    nome:'Starter',    preco:590,  moeda:'BRL', maxUsuarios:5,    maxVagas:3,    features:['Até 5 usuários','3 vagas ativas','500 candidatos/mês','Subdomínio .axcend.com','Suporte email'] },
+      { id:'pro',        nome:'Pro',        preco:1890, moeda:'BRL', maxUsuarios:20,   maxVagas:null, features:['Até 20 usuários','Vagas ilimitadas','5.000 candidatos/mês','Domínio próprio','White-label completo','Integração Utmify','Suporte WhatsApp'], destaque:true },
+      { id:'enterprise', nome:'Enterprise', preco:4890, moeda:'BRL', maxUsuarios:null, maxVagas:null, features:['Usuários ilimitados','Tudo do Pro','SLA 99,9%','SSO','Auditoria avançada','API dedicada','CS dedicado'] }
+    ],
+    gateways: {
+      stripe:      { ativo:false, publicKey:'', secretKey:'' },
+      pagarme:     { ativo:false, apiKey:'' },
+      mercadopago: { ativo:false, accessToken:'' }
+    },
+    idiomas: { 'pt-BR':true, 'en-US':true, 'es-ES':true, 'fr-FR':false },
+    moedas: ['BRL','USD','EUR'],
+    legal: {
+      termos:      { versao:'1.0', updatedAt: new Date().toISOString().slice(0,10), conteudo:'' },
+      privacidade: { versao:'1.0', updatedAt: new Date().toISOString().slice(0,10), conteudo:'' },
+      lgpd:        { dpoNome:'', dpoEmail:'' }
+    },
+    utmify: {
+      ativo:false, apiToken:'',
+      eventos: [
+        { axcend:'candidatura_recebida',  utmify:'lead',           tipo:'lead',         ativo:true },
+        { axcend:'candidato_triagem',     utmify:'lead_qualified', tipo:'lead',         ativo:true },
+        { axcend:'candidato_entrevista',  utmify:'opportunity',    tipo:'oportunidade', ativo:true },
+        { axcend:'candidato_aprovado',    utmify:'conversion',     tipo:'conversao',    ativo:true },
+        { axcend:'upgrade_plano',         utmify:'upsell',         tipo:'receita',      ativo:true },
+        { axcend:'demanda_criada',        utmify:'activity',       tipo:'activity',     ativo:false }
+      ]
+    }
+  };
+}
+
+// ============================================================
+// NAVEGAÇÃO
+// ============================================================
+var screenAtual = 'dashboard';
+var clienteSelecionado = null;     // tenant_id sendo visualizado em "Cliente detalhe"
+var subnav = 'geral';              // sub-tab na tela cliente
+var wizardStep = 1;                // onboarding
+var wizardData = {};               // onboarding
+
+function goScreen(name){
+  screenAtual = name;
+  document.querySelectorAll('.nav-item').forEach(function(el){
+    el.classList.toggle('ativo', el.getAttribute('data-screen')===name);
+  });
+  renderScreen();
+}
+
+function renderScreen(){
+  var el = document.getElementById('content');
+  if(screenAtual==='dashboard')      el.innerHTML = renderDashboard();
+  else if(screenAtual==='clientes')  el.innerHTML = renderClientes();
+  else if(screenAtual==='cliente')   el.innerHTML = renderClienteDetalhe();
+  else if(screenAtual==='onboarding') el.innerHTML = renderOnboarding();
+  else if(screenAtual==='whitelabel') el.innerHTML = renderWhiteLabel();
+  else if(screenAtual==='planos')     el.innerHTML = renderPlanos();
+  else if(screenAtual==='config')     el.innerHTML = renderConfig();
+  else if(screenAtual==='utmify')     el.innerHTML = renderUtmify();
+}
+
+// ============================================================
+// HELPERS DE DADOS
+// ============================================================
+function getTenants(){ return g('sl_saas_tenants', []); }
+function saveTenants(arr){ s('sl_saas_tenants', arr); }
+function getConfig(){ return g('sl_saas_config', defaultConfig()); }
+function saveConfig(cfg){ s('sl_saas_config', cfg); }
+function getFaturas(){ return g('sl_saas_faturas', []); }
+function saveFaturas(arr){ s('sl_saas_faturas', arr); }
+
+function tenantById(id){ return getTenants().find(function(t){ return t.id===id; }); }
+function planoById(id){ return getConfig().planos.find(function(p){ return p.id===id; }); }
+
+function kpis(){
+  var ts = getTenants();
+  var ativos = ts.filter(function(t){ return t.status==='ativo'; });
+  var trials = ts.filter(function(t){ return t.status==='trial'; });
+  var canc   = ts.filter(function(t){ return t.status==='cancelado'; });
+  var inad   = ts.filter(function(t){ return t.status==='inadimplente'; });
+  var mrr = ativos.reduce(function(s,t){ return s + (Number(t.mrr)||0); }, 0);
+  var totalAtivos = ts.length - canc.length;
+  // Churn: cancelados últimos 30d / total ativos no início do período
+  var agora = Date.now();
+  var ms30d = 30*24*60*60*1000;
+  var cancelados30d = ts.filter(function(t){
+    if(t.status!=='cancelado' || !t.canceladoEm) return false;
+    return (agora - new Date(t.canceladoEm).getTime()) <= ms30d;
+  }).length;
+  var churn = totalAtivos ? (cancelados30d / Math.max(totalAtivos,1) * 100) : 0;
+  return {
+    mrr: mrr,
+    arr: mrr * 12,
+    totalClientes: ativos.length + inad.length,
+    trials: trials.length,
+    churn: churn,
+    cancelados30d: cancelados30d,
+    porPlano: contadorPorPlano(ts),
+    topClientes: ativos.slice().sort(function(a,b){ return (b.mrr||0)-(a.mrr||0); }).slice(0,5)
+  };
+}
+
+function contadorPorPlano(ts){
+  var out = {};
+  ts.filter(function(t){ return t.status!=='cancelado'; }).forEach(function(t){
+    out[t.plano||'starter'] = (out[t.plano||'starter']||0) + 1;
+  });
+  return out;
+}
+
+function statusChip(st){
+  if(st==='ativo')        return '<span class="chip ok">● Ativo</span>';
+  if(st==='trial')        return '<span class="chip warn">⏱ Trial</span>';
+  if(st==='inadimplente') return '<span class="chip err">⚠ Inadimplente</span>';
+  if(st==='cancelado')    return '<span class="chip neutro">✕ Cancelado</span>';
+  if(st==='suspenso')     return '<span class="chip neutro">⛔ Suspenso</span>';
+  return '<span class="chip neutro">'+esc(st||'—')+'</span>';
+}
+
+function badgeInterno(){
+  return '<span class="chip" style="background:rgba(91,94,244,.2);color:var(--accent);margin-left:6px;">👑 Você</span>';
+}
+function planoChip(id){
+  var p = planoById(id);
+  if(!p) return '<span class="chip neutro">—</span>';
+  if(id==='pro')        return '<span class="chip info">'+esc(p.nome)+'</span>';
+  if(id==='enterprise') return '<span class="chip" style="background:rgba(255,89,38,.15);color:#FF5926;">'+esc(p.nome)+'</span>';
+  return '<span class="chip neutro">'+esc(p.nome)+'</span>';
+}
+
+// Gera as iniciais e cor do avatar
+function avHtml(tenant){
+  var ini = (tenant.nome||'?').split(' ').filter(Boolean).slice(0,2).map(function(s){ return s[0]||''; }).join('').toUpperCase();
+  var seed = (tenant.id||tenant.nome||'').split('').reduce(function(s,c){ return s + c.charCodeAt(0); }, 0);
+  var pals = [
+    ['#FF5926','#C52C58'], ['#5b5ef4','#3E1493'], ['#1B9CFA','#2509E4'],
+    ['#FBBF24','#FF5926'], ['#A78BFA','#5b5ef4'], ['#16A34A','#1B9CFA']
+  ];
+  var pal = pals[seed % pals.length];
+  return '<div class="av" style="background:linear-gradient(135deg,'+pal[0]+','+pal[1]+');">'+ini+'</div>';
+}
+
+// ============================================================
+// MODAL HELPER
+// ============================================================
+function openModal(titulo, htmlBody, footerHtml){
+  closeModal();
+  var html = ''+
+    '<div class="modal-bg" onclick="if(event.target===this)closeModal()">'+
+      '<div class="modal-box">'+
+        '<div class="modal-head"><div class="modal-title">'+titulo+'</div><button class="modal-close" onclick="closeModal()">✕</button></div>'+
+        '<div class="modal-body">'+htmlBody+'</div>'+
+        (footerHtml ? '<div class="modal-foot">'+footerHtml+'</div>' : '')+
+      '</div>'+
+    '</div>';
+  document.getElementById('modal-root').innerHTML = html;
+}
+function closeModal(){ document.getElementById('modal-root').innerHTML = ''; }
+
+// ============================================================
+// TELA 1: DASHBOARD
+// ============================================================
+function renderDashboard(){
+  var k = kpis();
+  var ts = getTenants();
+  var ultimos = ts.slice().sort(function(a,b){ return (b._updatedAt||0)-(a._updatedAt||0); }).slice(0,5);
+
+  return ''+
+    '<div class="page-header">'+
+      '<div>'+
+        '<div class="page-title">Dashboard Master</div>'+
+        '<div class="page-sub">Visão geral · '+ts.length+' clientes cadastrados</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-primary" onclick="abrirNovoCliente()">+ Novo cliente</button>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="kpi-grid">'+
+      '<div class="kpi"><div class="kpi-label">MRR (Receita mensal)</div><div class="kpi-valor">'+fmtMoney(k.mrr,'BRL')+'</div></div>'+
+      '<div class="kpi"><div class="kpi-label">ARR projetado</div><div class="kpi-valor">'+fmtMoney(k.arr,'BRL')+'</div></div>'+
+      '<div class="kpi"><div class="kpi-label">Clientes ativos</div><div class="kpi-valor">'+fmt(k.totalClientes)+'</div></div>'+
+      '<div class="kpi"><div class="kpi-label">Em trial</div><div class="kpi-valor">'+fmt(k.trials)+'</div></div>'+
+      '<div class="kpi"><div class="kpi-label">Churn (30d)</div><div class="kpi-valor">'+k.churn.toFixed(1)+'%</div>'+(k.cancelados30d?'<div class="kpi-delta neg">'+k.cancelados30d+' cancelaram</div>':'')+'</div>'+
+    '</div>'+
+
+    '<div class="row-side">'+
+      '<div>'+
+        '<div class="card">'+
+          '<div class="card-title">Últimos clientes <a class="btn btn-ghost btn-sm" onclick="goScreen(\'clientes\')">Ver todos →</a></div>'+
+          (ultimos.length ? ''+
+            '<table><thead><tr><th>Cliente</th><th>Plano</th><th>MRR</th><th>Status</th><th></th></tr></thead><tbody>'+
+            ultimos.map(function(t){
+              return '<tr>'+
+                '<td><div style="display:flex;align-items:center;gap:10px;">'+avHtml(t)+'<div><b>'+esc(t.nome)+'</b>'+(t.interno?badgeInterno():'')+'<br><span style="font-size:11px;color:var(--text2);">'+esc(t.dominio||t.slug+'.axcend.com')+'</span></div></div></td>'+
+                '<td>'+planoChip(t.plano)+'</td>'+
+                '<td>'+fmtMoney(t.mrr,t.moeda||'BRL')+'</td>'+
+                '<td>'+statusChip(t.status)+'</td>'+
+                '<td><button class="btn btn-ghost btn-sm" onclick="abrirCliente(\''+t.id+'\')">Abrir</button></td>'+
+              '</tr>';
+            }).join('') +
+            '</tbody></table>'
+            : '<div style="text-align:center;padding:40px;color:var(--text2);font-size:13px;">Nenhum cliente cadastrado ainda. <button class="btn btn-primary" style="margin-left:8px;" onclick="abrirNovoCliente()">+ Adicionar primeiro</button></div>')+
+        '</div>'+
+      '</div>'+
+      '<div>'+
+        '<div class="card">'+
+          '<div class="card-title">Distribuição por plano</div>'+
+          renderBarrasPlanos(k.porPlano)+
+        '</div>'+
+        '<div class="card">'+
+          '<div class="card-title">Top clientes</div>'+
+          (k.topClientes.length ? k.topClientes.map(function(t, i){
+            return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;"><span>'+(i+1)+'. '+esc(t.nome)+'</span><b>'+fmtMoney(t.mrr,t.moeda||'BRL')+'</b></div>';
+          }).join('') : '<div style="font-size:12px;color:var(--text2);">Sem clientes ainda.</div>')+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+function renderBarrasPlanos(porPlano){
+  var planos = getConfig().planos;
+  var total = Object.values(porPlano).reduce(function(s,n){ return s+n; }, 0) || 1;
+  var cores = { starter:'#1B9CFA', pro:'#5b5ef4', enterprise:'#FF5926' };
+  return planos.map(function(p){
+    var n = porPlano[p.id]||0;
+    var pct = (n/total*100).toFixed(0);
+    return '<div style="margin-bottom:10px;">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span>'+esc(p.nome)+'</span><b>'+n+'</b></div>'+
+      '<div style="height:6px;background:var(--bg-3);border-radius:99px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+(cores[p.id]||'var(--accent)')+';"></div></div>'+
+      '</div>';
+  }).join('');
+}
+
+// ============================================================
+// TELA 2: LISTA DE CLIENTES
+// ============================================================
+var filtros = { busca:'', plano:'', status:'' };
+
+function renderClientes(){
+  var ts = getTenants();
+  var filtrados = ts.filter(function(t){
+    if(filtros.plano && t.plano !== filtros.plano) return false;
+    if(filtros.status && t.status !== filtros.status) return false;
+    if(filtros.busca){
+      var q = filtros.busca.toLowerCase();
+      return (t.nome||'').toLowerCase().indexOf(q)>=0 ||
+             (t.slug||'').toLowerCase().indexOf(q)>=0 ||
+             (t.ownerEmail||'').toLowerCase().indexOf(q)>=0 ||
+             (t.dominio||'').toLowerCase().indexOf(q)>=0;
+    }
+    return true;
+  });
+  var planos = getConfig().planos;
+
+  return ''+
+    '<div class="page-header">'+
+      '<div>'+
+        '<div class="page-title">Clientes</div>'+
+        '<div class="page-sub">'+filtrados.length+(filtrados.length!==ts.length?' de '+ts.length:'')+' clientes</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-ghost" onclick="exportarCSV()">📥 Exportar CSV</button>'+
+        '<button class="btn btn-primary" onclick="abrirNovoCliente()">+ Novo cliente</button>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="card">'+
+      '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">'+
+        '<input id="busca" class="input" placeholder="🔎 Buscar por nome, slug, email…" value="'+esc(filtros.busca)+'" oninput="setFiltro(\'busca\', this.value)" style="flex:1;min-width:240px;">'+
+        '<select class="select" style="max-width:160px;" onchange="setFiltro(\'plano\', this.value)">'+
+          '<option value="">Todos planos</option>'+
+          planos.map(function(p){ return '<option value="'+p.id+'"'+(filtros.plano===p.id?' selected':'')+'>'+esc(p.nome)+'</option>'; }).join('')+
+        '</select>'+
+        '<select class="select" style="max-width:160px;" onchange="setFiltro(\'status\', this.value)">'+
+          '<option value="">Todos status</option>'+
+          ['ativo','trial','inadimplente','cancelado','suspenso'].map(function(s){ return '<option value="'+s+'"'+(filtros.status===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>'; }).join('')+
+        '</select>'+
+      '</div>'+
+
+      (filtrados.length ? ''+
+        '<table><thead><tr><th>Cliente</th><th>Plano</th><th>MRR</th><th>Usuários</th><th>Status</th><th>Renova em</th><th></th></tr></thead><tbody>'+
+        filtrados.map(function(t){
+          var dr = t.renovaEm ? diasEntre(new Date(), t.renovaEm) : null;
+          return '<tr>'+
+            '<td><div style="display:flex;align-items:center;gap:10px;">'+avHtml(t)+'<div><b>'+esc(t.nome)+'</b>'+(t.interno?badgeInterno():'')+'<br><span style="font-size:11px;color:var(--text2);">'+esc(t.dominio||t.slug+'.axcend.com')+' · '+esc(t.ownerEmail||'')+'</span></div></div></td>'+
+            '<td>'+planoChip(t.plano)+'</td>'+
+            '<td>'+fmtMoney(t.mrr,t.moeda||'BRL')+'</td>'+
+            '<td>'+(t.usuarios||0)+(t.limiteUsuarios?' / '+t.limiteUsuarios:'')+'</td>'+
+            '<td>'+statusChip(t.status)+'</td>'+
+            '<td>'+(dr!=null ? (dr<0 ? '<span style="color:var(--rosa);">vencido '+Math.abs(dr)+'d</span>' : 'em '+dr+' dias') : '—')+'</td>'+
+            '<td><button class="btn btn-ghost btn-sm" onclick="abrirCliente(\''+t.id+'\')">Abrir</button></td>'+
+          '</tr>';
+        }).join('') +
+        '</tbody></table>'
+        : '<div style="text-align:center;padding:40px;color:var(--text2);font-size:13px;">Nenhum cliente encontrado com esses filtros.</div>')+
+    '</div>';
+}
+
+function setFiltro(k, v){
+  filtros[k] = v;
+  var ativo = document.activeElement;
+  var atvId = ativo && ativo.id;
+  renderScreen();
+  if(atvId){
+    var el = document.getElementById(atvId);
+    if(el){ el.focus(); var len = el.value.length; if(el.setSelectionRange) el.setSelectionRange(len, len); }
+  }
+}
+
+// ============================================================
+// MODAL: NOVO CLIENTE / EDITAR
+// ============================================================
+function abrirNovoCliente(){ abrirModalCliente(null); }
+function abrirEditarCliente(id){ abrirModalCliente(id); }
+
+function abrirModalCliente(id){
+  var t = id ? tenantById(id) : null;
+  var isEdit = !!t;
+  t = t || { nome:'', slug:'', plano:'starter', status:'trial', moeda:'BRL', pais:'BR', mrr:0, usuarios:0, ownerEmail:'', ownerNome:'' };
+  var planos = getConfig().planos;
+  var body = ''+
+    '<div class="row-2">'+
+      '<div class="field"><label class="field-label">Nome da empresa *</label><input id="m-nome" class="input" value="'+esc(t.nome)+'" placeholder="Ex: Acme Marketing"></div>'+
+      '<div class="field"><label class="field-label">Slug (subdomínio) *</label>'+
+        '<div style="display:flex;align-items:center;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:0 12px;">'+
+          '<input id="m-slug" class="input" value="'+esc(t.slug)+'" placeholder="acme" style="border:none;background:transparent;padding-left:0;">'+
+          '<span style="color:var(--text2);font-size:12px;">.axcend.com</span>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="row-2">'+
+      '<div class="field"><label class="field-label">Email do owner</label><input id="m-email" class="input" type="email" value="'+esc(t.ownerEmail||'')+'"></div>'+
+      '<div class="field"><label class="field-label">Nome do owner</label><input id="m-owner" class="input" value="'+esc(t.ownerNome||'')+'"></div>'+
+    '</div>'+
+    '<div class="row-3">'+
+      '<div class="field"><label class="field-label">Plano</label><select id="m-plano" class="select">'+
+        planos.map(function(p){ return '<option value="'+p.id+'"'+(t.plano===p.id?' selected':'')+'>'+esc(p.nome)+' · '+fmtMoney(p.preco,p.moeda||'BRL')+'/mês</option>'; }).join('')+
+      '</select></div>'+
+      '<div class="field"><label class="field-label">Status</label><select id="m-status" class="select">'+
+        ['ativo','trial','inadimplente','suspenso','cancelado'].map(function(s){ return '<option value="'+s+'"'+(t.status===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>'; }).join('')+
+      '</select></div>'+
+      '<div class="field"><label class="field-label">MRR (R$)</label><input id="m-mrr" class="input" type="number" value="'+(t.mrr||0)+'"></div>'+
+    '</div>'+
+    '<div class="row-3">'+
+      '<div class="field"><label class="field-label">Usuários atuais</label><input id="m-users" class="input" type="number" value="'+(t.usuarios||0)+'"></div>'+
+      '<div class="field"><label class="field-label">Domínio próprio (opcional)</label><input id="m-dominio" class="input" value="'+esc(t.dominio||'')+'" placeholder="app.acme.com.br"></div>'+
+      '<div class="field"><label class="field-label">País / Moeda</label><select id="m-pais" class="select">'+
+        ['BR-BRL','US-USD','MX-MXN','ES-EUR','PT-EUR'].map(function(p){
+          var sel = (t.pais+'-'+(t.moeda||'BRL'))===p;
+          return '<option value="'+p+'"'+(sel?' selected':'')+'>'+p+'</option>';
+        }).join('')+
+      '</select></div>'+
+    '</div>'+
+    '<div class="field"><label class="field-label">Observações internas</label><textarea id="m-notas" class="input" rows="2">'+esc(t.notas||'')+'</textarea></div>';
+
+  var footer = ''+
+    (isEdit ? '<button class="btn btn-danger" onclick="deletarCliente(\''+t.id+'\')" style="margin-right:auto;">Excluir cliente</button>' : '')+
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-primary" onclick="salvarCliente('+JSON.stringify(t.id||'').replace(/"/g,'\\\'')+')">Salvar</button>';
+
+  openModal(isEdit ? 'Editar cliente' : 'Novo cliente', body, footer);
+}
+
+function salvarCliente(id){
+  var nome = document.getElementById('m-nome').value.trim();
+  var slug = document.getElementById('m-slug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  if(!nome || !slug){ alert('Nome e slug são obrigatórios.'); return; }
+  var ts = getTenants();
+  var t = id ? ts.find(function(x){ return x.id===id; }) : null;
+  var isNova = !t;
+  if(!t){ t = { id: newId('tenant'), cadastroEm: new Date().toISOString() }; }
+  // Verifica slug único
+  if(ts.some(function(x){ return x.slug===slug && x.id!==t.id; })){
+    alert('Esse slug já está em uso por outro cliente.'); return;
+  }
+  t.nome = nome;
+  t.slug = slug;
+  t.ownerEmail = document.getElementById('m-email').value.trim();
+  t.ownerNome = document.getElementById('m-owner').value.trim();
+  t.plano = document.getElementById('m-plano').value;
+  var statusNovo = document.getElementById('m-status').value;
+  if(t.status && t.status!=='cancelado' && statusNovo==='cancelado') t.canceladoEm = new Date().toISOString();
+  t.status = statusNovo;
+  t.mrr = Number(document.getElementById('m-mrr').value)||0;
+  t.usuarios = Number(document.getElementById('m-users').value)||0;
+  t.dominio = document.getElementById('m-dominio').value.trim();
+  var paisMoeda = document.getElementById('m-pais').value.split('-');
+  t.pais = paisMoeda[0]; t.moeda = paisMoeda[1];
+  t.notas = document.getElementById('m-notas').value.trim();
+  // Limite usuários por plano
+  var p = planoById(t.plano);
+  t.limiteUsuarios = p ? p.maxUsuarios : null;
+  // Renovação: trial = +14d; ativo sem renova = +30d
+  if(!t.renovaEm){
+    var d = new Date(); d.setDate(d.getDate() + (t.status==='trial' ? 14 : 30));
+    t.renovaEm = d.toISOString();
+  }
+  t._updatedAt = Date.now();
+  if(isNova) ts.push(t); else { var idx = ts.findIndex(function(x){ return x.id===t.id; }); if(idx>=0) ts[idx]=t; }
+  saveTenants(ts);
+  closeModal();
+  renderScreen();
+}
+
+function deletarCliente(id){
+  if(!confirm('Excluir esse cliente permanentemente? Isso não pode ser desfeito.')) return;
+  var ts = getTenants().filter(function(t){ return t.id!==id; });
+  saveTenants(ts);
+  closeModal();
+  if(screenAtual==='cliente') goScreen('clientes'); else renderScreen();
+}
+
+// ============================================================
+// TELA 3: CLIENTE DETALHE
+// ============================================================
+function abrirCliente(id){
+  clienteSelecionado = id;
+  subnav = 'geral';
+  goScreen('cliente');
+}
+
+function renderClienteDetalhe(){
+  var t = tenantById(clienteSelecionado);
+  if(!t) return '<div class="card">Cliente não encontrado. <button class="btn btn-ghost btn-sm" onclick="goScreen(\'clientes\')">Voltar</button></div>';
+  var p = planoById(t.plano);
+  var dr = t.renovaEm ? diasEntre(new Date(), t.renovaEm) : null;
+
+  return ''+
+    '<div class="page-header">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+avHtml(t)+
+        '<div>'+
+          '<div class="page-title">'+esc(t.nome)+'</div>'+
+          '<div class="page-sub">'+esc(t.dominio||t.slug+'.axcend.com')+' · cliente desde '+(t.cadastroEm? new Date(t.cadastroEm).toLocaleDateString('pt-BR') : '—')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;">'+
+        '<button class="btn btn-ghost btn-sm" onclick="goScreen(\'clientes\')">← Voltar</button>'+
+        '<button class="btn btn-ghost" onclick="abrirEditarCliente(\''+t.id+'\')">Editar</button>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="sub-nav">'+
+      ['geral','branding','faturamento','dominio','logs'].map(function(s){
+        return '<div class="sub-link'+(subnav===s?' ativo':'')+'" onclick="subnav=\''+s+'\';renderScreen();">'+s.charAt(0).toUpperCase()+s.slice(1)+'</div>';
+      }).join('')+
+    '</div>'+
+
+    (subnav==='geral' ? renderTenantGeral(t, p, dr) :
+     subnav==='branding' ? renderTenantBranding(t) :
+     subnav==='faturamento' ? renderTenantFaturas(t) :
+     subnav==='dominio' ? renderTenantDominio(t) :
+     subnav==='logs' ? renderTenantLogs(t) : '');
+}
+
+function renderTenantGeral(t, p, dr){
+  var kpis = ''+
+    '<div class="kpi"><div class="kpi-label">MRR</div><div class="kpi-valor">'+(t.interno?'<span style="color:var(--text2);font-size:14px;">não cobra</span>':fmtMoney(t.mrr,t.moeda||'BRL'))+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Plano</div><div class="kpi-valor" style="font-size:18px;">'+esc(p?p.nome:'—')+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Usuários</div><div class="kpi-valor">'+(t.usuarios||0)+(t.limiteUsuarios?' / '+t.limiteUsuarios:'')+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Status</div><div class="kpi-valor" style="font-size:18px;">'+statusChip(t.status)+'</div></div>';
+  // Pra tenant interno, mostra também vagas e candidatos REAIS do sistema
+  if(t.interno){
+    kpis += ''+
+      '<div class="kpi"><div class="kpi-label">Vagas (ativas / total)</div><div class="kpi-valor">'+(t.vagasAtivas||0)+' / '+(t.vagasTotal||0)+'</div></div>'+
+      '<div class="kpi"><div class="kpi-label">Candidatos</div><div class="kpi-valor">'+(t.candidatosTotal||0)+'</div></div>';
+  }
+  return ''+
+    (t.interno ? '<div style="background:rgba(91,94,244,.08);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-bottom:18px;font-size:13px;color:var(--text);">👑 <b>Esse é VOCÊ</b> — seu próprio Centralaxcend cadastrado automaticamente como tenant interno. Os contadores de usuários/vagas/candidatos são atualizados em tempo real a partir dos dados do Axcend.</div>' : '')+
+    '<div class="kpi-grid">'+kpis+'</div>'+
+    '<div class="row-side">'+
+      '<div>'+
+        '<div class="card">'+
+          '<div class="card-title">Informações</div>'+
+          '<div style="font-size:13px;line-height:1.9;">'+
+            '<div><span style="color:var(--text2);">Owner: </span><b>'+esc(t.ownerNome||'—')+'</b> · '+esc(t.ownerEmail||'—')+'</div>'+
+            '<div><span style="color:var(--text2);">País: </span>'+esc(t.pais||'—')+' · '+esc(t.moeda||'BRL')+'</div>'+
+            '<div><span style="color:var(--text2);">Cadastro: </span>'+(t.cadastroEm? new Date(t.cadastroEm).toLocaleDateString('pt-BR') : '—')+'</div>'+
+            '<div><span style="color:var(--text2);">Renovação: </span>'+(t.renovaEm? new Date(t.renovaEm).toLocaleDateString('pt-BR')+(dr!=null?' ('+dr+' dias)':'') : '—')+'</div>'+
+            (t.notas ? '<div style="margin-top:10px;padding:10px;background:var(--bg-2);border-radius:8px;font-style:italic;">'+esc(t.notas)+'</div>' : '')+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div>'+
+        '<div class="card">'+
+          '<div class="card-title">Ações rápidas</div>'+
+          '<div style="display:flex;flex-direction:column;gap:6px;">'+
+            '<button class="btn btn-ghost btn-sm" style="justify-content:flex-start;" onclick="alterarStatus(\''+t.id+'\', \'ativo\')">✓ Marcar como Ativo</button>'+
+            '<button class="btn btn-ghost btn-sm" style="justify-content:flex-start;" onclick="alterarStatus(\''+t.id+'\', \'suspenso\')">⛔ Suspender conta</button>'+
+            '<button class="btn btn-ghost btn-sm" style="justify-content:flex-start;" onclick="alterarStatus(\''+t.id+'\', \'inadimplente\')">⚠ Marcar Inadimplente</button>'+
+            '<button class="btn btn-ghost btn-sm" style="justify-content:flex-start;" onclick="darMesGratis(\''+t.id+'\')">🎁 Dar 1 mês grátis</button>'+
+            '<button class="btn btn-ghost btn-sm" style="justify-content:flex-start;" onclick="exportarLGPD(\''+t.id+'\')">📋 Exportar dados (LGPD)</button>'+
+            '<button class="btn btn-danger btn-sm" style="justify-content:flex-start;" onclick="alterarStatus(\''+t.id+'\', \'cancelado\')">✕ Encerrar conta</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+function alterarStatus(id, novo){
+  var ts = getTenants();
+  var idx = ts.findIndex(function(x){ return x.id===id; });
+  if(idx<0) return;
+  if(novo==='cancelado' && !confirm('Encerrar a conta desse cliente?')) return;
+  if(novo==='cancelado') ts[idx].canceladoEm = new Date().toISOString();
+  ts[idx].status = novo;
+  ts[idx]._updatedAt = Date.now();
+  saveTenants(ts);
+  renderScreen();
+}
+function darMesGratis(id){
+  var ts = getTenants();
+  var idx = ts.findIndex(function(x){ return x.id===id; });
+  if(idx<0) return;
+  var d = new Date(ts[idx].renovaEm || new Date()); d.setDate(d.getDate()+30);
+  ts[idx].renovaEm = d.toISOString();
+  ts[idx]._updatedAt = Date.now();
+  saveTenants(ts);
+  alert('1 mês grátis concedido. Nova renovação: '+d.toLocaleDateString('pt-BR'));
+  renderScreen();
+}
+function exportarLGPD(id){
+  var t = tenantById(id);
+  if(!t) return;
+  var json = JSON.stringify(t, null, 2);
+  var blob = new Blob([json], { type:'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'lgpd-'+t.slug+'-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+function renderTenantBranding(t){
+  var b = t.branding || {};
+  return ''+
+    '<div class="row-side">'+
+      '<div class="card">'+
+        '<div class="card-title">Branding do cliente</div>'+
+        '<div class="card-sub">Cores e identidade que o painel desse cliente vai usar.</div>'+
+        '<div class="row-2">'+
+          '<div class="field"><label class="field-label">URL do logo</label><input id="b-logo" class="input" value="'+esc(b.logoUrl||'')+'" placeholder="https://cdn.../logo.png"></div>'+
+          '<div class="field"><label class="field-label">URL do favicon</label><input id="b-fav" class="input" value="'+esc(b.faviconUrl||'')+'" placeholder="https://cdn.../favicon.png"></div>'+
+        '</div>'+
+        '<div class="row-3">'+
+          '<div class="field"><label class="field-label">Cor primária</label><input id="b-pri" class="input" type="color" value="'+(b.primary||'#5b5ef4')+'"></div>'+
+          '<div class="field"><label class="field-label">Cor secundária</label><input id="b-sec" class="input" type="color" value="'+(b.secondary||'#3E1493')+'"></div>'+
+          '<div class="field"><label class="field-label">Fundo dark</label><input id="b-bg" class="input" type="color" value="'+(b.bgDark||'#0F0F0F')+'"></div>'+
+        '</div>'+
+        '<div class="field"><label class="field-label">Email remetente</label><input id="b-email" class="input" value="'+esc(b.emailFrom||'')+'" placeholder="time@empresa.com"></div>'+
+        '<button class="btn btn-primary" onclick="salvarBranding(\''+t.id+'\')">Salvar branding</button>'+
+      '</div>'+
+      '<div>'+
+        '<div class="card">'+
+          '<div class="card-title">Preview</div>'+
+          '<div class="browser">'+
+            '<div class="browser-bar"><div class="browser-dot" style="background:#ff5f57;"></div><div class="browser-dot" style="background:#febc2e;"></div><div class="browser-dot" style="background:#28c840;"></div><div class="browser-url">'+esc(t.dominio||t.slug+'.axcend.com')+'</div></div>'+
+            '<div style="background:'+(b.bgDark||'#0F0F0F')+';padding:12px;color:#fff;">'+
+              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'+
+                '<div style="width:24px;height:24px;border-radius:5px;background:linear-gradient(135deg,'+(b.primary||'#5b5ef4')+','+(b.secondary||'#3E1493')+');"></div>'+
+                '<b style="font-size:12px;">'+esc(t.nome)+'</b>'+
+              '</div>'+
+              '<div style="font-size:10px;color:'+(b.primary||'#5b5ef4')+';font-weight:700;margin-bottom:4px;">▤ DASHBOARD</div>'+
+              '<div style="height:6px;background:'+(b.primary||'#5b5ef4')+';border-radius:2px;width:60%;margin-bottom:6px;"></div>'+
+              '<div style="height:6px;background:#333;border-radius:2px;width:80%;"></div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+function salvarBranding(id){
+  var ts = getTenants();
+  var idx = ts.findIndex(function(x){ return x.id===id; });
+  if(idx<0) return;
+  ts[idx].branding = {
+    logoUrl: document.getElementById('b-logo').value.trim(),
+    faviconUrl: document.getElementById('b-fav').value.trim(),
+    primary: document.getElementById('b-pri').value,
+    secondary: document.getElementById('b-sec').value,
+    bgDark: document.getElementById('b-bg').value,
+    emailFrom: document.getElementById('b-email').value.trim()
+  };
+  ts[idx]._updatedAt = Date.now();
+  saveTenants(ts);
+  alert('Branding salvo!');
+  renderScreen();
+}
+
+function renderTenantFaturas(t){
+  var fats = getFaturas().filter(function(f){ return f.tenantId===t.id; }).sort(function(a,b){ return new Date(b.dataVenc)-new Date(a.dataVenc); });
+  return ''+
+    '<div class="card">'+
+      '<div class="card-title">Faturas geradas <button class="btn btn-primary btn-sm" onclick="abrirNovaFatura(\''+t.id+'\')">+ Nova fatura</button></div>'+
+      (fats.length ? ''+
+        '<table><thead><tr><th>Vencimento</th><th>Valor</th><th>Status</th><th>Método</th><th>Pago em</th><th></th></tr></thead><tbody>'+
+        fats.map(function(f){
+          return '<tr>'+
+            '<td>'+(f.dataVenc? new Date(f.dataVenc).toLocaleDateString('pt-BR') : '—')+'</td>'+
+            '<td><b>'+fmtMoney(f.valor,f.moeda||'BRL')+'</b></td>'+
+            '<td>'+(f.status==='pago'?'<span class="chip ok">Pago</span>':f.status==='atrasado'?'<span class="chip err">Atrasado</span>':'<span class="chip warn">Pendente</span>')+'</td>'+
+            '<td><span style="font-size:11px;color:var(--text2);">'+(f.metodo||'—')+'</span></td>'+
+            '<td>'+(f.dataPag? new Date(f.dataPag).toLocaleDateString('pt-BR') : '—')+'</td>'+
+            '<td>'+(f.status!=='pago' ? '<button class="btn btn-ghost btn-sm" onclick="marcarPago(\''+f.id+'\')">Marcar pago</button>' : '<button class="btn btn-ghost btn-sm" onclick="excluirFatura(\''+f.id+'\')">✕</button>')+'</td>'+
+          '</tr>';
+        }).join('') +
+        '</tbody></table>'
+        : '<div style="text-align:center;padding:24px;color:var(--text2);font-size:13px;">Nenhuma fatura ainda.</div>')+
+    '</div>';
+}
+
+function abrirNovaFatura(tenantId){
+  var t = tenantById(tenantId);
+  var hoje = new Date().toISOString().slice(0,10);
+  var venc = new Date(); venc.setDate(venc.getDate()+10);
+  var body = ''+
+    '<div class="row-2">'+
+      '<div class="field"><label class="field-label">Valor</label><input id="f-valor" class="input" type="number" value="'+(t.mrr||0)+'"></div>'+
+      '<div class="field"><label class="field-label">Vencimento</label><input id="f-venc" class="input" type="date" value="'+venc.toISOString().slice(0,10)+'"></div>'+
+    '</div>'+
+    '<div class="field"><label class="field-label">Método</label><select id="f-metodo" class="select">'+
+      ['pagarme','stripe','mercadopago','pix','boleto','manual'].map(function(m){ return '<option>'+m+'</option>'; }).join('')+
+    '</select></div>';
+  var foot = '<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>'+
+             '<button class="btn btn-primary" onclick="salvarFatura(\''+tenantId+'\')">Criar fatura</button>';
+  openModal('Nova fatura · '+esc(t.nome), body, foot);
+}
+function salvarFatura(tenantId){
+  var fats = getFaturas();
+  fats.push({
+    id: newId('fat'), tenantId: tenantId,
+    valor: Number(document.getElementById('f-valor').value)||0,
+    dataVenc: new Date(document.getElementById('f-venc').value).toISOString(),
+    metodo: document.getElementById('f-metodo').value,
+    status: 'pendente', moeda: 'BRL',
+    _updatedAt: Date.now()
+  });
+  saveFaturas(fats);
+  closeModal(); renderScreen();
+}
+function marcarPago(id){
+  var fats = getFaturas();
+  var idx = fats.findIndex(function(f){ return f.id===id; });
+  if(idx<0) return;
+  fats[idx].status = 'pago';
+  fats[idx].dataPag = new Date().toISOString();
+  fats[idx]._updatedAt = Date.now();
+  saveFaturas(fats);
+  renderScreen();
+}
+function excluirFatura(id){
+  if(!confirm('Excluir essa fatura?')) return;
+  saveFaturas(getFaturas().filter(function(f){ return f.id!==id; }));
+  renderScreen();
+}
+
+function renderTenantDominio(t){
+  var pronto = !!t.dominio;
+  return ''+
+    '<div class="card">'+
+      '<div class="card-title">Domínio próprio</div>'+
+      '<div class="card-sub">Disponível no plano Pro+. Cliente aponta um CNAME para o nosso endpoint e atendemos o painel dele no domínio próprio.</div>'+
+      '<div class="field"><label class="field-label">Subdomínio padrão (sempre ativo)</label><input class="input" value="'+esc(t.slug)+'.axcend.com" readonly></div>'+
+      '<div class="field"><label class="field-label">Domínio próprio</label><input id="d-dominio" class="input" value="'+esc(t.dominio||'')+'" placeholder="app.empresa.com.br"></div>'+
+      '<button class="btn btn-primary" onclick="salvarDominio(\''+t.id+'\')">Salvar</button>'+
+    '</div>'+
+    (pronto ? ''+
+      '<div class="card">'+
+        '<div class="card-title">Como o cliente configura o DNS</div>'+
+        '<div style="font-size:13px;margin-bottom:12px;">Compartilhe essas instruções com o cliente:</div>'+
+        '<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;line-height:1.7;">'+
+          'Tipo: <b style="color:var(--accent);">CNAME</b><br>'+
+          'Host: <b style="color:var(--accent);">'+esc((t.dominio||'').split('.')[0])+'</b>  (parte antes do domínio raiz)<br>'+
+          'Valor: <b style="color:var(--accent);">cname.axcend.com</b><br>'+
+          'TTL: 3600'+
+        '</div>'+
+        '<div style="font-size:11px;color:var(--text3);margin-top:8px;">SSL emitido automaticamente via Cloudflare em até 1h após CNAME propagado.</div>'+
+      '</div>'
+      : '')+
+    '<div class="card">'+
+      '<div class="card-title">Status SSL</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--verde);margin-bottom:6px;">🔒 '+esc(t.slug)+'.axcend.com — SSL OK</div>'+
+      (pronto ? '<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);">⏳ '+esc(t.dominio)+' — implementação pendente (Cloudflare for SaaS)</div>' : '')+
+    '</div>';
+}
+function salvarDominio(id){
+  var ts = getTenants();
+  var idx = ts.findIndex(function(x){ return x.id===id; });
+  if(idx<0) return;
+  ts[idx].dominio = document.getElementById('d-dominio').value.trim();
+  ts[idx]._updatedAt = Date.now();
+  saveTenants(ts);
+  renderScreen();
+}
+
+function renderTenantLogs(t){
+  var hist = [];
+  hist.push({ ts: t._updatedAt||0, ev: 'Última edição do cliente', det: '—' });
+  if(t.cadastroEm)   hist.push({ ts: new Date(t.cadastroEm).getTime(), ev: 'Cliente cadastrado', det: '—' });
+  if(t.canceladoEm)  hist.push({ ts: new Date(t.canceladoEm).getTime(), ev: 'Cliente cancelado', det: '—' });
+  hist.sort(function(a,b){ return b.ts-a.ts; });
+  return ''+
+    '<div class="card">'+
+      '<div class="card-title">Logs de auditoria</div>'+
+      '<div class="card-sub">Histórico de eventos importantes no cliente.</div>'+
+      (hist.length ? ''+
+        '<table><thead><tr><th>Quando</th><th>Evento</th><th>Detalhe</th></tr></thead><tbody>'+
+        hist.map(function(h){
+          return '<tr><td>'+(h.ts? new Date(h.ts).toLocaleString('pt-BR') : '—')+'</td><td>'+esc(h.ev)+'</td><td>'+esc(h.det)+'</td></tr>';
+        }).join('') +
+        '</tbody></table>'
+        : '<div style="text-align:center;padding:24px;color:var(--text2);">Sem eventos.</div>')+
+    '</div>';
+}
+
+// ============================================================
+// TELA 4: ONBOARDING WIZARD
+// ============================================================
+function renderOnboarding(){
+  var stepHtml = ''+
+    '<div class="steps">'+
+      ['Conta','Branding','Plano'].map(function(label, i){
+        var n = i+1;
+        var cls = n<wizardStep?'feito':n===wizardStep?'ativo':'';
+        var num = n<wizardStep?'✓':n;
+        return '<div class="step '+cls+'"><span class="step-num">'+num+'</span><span class="step-label">'+label+'</span></div>';
+      }).join('')+
+    '</div>';
+
+  if(wizardStep===1) return stepHtml + wizardStep1();
+  if(wizardStep===2) return stepHtml + wizardStep2();
+  if(wizardStep===3) return stepHtml + wizardStep3();
+  return stepHtml;
+}
+
+function wizardStep1(){
+  return ''+
+    '<div class="card">'+
+      '<div class="card-title">Passo 1: Conta</div>'+
+      '<div class="row-2">'+
+        '<div class="field"><label class="field-label">Nome da empresa *</label><input id="w-nome" class="input" value="'+esc(wizardData.nome||'')+'"></div>'+
+        '<div class="field"><label class="field-label">Email do owner *</label><input id="w-email" class="input" type="email" value="'+esc(wizardData.email||'')+'"></div>'+
+      '</div>'+
+      '<div class="row-2">'+
+        '<div class="field"><label class="field-label">Nome do owner</label><input id="w-owner" class="input" value="'+esc(wizardData.owner||'')+'"></div>'+
+        '<div class="field"><label class="field-label">Slug *</label>'+
+          '<div style="display:flex;align-items:center;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:0 12px;">'+
+            '<input id="w-slug" class="input" value="'+esc(wizardData.slug||'')+'" style="border:none;background:transparent;padding-left:0;">'+
+            '<span style="color:var(--text2);font-size:12px;">.axcend.com</span>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:flex-end;margin-top:18px;"><button class="btn btn-primary" onclick="wizardProximo()">Continuar →</button></div>'+
+    '</div>';
+}
+
+function wizardStep2(){
+  var b = wizardData.branding || { primary:'#5b5ef4', secondary:'#3E1493', bgDark:'#0F0F0F' };
+  return ''+
+    '<div class="row-side">'+
+      '<div class="card">'+
+        '<div class="card-title">Passo 2: Branding</div>'+
+        '<div class="row-3">'+
+          '<div class="field"><label class="field-label">Primária</label><input id="w-pri" class="input" type="color" value="'+(b.primary||'#5b5ef4')+'" onchange="atualizarPreviewWizard()"></div>'+
+          '<div class="field"><label class="field-label">Secundária</label><input id="w-sec" class="input" type="color" value="'+(b.secondary||'#3E1493')+'" onchange="atualizarPreviewWizard()"></div>'+
+          '<div class="field"><label class="field-label">Fundo dark</label><input id="w-bg" class="input" type="color" value="'+(b.bgDark||'#0F0F0F')+'" onchange="atualizarPreviewWizard()"></div>'+
+        '</div>'+
+        '<div class="field"><label class="field-label">URL do logo</label><input id="w-logo" class="input" value="'+esc(b.logoUrl||'')+'" placeholder="https://cdn..."></div>'+
+        '<div style="display:flex;justify-content:space-between;margin-top:18px;">'+
+          '<button class="btn btn-ghost" onclick="wizardAnterior()">← Voltar</button>'+
+          '<button class="btn btn-primary" onclick="wizardProximo()">Continuar →</button>'+
+        '</div>'+
+      '</div>'+
+      '<div>'+
+        '<div class="card">'+
+          '<div class="card-title">Preview</div>'+
+          '<div id="wizard-preview" class="browser">'+wizardPreviewHtml(wizardData.nome||'Empresa', wizardData.slug||'minha', b)+'</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+function wizardPreviewHtml(nome, slug, b){
+  return ''+
+    '<div class="browser-bar"><div class="browser-dot"></div><div class="browser-dot"></div><div class="browser-dot"></div><div class="browser-url">'+esc(slug)+'.axcend.com</div></div>'+
+    '<div style="background:'+(b.bgDark||'#0F0F0F')+';padding:14px;color:#fff;">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><div style="width:24px;height:24px;border-radius:5px;background:linear-gradient(135deg,'+(b.primary||'#5b5ef4')+','+(b.secondary||'#3E1493')+');"></div><b style="font-size:12px;">'+esc(nome)+'</b></div>'+
+      '<div style="font-size:10px;color:'+(b.primary||'#5b5ef4')+';font-weight:700;margin-bottom:4px;">DASHBOARD</div>'+
+      '<div style="height:6px;background:'+(b.primary||'#5b5ef4')+';border-radius:2px;width:60%;margin-bottom:6px;"></div>'+
+      '<div style="height:6px;background:#333;border-radius:2px;width:80%;"></div>'+
+    '</div>';
+}
+
+function atualizarPreviewWizard(){
+  var b = { primary:document.getElementById('w-pri').value, secondary:document.getElementById('w-sec').value, bgDark:document.getElementById('w-bg').value };
+  document.getElementById('wizard-preview').innerHTML = wizardPreviewHtml(wizardData.nome||'Empresa', wizardData.slug||'minha', b);
+}
+
+function wizardStep3(){
+  var planos = getConfig().planos;
+  return ''+
+    '<div class="card">'+
+      '<div class="card-title">Passo 3: Escolha o plano</div>'+
+      '<div class="plans-grid">'+
+        planos.map(function(p){
+          var sel = wizardData.plano===p.id;
+          return '<div class="plan-card '+(p.destaque?'destaque':'')+'" style="cursor:pointer;'+(sel?'outline:2px solid var(--accent);':'')+'" onclick="wizardData.plano=\''+p.id+'\';renderScreen();">'+
+            '<div class="plan-nome">'+esc(p.nome)+'</div>'+
+            '<div class="plan-preco">'+fmtMoney(p.preco,p.moeda)+'<span>/mês</span></div>'+
+            '<ul class="plan-features">'+(p.features||[]).map(function(f){ return '<li>'+esc(f)+'</li>'; }).join('')+'</ul>'+
+            '<div style="text-align:center;font-size:12px;color:'+(sel?'var(--accent)':'var(--text2)')+';font-weight:600;">'+(sel?'✓ Selecionado':'Clique pra escolher')+'</div>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:18px;">'+
+        '<button class="btn btn-ghost" onclick="wizardAnterior()">← Voltar</button>'+
+        '<button class="btn btn-primary" onclick="wizardFinalizar()">✓ Criar conta</button>'+
+      '</div>'+
+    '</div>';
+}
+
+function wizardProximo(){
+  if(wizardStep===1){
+    var nome = document.getElementById('w-nome').value.trim();
+    var email = document.getElementById('w-email').value.trim();
+    var slug = document.getElementById('w-slug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+    if(!nome || !email || !slug){ alert('Preencha nome, email e slug.'); return; }
+    wizardData.nome = nome; wizardData.email = email; wizardData.slug = slug;
+    wizardData.owner = document.getElementById('w-owner').value.trim();
+  } else if(wizardStep===2){
+    wizardData.branding = {
+      primary: document.getElementById('w-pri').value,
+      secondary: document.getElementById('w-sec').value,
+      bgDark: document.getElementById('w-bg').value,
+      logoUrl: document.getElementById('w-logo').value.trim()
+    };
+  }
+  wizardStep++; renderScreen();
+}
+function wizardAnterior(){ if(wizardStep>1){ wizardStep--; renderScreen(); } }
+
+function wizardFinalizar(){
+  if(!wizardData.plano){ alert('Escolha um plano.'); return; }
+  var p = planoById(wizardData.plano);
+  var d = new Date(); d.setDate(d.getDate()+14); // 14d trial
+  var t = {
+    id: newId('tenant'),
+    nome: wizardData.nome,
+    slug: wizardData.slug,
+    ownerEmail: wizardData.email,
+    ownerNome: wizardData.owner,
+    plano: wizardData.plano,
+    status: 'trial',
+    mrr: p ? p.preco : 0,
+    moeda: p ? p.moeda : 'BRL',
+    pais: 'BR',
+    usuarios: 0,
+    limiteUsuarios: p ? p.maxUsuarios : null,
+    cadastroEm: new Date().toISOString(),
+    renovaEm: d.toISOString(),
+    branding: wizardData.branding,
+    _updatedAt: Date.now()
+  };
+  var ts = getTenants(); ts.push(t); saveTenants(ts);
+  wizardStep = 1; wizardData = {};
+  alert('Cliente criado! Trial de 14 dias.');
+  abrirCliente(t.id);
+}
+
+// ============================================================
+// TELA 5: WHITE-LABEL (aplica em qualquer cliente)
+// ============================================================
+function renderWhiteLabel(){
+  var ts = getTenants();
+  if(!ts.length){
+    return ''+
+      '<div class="page-header"><div><div class="page-title">White-label</div><div class="page-sub">Configurar branding por cliente</div></div></div>'+
+      '<div class="card" style="text-align:center;padding:40px;">Nenhum cliente cadastrado. <button class="btn btn-primary" style="margin-left:8px;" onclick="abrirNovoCliente()">+ Adicionar primeiro</button></div>';
+  }
+  return ''+
+    '<div class="page-header">'+
+      '<div><div class="page-title">White-label</div><div class="page-sub">Selecione um cliente para configurar o branding dele</div></div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">'+
+        ts.map(function(t){
+          var b = t.branding||{};
+          return '<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;" onclick="clienteSelecionado=\''+t.id+'\';subnav=\'branding\';goScreen(\'cliente\')">'+
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'+avHtml(t)+'<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b style="font-size:13px;">'+esc(t.nome)+'</b></div></div>'+
+            '<div style="display:flex;gap:4px;">'+
+              '<div style="flex:1;height:18px;border-radius:4px;background:'+(b.primary||'#5b5ef4')+';"></div>'+
+              '<div style="flex:1;height:18px;border-radius:4px;background:'+(b.secondary||'#3E1493')+';"></div>'+
+              '<div style="flex:1;height:18px;border-radius:4px;background:'+(b.bgDark||'#0F0F0F')+';border:1px solid var(--border);"></div>'+
+            '</div>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+}
+
+// ============================================================
+// TELA 6: PLANOS & FATURAMENTO
+// ============================================================
+function renderPlanos(){
+  var cfg = getConfig();
+  var todasFats = getFaturas().sort(function(a,b){ return new Date(b.dataVenc)-new Date(a.dataVenc); }).slice(0,10);
+  return ''+
+    '<div class="page-header">'+
+      '<div><div class="page-title">Planos & Faturamento</div><div class="page-sub">Configure planos, gateways e veja últimas faturas geradas</div></div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">Planos · '+cfg.planos.length+' configurados</div>'+
+      '<div class="plans-grid">'+
+        cfg.planos.map(function(p, idx){
+          return '<div class="plan-card '+(p.destaque?'destaque':'')+'">'+
+            '<div class="plan-nome">'+esc(p.nome)+'</div>'+
+            '<div class="plan-preco">'+fmtMoney(p.preco,p.moeda)+'<span>/mês</span></div>'+
+            '<ul class="plan-features">'+(p.features||[]).map(function(f){ return '<li>'+esc(f)+'</li>'; }).join('')+'</ul>'+
+            '<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;" onclick="editarPlano('+idx+')">Editar plano</button>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">Gateways de pagamento</div>'+
+      ['stripe','pagarme','mercadopago'].map(function(k){
+        var g = cfg.gateways[k]||{};
+        var meta = { stripe:{nome:'Stripe',cor:'#635bff',ico:'S',desc:'USD/EUR'}, pagarme:{nome:'Pagar.me',cor:'#1cba9e',ico:'P',desc:'BRL · PIX · cartão'}, mercadopago:{nome:'Mercado Pago',cor:'#5288DC',ico:'M',desc:'BRL · ARS · MXN'} }[k];
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg-2);border-radius:8px;margin-bottom:8px;">'+
+          '<div style="display:flex;align-items:center;gap:12px;">'+
+            '<div style="width:36px;height:36px;border-radius:8px;background:'+meta.cor+';display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;">'+meta.ico+'</div>'+
+            '<div><b>'+meta.nome+'</b><br><span style="font-size:11px;color:var(--text2);">'+meta.desc+'</span></div>'+
+          '</div>'+
+          '<label class="toggle"><input type="checkbox"'+(g.ativo?' checked':'')+' onchange="toggleGateway(\''+k+'\', this.checked)"><span class="toggle-slider"></span></label>'+
+        '</div>';
+      }).join('')+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">Últimas faturas (todos clientes)</div>'+
+      (todasFats.length ? ''+
+        '<table><thead><tr><th>Cliente</th><th>Valor</th><th>Status</th><th>Vencimento</th></tr></thead><tbody>'+
+        todasFats.map(function(f){
+          var t = tenantById(f.tenantId);
+          return '<tr>'+
+            '<td>'+(t?esc(t.nome):'<i>removido</i>')+'</td>'+
+            '<td><b>'+fmtMoney(f.valor,f.moeda)+'</b></td>'+
+            '<td>'+(f.status==='pago'?'<span class="chip ok">Pago</span>':f.status==='atrasado'?'<span class="chip err">Atrasado</span>':'<span class="chip warn">Pendente</span>')+'</td>'+
+            '<td>'+(f.dataVenc? new Date(f.dataVenc).toLocaleDateString('pt-BR'):'—')+'</td>'+
+          '</tr>';
+        }).join('') +
+        '</tbody></table>'
+        : '<div style="text-align:center;padding:24px;color:var(--text2);">Nenhuma fatura ainda.</div>')+
+    '</div>';
+}
+
+function editarPlano(idx){
+  var cfg = getConfig();
+  var p = cfg.planos[idx];
+  var body = ''+
+    '<div class="row-2">'+
+      '<div class="field"><label class="field-label">Nome</label><input id="p-nome" class="input" value="'+esc(p.nome)+'"></div>'+
+      '<div class="field"><label class="field-label">Preço (R$)</label><input id="p-preco" class="input" type="number" value="'+p.preco+'"></div>'+
+    '</div>'+
+    '<div class="row-2">'+
+      '<div class="field"><label class="field-label">Max usuários (vazio=ilim.)</label><input id="p-mu" class="input" type="number" value="'+(p.maxUsuarios||'')+'"></div>'+
+      '<div class="field"><label class="field-label">Max vagas (vazio=ilim.)</label><input id="p-mv" class="input" type="number" value="'+(p.maxVagas||'')+'"></div>'+
+    '</div>'+
+    '<div class="field"><label class="field-label">Features (uma por linha)</label><textarea id="p-feat" class="input" rows="6">'+esc((p.features||[]).join('\n'))+'</textarea></div>'+
+    '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" id="p-dest"'+(p.destaque?' checked':'')+'> Marcar como destaque (Mais popular)</label>';
+  var foot = '<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="salvarPlano('+idx+')">Salvar</button>';
+  openModal('Editar plano · '+esc(p.nome), body, foot);
+}
+function salvarPlano(idx){
+  var cfg = getConfig();
+  cfg.planos[idx].nome = document.getElementById('p-nome').value.trim();
+  cfg.planos[idx].preco = Number(document.getElementById('p-preco').value)||0;
+  var mu = document.getElementById('p-mu').value; cfg.planos[idx].maxUsuarios = mu===''?null:Number(mu);
+  var mv = document.getElementById('p-mv').value; cfg.planos[idx].maxVagas = mv===''?null:Number(mv);
+  cfg.planos[idx].features = document.getElementById('p-feat').value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+  // garante só 1 destaque
+  if(document.getElementById('p-dest').checked){
+    cfg.planos.forEach(function(p,i){ p.destaque = i===idx; });
+  } else {
+    cfg.planos[idx].destaque = false;
+  }
+  saveConfig(cfg);
+  closeModal(); renderScreen();
+}
+function toggleGateway(k, v){
+  var cfg = getConfig();
+  if(!cfg.gateways[k]) cfg.gateways[k] = {};
+  cfg.gateways[k].ativo = v;
+  saveConfig(cfg);
+}
+
+// ============================================================
+// TELA 7: CONFIGURAÇÕES (idiomas/moedas/legal)
+// ============================================================
+function renderConfig(){
+  var cfg = getConfig();
+  return ''+
+    '<div class="page-header"><div><div class="page-title">Configurações</div><div class="page-sub">Idiomas, moedas e páginas legais</div></div></div>'+
+    '<div class="row-2">'+
+      '<div class="card">'+
+        '<div class="card-title">Idiomas</div>'+
+        ['pt-BR','en-US','es-ES','fr-FR'].map(function(l){
+          var nomes = {'pt-BR':'🇧🇷 Português','en-US':'🇺🇸 English','es-ES':'🇪🇸 Español','fr-FR':'🇫🇷 Français'};
+          var ativo = !!cfg.idiomas[l];
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg-2);border-radius:8px;margin-bottom:6px;">'+
+            '<span>'+nomes[l]+'</span>'+
+            (l==='pt-BR' ? '<span class="chip ok">● Padrão</span>' : '<label class="toggle"><input type="checkbox"'+(ativo?' checked':'')+' onchange="toggleIdioma(\''+l+'\', this.checked)"><span class="toggle-slider"></span></label>')+
+          '</div>';
+        }).join('')+
+      '</div>'+
+      '<div class="card">'+
+        '<div class="card-title">Moedas suportadas</div>'+
+        '<table><thead><tr><th>Moeda</th><th>Gateway</th></tr></thead><tbody>'+
+        [{c:'BRL',g:'Pagar.me'},{c:'USD',g:'Stripe'},{c:'EUR',g:'Stripe'},{c:'MXN',g:'Mercado Pago'}].map(function(m){
+          var ativa = cfg.moedas.indexOf(m.c)>=0;
+          return '<tr><td><b>'+m.c+'</b></td><td><span style="font-size:11px;color:var(--text2);">'+m.g+'</span> '+(ativa?'<span class="chip ok">Ativa</span>':'<span class="chip neutro">Inativa</span>')+'</td></tr>';
+        }).join('')+
+        '</tbody></table>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">Páginas legais</div>'+
+      '<div class="row-3">'+
+        ['termos','privacidade','lgpd'].map(function(k){
+          var nomes = {termos:'📜 Termos de Uso', privacidade:'🔒 Política de Privacidade', lgpd:'🇧🇷 LGPD · DPO'};
+          var doc = cfg.legal[k]||{};
+          return '<div style="padding:16px;background:var(--bg-2);border-radius:10px;">'+
+            '<div style="font-size:14px;font-weight:700;margin-bottom:6px;">'+nomes[k]+'</div>'+
+            (k!=='lgpd' ? '<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">v'+esc(doc.versao||'1.0')+' · '+esc(doc.updatedAt||'—')+'</div>' : '<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">'+esc(doc.dpoNome||'sem DPO')+'</div>')+
+            '<button class="btn btn-ghost btn-sm" onclick="editarLegal(\''+k+'\')">Editar</button>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+}
+function toggleIdioma(l, v){ var cfg = getConfig(); cfg.idiomas[l] = v; saveConfig(cfg); }
+function editarLegal(k){
+  var cfg = getConfig();
+  var doc = cfg.legal[k] || {};
+  var nomes = {termos:'Termos de Uso', privacidade:'Política de Privacidade', lgpd:'Configuração LGPD'};
+  var body;
+  if(k==='lgpd'){
+    body = ''+
+      '<div class="field"><label class="field-label">Nome do DPO</label><input id="l-nome" class="input" value="'+esc(doc.dpoNome||'')+'"></div>'+
+      '<div class="field"><label class="field-label">Email do DPO</label><input id="l-email" class="input" value="'+esc(doc.dpoEmail||'')+'"></div>';
+  } else {
+    body = ''+
+      '<div class="row-2">'+
+        '<div class="field"><label class="field-label">Versão</label><input id="l-versao" class="input" value="'+esc(doc.versao||'1.0')+'"></div>'+
+        '<div class="field"><label class="field-label">Atualizado em</label><input id="l-data" class="input" type="date" value="'+(doc.updatedAt||new Date().toISOString().slice(0,10))+'"></div>'+
+      '</div>'+
+      '<div class="field"><label class="field-label">Conteúdo (markdown)</label><textarea id="l-cont" class="input" rows="14" style="font-family:monospace;">'+esc(doc.conteudo||'')+'</textarea></div>';
+  }
+  openModal('Editar · '+nomes[k], body, '<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="salvarLegal(\''+k+'\')">Salvar</button>');
+}
+function salvarLegal(k){
+  var cfg = getConfig();
+  if(!cfg.legal[k]) cfg.legal[k] = {};
+  if(k==='lgpd'){
+    cfg.legal[k].dpoNome = document.getElementById('l-nome').value.trim();
+    cfg.legal[k].dpoEmail = document.getElementById('l-email').value.trim();
+  } else {
+    cfg.legal[k].versao = document.getElementById('l-versao').value.trim();
+    cfg.legal[k].updatedAt = document.getElementById('l-data').value;
+    cfg.legal[k].conteudo = document.getElementById('l-cont').value;
+  }
+  saveConfig(cfg);
+  closeModal(); renderScreen();
+}
+
+// ============================================================
+// TELA 8: UTMIFY
+// ============================================================
+function renderUtmify(){
+  var cfg = getConfig();
+  var u = cfg.utmify;
+  return ''+
+    '<div class="page-header">'+
+      '<div><div class="page-title">Integração Utmify</div><div class="page-sub">Atribuição de UTMs e rastreio de conversão</div></div>'+
+      '<div>'+(u.ativo ? '<span class="chip ok">● Conectado</span>' : '<span class="chip neutro">Desconectado</span>')+'</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">Conexão</div>'+
+      '<div class="row-2">'+
+        '<div class="field"><label class="field-label">Token da API · Utmify</label><input id="u-token" class="input" value="'+esc(u.apiToken||'')+'" placeholder="utm_••••" style="font-family:monospace;"></div>'+
+        '<div class="field"><label class="field-label">Status</label><div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-2);border-radius:8px;"><label class="toggle"><input type="checkbox"'+(u.ativo?' checked':'')+' id="u-ativo"><span class="toggle-slider"></span></label><span>'+(u.ativo?'Ativo':'Inativo')+'</span></div></div>'+
+      '</div>'+
+      '<button class="btn btn-primary" onclick="salvarUtmify()">Salvar conexão</button>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">Mapeamento de eventos</div>'+
+      '<div class="card-sub">Cada evento no Axcend dispara um evento no Utmify quando ativo.</div>'+
+      '<table><thead><tr><th>Evento Axcend</th><th>→</th><th>Evento Utmify</th><th>Tipo</th><th>Ativo</th></tr></thead><tbody>'+
+      u.eventos.map(function(ev, i){
+        var tipos = {lead:'<span class="chip info">Lead</span>', oportunidade:'<span class="chip warn">Oportun.</span>', conversao:'<span class="chip ok">Conversão</span>', receita:'<span class="chip ok">Receita</span>', activity:'<span class="chip neutro">Activity</span>'};
+        return '<tr>'+
+          '<td>'+esc(ev.axcend)+'</td>'+
+          '<td>→</td>'+
+          '<td><code style="font-family:monospace;color:var(--accent);">'+esc(ev.utmify)+'</code></td>'+
+          '<td>'+(tipos[ev.tipo]||esc(ev.tipo))+'</td>'+
+          '<td><label class="toggle"><input type="checkbox"'+(ev.ativo?' checked':'')+' onchange="toggleEventoUtmify('+i+', this.checked)"><span class="toggle-slider"></span></label></td>'+
+        '</tr>';
+      }).join('') +
+      '</tbody></table>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-title">URL de tracking de exemplo</div>'+
+      '<div class="card-sub">Use essa estrutura ao criar campanhas pra que candidaturas e conversões sejam atribuídas no Utmify.</div>'+
+      '<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:var(--text);word-break:break-all;">'+
+        'https://[CLIENTE].axcend.com/vaga/[slug]<br>'+
+        '<span style="color:var(--accent);">?utm_source=facebook</span><br>'+
+        '<span style="color:var(--accent);">&utm_medium=cpc</span><br>'+
+        '<span style="color:var(--accent);">&utm_campaign=copy_q2</span><br>'+
+        '<span style="color:var(--accent);">&utm_content=video_v3</span>'+
+      '</div>'+
+    '</div>';
+}
+function salvarUtmify(){
+  var cfg = getConfig();
+  cfg.utmify.apiToken = document.getElementById('u-token').value.trim();
+  cfg.utmify.ativo = document.getElementById('u-ativo').checked;
+  saveConfig(cfg);
+  alert('Configuração Utmify salva.');
+  renderScreen();
+}
+function toggleEventoUtmify(i, v){
+  var cfg = getConfig();
+  cfg.utmify.eventos[i].ativo = v;
+  saveConfig(cfg);
+}
+
+// ============================================================
+// CSV EXPORT (clientes)
+// ============================================================
+function csvEsc(v){
+  var s = String(v==null?'':v);
+  if(/[";\n\r]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function exportarCSV(){
+  var ts = getTenants();
+  if(!ts.length){ alert('Nenhum cliente.'); return; }
+  var hdr = ['Nome','Slug','Domínio','Plano','Status','MRR','Moeda','Usuários','Owner','Email','Cadastro','Renovação'];
+  var linhas = [hdr.join(';')];
+  ts.forEach(function(t){
+    linhas.push([t.nome, t.slug, t.dominio||'', t.plano, t.status, t.mrr, t.moeda||'BRL', t.usuarios||0, t.ownerNome||'', t.ownerEmail||'', t.cadastroEm||'', t.renovaEm||''].map(csvEsc).join(';'));
+  });
+  var blob = new Blob(['﻿'+linhas.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'clientes-saas-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+document.addEventListener('DOMContentLoaded', checkAuth);
+
+</script>
+
+</body>
+</html>

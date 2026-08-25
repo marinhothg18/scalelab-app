@@ -8868,11 +8868,38 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
       return _jQuando(b) - _jQuando(a);
     }).slice(0, 40);
 
+    // A venda entra pelo tmx_vid que o pixel colou no link do checkout. E o que
+    // transforma "visitante c0" em "Fulano, R$ 297, pagou 21min depois de entrar".
+    // Enquanto o webhook de vendas estiver desligado isso vem vazio — e a tela
+    // diz isso, em vez de fingir que a pessoa nao comprou.
+    const porVid = {};
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (!v || !v.vid) return;
+      const atual = porVid[v.vid];
+      // mais de uma compra do mesmo visitante: soma o valor, guarda a primeira
+      if (atual) {
+        atual.valor += Number(v.valor) || 0;
+        atual.compras += 1;
+        if (!atual.cliente && v.cliente) atual.cliente = v.cliente;
+        if (!atual.email && v.email)     atual.email   = v.email;
+      } else {
+        porVid[v.vid] = {
+          cliente: v.cliente || '', email: v.email || '', produto: v.produto || '',
+          valor: Number(v.valor) || 0, compras: 1, status: v.status || '',
+          em: v.recebidoEm || ''
+        };
+      }
+    });
+
     res.json({ ok: true, funil, filtro, contagem, de, ate, pg,
       paginas: Object.values(paginas).map(x => ({ pg: x.pg, pessoas: x.pessoas.size }))
                      .sort((a, b) => b.pessoas - a.pessoas),
       etapas: ((f && f.etapas) || []).map(e => ({ id: e.id, nome: e.nome, tipo: e.tipo })),
-      jornadas: lista.map(j => Object.assign({}, j, { segmentos: S(j) })) });
+      jornadas: lista.map(j => {
+        const o = Object.assign({}, j, { segmentos: S(j) });
+        if (porVid[j.id]) o.venda = porVid[j.id];
+        return o;
+      }) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
