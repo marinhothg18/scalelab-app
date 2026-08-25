@@ -29295,6 +29295,118 @@ function fnVal(id){ return fnValFonte(id).valor; }
 // Quem entrou no funil. Com teste A/B (uma origem abrindo em duas VSLs) a
 // entrada e a SOMA das primeiras paginas, nao so a primeira da lista — senao
 // metade do trafego sumia da conta e todos os percentuais saiam inflados.
+// Quantos cliques as origens do mapa somam. E o teto de quem pode ter entrado
+// pelo anuncio — se a primeira etapa passa disso, tem coisa a explicar.
+// Abre a divisao da etapa: cada pagina que reportou sob ela e quantas pessoas.
+// Antes isso vivia so num title= — quando o numero do bloco estourava nao dava
+// pra ver de onde vinha, e a tela virava um numero sem defesa.
+function fnVerPaginas(id){
+  var f = fnAtual(), n = f ? fnAcha(f, id) : null;
+  var e = fnStats[id] || {};
+  var pgs = (e.paginas||[]).slice().sort(function(a,b){ return (b.pessoas||0)-(a.pessoas||0); });
+  var soma = pgs.reduce(function(a,p){ return a+(p.pessoas||0); }, 0);
+  var total = fnVal(id);
+  var doms = {};
+  pgs.forEach(function(p){ var d = fnDominio(p.pg); doms[d] = (doms[d]||0) + (p.pessoas||0); });
+  var nDom = Object.keys(doms).length;
+  var cliques = fnCliquesTotais(f);
+
+  var av = '';
+  if(nDom > 1){
+    av = '<div style="background:var(--orange,#FF5926)18;border-left:3px solid var(--orange,#FF5926);'+
+         'padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12.5px;line-height:1.5">'+
+         '<b>Páginas de '+nDom+' domínios na mesma etapa.</b><br>'+
+         'A pessoa é identificada por um cookie, e cookie é por domínio. Quem passa por mais de um '+
+         'domínio recebe um id em cada e é contada uma vez em cada. Se estes domínios são a mesma '+
+         'página, o número do bloco está somando gente repetida.</div>';
+  } else if(cliques && total > cliques*1.05){
+    av = '<div style="background:var(--orange,#FF5926)18;border-left:3px solid var(--orange,#FF5926);'+
+         'padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12.5px;line-height:1.5">'+
+         '<b>'+fnNum(total)+' pessoas aqui contra '+fnNum(cliques)+' cliques na origem.</b><br>'+
+         'Mesmo domínio, então não é o cookie. Sobra tráfego que não veio do anúncio '+
+         '(orgânico, direto, link na bio) ou a mesma pessoa voltando em dias diferentes.</div>';
+  }
+
+  var linhas = pgs.length
+    ? pgs.map(function(p){
+        var pc = soma ? ((p.pessoas||0)/soma*100) : 0;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;'+
+          'border-bottom:1px solid var(--linha,#ffffff14)">'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;'+
+            'white-space:nowrap" title="'+fnEsc(p.pg)+'">'+fnEsc(fnEncurtar(p.pg))+'</div>'+
+            '<div style="font-size:10.5px;color:var(--text2)">'+fnEsc(fnDominio(p.pg))+'</div>'+
+          '</div>'+
+          '<div style="width:90px;height:6px;background:#ffffff14;border-radius:3px;overflow:hidden">'+
+            '<div style="height:100%;width:'+pc.toFixed(1)+'%;background:var(--blue,#1B9CFA)"></div></div>'+
+          '<div style="width:78px;text-align:right;font-size:13px;font-weight:700">'+fnNum(p.pessoas||0)+
+            '<span style="font-size:10px;color:var(--text2);font-weight:600"> · '+pc.toFixed(0)+'%</span></div>'+
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--text2);font-size:12.5px;padding:8px 0">'+
+      'Nenhuma página reportou nesta etapa no período — o número do bloco veio de outra fonte.</div>';
+
+  // A soma das paginas pode nao fechar com o bloco: o bloco desduplica a pessoa
+  // por etapa, a lista conta por pagina. Quem visita duas paginas aparece nas
+  // duas. Dizer isso e o que impede a tela de parecer errada.
+  var nota = (soma && total && soma !== total)
+    ? '<div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.5">'+
+      'A lista soma '+fnNum(soma)+' e o bloco mostra '+fnNum(total)+'. '+
+      (soma > total
+        ? 'O bloco conta cada pessoa uma vez na etapa; a lista conta por página, então quem viu mais de uma aparece em cada.'
+        : 'Parte de quem passou pela etapa não foi atribuída a uma página específica.')+'</div>'
+    : '';
+
+  var ov = document.createElement('div');
+  ov.className = 'fn-ov-paginas';
+  ov.style.cssText = 'position:fixed;inset:0;background:#000000a8;z-index:9999;display:flex;'+
+                     'align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = '<div style="background:var(--card,#15161c);border:1px solid var(--linha,#ffffff1a);'+
+    'border-radius:12px;max-width:620px;width:100%;max-height:80vh;overflow:auto;padding:20px 22px" '+
+    'onclick="event.stopPropagation()">'+
+    '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:4px">'+
+      '<div style="flex:1"><div style="font-size:15px;font-weight:800">'+
+        fnEsc(n ? n.nome : 'Etapa')+'</div>'+
+        '<div style="font-size:11.5px;color:var(--text2);margin-top:2px">'+
+        pgs.length+' página'+(pgs.length===1?'':'s')+' reportando · bloco mostra '+fnNum(total)+
+        (cliques ? ' · origem tem '+fnNum(cliques)+' cliques' : '')+'</div></div>'+
+      '<button onclick="this.closest(\'.fn-ov-paginas\').remove()" style="background:none;border:none;'+
+      'color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:0 2px">×</button>'+
+    '</div><div style="margin-top:14px">'+av+linhas+nota+'</div></div>';
+  ov.onclick = function(){ ov.remove(); };
+  document.body.appendChild(ov);
+}
+function fnCliquesTotais(f){
+  if(!f || !fnCliques) return 0;
+  return (f.etapas||[]).filter(function(e){ return e.tipo==='fonte'; })
+                       .reduce(function(a,e){ return a + fnCliquesDe(e); }, 0);
+}
+function fnEhEntrada(f, id){
+  if(!f) return false;
+  var ent = false;
+  (f.ligacoes||[]).forEach(function(l){
+    var de = fnAcha(f, l[0]);
+    if(de && de.tipo==='fonte' && l[1]===id) ent = true;
+  });
+  return ent;
+}
+function fnDominio(u){
+  try{ return new URL(/^https?:/i.test(u) ? u : 'https://'+u).hostname.replace(/^www\./,''); }
+  catch(e){ return String(u||'').split('/')[0] || '—'; }
+}
+// O cookie que identifica o visitante (tmx_id) e por dominio. Se a etapa junta
+// paginas de dominios diferentes, a MESMA pessoa entra com um id em cada um e o
+// bloco a conta duas vezes. E a primeira coisa a checar quando o numero estoura.
+function fnPorQueExcede(pgs){
+  var doms = {};
+  (pgs||[]).forEach(function(p){ doms[fnDominio(p.pg)] = 1; });
+  var n = Object.keys(doms).length;
+  if(n > 1) return 'Esta etapa junta páginas de ' + n + ' domínios diferentes (' +
+    Object.keys(doms).join(', ') + '). O cookie que identifica a pessoa é por domínio, ' +
+    'então quem passa por mais de um é contado uma vez em cada. Clique no selo de páginas pra ver a divisão.';
+  return 'Pode ser tráfego que não veio do anúncio (orgânico, direto, retorno) ou a mesma ' +
+         'pessoa voltando em dias diferentes. Clique no selo de páginas pra ver a divisão.';
+}
 function fnBase(f){
   if(!f || !f.etapas || !f.etapas.length) return 0;
   var portas = {};
@@ -29446,6 +29558,12 @@ function fnNos(){
     // Mais de uma pagina sob a mesma etapa: o numero do bloco e a soma delas,
     // mas a URL mostrada e so a cadastrada. Sem este selo o bloco mente.
     var pgs = ((fnStats[n.id]||{}).paginas)||[];
+    // Etapa de entrada com mais gente do que cliques na origem e impossivel de
+    // ler sem explicacao: ou a mesma pessoa esta sendo contada em dominios
+    // diferentes (o cookie tmx_id e por dominio), ou entrou trafego que nao
+    // veio do anuncio. O bloco avisa e o porque fica no titulo.
+    var excedeFonte = !src && fnEhEntrada(f, n.id) && fnCliquesTotais(f) > 0 &&
+                      v > fnCliquesTotais(f) * 1.05;
     var compraram = (!src && n.tipo==='checkout') ? fnCompraram(f, n) : null;
     var taxa = (compraram !== null && v > 0) ? (compraram/v)*100 : null;
 
@@ -29459,9 +29577,12 @@ function fnNos(){
         : (vt ? '<div class="fn-var" title="Variante do teste '+fnEsc(vt.teste)+
                  ' — este bloco vê só a parte do tráfego que caiu nela">⇄ '+fnEsc(vt.nome)+'</div>' : '')+
           (link ? '<div class="lk" title="'+fnEsc(n.url)+'">'+fnEsc(link)+'</div>' : '')+
-          (pgs.length > 1 ? '<div class="fn-somadas" title="'+fnEsc(pgs.map(function(p){
-              return fnEncurtar(p.pg)+': '+fnNum(p.pessoas); }).join('  ·  '))+
-              '">Σ '+pgs.length+' páginas somadas</div>' : '')+
+          (pgs.length > 1 ? '<div class="fn-somadas" onclick="event.stopPropagation();fnVerPaginas(\''+n.id+'\')" '+
+              'title="Clique pra ver cada página" style="cursor:pointer;text-decoration:underline dotted">'+
+              'Σ '+pgs.length+' páginas somadas ›</div>' : '')+
+          (excedeFonte ? '<div class="fn-excede" title="'+fnEsc(fnPorQueExcede(pgs))+'" '+
+              'style="font-size:9.5px;color:var(--orange,#FF5926);margin-top:3px;font-weight:700;cursor:help">'+
+              '⚠ mais gente aqui do que cliques na origem</div>' : '')+
           '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
           '<div class="sb">'+(baseReal ? ((v/base)*100).toFixed(1)+'% de quem entrou'
                                        : 'sem base pra comparar')+

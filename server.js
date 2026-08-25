@@ -8314,7 +8314,7 @@ function _idsDaEtapa(db, etapaId) {
 }
 
 let _fBuffer = {};          // "funil|etapa|data" -> { entradas, unicos, segundos, saidas, eventos:{} }
-let _fVistos = new Map();   // "funil|etapa|data" -> Set(idVisitante), zerado na virada do dia
+let _fVistos = new Map();   // "funil|etapa|data" -> Set(idVisitante); so os dias passados sao soltos
 let _fSujo = false;
 const _fChave = (f, e, d) => f + '|' + (e || '-') + '|' + d;
 const _hojeBR = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
@@ -8371,7 +8371,18 @@ function _fGravar() {
   }
 }
 setInterval(_fGravar, 30 * 1000);
-setInterval(() => { _fVistos = new Map(); }, 6 * 3600000);   // solta a memoria dos ids
+// Zerar o mapa inteiro de 6 em 6h contava a MESMA pessoa de novo a cada limpeza:
+// 'unicos' inflava ate 4x por dia (mais uma vez por deploy). O comentario acima
+// sempre disse 'virada do dia' — o codigo e que fazia outra coisa.
+// Agora solta so os dias que ja passaram; o de hoje fica de pe.
+setInterval(() => {
+  const hoje = _hojeBR();
+  let soltos = 0;
+  for (const k of _fVistos.keys()) {
+    if (!k.endsWith('|' + hoje)) { _fVistos.delete(k); soltos++; }
+  }
+  if (soltos) console.log('[FUNIL] ' + soltos + ' dia(s) antigos soltos da memoria.');
+}, 30 * 60 * 1000);
 
 // Feed ao vivo (so memoria — nao vale a pena gravar)
 const _fFeed = [];
@@ -9580,10 +9591,49 @@ const PIXEL_JS = `(function(w,d){
   var API   = eu.src.replace(/\\/px\\.js.*$/, '') + '/api/funil/evento';
   if(!FUNIL) return;
 
+  // ── O id tem que valer no dominio inteiro, nao so no host ────────────────
+  // Cookie gravado sem 'domain=' e host-only: quem entra em apostilai.ai e vai
+  // pra go.apostilai.ai recebe DOIS ids e conta como duas pessoas. Com o funil
+  // atravessando subdominio (landing num, VSL noutro) o numero da etapa inflava
+  // sozinho — foi assim que uma etapa mostrou 3.380 pessoas vindas de 2.056
+  // cliques. Aqui a gente sobe ate o dominio mais largo que o navegador aceita.
+  //
+  // O teste e empirico de proposito: navegador recusa cookie em sufixo publico,
+  // entao 'com.br' falha e '.apostilai.com.br' passa, sem precisar carregar uma
+  // lista de sufixos aqui dentro.
+  function _raiz(){
+    try{
+      var h = location.hostname;
+      if(/^[\\d.]+$/.test(h) || h.indexOf('.') < 0) return '';   // IP ou localhost
+      var partes = h.split('.');
+      for(var i = partes.length - 2; i >= 0; i--){
+        var cand = '.' + partes.slice(i).join('.');
+        var sonda = 'tmxp' + Math.random().toString(36).slice(2, 7);
+        d.cookie = sonda + '=1;path=/;domain=' + cand + ';SameSite=Lax';
+        if(d.cookie.indexOf(sonda + '=1') >= 0){
+          d.cookie = sonda + '=;path=/;domain=' + cand + ';max-age=0';
+          return cand;
+        }
+      }
+    }catch(e){}
+    return '';
+  }
+  function _gravaId(v, dom){
+    var base = 'tmx_id=' + v + ';path=/;max-age=7776000;SameSite=Lax' +
+               (location.protocol === 'https:' ? ';Secure' : '');
+    try{ d.cookie = base + (dom ? ';domain=' + dom : ''); }catch(e){}
+  }
+  var RAIZ = _raiz();
   var id = (d.cookie.match(/tmx_id=([^;]+)/)||[])[1];
   if(!id){
     id = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
-    d.cookie = 'tmx_id=' + id + ';path=/;max-age=7776000;SameSite=Lax';
+    _gravaId(id, RAIZ);
+  } else if(RAIZ){
+    // Ja existia, mas talvez preso a este host. Regrava largo e apaga a copia
+    // host-only — duas linhas com o mesmo nome deixariam a leitura instavel.
+    _gravaId(id, RAIZ);
+    try{ d.cookie = 'tmx_id=;path=/;max-age=0'; }catch(e){}
+    _gravaId(id, RAIZ);
   }
 
   var q = new URLSearchParams(location.search), utm = {};
