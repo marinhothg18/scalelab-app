@@ -9553,8 +9553,13 @@ let _versaoApp = '';
 function versaoApp() {
   if (_versaoApp) return _versaoApp;
   try {
-    const st = fs.statSync(path.join(__dirname, 'public', 'ScaleLab.html'));
-    _versaoApp = String(st.mtimeMs | 0);
+    // Os DOIS arquivos, nao so o HTML. Correcao que mexe so no servidor nao
+    // movia o numero, e a tela dizia 'voce esta atualizado' com codigo velho —
+    // exatamente o que o carimbo existe pra evitar.
+    const mt = f => { try { return fs.statSync(f).mtimeMs; } catch (e) { return 0; } };
+    const maior = Math.max(mt(path.join(__dirname, 'public', 'ScaleLab.html')),
+                           mt(path.join(__dirname, 'server.js')));
+    _versaoApp = maior ? String(maior | 0) : TMX_VERSAO;
   } catch (e) { _versaoApp = TMX_VERSAO; }
   return _versaoApp;
 }
