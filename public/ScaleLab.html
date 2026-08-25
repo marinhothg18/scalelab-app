@@ -1556,11 +1556,29 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
 .fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
 .fn-pessoa .de{font-size:11.5px;color:var(--text2);margin-left:auto}
-.jn-fila{margin-bottom:12px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+/* Chips do que esta filtrando agora */
+.jn-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 16px}
+.jn-chips-r{font-size:10px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--text2);margin-right:2px}
+.jn-chip{display:inline-flex;align-items:center;gap:7px;background:rgba(27,156,250,.12);color:var(--accent);border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700}
+.jn-chip.fixo{background:var(--bg3);color:var(--text2)}
+.jn-chip b{cursor:pointer;font-weight:800;opacity:.6;font-size:13px;line-height:1}
+.jn-chip b:hover{opacity:1}
+/* Seletores grandes, com o rotulo por cima — nao espremidos numa linha */
+.jn-sel{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px}
+.jn-sel-c{position:relative}
+.jn-sel-c>label{display:block;font-size:10px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--text2);margin-bottom:7px}
+.jn-sel-c>select{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px 14px;font-size:13.5px;font-weight:600;outline:none;cursor:pointer;appearance:none}
+.jn-sel-c>select:hover{border-color:var(--accent)}
+.jn-sel-n{position:absolute;right:34px;bottom:13px;font-size:11.5px;color:var(--text2);pointer-events:none}
+/* Cartoes de jornada em duas colunas quando cabe */
+.jn-cartoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start}
+.jn-fila{margin-bottom:14px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.jn-fila-n{font-size:11.5px;color:var(--text2)}
 .jn-marco{margin-left:auto;background:var(--bg3);border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer}
 .jn-marco:hover{border-color:var(--accent);color:var(--accent);border-style:solid}
 /* Escada do funil: a queda entre um degrau e o proximo é a informação */
-.jn-escada{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:17px 19px;margin-bottom:14px}
+.jn-escada{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+.jn-fila-r{font-size:13.5px;font-weight:700}
 .jn-esc{display:grid;grid-template-columns:190px minmax(0,1fr) 78px;align-items:center;gap:14px;padding:7px 9px;margin:0 -9px;border-radius:9px;cursor:pointer}
 .jn-esc:hover{background:var(--bg3)}
 .jn-esc.on{background:var(--bg3);box-shadow:inset 0 0 0 1px var(--accent)}
@@ -3679,17 +3697,19 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <div class="fn-painel" id="fn-p-jornada">
           <div class="fn-nota">O caminho de cada visitante, do anúncio ao fim. O valor não é acompanhar uma pessoa —
             é poder perguntar <b>“me mostra 10 que chegaram no checkout e não compraram”</b>. Guarda 7 dias.</div>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px">
-            <div class="fn-campo" style="min-width:250px;flex:1;max-width:340px"><label>Teste A/B do funil</label>
+          <div class="jn-chips" id="jn-chips"></div>
+          <div class="jn-sel">
+            <div class="jn-sel-c"><label>Teste A/B</label>
               <select id="jn-teste" onchange="jnTrocarTeste()"></select></div>
-            <div class="fn-campo" style="min-width:230px;flex:1;max-width:340px"><label>Página</label>
-              <select id="jn-etapa" onchange="jnCarregar()"></select></div>
+            <div class="jn-sel-c"><label>Página</label>
+              <select id="jn-etapa" onchange="jnCarregar()"></select>
+              <span class="jn-sel-n" id="jn-sel-pessoas"></span></div>
           </div>
           <div id="jn-funil-tempo"></div>
           <div id="jn-diag"></div>
           <div id="jn-piramide"></div>
-          <div class="fn-filtros" id="jn-filtros"></div>
-          <div id="jn-lista"></div>
+          <div id="jn-filtros"></div>
+          <div id="jn-lista" class="jn-cartoes"></div>
         </div>
 
         <div class="fn-painel" id="fn-p-atencao">
@@ -30144,6 +30164,41 @@ function jnCarregar(){
     })
     .catch(function(e){ if(el) el.innerHTML = '<div class="fn-nota">Não consegui buscar: '+fnEsc(e.message)+'</div>'; });
 }
+// O que esta cortando os numeros agora, e como tirar cada corte. Sem isso a
+// tela mostra 102 pessoas e voce nao sabe se e o periodo, o teste ou a pagina.
+function jnChips(d){
+  var cx = document.getElementById('jn-chips'); if(!cx) return;
+  var itens = [];
+  var per = document.getElementById('fn-periodo');
+  if(per && per.selectedIndex >= 0)
+    itens.push({ r:'Período: '+per.options[per.selectedIndex].text, fixo:true });
+  var t = document.getElementById('jn-teste');
+  if(t && t.value) itens.push({ r:'Teste: '+t.options[t.selectedIndex].text, tira:'teste' });
+  var pg = document.getElementById('jn-etapa');
+  if(pg && pg.value && pg.selectedIndex >= 0)
+    itens.push({ r:'Página: '+(pg.options[pg.selectedIndex].text||'').split(' · ')[0], tira:'pagina' });
+  if(jnFiltro && jnFiltro !== 'todas')
+    itens.push({ r:JN_ROTULO[jnFiltro]||jnFiltro, tira:'degrau' });
+
+  cx.innerHTML = '<span class="jn-chips-r">Filtros ativos</span>' +
+    itens.map(function(i){
+      return '<span class="jn-chip'+(i.fixo?' fixo':'')+'">'+fnEsc(i.r)+
+        (i.tira?('<b onclick="jnTirarFiltro(\''+i.tira+'\')" title="Tirar este filtro">×</b>'):'')+'</span>';
+    }).join('');
+
+  // quantas pessoas a pagina escolhida tem, ao lado do seletor
+  var n = document.getElementById('jn-sel-pessoas');
+  if(n) n.textContent = d && d.contagem ? (fnNum(d.contagem.todas||0)+' pessoas') : '';
+}
+
+function jnTirarFiltro(qual){
+  if(qual === 'degrau'){ jnFiltro = 'todas'; jnCarregar(); return; }
+  var id = qual === 'teste' ? 'jn-teste' : 'jn-etapa';
+  var sel = document.getElementById(id);
+  if(sel){ sel.value = ''; sel.dataset.escolha = ''; }
+  if(qual === 'teste'){ jnTrocarTeste(); } else { jnCarregar(); }
+}
+
 function jnTrocar(f){ jnFiltro = f; jnCarregar(); }
 // Trocar de teste muda quais links existem — a lista tem que ser refeita antes
 // da busca, senão a página escolhida continua a do teste anterior.
@@ -30196,17 +30251,24 @@ function jnPintar(){
           (perda !== null && perda > 0 ? '<span class="q">−'+perda+'%</span>' : '')+'</div>'+
         '<div class="n"><b>'+fnNum(n)+'</b><span>'+(base?Math.round(n/base*100):0)+'%</span></div></div>';
     }).join('');
-    return '<div class="jn-escada">'+linhas+'</div>';
+    return '<div class="jn-degraus">'+linhas+'</div>';
   }
 
   // Se o filtro em uso não é mais um degrau do funil, volta pra "abriu a página":
   // senão a tela ficaria presa num recorte que não tem mais botão pra sair.
   if(degraus.indexOf(jnFiltro) < 0){ jnFiltro = 'todas'; jnCarregar(); return; }
+
+  // Quantos ja fecharam a pagina. O resto pode estar com a VSL aberta agora.
+  var sairam = (d.contagem && d.contagem.sairam) || 0;
   fl.innerHTML =
-    '<div class="jn-fila"><span class="jn-fila-r">Quanto tempo aguentaram</span>'+
-      '<button class="jn-marco" onclick="jnMarcarOferta()">'+
-        (seg ? ('🎯 oferta aos '+jnDuracao(seg)) : '🎯 marcar o minuto da oferta')+'</button></div>'+
-    escada();
+    '<div class="jn-escada">'+
+      '<div class="jn-fila"><span class="jn-fila-r">Quanto tempo aguentaram</span>'+
+        '<span class="jn-fila-n">'+fnNum(base)+' entraram · '+fnNum(sairam)+' já saíram</span>'+
+        '<button class="jn-marco" onclick="jnMarcarOferta()">'+
+          (seg ? ('🎯 oferta aos '+jnDuracao(seg)) : '🎯 marcar o minuto da oferta')+'</button></div>'+
+      escada()+
+    '</div>';
+  jnChips(d);
 
   var nomeEtapa = {}, tipoEtapa = {};
   // o mapa local manda: se a etapa foi renomeada aqui, o nome novo é o que vale

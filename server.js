@@ -8836,6 +8836,8 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     const contagem = {
       todas: lista.length,
       'abriu':      lista.length,
+      // quantos ja fecharam a pagina — o resto ainda pode estar la agora
+      sairam:       lista.filter(j => j.eventos.some(e => e.tipo === 'saiu')).length,
       oferta:       oferta ? lista.filter(j => passouDe(j, oferta)).length : 0,
       'tempo-1m':   lista.filter(j => passouDe(j, 60)).length,
       'tempo-5m':   lista.filter(j => passouDe(j, 300)).length,
