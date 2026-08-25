@@ -2544,6 +2544,46 @@ const KEY_VENDAS    = 'sl_vendas';
 const KEY_METRICAS  = 'sl_metricas_ads';   // métricas importadas (Utmify, Meta…)               // vendas normalizadas
 const KEY_VENDAS_RAW= 'sl_vendas_raw';           // últimos payloads crus (debug/mapeamento)
 const KEY_PLANOS    = 'sl_planos';               // preço de cada plano, pra classificar venda por valor
+const KEY_CUSTOS    = 'sl_custos';               // imposto, taxa do gateway e custo — pra margem real
+
+// ── Margem de contribuição ──────────────────────────────────────────────────
+// ROAS nao desconta nada: nem imposto, nem taxa do gateway, nem o custo de
+// entregar o produto. Uma campanha com ROAS 1,6 pode estar empatando ou dando
+// prejuizo depois que tudo isso sai. Este e o numero que sobra de verdade.
+const CUSTOS_PADRAO = {
+  imposto: 0,        // % sobre o faturamento (Simples, presumido…)
+  gateway: 0,        // % que a plataforma de checkout retem
+  custoVenda: 0,     // R$ fixo por venda entregue (suporte, plataforma, comissao)
+  impostoAds: 0      // % sobre o investimento (IOF do cartao internacional)
+};
+function _custosCfg(db) {
+  const c = (db || readDB()).store[KEY_CUSTOS];
+  const out = Object.assign({}, CUSTOS_PADRAO);
+  if (c && typeof c === 'object') {
+    for (const k of Object.keys(CUSTOS_PADRAO)) {
+      const v = Number(c[k]);
+      if (Number.isFinite(v) && v >= 0) out[k] = v;
+    }
+  }
+  return out;
+}
+// Devolve as parcelas separadas, nao so o total: ver que o imposto sozinho comeu
+// R$ 4 mil e diferente de ver "margem menor que o ROAS".
+function _margem(receita, investimento, vendas, cfg) {
+  const imposto = receita * (cfg.imposto / 100);
+  const gateway = receita * (cfg.gateway / 100);
+  const produto = vendas * cfg.custoVenda;
+  const iof     = investimento * (cfg.impostoAds / 100);
+  const liquido = receita - imposto - gateway - produto;
+  const margem  = liquido - investimento - iof;
+  return {
+    receita, investimento, imposto, gateway, produto, iof, liquido, margem,
+    pct: receita > 0 ? (margem / receita) * 100 : 0,
+    // quanto voce ganha por real investido, ja limpo
+    retorno: investimento > 0 ? liquido / (investimento + iof) : 0,
+    configurado: cfg.imposto > 0 || cfg.gateway > 0 || cfg.custoVenda > 0 || cfg.impostoAds > 0
+  };
+}
 const VENDAS_RAW_MAX = 50;
 const VENDAS_RETENCAO_DIAS = 365;
 
@@ -3512,6 +3552,8 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
         ticket: tot.pedidos.aprovadas > 0 ? tot.receita / tot.pedidos.aprovadas : 0,
         cpa: tot.pedidos.aprovadas > 0 ? tot.investimento / tot.pedidos.aprovadas : 0
       }),
+      margem: _margem(tot.receita, tot.investimento, tot.pedidos.aprovadas, _custosCfg(dbPl)),
+      custos: _custosCfg(dbPl),
       porHora,
       planos,
       // a tela precisa saber DE ONDE veio a classificacao pra nao mentir
@@ -8575,6 +8617,33 @@ app.delete('/api/funil/adotar/:id', authUsuario, (req, res) => {
       { origemFunil: alvo.origemFunil, origemEtapa: alvo.origemEtapa }, req.user);
     writeDB(db);
     res.json({ ok: true, adocoes: db.store[KEY_ADOCOES].filter(a => a.funil === alvo.funil) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Imposto, taxa e custo — o que separa faturamento de dinheiro que fica.
+app.get('/api/custos', authUsuario, (req, res) => {
+  res.json({ ok: true, custos: _custosCfg(readDB()) });
+});
+
+app.post('/api/custos', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {};
+    const custos = {};
+    for (const k of Object.keys(CUSTOS_PADRAO)) {
+      let v = Number(b[k]);
+      if (!Number.isFinite(v) || v < 0) v = 0;
+      // percentual acima de 90 quase sempre e engano de digitacao; o custo por
+      // venda em reais nao tem teto
+      if (k !== 'custoVenda' && v > 90) v = 90;
+      custos[k] = v;
+    }
+    const db = readDB();
+    db.store[KEY_CUSTOS] = custos;
+    db.timestamps[KEY_CUSTOS] = now();
+    audit(db, 'custos_margem', {},
+      Object.keys(custos).map(k => k + '=' + custos[k]).join(' '), req.user);
+    writeDB(db);
+    res.json({ ok: true, custos });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

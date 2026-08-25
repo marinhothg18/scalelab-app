@@ -3815,6 +3815,16 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           </div>
 
           <!-- POR CONTA DE ANUNCIO (fonte Utmify) -->
+          <!-- MARGEM DE CONTRIBUICAO — o que sobra depois de imposto, taxa e custo -->
+          <div id="ads-margem-box" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+              <div style="font-size:13px;font-weight:700;">💰 Margem de contribuição</div>
+              <button onclick="mgAbrirForm()" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:600;cursor:pointer;">⚙ Imposto e taxas</button>
+            </div>
+            <div id="ads-margem"></div>
+            <div id="ads-margem-form" style="display:none;margin-top:14px;"></div>
+          </div>
+
           <div id="ads-contaads-box" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
             <div style="font-size:13px;font-weight:700;margin-bottom:14px;">🏦 Resultado por Conta de Anúncio</div>
             <div style="overflow-x:auto;">
@@ -30589,6 +30599,7 @@ async function _painelResumoUtmify(){
       roas: k.roas, vendas: p.aprovadas, cliques: k.cliques,
       cpa: (p.aprovadas>0 ? (k.investimento/p.aprovadas) : 0)
     });
+    _pintarMargem(d.margem, d.custos);
     // Diferença entre o total da conta e o que os anúncios conseguiram atribuir.
     // Não é erro: é venda que entrou sem passar por anúncio rastreado.
     const cx = document.getElementById('ads-nao-atribuido');
@@ -31579,6 +31590,152 @@ function _kpisUtmify(k){
   set('kpi-conv',    vendas.toLocaleString('pt-BR'));
   set('kpi-cpa',     (Number(k.cpa)||0)>0?fmtAds(k.cpa):'—');
   set('kpi-clicks',  (Number(k.cliques)||0).toLocaleString('pt-BR'));
+}
+
+// ── Margem de contribuição ──────────────────────────────────────────────────
+// ROAS mostra quanto voltou; margem mostra quanto FICOU. A diferenca entre os
+// dois e imposto + taxa do gateway + custo por venda, e costuma ser grande.
+var _mgCfg = null;
+
+function _pintarMargem(m, cfg){
+  const box = document.getElementById('ads-margem-box');
+  const alvo = document.getElementById('ads-margem');
+  if(!box || !alvo || !m) return;
+  box.style.display = '';
+  _mgCfg = cfg || _mgCfg;
+
+  if(!m.configurado){
+    alvo.innerHTML =
+      '<div style="background:rgba(249,115,22,.08);border-left:3px solid #f97316;border-radius:8px;'+
+      'padding:12px 14px;font-size:12.5px;color:var(--text2);line-height:1.65">'+
+      '<b style="color:var(--text)">Falta dizer quanto sai do faturamento.</b> Hoje a tela mostra '+
+      'ROAS '+(m.investimento>0?(m.receita/m.investimento).toFixed(2).replace('.',','):'—')+'x, mas esse número não desconta '+
+      'imposto nem a taxa da plataforma de checkout. Preencha em <b>⚙ Imposto e taxas</b> '+
+      'e o valor que sobra de verdade aparece aqui.</div>';
+    return;
+  }
+
+  const cor = m.margem >= 0 ? 'var(--green)' : 'var(--red)';
+  const linha = function(rot, val, nota, forte){
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;'+
+      'padding:7px 0;'+(forte?'border-top:1px solid var(--border);margin-top:4px;':'')+'">'+
+      '<span style="font-size:12.5px;color:'+(forte?'var(--text)':'var(--text2)')+';'+(forte?'font-weight:700':'')+'">'+rot+
+      (nota?'<span style="color:var(--text2);font-weight:400;font-size:11px"> '+nota+'</span>':'')+'</span>'+
+      '<span style="font-size:'+(forte?'14px':'12.5px')+';font-weight:'+(forte?'800':'600')+';white-space:nowrap;'+
+      'font-variant-numeric:tabular-nums;color:'+(forte?cor:'var(--text)')+'">'+val+'</span></div>';
+  };
+
+  // A cascata: cada linha e uma mordida no faturamento, na ordem em que acontece.
+  var custos = [
+    ['Imposto',            m.imposto, cfg && cfg.imposto ? '('+_mgN(cfg.imposto)+'%)' : ''],
+    ['Taxa do checkout',   m.gateway, cfg && cfg.gateway ? '('+_mgN(cfg.gateway)+'%)' : ''],
+    ['Custo por venda',    m.produto, cfg && cfg.custoVenda ? '('+fmtAds(cfg.custoVenda)+' × '+Math.round(m.produto/(cfg.custoVenda||1))+')' : ''],
+    ['Investimento em ads', m.investimento, ''],
+    ['IOF do cartão',      m.iof, cfg && cfg.impostoAds ? '('+_mgN(cfg.impostoAds)+'%)' : '']
+  ].filter(function(c){ return c[1] > 0; });
+
+  const roasBruto = m.investimento > 0 ? m.receita / m.investimento : 0;
+
+  alvo.innerHTML =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px">'+
+      _mgCard('Sobra no bolso', fmtAds(m.margem), cor,
+              m.pct.toFixed(1).replace('.',',')+'% do faturamento') +
+      _mgCard('Retorno limpo', m.retorno.toFixed(2).replace('.',',')+'x',
+              m.retorno >= 1 ? 'var(--green)' : 'var(--red)',
+              'ROAS bruto é '+roasBruto.toFixed(2).replace('.',',')+'x') +
+      _mgCard('Margem por venda',
+              m.produto >= 0 && cfg && cfg.custoVenda >= 0 ? _mgPorVenda(m, cfg) : '—',
+              'var(--text)', 'depois de tudo') +
+    '</div>'+
+    '<div style="background:var(--bg3);border-radius:9px;padding:12px 14px">'+
+      linha('Faturamento', fmtAds(m.receita), '') +
+      custos.map(function(c){ return linha('− '+c[0], fmtAds(c[1]), c[2]); }).join('') +
+      linha('= Margem de contribuição', fmtAds(m.margem), '', true) +
+    '</div>'+
+    (roasBruto > 1 && m.margem < 0
+      ? '<div style="margin-top:11px;background:rgba(255,59,48,.1);border-left:3px solid var(--red);'+
+        'border-radius:8px;padding:10px 13px;font-size:12.5px;line-height:1.6;color:var(--text2)">'+
+        '<b style="color:var(--text)">ROAS acima de 1 e mesmo assim no prejuízo.</b> '+
+        'O faturamento cobre o anúncio, mas não cobre anúncio + imposto + taxa. '+
+        'Pra empatar, o ROAS precisa passar de '+_mgEmpate(m, cfg).toFixed(2).replace('.',',')+'x.</div>'
+      : (m.margem > 0
+        ? '<div style="margin-top:11px;font-size:12px;color:var(--text2);line-height:1.6">'+
+          'Ponto de empate: ROAS <b style="color:var(--text)">'+_mgEmpate(m, cfg).toFixed(2).replace('.',',')+'x</b>. '+
+          'Abaixo disso a campanha fatura e mesmo assim tira dinheiro do caixa.</div>'
+        : ''));
+}
+
+function _mgCard(rot, val, cor, nota){
+  return '<div style="background:var(--bg3);border-radius:10px;padding:13px 15px">'+
+    '<div style="font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text2);margin-bottom:6px">'+rot+'</div>'+
+    '<div style="font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;color:'+cor+';line-height:1.15">'+val+'</div>'+
+    (nota?'<div style="font-size:11px;color:var(--text2);margin-top:4px">'+nota+'</div>':'')+'</div>';
+}
+
+function _mgN(v){ return String(Number(v)||0).replace('.',','); }
+
+function _mgPorVenda(m, cfg){
+  const vendas = cfg && cfg.custoVenda > 0 ? Math.round(m.produto / cfg.custoVenda) : 0;
+  if(!vendas) return '—';
+  return fmtAds(m.margem / vendas);
+}
+
+// Quanto o ROAS precisa ser pra margem dar zero, dadas as porcentagens atuais.
+// receita*(1 - imp - tx) - custo*vendas = invest*(1+iof)  →  roas = (1+iof) / (1-imp-tx-custoRel)
+function _mgEmpate(m, cfg){
+  cfg = cfg || {};
+  const frac = 1 - ((cfg.imposto||0) + (cfg.gateway||0))/100
+             - (m.receita > 0 ? m.produto / m.receita : 0);
+  if(frac <= 0) return Infinity;
+  return (1 + (cfg.impostoAds||0)/100) / frac;
+}
+
+function mgAbrirForm(){
+  const c = document.getElementById('ads-margem-form');
+  if(!c) return;
+  if(c.style.display !== 'none'){ c.style.display='none'; return; }
+  const cfg = _mgCfg || {imposto:0,gateway:0,custoVenda:0,impostoAds:0};
+  const campo = function(id, rot, val, dica, sufixo){
+    return '<label style="display:block"><span style="display:block;font-size:11.5px;color:var(--text2);margin-bottom:5px">'+rot+'</span>'+
+      '<span style="display:flex;align-items:center;gap:6px">'+
+      '<input id="'+id+'" type="number" step="0.01" min="0" value="'+(Number(val)||0)+'" '+
+      'style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);'+
+      'border-radius:7px;padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums">'+
+      '<span style="font-size:12px;color:var(--text2);width:16px">'+sufixo+'</span></span>'+
+      '<span style="display:block;font-size:10.5px;color:var(--text2);margin-top:4px;line-height:1.4">'+dica+'</span></label>';
+  };
+  c.style.display='';
+  c.innerHTML =
+    '<div style="background:var(--bg3);border-radius:10px;padding:15px">'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:13px;margin-bottom:14px">'+
+      campo('mg-imposto','Imposto sobre faturamento', cfg.imposto, 'Simples, presumido — a alíquota que você paga', '%')+
+      campo('mg-gateway','Taxa do checkout', cfg.gateway, 'Payt, Kiwify, Hotmart — o que a plataforma retém', '%')+
+      campo('mg-custo','Custo por venda', cfg.custoVenda, 'Suporte, plataforma, comissão — em reais, por venda', 'R$')+
+      campo('mg-iof','IOF sobre o anúncio', cfg.impostoAds, 'Se paga a Meta no cartão internacional', '%')+
+    '</div>'+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">'+
+      '<button onclick="mgSalvar(this)" style="background:linear-gradient(90deg,#3E1493,#1B9CFA);border:none;color:#fff;'+
+      'border-radius:8px;padding:9px 18px;font-size:12.5px;font-weight:700;cursor:pointer">Salvar</button>'+
+      '<button onclick="document.getElementById(\'ads-margem-form\').style.display=\'none\'" '+
+      'style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:9px 16px;'+
+      'font-size:12.5px;cursor:pointer">Cancelar</button>'+
+    '</div></div>';
+}
+
+async function mgSalvar(bt){
+  const n = function(id){ const e=document.getElementById(id); const v=Number(e&&e.value); return Number.isFinite(v)&&v>0?v:0; };
+  const corpo = { imposto:n('mg-imposto'), gateway:n('mg-gateway'), custoVenda:n('mg-custo'), impostoAds:n('mg-iof') };
+  const txt = bt.textContent; bt.textContent='Salvando...'; bt.disabled=true;
+  try{
+    const r = await fetch('/api/custos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(corpo)});
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    _mgCfg = d.custos;
+    document.getElementById('ads-margem-form').style.display='none';
+    if(typeof _painelResumoUtmify === 'function') _painelResumoUtmify();
+  }catch(e){
+    alert('Não deu pra salvar: ' + e.message);
+  }finally{ bt.textContent=txt; bt.disabled=false; }
 }
 
 function _msgTabela(id, cols, msg){
