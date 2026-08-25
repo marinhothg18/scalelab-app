@@ -1625,6 +1625,18 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-cc h3{font-size:14.5px;font-weight:700;margin:0;letter-spacing:-.01em}
 .fx-sub{font-size:11.5px;color:var(--text2)}
 .fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
+/* Paleta de blocos do mapa */
+.mp-paleta{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px;margin-bottom:13px}
+.mp-grp{grid-column:1/-1;font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--text2);padding:7px 2px 1px}
+.mp-bl{display:flex;align-items:center;gap:9px;text-align:left;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:9px 11px;cursor:pointer;font-family:inherit;color:var(--text);min-width:0}
+.mp-bl:hover{border-color:var(--accent);transform:translateY(-1px)}
+.mp-bl .pt{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.mp-bl .tx{min-width:0;flex:1}
+.mp-bl .tx b{display:block;font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mp-bl .tx small{display:block;font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* selo de variante no bloco do mapa */
+.fn-var{font-size:9px;font-weight:800;letter-spacing:.3px;color:var(--accent);background:rgba(27,156,250,.14);border-radius:5px;padding:2px 6px;display:inline-block;margin:-1px 0 5px}
+
 /* Lista de itens com farol — instalacao do pixel, o que ele coleta */
 .px-li{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
 .px-li:first-child{border-top:none;padding-top:0}
@@ -3752,6 +3764,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                   <h3>Desenho do funil</h3>
                   <span class="fx-sub" id="mp-sub"></span>
                 </div>
+                <div class="mp-paleta" id="mp-paleta"></div>
                 <div class="fn-barra">
                   <button class="fn-arrumar" onclick="fnArrumar()" title="Reorganiza os blocos seguindo as ligações">✨ Arrumar mapa</button>
                   <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button>
@@ -3784,8 +3797,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                   <div style="font-size:10.5px;color:var(--text2);margin-top:5px">É onde o pixel vai ser colado. Sem link, a etapa não é rastreada.</div>
                 </div>
                 <div class="fn-campo"><label>Tipo</label><select id="fn-n-tipo">
-                  <option value="pagina">Página</option><option value="vsl">VSL</option>
+                  <option value="prevenda">Pré-venda</option><option value="pagina">Página</option>
+                  <option value="vsl">VSL</option>
                   <option value="checkout">Checkout</option><option value="upsell">Upsell</option>
+                  <option value="downsell">Downsell</option>
                   <option value="obrigado">Obrigado</option></select></div>
                 <div class="fn-campo"><label>Vem depois de</label><select id="fn-n-pai"></select></div>
                 <button class="fn-btn" style="width:100%" onclick="fnAddEtapa()">Adicionar ao funil</button>
@@ -27436,8 +27451,24 @@ function saveAdsApiKey(){
 // ── FUNIS ── projeto › funil › etapas
 // Os números vêm do pixel (sl_funil_stats no servidor); o desenho fica em sl_funis.
 // ══════════════════════════════════════════════
-var FN_CORES = { pagina:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926', upsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC' };
-var FN_ROT   = { pagina:'PÁGINA', vsl:'VSL', checkout:'CHECKOUT', upsell:'UPSELL', obrigado:'OBRIGADO', fonte:'ORIGEM' };
+// downsell existia como conceito e nao como tipo: quem recusava o upsell saia do
+// funil e o mapa nao tinha onde desenhar isso. E pre-venda estava caindo em
+// 'pagina', misturado com tela de quiz.
+var FN_CORES = { pagina:'#1B9CFA', prevenda:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926',
+                 upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC' };
+var FN_ROT   = { pagina:'PÁGINA', prevenda:'PRÉ-VENDA', vsl:'VSL', checkout:'CHECKOUT',
+                 upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM' };
+
+// A paleta do mapa. Um clique poe o bloco no funil, ligado no que estiver
+// selecionado — em vez de preencher tres campos de formulario a cada etapa.
+var FN_PALETA = [
+  { tipo:'prevenda', nome:'Pré-venda',       dica:'advertorial' },
+  { tipo:'vsl',      nome:'Página de vendas',dica:'VSL' },
+  { tipo:'checkout', nome:'Checkout',        dica:'onde paga' },
+  { tipo:'upsell',   nome:'Upsell',          dica:'oferta extra' },
+  { tipo:'downsell', nome:'Downsell',        dica:'se recusar' },
+  { tipo:'obrigado', nome:'Obrigado',        dica:'confirmação' }
+];
 var FN_MODELOS = [
   { id:'vsl',  nome:'VSL direta',           etapas:[['Landing','pagina'],['VSL','vsl'],['Checkout','checkout'],['Obrigado','obrigado']] },
   { id:'advo', nome:'Advertorial + VSL',    etapas:[['Advertorial','pagina'],['VSL','vsl'],['Checkout','checkout'],['Upsell','upsell'],['Obrigado','obrigado']] },
@@ -28741,7 +28772,7 @@ function fnAba(qual, bt){
   }
   fnCabecalho();
   if(qual==='geral')   gePintar();
-  if(qual==='mapa')    { mpAviso(); setTimeout(fnFios, 40); }
+  if(qual==='mapa')    { mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); }
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -28855,6 +28886,153 @@ function gePintar(){
   el.innerHTML = html;
 }
 
+// ── Paleta de blocos ────────────────────────────────────────────────────────
+// Montar o funil era preencher tres campos de formulario por etapa. Aqui e um
+// clique: o bloco entra ligado no que estiver selecionado. Os planos vem dos
+// precos que voce cadastrou e ja trazem quantas vendas cada um fez — checkout
+// nao e um bloco so, sao tres ofertas com taxas diferentes.
+var mpPlanos = null;
+
+function mpCarregarPlanos(){
+  if(mpPlanos) return Promise.resolve(mpPlanos);
+  return fetch('/api/planos')
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      mpPlanos = (d && d.ok) ? { precos:(d.planosCfg&&d.planosCfg.precos)||[], vendas:d.planos||[] }
+                             : { precos:[], vendas:[] };
+      return mpPlanos;
+    })
+    .catch(function(){ mpPlanos = { precos:[], vendas:[] }; return mpPlanos; });
+}
+
+function mpPaleta(){
+  var el = document.getElementById('mp-paleta'); if(!el) return;
+  var f = fnAtual(); if(!f){ el.innerHTML = ''; return; }
+
+  var bloco = function(tipo, nome, dica, extra){
+    return '<button class="mp-bl" onclick="mpAddBloco(\''+tipo+'\',\''+
+      String(nome).replace(/'/g, "\\'")+'\')" title="Adiciona ligado no bloco selecionado">'+
+      '<span class="pt" style="background:'+(FN_CORES[tipo]||'var(--text3)')+'"></span>'+
+      '<span class="tx"><b>'+fnEsc(nome)+'</b><small>'+fnEsc(dica)+'</small></span>'+
+      (extra||'')+'</button>';
+  };
+
+  var html = '<div class="mp-grp">Páginas</div>' +
+    FN_PALETA.map(function(b){ return bloco(b.tipo, b.nome, b.dica); }).join('');
+
+  // Planos: so aparecem quando ha preco cadastrado — sem preco nao da pra
+  // separar uma assinatura da outra, e um bloco "Anual" vazio nao ajuda.
+  var pl = mpPlanos;
+  if(pl && pl.precos.length){
+    var comPreco = pl.precos.filter(function(p){ return Number(p.preco) > 0; });
+    if(comPreco.length){
+      var porChave = {};
+      (pl.vendas||[]).forEach(function(v){ porChave[v.chave] = v; });
+      html += '<div class="mp-grp">Checkout · por plano</div>' +
+        comPreco.map(function(p){
+          var v = porChave[p.chave], n = v ? (v.vendas||0) : 0;
+          var rot = (p.chave.charAt(0).toUpperCase() + p.chave.slice(1));
+          return bloco('checkout', rot,
+            'R$ ' + Number(p.preco).toLocaleString('pt-BR') + (n ? (' · ' + n + ' vendas') : ''));
+        }).join('');
+    }
+  } else if(pl){
+    html += '<div class="mp-grp">Checkout · por plano</div>'+
+      '<button class="mp-bl" onclick="goTo(\'metricas-ads\')" title="Cadastrar os preços">'+
+      '<span class="pt" style="background:var(--text3)"></span>'+
+      '<span class="tx"><b>Cadastrar planos</b><small>sem preço não dá pra separar</small></span></button>';
+  }
+
+  el.innerHTML = html;
+}
+
+// Poe o bloco no funil, ligado no que estiver selecionado (ou no ultimo).
+function mpAddBloco(tipo, nome){
+  var f = fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
+  f.etapas = f.etapas || []; f.ligacoes = f.ligacoes || [];
+  // ligar no selecionado; sem selecao, no ultimo que nao tem saida
+  var pai = fnSel && fnAcha(f, fnSel) ? fnSel : null;
+  if(!pai && f.etapas.length){
+    var temSaida = {};
+    f.ligacoes.forEach(function(l){ temSaida[l[0]] = 1; });
+    var pontas = f.etapas.filter(function(e){ return !temSaida[e.id]; });
+    pai = (pontas[pontas.length-1] || f.etapas[f.etapas.length-1]).id;
+  }
+  var ant = pai ? fnAcha(f, pai) : null;
+  // nome repetido vira "Upsell 2" — dois blocos com o mesmo nome sao
+  // indistinguiveis nos seletores das outras abas
+  var base = nome, n = 1;
+  while(f.etapas.some(function(e){ return e.nome === nome; })){ n++; nome = base + ' ' + n; }
+
+  var id = 'e' + Date.now();
+  f.etapas.push({ id:id, nome:nome, tipo:tipo, url:'',
+                  x:((ant&&ant.x)||200)+185, y:((ant&&ant.y)||140)+(tipo==='downsell'?150:0) });
+  if(pai) f.ligacoes.push([pai, id]);
+  fnSel = id;
+  fnGravar(f); fnPintar();
+  toastFn(nome + ' adicionado — falta o link da página');
+}
+
+// ── Variantes do teste A/B no mapa ──────────────────────────────────────────
+// Um teste manda o mesmo trafego pra duas URLs. Se as duas sao etapas do funil,
+// o mapa tem de mostrar as duas saindo do mesmo ponto — senao o desenho diz que
+// existe um caminho so, e voce olha a retencao de uma variante achando que e a
+// da pagina inteira.
+function mpTestesDoFunil(f){
+  if(!f) return [];
+  var porUrl = {};
+  (f.etapas||[]).forEach(function(e){
+    if(e.url) porUrl[fnNormalizarUrl(e.url)] = e;
+  });
+  return abDoProjeto().map(function(r){
+    var casadas = (r.destinos||[]).map(function(d, i){
+      return { etapa: porUrl[fnNormalizarUrl(d.url||'')] || null,
+               nome: d.nome || ('Variante '+String.fromCharCode(65+i)), url: d.url };
+    });
+    var dentro = casadas.filter(function(c){ return c.etapa; });
+    return { teste:r, casadas:casadas, dentro:dentro };
+  }).filter(function(t){ return t.dentro.length >= 1; });
+}
+
+// Qual variante esta etapa e, se for. Cache por render pra nao refazer a
+// varredura de testes em cada um dos blocos.
+var _mpVarCache = null, _mpVarQuando = 0;
+function _mpVariante(id){
+  var agora = Date.now();
+  if(!_mpVarCache || agora - _mpVarQuando > 1500){
+    _mpVarCache = {}; _mpVarQuando = agora;
+    mpTestesDoFunil(fnAtual()).forEach(function(t){
+      if(t.dentro.length < 2) return;   // variante sozinha nao e divisao
+      t.dentro.forEach(function(c){
+        _mpVarCache[c.etapa.id] = { nome:c.nome, teste:(t.teste.nome||t.teste.slug) };
+      });
+    });
+  }
+  return _mpVarCache[id] || null;
+}
+
+function mpAvisoTestes(f){
+  var ts = mpTestesDoFunil(f);
+  if(!ts.length) return '';
+  return ts.map(function(t){
+    var n = t.dentro.length, total = t.casadas.length;
+    if(n >= 2){
+      return '<div class="fx-aviso bom"><b>Teste “'+fnEsc(t.teste.nome||t.teste.slug)+'” divide '+
+        n+' etapas deste funil</b>'+
+        t.dentro.map(function(c){ return fnEsc(c.etapa.nome); }).join(' e ')+
+        ' recebem o mesmo tráfego, sorteado pelo link do anúncio. '+
+        'Os números de cada uma são de metade das pessoas, não do funil inteiro.</div>';
+    }
+    // uma so casada: a outra variante existe mas nao esta desenhada
+    var fora = t.casadas.filter(function(c){ return !c.etapa; });
+    return '<div class="fx-aviso"><b>Teste “'+fnEsc(t.teste.nome||t.teste.slug)+
+      '” manda tráfego pra '+fora.length+' página que não está no mapa</b>'+
+      fora.map(function(c){ return fnEsc(fnEncurtar(c.url||'sem URL')); }).join(', ')+
+      '. Enquanto ela não for uma etapa, metade do tráfego deste teste some do desenho — '+
+      'e a etapa que está aqui parece render menos do que rende.</div>';
+  }).join('');
+}
+
 // ── Aviso do mapa ───────────────────────────────────────────────────────────
 // O desenho mostra o caminho; isto diz o que esta errado NO desenho. Bloco solto
 // nao recebe ninguem, e etapa sem link nunca conta — os dois aparecem como zero
@@ -28886,7 +29064,7 @@ function mpAviso(){
 
   el.innerHTML = avisos.map(function(a){
     return '<div class="fx-aviso '+a.cls+'"><b>'+a.t+'</b>'+a.d+'</div>';
-  }).join('');
+  }).join('') + mpAvisoTestes(f);
 }
 
 // ── Onde falta colar ────────────────────────────────────────────────────────
@@ -29093,7 +29271,7 @@ function fnPintar(){
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
     }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
   fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPixelBotao(); fnPintarRed(); fnPintarFeed();
-  fnCabecalho(); fnNavSinais(); gePintar(); pxInstalacao(); pxColeta(); mpAviso();
+  fnCabecalho(); fnNavSinais(); gePintar(); pxInstalacao(); pxColeta(); mpAviso(); mpPaleta();
 }
 
 // A faixa e o mapa mostram O MESMO numero (fnVal). Quem re-renderiza um tem de
@@ -29178,6 +29356,9 @@ function fnNos(){
     var vf = src ? { valor: fnCliquesDe(n), fonte:'utmify' } : fnValFonte(n.id);
     var v = vf.valor;
     var link = fnLinkCurto(n.url);
+    // etapa que e variante de um teste ganha selo: sem isso o bloco parece o
+    // funil inteiro, mas so ve metade do trafego
+    var vt = _mpVariante(n.id);
     var compraram = (!src && n.tipo==='checkout') ? fnCompraram(f, n) : null;
     var taxa = (compraram !== null && v > 0) ? (compraram/v)*100 : null;
 
@@ -29188,7 +29369,9 @@ function fnNos(){
             (fnCliques ? fnNum(v) : '—')+'</div>'+
           '<div class="sb">'+(fnCliques ? 'cliques · '+fnEsc(n.utmCampanha||'projeto todo')
                                         : 'cliques indisponíveis')+'</div>'
-        : (link ? '<div class="lk" title="'+fnEsc(n.url)+'">'+fnEsc(link)+'</div>' : '')+
+        : (vt ? '<div class="fn-var" title="Variante do teste '+fnEsc(vt.teste)+
+                 ' — este bloco vê só a parte do tráfego que caiu nela">⇄ '+fnEsc(vt.nome)+'</div>' : '')+
+          (link ? '<div class="lk" title="'+fnEsc(n.url)+'">'+fnEsc(link)+'</div>' : '')+
           '<div class="vl" style="color:'+cor+'">'+fnNum(v)+'</div>'+
           '<div class="sb">'+(baseReal ? ((v/base)*100).toFixed(1)+'% de quem entrou'
                                        : 'sem base pra comparar')+
