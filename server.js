@@ -9480,7 +9480,18 @@ const PIXEL_JS = `(function(w,d){
   //
   // So mexe em host de checkout conhecido — sair anexando UTM em todo link
   // externo vazaria dado de campanha pra qualquer site que voce linkar.
-  var CHECKOUTS = /payt|checkout|pay\\.|kiwify|hotmart|monetizze|eduzz|braip|perfectpay|cakto|ticto|kirvano|greenn|lastlink|pepper|yampi|appmax|doppus/i;
+  // Gateways por dominio, mais palavras que aparecem no caminho da URL de compra.
+  // A lista cresceu comparando com a de uma ferramenta concorrente: faltavam
+  // vindi, adoorei, octuspay, buygoods, guru, iexperience e as palavras genericas
+  // (pagamento, carrinho, pedido, finalizar). Link de compra que nao casa aqui
+  // nao recebe a UTM — e a venda chega sem origem.
+  var CHECKOUTS = new RegExp([
+    'payt','kiwify','hotmart','monetizze','eduzz','braip','perfectpay','cakto','ticto',
+    'kirvano','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
+    'octuspay','buygoods','iexperience','guru','vega',
+    'checkout','pagamento','payment','pague','pedido','carrinho','cart','order',
+    'finalizar','confirmacao','confirmation','pay\\\\.'
+  ].join('|'), 'i');
   var extraCheckout = eu.getAttribute('data-checkout') || '';
   if(extraCheckout){
     try{ CHECKOUTS = new RegExp(CHECKOUTS.source + '|' + extraCheckout, 'i'); }catch(e){}
