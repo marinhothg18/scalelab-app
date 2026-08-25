@@ -35,6 +35,12 @@
   --blue-deep: #3E1493;
   --accent-grad: linear-gradient(135deg,#3E1493,#1B9CFA);
   --sidebar-bg: #0a0c16;
+  /* Apelidos em pt-BR da paleta do manual. O codigo ja usava var(--roxo) e
+     var(--azul) em varios pontos, mas eles so existiam dentro do shadow DOM do
+     Meu Protocolo — fora dali resolviam pra nada e a barra ficava sem cor.
+     Mesmos valores de --blue-deep/--blue/--pink/--orange, so nomeados. */
+  --roxo: #3E1493; --azul: #1B9CFA; --rosa: #C52C58; --laranja: #FF5926; --azulp: #2509E4;
+  --text1: #ffffff;
 }
 body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 .light-mode {
@@ -47,6 +53,8 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans
   --blue: #0284C7; --purple: #6366F1; --yellow: #D97706;
   --accent-grad: linear-gradient(135deg,#0284C7,#38BDF8);
   --sidebar-bg: #0A1628;  /* ← sidebar stays dark in light mode */
+  --roxo: #3E1493; --azul: #1B9CFA; --rosa: #C52C58; --laranja: #FF5926; --azulp: #2509E4;
+  --text1: #0F172A;
 }
 /* LIGHT MODE SIDEBAR — card style */
 .light-mode .sidebar { background:#FFFFFF !important; border-right:1px solid #E8ECF4 !important; }
@@ -1385,11 +1393,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-cx .n{font-size:11px;color:var(--text2)}
 .fn-novo{display:flex;align-items:center;justify-content:center;border-style:dashed;color:var(--text2);font-size:13px;font-weight:600}
 .fn-faixa{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:10px;margin-bottom:16px}
-.fn-et{background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:11px 13px;cursor:pointer;transition:.15s}
+.fn-et{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;cursor:pointer;transition:.15s}
 .fn-et:hover{transform:translateY(-2px);border-color:var(--accent)}
-.fn-et.sel{border-color:var(--accent)}
-.fn-et .r{font-size:9.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fn-et .p{font-size:21px;font-weight:800;letter-spacing:-.7px;line-height:1}
+/* selecao usa roxo; azul ja e o hover, e as duas iguais nao diziam qual era qual */
+.fn-et.sel{border-color:var(--roxo);box-shadow:inset 0 0 0 1px var(--roxo)}
+.fn-et .r{font-size:9.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.11em;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fn-et .p{font-size:23px;font-weight:800;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
 .fn-et .q{font-size:11px;color:var(--text2);margin-top:3px}
 .fn-et .b{height:4px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden}
 .fn-et .b i{display:block;height:100%;border-radius:3px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
@@ -1604,6 +1613,13 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-cc h3{font-size:14.5px;font-weight:700;margin:0;letter-spacing:-.01em}
 .fx-sub{font-size:11.5px;color:var(--text2)}
 .fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
+/* Lista de itens com farol — instalacao do pixel, o que ele coleta */
+.px-li{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
+.px-li:first-child{border-top:none;padding-top:0}
+.px-b{width:7px;height:7px;border-radius:50%;flex:0 0 auto;margin-top:5px}
+.px-nm{flex:1;min-width:0;font-size:12.5px;font-weight:600;line-height:1.4}
+.px-nm span{display:block;font-size:11px;font-weight:400;color:var(--text2);margin-top:2px;word-break:break-all}
+.px-est{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;margin-top:3px}
 
 /* Chips do que esta filtrando agora */
 .jn-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 16px}
@@ -1778,8 +1794,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 @keyframes fnpulso{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
 .fn-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}
 @media(max-width:1100px){ .fn-cols{grid-template-columns:minmax(0,1fr)} }
-.fn-cx2{background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:16px 18px;margin-bottom:14px}
-.fn-cx2 h3{font-size:13px;font-weight:800;margin-bottom:12px}
+/* Alinhado com .fx-cart: os cards do Mapa e os das telas novas sao o mesmo
+   objeto. Mudar aqui em vez de reescrever os 10 pontos que usam .fn-cx2. */
+.fn-cx2{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.fn-cx2 h3{font-size:14.5px;font-weight:700;margin:0 0 13px;letter-spacing:-.01em}
 .fn-l{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
 .fn-l:last-child{border:none}
 .fn-l span:first-child{color:var(--text2)}
@@ -3720,20 +3738,23 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         </div>
 
         <div class="fn-painel" id="fn-p-pixel">
-          <div class="fn-nota">Uma linha por página, antes do <b>&lt;/head&gt;</b>. O código de verdade fica no nosso servidor —
-            assim dá pra melhorar o pixel sem você recolar nada, e a sua página não carrega comentário nenhum.<br>
-            <b>Página de checkout do gateway você não consegue marcar assim</b> — use o bloco do botão, aqui embaixo. E se a venda nem volta pra uma página sua, o mapa puxa o número da Utmify e marca <b>via Utmify</b> no bloco.</div>
-          <div class="fn-cols">
+          <div id="px-status"></div>
+          <div class="fx-dupla">
             <div>
-              <div class="fn-cx2">
-                <h3>📡 Código do pixel</h3>
-                <div class="fn-campo"><label>Etapa desta página</label><select id="fn-px-etapa" onchange="fnPixel()"></select></div>
+              <div class="fx-cart">
+                <div class="fx-cc"><h3>Código do pixel</h3><span class="fx-sub">uma linha, antes do &lt;/head&gt;</span></div>
+                <div class="jn-sel" style="grid-template-columns:1fr;margin-bottom:13px">
+                  <div class="jn-sel-c"><label>Etapa desta página</label>
+                    <select id="fn-px-etapa" onchange="fnPixel()"></select></div>
+                </div>
                 <div class="fn-pre" id="fn-px-code"></div>
                 <button class="fn-btn" style="margin-top:12px" onclick="fnCopiar('fn-px-code')">Copiar código</button>
+                <div class="fx-vazio" style="margin-top:11px">O código de verdade fica no nosso servidor — dá pra melhorar
+                  o pixel sem você recolar nada, e a sua página não carrega comentário nenhum.</div>
               </div>
-              <div class="fn-cx2">
-                <h3>🛒 Marcar o checkout no clique</h3>
-                <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:11px">
+              <div class="fx-cart" style="margin-top:16px">
+                <div class="fx-cc"><h3>Marcar o checkout no clique</h3><span class="fx-sub">quando o gateway é de terceiro</span></div>
+                <div class="fx-vazio" style="margin:-6px 0 12px">
                   O checkout da Payt/Kiwify é <b>deles</b> — nosso pixel não entra lá. Mas o
                   <b>clique no botão de comprar</b> acontece na <b>sua</b> página. Cole isso na mesma
                   página do botão, logo depois do pixel: a etapa de checkout passa a contar sozinha.
@@ -3743,15 +3764,26 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               </div>
             </div>
             <div>
-              <div class="fn-cx2"><h3>🧪 Eventos recebidos</h3><div id="fn-px-feed" style="max-height:340px;overflow-y:auto"></div></div>
+              <div class="fx-cart">
+                <div class="fx-cc"><h3>Onde falta colar</h3><span class="fx-sub" id="px-falta-n"></span></div>
+                <div id="px-instalacao"></div>
+              </div>
+              <div class="fx-cart" style="margin-top:16px">
+                <div class="fx-cc"><h3>O que este funil coleta</h3></div>
+                <div id="px-coleta"></div>
+              </div>
+              <div class="fx-cart" style="margin-top:16px">
+                <div class="fx-cc"><h3>Eventos recebidos</h3><span class="fx-sub">ao vivo</span></div>
+                <div id="fn-px-feed" style="max-height:300px;overflow-y:auto"></div>
+              </div>
             </div>
           </div>
         </div>
 
         <div class="fn-painel" id="fn-p-redir">
-          <div class="fn-nota">Um link por teste. Você cola ele no anúncio no lugar da URL da página — o resto é com a gente:
-            sorteia a variante, marca quem levou qual e conta quem converteu.
-            <b>Sem meta definida o link só divide o tráfego</b>, sem veredito.</div>
+          <div class="fx-aviso" id="ab-nota"><b>O link do teste substitui a URL da página no anúncio</b>
+            Ele sorteia a variante, marca quem levou qual e conta quem converteu.
+            Sem meta definida o link só divide o tráfego — divide sem dizer quem ganhou.</div>
 
           <div id="ab-lista"></div>
           <div id="ab-detalhe" style="display:none"></div>
@@ -28645,6 +28677,7 @@ function fnAba(qual, bt){
   fnCabecalho();
   if(qual==='geral')   gePintar();
   if(qual==='mapa')    setTimeout(fnFios, 40);
+  if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
   if(qual==='atencao') atOpcoes();
@@ -28755,6 +28788,63 @@ function gePintar(){
     '<div class="jn-degraus">'+degraus+'</div></div>';
 
   el.innerHTML = html;
+}
+
+// ── Onde falta colar ────────────────────────────────────────────────────────
+// Tres estados, e a diferenca entre eles muda o que voce faz:
+//   sem link       → nem dá pra colar; cadastre a URL na etapa
+//   link sem evento→ colado errado, ou não colado, ou ninguém passou ainda
+//   recebendo      → está de pé
+// Antes, uma etapa zerada no mapa nao dizia qual dos tres era.
+function pxInstalacao(){
+  var el = document.getElementById('px-instalacao');
+  var cn = document.getElementById('px-falta-n');
+  if(!el) return;
+  var f = fnAtual();
+  if(!f || !(f.etapas||[]).length){ el.innerHTML = '<div class="fx-vazio">Nenhuma etapa ainda.</div>'; return; }
+
+  var linhas = (f.etapas||[]).map(function(e){
+    var st = fnStats[e.id], eventos = st ? (st.unicos || st.entradas || 0) : 0;
+    var estado, cor, dica;
+    if(!e.url){          estado = 'sem link';    cor = 'var(--red)';
+                         dica = 'cadastre a URL da página na etapa — sem ela o pixel não tem onde ser colado'; }
+    else if(!eventos){   estado = 'sem evento';  cor = '#f97316';
+                         dica = 'a URL está cadastrada mas nada chegou: ou o código não foi colado, ou ninguém passou no período'; }
+    else {               estado = 'recebendo';   cor = 'var(--green)';
+                         dica = fnNum(eventos)+' pessoa(s) medida(s) no período'; }
+    return '<div class="px-li" title="'+fnEsc(dica)+'">'+
+      '<span class="px-b" style="background:'+cor+'"></span>'+
+      '<span class="px-nm">'+fnEsc(e.nome)+
+        (e.url ? '<span>'+fnEsc(fnLinkCurto(e.url)||e.url)+'</span>' : '<span>sem URL cadastrada</span>')+'</span>'+
+      '<span class="px-est" style="color:'+cor+'">'+estado+'</span></div>';
+  }).join('');
+
+  var faltam = (f.etapas||[]).filter(function(e){
+    var st = fnStats[e.id];
+    return !e.url || !(st ? (st.unicos||st.entradas||0) : 0);
+  }).length;
+  if(cn) cn.textContent = faltam ? (faltam+' de '+f.etapas.length+' pendente(s)') : 'todas de pé';
+  el.innerHTML = linhas;
+}
+
+// O que o pixel mede nesta pagina. Serve pra saber o que da pra perguntar
+// depois — e o que nao adianta procurar porque nao esta sendo coletado.
+var PX_COLETA = [
+  ['Entrada e saída',   'quem chegou, quando saiu e quanto tempo ficou'],
+  ['Atenção real',      'só o tempo com a aba visível — aba em segundo plano não conta'],
+  ['Rolagem',           'até que altura da página desceram, em faixas de 25%'],
+  ['Cliques',           'o nome do que foi clicado, e a que altura da página estava'],
+  ['Fricção',           'clique morto (parece botão e não é) e clique de raiva (3+ no mesmo ponto)'],
+  ['Velocidade',        'LCP, FCP e CLS medidos no aparelho de quem acessou'],
+  ['Origem',            'utm_source, campanha e criativo — o primeiro toque fica guardado no servidor'],
+  ['Aparelho',          'celular ou computador, navegador, sistema e país']
+];
+function pxColeta(){
+  var el = document.getElementById('px-coleta'); if(!el) return;
+  el.innerHTML = PX_COLETA.map(function(c){
+    return '<div class="px-li"><span class="px-b" style="background:var(--accent)"></span>'+
+      '<span class="px-nm">'+c[0]+'<span>'+c[1]+'</span></span></div>';
+  }).join('');
 }
 
 // Sinais na nav: bolinha vermelha no Pixel quando ha etapa sem link, e a
@@ -28904,7 +28994,7 @@ function fnPintar(){
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
     }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
   fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPixelBotao(); fnPintarRed(); fnPintarFeed();
-  fnCabecalho(); fnNavSinais(); gePintar();
+  fnCabecalho(); fnNavSinais(); gePintar(); pxInstalacao(); pxColeta();
 }
 
 // A faixa e o mapa mostram O MESMO numero (fnVal). Quem re-renderiza um tem de
@@ -29577,18 +29667,25 @@ function abPintarLista(){
       '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div></div>';
   }).join('');
 
+  // Teste sem meta divide o trafego e nunca da veredito — e o erro mais comum
+  // aqui, entao a tela diz isso antes de voce esperar um resultado que nao vem.
+  var semMeta = l.filter(function(r){ return !r.meta && r.ativo !== false; }).length;
+
   document.getElementById('ab-lista').innerHTML =
-    '<div class="ab-kpis">'+
-      '<div class="ab-kpi"><div class="r">Total</div><div class="v">'+l.length+'</div></div>'+
-      '<div class="ab-kpi"><div class="r">Testando</div><div class="v" style="color:var(--green)">'+(cont.rodando||0)+'</div></div>'+
-      '<div class="ab-kpi"><div class="r">Só dividindo</div><div class="v">'+(cont.dividindo||0)+'</div></div>'+
-      '<div class="ab-kpi"><div class="r">Pausados</div><div class="v" style="color:var(--text2)">'+(cont.pausado||0)+'</div></div>'+
+    '<div class="fx-kpis">'+
+      '<div class="fx-kpi"><div class="r">Total</div><div class="v">'+l.length+'</div><div class="d">testes criados</div></div>'+
+      '<div class="fx-kpi bom"><div class="r">Testando</div><div class="v">'+(cont.rodando||0)+'</div><div class="d">com meta definida</div></div>'+
+      '<div class="fx-kpi"><div class="r">Só dividindo</div><div class="v">'+(cont.dividindo||0)+'</div><div class="d">sem veredito</div></div>'+
+      '<div class="fx-kpi"><div class="r">Pausados</div><div class="v">'+(cont.pausado||0)+'</div><div class="d">não sorteiam</div></div>'+
     '</div>'+
-    '<div class="fn-cx2"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px">'+
-      '<h3 style="margin:0">Todos os testes e links</h3>'+
+    (semMeta ? '<div class="fx-aviso"><b>'+semMeta+' teste(s) rodando sem meta</b>'+
+      'Eles dividem o tráfego entre as variantes, mas nunca vão dizer qual ganhou — '+
+      'sem meta não existe conversão pra comparar. Abra o teste e defina a meta.</div>' : '')+
+    '<div class="fx-cart"><div class="fx-cc">'+
+      '<h3>Todos os testes e links</h3>'+
       '<button class="fn-btn" onclick="abNovo()">+ Criar teste</button></div>'+
-      '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Clique numa linha pra abrir.</div>'+
-      (l.length ? linhas : '<div style="font-size:12.5px;color:var(--text2);padding:10px 0">Nenhum teste ainda. Crie o primeiro — ele devolve um link pra você colar no anúncio.</div>')+
+      '<div class="fx-vazio" style="margin:-8px 0 12px">Clique numa linha pra abrir.</div>'+
+      (l.length ? linhas : '<div class="fx-vazio">Nenhum teste ainda. Crie o primeiro — ele devolve um link pra você colar no anúncio.</div>')+
     '</div>';
   // busca os numeros de quem ainda nao tem
   l.forEach(function(r){ if(!abDados[r.slug]) abCarregar(r.slug); });
