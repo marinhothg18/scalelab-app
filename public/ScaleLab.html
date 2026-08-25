@@ -1488,8 +1488,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer;font-family:inherit}
 .fn-filtro:hover{color:var(--text)}
 .fn-filtro.on{background:var(--accent);border-color:var(--accent);color:#fff}
-.fn-pessoa{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:15px 17px;margin-bottom:11px}
-.fn-pessoa:hover{border-color:var(--accent)}
+.fn-pessoa{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:15px 17px;margin-bottom:11px;position:relative;transition:border-color .12s,transform .12s}
+.fn-pessoa:hover{border-color:var(--accent);transform:translateY(-1px)}
+/* Sem isto o cartao virou clicavel sem parecer clicavel — ninguem descobre */
+.fn-verficha{margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;letter-spacing:.3px;color:var(--accent);background:rgba(27,156,250,.12);border-radius:6px;padding:3px 9px;white-space:nowrap}
+.fn-pessoa:hover .fn-verficha{background:var(--accent);color:#fff}
+.fn-pessoa .top{flex-wrap:wrap}
 /* Ficha do lead — duas colunas no desktop, empilhado no celular */
 .lead-grid{display:grid;grid-template-columns:290px minmax(0,1fr);gap:15px;align-items:start}
 @media(max-width:820px){.lead-grid{grid-template-columns:1fr}}
@@ -1540,6 +1544,14 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .lead-ev .ch.cmp{background:rgba(197,44,88,.15);color:#e2597f}
 .lead-ev .ch.cri{background:rgba(255,89,38,.15);color:#FF5926}
 .lead-ev .ch.var{background:rgba(62,20,147,.2);color:#a78bfa}
+/* No claro os tons claros somem no branco: escurece o texto, mantem o fundo */
+.light-mode .lead-ev .ch.src{color:#0b5ea8}
+.light-mode .lead-ev .ch.cmp{color:#a11d43}
+.light-mode .lead-ev .ch.cri{color:#b8380f}
+.light-mode .lead-ev .ch.var{color:#3E1493}
+.light-mode .lead-campo{background:#F1F5F9}
+.light-mode .lead-mini>div,.light-mode .lead-passo,.light-mode .lead-ev .ic{background:#F1F5F9}
+.light-mode .lead-barra .tr{background:#E2E8F0}
 .lead-ev .hr{flex:0 0 auto;font-size:10.5px;color:var(--text2);font-variant-numeric:tabular-nums}
 .fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
 .fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
@@ -30134,7 +30146,8 @@ function jnPintar(){
                  origem.icone+' '+fnEsc(origem.nome)+'</span>'):'')+
         (criativo?('<span class="fn-tagcri">'+fnEsc(criativo)+'</span>'):'')+
         selos+
-        '<span class="de">'+j.eventos.length+' passo(s)</span></div>'+
+        '<span class="de">'+j.eventos.length+' passo(s)</span>'+
+        '<span class="fn-verficha">ver ficha ›</span></div>'+
       '<ul class="fn-tl">'+linhas+'</ul></div>';
   }).join('');
 }
