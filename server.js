@@ -9250,7 +9250,12 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
 // recolar em TODAS as paginas. Agora a pagina carrega este arquivo e passa so
 // os dois ids; o que muda aqui vale pra todo mundo no proximo carregamento.
 // ══════════════════════════════════════════════════════
+// Muda a cada deploy. Serve pra responder "essa pagina esta rodando qual pixel?"
+// sem adivinhar — basta olhar window.TMXOrigem.versao no console.
+const TMX_VERSAO = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+
 const PIXEL_JS = `(function(w,d){
+  var TMX_VERSAO = '${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}';
   var eu = d.currentScript;
   if(!eu) { var ts = d.getElementsByTagName('script'); eu = ts[ts.length-1]; }
   var FUNIL = eu.getAttribute('data-f') || '';
@@ -9322,7 +9327,9 @@ const PIXEL_JS = `(function(w,d){
   var primeiro = {};
   try{ primeiro = JSON.parse(le('tmx_first') || '{}'); }catch(e){ primeiro = {}; }
   // pra quem quiser ler de fora (pixel da Meta, por exemplo)
-  w.TMXOrigem = { vid: id, primeiro: primeiro };
+  // Versao visivel: sem isso nao da pra saber se a pagina esta rodando o pixel
+  // novo ou uma copia velha em cache — e isso ja custou uma investigacao inteira.
+  w.TMXOrigem = { vid: id, primeiro: primeiro, versao: TMX_VERSAO };
   ['t','v'].forEach(function(k){
     var v = q.get('tmx_'+k);
     try{ if(v) localStorage.setItem('tmx_ab_'+k, v); }catch(e){}
@@ -9601,9 +9608,11 @@ const PIXEL_JS = `(function(w,d){
 app.get('/px.js', (req, res) => {
   res.set('Content-Type', 'application/javascript; charset=utf-8');
   res.set('Access-Control-Allow-Origin', '*');
-  // 1h: melhoria no pixel chega em todo mundo no dia seguinte sem recolar nada,
-  // e nao castiga a pagina com um download a cada acesso.
-  res.set('Cache-Control', 'public, max-age=3600');
+  // 5min. Era 1h, e durante um ajuste de atribuicao isso significou testar o
+  // conserto contra uma copia velha em cache e nao entender por que nao pegava.
+  // 5min ainda poupa o download a cada acesso e deixa o conserto chegar rapido.
+  res.set('Cache-Control', 'public, max-age=300');
+  res.set('X-TMX-Versao', TMX_VERSAO);
   res.send(PIXEL_JS);
 });
 
