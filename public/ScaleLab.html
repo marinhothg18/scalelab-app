@@ -3710,6 +3710,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               <span class="sep">›</span>
               <select id="fn-funil" onchange="fnTrocarFunil(this.value)"></select>
               <button class="fn-btn sm" onclick="fnNovoFunil()">+ Novo funil</button>
+              <button class="fn-btn g sm" onclick="fnExcluirFunil()" title="Excluir o funil aberto (vai pra Lixeira, 30 dias)">🗑</button>
               <span class="fn-vivo2"><i class="fn-pulsa"></i> AO VIVO</span>
               <div class="fn-ctx-dir">
                 <select id="fn-periodo" class="fn-per" onchange="fnTrocarPeriodo()">
@@ -30141,6 +30142,42 @@ function fnGravar(f){
   for(var i=0;i<l.length;i++) if(l[i].id===f.id){ f._updatedAt = Date.now(); l[i]=f; }
   fnSalvarFunis(l);
 }
+// Excluir funil. Vai pela lixeira de proposito: apagar so na lista local nao
+// funciona — o merge do servidor preserva o que nao veio no push, entao o funil
+// voltaria no proximo sync. sDelete faz o DELETE de verdade e guarda 30 dias.
+// O que NAO e apagado: as estatisticas e as jornadas, que sao do servidor e
+// ficam com o historico. Se voce recriar o funil com as mesmas paginas, os
+// numeros voltam pra ele pela adocao de etapa.
+function fnExcluirFunil(){
+  var f = fnAtual();
+  if(!f){ toastFn('Nenhum funil selecionado'); return; }
+  var lista = fnDoProjeto();
+
+  var etapas = (f.etapas||[]).length, testes = abDoProjeto().filter(function(r){
+    return (r.destinos||[]).some(function(d){
+      return (f.etapas||[]).some(function(e){ return e.url && fnNormalizarUrl(e.url) === fnNormalizarUrl(d.url||''); });
+    });
+  }).length;
+
+  var aviso = 'Excluir o funil "' + f.nome + '"?\n\n' +
+    '· ' + etapas + ' etapa(s) saem do mapa\n' +
+    (testes ? ('· ' + testes + ' teste(s) A/B apontam pra páginas dele e continuam rodando\n') : '') +
+    '\nOs números medidos (pessoas, jornadas, atenção) NÃO são apagados — ficam no\n' +
+    'servidor e voltam se você recriar o funil com as mesmas páginas.\n\n' +
+    'Dá pra restaurar por 30 dias em Lixeira.';
+  if(!confirm(aviso)) return;
+
+  if(typeof sDelete === 'function') sDelete('sl_funis', f.id, 'Funil');
+  else { fnSalvarFunis(fnFunis().filter(function(x){ return x.id !== f.id; })); }
+
+  // volta pro primeiro funil que sobrou, sem deixar a tela apontando pro nada
+  fnIdx = 0; fnSel = null;
+  var sobrou = fnDoProjeto();
+  fnPintar();
+  if(sobrou.length) fnCarregarStats();
+  toastFn('Funil excluído — dá pra restaurar em Lixeira');
+}
+
 function fnNovoFunil(){
   var nome = prompt('Nome do novo funil (dentro de '+fnProj+'):');
   if(!nome) return;
