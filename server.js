@@ -8828,9 +8828,15 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     const seg1 = j => j.eventos.reduce((m, e) => Math.max(m, Number(e.atencao) || 0), 0);
     const passouDe = (j, s) => seg1(j) >= s;
 
+    // O marco da oferta: o minuto em que a VSL mostra o preco. Quem nao chegou
+    // ate ali nunca viu a oferta — cair antes disso e problema de retencao do
+    // video, cair depois e problema de oferta. Sao consertos diferentes.
+    const oferta = Math.max(0, Math.min(7200, parseInt(req.query.oferta, 10) || 0));
+
     const contagem = {
       todas: lista.length,
       'abriu':      lista.length,
+      oferta:       oferta ? lista.filter(j => passouDe(j, oferta)).length : 0,
       'tempo-1m':   lista.filter(j => passouDe(j, 60)).length,
       'tempo-5m':   lista.filter(j => passouDe(j, 300)).length,
       'tempo-10m':  lista.filter(j => passouDe(j, 600)).length,
@@ -8848,6 +8854,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
 
     const filtros = {
       'abriu':     () => true,
+      oferta:      j => oferta && passouDe(j, oferta),
       'tempo-1m':  j => passouDe(j, 60),
       'tempo-5m':  j => passouDe(j, 300),
       'tempo-10m': j => passouDe(j, 600),
@@ -8891,7 +8898,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
       }
     });
 
-    res.json({ ok: true, funil, filtro, contagem, de, ate, pg,
+    res.json({ ok: true, funil, filtro, contagem, de, ate, pg, oferta,
       paginas: Object.values(paginas).map(x => ({ pg: x.pg, pessoas: x.pessoas.size }))
                      .sort((a, b) => b.pessoas - a.pessoas),
       etapas: ((f && f.etapas) || []).map(e => ({ id: e.id, nome: e.nome, tipo: e.tipo })),

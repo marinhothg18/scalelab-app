@@ -1556,7 +1556,24 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
 .fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
 .fn-pessoa .de{font-size:11.5px;color:var(--text2);margin-left:auto}
-.jn-fila{margin-bottom:12px}
+.jn-fila{margin-bottom:12px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.jn-marco{margin-left:auto;background:var(--bg3);border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer}
+.jn-marco:hover{border-color:var(--accent);color:var(--accent);border-style:solid}
+/* Escada do funil: a queda entre um degrau e o proximo é a informação */
+.jn-escada{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:17px 19px;margin-bottom:14px}
+.jn-esc{display:grid;grid-template-columns:190px minmax(0,1fr) 78px;align-items:center;gap:14px;padding:7px 9px;margin:0 -9px;border-radius:9px;cursor:pointer}
+.jn-esc:hover{background:var(--bg3)}
+.jn-esc.on{background:var(--bg3);box-shadow:inset 0 0 0 1px var(--accent)}
+.jn-esc .r{font-size:12.5px;font-weight:600;line-height:1.35}
+.jn-esc .r span{display:block;font-size:10.5px;font-weight:400;color:var(--text2)}
+.jn-esc .b{position:relative;background:var(--bg3);border-radius:5px;height:26px;overflow:hidden}
+.jn-esc.on .b,.jn-esc:hover .b{background:var(--bg)}
+.jn-esc .b i{display:block;height:100%;border-radius:5px}
+.jn-esc .q{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10.5px;font-weight:800;color:var(--text2);font-variant-numeric:tabular-nums}
+.jn-esc .n{text-align:right}
+.jn-esc .n b{display:block;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.jn-esc .n span{font-size:10.5px;color:var(--text2)}
+@media(max-width:640px){.jn-esc{grid-template-columns:120px minmax(0,1fr) 60px;gap:9px}}
 .jn-fila-r{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--text3);font-weight:700;margin-bottom:7px}
 .jn-fila-b{display:flex;flex-wrap:wrap;gap:7px}
@@ -29609,11 +29626,47 @@ var jnFiltro = 'todas', jnDados = null;   // abrir num filtro estreito faz a tel
 // Uma fileira só, e é um FUNIL: a ordem é a jornada de quem assiste e cada
 // degrau é sempre menor que o anterior. Os selos de cada pessoa (leu de verdade,
 // travou, só olhou) continuam nos cartões — o que saiu foi a fileira de botões.
-var JN_DEGRAUS = ['todas','tempo-1m','tempo-5m','tempo-10m','tempo-20m','comprou'];
+var JN_DEGRAUS = ['todas','tempo-1m','tempo-5m','oferta','tempo-10m','tempo-20m','comprou'];
+// Quantos segundos cada degrau exige. A ordem da escada SAI DAQUI, nao da ordem
+// em que eu escrevi a lista: com a oferta aos 15min, um degrau fixo entre 5 e
+// 10 min poria 'chegou na oferta' antes de 'passou de 10 min' — e a queda entre
+// os dois viraria um numero impossivel.
+var JN_SEGUNDOS = { 'todas':0, 'tempo-1m':60, 'tempo-5m':300, 'tempo-10m':600, 'tempo-20m':1200 };
+function jnEscadaDegraus(seg){
+  var t = ['todas','tempo-1m','tempo-5m','tempo-10m','tempo-20m'];
+  if(seg > 0) t.push('oferta');
+  t.sort(function(a, b){
+    var sa = a==='oferta' ? seg : JN_SEGUNDOS[a];
+    var sb = b==='oferta' ? seg : JN_SEGUNDOS[b];
+    return sa - sb;
+  });
+  return t.concat(['comprou']);
+}
+
+// O minuto em que a VSL mostra o preço. Guardado por funil: cada VSL tem o
+// pitch num ponto diferente. Zero = não marcado, e aí o degrau some do funil.
+function jnOferta(){
+  var f = fnAtual();
+  return f ? (parseInt(localStorage.getItem('jn_oferta_'+f.id), 10) || 0) : 0;
+}
+function jnMarcarOferta(){
+  var f = fnAtual(); if(!f) return;
+  var atual = jnOferta();
+  var txt = prompt('Em que minuto da VSL você mostra o preço?\n\n'+
+    'Quem não chega até aí nunca viu a oferta — é o degrau que separa\n'+
+    'problema de retenção do vídeo de problema de oferta.\n\n'+
+    'Deixe vazio para tirar o marco.', atual ? String(atual/60) : '');
+  if(txt === null) return;
+  var min = parseFloat(String(txt).replace(',', '.'));
+  var seg = (Number.isFinite(min) && min > 0) ? Math.round(min*60) : 0;
+  localStorage.setItem('jn_oferta_'+f.id, String(seg));
+  jnCarregar();
+}
 var JN_ROTULO = {
   'todas':'Abriu a página',
   'tempo-1m':'Passou de 1 min',
   'tempo-5m':'Passou de 5 min',
+  'oferta':'Chegou na oferta',
   'tempo-10m':'Passou de 10 min',
   'tempo-20m':'Passou de 20 min',
   'comprou':'Comprou',
@@ -30038,7 +30091,8 @@ function jnCarregar(){
   fetch('/api/funil/jornadas?funil='+encodeURIComponent(f.id)+'&filtro='+encodeURIComponent(jnFiltro)+
         '&'+fnQsPeriodo()+
         (teste?('&teste='+encodeURIComponent(teste)):'')+
-        (pg?('&pg='+encodeURIComponent(pg)):''))
+        (pg?('&pg='+encodeURIComponent(pg)):'')+
+        '&oferta='+jnOferta())
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
       if(meuJn !== jnPedido) return;    // chegou depois de eu já ter trocado
@@ -30074,21 +30128,49 @@ function jnPintar(){
 
   jnPiramide(d);
   var base = (d.contagem && d.contagem.todas) || 0;
+  // Sem o marco da oferta o degrau nao existe — nao inventa um minuto qualquer.
+  var seg = (d.oferta || 0);
+  var degraus = jnEscadaDegraus(seg);
+
   function pastilha(k, comQueda){
     var n = (d.contagem && d.contagem[k]) || 0;
     var cor = (n && JN_COR[k] && jnFiltro!==k) ? (';color:'+JN_COR[k]) : '';
     // no funil, o % é sobre quem abriu — é o que diz onde a audiência cai
     var pct = (comQueda && base && k!=='todas') ? (' <span class="pc">'+
               Math.round(n/base*100)+'%</span>') : '';
+    var rot = JN_ROTULO[k] + (k==='oferta' ? (' (' + jnDuracao(seg) + ')') : '');
     return '<button class="fn-filtro '+(jnFiltro===k?'on':'')+'" style="'+cor+'" '+
-      'onclick="jnTrocar(\''+k+'\')">'+JN_ROTULO[k]+' · '+fnNum(n)+pct+'</button>';
+      'onclick="jnTrocar(\''+k+'\')">'+rot+' · '+fnNum(n)+pct+'</button>';
   }
+
+  // A QUEDA entre um degrau e o seguinte. "62% chegaram" e "perdeu 38% aqui"
+  // sao o mesmo numero, mas so o segundo aponta onde consertar.
+  function escada(){
+    var linhas = degraus.map(function(k, i){
+      var n = (d.contagem && d.contagem[k]) || 0;
+      var larg = base ? Math.max(n/base*100, 0.8) : 0.8;
+      var ant = i ? ((d.contagem && d.contagem[degraus[i-1]]) || 0) : 0;
+      var perda = (i && ant) ? Math.round((1 - n/ant) * 100) : null;
+      var rot = JN_ROTULO[k] + (k==='oferta' ? '' : '');
+      var sub = k==='oferta' ? '<span>marcada aos '+jnDuracao(seg)+'</span>' : '';
+      return '<div class="jn-esc'+(jnFiltro===k?' on':'')+'" onclick="jnTrocar(\''+k+'\')" '+
+        'title="Ver só quem chegou até aqui">'+
+        '<div class="r">'+rot+sub+'</div>'+
+        '<div class="b"><i style="width:'+larg+'%;background:'+(JN_COR[k]||'var(--accent)')+'"></i>'+
+          (perda !== null && perda > 0 ? '<span class="q">−'+perda+'%</span>' : '')+'</div>'+
+        '<div class="n"><b>'+fnNum(n)+'</b><span>'+(base?Math.round(n/base*100):0)+'%</span></div></div>';
+    }).join('');
+    return '<div class="jn-escada">'+linhas+'</div>';
+  }
+
   // Se o filtro em uso não é mais um degrau do funil, volta pra "abriu a página":
   // senão a tela ficaria presa num recorte que não tem mais botão pra sair.
-  if(JN_DEGRAUS.indexOf(jnFiltro) < 0){ jnFiltro = 'todas'; jnCarregar(); return; }
+  if(degraus.indexOf(jnFiltro) < 0){ jnFiltro = 'todas'; jnCarregar(); return; }
   fl.innerHTML =
     '<div class="jn-fila"><span class="jn-fila-r">Quanto tempo aguentaram</span>'+
-      '<div class="jn-fila-b">'+JN_DEGRAUS.map(function(k){ return pastilha(k, true); }).join('')+'</div></div>';
+      '<button class="jn-marco" onclick="jnMarcarOferta()">'+
+        (seg ? ('🎯 oferta aos '+jnDuracao(seg)) : '🎯 marcar o minuto da oferta')+'</button></div>'+
+    escada();
 
   var nomeEtapa = {}, tipoEtapa = {};
   // o mapa local manda: se a etapa foi renomeada aqui, o nome novo é o que vale
