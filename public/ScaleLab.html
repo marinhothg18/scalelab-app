@@ -29684,10 +29684,29 @@ function _fnPorPagina(st){
   var pgs = (st && st.paginas) || [];
   if(pgs.length < 2) return '';
   var total = pgs.reduce(function(a,p){ return a + p.pessoas; }, 0) || 1;
-  return '<div class="fn-sec">Páginas somadas aqui</div>'+
+  // A URL cadastrada na etapa e o rotulo do bloco. Se ela nao e a pagina com
+  // mais gente, o bloco esta nomeado pela pagina errada — e foi assim que uma
+  // etapa chamada /segredo1 (10 pessoas) virou o rosto de 3.400.
+  var f = fnAtual(), n = f ? fnAcha(f, fnSel) : null;
+  var alerta = '';
+  if(n && n.url){
+    var minha = fnNormalizarUrl(n.url);
+    var maior = pgs[0];
+    if(fnNormalizarUrl(maior.pg) !== minha){
+      var eu = pgs.filter(function(p){ return fnNormalizarUrl(p.pg) === minha; })[0];
+      alerta = '<div class="fx-aviso" style="margin:0 0 10px"><b>O bloco está nomeado pela página errada</b>'+
+        'Ele mostra <code>'+fnEsc(fnEncurtar(n.url))+'</code>'+
+        (eu ? (', que tem '+fnNum(eu.pessoas)+' pessoa(s)') : ', que não aparece nesta lista')+
+        ', mas quem traz gente aqui é <code>'+fnEsc(fnEncurtar(maior.pg))+'</code> com '+
+        fnNum(maior.pessoas)+'. Troque o link da etapa, ou separe cada página na sua própria etapa.</div>';
+    }
+  }
+  return alerta+
+    '<div class="fn-sec">Páginas somadas aqui</div>'+
     '<div style="font-size:11px;color:var(--text2);line-height:1.5;margin:-3px 0 8px">'+
-      'Estas páginas reportam com o mesmo <code>data-e</code>, então o número acima é a '+
-      '<b>soma das duas</b>. Pra separar de vez, use um <code>data-e</code> diferente em cada uma.</div>'+
+      pgs.length+' páginas reportam com o mesmo <code>data-e</code>, então o número acima é a '+
+      '<b>soma de todas</b>. A soma da lista passa do total do bloco porque quem viu duas '+
+      'páginas conta nas duas. Pra separar de vez, use um <code>data-e</code> diferente em cada uma.</div>'+
     pgs.map(function(p){
       var pc = p.pessoas/total*100;
       return '<div style="margin-bottom:7px">'+

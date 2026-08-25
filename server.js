@@ -9434,6 +9434,20 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       v.saidas   += l.saidas   || 0; v.segundos += l.segundos || 0;
       Object.keys(l.eventos || {}).forEach(t => { v.eventos[t] = (v.eventos[t] || 0) + l.eventos[t]; });
     });
+    // ── Unicos de verdade, contados da jornada ──────────────────────────────
+    // _fVistos (o Set que decide quem ja foi contado) vive so na memoria. Todo
+    // restart ele volta vazio e quem voltou ao site depois disso e contado de
+    // novo como unico — e o merge SOMA no banco. Num dia com varios deploys o
+    // numero infla feio: 1.200 pessoas viraram 2.218.
+    // A jornada nao tem esse problema: e um registro por visitante, gravado no
+    // banco. Quando o periodo cabe na janela dela, ela e a fonte melhor.
+    // Fora da janela (>7 dias) nao ha jornada e o contador antigo e o que tem.
+    const dentroDaJanela = (() => {
+      if (!de) return false;                       // sem inicio nao da pra saber
+      const limite = new Date(Date.now() - JORNADA_DIAS * 86400000).toISOString().slice(0, 10);
+      return de >= limite;
+    })();
+
     // ── Quantas paginas reportam sob a MESMA etapa ──────────────────────────
     // A chave de contagem e funil|etapa|dia: a pagina nao entra nela. Duas VSLs
     // coladas com o mesmo data-e somam no mesmo bloco, e o bloco mostra a URL
@@ -9443,10 +9457,17 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
     const porPagina = {};
     const jn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
       .concat(Object.values(_jBuffer));
+    const unicosJn = {};       // etapa -> Set(visitante)
     jn.forEach(j => {
       const chaves = new Set();
       (j.eventos || []).forEach(e => {
-        if (!e.pg || !e.etapa) return;
+        if (!e.etapa) return;
+        const dia0 = String(e.em || '').slice(0, 10);
+        if (de && dia0 < de) return;
+        if (ate && dia0 > ate) return;
+        const et0 = funil ? ado.etapaDe({ funil: j.funil, etapa: e.etapa }) : e.etapa;
+        (unicosJn[et0] = unicosJn[et0] || new Set()).add(j.id);
+        if (!e.pg) return;
         const dia = String(e.em || '').slice(0, 10);
         if (de && dia < de) return;
         if (ate && dia > ate) return;
@@ -9463,12 +9484,20 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
     });
 
     res.json({ ok: true, funil, de, ate,
-      etapas: Object.values(porEtapa).map(e => Object.assign(e, {
-        tempoMedio: e.saidas > 0 ? Math.round(e.segundos / e.saidas) : 0,
-        paginas: Object.entries(porPagina[e.etapa] || {})
-          .map(([pg, pessoas]) => ({ pg, pessoas }))
-          .sort((a, b) => b.pessoas - a.pessoas)
-      })),
+      // 'jornada' quando o numero veio da fonte confiavel; 'contador' quando
+      // sobrou o acumulado antigo. A tela precisa poder dizer qual e qual.
+      fonteUnicos: dentroDaJanela ? 'jornada' : 'contador',
+      etapas: Object.values(porEtapa).map(e => {
+        const real = dentroDaJanela && unicosJn[e.etapa] ? unicosJn[e.etapa].size : null;
+        return Object.assign(e, {
+          tempoMedio: e.saidas > 0 ? Math.round(e.segundos / e.saidas) : 0,
+          unicosContador: e.unicos,
+          unicos: real != null ? real : e.unicos,
+          paginas: Object.entries(porPagina[e.etapa] || {})
+            .map(([pg, pessoas]) => ({ pg, pessoas }))
+            .sort((a, b) => b.pessoas - a.pessoas)
+        });
+      }),
       feed: _fFeed.filter(f => !funil || ado.aceita(f)).slice(0, 40) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
