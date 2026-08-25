@@ -5990,6 +5990,7 @@ const KEYS_SERVIDOR = new Set([
   'sl_integracoes_utmify_mcp', // token de acesso do MCP da Utmify
   'sl_vturb',               // token da API de analytics da VTurb
   'sl_funil_evfoto',        // foto interna dos contadores; nao serve pra tela
+  'sl_ab_vistos',           // ids de quem ja foi contado no teste; interno
   'sl_ab_stats',            // contagem do teste A/B; a tela le por /api/ab/stats
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
@@ -9296,7 +9297,65 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
 // a guarda no dominio de destino e devolve em todo evento.
 // ══════════════════════════════════════════════════════
 let _abBuffer = {}, _abSujo = false;
-const _abVistos = new Map();          // por chave: quem ja foi contado como unico
+// ── Quem ja foi contado, e que precisa SOBREVIVER a restart ────────────────
+// Isto vivia so na memoria. Todo deploy zerava, e a mesma pessoa voltava a
+// contar como 'pessoa' e como 'meta' — em dia de dez deploys, o teste vira
+// ficcao. E o mesmo defeito do _fVistos, aqui contaminando direto o veredito
+// que decide qual variante fica no ar.
+//
+// So o dia de hoje precisa sobreviver: a chave do contador ja e por dia, entao
+// quem volta amanha conta de novo por definicao. Guardar so hoje mantem o custo
+// em ~60KB com 4 mil visitantes, e nao repete o disco cheio de agosto.
+const KEY_ABVISTOS = 'sl_ab_vistos';
+const AB_VISTOS_TETO = 120000;        // ids no total; acima disso avisa e para
+let _abTetoAvisado = false;
+let _abVistos = new Map();            // por chave: quem ja foi contado como unico
+let _abVistosSujo = false;
+
+function _abVistosCarregar() {
+  try {
+    const db = readDB();
+    const guardado = db.store[KEY_ABVISTOS];
+    if (!guardado || typeof guardado !== 'object') return;
+    const hoje = _hojeBR();
+    let n = 0;
+    Object.keys(guardado).forEach(k => {
+      // "teste|variante|dia|tipo" — so o dia de hoje volta
+      const partes = k.split('|');
+      if (partes[2] !== hoje) return;
+      _abVistos.set(k, new Set(guardado[k] || []));
+      n += (guardado[k] || []).length;
+    });
+    if (n) console.log('[AB] ' + n + ' visitante(s) ja contados hoje foram recuperados do disco.');
+  } catch (e) { console.error('[AB] nao consegui recuperar quem ja foi contado:', e.message); }
+}
+
+function _abVistosGravar() {
+  if (!_abVistosSujo) return;
+  _abVistosSujo = false;
+  try {
+    const hoje = _hojeBR(), saida = {};
+    let total = 0;
+    _abVistos.forEach((set, k) => {
+      if (k.split('|')[2] !== hoje) return;
+      saida[k] = Array.from(set);
+      total += saida[k].length;
+    });
+    const db = readDB();
+    db.store[KEY_ABVISTOS] = saida;
+    db.timestamps[KEY_ABVISTOS] = now();
+    writeDB(db);
+  } catch (e) { console.error('[AB] falhou ao gravar quem ja foi contado:', e.message); }
+}
+setInterval(_abVistosGravar, 60 * 1000);
+// Recupera antes de atender o primeiro evento: se o primeiro visitante chegar
+// com a memoria vazia, ele conta duas vezes e o estrago ja esta feito.
+_abVistosCarregar();
+// solta os dias passados da memoria — o contador ja e por dia
+setInterval(() => {
+  const hoje = _hojeBR();
+  _abVistos.forEach((_, k) => { if (k.split('|')[2] !== hoje) _abVistos.delete(k); });
+}, 30 * 60 * 1000);
 
 function _abChave(teste, variante, dia) { return teste + '|' + variante + '|' + dia; }
 
@@ -9314,7 +9373,21 @@ function _abContar(teste, variante, tipo, visitante) {
     if (!_abVistos.has(kv)) _abVistos.set(kv, new Set());
     const set = _abVistos.get(kv);
     if (!set.has(visitante)) {
-      set.add(visitante);
+      // Teto de seguranca: em vez de crescer sem limite e voltar a encher o
+      // disco, para de guardar e avisa. Contar a mais e ruim; derrubar o site
+      // e pior, e ja aconteceu.
+      let total = 0;
+      _abVistos.forEach(sx => { total += sx.size; });
+      if (total >= AB_VISTOS_TETO) {
+        if (!_abTetoAvisado) {
+          _abTetoAvisado = true;
+          console.warn('[AB] teto de ' + AB_VISTOS_TETO + ' visitantes atingido hoje. ' +
+                       'A partir daqui pode haver contagem repetida no teste A/B.');
+        }
+      } else {
+        set.add(visitante);
+        _abVistosSujo = true;
+      }
       if (tipo === 'meta') b.metas++; else b.pessoas++;
     }
   }
