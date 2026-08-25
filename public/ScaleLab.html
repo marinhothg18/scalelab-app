@@ -3776,6 +3776,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                   <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button>
                     <button onclick="fnCaber()" title="Encaixa o mapa inteiro na tela">⤢</button></div>
                   </div>
+                <div id="fn-fora-aviso"></div>
                 <div class="fn-mapa" id="fn-mapa">
                   <div class="fn-grade"></div>
                   <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
@@ -27485,6 +27486,8 @@ var FN_MODELOS = [
   { id:'zero', nome:'Vazio',                etapas:[] }
 ];
 var fnProjetos = [], fnProj = '', fnIdx = 0, fnEscala = .8, fnSel = null, fnStats = {}, fnFeed = [], fnRedIdx = 0;
+// Paginas com pixel que nao sao a URL de nenhuma etapa deste funil.
+var fnFora = [];
 
 // O periodo escolhido no topo, uma vez so. Antes cada aba refazia essa conta —
 // e as que esqueciam mostravam numero de outro dia ao lado das que nao.
@@ -29265,6 +29268,7 @@ function fnCarregarStats(){
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
       fnStats = {}; fnFeed = (d && d.feed) || [];
+      fnFora = (d && d.foraDoMapa) || [];
       ((d && d.etapas) || []).forEach(function(e){ fnStats[e.etapa] = e; });
       fnPintar();
     }).catch(function(){ fnPintar(); });
@@ -29325,6 +29329,67 @@ function fnVal(id){ return fnValFonte(id).valor; }
 // Abre a divisao da etapa: cada pagina que reportou sob ela e quantas pessoas.
 // Antes isso vivia so num title= — quando o numero do bloco estourava nao dava
 // pra ver de onde vinha, e a tela virava um numero sem defesa.
+// Paginas com pixel que nao sao a URL de nenhuma etapa. Elas costumavam entrar
+// no bloco da etapa cujo data-e copiaram — o bloco dizia '/segredo' e somava
+// /bio, /aula, /assinatura junto. Agora ficam de fora da conta, mas ficar de
+// fora nao pode virar sumir: quem tem 257 pessoas numa pagina precisa saber.
+function fnPintarFora(){
+  var el = document.getElementById('fn-fora-aviso'); if(!el) return;
+  var n = (fnFora||[]).length;
+  if(!n){ el.innerHTML = ''; return; }
+  var gente = fnFora.reduce(function(a,p){ return a + (p.pessoas||0); }, 0);
+  el.innerHTML = '<div onclick="fnVerFora()" title="Clique pra ver quais são" '+
+    'style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-bottom:10px;'+
+    'background:rgba(255,89,38,.10);border-left:3px solid #FF5926;border-radius:6px;'+
+    'padding:9px 12px;font-size:12.5px">'+
+    '<b>'+n+' página'+(n===1?'':'s')+' com pixel fora do mapa</b>'+
+    '<span style="color:var(--text2)">'+fnNum(gente)+' pessoa'+(gente===1?'':'s')+
+    ' — não entram em nenhuma etapa</span>'+
+    '<span style="margin-left:auto;font-weight:700;color:#FF5926">ver ›</span></div>';
+}
+
+function fnVerFora(){
+  var pgs = (fnFora||[]).slice();
+  var soma = pgs.reduce(function(a,p){ return a+(p.pessoas||0); }, 0);
+  var linhas = pgs.map(function(p){
+    var pc = soma ? ((p.pessoas||0)/soma*100) : 0;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;'+
+      'border-bottom:1px solid var(--linha,#ffffff14)">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;'+
+        'white-space:nowrap" title="'+fnEsc(p.pg)+'">'+fnEsc(fnCaminho(p.pg))+'</div>'+
+        '<div style="font-size:10.5px;color:var(--text2)">'+fnEsc(fnDominio(p.pg))+'</div></div>'+
+      '<div style="width:90px;height:6px;background:#ffffff14;border-radius:3px;overflow:hidden">'+
+        '<div style="height:100%;width:'+pc.toFixed(1)+'%;background:#FF5926"></div></div>'+
+      '<div style="width:70px;text-align:right;font-size:13px;font-weight:700">'+fnNum(p.pessoas||0)+'</div>'+
+    '</div>';
+  }).join('');
+
+  var ov = document.createElement('div');
+  ov.className = 'fn-ov-paginas';
+  ov.style.cssText = 'position:fixed;inset:0;background:#000000a8;z-index:9999;display:flex;'+
+                     'align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = '<div style="background:var(--card,#15161c);border:1px solid var(--linha,#ffffff1a);'+
+    'border-radius:12px;max-width:620px;width:100%;max-height:80vh;overflow:auto;padding:20px 22px" '+
+    'onclick="event.stopPropagation()">'+
+    '<div style="display:flex;align-items:flex-start;gap:12px">'+
+      '<div style="flex:1"><div style="font-size:15px;font-weight:800">Páginas fora do mapa</div>'+
+      '<div style="font-size:11.5px;color:var(--text2);margin-top:2px">'+pgs.length+
+      ' páginas · '+fnNum(soma)+' pessoas</div></div>'+
+      '<button onclick="this.closest(\'.fn-ov-paginas\').remove()" style="background:none;border:none;'+
+      'color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:0 2px">×</button></div>'+
+    '<div style="background:rgba(255,89,38,.10);border-left:3px solid #FF5926;padding:10px 12px;'+
+    'border-radius:6px;margin:14px 0;font-size:12.5px;line-height:1.5">'+
+    'Estas páginas têm o pixel, mas a URL delas não está cadastrada em nenhuma etapa deste funil. '+
+    'Elas carregam o <b>data-e</b> da etapa de onde o script foi copiado — antes entravam no bloco '+
+    'dela e inflavam o número. Agora ficam de fora.<br><br>'+
+    'Se alguma faz parte do funil, <b>cadastre a URL numa etapa</b> e ela passa a contar sozinha. '+
+    'Se não faz, é só o pixel sobrando numa página que não é deste funil.</div>'+
+    linhas+'</div>';
+  ov.onclick = function(){ ov.remove(); };
+  document.body.appendChild(ov);
+}
+
 function fnVerPaginas(id){
   var f = fnAtual(), n = f ? fnAcha(f, id) : null;
   var e = fnStats[id] || {};
@@ -29512,6 +29577,7 @@ function fnPintar(){
   if(caixaProj) caixaProj.style.display='none';
   if(barra) barra.style.display='';
   if(dentro) dentro.style.display='';
+  fnPintarFora();
   var nome = document.getElementById('fn-proj-nome');
   if(nome) nome.textContent = fnProj;
   fnPintarCtx();

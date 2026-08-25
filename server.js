@@ -9539,13 +9539,14 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       .replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
     const urlsDoFunil = new Set();
     const etapaPorUrl = {};
+    const etapaTemUrl = {};       // etapa que mostra um link na tela
     if (funil) {
       const fu = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
         .find(x => x && x.id === funil);
       ((fu && fu.etapas) || []).forEach(e => {
         if (!e.url) return;
         const k = _norm(e.url);
-        urlsDoFunil.add(k); etapaPorUrl[k] = e.id;
+        urlsDoFunil.add(k); etapaPorUrl[k] = e.id; etapaTemUrl[e.id] = true;
       });
     }
     const valeAqui = (j, e) => {
@@ -9561,12 +9562,45 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
     // uma variante nao recebia trafego, quando na verdade tinha 2.412 pessoas.
     // A URL o usuario cadastrou de proposito, uma em cada etapa, e e ela que o
     // mapa desenha em cada bloco. Entao ela e a intencao mais forte das duas.
+    // ── So exclui pagina estranha de etapa que se sustenta sozinha ──────────
+    // Se a URL cadastrada na etapa nunca aparece nos eventos (link digitado com
+    // erro, pagina que mudou de endereco, /index.html no fim), excluir as outras
+    // paginas zeraria o bloco — regressao pior que o problema que estou
+    // consertando. Nesse caso vale o comportamento antigo, e o aviso que ja
+    // existe ('mostra X mas quem traz gente e Y') continua sendo quem resolve.
+    const urlVista = new Set();
+    jn.forEach(j => (j.eventos || []).forEach(e => {
+      if (e && e.pg) urlVista.add(_norm(e.pg));
+    }));
+    const etapaSeSustenta = {};
+    Object.keys(etapaPorUrl).forEach(u => {
+      if (urlVista.has(u)) etapaSeSustenta[etapaPorUrl[u]] = true;
+    });
+
+    // Paginas que declaram uma etapa mas nao sao a URL dela. Nao somem: viram
+    // lista, pra dar pra ver e decidir (cadastrar como etapa, ou arrumar o pixel).
+    const foraDoMapa = {};
     const etapaDaqui = (j, e) => {
       if (!funil) return e.etapa;
       const dona = etapaPorUrl[_norm(e.pg)];
       if (dona) return dona;
-      if (ado.aceita({ funil: j.funil, etapa: e.etapa })) return ado.etapaDe({ funil: j.funil, etapa: e.etapa });
-      return e.etapa;
+      const decl = ado.aceita({ funil: j.funil, etapa: e.etapa })
+        ? ado.etapaDe({ funil: j.funil, etapa: e.etapa })
+        : e.etapa;
+      // ── Um bloco que mostra uma URL tem de contar AQUELA URL ───────────────
+      // O data-e e copiado junto com o script: /bio, /aula, /assinatura e mais
+      // oito paginas chegavam com o data-e da VSL e entravam no bloco dela. O
+      // bloco entao exibia 'apostilai.ai/segredo' e somava onze paginas que nao
+      // sao aquela. Se a etapa tem link cadastrado, pagina que nao e o link fica
+      // de fora — e aparece na lista de fora do mapa.
+      // Etapa sem link cadastrado continua aceitando pelo data-e: e o unico
+      // sinal que ela tem, e tirar isso zeraria funil que ainda nao foi montado.
+      if (decl && etapaTemUrl[decl] && etapaSeSustenta[decl] && e.pg) {
+        const k = String(e.pg).slice(0, 160);
+        (foraDoMapa[k] = foraDoMapa[k] || new Set()).add(j.id);
+        return null;
+      }
+      return decl;
     };
 
     const unicosJn = {};       // etapa -> Set(visitante)
@@ -9609,6 +9643,11 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       // 'jornada' quando o numero veio da fonte confiavel; 'contador' quando
       // sobrou o acumulado antigo. A tela precisa poder dizer qual e qual.
       fonteUnicos: dentroDaJanela ? 'jornada' : 'contador',
+      // Paginas com pixel que nao correspondem a nenhuma etapa deste funil.
+      // Antes elas engordavam o bloco da etapa que copiaram; agora ficam aqui.
+      foraDoMapa: Object.entries(foraDoMapa)
+        .map(([pg, quem]) => ({ pg, pessoas: quem.size }))
+        .sort((a, b) => b.pessoas - a.pessoas).slice(0, 40),
       etapas: Object.values(porEtapa).map(e => {
         const real = dentroDaJanela && unicosJn[e.etapa] ? unicosJn[e.etapa].size : null;
         return Object.assign(e, {
