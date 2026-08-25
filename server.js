@@ -9298,7 +9298,14 @@ const PIXEL_JS = `(function(w,d){
   }
 
   var agora = {};
-  MARCAS.forEach(function(k){ var v = q.get(k); if(v) agora[k] = v; });
+  MARCAS.forEach(function(k){
+    var v = q.get(k);
+    // Macro do gerenciador que nao foi substituida ("{{campaign.name}}" chegando
+    // ao pe da letra) nao e origem — e defeito de configuracao do anuncio.
+    // Guardar isso no first-touch e pior que nao guardar nada: depois nao ha o
+    // que colocar no lugar, porque o proprio "melhor valor" esta quebrado.
+    if(v && !/^\\{\\{.*\\}\\}$/.test(v.trim())) agora[k] = v;
+  });
   // _fbp e _fbc vem do pixel da Meta, se ele estiver na pagina
   var _fbp = bisc('_fbp'), _fbc = bisc('_fbc');
   if(_fbp) agora.fbp = _fbp;
