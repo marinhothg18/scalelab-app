@@ -9462,16 +9462,16 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       const chaves = new Set();
       (j.eventos || []).forEach(e => {
         if (!e.etapa) return;
-        const dia0 = String(e.em || '').slice(0, 10);
-        if (de && dia0 < de) return;
-        if (ate && dia0 > ate) return;
-        const et0 = funil ? ado.etapaDe({ funil: j.funil, etapa: e.etapa }) : e.etapa;
-        (unicosJn[et0] = unicosJn[et0] || new Set()).add(j.id);
-        if (!e.pg) return;
+        // MESMO filtro que as linhas de estatistica usam. Sem ele, jornada de
+        // outro funil com etapa de id igual entrava na conta e o numero subia
+        // em vez de descer.
+        if (funil && !ado.aceita({ funil: j.funil, etapa: e.etapa })) return;
         const dia = String(e.em || '').slice(0, 10);
         if (de && dia < de) return;
         if (ate && dia > ate) return;
         const et = funil ? ado.etapaDe({ funil: j.funil, etapa: e.etapa }) : e.etapa;
+        (unicosJn[et] = unicosJn[et] || new Set()).add(j.id);
+        if (!e.pg) return;
         chaves.add(et + '|' + e.pg);
       });
       // um visitante conta uma vez por (etapa,pagina), nao uma por evento
