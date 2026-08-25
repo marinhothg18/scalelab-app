@@ -30478,6 +30478,28 @@ function abPintarDetalhe(){
         'Quem decide é o R$/pessoa, não a taxa.</div>';
     }
   }
+  // ── Quem clicou no link e nunca chegou na pagina ────────────────────────
+  // O redirecionador conta o sorteio; o pixel conta quem chegou. A diferenca e
+  // perda pura entre o clique e a pagina — redirect lento, pagina fora do ar,
+  // pessoa desistindo no meio. Cada variante ja mostrava os dois numeros lado a
+  // lado, mas ninguem soma dois pares de numeros de cabeca: sem a linha somada
+  // essa perda ficava invisivel bem debaixo do olho.
+  var perdaCaminho = '';
+  (function(){
+    var cl = vars.reduce(function(a,v){ return a + (v.sorteios||0); }, 0);
+    var ch = vars.reduce(function(a,v){ return a + (v.pessoas ||0); }, 0);
+    if(cl < 50 || ch <= 0) return;            // pouco volume nao acusa nada
+    var perdeu = cl - ch;
+    if(perdeu <= 0) return;
+    var pc = (perdeu / cl) * 100;
+    if(pc < 5) return;                        // ate 5% e ruido de medicao
+    perdaCaminho = '<div class="fx-aviso'+(pc >= 25 ? ' ruim' : '')+'" style="margin-top:10px">'+
+      '<b>'+fnNum(perdeu)+' pessoas clicaram no link e não chegaram em nenhuma variante</b>'+
+      fnNum(cl)+' cliques no link, '+fnNum(ch)+' chegaram — '+pc.toFixed(0)+'% se perde entre o '+
+      'clique e a página. Costuma ser redirect lento, página fora do ar ou pixel faltando em '+
+      'alguma variante. Esse pedaço você paga no anúncio e não aparece em nenhum teste.</div>';
+  })();
+
   var avisoSem = '';
   if(d && d.vendasSemVariante > 0 && temReceita){
     avisoSem = '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
@@ -30508,7 +30530,7 @@ function abPintarDetalhe(){
         '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
           (temSorteio ? 'Divisão <b>real</b> do sorteio, não a configurada.' : 'É esse o sorteio que o link faz.')+
           ' As <b>utm_*</b> do anúncio são repassadas inteiras pro destino.</div>'+
-        avisoDiv+avisoSem+
+        avisoDiv+perdaCaminho+avisoSem+
       '</div></div>'+
       '<div>'+
         '<div class="fn-cx2"><h3>Configuração</h3>'+
