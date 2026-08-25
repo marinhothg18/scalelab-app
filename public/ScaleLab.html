@@ -1385,7 +1385,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-aba:hover{color:var(--text);background:var(--bg3)}
 .fn-aba.on{background:var(--accent);color:#fff}
 .fn-painel{display:none}.fn-painel.on{display:block}
-.fn-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:11px;margin-bottom:16px}
+.fn-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:11px}
 .fn-cx{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;cursor:pointer;transition:.15s}
 .fn-cx:hover{border-color:var(--accent);transform:translateY(-2px)}
 .fn-cx.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(27,156,250,.15)}
@@ -1402,7 +1402,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-et .q{font-size:11px;color:var(--text2);margin-top:3px}
 .fn-et .b{height:4px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden}
 .fn-et .b i{display:block;height:100%;border-radius:3px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
-.fn-mapa{background:var(--bg2);border:1px solid var(--border);border-radius:14px;position:relative;
+.fn-mapa{background:var(--bg);border:1px solid var(--border);border-radius:12px;position:relative;
   overflow:auto;height:clamp(460px,68vh,900px);resize:vertical;min-height:340px}
 .fn-grade{position:absolute;top:0;left:0;width:2400px;height:1400px;min-width:100%;min-height:100%;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:22px 22px;opacity:.8}
 /* o palco cresce junto com o mapa e ainda deixa espaco pra arrastar bloco pra fora */
@@ -1573,6 +1573,13 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-vivo i{width:6px;height:6px;border-radius:50%;background:var(--green);animation:fxpulsa 1.8s infinite}
 @keyframes fxpulsa{0%,100%{opacity:1}50%{opacity:.3}}
 .fx-shell{display:grid;grid-template-columns:186px minmax(0,1fr);gap:22px;align-items:start}
+/* Responder a CAIXA, nao a janela. A barra global (~220px) mais a nav do funil
+   (186px) tiram ~400px antes do conteudo comecar: numa janela de 1366px o
+   painel tem ~900px, mas a media query de viewport nao dispara e o canvas do
+   mapa fica com 100 e poucos pixels. Mesmo erro que o Meu Protocolo teve.
+   As @container ficam NO FIM da folha, depois de todas as regras base — aqui
+   em cima elas tinham a mesma especificidade e perdiam pra quem vinha depois. */
+.fx-conteudo{container-type:inline-size;container-name:fx;min-width:0}
 .fx-nav{position:sticky;top:12px;display:flex;flex-direction:column;gap:2px}
 .fx-nav-g{font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--text2);padding:14px 10px 6px}
 .fx-nav-g:first-child{padding-top:2px}
@@ -1792,8 +1799,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-vivo{display:flex;align-items:center;gap:7px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.32);color:var(--green);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800}
 .fn-pulsa{width:8px;height:8px;border-radius:50%;background:var(--green);animation:fnpulso 2s infinite}
 @keyframes fnpulso{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 8px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
-.fn-cols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}
-@media(max-width:1100px){ .fn-cols{grid-template-columns:minmax(0,1fr)} }
+.fn-cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
+/* Quem decide se empilha e a container query em .fx-conteudo, la embaixo.
+   Media query de viewport aqui vencia a container e empilhava sempre: numa
+   janela de 1280px o painel tem 900px de sobra e mesmo assim ia pra uma coluna. */
 /* Alinhado com .fx-cart: os cards do Mapa e os das telas novas sao o mesmo
    objeto. Mudar aqui em vez de reescrever os 10 pontos que usam .fn-cx2. */
 .fn-cx2{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px}
@@ -1820,7 +1829,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-btn.g{background:var(--bg3);border:1px solid var(--border);color:var(--text)}
 .fn-btn.sm{padding:5px 10px;font-size:12px}
 .fn-ev{display:flex;align-items:center;gap:9px;padding:8px 11px;background:var(--bg3);border-radius:7px;margin-bottom:5px;border-left:3px solid var(--accent)}
-@media(max-width:1050px){.fn-cols{grid-template-columns:1fr}}
+/* .fn-cols empilha pela container query no fim da folha, nao pelo viewport */
 @media(max-width:760px){
   .fn-mapa{height:380px}
   .fn-trilha{width:100%}
@@ -1938,6 +1947,34 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   padding:7px 10px;color:var(--text);font-size:13px;outline:none;text-align:right;font-family:inherit}
 @media(max-width:760px){ .vs-faixa{grid-template-columns:1fr 1fr}
   .vs-rank .n{width:104px} .vs-rank .v{width:104px;font-size:11.5px} }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CONTAINER QUERIES DO FUNIS — ficam aqui, no fim do ULTIMO <style> do HTML.
+   Container e media query tem a mesma especificidade: quem vem depois vence.
+   Declaradas antes da regra base de .fn-cols (que mora no bloco anterior),
+   elas existiam e nunca aplicavam — o mapa continuava espremido depois de eu
+   "consertar" duas vezes.
+   Respondem a CAIXA, nao a janela: a barra global (~220px) mais a nav do funil
+   (186px) tiram ~400px antes do conteudo comecar, entao media query de viewport
+   mede a coisa errada. Mesmo problema que o Meu Protocolo ja teve.
+   ══════════════════════════════════════════════════════════════════════════ */
+/* 760px: abaixo disso o canvas ficaria com menos de 450px e o desenho do funil
+   deixa de ser legivel. Acima, as duas colunas cabem — com 970px de painel o
+   mapa fica com ~650px. */
+@container fx (max-width: 760px){
+  .fn-cols{grid-template-columns:minmax(0,1fr)}
+}
+@container fx (max-width: 620px){
+  .fx-dupla{grid-template-columns:minmax(0,1fr)}
+  .jn-sel{grid-template-columns:minmax(0,1fr)}
+  .jn-cartoes{grid-template-columns:minmax(0,1fr)}
+}
+@container fx (max-width: 460px){
+  .fx-kpis{grid-template-columns:repeat(auto-fit,minmax(128px,1fr))}
+  .fn-faixa{grid-template-columns:repeat(auto-fit,minmax(108px,1fr))}
+  .jn-esc{grid-template-columns:96px minmax(0,1fr) 56px;gap:8px}
+  .lead-grid{grid-template-columns:minmax(0,1fr)}
+}
 </style>
 
 </head>
@@ -3694,12 +3731,16 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         </div>
 
         <div class="fn-painel" id="fn-p-mapa">
-          <div class="fn-cards" id="fn-lista"></div>
           <div class="fn-faixa" id="fn-etapas"></div>
+          <div id="mp-aviso"></div>
           <div class="fn-cols">
             <div>
               <div class="fn-aviso-lig" id="fn-aviso-lig" style="display:none"></div>
-              <div class="fn-mapa-wrap">
+              <div class="fx-cart fn-mapa-wrap">
+                <div class="fx-cc" style="margin-bottom:11px">
+                  <h3>Desenho do funil</h3>
+                  <span class="fx-sub" id="mp-sub"></span>
+                </div>
                 <div class="fn-barra">
                   <button class="fn-arrumar" onclick="fnArrumar()" title="Reorganiza os blocos seguindo as ligações">✨ Arrumar mapa</button>
                   <div class="fn-zoom"><button onclick="fnZoom(-10)">−</button><span id="fn-zoomv">80%</span><button onclick="fnZoom(10)">+</button>
@@ -3709,6 +3750,11 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                   <div class="fn-grade"></div>
                   <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
                 </div>
+              </div>
+              <div class="fx-cart" style="margin-top:16px">
+                <div class="fx-cc"><h3>Funis deste projeto</h3>
+                  <span class="fx-sub">clique pra trocar</span></div>
+                <div class="fn-cards" id="fn-lista"></div>
               </div>
             </div>
             <div>
@@ -28676,7 +28722,7 @@ function fnAba(qual, bt){
   }
   fnCabecalho();
   if(qual==='geral')   gePintar();
-  if(qual==='mapa')    setTimeout(fnFios, 40);
+  if(qual==='mapa')    { mpAviso(); setTimeout(fnFios, 40); }
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -28788,6 +28834,40 @@ function gePintar(){
     '<div class="jn-degraus">'+degraus+'</div></div>';
 
   el.innerHTML = html;
+}
+
+// ── Aviso do mapa ───────────────────────────────────────────────────────────
+// O desenho mostra o caminho; isto diz o que esta errado NO desenho. Bloco solto
+// nao recebe ninguem, e etapa sem link nunca conta — os dois aparecem como zero
+// e o mapa sozinho nao distingue "ninguem passou" de "nao esta medindo".
+function mpAviso(){
+  var el = document.getElementById('mp-aviso'); if(!el) return;
+  var sub = document.getElementById('mp-sub');
+  var f = fnAtual();
+  if(!f){ el.innerHTML = ''; return; }
+
+  var etapas = f.etapas || [], lig = f.ligacoes || [];
+  if(sub) sub.textContent = etapas.length + ' etapa(s) · ' + lig.length + ' ligação(ões)';
+
+  // quem nao recebe seta nem sai de uma origem esta solto no desenho
+  var recebe = {}, sai = {};
+  lig.forEach(function(l){ recebe[l[1]] = 1; sai[l[0]] = 1; });
+  var soltas = etapas.filter(function(e){ return !recebe[e.id] && !sai[e.id]; });
+  var semLink = etapas.filter(function(e){ return !e.url; });
+
+  var avisos = [];
+  if(semLink.length) avisos.push({ cls:'', t:semLink.length+' etapa(s) sem link: '+
+    fnEsc(semLink.map(function(e){ return e.nome; }).join(', ')),
+    d:'Sem a URL o pixel não tem onde ser colado. Elas aparecem zeradas no mapa por isso — não porque ninguém passou.' });
+  if(soltas.length) avisos.push({ cls:'', t:soltas.length+' bloco(s) solto(s): '+
+    fnEsc(soltas.map(function(e){ return e.nome; }).join(', ')),
+    d:'Não entram nem saem de lugar nenhum. Clique no bloco e use “Ligar em…” pra colocar no caminho.' });
+  if(!etapas.length) avisos.push({ cls:'', t:'Nenhuma etapa ainda',
+    d:'Adicione a primeira ao lado — é ela que vira o topo do funil.' });
+
+  el.innerHTML = avisos.map(function(a){
+    return '<div class="fx-aviso '+a.cls+'"><b>'+a.t+'</b>'+a.d+'</div>';
+  }).join('');
 }
 
 // ── Onde falta colar ────────────────────────────────────────────────────────
@@ -28994,7 +29074,7 @@ function fnPintar(){
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
     }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
   fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPixelBotao(); fnPintarRed(); fnPintarFeed();
-  fnCabecalho(); fnNavSinais(); gePintar(); pxInstalacao(); pxColeta();
+  fnCabecalho(); fnNavSinais(); gePintar(); pxInstalacao(); pxColeta(); mpAviso();
 }
 
 // A faixa e o mapa mostram O MESMO numero (fnVal). Quem re-renderiza um tem de
