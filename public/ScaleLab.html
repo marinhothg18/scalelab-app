@@ -28705,12 +28705,25 @@ function fnPintarCtx(){
   var chegaram = fnBase(f);
   var chk = achaTipo('checkout'), obr = achaTipo('obrigado');
   var testes = abDoProjeto().filter(function(r){ return r.meta && r.ativo!==false; }).length;
-  var cel = function(k, v, cor){
-    return '<div><div class="k">'+k+'</div><div class="v"'+(cor?(' style="color:'+cor+'"'):'')+'>'+v+'</div></div>';
+  var cel = function(k, v, cor, tit){
+    return '<div'+(tit?(' title="'+fnEsc(tit)+'" style="cursor:help"'):'')+'>'+
+      '<div class="k">'+k+(tit?' ⚠':'')+'</div>'+
+      '<div class="v"'+(cor?(' style="color:'+cor+'"'):'')+'>'+v+'</div></div>';
   };
+  // 'Chegaram' maior que 'Cliques' fica em cima do print e nao se explica.
+  // Se a entrada esta partida em dominios, o numero tem gente repetida dentro —
+  // e melhor a faixa admitir isso do que o usuario descobrir sozinho.
+  var excT = fnEntradaExcede(f);
   el.innerHTML =
     cel('Cliques',   cliques===null ? '—' : fnNum(cliques)) +
-    cel('Chegaram',  fnNum(chegaram)) +
+    cel('Chegaram',  fnNum(chegaram),
+        (excT && excT.dividido) ? '#FF5926' : '',
+        (excT && excT.dividido)
+          ? 'As páginas de entrada estão em ' + excT.dominios.length + ' domínios ('
+            + excT.dominios.join(', ') + '). Como o cookie que identifica a pessoa vale por '
+            + 'domínio, quem passa por mais de um é contado uma vez em cada — este número tem '
+            + 'gente repetida dentro. Veja a divisão no selo de páginas do mapa.'
+          : '') +
     (chk!==null ? cel('Checkout',  fnNum(chk), chk?'#f59e0b':'') : '') +
     (obr!==null ? cel('Compraram', fnNum(obr), obr?'var(--green)':'') : '') +
     cel('Testes',    fnNum(testes), testes?'var(--accent)':'');
@@ -28867,12 +28880,20 @@ function gePintar(){
   // Nao e erro de medicao: e trafego que nao veio de anuncio pago (bio, orgânico,
   // direto). Mas sem dizer isso a escada mente, porque 'cliques' deixa de ser o
   // topo do funil e a primeira queda aparece negativa.
-  if(cliques !== null && chegaram > cliques * 1.05){
-    var fora = chegaram - cliques;
-    html += '<div class="fx-aviso bom"><b>'+fnNum(fora)+' pessoas chegaram sem clicar em anúncio</b>'+
-      'São '+fnNum(chegaram)+' na página contra '+fnNum(cliques)+' cliques pagos — a diferença é link na bio, '+
-      'orgânico ou tráfego direto. Por isso a primeira linha da escada não mostra queda: '+
-      'o clique no anúncio não é o topo real deste funil.</div>';
+  var exc = fnEntradaExcede(f);
+  if(exc){
+    html += exc.dividido
+      ? '<div class="fx-aviso ruim"><b>'+fnNum(exc.chegaram)+' na página contra '+
+        fnNum(exc.cliques)+' cliques — e a entrada está partida em '+exc.dominios.length+' domínios</b>'+
+        'As páginas de entrada estão em '+fnEsc(exc.dominios.join(', '))+'. A pessoa é identificada por '+
+        'cookie, e cookie vale por domínio: quem passa por mais de um é contado uma vez em cada. '+
+        'Provavelmente não são '+fnNum(exc.fora)+' pessoas a mais — é gente repetida. '+
+        'Clique no selo de páginas no mapa pra ver a divisão.</div>'
+      : '<div class="fx-aviso bom"><b>'+fnNum(exc.fora)+' pessoas chegaram sem clicar em anúncio</b>'+
+        'São '+fnNum(exc.chegaram)+' na página contra '+fnNum(exc.cliques)+' cliques pagos, todos no mesmo '+
+        'domínio — então não é cookie dividido. Sobra link na bio, orgânico, direto ou quem voltou '+
+        'outro dia. Por isso a primeira linha da escada não mostra queda: '+
+        'o clique no anúncio não é o topo real deste funil.</div>';
   }
 
   // ── Etapa sem link nao e rastreada, e isso explica zero na tela ──
@@ -29407,8 +29428,36 @@ function fnPorQueExcede(pgs){
   return 'Pode ser tráfego que não veio do anúncio (orgânico, direto, retorno) ou a mesma ' +
          'pessoa voltando em dias diferentes. Clique no selo de páginas pra ver a divisão.';
 }
-function fnBase(f){
-  if(!f || !f.etapas || !f.etapas.length) return 0;
+// Quais etapas sao porta de entrada. Estava dentro do fnBase; virou funcao
+// propria porque o diagnostico precisa das MESMAS etapas pra saber de onde
+// vem a gente que entrou — senao os dois numeros falam de conjuntos diferentes.
+// Por que chegou mais gente do que clicou no anuncio.
+//
+// A tela antiga cravava "e link na bio, organico ou direto" e pintava de verde,
+// como boa noticia. Isso e uma das explicacoes possiveis — a outra e a mesma
+// pessoa contada duas vezes, e ai nao ha nada a comemorar. O que separa as duas
+// e evidencia que ja esta na mao: se as paginas da entrada estao em dominios
+// diferentes, o cookie que identifica a pessoa (por dominio) se divide.
+function fnEntradaExcede(f){
+  var cliques = fnCliques ? (fnCliques.total||0) : null;
+  var chegaram = fnBase(f);
+  if(cliques === null || !cliques || chegaram <= cliques * 1.05) return null;
+
+  var doms = {}, pgs = [];
+  fnPortas(f).forEach(function(id){
+    (((fnStats[id]||{}).paginas)||[]).forEach(function(pg){
+      pgs.push(pg); doms[fnDominio(pg.pg)] = (doms[fnDominio(pg.pg)]||0) + (pg.pessoas||0);
+    });
+  });
+  var listaDom = Object.keys(doms);
+  return {
+    cliques: cliques, chegaram: chegaram, fora: chegaram - cliques,
+    dominios: listaDom, paginas: pgs,
+    dividido: listaDom.length > 1        // suspeita de pessoa contada duas vezes
+  };
+}
+function fnPortas(f){
+  if(!f || !f.etapas || !f.etapas.length) return [];
   var portas = {};
   (f.ligacoes||[]).forEach(function(l){
     var de = fnAcha(f, l[0]);
@@ -29420,8 +29469,11 @@ function fnBase(f){
     (f.ligacoes||[]).forEach(function(l){ recebe[l[1]] = 1; });
     f.etapas.forEach(function(e){ if(!recebe[e.id]) portas[e.id] = 1; });
   }
-  if(!Object.keys(portas).length) return fnVal(f.etapas[0].id) || 0;
-  return Object.keys(portas).reduce(function(a, id){ return a + fnVal(id); }, 0);
+  var ids = Object.keys(portas);
+  return ids.length ? ids : [f.etapas[0].id];
+}
+function fnBase(f){
+  return fnPortas(f).reduce(function(a, id){ return a + fnVal(id); }, 0);
 }
 
 // Fim do funil: as etapas que nao mandam ninguem adiante. Usar a ultima da
