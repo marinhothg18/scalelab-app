@@ -9629,12 +9629,33 @@ app.get('/r/:slug', (req, res) => {
     if (!r || !Array.isArray(r.destinos) || !r.destinos.length) {
       return res.status(404).send('Link não encontrado.');
     }
-    const total = r.destinos.reduce((s, d) => s + (Number(d.peso) || 1), 0);
-    let x = Math.random() * total, escolhido = r.destinos[0];
-    for (const d of r.destinos) { x -= (Number(d.peso) || 1); if (x <= 0) { escolhido = d; break; } }
+    // Quem ja foi sorteado antes recebe a MESMA variante. Sortear de novo a cada
+    // acesso deixa a mesma pessoa ver as duas paginas — ela compara, e o
+    // comportamento dela entra na conta da variante errada. Um teste em que o
+    // sujeito ve os dois lados nao mede o que diz medir.
+    const bisc = String(req.headers.cookie || '')
+      .split(';').map(c => c.trim()).find(c => c.startsWith('tmx_ab_' + slug + '='));
+    const jaFoi = bisc ? decodeURIComponent(bisc.split('=')[1] || '') : '';
+    let escolhido = jaFoi ? r.destinos.find((d, i) => String(d.id || ('v' + i)) === jaFoi) : null;
+    const repetido = !!escolhido;
+
+    if (!escolhido) {
+      const total = r.destinos.reduce((s, d) => s + (Number(d.peso) || 1), 0);
+      let x = Math.random() * total;
+      escolhido = r.destinos[0];
+      for (const d of r.destinos) { x -= (Number(d.peso) || 1); if (x <= 0) { escolhido = d; break; } }
+    }
     // Cada destino precisa de um id estavel: sem ele nao da pra dizer quem levou
     // qual depois. Slug de link antigo nao tem, entao cai na posicao.
     const vid = String(escolhido.id || ('v' + r.destinos.indexOf(escolhido)));
+    // 90 dias, igual ao tmx_id — teste que dura semanas nao pode perder a
+    // atribuicao no meio do caminho
+    if (!repetido) {
+      res.setHeader('Set-Cookie',
+        'tmx_ab_' + slug + '=' + encodeURIComponent(vid) +
+        ';Path=/;Max-Age=7776000;SameSite=Lax' +
+        (req.headers['x-forwarded-proto'] === 'https' ? ';Secure' : ''));
+    }
 
     let destino = String(escolhido.url || '');
     const qs = req.originalUrl.split('?')[1];
