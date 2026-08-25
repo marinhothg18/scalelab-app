@@ -9516,12 +9516,61 @@ const PIXEL_JS = `(function(w,d){
     }catch(e){ return href; }
   }
 
-  // Fase de captura: roda antes de qualquer handler da pagina ou do player.
+  // Reescreve os links de checkout ASSIM QUE A PAGINA CARREGA, nao no clique.
+  //
+  // Esperar o clique so funciona quando o botao e um <a> e quando o codigo da
+  // pagina le o href DEPOIS de mim. Se o botao for um <button> com handler
+  // proprio, ou se a pagina navegar com location.href = ... (que nao da pra
+  // interceptar — a propriedade nao e configuravel), o conserto nunca acontecia.
+  // Deixando o href ja corrigido no DOM, qualquer codigo que o leia pega a
+  // versao certa, independente de como a navegacao acontece.
+  var MARCA = 'data-tmx-ok';
+  function arrumarLinks(raiz){
+    var as;
+    try{ as = (raiz || d).querySelectorAll ? (raiz || d).querySelectorAll('a[href]') : []; }
+    catch(e){ return; }
+    for(var i=0;i<as.length;i++){
+      var a = as[i];
+      var atual = a.getAttribute('href') || '';
+      if(!atual) continue;
+      if(a.getAttribute(MARCA) === atual) continue;   // ja arrumado, e ninguem mexeu depois
+      var novo = enriquecer(atual);
+      if(novo && novo !== atual){
+        a.setAttribute('href', novo);
+        a.setAttribute(MARCA, novo);                  // guarda pra nao entrar em loop
+      } else {
+        a.setAttribute(MARCA, atual);
+      }
+    }
+  }
+  arrumarLinks(d);
+  if(d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function(){ arrumarLinks(d); });
+  w.addEventListener('load', function(){ arrumarLinks(d); });
+
+  // O script da pagina reescreve esses mesmos links depois de carregar. Sem
+  // observar, a versao dela venceria a nossa por ser a ultima a escrever.
+  try{
+    if(w.MutationObserver){
+      var obs = new w.MutationObserver(function(muts){
+        var mexeu = false;
+        for(var i=0;i<muts.length && !mexeu;i++){
+          var m = muts[i];
+          if(m.type === 'attributes' || (m.addedNodes && m.addedNodes.length)) mexeu = true;
+        }
+        if(mexeu) arrumarLinks(d);
+      });
+      obs.observe(d.documentElement, { childList:true, subtree:true,
+                                       attributes:true, attributeFilter:['href'] });
+    }
+  }catch(e){}
+
+  // Rede de seguranca: se algo escapou, corrige no clique — antes de qualquer
+  // handler da pagina, porque esta na fase de captura.
   d.addEventListener('click', function(ev){
     var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
     if(!a) return;
     var novo = enriquecer(a.getAttribute('href') || a.href);
-    if(novo && novo !== a.href) a.href = novo;
+    if(novo && novo !== a.href){ a.href = novo; a.setAttribute(MARCA, novo); }
   }, true);
 
   // Botao que navega por JS (player de VSL costuma fazer isso) nao passa pelo
