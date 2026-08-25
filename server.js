@@ -9434,9 +9434,41 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       v.saidas   += l.saidas   || 0; v.segundos += l.segundos || 0;
       Object.keys(l.eventos || {}).forEach(t => { v.eventos[t] = (v.eventos[t] || 0) + l.eventos[t]; });
     });
+    // ── Quantas paginas reportam sob a MESMA etapa ──────────────────────────
+    // A chave de contagem e funil|etapa|dia: a pagina nao entra nela. Duas VSLs
+    // coladas com o mesmo data-e somam no mesmo bloco, e o bloco mostra a URL
+    // cadastrada na etapa como se fosse a unica. Com teste A/B isso e o caso
+    // normal, nao a excecao — entao a tela tem de mostrar a divisao.
+    // A jornada guarda a pagina em cada evento; e de la que ela sai.
+    const porPagina = {};
+    const jn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      .concat(Object.values(_jBuffer));
+    jn.forEach(j => {
+      const chaves = new Set();
+      (j.eventos || []).forEach(e => {
+        if (!e.pg || !e.etapa) return;
+        const dia = String(e.em || '').slice(0, 10);
+        if (de && dia < de) return;
+        if (ate && dia > ate) return;
+        const et = funil ? ado.etapaDe({ funil: j.funil, etapa: e.etapa }) : e.etapa;
+        chaves.add(et + '|' + e.pg);
+      });
+      // um visitante conta uma vez por (etapa,pagina), nao uma por evento
+      chaves.forEach(k => {
+        const corte = k.indexOf('|');
+        const et = k.slice(0, corte), pg = k.slice(corte + 1);
+        if (!porPagina[et]) porPagina[et] = {};
+        porPagina[et][pg] = (porPagina[et][pg] || 0) + 1;
+      });
+    });
+
     res.json({ ok: true, funil, de, ate,
       etapas: Object.values(porEtapa).map(e => Object.assign(e, {
-        tempoMedio: e.saidas > 0 ? Math.round(e.segundos / e.saidas) : 0 })),
+        tempoMedio: e.saidas > 0 ? Math.round(e.segundos / e.saidas) : 0,
+        paginas: Object.entries(porPagina[e.etapa] || {})
+          .map(([pg, pessoas]) => ({ pg, pessoas }))
+          .sort((a, b) => b.pessoas - a.pessoas)
+      })),
       feed: _fFeed.filter(f => !funil || ado.aceita(f)).slice(0, 40) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
