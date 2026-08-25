@@ -3804,6 +3804,9 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
                   <option value="obrigado">Obrigado</option></select></div>
                 <div class="fn-campo"><label>Vem depois de</label><select id="fn-n-pai"></select></div>
                 <button class="fn-btn" style="width:100%" onclick="fnAddEtapa()">Adicionar ao funil</button>
+                <div style="font-size:10.5px;color:var(--text2);margin-top:8px;line-height:1.5">
+                  Use isto quando já tem o link em mãos. Pra montar rápido e colar os links depois,
+                  a <b>paleta acima do mapa</b> é um clique por bloco.</div>
               </div>
             </div>
           </div>
@@ -28971,6 +28974,12 @@ function mpAddBloco(tipo, nome){
   fnSel = id;
   fnGravar(f); fnPintar();
   toastFn(nome + ' adicionado — falta o link da página');
+  // leva o cursor direto pro campo que trava a etapa, em vez de deixar o
+  // usuario procurar onde cola a URL
+  setTimeout(function(){
+    var i = document.getElementById('fn-url-' + id);
+    if(i){ i.scrollIntoView({block:'center', behavior:'smooth'}); i.focus(); }
+  }, 60);
 }
 
 // ── Variantes do teste A/B no mapa ──────────────────────────────────────────
@@ -29591,7 +29600,10 @@ function fnSelecionar(id){
 function fnDetalhe(){
   var cx = document.getElementById('fn-detalhe'); if(!cx) return;
   var f = fnAtual(), n = f ? fnAcha(f, fnSel) : null;
-  if(!n){ cx.innerHTML = '<h3>👆 Clique num bloco</h3><p style="font-size:12.5px;color:var(--text2)">Os números daquele passo aparecem aqui. Pra ligar um passo no outro, clique no bloco e depois em <b>Ligar em…</b>.</p>'; return; }
+  if(!n){ cx.innerHTML = '<h3>Clique num bloco</h3><p style="font-size:12.5px;color:var(--text2);line-height:1.6">'+
+    'Os números daquele passo aparecem aqui, e é onde você cola o <b>link da página</b>.<br><br>'+
+    'Pra montar o funil, use a <b>paleta acima do mapa</b> — cada botão põe um bloco já ligado no anterior. '+
+    'Pra ligar dois blocos que já existem, clique num e depois em <b>Ligar em outro bloco</b>.</p>'; return; }
   var base = fnBase(f) || 1;
   var src = n.tipo==='fonte';
   var v = src ? fnCliquesDe(n) : fnVal(n.id);
@@ -29640,7 +29652,18 @@ function fnDetalhe(){
     return;
   }
 
+  // Etapa sem link nao mede nada: o campo vai pro TOPO, antes dos numeros, que
+  // nesse caso sao todos zero e nao explicam o porque.
+  var faltaUrl = !n.url;
+  var campoUrl = '<div class="fn-campo"><label>Link da página</label>'+
+    '<input id="fn-url-'+n.id+'" value="'+fnEsc(n.url||'')+'" placeholder="https://..." '+
+      'onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
+    (faltaUrl ? '<div style="font-size:10.5px;color:var(--red);margin-top:5px">'+
+      'Cole o link e esta etapa passa a ser medida. Sem ele o pixel não tem onde ser colado, '+
+      'e o bloco fica zerado pra sempre.</div>' : '')+'</div>';
+
   cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
+    (faltaUrl ? campoUrl : '')+
     '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
     (fnBase(f) ? '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'
                : '<div class="fn-l"><span>% de quem entrou</span><span style="color:var(--text2)">'+
@@ -29656,9 +29679,7 @@ function fnDetalhe(){
       'onchange="fnSalvarPitch(\''+n.id+'\',this.value)">'+
     '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Em minuto:segundo. '+
       'Deixe vazio se a página não tem um momento de oferta.</div></div>'+
-    '<div class="fn-campo"><label>Link da página</label>'+
-    '<input value="'+fnEsc(n.url||'')+'" placeholder="https://..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
-    (n.url?'':'<div style="font-size:10.5px;color:var(--red);margin-top:5px">Informe o link pra esta etapa ser rastreada.</div>')+'</div>'+
+    (faltaUrl ? '' : campoUrl)+
     htmlLig+
     '<div style="display:flex;gap:7px;margin-top:9px"><button class="fn-btn g sm" onclick="fnIrPixel(\''+n.id+'\')">Ver pixel</button>'+
     '<button class="fn-btn g sm" onclick="fnRemoverEtapa(\''+n.id+'\')" style="color:var(--red)">Remover</button></div>';
