@@ -7437,6 +7437,42 @@ function spyAutoSalvarNichos(){
   renderSpyAuto();
 }
 
+// ── Aviso de versao nova ────────────────────────────────────────────────────
+// Este arquivo e um SPA de arquivo unico: quem deixa a aba aberta continua com
+// o codigo de antes do deploy pra sempre, sem nenhum sinal disso. Aconteceu de
+// verdade — tres mudancas subiram e a tela seguiu mostrando a versao velha.
+var _versaoCarregada = null;
+async function _checarVersao(){
+  try{
+    const r = await fetch('/api/versao', {cache:'no-store'});
+    if(!r.ok) return;
+    const d = await r.json();
+    if(!d || !d.versao) return;
+    if(_versaoCarregada === null){ _versaoCarregada = d.versao; return; }
+    if(d.versao !== _versaoCarregada) _mostrarVersaoNova();
+  }catch(e){}
+}
+function _mostrarVersaoNova(){
+  if(document.getElementById('aviso-versao')) return;
+  const b = document.createElement('div');
+  b.id = 'aviso-versao';
+  b.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:99999;'+
+    'background:linear-gradient(90deg,#3E1493,#1B9CFA);color:#fff;border-radius:11px;'+
+    'padding:12px 17px;display:flex;align-items:center;gap:13px;font-size:13px;font-weight:600;'+
+    'box-shadow:0 8px 26px rgba(0,0,0,.35);max-width:92vw';
+  b.innerHTML = '<span>Saiu uma versão nova do sistema.</span>'+
+    '<button style="background:#fff;color:#3E1493;border:none;border-radius:7px;padding:6px 14px;'+
+    'font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap">Recarregar</button>'+
+    '<button style="background:none;border:none;color:rgba(255,255,255,.7);font-size:16px;'+
+    'cursor:pointer;line-height:1;padding:0 2px">✕</button>';
+  const bts = b.querySelectorAll('button');
+  bts[0].onclick = function(){ location.reload(true); };
+  bts[1].onclick = function(){ b.remove(); };
+  document.body.appendChild(b);
+}
+setInterval(_checarVersao, 120000);   // de 2 em 2 min
+_checarVersao();
+
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 

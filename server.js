@@ -9357,6 +9357,27 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
 // sem adivinhar — basta olhar window.TMXOrigem.versao no console.
 const TMX_VERSAO = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
 
+// ── Versao do app ───────────────────────────────────────────────────────────
+// O ScaleLab.html e um SPA de arquivo unico: a aba que ficou aberta continua
+// rodando o JavaScript de antes do deploy pra sempre. Passei tres rodadas
+// subindo mudanca com o usuario olhando pra tela velha sem que nenhum dos dois
+// percebesse. A marca e o mtime do arquivo servido — muda a cada 'railway up'.
+let _versaoApp = '';
+function versaoApp() {
+  if (_versaoApp) return _versaoApp;
+  try {
+    const st = fs.statSync(path.join(__dirname, 'public', 'ScaleLab.html'));
+    _versaoApp = String(st.mtimeMs | 0);
+  } catch (e) { _versaoApp = TMX_VERSAO; }
+  return _versaoApp;
+}
+
+// Sem login: e so um numero de build, e a tela precisa dele antes de autenticar.
+app.get('/api/versao', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, versao: versaoApp() });
+});
+
 const PIXEL_JS = `(function(w,d){
   var TMX_VERSAO = '${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}';
   var eu = d.currentScript;
