@@ -8443,6 +8443,7 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
 // alguem, e poder perguntar "me mostra 10 que chegaram no checkout e nao compraram".
 // ══════════════════════════════════════════════════════
 const JORNADA_DIAS = 7, JORNADA_TETO = 4000, JORNADA_EVENTOS = 40;
+let _jDiagUltimo = 0;   // limita o log de diagnostico da jornada a 1x/min
 let _jBuffer = {}, _jSujo = false;
 
 // ── Quem e o visitante: aparelho, navegador, sistema, pais ──────────────────
@@ -9030,6 +9031,21 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
         };
       }
     });
+
+    // ── Deixa rastro no log quando o numero sai pequeno ─────────────────────
+    // Sem acesso ao banco de producao, a unica forma de descobrir qual peneira
+    // esvazia a lista e a propria producao contar. Sai no maximo 1x por minuto,
+    // e so quando ha o que investigar — log que sai sempre ninguem le.
+    if (contagem.todas < 50 || diag.noBanco < 100) {
+      const agora = Date.now();
+      if (!_jDiagUltimo || agora - _jDiagUltimo > 60000) {
+        _jDiagUltimo = agora;
+        console.log('[JORNADA/diag] funil=' + funil + ' periodo=' + de + '..' + ate +
+          ' | noBanco=' + diag.noBanco + ' doFunil=' + diag.doFunil +
+          ' noPeriodo=' + diag.noPeriodo + ' aposPagina=' + diag.aposPagina +
+          ' pg=' + (diag.pgEscolhida || '-') + ' | mostrou=' + contagem.todas);
+      }
+    }
 
     res.json({ ok: true, funil, filtro, contagem, de, ate, pg, oferta, diag,
       paginas: Object.values(paginas).map(x => ({ pg: x.pg, pessoas: x.pessoas.size }))
