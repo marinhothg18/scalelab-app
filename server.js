@@ -9396,11 +9396,64 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
       if (!v) return;
       v.sorteios += l.sorteios || 0; v.pessoas += l.pessoas || 0; v.metas += l.metas || 0;
     });
+    // ── Faturamento de verdade, nao o preco digitado ────────────────────────
+    // O 'valor' de cada destino e um preco cadastrado a mao: serve pra comparar
+    // ofertas de precos diferentes, mas nao e o que entrou no caixa. A venda
+    // chega com o tmx_vid e a jornada daquele visitante sabe em que variante ele
+    // caiu — e por ai que da pra dizer quanto cada variante realmente faturou.
+    const varDoVisitante = {};
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      .concat(Object.values(_jBuffer))
+      .forEach(j => {
+        if (!j || !j.id) return;
+        (j.eventos || []).forEach(e => {
+          if (e && String(e.teste || '').toLowerCase() === slug && e.variante) {
+            varDoVisitante[j.id] = String(e.variante);
+          }
+        });
+      });
+    let vendasSemVariante = 0;
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (!v || !v.vid) return;
+      const dia = String(v.recebidoEm || '').slice(0, 10);
+      if (de && dia && dia < de) return;
+      if (ate && dia && dia > ate) return;
+      const alvo = porVar[varDoVisitante[v.vid]];
+      if (!alvo) { vendasSemVariante++; return; }
+      alvo.receita = (alvo.receita || 0) + (Number(v.valor) || 0);
+      alvo.vendas  = (alvo.vendas  || 0) + 1;
+    });
+
     const variantes = Object.values(porVar).map(v => Object.assign(v, {
       conversao: v.pessoas > 0 ? (v.metas / v.pessoas) * 100 : 0,
       // receita por visitante: so faz sentido com valor informado
-      rpv: (v.valor > 0 && v.pessoas > 0) ? (v.metas * v.valor) / v.pessoas : null
+      rpv: (v.valor > 0 && v.pessoas > 0) ? (v.metas * v.valor) / v.pessoas : null,
+      receita: v.receita || 0,
+      vendas:  v.vendas  || 0,
+      ticket:  (v.vendas > 0) ? (v.receita / v.vendas) : null,
+      // o que a variante rende por pessoa que caiu nela — e por aqui que se
+      // compara variante cara com variante barata sem se enganar
+      receitaPorPessoa: (v.pessoas > 0) ? ((v.receita || 0) / v.pessoas) : null
     }));
+
+    // ── A divisao esta justa? ───────────────────────────────────────────────
+    // Peso configurado contra sorteio real. Divisao torta invalida a comparacao:
+    // a variante que recebeu mais gente tende a parecer melhor so por volume, e
+    // quem olha a tela nao tem como saber que o desempate foi o sorteio.
+    const totalSorteios = variantes.reduce((a, v) => a + (v.sorteios || 0), 0);
+    const totalPeso     = variantes.reduce((a, v) => a + (v.peso || 0), 0);
+    variantes.forEach(v => {
+      v.fatiaReal = totalSorteios ? (v.sorteios / totalSorteios) * 100 : null;
+      v.fatiaAlvo = totalPeso     ? (v.peso     / totalPeso)     * 100 : null;
+      v.desvio = (v.fatiaReal != null && v.fatiaAlvo != null) ? (v.fatiaReal - v.fatiaAlvo) : null;
+    });
+    // Com pouca gente o sorteio oscila sozinho; abaixo de 200 nao da pra acusar
+    // nada. O limite de 5 pontos e o mesmo criterio de "ja da pra confiar".
+    const divisao = {
+      total: totalSorteios,
+      torta: totalSorteios >= 200 && variantes.some(v => v.desvio != null && Math.abs(v.desvio) > 5),
+      cedoDemais: totalSorteios < 200
+    };
 
     // Ordena pelo criterio certo: com precos diferentes, quem fatura mais por
     // visitante; senao, quem converte mais.
@@ -9416,7 +9469,14 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
       meta: r.meta || null, estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
       criadoEm: r.criadoEm || null, variantes,
       lider: ord[0] ? ord[0].id : null, segundo: ord[1] ? ord[1].id : null,
-      precoVaria, julgamento
+      precoVaria, julgamento, divisao, vendasSemVariante,
+      // Quem converte mais nem sempre e quem fatura mais. Quando os dois nao
+      // sao o mesmo, dizer isso vale mais que eleger um vencedor.
+      liderReceita: (function () {
+        const comReceita = variantes.filter(v => v.receita > 0);
+        if (!comReceita.length) return null;
+        return comReceita.sort((x, y) => (y.receitaPorPessoa || 0) - (x.receitaPorPessoa || 0))[0].id;
+      })()
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

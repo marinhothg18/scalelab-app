@@ -1791,6 +1791,9 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   padding:7px 10px;color:var(--text);font-size:11.5px;font-family:ui-monospace,Menlo,monospace;outline:none;margin-bottom:11px}
 .ab-var-res{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-top:10px;border-top:1px solid var(--border)}
 .ab-var-res.quatro{grid-template-columns:repeat(4,1fr)}
+/* Com faturamento e ticket o numero de colunas varia por teste: fixar em 4
+   espremia tudo. auto-fit acomoda de 3 a 6 sem media query nova. */
+.ab-var-res.auto{grid-template-columns:repeat(auto-fit,minmax(84px,1fr));row-gap:12px}
 @media(max-width:620px){ .ab-var-res.quatro{grid-template-columns:repeat(2,1fr);row-gap:12px} }
 .ab-var-res .k small{display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;
   border-radius:50%;background:var(--bg2);border:1px solid var(--border);font-size:8px;cursor:help;margin-left:3px}
@@ -30385,6 +30388,7 @@ function abPintarDetalhe(){
   var pesoTot = vars.reduce(function(a,v){ return a+(Number(v.peso)||1); },0) || 1;
   var pal = ['#1B9CFA','#3E1493','#FF5926','#C52C58','#22C55E','#F59E0B'];
   var temPreco = d && d.precoVaria;
+  var temReceita = !!(d && (d.variantes||[]).some(function(v){ return (v.receita||0) > 0; }));
 
   var caixas = vars.map(function(v,i){
     var venc = d && d.julgamento && d.julgamento.pronto && d.lider===v.id;
@@ -30401,22 +30405,86 @@ function abPintarDetalhe(){
           'onchange="abValorVar('+i+',this.value)">'+
         '<button class="fn-btn g sm" onclick="abTirarVar('+i+')">✕</button></div>'+
       '<input class="ab-var-url" value="'+fnEsc(v.url||'')+'" placeholder="https://…" onchange="abUrlVar('+i+',this.value)">'+
-      '<div class="ab-var-res quatro">'+
+      '<div class="ab-var-res auto">'+
         '<div><span class="k">Cliques no link</span><span class="v">'+fnNum(v.sorteios||0)+'</span></div>'+
         '<div><span class="k">Pessoas <small title="Precisa do pixel na página">?</small></span>'+
           '<span class="v"'+((v.sorteios>0 && !v.pessoas)?' style="color:var(--red)"':'')+'>'+fnNum(v.pessoas)+'</span></div>'+
         '<div><span class="k">'+(r.meta?'Conversões':'—')+'</span><span class="v">'+(r.meta?fnNum(v.metas):'—')+'</span></div>'+
         '<div><span class="k">Taxa</span><span class="v" style="color:'+pal[i%6]+'">'+
           (r.meta && v.pessoas ? v.conversao.toFixed(1)+'%' : '—')+'</span></div>'+
+        // Faturamento de verdade, vindo da venda ligada ao visitante — nao o
+        // preco cadastrado. So aparece quando ha venda atribuida, senao seria
+        // uma coluna de zeros dizendo "nao vendeu" quando o certo e "nao sei".
+        (temReceita
+          ? '<div><span class="k">Faturou</span><span class="v" style="color:var(--green)">'+
+              vsBrl(v.receita||0)+'</span></div>'+
+            '<div><span class="k">Ticket</span><span class="v">'+
+              (v.ticket!=null ? vsBrl(v.ticket) : '—')+'</span></div>'+
+            '<div><span class="k" title="Quanto esta variante rende por pessoa que caiu nela. '+
+              'E o numero que compara variante cara com variante barata sem se enganar.">R$/pessoa</span>'+
+              '<span class="v" style="color:'+pal[i%6]+'">'+
+              (v.receitaPorPessoa!=null ? vsBrl(v.receitaPorPessoa) : '—')+'</span></div>'
+          : '')+
         (temPreco ? '<div><span class="k">Por visitante</span><span class="v" style="color:'+pal[i%6]+'">'+
           (v.rpv!=null ? vsBrl(v.rpv) : '—')+'</span></div>' : '')+
       '</div></div>';
   }).join('');
 
+  // A barra mostrava o peso CONFIGURADO. Isso e a intencao, nao o resultado:
+  // com peso 1x1 ela desenhava 50/50 mesmo quando o sorteio real saiu 60/40 —
+  // e divisao torta invalida a comparacao, porque a variante que recebeu mais
+  // gente tende a parecer melhor so por volume. Agora, quando ha sorteio, a
+  // barra mostra o que de fato aconteceu e o alvo vira referencia.
+  var div = (d && d.divisao) || null;
+  var temSorteio = !!(div && div.total > 0);
   var barra = vars.map(function(v,i){
-    var pc = (Number(v.peso)||1)/pesoTot*100;
-    return '<i style="width:'+pc+'%;background:'+pal[i%6]+'">'+Math.round(pc)+'%</i>';
+    var pc = temSorteio && v.fatiaReal != null
+      ? v.fatiaReal
+      : (Number(v.peso)||1)/pesoTot*100;
+    var alvo = v.fatiaAlvo != null ? v.fatiaAlvo : (Number(v.peso)||1)/pesoTot*100;
+    var tit = temSorteio
+      ? v.nome+': '+pc.toFixed(1)+'% do sorteio real (alvo '+alvo.toFixed(0)+'%)'
+      : v.nome+': '+Math.round(pc)+'% configurado';
+    return '<i title="'+fnEsc(tit)+'" style="width:'+pc+'%;background:'+pal[i%6]+'">'+
+           Math.round(pc)+'%</i>';
   }).join('');
+
+  var avisoDiv = '';
+  if(div && div.torta){
+    var fora = vars.filter(function(v){ return v.desvio != null && Math.abs(v.desvio) > 5; })
+      .map(function(v){ return fnEsc(v.nome)+' '+v.fatiaReal.toFixed(0)+'% (alvo '+v.fatiaAlvo.toFixed(0)+'%)'; });
+    avisoDiv = '<div class="fx-aviso ruim" style="margin-top:10px"><b>A divisão saiu torta</b>'+
+      fora.join(' · ')+'. Em '+fnNum(div.total)+' sorteios isso não é acaso — '+
+      'confira os pesos, ou se alguma variante está caindo em erro e devolvendo a pessoa. '+
+      'Enquanto estiver assim, a variante que recebeu mais gente leva vantagem na comparação.</div>';
+  } else if(div && div.cedoDemais && div.total > 0){
+    avisoDiv = '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
+      'Com '+fnNum(div.total)+' sorteios o rateio ainda oscila sozinho — só dá pra cobrar '+
+      'divisão justa a partir de ~200.</div>';
+  }
+
+  // Converter mais e faturar mais podem ser variantes diferentes: taxa alta com
+  // ticket baixo perde pra taxa menor com ticket maior. Eleger uma vencedora sem
+  // dizer isso faria matar a variante que traz mais dinheiro.
+  var avisoReceita = '';
+  if(d && d.liderReceita && d.lider && d.liderReceita !== d.lider){
+    var vc = vars.filter(function(v){ return v.id===d.lider; })[0];
+    var vr = vars.filter(function(v){ return v.id===d.liderReceita; })[0];
+    if(vc && vr){
+      avisoReceita = '<div class="fx-aviso" style="margin-top:10px">'+
+        '<b>'+fnEsc(vc.nome)+' converte mais, mas '+fnEsc(vr.nome)+' fatura mais</b>'+
+        fnEsc(vc.nome)+': '+vc.conversao.toFixed(1)+'% e '+vsBrl(vc.receitaPorPessoa||0)+' por pessoa. '+
+        fnEsc(vr.nome)+': '+vr.conversao.toFixed(1)+'% e '+vsBrl(vr.receitaPorPessoa||0)+' por pessoa. '+
+        'Quem decide é o R$/pessoa, não a taxa.</div>';
+    }
+  }
+  var avisoSem = '';
+  if(d && d.vendasSemVariante > 0 && temReceita){
+    avisoSem = '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
+      fnNum(d.vendasSemVariante)+' venda(s) do período não puderam ser ligadas a uma variante '+
+      '(o visitante não passou pelo link do teste, ou a jornada dele já expirou). '+
+      'Elas não entram no faturamento acima.</div>';
+  }
 
   document.getElementById('ab-detalhe').innerHTML =
     '<button class="ab-voltar" onclick="abVoltar()">‹ Todos os testes e links</button>'+
@@ -30435,9 +30503,12 @@ function abPintarDetalhe(){
         '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">'+
           '<input id="ab-nova-url" placeholder="https://… (nova variante)" style="flex:1;min-width:190px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none">'+
           '<button class="fn-btn g" onclick="abAddVar()">Adicionar variante</button></div>'+
+        avisoReceita+
         '<div class="fn-split" style="margin-top:14px">'+barra+'</div>'+
-        '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">É esse o sorteio que o link faz. '+
-          'As <b>utm_*</b> do anúncio são repassadas inteiras pro destino.</div>'+
+        '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
+          (temSorteio ? 'Divisão <b>real</b> do sorteio, não a configurada.' : 'É esse o sorteio que o link faz.')+
+          ' As <b>utm_*</b> do anúncio são repassadas inteiras pro destino.</div>'+
+        avisoDiv+avisoSem+
       '</div></div>'+
       '<div>'+
         '<div class="fn-cx2"><h3>Configuração</h3>'+
