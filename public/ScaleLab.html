@@ -1556,6 +1556,32 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
 .fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
 .fn-pessoa .de{font-size:11.5px;color:var(--text2);margin-left:auto}
+/* ── Casca: nav do funil em coluna + cabecalho de tela ───────────────────── */
+.fx-cabeca{padding:16px 2px 2px;border-top:1px solid var(--border);margin-top:14px}
+.fx-cabeca h2{display:inline;font-size:21px;font-weight:800;letter-spacing:-.02em;margin:0}
+.fx-cabeca p{font-size:12.5px;color:var(--text2);margin:6px 0 0;line-height:1.55}
+.fx-vivo{display:inline-flex;align-items:center;gap:6px;margin-left:11px;vertical-align:3px;font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--green);background:rgba(52,199,89,.12);border-radius:20px;padding:4px 10px}
+.fx-vivo i{width:6px;height:6px;border-radius:50%;background:var(--green);animation:fxpulsa 1.8s infinite}
+@keyframes fxpulsa{0%,100%{opacity:1}50%{opacity:.3}}
+.fx-shell{display:grid;grid-template-columns:186px minmax(0,1fr);gap:22px;align-items:start}
+.fx-nav{position:sticky;top:12px;display:flex;flex-direction:column;gap:2px}
+.fx-nav-g{font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--text2);padding:14px 10px 6px}
+.fx-nav-g:first-child{padding-top:2px}
+.fx-nav-i{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;color:var(--text2);border-radius:9px;padding:9px 11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.fx-nav-i span{font-size:13px;width:16px;flex:0 0 auto;text-align:center}
+.fx-nav-i:hover{background:var(--bg3);color:var(--text)}
+.fx-nav-i.on{background:rgba(62,20,147,.14);color:var(--text)}
+.light-mode .fx-nav-i.on{background:rgba(62,20,147,.08);color:var(--roxo)}
+.fx-nav-p{width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:auto;display:none}
+.fx-nav-p.on{display:block}
+.fx-nav-n{margin-left:auto;font-size:10.5px;font-weight:800;color:var(--text2);font-style:normal}
+@media(max-width:900px){
+  .fx-shell{grid-template-columns:1fr;gap:14px}
+  .fx-nav{position:static;flex-direction:row;flex-wrap:wrap;gap:6px;overflow-x:auto}
+  .fx-nav-g{display:none}
+  .fx-nav-i{width:auto;border:1px solid var(--border);padding:7px 12px;font-size:12px}
+}
+
 /* ── Base compartilhada das telas do Funis ────────────────────────────────
    Portada do prototipo. Sem isto cada aba e refeita a mao e elas saem
    desalinhadas entre si — que e exatamente o que estava acontecendo. */
@@ -3622,20 +3648,34 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               </div>
             </div>
             <div class="fn-ctx-num" id="fn-ctx-num"></div>
+            <div class="fx-cabeca" id="fn-cabeca"></div>
           </div>
 
-          <div class="fn-seg">
-            <button class="fn-aba on" onclick="fnAba('mapa',this)">🧭 Mapa</button>
-            <button class="fn-aba" onclick="fnAba('pixel',this)">📡 Pixel</button>
-            <button class="fn-aba" onclick="fnAba('redir',this)">🔀 Testes A/B</button>
-            <button class="fn-aba" onclick="fnAba('jornada',this)">👣 Jornada</button>
-            <button class="fn-aba" onclick="fnAba('atencao',this)">👁 Atenção</button>
-          </div>
         </div>
 
         <div id="fn-dentro" style="display:none">
+        <div class="fx-shell">
+          <!-- Nav do funil: no prototipo as abas sao coluna, nao pastilhas. Com
+               titulo de secao dá pra ver que Visao geral olha o funil inteiro e
+               o resto olha um pedaco. -->
+          <nav class="fx-nav">
+            <div class="fx-nav-g">Funil</div>
+            <button class="fx-nav-i on" onclick="fnAba('geral',this)"><span>◱</span>Visão geral</button>
+            <button class="fx-nav-i" onclick="fnAba('mapa',this)"><span>🧭</span>Mapa</button>
+            <div class="fx-nav-g">Instrumentação</div>
+            <button class="fx-nav-i" onclick="fnAba('pixel',this)"><span>📡</span>Pixel<i class="fx-nav-p" id="fx-p-pixel"></i></button>
+            <button class="fx-nav-i" onclick="fnAba('redir',this)"><span>🔀</span>Testes A/B<i class="fx-nav-n" id="fx-n-ab"></i></button>
+            <div class="fx-nav-g">Comportamento</div>
+            <button class="fx-nav-i" onclick="fnAba('jornada',this)"><span>👣</span>Jornada</button>
+            <button class="fx-nav-i" onclick="fnAba('atencao',this)"><span>👁</span>Atenção</button>
+          </nav>
+          <div class="fx-conteudo">
 
-        <div class="fn-painel on" id="fn-p-mapa">
+        <div class="fn-painel on" id="fn-p-geral">
+          <div id="ge-corpo"></div>
+        </div>
+
+        <div class="fn-painel" id="fn-p-mapa">
           <div class="fn-cards" id="fn-lista"></div>
           <div class="fn-faixa" id="fn-etapas"></div>
           <div class="fn-cols">
@@ -3746,6 +3786,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div id="at-corpo"></div>
         </div>
 
+          </div><!-- /fx-conteudo -->
+        </div><!-- /fx-shell -->
         </div><!-- /fn-dentro -->
 
       </div>
@@ -28574,16 +28616,168 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
+var FN_ABAS = ['geral','mapa','pixel','redir','jornada','atencao'];
+// Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
+// rotulo e passa a dizer o que aquela tela responde.
+var FN_ABA_INFO = {
+  geral:   ['Visão geral', 'O funil inteiro num lugar: onde o volume se perde e quanto sobra.'],
+  mapa:    ['Mapa',        'O desenho do funil. Cada bloco é uma página, cada seta é um caminho.'],
+  pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
+  redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
+  jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
+  atencao: ['Atenção',     'Até onde descem na página e no que clicam.']
+};
+var fnAbaAtual = 'geral';
+
 function fnAba(qual, bt){
-  ['mapa','pixel','redir','jornada','atencao'].forEach(function(k){
+  if(FN_ABAS.indexOf(qual) < 0) qual = 'geral';
+  fnAbaAtual = qual;
+  FN_ABAS.forEach(function(k){
     var el = document.getElementById('fn-p-'+k); if(el) el.classList.remove('on'); });
-  document.getElementById('fn-p-'+qual).classList.add('on');
-  document.querySelectorAll('.fn-aba').forEach(function(a){ a.classList.remove('on'); });
+  var alvo = document.getElementById('fn-p-'+qual);
+  if(alvo) alvo.classList.add('on');
+  document.querySelectorAll('.fx-nav-i').forEach(function(a){ a.classList.remove('on'); });
   if(bt) bt.classList.add('on');
-  if(qual==='mapa') setTimeout(fnFios, 40);
-  if(qual==='redir') fnPintarRed();
+  else {
+    var i = FN_ABAS.indexOf(qual), bs = document.querySelectorAll('.fx-nav-i');
+    if(bs[i]) bs[i].classList.add('on');
+  }
+  fnCabecalho();
+  if(qual==='geral')   gePintar();
+  if(qual==='mapa')    setTimeout(fnFios, 40);
+  if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
   if(qual==='atencao') atOpcoes();
+}
+
+// Cabecalho da tela: trilha + titulo + o que ela responde.
+function fnCabecalho(){
+  var el = document.getElementById('fn-cabeca'); if(!el) return;
+  var info = FN_ABA_INFO[fnAbaAtual] || ['', ''];
+  var f = fnAtual();
+  el.innerHTML = '<h2>'+fnEsc(info[0])+'</h2>'+
+    '<span class="fx-vivo"><i></i>AO VIVO</span>'+
+    '<p>'+fnEsc(info[1])+(f ? ' · funil <b>'+fnEsc(f.nome)+'</b>' : '')+'</p>';
+}
+
+// ══════════════════════════════════════════════════════
+// ── VISÃO GERAL ──
+// As outras telas olham um pedaco do funil. Esta olha o funil inteiro e
+// responde uma pergunta so: onde o volume se perde. Nao inventa numero — usa
+// o mesmo fnVal() do mapa e da faixa, entao os tres nunca discordam.
+// ══════════════════════════════════════════════════════
+function gePintar(){
+  var el = document.getElementById('ge-corpo'); if(!el) return;
+  var f = fnAtual();
+  if(!f){ el.innerHTML = '<div class="fx-vazio">Escolha um funil.</div>'; return; }
+
+  var cliques  = fnCliques ? (fnCliques.total||0) : null;
+  var chegaram = fnBase(f);
+  var achaTipo = function(t){
+    var e = (f.etapas||[]).filter(function(x){ return x.tipo===t; })[0];
+    return e ? { id:e.id, nome:e.nome, v:fnVal(e.id), url:e.url } : null;
+  };
+  var chk = achaTipo('checkout'), obr = achaTipo('obrigado');
+
+  // ── Degraus: so entra o que existe. Degrau inventado vira queda inventada.
+  var passos = [];
+  if(cliques !== null) passos.push({ r:'Cliques no anúncio', n:cliques, cor:'var(--accent)', d:'vindos da Utmify' });
+  passos.push({ r:'Chegaram na página', n:chegaram, cor:'var(--roxo)', d:'medidos pelo pixel' });
+  if(chk) passos.push({ r:'Abriram o checkout', n:chk.v, cor:'#FF5926', d:fnEsc(chk.nome) });
+  if(obr) passos.push({ r:'Compraram', n:obr.v, cor:'var(--green)', d:fnEsc(obr.nome) });
+
+  var topo = passos.length ? passos[0].n : 0;
+  var degraus = passos.map(function(p, i){
+    var larg = topo ? Math.max(p.n/topo*100, 0.8) : 0.8;
+    var ant = i ? passos[i-1].n : 0;
+    var perda = (i && ant) ? Math.round((1 - p.n/ant) * 100) : null;
+    return '<div class="jn-esc"><div class="r">'+p.r+'<span>'+p.d+'</span></div>'+
+      '<div class="b"><i style="width:'+larg+'%;background:'+p.cor+'"></i>'+
+      (perda !== null && perda > 0 ? '<span class="q">−'+perda+'%</span>' : '')+'</div>'+
+      '<div class="n"><b>'+fnNum(p.n)+'</b><span>'+(topo?Math.round(p.n/topo*100):0)+'%</span></div></div>';
+  }).join('');
+
+  // ── O maior vazamento, dito em uma frase. E o unico numero que muda o dia.
+  var pior = null;
+  for(var i=1;i<passos.length;i++){
+    var ant = passos[i-1], at = passos[i];
+    if(!ant.n) continue;
+    var perdeu = ant.n - at.n;
+    if(!pior || perdeu > pior.perdeu) pior = { de:ant, para:at, perdeu:perdeu, taxa:(at.n/ant.n*100) };
+  }
+
+  var kpi = function(rot, val, sub, cls){
+    return '<div class="fx-kpi '+(cls||'')+'"><div class="r">'+rot+'</div>'+
+      '<div class="v">'+val+'</div><div class="d">'+sub+'</div></div>';
+  };
+  var taxaFinal = (topo && obr) ? (obr.v/topo*100) : null;
+
+  var html = '<div class="fx-kpis">'+
+    kpi('Cliques',   cliques===null?'—':fnNum(cliques), cliques===null?'Utmify indisponível':'no anúncio') +
+    kpi('Chegaram',  fnNum(chegaram), 'na primeira página') +
+    (chk ? kpi('Checkout', fnNum(chk.v), chegaram?((chk.v/chegaram*100).toFixed(1)+'% de quem entrou'):'—',
+               chk.v?'':'ruim') : '') +
+    (obr ? kpi('Compraram', fnNum(obr.v), taxaFinal!==null?(taxaFinal.toFixed(2)+'% do topo'):'—',
+               obr.v?'bom':'ruim') : '') +
+  '</div>';
+
+  if(pior && pior.perdeu > 0){
+    html += '<div class="fx-aviso'+(pior.taxa < 5 ? ' ruim' : '')+'">'+
+      '<b>'+fnNum(pior.perdeu)+' pessoas se perdem entre '+
+      pior.de.r.toLowerCase()+' e '+pior.para.r.toLowerCase()+'</b>'+
+      'Passam '+pior.taxa.toFixed(1)+'%. É a maior queda do funil — '+
+      'mexer aqui vale mais que qualquer criativo novo.</div>';
+  }
+
+  // ── Mais gente chegando do que clicando no anuncio ──
+  // Nao e erro de medicao: e trafego que nao veio de anuncio pago (bio, orgânico,
+  // direto). Mas sem dizer isso a escada mente, porque 'cliques' deixa de ser o
+  // topo do funil e a primeira queda aparece negativa.
+  if(cliques !== null && chegaram > cliques * 1.05){
+    var fora = chegaram - cliques;
+    html += '<div class="fx-aviso bom"><b>'+fnNum(fora)+' pessoas chegaram sem clicar em anúncio</b>'+
+      'São '+fnNum(chegaram)+' na página contra '+fnNum(cliques)+' cliques pagos — a diferença é link na bio, '+
+      'orgânico ou tráfego direto. Por isso a primeira linha da escada não mostra queda: '+
+      'o clique no anúncio não é o topo real deste funil.</div>';
+  }
+
+  // ── Etapa sem link nao e rastreada, e isso explica zero na tela ──
+  var semLink = (f.etapas||[]).filter(function(e){ return !e.url; });
+  if(semLink.length){
+    html += '<div class="fx-aviso"><b>'+semLink.length+' etapa(s) sem link: '+
+      fnEsc(semLink.map(function(e){ return e.nome; }).join(', '))+'</b>'+
+      'Sem a URL o pixel não tem onde ser colado, e a etapa nunca conta ninguém. '+
+      'Se ela aparece zerada, é por isso — não porque ninguém passou.</div>';
+  }
+
+  html += '<div class="fx-cart"><div class="fx-cc"><h3>Onde o volume se perde</h3>'+
+    '<span class="fx-sub">'+fnEsc(fnPeriodoRotulo())+'</span></div>'+
+    '<div class="jn-degraus">'+degraus+'</div></div>';
+
+  el.innerHTML = html;
+}
+
+// Sinais na nav: bolinha vermelha no Pixel quando ha etapa sem link, e a
+// contagem de testes ativos. E o que faz a coluna valer mais que uma pastilha.
+function fnNavSinais(){
+  var f = fnAtual();
+  var pt = document.getElementById('fx-p-pixel');
+  if(pt){
+    var falta = f ? (f.etapas||[]).filter(function(e){ return !e.url; }).length : 0;
+    pt.className = 'fx-nav-p'+(falta?' on':'');
+    pt.title = falta ? (falta+' etapa(s) sem link') : '';
+  }
+  var nb = document.getElementById('fx-n-ab');
+  if(nb){
+    var n = abDoProjeto().filter(function(r){ return r.ativo!==false; }).length;
+    nb.textContent = n ? String(n) : '';
+  }
+}
+
+// Rotulo do periodo escolhido, pra estampar no card sem repetir a logica
+function fnPeriodoRotulo(){
+  var sel = document.getElementById('fn-periodo');
+  return (sel && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : '';
 }
 
 // ── números vindos do pixel ──
@@ -28613,17 +28807,17 @@ function fnCarregarCliques(de, ate){
     .then(function(x){
       if(!x.ok || !x.d || !x.d.ok){
         fnCliquesErro = (x.d && x.d.error) || 'não consegui falar com a Utmify';
-        fnCliques = null; fnListaFontes(); fnNos(); fnDetalhe(); return;
+        fnCliques = null; fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe(); return;
       }
       var d = x.d;
       fnCliques = { total: d.total||0, visitas: d.visitas||0, ics: d.ics||0, campanhas: {} };
       (d.campanhas||[]).forEach(function(c){ fnCliques.campanhas[c.nome] = c.cliques||0; });
       fnCliquesLista = (d.campanhas||[]).map(function(c){ return c.nome; });
       if(d.erros && d.erros.length) fnCliquesErro = d.erros.join(' · ');
-      fnPintarCtx(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe();
+      fnPintarCtx(); fnListaFontes(); fnNos(); fnFaixa(); fnFios(); fnDetalhe();
     }).catch(function(e){
       fnCliquesErro = e.message; fnCliques = null;
-      fnListaFontes(); fnNos(); fnDetalhe();
+      fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe();
     });
 }
 // cliques que chegam por uma origem: a campanha amarrada nela, ou o projeto todo
@@ -28710,8 +28904,13 @@ function fnPintar(){
              '<div class="n">'+fnNum(b)+' entraram · '+tx.toFixed(1)+'% chegaram ao fim</div></div>';
     }).join('') + '<div class="fn-cx fn-novo" onclick="fnNovoFunil()">+ Novo funil neste projeto</div>';
   fnFaixa(); fnListaFontes(); fnNos(); fnFios(); fnDetalhe(); fnOpcoes(); fnPixel(); fnPixelBotao(); fnPintarRed(); fnPintarFeed();
+  fnCabecalho(); fnNavSinais(); gePintar();
 }
 
+// A faixa e o mapa mostram O MESMO numero (fnVal). Quem re-renderiza um tem de
+// re-renderizar o outro: a Utmify chega depois e, quando ela passou a devolver
+// 0 pra hoje, o mapa foi pra 0 e a faixa ficou congelada no 18 da carga
+// anterior — dois numeros discordando na mesma tela.
 function fnFaixa(){
   var f = fnAtual(), el = document.getElementById('fn-etapas');
   if(!el) return;
@@ -29097,7 +29296,7 @@ function fnAmarrarCampanha(id, valor){
   var f=fnAtual(); if(!f) return;
   var n=fnAcha(f,id); if(!n) return;
   n.utmCampanha = valor || '';
-  fnGravar(f); fnListaFontes(); fnNos(); fnDetalhe();
+  fnGravar(f); fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe();
   toastFn(valor ? 'Origem amarrada em '+valor : 'Origem usando o projeto todo');
 }
 
@@ -29216,7 +29415,7 @@ function fnSalvarUrl(id, valor){
   var f = fnAtual(); if(!f) return;
   var n = fnAcha(f,id); if(!n) return;
   n.url = (valor||'').trim();
-  fnGravar(f); fnNos(); fnDetalhe(); fnPixel();
+  fnGravar(f); fnNos(); fnFaixa(); fnDetalhe(); fnPixel();
   toastFn(n.url ? 'Link salvo' : 'Link removido');
 }
 function fnRemoverEtapa(id){
