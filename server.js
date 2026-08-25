@@ -8725,6 +8725,100 @@ app.get('/api/funil/diagnostico', authUsuario, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Vendas por página ───────────────────────────────────────────────────────
+// A pergunta que ele faz o tempo todo: rodando cinco VSLs, qual delas vende.
+// A ligacao ja existia toda e ninguem juntava: o pixel guarda a pagina em cada
+// evento, o link do checkout leva tmx_vid, e a venda chega com esse vid. Aqui
+// os tres viram uma tabela.
+//
+// Duas leituras, porque sao perguntas diferentes:
+//   entrada  — a pagina do PRIMEIRO acesso: quem trouxe a pessoa
+//   venda    — a ultima pagina antes do checkout: quem convenceu
+// Numa VSL unica as duas dao igual. Com pre-venda + VSL elas divergem, e a
+// diferenca e exatamente o que diz qual das duas esta fazendo o trabalho.
+app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
+  try {
+    const db = readDB();
+    const de  = String(req.query.de  || '').slice(0, 10);
+    const ate = String(req.query.ate || '').slice(0, 10);
+    const noDia = iso => (!de || String(iso).slice(0,10) >= de) &&
+                         (!ate || String(iso).slice(0,10) <= ate);
+
+    const jornadas = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      .concat(Object.values(_jBuffer));
+    const porVid = {};
+    jornadas.forEach(j => { if (j && j.id) porVid[j.id] = j; });
+
+    const vendas = (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [])
+      .filter(v => v && noDia(v.recebidoEm));
+
+    // aprovada: o resto ainda pode cair, e contar pedido como venda infla tudo
+    const aprovada = v => /paid|approved|aprovad|complet|pago/i.test(String(v.status||''));
+
+    // Checkout de gateway nao e pagina sua: nunca leva credito de venda (o
+    // credito vai pra pagina que convenceu) e por isso apareceria na lista com
+    // muitos visitantes e 0% — parecendo a pior pagina do funil, quando na
+    // verdade esta fora da conta. Uma constante so, pra credito e listagem nao
+    // divergirem.
+    const EH_CHECKOUT = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay/i;
+
+    const paginas = {};
+    const cx = pg => (paginas[pg] = paginas[pg] ||
+      { pg, entrada:{vendas:0, receita:0}, venda:{vendas:0, receita:0}, visitantes:0 });
+
+    // quantas pessoas passaram por cada pagina, pra virar taxa de conversao
+    const vistos = {};
+    jornadas.forEach(j => {
+      const daqui = new Set();
+      (j.eventos || []).forEach(e => { if (e.pg && noDia(e.em)) daqui.add(e.pg); });
+      daqui.forEach(pg => { cx(pg); vistos[pg] = (vistos[pg] || new Set()).add(j.id); });
+    });
+    Object.keys(vistos).forEach(pg => { cx(pg).visitantes = vistos[pg].size; });
+
+    let semVid = 0, semJornada = 0, casadas = 0;
+    vendas.forEach(v => {
+      if (!aprovada(v)) return;
+      if (!v.vid) { semVid++; return; }
+      const j = porVid[v.vid];
+      if (!j) { semJornada++; return; }
+      casadas++;
+      const evs = (j.eventos || []).filter(e => e.pg);
+      if (!evs.length) return;
+      const valor = Number(v.valor) || 0;
+
+      // entrada: a pagina do primeiro toque, se o pixel a guardou; senao o
+      // primeiro evento com pagina
+      const pr = (evs.find(e => e.primeiro && e.primeiro.pg) || {}).primeiro;
+      const pgEntrada = (pr && pr.pg) || evs[0].pg;
+      cx(pgEntrada).entrada.vendas++;
+      cx(pgEntrada).entrada.receita += valor;
+
+      // venda: a ultima pagina que NAO e checkout — a que convenceu.
+      // Se so houver checkout, ele mesmo leva o credito.
+      const proprias = evs.filter(e => !EH_CHECKOUT.test(e.pg));
+      const pgVenda = (proprias.length ? proprias[proprias.length-1] : evs[evs.length-1]).pg;
+      cx(pgVenda).venda.vendas++;
+      cx(pgVenda).venda.receita += valor;
+    });
+
+    const lista = Object.values(paginas)
+      .filter(p => !EH_CHECKOUT.test(p.pg))
+      .filter(p => p.visitantes || p.entrada.vendas || p.venda.vendas)
+      .map(p => Object.assign({}, p, {
+        conversao: p.visitantes ? (p.venda.vendas / p.visitantes) * 100 : 0,
+        ticket: p.venda.vendas ? p.venda.receita / p.venda.vendas : 0
+      }))
+      .sort((a, b) => b.venda.receita - a.venda.receita || b.visitantes - a.visitantes);
+
+    res.json({ ok: true, de, ate, paginas: lista,
+      // sem isto a tela mostra zero e voce nao sabe se e "nao vendeu" ou
+      // "nao consegui ligar a venda a ninguem"
+      diagnostico: { vendasNoPeriodo: vendas.length, aprovadas: vendas.filter(aprovada).length,
+                     casadas, semVid, semJornada,
+                     webhookLigado: (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS].length : 0) > 0 } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/funil/jornadas', authUsuario, (req, res) => {
   try {
     const funil = String(req.query.funil || '').slice(0, 80);

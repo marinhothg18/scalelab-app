@@ -28884,9 +28884,82 @@ function gePintar(){
 
   html += '<div class="fx-cart"><div class="fx-cc"><h3>Onde o volume se perde</h3>'+
     '<span class="fx-sub">'+fnEsc(fnPeriodoRotulo())+'</span></div>'+
-    '<div class="jn-degraus">'+degraus+'</div></div>';
+    '<div class="jn-degraus">'+degraus+'</div></div>'+
+    '<div id="ge-paginas"></div>';
 
   el.innerHTML = html;
+  gePaginas();
+}
+
+// ── Qual página vende ───────────────────────────────────────────────────────
+// Rodando varias VSLs, saber qual delas vende e a pergunta que decide onde
+// colocar verba. Duas colunas porque sao perguntas diferentes: 'trouxe' e a
+// pagina do primeiro acesso, 'vendeu' e a ultima antes do checkout. Numa VSL
+// direta dao igual; com pre-venda + VSL divergem, e a diferenca diz qual das
+// duas esta fazendo o trabalho.
+function gePaginas(){
+  const el = document.getElementById('ge-paginas'); if(!el) return;
+  fetch('/api/funil/vendas-por-pagina?'+fnQsPeriodo())
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if(!el.isConnected) return;
+      if(!d || !d.ok){ el.innerHTML = ''; return; }
+      const dg = d.diagnostico || {};
+
+      if(!dg.webhookLigado){
+        el.innerHTML = '<div class="fx-cart"><div class="fx-cc"><h3>Qual página vende</h3></div>'+
+          '<div class="fx-aviso" style="margin:0"><b>O webhook de vendas está desligado</b>'+
+          'O pixel já carimba cada visitante e já cola o <code>tmx_vid</code> no link do checkout — '+
+          'o que falta é a Payt avisar aqui quando a venda acontece. '+
+          'Ligue em <b>Configurações → Integrações → Vendas do checkout</b> e esta tabela passa a '+
+          'dizer qual das suas páginas está vendendo.</div></div>';
+        return;
+      }
+
+      const ps = d.paginas || [];
+      if(!ps.length){
+        el.innerHTML = '<div class="fx-cart"><div class="fx-cc"><h3>Qual página vende</h3></div>'+
+          '<div class="fx-vazio">Nenhuma venda ligada a uma página no período.</div></div>';
+        return;
+      }
+
+      const linhas = ps.map(p => {
+        const conv = p.conversao || 0;
+        const cor = conv >= 2 ? 'var(--green)' : (conv >= 0.5 ? '#f97316' : 'var(--text2)');
+        return '<tr>'+
+          '<td style="font-size:12.5px;word-break:break-all">'+fnEsc(fnEncurtar(p.pg))+'</td>'+
+          '<td style="text-align:right;color:var(--text2)">'+fnNum(p.visitantes)+'</td>'+
+          '<td style="text-align:right">'+fnNum(p.entrada.vendas)+'</td>'+
+          '<td style="text-align:right;font-weight:700">'+fnNum(p.venda.vendas)+'</td>'+
+          '<td style="text-align:right;font-weight:700;color:var(--green)">'+
+            (p.venda.receita ? fnDin(p.venda.receita) : '—')+'</td>'+
+          '<td style="text-align:right;font-weight:800;color:'+cor+'">'+conv.toFixed(2)+'%</td>'+
+        '</tr>';
+      }).join('');
+
+      // O que ficou de fora, dito em numero. Sem isto a tabela parece completa
+      // e voce toma decisao sobre metade das vendas achando que e o total.
+      let nota = '';
+      const perdidas = (dg.semVid||0) + (dg.semJornada||0);
+      if(perdidas){
+        nota = '<div class="fx-aviso" style="margin:12px 0 0"><b>'+perdidas+' venda(s) não entraram nesta tabela</b>'+
+          (dg.semVid ? dg.semVid+' chegaram sem o <code>tmx_vid</code> (o link do checkout não passou pelo pixel). ' : '')+
+          (dg.semJornada ? dg.semJornada+' têm o id mas a jornada já expirou — a jornada guarda 7 dias. ' : '')+
+          'Elas contam no faturamento, mas não dá pra dizer de qual página vieram.</div>';
+      }
+
+      el.innerHTML = '<div class="fx-cart"><div class="fx-cc"><h3>Qual página vende</h3>'+
+        '<span class="fx-sub">'+dg.casadas+' de '+dg.aprovadas+' vendas ligadas a uma página</span></div>'+
+        '<div class="fx-vazio" style="margin:-8px 0 12px"><b>Trouxe</b> = página do primeiro acesso. '+
+        '<b>Vendeu</b> = última página antes do checkout. Numa VSL direta são a mesma; '+
+        'com pré-venda antes, a diferença mostra qual das duas fez o trabalho.</div>'+
+        '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+          '<th>Página</th><th style="text-align:right">Visitantes</th>'+
+          '<th style="text-align:right">Trouxe</th><th style="text-align:right">Vendeu</th>'+
+          '<th style="text-align:right">Receita</th><th style="text-align:right">Conversão</th>'+
+        '</tr></thead><tbody>'+linhas+'</tbody></table></div>'+nota+'</div>';
+    })
+    .catch(() => { el.innerHTML = ''; });
 }
 
 // ── Paleta de blocos ────────────────────────────────────────────────────────
