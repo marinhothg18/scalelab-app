@@ -29334,14 +29334,14 @@ function fnVerPaginas(id){
 
   var av = '';
   if(nDom > 1){
-    av = '<div style="background:var(--orange,#FF5926)18;border-left:3px solid var(--orange,#FF5926);'+
+    av = '<div style="background:rgba(255,89,38,.10);border-left:3px solid #FF5926;'+
          'padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12.5px;line-height:1.5">'+
          '<b>Páginas de '+nDom+' domínios na mesma etapa.</b><br>'+
          'A pessoa é identificada por um cookie, e cookie é por domínio. Quem passa por mais de um '+
-         'domínio recebe um id em cada e é contada uma vez em cada. Se estes domínios são a mesma '+
-         'página, o número do bloco está somando gente repetida.</div>';
+         'domínio recebe um id em cada e é contada uma vez em cada. Se estes domínios servem a '+
+         'mesma página, o número do bloco está somando gente repetida.</div>';
   } else if(cliques && total > cliques*1.05){
-    av = '<div style="background:var(--orange,#FF5926)18;border-left:3px solid var(--orange,#FF5926);'+
+    av = '<div style="background:rgba(255,89,38,.10);border-left:3px solid #FF5926;'+
          'padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12.5px;line-height:1.5">'+
          '<b>'+fnNum(total)+' pessoas aqui contra '+fnNum(cliques)+' cliques na origem.</b><br>'+
          'Mesmo domínio, então não é o cookie. Sobra tráfego que não veio do anúncio '+
@@ -29355,7 +29355,7 @@ function fnVerPaginas(id){
           'border-bottom:1px solid var(--linha,#ffffff14)">'+
           '<div style="flex:1;min-width:0">'+
             '<div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;'+
-            'white-space:nowrap" title="'+fnEsc(p.pg)+'">'+fnEsc(fnEncurtar(p.pg))+'</div>'+
+            'white-space:nowrap" title="'+fnEsc(p.pg)+'">'+fnEsc(fnCaminho(p.pg))+'</div>'+
             '<div style="font-size:10.5px;color:var(--text2)">'+fnEsc(fnDominio(p.pg))+'</div>'+
           '</div>'+
           '<div style="width:90px;height:6px;background:#ffffff14;border-radius:3px;overflow:hidden">'+
@@ -29410,6 +29410,13 @@ function fnEhEntrada(f, id){
     if(de && de.tipo==='fonte' && l[1]===id) ent = true;
   });
   return ent;
+}
+function fnCaminho(u){
+  try{
+    var x = new URL(/^https?:/i.test(u) ? u : 'https://'+u);
+    var t = x.pathname + (x.search || '');
+    return t.length > 40 ? '…'+t.slice(-39) : (t === '/' ? '/ (raiz)' : t);
+  }catch(e){ return String(u||''); }
 }
 function fnDominio(u){
   try{ return new URL(/^https?:/i.test(u) ? u : 'https://'+u).hostname.replace(/^www\./,''); }
