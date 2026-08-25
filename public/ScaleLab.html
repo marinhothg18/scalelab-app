@@ -1556,6 +1556,29 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-pessoa .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
 .fn-pessoa .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700}
 .fn-pessoa .de{font-size:11.5px;color:var(--text2);margin-left:auto}
+/* ── Base compartilhada das telas do Funis ────────────────────────────────
+   Portada do prototipo. Sem isto cada aba e refeita a mao e elas saem
+   desalinhadas entre si — que e exatamente o que estava acontecendo. */
+.fx-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:10px;margin-bottom:16px}
+.fx-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+.fx-kpi .r{font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--text2);font-weight:800}
+.fx-kpi .v{font-size:23px;font-weight:800;letter-spacing:-.03em;margin-top:5px;font-variant-numeric:tabular-nums;line-height:1.1}
+.fx-kpi .d{font-size:11px;color:var(--text2);margin-top:3px}
+.fx-kpi.bom .v{color:var(--green)}
+.fx-kpi.ruim .v{color:var(--red)}
+.fx-kpi.foco{border-color:var(--roxo);background:rgba(62,20,147,.10)}
+.light-mode .fx-kpi.foco{background:rgba(62,20,147,.05)}
+.fx-aviso{border:1px solid var(--border);border-left:3px solid #f97316;background:rgba(249,115,22,.08);border-radius:0 12px 12px 0;padding:13px 16px;font-size:13px;line-height:1.6;margin-bottom:16px}
+.fx-aviso b{display:block;margin-bottom:3px;color:var(--text)}
+.fx-aviso.ruim{border-left-color:var(--red);background:rgba(255,59,48,.08)}
+.fx-aviso.bom{border-left-color:var(--green);background:rgba(52,199,89,.08)}
+.fx-dupla{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;align-items:start;margin-bottom:16px}
+.fx-cart{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.fx-cc{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.fx-cc h3{font-size:14.5px;font-weight:700;margin:0;letter-spacing:-.01em}
+.fx-sub{font-size:11.5px;color:var(--text2)}
+.fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
+
 /* Chips do que esta filtrando agora */
 .jn-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 16px}
 .jn-chips-r{font-size:10px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--text2);margin-right:2px}
@@ -3715,8 +3738,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
         <div class="fn-painel" id="fn-p-atencao">
           <div class="fn-nota">Até onde as pessoas descem na página e no que elas clicam.
             <b>Sem mancha colorida de propósito</b> — o nome do que foi clicado é mais útil que a posição exata.</div>
-          <div class="fn-campo" style="max-width:340px"><label>Página</label>
-            <select id="at-etapa" onchange="atCarregar()"></select></div>
+          <div class="jn-sel" style="grid-template-columns:minmax(280px,420px)">
+            <div class="jn-sel-c"><label>Página</label>
+              <select id="at-etapa" onchange="atCarregar()"></select></div>
+          </div>
           <div id="at-diag"></div>
           <div id="at-corpo"></div>
         </div>
@@ -30636,9 +30661,10 @@ function atPintar(d){
       '<span class="v"><b>'+fnNum(n)+'</b> · '+pc.toFixed(0)+'%</span></div>';
   }
   var azul = 'var(--accent)', verm = 'var(--red)';
-  var html = '<div class="fn-cx2"><h3>Até onde as pessoas descem</h3>'+
-    '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+
-      fnEsc(etapa.url||etapa.nome||'')+' · '+fnNum(r.saidas)+' pessoa(s) medida(s)</div>'+
+  var cxRolagem = '<div class="fx-cart"><div class="fx-cc"><h3>Até onde descem</h3>'+
+    '<span class="fx-sub">'+fnNum(r.saidas)+' medidos</span></div>'+
+    '<div style="font-size:11.5px;color:var(--text2);margin:-6px 0 13px;word-break:break-all">'+
+      fnEsc(etapa.url||etapa.nome||'')+'</div>'+
     faixa('Topo', 100, r.saidas, azul)+
     faixa('25%',  r.f25,  r.n25,  r.f25>=50?azul:verm)+
     faixa('50%',  r.f50,  r.n50,  r.f50>=50?azul:verm)+
@@ -30647,22 +30673,25 @@ function atPintar(d){
 
   // O botao de comprar so importa se as pessoas chegam nele
   var btn = (d.cliques||[]).filter(function(c){ return /compr|garant|quero|adquir|assinar/i.test(c.rotulo); })[0];
+  var nuncaVeem = null;
   if(btn && btn.pos){
     var alcanca = btn.pos<=25 ? r.f25 : (btn.pos<=50 ? r.f50 : (btn.pos<=75 ? r.f75 : r.f100));
-    html += '<div class="fn-marco">▲ “'+fnEsc(btn.rotulo.slice(0,34))+'” está a '+btn.pos+'% da página — '+
+    nuncaVeem = { rot: btn.rotulo.slice(0,34), pos: btn.pos, pct: (100-alcanca) };
+    cxRolagem += '<div class="fn-marco">▲ “'+fnEsc(btn.rotulo.slice(0,34))+'” está a '+btn.pos+'% da página — '+
       (100-alcanca).toFixed(0)+'% nunca chegam nele</div>';
   }
-  html += '</div>';
+  cxRolagem += '</div>';
+  var cxFriccao = '';
 
   // ── Fricção: clique que não fez nada. É a métrica que aponta sozinha o que
   //    hoje só se descobre no olho, elemento por elemento.
   if((d.friccao||[]).length){
     var totalFr = d.friccao.reduce(function(a,f){ return a+f.total; },0);
-    html += '<div class="fn-cx2" style="border-color:var(--red)">'+
-      '<h3 style="color:var(--red)">⚠ Cliques que não levaram a nada</h3>'+
-      '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">'+
-        '<b>'+fnNum(totalFr)+' clique(s)</b> em coisas que parecem clicáveis e não são, '+
-        'ou repetidos no mesmo ponto por irritação. Cada linha é um elemento pra arrumar.</div>'+
+    cxFriccao = '<div class="fx-cart" style="border-color:var(--red)">'+
+      '<div class="fx-cc"><h3 style="color:var(--red)">Cliques que não levaram a nada</h3>'+
+      '<span class="fx-sub">'+fnNum(totalFr)+' no período</span></div>'+
+      '<div style="font-size:11.5px;color:var(--text2);margin:-6px 0 12px;line-height:1.55">'+
+        'Coisas que parecem clicáveis e não são, ou repetidas no mesmo ponto por irritação.</div>'+
       '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
       '<th>Elemento</th><th style="width:110px;text-align:right">Cliques mortos</th>'+
       '<th style="width:110px;text-align:right">Cliques de raiva</th></tr></thead><tbody>'+
@@ -30676,36 +30705,56 @@ function atPintar(d){
   }
 
   // ── Atenção real e velocidade ──
-  var at = d.atencao || {}, vi = d.vitais || {};
+  var at = d.atencao || {}, vi = d.vitais || {}, kpis = '';
   if(at.medidos || vi.amostras){
-    var cx = function(rot, val, sub, cor){
-      return '<div class="fn-mini"><div class="r">'+rot+'</div>'+
+    var cx = function(rot, val, sub, cls){
+      // cls e uma classe da base ('bom'/'ruim'), ou uma cor direta do vitals
+      var cor = cls && cls.indexOf('var(') === 0 ? cls : '';
+      var c   = cor ? '' : (cls || '');
+      return '<div class="fx-kpi '+c+'"><div class="r">'+rot+'</div>'+
         '<div class="v"'+(cor?(' style="color:'+cor+'"'):'')+'>'+val+'</div>'+
-        '<div class="s">'+sub+'</div></div>';
+        '<div class="d">'+sub+'</div></div>';
     };
     var seg = function(n){ if(n==null) return '—'; return n<60 ? (n+'s') : (Math.floor(n/60)+'min'+(n%60?' '+(n%60)+'s':'')); };
     // Limites do Web Vitals do Google: LCP bom ate 2,5s, ruim acima de 4s.
     var corLcp = vi.lcp==null ? '' : (vi.lcp<=2500?'var(--green)':(vi.lcp<=4000?'#f59e0b':'var(--red)'));
     var corCls = vi.cls==null ? '' : (vi.cls<=0.1?'var(--green)':(vi.cls<=0.25?'#f59e0b':'var(--red)'));
-    html += '<div class="fn-cx2"><h3>Atenção e velocidade</h3>'+
-      '<div style="font-size:12px;color:var(--text2);margin-bottom:13px">'+
-        'Tempo com a aba <b>visível</b> — não o tempo que a página ficou aberta. '+
-        'A velocidade é medida no aparelho de quem acessou, não no seu.</div>'+
-      '<div class="fn-minis">'+
+    kpis = '<div class="fx-kpis">'+
         cx('Atenção média', seg(at.media), fnNum(at.medidos||0)+' medidos') +
         cx('Saíram em 5s', (at.pctRapidos!=null?at.pctRapidos.toFixed(0)+'%':'—'),
-           fnNum(at.rapidos||0)+' pessoas', (at.pctRapidos>=25?'var(--red)':'')) +
-        cx('Carregou em (LCP)', vi.lcp!=null?(vi.lcp/1000).toFixed(1)+'s':'—',
-           vi.amostras?('P75 de '+fnNum(vi.amostras)):'sem amostra', corLcp) +
-        cx('Primeiro conteúdo', vi.fcp!=null?(vi.fcp/1000).toFixed(1)+'s':'—', 'P75', '') +
+           fnNum(at.rapidos||0)+' pessoas', (at.pctRapidos>=25?'ruim':'')) +
+        cx('Carregou em', vi.lcp!=null?(vi.lcp/1000).toFixed(1)+'s':'—',
+           vi.amostras?('LCP · P75 de '+fnNum(vi.amostras)):'sem amostra', corLcp) +
+        cx('1º conteúdo', vi.fcp!=null?(vi.fcp/1000).toFixed(1)+'s':'—', 'FCP · P75', '') +
         cx('Layout pulando', vi.cls!=null?vi.cls.toFixed(3):'—', 'CLS · P75', corCls) +
-        cx('Erros de JS', fnNum(vi.erros||0), 'no período', (vi.erros?'var(--red)':'')) +
-      '</div></div>';
+        cx('Erros de JS', fnNum(vi.erros||0), 'no período', (vi.erros?'ruim':'')) +
+      '</div>';
   }
 
+  // ── Montagem: KPI no topo, o pior problema em seguida, depois os cards ──
+  // No layout velho os KPIs ficavam no fim da rolagem e o LCP de 11s nao era
+  // visto por ninguem. O que decide tem que abrir a tela.
+  var html = kpis;
+
+  // Um aviso so, do problema mais caro. Varios avisos viram papel de parede.
+  if(vi.lcp != null && vi.lcp > 4000){
+    html += '<div class="fx-aviso ruim"><b>A página leva '+(vi.lcp/1000).toFixed(1)+'s pra carregar</b>'+
+      'Acima de 4s o Google considera ruim, e cada segundo derruba conversão. '+
+      'É o conserto mais barato desta tela: nada aqui adianta se a pessoa desiste antes de ver.</div>';
+  } else if(nuncaVeem && nuncaVeem.pct >= 50){
+    html += '<div class="fx-aviso"><b>'+nuncaVeem.pct.toFixed(0)+'% nunca chegam no botão de compra</b>'+
+      '“'+fnEsc(nuncaVeem.rot)+'” está a '+nuncaVeem.pos+'% da altura da página. '+
+      'Subir o botão custa cinco minutos e não depende de tráfego novo.</div>';
+  } else if(at.pctRapidos != null && at.pctRapidos >= 25){
+    html += '<div class="fx-aviso"><b>'+at.pctRapidos.toFixed(0)+'% saem em menos de 5 segundos</b>'+
+      'Essa gente não leu nada. Ou o anúncio promete outra coisa, ou os primeiros segundos da página não seguram.</div>';
+  }
+
+  html += '<div class="fx-dupla">'+cxRolagem+(cxFriccao||'')+'</div>';
+
   if((d.cliques||[]).length){
-    html += '<div class="fn-cx2"><h3>Onde clicam</h3>'+
-      '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Maior número de cliques primeiro.</div>'+
+    html += '<div class="fx-cart"><div class="fx-cc"><h3>Onde clicam</h3>'+
+      '<span class="fx-sub">maior número primeiro</span></div>'+
       '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
       '<th>Elemento</th><th style="width:120px">Posição</th>'+
       '<th style="width:80px;text-align:right">Cliques</th>'+
@@ -30717,8 +30766,8 @@ function atPintar(d){
           '<td style="text-align:right;color:'+(c.pct>=15?'var(--green)':'var(--text2)')+'">'+c.pct.toFixed(1)+'%</td></tr>';
       }).join('')+'</tbody></table></div></div>';
   } else {
-    html += '<div class="fn-cx2"><h3>Onde clicam</h3>'+
-      '<div class="fn-nota" style="margin:0">Nenhum clique registrado ainda nessa página.</div></div>';
+    html += '<div class="fx-cart"><div class="fx-cc"><h3>Onde clicam</h3></div>'+
+      '<div class="fx-vazio">Nenhum clique registrado ainda nessa página.</div></div>';
   }
   el.innerHTML = html;
 }
