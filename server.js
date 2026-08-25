@@ -9613,6 +9613,9 @@ app.get('/px.js', (req, res) => {
   // 5min ainda poupa o download a cada acesso e deixa o conserto chegar rapido.
   res.set('Cache-Control', 'public, max-age=300');
   res.set('X-TMX-Versao', TMX_VERSAO);
+  // sem isto o cabecalho existe mas o navegador esconde de quem le de outro
+  // dominio — e o diagnostico de cache nao serviria pra nada
+  res.set('Access-Control-Expose-Headers', 'X-TMX-Versao');
   res.send(PIXEL_JS);
 });
 
