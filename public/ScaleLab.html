@@ -31256,6 +31256,49 @@ function fnEncurtar(u){
   return t.length > 34 ? '…'+t.slice(-33) : (t || u);
 }
 
+// ── Por que a jornada mostra menos gente que a etapa ────────────────────────
+// A tela dizia "5 entraram" enquanto o bloco da mesma VSL contava 1.477, e nao
+// havia como saber onde as outras ficaram. Agora o servidor conta quanto cada
+// peneira derruba (funil, periodo, pagina escolhida) e aqui a tela aponta qual
+// foi. Numero que discorda de outro numero na mesma tela precisa se explicar,
+// senao vira desconfianca no sistema inteiro — e com razao.
+function jnPorQuePoucas(d, base){
+  var g = d && d.diag; if(!g) return '';
+  var f = fnAtual(); if(!f) return '';
+  // quanto a etapa de entrada diz, pra ter com o que comparar
+  var naEtapa = 0;
+  try{ naEtapa = fnBase(f) || 0; }catch(e){ naEtapa = 0; }
+  if(!naEtapa || base >= naEtapa * 0.5) return '';   // sem discrepancia, sem sermao
+
+  var causa = '', detalhe = '';
+  if(g.pgEscolhida && g.aposPagina < g.noPeriodo){
+    causa = 'a página escolhida no seletor';
+    detalhe = 'O filtro está em <b>'+fnEsc(g.pgEscolhida)+'</b>, que tem '+fnNum(g.aposPagina)+
+      ' de '+fnNum(g.noPeriodo)+' jornadas do período. Escolha “todas as páginas” pra ver o resto.';
+  } else if(g.noPeriodo < g.doFunil){
+    causa = 'o período escolhido';
+    detalhe = fnNum(g.doFunil)+' jornadas são deste funil, mas só '+fnNum(g.noPeriodo)+
+      ' têm evento dentro do período. Abra o período pra ver as outras.';
+  } else if(g.doFunil < g.noBanco){
+    causa = 'o recorte por funil';
+    detalhe = 'Existem '+fnNum(g.noBanco)+' jornadas guardadas e '+fnNum(g.doFunil)+
+      ' batem com este funil. As outras são de outros funis, ou reportam sob um id '+
+      'que este mapa ainda não adotou.';
+  } else if(g.noBanco <= g.teto * 0.02){
+    causa = 'quase não há jornada guardada';
+    detalhe = 'Só '+fnNum(g.noBanco)+' jornadas no banco inteiro. A contagem da etapa vem de um '+
+      'contador que guarda mais tempo; a jornada guarda o caminho completo de cada pessoa e '+
+      'por isso é bem mais pesada.';
+  } else {
+    causa = 'o limite de retenção da jornada';
+    detalhe = 'A jornada guarda no máximo '+fnNum(g.teto)+' pessoas e '+g.dias+' dias — o contador '+
+      'da etapa guarda muito mais. Em volume alto, os dois números não têm como bater.';
+  }
+
+  return '<div class="fx-aviso" style="margin-top:10px"><b>A etapa conta '+fnNum(naEtapa)+
+    ' pessoas e aqui aparecem '+fnNum(base)+' — quem limita é '+causa+'</b>'+detalhe+'</div>';
+}
+
 function jnCarregar(){
   jnTempo();
   var f = fnAtual();
@@ -31389,7 +31432,7 @@ function jnPintar(){
         '<button class="jn-marco" onclick="jnMarcarOferta()">'+
           (seg ? ('🎯 oferta aos '+jnDuracao(seg)) : '🎯 marcar o minuto da oferta')+'</button></div>'+
       escada()+
-    '</div>';
+    '</div>'+ jnPorQuePoucas(d, base);
   jnChips(d);
 
   var nomeEtapa = {}, tipoEtapa = {};

@@ -8866,10 +8866,16 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     const porFunil = j => !funil || pg ||
       adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa }) ||
       (j.eventos || []).some(e => e.pg && urlsDoFunilJ.has(_normJ(e.pg)));
-    let lista = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
-      .filter(porFunil)
-      .concat(Object.values(_jBuffer).filter(porFunil))
-      .map(trazer);
+    // ── Contadores de diagnostico ───────────────────────────────────────────
+    // A tela mostrava 5 onde a etapa contava 1.477 e nao havia como saber onde
+    // as outras sumiram: funil? periodo? pagina escolhida? teto de retencao?
+    // Cada peneira agora conta quanto derrubou, e a tela diz qual foi.
+    const _brutas = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      .concat(Object.values(_jBuffer));
+    const diag = { noBanco: _brutas.length, doFunil: 0, noPeriodo: 0, aposPagina: 0,
+                   pgEscolhida: pg || null, teto: JORNADA_TETO, dias: JORNADA_DIAS };
+    let lista = _brutas.filter(porFunil).map(trazer);
+    diag.doFunil = lista.length;
 
     // O seletor de periodo do Funis nao chegava aqui: a tela dizia "Hoje" e a
     // piramide somava os 7 dias inteiros. Numeros de dias diferentes lado a lado.
@@ -8883,6 +8889,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
         return evs.length ? Object.assign({}, j, { eventos: evs }) : null;
       }).filter(Boolean);
     }
+    diag.noPeriodo = lista.length;
 
     // O seletor de paginas sai daqui, ANTES do filtro por pagina. Montado depois,
     // sobrava so a pagina escolhida — o select se reconstruia com uma opcao so e
@@ -8906,7 +8913,15 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
 
     // Filtro por pagina: com 5 VSLs na mesma etapa, e a unica forma de saber
     // qual delas retem. Mantem a jornada inteira de quem passou pela pagina.
-    if (pg) lista = lista.filter(j => (j.eventos || []).some(e => (e.pg || '') === pg));
+    // Igualdade exata de string: o pixel grava host+pathname sem barra final nem
+    // query, entao normalmente casa. Normalizo dos dois lados assim mesmo — se
+    // um dia entrar valor de outra origem, o filtro nao pode devolver vazio em
+    // silencio, que foi o modo de falha que custou horas aqui.
+    if (pg) {
+      const alvoPg = _normJ(pg);
+      lista = lista.filter(j => (j.eventos || []).some(e => _normJ(e.pg || '') === alvoPg));
+    }
+    diag.aposPagina = lista.length;
 
     // filtra por quem veio de um teste especifico — a variante viaja no evento
     const teste = String(req.query.teste || '').slice(0, 60);
@@ -9016,7 +9031,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
       }
     });
 
-    res.json({ ok: true, funil, filtro, contagem, de, ate, pg, oferta,
+    res.json({ ok: true, funil, filtro, contagem, de, ate, pg, oferta, diag,
       paginas: Object.values(paginas).map(x => ({ pg: x.pg, pessoas: x.pessoas.size }))
                      .sort((a, b) => b.pessoas - a.pessoas),
       etapas: ((f && f.etapas) || []).map(e => ({ id: e.id, nome: e.nome, tipo: e.tipo })),
