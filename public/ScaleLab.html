@@ -1365,6 +1365,11 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   background: var(--bg3);
 }
 
+/* Carimbo da versao no rodape da lateral */
+#sel-versao{font-size:9.5px;font-weight:700;letter-spacing:.4px;color:var(--text3);padding:5px 12px 2px;cursor:pointer;font-variant-numeric:tabular-nums}
+#sel-versao:hover{color:var(--text2)}
+#sel-versao.velha{color:#FF5926}
+
 /* Notificações: badge no sininho */
 .nav-badge {
   background: var(--red);
@@ -2191,6 +2196,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       Tour
     </div>
+    <!-- Carimbo da versao carregada. Existe porque passamos varias rodadas sem
+         saber se o navegador tinha o codigo novo: eu confirmava o deploy, ele
+         via a tela velha, e nenhum dos dois conseguia provar qual era qual.
+         Clicar recarrega ignorando o cache. -->
+    <div id="sel-versao" onclick="location.reload(true)"
+         title="Versão carregada nesta aba. Clique para recarregar."></div>
     <div class="nav-item nav-item-sair" onclick="if(confirm('Sair da conta?'))logout()">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Sair
@@ -7613,9 +7624,17 @@ async function _checarVersao(){
     if(!r.ok) return;
     const d = await r.json();
     if(!d || !d.versao) return;
-    if(_versaoCarregada === null){ _versaoCarregada = d.versao; return; }
-    if(d.versao !== _versaoCarregada) _mostrarVersaoNova();
+    if(_versaoCarregada === null){ _versaoCarregada = d.versao; _selarVersao(d.versao, true); return; }
+    if(d.versao !== _versaoCarregada){ _selarVersao(d.versao, false); _mostrarVersaoNova(); }
   }catch(e){}
+}
+// Mostra a versao no rodape da lateral. Verde = a aba tem o que o servidor tem;
+// laranja = o servidor ja mudou e esta aba ficou pra tras.
+function _selarVersao(v, igual){
+  const el = document.getElementById('sel-versao'); if(!el) return;
+  const curta = String(v).slice(-6);
+  el.textContent = (igual ? 'v' : '⟳ v') + curta + (igual ? '' : ' — recarregar');
+  el.className = igual ? '' : 'velha';
 }
 function _mostrarVersaoNova(){
   if(document.getElementById('aviso-versao')) return;
