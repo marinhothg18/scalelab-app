@@ -9457,19 +9457,49 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
     const porPagina = {};
     const jn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
       .concat(Object.values(_jBuffer));
+    // ── Aceitar tambem pela PAGINA, nao so pelo id do funil ─────────────────
+    // Existe um comentario no /api/funil/jornadas dizendo exatamente isto: o
+    // pixel pode reportar sob um id de funil velho e a pagina continua sendo a
+    // mesma pagina. Filtrar so por funil fazia a tela vir vazia. Eu reintroduzi
+    // esse bug ao consertar outro — o numero caiu de 3.298 pra 1.300.
+    // Agora: vale se o funil bate (ou foi adotado) OU se a pagina do evento e
+    // uma das URLs cadastradas nas etapas DESTE funil.
+    const _norm = u => String(u || '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+    const urlsDoFunil = new Set();
+    const etapaPorUrl = {};
+    if (funil) {
+      const fu = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
+        .find(x => x && x.id === funil);
+      ((fu && fu.etapas) || []).forEach(e => {
+        if (!e.url) return;
+        const k = _norm(e.url);
+        urlsDoFunil.add(k); etapaPorUrl[k] = e.id;
+      });
+    }
+    const valeAqui = (j, e) => {
+      if (!funil) return true;
+      if (ado.aceita({ funil: j.funil, etapa: e.etapa })) return true;
+      return e.pg && urlsDoFunil.has(_norm(e.pg));
+    };
+    // e a etapa onde ele cai: a declarada, ou a dona daquela URL
+    const etapaDaqui = (j, e) => {
+      if (!funil) return e.etapa;
+      if (ado.aceita({ funil: j.funil, etapa: e.etapa })) return ado.etapaDe({ funil: j.funil, etapa: e.etapa });
+      return etapaPorUrl[_norm(e.pg)] || e.etapa;
+    };
+
     const unicosJn = {};       // etapa -> Set(visitante)
     jn.forEach(j => {
       const chaves = new Set();
       (j.eventos || []).forEach(e => {
-        if (!e.etapa) return;
-        // MESMO filtro que as linhas de estatistica usam. Sem ele, jornada de
-        // outro funil com etapa de id igual entrava na conta e o numero subia
-        // em vez de descer.
-        if (funil && !ado.aceita({ funil: j.funil, etapa: e.etapa })) return;
+        if (!e.etapa && !e.pg) return;
+        if (!valeAqui(j, e)) return;
         const dia = String(e.em || '').slice(0, 10);
         if (de && dia < de) return;
         if (ate && dia > ate) return;
-        const et = funil ? ado.etapaDe({ funil: j.funil, etapa: e.etapa }) : e.etapa;
+        const et = etapaDaqui(j, e);
+        if (!et) return;
         (unicosJn[et] = unicosJn[et] || new Set()).add(j.id);
         if (!e.pg) return;
         chaves.add(et + '|' + e.pg);
