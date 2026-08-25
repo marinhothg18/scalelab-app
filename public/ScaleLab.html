@@ -31190,6 +31190,14 @@ function jnOpcoesPagina(){
   if(slug) links = fnLinksDoTeste(slug);
   else abDoProjeto().forEach(function(t){ links = links.concat(fnLinksDoTeste(t.slug)); });
   var lista = fnJuntarPaginas(jnPaginas, links);
+  // ── "Todas as páginas" tem de existir, e ser o padrão ────────────────────
+  // O select nao tinha essa opcao: era obrigado a escolher UMA pagina e caia na
+  // primeira da lista. Quando a primeira era um link sem jornada nenhuma (um
+  // destino de teste apontando pro Google Docs, por exemplo), a tela filtrava
+  // 4.003 jornadas pra zero sem dizer nada — e parecia que o rastreamento tinha
+  // parado de funcionar. Ver o funil inteiro e o estado natural; recortar por
+  // pagina e a excecao, e deve ser uma escolha, nao um efeito colateral.
+  html += '<option value="">Todas as páginas</option>';
   if(lista.length){
     html += '<optgroup label="Links da campanha">' + lista.map(function(p){
       var rot = fnEsc(p.nome ? (p.nome+' · '+fnEncurtar(p.pg)) : fnEncurtar(p.pg));
@@ -31208,8 +31216,10 @@ function jnOpcoesPagina(){
   // escolher — a tela trocava de página sozinha.
   if(sel.innerHTML === html) return;
   sel.innerHTML = html;
+  // Restaura a escolha anterior se ela ainda existe. Se nao existe mais, cai em
+  // "todas" — que agora e o indice 0 — em vez de numa pagina qualquer.
   if(antes){ sel.value = antes; }
-  if(!sel.value) sel.selectedIndex = 0;
+  if(sel.selectedIndex < 0) sel.selectedIndex = 0;
   sel.dataset.escolha = sel.value || '';
 }
 // O pixel manda host+caminho sem barra no fim; os destinos do teste guardam a
