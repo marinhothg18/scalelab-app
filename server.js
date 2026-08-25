@@ -8853,8 +8853,19 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     // aqui fazia a jornada vir vazia enquanto a atencao — que sempre olhou por
     // pagina — mostrava 30 pessoas na mesma tela.
     const pg = String(req.query.pg || '').slice(0, 160);
+    // ── Aceitar tambem pela PAGINA, igual o /api/funil/stats faz ─────────────
+    // La a jornada vale se o funil bate OU se a pagina do evento e uma das URLs
+    // cadastradas nas etapas. Aqui so existia a primeira via — entao jornada que
+    // reporta sob outro data-f entrava na CONTAGEM e sumia da LISTA. Na mesma
+    // tela: 1.477 pessoas na etapa e "5 entraram" na jornada. Duas regras
+    // diferentes pro mesmo recorte nunca podiam ter existido.
+    const _normJ = u => String(u || '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+    const urlsDoFunilJ = new Set();
+    ((f && f.etapas) || []).forEach(e => { if (e.url) urlsDoFunilJ.add(_normJ(e.url)); });
     const porFunil = j => !funil || pg ||
-      adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa });
+      adoJ.aceita({ funil: j.funil, etapa: (j.eventos && j.eventos[0] || {}).etapa }) ||
+      (j.eventos || []).some(e => e.pg && urlsDoFunilJ.has(_normJ(e.pg)));
     let lista = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
       .filter(porFunil)
       .concat(Object.values(_jBuffer).filter(porFunil))
