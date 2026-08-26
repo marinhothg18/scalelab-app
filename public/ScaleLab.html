@@ -1784,6 +1784,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   font-size:13.5px;font-weight:750;outline:none;padding:2px 0;border-bottom:1px dashed transparent}
 .ab-var-nome:hover,.ab-var-nome:focus{border-bottom-color:var(--border)}
 .ab-venc{background:rgba(34,197,94,.17);color:var(--green);font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px}
+.ab-var-pcin{width:52px;background:var(--bg2);border:1px solid var(--accent);border-radius:7px;padding:5px 7px;color:var(--text);font-size:13px;font-weight:800;text-align:center;outline:none;font-variant-numeric:tabular-nums}
+.ab-var-pcin:focus{box-shadow:0 0 0 3px rgba(27,156,250,.18)}
 .ab-var-peso{width:62px;background:var(--bg2);border:1px solid var(--border);border-radius:7px;
   padding:5px 8px;color:var(--text);font-size:13px;font-weight:700;text-align:center;outline:none;font-family:inherit}
 .ab-var-pc{font-size:12.5px;font-weight:800;color:var(--text2);min-width:38px;text-align:right}
@@ -30462,9 +30464,17 @@ function abPintarDetalhe(){
       '<div class="ab-var-cab">'+
         '<input class="ab-var-nome" value="'+fnEsc(v.nome)+'" onchange="abNomeVar('+i+',this.value)">'+
         (venc?'<span class="ab-venc">VENCEDORA</span>':'')+
-        '<span class="ab-var-rot">peso</span>'+
+        // A porcentagem e o que voce pensa ("70/30"), o peso e o que a maquina
+        // usa. Deixa editar os dois: digitar 70 aqui vira peso, e o peso
+        // continua ali pra quem quiser mexer nele direto.
+        '<span class="ab-var-rot">tráfego</span>'+
+        '<input class="ab-var-pcin" type="number" min="0" max="100" step="1" '+
+          'value="'+Math.round((Number(v.peso)||1)/pesoTot*100)+'" '+
+          'title="Quanto do tráfego vai pra esta variante. As outras se ajustam sozinhas." '+
+          'onchange="abPorcento('+i+',this.value)">'+
+        '<span class="ab-var-rot" style="margin-left:-4px">%</span>'+
+        '<span class="ab-var-rot" title="Peso bruto do sorteio. A porcentagem sai daqui.">peso</span>'+
         '<input class="ab-var-peso" type="number" min="0" value="'+(v.peso||1)+'" onchange="abPeso('+i+',this.value)">'+
-        '<span class="ab-var-pc">'+Math.round((Number(v.peso)||1)/pesoTot*100)+'%</span>'+
         '<span class="ab-var-rot">R$</span>'+
         '<input class="ab-var-peso" type="number" min="0" step="0.01" value="'+(v.valor||'')+'" '+
           'placeholder="—" title="Preço desta variante. Só preencha se as variantes têm preços diferentes." '+
@@ -30711,6 +30721,49 @@ function abCampo(campo, valor){
 function abNomeVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].nome=(v||'').trim(); fnGravarRed(r); }
 function abUrlVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].url=(v||'').trim(); fnGravarRed(r); fnPintarRed(); }
 function abPeso(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].peso=Math.max(0,+v||0); fnGravarRed(r); fnPintarRed(); }
+
+// Digitar a porcentagem de UMA variante e dizer implicitamente o que sobra pras
+// outras. Elas se ajustam mantendo a proporcao que ja tinham entre si — mexer em
+// uma nao pode bagunçar a divisao das demais.
+// O peso vira inteiro porque e ele que o sorteio usa: peso fracionado nao ajuda
+// ninguem a entender o que esta configurado.
+function abPorcento(i, v){
+  var r = fnRedAtual(); if(!r) return;
+  var ds = r.destinos || []; if(!ds.length) return;
+  var alvo = Math.max(0, Math.min(100, Number(v) || 0));
+
+  if(ds.length === 1){ ds[0].peso = 1; fnGravarRed(r); fnPintarRed(); return; }
+
+  // 100 numa variante zera as outras — e o jeito de mandar tudo pra uma so
+  if(alvo >= 100){
+    ds.forEach(function(d, k){ d.peso = (k === i) ? 1 : 0; });
+    fnGravarRed(r); fnPintarRed(); toastFn('Todo o tráfego vai pra ' + (ds[i].nome||'esta variante')); return;
+  }
+
+  var outras = ds.filter(function(_, k){ return k !== i; });
+  var somaOutras = outras.reduce(function(a, d){ return a + (Number(d.peso) || 0); }, 0);
+
+  // Base 100: a variante fica com 'alvo' e as outras dividem o resto na
+  // proporcao que tinham. Se todas as outras estavam zeradas, divide igual —
+  // senao nao haveria como sair do zero.
+  var resto = 100 - alvo;
+  ds.forEach(function(d, k){
+    if(k === i){ d.peso = alvo; return; }
+    var atual = Number(d.peso) || 0;
+    d.peso = somaOutras > 0 ? Math.round(resto * (atual / somaOutras))
+                            : Math.round(resto / outras.length);
+  });
+
+  // arredondamento pode deixar a soma em 99 ou 101: joga a sobra na maior das
+  // outras, pra variante que voce acabou de fixar nao sair do valor pedido
+  var soma = ds.reduce(function(a, d){ return a + (Number(d.peso) || 0); }, 0);
+  if(soma !== 100 && outras.length){
+    var maiorK = -1, maior = -1;
+    ds.forEach(function(d, k){ if(k !== i && (Number(d.peso)||0) > maior){ maior = Number(d.peso)||0; maiorK = k; } });
+    if(maiorK >= 0) ds[maiorK].peso = Math.max(0, (Number(ds[maiorK].peso)||0) + (100 - soma));
+  }
+  fnGravarRed(r); fnPintarRed();
+}
 function abValorVar(i, v){
   var r=fnRedAtual(); if(!r) return;
   r.destinos[i].valor = Math.max(0, parseFloat(String(v).replace(',','.')) || 0);
