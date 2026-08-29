@@ -2821,6 +2821,24 @@ function _pegaCom(obj, caminhos) {
 }
 function _pega(obj, caminhos) { return _pegaCom(obj, caminhos).valor; }
 
+// Procura o id do visitante em todos os campos que um gateway pode devolver.
+// O pixel esconde 'tmx_<id>' dentro do sck (e do src, quando existe) porque
+// parametro proprio nao sobrevive ao postback.
+function _vidDaVenda(p) {
+  const direto = _pega(p, ['tmx_vid', 'trackingParameters.tmx_vid', 'tracking.tmx_vid',
+                           'metadata.tmx_vid', 'custom.tmx_vid']);
+  if (direto) return String(direto).slice(0, 40);
+  const campos = ['sck', 'src', 'utm_content', 'xcod',
+                  'trackingParameters.sck', 'trackingParameters.src',
+                  'trackingParameters.utm_content', 'tracking.sck', 'tracking.src'];
+  for (const c of campos) {
+    const v = String(_pega(p, [c]) || '');
+    const m = v.match(/tmx_([A-Za-z0-9]{6,40})/);
+    if (m) return m[1];
+  }
+  return '';
+}
+
 function _normalizarVenda(p) {
   const achado = _pegaCom(p, [
     'commission.totalPriceInCents','totalPriceInCents','amount_in_cents','price_in_cents',
@@ -2845,8 +2863,11 @@ function _normalizarVenda(p) {
     utmTerm:     String(_pega(p, ['trackingParameters.utm_term','utm_term','tracking.utm_term']) || ''),
     // o visitante que o pixel anexou no link do checkout — e o que liga a venda
     // a jornada inteira, mesmo quando a UTM se perdeu no caminho
-    vid: String(_pega(p, ['tmx_vid','trackingParameters.tmx_vid','tracking.tmx_vid',
-                          'metadata.tmx_vid','custom.tmx_vid']) || ''),
+    // O vid pode voltar em tres lugares, em ordem de confianca:
+    //   tmx_vid  — se o gateway repassou o parametro cru (poucos repassam)
+    //   sck/src  — onde o pixel o esconde justamente porque esses SAO repassados
+    //   utm_content — ultimo recurso, quando o checkout so devolve utm_*
+    vid: _vidDaVenda(p),
     recebidoEm: new Date().toISOString()
   };
 }
@@ -10203,6 +10224,16 @@ const PIXEL_JS = `(function(w,d){
         }
       });
       if(!u.searchParams.get('tmx_vid')) u.searchParams.set('tmx_vid', id);
+      // ── O gateway so devolve o que ele conhece ──────────────────────────
+      // tmx_vid chega na Payt e MORRE ali: no postback ela repassa utm_*, src e
+      // sck, e descarta parametro inventado por terceiro. Sem isso a venda
+      // chega sem dono e nao da pra dizer de que pagina ou variante veio.
+      // 'sck' e o campo que Payt, Kiwify, Hotmart e Monetizze repassam.
+      var sck = (u.searchParams.get('sck') || '').trim();
+      if(!/tmx_[a-z0-9]/i.test(sck)){
+        // nao joga fora o que a pagina ja pos ali — anexa depois de um til
+        u.searchParams.set('sck', (sck && !VAZIO.test(sck) ? sck + '~' : '') + 'tmx_' + id);
+      }
       return u.toString();
     }catch(e){ return href; }
   }
