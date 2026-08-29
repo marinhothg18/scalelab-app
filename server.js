@@ -8820,11 +8820,34 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
     // levar mais gente pro checkout e converter menos.
     // A variante viaja no evento da jornada (ev.variante/ev.teste), gravada
     // quando o link do teste sorteou. Mesma juncao pelo tmx_vid das vendas.
+    // O que viaja na URL e o ID do destino (escolhido.id), nao o nome. Ele e
+    // estavel, que e o que a atribuicao precisa — mas ilegivel na tela: a
+    // tabela mostrava 'vmsxxcdtd' onde devia mostrar 'Variante 2'.
+    // Aqui o id vira nome; o nome do TESTE tambem, que na URL e o slug.
+    const reds = Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [];
+    const nomeDaVariante = (slug, vid) => {
+      const r = reds.find(x => x && x.slug === slug);
+      if (!r) return vid;
+      const ds = r.destinos || [];
+      const d = ds.find((x, i) => String(x.id || ('v' + i)) === String(vid));
+      if (!d) return vid;
+      // nome repetido entre variantes deixa de distinguir: cola a URL junto
+      const repetido = d.nome && ds.filter(x => x.nome === d.nome).length > 1;
+      const url = String(d.url || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+      if (!d.nome) return url || vid;
+      return repetido && url ? (d.nome + ' · ' + url.split('/').pop()) : d.nome;
+    };
+    const nomeDoTeste = slug => {
+      const r = reds.find(x => x && x.slug === slug);
+      return (r && r.nome) || slug;
+    };
+
     const porVariante = {};
     const cxV = (teste, variante) => {
       const k = teste + '||' + variante;
       return (porVariante[k] = porVariante[k] ||
-        { teste, variante, pessoas: 0, vendas: 0, receita: 0 });
+        { teste: nomeDoTeste(teste), variante: nomeDaVariante(teste, variante),
+          varianteId: variante, pessoas: 0, vendas: 0, receita: 0 });
     };
     const vistosVar = {};
     jornadas.forEach(j => {
