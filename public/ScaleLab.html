@@ -28980,7 +28980,52 @@ function gePaginas(){
           'Elas contam no faturamento, mas não dá pra dizer de qual página vieram.</div>';
       }
 
-      el.innerHTML = '<div class="fx-cart"><div class="fx-cc"><h3>Qual página vende</h3>'+
+      // ── Qual variante vende ──────────────────────────────────────────────
+      // Vem antes da tabela de paginas: e ela que decide qual VSL fica no ar.
+      let vhtml = '';
+      const vs = d.variantes || [];
+      if(vs.length){
+        const linhasV = vs.map(v => {
+          const conv = v.conversao || 0;
+          const cor = conv >= 2 ? 'var(--green)' : (conv >= 0.5 ? '#f97316' : 'var(--text2)');
+          return '<tr>'+
+            '<td style="font-size:12.5px;font-weight:600">'+fnEsc(v.variante)+
+              '<div style="font-size:10.5px;color:var(--text2);font-weight:400">'+fnEsc(v.teste)+'</div></td>'+
+            '<td style="text-align:right;color:var(--text2)">'+fnNum(v.pessoas)+'</td>'+
+            '<td style="text-align:right;font-weight:700">'+fnNum(v.vendas)+'</td>'+
+            '<td style="text-align:right;font-weight:700;color:var(--green)">'+
+              (v.receita ? fnDin(v.receita) : '—')+'</td>'+
+            '<td style="text-align:right;font-weight:800;color:'+cor+'">'+conv.toFixed(2)+'%</td>'+
+            '<td style="text-align:right;font-weight:700">'+fnDin(v.porVisitante)+'</td>'+
+          '</tr>';
+        }).join('');
+        // Quem ganha e quem faz mais dinheiro POR VISITANTE, nao quem vendeu
+        // mais no total: as variantes raramente recebem o mesmo tanto de gente.
+        let nota = '';
+        if(vs.length >= 2 && vs.some(v => v.vendas)){
+          const ord = vs.slice().sort((a,b) => b.porVisitante - a.porVisitante);
+          const g = ord[0], p2 = ord[1];
+          if(g.porVisitante > 0){
+            const dif = p2.porVisitante > 0 ? ((g.porVisitante/p2.porVisitante - 1) * 100) : 100;
+            nota = '<div class="fx-aviso '+(dif >= 20 ? 'bom' : '')+'" style="margin:12px 0 0">'+
+              '<b>'+fnEsc(g.variante)+' rende '+fnDin(g.porVisitante)+' por visitante'+
+              (dif >= 5 ? (', '+dif.toFixed(0)+'% mais que '+fnEsc(p2.variante)) : '')+'</b>'+
+              'É por visitante que se compara, não por total de vendas — as variantes quase nunca '+
+              'recebem a mesma quantidade de gente. '+
+              (dif < 20 ? 'Com essa diferença pequena, ainda não dá pra cravar: deixe rodar mais.'
+                        : 'Se o volume já for suficiente, é essa que fica no ar.')+'</div>';
+          }
+        }
+        vhtml = '<div class="fx-cart"><div class="fx-cc"><h3>Qual variante vende</h3>'+
+          '<span class="fx-sub">do teste A/B</span></div>'+
+          '<div style="overflow-x:auto"><table class="fn-tb"><thead><tr>'+
+            '<th>Variante</th><th style="text-align:right">Pessoas</th>'+
+            '<th style="text-align:right">Vendas</th><th style="text-align:right">Receita</th>'+
+            '<th style="text-align:right">Conversão</th><th style="text-align:right">Por visitante</th>'+
+          '</tr></thead><tbody>'+linhasV+'</tbody></table></div>'+nota+'</div>';
+      }
+
+      el.innerHTML = vhtml + '<div class="fx-cart"><div class="fx-cc"><h3>Qual página vende</h3>'+
         '<span class="fx-sub">'+dg.casadas+' de '+dg.aprovadas+' vendas ligadas a uma página</span></div>'+
         '<div class="fx-vazio" style="margin:-8px 0 12px"><b>Trouxe</b> = página do primeiro acesso. '+
         '<b>Vendeu</b> = última página antes do checkout. Numa VSL direta são a mesma; '+

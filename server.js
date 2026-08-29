@@ -8814,6 +8814,55 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
       cx(pgVenda).venda.receita += valor;
     });
 
+    // ── Vendas por variante do teste A/B ────────────────────────────────────
+    // A pergunta que decide qual VSL fica no ar: das duas que estao dividindo o
+    // trafego, qual VENDE. Taxa de clique nao responde isso — variante pode
+    // levar mais gente pro checkout e converter menos.
+    // A variante viaja no evento da jornada (ev.variante/ev.teste), gravada
+    // quando o link do teste sorteou. Mesma juncao pelo tmx_vid das vendas.
+    const porVariante = {};
+    const cxV = (teste, variante) => {
+      const k = teste + '||' + variante;
+      return (porVariante[k] = porVariante[k] ||
+        { teste, variante, pessoas: 0, vendas: 0, receita: 0 });
+    };
+    const vistosVar = {};
+    jornadas.forEach(j => {
+      const daqui = new Set();
+      (j.eventos || []).forEach(e => {
+        if (!e.variante || !noDia(e.em)) return;
+        daqui.add((e.teste || '(sem nome)') + '||' + e.variante);
+      });
+      daqui.forEach(k => {
+        const corte = k.indexOf('||');
+        cxV(k.slice(0, corte), k.slice(corte + 2));
+        (vistosVar[k] = vistosVar[k] || new Set()).add(j.id);
+      });
+    });
+    Object.keys(vistosVar).forEach(k => {
+      const corte = k.indexOf('||');
+      cxV(k.slice(0, corte), k.slice(corte + 2)).pessoas = vistosVar[k].size;
+    });
+
+    vendas.forEach(v => {
+      if (!aprovada(v) || !v.vid) return;
+      const j = porVid[v.vid];
+      if (!j) return;
+      // a variante do PRIMEIRO evento que a tiver: e a que o sorteio deu
+      const ev = (j.eventos || []).find(e => e.variante);
+      if (!ev) return;
+      const c = cxV(ev.teste || '(sem nome)', ev.variante);
+      c.vendas++; c.receita += Number(v.valor) || 0;
+    });
+
+    const variantes = Object.values(porVariante)
+      .filter(v => v.pessoas || v.vendas)
+      .map(v => Object.assign({}, v, {
+        conversao: v.pessoas ? (v.vendas / v.pessoas) * 100 : 0,
+        porVisitante: v.pessoas ? v.receita / v.pessoas : 0
+      }))
+      .sort((a, b) => b.receita - a.receita || b.pessoas - a.pessoas);
+
     const lista = Object.values(paginas)
       .filter(p => !EH_CHECKOUT.test(p.pg))
       .filter(p => p.visitantes || p.entrada.vendas || p.venda.vendas)
@@ -8823,7 +8872,7 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
       }))
       .sort((a, b) => b.venda.receita - a.venda.receita || b.visitantes - a.visitantes);
 
-    res.json({ ok: true, de, ate, paginas: lista,
+    res.json({ ok: true, de, ate, paginas: lista, variantes,
       // sem isto a tela mostra zero e voce nao sabe se e "nao vendeu" ou
       // "nao consegui ligar a venda a ninguem"
       diagnostico: { vendasNoPeriodo: vendas.length, aprovadas: vendas.filter(aprovada).length,
