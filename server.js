@@ -8919,6 +8919,33 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
     res.json({ ok: true, de, ate, paginas: lista, variantes,
       // sem isto a tela mostra zero e voce nao sabe se e "nao vendeu" ou
       // "nao consegui ligar a venda a ninguem"
+      // ── O que a Payt REALMENTE manda ────────────────────────────────────
+      // Ja errei duas hipoteses sobre por que a venda chega sem dono. Em vez de
+      // adivinhar uma terceira, a tela passa a mostrar os campos do payload cru
+      // que se parecem com rastreamento — e se algum deles tem 'tmx_' dentro.
+      camposRecebidos: (() => {
+        const raw = Array.isArray(db.store[KEY_VENDAS_RAW]) ? db.store[KEY_VENDAS_RAW] : [];
+        const ult = raw[raw.length - 1];
+        if (!ult) return null;
+        const corpo = ult.body || ult.payload || ult;
+        const achados = [];
+        const varrer = (o, prefixo, nivel) => {
+          if (!o || typeof o !== 'object' || nivel > 3) return;
+          Object.keys(o).forEach(k => {
+            const v = o[k], caminho = prefixo ? prefixo + '.' + k : k;
+            if (v && typeof v === 'object') return varrer(v, caminho, nivel + 1);
+            if (!/utm|src|sck|xcod|track|tmx|param|origem|source|ref/i.test(k)) return;
+            const txt = String(v == null ? '' : v);
+            achados.push({ campo: caminho, valor: txt.slice(0, 60),
+                           temTmx: /tmx_[A-Za-z0-9]{6,}/.test(txt) });
+          });
+        };
+        varrer(corpo, '', 0);
+        return { quando: ult.recebidoEm || ult.em || null,
+                 campos: achados.slice(0, 14),
+                 // se nenhum campo tem tmx_, o gateway limpou tudo no caminho
+                 algumTemTmx: achados.some(a => a.temTmx) };
+      })(),
       diagnostico: { vendasNoPeriodo: vendas.length, aprovadas: vendas.filter(aprovada).length,
                      casadas, semVid, semJornada,
                      webhookLigado: (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS].length : 0) > 0 } });
