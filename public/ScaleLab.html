@@ -28974,7 +28974,11 @@ function gePaginas(){
       let nota = '';
       const perdidas = (dg.semVid||0) + (dg.semJornada||0);
       if(perdidas){
-        nota = '<div class="fx-aviso" style="margin:12px 0 0"><b>'+perdidas+' venda(s) não entraram nesta tabela</b>'+
+        nota = (dg.recuperadas ? '<div class="fx-aviso bom" style="margin:12px 0 0">'+
+            '<b>'+dg.recuperadas+' venda(s) recuperadas do payload guardado</b>'+
+            'Elas tinham o identificador dentro do webhook, mas a leitura antiga não sabia onde '+
+            'procurar. Foram religadas à página de origem sem precisar de compra nova.</div>' : '')+
+          '<div class="fx-aviso" style="margin:12px 0 0"><b>'+perdidas+' venda(s) não entraram nesta tabela</b>'+
           (dg.semVid ? dg.semVid+' chegaram sem o identificador do visitante. ' : '')+
           (dg.semJornada ? dg.semJornada+' têm o id mas a jornada já expirou — a jornada guarda 7 dias. ' : '')+
           'Elas contam no faturamento, mas não dá pra dizer de qual página vieram.</div>';

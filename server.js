@@ -8783,8 +8783,32 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
     const porVid = {};
     jornadas.forEach(j => { if (j && j.id) porVid[j.id] = j; });
 
+    // ── Recuperar o id das vendas que ja entraram ───────────────────────────
+    // O vid e extraido uma vez, na hora que o webhook chega, e fica congelado
+    // na venda. As que entraram antes do pixel esconder o id no sck ficaram com
+    // vid vazio pra sempre — mas o payload CRU foi guardado. Se o id estava la
+    // e a leitura antiga nao sabia procurar, da pra recuperar agora, sem pedir
+    // pra ninguem comprar de novo.
+    const cru = Array.isArray(db.store[KEY_VENDAS_RAW]) ? db.store[KEY_VENDAS_RAW] : [];
+    const cruPorPedido = {};
+    cru.forEach(r => {
+      const pl = (r && (r.payload || r.body)) || r;
+      const id = String(_pega(pl, ['orderId','order_id','id','transaction_id','codigo','code']) || '');
+      if (id) cruPorPedido[id] = pl;
+    });
+    let recuperadas = 0;
+
     const vendas = (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [])
-      .filter(v => v && noDia(v.recebidoEm));
+      .filter(v => v && noDia(v.recebidoEm))
+      .map(v => {
+        if (v.vid || !v.pedidoId) return v;
+        const pl = cruPorPedido[v.pedidoId];
+        if (!pl) return v;
+        const achado = _vidDaVenda(pl);
+        if (!achado) return v;
+        recuperadas++;
+        return Object.assign({}, v, { vid: achado, vidRecuperado: true });
+      });
 
     // aprovada: o resto ainda pode cair, e contar pedido como venda infla tudo
     const aprovada = v => /paid|approved|aprovad|complet|pago/i.test(String(v.status||''));
@@ -8947,7 +8971,7 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
                  algumTemTmx: achados.some(a => a.temTmx) };
       })(),
       diagnostico: { vendasNoPeriodo: vendas.length, aprovadas: vendas.filter(aprovada).length,
-                     casadas, semVid, semJornada,
+                     casadas, semVid, semJornada, recuperadas,
                      webhookLigado: (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS].length : 0) > 0 } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
