@@ -4056,6 +4056,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               <button class="roi-currency-btn" id="ads-fonte-utmify" onclick="setAdsFonte('utmify')">Utmify</button>
             </div>
             <button id="ads-puxar-utmify" onclick="puxarUtmifyPeriodo()" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;" title="Busca esse período direto na Utmify agora">⤓ Puxar período</button>
+            <button id="ads-preencher" onclick="adsPreencherHistorico()" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;" title="Busca os dias que faltam na Utmify e guarda aqui, pra não dependerem mais dela">🗄 Guardar histórico</button>
           </div>
           <button onclick="loadAdsMetrics()" id="ads-refresh-btn" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">🔄 Atualizar</button>
           <!-- Moeda + Cotação -->
@@ -32588,6 +32589,44 @@ function salvarPlanos(){
     .catch(function(e){ if(msg) msg.innerHTML = '<span style="color:var(--red)">Falhou: '+_esc(e.message)+'</span>'; });
 }
 
+// ── Guardar histórico ───────────────────────────────────────────────────────
+// O arquivo local começa vazio. Isto busca na Utmify os dias que faltam e grava
+// aqui, pra eles pararem de depender dela. Dia já guardado é pulado.
+async function adsPreencherHistorico(){
+  const bt = document.getElementById('ads-preencher');
+  const dias = prompt('Buscar quantos dias pra trás?\n\n'+
+    'Vou pedir um dia por vez, com pausa entre eles pra não estourar a cota da Utmify.\n'+
+    'Dia que já está guardado é pulado.', '7');
+  if(dias === null) return;
+  const n = Math.max(1, Math.min(60, parseInt(dias, 10) || 7));
+  const txt = bt ? bt.textContent : '';
+  let seg = 0, relogio = null;
+  if(bt){
+    bt.disabled = true; bt.textContent = '⏳ Guardando... 0s';
+    relogio = setInterval(function(){ seg++; bt.textContent = '⏳ Guardando... '+seg+'s'; }, 1000);
+  }
+  try{
+    const r = await fetch('/api/metricas/utmify/preencher', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ dias: n })
+    });
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || !d.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
+    // Diz o que entrou E o que não entrou: dia sem dado na Utmify não é erro,
+    // mas também não vira número — e você precisa saber a diferença.
+    alert('Histórico guardado\n\n'+
+      (d.feitos.length ? '✓ '+d.feitos.length+' dia(s) novo(s):\n   '+d.feitos.join('\n   ')+'\n\n' : '')+
+      (d.pulados.length ? '· '+d.pulados.length+' já estavam guardados\n\n' : '')+
+      (d.falhos.length ? '⚠ '+d.falhos.length+' sem dado na Utmify:\n   '+d.falhos.join('\n   ') : ''));
+    loadAdsMetricsUtmify(true);
+  }catch(e){
+    alert('Não deu pra guardar: '+e.message);
+  }finally{
+    if(relogio) clearInterval(relogio);
+    if(bt){ bt.disabled = false; bt.textContent = txt || '🗄 Guardar histórico'; }
+  }
+}
+
 function _rtNum(rotulo, valor, cor){
   return '<div style="text-align:center;"><div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;margin-bottom:2px;">'+rotulo+
          '</div><div style="font-size:20px;font-weight:800;color:'+cor+';">'+valor+'</div></div>';
@@ -33062,6 +33101,8 @@ function _pintarFonteAds(){
   bt('ads-fonte-utmify',   f==='utmify');
   const puxar = document.getElementById('ads-puxar-utmify');
   if(puxar) puxar.style.display = (f==='utmify') ? '' : 'none';
+  const pre = document.getElementById('ads-preencher');
+  if(pre) pre.style.display = (f==='utmify') ? '' : 'none';
   const proj = document.getElementById('ads-projeto-wrap');
   if(proj) proj.style.display = (f==='utmify') ? 'flex' : 'none';
   // Na Utmify a quebra e por PROJETO (dashboard), nao por conta de anuncio

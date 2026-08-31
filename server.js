@@ -3406,6 +3406,45 @@ async function _adsArquivarDia() {
 setInterval(_adsArquivarDia, 30 * 60 * 1000);
 setTimeout(_adsArquivarDia, 90 * 1000);      // uma vez logo depois do boot
 
+// ── Preencher o passado ─────────────────────────────────────────────────────
+// O arquivo comeca vazio: sem isto, so existiria de hoje em diante e todo o
+// historico que a Utmify ainda tem se perderia na primeira vez que ela mudasse
+// a janela. Aqui a gente busca os dias que faltam, um por vez.
+// Dia ja guardado nao e rebuscado — a segunda rodada nao custa nada.
+async function _adsPreencher(dias) {
+  // 0, vazio ou texto caem no padrao de 7: pedir "zero dias" nao quer dizer
+  // nada, e e mais util assumir a semana do que nao fazer coisa nenhuma.
+  const quantos = Math.max(1, Math.min(60, Number(dias) || 7));
+  const feitos = [], pulados = [], falhos = [];
+  for (let i = 1; i <= quantos; i++) {
+    const d = new Date(Date.now() - 3*3600000 - i*86400000).toISOString().slice(0, 10);
+    const h = readDB().store[KEY_ADS_HIST] || {};
+    if (h[d + '|']) { pulados.push(d); continue; }
+    try {
+      const r = await new Promise(resolve => _rotaAnuncios(
+        { query: { de: d, ate: d, projeto: '' } },
+        { json: x => resolve(x), status: () => ({ json: x => resolve(null) }) }
+      ));
+      if (r && r.anuncios && r.anuncios.length) feitos.push(d + ' (' + r.anuncios.length + ')');
+      else falhos.push(d + ' (sem dado)');
+    } catch (e) { falhos.push(d + ': ' + e.message); }
+    // respiro entre chamadas: a Utmify tem limite de uso e nao vale a pena
+    // queimar a cota pra ganhar dois segundos
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  return { feitos, pulados, falhos };
+}
+
+// Diretoria dispara pela tela; nao roda sozinho pra nao consumir a cota da
+// Utmify sem alguem ter pedido.
+app.post('/api/metricas/utmify/preencher', authDiretoria, async (req, res) => {
+  try {
+    const r = await _adsPreencher(req.body && req.body.dias);
+    audit(readDB(), 'ads_preencher_historico', {}, r.feitos.length + ' dia(s)', req.user);
+    res.json(Object.assign({ ok: true }, r));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ── FEED DE EVENTOS (venda / checkout iniciado) ───────────────────
 // A Utmify nao expoe pedido a pedido. Mas ela atualiza os contadores por anuncio,
 // entao comparamos leituras seguidas: quando o contador de um anuncio sobe, isso
