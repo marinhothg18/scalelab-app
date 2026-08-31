@@ -3291,6 +3291,19 @@ async function _rotaAnuncios(req, res) {
     // Guarda o que veio. A partir daqui o dia existe aqui dentro, mesmo que a
     // Utmify caia ou pare de devolver aquele periodo.
     if (anuncios.length) _adsGuardar(de, ate, projeto, saida);
+
+    // ── A Utmify respondeu, mas veio vazia ─────────────────────────────────
+    // Nao e erro: e ela nao ter mais aquele dia na janela dela. Se aqui dentro
+    // existe o arquivo daquele periodo, ele vale mais que uma tela em branco —
+    // era exatamente o caso de pedir uma data de tres dias atras e nao aparecer
+    // nada, mesmo depois de o dia ter sido guardado.
+    if (!anuncios.length) {
+      const salvo = _adsLer(de, ate, projeto);
+      if (salvo && salvo.anuncios.length) return res.json(Object.assign({}, salvo, {
+        doArquivo: true,
+        avisoArquivo: 'A Utmify não tem mais este período na janela dela. ' +
+                      'Estes números são os que ficaram guardados aqui.' }));
+    }
     res.json(saida);
   } catch (e) {
     // ── A Utmify falhou: entrega o que ficou guardado ────────────────────────

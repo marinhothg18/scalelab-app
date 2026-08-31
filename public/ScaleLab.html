@@ -4248,6 +4248,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
         <!-- TAB: POR ANÚNCIO -->
         <div id="ads-tab-anuncio" class="ads-tab-panel" style="display:none;">
+          <div id="ads-anuncio-arquivo"></div>
           <div id="ads-anuncio-cards" style="display:none;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px;"></div>
           <div id="anuncio-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;"></div>
           <div style="margin-bottom:14px;">
@@ -32109,7 +32110,11 @@ function setAdsFilter(preset, btn){
   }
   document.querySelectorAll('.ads-filter-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
+  // periodo novo invalida o que estava carregado nas duas frentes
+  _adsPeriodoCarregado = '';
+  _anunciosPeriodo = '';
   loadAdsMetrics();
+  if(typeof _adsRecarregarAba === 'function') _adsRecarregarAba();
   // Se a aba Tempo Real estiver aberta, recarrega o feed no período escolhido
   if(rtActive){
     loadRealtime(true);
@@ -33062,9 +33067,17 @@ function setAdsProjeto(id){
   _adsPeriodoCarregado = '';     // obriga releitura com o novo recorte
   _anunciosPeriodo = '';
   loadAdsMetricsUtmify(false);
+  _adsRecarregarAba();
+}
+
+// Recarrega a aba que esta ABERTA. O consolidado e as abas sao buscas separadas:
+// trocar o periodo recarregava so o consolidado, e os cards de anuncio ficavam
+// os da ultima vez que a aba foi aberta — 'Hoje', 'Ontem' e uma data digitada
+// mostravam os mesmos numeros.
+function _adsRecarregarAba(){
   const aba = document.querySelector('.ads-tab.active');
   const nome = aba ? aba.textContent : '';
-  if(/Anúncio/i.test(nome)) carregarAnunciosUtmify(true);
+  if(/Anúncio/i.test(nome))    carregarAnunciosUtmify(true);
   if(/Tempo Real/i.test(nome)) carregarTempoRealUtmify();
 }
 
@@ -33234,6 +33247,7 @@ async function loadAdsMetricsUtmify(forcar){
 // Consulta ao vivo: nivel de anuncio sao centenas de linhas por dia e nao vale
 // gravar no banco. O servidor guarda 60s em memoria pra nao martelar a Utmify.
 let _anunciosUtmify = [];
+let _anunciosArquivo = '';        // aviso quando os numeros vieram do arquivo local
 let _anunciosCarregando = false;
 
 async function carregarAnunciosUtmify(forcar){
@@ -33251,6 +33265,7 @@ async function carregarAnunciosUtmify(forcar){
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     _anunciosUtmify = d.anuncios || [];
     _anunciosDiag = d.diag || null;
+    _anunciosArquivo = d.doArquivo ? (d.avisoArquivo || 'Números guardados aqui.') : '';
     _anunciosConc = d.conciliacao || null;
     _anunciosErros = d.erros || [];
     _anunciosPeriodo = from+'|'+to+'|'+_adsProjeto();
@@ -33356,6 +33371,16 @@ function pintarAnunciosUtmify(){
   if(!grade) return;
   grade.style.display='grid';
   _conciliacaoAnuncios();
+  // Numero vindo do arquivo tem de se identificar: senao voce olha um dia que a
+  // Utmify nao serve mais e acha que esta vendo dado ao vivo.
+  const av = document.getElementById('ads-anuncio-arquivo');
+  if(av){
+    av.innerHTML = _anunciosArquivo
+      ? '<div style="background:rgba(27,156,250,.08);border-left:3px solid var(--accent);'+
+        'border-radius:0 8px 8px 0;padding:9px 13px;font-size:12px;color:var(--text2);'+
+        'line-height:1.55;margin-bottom:12px">🗄 '+_esc(_anunciosArquivo)+'</div>'
+      : '';
+  }
 
   grade.innerHTML = lista.map(a=>{
     const roas = Number(a.roas)||0;
