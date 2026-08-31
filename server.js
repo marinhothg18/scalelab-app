@@ -3406,6 +3406,27 @@ async function _adsArquivarDia() {
 setInterval(_adsArquivarDia, 30 * 60 * 1000);
 setTimeout(_adsArquivarDia, 90 * 1000);      // uma vez logo depois do boot
 
+// No boot, corre atras dos dias que faltam. Sem isto o arquivo so comeca a
+// existir do dia seguinte, e o historico que a Utmify ainda tem se perde na
+// primeira vez que ela mudar a janela dela.
+// Dia ja guardado e pulado, entao restart nao custa chamada nenhuma — depois da
+// primeira rodada bem-sucedida isto vira quase de graca.
+setTimeout(async () => {
+  try {
+    const h = readDB().store[KEY_ADS_HIST] || {};
+    const faltam = [];
+    for (let i = 1; i <= 14; i++) {
+      const d = new Date(Date.now() - 3*3600000 - i*86400000).toISOString().slice(0, 10);
+      if (!h[d + '|']) faltam.push(d);
+    }
+    if (!faltam.length) return;
+    console.log('[ADS] faltam ' + faltam.length + ' dia(s) no arquivo; buscando na Utmify...');
+    const r = await _adsPreencher(14);
+    console.log('[ADS] arquivo: ' + r.feitos.length + ' dia(s) novo(s)' +
+                (r.falhos.length ? ', ' + r.falhos.length + ' sem dado' : '') + '.');
+  } catch (e) { console.error('[ADS] preenchimento do boot falhou:', e.message); }
+}, 150 * 1000);
+
 // ── Preencher o passado ─────────────────────────────────────────────────────
 // O arquivo comeca vazio: sem isto, so existiria de hoje em diante e todo o
 // historico que a Utmify ainda tem se perderia na primeira vez que ela mudasse
