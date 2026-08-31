@@ -3205,7 +3205,8 @@ function _filtrarProjeto(lista, projeto) {
 }
 
 // Anuncios do periodo, agregados entre os dashboards
-app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
+app.get('/api/metricas/utmify/anuncios', authUsuario, (req, res) => _rotaAnuncios(req, res));
+async function _rotaAnuncios(req, res) {
   const de  = String(req.query.de  || '').slice(0, 10);
   const ate = String(req.query.ate || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
@@ -3287,9 +3288,123 @@ app.get('/api/metricas/utmify/anuncios', authUsuario, async (req, res) => {
     // Resultado vazio nao entra em cache: se foi tropeço momentaneo, o proximo
     // clique tem que tentar de novo em vez de repetir o vazio por um minuto.
     if (anuncios.length) _vivoSet(chave, saida);
+    // Guarda o que veio. A partir daqui o dia existe aqui dentro, mesmo que a
+    // Utmify caia ou pare de devolver aquele periodo.
+    if (anuncios.length) _adsGuardar(de, ate, projeto, saida);
     res.json(saida);
-  } catch (e) { res.status(400).json({ error: e.message }); }
-});
+  } catch (e) {
+    // ── A Utmify falhou: entrega o que ficou guardado ────────────────────────
+    // Dado de ads e historico: uma vez lido, tem de continuar existindo. Antes,
+    // qualquer tropeço da API apagava o dia inteiro da tela.
+    const salvo = _adsLer(de, ate, projeto);
+    if (salvo) return res.json(Object.assign({}, salvo, {
+      doArquivo: true, avisoArquivo: 'A Utmify não respondeu agora (' + e.message +
+        '). Estes números são a última leitura guardada aqui.' }));
+    res.status(400).json({ error: e.message });
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// ── HISTÓRICO DE ADS ──
+// A Utmify e a fonte, mas nao pode ser a unica memoria: ela e uma API de fora,
+// com limite de uso e janela propria. O que foi lido uma vez fica aqui.
+// Guardado por DIA, nao por periodo: assim "ontem", "7 dias" e "este mes"
+// remontam do mesmo acervo, em vez de cada recorte ter a sua copia.
+// ══════════════════════════════════════════════════════
+const KEY_ADS_HIST = 'sl_ads_hist';       // { 'dia|projeto': { anuncios, conciliacao, em } }
+const ADS_HIST_DIAS = 400;                // pouco mais de um ano
+
+function _adsGuardar(de, ate, projeto, saida) {
+  // So guarda recorte de UM dia: periodo maior e soma de dias, e somar somas
+  // duplicaria tudo na hora de remontar.
+  if (de !== ate) return;
+  try {
+    const db = readDB();
+    const h = (db.store[KEY_ADS_HIST] && typeof db.store[KEY_ADS_HIST] === 'object')
+      ? db.store[KEY_ADS_HIST] : {};
+    h[de + '|' + (projeto || '')] = {
+      em: new Date().toISOString(),
+      anuncios: saida.anuncios,
+      conciliacao: saida.conciliacao
+    };
+    // retencao por data, nao por quantidade: o que importa e ate quando lembra
+    const corte = new Date(Date.now() - ADS_HIST_DIAS * 86400000).toISOString().slice(0, 10);
+    Object.keys(h).forEach(k => { if (k.slice(0, 10) < corte) delete h[k]; });
+    db.store[KEY_ADS_HIST] = h;
+    db.timestamps[KEY_ADS_HIST] = now();
+    writeDB(db);
+  } catch (e) { console.error('[ADS] não consegui guardar o histórico:', e.message); }
+}
+
+function _adsLer(de, ate, projeto) {
+  try {
+    const h = readDB().store[KEY_ADS_HIST];
+    if (!h || typeof h !== 'object') return null;
+    // remonta o periodo somando os dias que existirem
+    const dias = [];
+    for (let d = new Date(de + 'T12:00:00Z'); d.toISOString().slice(0,10) <= ate;
+         d.setUTCDate(d.getUTCDate() + 1)) {
+      const k = d.toISOString().slice(0, 10) + '|' + (projeto || '');
+      if (h[k]) dias.push(h[k]);
+      if (dias.length > ADS_HIST_DIAS) break;   // trava de seguranca
+    }
+    if (!dias.length) return null;
+
+    const mapa = {};
+    dias.forEach(dia => (dia.anuncios || []).forEach(a => {
+      const k = a.id || a.nome;
+      if (!mapa[k]) mapa[k] = Object.assign({}, a, { investimento:0, receita:0, vendas:0,
+                                                     cliques:0, impressoes:0, ics:0 });
+      ['investimento','receita','vendas','cliques','impressoes','ics'].forEach(c => {
+        mapa[k][c] = (Number(mapa[k][c]) || 0) + (Number(a[c]) || 0);
+      });
+    }));
+    // recalcula as taxas em cima da soma, igual o caminho ao vivo faz
+    const anuncios = Object.values(mapa).map(m => Object.assign(m, {
+      roas:      m.investimento > 0 ? m.receita / m.investimento : 0,
+      cpa:       m.vendas   > 0 ? m.investimento / m.vendas : 0,
+      cpc:       m.cliques  > 0 ? m.investimento / m.cliques : 0,
+      cpm:       m.impressoes > 0 ? (m.investimento / m.impressoes) * 1000 : 0,
+      ctr:       m.impressoes > 0 ? (m.cliques / m.impressoes) * 100 : 0,
+      custoPorIc: m.ics    > 0 ? m.investimento / m.ics : 0,
+      lucro:     m.receita - m.investimento
+    })).sort((a, b) => b.investimento - a.investimento);
+
+    const soma = c => dias.reduce((t, d) => t + (Number((d.conciliacao || {})[c]) || 0), 0);
+    return { ok: true, de, ate, anuncios, erros: [], diag: { doArquivo: dias.length },
+      conciliacao: {
+        vendasAnuncios: anuncios.reduce((t,a)=>t+(Number(a.vendas)||0),0),
+        vendasConta: soma('vendasConta'),
+        receitaAnuncios: anuncios.reduce((t,a)=>t+(Number(a.receita)||0),0),
+        receitaConta: soma('receitaConta'),
+        vendasSemAnuncio: soma('vendasSemAnuncio'),
+        receitaSemAnuncio: soma('receitaSemAnuncio')
+      } };
+  } catch (e) { return null; }
+}
+
+// Guarda ontem e hoje sozinho, sem depender de alguem abrir a tela. Sem isto so
+// ficaria registrado o dia que por acaso foi olhado — e o pedido era que o
+// numero exista "independentemente do que aconteça".
+async function _adsArquivarDia() {
+  try {
+    const cfg = readDB().store[KEY_UTMIFY_MCP];
+    if (!cfg || !cfg.token) return;                    // sem integracao, nada a fazer
+    const hoje  = new Date(Date.now() - 3*3600000).toISOString().slice(0, 10);
+    const ontem = new Date(Date.now() - 3*3600000 - 86400000).toISOString().slice(0, 10);
+    for (const dia of [ontem, hoje]) {
+      // dia fechado e ja guardado nao precisa ser lido de novo
+      const h = readDB().store[KEY_ADS_HIST] || {};
+      if (dia === ontem && h[dia + '|']) continue;
+      await new Promise(resolve => _rotaAnuncios(
+        { query: { de: dia, ate: dia, projeto: '' } },
+        { json: () => resolve(), status: () => ({ json: () => resolve() }) }
+      ));
+    }
+  } catch (e) { console.error('[ADS] arquivamento falhou:', e.message); }
+}
+setInterval(_adsArquivarDia, 30 * 60 * 1000);
+setTimeout(_adsArquivarDia, 90 * 1000);      // uma vez logo depois do boot
 
 // ── FEED DE EVENTOS (venda / checkout iniciado) ───────────────────
 // A Utmify nao expoe pedido a pedido. Mas ela atualiza os contadores por anuncio,
@@ -6015,7 +6130,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_ab_stats',            // contagem do teste A/B; a tela le por /api/ab/stats
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
-  'sl_funil_adocoes'        // so o servidor decide; o navegador sobrescreveria
+  'sl_funil_adocoes',       // so o servidor decide; o navegador sobrescreveria
+  'sl_ads_hist'             // historico de ads por dia; a tela le pelo endpoint
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
