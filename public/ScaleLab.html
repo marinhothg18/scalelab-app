@@ -1626,6 +1626,30 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-sub{font-size:11.5px;color:var(--text2)}
 .fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
 /* ── Desenhar funil ──────────────────────────────────────────────────────── */
+/* caixa de diálogo do desenho — centralizada, com a cara do sistema */
+.dz-caixa{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}
+.dz-caixa-fundo{position:absolute;inset:0;background:rgba(8,10,18,.62);backdrop-filter:blur(2px)}
+.light-mode .dz-caixa-fundo{background:rgba(15,23,42,.38)}
+.dz-caixa-corpo{position:relative;width:100%;max-width:420px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:15px;padding:22px 24px;box-shadow:0 18px 50px rgba(0,0,0,.35);animation:dzsobe .14s ease-out}
+@keyframes dzsobe{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+.dz-caixa-t{font-size:16.5px;font-weight:800;letter-spacing:-.01em;color:var(--text)}
+.dz-caixa-s{font-size:12.5px;color:var(--text2);line-height:1.6;margin-top:6px}
+.dz-campo{display:block;margin-top:16px}
+.dz-campo>span{display:block;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text2);margin-bottom:6px}
+/* precisa da mesma especificidade de .dz-campo>span, senao o display:block dele
+   ganha e o sufixo (%) cai pra baixo do campo em vez de ficar ao lado */
+.dz-campo>span.dz-campo-l{display:flex;align-items:center;gap:8px}
+.dz-campo-l b{font-size:13px;color:var(--text2);font-weight:600;flex:0 0 auto}
+.dz-campo input,.dz-campo textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;
+  padding:10px 12px;color:var(--text);font-size:13.5px;font-family:inherit;outline:none;resize:vertical}
+.dz-campo input:focus,.dz-campo textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.16)}
+.dz-campo i{display:block;font-style:normal;font-size:11px;color:var(--text3);margin-top:5px;line-height:1.45}
+.dz-caixa-pe{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+.fn-btn.perigo{background:var(--red);border-color:var(--red);color:#fff}
+.fn-btn.perigo:hover{filter:brightness(1.08)}
+@media(max-width:520px){ .dz-caixa-corpo{max-width:100%} }
+
 /* entrada, acima da escolha de projeto */
 .dz-entrada{display:flex;align-items:center;gap:15px;background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:16px 19px;margin-bottom:22px;cursor:pointer;transition:.15s}
 .dz-entrada:hover{border-color:var(--roxo);transform:translateY(-1px)}
@@ -29193,6 +29217,89 @@ var dzLigando = null, dzSel = null, dzSalvando = false, dzSujo = false;
 
 function dzUid(){ return 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
+// ── Caixa de diálogo ────────────────────────────────────────────────────────
+// O prompt() do navegador cola no topo da janela, ignora o tema e nao aceita
+// mais de um campo — pedir visitantes e conversao virava dois prompts seguidos.
+// Este abre no meio, aceita varios campos e devolve tudo de uma vez.
+//
+// campos: [{ chave, rot, tipo:'texto'|'numero'|'longo', valor, dica, sufixo }]
+// cb(valores) roda no OK; Cancelar nao chama nada.
+function dzCaixa(titulo, sub, campos, cb){
+  var velha = document.getElementById('dz-caixa'); if(velha) velha.remove();
+  var d = document.createElement('div');
+  d.id = 'dz-caixa'; d.className = 'dz-caixa';
+  d.innerHTML =
+    '<div class="dz-caixa-fundo"></div>' +
+    '<div class="dz-caixa-corpo" role="dialog" aria-modal="true">' +
+      '<div class="dz-caixa-t">' + fnEsc(titulo) + '</div>' +
+      (sub ? '<div class="dz-caixa-s">' + sub + '</div>' : '') +
+      campos.map(function(c, i){
+        var v = c.valor === undefined || c.valor === null ? '' : String(c.valor);
+        if(c.tipo === 'longo')
+          return '<label class="dz-campo"><span>' + fnEsc(c.rot) + '</span>' +
+            '<textarea data-k="' + c.chave + '" rows="3"' + (i===0?' autofocus':'') + '>' + fnEsc(v) + '</textarea>' +
+            (c.dica ? '<i>' + c.dica + '</i>' : '') + '</label>';
+        return '<label class="dz-campo"><span>' + fnEsc(c.rot) + '</span>' +
+          '<span class="dz-campo-l">' +
+            '<input data-k="' + c.chave + '" type="' + (c.tipo === 'numero' ? 'number' : 'text') + '"' +
+            (c.tipo === 'numero' ? ' step="any" min="0"' : '') +
+            ' value="' + fnEsc(v) + '"' + (c.ph ? ' placeholder="' + fnEsc(c.ph) + '"' : '') +
+            (i===0?' autofocus':'') + '>' +
+            (c.sufixo ? '<b>' + fnEsc(c.sufixo) + '</b>' : '') +
+          '</span>' +
+          (c.dica ? '<i>' + c.dica + '</i>' : '') + '</label>';
+      }).join('') +
+      '<div class="dz-caixa-pe">' +
+        '<button class="fn-btn g" data-x="1">Cancelar</button>' +
+        '<button class="fn-btn" data-ok="1">Salvar</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(d);
+
+  function fechar(){ document.removeEventListener('keydown', tecla); d.remove(); }
+  function confirmar(){
+    var out = {};
+    d.querySelectorAll('[data-k]').forEach(function(i){ out[i.dataset.k] = i.value; });
+    fechar(); cb(out);
+  }
+  function tecla(e){
+    if(e.key === 'Escape'){ e.preventDefault(); fechar(); }
+    // Enter confirma, menos dentro de textarea — ali ele quebra linha
+    if(e.key === 'Enter' && !e.shiftKey && d.contains(document.activeElement) &&
+       document.activeElement.tagName !== 'TEXTAREA'){ e.preventDefault(); confirmar(); }
+  }
+  d.querySelector('[data-ok]').onclick = confirmar;
+  d.querySelector('[data-x]').onclick = fechar;
+  d.querySelector('.dz-caixa-fundo').onclick = fechar;
+  document.addEventListener('keydown', tecla);
+  var p = d.querySelector('input,textarea');
+  if(p){ p.focus(); if(p.select) p.select(); }
+}
+
+// Confirmacao no mesmo formato — confirm() tem o mesmo problema do prompt().
+function dzConfirmar(titulo, sub, rotulo, cb){
+  var velha = document.getElementById('dz-caixa'); if(velha) velha.remove();
+  var d = document.createElement('div');
+  d.id = 'dz-caixa'; d.className = 'dz-caixa';
+  d.innerHTML =
+    '<div class="dz-caixa-fundo"></div>' +
+    '<div class="dz-caixa-corpo" role="dialog" aria-modal="true">' +
+      '<div class="dz-caixa-t">' + fnEsc(titulo) + '</div>' +
+      (sub ? '<div class="dz-caixa-s">' + sub + '</div>' : '') +
+      '<div class="dz-caixa-pe">' +
+        '<button class="fn-btn g" data-x="1">Cancelar</button>' +
+        '<button class="fn-btn perigo" data-ok="1">' + fnEsc(rotulo || 'Confirmar') + '</button>' +
+      '</div></div>';
+  document.body.appendChild(d);
+  function fechar(){ document.removeEventListener('keydown', tecla); d.remove(); }
+  function tecla(e){ if(e.key === 'Escape'){ e.preventDefault(); fechar(); } }
+  d.querySelector('[data-ok]').onclick = function(){ fechar(); cb(); };
+  d.querySelector('[data-x]').onclick = fechar;
+  d.querySelector('.dz-caixa-fundo').onclick = fechar;
+  document.addEventListener('keydown', tecla);
+  d.querySelector('[data-ok]').focus();
+}
+
 // ── nível 1: os projetos ────────────────────────────────────────────────────
 // Mesma cara da Central de Arquivos: pasta por projeto, com quantos quadros tem
 // dentro. Fica ANTES de escolher funil porque rascunho nao depende de funil
@@ -29304,10 +29411,16 @@ function dzCartao(d){
 }
 
 function dzNovo(){
-  var nome = prompt('Nome do quadro:', 'Funil ' + (dzProj || ''));
-  if(!nome) return;
+  dzCaixa('Novo quadro', 'Ele já nasce com <b>página de vendas → checkout → obrigado</b> pra você ajustar.',
+    [{ chave:'nome', rot:'Nome do quadro', valor:'Funil ' + (dzProj || ''), ph:'Ex: Kalebe — teste de VSL' }],
+    function(v){
+      var nome = String(v.nome || '').trim(); if(!nome) return;
+      dzCriar(nome);
+    });
+}
+function dzCriar(nome){
   var a = dzUid(), b = dzUid(), c = dzUid();
-  DZ = { id:'', nome: nome.trim(), projeto: dzProj || '',
+  DZ = { id:'', nome: nome, projeto: dzProj || '',
     itens: [
       { id:a, tipo:'pagina',  x:80,  y:120, rot:'Página de vendas', img:'', link:'', visitantes:0, conv:0, nota:'' },
       { id:b, tipo:'pagina',  x:400, y:120, rot:'Checkout',         img:'', link:'', visitantes:0, conv:0, nota:'' },
@@ -29331,7 +29444,11 @@ function dzAbrir(id){
 }
 
 function dzExcluir(id, nome){
-  if(!confirm('Excluir o quadro "' + nome + '"?\n\nDá pra restaurar em Lixeira por 30 dias.')) return;
+  dzConfirmar('Excluir "' + nome + '"?',
+    'O quadro vai pra <b>Lixeira</b> e dá pra restaurar por 30 dias.', 'Excluir',
+    function(){ dzExcluirMesmo(id); });
+}
+function dzExcluirMesmo(id){
   fetch('/api/desenhos/' + encodeURIComponent(id), { method:'DELETE' })
     .then(function(r){ return r.json(); })
     .then(function(d){ if(d.ok){ toastFn('Quadro excluído'); dzAbrirLista(); }
@@ -29487,25 +29604,35 @@ function dzEventos(el, it){
         dzPintar(); dzSalvar(); return;
       }
       if(a === 'link'){
-        var v = prompt('Link desta página:', it.link || 'https://');
-        if(v !== null){ it.link = (v.trim() === 'https://' ? '' : v.trim()); dzPintar(); dzSalvar(); }
+        dzCaixa('Link da página', 'É pra onde o bloco aponta. Deixe vazio pra tirar.',
+          [{ chave:'u', rot:'Endereço', valor: it.link || '', ph:'https://' }],
+          function(v){ it.link = String(v.u||'').trim(); dzPintar(); dzSalvar(); });
       }
       if(a === 'img'){
-        var u = prompt('URL da imagem\n\n(ou feche isto, selecione o bloco e cole o print com Ctrl/Cmd+V)', it.img && !/^data:/.test(it.img) ? it.img : '');
-        if(u !== null){ it.img = u.trim(); dzPintar(); dzSalvar(); }
+        dzCaixa('Print da página',
+          'Mais rápido: feche isto, clique no bloco e cole com <b>Ctrl/Cmd+V</b> — ou arraste o arquivo em cima dele.',
+          [{ chave:'u', rot:'Ou cole a URL de uma imagem',
+             valor: (it.img && !/^data:/.test(it.img)) ? it.img : '', ph:'https://…' }],
+          function(v){ it.img = String(v.u||'').trim(); dzPintar(); dzSalvar(); });
       }
       if(a === 'met'){
-        var vis = prompt('Quantas pessoas chegam nesta página?\n\nÉ hipótese sua, não medição — serve pra ver a conta fechar antes de rodar.', it.visitantes || '');
-        if(vis === null) return;
-        var cv = prompt('Quantos % dessas passam pra próxima?', it.conv || '');
-        if(cv === null) return;
-        it.visitantes = Math.max(0, parseInt(vis, 10) || 0);
-        it.conv = Math.max(0, Math.min(100, parseFloat(String(cv).replace(',','.')) || 0));
-        dzPintar(); dzSalvar();
+        dzCaixa('Números desta página',
+          'É <b>hipótese sua</b>, não medição — serve pra ver a conta fechar antes de gastar. ' +
+          'O que está medido de verdade fica no Mapa.',
+          [{ chave:'vis', rot:'Pessoas que chegam aqui', tipo:'numero', valor: it.visitantes || '', ph:'1000' },
+           { chave:'cv',  rot:'Quantas passam pra próxima', tipo:'numero', valor: it.conv || '',
+             sufixo:'%', dica:'De 0 a 100' }],
+          function(v){
+            it.visitantes = Math.max(0, parseInt(v.vis, 10) || 0);
+            it.conv = Math.max(0, Math.min(100, parseFloat(String(v.cv).replace(',','.')) || 0));
+            dzPintar(); dzSalvar();
+          });
       }
       if(a === 'nota'){
-        var n = prompt('O que dá pra testar / decidir aqui:', it.nota || '');
-        if(n !== null){ it.nota = n; dzPintar(); dzSalvar(); }
+        dzCaixa('Nota deste bloco', 'O que dá pra testar, o que ficou pra decidir, o que você notou.',
+          [{ chave:'t', rot:'Anotação', tipo:'longo', valor: it.nota || '',
+             dica:'Aparece como post-it embaixo do bloco. Deixe vazio pra tirar.' }],
+          function(v){ it.nota = String(v.t||'').trim(); dzPintar(); dzSalvar(); });
       }
     });
   });
@@ -29589,7 +29716,9 @@ function dzFios(){
   svg.querySelectorAll('.toque').forEach(function(p){
     p.addEventListener('click', function(ev){
       ev.stopPropagation();
-      if(confirm('Apagar esta ligação?')){ DZ.fios.splice(parseInt(p.dataset.i,10), 1); dzFios(); dzSalvar(); }
+      var i = parseInt(p.dataset.i, 10);
+      dzConfirmar('Apagar esta ligação?', '', 'Apagar',
+        function(){ DZ.fios.splice(i, 1); dzFios(); dzSalvar(); });
     });
   });
 }
