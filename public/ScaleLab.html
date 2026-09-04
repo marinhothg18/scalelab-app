@@ -1695,7 +1695,9 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dz-zoom button:hover{background:var(--bg3);color:var(--text)}
 .dz-zoom span{font-size:11px;font-weight:700;min-width:36px;text-align:center;color:var(--text2);font-variant-numeric:tabular-nums}
 
-.dz-tela{position:relative;overflow:hidden;height:clamp(480px,70vh,860px);border:1px solid var(--border);border-radius:12px;background:var(--bg);cursor:grab;
+/* A tela do desenho ocupa o que sobrar da janela. Altura fixa deixava um
+   retangulo pequeno no meio da pagina, com o quadro apertado e o resto vazio. */
+.dz-tela{position:relative;overflow:hidden;height:calc(100vh - 178px);min-height:420px;border:1px solid var(--border);border-radius:12px;background:var(--bg);cursor:grab;
   background-image:radial-gradient(circle,var(--border) 1.1px,transparent 1.1px);background-size:22px 22px}
 .dz-tela.arrastando{cursor:grabbing}
 .dz-palco{position:absolute;top:0;left:0;transform-origin:0 0;width:6000px;height:4000px}
@@ -1703,11 +1705,24 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dz-fios path{fill:none;stroke-linecap:round}
 .dz-fios .toque{stroke-width:16;stroke:transparent;pointer-events:stroke;cursor:pointer}
 
-.dz-bloco{position:absolute;width:180px;user-select:none}
-.dz-rot{font-size:14px;font-weight:800;text-align:center;margin-bottom:8px;border-bottom:2.5px solid var(--text);padding-bottom:2px;display:block;outline:none;cursor:text;letter-spacing:-.01em}
+/* A largura vira do item: print de pagina inteira precisa de espaco, e cada
+   bloco pode querer um tamanho diferente. */
+.dz-bloco{position:absolute;user-select:none}
+.dz-rot{font-size:14px;font-weight:800;text-align:center;margin-bottom:8px;border-bottom:2.5px solid var(--text);padding-bottom:2px;display:block;outline:none;cursor:grab;letter-spacing:-.01em}
+.dz-rot[contenteditable="true"],.dz-perg[contenteditable="true"]{cursor:text;background:rgba(27,156,250,.14);border-radius:5px}
 .dz-quadro{background:#0b0b12;border:2px solid var(--text);border-radius:10px;overflow:hidden;position:relative;cursor:grab}
 .dz-bloco.sel .dz-quadro,.dz-dec.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.22)}
-.dz-quadro img{display:block;width:100%;height:auto;max-height:440px;object-fit:cover;object-position:top}
+/* Sem corte: o print de uma pagina inteira e comprido de proposito, e cortar
+   em 440px escondia justamente o que ele queria ver. Quem quiser o cartao
+   baixo usa o botao 'altura'. */
+.dz-quadro img{display:block;width:100%;height:auto;-webkit-user-drag:none;user-drag:none;pointer-events:none}
+.dz-quadro.corta img{max-height:360px;object-fit:cover;object-position:top}
+.dz-quadro.corta::after{content:'⌄ cortado';position:absolute;bottom:0;left:0;right:0;text-align:center;
+  font-size:9.5px;font-weight:700;letter-spacing:.4px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.75));padding:14px 0 4px}
+/* alça de largura */
+.dz-larg{position:absolute;right:-4px;bottom:-4px;width:16px;height:16px;border-radius:4px;background:var(--accent);
+  border:2px solid var(--bg2);cursor:ew-resize;opacity:0;transition:opacity .12s;z-index:4}
+.dz-bloco:hover .dz-larg,.dz-bloco.sel .dz-larg{opacity:1}
 .dz-vazio{height:210px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#8a8398;font-size:11px;text-align:center;padding:12px;line-height:1.5}
 .dz-vazio b{font-size:20px;opacity:.55}
 .dz-lk{display:block;text-align:center;font-size:10px;color:var(--accent);text-decoration:none;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,Menlo,monospace}
@@ -1723,8 +1738,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dz-pe button.rm:hover{border-color:var(--red);color:var(--red)}
 
 .dz-dec{position:absolute;width:168px;background:#0b0b12;border:2px solid var(--text);border-radius:16px;padding:12px 13px;user-select:none;cursor:grab}
-.dz-perg{color:#fff;font-size:15px;font-weight:800;text-align:center;margin-bottom:9px;outline:none;cursor:text}
-.dz-op{border-radius:9px;padding:6px;text-align:center;color:#fff;font-size:13.5px;font-weight:700;margin-bottom:6px;position:relative}
+.dz-perg{color:#fff;font-size:15px;font-weight:800;text-align:center;margin-bottom:9px;outline:none;cursor:grab}
+.dz-op{border-radius:9px;padding:6px;text-align:center;color:#fff;font-size:13.5px;font-weight:700;margin-bottom:6px;position:relative;user-select:none}
 .dz-op:last-of-type{margin-bottom:0}
 .dz-op.s{background:#12a150}
 .dz-op.n{background:#e5484d}
@@ -1741,7 +1756,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
 .dz-dica{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:20px;font-size:12.5px;font-weight:600;z-index:60;display:none}
 .dz-dica.on{display:block}
-@media(max-width:700px){ .dz-tela{height:60vh} }
+@media(max-width:700px){ .dz-tela{height:calc(100vh - 230px)} }
 
 /* Paleta de blocos do mapa */
 .mp-paleta{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px;margin-bottom:13px}
@@ -29516,15 +29531,18 @@ function dzPintar(){
 function dzElPagina(it){
   var d = document.createElement('div');
   d.className = 'dz-bloco' + (dzSel === it.id ? ' sel' : '');
-  d.style.left = it.x + 'px'; d.style.top = it.y + 'px'; d.dataset.id = it.id;
+  d.style.left = it.x + 'px'; d.style.top = it.y + 'px';
+  d.style.width = (Number(it.w) || 180) + 'px';
+  d.dataset.id = it.id;
   // Métrica é HIPÓTESE: a etiqueta diz isso, pra não virar número de painel.
   var temM = Number(it.visitantes) > 0 || Number(it.conv) > 0;
   d.innerHTML =
     '<div class="dz-rot" contenteditable spellcheck="false">' + fnEsc(it.rot) + '</div>' +
-    '<div class="dz-quadro">' +
-      (it.img ? '<img src="' + fnEsc(it.img) + '" alt="">'
+    '<div class="dz-quadro' + (it.corta ? ' corta' : '') + '">' +
+      (it.img ? '<img src="' + fnEsc(it.img) + '" alt="" draggable="false">'
               : '<div class="dz-vazio"><b>🖼</b>Cole o print com Ctrl/Cmd+V<br>ou arraste a imagem aqui</div>') +
       '<div class="dz-pino entrada" data-p="e"></div><div class="dz-pino saida" data-p="s"></div>' +
+      '<div class="dz-larg" data-larg="1" title="Arraste pra mudar a largura"></div>' +
     '</div>' +
     (it.link ? '<a class="dz-lk" href="' + fnEsc(it.link) + '" target="_blank" rel="noopener">' +
                fnEsc(String(it.link).replace(/^https?:\/\//,'')) + '</a>' : '') +
@@ -29534,6 +29552,8 @@ function dzElPagina(it){
     '<div class="dz-pe">' +
       '<button data-a="img">print</button><button data-a="link">link</button>' +
       '<button data-a="met">números</button><button data-a="nota">nota</button>' +
+      (it.img ? '<button data-a="corta">' + (it.corta ? 'inteira' : 'cortar') + '</button>' +
+                '<button data-a="larg">largura</button>' : '') +
       '<button data-a="rm" class="rm">✕</button></div>';
   dzEventos(d, it);
   return d;
@@ -29565,8 +29585,39 @@ function dzElNota(it){
 }
 
 function dzEventos(el, it){
+  // ── Arrastar com o botao esquerdo, de qualquer ponto do bloco ─────────────
+  // Antes o texto era contenteditable o tempo todo: clicar nele punha o cursor
+  // e nao arrastava, entao sobrava so a moldura como area de arrasto — dai a
+  // necessidade do botao do meio. Agora o texto so entra em edicao no DUPLO
+  // clique, e o clique simples arrasta como no resto do bloco.
+  el.querySelectorAll('.dz-rot,.dz-perg,.dz-nota>[contenteditable]').forEach(function(c){
+    c.setAttribute('contenteditable', 'false');
+    c.addEventListener('dblclick', function(ev){
+      ev.stopPropagation();
+      c.setAttribute('contenteditable', 'true');
+      c.focus();
+      var r = document.createRange(); r.selectNodeContents(c);
+      var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r);
+    });
+  });
+
+  // alca de largura
+  var alca = el.querySelector('[data-larg]');
+  if(alca) alca.addEventListener('mousedown', function(ev){
+    ev.stopPropagation(); ev.preventDefault();
+    var x0 = ev.clientX, w0 = Number(it.w) || 180;
+    function mv(e){
+      it.w = Math.max(120, Math.min(900, Math.round(w0 + (e.clientX - x0)/DZ.vista.escala)));
+      el.style.width = it.w + 'px'; dzFios();
+    }
+    function up(){ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); dzSalvar(); }
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  });
+
   el.addEventListener('mousedown', function(ev){
-    if(ev.target.closest('.dz-pino,button,[contenteditable],a')) return;
+    // so ignora o que ja tem funcao propria; texto em edicao continua editavel
+    if(ev.target.closest('.dz-pino,button,a,[data-larg]')) return;
+    if(ev.target.closest('[contenteditable="true"]')) return;
     ev.stopPropagation();
     dzSel = it.id;
     document.querySelectorAll('#dz-palco .sel').forEach(function(x){ x.classList.remove('sel'); });
@@ -29589,6 +29640,7 @@ function dzEventos(el, it){
       if(c.classList.contains('dz-rot')) it.rot = t;
       else if(c.classList.contains('dz-perg')) it.perg = t;
       else it.txt = t;
+      c.setAttribute('contenteditable', 'false');   // volta a ser área de arrasto
       dzSalvar();
     });
     c.addEventListener('keydown', function(e){ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); c.blur(); } });
@@ -29625,6 +29677,16 @@ function dzEventos(el, it){
           function(v){
             it.visitantes = Math.max(0, parseInt(v.vis, 10) || 0);
             it.conv = Math.max(0, Math.min(100, parseFloat(String(v.cv).replace(',','.')) || 0));
+            dzPintar(); dzSalvar();
+          });
+      }
+      if(a === 'corta'){ it.corta = !it.corta; dzPintar(); dzSalvar(); }
+      if(a === 'larg'){
+        dzCaixa('Largura do bloco', 'Print de página inteira pede um bloco mais largo.',
+          [{ chave:'w', rot:'Largura', tipo:'numero', valor: Number(it.w) || 180,
+             sufixo:'px', dica:'Entre 120 e 900. Ou arraste a alça azul no canto do bloco.' }],
+          function(v){
+            it.w = Math.max(120, Math.min(900, parseInt(v.w, 10) || 180));
             dzPintar(); dzSalvar();
           });
       }
@@ -29672,8 +29734,13 @@ function dzImagem(arquivo, it){
   r.onload = function(){
     var img = new Image();
     img.onload = function(){
-      var LARG = 620;
+      // Antes era 620px fixo. Print de pagina inteira tem 1200x6000: reduzir
+      // pela largura so mantinha um fio comprido e ilegivel. Agora o limite e
+      // por AREA, entao imagem alta ganha mais largura pra continuar legivel.
+      var LARG = Math.max(560, Math.min(1000, Number(it.w) || 180) * 2);
       var esc = Math.min(1, LARG / img.width);
+      var PIX = 2600000;                                   // teto de pixels
+      if(img.width * img.height * esc * esc > PIX) esc = Math.sqrt(PIX / (img.width * img.height));
       var cv = document.createElement('canvas');
       cv.width = Math.round(img.width * esc); cv.height = Math.round(img.height * esc);
       cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
