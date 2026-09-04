@@ -1626,6 +1626,30 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-sub{font-size:11.5px;color:var(--text2)}
 .fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
 /* ── Desenhar funil ──────────────────────────────────────────────────────── */
+/* entrada, acima da escolha de projeto */
+.dz-entrada{display:flex;align-items:center;gap:15px;background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:16px 19px;margin-bottom:22px;cursor:pointer;transition:.15s}
+.dz-entrada:hover{border-color:var(--roxo);transform:translateY(-1px)}
+.dz-entrada-ic{width:42px;height:42px;flex:0 0 auto;border-radius:12px;background:linear-gradient(135deg,#3E1493,#1B9CFA);color:#fff;display:flex;align-items:center;justify-content:center;font-size:19px}
+.dz-entrada-t{font-size:15px;font-weight:800;letter-spacing:-.01em}
+.dz-entrada-s{font-size:12px;color:var(--text2);margin-top:3px;line-height:1.5}
+.dz-entrada-ir{margin-left:auto;flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--accent)}
+
+/* topo das telas de desenho */
+.dz-topo{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.dz-topo h2{font-size:21px;font-weight:800;letter-spacing:-.02em;margin:0}
+.dz-sub{font-size:12.5px;color:var(--text2);line-height:1.55;margin:0 0 20px}
+
+/* pastas de projeto */
+.dz-pastas{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:13px}
+.dz-pasta{background:var(--bg2);border:1px solid var(--border);border-radius:13px;padding:18px 15px 14px;text-align:center;cursor:pointer;transition:.15s}
+.dz-pasta:hover{border-color:var(--accent);transform:translateY(-2px)}
+.dz-pasta.vazia{opacity:.62}
+.dz-pasta.vazia:hover{opacity:1}
+.dz-pasta.solta{border-style:dashed}
+.dz-pasta-ic{font-size:38px;line-height:1;margin-bottom:11px;filter:saturate(.9)}
+.dz-pasta-n{font-size:13.5px;font-weight:700;word-break:break-word;line-height:1.35}
+.dz-pasta-q{font-size:11px;color:var(--text2);margin-top:4px}
+
 .dz-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:11px}
 .dz-card{position:relative;background:var(--bg3);border:1px solid var(--border);border-radius:11px;padding:14px 15px;cursor:pointer;transition:.14s}
 .dz-card:hover{border-color:var(--accent);transform:translateY(-2px)}
@@ -3776,6 +3800,11 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
       <div class="content">
         <!-- Tela 1: escolher o projeto. Tudo que vem depois e daquele projeto. -->
         <div id="fn-projetos"></div>
+        <div id="fn-desenhos" style="display:none">
+          <div id="dz-projetos"></div>
+          <div id="dz-lista" style="display:none"></div>
+          <div id="dz-editor" style="display:none"></div>
+        </div>
 
         <div id="fn-barra" style="display:none">
           <div class="fn-ctx">
@@ -3824,8 +3853,6 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <div class="fx-nav-g">Comportamento</div>
             <button class="fx-nav-i" onclick="fnAba('jornada',this)"><span>👣</span>Jornada</button>
             <button class="fx-nav-i" onclick="fnAba('atencao',this)"><span>👁</span>Atenção</button>
-            <div class="fx-nav-g">Planejamento</div>
-            <button class="fx-nav-i" onclick="fnAba('desenho',this)"><span>✎</span>Desenhar funil<i class="fx-nav-n" id="fx-n-dz"></i></button>
           </nav>
           <div class="fx-conteudo">
 
@@ -3961,11 +3988,6 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
           <div id="jn-piramide"></div>
           <div id="jn-filtros"></div>
           <div id="jn-lista" class="jn-cartoes"></div>
-        </div>
-
-        <div class="fn-painel" id="fn-p-desenho">
-          <div id="dz-lista"></div>
-          <div id="dz-editor" style="display:none"></div>
         </div>
 
         <div class="fn-painel" id="fn-p-atencao">
@@ -28842,6 +28864,14 @@ function fnPintarProjetos(){
       '<div class="fn-proj-ir">Abrir ›</div></div>';
   }).join('');
   el.innerHTML =
+    // Desenhar funil fica ACIMA da escolha do projeto: rascunho nao depende de
+    // ter funil montado nem pixel instalado — e o passo antes disso tudo.
+    '<div class="dz-entrada" onclick="dzProjetos()">'+
+      '<div class="dz-entrada-ic">✎</div>'+
+      '<div><div class="dz-entrada-t">Desenhar funil</div>'+
+        '<div class="dz-entrada-s">Rascunhe a estrutura antes de montar: páginas, decisões, '+
+        'notas e o caminho entre elas. Um quadro por ideia.</div></div>'+
+      '<div class="dz-entrada-ir">Abrir ›</div></div>'+
     '<div class="fn-proj-cab"><h2>Escolha o projeto</h2>'+
       '<p>Tudo que aparecer depois — mapa, pixel, testes, jornada e atenção — é só deste projeto.</p></div>'+
     '<div class="fn-projs">'+(cards || '<div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify.</div>')+'</div>';
@@ -28850,7 +28880,7 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
-var FN_ABAS = ['geral','mapa','pixel','redir','jornada','atencao','desenho'];
+var FN_ABAS = ['geral','mapa','pixel','redir','jornada','atencao'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
@@ -28859,8 +28889,7 @@ var FN_ABA_INFO = {
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
-  atencao: ['Atenção',     'Até onde descem na página e no que clicam.'],
-  desenho: ['Desenhar funil','Rascunho livre: páginas, decisões, notas e o caminho entre elas.']
+  atencao: ['Atenção',     'Até onde descem na página e no que clicam.']
 };
 var fnAbaAtual = 'geral';
 
@@ -28884,7 +28913,6 @@ function fnAba(qual, bt){
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
   if(qual==='atencao') atOpcoes();
-  if(qual==='desenho') dzAbrirLista();
 }
 
 // Cabecalho da tela: trilha + titulo + o que ela responde.
@@ -29165,24 +29193,95 @@ var dzLigando = null, dzSel = null, dzSalvando = false, dzSujo = false;
 
 function dzUid(){ return 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
-// ── lista de quadros do projeto ──
-function dzAbrirLista(){
+// ── nível 1: os projetos ────────────────────────────────────────────────────
+// Mesma cara da Central de Arquivos: pasta por projeto, com quantos quadros tem
+// dentro. Fica ANTES de escolher funil porque rascunho nao depende de funil
+// montado — e justamente o passo anterior a isso.
+var dzProj = '';
+
+function dzMostrar(qual){
+  var m = { projetos:'dz-projetos', lista:'dz-lista', editor:'dz-editor' };
+  Object.keys(m).forEach(function(k){
+    var el = document.getElementById(m[k]); if(el) el.style.display = (k === qual ? '' : 'none');
+  });
+  var p = document.getElementById('fn-projetos'), d = document.getElementById('fn-desenhos');
+  if(p) p.style.display = 'none';
+  if(d) d.style.display = '';
+}
+
+function dzSairDesenho(){
+  var p = document.getElementById('fn-projetos'), d = document.getElementById('fn-desenhos');
+  if(d) d.style.display = 'none';
+  if(p) p.style.display = '';
+  DZ = null; dzProj = '';
+}
+
+function dzProjetos(){
   DZ = null;
-  var l = document.getElementById('dz-lista'), e = document.getElementById('dz-editor');
-  if(!l || !e) return;
-  e.style.display = 'none'; l.style.display = '';
+  dzMostrar('projetos');
+  var el = document.getElementById('dz-projetos'); if(!el) return;
+  el.innerHTML = '<div class="fx-vazio">Carregando…</div>';
+  // Um pedido só: conta os quadros de todos os projetos de uma vez, em vez de
+  // uma chamada por pasta.
+  fetch('/api/desenhos')
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      var todos = (d && d.desenhos) || [];
+      var conta = {};
+      todos.forEach(function(x){ var k = x.projeto || ''; conta[k] = (conta[k]||0) + 1; });
+      // os projetos do sistema + qualquer um que so exista dentro dos quadros
+      var nomes = (fnProjetos || []).slice();
+      Object.keys(conta).forEach(function(k){ if(k && nomes.indexOf(k) < 0) nomes.push(k); });
+
+      el.innerHTML =
+        '<div class="dz-topo">' +
+          '<button class="fn-btn g sm" onclick="dzSairDesenho()">‹ Voltar</button>' +
+          '<h2>Desenhar funil</h2>' +
+        '</div>' +
+        '<p class="dz-sub">Escolha o projeto. Cada um guarda os seus quadros — rascunhe a estrutura ' +
+          'antes de montar o funil de verdade.</p>' +
+        '<div class="dz-pastas">' +
+          nomes.map(function(n){
+            var q = conta[n] || 0;
+            return '<div class="dz-pasta' + (q ? '' : ' vazia') + '" onclick="dzAbrirLista(\'' +
+              fnEsc(String(n).replace(/'/g, "\\'")) + '\')">' +
+              '<div class="dz-pasta-ic">🗂</div>' +
+              '<div class="dz-pasta-n">' + fnEsc(n) + '</div>' +
+              '<div class="dz-pasta-q">' + (q ? (q + (q > 1 ? ' quadros' : ' quadro')) : 'nenhum quadro') + '</div>' +
+            '</div>';
+          }).join('') +
+          (conta[''] ? '<div class="dz-pasta solta" onclick="dzAbrirLista(\'\')">' +
+            '<div class="dz-pasta-ic">🗂</div><div class="dz-pasta-n">Sem projeto</div>' +
+            '<div class="dz-pasta-q">' + conta[''] + ' quadro(s)</div></div>' : '') +
+        '</div>' +
+        (nomes.length ? '' : '<div class="fx-vazio">Nenhum projeto ainda.</div>');
+    })
+    .catch(function(){ el.innerHTML = '<div class="fx-vazio">Não consegui carregar os projetos.</div>'; });
+}
+
+// ── nível 2: os quadros do projeto ──
+function dzAbrirLista(proj){
+  DZ = null;
+  if(proj !== undefined) dzProj = proj;
+  dzMostrar('lista');
+  var l = document.getElementById('dz-lista');
+  if(!l) return;
   l.innerHTML = '<div class="fx-vazio">Carregando os quadros…</div>';
-  fetch('/api/desenhos?projeto=' + encodeURIComponent(fnProj || ''))
+  fetch('/api/desenhos?projeto=' + encodeURIComponent(dzProj || ''))
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
       var ds = (d && d.desenhos) || [];
       var n = document.getElementById('fx-n-dz');
       if(n) n.textContent = ds.length ? String(ds.length) : '';
       l.innerHTML =
-        '<div class="fx-cart"><div class="fx-cc"><h3>Quadros de ' + fnEsc(fnProj || 'sem projeto') + '</h3>' +
+        '<div class="dz-topo">' +
+          '<button class="fn-btn g sm" onclick="dzProjetos()">‹ Projetos</button>' +
+          '<h2>' + fnEsc(dzProj || 'Sem projeto') + '</h2>' +
+        '</div>' +
+        '<div class="fx-cart"><div class="fx-cc"><h3>Quadros</h3>' +
           '<button class="fn-btn" onclick="dzNovo()">+ Novo quadro</button></div>' +
           '<div class="fx-vazio" style="margin:-8px 0 14px">Rascunho de funil: páginas com print e link, decisões, ' +
-          'notas e o caminho entre elas. Cada projeto tem os seus.</div>' +
+          'notas e o caminho entre elas.</div>' +
           (ds.length
             ? '<div class="dz-grade">' + ds.map(dzCartao).join('') + '</div>'
             : '<div class="fx-vazio">Nenhum quadro ainda. Crie o primeiro — ele começa com o esqueleto ' +
@@ -29205,10 +29304,10 @@ function dzCartao(d){
 }
 
 function dzNovo(){
-  var nome = prompt('Nome do quadro:', 'Funil ' + (fnProj || ''));
+  var nome = prompt('Nome do quadro:', 'Funil ' + (dzProj || ''));
   if(!nome) return;
   var a = dzUid(), b = dzUid(), c = dzUid();
-  DZ = { id:'', nome: nome.trim(), projeto: fnProj || '',
+  DZ = { id:'', nome: nome.trim(), projeto: dzProj || '',
     itens: [
       { id:a, tipo:'pagina',  x:80,  y:120, rot:'Página de vendas', img:'', link:'', visitantes:0, conv:0, nota:'' },
       { id:b, tipo:'pagina',  x:400, y:120, rot:'Checkout',         img:'', link:'', visitantes:0, conv:0, nota:'' },
@@ -29241,9 +29340,9 @@ function dzExcluir(id, nome){
 
 // ── editor ──
 function dzPintarEditor(){
-  var l = document.getElementById('dz-lista'), e = document.getElementById('dz-editor');
-  if(!l || !e || !DZ) return;
-  l.style.display = 'none'; e.style.display = '';
+  var e = document.getElementById('dz-editor');
+  if(!e || !DZ) return;
+  dzMostrar('editor');
   e.innerHTML =
     '<div class="dz-barra">' +
       '<button class="fn-btn g sm" onclick="dzVoltar()">‹ Quadros</button>' +
