@@ -6204,7 +6204,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
   'sl_funil_adocoes',       // so o servidor decide; o navegador sobrescreveria
-  'sl_ads_hist'             // historico de ads por dia; a tela le pelo endpoint
+  'sl_ads_hist',            // historico de ads por dia; a tela le pelo endpoint
+  'sl_desenhos'             // quadros de rascunho; carregam prints, a tela le por /api/desenhos
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -8485,6 +8486,104 @@ app.get('/api/vturb/resumo', authUsuario, async (req, res) => {
 // em poucas horas — foi disco cheio que ja tirou a aplicacao do ar hoje.
 // Por isso: conta em memoria, agrega por dia, e grava em lote.
 const KEY_FUNIS   = 'sl_funis';
+const KEY_DESENHOS = 'sl_desenhos';   // quadros de rascunho de funil, por projeto
+
+// ══════════════════════════════════════════════════════
+// ── DESENHAR FUNIL ──
+// Rascunho: caixas com print e link, decisoes, notas e setas. Nao tem relacao
+// com o Mapa — o Mapa e o que esta MEDIDO, isto e onde se pensa antes de medir.
+//
+// Fica em chave propria e NAO entra no /api/store: um quadro carrega prints em
+// base64 e o db.json e lido e escrito inteiro a cada operacao. Puxar isso junto
+// com tasks e criativos a cada sync deixaria o app lento pra todo mundo.
+// ══════════════════════════════════════════════════════
+const DESENHO_MAX = 4 * 1024 * 1024;    // 4MB por quadro, ja com as imagens
+
+function _desenhos(db) {
+  const l = (db || readDB()).store[KEY_DESENHOS];
+  return Array.isArray(l) ? l : [];
+}
+// Lista sem o conteudo: a tela de escolha nao precisa dos prints, e mandar
+// megabytes so pra desenhar cartao seria desperdicio.
+function _desenhoResumo(d) {
+  return { id: d.id, projeto: d.projeto || '', nome: d.nome || 'Sem nome',
+           itens: (d.itens || []).length, fios: (d.fios || []).length,
+           criadoEm: d.criadoEm, atualizadoEm: d.atualizadoEm,
+           capa: (d.itens || []).map(i => i.img).find(Boolean) ? true : false };
+}
+
+app.get('/api/desenhos', authUsuario, (req, res) => {
+  try {
+    const proj = String(req.query.projeto || '');
+    const l = _desenhos().filter(d => !proj || (d.projeto || '') === proj);
+    res.json({ ok: true, desenhos: l.map(_desenhoResumo)
+      .sort((a, b) => String(b.atualizadoEm || '').localeCompare(String(a.atualizadoEm || ''))) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/desenhos/:id', authUsuario, (req, res) => {
+  try {
+    const d = _desenhos().find(x => x.id === req.params.id);
+    if (!d) return res.status(404).json({ error: 'Quadro não encontrado.' });
+    res.json({ ok: true, desenho: d });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/desenhos', authUsuario, (req, res) => {
+  try {
+    const b = req.body || {};
+    const bruto = JSON.stringify(b.itens || []);
+    if (bruto.length > DESENHO_MAX) {
+      return res.status(413).json({ error: 'Quadro muito grande (' +
+        Math.round(bruto.length/1048576) + 'MB). Use imagens menores ou divida em dois quadros.' });
+    }
+    const db = readDB();
+    const l = _desenhos(db);
+    const id = String(b.id || '').trim() || ('dz' + Date.now().toString(36) + Math.random().toString(36).slice(2,5));
+    const i = l.findIndex(x => x.id === id);
+    const agora = new Date().toISOString();
+    const novo = {
+      id, projeto: String(b.projeto || '').slice(0, 60),
+      nome: String(b.nome || 'Sem nome').slice(0, 80),
+      itens: Array.isArray(b.itens) ? b.itens : [],
+      fios: Array.isArray(b.fios) ? b.fios : [],
+      vista: b.vista && typeof b.vista === 'object' ? b.vista : null,
+      criadoEm: i >= 0 ? l[i].criadoEm : agora,
+      atualizadoEm: agora,
+      porQuem: (req.user && req.user.nome) || ''
+    };
+    if (i >= 0) l[i] = novo; else l.push(novo);
+    db.store[KEY_DESENHOS] = l;
+    db.timestamps[KEY_DESENHOS] = now();
+    writeDB(db);
+    res.json({ ok: true, id, atualizadoEm: agora });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Vai pra lixeira como qualquer outra coisa: 30 dias pra voltar atras.
+app.delete('/api/desenhos/:id', authUsuario, (req, res) => {
+  try {
+    const db = readDB();
+    const l = _desenhos(db);
+    const i = l.findIndex(x => x.id === req.params.id);
+    if (i < 0) return res.status(404).json({ error: 'Quadro não encontrado.' });
+    const item = l[i];
+    l.splice(i, 1);
+    db.store[KEY_DESENHOS] = l;
+    db.timestamps[KEY_DESENHOS] = now();
+    const lix = Array.isArray(db.store['sl_lixeira']) ? db.store['sl_lixeira'] : [];
+    lix.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2,8),
+               sourceKey: KEY_DESENHOS, tipo: 'Desenho de funil',
+               deletedAt: new Date().toISOString(),
+               deletedBy: req.user && req.user.id, deletedByNome: req.user && req.user.nome,
+               originalId: item.id, data: item });
+    db.store['sl_lixeira'] = lix;
+    db.timestamps['sl_lixeira'] = now();
+    audit(db, 'desenho_excluido', { id: item.id }, item.nome, req.user);
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 const KEY_REDIRS  = 'sl_redirecionadores';
 const KEY_FSTATS  = 'sl_funil_stats';
 const KEY_ABSTATS = 'sl_ab_stats';        // contagem por teste × variante × dia
