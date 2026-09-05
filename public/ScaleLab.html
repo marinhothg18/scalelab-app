@@ -1740,6 +1740,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dz-dec{position:absolute;width:168px;background:#0b0b12;border:2px solid var(--text);border-radius:16px;padding:12px 13px;user-select:none;cursor:grab}
 .dz-perg{color:#fff;font-size:15px;font-weight:800;text-align:center;margin-bottom:9px;outline:none;cursor:grab}
 .dz-op{border-radius:9px;padding:6px;text-align:center;color:#fff;font-size:13.5px;font-weight:700;margin-bottom:6px;position:relative;user-select:none}
+/* max-width e break: 'Comprou o anual parcelado' nao pode vazar pra fora do
+   bloco — quebra em duas linhas e o bloco cresce junto. */
+.dz-rop{display:inline-block;min-width:26px;max-width:100%;outline:none;cursor:grab;border-radius:4px;padding:0 3px;word-break:break-word;line-height:1.3}
+.dz-rop[contenteditable="true"]{cursor:text;background:rgba(255,255,255,.28);user-select:text}
 .dz-op:last-of-type{margin-bottom:0}
 .dz-op.s{background:#12a150}
 .dz-op.n{background:#e5484d}
@@ -29565,8 +29569,12 @@ function dzElDecisao(it){
   d.style.left = it.x + 'px'; d.style.top = it.y + 'px'; d.dataset.id = it.id;
   d.innerHTML =
     '<div class="dz-perg" contenteditable spellcheck="false">' + fnEsc(it.perg) + '</div>' +
-    '<div class="dz-op s">' + fnEsc(it.sim) + '<div class="dz-pino saida s" data-p="s:sim"></div></div>' +
-    '<div class="dz-op n">' + fnEsc(it.nao) + '<div class="dz-pino saida n" data-p="s:nao"></div></div>' +
+    // O rotulo e so o nome que ele da; o caminho por dentro continua 'sim'/'nao'
+    // (data-p e o ramo do fio). Assim renomear nao quebra as ligacoes ja feitas.
+    '<div class="dz-op s"><span class="dz-rop" data-r="sim">' + fnEsc(it.sim) + '</span>' +
+      '<div class="dz-pino saida s" data-p="s:sim"></div></div>' +
+    '<div class="dz-op n"><span class="dz-rop" data-r="nao">' + fnEsc(it.nao) + '</span>' +
+      '<div class="dz-pino saida n" data-p="s:nao"></div></div>' +
     '<div class="dz-pino entrada" data-p="e"></div>' +
     (it.nota ? '<div class="dz-nb clara">' + fnEsc(it.nota).replace(/\n/g,'<br>') + '</div>' : '') +
     '<div class="dz-pe"><button data-a="nota">nota</button><button data-a="rm" class="rm">✕</button></div>';
@@ -29590,7 +29598,7 @@ function dzEventos(el, it){
   // e nao arrastava, entao sobrava so a moldura como area de arrasto — dai a
   // necessidade do botao do meio. Agora o texto so entra em edicao no DUPLO
   // clique, e o clique simples arrasta como no resto do bloco.
-  el.querySelectorAll('.dz-rot,.dz-perg,.dz-nota>[contenteditable]').forEach(function(c){
+  el.querySelectorAll('.dz-rot,.dz-perg,.dz-rop,.dz-nota>[contenteditable]').forEach(function(c){
     c.setAttribute('contenteditable', 'false');
     c.addEventListener('dblclick', function(ev){
       ev.stopPropagation();
@@ -29639,6 +29647,12 @@ function dzEventos(el, it){
       var t = c.textContent.trim();
       if(c.classList.contains('dz-rot')) it.rot = t;
       else if(c.classList.contains('dz-perg')) it.perg = t;
+      else if(c.classList.contains('dz-rop')){
+        // rotulo vazio deixaria o botao invisivel: volta pro que era
+        if(!t) t = (c.dataset.r === 'sim' ? it.sim : it.nao) || (c.dataset.r === 'sim' ? 'sim' : 'não');
+        if(c.dataset.r === 'sim') it.sim = t; else it.nao = t;
+        c.textContent = t;
+      }
       else it.txt = t;
       c.setAttribute('contenteditable', 'false');   // volta a ser área de arrasto
       dzSalvar();
