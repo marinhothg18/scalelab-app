@@ -1745,8 +1745,19 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dz-rop{display:inline-block;min-width:26px;max-width:100%;outline:none;cursor:grab;border-radius:4px;padding:0 3px;word-break:break-word;line-height:1.3}
 .dz-rop[contenteditable="true"]{cursor:text;background:rgba(255,255,255,.28);user-select:text}
 .dz-op:last-of-type{margin-bottom:0}
-.dz-op.s{background:#12a150}
-.dz-op.n{background:#e5484d}
+/* a cor vem inline, da opcao — .s/.n eram as duas fixas de antes */
+.dz-op-cor,.dz-op-x{position:absolute;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;
+  cursor:pointer;opacity:0;transition:opacity .12s;font-style:normal;font-size:9px;line-height:15px;text-align:center}
+.dz-op-cor{left:5px;background:rgba(255,255,255,.35);border:1.5px solid rgba(255,255,255,.7)}
+.dz-op-x{right:16px;background:rgba(0,0,0,.28);color:#fff}
+.dz-dec:hover .dz-op-cor,.dz-dec:hover .dz-op-x,.dz-dec.sel .dz-op-cor,.dz-dec.sel .dz-op-x{opacity:1}
+.dz-op-cor:hover{background:#fff}
+.dz-op-x:hover{background:rgba(0,0,0,.55)}
+.dz-op-mais{display:block;width:100%;background:rgba(255,255,255,.08);border:1px dashed rgba(255,255,255,.28);
+  color:rgba(255,255,255,.72);border-radius:9px;padding:5px;font-size:11.5px;font-weight:700;cursor:pointer;
+  font-family:inherit;margin-top:2px;opacity:0;transition:opacity .12s}
+.dz-dec:hover .dz-op-mais,.dz-dec.sel .dz-op-mais{opacity:1}
+.dz-op-mais:hover{background:rgba(255,255,255,.16);color:#fff}
 
 .dz-nota{position:absolute;min-width:130px;max-width:250px;background:#fff8c5;color:#3d3708;border:1px solid #e6d97a;border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.5;cursor:grab;user-select:none}
 
@@ -29563,18 +29574,37 @@ function dzElPagina(it){
   return d;
 }
 
+// As opcoes viraram lista: uma decisao pode ter 'comprou', 'saiu da pagina' e
+// 'voltou depois' — duas fixas nao davam conta. Decisao antiga (sim/nao) e
+// convertida aqui, mantendo os MESMOS ids, pra os fios ja desenhados
+// continuarem valendo.
+var DZ_CORES = ['#12a150', '#e5484d', '#1B9CFA', '#FF5926', '#8b5cf6', '#8a8398'];
+
+function dzOpcoes(it){
+  if(Array.isArray(it.opcoes) && it.opcoes.length) return it.opcoes;
+  it.opcoes = [
+    { id:'sim', rot: it.sim || 'sim', cor:'#12a150' },
+    { id:'nao', rot: it.nao || 'Não', cor:'#e5484d' }
+  ];
+  return it.opcoes;
+}
+
 function dzElDecisao(it){
   var d = document.createElement('div');
   d.className = 'dz-dec' + (dzSel === it.id ? ' sel' : '');
   d.style.left = it.x + 'px'; d.style.top = it.y + 'px'; d.dataset.id = it.id;
+  var ops = dzOpcoes(it);
   d.innerHTML =
     '<div class="dz-perg" contenteditable spellcheck="false">' + fnEsc(it.perg) + '</div>' +
-    // O rotulo e so o nome que ele da; o caminho por dentro continua 'sim'/'nao'
-    // (data-p e o ramo do fio). Assim renomear nao quebra as ligacoes ja feitas.
-    '<div class="dz-op s"><span class="dz-rop" data-r="sim">' + fnEsc(it.sim) + '</span>' +
-      '<div class="dz-pino saida s" data-p="s:sim"></div></div>' +
-    '<div class="dz-op n"><span class="dz-rop" data-r="nao">' + fnEsc(it.nao) + '</span>' +
-      '<div class="dz-pino saida n" data-p="s:nao"></div></div>' +
+    ops.map(function(o){
+      return '<div class="dz-op" style="background:' + fnEsc(o.cor) + '">' +
+        '<span class="dz-rop" data-r="' + fnEsc(o.id) + '">' + fnEsc(o.rot) + '</span>' +
+        '<i class="dz-op-cor" data-cor="' + fnEsc(o.id) + '" title="Trocar a cor"></i>' +
+        (ops.length > 1 ? '<i class="dz-op-x" data-tira="' + fnEsc(o.id) + '" title="Tirar esta opção">✕</i>' : '') +
+        '<div class="dz-pino saida" data-p="s:' + fnEsc(o.id) + '" style="border-color:' + fnEsc(o.cor) + '"></div>' +
+      '</div>';
+    }).join('') +
+    '<button class="dz-op-mais" data-a="mais">+ opção</button>' +
     '<div class="dz-pino entrada" data-p="e"></div>' +
     (it.nota ? '<div class="dz-nb clara">' + fnEsc(it.nota).replace(/\n/g,'<br>') + '</div>' : '') +
     '<div class="dz-pe"><button data-a="nota">nota</button><button data-a="rm" class="rm">✕</button></div>';
@@ -29648,10 +29678,10 @@ function dzEventos(el, it){
       if(c.classList.contains('dz-rot')) it.rot = t;
       else if(c.classList.contains('dz-perg')) it.perg = t;
       else if(c.classList.contains('dz-rop')){
+        var o = dzOpcoes(it).filter(function(x){ return x.id === c.dataset.r; })[0];
         // rotulo vazio deixaria o botao invisivel: volta pro que era
-        if(!t) t = (c.dataset.r === 'sim' ? it.sim : it.nao) || (c.dataset.r === 'sim' ? 'sim' : 'não');
-        if(c.dataset.r === 'sim') it.sim = t; else it.nao = t;
-        c.textContent = t;
+        if(o){ if(!t) t = o.rot || 'opção'; o.rot = t; c.textContent = t;
+               if(o.id === 'sim') it.sim = t; if(o.id === 'nao') it.nao = t; }
       }
       else it.txt = t;
       c.setAttribute('contenteditable', 'false');   // volta a ser área de arrasto
@@ -29660,7 +29690,29 @@ function dzEventos(el, it){
     c.addEventListener('keydown', function(e){ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); c.blur(); } });
   });
 
-  el.querySelectorAll('.dz-pe button').forEach(function(b){
+  el.querySelectorAll('[data-tira]').forEach(function(x){
+    x.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var id = x.dataset.tira;
+      // tirar a opcao leva junto os fios que saiam dela — senao ficariam
+      // apontando pra um caminho que nao existe mais
+      it.opcoes = dzOpcoes(it).filter(function(o){ return o.id !== id; });
+      DZ.fios = DZ.fios.filter(function(f){ return !(f.de === it.id && f.ramo === id); });
+      dzPintar(); dzSalvar();
+    });
+  });
+  el.querySelectorAll('[data-cor]').forEach(function(x){
+    x.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var o = dzOpcoes(it).filter(function(y){ return y.id === x.dataset.cor; })[0];
+      if(!o) return;
+      var i = DZ_CORES.indexOf(o.cor);
+      o.cor = DZ_CORES[(i + 1) % DZ_CORES.length];
+      dzPintar(); dzSalvar();
+    });
+  });
+
+  el.querySelectorAll('.dz-pe button,.dz-op-mais').forEach(function(b){
     b.addEventListener('click', function(ev){
       ev.stopPropagation();
       var a = b.dataset.a;
@@ -29693,6 +29745,12 @@ function dzEventos(el, it){
             it.conv = Math.max(0, Math.min(100, parseFloat(String(v.cv).replace(',','.')) || 0));
             dzPintar(); dzSalvar();
           });
+      }
+      if(a === 'mais'){
+        var ops = dzOpcoes(it);
+        var id = 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2,4);
+        ops.push({ id:id, rot:'nova opção', cor: DZ_CORES[ops.length % DZ_CORES.length] });
+        dzPintar(); dzSalvar();
       }
       if(a === 'corta'){ it.corta = !it.corta; dzPintar(); dzSalvar(); }
       if(a === 'larg'){
@@ -29787,7 +29845,14 @@ function dzFios(){
     }
     var x1 = a.x + a.w, x2 = b.x, y2 = b.y + b.h/2;
     var d = Math.max(45, Math.min(170, Math.abs(x2-x1) * .45));
-    var cor = f.ramo === 'sim' ? '#12a150' : f.ramo === 'nao' ? '#e5484d' : 'var(--text2)';
+    // a cor do fio vem da OPCAO, pra bater com o botao de onde ele sai
+    var cor = 'var(--text2)';
+    if(f.ramo){
+      var dono = DZ.itens.filter(function(x){ return x.id === f.de; })[0];
+      var o = dono && dono.tipo === 'decisao'
+        ? dzOpcoes(dono).filter(function(y){ return y.id === f.ramo; })[0] : null;
+      cor = o ? o.cor : (f.ramo === 'sim' ? '#12a150' : f.ramo === 'nao' ? '#e5484d' : 'var(--text2)');
+    }
     var dd = 'M ' + x1 + ' ' + y1 + ' C ' + (x1+d) + ' ' + y1 + ', ' + (x2-d) + ' ' + y2 + ', ' + x2 + ' ' + y2;
     s += '<path class="toque" d="' + dd + '" data-i="' + i + '"></path>';
     s += '<path d="' + dd + '" stroke="' + cor + '" stroke-width="3"></path>';
