@@ -10751,6 +10751,112 @@ app.get('/r/:slug', (req, res) => {
 // imagens, e a conta de onde abandonam e qual resposta compra mais.
 // ══════════════════════════════════════════════════════
 const KEY_QUIZZES   = 'sl_quizzes';
+
+// ══════════════════════════════════════════════════════
+// ── DOMÍNIOS ──
+// Testes A/B e Quiz guardavam dominio cada um no seu campo de texto livre, sem
+// saber um do outro. O Quiz nem validava: 'editalhackeado', sem .com, virou o
+// link https://editalhackeado/q/... que nao abre em lugar nenhum.
+// Aqui fica a lista unica — o que ja esta em uso nos testes e quizzes, mais o
+// que for cadastrado — e a checagem de que o DNS aponta mesmo pra ca.
+// ══════════════════════════════════════════════════════
+const KEY_DOMINIOS = 'sl_dominios';
+const DOMINIO_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+
+function _dominioLimpo(v) {
+  return String(v || '').trim().toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '').replace(/\.$/, '');
+}
+
+// Todos os dominios conhecidos, e onde cada um esta sendo usado.
+function _dominiosConhecidos(db) {
+  const mapa = {};
+  const add = (d, origem, nome) => {
+    d = _dominioLimpo(d);
+    if (!d || !DOMINIO_RE.test(d)) return;
+    mapa[d] = mapa[d] || { dominio: d, usos: [], cadastrado: false };
+    if (origem) mapa[d].usos.push({ origem, nome: String(nome || '').slice(0, 60) });
+  };
+  (Array.isArray(db.store[KEY_DOMINIOS]) ? db.store[KEY_DOMINIOS] : []).forEach(x => {
+    add(x.dominio);
+    const k = _dominioLimpo(x.dominio);
+    if (mapa[k]) { mapa[k].cadastrado = true; mapa[k].checado = x.checado; mapa[k].ok = x.ok; mapa[k].erro = x.erro; }
+  });
+  (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
+    .forEach(r => r && r.dominio && add(r.dominio, 'Teste A/B', r.nome || r.slug));
+  (Array.isArray(db.store[KEY_QUIZZES]) ? db.store[KEY_QUIZZES] : [])
+    .forEach(q => q && q.dominio && add(q.dominio, 'Quiz', q.nome || q.slug));
+  return Object.values(mapa).sort((a, b) => a.dominio.localeCompare(b.dominio));
+}
+
+// Pergunta pro proprio dominio qual versao ele serve. Se bater com a nossa, o
+// DNS esta apontando pra ca — nao basta resolver, tem de cair NESTE servidor.
+// Um dominio que resolve pra outro lugar passaria num teste de DNS simples e
+// mesmo assim o link quebraria.
+async function _checarDominio(dominio) {
+  const d = _dominioLimpo(dominio);
+  if (!DOMINIO_RE.test(d)) return { ok: false, erro: 'endereço inválido' };
+  const corta = new AbortController();
+  const t = setTimeout(() => corta.abort(), 6000);
+  try {
+    const r = await fetch('https://' + d + '/api/versao', { signal: corta.signal, redirect: 'manual' });
+    if (!r.ok) return { ok: false, erro: 'respondeu ' + r.status + ' — o DNS aponta pra outro servidor' };
+    const j = await r.json().catch(() => null);
+    if (!j || j.versao !== versaoApp()) return { ok: false, erro: 'aponta pra outro servidor, não pro Central TMX' };
+    return { ok: true };
+  } catch (e) {
+    const m = e.name === 'AbortError' ? 'não respondeu em 6s'
+      : /ENOTFOUND|getaddrinfo/i.test(e.message) ? 'o DNS ainda não existe'
+      : /certificate|SSL|TLS/i.test(e.message) ? 'sem certificado HTTPS ainda — o Railway leva alguns minutos'
+      : e.message;
+    return { ok: false, erro: m };
+  } finally { clearTimeout(t); }
+}
+
+app.get('/api/dominios', authUsuario, (req, res) => {
+  try { res.json({ ok: true, proprio: req.headers.host || '', dominios: _dominiosConhecidos(readDB()) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cadastra e ja checa. Cadastrar sem checar deixava o usuario descobrir que o
+// DNS nao aponta so quando o anuncio ja estivesse rodando.
+app.post('/api/dominios', authUsuario, async (req, res) => {
+  try {
+    const d = _dominioLimpo(req.body && req.body.dominio);
+    if (!DOMINIO_RE.test(d)) {
+      return res.status(400).json({ error: 'Isso não é um domínio. Use algo como ir.seudominio.com.br — com o ponto e a terminação.' });
+    }
+    const chk = await _checarDominio(d);
+    const db = readDB();
+    const l = Array.isArray(db.store[KEY_DOMINIOS]) ? db.store[KEY_DOMINIOS] : [];
+    const i = l.findIndex(x => _dominioLimpo(x.dominio) === d);
+    const reg = { dominio: d, checado: new Date().toISOString(), ok: chk.ok, erro: chk.erro || '',
+                  porQuem: (req.user && req.user.nome) || '' };
+    if (i >= 0) l[i] = Object.assign(l[i], reg); else l.push(reg);
+    db.store[KEY_DOMINIOS] = l;
+    db.timestamps[KEY_DOMINIOS] = now();
+    audit(db, 'dominio_cadastrado', { dominio: d }, chk.ok ? 'apontado' : ('pendente: ' + chk.erro), req.user);
+    writeDB(db);
+    res.json(Object.assign({ ok: true, dominio: d }, { apontado: chk.ok, erro: chk.erro || '' }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Rechecar um que ja existe — o DNS leva de minutos a horas pra propagar.
+app.post('/api/dominios/checar', authUsuario, async (req, res) => {
+  try {
+    const d = _dominioLimpo(req.body && req.body.dominio);
+    const chk = await _checarDominio(d);
+    const db = readDB();
+    const l = Array.isArray(db.store[KEY_DOMINIOS]) ? db.store[KEY_DOMINIOS] : [];
+    const i = l.findIndex(x => _dominioLimpo(x.dominio) === d);
+    const reg = { dominio: d, checado: new Date().toISOString(), ok: chk.ok, erro: chk.erro || '' };
+    if (i >= 0) l[i] = Object.assign(l[i], reg); else l.push(reg);
+    db.store[KEY_DOMINIOS] = l;
+    db.timestamps[KEY_DOMINIOS] = now();
+    writeDB(db);
+    res.json({ ok: true, dominio: d, apontado: chk.ok, erro: chk.erro || '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 const KEY_QUIZ_RESP = 'sl_quiz_resp';   // uma linha por visitante por dia: o caminho dele no quiz
 const KEY_QUIZ_DIA  = 'sl_quiz_dia';    // contagem agregada por quiz por dia (sobrevive ao teto das linhas)
 const QUIZ_RESP_TETO = 12000, QUIZ_RESP_DIAS = 30, QUIZ_DIA_DIAS = 180;

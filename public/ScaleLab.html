@@ -1626,6 +1626,17 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-sub{font-size:11.5px;color:var(--text2)}
 .fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
 /* ── Desenhar funil ──────────────────────────────────────────────────────── */
+/* seletor de dominio, compartilhado entre Quiz e Testes A/B */
+.dm-linha{display:flex;gap:7px;align-items:center}
+.dm-sel{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;
+  color:var(--text);font-size:13px;font-family:inherit;outline:none;cursor:pointer}
+.dm-sel:focus{border-color:var(--accent)}
+.dm-status{font-size:11px;margin-top:6px;line-height:1.55;display:flex;flex-direction:column;gap:2px}
+.dm-ok{color:var(--green);font-weight:600}
+.dm-ruim{color:#f97316;font-weight:600}
+.dm-neutro{color:var(--text2)}
+.dm-usos{color:var(--text3)}
+
 /* caixa de diálogo do desenho — centralizada, com a cara do sistema */
 .dz-caixa{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}
 .dz-caixa-fundo{position:absolute;inset:0;background:rgba(8,10,18,.62);backdrop-filter:blur(2px)}
@@ -29486,6 +29497,118 @@ var dzLigando = null, dzSel = null, dzSalvando = false, dzSujo = false;
 
 function dzUid(){ return 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
+// ══════════════════════════════════════════════════════
+// ── SELETOR DE DOMÍNIO ──
+// Um só, usado pelo Quiz e pelos Testes A/B. Antes cada um tinha um campo de
+// texto livre e nenhum sabia dos dominios que o outro ja usava — e o Quiz
+// aceitava qualquer coisa, entao 'editalhackeado' virou um link que nao abre.
+// Aqui a lista vem do servidor com o status do DNS de cada dominio.
+// ══════════════════════════════════════════════════════
+var _dmCache = null, _dmQuando = 0;
+
+function dmCarregar(forcar){
+  if(!forcar && _dmCache && Date.now() - _dmQuando < 60000) return Promise.resolve(_dmCache);
+  return fetch('/api/dominios').then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ _dmCache = (d && d.dominios) || []; _dmQuando = Date.now(); return _dmCache; })
+    .catch(function(){ return _dmCache || []; });
+}
+
+// Pinta um <select> dentro de 'alvo'. onEscolher(dominio) recebe '' pro padrao.
+function dmSeletor(alvo, atual, onEscolher){
+  var el = typeof alvo === 'string' ? document.getElementById(alvo) : alvo;
+  if(!el) return;
+  atual = String(atual || '').trim().toLowerCase();
+  el.innerHTML = '<div class="dm-linha"><select class="dm-sel" disabled><option>Carregando domínios…</option></select></div>';
+  dmCarregar().then(function(lista){
+    var existe = lista.some(function(x){ return x.dominio === atual; });
+    var selo = function(x){
+      if(x.ok === true)  return '✓ ';
+      if(x.ok === false) return '⚠ ';
+      return '· ';                                   // em uso, mas nunca checado
+    };
+    var html =
+      '<option value="">' + fnEsc(location.host) + ' (padrão)</option>' +
+      lista.map(function(x){
+        return '<option value="' + fnEsc(x.dominio) + '"' + (x.dominio === atual ? ' selected' : '') + '>' +
+          selo(x) + fnEsc(x.dominio) + '</option>';
+      }).join('') +
+      // o valor antigo invalido continua visivel ate ser trocado — sumir com ele
+      // esconderia justamente o erro que o usuario precisa corrigir
+      (atual && !existe ? '<option value="' + fnEsc(atual) + '" selected>✗ ' + fnEsc(atual) + ' — inválido</option>' : '') +
+      '<option value="__novo">+ Adicionar domínio…</option>';
+
+    el.innerHTML =
+      '<div class="dm-linha"><select class="dm-sel">' + html + '</select>' +
+      '<button type="button" class="fn-btn g sm dm-chk" title="Checar se o DNS aponta pro Central TMX">checar</button></div>' +
+      '<div class="dm-status"></div>';
+    var sel = el.querySelector('.dm-sel'), st = el.querySelector('.dm-status'), chk = el.querySelector('.dm-chk');
+    var ultimo = sel.value;
+
+    function mostrar(){
+      var v = sel.value;
+      // so faz sentido checar o que e dominio de verdade: o valor antigo invalido
+      // ('editalhackeado') nao tem DNS nenhum pra conferir
+      var conhecido = lista.some(function(y){ return y.dominio === v; });
+      chk.style.display = v && v !== '__novo' && conhecido ? '' : 'none';
+      if(!v){ st.innerHTML = '<span class="dm-ok">Usa o domínio do sistema. Sempre funciona.</span>'; return; }
+      var x = lista.filter(function(y){ return y.dominio === v; })[0];
+      if(!x){ st.innerHTML = '<span class="dm-ruim">✗ Não é um domínio válido. Escolha outro ou adicione um novo.</span>'; return; }
+      var usos = (x.usos || []).map(function(u){ return u.origem + ' “' + u.nome + '”'; });
+      st.innerHTML =
+        (x.ok === true ? '<span class="dm-ok">✓ DNS apontado pro Central TMX</span>'
+         : x.ok === false ? '<span class="dm-ruim">⚠ ' + fnEsc(x.erro || 'não aponta pra cá') + '</span>'
+         : '<span class="dm-neutro">Ainda não checado — clique em checar</span>') +
+        (usos.length ? '<span class="dm-usos">usado em ' + fnEsc(usos.slice(0,3).join(', ')) +
+                       (usos.length > 3 ? ' e mais ' + (usos.length-3) : '') + '</span>' : '');
+    }
+
+    sel.addEventListener('change', function(){
+      if(sel.value === '__novo'){ sel.value = ultimo; mostrar(); dmAdicionar(el, onEscolher); return; }
+      ultimo = sel.value; mostrar(); onEscolher(sel.value);
+    });
+    chk.addEventListener('click', function(){
+      var v = sel.value; if(!v) return;
+      chk.disabled = true; chk.textContent = 'checando…';
+      fetch('/api/dominios/checar', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ dominio: v }) })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          _dmCache = null;
+          dmSeletor(el, v, onEscolher);
+          if(d.apontado) toastFn(v + ' está apontado');
+        })
+        .catch(function(){ chk.disabled = false; chk.textContent = 'checar'; });
+    });
+    mostrar();
+  });
+}
+
+function dmAdicionar(el, onEscolher){
+  dzCaixa('Adicionar domínio',
+    'Primeiro aponte o DNS desse endereço pro Railway (o mesmo passo do <b>ir.kalebeaprovado.online</b>). ' +
+    'Assim que salvar eu confiro se ele já está caindo aqui.',
+    [{ chave:'d', rot:'Domínio', ph:'quiz.suaoferta.com.br',
+       dica:'Com o ponto e a terminação. Pode colar com https:// — eu limpo.' }],
+    function(v){
+      var bruto = String(v.d || '').trim(); if(!bruto) return;
+      toastFn('Conferindo o DNS…');
+      fetch('/api/dominios', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ dominio: bruto }) })
+        .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+        .then(function(x){
+          if(!x.ok){ dzCaixa('Não deu', fnEsc(x.d.error || 'Domínio inválido.'), [], function(){}); return; }
+          _dmCache = null;
+          onEscolher(x.d.dominio);
+          dmSeletor(el, x.d.dominio, onEscolher);
+          if(!x.d.apontado){
+            dzCaixa('Salvo, mas o DNS ainda não aponta', '<b>' + fnEsc(x.d.dominio) + '</b>: ' + fnEsc(x.d.erro) +
+              '.<br><br>O link já usa esse domínio, mas <b>só abre depois</b> que o DNS apontar pro Railway. ' +
+              'Pode levar de minutos a algumas horas — use o botão <b>checar</b> pra conferir.', [], function(){});
+          }
+        });
+    });
+}
+
 // ── Caixa de diálogo ────────────────────────────────────────────────────────
 // O prompt() do navegador cola no topo da janela, ignora o tema e nao aceita
 // mais de um campo — pedir visitantes e conversao virava dois prompts seguidos.
@@ -31836,11 +31959,7 @@ function abPintarDetalhe(){
           '<div class="fn-campo"><label>Atalho do link</label>'+
             '<input value="'+fnEsc(r.slug)+'" onchange="abMudarSlug(this.value)"></div>'+
           '<div class="fn-campo"><label>Domínio do link</label>'+
-            '<input value="'+fnEsc(r.dominio||'')+'" placeholder="'+fnEsc(location.host)+'" '+
-              'onchange="abMudarDominio(this.value)">'+
-            '<div style="font-size:11px;color:var(--text2);margin-top:5px;line-height:1.5">'+
-              'Vazio usa <b>'+fnEsc(location.host)+'</b>. Pra usar domínio seu, aponte o DNS '+
-              'pro Railway e cadastre lá antes — só escrever aqui não faz o domínio existir.</div></div>'+
+            '<div id="ab-dominio-sel"></div></div>'+
           '<div class="fn-campo"><label>Hipótese</label>'+
             '<input value="'+fnEsc(r.hipotese||'')+'" placeholder="O que você espera, e por quê" onchange="abCampo(\'hipotese\',this.value)"></div>'+
           '<div class="fn-campo"><label>Meta — o que conta como conversão</label>'+
@@ -31853,6 +31972,14 @@ function abPintarDetalhe(){
             (r.ativo===false ? '▶ Reativar link' : '⏸ Pausar link')+'</button>'+
           '<button class="fn-btn g sm" style="width:100%;color:var(--red)" onclick="abRemover()">Remover</button>'+
         '</div></div></div>';
+  // o seletor busca a lista no servidor, entao entra depois do HTML pronto
+  dmSeletor('ab-dominio-sel', r.dominio || '', function(v){
+    var t = fnRedAtual(); if(!t) return;
+    t.dominio = v; fnGravarRed(t);
+    // so atualiza o link na tela; repintar tudo destruiria o seletor aberto
+    var lk = document.querySelector('.ab-link-txt,#ab-link');
+    if(lk) lk.textContent = abUrlDoTeste(t);
+  });
 }
 
 function abOpcoesMeta(atual){
@@ -36559,7 +36686,7 @@ function pintarConfigurar(){
     '<div class="qp-secao"><h3>Link do quiz</h3><span class="qp-sub">É o que você cola no anúncio.</span>' +
       '<div class="qp-campo"><label>Final do link<input class="qp-entrada" id="qp-cfg-slug" value="' + esc(QZ.slug) + '" autocomplete="off"></label></div>' +
       '<p class="qp-dica">Fica: <code id="qp-cfg-link">' + esc(linkDo(QZ)) + '</code></p>' +
-      '<div class="qp-campo"><label>Domínio próprio (opcional)<input class="qp-entrada" id="qp-cfg-dominio" value="' + esc(QZ.dominio || '') + '" placeholder="quiz.suaoferta.com.br" autocomplete="off"></label></div>' +
+      '<div class="qp-campo"><label>Domínio</label><div id="qp-cfg-dominio-sel"></div></div>' +
       '<p class="qp-dica">Pra usar, aponte o DNS desse subdomínio pro Central TMX (o mesmo apontamento do domínio dos Testes A/B). Vazio, usa <b>' + esc(location.host) + '</b>.</p>' +
       '<p class="qp-nota">Pra saber se o quiz vende mais que mandar direto pra VSL, use este link como uma das variantes em <b>Funis › Testes A/B</b>.</p></div>' +
     '<div class="qp-secao"><h3>Pra onde vai no final</h3><span class="qp-sub">O link fica no próprio botão.</span>' +
@@ -36594,6 +36721,15 @@ function pintarConfigurar(){
       '<button class="qp-btn qp-perigo" type="button" data-qp="excluir">Excluir quiz</button></div>' +
       '<p class="qp-dica" style="margin-top:8px">Excluir manda pra Lixeira (dá pra restaurar por 30 dias). Os números medidos ficam no servidor.</p></div>' +
   '</div></div>';
+  // Seletor compartilhado com os Testes A/B: lista os dominios que ja existem,
+  // com o status do DNS, em vez de campo livre que aceitava qualquer texto.
+  if (typeof dmSeletor === 'function'){
+    dmSeletor('qp-cfg-dominio-sel', QZ.dominio || '', function(v){
+      QZ.dominio = v;
+      var lk = document.getElementById('qp-cfg-link'); if (lk) lk.textContent = linkDo(QZ);
+      salvar(); atualizarCabecalho();
+    });
+  }
 }
 function alternarAr(){
   if (!QZ.ativo){
@@ -36789,11 +36925,7 @@ function ligarEventos(raiz){
     }
     if (el.id === 'qp-cfg-meta'){ QZ.pixels = QZ.pixels || {}; QZ.pixels.meta = el.value.replace(/\D/g, ''); salvar(); return; }
     if (el.id === 'qp-cfg-tiktok'){ QZ.pixels = QZ.pixels || {}; QZ.pixels.tiktok = el.value.trim(); salvar(); return; }
-    if (el.id === 'qp-cfg-dominio'){
-      QZ.dominio = el.value.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
-      var lk = document.getElementById('qp-cfg-link'); if (lk) lk.textContent = linkDo(QZ);
-      salvar(); atualizarCabecalho(); return;
-    }
+
     var tela = telaSel(); if (!tela) return;
     if (el.matches('[data-tela-nome]')){
       tela.nome = el.value;
