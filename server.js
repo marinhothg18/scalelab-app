@@ -237,13 +237,18 @@ const globalLimiter = rateLimit({
   windowMs: 60*1000,
   max: 200,
   message: { error: 'Muitas requisições. Tente novamente em 1 minuto.' },
-  // o pixel tem limite proprio: um visitante dispara varios eventos por pagina
-  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento'
+  // o pixel e o quiz tem limite proprio: um visitante dispara varios eventos por pagina
+  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento' || req.path === '/api/quiz/evento'
 });
 // Continua limitado, so que com folga pra trafego real (e por IP do visitante)
 const pixelLimiter = rateLimit({ windowMs: 60*1000, max: 120,
   message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
 app.use('/api/funil/evento', pixelLimiter);
+// Quiz: cada tela e cada resposta e um evento. 180/min por IP cobre muita gente
+// atras do mesmo IP de operadora (CGNAT) sem abrir porta pra inundacao.
+const quizLimiter = rateLimit({ windowMs: 60*1000, max: 180,
+  message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
+app.use('/api/quiz/evento', quizLimiter);
 app.use('/api/', globalLimiter);
 
 // Rate limiting mais agressivo pra API v1
@@ -6200,6 +6205,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_vturb',               // token da API de analytics da VTurb
   'sl_funil_evfoto',        // foto interna dos contadores; nao serve pra tela
   'sl_ab_vistos',           // ids de quem ja foi contado no teste; interno
+  'sl_quiz_resp',           // caminho de cada visitante no quiz; a tela le por /api/quiz/stats
+  'sl_quiz_dia',            // contagem agregada do quiz; idem
   'sl_ab_stats',            // contagem do teste A/B; a tela le por /api/ab/stats
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
@@ -8712,6 +8719,7 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     const tipo  = String(c.tipo  || 'entrou').slice(0, 30);
     if (!funil) return res.sendStatus(204);
     const visitante = String(c.id || '').slice(0, 40);
+    if (c.qid && typeof _qzLigarDestino === 'function') _qzLigarDestino(String(c.qid).slice(0, 40), visitante);
     _fContar(funil, etapa, tipo, visitante, c);
 
     // Teste A/B: a variante chegou pela URL do redirecionador e o pixel a devolve
@@ -10304,6 +10312,14 @@ const PIXEL_JS = `(function(w,d){
   }
 
   var q = new URLSearchParams(location.search), utm = {};
+  // Veio de um quiz do Central TMX: o quiz manda o id dele no link. Guardado
+  // pra seguir junto mesmo depois que a pessoa navegar sem o parametro.
+  var QID = '';
+  try{
+    var qidUrl = q.get('tmx_qid') || '';
+    if(/^[a-z0-9_-]{4,40}$/i.test(qidUrl)) localStorage.setItem('tmx_qid', qidUrl);
+    QID = localStorage.getItem('tmx_qid') || '';
+  }catch(e){ QID = q.get('tmx_qid') || ''; }
   ['source','medium','campaign','content','term'].forEach(function(k){
     var v = q.get('utm_'+k);
     try{ if(v) localStorage.setItem('tmx_utm_'+k, v);
@@ -10382,7 +10398,7 @@ const PIXEL_JS = `(function(w,d){
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
                                 pg:PAGINA, primeiro:primeiro,
-                                teste:teste, variante:variante, versao:VERSAO, ref:d.referrer }, extra||{});
+                                teste:teste, variante:variante, versao:VERSAO, ref:d.referrer, qid:QID }, extra||{});
     var corpo = JSON.stringify(dados);
     try{
       navigator.sendBeacon
@@ -10726,6 +10742,388 @@ app.get('/r/:slug', (req, res) => {
   } catch (e) { res.status(500).send('Erro no redirecionamento.'); }
 });
 
+// ══════════════════════════════════════════════════════
+// ── QUIZ DE FUNIL ──
+// O quiz é montado no Central TMX (sl_quizzes, sincronizado) e servido aqui em
+// /q/:slug. Quem desenha as telas é public/quiz-motor.js, o MESMO arquivo da
+// prévia no painel — se fossem dois códigos, a prévia mostraria uma coisa e o
+// anúncio outra. Aqui ficam a página pública, os eventos de cada visitante, as
+// imagens, e a conta de onde abandonam e qual resposta compra mais.
+// ══════════════════════════════════════════════════════
+const KEY_QUIZZES   = 'sl_quizzes';
+const KEY_QUIZ_RESP = 'sl_quiz_resp';   // uma linha por visitante por dia: o caminho dele no quiz
+const KEY_QUIZ_DIA  = 'sl_quiz_dia';    // contagem agregada por quiz por dia (sobrevive ao teto das linhas)
+const QUIZ_RESP_TETO = 12000, QUIZ_RESP_DIAS = 30, QUIZ_DIA_DIAS = 180;
+const QUIZ_IMG_DIR = path.join(DATA_DIR, 'quiz_img');
+try { if (!fs.existsSync(QUIZ_IMG_DIR)) fs.mkdirSync(QUIZ_IMG_DIR, { recursive: true }); } catch (e) {}
+
+// readDB lê e parseia o banco inteiro. A página do quiz recebe tráfego pago:
+// ler o banco por visitante derrubaria o servidor num pico de campanha. Os
+// quizzes ficam num cache de 5s — editar no painel aparece em segundos.
+let _qzCache = { em: 0, porSlug: {}, porId: {} };
+function _qzQuizzes(forcar) {
+  if (!forcar && Date.now() - _qzCache.em < 5000) return _qzCache;
+  try {
+    const db = readDB();
+    const porSlug = {}, porId = {};
+    (Array.isArray(db.store[KEY_QUIZZES]) ? db.store[KEY_QUIZZES] : []).forEach(q => {
+      if (!q || !q.id) return;
+      porId[q.id] = q;
+      if (q.slug) porSlug[String(q.slug).toLowerCase()] = q;
+    });
+    _qzCache = { em: Date.now(), porSlug, porId };
+  } catch (e) { /* banco ilegível agora: segue com o cache anterior */ }
+  return _qzCache;
+}
+
+let _qzResp = new Map();    // "quiz|vid|dia" -> registro
+let _qzDia = {};            // "quiz|dia"     -> agregado
+let _qzPorVid = new Map();  // vid -> Set(chave), pra ligar o id que a VSL usa
+let _qzSujo = false;
+
+function _qzIndexar(vid, k) {
+  if (!_qzPorVid.has(vid)) _qzPorVid.set(vid, new Set());
+  _qzPorVid.get(vid).add(k);
+}
+function _qzCarregar() {
+  try {
+    const db = readDB();
+    (Array.isArray(db.store[KEY_QUIZ_RESP]) ? db.store[KEY_QUIZ_RESP] : []).forEach(r => {
+      if (!r || !r.q || !r.v || !r.d) return;
+      const k = r.q + '|' + r.v + '|' + r.d;
+      _qzResp.set(k, r); _qzIndexar(r.v, k);
+    });
+    (Array.isArray(db.store[KEY_QUIZ_DIA]) ? db.store[KEY_QUIZ_DIA] : []).forEach(a => {
+      if (a && a.q && a.d) _qzDia[a.q + '|' + a.d] = a;
+    });
+    if (_qzResp.size) console.log('[QUIZ] ' + _qzResp.size + ' respostas recuperadas do disco.');
+  } catch (e) { console.error('[QUIZ] não consegui recuperar as respostas:', e.message); }
+}
+function _qzAgregado(q, d) {
+  const k = q + '|' + d;
+  return _qzDia[k] || (_qzDia[k] = { q, d, ab: 0, tel: {}, resp: {}, num: {}, perf: {}, fim: 0, cl: 0 });
+}
+
+// Cada evento mexe no registro do visitante E no agregado do dia. O registro é
+// o que impede contar duas vezes: quem recarrega a tela não soma de novo, e
+// quem volta e troca a resposta tira a antiga da conta antes de somar a nova.
+function _qzEvento(ev) {
+  const q = String(ev.q || '').slice(0, 60), v = String(ev.v || '').slice(0, 40), e = String(ev.e || '');
+  if (!q || !v || !/^[a-z0-9_-]+$/i.test(v)) return false;
+  if (!_qzQuizzes().porId[q]) return false;          // evento de quiz que não existe não entra
+  const d = _hojeBR(), k = q + '|' + v + '|' + d, ag = _qzAgregado(q, d);
+  let r = _qzResp.get(k);
+  if (!r) {
+    const u = (ev.u && typeof ev.u === 'object') ? ev.u : {};
+    r = { q, v, d, em: Date.now(), at: Date.now(), tel: [], r: {}, p: '', fim: 0, cl: 0, vd: '',
+          u: { s: String(u.utm_source || '').slice(0, 60), c: String(u.utm_campaign || '').slice(0, 80), ct: String(u.utm_content || '').slice(0, 80) } };
+    _qzResp.set(k, r); _qzIndexar(v, k);
+    ag.ab++;
+    // teto de memória: um ataque com milhares de ids falsos não pode crescer sem fim
+    if (_qzResp.size > QUIZ_RESP_TETO * 1.5) _qzPodar();
+  }
+  r.at = Date.now();
+  if (e === 'tela') {
+    const t = String(ev.t || '').slice(0, 40);
+    if (t && r.tel.indexOf(t) < 0 && r.tel.length < 80) { r.tel.push(t); ag.tel[t] = (ag.tel[t] || 0) + 1; }
+  }
+  if (e === 'resp') {
+    const b = String(ev.b || '').slice(0, 40);
+    if (b) {
+      const antes = r.r[b];
+      if (Array.isArray(ev.ops)) {
+        const ops = ev.ops.map(x => String(x).slice(0, 40)).slice(0, 20);
+        const m = ag.resp[b] = ag.resp[b] || {};
+        if (Array.isArray(antes)) antes.forEach(o => { if (m[o] > 0) m[o]--; });
+        ops.forEach(o => { m[o] = (m[o] || 0) + 1; });
+        r.r[b] = ops;
+      } else if (ev.valor != null && isFinite(Number(ev.valor))) {
+        const val = Math.round(Number(ev.valor) * 100) / 100;
+        const m = ag.num[b] = ag.num[b] || {};
+        if (antes != null && !Array.isArray(antes) && m[String(antes)] > 0) m[String(antes)]--;
+        m[String(val)] = (m[String(val)] || 0) + 1;
+        r.r[b] = val;
+      }
+    }
+  }
+  if (e === 'fim' && !r.fim) {
+    r.fim = 1; ag.fim++;
+    const p = String(ev.p || '').slice(0, 40);
+    if (p) { r.p = p; ag.perf[p] = (ag.perf[p] || 0) + 1; }
+  }
+  if (e === 'clique' && !r.cl) {
+    r.cl = 1; ag.cl++;
+    if (ev.p && !r.p) r.p = String(ev.p).slice(0, 40);
+  }
+  _qzSujo = true;
+  return true;
+}
+
+// O quiz fica no domínio do app e a VSL no da oferta: o pixel de lá cria outro
+// id, e a venda chega com ESSE id. O quiz manda o dele na URL (tmx_qid), o pixel
+// devolve em todo evento, e aqui a gente anota: este visitante do quiz é aquele
+// da VSL. É o que faz "qual resposta compra mais" ter resposta.
+function _qzLigarDestino(qid, visitante) {
+  if (!qid || !visitante || qid === visitante) return;
+  const ks = _qzPorVid.get(String(qid)); if (!ks) return;
+  ks.forEach(k => {
+    const r = _qzResp.get(k);
+    if (r && r.vd !== visitante) { r.vd = String(visitante).slice(0, 40); _qzSujo = true; }
+  });
+}
+
+function _qzPodar() {
+  const corte = new Date(Date.now() - QUIZ_RESP_DIAS * 86400000).toISOString().slice(0, 10);
+  let lista = Array.from(_qzResp.values()).filter(r => r.d >= corte).sort((a, b) => b.at - a.at);
+  if (lista.length > QUIZ_RESP_TETO) lista = lista.slice(0, QUIZ_RESP_TETO);
+  _qzResp = new Map(); _qzPorVid = new Map();
+  lista.forEach(r => { const k = r.q + '|' + r.v + '|' + r.d; _qzResp.set(k, r); _qzIndexar(r.v, k); });
+  const corteDia = new Date(Date.now() - QUIZ_DIA_DIAS * 86400000).toISOString().slice(0, 10);
+  Object.keys(_qzDia).forEach(k => { if (_qzDia[k].d < corteDia) delete _qzDia[k]; });
+  return lista;
+}
+function _qzGravar() {
+  if (!_qzSujo) return;
+  _qzSujo = false;
+  try {
+    const lista = _qzPodar();
+    const db = readDB();
+    db.store[KEY_QUIZ_RESP] = lista;
+    db.store[KEY_QUIZ_DIA] = Object.values(_qzDia);
+    db.timestamps[KEY_QUIZ_RESP] = now();
+    db.timestamps[KEY_QUIZ_DIA] = now();
+    writeDB(db);
+  } catch (e) { _qzSujo = true; console.error('[QUIZ] falhou ao gravar:', e.message); }
+}
+setInterval(_qzGravar, 45 * 1000);
+_qzCarregar();
+
+// ── eventos do visitante ──
+app.post('/api/quiz/evento', express.text({ type: '*/*', limit: '8kb' }), (req, res) => {
+  try {
+    let ev = req.body;
+    if (typeof ev === 'string') { try { ev = JSON.parse(ev); } catch (e) { ev = null; } }
+    if (ev && typeof ev === 'object') _qzEvento(ev);
+  } catch (e) {}
+  res.sendStatus(204);
+});
+
+// ── imagens do quiz ──
+// Ficam no volume, fora do db.json (imagem em base64 no banco foi o que já
+// inchou o disco uma vez). Servidas sem ler o banco: o nome do arquivo já diz
+// o tipo, e o id aleatório não dá pra adivinhar.
+const QUIZ_IMG_TIPOS = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+app.post('/api/quiz/imagem', authUsuario, express.raw({ type: () => true, limit: '6mb' }), (req, res) => {
+  try {
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ error: 'Arquivo vazio.' });
+    const mime = String(req.headers['x-mime'] || req.headers['content-type'] || '').toLowerCase().split(';')[0].trim();
+    const ext = QUIZ_IMG_TIPOS[mime];
+    if (!ext) return res.status(400).json({ error: 'Envie a imagem em JPG, PNG, WEBP ou GIF.' });
+    const livre = _espacoLivreMB(DATA_DIR);
+    if (livre != null && livre < 150) {
+      return res.status(507).json({ error: 'O servidor está com pouco espaço. Use o link de uma imagem hospedada em outro lugar por enquanto.' });
+    }
+    const arquivo = 'qi' + Date.now().toString(36) + crypto.randomBytes(6).toString('hex') + '.' + ext;
+    fs.writeFileSync(path.join(QUIZ_IMG_DIR, arquivo), buf);
+    res.json({ ok: true, url: '/qi/' + arquivo, tamanho: buf.length });
+  } catch (e) { res.status(500).json({ error: 'Não consegui salvar a imagem.' }); }
+});
+app.get('/qi/:arquivo', (req, res) => {
+  const a = String(req.params.arquivo || '');
+  if (!/^qi[a-z0-9]+\.(jpg|png|webp|gif)$/.test(a)) return res.status(404).end();
+  const fp = path.join(QUIZ_IMG_DIR, a);
+  if (!fs.existsSync(fp)) return res.status(404).end();
+  res.setHeader('Content-Type', { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[a.split('.').pop()]);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  fs.createReadStream(fp).on('error', () => { try { res.status(500).end(); } catch (e) {} }).pipe(res);
+});
+
+// ── a página pública ──
+function _qzEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function _qzConcluiramSemana(id) {
+  const corte = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  let n = 0;
+  Object.values(_qzDia).forEach(a => { if (a.q === id && a.d >= corte) n += a.fim || 0; });
+  return n;
+}
+// Link do último botão que abre link: é pra onde vai quem chega num quiz pausado
+function _qzDestinoFinal(q) {
+  let url = '';
+  (q.telas || []).forEach(t => (t.blocos || []).forEach(b => {
+    if (b && b.tipo === 'botao' && b.acao === 'link') {
+      const u = b.porPerfil ? ((q.perfis || [])[0] || {}).url : b.url;
+      if (u) url = String(u).trim();
+    }
+  }));
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return url;
+}
+function _qzPagina404() {
+  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Página indisponível</title><meta name="robots" content="noindex"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;' +
+    'font-family:system-ui,-apple-system,sans-serif;background:#F4F6FA;color:#0F172A;padding:24px;text-align:center}p{color:#475569;max-width:32ch;margin:8px auto 0}</style></head>' +
+    '<body><div><h1 style="font-size:22px;margin:0">Esta página não está disponível</h1><p>O link pode ter mudado. Volte ao anúncio e tente de novo.</p></div></body></html>';
+}
+
+app.get('/q/:slug', (req, res) => {
+  try {
+    const slug = String(req.params.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80);
+    const q = _qzQuizzes().porSlug[slug];
+    res.set('Cache-Control', 'no-store');
+    if (!q) return res.status(404).send(_qzPagina404());
+
+    // Pausado: quem clicou no anúncio vai direto pra oferta, nunca pra página morta
+    if (q.ativo === false) {
+      const dest = _qzDestinoFinal(q);
+      if (!dest) return res.status(404).send(_qzPagina404());
+      const qs = req.originalUrl.split('?')[1];
+      return res.redirect(302, dest + (qs ? (dest.includes('?') ? '&' : '?') + qs : ''));
+    }
+
+    const publico = { id: q.id, slug: q.slug, nome: q.nome, tema: q.tema || {}, telas: q.telas || [], perfis: q.perfis || [] };
+    const dados = JSON.stringify(publico).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+    const fundo = /^#[0-9a-f]{3,6}$/i.test(String((q.tema || {}).fundo || '')) ? q.tema.fundo : '#FFFFFF';
+    const px = q.pixels || {};
+    const meta = /^\d{6,20}$/.test(String(px.meta || '').trim()) ? String(px.meta).trim() : '';
+    const tiktok = /^[A-Z0-9]{10,30}$/i.test(String(px.tiktok || '').trim()) ? String(px.tiktok).trim() : '';
+    const funil = (q.mapa && q.mapa.funil) ? q.mapa : null;
+
+    const scriptMeta = meta ? ('<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};' +
+      'if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version="2.0";n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];' +
+      's.parentNode.insertBefore(t,s)}(window,document,"script","https://connect.facebook.net/en_US/fbevents.js");fbq("init","' + meta + '");fbq("track","PageView");</script>') : '';
+    const scriptTiktok = tiktok ? ('<script>!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],' +
+      'ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);' +
+      'ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";' +
+      'ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;' +
+      'var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};ttq.load("' + tiktok + '");ttq.page()}(window,document,"ttq");</script>') : '';
+
+    const html = '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+      '<title>' + _qzEsc(q.titulo || q.nome || 'Quiz') + '</title><meta name="robots" content="noindex,nofollow">' +
+      '<meta name="theme-color" content="' + fundo + '">' +
+      '<style>html,body{margin:0;background:' + fundo + '}#qz{min-height:100vh;min-height:100dvh}</style>' +
+      scriptMeta + scriptTiktok + '</head><body><div id="qz"></div>' +
+      '<script src="/quiz-motor.js?v=' + TMX_VERSAO + '"></script>' +
+      '<script>(function(){var Q=' + dados + ';' +
+        'var vid=(document.cookie.match(/(?:^|;\\s*)tmx_id=([^;]+)/)||[])[1];' +
+        'if(!vid||!/^[a-z0-9_-]+$/i.test(vid)){vid="v"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);' +
+        'document.cookie="tmx_id="+vid+";path=/;max-age=7776000;SameSite=Lax"+(location.protocol==="https:"?";Secure":"");}' +
+        'var U={};new URLSearchParams(location.search).forEach(function(v,k){if(/^utm_/.test(k))U[k]=v.slice(0,120);});' +
+        'function envia(tipo,d){var c=JSON.stringify(Object.assign({q:Q.id,v:vid,e:tipo,u:U},d||{}));' +
+          'try{if(!(navigator.sendBeacon&&navigator.sendBeacon("/api/quiz/evento",new Blob([c],{type:"text/plain"}))))' +
+          'fetch("/api/quiz/evento",{method:"POST",body:c,keepalive:true,headers:{"Content-Type":"text/plain"}});}catch(e){}' +
+          'try{if(window.fbq){if(tipo==="tela")fbq("trackCustom","QuizTela",{quiz:Q.slug,tela:(d.i||0)+1});' +
+          'if(tipo==="fim")fbq("trackCustom","QuizConcluido",{quiz:Q.slug,perfil:d.p||""});' +
+          'if(tipo==="clique")fbq("trackCustom","QuizFoiParaOferta",{quiz:Q.slug});}' +
+          'if(window.ttq){if(tipo==="fim")ttq.track("CompleteRegistration");if(tipo==="clique")ttq.track("ClickButton");}}catch(e){}}' +
+        'QuizMotor.montar(document.getElementById("qz"),Q,{modo:"vivo",vid:vid,n:' + _qzConcluiramSemana(q.id) + ',parametros:location.search.slice(1),enviar:envia});' +
+      '})();</script>' +
+      (funil ? '<script src="/px.js" data-f="' + _qzEsc(funil.funil) + '" data-e="' + _qzEsc(funil.etapa || '') + '" async></script>' : '') +
+      '</body></html>';
+    res.type('html').send(html);
+  } catch (e) {
+    console.error('[QUIZ] página falhou:', e.message);
+    res.status(500).send(_qzPagina404());
+  }
+});
+
+// ── números pro painel ──
+app.get('/api/quiz/stats', authUsuario, (req, res) => {
+  try {
+    const id = String(req.query.quiz || '').slice(0, 60);
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    let q = _qzQuizzes().porId[id];
+    if (!q) q = _qzQuizzes(true).porId[id];     // acabou de ser criado: o cache ainda não viu
+    if (!q) return res.status(404).json({ error: 'Quiz não encontrado.' });
+    const noPeriodo = d => (!de || d >= de) && (!ate || d <= ate);
+
+    const tot = { ab: 0, fim: 0, cl: 0, tel: {}, resp: {}, num: {}, perf: {} };
+    const somar = (dst, src) => Object.keys(src || {}).forEach(k => { dst[k] = (dst[k] || 0) + (src[k] || 0); });
+    Object.values(_qzDia).forEach(a => {
+      if (a.q !== id || !noPeriodo(a.d)) return;
+      tot.ab += a.ab || 0; tot.fim += a.fim || 0; tot.cl += a.cl || 0;
+      somar(tot.tel, a.tel); somar(tot.perf, a.perf);
+      Object.keys(a.resp || {}).forEach(b => { somar(tot.resp[b] = tot.resp[b] || {}, a.resp[b]); });
+      Object.keys(a.num || {}).forEach(b => { somar(tot.num[b] = tot.num[b] || {}, a.num[b]); });
+    });
+
+    // Venda entra pela mesma regra do teste A/B: toda venda com id de visitante no período
+    const db = readDB();
+    const compra = {};
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (!v || !v.vid) return;
+      const dia = String(v.recebidoEm || '').slice(0, 10);
+      if (dia && !noPeriodo(dia)) return;
+      const c = compra[v.vid] = compra[v.vid] || { n: 0, valor: 0 };
+      c.n++; c.valor += Number(v.valor) || 0;
+    });
+    const regs = [];
+    _qzResp.forEach(r => { if (r.q === id && noPeriodo(r.d)) regs.push(r); });
+    const comprou = r => compra[r.v] || (r.vd ? compra[r.vd] : null) || null;
+
+    let compraram = 0, receita = 0, ligados = 0;
+    const porOp = {}, porPerfil = {};
+    regs.forEach(r => {
+      const c = comprou(r);
+      if (r.vd) ligados++;
+      if (c) { compraram++; receita += c.valor; }
+      Object.keys(r.r || {}).forEach(b => {
+        const val = r.r[b];
+        if (!Array.isArray(val)) return;
+        val.forEach(o => {
+          const x = porOp[b + '|' + o] = porOp[b + '|' + o] || { base: 0, compras: 0, receita: 0 };
+          x.base++; if (c) { x.compras++; x.receita += c.valor; }
+        });
+      });
+      if (r.p) {
+        const x = porPerfil[r.p] = porPerfil[r.p] || { base: 0, cliques: 0, compras: 0, receita: 0 };
+        x.base++; if (r.cl) x.cliques++; if (c) { x.compras++; x.receita += c.valor; }
+      }
+    });
+
+    const telas = [], opcoes = [], numeros = [];
+    (q.telas || []).forEach((t, i) => {
+      telas.push({ id: t.id, nome: t.nome || ('Tela ' + (i + 1)), chegaram: tot.tel[t.id] || 0 });
+      (t.blocos || []).forEach(b => {
+        if (b.tipo === 'opcoes') {
+          const titulo = (t.blocos || []).filter(x => x.tipo === 'titulo').map(x => String(x.txt || '').replace(/\*/g, '')).pop() || t.nome;
+          opcoes.push({ bloco: b.id, tela: t.id, pergunta: titulo, varias: b.modo === 'varias',
+            ops: (b.ops || []).map(o => {
+              const x = porOp[b.id + '|' + o.id] || { base: 0, compras: 0, receita: 0 };
+              return { id: o.id, t: o.t, emoji: o.emoji || '', pessoas: (tot.resp[b.id] || {})[o.id] || 0, base: x.base, compras: x.compras, receita: x.receita };
+            }) });
+        }
+        if (b.tipo === 'numero') {
+          const m = tot.num[b.id] || {};
+          numeros.push({ bloco: b.id, tela: t.id, unidade: b.unidade || '',
+            valores: Object.keys(m).map(k => [Number(k), m[k]]).filter(x => x[1] > 0).sort((a, c) => a[0] - c[0]) });
+        }
+      });
+    });
+    const perfis = (q.perfis || []).map(p => {
+      const x = porPerfil[p.id] || { base: 0, cliques: 0, compras: 0, receita: 0 };
+      return { id: p.id, nome: p.nome, url: p.url || '', concluiram: tot.perf[p.id] || 0, base: x.base, cliques: x.cliques, compras: x.compras, receita: x.receita };
+    });
+
+    res.json({ ok: true, quiz: { id: q.id, nome: q.nome }, de, ate,
+      abriram: tot.ab, concluiram: tot.fim, clicaram: tot.cl, compraram, receita,
+      telas, opcoes, numeros, perfis,
+      // quanto da conta de venda tem base: registros guardados e quantos já foram ligados a um id da VSL
+      base: { registros: regs.length, ligados, retencaoDias: QUIZ_RESP_DIAS } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── slug livre? ──
+app.get('/api/quiz/slug-livre', authUsuario, (req, res) => {
+  const slug = String(req.query.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80);
+  const dono = String(req.query.quiz || '');
+  const q = _qzQuizzes(true).porSlug[slug];
+  res.json({ ok: true, slug, livre: !!slug && (!q || q.id === dono) });
+});
+
 // ── Não perder métrica no deploy ────────────────────────────────────────────
 // Os contadores ficam em buffer na memória e só descem pro disco a cada 30–45s.
 // Numa atualização o Railway manda SIGTERM e mata o processo: sem isto aqui, o
@@ -10738,7 +11136,9 @@ function _gravarTudoESair(sinal) {
   console.log(`[${sinal}] gravando métricas pendentes antes de encerrar…`);
   const passos = [
     ['funil',   _fGravar],  ['atencao', _atGravar],
-    ['ab',      _abGravar], ['jornada', _jGravar]
+    ['ab',      _abGravar], ['jornada', _jGravar],
+    // _abVistosGravar faltava aqui: um deploy perdia ate 60s de "quem ja foi contado"
+    ['ab_vistos', _abVistosGravar], ['quiz', _qzGravar]
   ];
   for (const [nome, fn] of passos) {
     try { fn(); } catch (e) { console.error(`[${sinal}] ${nome} falhou:`, e.message); }
