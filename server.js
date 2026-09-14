@@ -10245,7 +10245,9 @@ function versaoApp() {
     const mt = f => { try { return fs.statSync(f).mtimeMs; } catch (e) { return 0; } };
     const maior = Math.max(mt(path.join(__dirname, 'public', 'ScaleLab.html')),
                            mt(path.join(__dirname, 'server.js')));
-    _versaoApp = maior ? String(maior | 0) : TMX_VERSAO;
+    // Math.round, nao '| 0': o '| 0' forca inteiro de 32 bits e um timestamp em
+    // milissegundos estoura isso — dava a volta e virava numero negativo.
+    _versaoApp = maior ? String(Math.round(maior)) : TMX_VERSAO;
   } catch (e) { _versaoApp = TMX_VERSAO; }
   return _versaoApp;
 }
