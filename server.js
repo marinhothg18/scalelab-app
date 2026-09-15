@@ -11028,9 +11028,14 @@ app.post('/api/quiz/imagem', authUsuario, express.raw({ type: () => true, limit:
     const mime = String(req.headers['x-mime'] || req.headers['content-type'] || '').toLowerCase().split(';')[0].trim();
     const ext = QUIZ_IMG_TIPOS[mime];
     if (!ext) return res.status(400).json({ error: 'Envie a imagem em JPG, PNG, WEBP ou GIF.' });
+    // A imagem só pode entrar se, depois dela, ainda couber regravar o db.json
+    // (a mesma folga de 3x que o writeDB pede) com margem. O corte fixo de 150 MB
+    // barrava imagem de 200 KB num volume de 433 MB com 140 MB livres e 27 MB de banco.
     const livre = _espacoLivreMB(DATA_DIR);
-    if (livre != null && livre < 150) {
-      return res.status(507).json({ error: 'O servidor está com pouco espaço. Use o link de uma imagem hospedada em outro lugar por enquanto.' });
+    let dbMB = 0; try { dbMB = fs.statSync(DB_FILE).size / (1024 * 1024); } catch (e) {}
+    const precisa = buf.length / (1024 * 1024) + Math.max(60, Math.ceil(dbMB) * 3) + 10;
+    if (livre != null && livre < precisa) {
+      return res.status(507).json({ error: 'O disco do servidor está quase cheio (' + Math.round(livre) + ' MB livres). Use o link de uma imagem hospedada em outro lugar por enquanto.' });
     }
     const arquivo = 'qi' + Date.now().toString(36) + crypto.randomBytes(6).toString('hex') + '.' + ext;
     fs.writeFileSync(path.join(QUIZ_IMG_DIR, arquivo), buf);
@@ -11044,6 +11049,9 @@ app.get('/qi/:arquivo', (req, res) => {
   if (!fs.existsSync(fp)) return res.status(404).end();
   res.setHeader('Content-Type', { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[a.split('.').pop()]);
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  // o editor do quiz lê o peso da imagem por aqui (HEAD), sem baixar ela de novo
+  try { res.setHeader('Content-Length', fs.statSync(fp).size); } catch (e) {}
+  if (req.method === 'HEAD') return res.end();
   fs.createReadStream(fp).on('error', () => { try { res.status(500).end(); } catch (e) {} }).pipe(res);
 });
 

@@ -2169,9 +2169,19 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .qp-secao+.qp-secao{margin-top:16px;padding-top:16px;border-top:1px solid var(--qp-linha)}
 .qp-secao h3{margin:0 0 4px;font-size:14px;font-weight:700}
 .qp-secao>.qp-sub{display:block;margin-bottom:12px}
-.qp-img-edit{display:flex;gap:12px;align-items:center;margin-bottom:12px}
-.qp-img-edit img{width:84px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--qp-linha);background:var(--qp-folha2)}
-.qp-img-vazia{width:84px;height:60px;border-radius:8px;border:1px dashed var(--qp-linha-forte);display:grid;place-items:center;font-size:11px;color:var(--qp-fraco)}
+.qp-img-edit{display:flex;gap:12px;align-items:center;margin-bottom:12px;padding:8px;margin-left:-8px;margin-right:-8px;border:1.5px dashed transparent;border-radius:12px;transition:background .12s,border-color .12s}
+.qp-bloco-card.qp-solta-ativa{outline:2px dashed var(--qp-roxo);outline-offset:-2px;background:var(--qp-roxo-suave)}
+.qp-img-edit.qp-solta-ativa{border-color:var(--qp-roxo);background:var(--qp-roxo-suave)}
+.qp-img-lado{display:flex;flex-direction:column;gap:6px;min-width:0}
+.qp-img-acoes{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.qp-img-info{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--qp-tinta)}
+.qp-img-selo{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:6px;margin-left:4px;white-space:nowrap}
+.qp-img-selo.qp-img-ok{background:var(--qp-bom-suave);color:var(--qp-bom)}
+.qp-img-selo.qp-img-aviso{background:var(--qp-critico-suave);color:var(--qp-critico)}
+.qp-img-pendente{border:1px solid var(--qp-roxo);background:var(--qp-roxo-suave);border-radius:10px;padding:10px 12px;margin:-4px 0 12px;font-size:13px;line-height:1.5}
+.qp-img-pendente p{margin:0 0 6px}
+.qp-img-edit img{flex:0 0 auto;width:84px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--qp-linha);background:var(--qp-folha2)}
+.qp-img-vazia{flex:0 0 auto;text-align:center;line-height:1.2;width:84px;height:60px;border-radius:8px;border:1px dashed var(--qp-linha-forte);display:grid;place-items:center;font-size:11px;color:var(--qp-fraco)}
 
 /* celular */
 .qp-palco{position:sticky;top:14px;display:flex;flex-direction:column;align-items:center;gap:10px}
@@ -36468,9 +36478,12 @@ function corpoBloco(b, tela){
     case 'texto':
       return campoArea('txt', 'Texto', b.txt) + '<div class="qp-linha-campos">' + seg('estilo', 'Estilo', { normal:'Normal', italico:'Itálico', pequeno:'Pequeno' }, b.estilo) + seg('alinhar', 'Alinhamento', { centro:'Centro', esquerda:'Esquerda' }, b.alinhar) + '</div>';
     case 'imagem':
-      return '<div class="qp-img-edit">' + (b.src ? '<img src="' + esc(b.src) + '" alt="">' : '<div class="qp-img-vazia">sem imagem</div>') +
-        '<div><label class="qp-btn qp-sm" style="display:inline-block;cursor:pointer">Enviar imagem<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-upload hidden></label>' +
-        '<div class="qp-sub" style="margin-top:6px">JPG, PNG, WEBP ou GIF até 6 MB.</div></div></div>' +
+      return '<div class="qp-img-edit" data-solta>' + (b.src ? '<img src="' + esc(b.src) + '" alt="">' : '<div class="qp-img-vazia">arraste<br>aqui</div>') +
+        '<div class="qp-img-lado"><div class="qp-img-acoes"><label class="qp-btn qp-sm" style="display:inline-block;cursor:pointer">' + (b.src ? 'Trocar imagem' : 'Enviar imagem') +
+          '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-upload hidden></label><span class="qp-sub">ou arraste a imagem pra cá</span></div>' +
+        (b.src ? '<div class="qp-img-info" data-img-info="' + esc(b.src) + '">' + infoImagemHtml(b.src) + '</div>' : '') +
+        '<div class="qp-sub">Ideal: <b>960 px de largura</b> e até <b>300 KB</b>. JPG, PNG, WEBP ou GIF.</div></div></div>' +
+        pendenteImagemHtml(b) +
         campoTxt('src', 'Ou cole o link de uma imagem', String(b.src || '').indexOf('data:') === 0 ? '' : b.src, ' placeholder="https://…" inputmode="url"') +
         campoTxt('alt', 'Descrição da imagem (acessibilidade)', b.alt);
     case 'espaco': return campoNum('alt', 'Altura em pixels', b.alt);
@@ -36572,6 +36585,7 @@ function pintarEditor(){
     }
   }
   ed.innerHTML = h;
+  medirImagensDoEditor();
 }
 function editorAparencia(){
   var t = QZ.tema || (QZ.tema = temaPadrao());
@@ -37007,17 +37021,133 @@ function novoBloco(tipo){
   if (tipo === 'opcoes') b.ops = [O('Primeira opção'), O('Segunda opção')];
   return b;
 }
-function enviarImagem(arquivo, b){
+/* Imagem do quiz: medida na hora (px e peso) e, se passar do ideal, a opção de
+   mandar uma versão de 960 px. Nada é diminuído sem ele escolher. */
+var IMG_LARG = 960, IMG_TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+var infoImg = {};            // src -> { w, h, bytes } (bytes null quando o servidor de fora não conta)
+function pesoTxt(bytes){
+  if (bytes == null) return '';
+  return bytes >= 1024 * 1024 ? dec(bytes / (1024 * 1024)) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+}
+function avaliarImagem(w, h, bytes, gif){
+  if (w && w < 640) return { cls:'qp-img-aviso', txt:'pequena: pode ficar borrada no celular' };
+  if (!gif && ((w && w > 1200) || (bytes != null && bytes > 400 * 1024))) return { cls:'qp-img-aviso', txt:'mais pesada que o ideal: demora pra abrir no 4G' };
+  return { cls:'qp-img-ok', txt:'tamanho bom' };
+}
+function infoImagemHtml(src){
+  var i = infoImg[src];
+  if (!i) return '<span class="qp-sub">medindo…</span>';
+  if (i.erro) return '<span class="qp-sub">não consegui abrir a imagem desse link</span>';
+  if (/^data:image\/svg|\.svg(\?|$)/i.test(src)) return '<b>Desenho vetorial</b> <span class="qp-img-selo qp-img-ok">fica nítido em qualquer tamanho</span>';
+  var a = avaliarImagem(i.w, i.h, i.bytes, /\.gif(\?|$)/i.test(src));
+  return '<b>' + i.w + ' × ' + i.h + ' px</b>' + (i.bytes != null ? ' · <b>' + pesoTxt(i.bytes) + '</b>' : '') + ' <span class="qp-img-selo ' + a.cls + '">' + a.txt + '</span>';
+}
+function medirImagensDoEditor(){
+  document.querySelectorAll('#qp-editor [data-img-info]').forEach(function(el){
+    var src = el.getAttribute('data-img-info');
+    if (infoImg[src]){ el.innerHTML = infoImagemHtml(src); return; }
+    if (infoImg[src] === false) return;          // já medindo
+    infoImg[src] = false;
+    var im = new Image();
+    im.onload = function(){
+      var i = { w:im.naturalWidth, h:im.naturalHeight, bytes:null };
+      var fim = function(){ infoImg[src] = i; document.querySelectorAll('#qp-editor [data-img-info]').forEach(function(x){ if (x.getAttribute('data-img-info') === src) x.innerHTML = infoImagemHtml(src); }); };
+      fetch(src, { method:'HEAD' }).then(function(r){ var n = Number(r.headers.get('content-length')); if (r.ok && n) i.bytes = n; }).catch(function(){}).then(fim);
+    };
+    im.onerror = function(){ infoImg[src] = { erro:true }; el.innerHTML = infoImagemHtml(src); };
+    im.src = src;
+  });
+}
+function pendenteImagemHtml(b){
+  var p = ui.imgPendente;
+  if (!p || p.bloco !== b.id) return '';
+  var o = p.otim;
+  return '<div class="qp-img-pendente" role="group" aria-label="Imagem escolhida">' +
+    '<p>Essa imagem tem <b>' + p.w + ' × ' + p.h + ' px</b> e <b>' + pesoTxt(p.arquivo.size) + '</b>. ' + avaliarImagem(p.w, p.h, p.arquivo.size, false).txt.replace(/^./, function(c){ return c.toUpperCase(); }) + '.</p>' +
+    (o ? '<p>Otimizada fica com <b>' + o.w + ' × ' + o.h + ' px</b> e <b>' + pesoTxt(o.blob.size) + '</b>, sem diferença visível no celular.</p>' : '<p class="qp-sub">Preparando a versão otimizada…</p>') +
+    '<div class="qp-img-acoes"><button class="qp-btn qp-sm qp-primario" type="button" data-acao="img-otimizada"' + (o ? '' : ' disabled') + '>Enviar otimizada</button>' +
+    '<button class="qp-btn qp-sm" type="button" data-acao="img-original"' + (p.arquivo.size > 6 * 1024 * 1024 ? ' disabled title="A original passa de 6 MB"' : '') + '>Enviar a original</button>' +
+    '<button class="qp-btn qp-sm qp-fantasma" type="button" data-acao="img-cancelar">Cancelar</button></div></div>';
+}
+function escolherImagem(arquivo, b){
+  if (!arquivo) return;
+  if (IMG_TIPOS.indexOf(arquivo.type) < 0){ aviso('Envie a imagem em JPG, PNG, WEBP ou GIF.'); return; }
+  var url = URL.createObjectURL(arquivo), im = new Image();
+  im.onerror = function(){ URL.revokeObjectURL(url); aviso('Não consegui abrir essa imagem.'); };
+  im.onload = function(){
+    var w = im.naturalWidth, h = im.naturalHeight;
+    // GIF perde a animação no canvas; os que já estão no ideal vão direto
+    if (arquivo.type === 'image/gif' || (w <= 1200 && arquivo.size <= 400 * 1024)){
+      URL.revokeObjectURL(url);
+      if (arquivo.size > 6 * 1024 * 1024){ aviso('Imagem maior que 6 MB. Diminua e tente de novo.'); return; }
+      enviarImagem(arquivo, b, { w:w, h:h }); return;
+    }
+    ui.imgPendente = { bloco:b.id, arquivo:arquivo, w:w, h:h, otim:null };
+    pintarEditor();
+    var nw = Math.min(IMG_LARG, w), nh = Math.round(h * nw / w);
+    var cv = document.createElement('canvas'); cv.width = nw; cv.height = nh;
+    var cx = cv.getContext('2d'); cx.imageSmoothingQuality = 'high'; cx.drawImage(im, 0, 0, nw, nh);
+    URL.revokeObjectURL(url);
+    var pronto = function(blob){
+      var p = ui.imgPendente; if (!p || p.arquivo !== arquivo || !blob) return;
+      // se a "otimizada" não ficou menor, não tem por que oferecer
+      if (blob.size >= arquivo.size && nw === w){ ui.imgPendente = null; enviarImagem(arquivo, b, { w:w, h:h }); return; }
+      p.otim = { blob:blob, w:nw, h:nh }; pintarEditor();
+    };
+    cv.toBlob(function(blob){
+      // Safari antigo devolve PNG quando pede WEBP: aí PNG segue PNG (guarda a transparência) e o resto vira JPG
+      if (blob && blob.type === 'image/webp') return pronto(blob);
+      if (arquivo.type === 'image/png') return cv.toBlob(pronto, 'image/png');
+      cv.toBlob(pronto, 'image/jpeg', 0.85);
+    }, 'image/webp', 0.82);
+  };
+  im.src = url;
+}
+function enviarImagem(arquivo, b, medida){
   if (!arquivo) return;
   if (arquivo.size > 6 * 1024 * 1024){ aviso('Imagem maior que 6 MB. Diminua e tente de novo.'); return; }
   aviso('Enviando imagem…');
   fetch('/api/quiz/imagem', { method:'POST', headers:{ 'Authorization':'Bearer ' + token(), 'Content-Type':arquivo.type || 'application/octet-stream', 'x-mime':arquivo.type || '' }, body:arquivo })
     .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || 'Falha no envio'); return j; }); })
-    .then(function(j){ b.src = j.url; if (!b.alt) b.alt = arquivo.name.replace(/\.[a-z0-9]+$/i, ''); salvar(); pintarEditor(); atualizarPrevia(); aviso('Imagem enviada'); })
+    .then(function(j){
+      if (medida) infoImg[j.url] = { w:medida.w, h:medida.h, bytes:j.tamanho };
+      b.src = j.url; if (!b.alt && arquivo.name) b.alt = arquivo.name.replace(/\.[a-z0-9]+$/i, '');
+      ui.imgPendente = null; salvar(); pintarEditor(); atualizarPrevia(); aviso('Imagem enviada · ' + pesoTxt(j.tamanho));
+    })
     .catch(function(e){ aviso(e.message); });
 }
 
 function ligarEventos(raiz){
+  // Arrastar imagem: vale soltar em qualquer parte do bloco de imagem aberto. Fora
+  // dele o soltar é ignorado, pra o navegador não trocar a página pela imagem.
+  var temArquivo = function(e){ return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; };
+  // bloco de imagem aberto: a área da imagem; fechado: o cartão inteiro (abre ao soltar)
+  var zonaDe = function(e){
+    var card = e.target.closest && e.target.closest('[data-bloco]');
+    if (!card || !raiz.contains(card)) return null;
+    var b = blocoDoEl(card); if (!b || b.tipo !== 'imagem') return null;
+    return card.querySelector('[data-solta]') || card;
+  };
+  var limparZonas = function(){ raiz.querySelectorAll('.qp-solta-ativa').forEach(function(z){ z.classList.remove('qp-solta-ativa'); }); };
+  raiz.addEventListener('dragover', function(e){
+    if (!temArquivo(e)) return;
+    e.preventDefault();
+    var z = zonaDe(e);
+    e.dataTransfer.dropEffect = z ? 'copy' : 'none';
+    if (z && !z.classList.contains('qp-solta-ativa')){ limparZonas(); z.classList.add('qp-solta-ativa'); }
+    if (!z) limparZonas();
+  });
+  raiz.addEventListener('dragleave', function(e){ if (!e.relatedTarget || !raiz.contains(e.relatedTarget)) limparZonas(); });
+  raiz.addEventListener('drop', function(e){
+    if (!temArquivo(e)) return;
+    e.preventDefault(); limparZonas();
+    var z = zonaDe(e); if (!z) return;
+    var b = blocoDoEl(z); if (!b) return;
+    if (ui.aberto !== b.id){ ui.aberto = b.id; pintarEditor(); }
+    var arquivos = e.dataTransfer.files || [];
+    if (arquivos.length > 1) aviso('Usei só a primeira imagem.');
+    escolherImagem(arquivos[0], b);
+  });
   raiz.addEventListener('click', function(e){
     var el = e.target.closest('[data-qp],[data-acao],[data-set],[data-tema]'); if (!el || !raiz.contains(el)) return;
     var qp = el.getAttribute('data-qp');
@@ -37157,6 +37287,18 @@ function ligarEventos(raiz){
       ui.sel = (QZ.telas[pos] || QZ.telas[pos - 1]).id; ui.aberto = null;
     }
     var b = blocoDoEl(el);
+    if (b && /^img-/.test(acao || '')){
+      var pend = ui.imgPendente;
+      if (acao === 'img-cancelar' || !pend){ ui.imgPendente = null; pintarEditor(); return; }
+      var ext = { 'image/webp':'webp', 'image/png':'png', 'image/jpeg':'jpg' };
+      if (acao === 'img-otimizada' && pend.otim){
+        var nome = pend.arquivo.name.replace(/\.[a-z0-9]+$/i, '') + '.' + (ext[pend.otim.blob.type] || 'jpg');
+        var arq = new File([pend.otim.blob], nome, { type:pend.otim.blob.type });
+        enviarImagem(arq, b, { w:pend.otim.w, h:pend.otim.h });
+      }
+      if (acao === 'img-original') enviarImagem(pend.arquivo, b, { w:pend.w, h:pend.h });
+      return;
+    }
     if (b){
       var bi = tela.blocos.indexOf(b);
       if (acao === 'bloco-subir' && bi > 0){ tela.blocos.splice(bi, 1); tela.blocos.splice(bi - 1, 0, b); }
@@ -37242,7 +37384,7 @@ function ligarEventos(raiz){
     if (el.dataset.perfilCampo){ if (ui.aba === 'montar') pintarEditor(); return; }
     if (el.id === 'qp-sel-pergunta'){ ui.pergunta = el.value; pintarResultados(); return; }
     var b = blocoDoEl(el); if (!b) return;
-    if (el.hasAttribute('data-upload')){ enviarImagem(el.files && el.files[0], b); return; }
+    if (el.hasAttribute('data-upload')){ escolherImagem(el.files && el.files[0], b); el.value = ''; return; }
     if (el.dataset.check){ b[el.dataset.check] = el.checked; salvar(); pintarTelas(); pintarEditor(); atualizarPrevia(); return; }
     if (el.dataset.campo === 'url' || el.dataset.campo === 'src'){ salvar(); pintarTelas(); pintarEditor(); return; }
     var opBox = el.closest('[data-op]');
