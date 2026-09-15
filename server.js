@@ -11165,8 +11165,9 @@ app.get('/api/quiz/stats', authUsuario, (req, res) => {
       if (!v || !v.vid) return;
       const dia = String(v.recebidoEm || '').slice(0, 10);
       if (dia && !noPeriodo(dia)) return;
-      const c = compra[v.vid] = compra[v.vid] || { n: 0, valor: 0 };
+      const c = compra[v.vid] = compra[v.vid] || { n: 0, valor: 0, cliente: '' };
       c.n++; c.valor += Number(v.valor) || 0;
+      if (!c.cliente && v.cliente) c.cliente = String(v.cliente).slice(0, 60);
     });
     const regs = [];
     _qzResp.forEach(r => { if (r.q === id && noPeriodo(r.d)) regs.push(r); });
@@ -11182,8 +11183,8 @@ app.get('/api/quiz/stats', authUsuario, (req, res) => {
         const val = r.r[b];
         if (!Array.isArray(val)) return;
         val.forEach(o => {
-          const x = porOp[b + '|' + o] = porOp[b + '|' + o] || { base: 0, compras: 0, receita: 0 };
-          x.base++; if (c) { x.compras++; x.receita += c.valor; }
+          const x = porOp[b + '|' + o] = porOp[b + '|' + o] || { base: 0, compras: 0, receita: 0, cliques: 0 };
+          x.base++; if (r.cl) x.cliques++; if (c) { x.compras++; x.receita += c.valor; }
         });
       });
       if (r.p) {
@@ -11200,8 +11201,8 @@ app.get('/api/quiz/stats', authUsuario, (req, res) => {
           const titulo = (t.blocos || []).filter(x => x.tipo === 'titulo').map(x => String(x.txt || '').replace(/\*/g, '')).pop() || t.nome;
           opcoes.push({ bloco: b.id, tela: t.id, pergunta: titulo, varias: b.modo === 'varias',
             ops: (b.ops || []).map(o => {
-              const x = porOp[b.id + '|' + o.id] || { base: 0, compras: 0, receita: 0 };
-              return { id: o.id, t: o.t, emoji: o.emoji || '', pessoas: (tot.resp[b.id] || {})[o.id] || 0, base: x.base, compras: x.compras, receita: x.receita };
+              const x = porOp[b.id + '|' + o.id] || { base: 0, compras: 0, receita: 0, cliques: 0 };
+              return { id: o.id, t: o.t, emoji: o.emoji || '', pessoas: (tot.resp[b.id] || {})[o.id] || 0, base: x.base, compras: x.compras, receita: x.receita, cliques: x.cliques };
             }) });
         }
         if (b.tipo === 'numero') {
@@ -11211,14 +11212,134 @@ app.get('/api/quiz/stats', authUsuario, (req, res) => {
         }
       });
     });
+    // ══ Depois do botao: o quiz ate a venda ══════════════════════════════════
+    // O quiz passa o id do visitante pra VSL (tmx_qid) e o pixel de la devolve,
+    // entao r.vd e o id DELE na jornada da VSL. Com isso da pra responder o que
+    // o quiz sozinho nao responde: quantos clicaram e nao chegaram, quanto quem
+    // chegou assistiu, e se abriu o checkout.
+    const EH_CHECKOUT_Q = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay/i;
+    const tipoEtapa = {};
+    (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
+      .forEach(f => ((f && f.etapas) || []).forEach(e => { if (e && e.id) tipoEtapa[e.id] = e.tipo; }));
+
+    // so as jornadas que interessam: as dos visitantes deste quiz no periodo
+    const quero = new Set(regs.filter(r => r.vd).map(r => String(r.vd)));
+    const vsl = {};                                  // vd -> { atencao, checkout }
+    if (quero.size) {
+      const jn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+        .concat(Object.values(typeof _jBuffer === 'object' && _jBuffer ? _jBuffer : {}));
+      jn.forEach(j => {
+        if (!j || !quero.has(String(j.id))) return;
+        const x = vsl[j.id] = vsl[j.id] || { atencao: 0, checkout: false };
+        (j.eventos || []).forEach(e => {
+          x.atencao = Math.max(x.atencao, Number(e.atencao) || 0);
+          if (tipoEtapa[e.etapa] === 'checkout' || (e.pg && EH_CHECKOUT_Q.test(e.pg))) x.checkout = true;
+        });
+      });
+    }
+    // A jornada da VSL guarda 7 dias; a linha do quiz, 30. Quem chegou na VSL ha
+    // mais de 7 dias ainda tem o vd, mas o quanto assistiu ja nao existe. Tratar
+    // isso como 'assistiu 0' criaria uma queda falsa na escada — entao essa
+    // pessoa sai da conta de atencao e vira um numero a parte.
+    const naVsl = r => (r.vd && vsl[r.vd]) ? vsl[r.vd] : null;
+
+    // ── a escada por etapas, toda tirada das MESMAS linhas ────────────────────
+    // Misturar contagem agregada (180 dias) com linha por pessoa (30 dias) faria
+    // uma etapa posterior ter mais gente que a anterior. Aqui e tudo de regs.
+    const escada = [];
+    (q.telas || []).forEach((t, i) => {
+      escada.push({ id: t.id, nome: t.nome || ('Tela ' + (i + 1)), grupo: 'quiz',
+                    n: regs.filter(r => (r.tel || []).indexOf(t.id) >= 0).length });
+    });
+    const clicou   = regs.filter(r => r.cl);
+    const chegou   = clicou.filter(r => r.vd);
+    const comDado  = chegou.filter(r => naVsl(r));            // jornada ainda guardada
+    const um       = comDado.filter(r => naVsl(r).atencao >= 60);
+    const cinco    = comDado.filter(r => naVsl(r).atencao >= 300);
+    const checkout = comDado.filter(r => naVsl(r).checkout);
+    const vslSemDetalhe = chegou.length - comDado.length;
+    escada.push({ id: '_clique',   nome: 'Clicou na oferta',   grupo: 'quiz', n: clicou.length });
+    escada.push({ id: '_vsl',      nome: 'Chegou na VSL',      grupo: 'vsl',  n: chegou.length, dica: 'a página carregou e o pixel viu' });
+    escada.push({ id: '_1min',     nome: 'Assistiu +1 min',    grupo: 'vsl',  n: um.length,     dica: 'atenção real, aba visível' });
+    escada.push({ id: '_5min',     nome: 'Assistiu +5 min',    grupo: 'vsl',  n: cinco.length,  dica: 'atenção real, aba visível' });
+    escada.push({ id: '_checkout', nome: 'Abriu o checkout',   grupo: 'vsl',  n: checkout.length });
+    // venda nao e aninhada no checkout: se a deteccao do checkout falhar, uma
+    // venda real sumiria da escada. Melhor aparecer fora de ordem que sumir.
+    escada.push({ id: '_compra',   nome: 'Comprou',            grupo: 'vsl',  n: regs.filter(r => comprou(r)).length });
+
+    // ── tempo no quiz ─────────────────────────────────────────────────────────
+    // Mediana, nao media: quem deixa a aba aberta uma hora puxaria a media pra
+    // cima e o numero mentiria sobre o visitante tipico.
+    const dur = r => Math.max(0, Math.round(((r.at || 0) - (r.em || 0)) / 1000));
+    const tempos = regs.filter(r => r.fim).map(dur).sort((a, b) => a - b);
+    const mediana = l => !l.length ? 0 : (l.length % 2 ? l[(l.length - 1) / 2] : Math.round((l[l.length/2 - 1] + l[l.length/2]) / 2));
+    const faixas = [['<30s', 0, 30], ['30s–1m', 30, 60], ['1–2m', 60, 120], ['2–3m', 120, 180], ['+3m', 180, Infinity]];
+    const tempo = { mediana: mediana(tempos), base: tempos.length,
+      faixas: faixas.map(f => ({ rot: f[0], n: tempos.filter(x => x >= f[1] && x < f[2]).length })) };
+
+    // ── por criativo ──────────────────────────────────────────────────────────
+    const segunda = (q.telas || [])[1] ? q.telas[1].id : null;
+    const porCri = {};
+    regs.forEach(r => {
+      const k = (r.u && r.u.ct) || '(sem criativo)';
+      const x = porCri[k] = porCri[k] || { criativo: k, fonte: (r.u && r.u.s) || '', abriram: 0, comecaram: 0, concluiram: 0, clicaram: 0, vsl: 0, compraram: 0 };
+      x.abriram++;
+      if (segunda ? (r.tel || []).indexOf(segunda) >= 0 : (r.tel || []).length > 1) x.comecaram++;
+      if (r.fim) x.concluiram++;
+      if (r.cl) x.clicaram++;
+      if (r.cl && r.vd) x.vsl++;
+      if (comprou(r)) x.compraram++;
+    });
+    const criativos = Object.values(porCri).sort((a, b) => b.abriram - a.abriram).slice(0, 30);
+
+    // ── horario (Brasilia) ────────────────────────────────────────────────────
+    const horas = new Array(24).fill(0);
+    regs.forEach(r => { if (r.em) horas[new Date(r.em - 3 * 3600000).getUTCHours()]++; });
+
+    // ── cada pessoa, uma linha ────────────────────────────────────────────────
+    const blocos = {};
+    (q.telas || []).forEach(t => {
+      const pergunta = (t.blocos || []).filter(x => x.tipo === 'titulo').map(x => String(x.txt || '').replace(/\*/g, '')).pop() || t.nome || '';
+      (t.blocos || []).forEach(b => {
+        if (b.tipo === 'opcoes') blocos[b.id] = { pergunta, tipo: 'opcoes', ops: Object.fromEntries((b.ops || []).map(o => [o.id, o.t])) };
+        if (b.tipo === 'numero') blocos[b.id] = { pergunta, tipo: 'numero', unidade: b.unidade || '' };
+      });
+    });
+    const nomePerfil = Object.fromEntries((q.perfis || []).map(p => [p.id, p.nome]));
+    const pessoas = regs.slice().sort((a, b) => (b.em || 0) - (a.em || 0)).slice(0, 150).map(r => {
+      const c = comprou(r), v = naVsl(r);
+      const respostas = Object.keys(r.r || {}).map(bid => {
+        const bl = blocos[bid]; if (!bl) return null;
+        const val = r.r[bid];
+        const txt = bl.tipo === 'opcoes'
+          ? (Array.isArray(val) ? val.map(o => bl.ops[o]).filter(Boolean).join(', ') : '')
+          : (val != null ? (val + (bl.unidade ? ' ' + bl.unidade : '')) : '');
+        return txt ? { pergunta: String(bl.pergunta).slice(0, 70), resposta: String(txt).slice(0, 80) } : null;
+      }).filter(Boolean);
+      return {
+        em: r.em, visitante: String(r.v).slice(0, 10),
+        criativo: (r.u && r.u.ct) || '', fonte: (r.u && r.u.s) || '', campanha: (r.u && r.u.c) || '',
+        perfil: r.p ? (nomePerfil[r.p] || '') : '', respostas,
+        telas: (r.tel || []).length, concluiu: !!r.fim, clicou: !!r.cl, tempo: dur(r),
+        // null = chegou na VSL mas a jornada expirou; a tela mostra '—', nao '0:00'
+        chegouVsl: !!(r.cl && r.vd), atencao: v ? v.atencao : null, checkout: !!(v && v.checkout),
+        comprou: c ? { valor: c.valor, cliente: c.cliente || '' } : null
+      };
+    });
+
     const perfis = (q.perfis || []).map(p => {
       const x = porPerfil[p.id] || { base: 0, cliques: 0, compras: 0, receita: 0 };
-      return { id: p.id, nome: p.nome, url: p.url || '', concluiram: tot.perf[p.id] || 0, base: x.base, cliques: x.cliques, compras: x.compras, receita: x.receita };
+      const doPerfil = regs.filter(r => r.p === p.id && r.cl && r.vd);
+      const comAt = doPerfil.filter(r => naVsl(r));
+      return { id: p.id, nome: p.nome, url: p.url || '', concluiram: tot.perf[p.id] || 0, base: x.base, cliques: x.cliques, compras: x.compras, receita: x.receita,
+               chegaramVsl: doPerfil.length,
+               atencaoMediana: comAt.length ? mediana(comAt.map(r => naVsl(r).atencao).sort((a, b) => a - b)) : null };
     });
 
     res.json({ ok: true, quiz: { id: q.id, nome: q.nome }, de, ate,
       abriram: tot.ab, concluiram: tot.fim, clicaram: tot.cl, compraram, receita,
       telas, opcoes, numeros, perfis,
+      escada, vslSemDetalhe, tempo, criativos, horas, pessoas,
       // quanto da conta de venda tem base: registros guardados e quantos já foram ligados a um id da VSL
       base: { registros: regs.length, ligados, retencaoDias: QUIZ_RESP_DIAS } });
   } catch (e) { res.status(500).json({ error: e.message }); }

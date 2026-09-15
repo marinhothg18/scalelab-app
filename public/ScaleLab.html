@@ -2190,7 +2190,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
 /* resultados */
 .qp-filtros{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-bottom:16px}
-.qp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+.qp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:12px;margin-bottom:16px}
 .qp-kpi{padding:14px 16px}
 .qp-kpi .qp-v{font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin-top:6px}
 .qp-kpi .qp-d{font-size:12.5px;color:var(--qp-apoio);margin-top:4px}
@@ -2234,6 +2234,37 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .qp-perfil-l .qp-trilho{height:10px}
 .qp-perfil-l .qp-dir{text-align:right;font-size:12.5px;color:var(--qp-apoio);font-variant-numeric:tabular-nums;white-space:nowrap}
 .qp-perfil-l .qp-dir b{color:var(--qp-tinta)}
+/* escada quiz → VSL e analises de baixo */
+.qp-sep-vsl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--qp-apoio);padding:10px 6px 4px;margin-top:4px;border-top:1px dashed var(--qp-linha-forte)}
+.qp-degrau.qp-vsl .qp-trilho i{background:var(--qp-bom)}
+#qz-app tr.qp-realce td{background:var(--qp-critico-suave)}
+#qz-app td.qp-mal{color:var(--qp-critico);font-weight:700}
+#qz-app td.qp-bem{color:var(--qp-bom);font-weight:700}
+#qz-app .qp-rolagem td:first-child{min-width:150px}
+.qp-para{display:block;font-size:11.5px;color:var(--qp-apoio);margin-top:2px;font-weight:400;word-break:break-all}
+.qp-fraco{color:var(--qp-fraco)}
+.qp-nw{white-space:nowrap;font-variant-numeric:tabular-nums}
+.qp-id{font-family:var(--qp-mono);font-size:11.5px;color:var(--qp-apoio);white-space:nowrap}
+#qz-app td.qp-resp{max-width:260px;font-size:12.5px;color:var(--qp-apoio);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qp-etq{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--qp-folha2);color:var(--qp-tinta);white-space:nowrap}
+.qp-etq.qp-ok{background:var(--qp-bom-suave);color:var(--qp-bom)}
+.qp-etq.qp-ruim{background:var(--qp-critico-suave);color:var(--qp-critico)}
+.qp-filtros-p{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.qp-filtros-p button{font:inherit;font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--qp-linha);background:none;color:var(--qp-apoio);cursor:pointer}
+.qp-filtros-p button span{font-variant-numeric:tabular-nums;color:var(--qp-fraco);margin-left:3px}
+.qp-filtros-p button[aria-pressed="true"]{background:var(--qp-roxo-suave);border-color:var(--qp-roxo);color:var(--qp-roxo-txt)}
+.qp-filtros-p button[aria-pressed="true"] span{color:inherit}
+.qp-hist{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:end;height:170px;padding-top:6px}
+.qp-hist>div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:5px;min-width:0}
+.qp-hist em{font-style:normal;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.qp-hist b{display:block;width:100%;max-width:72px;background:var(--qp-barra);border-radius:5px 5px 0 0}
+.qp-hist b.qp-alerta{background:var(--qp-critico)}
+.qp-hist span{font-size:11.5px;color:var(--qp-apoio);white-space:nowrap}
+.qp-horas{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:3px}
+.qp-horas i{display:block;height:34px;border-radius:4px;background:var(--qp-barra)}
+.qp-horas-rot{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:3px;margin-top:4px}
+.qp-horas-rot span{font-size:10.5px;color:var(--qp-apoio);font-variant-numeric:tabular-nums;white-space:nowrap}
+.qp-mini{display:inline-block;height:6px;border-radius:3px;background:var(--qp-barra);margin-right:8px;vertical-align:middle}
 
 /* configurar */
 .qp-config{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
@@ -36601,49 +36632,210 @@ function pintarResultados(){
 }
 function desenharResultados(d){
   var el = document.getElementById('qp-res'); if (!el) return;
+  ui.ultimoStats = d;
   if (!d.abriram){
     el.innerHTML = '<div class="qp-cartao qp-vazio"><h3>Ninguém abriu este quiz ' + rotuloPeriodo(ui.periodo) + '</h3>' +
       '<p>' + (QZ.ativo ? 'Cole o link num anúncio, ou abra você mesmo pra testar. Os números aparecem aqui na hora.' : 'O quiz está em <b>rascunho</b>: o link ainda não abre. Toque em “Colocar no ar” quando estiver pronto.') + '</p></div>';
     return;
   }
+  var mmss = function(x){ if (x == null) return '—'; x = Math.round(x); return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); };
+  var quando = function(ms){ var t = new Date(ms), p2 = function(v){ return String(v).padStart(2, '0'); };
+    return p2(t.getDate()) + '/' + p2(t.getMonth() + 1) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes()); };
+  var cartao = function(titulo, sub, corpo){
+    return '<div class="qp-cartao qp-bloco"><div class="qp-bloco-topo"><h3>' + titulo + '</h3>' + (sub ? '<span class="qp-sub">' + sub + '</span>' : '') + '</div>' + corpo + '</div>'; };
+
   var telas = d.telas || [], comecaram = telas.length > 1 ? telas[1].chegaram : d.abriram;
+  var escada = (d.escada || []).slice();
+  var n = {}; escada.forEach(function(x){ n[x.id] = x.n; });
+  var temDetalhe = escada.length && escada[0].n > 0;
+
+  // ── KPIs ──
+  var tp = d.tempo || {};
   var h = '<div class="qp-kpis">' + [
     ['Abriram', num(d.abriram), 'pelo link'],
     ['Começaram', num(comecaram), '<b>' + pct(comecaram / d.abriram) + '</b> de quem abriu'],
     ['Concluíram', num(d.concluiram), '<b>' + pct(comecaram ? d.concluiram / comecaram : 0) + '</b> de quem começou'],
     ['Foram pra oferta', num(d.clicaram), '<b>' + pct(d.concluiram ? d.clicaram / d.concluiram : 0) + '</b> de quem concluiu'],
+    ['Chegaram na VSL', temDetalhe ? num(n._vsl) : '—', temDetalhe && n._clique ? '<b>' + pct(n._vsl / n._clique) + '</b> de quem clicou' : 'sem detalhe no período'],
+    ['Tempo médio no quiz', tp.base ? mmss(tp.mediana) : '—', tp.base ? 'mediana de quem concluiu' : 'ninguém concluiu'],
     ['Compraram', num(d.compraram), (d.clicaram ? '<b>' + pct(d.compraram / d.clicaram) + '</b> de quem foi · ' : '') + brl(d.receita)]
   ].map(function(k){ return '<div class="qp-cartao qp-kpi"><div class="qp-rotulo">' + k[0] + '</div><div class="qp-v">' + k[1] + '</div><div class="qp-d">' + k[2] + '</div></div>'; }).join('') + '</div>';
 
-  // onde abandonam
-  var passos = telas.map(function(t){ return { nome:t.nome, n:t.chegaram, id:t.id }; });
-  passos.push({ nome:'Tocaram no botão da oferta', n:d.clicaram, id:'_clique' });
+  // ── O que aconteceu, etapa por etapa ──
+  // Quiz e VSL na mesma escada, com a queda de uma etapa pra outra. Sem o
+  // detalhe por pessoa (periodo alem dos 30 dias) cai nas contagens do quiz,
+  // e a parte da VSL some com um aviso em vez de aparecer zerada.
+  var passos = temDetalhe ? escada
+    : telas.map(function(t){ return { id:t.id, nome:t.nome, grupo:'quiz', n:t.chegaram }; })
+        .concat([{ id:'_clique', nome:'Clicou na oferta', grupo:'quiz', n:d.clicaram }]);
+  var topo = passos.length ? (passos[0].n || d.abriram) : d.abriram;
   var pior = -1, maior = 0;
-  if (d.abriram >= 30) for (var i = 1; i < passos.length - 1; i++){
-    if (!passos[i].n) continue;
-    var sx = (passos[i].n - passos[i + 1].n) / passos[i].n; if (sx > maior){ maior = sx; pior = i; }
+  if (d.abriram >= 30) for (var q = 1; q < passos.length - 1; q++){
+    if (passos[q].grupo !== 'quiz' || passos[q + 1].grupo !== 'quiz' || !passos[q].n) continue;
+    var sx = (passos[q].n - passos[q + 1].n) / passos[q].n; if (sx > maior){ maior = sx; pior = q; }
   }
-  h += '<div class="qp-cartao qp-bloco"><div class="qp-bloco-topo"><h3>Onde abandonam</h3><span class="qp-sub">pessoas que chegaram em cada tela</span></div><div class="qp-degraus">' +
-    passos.map(function(p, i){
-      var saem = i < passos.length - 1 ? Math.max(0, p.n - passos[i + 1].n) : null;
-      return '<div class="qp-degrau' + (i === pior ? ' qp-pior' : '') + '" title="Chegaram ' + num(p.n) + (saem != null ? ' · saíram aqui ' + num(saem) : '') + '">' +
-        '<div class="qp-r">' + esc(p.nome) + (i === pior ? '<span class="qp-chip qp-critico">▼ Maior abandono</span>' : '') + '</div>' +
-        '<div class="qp-trilho"><i style="width:' + (d.abriram ? p.n / d.abriram * 100 : 0).toFixed(2) + '%"></i></div>' +
-        '<div class="qp-num"><b>' + num(p.n) + '</b><span>' + pct(d.abriram ? p.n / d.abriram : 0, 0) + '</span>' +
-        (saem != null && p.n ? '<small>' + (i === 0 ? pct(saem / p.n) + ' nem começam' : 'saem ' + pct(saem / p.n)) + '</small>' : '<small>&nbsp;</small>') + '</div></div>';
-    }).join('') + '</div>';
+  var jaVsl = false, leituraEscada = '';
+  var degraus = passos.map(function(p, i){
+    // "saem" olha pra frente: quantos desta etapa não chegam na próxima (o mesmo sentido do chip)
+    var prox = passos[i + 1];
+    // quem chegou na VSL mas já não tem a jornada guardada não conta como quem saiu antes de 1 min
+    var baseP = prox && prox.id === '_1min' ? p.n - (d.vslSemDetalhe || 0) : p.n;
+    var saem = prox && baseP > 0 ? Math.max(0, baseP - prox.n) / baseP : null;
+    var rotSaem = saem == null ? '&nbsp;'
+      : i === 0 ? pct(saem) + ' nem começam'
+      : prox.id === '_vsl' ? pct(saem) + ' não chegam'
+      : 'saem ' + pct(saem);
+    var sep = '';
+    if (p.grupo === 'vsl' && !jaVsl){ jaVsl = true; sep = '<div class="qp-sep-vsl">↓ saiu do quiz, entrou na VSL</div>'; }
+    return sep + '<div class="qp-degrau' + (p.grupo === 'vsl' ? ' qp-vsl' : '') + (i === pior ? ' qp-pior' : '') + '" title="Chegaram ' + num(p.n) + '">' +
+      '<div class="qp-r">' + esc(p.nome) + (i === pior ? '<span class="qp-chip qp-critico">▼ Maior abandono</span>' : '') + (p.dica ? '<span class="qp-tipo">' + esc(p.dica) + '</span>' : '') + '</div>' +
+      '<div class="qp-trilho"><i style="width:' + (topo ? Math.max(p.n / topo * 100, p.n ? .6 : 0) : 0).toFixed(2) + '%"></i></div>' +
+      '<div class="qp-num"><b>' + num(p.n) + '</b><span>' + pct(topo ? p.n / topo : 0, 1) + '</span>' +
+        '<small>' + rotSaem + '</small></div></div>';
+  }).join('');
   if (pior > 0){
-    var outras = [];
-    for (var j = 1; j < passos.length - 1; j++) if (j !== pior && passos[j].n) outras.push((passos[j].n - passos[j + 1].n) / passos[j].n);
-    var media = outras.length ? outras.reduce(function(a, b){ return a + b; }, 0) / outras.length : 0;
     var telaPior = QZ.telas.filter(function(t){ return t.id === passos[pior].id; })[0];
     var varias = telaPior && telaPior.blocos.some(function(b){ return b.tipo === 'opcoes' && b.modo === 'varias'; });
-    h += '<div class="qp-leitura">Em <b>' + esc(passos[pior].nome) + '</b>, ' + pct(maior) + ' desistem' + (media > 0 ? ': cerca de ' + Math.max(1, Math.round(maior / media)) + ' vezes a média das outras telas (' + pct(media) + ')' : '') + '. ' +
-      (varias ? 'É uma tela de várias respostas, que exige marcar e ainda tocar em Continuar. Vale testar com o visual de caixinha mas avançando com um toque.' : 'Vale testar outra forma de perguntar, ou tirar a tela.') + '</div>';
-  } else if (d.abriram < 30){
-    h += '<div class="qp-leitura">Com ' + num(d.abriram) + ' pessoas ainda não dá pra apontar onde está o abandono: a diferença entre as telas pode ser acaso. A partir de 30 a tela marca a maior queda.</div>';
+    leituraEscada += '<div class="qp-leitura">Dentro do quiz, <b>' + esc(passos[pior].nome) + '</b> é onde mais desistem: ' + pct(maior) + ' param ali. ' +
+      (varias ? 'É uma tela de várias respostas, que exige marcar e ainda tocar em Continuar — vale testar avançando com um toque.' : 'Vale testar outra forma de perguntar, ou tirar a tela.') + '</div>';
   }
-  h += '</div>';
+  if (temDetalhe && n._clique){
+    var perdidos = n._clique - n._vsl;
+    leituraEscada += perdidos > 0
+      ? '<div class="qp-leitura"><b>' + num(perdidos) + ' de ' + num(n._clique) + ' que clicaram nunca chegaram na VSL.</b> ' +
+        'O clique aconteceu, mas a página não terminou de carregar antes de a pessoa desistir — ou o pixel do Central TMX não está nela.</div>'
+      : '<div class="qp-leitura">Todo mundo que clicou chegou na VSL. O que acontece depois é atenção e oferta.</div>';
+  } else if (!temDetalhe){
+    leituraEscada += '<div class="qp-leitura">O que aconteceu <b>depois do botão</b> — VSL, atenção, checkout — só existe pros últimos ' +
+      num((d.base || {}).retencaoDias || 30) + ' dias. Neste período aparecem só as etapas do quiz.</div>';
+  }
+  if (d.vslSemDetalhe){
+    leituraEscada += '<p class="qp-sub" style="margin:10px 0 0">' + num(d.vslSemDetalhe) + ' pessoa(s) chegaram na VSL há mais de 7 dias: ' +
+      'quanto assistiram já não está guardado, então ficam fora das etapas de atenção — não contam como quem saiu.</p>';
+  }
+  h += cartao('O que aconteceu, etapa por etapa', 'do anúncio à venda', '<div class="qp-degraus">' + degraus + '</div>' + leituraEscada);
+
+  // ── Onde se perde mais gente ──
+  // A porcentagem aponta a tela mais "difícil"; a quantidade aponta onde está o
+  // dinheiro. Na maior parte dos quizzes as duas não são a mesma tela.
+  var linhasPerda = [], maisGente = -1, maisPct = -1, vGente = 0, vPct = 0;
+  for (var i = 0; i < passos.length - 1; i++){
+    var a = passos[i], b = passos[i + 1];
+    if (!a.n) continue;
+    var sai = Math.max(0, a.n - b.n), tx = sai / a.n;
+    linhasPerda.push({ nome: a.nome, para: b.nome, chegaram: a.n, saem: sai, tx: tx, });
+    if (sai > vGente){ vGente = sai; maisGente = linhasPerda.length - 1; }
+    if (a.n >= 10 && tx > vPct){ vPct = tx; maisPct = linhasPerda.length - 1; }
+  }
+  if (linhasPerda.length){
+    var tb = '<div class="qp-rolagem"><table><thead><tr><th>Etapa</th><th class="qp-n">Chegaram</th><th class="qp-n">Não passaram</th><th class="qp-n">% da etapa</th></tr></thead><tbody>' +
+      linhasPerda.map(function(x, k){
+        return '<tr' + (k === maisGente ? ' class="qp-realce"' : '') + '><td><b>' + esc(x.nome) + '</b><span class="qp-para">→ ' + esc(x.para) + '</span></td>' +
+          '<td class="qp-n">' + num(x.chegaram) + '</td><td class="qp-n' + (k === maisGente ? ' qp-mal' : '') + '">' + num(x.saem) + '</td>' +
+          '<td class="qp-n' + (k === maisPct ? ' qp-mal' : '') + '">' + pct(x.tx) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    var lg = '';
+    if (maisGente >= 0 && maisPct >= 0 && maisGente !== maisPct){
+      lg = '<div class="qp-leitura"><b>' + esc(linhasPerda[maisGente].nome) + ' perde ' + num(linhasPerda[maisGente].saem) + ' pessoas; ' +
+        esc(linhasPerda[maisPct].nome) + ' perde ' + num(linhasPerda[maisPct].saem) + '.</b> A segunda tem a maior porcentagem, ' +
+        'mas consertar a primeira recupera mais gente.</div>';
+    } else if (maisGente >= 0){
+      lg = '<div class="qp-leitura"><b>' + esc(linhasPerda[maisGente].nome) + '</b> é onde mais gente fica pra trás: ' +
+        num(linhasPerda[maisGente].saem) + ' pessoas.</div>';
+    }
+    h += cartao('Onde se perde mais gente', 'em pessoas, não só em %', tb + lg);
+  }
+
+  // ── De qual anúncio vem quem conclui ──
+  var cri = (d.criativos || []).filter(function(c){ return c.abriram; });
+  if (cri.length){
+    var taxa = function(c){ return c.abriram ? c.concluiram / c.abriram : 0; };
+    var comVolume = cri.filter(function(c){ return c.abriram >= 10; });
+    var melhor = comVolume.slice().sort(function(a, b){ return taxa(b) - taxa(a); })[0];
+    var pior = comVolume.slice().sort(function(a, b){ return taxa(a) - taxa(b); })[0];
+    var tc = '<div class="qp-rolagem"><table><thead><tr><th>Criativo</th><th class="qp-n">Abriram</th><th class="qp-n">Começaram</th><th class="qp-n">Concluíram</th><th class="qp-n">Na VSL</th><th class="qp-n">Compraram</th><th class="qp-n">Taxa</th></tr></thead><tbody>' +
+      cri.map(function(c){
+        var cl = melhor && comVolume.length > 1 && c === melhor ? ' qp-bem' : (pior && comVolume.length > 1 && c === pior ? ' qp-mal' : '');
+        return '<tr><td><b>' + esc(c.criativo) + '</b>' + (c.fonte ? '<span class="qp-para">' + esc(c.fonte) + '</span>' : '') + '</td>' +
+          '<td class="qp-n">' + num(c.abriram) + '</td><td class="qp-n">' + num(c.comecaram) + '</td><td class="qp-n">' + num(c.concluiram) + '</td>' +
+          '<td class="qp-n">' + num(c.vsl) + '</td><td class="qp-n">' + num(c.compraram) + '</td><td class="qp-n' + cl + '">' + pct(taxa(c)) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    var lc = '';
+    if (melhor && pior && melhor !== pior && taxa(pior) >= 0 && taxa(melhor) > 0){
+      var vezes = taxa(pior) > 0 ? (taxa(melhor) / taxa(pior)) : null;
+      lc = '<div class="qp-leitura"><b>' + esc(melhor.criativo) + ' termina com ' + pct(taxa(melhor)) + '</b>' +
+        (vezes ? ', ' + String(Math.round(vezes * 10) / 10).replace('.', ',') + '× a taxa do ' + esc(pior.criativo) : '') +
+        '. É o criativo cuja promessa casa com a primeira tela do quiz.</div>';
+    } else if (!comVolume.length){
+      lc = '<p class="qp-sub" style="margin:10px 0 0">A comparação entre criativos aparece quando algum passar de 10 pessoas.</p>';
+    }
+    h += cartao('De qual anúncio vem quem conclui', 'pelo utm_content', tc + lc);
+  }
+
+  // ── Cada pessoa, uma linha ──
+  var ps = d.pessoas || [];
+  if (ps.length){
+    var filtros = [['todas', 'Todas'], ['concluiu', 'Concluíram'], ['vsl', 'Chegaram na VSL'], ['perdeu', 'Clicaram e não chegaram'], ['comprou', 'Compraram']];
+    var f = ui.filtroPessoa || 'todas';
+    var passa = function(x){
+      return f === 'concluiu' ? x.concluiu : f === 'vsl' ? x.chegouVsl : f === 'perdeu' ? (x.clicou && !x.chegouVsl) : f === 'comprou' ? !!x.comprou : true; };
+    var lista = ps.filter(passa), mostra = lista.slice(0, 60);
+    var tl = '<div class="qp-filtros-p">' + filtros.map(function(x){
+        var qt = ps.filter(function(y){ var g = f; f = x[0]; var ok = passa(y); f = g; return ok; }).length;
+        return '<button type="button" data-qp="filtro-pessoa" data-f="' + x[0] + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + ' <span>' + num(qt) + '</span></button>';
+      }).join('') + '</div>' +
+      (mostra.length ? '<div class="qp-rolagem"><table><thead><tr><th>Quando</th><th>Visitante</th><th>Anúncio</th><th>Perfil</th><th>Respostas</th><th class="qp-n">No quiz</th><th>Na VSL</th><th class="qp-n">Assistiu</th><th>Comprou</th></tr></thead><tbody>' +
+        mostra.map(function(x){
+          var resp = (x.respostas || []).slice(0, 2).map(function(r){ return esc(r.resposta); }).join(' · ');
+          return '<tr><td class="qp-nw">' + quando(x.em) + '</td><td class="qp-id">' + esc(x.visitante) + '</td>' +
+            '<td>' + (x.criativo ? esc(x.criativo) : '<span class="qp-fraco">—</span>') + '</td>' +
+            '<td>' + (x.perfil ? '<span class="qp-etq">' + esc(x.perfil) + '</span>' : '<span class="qp-fraco">' + (x.concluiu ? '—' : 'não concluiu') + '</span>') + '</td>' +
+            '<td class="qp-resp" title="' + esc((x.respostas || []).map(function(r){ return semAst(r.pergunta) + ': ' + r.resposta; }).join('\n')) + '">' + (resp || '<span class="qp-fraco">—</span>') + '</td>' +
+            '<td class="qp-n">' + mmss(x.tempo) + '</td>' +
+            '<td>' + (x.chegouVsl ? '<span class="qp-etq qp-ok">chegou</span>' : x.clicou ? '<span class="qp-etq qp-ruim">não chegou</span>' : '<span class="qp-fraco">—</span>') + '</td>' +
+            '<td class="qp-n">' + (x.chegouVsl ? (x.atencao == null ? '<span class="qp-fraco" title="A jornada da VSL guarda 7 dias">expirou</span>' : mmss(x.atencao)) : '—') + '</td>' +
+            '<td>' + (x.comprou ? '<span class="qp-etq qp-ok">' + esc(x.comprou.cliente ? x.comprou.cliente.split(' ')[0] : 'sim') + ' · ' + brl(x.comprou.valor) + '</span>' : '<span class="qp-fraco">não</span>') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<p class="qp-sub">Ninguém neste filtro.</p>') +
+      (lista.length > mostra.length ? '<p class="qp-sub" style="margin:10px 0 0">Mostrando as ' + mostra.length + ' mais recentes de ' + num(lista.length) + '.</p>' : '') +
+      '<p class="qp-sub" style="margin:10px 0 0">O nome só aparece em quem comprou — vem do checkout. Passe o mouse nas respostas pra ver todas.</p>';
+    h += cartao('Cada pessoa, uma linha', ps.length >= 150 ? 'as 150 mais recentes' : num(ps.length) + ' no período', tl);
+  }
+
+  // ── Quanto tempo levaram ──
+  if (tp.base){
+    var maxF = Math.max.apply(null, (tp.faixas || []).map(function(x){ return x.n; }).concat([1]));
+    var rapidos = (tp.faixas || []).slice(0, 2).reduce(function(a, x){ return a + x.n; }, 0);
+    var hist = '<div class="qp-hist">' + tp.faixas.map(function(x, k){
+        return '<div><em>' + num(x.n) + '</em><b' + (k < 2 ? ' class="qp-alerta"' : '') + ' style="height:' + Math.max(x.n / maxF * 100, x.n ? 4 : 0).toFixed(1) + '%"></b><span>' + esc(x.rot) + '</span></div>';
+      }).join('') + '</div>' +
+      '<div class="qp-leitura">' + (rapidos
+        ? '<b>' + num(rapidos) + ' de ' + num(tp.base) + ' terminaram em menos de 1 minuto</b> — rápido demais pra ter lido. Vale ver na lista se esses chegam na VSL.'
+        : 'Ninguém atravessou o quiz correndo: todo mundo levou pelo menos 1 minuto.') + '</div>';
+    h += cartao('Quanto tempo levaram no quiz', 'de quem concluiu · mediana ' + mmss(tp.mediana), hist);
+  }
+
+  // ── Qual perfil assiste e compra ──
+  var pf = (d.perfis || []).filter(function(p){ return p.concluiram || p.base; });
+  if (pf.length){
+    var final = botoesDeLink().map(function(x){ return x.b; }).pop();
+    var tp2 = '<div class="qp-rolagem"><table><thead><tr><th>Perfil</th><th class="qp-n">Concluíram</th><th class="qp-n">Chegaram na VSL</th><th class="qp-n">Atenção na VSL</th><th class="qp-n">Compraram</th><th class="qp-n">Receita</th></tr></thead><tbody>' +
+      pf.map(function(p){
+        var destino = final && !final.porPerfil ? final.url : p.url;
+        return '<tr><td><b>' + esc(p.nome) + '</b><span class="qp-para">→ ' + esc(destino || 'sem link') + '</span></td>' +
+          '<td class="qp-n">' + num(p.concluiram) + '</td><td class="qp-n">' + num(p.chegaramVsl || 0) + '</td>' +
+          '<td class="qp-n">' + (p.atencaoMediana == null ? '—' : mmss(p.atencaoMediana)) + '</td>' +
+          '<td class="qp-n">' + num(p.compras) + '</td><td class="qp-n">' + brl(p.receita) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    var comAt = pf.filter(function(p){ return p.atencaoMediana != null && p.chegaramVsl >= 3; });
+    var lp = '';
+    if (comAt.length >= 2){
+      var mais = comAt.slice().sort(function(a, b){ return b.atencaoMediana - a.atencaoMediana; })[0];
+      var menos = comAt.slice().sort(function(a, b){ return a.atencaoMediana - b.atencaoMediana; })[0];
+      if (mais !== menos) lp = '<div class="qp-leitura"><b>“' + esc(mais.nome) + '” assiste ' + mmss(mais.atencaoMediana) + '; “' + esc(menos.nome) + '”, ' + mmss(menos.atencaoMediana) + '.</b> ' +
+        'Se os dois vão pra mesma VSL, o perfil que sai cedo talvez precise de uma página própria — o quiz já permite link por perfil.</div>';
+    }
+    h += cartao('Qual perfil assiste e compra', 'resultado do quiz × VSL', tp2 + lp);
+  }
 
   // respostas
   var perguntas = (d.opcoes || []).map(function(o){ return { id:o.bloco, nome:semAst(o.pergunta), tipo:'opcoes', dado:o }; })
@@ -36656,18 +36848,36 @@ function desenharResultados(d){
       desenharPergunta(atual, d) + '</div>';
   }
 
-  // perfis
-  if ((d.perfis || []).length && d.concluiram){
-    var final = botoesDeLink().map(function(x){ return x.b; }).pop();
-    var maxC = Math.max.apply(null, d.perfis.map(function(p){ return p.concluiram; }).concat([1]));
-    h += '<div class="qp-cartao qp-bloco"><div class="qp-bloco-topo"><h3>Perfis do resultado</h3><span class="qp-sub">quem concluiu, e pra onde foi</span></div>' +
-      d.perfis.map(function(p){
-        var destino = final && !final.porPerfil ? final.url : p.url;
-        return '<div class="qp-perfil-l"><div><b>' + esc(p.nome) + '</b><code>→ ' + esc(destino || 'sem link') + '</code></div>' +
-          '<div class="qp-trilho"><i style="width:' + (p.concluiram / maxC * 100).toFixed(1) + '%"></i></div>' +
-          '<div class="qp-dir"><b>' + pct(p.concluiram / d.concluiram, 0) + '</b> de quem concluiu<br>' + (p.base ? 'compra <b>' + pct(p.compras / p.base) + '</b> · ' + brl(p.receita) : 'sem venda ligada ainda') + '</div></div>';
-      }).join('') + '</div>';
+
+  // ── Qual resposta leva mais pra oferta ──
+  var opSel = (d.opcoes || []).filter(function(o){ return o.bloco === ui.pergunta; })[0];
+  if (opSel && (opSel.ops || []).some(function(o){ return o.base; })){
+    var ops = opSel.ops.filter(function(o){ return o.base; });
+    var maxB = Math.max.apply(null, ops.map(function(o){ return o.base; }));
+    h += cartao('Qual resposta leva mais pra oferta', semAst(opSel.pergunta).slice(0, 60),
+      '<div class="qp-rolagem"><table><thead><tr><th>Resposta</th><th class="qp-n">Responderam</th><th class="qp-n">Foram pra oferta</th><th class="qp-n">Taxa</th></tr></thead><tbody>' +
+      ops.map(function(o){
+        return '<tr><td><span class="qp-mini" style="width:' + Math.round(o.base / maxB * 70) + 'px"></span>' + (o.emoji ? esc(o.emoji) + ' ' : '') + esc(o.t) + '</td>' +
+          '<td class="qp-n">' + num(o.base) + '</td><td class="qp-n">' + num(o.cliques || 0) + '</td><td class="qp-n">' + pct(o.base ? (o.cliques || 0) / o.base : 0) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="qp-sub" style="margin:10px 0 0">Segue a pergunta escolhida no card de Respostas.</p>');
   }
+
+  // ── Que horas fazem o quiz ──
+  var hs = d.horas || [];
+  var totH = hs.reduce(function(a, x){ return a + x; }, 0);
+  if (totH){
+    var maxH = Math.max.apply(null, hs.concat([1]));
+    // a janela de 3 horas seguidas com mais gente
+    var ini = 0, melhorJ = -1;
+    for (var k = 0; k < 24; k++){ var som = hs[k] + hs[(k + 1) % 24] + hs[(k + 2) % 24]; if (som > melhorJ){ melhorJ = som; ini = k; } }
+    h += cartao('Que horas fazem o quiz', 'abriram por hora · horário de Brasília',
+      '<div class="qp-horas">' + hs.map(function(x, k){ return '<i title="' + k + 'h · ' + num(x) + '" style="opacity:' + (x ? Math.max(.12, x / maxH) : .06).toFixed(2) + '"></i>'; }).join('') + '</div>' +
+      '<div class="qp-horas-rot">' + hs.map(function(x, k){ return '<span>' + (k % 3 === 0 ? k + 'h' : '') + '</span>'; }).join('') + '</div>' +
+      (totH >= 20 ? '<div class="qp-leitura"><b>O pico é das ' + ini + 'h às ' + ((ini + 3) % 24) + 'h</b>: ' + pct(melhorJ / totH, 0) + ' de quem abriu, em 3 horas do dia.</div>'
+                  : '<p class="qp-sub" style="margin:10px 0 0">O pico aparece a partir de 20 pessoas.</p>'));
+  }
+
   if (!d.base || !d.base.ligados){
     h += '<p class="qp-nota">Nenhuma venda ligada a este quiz ainda. Pra “qual resposta compra mais” funcionar, a oferta precisa ter o <b>pixel do Central TMX</b> (aba Pixel em Funis) e o webhook de vendas ligado. O link do quiz já manda o <b>tmx_qid</b> sozinho.</p>';
   }
@@ -36854,6 +37064,11 @@ function ligarEventos(raiz){
       // "Escolher datas" abre os campos já com a última semana, e só busca no Aplicar
       if (ui.periodo === 'custom' && !ui.de){ ui.de = hoje(6); ui.ate = hoje(0); }
       pintarResultados(); return;
+    }
+    if (qp === 'filtro-pessoa'){
+      ui.filtroPessoa = el.dataset.f;
+      if (ui.ultimoStats) desenharResultados(ui.ultimoStats);
+      return;
     }
     if (qp === 'aplicar-datas'){
       var de = (document.getElementById('qp-de') || {}).value, ate = (document.getElementById('qp-ate') || {}).value;
