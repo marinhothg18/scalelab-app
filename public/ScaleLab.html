@@ -1637,6 +1637,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dm-neutro{color:var(--text2)}
 .dm-usos{color:var(--text3)}
 
+/* datas personalizadas nos resultados do quiz */
+.qp-datas{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.qp-datas input{background:var(--bg2,#fff);border:1px solid var(--border,#dce1ec);border-radius:8px;padding:6px 9px;
+  font-size:12.5px;font-family:inherit;color:var(--text,#0b1020)}
+.qp-datas span{font-size:12px;color:var(--text2,#5b6178)}
+
 /* caixa de diálogo do desenho — centralizada, com a cara do sistema */
 .dz-caixa{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px}
 .dz-caixa-fundo{position:absolute;inset:0;background:rgba(8,10,18,.62);backdrop-filter:blur(2px)}
@@ -36019,7 +36025,22 @@ function slugUnico(base, ignorarId){
   return s;
 }
 function hoje(voltar){ return (typeof hojeBR === 'function') ? hojeBR(voltar || 0) : new Date(Date.now() - 3 * 3600000 - (voltar || 0) * 86400000).toISOString().slice(0, 10); }
-function periodoDatas(p){ return p === 'hoje' ? { de:hoje(0), ate:hoje(0) } : p === '30d' ? { de:hoje(29), ate:hoje(0) } : { de:hoje(6), ate:hoje(0) }; }
+function periodoDatas(p){
+  if (p === 'custom' && ui.de && ui.ate) return { de: ui.de, ate: ui.ate };
+  return p === 'hoje' ? { de:hoje(0), ate:hoje(0) } : p === 'ontem' ? { de:hoje(1), ate:hoje(1) }
+       : p === '30d' ? { de:hoje(29), ate:hoje(0) } : { de:hoje(6), ate:hoje(0) };
+}
+// O servidor guarda as CONTAGENS por 180 dias, mas o detalhe de cada pessoa
+// (resposta, ligacao com a VSL, venda) so por 30. Um periodo antigo mostraria
+// contagem certa e '0 compras' — e ninguem desconfiaria que e falta de dado.
+var QZ_DIAS_CONTAGEM = 180, QZ_DIAS_PESSOA = 30;
+function rotuloPeriodo(p){
+  if (p === 'custom' && ui.de && ui.ate){
+    var f = function(x){ var a = x.split('-'); return a[2] + '/' + a[1]; };
+    return ui.de === ui.ate ? ('em ' + f(ui.de)) : ('de ' + f(ui.de) + ' a ' + f(ui.ate));
+  }
+  return { hoje:'hoje', ontem:'ontem', '7d':'nos últimos 7 dias', '30d':'nos últimos 30 dias' }[p] || '';
+}
 function hostLink(q){ var d = String((q && q.dominio) || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, ''); return d || location.host; }
 function linkDo(q){ return 'https://' + hostLink(q) + '/q/' + (q ? q.slug : ''); }
 function token(){ try { return localStorage.getItem('sl_session_token') || ''; } catch (e) { return ''; } }
@@ -36553,10 +36574,26 @@ function editorAparencia(){
 /* ═════════════ RESULTADOS ═════════════ */
 function pintarResultados(){
   var v = document.getElementById('qp-vista');
+  var p = periodoDatas(ui.periodo);
+  var limiteContagem = hoje(QZ_DIAS_CONTAGEM - 1), limitePessoa = hoje(QZ_DIAS_PESSOA - 1);
+  // aviso só quando o período atravessa a janela do detalhe por pessoa
+  var aviso = p.de < limitePessoa
+    ? '<div class="qp-nota" style="margin:0 0 14px">Antes de <b>' + limitePessoa.split('-').reverse().slice(0,2).join('/') +
+      '</b> só existem as <b>contagens</b> (abriram, concluíram, telas, perfis). As respostas de cada pessoa, a ida pra VSL ' +
+      'e as vendas ligadas ao quiz ficam guardadas por ' + QZ_DIAS_PESSOA + ' dias — nesse trecho elas aparecem zeradas ' +
+      'por falta de dado, não porque ninguém comprou.</div>' : '';
   v.innerHTML = '<div class="qp-filtros"><div class="qp-segmentado" role="group" aria-label="Período">' +
-    [['hoje', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias']].map(function(p){ return '<button type="button" data-qp="periodo" data-p="' + p[0] + '" aria-pressed="' + (ui.periodo === p[0]) + '">' + p[1] + '</button>'; }).join('') +
-    '</div><span class="qp-sub" style="margin-left:auto">Números ao vivo · atualizam quando você abre a aba</span></div><div id="qp-res"><p class="qp-sub">Buscando os números…</p></div>';
-  var p = periodoDatas(ui.periodo), meu = ++statsPedido, id = QZ.id;
+    [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['7d', '7 dias'], ['30d', '30 dias'], ['custom', 'Escolher datas']].map(function(x){
+      return '<button type="button" data-qp="periodo" data-p="' + x[0] + '" aria-pressed="' + (ui.periodo === x[0]) + '">' + x[1] + '</button>'; }).join('') +
+    '</div>' +
+    (ui.periodo === 'custom'
+      ? '<div class="qp-datas"><input type="date" id="qp-de" value="' + esc(ui.de || hoje(6)) + '" min="' + limiteContagem + '" max="' + hoje(0) + '">' +
+        '<span>até</span><input type="date" id="qp-ate" value="' + esc(ui.ate || hoje(0)) + '" min="' + limiteContagem + '" max="' + hoje(0) + '">' +
+        '<button type="button" class="qp-btn qp-sm" data-qp="aplicar-datas">Aplicar</button></div>'
+      : '') +
+    '<span class="qp-sub" style="margin-left:auto">Números ao vivo · atualizam quando você abre a aba</span></div>' +
+    aviso + '<div id="qp-res"><p class="qp-sub">Buscando os números…</p></div>';
+  var meu = ++statsPedido, id = QZ.id;
   fetch('/api/quiz/stats?quiz=' + encodeURIComponent(id) + '&de=' + p.de + '&ate=' + p.ate)
     .then(function(r){ return r.ok ? r.json() : r.json().then(function(e){ throw new Error(e.error || 'Falha'); }); })
     .then(function(d){ if (meu !== statsPedido || !QZ || QZ.id !== id) return; desenharResultados(d); })
@@ -36565,7 +36602,7 @@ function pintarResultados(){
 function desenharResultados(d){
   var el = document.getElementById('qp-res'); if (!el) return;
   if (!d.abriram){
-    el.innerHTML = '<div class="qp-cartao qp-vazio"><h3>Ninguém abriu este quiz ' + { hoje:'hoje', '7d':'nos últimos 7 dias', '30d':'nos últimos 30 dias' }[ui.periodo] + '</h3>' +
+    el.innerHTML = '<div class="qp-cartao qp-vazio"><h3>Ninguém abriu este quiz ' + rotuloPeriodo(ui.periodo) + '</h3>' +
       '<p>' + (QZ.ativo ? 'Cole o link num anúncio, ou abra você mesmo pra testar. Os números aparecem aqui na hora.' : 'O quiz está em <b>rascunho</b>: o link ainda não abre. Toque em “Colocar no ar” quando estiver pronto.') + '</p></div>';
     return;
   }
@@ -36812,7 +36849,21 @@ function ligarEventos(raiz){
       salvar(); pintarMontar(); aviso('Tela adicionada');
       return;
     }
-    if (qp === 'periodo'){ ui.periodo = el.dataset.p; pintarResultados(); return; }
+    if (qp === 'periodo'){
+      ui.periodo = el.dataset.p;
+      // "Escolher datas" abre os campos já com a última semana, e só busca no Aplicar
+      if (ui.periodo === 'custom' && !ui.de){ ui.de = hoje(6); ui.ate = hoje(0); }
+      pintarResultados(); return;
+    }
+    if (qp === 'aplicar-datas'){
+      var de = (document.getElementById('qp-de') || {}).value, ate = (document.getElementById('qp-ate') || {}).value;
+      if (!de || !ate){ aviso('Escolha as duas datas.'); return; }
+      if (de > ate){ var t = de; de = ate; ate = t; }          // invertido: troca em vez de dar erro
+      var min = hoje(QZ_DIAS_CONTAGEM - 1);
+      if (de < min){ de = min; aviso('O quiz guarda ' + QZ_DIAS_CONTAGEM + ' dias. Comecei em ' + min.split('-').reverse().join('/') + '.'); }
+      ui.de = de; ui.ate = ate; ui.periodo = 'custom';
+      pintarResultados(); return;
+    }
     if (qp === 'ir-botao'){
       var bl = botoesDeLink()[0];
       ui.aba = 'montar'; ui.modo = 'telas';
