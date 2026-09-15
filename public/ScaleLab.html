@@ -2158,6 +2158,16 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .qp-medido b{color:var(--qp-tinta);font-variant-numeric:tabular-nums}
 .qp-medido .qp-ir{margin-left:auto;background:none;border:none;color:var(--qp-acento);font-weight:600;cursor:pointer;padding:0;font-family:inherit}
 .qp-amostras{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.qp-cores-bloco{margin-top:14px;padding-top:12px;border-top:1px solid var(--qp-linha)}
+.qp-cores-bloco .qp-campo{margin:12px 0 0}
+.qp-cores-grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px}
+.qp-cor-item{display:flex;align-items:center;gap:9px;min-width:0}
+.qp-cor-item input[type=color]{flex:0 0 auto;width:34px;height:34px;padding:0;border:1px solid var(--qp-linha-forte);border-radius:9px;background:none;cursor:pointer}
+.qp-cor-nome{min-width:0;line-height:1.3}
+.qp-cor-nome b{display:block;font-size:12.5px;font-weight:600}
+.qp-cor-nome b i{font-style:normal;background:var(--qp-roxo-suave);border-radius:4px;padding:0 3px}
+.qp-cor-nome span{font-size:11.5px;color:var(--qp-fraco)}
+.qp-cor-voltar{font:inherit;font-size:11.5px;padding:0;border:none;background:none;color:var(--qp-roxo-txt);cursor:pointer;text-decoration:underline}
 .qp-amostra{width:30px;height:30px;border-radius:50%;border:3px solid var(--qp-folha);box-shadow:0 0 0 1px var(--qp-linha-forte);cursor:pointer;padding:0}
 .qp-amostra[aria-pressed="true"]{box-shadow:0 0 0 2px var(--qp-roxo)}
 .qp-amostras input[type=color]{width:34px;height:30px;border:1px solid var(--qp-linha);border-radius:8px;background:var(--qp-folha);padding:2px;cursor:pointer}
@@ -36469,6 +36479,56 @@ function resumoBloco(b){
   }
   return '';
 }
+/* Cores de cada bloco. O que ele escolher aqui só vale pra aquele bloco; o
+   resto continua seguindo o tema da aba Aparência. Os nomes batem com o
+   CORES_BLOCO do quiz-motor.js — mexeu num, mexe no outro. */
+var CORES_BLOCO = {
+  titulo:     [['texto', 'Cor do texto', 'tinta'], ['destaque', 'Marca-texto dos *destaques*', 'destaque']],
+  texto:      [['texto', 'Cor do texto', 'apoio'], ['destaque', 'Marca-texto dos *destaques*', 'destaque']],
+  prova:      [['texto', 'Cor do texto', 'apoio'], ['destaque', 'Marca-texto dos *destaques*', 'destaque']],
+  botao:      [['fundo', 'Fundo do botão', 'cor'], ['texto', 'Texto do botão', 'botaoTxt']],
+  opcoes:     [['fundo', 'Fundo da opção', 'fundo'], ['borda', 'Borda da opção', 'linha'], ['texto', 'Texto da opção', 'tinta'], ['marcada', 'Opção marcada', 'cor']],
+  numero:     [['numero', 'Cor do número', 'tinta'], ['barra', 'Barrinha de arrastar', 'cor']],
+  campo:      [['borda', 'Borda do campo', 'linha'], ['foco', 'Borda ao digitar', 'cor']],
+  cronometro: [['numeros', 'Números e caixinhas', 'alerta'], ['rotulo', 'Texto de cima', 'apoio']],
+  grafico:    [['linha', 'Cor da linha', 'cor', 'tema'], ['inicio', 'Começo da linha', 'alerta', 'gradiente'], ['meio', 'Meio da linha', 'meio', 'gradiente'], ['fim', 'Fim da linha', 'bom', 'gradiente']],
+  medidores:  [['linha', 'Cor das barras', 'cor', 'tema'], ['antes', 'Barra de hoje', 'alerta', 'semaforo'], ['depois', 'Barra do depois', 'bom', 'semaforo']],
+  carregando: [['titulo', 'Título e barra de cima', 'tinta'], ['barra', 'Barra de cada etapa', 'cor']]
+};
+function corOk(c){ return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(c || '')) ? c : ''; }
+function lumCor(hex){
+  var c = String(hex || '#ffffff').replace('#', '');
+  if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  var v = [0, 2, 4].map(function(i){ return parseInt(c.substr(i, 2), 16) / 255; })
+    .map(function(x){ return isNaN(x) ? 1 : (x <= .03928 ? x / 12.92 : Math.pow((x + .055) / 1.055, 2.4)); });
+  return .2126 * v[0] + .7152 * v[1] + .0722 * v[2];
+}
+function corDoTema(chave){
+  var t = QZ.tema || {}, fundo = corOk(t.fundo) || '#FFFFFF', cor = corOk(t.cor) || '#2340B8', escuro = lumCor(fundo) < .2;
+  return { cor:cor, fundo:fundo, destaque:corOk(t.destaque) || '#FFE066',
+           tinta: escuro ? '#F3F5FB' : '#0B1020', apoio: escuro ? '#A9B0C6' : '#5B6178', linha: escuro ? '#3B4152' : '#DCE1EC',
+           alerta:'#DC2626', bom:'#16A34A', meio:'#F59E0B', botaoTxt: lumCor(cor) > .55 ? '#14172B' : '#FFFFFF' }[chave] || '#000000';
+}
+var CANTOS_BLOCO = { imagem:1, botao:1, opcoes:1, campo:1 };   // o que tem canto arredondado pra mudar
+function coresDoBloco(b){
+  var campos = (CORES_BLOCO[b.tipo] || []).filter(function(f){
+    if (!f[3]) return true;
+    if (b.tipo === 'grafico') return f[3] === (b.estilo === 'tema' ? 'tema' : 'gradiente');
+    return f[3] === (b.estilo === 'tema' ? 'tema' : 'semaforo');
+  });
+  var cantos = CANTOS_BLOCO[b.tipo] ? seg('raio', 'Cantos deste bloco', { tema:'Do tema', reto:'Retos', suave:'Suaves', redondo:'Redondos' }, b.raio || 'tema') : '';
+  if (!campos.length && !cantos) return '';
+  var c = b.cor || {};
+  if (!campos.length) return '<div class="qp-cores-bloco">' + cantos + '</div>';
+  return '<div class="qp-cores-bloco"><div class="qp-rotulo">Cores deste bloco</div><div class="qp-cores-grade">' +
+    campos.map(function(f){
+      var propria = corOk(c[f[0]]);
+      return '<div class="qp-cor-item"><input type="color" data-cor="' + f[0] + '" value="' + (propria || corDoTema(f[2])) + '" aria-label="' + esc(semAst(f[1])) + '">' +
+        '<div class="qp-cor-nome"><b>' + esc(f[1]).replace(/\*([^*]+)\*/g, '<i>$1</i>') + '</b>' +
+        (propria ? '<button type="button" class="qp-cor-voltar" data-acao="cor-tema" data-cor="' + f[0] + '">voltar pra cor do tema</button>' : '<span>seguindo o tema</span>') +
+        '</div></div>';
+    }).join('') + '</div>' + cantos + '</div>';
+}
 function corpoBloco(b, tela){
   var perfis = QZ.perfis || [];
   switch (b.tipo){
@@ -36571,7 +36631,7 @@ function pintarEditor(){
       '<div class="qp-bc-mini"><button class="qp-btn qp-xs" type="button" data-acao="bloco-subir"' + (i === 0 ? ' disabled' : '') + ' aria-label="Subir bloco">↑</button>' +
       '<button class="qp-btn qp-xs" type="button" data-acao="bloco-descer"' + (i === tela.blocos.length - 1 ? ' disabled' : '') + ' aria-label="Descer bloco">↓</button>' +
       '<button class="qp-x" type="button" data-acao="bloco-tirar" aria-label="Excluir bloco">×</button></div></div>' +
-      (on ? '<div class="qp-bc-corpo">' + corpoBloco(b, tela) + '</div>' : '') + '</div>';
+      (on ? '<div class="qp-bc-corpo">' + corpoBloco(b, tela) + coresDoBloco(b) + '</div>' : '') + '</div>';
   });
   h += '</div><button class="qp-btn qp-sm qp-fantasma" type="button" data-acao="menu-blocos" aria-expanded="' + ui.menuBlocos + '" style="margin-top:10px">+ Adicionar bloco</button>' +
     (ui.menuBlocos ? '<div class="qp-menu-blocos">' + Object.keys(TIPO_BLOCO).map(function(k){ return '<button class="qp-btn qp-sm" type="button" data-acao="add-bloco" data-tipo="' + k + '">' + TIPO_BLOCO[k] + '</button>'; }).join('') + '</div>' : '');
@@ -37287,6 +37347,10 @@ function ligarEventos(raiz){
       ui.sel = (QZ.telas[pos] || QZ.telas[pos - 1]).id; ui.aberto = null;
     }
     var b = blocoDoEl(el);
+    if (b && acao === 'cor-tema'){
+      if (b.cor) delete b.cor[el.dataset.cor];
+      salvar(); pintarEditor(); atualizarPrevia(); return;
+    }
     if (b && /^img-/.test(acao || '')){
       var pend = ui.imgPendente;
       if (acao === 'img-cancelar' || !pend){ ui.imgPendente = null; pintarEditor(); return; }
@@ -37326,6 +37390,11 @@ function ligarEventos(raiz){
     if (el.id === 'qp-nome'){ QZ.nome = el.value; el.size = Math.max(10, Math.min(40, el.value.length + 2)); salvar(); return; }
     if (el.dataset.temaTxt){ QZ.tema[el.dataset.temaTxt] = el.value; salvar(); atualizarPrevia(); return; }
     if (el.dataset.temaCor){ QZ.tema[el.dataset.temaCor] = el.value; salvar(); atualizarPrevia(); return; }
+    if (el.dataset.cor){
+      var bc = blocoDoEl(el); if (!bc) return;
+      bc.cor = bc.cor || {}; bc.cor[el.dataset.cor] = el.value;
+      salvar(); atualizarPrevia(); return;
+    }
     if (el.dataset.perfilCampo){
       var p = (QZ.perfis || []).filter(function(x){ return x.id === el.closest('[data-perfil]').dataset.perfil; })[0];
       if (p){ p[el.dataset.perfilCampo] = el.value; salvar(); }
@@ -37381,6 +37450,7 @@ function ligarEventos(raiz){
     if (el.dataset.temaSel){ QZ.tema[el.dataset.temaSel] = el.value; salvar(); atualizarPrevia(); return; }
     if (el.dataset.temaCheck){ QZ.tema[el.dataset.temaCheck] = el.checked; salvar(); atualizarPrevia(); return; }
     if (el.dataset.temaCor){ pintarEditor(); return; }
+    if (el.dataset.cor){ pintarEditor(); return; }   // fechou o seletor: mostra o "voltar pra cor do tema"
     if (el.dataset.perfilCampo){ if (ui.aba === 'montar') pintarEditor(); return; }
     if (el.id === 'qp-sel-pergunta'){ ui.pergunta = el.value; pintarResultados(); return; }
     var b = blocoDoEl(el); if (!b) return;

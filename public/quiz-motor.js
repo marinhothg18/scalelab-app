@@ -24,6 +24,7 @@
 
 var CSS = [
 '.qz{--q-cor:#2340B8;--q-destaque:#FFE066;--q-destaque-txt:#14172B;--q-fundo:#FFFFFF;--q-tinta:#0B1020;--q-apoio:#5B6178;--q-linha:#DCE1EC;--q-suave:#F2F4F9;--q-raio:14px;--q-alt:56px;--q-ft:"Public Sans";--q-fx:"Public Sans";',
+'  --q-botao-txt:#FFFFFF;--q-alerta:#DC2626;--q-bom:#16A34A;--q-meio:#F59E0B;',
 '  background:var(--q-fundo);color:var(--q-tinta);font-family:var(--q-fx),system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;position:relative;',
 '  box-sizing:border-box;-webkit-font-smoothing:antialiased;text-align:left;line-height:1.45;font-size:15px;min-height:100%}',
 '.qz *,.qz *::before,.qz *::after{box-sizing:border-box}',
@@ -39,6 +40,7 @@ var CSS = [
 '.qz-contido .qz-corpo{overflow-y:auto;scrollbar-width:none;min-height:0}',
 '.qz-contido .qz-corpo::-webkit-scrollbar{display:none}',
 '.qz-corpo.qz-centro{justify-content:center}',
+'.qz-b{display:flex;flex-direction:column;gap:14px;min-width:0}',
 '.qz-t{font-family:var(--q-ft),system-ui,sans-serif;font-weight:800;letter-spacing:-.02em;margin:0;padding:0;text-wrap:balance;color:var(--q-tinta);border:none;background:none}',
 '.qz-t-g{font-size:25px;line-height:1.18}',
 '.qz-t-m{font-size:21px;line-height:1.24}',
@@ -63,7 +65,7 @@ var CSS = [
 '.qz-marcada .qz-mk-bolinha{border-color:var(--q-cor);box-shadow:inset 0 0 0 4px var(--q-fundo);background:var(--q-cor)}',
 '.qz-marcada .qz-mk-caixinha{background:var(--q-cor);border-color:var(--q-cor)}',
 '.qz-botao{min-height:var(--q-alt);width:100%;border:none;border-radius:var(--q-raio);padding:12px 16px;font-size:16px;font-weight:700;letter-spacing:.01em;',
-'  background:var(--q-cor);color:#fff;cursor:pointer;font-family:var(--q-ft),system-ui,sans-serif;box-shadow:inset 0 -3px 0 rgba(0,0,0,.14);-webkit-tap-highlight-color:transparent}',
+'  background:var(--q-cor);color:var(--q-botao-txt);cursor:pointer;font-family:var(--q-ft),system-ui,sans-serif;box-shadow:inset 0 -3px 0 rgba(0,0,0,.14);-webkit-tap-highlight-color:transparent}',
 '.qz-botao:disabled{background:color-mix(in srgb,var(--q-apoio) 35%,var(--q-fundo));box-shadow:none;cursor:not-allowed}',
 '.qz-prova{margin:0;text-align:center;font-size:14px;line-height:1.45;color:var(--q-apoio)}',
 '.qz-num{display:flex;flex-direction:column;align-items:center;gap:16px;margin:4px 0}',
@@ -78,10 +80,10 @@ var CSS = [
 '.qz-crono{display:flex;flex-direction:column;align-items:center;gap:8px}',
 '.qz-crono-rot{font-size:13px;color:var(--q-apoio);text-align:center}',
 '.qz-crono-cx{display:flex;align-items:center;gap:6px}',
-'.qz-crono-cx span{min-width:62px;padding:8px 6px 6px;border-radius:12px;background:rgba(220,38,38,.09);border:1px solid rgba(220,38,38,.22);text-align:center}',
-'.qz-crono-cx b{display:block;font-size:27px;font-weight:800;color:#DC2626;font-variant-numeric:tabular-nums;line-height:1.05;font-family:var(--q-ft),system-ui,sans-serif}',
-'.qz-crono-cx small{font-size:11px;color:#D46A6A;font-weight:600}',
-'.qz-crono-cx i{font-style:normal;font-weight:800;color:#DC2626}',
+'.qz-crono-cx span{min-width:62px;padding:8px 6px 6px;border-radius:12px;background:color-mix(in srgb,var(--q-alerta) 9%,var(--q-fundo));border:1px solid color-mix(in srgb,var(--q-alerta) 22%,transparent);text-align:center}',
+'.qz-crono-cx b{display:block;font-size:27px;font-weight:800;color:var(--q-alerta);font-variant-numeric:tabular-nums;line-height:1.05;font-family:var(--q-ft),system-ui,sans-serif}',
+'.qz-crono-cx small{font-size:11px;color:color-mix(in srgb,var(--q-alerta) 62%,var(--q-apoio));font-weight:600}',
+'.qz-crono-cx i{font-style:normal;font-weight:800;color:var(--q-alerta)}',
 '.qz-graf svg{width:100%;height:auto;display:block;overflow:visible}',
 '.qz-med{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
 '.qz-med>div{border:1px solid var(--q-linha);border-radius:var(--q-raio);padding:14px 10px 12px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}',
@@ -122,6 +124,37 @@ function lum(hex){
   return .2126 * v[0] + .7152 * v[1] + .0722 * v[2];
 }
 function corValida(c, padrao){ return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(c || '')) ? c : padrao; }
+
+/* Cores de um bloco só. Cada nome vira uma variável dentro da caixa do bloco,
+   então mudar a cor do cronômetro não mexe no resto da tela. O que ele não
+   escolher continua vindo do tema (aba Aparência). */
+var CORES_BLOCO = {
+  titulo:     { texto:'--q-tinta', destaque:'--q-destaque' },
+  texto:      { texto:'--q-apoio', destaque:'--q-destaque' },
+  prova:      { texto:'--q-apoio', destaque:'--q-destaque' },
+  imagem:     {},
+  botao:      { fundo:'--q-cor', texto:'--q-botao-txt' },
+  opcoes:     { fundo:'--q-fundo', borda:'--q-linha', texto:'--q-tinta', marcada:'--q-cor' },
+  numero:     { numero:'--q-tinta', barra:'--q-cor' },
+  campo:      { borda:'--q-linha', foco:'--q-cor' },
+  cronometro: { numeros:'--q-alerta', rotulo:'--q-apoio' },
+  grafico:    { linha:'--q-cor', inicio:'--q-alerta', meio:'--q-meio', fim:'--q-bom' },
+  medidores:  { antes:'--q-alerta', depois:'--q-bom', linha:'--q-cor' },
+  carregando: { titulo:'--q-tinta', barra:'--q-cor' }
+};
+function estiloBloco(b){
+  var mapa = CORES_BLOCO[b.tipo] || {}, c = b.cor || {}, fora = [];
+  Object.keys(mapa).forEach(function(k){
+    var v = corValida(c[k], ''); if (v) fora.push(mapa[k] + ':' + v);
+  });
+  // texto do botão e do marca-texto: se ele não escolher, o motor põe claro ou
+  // escuro conforme o fundo — senão sai branco no amarelo
+  if (b.tipo === 'botao' && corValida(c.fundo, '') && !corValida(c.texto, '')) fora.push('--q-botao-txt:' + (lum(c.fundo) > .55 ? '#14172B' : '#FFFFFF'));
+  if (corValida(c.destaque, '')) fora.push('--q-destaque-txt:' + (lum(c.destaque) > .45 ? '#14172B' : '#FFFFFF'));
+  var raio = { reto:'6px', suave:'14px', redondo:'24px' }[b.raio];   // 'tema' e vazio seguem o tema
+  if (raio) fora.push('--q-raio:' + raio);
+  return fora.length ? ' style="' + fora.join(';') + '"' : '';
+}
 
 function injetarCss(doc){
   if (doc.getElementById('qz-css')) return;
@@ -229,7 +262,10 @@ function montar(raiz, quiz, op){
 
     var blocos = tela.blocos || [];
     corpo.classList.toggle('qz-centro', blocos.some(function(b){ return b.tipo === 'carregando'; }));
-    corpo.innerHTML = blocos.map(function(b){ return bloco(b, tela); }).join('') +
+    corpo.innerHTML = blocos.map(function(b){
+      var h = bloco(b, tela);
+      return h ? '<div class="qz-b"' + estiloBloco(b) + '>' + h + '</div>' : '';
+    }).join('') +
       (st.i === 0 && (tema.aviso || tema.empresa) ? '<div class="qz-rodape">' + (tema.aviso ? '<span>' + esc(tema.aviso) + '</span>' : '') + (tema.empresa ? '<span>' + esc(tema.empresa) + '</span>' : '') + '</div>' : '');
     if (animar && !semMovimento){ corpo.classList.remove('qz-entra'); void corpo.offsetWidth; corpo.classList.add('qz-entra'); }
     if (animar){ corpo.scrollTop = 0; if (vivo && doc.defaultView) doc.defaultView.scrollTo(0, 0); }
@@ -302,8 +338,8 @@ function montar(raiz, quiz, op){
   function grafico(b){
     var v = variaveis(), W = 400, H = 232, x0 = 30, x1 = 370, yb = 188, yt = 46;
     var gid = 'qzg' + String(b.id).replace(/[^a-z0-9]/gi, ''), grad = b.estilo !== 'tema';
-    var cor = corValida((quiz.tema || {}).cor, '#2340B8');
-    var stops = grad ? '<stop offset="0" stop-color="#DC2626"/><stop offset=".5" stop-color="#F59E0B"/><stop offset="1" stop-color="#16A34A"/>'
+    var cor = 'var(--q-cor)';
+    var stops = grad ? '<stop offset="0" style="stop-color:var(--q-alerta)"/><stop offset=".5" style="stop-color:var(--q-meio)"/><stop offset="1" style="stop-color:var(--q-bom)"/>'
                      : '<stop offset="0" stop-color="' + cor + '"/><stop offset="1" stop-color="' + cor + '"/>';
     var grade = '';
     for (var k = 0; k <= 4; k++){ var y = yb - (yb - yt) * k / 4; grade += '<line x1="' + x0 + '" x2="' + x1 + '" y1="' + y + '" y2="' + y + '" style="stroke:var(--q-linha)" stroke-width="1"/>'; }
@@ -314,8 +350,8 @@ function montar(raiz, quiz, op){
       '<defs><linearGradient id="' + gid + '" gradientUnits="userSpaceOnUse" x1="' + x0 + '" y1="0" x2="' + x1 + '" y2="0">' + stops + '</linearGradient></defs>' + grade +
       '<path d="M' + x0 + ' ' + yb + ' L' + x1 + ' ' + yt + ' L' + x1 + ' ' + yb + ' Z" fill="url(#' + gid + ')" opacity="' + (grad ? .26 : .12) + '"/>' +
       '<path d="M' + x0 + ' ' + yb + ' L' + x1 + ' ' + yt + '" stroke="url(#' + gid + ')" stroke-width="3" fill="none" stroke-linecap="round"/>' +
-      '<circle cx="' + x0 + '" cy="' + yb + '" r="6" fill="' + (grad ? '#DC2626' : cor) + '" style="stroke:var(--q-fundo)" stroke-width="2.5"/>' +
-      '<circle cx="' + x1 + '" cy="' + yt + '" r="6" fill="' + (grad ? '#16A34A' : cor) + '" style="stroke:var(--q-fundo)" stroke-width="2.5"/>' +
+      '<circle cx="' + x0 + '" cy="' + yb + '" r="6" style="fill:' + (grad ? 'var(--q-alerta)' : cor) + ';stroke:var(--q-fundo)" stroke-width="2.5"/>' +
+      '<circle cx="' + x1 + '" cy="' + yt + '" r="6" style="fill:' + (grad ? 'var(--q-bom)' : cor) + ';stroke:var(--q-fundo)" stroke-width="2.5"/>' +
       pilula(x0 - 6, yb - 38, w1, rotDe) + pilula(x1 - w2 + 6, yt - 38, w2, rotAte) +
       '<text x="' + x0 + '" y="' + (H - 16) + '" font-size="11.5" style="fill:var(--q-apoio)">0 h</text>' +
       '<text x="' + x1 + '" y="' + (H - 16) + '" font-size="11.5" text-anchor="end" style="fill:var(--q-apoio)">' + esc(v.total) + ' h</text></svg>';
@@ -323,7 +359,7 @@ function montar(raiz, quiz, op){
   function medidores(b){
     var sem = b.estilo !== 'tema';
     function card(p, cor, txt){ return '<div><div class="qz-tubo"><i style="height:' + p + '%;background:' + cor + '"></i><em style="color:' + (p >= 30 ? '#fff' : 'var(--q-apoio)') + '">' + p + '%</em></div><p>' + rico(txt) + '</p></div>'; }
-    return '<div class="qz-med">' + card(10, sem ? '#DC2626' : 'color-mix(in srgb,var(--q-cor) 40%,transparent)', b.antes) + card(100, sem ? '#16A34A' : 'var(--q-cor)', b.depois) + '</div>';
+    return '<div class="qz-med">' + card(10, sem ? 'var(--q-alerta)' : 'color-mix(in srgb,var(--q-cor) 40%,transparent)', b.antes) + card(100, sem ? 'var(--q-bom)' : 'var(--q-cor)', b.depois) + '</div>';
   }
 
   // Cronômetro que não reinicia ao recarregar: guarda a hora de fim no navegador
