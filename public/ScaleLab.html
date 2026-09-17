@@ -1781,6 +1781,32 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .dz-dec:hover .dz-op-mais,.dz-dec.sel .dz-op-mais{opacity:1}
 .dz-op-mais:hover{background:rgba(255,255,255,.16);color:#fff}
 
+/* mapa mental — mesmo visual nas Anotações e no Desenhar funil */
+.mm-cx{position:relative;height:340px;overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg3);background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:22px 22px}
+.mm-cx.alto{height:70vh}
+.mm-pe{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:11.5px;color:var(--text3);flex-wrap:wrap}
+.mm-pe button{margin-left:auto;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:4px 10px;font-size:11.5px;color:var(--text2);cursor:pointer;font-family:inherit}
+.mm-palco{position:relative;min-width:100%;min-height:100%}
+.mm-fios{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.mm-no{position:absolute;left:0;top:0;width:max-content;max-width:200px;display:flex;align-items:center;gap:5px;padding:7px 10px;border-radius:10px;
+  border:1.5px solid var(--mm);background:var(--card);color:var(--text);font-size:13px;line-height:1.35;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.mm-no.n0{background:var(--mm);border-color:var(--mm);color:#fff;font-size:14.5px;font-weight:700;padding:10px 14px;max-width:230px}
+.mm-no.n1{font-weight:600}
+.mm-no.sel{box-shadow:0 0 0 3px color-mix(in srgb,var(--mm) 32%,transparent)}
+.mm-txt{outline:none;min-width:16px;word-break:break-word;white-space:pre-wrap}
+.mm-no.n0 .mm-txt:empty:before,.mm-txt:empty:before{content:'…';opacity:.4}
+.mm-acoes{display:none;align-items:center;gap:2px;flex-shrink:0}
+.mm-no:hover .mm-acoes,.mm-no.sel .mm-acoes{display:flex}
+.mm-acoes button{width:19px;height:19px;display:grid;place-items:center;border-radius:6px;border:none;cursor:pointer;
+  background:rgba(127,127,127,.16);color:inherit;font-size:11px;line-height:1;padding:0;font-family:inherit}
+.mm-acoes button:hover{background:rgba(127,127,127,.34)}
+.dz-mm{position:absolute;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.09)}
+.dz-mm.sel{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+.dz-mm-cab{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;background:var(--bg3);border-bottom:1px solid var(--border);
+  font-size:11.5px;font-weight:700;color:var(--text2);cursor:grab;user-select:none}
+.dz-mm-cab button{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:2px 4px;font-family:inherit}
+.dz-mm-cab button:hover{color:var(--red)}
+.dz-mm-palco{background:var(--card)}
 .dz-nota{position:absolute;min-width:130px;max-width:250px;background:#fff8c5;color:#3d3708;border:1px solid #e6d97a;border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.5;cursor:grab;user-select:none}
 
 .dz-pino{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--bg2);border:2.5px solid var(--text3);cursor:crosshair;z-index:3;transition:.12s}
@@ -9084,11 +9110,12 @@ function cdRenderAnot(){
     +cdBlocosHTML()
     +(orfaos.length?'<div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;"><div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">Outras subpáginas</div>'+orfaos.map(function(f){return cdLinha(f,notas);}).join('')+'</div>':'');
   cdFocarBloco();
+  cdMontarMapas();
 }
 function cdLinha(n,notas){var q=notas.filter(function(x){return x.parentId===n.id;}).length;return '<div onclick="cdAbrir(\''+n.id+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;transition:background .12s;"><span style="color:var(--text3)">📄</span><span style="font-size:14px;font-weight:500;flex:1;color:var(--text);">'+cdEsc(n.titulo)+'</span>'+(q?'<span style="font-size:11px;color:var(--text3);">'+q+' subpág.</span>':'')+'<span style="color:var(--text3)">›</span></div>';}
 /* ---- EDITOR DE BLOCOS (Notion-like) ---- */
 var _cdBloco=null, _cdFocusBloco=null;
-var CD_TIPOS=[{id:'texto',label:'Texto',ic:'T'},{id:'h1',label:'Título 1',ic:'H1'},{id:'h2',label:'Título 2',ic:'H2'},{id:'h3',label:'Título 3',ic:'H3'},{id:'bullet',label:'Lista com marcadores',ic:'•'},{id:'todo',label:'Lista de tarefas',ic:'☑'},{id:'codigo',label:'Código',ic:'</>'}];
+var CD_TIPOS=[{id:'texto',label:'Texto',ic:'T'},{id:'h1',label:'Título 1',ic:'H1'},{id:'h2',label:'Título 2',ic:'H2'},{id:'h3',label:'Título 3',ic:'H3'},{id:'bullet',label:'Lista com marcadores',ic:'•'},{id:'todo',label:'Lista de tarefas',ic:'☑'},{id:'codigo',label:'Código',ic:'</>'},{id:'mapa',label:'Mapa mental',ic:'🧠'}];
 function cdInjectStyle(){ if(document.getElementById('cd-style'))return; var s=document.createElement('style'); s.id='cd-style'; s.textContent='#cd-blocos [contenteditable][data-ph]:empty:before{content:attr(data-ph);color:var(--text3);}#cd-blocos [contenteditable]{word-break:break-word;}#cd-blocos a{color:var(--accent);text-decoration:underline;}'; document.head.appendChild(s); }
 function cdNotaAtual(notas){ return (notas||cdGet('cd_notas',[])).filter(function(x){return x.id===_cdNota;})[0]; }
 function cdSalvaN(mut){ var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return; mut(n,notas); n._updatedAt=Date.now(); cdSet('cd_notas',notas); }
@@ -9097,7 +9124,7 @@ function cdBlocosHTML(){
   var notas=cdGet('cd_notas',[]); var n=cdNotaAtual(notas); if(!n)return '';
   if(!n.blocks){ cdEnsureB(n); cdSet('cd_notas',notas); }
   var h='<div id="cd-blocos" onclick="cdBlocosClick(event)" style="min-height:calc(100vh - 420px);cursor:text;">'; n.blocks.forEach(function(b,i){h+=cdBlocoHTML(b,i);}); h+='</div>';
-  h+='<div style="display:flex;gap:16px;margin-top:4px;flex-wrap:wrap;"><button onclick="cdAddBloco(\'texto\',9999)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button><button onclick="cdInserirSubpagina(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📄 Nova subpágina</button><button onclick="cdAnexarArquivo(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📎 Anexar arquivo</button></div>';
+  h+='<div style="display:flex;gap:16px;margin-top:4px;flex-wrap:wrap;"><button onclick="cdAddBloco(\'texto\',9999)" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:6px 0;">＋ Adicionar bloco</button><button onclick="cdInserirSubpagina(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📄 Nova subpágina</button><button onclick="cdAnexarArquivo(9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">📎 Anexar arquivo</button><button onclick="cdAddBloco(\'mapa\',9999)" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px 0;">🧠 Mapa mental</button></div>';
   return h;
 }
 function cdBlocoHTML(b,i){
@@ -9107,6 +9134,7 @@ function cdBlocoHTML(b,i){
   if(b.tipo==='pagina'){ var _ns=cdGet('cd_notas',[]); var _sub=_ns.filter(function(x){return x.id===b.ref;})[0]; var _tt=_sub?cdEsc(_sub.titulo||'Sem título'):'(subpágina removida)'; return '<div style="display:flex;gap:8px;align-items:center;margin:5px 0;">'+ctrl+'<div onclick="cdAbrir(\''+(b.ref||'')+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid var(--border);transition:background .12s;"><span style="font-size:17px;">📄</span><span style="font-size:15px;font-weight:600;color:var(--text);">'+_tt+'</span><span style="margin-left:auto;color:var(--text3);">›</span></div></div>'; }
   if(b.tipo==='arquivo'){ var _ai=/pdf/i.test(b.mime||'')?'📕':(/image|png|jpe?g|gif|webp/i.test(b.mime||'')?'🖼️':(/zip|rar|7z/i.test(b.mime||'')?'🗜️':(/sheet|excel|csv/i.test(b.mime||'')?'📊':(/word|document/i.test(b.mime||'')?'📄':'📎')))); return '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;">'+ctrl+'<div style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--bg3);min-width:0;"><span style="font-size:22px;flex-shrink:0;">'+_ai+'</span><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;">'+cdEsc(b.nome||'arquivo')+'</div><div style="font-size:11px;color:var(--text3);">'+cdFmtTam(b.tamanho)+'</div></div><button data-aid="'+cdEsc(b.arqId||'')+'" data-nome="'+cdEsc(b.nome||'arquivo')+'" onclick="cdBaixarArquivo(this.getAttribute(\'data-aid\'),this.getAttribute(\'data-nome\'))" style="background:var(--accent-grad);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">⬇ Baixar</button></div></div>'; }
   if(b.tipo==='imagem'){ var _isr=b.arqId?(API_BASE+'/api/cd/img/'+encodeURIComponent(b.arqId)):(b._imgData||''); return '<div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;">'+ctrl+'<img src="'+_isr+'" alt="'+cdEsc(b.nome||'')+'" loading="lazy" style="max-width:100%;border-radius:10px;border:1px solid var(--border);display:block;">'+'</div>'; }
+  if(b.tipo==='mapa') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;">'+ctrl+'<div style="flex:1;min-width:0;"><div class="mm-cx'+(b.alto?' alto':'')+'" data-mm="'+i+'"></div><div class="mm-pe"><span>Tab abre um ramo · Enter abre outro no mesmo nível · ＋ ● ✕ aparecem no bloco</span><button onclick="cdMapaAltura('+i+')">'+(b.alto?'▽ Diminuir':'△ Aumentar')+'</button></div></div></div>';
   if(b.tipo==='h1') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:16px 0 4px;">'+ctrl+'<div '+ce+' data-ph="Título 1" style="outline:none;flex:1;font-size:26px;font-weight:800;line-height:1.2;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h2') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:14px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 2" style="outline:none;flex:1;font-size:21px;font-weight:700;line-height:1.25;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h3') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:12px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 3" style="outline:none;flex:1;font-size:17px;font-weight:700;line-height:1.3;color:var(--text);">'+t+'</div></div>';
@@ -9124,6 +9152,22 @@ function cdAddBloco(tipo,after){ cdFlushBloco(); cdSalvaN(function(n){ var pos=(
 function cdEscreverAbaixo(){ cdFlushBloco(); cdSalvaN(function(n){ var last=n.blocks[n.blocks.length-1]; if(last && last.tipo==='texto' && !(last.texto||'').replace(/<[^>]*>/g,'').trim()){ _cdFocusBloco=n.blocks.length-1; } else { n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=n.blocks.length-1; } }); cdRenderAnot(); }
 function cdBlocosClick(e){ var a=(e.target&&e.target.closest)?e.target.closest('a'):null; if(a&&a.href){ e.preventDefault(); e.stopPropagation(); try{window.open(a.href,'_blank','noopener');}catch(err){location.href=a.href;} return; } if(e.target&&e.target.id==='cd-blocos') cdEscreverAbaixo(); }
 function cdDelBloco(i){ cdFlushBloco(); cdSalvaN(function(n){ n.blocks.splice(i,1); if(!n.blocks.length)n.blocks.push({id:cdUID('b'),tipo:'texto',texto:''}); _cdFocusBloco=Math.max(0,i-1); }); cdRenderAnot(); }
+function cdMontarMapas(){
+  var alvos = document.querySelectorAll('#cd-blocos [data-mm]'); if(!alvos.length) return;
+  var notas = cdGet('cd_notas', []), n = cdNotaAtual(notas), mudou = false;
+  if(!n) return;
+  [].slice.call(alvos).forEach(function(cx){
+    var i = Number(cx.getAttribute('data-mm')), b = (n.blocks || [])[i]; if(!b) return;
+    if(!b.mapa){ b.mapa = mmNovoMapa('Ideia central'); mudou = true; }
+    var palco = document.createElement('div');
+    cx.innerHTML = ''; cx.appendChild(palco);
+    mmMontar(palco, JSON.parse(JSON.stringify(b.mapa)), function(d){
+      cdSalvaN(function(nn){ if(nn.blocks[i]) nn.blocks[i].mapa = d; });
+    });
+  });
+  if(mudou){ n._updatedAt = Date.now(); cdSet('cd_notas', notas); }
+}
+function cdMapaAltura(i){ cdFlushBloco(); cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].alto = !n.blocks[i].alto; }); cdRenderAnot(); }
 function cdFmtTam(b){ b=b||0; if(b<1024)return b+' B'; if(b<1048576)return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
 function cdAnexarArquivo(after){
   var inp=document.createElement('input'); inp.type='file';
@@ -29687,6 +29731,142 @@ function dmAdicionar(el, onEscolher){
 //
 // campos: [{ chave, rot, tipo:'texto'|'numero'|'longo', valor, dica, sufixo }]
 // cb(valores) roda no OK; Cancelar nao chama nada.
+/* ══════════════ MAPA MENTAL ══════════════
+   Um mapa só: ideia central à esquerda, ramos crescendo pra direita. Serve nos
+   dois lugares que pediram — bloco das Anotações e caixa no Desenhar funil —
+   porque é o MESMO código; se fossem dois, um ia ficar pra trás.
+   Dados: { id, txt, cor, filhos:[ … ] }. Tab abre ramo, Enter abre irmão. */
+var MM_CORES = ['#1B9CFA', '#12a150', '#FF5926', '#C52C58', '#8b5cf6', '#0E7490'];
+var MM_GX = 52, MM_GY = 12, MM_PAD = 16;
+function mmUid(){ return 'm' + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 6); }
+function mmNovoMapa(txt){ return { id: mmUid(), txt: txt || 'Ideia central', filhos: [] }; }
+function mmCorOk(c){ return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(c || '')) ? c : ''; }
+function mmAchar(no, id, pai){
+  if(!no) return null;
+  if(no.id === id) return { no: no, pai: pai || null };
+  var fs = no.filhos || [];
+  for(var i = 0; i < fs.length; i++){ var r = mmAchar(fs[i], id, no); if(r) return r; }
+  return null;
+}
+function mmMontar(alvo, dados, aoMudar){
+  if(!alvo || !dados) return null;
+  var st = { sel: null, t: 0 }, mapa = {};
+  alvo.classList.add('mm-palco');
+  alvo.innerHTML = '<svg class="mm-fios" aria-hidden="true"></svg>';
+  var svg = alvo.querySelector('.mm-fios');
+
+  function salvar(){ clearTimeout(st.t); st.t = setTimeout(function(){ if(aoMudar) aoMudar(dados); }, 400); }
+
+  function criar(){
+    [].slice.call(alvo.querySelectorAll('.mm-no')).forEach(function(x){ x.remove(); });
+    mapa = {};
+    (function passeia(no, nivel, corPai, ramo){
+      var cor = mmCorOk(no.cor) || (nivel === 0 ? '#3E1493' : nivel === 1 ? MM_CORES[ramo % MM_CORES.length] : corPai);
+      var d = document.createElement('div');
+      d.className = 'mm-no n' + (nivel > 2 ? 2 : nivel) + (st.sel === no.id ? ' sel' : '');
+      d.dataset.id = no.id;
+      d.style.setProperty('--mm', cor);
+      d.innerHTML = '<span class="mm-txt" contenteditable="true" spellcheck="false"></span>' +
+        '<span class="mm-acoes"><button type="button" data-a="filho" title="Novo ramo (Tab)">＋</button>' +
+        '<button type="button" data-a="cor" title="Trocar a cor">●</button>' +
+        (nivel ? '<button type="button" data-a="rm" title="Tirar este ramo">✕</button>' : '') + '</span>';
+      d.querySelector('.mm-txt').textContent = no.txt || '';
+      alvo.appendChild(d);
+      mapa[no.id] = { no: no, el: d, cor: cor };
+      (no.filhos || []).forEach(function(f, i){ passeia(f, nivel + 1, cor, nivel === 0 ? i : ramo); });
+    })(dados, 0, '', 0);
+  }
+  function alturaDe(no){
+    var e = mapa[no.id], fs = no.filhos || [];
+    if(!e) return 0;
+    if(!fs.length) return e.el.offsetHeight;
+    var soma = 0; fs.forEach(function(f){ soma += alturaDe(f); });
+    return Math.max(e.el.offsetHeight, soma + (fs.length - 1) * MM_GY);
+  }
+  function dispor(){
+    // mede com o palco solto: se ele já estiver com a largura da vez anterior,
+    // os blocos encolhem dentro dele e a conta sai errada
+    alvo.style.width = 'auto'; alvo.style.height = 'auto';
+    (function por(no, x, topo){
+      var e = mapa[no.id]; if(!e) return;
+      var h = e.el.offsetHeight, a = alturaDe(no);
+      e.x = x; e.y = topo + (a - h) / 2; e.w = e.el.offsetWidth; e.h = h;
+      e.el.style.left = Math.round(e.x) + 'px'; e.el.style.top = Math.round(e.y) + 'px';
+      var y = topo;
+      (no.filhos || []).forEach(function(f){ por(f, x + e.w + MM_GX, y); y += alturaDe(f) + MM_GY; });
+    })(dados, MM_PAD, MM_PAD);
+    var mx = 0, my = 0, fios = '';
+    Object.keys(mapa).forEach(function(k){ var e = mapa[k]; mx = Math.max(mx, e.x + e.w); my = Math.max(my, e.y + e.h); });
+    var W = Math.round(mx + MM_PAD), H = Math.round(my + MM_PAD);
+    alvo.style.width = W + 'px'; alvo.style.height = H + 'px';
+    svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    Object.keys(mapa).forEach(function(k){
+      var e = mapa[k];
+      (e.no.filhos || []).forEach(function(f){
+        var c = mapa[f.id]; if(!c) return;
+        var x1 = e.x + e.w, y1 = e.y + e.h / 2, x2 = c.x, y2 = c.y + c.h / 2, meio = (x1 + x2) / 2;
+        fios += '<path d="M' + x1 + ' ' + y1 + ' C' + meio + ' ' + y1 + ',' + meio + ' ' + y2 + ',' + x2 + ' ' + y2 +
+                '" fill="none" stroke="' + c.cor + '" stroke-width="2.2" stroke-linecap="round" opacity=".5"/>';
+      });
+    });
+    svg.innerHTML = fios;
+  }
+  function refazer(foco){
+    criar(); dispor();
+    var e = foco && mapa[foco];
+    if(e){
+      st.sel = foco; e.el.classList.add('sel');
+      var t = e.el.querySelector('.mm-txt'); t.focus();
+      var r = document.createRange(); r.selectNodeContents(t);
+      var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r);
+    }
+  }
+  function novoFilho(no){ var f = { id: mmUid(), txt: '', filhos: [] }; (no.filhos = no.filhos || []).push(f); salvar(); refazer(f.id); }
+  function novoIrmao(no){
+    var r = mmAchar(dados, no.id, null);
+    if(!r || !r.pai) return novoFilho(no);              // na ideia central, Enter abre ramo
+    var f = { id: mmUid(), txt: '', filhos: [] };
+    r.pai.filhos.splice(r.pai.filhos.indexOf(no) + 1, 0, f); salvar(); refazer(f.id);
+  }
+  function tirar(no){
+    var r = mmAchar(dados, no.id, null);
+    if(!r || !r.pai) return;                             // a ideia central não sai
+    r.pai.filhos.splice(r.pai.filhos.indexOf(no), 1); salvar(); refazer(r.pai.id);
+  }
+  function doEvento(ev){ var c = ev.target.closest ? ev.target.closest('.mm-no') : null; return c ? mapa[c.dataset.id] : null; }
+
+  alvo.addEventListener('click', function(ev){
+    var e = doEvento(ev); if(!e) return;
+    var b = ev.target.closest('button[data-a]');
+    if(b){
+      ev.preventDefault(); ev.stopPropagation();
+      if(b.dataset.a === 'filho') return novoFilho(e.no);
+      if(b.dataset.a === 'rm') return tirar(e.no);
+      if(b.dataset.a === 'cor'){
+        e.no.cor = MM_CORES[(MM_CORES.indexOf(mmCorOk(e.no.cor)) + 1) % MM_CORES.length];
+        salvar(); refazer(e.no.id); return;
+      }
+    }
+    st.sel = e.no.id;
+    [].slice.call(alvo.querySelectorAll('.mm-no.sel')).forEach(function(x){ x.classList.remove('sel'); });
+    e.el.classList.add('sel');
+  });
+  alvo.addEventListener('input', function(ev){
+    var e = doEvento(ev); if(!e || !ev.target.classList.contains('mm-txt')) return;
+    e.no.txt = ev.target.textContent;
+    dispor(); salvar();
+  });
+  alvo.addEventListener('keydown', function(ev){
+    var e = doEvento(ev); if(!e) return;
+    if(ev.key === 'Tab'){ ev.preventDefault(); novoFilho(e.no); return; }
+    if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); novoIrmao(e.no); return; }
+    if(ev.key === 'Backspace' && !ev.target.textContent && !(e.no.filhos || []).length){ ev.preventDefault(); tirar(e.no); return; }
+    if(ev.key === 'Escape'){ ev.target.blur(); }
+  });
+  refazer();
+  return { refazer: refazer, dispor: dispor, dados: dados };
+}
+
 function dzCaixa(titulo, sub, campos, cb){
   var velha = document.getElementById('dz-caixa'); if(velha) velha.remove();
   var d = document.createElement('div');
@@ -29932,6 +30112,7 @@ function dzPintarEditor(){
       '<button class="fn-btn sm" onclick="dzNovoItem(\'pagina\')">+ Página</button>' +
       '<button class="fn-btn g sm" onclick="dzNovoItem(\'decisao\')">◇ Decisão</button>' +
       '<button class="fn-btn g sm" onclick="dzNovoItem(\'nota\')">▤ Nota</button>' +
+      '<button class="fn-btn g sm" onclick="dzNovoItem(\'mapa\')">🧠 Mapa mental</button>' +
       '<div class="dz-zoom"><button onclick="dzZoom(-.1)">−</button>' +
         '<span id="dz-zv">100%</span><button onclick="dzZoom(.1)">+</button>' +
         '<button onclick="dzCaber()" title="Encaixar tudo">⤢</button></div>' +
@@ -29959,6 +30140,7 @@ function dzNovoItem(tipo){
   if(tipo === 'pagina')  Object.assign(novo, { tipo:'pagina', rot:'Nova página', img:'', link:'', visitantes:0, conv:0, nota:'' });
   if(tipo === 'decisao') Object.assign(novo, { tipo:'decisao', perg:'Comprou?', sim:'sim', nao:'Não', nota:'' });
   if(tipo === 'nota')    Object.assign(novo, { tipo:'nota', txt:'O que dá pra testar aqui…' });
+  if(tipo === 'mapa')    Object.assign(novo, { tipo:'mapa', mapa: mmNovoMapa('Ideia central') });
   DZ.itens.push(novo);
   dzSel = novo.id;
   dzPintar(); dzSalvar();
@@ -29966,9 +30148,10 @@ function dzNovoItem(tipo){
 
 function dzPintar(){
   var palco = document.getElementById('dz-palco'); if(!palco) return;
-  [].slice.call(palco.querySelectorAll('.dz-bloco,.dz-dec,.dz-nota')).forEach(function(x){ x.remove(); });
+  [].slice.call(palco.querySelectorAll('.dz-bloco,.dz-dec,.dz-nota,.dz-mm')).forEach(function(x){ x.remove(); });
   DZ.itens.forEach(function(it){
-    palco.appendChild(it.tipo === 'pagina' ? dzElPagina(it) : it.tipo === 'decisao' ? dzElDecisao(it) : dzElNota(it));
+    palco.appendChild(it.tipo === 'pagina' ? dzElPagina(it) : it.tipo === 'decisao' ? dzElDecisao(it)
+                    : it.tipo === 'mapa' ? dzElMapa(it) : dzElNota(it));
   });
   var v = DZ.vista;
   palco.style.transform = 'translate(' + v.px + 'px,' + v.py + 'px) scale(' + v.escala + ')';
@@ -30052,6 +30235,43 @@ function dzElNota(it){
     fnEsc(it.txt).replace(/\n/g,'<br>') + '</div>' +
     '<div class="dz-pe"><button data-a="rm" class="rm">✕</button></div>';
   dzEventos(d, it);
+  return d;
+}
+
+function dzElMapa(it){
+  if(!it.mapa) it.mapa = mmNovoMapa('Ideia central');
+  var d = document.createElement('div');
+  d.className = 'dz-mm' + (dzSel === it.id ? ' sel' : '');
+  d.style.left = it.x + 'px'; d.style.top = it.y + 'px'; d.dataset.id = it.id;
+  d.innerHTML = '<div class="dz-mm-cab"><span>🧠 Mapa mental</span>' +
+    '<button type="button" data-a="rm" title="Tirar o mapa">✕</button></div><div class="dz-mm-palco"></div>';
+  // O bloco ainda não está na tela quando nasce, e sem estar na tela nada tem
+  // tamanho: mede de novo no quadro seguinte, senão o mapa sai torto.
+  var mm = mmMontar(d.querySelector('.dz-mm-palco'), it.mapa, function(){ dzSalvar(); });
+  requestAnimationFrame(function(){ if(mm) mm.refazer(); });
+  // Arrasta só pela barra de cima: dentro do mapa o clique é pra escrever.
+  d.querySelector('.dz-mm-cab').addEventListener('mousedown', function(ev){
+    if(ev.target.closest('button')) return;
+    ev.stopPropagation(); ev.preventDefault();
+    dzSel = it.id;
+    document.querySelectorAll('#dz-palco .sel').forEach(function(x){ x.classList.remove('sel'); });
+    d.classList.add('sel');
+    var x0 = ev.clientX, y0 = ev.clientY, ix = it.x, iy = it.y, moveu = false;
+    function mv(e){
+      moveu = true;
+      it.x = ix + (e.clientX - x0)/DZ.vista.escala;
+      it.y = iy + (e.clientY - y0)/DZ.vista.escala;
+      d.style.left = it.x + 'px'; d.style.top = it.y + 'px'; dzFios();
+    }
+    function up(){ document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); if(moveu) dzSalvar(); }
+    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+  });
+  d.querySelector('[data-a="rm"]').addEventListener('click', function(ev){
+    ev.stopPropagation();
+    DZ.itens = DZ.itens.filter(function(x){ return x.id !== it.id; });
+    DZ.fios  = DZ.fios.filter(function(f){ return f.de !== it.id && f.para !== it.id; });
+    dzPintar(); dzSalvar();
+  });
   return d;
 }
 
