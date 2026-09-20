@@ -2754,9 +2754,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
       </div>
 
       <!-- KPI Row -->
-      <div id="home-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px;">
+      <div id="home-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:6px;">
         <!-- populado por renderHome() -->
       </div>
+      <div id="home-kpi-fonte" style="font-size:11.5px;color:var(--text3);margin-bottom:18px;"></div>
 
       <!-- 3 Colunas: Minhas Tarefas | Notificações | Demandas do Dia -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:22px;" id="home-3col">
@@ -8276,6 +8277,43 @@ function _homeKpiCard(icone, label, valor, delta, corValor, corDeltaBg, corDelta
 
 // Cache simples pros KPIs vindos do RedTrack (5 minutos)
 var _homeKPICacheRT = { ts: 0, data: null };
+var _homeKPICacheUt = { ts: 0, data: null };
+
+// Os quatro cartões do topo saem do MESMO lugar que a aba Métricas de Ads usa
+// (panorama da Utmify + vendas do webhook). Antes vinham do roi_ofertas, que
+// quase ninguém preenche, e por isso a Home vivia mostrando R$ 0.
+async function _homeCalcKPIsDaUtmify(){
+  if(_homeKPICacheUt.data && (Date.now() - _homeKPICacheUt.ts) < 4*60*1000) return _homeKPICacheUt.data;
+  var hoje = hojeBR(0), ontem = hojeBR(1);
+  var tok = '';
+  try { tok = localStorage.getItem('sl_session_token') || ''; } catch(e){}
+  if(!tok) return null;
+  function buscar(dia){
+    return fetch(API_BASE + '/api/metricas/utmify/panorama?de=' + dia + '&ate=' + dia, { headers:{ 'Authorization':'Bearer ' + tok } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .catch(function(){ return null; });
+  }
+  try {
+    var r = await Promise.all([buscar(hoje), buscar(ontem)]);
+    var a = r[0], b = r[1];
+    if(!a || !a.kpis) return null;
+    var ka = a.kpis, kb = (b && b.kpis) || null;
+    function variacao(x, y){ if(y === null || !y || !isFinite(y)) return null; return Math.round(((x - y) / y) * 100); }
+    var vendas = (ka.pedidos && ka.pedidos.aprovadas) || 0;
+    var resultado = {
+      investimento: { atual: Number(ka.investimento) || 0, var: kb ? variacao(ka.investimento, kb.investimento) : null },
+      faturamento:  { atual: Number(ka.receita) || 0,      var: kb ? variacao(ka.receita, kb.receita) : null },
+      lucro:        { atual: Number(ka.lucro) || 0,        var: kb ? variacao(ka.lucro, kb.lucro) : null },
+      roas:         { atual: Number(ka.roas) || 0,         var: kb ? variacao(ka.roas, kb.roas) : null },
+      vendas: vendas,
+      fonte: 'utmify'
+    };
+    // dia ainda zerado (madrugada, ou Utmify fora do ar) não vale sobrescrever
+    if(!resultado.investimento.atual && !resultado.faturamento.atual && !vendas) return null;
+    _homeKPICacheUt = { ts: Date.now(), data: resultado };
+    return resultado;
+  } catch(e){ console.warn('[HOME] panorama Utmify falhou:', e); return null; }
+}
 
 async function _homeCalcKPIsFromRedTrack(){
   var key = typeof getRtApiKey === 'function' ? getRtApiKey() : '';
@@ -8400,11 +8438,12 @@ function _homeCalcKPIs(){
   }
 }
 
-function _homeDeltaPill(v, inversa){
-  // inversa=true → descer é bom (ex: CPA)
+function _homeDeltaPill(v, inversa, neutra){
+  // inversa=true → descer é bom (ex: CPA); neutra=true → nem bom nem ruim (gasto)
   if(v === null || v === 0 || !isFinite(v)) return { txt:'—', bg:'var(--bg3)', fg:'var(--text2)' };
   var bom = inversa ? v < 0 : v > 0;
   var seta = v > 0 ? '▲' : '▼';
+  if(neutra) return { txt: seta + ' ' + (v > 0 ? '+' : '') + v + '%', bg:'var(--bg3)', fg:'var(--text2)' };
   return {
     txt: seta + ' ' + (v > 0 ? '+' : '') + v + '%',
     bg: bom ? 'rgba(22,163,74,.12)' : 'rgba(220,38,38,.12)',
@@ -8444,13 +8483,19 @@ function renderHome(){
   try {
     var k = _homeCalcKPIs();
     var row = document.getElementById('home-kpi-row');
-    // Tenta pegar dados mais precisos do RedTrack (async — atualiza depois)
-    _homeCalcKPIsFromRedTrack().then(function(rtK){
+    // Tenta o panorama da Utmify e, se não vier, o RedTrack (async — atualiza depois)
+    _homeCalcKPIsDaUtmify().then(function(utK){
+      return utK || _homeCalcKPIsFromRedTrack();
+    }).then(function(rtK){
+      var rodapeVazio = document.getElementById('home-kpi-fonte');
+      if(!rtK && rodapeVazio){
+        rodapeVazio.textContent = 'Ainda sem número de hoje: aparece assim que a Utmify registrar o primeiro gasto ou a primeira venda do dia.';
+      }
       if(rtK) {
         try {
           var row2 = document.getElementById('home-kpi-row');
           if(!row2) return;
-          var dInv = _homeDeltaPill(rtK.investimento.var, false);
+          var dInv = _homeDeltaPill(rtK.investimento.var, false, true);
           var dFat = _homeDeltaPill(rtK.faturamento.var, false);
           var dLucro = _homeDeltaPill(rtK.lucro.var, false);
           var dRoas = _homeDeltaPill(rtK.roas.var, false);
@@ -8463,13 +8508,21 @@ function renderHome(){
                            dLucro.txt, rtK.lucro.atual>=0?'var(--green)':'var(--red)', dLucro.bg, dLucro.fg, 'rgba(197,44,88,.18)')
             + _homeKpiCard('📈', 'ROAS do Dia', _homeFormatBR(rtK.roas.atual, 'x'),
                            dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(62,20,147,.25)');
+          var rodape = document.getElementById('home-kpi-fonte');
+          if(rodape){
+            rodape.textContent = (rtK.fonte === 'utmify'
+              ? 'Hoje, pela Utmify' + (rtK.vendas ? ' · ' + rtK.vendas + ' venda' + (rtK.vendas > 1 ? 's' : '') + ' aprovada' + (rtK.vendas > 1 ? 's' : '') : '')
+              : 'Hoje, pelo RedTrack') + ' · a variação compara com ontem';
+          }
         } catch(e){ console.warn('[HOME] RedTrack update erro:', e); }
       }
     });
   var dRoas = _homeDeltaPill(k.roas.var, false);
   var dLucro = _homeDeltaPill(k.lucro.var, false);
   var dCpa = _homeDeltaPill(k.cpa.var, true);
-  var dInv = _homeDeltaPill(k.investimento.var, false);
+  var dInv = _homeDeltaPill(k.investimento.var, false, true);
+  var rodapeIni = document.getElementById('home-kpi-fonte');
+  if(rodapeIni) rodapeIni.textContent = 'Buscando os números de hoje…';
   row.innerHTML =
     _homeKpiCard('💸', 'Investimento do Dia', _homeFormatBR(k.investimento.atual, 'R$'),
                  dInv.txt, null, dInv.bg, dInv.fg, 'rgba(255,89,38,.18)')
