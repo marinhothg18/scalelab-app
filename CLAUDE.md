@@ -143,7 +143,17 @@ Muitos nomes aparecem na conversa com o usuário — todos apontam para **este m
 
 - **Axcend** — nome da marca/produto atual (o que aparece na UI)
 - **ScaleLab** — nome antigo. Ainda presente em `public/ScaleLab.html` e em todas as chaves `sl_*` do storage. **Não renomear** — quebraria dados em produção. Migração é apenas visual.
-- **Centralaxcend** — referência ao domínio (`app.centralaxcend.com`). Mesmo sistema.
+- **Centralaxcend** — nome que aparece em conversas antigas. **Não é um domínio que responde.**
+
+**Domínios que o serviço realmente atende** (confira com `railway domain` antes de usar em
+integração, link de anúncio ou conector MCP — este documento já esteve errado nesse ponto e
+custou uma tentativa de conexão falhada):
+
+```
+app.centraltmx.com
+ir.kalebeaprovado.online
+scalelab-web-production.up.railway.app
+```
 - **scalelab** / **scalelab-app** / **scalelab-web** — nome do repositório GitHub e do service Railway. Mesmo código.
 
 Resumo: se o usuário mencionar qualquer um desses nomes, ele está falando deste repositório. Não é preciso clonar outro projeto nem procurar em outro lugar.
