@@ -8244,7 +8244,12 @@ async function _vturbPlayers(token) {
                        x.parent_name || (x.parent && (x.parent.name || x.parent)) || '';
   return bruto.map(x => ({
     id: x.id || x.player_id, nome: x.name || x.nome || '(sem nome)',
-    duracao: Number(x.duration) || 0, pitch: Number(x.pitch_time) || 0,
+    // O nome do campo da duracao nao esta documentado e ja veio de formas
+    // diferentes; aceitar as variacoes evita o "Video duration must be a
+    // positive integer" que a VTurb devolve quando mandamos zero.
+    duracao: Number(x.duration || x.video_duration || x.duration_in_seconds ||
+                    x.durationSeconds || x.length || x.seconds) || 0,
+    pitch: Number(x.pitch_time || x.pitchTime) || 0,
     pasta: String(pastaDe(x) || ''),
     criadoEm: x.created_at || null
   })).filter(x => x.id);
@@ -11504,6 +11509,7 @@ const MCP_FERRAMENTAS = [
     description: 'Retenção de uma VSL na VTurb: quanto sobra em cada minuto e onde está a maior queda. Sem o id do player, lista as VSLs disponíveis.',
     inputSchema: { type: 'object', properties: {
       player: { type: 'string', description: 'Id do player na VTurb' },
+      duracao: { type: 'number', description: 'Duração do vídeo em segundos. Só precisa se a VTurb não informar.' },
       periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
       de: { type: 'string' }, ate: { type: 'string' } } } },
   { name: 'vendas_recentes',
@@ -11667,11 +11673,23 @@ async function _mcpExecutar(nome, a) {
       const ps = await _vturbPlayers(cfg.token).catch(() => (cfg.players || []));
       return 'VSLs NA VTURB (use o id em player:)\n' + (ps.length ? ps.slice(0, 60).map(p => '· ' + (p.nome || p.name || '(sem nome)') + ' — id: ' + p.id).join('\n') : '· nenhuma VSL encontrada');
     }
-    const fake = { query: { de: per.de, ate: per.ate } };
-    const pr = _vturbPeriodo(fake);
-    const meta = (cfg.players || []).find(p => String(p.id) === String(a.player)) || {};
+    const pr = _vturbPeriodo({ query: { de: per.de, ate: per.ate } });
+    // A VTurb EXIGE a duracao do video e recusa zero. Ela pode vir da pergunta,
+    // do cadastro local ou da lista da propria VTurb — e se nao vier de lugar
+    // nenhum, o erro precisa dizer o que fazer, nao repassar o texto deles.
+    let meta = (cfg.players || []).find(p => String(p.id) === String(a.player)) || {};
+    let dur = Number(a.duracao) || Number(meta.duracao) || 0;
+    if (dur <= 0) {
+      const daApi = (await _vturbPlayers(cfg.token).catch(() => [])).find(p => String(p.id) === String(a.player));
+      if (daApi) { meta = Object.assign({}, daApi, meta); dur = Number(daApi.duracao) || 0; }
+    }
+    if (dur <= 0) {
+      return 'A VTurb não informou a duração dessa VSL, e ela é obrigatória pra montar a curva.\n' +
+             'Pergunte de novo dizendo a duração em segundos (ex.: "retenção dessa VSL, duração 2280"), ' +
+             'ou cadastre a duração da VSL em Criativos & VSL.';
+    }
     const bruto = await _vturbApiData(cfg.token, '/times/user_engagement',
-      { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: Number(meta.duracao) || 0 }, pr);
+      { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur }, pr);
     const pts = ((Array.isArray(bruto) ? bruto : (bruto && bruto.data) || []) || [])
       .map(x => ({ t: Number(x.timed) || 0, n: Number(x.total_users) || 0 })).sort((x, y) => x.t - y.t);
     if (!pts.length) return 'Sem dados de retenção pra essa VSL ' + per.rotulo + '.';
