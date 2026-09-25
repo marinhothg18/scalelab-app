@@ -11690,8 +11690,11 @@ async function _mcpExecutar(nome, a) {
     }
     const bruto = await _vturbApiData(cfg.token, '/times/user_engagement',
       { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur }, pr);
-    const pts = ((Array.isArray(bruto) ? bruto : (bruto && bruto.data) || []) || [])
-      .map(x => ({ t: Number(x.timed) || 0, n: Number(x.total_users) || 0 })).sort((x, y) => x.t - y.t);
+    // A lista vem em 'grouped_timed' — e o mesmo campo que a tela de VSL usa.
+    // Eu tinha chutado 'data' e a resposta voltava sempre vazia.
+    const lista = Array.isArray(bruto) ? bruto
+      : ((bruto && (bruto.grouped_timed || bruto.timed || bruto.data || bruto.results)) || []);
+    const pts = lista.map(x => ({ t: Number(x.timed) || 0, n: Number(x.total_users) || 0 })).sort((x, y) => x.t - y.t);
     if (!pts.length) return 'Sem dados de retenção pra essa VSL ' + per.rotulo + '.';
     // Mesma regra da tela: curva de sobrevivência NUNCA sobe. Se subir, o que
     // veio é histograma de abandono e precisa ser somado de trás pra frente.
