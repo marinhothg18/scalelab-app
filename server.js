@@ -3551,7 +3551,7 @@ async function _tickEventosUtmify() {
   try {
     const { cfg, lista } = await _utmifyDashboardsAtivos();
     const cent = v => (Number(v) || 0) / 100;
-    const foto = {};
+    const foto = {}, faltou = {};
     for (const d of lista) {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
@@ -3567,12 +3567,26 @@ async function _tickEventosUtmify() {
             dashboardId: d.id, level: 'ad',
             dateRange: { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off }
           });
-        } catch (e) { continue; }
+        } catch (e) {
+          // ── Leitura falhou: PRESERVA a base daquele dia ──────────────────
+          // Antes era 'continue', e a foto nova (sem as chaves desse dia)
+          // substituia a anterior inteira. Na leitura seguinte o dia voltava do
+          // zero e o feed re-anunciava o DIA TODO como se tivesse acabado de
+          // acontecer. Foi o que aconteceu em 25/09: as 9 vendas do dia 24
+          // reapareceram juntas as 07:52, sem nenhuma venda nova ter entrado.
+          console.warn('[EVENTOS] Utmify falhou em ' + (d.nome || d.id) + ' ' + dia +
+                       ' (' + e.message + '). Base preservada; nada re-anunciado.');
+          if (_evFoto) Object.keys(_evFoto).forEach(k => {
+            if (k.indexOf(d.id + '|' + dia + '|') === 0) foto[k] = _evFoto[k];
+          });
+          faltou[d.id + '|' + dia] = true;
+          continue;
+        }
         const porNome = {};
         ((r && r.results) || []).forEach(a => {
           const nome = String(a.name || '(sem nome)').trim();
           const k = d.id + '|' + dia + '|' + nome.toLowerCase().replace(/\s+/g, ' ');
-          if (!porNome[k]) porNome[k] = { nome, dashboard: d.nome || d.id, dia,
+          if (!porNome[k]) porNome[k] = { nome, dashboard: d.nome || d.id, dashboardId: d.id, dia,
                                           atrasada: dia !== hoje, vendas: 0, ics: 0, receita: 0 };
           porNome[k].vendas  += Number(a.approvedOrdersCount) || 0;
           porNome[k].ics     += Number(a.initiateCheckout) || 0;
@@ -3588,6 +3602,13 @@ async function _tickEventosUtmify() {
         // Anuncio que ainda nao estava na foto anterior: se ja aparece com venda,
         // e venda de verdade que aconteceu no intervalo. Ignorar tudo dele fazia a
         // primeira venda de um criativo novo nunca chegar no feed.
+        const conhecida = Object.prototype.hasOwnProperty.call(_evFoto, k);
+        // Chave de ONTEM aparecendo pela primeira vez nao e venda nova: e base
+        // perdida. Venda de ontem so entra no feed se a gente ja acompanhava
+        // aquele anuncio e o contador subiu. Pra HOJE o primeiro contato vale,
+        // senao a primeira venda de um criativo novo nunca chegaria no feed.
+        if (!conhecida && novo.atrasada) return;
+        if (faltou[novo.dashboardId + '|' + novo.dia]) return;
         const velho = _evFoto[k] || { vendas: 0, ics: 0, receita: 0 };
         const dv = novo.vendas - velho.vendas;
         const di = novo.ics    - velho.ics;
