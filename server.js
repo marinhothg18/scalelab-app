@@ -249,6 +249,12 @@ app.use('/api/funil/evento', pixelLimiter);
 const quizLimiter = rateLimit({ windowMs: 60*1000, max: 180,
   message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
 app.use('/api/quiz/evento', quizLimiter);
+// O MCP nao fica sob /api/, entao o limitador global nao alcanca. Uma conversa
+// dispara varias chamadas seguidas; 90/min por IP cobre o uso e barra abuso.
+const mcpLimiter = rateLimit({ windowMs: 60*1000, max: 90,
+  message: { jsonrpc: '2.0', error: { code: -32000, message: 'Muitas chamadas. Espere um minuto.' } },
+  standardHeaders: false, legacyHeaders: false });
+app.use('/mcp', mcpLimiter);
 app.use('/api/', globalLimiter);
 
 // Rate limiting mais agressivo pra API v1
@@ -1027,7 +1033,12 @@ function _logAPI(db, tokenPreview, method, path) {
 // ══════════════════════════════════════════════
 
 // POST /api/tokens/generate — gera novo token (precisa login de Diretoria)
-app.post('/api/tokens/generate', (req, res) => {
+// Esta rota nao tinha autenticacao nenhuma: qualquer um na internet podia gerar
+// um token valido e ler o sistema pela /api/v1 (e agora pelo /mcp, que responde
+// faturamento). Fechada pra Diretoria, como as outras rotas sensiveis. A tela ja
+// manda o login em toda chamada /api/, entao nada muda pra quem usa o painel.
+// Os tokens ja criados continuam valendo.
+app.post('/api/tokens/generate', authDiretoria, (req, res) => {
   const { nome, userId, master, descricao } = req.body || {};
   if (!nome) return res.status(400).json({ error: 'Nome do token obrigatório.' });
 
@@ -10058,11 +10069,10 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
 });
 
 // ── Dados pra tela ──
-app.get('/api/funil/stats', authUsuario, (req, res) => {
-  try {
-    const de  = String(req.query.de  || '').slice(0, 10);
-    const ate = String(req.query.ate || '').slice(0, 10);
-    const funil = String(req.query.funil || '').slice(0, 80);
+// Os numeros do funil. Vive fora da rota porque o MCP responde as MESMAS
+// perguntas: se cada um fizesse a propria conta, a tela e o chat diriam numeros
+// diferentes pro mesmo funil — que foi o problema que a Jornada ja teve.
+function _funilStats(de, ate, funil) {
     const db = readDB();
     const ado = _mapaAdocao(db, funil);
     let linhas = Array.isArray(db.store[KEY_FSTATS]) ? db.store[KEY_FSTATS] : [];
@@ -10215,7 +10225,7 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
       }
     });
 
-    res.json({ ok: true, funil, de, ate,
+    return { ok: true, funil, de, ate,
       // 'jornada' quando o numero veio da fonte confiavel; 'contador' quando
       // sobrou o acumulado antigo. A tela precisa poder dizer qual e qual.
       fonteUnicos: dentroDaJanela ? 'jornada' : 'contador',
@@ -10235,7 +10245,14 @@ app.get('/api/funil/stats', authUsuario, (req, res) => {
             .sort((a, b) => b.pessoas - a.pessoas)
         });
       }),
-      feed: _fFeed.filter(f => !funil || ado.aceita(f)).slice(0, 40) });
+      feed: _fFeed.filter(f => !funil || ado.aceita(f)).slice(0, 40) };
+}
+
+app.get('/api/funil/stats', authUsuario, (req, res) => {
+  try {
+    res.json(_funilStats(String(req.query.de || '').slice(0, 10),
+                         String(req.query.ate || '').slice(0, 10),
+                         String(req.query.funil || '').slice(0, 80)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -11168,13 +11185,12 @@ app.get('/q/:slug', (req, res) => {
 });
 
 // ── números pro painel ──
-app.get('/api/quiz/stats', authUsuario, (req, res) => {
-  try {
-    const id = String(req.query.quiz || '').slice(0, 60);
-    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+// Mesma ideia do funil: a conta do quiz mora aqui, e tanto a tela quanto o MCP
+// chamam esta funcao. Uma pergunta, uma resposta.
+function _quizStats(id, de, ate) {
     let q = _qzQuizzes().porId[id];
     if (!q) q = _qzQuizzes(true).porId[id];     // acabou de ser criado: o cache ainda não viu
-    if (!q) return res.status(404).json({ error: 'Quiz não encontrado.' });
+    if (!q) return { ok: false, erro: 'Quiz não encontrado.' };
     const noPeriodo = d => (!de || d >= de) && (!ate || d <= ate);
 
     const tot = { ab: 0, fim: 0, cl: 0, tel: {}, resp: {}, num: {}, perf: {} };
@@ -11365,12 +11381,21 @@ app.get('/api/quiz/stats', authUsuario, (req, res) => {
                atencaoMediana: comAt.length ? mediana(comAt.map(r => naVsl(r).atencao).sort((a, b) => a - b)) : null };
     });
 
-    res.json({ ok: true, quiz: { id: q.id, nome: q.nome }, de, ate,
+    return { ok: true, quiz: { id: q.id, nome: q.nome }, de, ate,
       abriram: tot.ab, concluiram: tot.fim, clicaram: tot.cl, compraram, receita,
       telas, opcoes, numeros, perfis,
       escada, vslSemDetalhe, tempo, criativos, horas, pessoas,
       // quanto da conta de venda tem base: registros guardados e quantos já foram ligados a um id da VSL
-      base: { registros: regs.length, ligados, retencaoDias: QUIZ_RESP_DIAS } });
+      base: { registros: regs.length, ligados, retencaoDias: QUIZ_RESP_DIAS }  };
+}
+
+app.get('/api/quiz/stats', authUsuario, (req, res) => {
+  try {
+    const d = _quizStats(String(req.query.quiz || '').slice(0, 60),
+                         String(req.query.de || '').slice(0, 10),
+                         String(req.query.ate || '').slice(0, 10));
+    if (!d.ok) return res.status(404).json({ error: d.erro });
+    res.json(d);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -11380,6 +11405,364 @@ app.get('/api/quiz/slug-livre', authUsuario, (req, res) => {
   const dono = String(req.query.quiz || '');
   const q = _qzQuizzes(true).porSlug[slug];
   res.json({ ok: true, slug, livre: !!slug && (!q || q.id === dono) });
+});
+
+// ══════════════════════════════════════════════════════
+// ── MCP DO CENTRAL TMX (somente leitura) ──
+// O sistema já consome o MCP da Utmify; isto é o outro lado: expõe as respostas
+// do Central TMX pra um assistente (Claude no celular, por exemplo) perguntar
+// direto, sem abrir o painel.
+//
+// Só leitura, de propósito: se o token vazar, o estrago máximo é alguém ler
+// número — ninguém pausa campanha nem apaga demanda por aqui.
+//
+// O valor não é "mais uma integração": é que aqui os dados já estão CRUZADOS.
+// A VTurb sabe até onde a pessoa assistiu mas não sabe se comprou; a Utmify sabe
+// da venda mas não sabe a retenção nem o que ela respondeu no quiz. Só este
+// servidor junta as três pontas — e as contas são as MESMAS funções que as telas
+// usam (_funilStats, _quizStats, _utmifyPanorama), pra chat e tela nunca darem
+// números diferentes pra mesma pergunta.
+//
+// Conectar: https://SEU-DOMINIO/mcp?token=<token da API>
+// O token sai em Configurações → API (POST /api/tokens/generate).
+// ══════════════════════════════════════════════════════
+const MCP_PROTOCOLO = '2024-11-05';
+const _mcpUso = {};   // hash -> quando marcamos uso pela última vez
+
+function _mcpAutenticar(req) {
+  let t = String(req.query.token || '').trim();
+  const h = String(req.headers.authorization || '');
+  if (!t && h.startsWith('Bearer ')) t = h.slice(7).trim();
+  if (!t) return null;
+  const hash = crypto.createHash('sha256').update(t).digest('hex');
+  let db;
+  try { db = readDB(); } catch (e) { return null; }
+  const achado = (db.api_tokens || []).find(x => x.hash === hash && x.ativo);
+  if (!achado) return null;
+  // Uma conversa dispara várias chamadas. Gravar o banco inteiro em cada uma
+  // seria caro à toa, então o carimbo de uso é no máximo 1x por minuto.
+  const agora = Date.now();
+  if (!_mcpUso[hash] || agora - _mcpUso[hash] > 60000) {
+    _mcpUso[hash] = agora;
+    achado.ultimoUso = new Date().toISOString();
+    achado.totalReqs = (achado.totalReqs || 0) + 1;
+    try { writeDB(db); } catch (e) {}
+  }
+  return achado;
+}
+
+const _mcpDia = v => new Date(Date.now() - 3 * 3600000 - v * 86400000).toISOString().slice(0, 10);
+function _mcpPeriodo(a) {
+  a = a || {};
+  const dt = /^\d{4}-\d{2}-\d{2}$/;
+  if (dt.test(String(a.de || ''))) {
+    const ate = dt.test(String(a.ate || '')) ? a.ate : a.de;
+    return { de: a.de, ate, rotulo: a.de === ate ? a.de : 'de ' + a.de + ' a ' + ate };
+  }
+  const p = String(a.periodo || 'hoje');
+  if (p === 'ontem') return { de: _mcpDia(1), ate: _mcpDia(1), rotulo: 'ontem' };
+  if (p === '7d')    return { de: _mcpDia(6), ate: _mcpDia(0), rotulo: 'últimos 7 dias' };
+  if (p === '30d')   return { de: _mcpDia(29), ate: _mcpDia(0), rotulo: 'últimos 30 dias' };
+  return { de: _mcpDia(0), ate: _mcpDia(0), rotulo: 'hoje' };
+}
+const _mcpBrl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 });
+const _mcpNum = n => Math.round(Number(n) || 0).toLocaleString('pt-BR');
+const _mcpPct = (x, c) => ((Number(x) || 0) * 100).toFixed(c == null ? 1 : c).replace('.', ',') + '%';
+
+const MCP_FERRAMENTAS = [
+  { name: 'listar_projetos',
+    description: 'Lista os projetos (dashboards), funis, quizzes e VSLs disponíveis, com os ids. Use antes das outras ferramentas quando precisar de um id.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'como_esta_hoje',
+    description: 'Visão geral do negócio no período: investimento, faturamento, vendas aprovadas, ROAS, ticket, CPA e lucro, por projeto e por produto.',
+    inputSchema: { type: 'object', properties: {
+      periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'], description: 'Padrão: hoje' },
+      de: { type: 'string', description: 'Data inicial AAAA-MM-DD (opcional, no lugar de periodo)' },
+      ate: { type: 'string', description: 'Data final AAAA-MM-DD' },
+      projeto: { type: 'string', description: 'Id do projeto (opcional; sem ele, todos)' } } } },
+  { name: 'criativos_que_vendem',
+    description: 'Ranking dos anúncios por faturamento no período, com vendas, gasto, ROAS e CPA. Mostra também os que gastaram e não venderam.',
+    inputSchema: { type: 'object', properties: {
+      periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
+      de: { type: 'string' }, ate: { type: 'string' },
+      projeto: { type: 'string', description: 'Id do projeto (opcional)' },
+      limite: { type: 'number', description: 'Quantos anúncios mostrar. Padrão 12' } } } },
+  { name: 'onde_perco_gente',
+    description: 'Onde as pessoas abandonam: as etapas de um funil ou as telas de um quiz, com a maior queda apontada. Sem id, lista o que existe.',
+    inputSchema: { type: 'object', properties: {
+      funil: { type: 'string', description: 'Id do funil' },
+      quiz: { type: 'string', description: 'Id do quiz' },
+      periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
+      de: { type: 'string' }, ate: { type: 'string' } } } },
+  { name: 'respostas_que_compram',
+    description: 'Num quiz: qual resposta de cada pergunta traz mais compra, e como os perfis se saem. Liga a resposta à venda mesmo com a oferta em outro domínio.',
+    inputSchema: { type: 'object', properties: {
+      quiz: { type: 'string', description: 'Id do quiz' },
+      periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
+      de: { type: 'string' }, ate: { type: 'string' } }, required: ['quiz'] } },
+  { name: 'retencao_da_vsl',
+    description: 'Retenção de uma VSL na VTurb: quanto sobra em cada minuto e onde está a maior queda. Sem o id do player, lista as VSLs disponíveis.',
+    inputSchema: { type: 'object', properties: {
+      player: { type: 'string', description: 'Id do player na VTurb' },
+      periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
+      de: { type: 'string' }, ate: { type: 'string' } } } },
+  { name: 'vendas_recentes',
+    description: 'As últimas vendas e checkouts registrados, com anúncio e horário. É o mesmo feed "Acontecendo agora" do painel.',
+    inputSchema: { type: 'object', properties: {
+      projeto: { type: 'string', description: 'Nome do projeto (opcional)' },
+      limite: { type: 'number', description: 'Quantos eventos. Padrão 20' } } } }
+];
+
+async function _mcpExecutar(nome, a) {
+  a = a || {};
+  const per = _mcpPeriodo(a);
+
+  if (nome === 'listar_projetos') {
+    const db = readDB();
+    let dashboards = [];
+    try { dashboards = (await _utmifyDashboardsAtivos()).lista || []; } catch (e) {}
+    const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []);
+    const quizzes = (Array.isArray(db.store[KEY_QUIZZES]) ? db.store[KEY_QUIZZES] : []);
+    const vturb = (_vturbCfg() || {}).players || [];
+    let t = 'PROJETOS (use o id em projeto:)\n';
+    t += dashboards.length ? dashboards.map(d => '· ' + d.nome + '  —  id: ' + d.id).join('\n') : '· nenhum projeto conectado na Utmify';
+    t += '\n\nFUNIS (use em funil:)\n' + (funis.length ? funis.map(f => '· ' + f.nome + (f.projeto ? ' [' + f.projeto + ']' : '') + '  —  id: ' + f.id + '  ·  ' + (f.etapas || []).length + ' etapas').join('\n') : '· nenhum funil');
+    t += '\n\nQUIZZES (use em quiz:)\n' + (quizzes.length ? quizzes.map(q => '· ' + q.nome + '  —  id: ' + q.id + '  ·  ' + (q.ativo ? 'no ar em /q/' + q.slug : 'rascunho')).join('\n') : '· nenhum quiz');
+    t += '\n\nVSLs NA VTURB (use em player:)\n' + (vturb.length ? vturb.slice(0, 40).map(p => '· ' + (p.nome || p.name || p.id) + '  —  id: ' + p.id).join('\n') : '· nenhuma VSL salva (use retencao_da_vsl sem player pra buscar na VTurb)');
+    return t;
+  }
+
+  if (nome === 'como_esta_hoje') {
+    const d = await _utmifyPanorama(per.de, per.ate, String(a.projeto || ''));
+    const k = d.kpis || {}, p = k.pedidos || {};
+    let t = 'COMO ESTÁ ' + per.rotulo.toUpperCase() + '\n\n' +
+      'Investido:    ' + _mcpBrl(k.investimento) + '\n' +
+      'Faturamento:  ' + _mcpBrl(k.receita) + '\n' +
+      'Vendas:       ' + _mcpNum(p.aprovadas) + ' aprovadas' + (p.pendentes ? '  (' + _mcpNum(p.pendentes) + ' pendentes)' : '') + '\n' +
+      'ROAS:         ' + (Number(k.roas) || 0).toFixed(2).replace('.', ',') + 'x\n' +
+      'Ticket médio: ' + _mcpBrl(k.ticket) + '\n' +
+      'CPA:          ' + _mcpBrl(k.cpa) + '\n';
+    // olha o mesmo campo que imprime: antes conferia 'liquido' e mostrava 'margem',
+    // entao bastava um faltar pra linha do lucro sumir sem motivo
+    const lucro = d.margem && (d.margem.margem != null ? d.margem.margem : d.margem.liquido);
+    if (typeof lucro === 'number') t += 'Lucro:        ' + _mcpBrl(lucro) + '\n';
+    const dash = (d.porDashboard || []).filter(x => x.investimento || x.receita);
+    if (dash.length > 1) {
+      t += '\nPOR PROJETO\n' + dash.map(x => '· ' + (x.nome || x.id) + ': ' + _mcpBrl(x.receita) + ' de faturamento, ' + _mcpBrl(x.investimento) + ' investido' +
+        (x.investimento > 0 ? ' (ROAS ' + (x.receita / x.investimento).toFixed(2).replace('.', ',') + 'x)' : '')).join('\n') + '\n';
+    }
+    const prod = (d.produtos || []).slice(0, 5);
+    if (prod.length) t += '\nPRODUTOS\n' + prod.map(x => '· ' + (x.nome || x.produto || '(sem nome)') + ': ' + _mcpBrl(x.receita) + (x.vendas ? ' em ' + _mcpNum(x.vendas) + ' vendas' : '')).join('\n') + '\n';
+    if ((d.erros || []).length) t += '\nAvisos: ' + d.erros.slice(0, 3).map(e => e.motivo || e.erro || String(e)).join(' · ') + '\n';
+    return t;
+  }
+
+  if (nome === 'criativos_que_vendem') {
+    const achado = await _utmifyDashboardsAtivos();
+    const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, String(a.projeto || ''));
+    const porNome = {};
+    for (const d of lista) {
+      const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      let r;
+      try {
+        r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: d.id, level: 'ad',
+          dateRange: { from: per.de + 'T00:00:00' + off, to: per.ate + 'T23:59:59' + off } });
+      } catch (e) { continue; }
+      // O mesmo criativo roda em várias contas e conjuntos: junta pelo NOME,
+      // que é como a equipe fala dele ("o AD64.3"), não por id de anúncio.
+      ((r && r.results) || []).forEach(x => {
+        const n = String(x.name || '(sem nome)').trim();
+        const k = (d.nome || d.id) + ' | ' + n;
+        if (!porNome[k]) porNome[k] = { nome: n, projeto: d.nome || d.id, vendas: 0, receita: 0, gasto: 0 };
+        porNome[k].vendas += Number(x.approvedOrdersCount) || 0;
+        porNome[k].receita += (Number(x.grossRevenue) || 0) / 100;
+        porNome[k].gasto += (Number(x.spend) || 0) / 100;
+      });
+    }
+    const todos = Object.values(porNome);
+    if (!todos.length) return 'Nenhum anúncio com dados ' + per.rotulo + '.';
+    const lim = Math.min(40, Math.max(3, Number(a.limite) || 12));
+    const vendem = todos.filter(x => x.vendas > 0).sort((x, y) => y.receita - x.receita).slice(0, lim);
+    const queimam = todos.filter(x => !x.vendas && x.gasto > 0).sort((x, y) => y.gasto - x.gasto).slice(0, 8);
+    const tg = todos.reduce((s, x) => s + x.gasto, 0), tr = todos.reduce((s, x) => s + x.receita, 0), tv = todos.reduce((s, x) => s + x.vendas, 0);
+    let t = 'CRIATIVOS ' + per.rotulo.toUpperCase() + '\n' +
+      'Total: ' + _mcpNum(tv) + ' vendas · ' + _mcpBrl(tr) + ' faturado · ' + _mcpBrl(tg) + ' investido' + (tg > 0 ? ' · ROAS ' + (tr / tg).toFixed(2).replace('.', ',') + 'x' : '') + '\n\n';
+    t += 'QUEM VENDE\n' + (vendem.length ? vendem.map(x =>
+      '· ' + x.nome + ' [' + x.projeto + ']: ' + _mcpNum(x.vendas) + ' venda(s) · ' + _mcpBrl(x.receita) +
+      ' · gasto ' + _mcpBrl(x.gasto) + (x.gasto > 0 ? ' · ROAS ' + (x.receita / x.gasto).toFixed(2).replace('.', ',') + 'x' : '') +
+      (x.vendas ? ' · CPA ' + _mcpBrl(x.gasto / x.vendas) : '')).join('\n') : '· nenhum anúncio vendeu no período') + '\n';
+    if (queimam.length) t += '\nGASTOU E NÃO VENDEU\n' + queimam.map(x => '· ' + x.nome + ' [' + x.projeto + ']: ' + _mcpBrl(x.gasto)).join('\n') + '\n';
+    return t;
+  }
+
+  if (nome === 'onde_perco_gente') {
+    const db = readDB();
+    if (!a.funil && !a.quiz) {
+      const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).map(f => '· funil: ' + f.nome + ' — id ' + f.id);
+      const quizzes = (Array.isArray(db.store[KEY_QUIZZES]) ? db.store[KEY_QUIZZES] : []).map(q => '· quiz: ' + q.nome + ' — id ' + q.id);
+      return 'Diga qual funil ou quiz olhar:\n' + funis.concat(quizzes).join('\n');
+    }
+    let t = '';
+    if (a.funil) {
+      const d = _funilStats(per.de, per.ate, String(a.funil));
+      const f = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).find(x => x.id === String(a.funil));
+      const nome = e => ((f && (f.etapas || []).find(x => x.id === e.etapa)) || {}).nome || e.etapa;
+      const etapas = (d.etapas || []).slice().sort((x, y) => y.unicos - x.unicos);
+      t += 'FUNIL ' + ((f && f.nome) || a.funil) + ' · ' + per.rotulo + '\n' +
+        'Contagem vinda de: ' + (d.fonteUnicos === 'jornada' ? 'jornada (cada pessoa uma vez)' : 'contador acumulado') + '\n\n';
+      t += etapas.length ? etapas.map(e => '· ' + nome(e) + ': ' + _mcpNum(e.unicos) + ' pessoas' +
+        ((e.paginas || []).length > 1 ? '  (' + e.paginas.length + ' páginas somadas)' : '')).join('\n') : '· sem dado no período';
+      if ((d.foraDoMapa || []).length) {
+        const somaFora = d.foraDoMapa.reduce((s, x) => s + x.pessoas, 0);
+        t += '\n\nAtenção: ' + d.foraDoMapa.length + ' página(s) com pixel fora do mapa (' + _mcpNum(somaFora) + ' pessoas). Cadastre a URL numa etapa pra elas entrarem na conta.';
+      }
+      t += '\n\n';
+    }
+    if (a.quiz) {
+      const d = _quizStats(String(a.quiz), per.de, per.ate);
+      if (!d.ok) return t + d.erro;
+      t += 'QUIZ ' + d.quiz.nome + ' · ' + per.rotulo + '\n' +
+        _mcpNum(d.abriram) + ' abriram · ' + _mcpNum(d.concluiram) + ' concluíram · ' + _mcpNum(d.clicaram) + ' foram pra oferta · ' + _mcpNum(d.compraram) + ' compraram (' + _mcpBrl(d.receita) + ')\n\n';
+      const passos = (d.telas || []).map(x => ({ nome: x.nome, n: x.chegaram }));
+      passos.push({ nome: 'Tocaram no botão da oferta', n: d.clicaram });
+      let pior = -1, maior = 0;
+      if (d.abriram >= 30) for (let i = 1; i < passos.length - 1; i++) {
+        if (!passos[i].n) continue;
+        const s = (passos[i].n - passos[i + 1].n) / passos[i].n;
+        if (s > maior) { maior = s; pior = i; }
+      }
+      t += passos.map((p, i) => {
+        const saem = i < passos.length - 1 ? Math.max(0, p.n - passos[i + 1].n) : null;
+        return '· ' + p.nome + ': ' + _mcpNum(p.n) + (saem != null && p.n ? '  (saem ' + _mcpPct(saem / p.n) + ')' : '') + (i === pior ? '   ← MAIOR ABANDONO' : '');
+      }).join('\n');
+      if (pior < 0 && d.abriram < 30) t += '\n\nCom ' + _mcpNum(d.abriram) + ' pessoas ainda não dá pra apontar a maior queda: pode ser acaso.';
+    }
+    return t;
+  }
+
+  if (nome === 'respostas_que_compram') {
+    const d = _quizStats(String(a.quiz || ''), per.de, per.ate);
+    if (!d.ok) return d.erro;
+    let t = 'QUIZ ' + d.quiz.nome + ' · ' + per.rotulo + '\n' +
+      _mcpNum(d.compraram) + ' compras ligadas a respostas, ' + _mcpBrl(d.receita) + '\n';
+    if (!d.base || !d.base.ligados) {
+      t += '\nNenhuma venda ligada ainda. Pra isso funcionar, a oferta precisa do pixel do Central TMX e do webhook de vendas ligado.\n';
+    }
+    (d.opcoes || []).forEach(o => {
+      const linhas = (o.ops || []).filter(x => x.base > 0).map(x => ({ t: x.t, base: x.base, compras: x.compras, taxa: x.compras / x.base, rpp: x.receita / x.base }))
+        .sort((x, y) => y.taxa - x.taxa);
+      if (!linhas.length) return;
+      t += '\n' + o.pergunta.replace(/\*/g, '') + '\n' +
+        linhas.map((x, i) => '   ' + (i === 0 && x.compras > 0 ? '▲ ' : '  ') + x.t + ': ' + _mcpNum(x.base) + ' pessoas · ' + _mcpNum(x.compras) + ' compraram · ' + _mcpPct(x.taxa) + ' · ' + _mcpBrl(x.rpp) + ' por pessoa').join('\n') + '\n';
+    });
+    const perfis = (d.perfis || []).filter(p => p.base > 0);
+    if (perfis.length) t += '\nPERFIS\n' + perfis.map(p => '· ' + p.nome + ': ' + _mcpNum(p.concluiram) + ' concluíram · compra ' + _mcpPct(p.base ? p.compras / p.base : 0) + ' · ' + _mcpBrl(p.receita)).join('\n') + '\n';
+    return t;
+  }
+
+  if (nome === 'retencao_da_vsl') {
+    const cfg = _vturbExige();
+    if (!a.player) {
+      const ps = await _vturbPlayers(cfg.token).catch(() => (cfg.players || []));
+      return 'VSLs NA VTURB (use o id em player:)\n' + (ps.length ? ps.slice(0, 60).map(p => '· ' + (p.nome || p.name || '(sem nome)') + ' — id: ' + p.id).join('\n') : '· nenhuma VSL encontrada');
+    }
+    const fake = { query: { de: per.de, ate: per.ate } };
+    const pr = _vturbPeriodo(fake);
+    const meta = (cfg.players || []).find(p => String(p.id) === String(a.player)) || {};
+    const bruto = await _vturbApiData(cfg.token, '/times/user_engagement',
+      { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: Number(meta.duracao) || 0 }, pr);
+    const pts = ((Array.isArray(bruto) ? bruto : (bruto && bruto.data) || []) || [])
+      .map(x => ({ t: Number(x.timed) || 0, n: Number(x.total_users) || 0 })).sort((x, y) => x.t - y.t);
+    if (!pts.length) return 'Sem dados de retenção pra essa VSL ' + per.rotulo + '.';
+    // Mesma regra da tela: curva de sobrevivência NUNCA sobe. Se subir, o que
+    // veio é histograma de abandono e precisa ser somado de trás pra frente.
+    let ehSobrevivencia = true;
+    for (let i = 1; i < pts.length; i++) if (pts[i].n > pts[i - 1].n * 1.02 + 1) { ehSobrevivencia = false; break; }
+    let curva;
+    if (ehSobrevivencia) {
+      const topo = pts[0].n || 1;
+      curva = pts.map(p => ({ t: p.t, y: Math.min(100, p.n / topo * 100) }));
+    } else {
+      let acum = 0; const saida = [];
+      for (let j = pts.length - 1; j >= 0; j--) { acum += pts[j].n; saida.unshift({ t: pts[j].t, n: acum }); }
+      const total = saida[0].n || 1;
+      curva = saida.map(p => ({ t: p.t, y: p.n / total * 100 }));
+    }
+    const em = seg => { let melhor = null; curva.forEach(p => { if (p.t <= seg && (!melhor || p.t > melhor.t)) melhor = p; }); return melhor; };
+    let queda = null;
+    for (let i = 1; i < curva.length; i++) {
+      const perdeu = curva[i - 1].y > 0 ? (curva[i - 1].y - curva[i].y) / curva[i - 1].y : 0;
+      if (!queda || perdeu > queda.perdeu) queda = { perdeu, de: curva[i - 1], para: curva[i] };
+    }
+    const mmss = s => Math.floor(s / 60) + 'min' + String(Math.round(s % 60)).padStart(2, '0');
+    let t = 'RETENÇÃO DA VSL ' + (meta.nome || a.player) + ' · ' + per.rotulo + '\n\n';
+    [60, 300, 600, 1200].forEach(s => { const p = em(s); if (p) t += 'aos ' + mmss(s) + ': ' + _mcpPct(p.y / 100, 0) + ' ainda assistindo\n'; });
+    if (queda && queda.perdeu > 0) t += '\nMaior queda: entre ' + mmss(queda.de.t) + ' e ' + mmss(queda.para.t) + ', perde ' + _mcpPct(queda.perdeu) + ' de quem estava assistindo.';
+    if (meta.pitch) t += '\nO pitch está marcado em ' + mmss(Number(meta.pitch)) + '.';
+    return t;
+  }
+
+  if (nome === 'vendas_recentes') {
+    const proj = String(a.projeto || '').trim().toLowerCase();
+    const lim = Math.min(60, Math.max(5, Number(a.limite) || 20));
+    const evs = _evFeed.filter(e => !proj || String(e.dashboard || '').trim().toLowerCase() === proj).slice(0, lim);
+    if (!evs.length) return 'Nenhum evento registrado ainda' + (proj ? ' nesse projeto' : '') + '.';
+    return 'ACONTECENDO AGORA\n\n' + evs.map(e => {
+      const h = new Date(e.momento).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+      const q = e.qtd > 1 ? ' x' + e.qtd : '';
+      const tipo = e.tipo === 'venda' ? 'Venda aprovada' + q : e.tipo === 'receita' ? 'Receita a mais' : 'Checkout iniciado' + q;
+      return '· ' + h + '  ' + tipo + (e.valor ? ' · ' + _mcpBrl(e.valor) : '') + '  —  ' + e.anuncio + ' [' + e.dashboard + ']' +
+        (e.atrasada ? ' (pedido de ' + String(e.diaOriginal || '').split('-').reverse().slice(0, 2).join('/') + ', Pix/boleto)' : '');
+    }).join('\n');
+  }
+
+  throw new Error('Ferramenta desconhecida: ' + nome);
+}
+
+// O protocolo é JSON-RPC 2.0 por HTTP, igual ao servidor MCP da Utmify que a
+// gente consome — é o formato que os assistentes esperam.
+app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
+  const corpo = req.body || {};
+  const id = corpo.id !== undefined ? corpo.id : null;
+  const erro = (codigo, msg) => res.json({ jsonrpc: '2.0', id, error: { code: codigo, message: msg } });
+  if (!_mcpAutenticar(req)) {
+    return res.status(401).json({ jsonrpc: '2.0', id,
+      error: { code: -32001, message: 'Token inválido ou não informado. Gere um token da API no Central TMX e use ?token= no fim da URL.' } });
+  }
+  const metodo = String(corpo.method || '');
+  try {
+    if (metodo === 'initialize') {
+      return res.json({ jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOLO,
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: 'Central TMX', version: '1.0.0' },
+        instructions: 'Dados da operação do Central TMX: vendas, anúncios, funis, quizzes e VSLs. Somente leitura. Todos os valores em reais e as datas no fuso de Brasília.' } });
+    }
+    if (metodo.indexOf('notifications/') === 0) return res.status(202).end();
+    if (metodo === 'ping') return res.json({ jsonrpc: '2.0', id, result: {} });
+    if (metodo === 'tools/list') return res.json({ jsonrpc: '2.0', id, result: { tools: MCP_FERRAMENTAS } });
+    if (metodo === 'tools/call') {
+      const nome = String((corpo.params || {}).name || '');
+      if (!MCP_FERRAMENTAS.some(f => f.name === nome)) return erro(-32602, 'Ferramenta desconhecida: ' + nome);
+      try {
+        const texto = await _mcpExecutar(nome, (corpo.params || {}).arguments || {});
+        return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(texto) }] } });
+      } catch (e) {
+        // erro da ferramenta volta como resultado, não como falha do protocolo:
+        // assim o assistente lê o motivo e explica, em vez de só dizer que quebrou
+        return res.json({ jsonrpc: '2.0', id, result: { isError: true, content: [{ type: 'text', text: 'Não consegui responder: ' + e.message }] } });
+      }
+    }
+    return erro(-32601, 'Método não suportado: ' + metodo);
+  } catch (e) {
+    console.error('[MCP]', metodo, e.message);
+    return erro(-32603, e.message);
+  }
+});
+app.get('/mcp', (req, res) => {
+  res.json({ ok: true, servidor: 'Central TMX', protocolo: MCP_PROTOCOLO, somenteLeitura: true,
+    ferramentas: MCP_FERRAMENTAS.map(f => f.name),
+    comoConectar: 'Use esta mesma URL com ?token=SEU_TOKEN no seu assistente. O token sai em Configurações → API.' });
 });
 
 // ── Não perder métrica no deploy ────────────────────────────────────────────
