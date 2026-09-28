@@ -11506,7 +11506,7 @@ const MCP_FERRAMENTAS = [
       periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
       de: { type: 'string' }, ate: { type: 'string' } }, required: ['quiz'] } },
   { name: 'retencao_da_vsl',
-    description: 'Retenção de uma VSL na VTurb: quanto sobra em cada minuto e onde está a maior queda. Sem o id do player, lista as VSLs disponíveis.',
+    description: 'Números de uma VSL na VTurb: views, views únicas, plays, plays únicos, play rate, quem chegou no pitch, cliques e vendas — mais a curva de retenção minuto a minuto e a maior queda. Sem o id do player, lista as VSLs disponíveis.',
     inputSchema: { type: 'object', properties: {
       player: { type: 'string', description: 'Id do player na VTurb' },
       duracao: { type: 'number', description: 'Duração do vídeo em segundos. Só precisa se a VTurb não informar.' },
@@ -11688,8 +11688,16 @@ async function _mcpExecutar(nome, a) {
              'Pergunte de novo dizendo a duração em segundos (ex.: "retenção dessa VSL, duração 2280"), ' +
              'ou cadastre a duração da VSL em Criativos & VSL.';
     }
-    const bruto = await _vturbApiData(cfg.token, '/times/user_engagement',
-      { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur }, pr);
+    // A curva sozinha nao responde "quantas pessoas". views, plays e play rate
+    // vem de /sessions/stats — a MESMA chamada que a tela de VSL ja usa — entao
+    // quem pergunta pela retencao recebe o tamanho da amostra junto.
+    const [bruto, stats] = await Promise.all([
+      _vturbApiData(cfg.token, '/times/user_engagement',
+        { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur }, pr),
+      _vturbApiData(cfg.token, '/sessions/stats',
+        { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo',
+          video_duration: dur, pitch_time: Number(meta.pitch) || 0 }, pr).catch(e => ({ _erro: e.message }))
+    ]);
     // A lista vem em 'grouped_timed' — e o mesmo campo que a tela de VSL usa.
     // Eu tinha chutado 'data' e a resposta voltava sempre vazia.
     const lista = Array.isArray(bruto) ? bruto
@@ -11717,7 +11725,28 @@ async function _mcpExecutar(nome, a) {
       if (!queda || perdeu > queda.perdeu) queda = { perdeu, de: curva[i - 1], para: curva[i] };
     }
     const mmss = s => Math.floor(s / 60) + 'min' + String(Math.round(s % 60)).padStart(2, '0');
-    let t = 'RETENÇÃO DA VSL ' + (meta.nome || a.player) + ' · ' + per.rotulo + '\n\n';
+    const nomeVsl = String(meta.nome || a.player);
+    let t = (/^vsl\b/i.test(nomeVsl) ? '' : 'VSL ') + nomeVsl + ' · ' + per.rotulo + '\n\n';
+    // taxas da VTurb ja vem em 0-100; multiplicar de novo daria 5.510%
+    const taxa = (v, c) => (Number(v) || 0).toFixed(c == null ? 1 : c).replace('.', ',') + '%';
+    if (stats && !stats._erro) {
+      const views  = Number(stats.total_viewed) || 0,  viewsU = Number(stats.total_viewed_device_uniq) || 0;
+      const plays  = Number(stats.total_started) || 0, playsU = Number(stats.total_started_device_uniq) || 0;
+      const pitch  = Number(stats.total_over_pitch) || 0;
+      const cliq   = Number(stats.total_clicked_device_uniq || stats.total_clicked) || 0;
+      const vendas = Number(stats.total_conversions) || 0;
+      t += 'NÚMEROS DO PERÍODO\n';
+      t += 'views ' + _mcpNum(views) + ' · views únicas ' + _mcpNum(viewsU) + '\n';
+      t += 'plays ' + _mcpNum(plays) + ' · plays únicos ' + _mcpNum(playsU) + ' · play rate ' + taxa(stats.play_rate) + '\n';
+      t += 'chegaram no pitch ' + _mcpNum(pitch) + (Number(stats.over_pitch_rate) ? ' (' + taxa(stats.over_pitch_rate) + ' de quem deu play)' : '') +
+           ' · terminaram ' + _mcpNum(stats.total_finished_device_uniq || stats.total_finished) +
+           ' · engajamento ' + taxa(stats.engagement_rate) + '\n';
+      t += 'cliques ' + _mcpNum(cliq) + ' · vendas ' + _mcpNum(vendas) +
+           (Number(stats.overall_conversion_rate) ? ' (' + taxa(stats.overall_conversion_rate, 2) + ' de conversão)' : '') + '\n\n';
+    } else if (stats && stats._erro) {
+      t += '(não consegui buscar views e plays agora: ' + stats._erro + ')\n\n';
+    }
+    t += 'RETENÇÃO\n';
     [60, 300, 600, 1200].forEach(s => { const p = em(s); if (p) t += 'aos ' + mmss(s) + ': ' + _mcpPct(p.y / 100, 0) + ' ainda assistindo\n'; });
     if (queda && queda.perdeu > 0) t += '\nMaior queda: entre ' + mmss(queda.de.t) + ' e ' + mmss(queda.para.t) + ', perde ' + _mcpPct(queda.perdeu) + ' de quem estava assistindo.';
     if (meta.pitch) t += '\nO pitch está marcado em ' + mmss(Number(meta.pitch)) + '.';
