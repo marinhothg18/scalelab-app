@@ -2837,18 +2837,43 @@ function _pegaCom(obj, caminhos) {
 }
 function _pega(obj, caminhos) { return _pegaCom(obj, caminhos).valor; }
 
+// A Payt nao manda utm e sck soltos no corpo: ela junta tudo em 'link'
+// ('link.sources' com as utm, 'link.query_params' com o resto da query, e a
+// propria 'link.url'). Enquanto isso nao era lido, TODA venda chegava orfa —
+// 146 em 7 dias, nenhuma com origem. Aqui a gente achata esses tres num objeto
+// so, que entra como mais um lugar onde procurar cada campo.
+function _doLink(p) {
+  const l = (p && p.link) || {};
+  const out = {};
+  const por = o => { if (o && typeof o === 'object' && !Array.isArray(o)) Object.keys(o).forEach(k => { if (o[k] !== null && o[k] !== '') out[k] = o[k]; }); };
+  por(l.sources); por(l.query_params); por(l.tracking); por(p && p.query_params);
+  // a query da propria URL do checkout: e onde o sck viaja quando o gateway
+  // guarda o link inteiro em vez dos campos separados
+  [l.url, p && p.url, p && p.checkout_url].forEach(u => {
+    if (!u || typeof u !== 'string' || u.indexOf('?') < 0) return;
+    try {
+      new URL(u, 'https://x').searchParams.forEach((v, k) => { if (v && out[k] === undefined) out[k] = v; });
+    } catch (e) {}
+  });
+  return out;
+}
+// Valor que o checkout crava sozinho e que nao diz de onde a pessoa veio.
+const _ORIGEM_VAZIA = /^(organic|organico|orgânico|direct|direto|none|null|undefined|nao-informado|n\/a|sem|)$/i;
+function _origemVale(v) { return !!String(v || '').trim() && !_ORIGEM_VAZIA.test(String(v).trim()); }
+
 // Procura o id do visitante em todos os campos que um gateway pode devolver.
 // O pixel esconde 'tmx_<id>' dentro do sck (e do src, quando existe) porque
 // parametro proprio nao sobrevive ao postback.
 function _vidDaVenda(p) {
+  const doLink = _doLink(p);
   const direto = _pega(p, ['tmx_vid', 'trackingParameters.tmx_vid', 'tracking.tmx_vid',
-                           'metadata.tmx_vid', 'custom.tmx_vid']);
+                           'metadata.tmx_vid', 'custom.tmx_vid']) || doLink.tmx_vid;
   if (direto) return String(direto).slice(0, 40);
   const campos = ['sck', 'src', 'utm_content', 'xcod',
                   'trackingParameters.sck', 'trackingParameters.src',
                   'trackingParameters.utm_content', 'tracking.sck', 'tracking.src'];
-  for (const c of campos) {
-    const v = String(_pega(p, [c]) || '');
+  for (const c of campos.concat(['__link.sck', '__link.src', '__link.utm_content', '__link.xcod'])) {
+    const v = String((c.indexOf('__link.') === 0 ? doLink[c.slice(7)] : _pega(p, [c])) || '');
     const m = v.match(/tmx_([A-Za-z0-9]{6,40})/);
     if (m) return m[1];
   }
@@ -2858,11 +2883,16 @@ function _vidDaVenda(p) {
 function _normalizarVenda(p) {
   const achado = _pegaCom(p, [
     'commission.totalPriceInCents','totalPriceInCents','amount_in_cents','price_in_cents',
-    'valor','value','amount','total','price','transaction.amount','data.amount','order.total'
+    // Payt: o que a pessoa pagou de verdade (em centavos). Sem esta linha TODA
+    // venda da Payt ficava guardada com valor nulo.
+    'transaction.total_price',
+    'valor','value','amount','total','price','transaction.amount','data.amount','order.total',
+    'product.price'
   ]);
   let valor = _num(achado.valor);
-  // Gateways que mandam em centavos deixam isso explícito no nome do campo
-  if (valor !== null && /cents/i.test(achado.caminho)) valor = valor / 100;
+  // Gateways que mandam em centavos: ou dizem no nome do campo, ou são estes
+  if (valor !== null && /cents|transaction\.total_price|^product\.price$/i.test(achado.caminho)) valor = valor / 100;
+  const doLink = _doLink(p);
   return {
     id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     pedidoId: String(_pega(p, ['orderId','order_id','id','transaction_id','codigo','code']) || ''),
@@ -2872,11 +2902,14 @@ function _normalizarVenda(p) {
     produto: String(_pega(p, ['products.0.name','product.name','produto','product_name','plan_name']) || ''),
     cliente: String(_pega(p, ['customer.name','cliente.nome','customer_name','buyer.name']) || ''),
     email: String(_pega(p, ['customer.email','cliente.email','customer_email','buyer.email']) || ''),
-    utmSource:   String(_pega(p, ['trackingParameters.utm_source','utm_source','tracking.utm_source','src']) || ''),
-    utmMedium:   String(_pega(p, ['trackingParameters.utm_medium','utm_medium','tracking.utm_medium']) || ''),
-    utmCampaign: String(_pega(p, ['trackingParameters.utm_campaign','utm_campaign','tracking.utm_campaign','campaign']) || ''),
-    utmContent:  String(_pega(p, ['trackingParameters.utm_content','utm_content','tracking.utm_content']) || ''),
-    utmTerm:     String(_pega(p, ['trackingParameters.utm_term','utm_term','tracking.utm_term']) || ''),
+    utmSource:   String(_pega(p, ['trackingParameters.utm_source','utm_source','tracking.utm_source','src']) || doLink.utm_source || doLink.src || ''),
+    utmMedium:   String(_pega(p, ['trackingParameters.utm_medium','utm_medium','tracking.utm_medium']) || doLink.utm_medium || ''),
+    utmCampaign: String(_pega(p, ['trackingParameters.utm_campaign','utm_campaign','tracking.utm_campaign','campaign']) || doLink.utm_campaign || ''),
+    utmContent:  String(_pega(p, ['trackingParameters.utm_content','utm_content','tracking.utm_content']) || doLink.utm_content || ''),
+    utmTerm:     String(_pega(p, ['trackingParameters.utm_term','utm_term','tracking.utm_term']) || doLink.utm_term || ''),
+    // assinatura que se renova sozinha nao teve clique nenhum: contar como
+    // "venda sem origem" fazia a conta de orfas parecer defeito de rastreio
+    renovacao: Number((p && p.subscription && p.subscription.charges) || 0) > 1,
     // o visitante que o pixel anexou no link do checkout — e o que liga a venda
     // a jornada inteira, mesmo quando a UTM se perdeu no caminho
     // O vid pode voltar em tres lugares, em ordem de confianca:
@@ -2891,9 +2924,23 @@ function _normalizarVenda(p) {
 // Como esta venda foi ligada a uma origem. Sem isso voce troca um numero ruim
 // por outro numero ruim sem saber qual e qual: 'vid' e confianca dura (o proprio
 // visitante), 'utm' e o parametro que sobreviveu, 'nenhum' e venda orfa.
+// So entra na conta o que foi pago. A Payt manda o mesmo pedido em varios
+// estados (waiting_payment, lost_cart, canceled) e contar todos como venda
+// inflava faturamento e conversao sem ninguem perceber. Venda antiga sem
+// status continua valendo: quando ela foi guardada, tudo contava.
+const _PAGO = /^(paid|approved|aprovad|pago|completed|complete|authorized|captured|confirmed|confirmad|active|ativo|success|settled)/i;
+function _vendaPaga(v) {
+  const st = String((v && v.status) || '').trim();
+  return !st || _PAGO.test(st);
+}
+
 function _comoCasou(v) {
   if (v.vid)       return 'vid';
-  if (v.utmContent || v.utmCampaign || v.utmSource) return 'utm';
+  // utm_source fixo em "organic" e o padrao do checkout, nao a origem da venda:
+  // aceitar isso como atribuicao enchia o relatorio de venda "organica" que na
+  // verdade veio de anuncio.
+  if (_origemVale(v.utmContent) || _origemVale(v.utmCampaign) || _origemVale(v.utmSource)) return 'utm';
+  if (v.renovacao) return 'renovacao';
   return 'nenhum';
 }
 
@@ -3727,8 +3774,8 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
         const dia = String(v.recebidoEm || '').slice(0, 10);
         if (deQuery && dia < deQuery) return false;
         if (ateQuery && dia > ateQuery) return false;
-        // so venda que entrou de fato; pendente e reembolso nao sao faturamento
-        return !/reembols|refund|charge|recus|cancel|estorn/i.test(String(v.status || ''));
+        // so venda que entrou de fato; pendente, carrinho perdido e reembolso nao sao faturamento
+        return _vendaPaga(v);
       });
     const temPrecos = cfgPl.planos.some(p => Number(p.preco) > 0);
     // basta ter venda individual: o nome ja classifica sozinho na maioria dos casos
@@ -9493,7 +9540,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     // diz isso, em vez de fingir que a pessoa nao comprou.
     const porVid = {};
     (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
-      if (!v || !v.vid) return;
+      if (!v || !v.vid || !_vendaPaga(v)) return;
       const atual = porVid[v.vid];
       // mais de uma compra do mesmo visitante: soma o valor, guarda a primeira
       if (atual) {
@@ -10006,7 +10053,7 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
       });
     let vendasSemVariante = 0;
     (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
-      if (!v || !v.vid) return;
+      if (!v || !v.vid || !_vendaPaga(v)) return;
       const dia = String(v.recebidoEm || '').slice(0, 10);
       if (de && dia && dia < de) return;
       if (ate && dia && dia > ate) return;
@@ -11212,7 +11259,7 @@ function _quizStats(id, de, ate) {
     const db = readDB();
     const compra = {};
     (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
-      if (!v || !v.vid) return;
+      if (!v || !v.vid || !_vendaPaga(v)) return;
       const dia = String(v.recebidoEm || '').slice(0, 10);
       if (dia && !noPeriodo(dia)) return;
       const c = compra[v.vid] = compra[v.vid] || { n: 0, valor: 0, cliente: '' };
