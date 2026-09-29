@@ -2792,12 +2792,27 @@ app.get('/api/integracoes/vendas/me', authDiretoria, (req, res) => {
     const cfg = _vendasCfg(db);
     const vendas = db.store[KEY_VENDAS] || [];
     const raw = db.store[KEY_VENDAS_RAW] || [];
+    // "Vendas recebidas: 1.218" fazia parecer que tinham entrado 1.218 vendas.
+    // Sao EVENTOS do checkout: o mesmo pedido chega como pix gerado, depois
+    // pago (ou cancelado), e carrinho perdido tambem vem. So 'paid' e venda.
+    const porStatus = {};
+    vendas.forEach(v => { const st = String(v.status || '(sem status)'); porStatus[st] = (porStatus[st] || 0) + 1; });
+    const pagas = vendas.filter(_vendaPaga);
+    const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+    const pagasHoje = pagas.filter(v => String(v.recebidoEm || '').slice(0, 10) === hoje);
     res.json({
       ok: true,
       configurado: !!(cfg && cfg.token),
       urlWebhook: cfg && cfg.token ? `/api/webhook/vendas/${cfg.token}` : null,
-      totalVendas: vendas.length,
-      ultimaVenda: vendas.length ? vendas[vendas.length - 1].recebidoEm : null,
+      eventos: vendas.length,
+      totalVendas: pagas.length,                       // pagas, que e o que a tela chama de venda
+      pagasHoje: pagasHoje.length,
+      receitaHoje: pagasHoje.reduce((a, v) => a + (Number(v.valor) || 0), 0),
+      pedidos: new Set(vendas.map(v => v.pedidoId).filter(Boolean)).size,
+      porStatus,
+      comVid: vendas.filter(v => v.vid).length,
+      semValor: pagas.filter(v => !(Number(v.valor) > 0)).length,
+      ultimaVenda: pagas.length ? pagas[pagas.length - 1].recebidoEm : null,
       ultimosBrutos: raw.slice(-10).reverse()
     });
   } catch (err) { res.status(500).json({ error: err.message }); }

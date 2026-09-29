@@ -20295,9 +20295,20 @@ function _cardVendas(v){
           '<div style="font-size:11px;color:#DC2626;margin-top:6px;">⚠️ Essa URL é secreta — quem tiver ela consegue lançar vendas no sistema.</div>'+
         '</div>'+
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px;">'+
-          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Vendas recebidas</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+(v.totalVendas||0)+'</div></div>'+
-          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Última</div><div style="font-size:13px;font-weight:700;margin-top:6px;">'+(v.ultimaVenda ? new Date(v.ultimaVenda).toLocaleString('pt-BR') : '—')+'</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Vendas pagas</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+(v.totalVendas||0)+'</div><div style="font-size:10.5px;color:var(--text2);margin-top:2px;">'+(v.pagasHoje||0)+' hoje'+((v.receitaHoje||0)>0?' · R$ '+Math.round(v.receitaHoje).toLocaleString('pt-BR'):'')+'</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Eventos recebidos</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+(v.eventos||0)+'</div><div style="font-size:10.5px;color:var(--text2);margin-top:2px;">'+(v.pedidos||0)+' pedidos diferentes</div></div>'+
+          '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Última venda paga</div><div style="font-size:13px;font-weight:600;margin-top:6px;">'+(v.ultimaVenda?new Date(v.ultimaVenda).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—')+'</div></div>'+
         '</div>'+
+        (v.porStatus ? '<div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--text2);line-height:1.8;">'+
+          '<b style="color:var(--text);">O mesmo pedido chega várias vezes</b> — pix gerado, depois pago ou cancelado. Só <b style="color:#16A34A;">pago</b> vira faturamento.<br>'+
+          Object.keys(v.porStatus).sort(function(a,b){ return v.porStatus[b]-v.porStatus[a]; }).map(function(k){
+            var rot = {paid:'✅ pago', canceled:'✖️ cancelado', waiting_payment:'⏳ aguardando pagamento',
+                       lost_cart:'🛒 carrinho perdido', chargeback:'↩️ chargeback', refunded:'↩️ reembolsado'}[k] || k;
+            return rot+': <b style="color:var(--text);">'+v.porStatus[k]+'</b>';
+          }).join(' · ')+
+          (v.comVid===0 && v.eventos ? '<br><span style="color:#D97706;">⚠️ Nenhuma venda chegou com o id do visitante: sem o pixel na página, o funil não consegue dizer de qual página e de qual variante veio a compra.</span>' : '')+
+          (v.semValor ? '<br><span style="color:var(--text2);">'+v.semValor+' venda(s) paga(s) guardadas antes da correção estão sem valor.</span>' : '')+
+        '</div>' : '')+
         ((v.ultimosBrutos && v.ultimosBrutos.length)
           ? '<details style="margin-bottom:12px;"><summary style="cursor:pointer;font-size:12px;color:var(--text2);">Ver os últimos webhooks recebidos (pra conferir o formato)</summary>'+
             '<pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:10.5px;overflow-x:auto;max-height:260px;margin-top:8px;">'+_esc(JSON.stringify(v.ultimosBrutos,null,1))+'</pre></details>'
