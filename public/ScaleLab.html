@@ -29463,7 +29463,18 @@ function gePintar(){
   var f = fnAtual();
   if(!f){ el.innerHTML = '<div class="fx-vazio">Escolha um funil.</div>'; return; }
 
-  var cliques  = fnCliques ? (fnCliques.total||0) : null;
+  // Cliques: se as origens deste funil tem campanha amarrada, conta SO elas.
+  // Sem isso a tela comparava o funil "Bio insta" com o clique do projeto
+  // inteiro — 2.500 cliques contra 39 pessoas, e a leitura da queda virava
+  // ficcao. Sem campanha amarrada, continua o total do projeto, mas dizendo.
+  var fontes = (f.etapas||[]).filter(function(e){ return e.tipo==='fonte'; });
+  var comCamp = fontes.filter(function(e){ return e.utmCampanha; });
+  var cliquesDoFunil = comCamp.reduce(function(a, e){
+    return a + ((fnCliques && fnCliques.campanhas[e.utmCampanha]) || 0); }, 0);
+  var cliques = fnCliques ? (comCamp.length ? cliquesDoFunil : (fnCliques.total||0)) : null;
+  var deOnde = comCamp.length
+    ? 'da(s) campanha(s) deste funil'
+    : 'do projeto inteiro — amarre a campanha na origem pra separar';
   var chegaram = fnBase(f);
   var achaTipo = function(t){
     var e = (f.etapas||[]).filter(function(x){ return x.tipo===t; })[0];
@@ -29473,7 +29484,7 @@ function gePintar(){
 
   // ── Degraus: so entra o que existe. Degrau inventado vira queda inventada.
   var passos = [];
-  if(cliques !== null) passos.push({ r:'Cliques no anúncio', n:cliques, cor:'var(--accent)', d:'vindos da Utmify' });
+  if(cliques !== null) passos.push({ r:'Cliques no anúncio', n:cliques, cor:'var(--accent)', d:'Utmify · ' + deOnde });
   passos.push({ r:'Chegaram na página', n:chegaram, cor:'var(--roxo)', d:'medidos pelo pixel' });
   if(chk) passos.push({ r:'Abriram o checkout', n:chk.v, cor:'#FF5926', d:fnEsc(chk.nome) });
   if(obr) passos.push({ r:'Compraram', n:obr.v, cor:'var(--green)', d:fnEsc(obr.nome) });
@@ -29505,7 +29516,7 @@ function gePintar(){
   var taxaFinal = (topo && obr) ? (obr.v/topo*100) : null;
 
   var html = '<div class="fx-kpis">'+
-    kpi('Cliques',   cliques===null?'—':fnNum(cliques), cliques===null?'Utmify indisponível':'no anúncio') +
+    kpi('Cliques',   cliques===null?'—':fnNum(cliques), cliques===null?'Utmify indisponível':deOnde) +
     kpi('Chegaram',  fnNum(chegaram), 'na primeira página') +
     (chk ? kpi('Checkout', fnNum(chk.v), chegaram?((chk.v/chegaram*100).toFixed(1)+'% de quem entrou'):'—',
                chk.v?'':'ruim') : '') +
@@ -31168,17 +31179,21 @@ function fnCarregarCliques(de, ate){
     .then(function(x){
       if(!x.ok || !x.d || !x.d.ok){
         fnCliquesErro = (x.d && x.d.error) || 'não consegui falar com a Utmify';
-        fnCliques = null; fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe(); return;
+        fnCliques = null; fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe(); gePintar(); return;
       }
       var d = x.d;
       fnCliques = { total: d.total||0, visitas: d.visitas||0, ics: d.ics||0, campanhas: {} };
       (d.campanhas||[]).forEach(function(c){ fnCliques.campanhas[c.nome] = c.cliques||0; });
       fnCliquesLista = (d.campanhas||[]).map(function(c){ return c.nome; });
       if(d.erros && d.erros.length) fnCliquesErro = d.erros.join(' · ');
-      fnPintarCtx(); fnListaFontes(); fnNos(); fnFaixa(); fnFios(); fnDetalhe();
+      // A Visão geral usa os MESMOS numeros (cliques da Utmify e o checkout que
+      // cai pra ela quando o pixel nao tem nada). Sem repintar aqui, ela ficava
+      // congelada no que existia antes da Utmify responder: a barra de cima
+      // mostrava 2.500 cliques e 62 checkouts, e a Visão geral, 0 e 0.
+      fnPintarCtx(); fnListaFontes(); fnNos(); fnFaixa(); fnFios(); fnDetalhe(); gePintar();
     }).catch(function(e){
       fnCliquesErro = e.message; fnCliques = null;
-      fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe();
+      fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe(); gePintar();
     });
 }
 // cliques que chegam por uma origem: a campanha amarrada nela, ou o projeto todo
