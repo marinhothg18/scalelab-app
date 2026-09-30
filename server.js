@@ -9619,6 +9619,138 @@ app.get('/api/links/validador', authUsuario, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════
+// ── RECUPERAÇÃO ──
+// Quem tentou pagar e não pagou, quanto isso vale e por quê. Só olha o que o
+// checkout mandou pelo webhook: nada é inventado. Método de pagamento e
+// telefone são guardados a partir de 29/09 — antes disso o motivo sai genérico.
+// ══════════════════════════════════════════════════════
+const _FALHOU = /^(canceled|cancelled|cancelad|waiting|pending|pendente|aguardando|lost_cart|abandon|refused|recusad|expired|expirad|billet_printed|boleto)/i;
+const _ESTORNO = /(chargeback|refund|reembols|estorn)/i;
+function _motivoFalha(v) {
+  const st = String(v.status || '').toLowerCase(), m = String(v.metodo || '').toLowerCase();
+  const pix = /pix/.test(m), cartao = /card|cart|credit|credito|crédito/.test(m), boleto = /billet|boleto|bank_slip/.test(m);
+  if (/lost_cart|abandon/.test(st)) return 'Carrinho abandonado';
+  if (/waiting|pending|pendente|aguardando|billet_printed/.test(st)) {
+    if (pix) return (v.expiraEm && new Date(v.expiraEm).getTime() < Date.now()) ? 'Pix expirado' : 'Pix gerado, não pago';
+    if (boleto) return 'Boleto não pago';
+    return 'Aguardando pagamento';
+  }
+  if (/expired|expirad/.test(st)) return pix ? 'Pix expirado' : 'Pagamento expirado';
+  if (/refused|recusad|canceled|cancelled|cancelad/.test(st)) {
+    if (cartao) return 'Cartão recusado';
+    if (pix) return 'Pix expirado';
+    if (boleto) return 'Boleto vencido';
+    return 'Cancelado (motivo não informado)';
+  }
+  return 'Não pago';
+}
+function _pessoaDaVenda(v) {
+  const e = String(v.email || '').trim().toLowerCase();
+  if (e) return 'e:' + e;
+  const t = String(v.telefone || '').replace(/\D/g, '');
+  if (t.length >= 10) return 't:' + t.slice(-11);
+  const n = String(v.cliente || '').trim().toLowerCase();
+  return n ? 'n:' + n : '';
+}
+function _canalRecuperacao(v) {
+  const f = String(v.utmSource || '').toLowerCase();
+  if (/paytcall|ligac|call/.test(f)) return 'Ligação Payt';
+  if (/whats|wpp|zap/.test(f)) return 'WhatsApp';
+  if (/mail/.test(f)) return 'E-mail';
+  if (/sms/.test(f)) return 'SMS';
+  return 'Voltou sozinho';
+}
+function _nomeCurto(n) {
+  const p = String(n || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '(sem nome)';
+  return p[0].charAt(0).toUpperCase() + p[0].slice(1).toLowerCase() + (p.length > 1 ? ' ' + p[p.length - 1].charAt(0).toUpperCase() + '.' : '');
+}
+
+app.get('/api/recuperacao', authDiretoria, (req, res) => {
+  try {
+    const dias = Math.max(1, Math.min(60, parseInt(req.query.dias, 10) || 1));
+    const db = readDB(), agora = Date.now();
+    // "hoje" é o dia de Brasília; os outros períodos contam pra trás
+    const hojeBRT = new Date(agora - 3 * 3600000).toISOString().slice(0, 10);
+    const inicio = dias === 1 ? new Date(hojeBRT + 'T03:00:00Z').getTime() : agora - dias * 86400000;
+    const vendas = (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [])
+      .filter(v => v && !v.renovacao).slice().sort((a, b) => String(a.recebidoEm).localeCompare(String(b.recebidoEm)));
+    // quanto a pessoa assistiu, pelo pixel (quando existe a jornada)
+    const atencao = {};
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+      if (!j || !j.id) return;
+      (j.eventos || []).forEach(e => { const s = Number(e.atencao || e.segundos) || 0; if (s > (atencao[j.id] || 0)) atencao[j.id] = s; });
+    });
+    const pessoas = {};
+    vendas.forEach(v => {
+      const k = _pessoaDaVenda(v); if (!k) return;
+      (pessoas[k] = pessoas[k] || []).push(v);
+    });
+    const fila = [], recuperadas = [], motivos = {}, porCanal = {};
+    let emJogo = 0, recuperado = 0;
+    Object.keys(pessoas).forEach(k => {
+      const evs = pessoas[k];
+      const falhas = evs.filter(v => !_vendaPaga(v) && !_ESTORNO.test(String(v.status || '')) && _FALHOU.test(String(v.status || '')) &&
+                                     new Date(v.recebidoEm).getTime() >= inicio);
+      if (!falhas.length) return;
+      const primeira = falhas[0];
+      const pagouDepois = evs.find(v => _vendaPaga(v) && String(v.recebidoEm) >= String(primeira.recebidoEm));
+      const ultima = falhas[falhas.length - 1];
+      const motivo = _motivoFalha(ultima);
+      if (pagouDepois) {
+        const canal = _canalRecuperacao(pagouDepois);
+        const val = Number(pagouDepois.valor) || 0;
+        recuperado += val;
+        const c = porCanal[canal] = porCanal[canal] || { canal, vendas: 0, valor: 0 };
+        c.vendas++; c.valor += val;
+        recuperadas.push({ nome: _nomeCurto(pagouDepois.cliente || ultima.cliente), valor: val, canal, motivo,
+          tentativas: falhas.length, minutos: Math.round((new Date(pagouDepois.recebidoEm) - new Date(primeira.recebidoEm)) / 60000) });
+        return;
+      }
+      const valor = Math.max.apply(null, falhas.map(v => Number(v.valor) || 0));
+      emJogo += valor;
+      motivos[motivo] = (motivos[motivo] || 0) + 1;
+      const vid = (falhas.find(v => v.vid) || {}).vid;
+      fila.push({
+        nome: _nomeCurto(ultima.cliente), produto: ultima.plano || ultima.produto || '', valor, motivo,
+        tentativas: falhas.length, ultima: ultima.recebidoEm,
+        horas: Math.max(0, Math.round((agora - new Date(ultima.recebidoEm).getTime()) / 3600000)),
+        telefone: String(ultima.telefone || (evs.find(v => v.telefone) || {}).telefone || ''),
+        assistiu: vid && atencao[vid] ? Math.round(atencao[vid]) : null
+      });
+    });
+    // aprovação no cartão e pix pendente, no mesmo período
+    const doPeriodo = vendas.filter(v => new Date(v.recebidoEm).getTime() >= inicio);
+    const cartao = doPeriodo.filter(v => /card|cart|credit/i.test(v.metodo || ''));
+    const cartaoPago = cartao.filter(_vendaPaga).length;
+    const cartaoRecusado = cartao.filter(v => /refused|recusad|cancel/i.test(v.status || '')).length;
+    const pixPendente = doPeriodo.filter(v => /pix/i.test(v.metodo || '') && /waiting|pending|aguardando/i.test(v.status || '') &&
+      !(v.expiraEm && new Date(v.expiraEm).getTime() < agora) &&
+      !vendas.some(x => _vendaPaga(x) && x.pedidoId && x.pedidoId === v.pedidoId));
+    fila.sort((a, b) => (b.valor - a.valor) || (a.horas - b.horas));
+    // sugestão: recusa no cartão em compra cara é quase sempre limite
+    let sugestao = '';
+    const recusas = motivos['Cartão recusado'] || 0;
+    if (recusas >= 3) {
+      const caras = fila.filter(x => x.motivo === 'Cartão recusado' && x.valor >= 400).length;
+      if (caras) sugestao = caras + ' recusa(s) no cartão em compras acima de R$ 400. Recusa em valor alto costuma ser limite: ' +
+                            'oferecer o plano mais barato (mensal) pra quem tentou o anual recupera parte dessas vendas.';
+    }
+    const semMetodo = doPeriodo.filter(v => !v.metodo).length;
+    res.json({ ok: true, dias, desde: new Date(inicio).toISOString(),
+      emJogo: { valor: emJogo, pessoas: fila.length },
+      recuperado: { valor: recuperado, vendas: recuperadas.length,
+                    taxa: (recuperadas.length + fila.length) ? recuperadas.length / (recuperadas.length + fila.length) : 0 },
+      cartao: { pagos: cartaoPago, recusados: cartaoRecusado, taxa: (cartaoPago + cartaoRecusado) ? cartaoPago / (cartaoPago + cartaoRecusado) : null },
+      pixPendente: { quantos: pixPendente.length, valor: pixPendente.reduce((a, v) => a + (Number(v.valor) || 0), 0) },
+      motivos: Object.entries(motivos).map(([motivo, n]) => ({ motivo, n })).sort((a, b) => b.n - a.n),
+      porCanal: Object.values(porCanal).sort((a, b) => b.valor - a.valor),
+      fila: fila.slice(0, 200), recuperadas: recuperadas.slice(0, 50), sugestao,
+      semMetodo, historicoDesde: '2026-09-29' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
   try {
     const db = readDB();

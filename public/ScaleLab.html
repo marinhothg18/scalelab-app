@@ -1675,6 +1675,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .pr-ofertas{display:grid;gap:6px;margin:8px 0 0 14px;padding-left:12px;border-left:2px solid var(--border)}
 .pr-ofertas>.fn-btn{justify-self:start}
 @media (max-width:700px){ .lc-edit-l{grid-template-columns:1fr} }
+.rc-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.rc-duas{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:1000px){ .rc-duas{grid-template-columns:minmax(0,.9fr) minmax(0,1.4fr);align-items:start} }
+.rc-mot>div:first-child{display:flex;justify-content:space-between;font-size:12.5px}
+.lc-info{background:rgba(27,156,250,.14);color:#1B9CFA}
+a.fn-btn{text-decoration:none;display:inline-block}
 /* ── Desenhar funil ──────────────────────────────────────────────────────── */
 /* seletor de dominio, compartilhado entre Quiz e Testes A/B */
 .dm-linha{display:flex;gap:7px;align-items:center}
@@ -4299,6 +4305,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <div class="fx-nav-g">Projeto</div>
             <button class="fx-nav-i" onclick="fnAba('links',this)"><span>🔗</span>Links e canais<i class="fx-nav-n" id="fx-n-links"></i></button>
             <button class="fx-nav-i" onclick="fnAba('produtos',this)"><span>📦</span>Produtos<i class="fx-nav-p" id="fx-p-produtos"></i></button>
+            <button class="fx-nav-i" onclick="fnAba('recup',this)"><span>💸</span>Recuperação</button>
           </nav>
           <div class="fx-conteudo">
 
@@ -4368,6 +4375,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 
         <div class="fn-painel" id="fn-p-links"><div id="lc-corpo"></div></div>
         <div class="fn-painel" id="fn-p-produtos"><div id="pr-corpo"></div></div>
+        <div class="fn-painel" id="fn-p-recup"><div id="rc-corpo"></div></div>
 
         <div class="fn-painel" id="fn-p-saude">
           <div id="sv-corpo"></div>
@@ -29463,7 +29471,7 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
-var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos'];
+var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
@@ -29472,6 +29480,7 @@ var FN_ABA_INFO = {
   saude:   ['Saúde do funil', 'Dá pra confiar nos números deste funil? O que está quebrado, em ordem de estrago.'],
   links:   ['Links e canais', 'O padrão de UTM que não quebra, quem está fora dele e de qual canal vem cada venda.'],
   produtos:['Produtos',       'Qual produto é o principal e em que projeto ele vende. Venda fora do cadastro some da conta.'],
+  recup:   ['Dinheiro na mesa', 'Quem tentou pagar e não pagou, quanto isso vale, por quê — e quem chamar primeiro.'],
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
@@ -29498,6 +29507,7 @@ function fnAba(qual, bt){
   if(qual==='saude')   svCarregar(false);
   if(qual==='links')   lcCarregar();
   if(qual==='produtos') prCarregar();
+  if(qual==='recup')   rcCarregar();
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -29712,6 +29722,79 @@ function prPintar(){
     (dir ? '<div class="lc-bts" style="margin-top:14px"><button class="fn-btn sm" onclick="prSalvar()">Salvar cadastro</button></div>' : '<div class="fx-sub" style="margin-top:10px">Só a Diretoria edita o cadastro.</div>')+
   '</div>';
   el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════
+// ── RECUPERAÇÃO ──
+// ══════════════════════════════════════════════════════
+var rcDias = 1, rcDados = null;
+function rcCarregar(){
+  var el = document.getElementById('rc-corpo'); if(!el) return;
+  if(!lcEhDir()){ el.innerHTML = '<div class="fx-vazio">A lista de recuperação tem nome e telefone de cliente — só a Diretoria vê.</div>'; return; }
+  el.innerHTML = rcTopo() + '<div class="fx-vazio">Juntando as tentativas de pagamento…</div>';
+  fetch('/api/recuperacao?dias=' + rcDias).then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){ rcDados = d; rcPintar(); })
+    .catch(function(e){ el.innerHTML = rcTopo() + '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+function rcTopo(){
+  return '<div class="rc-topo"><div class="lc-bts" style="margin:0">'+[[1,'Hoje'],[7,'7 dias'],[30,'30 dias']].map(function(x){
+      return '<button class="fn-btn g sm'+(rcDias===x[0]?' on':'')+'" onclick="rcDias='+x[0]+';rcCarregar()">'+x[1]+'</button>'; }).join('')+'</div>'+
+    '<button class="fn-btn sm" onclick="rcExportar()">Exportar lista pro time</button></div>';
+}
+function rcHa(h){ return h < 1 ? 'agora' : h < 48 ? h+'h' : Math.round(h/24)+'d'; }
+function rcExportar(){
+  if(!rcDados || !rcDados.fila.length){ toastFn('Nada pra exportar nesse período'); return; }
+  var q = function(v){ v = String(v==null?'':v); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  var linhas = [['Nome','Tentou','Valor','Motivo','Tentativas','Há (h)','Telefone','Assistiu (min)']].concat(rcDados.fila.map(function(x){
+    return [x.nome, x.produto, String(x.valor).replace('.',','), x.motivo, x.tentativas, x.horas, x.telefone, x.assistiu!=null?Math.round(x.assistiu/60):''];
+  }));
+  var csv = '﻿' + linhas.map(function(l){ return l.map(q).join(';'); }).join('\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  a.download = 'recuperacao-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function rcPintar(){
+  var el = document.getElementById('rc-corpo'); var d = rcDados; if(!el || !d) return;
+  var kpi = function(r, v, sub, cls){ return '<div class="fx-kpi '+(cls||'')+'"><div class="r">'+r+'</div><div class="v">'+v+'</div><div class="d">'+sub+'</div></div>'; };
+  var h = rcTopo() + '<div class="fx-kpis">'+
+    kpi('Em jogo agora', fnDin(d.emJogo.valor), d.emJogo.pessoas+' pessoa(s) tentaram pagar e não pagaram', d.emJogo.valor?'ruim':'')+
+    kpi('Recuperado', fnDin(d.recuperado.valor), d.recuperado.vendas+' venda(s) · '+Math.round(d.recuperado.taxa*100)+'% de recuperação', d.recuperado.vendas?'bom':'')+
+    kpi('Aprovação no cartão', d.cartao.taxa==null?'—':Math.round(d.cartao.taxa*100)+'%', d.cartao.taxa==null?'sem pagamento no cartão no período':d.cartao.pagos+' pago(s) de '+(d.cartao.pagos+d.cartao.recusados)+' tentativa(s)')+
+    kpi('Pix gerado e não pago', fnNum(d.pixPendente.quantos), d.pixPendente.quantos?fnDin(d.pixPendente.valor)+' · ainda dá pra pagar':'nenhum aberto agora')+
+  '</div>';
+
+  var maxM = Math.max.apply(null, (d.motivos||[]).map(function(m){ return m.n; }).concat([1]));
+  var esq = '<div class="fx-cart"><div class="fx-cc"><h3>Por que o pagamento falhou</h3></div>'+
+    ((d.motivos||[]).length ? d.motivos.map(function(m){
+      var ruim = /Cartão|Cancelado/.test(m.motivo);
+      return '<div class="rc-mot"><div><span>'+fnEsc(m.motivo)+'</span><b>'+m.n+'</b></div><div class="sv-barra" style="margin:4px 0 10px"><i style="width:'+(m.n/maxM*100)+'%;background:'+(ruim?'var(--red)':'#f59e0b')+'"></i></div></div>';
+    }).join('') : '<div class="fx-vazio">Ninguém deixou de pagar nesse período.</div>')+
+    (d.sugestao ? '<div class="fx-aviso" style="margin:8px 0 0"><b>Sugestão</b>'+fnEsc(d.sugestao)+'</div>' : '')+
+    '<div class="fx-cc" style="margin:18px 0 6px"><h3 style="font-size:13.5px">Recuperação por canal</h3><span class="fx-sub">pelo utm da venda que fechou</span></div>'+
+    ((d.porCanal||[]).length ? '<table class="sv-tab" style="min-width:0"><tr><th>Canal</th><th class="n">Recuperou</th><th class="n">Valor</th></tr>'+
+      d.porCanal.map(function(c){ return '<tr><td>'+fnEsc(c.canal)+'</td><td class="n">'+c.vendas+'</td><td class="n">'+fnDin(c.valor)+'</td></tr>'; }).join('')+'</table>'
+      : '<div class="fx-vazio">Nenhuma venda recuperada nesse período.</div>')+
+    '<div class="fx-sub" style="margin-top:8px">Quantas ligações ou mensagens foram feitas o checkout não conta — por isso a taxa por canal não aparece, só o que fechou.</div>'+
+  '</div>';
+
+  var fila = d.fila || [];
+  var dir = '<div class="fx-cart"><div class="fx-cc"><h3>Fila de recuperação</h3><span class="fx-sub">maior valor primeiro, depois quem tentou há menos tempo</span></div>'+
+    (fila.length ? '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:640px"><tr><th>Pessoa</th><th>Tentou</th><th class="n">Valor</th><th>Motivo</th><th class="n">Assistiu</th><th class="n">Há</th><th></th></tr>'+
+      fila.slice(0, 60).map(function(x){
+        var cls = /Cartão/.test(x.motivo) ? 'sv-ruim' : /Pix gerado/.test(x.motivo) ? 'lc-info' : 'sv-atencao';
+        var tel = String(x.telefone||'').replace(/\D/g,'');
+        return '<tr><td><b>'+fnEsc(x.nome)+'</b>'+(x.tentativas>1?'<div class="fx-sub">'+x.tentativas+' tentativas</div>':'')+'</td>'+
+          '<td class="sv-url">'+fnEsc(x.produto||'—')+'</td><td class="n">'+fnDin(x.valor)+'</td>'+
+          '<td><span class="sv-pill '+cls+'">'+fnEsc(x.motivo)+'</span></td>'+
+          '<td class="n">'+(x.assistiu!=null?Math.round(x.assistiu/60)+' min':'—')+'</td><td class="n">'+rcHa(x.horas)+'</td>'+
+          '<td>'+(tel?'<a class="fn-btn g sm" href="https://wa.me/'+tel+'" target="_blank" rel="noopener">WhatsApp</a>':'')+'</td></tr>';
+      }).join('')+'</table></div>' : '<div class="fx-vazio">Fila vazia nesse período.</div>')+
+    '<div class="fx-sub" style="margin-top:8px">“Assistiu” vem do pixel: só aparece pra quem passou por página com o pixel instalado. '+
+      'Motivo e telefone são guardados a partir de 29/09'+(d.semMetodo?' — '+d.semMetodo+' evento(s) desse período ainda sem o método de pagamento':'')+'.</div>'+
+  '</div>';
+
+  el.innerHTML = h + '<div class="rc-duas">'+esq+dir+'</div>';
 }
 
 var svDados = null, svPedido = 0;
