@@ -1676,6 +1676,14 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .pr-ofertas>.fn-btn{justify-self:start}
 @media (max-width:700px){ .lc-edit-l{grid-template-columns:1fr} }
 .rc-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.abb{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:12px 0;background:var(--bg3)}
+.abb-l{margin-bottom:10px}
+.abb-r{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:5px}
+.abb-k{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0}
+.abb-k div{display:flex;flex-direction:column;gap:3px}
+.abb-k span{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);font-weight:700}
+.abb-k b{font-size:20px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.abb-lei{font-size:12.5px;line-height:1.55;border-top:1px dashed var(--border);padding-top:10px}
 .rc-duas{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 @media (min-width:1000px){ .rc-duas{grid-template-columns:minmax(0,.9fr) minmax(0,1.4fr);align-items:start} }
 .rc-mot>div:first-child{display:flex;justify-content:space-between;font-size:12.5px}
@@ -32715,6 +32723,64 @@ function abEscolher(slug){
   fnPintarRed(); abCarregar(slug);
 }
 
+// ── Leitura bayesiana: a pergunta que a operação faz ("qual a chance de a B
+// ser melhor?"), com o que falta pra decidir. Vem pronta do servidor.
+function abBayesHtml(r, d){
+  if(!d || !d.bayes || !d.bayes.variantes) return '';
+  var b = d.bayes, vs = b.variantes;
+  var ctrl = vs.filter(function(v){ return v.controle; })[0];
+  var outras = vs.filter(function(v){ return !v.controle; });
+  var lider = vs.filter(function(v){ return v.id === b.lider; })[0] || outras[0];
+  var pc = function(x){ return x==null ? '—' : (x*100).toFixed(0)+'%'; };
+  var sinal = function(x){ return x==null ? '—' : (x>=0?'+':'')+(x*100).toFixed(0)+'%'; };
+  if(d.vencedora){
+    var v = vs.filter(function(x){ return x.id === d.vencedora; })[0];
+    return '<div class="fx-aviso bom" style="margin:10px 0"><b>Vencedora declarada: '+fnEsc(v ? v.nome : d.vencedora)+'</b>'+
+      'Todo mundo que clica no link do teste vai pra ela agora — os anúncios continuam com o mesmo link.</div>';
+  }
+  var barras = outras.map(function(v){
+    var c = v.chanceMelhorQueControle || 0;
+    return '<div class="abb-l"><div class="abb-r"><span>'+fnEsc(v.nome)+' melhor que '+fnEsc(ctrl ? ctrl.nome : 'o controle')+'</span><b>'+pc(c)+'</b></div>'+
+      '<div class="sv-barra" style="height:12px"><i style="width:'+(c*100).toFixed(1)+'%;background:'+(c>=.95?'var(--green)':c>=.8?'#1B9CFA':'#f59e0b')+'"></i></div></div>';
+  }).join('');
+  var chance = b.chanceLider || 0, liderEhCtrl = lider && lider.controle;
+  var dias = b.diasPara95;
+  var leitura;
+  if(b.pronto) leitura = '<b>'+fnEsc(lider.nome)+'</b> tem '+pc(chance)+' de chance de ser a melhor, com '+b.minVendasLado+'+ vendas no lado com menos. Dá pra declarar.';
+  else if(chance >= .95) leitura = 'A chance já passou de 95%, mas o lado com menos tem só '+b.minVendasLado+' venda(s). Espere '+b.minVendas+' por lado antes de declarar — com pouca venda, uma semana boa decide o teste.';
+  else leitura = (liderEhCtrl ? 'O controle segue na frente. ' : '<b>'+fnEsc(lider.nome)+'</b> está na frente, mas com '+pc(chance)+' de chance. ')+
+    'Mantenha a divisão até 95% ou até '+b.minVendas+' vendas por lado'+(dias!=null ? (dias>0 ? ' — no ritmo de hoje, uns '+dias+' dia(s).' : '.') : '.');
+  return '<div class="abb">'+
+    '<div class="fn-sec" style="margin-top:0">Chance de ser melhor que o controle</div>'+barras+
+    '<div class="abb-k">'+
+      '<div><span>Lift em R$ por visita</span><b style="color:'+((lider&&lider.liftRpv>0)?'var(--green)':'var(--text)')+'">'+sinal(lider && !liderEhCtrl ? lider.liftRpv : null)+'</b></div>'+
+      '<div><span>Perda se escolher '+fnEsc(lider?lider.nome:'')+'</span><b>'+(lider && lider.perdaEsperada!=null ? (lider.perdaEsperada*100).toFixed(1).replace('.',',')+'%' : '—')+'</b></div>'+
+      '<div><span>Pra ter 95%</span><b>'+(chance>=.95 ? 'já tem' : dias==null ? 'sem diferença' : '~'+dias+' dia(s)')+'</b></div>'+
+    '</div>'+
+    '<div class="abb-lei"><b>Leitura:</b> '+leitura+'</div>'+
+    '<div class="fx-sub" style="margin-top:6px">Conversão = '+(b.criterio==='meta' ? 'chegar na meta do teste' : 'venda paga')+'. '+
+      'O controle é a primeira variante da lista.</div>'+
+  '</div>';
+}
+function abForaHtml(d){
+  if(!d || !d.foraDoTeste || !d.foraDoTeste.visitas) return '';
+  var f = d.foraDoTeste;
+  return '<div class="fx-aviso" style="margin-top:10px"><b>Fora do teste: '+fnNum(f.visitas)+' visita(s) direto nas páginas</b>'+
+    'Chegaram numa variante sem passar pelo link do split — anúncio antigo com link direto, ou link colado em outro lugar. '+
+    'Não entram na comparação'+(f.vendas ? ', mas venderam <span style="font-weight:700;color:var(--text)">'+f.vendas+' ('+fnDin(f.receita)+')</span> — confira no Validador (Links e canais) quais anúncios ainda usam o link direto.' : '.')+'</div>';
+}
+function abDeclarar(variante){
+  var r = fnRedAtual(); if(!r) return;
+  var d = abDados[r.slug] || {};
+  var v = ((d.bayes && d.bayes.variantes) || []).filter(function(x){ return x.id === variante; })[0];
+  if(variante && !confirm('Declarar "'+(v ? v.nome : variante)+'" vencedora?\n\nTodo o tráfego do link do teste passa a ir pra ela. Dá pra desfazer depois.')) return;
+  if(!variante && !confirm('Desfazer a vencedora e voltar a dividir o tráfego?')) return;
+  fetch('/api/ab/vencedora', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ teste: r.slug, variante: variante }) })
+    .then(function(x){ return x.json().then(function(j){ if(!x.ok) throw new Error(j.error||'falhou'); return j; }); })
+    .then(function(){ toastFn(variante ? 'Vencedora declarada' : 'Divisão reativada'); delete abDados[r.slug]; abCarregar(r.slug); })
+    .catch(function(e){ toastFn('Não deu: ' + e.message); });
+}
+
 // Os numeros do teste vem do servidor: e la que mora a contagem por variante
 function abCarregar(slug){
   if(abBuscando[slug]) return;
@@ -32966,6 +33032,7 @@ function abPintarDetalhe(){
           '<span class="u" id="ab-url">'+fnEsc(abUrlDoTeste(r))+'</span>'+
           '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>'+
         abVeredito(r, d)+
+        abBayesHtml(r, d)+
         '<div class="fn-sec">Variantes · divisão do tráfego e resultado</div>'+
         caixas+
         '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">'+
@@ -32976,7 +33043,7 @@ function abPintarDetalhe(){
         '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
           (temSorteio ? 'Divisão <b>real</b> do sorteio, não a configurada.' : 'É esse o sorteio que o link faz.')+
           ' As <b>utm_*</b> do anúncio são repassadas inteiras pro destino.</div>'+
-        avisoDiv+perdaCaminho+avisoSem+
+        avisoDiv+perdaCaminho+avisoSem+abForaHtml(d)+
       '</div></div>'+
       '<div>'+
         '<div class="fn-cx2"><h3>Configuração</h3>'+
@@ -32996,6 +33063,9 @@ function abPintarDetalhe(){
         '<div class="fn-cx2"><h3>Ações</h3>'+
           '<button class="fn-btn g sm" style="width:100%;margin-bottom:8px" onclick="abPausar()">'+
             (r.ativo===false ? '▶ Reativar link' : '⏸ Pausar link')+'</button>'+
+          (lcEhDir() && vars.length >= 2 ? (d && d.vencedora
+            ? '<button class="fn-btn g sm" style="width:100%;margin-bottom:8px" onclick="abDeclarar(\'\')">Desfazer vencedora</button>'
+            : '<button class="fn-btn sm" style="width:100%;margin-bottom:8px" onclick="abDeclarar((abDados[fnRedAtual().slug]&&abDados[fnRedAtual().slug].bayes&&abDados[fnRedAtual().slug].bayes.lider)||\'\')">Declarar vencedora</button>') : '')+
           '<button class="fn-btn g sm" style="width:100%;color:var(--red)" onclick="abRemover()">Remover</button>'+
         '</div></div></div>';
   // o seletor busca a lista no servidor, entao entra depois do HTML pronto

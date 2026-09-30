@@ -10652,6 +10652,72 @@ setInterval(_abGravar, 30 * 1000);
 // ── Estatística: a diferença é real ou é sorte? ──
 // Teste z de duas proporções. Sem isso a tela mostraria "A está na frente" e
 // deixaria a pessoa matar a variante certa por causa de ruído.
+// ── Estatística bayesiana do teste ─────────────────────────────────────────
+// Beta(1+conversões, 1+não conversões) pra cada variante e 20 mil sorteios:
+// sai a chance de cada uma ser melhor que o controle, o lift e a perda
+// esperada de escolher errado. O teste frequentista de antes continua lá; este
+// responde a pergunta que a operação faz ("qual a chance de a B ser melhor?").
+function _gama(k) {
+  if (k < 1) return _gama(k + 1) * Math.pow(Math.random(), 1 / k);
+  const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    let x, v;
+    do { const u1 = Math.random() || 1e-12, u2 = Math.random(); x = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); v = 1 + c * x; } while (v <= 0);
+    v = v * v * v; const u = Math.random();
+    if (u < 1 - 0.0331 * x * x * x * x || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }
+}
+function _beta(a, b) { const x = _gama(a), y = _gama(b); return x / (x + y); }
+function _abBayes(variantes, opc) {
+  opc = opc || {};
+  const N = opc.sorteios || 20000, minVendas = opc.minVendas || 40;
+  const vs = variantes.filter(v => (v.pessoas || 0) > 0);
+  if (vs.length < 2) return { pronto: false, motivo: 'uma-so' };
+  const ctrl = vs.find(v => v.controle) || vs[0];
+  const conv = v => (v.usaVendas ? v.vendas : v.metas) || 0;
+  // R$ por visita = conversão × ticket; sem ticket da variante, usa o do teste todo
+  const vendasTot = vs.reduce((a, v) => a + (v.vendas || 0), 0), recTot = vs.reduce((a, v) => a + (v.receita || 0), 0);
+  const ticketGeral = vendasTot ? recTot / vendasTot : 0;
+  const ticket = v => (v.vendas > 0 ? v.receita / v.vendas : ticketGeral);
+  const amostras = vs.map(v => { const a = 1 + conv(v), b = 1 + Math.max(0, v.pessoas - conv(v)); const arr = new Float64Array(N); for (let i = 0; i < N; i++) arr[i] = _beta(a, b); return arr; });
+  const ic = vs.indexOf(ctrl);
+  const resultado = vs.map((v, j) => {
+    let melhorQueCtrl = 0, melhorDeTodas = 0, perda = 0, somaJ = 0, somaC = 0;
+    for (let i = 0; i < N; i++) {
+      const pj = amostras[j][i], pc = amostras[ic][i];
+      somaJ += pj; somaC += pc;
+      if (pj > pc) melhorQueCtrl++;
+      let max = 0; for (let t = 0; t < vs.length; t++) if (amostras[t][i] > max) max = amostras[t][i];
+      if (pj >= max) melhorDeTodas++;
+      perda += Math.max(0, max - pj);
+    }
+    const mj = somaJ / N, mc = somaC / N;
+    return { id: v.id, nome: v.nome, controle: j === ic, pessoas: v.pessoas, conversoes: conv(v), vendas: v.vendas || 0,
+             conversao: mj, rpv: mj * ticket(v),
+             chanceMelhorQueControle: j === ic ? null : melhorQueCtrl / N,
+             chanceMelhor: melhorDeTodas / N,
+             lift: j === ic ? null : (mc ? (mj - mc) / mc : null),
+             liftRpv: j === ic ? null : ((mc * ticket(ctrl)) ? (mj * ticket(v) - mc * ticket(ctrl)) / (mc * ticket(ctrl)) : null),
+             perdaEsperada: mj ? (perda / N) / mj : null };
+  });
+  const lider = resultado.slice().sort((a, b) => b.chanceMelhor - a.chanceMelhor)[0];
+  const minVendasLado = Math.min.apply(null, vs.map(v => v.vendas || 0));
+  // quanto falta pra 95%: tamanho por braço pela aproximação normal da diferença
+  // observada, contra quantas pessoas por dia o teste recebe hoje
+  let diasPara95 = null;
+  const pc = conv(ctrl) / ctrl.pessoas, outro = vs.find(v => v !== ctrl && v.id === lider.id) || vs.find(v => v !== ctrl);
+  const pl = conv(outro) / outro.pessoas;
+  if (pl !== pc && opc.diasRodando > 0) {
+    const nAlvo = Math.ceil(Math.pow(1.645 + 0.84, 2) * (pc * (1 - pc) + pl * (1 - pl)) / Math.pow(pl - pc, 2));
+    const porDia = Math.min(ctrl.pessoas, outro.pessoas) / opc.diasRodando;
+    const faltam = Math.max(0, nAlvo - Math.min(ctrl.pessoas, outro.pessoas));
+    diasPara95 = porDia > 0 ? Math.ceil(faltam / porDia) : null;
+  }
+  const chanceLider = lider.controle ? (1 - Math.max.apply(null, resultado.filter(r => !r.controle).map(r => r.chanceMelhorQueControle || 0))) : lider.chanceMelhorQueControle;
+  return { pronto: chanceLider >= 0.95 && minVendasLado >= minVendas, lider: lider.id, chanceLider, minVendas, minVendasLado,
+           diasPara95, controle: ctrl.id, variantes: resultado, criterio: vs[0].usaVendas ? 'vendas' : 'meta' };
+}
+
 function _abJulgar(a, b) {
   const n1 = a.pessoas || 0, x1 = a.metas || 0;
   const n2 = b.pessoas || 0, x2 = b.metas || 0;
@@ -10714,6 +10780,30 @@ function _abJulgar(a, b) {
 }
 
 // ── Números de um teste ──
+// Declarar vencedora: o link do split continua o mesmo nos anúncios e passa a
+// mandar todo mundo pra ela. Desfaz com variante vazia.
+app.post('/api/ab/vencedora', authDiretoria, (req, res) => {
+  try {
+    const slug = String((req.body && req.body.teste) || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const variante = String((req.body && req.body.variante) || '').slice(0, 40);
+    const db = readDB();
+    const lista = Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [];
+    const r = lista.find(x => String(x.slug || '').toLowerCase() === slug);
+    if (!r) return res.status(404).json({ error: 'Teste não encontrado.' });
+    if (variante && !(r.destinos || []).some((d, i) => String(d.id || ('v' + i)) === variante))
+      return res.status(400).json({ error: 'Essa variante não é deste teste.' });
+    const antes = r.vencedora || null;
+    if (variante) { r.vencedora = variante; r.encerradoEm = new Date().toISOString(); r.estado = 'encerrado'; }
+    else { delete r.vencedora; delete r.encerradoEm; r.estado = 'rodando'; }
+    r._updatedAt = Date.now();
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_REDIRS] = now();
+    audit(db, variante ? 'ab_vencedora_declarada' : 'ab_vencedora_desfeita', slug, { variante, antes }, req.user);
+    writeDB(db);
+    res.json({ ok: true, teste: slug, vencedora: r.vencedora || null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/ab/stats', authUsuario, (req, res) => {
   try {
     const slug = String(req.query.teste || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -10813,12 +10903,41 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
       : (y.conversao - x.conversao));
     const julgamento = (ord.length >= 2) ? _abJulgar(ord[0], ord[1]) : { pronto: false, motivo: 'uma-so' };
 
+    // Bayes: a conversão é a meta do teste quando existe; sem meta, a venda.
+    const usaVendas = !r.meta;
+    const diasRodando = r.criadoEm ? Math.max(1, (Date.now() - new Date(r.criadoEm).getTime()) / 86400000) : 1;
+    const bayes = _abBayes(variantes.map((v, i) => Object.assign({}, v, { usaVendas, controle: i === 0 })),
+                           { diasRodando, minVendas: Number(r.minVendas) || 40 });
+
+    // Fora do teste: gente que caiu direto numa página das variantes sem passar
+    // pelo link do split (anúncio antigo com link direto). Não entra na
+    // comparação — mas se vende, precisa aparecer, senão some da conta.
+    const caminho = u => { try { const x = new URL(/^https?:/i.test(u) ? u : 'https://' + u); return (x.hostname.replace(/^www\./, '') + x.pathname).replace(/\/+$/, '').toLowerCase(); } catch (e) { return ''; } };
+    const paginasDoTeste = new Set((r.destinos || []).map(d => caminho(d.url)).filter(Boolean));
+    const foraVids = new Set();
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer)).forEach(j => {
+      if (!j || !j.id) return;
+      (j.eventos || []).forEach(e => {
+        if (!e || e.tipo !== 'entrou' || e.teste || !e.pg) return;
+        const dia = String(e.em || '').slice(0, 10);
+        if ((de && dia < de) || (ate && dia > ate)) return;
+        const pgc = String(e.pg).replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
+        for (const alvo of paginasDoTeste) if (pgc === alvo || pgc.endsWith(alvo.slice(alvo.indexOf('/')))) { foraVids.add(j.id); break; }
+      });
+    });
+    let foraVendas = 0, foraReceita = 0;
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (v && v.vid && foraVids.has(v.vid) && !varDoVisitante[v.vid] && _vendaPaga(v)) { foraVendas++; foraReceita += Number(v.valor) || 0; }
+    });
+    const foraDoTeste = { visitas: foraVids.size, vendas: foraVendas, receita: foraReceita };
+
     res.json({
       ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '',
       meta: r.meta || null, estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
       criadoEm: r.criadoEm || null, variantes,
       lider: ord[0] ? ord[0].id : null, segundo: ord[1] ? ord[1].id : null,
-      precoVaria, julgamento, divisao, vendasSemVariante,
+      precoVaria, julgamento, divisao, vendasSemVariante, bayes, foraDoTeste,
+      vencedora: r.vencedora || null, diasRodando: Math.round(diasRodando),
       // Quem converte mais nem sempre e quem fatura mais. Quando os dois nao
       // sao o mesmo, dizer isso vale mais que eleger um vencedor.
       liderReceita: (function () {
@@ -11509,6 +11628,12 @@ app.get('/r/:slug', (req, res) => {
       .split(';').map(c => c.trim()).find(c => c.startsWith('tmx_ab_' + slug + '='));
     const jaFoi = bisc ? decodeURIComponent(bisc.split('=')[1] || '') : '';
     let escolhido = jaFoi ? r.destinos.find((d, i) => String(d.id || ('v' + i)) === jaFoi) : null;
+    // teste encerrado com vencedora: todo mundo vai pra ela, inclusive quem ja
+    // tinha caido na outra — o anuncio continua com o mesmo link
+    if (r.vencedora) {
+      const v = r.destinos.find((d, i) => String(d.id || ('v' + i)) === String(r.vencedora));
+      if (v) escolhido = v;
+    }
     const repetido = !!escolhido;
 
     if (!escolhido) {
