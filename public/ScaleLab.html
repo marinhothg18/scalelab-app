@@ -1665,6 +1665,15 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-conteudo,.v2-ov{--v2-verde:#22C55E;--v2-laranja:#F59E0B;--v2-verm:#EF4444;--v2-azul:#1B9CFA;--v2-roxo:#5B5BF6;--v2-linha:var(--border)}
 .light-mode .fx-conteudo,.light-mode .v2-ov{--v2-verde:#16A34A;--v2-laranja:#D97706;--v2-verm:#DC2626;--v2-azul:#0284C7;--v2-roxo:#4F46E5}
 .fn-btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+.cr-vsl{position:relative;width:min(340px,70vw)}
+.cr-vsl input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:8px 30px 8px 11px;color:var(--text);font-size:12.5px;font-family:inherit;outline:none}
+.cr-vsl input:focus{border-color:var(--accent)}
+.cr-vsl-x{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text2);font-size:16px;cursor:pointer;line-height:1;padding:2px 4px}
+.cr-vsl-lista{display:none;position:absolute;z-index:50;left:0;right:0;top:calc(100% + 4px);max-height:320px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.35);padding:4px}
+.cr-vsl-i{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.cr-vsl-i b{font-size:12.5px;color:var(--text);font-weight:600}
+.cr-vsl-i span{font-size:11px;color:var(--text2)}
+.cr-vsl-i.on,.cr-vsl-i:hover{background:var(--bg3)}
 .fx-nav-novo{margin-left:auto;font-style:normal;font-size:9px;font-weight:800;letter-spacing:.06em;background:#5B5BF6;color:#fff;border-radius:99px;padding:2px 7px}
 .v2-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
 .v2-cards.c5{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -4423,7 +4432,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
                  o validador de UTM mora em Pixel e saúde. -->
             <div class="fx-nav-g">Funil</div>
             <button class="fx-nav-i on" data-aba="resultado" onclick="fnAba('resultado',this)"><span>💰</span>Resultado<i class="fx-nav-novo">NOVO</i></button>
-            <button class="fx-nav-i" data-aba="geral" onclick="fnAba('geral',this)"><span>◱</span>Visão geral</button>
             <button class="fx-nav-i" data-aba="mapa" onclick="fnAba('mapa',this)"><span>🧭</span>Mapa<i class="fx-nav-n" id="fx-n-fora"></i></button>
             <button class="fx-nav-i" data-aba="criativos" onclick="fnAba('criativos',this)"><span>🎬</span>Criativos</button>
             <div class="fx-nav-g">Pessoas</div>
@@ -29581,7 +29589,7 @@ function fnRecarregarAba(){
 // Jornada ao vivo, Links pelo Pixel e saúde). O destaque vai pro botão "pai".
 var FN_ABAS = ['resultado','geral','mapa','criativos','leads','jornada','pixel','redir','atencao',
                'links','produtos','recup','assin','regras','saude'];
-var FN_ABA_PAI = { links:'pixel', produtos:'resultado', recup:'leads', assin:'resultado', regras:'jornada', saude:'pixel' };
+var FN_ABA_PAI = { geral:'resultado', links:'pixel', produtos:'resultado', recup:'leads', assin:'resultado', regras:'jornada', saude:'pixel' };
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
@@ -29988,10 +29996,52 @@ function crTopo(){
   var ps = crPlayers || [];
   return '<div class="rc-topo" id="cr-topo"><div class="lc-bts" style="margin:0">'+[[1,'Hoje'],[7,'7 dias'],[30,'30 dias']].map(function(x){
       return '<button class="fn-btn g sm'+(crDias===x[0]?' on':'')+'" onclick="crDias='+x[0]+';crCarregar()">'+x[1]+'</button>'; }).join('')+'</div>'+
-    '<label class="fx-sub" style="display:flex;align-items:center;gap:8px">Passa do pitch na VSL '+
-      '<select class="dm-sel" style="max-width:240px" onchange="crPlayer=this.value;crVturb=null;crPintar();if(crPlayer)crBuscarVturb()">'+
-      '<option value="">— escolher a VSL —</option>'+ps.map(function(p){ return '<option value="'+fnEsc(p.id)+'"'+(crPlayer===String(p.id)?' selected':'')+'>'+fnEsc(p.nome||p.id)+(p.pitch?'':' (sem pitch)')+'</option>'; }).join('')+
-    '</select></label></div>';
+    '<div class="fx-sub" style="display:flex;align-items:center;gap:8px">Passa do pitch na VSL '+
+      '<div class="cr-vsl"><input id="cr-vsl-busca" autocomplete="off" placeholder="🔎 Pesquisar VSL pelo nome…" '+
+        'value="'+fnEsc((ps.filter(function(p){ return String(p.id) === crPlayer; })[0] || {}).nome || '')+'" '+
+        'onfocus="this.select();crVslLista(this.value, true)" oninput="crVslLista(this.value)" onkeydown="crVslTecla(event)" onblur="setTimeout(crVslFechar,160)">'+
+        (crPlayer ? '<button class="cr-vsl-x" title="Tirar a VSL" onmousedown="event.preventDefault();crVslEscolher(\'\')">×</button>' : '')+
+        '<div class="cr-vsl-lista" id="cr-vsl-lista"></div></div></div></div>';
+}
+// A lista de VSLs da VTurb passa de 100: rolar um select procurando o nome
+// não dava. Aqui digita um pedaço do nome (ou da pasta) e escolhe.
+var crVslMarcado = -1, crVslAchadas = [];
+function crVslSemAcento(t){ return String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function crVslLista(txt, tudo){
+  var cx = document.getElementById('cr-vsl-lista'); if(!cx) return;
+  var ps = crPlayers || [];
+  if(!crPlayers){ cx.innerHTML = '<div class="cr-vsl-i fx-sub">Buscando as VSLs da VTurb…</div>'; cx.style.display = 'block'; return; }
+  var atual = (ps.filter(function(p){ return String(p.id) === crPlayer; })[0] || {}).nome || '';
+  var q = crVslSemAcento(tudo || txt === atual ? '' : txt).trim();
+  var partes = q.split(/\s+/).filter(Boolean);
+  crVslAchadas = ps.filter(function(p){
+    // procura no nome e na pasta; o id só entra se colarem um id inteiro
+    var alvo = crVslSemAcento((p.nome||'')+' '+(p.pasta||'')+(q.length >= 12 ? ' '+p.id : ''));
+    return partes.every(function(w){ return alvo.indexOf(w) >= 0; });
+  }).slice(0, 60);
+  crVslMarcado = crVslAchadas.length ? 0 : -1;
+  cx.innerHTML = crVslAchadas.length ? crVslAchadas.map(function(p, i){
+      return '<div class="cr-vsl-i'+(i===crVslMarcado?' on':'')+'" onmousedown="event.preventDefault();crVslEscolher(\''+fnEsc(String(p.id)).replace(/'/g,'')+'\')">'+
+        '<b>'+fnEsc(p.nome||p.id)+'</b><span>'+fnEsc([p.pasta, p.pitch ? 'pitch '+Math.floor(p.pitch/60)+':'+String(p.pitch%60).padStart(2,'0') : 'sem pitch'].filter(Boolean).join(' · '))+'</span></div>';
+    }).join('') : '<div class="cr-vsl-i fx-sub">Nenhuma VSL com “'+fnEsc(txt)+'”.</div>';
+  cx.style.display = 'block';
+}
+function crVslTecla(ev){
+  var cx = document.getElementById('cr-vsl-lista'); if(!cx) return;
+  if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+    ev.preventDefault();
+    if(!crVslAchadas.length) return;
+    crVslMarcado = (crVslMarcado + (ev.key === 'ArrowDown' ? 1 : -1) + crVslAchadas.length) % crVslAchadas.length;
+    cx.querySelectorAll('.cr-vsl-i').forEach(function(el, i){ el.classList.toggle('on', i === crVslMarcado); if(i === crVslMarcado) el.scrollIntoView({ block:'nearest' }); });
+  } else if(ev.key === 'Enter'){
+    ev.preventDefault();
+    if(crVslAchadas[crVslMarcado]) crVslEscolher(String(crVslAchadas[crVslMarcado].id));
+  } else if(ev.key === 'Escape'){ crVslFechar(); ev.target.blur(); }
+}
+function crVslFechar(){ var cx = document.getElementById('cr-vsl-lista'); if(cx) cx.style.display = 'none'; }
+function crVslEscolher(id){
+  crPlayer = id; crVturb = null; crVslFechar(); crPintar();
+  if(crPlayer) crBuscarVturb();
 }
 // mesma regra da tela de VSL: sobrevivência nunca sobe; se sobe, é histograma de abandono
 function crCurva(pontos){
