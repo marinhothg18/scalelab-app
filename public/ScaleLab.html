@@ -1679,6 +1679,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 @media (max-width:700px){ .lc-edit-l{grid-template-columns:1fr} }
 .rc-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .cr-l{cursor:pointer}
+.mp-vbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.mp-vlista{margin-bottom:12px;padding-block:4px}
 .rg-n{width:56px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 6px;color:var(--text);font:inherit;font-size:12px;text-align:right}
 .rg-q{font-size:12.5px;line-height:2}
 .rg-ops{display:flex;flex-direction:column;gap:6px;margin-top:14px;font-size:12.5px}
@@ -4333,6 +4335,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
 
         <div class="fn-painel" id="fn-p-mapa">
+          <div id="mp-versao"></div>
           <div class="fn-faixa" id="fn-etapas"></div>
           <div id="mp-aviso"></div>
           <div class="fn-cols">
@@ -28181,9 +28184,11 @@ function saveAdsApiKey(){
 // funil e o mapa nao tinha onde desenhar isso. E pre-venda estava caindo em
 // 'pagina', misturado com tela de quiz.
 var FN_CORES = { pagina:'#1B9CFA', prevenda:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926',
-                 upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC' };
+                 upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC',
+                 quiz:'#0EA5A0', recuperacao:'#DC2626' };
 var FN_ROT   = { pagina:'PÁGINA', prevenda:'PRÉ-VENDA', vsl:'VSL', checkout:'CHECKOUT',
-                 upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM' };
+                 upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM',
+                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO' };
 
 // A paleta do mapa. Um clique poe o bloco no funil, ligado no que estiver
 // selecionado — em vez de preencher tres campos de formulario a cada etapa.
@@ -28193,7 +28198,9 @@ var FN_PALETA = [
   { tipo:'checkout', nome:'Checkout',        dica:'onde paga' },
   { tipo:'upsell',   nome:'Upsell',          dica:'oferta extra' },
   { tipo:'downsell', nome:'Downsell',        dica:'se recusar' },
-  { tipo:'obrigado', nome:'Obrigado',        dica:'confirmação' }
+  { tipo:'obrigado', nome:'Obrigado',        dica:'confirmação' },
+  { tipo:'quiz',     nome:'Quiz Central TMX', dica:'quiz com respostas' },
+  { tipo:'recuperacao', nome:'Recuperação',   dica:'paytcall, WhatsApp, e-mail' }
 ];
 var FN_MODELOS = [
   { id:'vsl',  nome:'VSL direta',           etapas:[['Landing','pagina'],['VSL','vsl'],['Checkout','checkout'],['Obrigado','obrigado']] },
@@ -29492,7 +29499,7 @@ function fnPintarProjetos(){
 
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
-function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
+function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); if(fnAbaAtual==='mapa'){ var mv=document.getElementById('mp-versao'); if(mv) mv.innerHTML=''; mpVersoes=null; mpVersaoInfo(); svCarregar(false); } }
 var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup','assin','criativos','regras'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
@@ -29528,7 +29535,8 @@ function fnAba(qual, bt){
   }
   fnCabecalho();
   if(qual==='geral')   gePintar();
-  if(qual==='mapa')    { mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); }
+  if(qual==='mapa')    { mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); mpVersaoInfo();
+                         if(!svDados || !fnAtual() || svDados.funil.id !== fnAtual().id) svCarregar(false); }
   if(qual==='saude')   svCarregar(false);
   if(qual==='links')   lcCarregar();
   if(qual==='produtos') prCarregar();
@@ -30081,6 +30089,66 @@ function rgPintar(){
   el.innerHTML = h + '<div class="rc-duas">'+esq+dir+'</div>';
 }
 
+// Status ao vivo de cada bloco no mapa: o mesmo diagnóstico da Saúde (a tag
+// está na página? chegou visita nas últimas 24h?), sem precisar abrir a aba.
+function mpStatusNo(n){
+  if(!svDados || !svDados.funil || !fnAtual() || svDados.funil.id !== fnAtual().id) return '';
+  var p = (svDados.paginas||[]).filter(function(x){ return x.etapa === n.id; })[0];
+  if(!p) return '';
+  var m = { ok:['sv-ok','Pixel ✓'], ok_dinamico:['sv-ok','Pixel ✓'], sem_tag:['sv-ruim','Sem pixel'], outro_funil:['sv-ruim','Pixel de outro funil'],
+            fora_do_ar:['sv-ruim','Não abriu'], sem_visita:['sv-atencao','Sem visita 24h'] }[p.status];
+  return m ? '<div style="margin-top:4px"><span class="sv-pill '+m[0]+'" style="font-size:9.5px;padding:2px 7px">'+m[1]+'</span></div>' : '';
+}
+
+// ── Versões do funil: publicar guarda a foto e o que mudou ──
+var mpVersoes = null, mpVersoesAberto = false;
+function mpVersaoInfo(){
+  var f = fnAtual(); if(!f) return;
+  fetch('/api/funis/versoes?funil='+encodeURIComponent(f.id)).then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ if(d && fnAtual() && fnAtual().id === f.id){ mpVersoes = d; mpVersaoPintar(); } }).catch(function(){});
+}
+function mpVersaoPintar(){
+  var el = document.getElementById('mp-versao'); if(!el || !mpVersoes) return;
+  var pend = (mpVersoes.pendente||[]).filter(function(x){ return x !== 'Sem mudança de estrutura' && x !== 'Primeira versão publicada'; });
+  var primeira = !(mpVersoes.lista||[]).length;
+  var h = '<div class="mp-vbar"><button class="fn-btn sm" onclick="mpPublicar()">Publicar v'+mpVersoes.proxima+(pend.length ? ' · '+pend.length+' mudança'+(pend.length>1?'s':'') : '')+'</button>'+
+    '<button class="fn-btn g sm" onclick="mpVersoesAberto=!mpVersoesAberto;mpVersaoPintar()">Versões ('+(mpVersoes.lista||[]).length+')</button>'+
+    '<span class="fx-sub">'+(primeira ? 'Nenhuma versão publicada ainda — publicar guarda a foto do funil pra comparar antes e depois.' :
+      pend.length ? 'Desde a última: '+pend.slice(0,3).map(fnEsc).join(' · ')+(pend.length>3?' …':'') : 'Nada mudou desde a última versão.')+'</span></div>';
+  if(mpVersoesAberto){
+    h += '<div class="fx-cart mp-vlista">'+((mpVersoes.lista||[]).length ? mpVersoes.lista.map(function(v, i){
+      return '<div class="sv-chk"><div class="sv-ic lc-info" style="font-size:11px">v'+v.n+'</div><div class="sv-txt"><b>'+
+        new Date(v.em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})+(v.autor?' · '+fnEsc(v.autor):'')+(i===0?' · atual':'')+'</b>'+
+        '<span>'+(v.nota?'“'+fnEsc(v.nota)+'” · ':'')+(v.diff||[]).map(fnEsc).join(' · ')+'</span></div>'+
+        (i>0 ? '<button class="fn-btn g sm" onclick="mpRestaurar(\''+fnEsc(v.id)+'\','+v.n+')">Voltar pra v'+v.n+'</button>' : '')+'</div>';
+    }).join('') : '<div class="fx-vazio">Nenhuma versão ainda.</div>')+'</div>';
+  }
+  el.innerHTML = h;
+}
+function mpPublicar(){
+  var f = fnAtual(); if(!f) return;
+  var nota = prompt('Uma nota pra esta versão (opcional) — ex.: “split 50/50 e upsell do Acervo”', '');
+  if(nota === null) return;
+  fetch('/api/funis/versao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ funil: f, nota: nota }) })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){ toastFn('Versão v'+d.versao.n+' publicada'); mpVersaoInfo(); })
+    .catch(function(e){ toastFn('Não publicou: '+e.message); });
+}
+function mpRestaurar(id, n){
+  var f = fnAtual(); if(!f) return;
+  if(!confirm('Voltar o funil "'+f.nome+'" pra v'+n+'?\n\nEtapas, links, origens e caminhos voltam como estavam. Os números medidos não mudam. O estado atual continua salvo como a última versão, se você publicou.')) return;
+  fetch('/api/funis/versao/'+encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.snapshot || d.snapshot.id !== f.id){ toastFn('Não achei essa versão'); return; }
+    var l = fnFunis(), i = -1;
+    l.forEach(function(x, k){ if(x.id === f.id) i = k; });
+    if(i < 0) return;
+    var volta = d.snapshot; volta._updatedAt = Date.now();
+    l[i] = volta; fnSalvarFunis(l);
+    fnSel = null; fnPintar(); fnCarregarStats(); mpVersaoInfo();
+    toastFn('Funil voltou pra v'+n);
+  }).catch(function(e){ toastFn('Falhou: '+e.message); });
+}
+
 var svDados = null, svPedido = 0;
 function svCarregar(forcar){
   var el = document.getElementById('sv-corpo'); if(!el) return;
@@ -30094,7 +30162,7 @@ function svCarregar(forcar){
     .then(function(x){
       if(meu !== svPedido) return;
       if(!x.ok){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui rodar a checagem</b>'+fnEsc((x.d&&x.d.error)||'erro')+'</div>'; return; }
-      svDados = x.d; svPintar();
+      svDados = x.d; svPintar(); if(fnAbaAtual === 'mapa') fnNos();
     })
     .catch(function(e){ if(meu === svPedido) el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui rodar a checagem</b>'+fnEsc(e.message)+'</div>'; });
 }
@@ -31897,6 +31965,13 @@ function fnCarregarCliques(de, ate){
 function fnCliquesDe(n){
   if(!fnCliques) return 0;
   if(n.utmCampanha) return fnCliques.campanhas[n.utmCampanha] || 0;
+  // regra por nome: soma toda campanha que contém o texto (ex.: "CONCURSO") —
+  // campanha nova entra sozinha, sem ninguém lembrar de amarrar
+  if(n.utmRegra){
+    var r = String(n.utmRegra).trim().toLowerCase(), soma = 0;
+    Object.keys(fnCliques.campanhas||{}).forEach(function(c){ if(c.toLowerCase().indexOf(r) >= 0) soma += fnCliques.campanhas[c]; });
+    return soma;
+  }
   return fnCliques.total || 0;
 }
 // Checkout de gateway (Payt, Kiwify...) nao aceita o nosso pixel, e muita venda
@@ -32066,9 +32141,9 @@ function fnVerPaginas(id){
 function fnCliquesInfo(f){
   if(!f || !fnCliques) return { n: 0, doFunil: false };
   var fontes = (f.fontes||[]).concat((f.etapas||[]).filter(function(e){ return e.tipo==='fonte'; }));
-  var com = fontes.filter(function(e){ return e.utmCampanha; });
+  var com = fontes.filter(function(e){ return e.utmCampanha || e.utmRegra; });
   if(!com.length) return { n: fnCliques.total || 0, doFunil: false };
-  return { n: com.reduce(function(a,e){ return a + (fnCliques.campanhas[e.utmCampanha] || 0); }, 0), doFunil: true };
+  return { n: com.reduce(function(a,e){ return a + fnCliquesDe(e); }, 0), doFunil: true };
 }
 function fnCliquesTotais(f){ return fnCliquesInfo(f).n; }
 function fnEhEntrada(f, id){
@@ -32301,7 +32376,7 @@ function fnNos(){
       (src
         ? '<div class="vl" style="color:'+(fnCliques?cor:'var(--text2)')+'">'+
             (fnCliques ? fnNum(v) : '—')+'</div>'+
-          '<div class="sb">'+(fnCliques ? 'cliques · '+fnEsc(n.utmCampanha||'projeto todo')
+          '<div class="sb">'+(fnCliques ? 'cliques · '+fnEsc(n.utmCampanha || (n.utmRegra ? 'campanhas com “'+n.utmRegra+'”' : 'projeto todo'))
                                         : 'cliques indisponíveis')+'</div>'
         : (vt ? '<div class="fn-var" title="Variante do teste '+fnEsc(vt.teste)+
                  ' — este bloco vê só a parte do tráfego que caiu nela">⇄ '+fnEsc(vt.nome)+'</div>' : '')+
@@ -32316,7 +32391,8 @@ function fnNos(){
           '<div class="sb">'+(baseReal ? ((v/base)*100).toFixed(1)+'% de quem entrou'
                                        : 'sem base pra comparar')+
             (vf.fonte==='utmify' ? ' <span class="via" title="O pixel não alcança essa página — número vindo da Utmify">via Utmify</span>' : '')+'</div>'+
-          (n.url||vf.fonte==='utmify'?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>')+
+          (n.url||vf.fonte==='utmify'||n.tipo==='recuperacao'?'':'<div style="font-size:9.5px;color:var(--red);margin-top:3px;font-weight:700">⚠ sem link</div>')+
+          mpStatusNo(n)+
           (compraram !== null
             ? '<div class="fim"><span style="color:var(--text2)">Compraram</span>'+
               '<span><b style="color:var(--green)">'+fnNum(compraram)+'</b>'+
@@ -32618,6 +32694,9 @@ function fnDetalhe(){
       '<div class="fn-campo"><label>De onde vêm os cliques</label>'+
       '<select onchange="fnAmarrarCampanha(\''+n.id+'\',this.value)">'+opts+'</select>'+
       '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Os cliques saem da Utmify. Escolha uma campanha pra separar as origens.</div></div>'+
+      '<div class="fn-campo"><label>Ou uma regra: campanha contém</label>'+
+      '<input value="'+fnEsc(n.utmRegra||'')+'" placeholder="ex.: CONCURSO" onchange="fnRegraCampanha(\''+n.id+'\',this.value)"'+(n.utmCampanha?' disabled title="Tire a campanha fixa acima pra usar a regra"':'')+'>'+
+      '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Soma toda campanha cujo nome tem esse texto — campanha nova entra sozinha. Cada campanha deve pertencer a um funil só.</div></div>'+
       htmlLig+
       '<button class="fn-btn g sm" style="width:100%;margin-top:9px;color:var(--red)" onclick="fnRemoverFonte(\''+n.id+'\')">Remover origem</button>';
     return;
@@ -32657,6 +32736,13 @@ function fnDetalhe(){
     '<button class="fn-btn g sm" onclick="fnRemoverEtapa(\''+n.id+'\')" style="color:var(--red)">Remover</button></div>';
 }
 
+function fnRegraCampanha(id, valor){
+  var f=fnAtual(); if(!f) return;
+  var n=fnAcha(f,id); if(!n) return;
+  n.utmRegra = String(valor||'').trim();
+  fnGravar(f); fnListaFontes(); fnNos(); fnFaixa(); fnDetalhe(); gePintar();
+  toastFn(n.utmRegra ? 'Origem conta as campanhas com “'+n.utmRegra+'”' : 'Regra tirada');
+}
 function fnAmarrarCampanha(id, valor){
   var f=fnAtual(); if(!f) return;
   var n=fnAcha(f,id); if(!n) return;

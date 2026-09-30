@@ -6326,7 +6326,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_produtos',            // catalogo de produtos; a tela le por /api/produtos
   'sl_canais',              // canais de trafego; a tela le por /api/canais
   'sl_regras',              // regras automaticas; a tela le por /api/regras
-  'sl_regras_log'           // log das regras; idem
+  'sl_regras_log',          // log das regras; idem
+  'sl_funis_versoes'        // fotos das versoes do funil; a tela le por /api/funis/versoes
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -9251,7 +9252,7 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
         if (new Date(ev.em).getTime() >= corte24) x.n24++;
       });
     });
-    const paginas = (f.etapas || []).filter(e => e && e.tipo !== 'fonte' && e.tipo !== 'checkout');
+    const paginas = (f.etapas || []).filter(e => e && e.tipo !== 'fonte' && e.tipo !== 'checkout' && e.tipo !== 'recuperacao');
     const abertas = await Promise.all(paginas.slice(0, 10).map(async e => {
       const url = String(e.url || '').trim();
       const med = porEtapa[e.id] || { ultimo: '', n24: 0 };
@@ -9367,7 +9368,8 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
 
     // ── 5. Campanhas contadas em mais de um funil ───────────────────────
     const fontesDe = x => (x.fontes || []).concat((x.etapas || []).filter(e => e && e.tipo === 'fonte'));
-    const camposDe = x => fontesDe(x).map(o => String(o.utmCampanha || '').trim()).filter(Boolean);
+    // campanha fixa conta como ela mesma; regra por nome ("contém X") conta como a regra
+    const camposDe = x => fontesDe(x).map(o => String(o.utmCampanha || '').trim() || (o.utmRegra ? 'contém ' + String(o.utmRegra).trim() : '')).filter(Boolean);
     const irmaos = funis.filter(x => x && x.id !== f.id && (x.projeto || '') === (f.projeto || ''));
     const minhas = camposDe(f);
     if (!minhas.length) {
@@ -9379,7 +9381,14 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
         acao: { rotulo: 'Amarrar a campanha', aba: 'mapa' } });
     } else {
       const repetidas = [];
-      irmaos.forEach(x => camposDe(x).forEach(c => { if (minhas.indexOf(c) >= 0) repetidas.push({ campanha: c, funil: x.nome }); }));
+      const bate = (a, b) => {
+        if (a === b) return true;
+        const ra = a.indexOf('contém ') === 0 ? a.slice(7).toLowerCase() : null, rb = b.indexOf('contém ') === 0 ? b.slice(7).toLowerCase() : null;
+        if (ra && !rb) return b.toLowerCase().indexOf(ra) >= 0;
+        if (rb && !ra) return a.toLowerCase().indexOf(rb) >= 0;
+        return false;
+      };
+      irmaos.forEach(x => camposDe(x).forEach(c => { if (minhas.some(m => bate(m, c))) repetidas.push({ campanha: c, funil: x.nome }); }));
       if (repetidas.length) checks.push({ nivel: 'atencao', peso: 8,
         titulo: 'Campanha contada em dois funis',
         texto: repetidas.slice(0, 3).map(r => '"' + r.campanha + '" também está em "' + r.funil + '"').join('; ') + '.',
@@ -10170,6 +10179,103 @@ app.get('/api/lead/pagamentos', authDiretoria, (req, res) => {
     res.json({ ok: true, vid, tentativas, pagos: pagos.length, totalPago: pagos.reduce((a, t) => a + t.valor, 0),
       falhas: falhas.length, recusasCartao: falhas.filter(t => t.motivo === 'Cartão recusado').length,
       atribuicao: { primeiro, ultimo, canalPrimeiro: cPrim ? cPrim.nome : '', canalUltimo: cUlt ? cUlt.nome : '', credito, regra } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── VERSÕES DO FUNIL ──
+// "Publicar versão" guarda a foto do funil e o que mudou em relação à anterior
+// (etapa que entrou ou saiu, link trocado, campanha da origem, divisão do teste
+// A/B). É o que permite olhar um número e saber se ele é de antes ou depois
+// da mudança — e voltar atrás.
+// ══════════════════════════════════════════════════════
+const KEY_FUNIS_VERSOES = 'sl_funis_versoes';
+function _funilFoto(f, db) {
+  const redirs = (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : []).filter(r => r && (r.funil === f.id || (f.projeto && r.projeto === f.projeto)));
+  return {
+    etapas: (f.etapas || []).map(e => ({ id: e.id, nome: e.nome || '', tipo: e.tipo || '', url: e.url || '' })),
+    fontes: (f.fontes || []).map(o => ({ id: o.id, nome: o.nome || '', campanha: o.utmCampanha || '', regra: o.utmRegra || '' })),
+    ligacoes: (f.ligacoes || []).map(l => l.join('>')).sort(),
+    testes: redirs.map(r => ({ slug: r.slug, nome: r.nome || r.slug, divisao: (r.destinos || []).map(d => ({ nome: d.nome || d.url || '', peso: Number(d.peso) || 1 })) }))
+  };
+}
+function _funilDiff(a, b) {
+  const mud = [];
+  if (!a) return ['Primeira versão publicada'];
+  const porId = l => { const o = {}; (l || []).forEach(x => { o[x.id] = x; }); return o; };
+  const ea = porId(a.etapas), eb = porId(b.etapas);
+  b.etapas.forEach(e => {
+    const x = ea[e.id];
+    if (!x) mud.push('+ ' + (e.nome || e.tipo));
+    else {
+      if (x.nome !== e.nome) mud.push(x.nome + ' → ' + e.nome);
+      if (x.url !== e.url) mud.push('Link de ' + e.nome + (e.url ? ' trocado' : ' removido'));
+    }
+  });
+  a.etapas.forEach(e => { if (!eb[e.id]) mud.push('− ' + (e.nome || e.tipo)); });
+  const fa = porId(a.fontes);
+  b.fontes.forEach(o => {
+    const x = fa[o.id], de = x ? (x.campanha || (x.regra ? 'contém ' + x.regra : 'projeto todo')) : null;
+    const para = o.campanha || (o.regra ? 'contém ' + o.regra : 'projeto todo');
+    if (!x) mud.push('+ origem ' + o.nome);
+    else if (de !== para) mud.push('Tráfego de ' + o.nome + ': ' + de + ' → ' + para);
+  });
+  const la = new Set(a.ligacoes), lb = new Set(b.ligacoes);
+  const novas = b.ligacoes.filter(l => !la.has(l)).length, tiradas = a.ligacoes.filter(l => !lb.has(l)).length;
+  if (novas || tiradas) mud.push('Caminhos: ' + (novas ? '+' + novas : '') + (novas && tiradas ? ' ' : '') + (tiradas ? '−' + tiradas : ''));
+  const ta = {}; (a.testes || []).forEach(t => { ta[t.slug] = t; });
+  (b.testes || []).forEach(t => {
+    const x = ta[t.slug];
+    const pct = d => { const tot = d.reduce((s, y) => s + y.peso, 0) || 1; return d.map(y => Math.round(y.peso / tot * 100)).join('/'); };
+    if (x && pct(x.divisao) !== pct(t.divisao)) mud.push('Split ' + t.nome + ' ' + pct(x.divisao) + ' → ' + pct(t.divisao));
+    if (!x) mud.push('+ teste ' + t.nome);
+  });
+  return mud.length ? mud : ['Sem mudança de estrutura'];
+}
+app.post('/api/funis/versao', authUsuario, (req, res) => {
+  try {
+    const f = req.body && req.body.funil;
+    if (!f || !f.id) return res.status(400).json({ error: 'Mande o funil.' });
+    const txt = JSON.stringify(f);
+    if (txt.length > 400000) return res.status(413).json({ error: 'Funil grande demais pra guardar como versão.' });
+    const db = readDB();
+    const todas = Array.isArray(db.store[KEY_FUNIS_VERSOES]) ? db.store[KEY_FUNIS_VERSOES] : [];
+    const doFunil = todas.filter(v => v.funil === f.id);
+    const ant = doFunil[doFunil.length - 1];
+    const foto = _funilFoto(f, db);
+    const v = { id: 'fv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), funil: f.id, n: (ant ? ant.n : 0) + 1,
+      em: new Date().toISOString(), autor: (req.user && (req.user.nome || req.user.email)) || '', nota: String((req.body && req.body.nota) || '').slice(0, 200),
+      diff: _funilDiff(ant && ant.foto, foto), foto, snapshot: JSON.parse(txt) };
+    // guarda as 40 mais recentes de cada funil
+    const outras = todas.filter(x => x.funil !== f.id);
+    db.store[KEY_FUNIS_VERSOES] = outras.concat(doFunil.concat([v]).slice(-40));
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_FUNIS_VERSOES] = now();
+    audit(db, 'funil_versao_publicada', f.id, { n: v.n, mudancas: v.diff.length }, req.user);
+    writeDB(db);
+    res.json({ ok: true, versao: { id: v.id, n: v.n, em: v.em, diff: v.diff } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/funis/versoes', authUsuario, (req, res) => {
+  try {
+    const fid = String(req.query.funil || '').slice(0, 80);
+    const db = readDB();
+    const lista = (Array.isArray(db.store[KEY_FUNIS_VERSOES]) ? db.store[KEY_FUNIS_VERSOES] : []).filter(v => v.funil === fid)
+      .map(v => ({ id: v.id, n: v.n, em: v.em, autor: v.autor, nota: v.nota, diff: v.diff })).reverse();
+    // o que mudou desde a última publicada, sem publicar: é o "Publicar v18 · 3 mudanças" do botão
+    let pendente = null;
+    const f = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).find(x => x && x.id === fid);
+    const ult = (Array.isArray(db.store[KEY_FUNIS_VERSOES]) ? db.store[KEY_FUNIS_VERSOES] : []).filter(v => v.funil === fid).pop();
+    if (f) pendente = _funilDiff(ult && ult.foto, _funilFoto(f, db));
+    res.json({ ok: true, lista, pendente, proxima: (lista[0] ? lista[0].n : 0) + 1 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/funis/versao/:id', authUsuario, (req, res) => {
+  try {
+    const db = readDB();
+    const v = (Array.isArray(db.store[KEY_FUNIS_VERSOES]) ? db.store[KEY_FUNIS_VERSOES] : []).find(x => x.id === req.params.id);
+    if (!v) return res.status(404).json({ error: 'Versão não encontrada.' });
+    res.json({ ok: true, id: v.id, n: v.n, em: v.em, snapshot: v.snapshot });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
