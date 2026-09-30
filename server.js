@@ -2994,7 +2994,12 @@ app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parsead
     const vendas = db.store[KEY_VENDAS] || [];
     // dedupe por pedidoId (gateways reenviam o mesmo evento)
     const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
-    if (!jaTem) vendas.push(venda);
+    if (!jaTem) {
+      // liga a venda à pessoa (sck, e-mail, telefone, documento) e guarda na
+      // base que não esquece; uma falha aqui nunca pode derrubar o webhook
+      try { _pedidoRegistrar(venda, payload); } catch (e) { console.error('[PESSOAS] casamento falhou:', e.message); }
+      vendas.push(venda);
+    }
     // retenção
     const corte = Date.now() - VENDAS_RETENCAO_DIAS * 86400000;
     db.store[KEY_VENDAS] = vendas.filter(v => new Date(v.recebidoEm).getTime() >= corte);
@@ -8770,7 +8775,8 @@ function _fContar(funil, etapa, tipo, visitante, extra) {
     }
   } else if (tipo === 'saiu') {
     b.saidas++;
-    b.segundos += Number(extra && extra.segundos) || 0;
+    // teto de 6h: aba esquecida aberta com o pixel antigo virava "600 min"
+    b.segundos += Math.min(Number(extra && extra.segundos) || 0, 6 * 3600);
   } else {
     b.eventos[tipo] = (b.eventos[tipo] || 0) + 1;
   }
@@ -8840,31 +8846,38 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     if (!funil) return res.sendStatus(204);
     const visitante = String(c.id || '').slice(0, 40);
     if (c.qid && typeof _qzLigarDestino === 'function') _qzLigarDestino(String(c.qid).slice(0, 40), visitante);
-    _fContar(funil, etapa, tipo, visitante, c);
+    // /697, /697/ e /697?x=1 sao a mesma pagina: normaliza antes de qualquer conta
+    if (c.pg) c.pg = _normPg(c.pg);
+    // Trafego do time aparece na lista de Leads (com filtro), mas nao entra em
+    // nenhuma conta: nem nos blocos do mapa, nem no teste A/B.
+    const interno = _pEhInterno(c, req);
+    if (!interno) _fContar(funil, etapa, tipo, visitante, c);
 
     // Teste A/B: a variante chegou pela URL do redirecionador e o pixel a devolve
     // em todo evento. 'entrou' na 1a pagina conta pessoa; alcancar a etapa que e
     // a meta conta conversao — e a mesma pessoa nunca conta duas vezes.
     const teste = String(c.teste || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
     const variante = String(c.variante || '').slice(0, 40);
-    if (teste && variante && visitante && tipo === 'entrou') {
+    if (!interno && teste && variante && visitante && tipo === 'entrou') {
       _abContar(teste, variante, 'entrou', visitante);
       try {
-        const db = readDB();
-        const r = (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
-          .find(x => String(x.slug || '').toLowerCase() === teste);
+        // retrato de 1 min dos testes: ler o db.json inteiro a cada visita era caro
+        const r = _funisCache().redirs[teste];
         // meta e uma etapa do funil: chegar nela e a conversao do teste
-        if (r && r.meta && String(r.meta) === etapa) _abContar(teste, variante, 'meta', visitante);
+        if (r && r.meta && r.meta !== 'compra' && String(r.meta) === etapa) _abContar(teste, variante, 'meta', visitante);
       } catch (e) {}
     }
 
     // so na entrada: os outros eventos sao da mesma pessoa, no mesmo aparelho
     if (tipo === 'entrou') c.quem = _quemE(req);
     _jRegistrar(visitante, funil, etapa, tipo, c);
+    try { _pxRegistrar(c, req, interno); } catch (e) {}
     const pg = String(c.pg || '').slice(0, 160);
-    if (tipo === 'saiu')    _atSaida(etapa, c, pg);
-    if (tipo === 'clique')  _atClique(etapa, c.rotulo, c.posicao, pg);
-    if (tipo === 'friccao') _atFriccao(etapa, c.rotulo, c.motivo, pg);
+    if (!interno) {
+      if (tipo === 'saiu')    _atSaida(etapa, c, pg);
+      if (tipo === 'clique' && !Number(c.player))  _atClique(etapa, c.rotulo, c.posicao, pg);
+      if (tipo === 'friccao') _atFriccao(etapa, c.rotulo, c.motivo, pg);
+    }
 
     _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
                  visitante: String(c.id || '').slice(0, 12),
@@ -8930,7 +8943,7 @@ function _jRegistrar(visitante, funil, etapa, tipo, extra) {
   if (!_jBuffer[k]) _jBuffer[k] = { id: visitante, funil, eventos: [] };
   const j = _jBuffer[k];
   const ev = { em: new Date().toISOString(), etapa, tipo };
-  if (extra && Number(extra.segundos)) ev.segundos = Number(extra.segundos);
+  if (extra && Number(extra.segundos)) ev.segundos = Math.min(Number(extra.segundos), 6 * 3600);
   if (extra && Number(extra.atencao))  ev.atencao  = Number(extra.atencao);
   if (extra && Number(extra.rolagem))  ev.rolagem  = Number(extra.rolagem);
   if (extra && extra.motivo)  ev.motivo  = String(extra.motivo).slice(0, 20);
@@ -9008,6 +9021,1003 @@ function _jGravar() {
   } catch (e) { console.error('[jornada] falhou ao gravar:', e.message); }
 }
 setInterval(_jGravar, 45 * 1000);
+
+// ══════════════════════════════════════════════════════
+// ── PESSOAS: a base que não esquece ──
+// A jornada acima guarda 4.000 pessoas por 7 dias dentro do db.json — e o
+// db.json inteiro é lido e regravado a cada escrita. Não dá pra pôr 78 mil
+// visitantes ali. Aqui fica um SQLite à parte (o Node 22 já traz um), com o
+// que Leads, a ficha, o Resultado e o A/B precisam.
+// Visitante, lead e pedido ficam pra sempre; sessão 12 meses; evento 90 dias
+// (menos, se o disco apertar — o volume do Railway é pequeno).
+// ══════════════════════════════════════════════════════
+let _sqlite = null;
+try { _sqlite = require('node:sqlite'); }
+catch (e) { console.warn('[PESSOAS] SQLite indisponível neste Node (' + process.version + '): ' + e.message); }
+const PESSOAS_ARQ = path.join(DATA_DIR, 'pessoas.sqlite');
+const SESSAO_MS = 30 * 60 * 1000;
+const EVENTOS_DIAS = 90, SESSOES_DIAS = 365, EVENTOS_POR_SESSAO = 60, JANELA_CREDITO_DIAS = 7;
+let _pdb = null, _pdbFalhou = false;
+const _pq = {};
+const _pIntIp = new Set(), _pIntVis = new Set();   // regras de tráfego interno
+const _pSess = new Map();                           // visitante -> sessão aberta (atalho)
+const _pVideo = new Map();                          // visitante -> onde está na VSL agora
+let _pSal = '';
+
+function _pessoas() {
+  if (_pdb || _pdbFalhou || !_sqlite) return _pdb;
+  try {
+    const db = new _sqlite.DatabaseSync(PESSOAS_ARQ);
+    db.exec(`
+      PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=3000;
+      CREATE TABLE IF NOT EXISTS cfg (k TEXT PRIMARY KEY, v TEXT);
+      CREATE TABLE IF NOT EXISTS visitantes (
+        id TEXT PRIMARY KEY, primeiro INTEGER, ultimo INTEGER,
+        aparelho TEXT, sistema TEXT, navegador TEXT, pais TEXT, tela TEXT, ip TEXT,
+        interno INTEGER DEFAULT 0, interno_por TEXT, lead TEXT,
+        p_fonte TEXT, p_midia TEXT, p_camp TEXT, p_cont TEXT, p_termo TEXT, p_em INTEGER, p_pg TEXT, p_ref TEXT,
+        u_fonte TEXT, u_midia TEXT, u_camp TEXT, u_cont TEXT, u_termo TEXT, u_em INTEGER,
+        fbclid TEXT, fbc TEXT, fbp TEXT,
+        sessoes INTEGER DEFAULT 0, eventos INTEGER DEFAULT 0,
+        pitch_em INTEGER, checkout_em INTEGER, compra_em INTEGER, compras INTEGER DEFAULT 0, pago REAL DEFAULT 0,
+        video INTEGER DEFAULT 0, mortos INTEGER DEFAULT 0,
+        ult_tipo TEXT, ult_rot TEXT, ult_em INTEGER, ult_pg TEXT,
+        funil TEXT, teste TEXT, variante TEXT, versao TEXT
+      );
+      CREATE INDEX IF NOT EXISTS vis_ultimo ON visitantes(ultimo);
+      CREATE INDEX IF NOT EXISTS vis_lead ON visitantes(lead);
+      CREATE TABLE IF NOT EXISTS sessoes (
+        id TEXT PRIMARY KEY, visitante TEXT, inicio INTEGER, fim INTEGER, dur INTEGER DEFAULT 0,
+        funil TEXT, versao TEXT, entrada TEXT,
+        fonte TEXT, midia TEXT, camp TEXT, cont TEXT, termo TEXT, fbclid TEXT, fbc TEXT, fbp TEXT,
+        teste TEXT, variante TEXT, interno INTEGER DEFAULT 0,
+        pitch INTEGER DEFAULT 0, checkout INTEGER DEFAULT 0, video INTEGER DEFAULT 0,
+        eventos INTEGER DEFAULT 0, saiu INTEGER DEFAULT 0, mortos INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS ses_vis ON sessoes(visitante, inicio);
+      CREATE INDEX IF NOT EXISTS ses_inicio ON sessoes(inicio);
+      CREATE TABLE IF NOT EXISTS paginas (
+        sessao TEXT, pg TEXT, visitante TEXT, funil TEXT, etapa TEXT, em INTEGER, dia TEXT,
+        interno INTEGER DEFAULT 0, PRIMARY KEY (sessao, pg)
+      );
+      CREATE INDEX IF NOT EXISTS pag_funil ON paginas(funil, dia);
+      CREATE INDEX IF NOT EXISTS pag_pg ON paginas(pg, dia);
+      CREATE INDEX IF NOT EXISTS pag_vis ON paginas(visitante);
+      CREATE TABLE IF NOT EXISTS eventos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, sessao TEXT, visitante TEXT, funil TEXT, etapa TEXT,
+        tipo TEXT, pg TEXT, em INTEGER, rot TEXT, extra TEXT
+      );
+      CREATE INDEX IF NOT EXISTS ev_vis ON eventos(visitante, em);
+      CREATE INDEX IF NOT EXISTS ev_em ON eventos(em);
+      CREATE TABLE IF NOT EXISTS leads (
+        id TEXT PRIMARY KEY, email_h TEXT, tel_h TEXT, doc_h TEXT, email_mask TEXT, nome TEXT,
+        criado INTEGER, interno INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS lead_email ON leads(email_h);
+      CREATE INDEX IF NOT EXISTS lead_tel ON leads(tel_h);
+      CREATE INDEX IF NOT EXISTS lead_doc ON leads(doc_h);
+      CREATE TABLE IF NOT EXISTS lead_visitante (lead TEXT, visitante TEXT, por TEXT, em INTEGER,
+        PRIMARY KEY (lead, visitante));
+      CREATE INDEX IF NOT EXISTS lv_vis ON lead_visitante(visitante);
+      CREATE TABLE IF NOT EXISTS pedidos (
+        id TEXT PRIMARY KEY, pedido TEXT, status TEXT, pago INTEGER DEFAULT 0, estorno INTEGER DEFAULT 0,
+        valor REAL, liquido REAL, produto TEXT, plano TEXT, metodo TEXT, motivo TEXT,
+        visitante TEXT, lead TEXT, casou TEXT, sem_origem TEXT, sck TEXT,
+        fonte TEXT, camp TEXT, cont TEXT, termo TEXT,
+        cred_fonte TEXT, cred_camp TEXT, cred_cont TEXT, cred_canal TEXT, apoio TEXT,
+        funil TEXT, teste TEXT, variante TEXT, renovacao INTEGER DEFAULT 0, em INTEGER, dia TEXT
+      );
+      CREATE INDEX IF NOT EXISTS ped_dia ON pedidos(dia);
+      CREATE INDEX IF NOT EXISTS ped_vis ON pedidos(visitante);
+      CREATE INDEX IF NOT EXISTS ped_lead ON pedidos(lead);
+      CREATE TABLE IF NOT EXISTS internos (tipo TEXT, valor TEXT, em INTEGER, por TEXT, PRIMARY KEY (tipo, valor));
+      CREATE TABLE IF NOT EXISTS camp_dia (dia TEXT, projeto TEXT, id TEXT, nome TEXT, conta TEXT,
+        gasto REAL, imp INTEGER, cliques INTEGER, PRIMARY KEY (dia, projeto, id));
+      CREATE TABLE IF NOT EXISTS camp_dia_ok (dia TEXT, projeto TEXT, em INTEGER, PRIMARY KEY (dia, projeto));
+    `);
+    _pdb = db;
+    let sal = db.prepare("SELECT v FROM cfg WHERE k='sal'").get();
+    if (!sal) {
+      _pSal = crypto.randomBytes(16).toString('hex');
+      db.prepare("INSERT INTO cfg(k,v) VALUES('sal',?)").run(_pSal);
+    } else _pSal = sal.v;
+    db.prepare('SELECT tipo, valor FROM internos').all().forEach(r => {
+      if (r.tipo === 'ip') _pIntIp.add(r.valor);
+      if (r.tipo === 'visitante') _pIntVis.add(r.valor);
+    });
+    console.log('[PESSOAS] base aberta em ' + PESSOAS_ARQ);
+  } catch (e) {
+    _pdbFalhou = true;
+    console.error('[PESSOAS] não consegui abrir a base:', e.message);
+  }
+  return _pdb;
+}
+function _q(sql) {
+  if (!_pq[sql]) _pq[sql] = _pessoas().prepare(sql);
+  return _pq[sql];
+}
+function _pCfg(k, v) {
+  const db = _pessoas(); if (!db) return null;
+  if (v === undefined) { const r = _q('SELECT v FROM cfg WHERE k=?').get(k); return r ? r.v : null; }
+  _q('INSERT INTO cfg(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').run(k, String(v));
+  return v;
+}
+
+const _hashCurto = s => crypto.createHash('sha256').update(String(s)).digest('hex').slice(0, 32);
+const _diaBR = ms => new Date(ms - 3 * 3600000).toISOString().slice(0, 10);
+// A mesma pagina tem de ser uma chave so: /697, /697/, /697?x=1 e WWW.site/697
+function _normPg(u) {
+  let s = String(u || '').trim().toLowerCase();
+  if (!s) return '';
+  s = s.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+  return s.slice(0, 160);
+}
+function _telNorm(t) {
+  let d = String(t || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.length === 10 || d.length === 11) d = '55' + d;
+  return d.length >= 12 ? d : '';
+}
+function _mascEmail(e) {
+  const m = String(e || '').trim().toLowerCase().match(/^([^@]+)@(.+)$/);
+  if (!m) return '';
+  return m[1].charAt(0) + '*****@' + m[2];
+}
+function _ipDe(req) {
+  const xf = String((req && req.headers && req.headers['x-forwarded-for']) || '').split(',')[0].trim();
+  return xf || (req && (req.ip || (req.socket && req.socket.remoteAddress))) || '';
+}
+function _ipHash(req) {
+  const ip = _ipDe(req);
+  if (!ip || !_pessoas()) return '';
+  return _hashCurto(_pSal + '|ip|' + ip).slice(0, 20);
+}
+function _pEhInterno(c, req) {
+  if (c && Number(c.interno) === 1) return 'cookie';
+  const vis = String((c && c.id) || '');
+  if (vis && _pIntVis.has(vis)) return 'manual';
+  const ih = _ipHash(req);
+  if (ih && _pIntIp.has(ih)) return 'ip';
+  return '';
+}
+
+// ── Funis em memória ────────────────────────────────────────────────────────
+// O evento do pixel chega o tempo todo. Ler o db.json (30 MB) a cada um pra
+// saber o tipo da etapa ou o pitch da VSL travaria o servidor; um retrato de
+// 1 minuto basta — funil não muda de segundo em segundo.
+let _fcCache = { em: 0 };
+function _funisCache() {
+  if (_fcCache.em && Date.now() - _fcCache.em < 60000) return _fcCache;
+  const novo = { em: Date.now(), funis: {}, etapaTipo: {}, etapaPitch: {}, urlEtapa: {}, pitchPlayer: {}, redirs: {} };
+  try {
+    const db = readDB();
+    (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).forEach(f => {
+      if (!f || !f.id) return;
+      novo.funis[f.id] = f;
+      (f.etapas || []).forEach(e => {
+        novo.etapaTipo[e.id] = e.tipo || 'pagina';
+        if (Number(e.pitch) > 0) novo.etapaPitch[e.id] = Number(e.pitch);
+        if (e.url) novo.urlEtapa[_normPg(e.url)] = { funil: f.id, etapa: e.id, tipo: e.tipo || 'pagina', pitch: Number(e.pitch) || 0 };
+      });
+    });
+    const vt = _vturbCfg(db);
+    ((vt && vt.players) || []).forEach(p => { if (p.id && Number(p.pitch) > 0) novo.pitchPlayer[String(p.id)] = Number(p.pitch); });
+    (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : []).forEach(r => {
+      if (r && r.slug) novo.redirs[String(r.slug).toLowerCase()] = r;
+    });
+  } catch (e) { if (_fcCache.em) return _fcCache; }
+  _fcCache = novo;
+  return novo;
+}
+
+// ── Gravação de cada evento do pixel ────────────────────────────────────────
+const _EV_GUARDA = new Set(['entrou', 'saiu', 'checkout', 'clique', 'friccao', 'video', 'pitch']);
+// 'quando' só vem na importação do histórico (evento com a hora dele)
+function _pxRegistrar(c, req, interno, quando) {
+  const db = _pessoas(); if (!db) return;
+  const vis = String(c.id || '').slice(0, 40);
+  if (!vis) return;
+  const tipo = String(c.tipo || 'entrou').slice(0, 30);
+  const agora = quando || Date.now(), dia = _diaBR(agora);
+  const pg = _normPg(c.pg);
+  const funil = String(c.funil || '').slice(0, 80);
+  const cache = _funisCache();
+  const porUrl = pg ? cache.urlEtapa[pg] : null;
+  // a URL cadastrada ganha do data-e (o data-e vai junto quando a página é duplicada)
+  const etapa = (porUrl && porUrl.funil === funil) ? porUrl.etapa : String(c.etapa || '').slice(0, 60);
+  const tipoEtapa = (porUrl && porUrl.etapa === etapa) ? porUrl.tipo : (cache.etapaTipo[etapa] || '');
+  const utm = c.utm || {}, pr = (c.primeiro && typeof c.primeiro === 'object') ? c.primeiro : {};
+  const aqui = (c.aqui && typeof c.aqui === 'object') ? c.aqui : null;
+  const txt = (v, n) => { const s = String(v == null ? '' : v).trim(); return s ? s.slice(0, n || 120) : null; };
+  const eInt = interno ? 1 : 0;
+
+  db.exec('BEGIN');
+  try {
+    // ── visitante ──
+    let v = _q('SELECT id, interno, sessoes, pitch_em, checkout_em FROM visitantes WHERE id=?').get(vis);
+    if (!v) {
+      const pf = pr.utm_source || utm.source, pm = pr.utm_medium || utm.medium, pc = pr.utm_campaign || utm.campaign,
+            pn = pr.utm_content || utm.content, pt = pr.utm_term || utm.term;
+      _q(`INSERT INTO visitantes(id, primeiro, ultimo, p_fonte, p_midia, p_camp, p_cont, p_termo, p_em, p_pg, p_ref,
+            fbclid, fbc, fbp, interno, interno_por)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(vis, agora, agora,
+        txt(pf, 80), txt(pm, 80), txt(pc, 120), txt(pn, 160), txt(pt, 80),
+        Number(pr.em) > 0 && Number(pr.em) < agora ? Number(pr.em) : agora,
+        txt(pr.pg ? _normPg(_pgCompleta(pr.pg, pg)) : pg, 160), txt(pr.ref || c.ref, 200),
+        txt(pr.fbclid, 200), txt(pr.fbc, 200), txt(pr.fbp, 80), eInt, interno || null);
+      v = { id: vis, interno: eInt, sessoes: 0, pitch_em: null, checkout_em: null };
+    }
+
+    // ── sessão: 30 min sem nada fecha ──
+    let s = _pSess.get(vis);
+    if (!s) {
+      const r = _q('SELECT id, inicio, fim, funil FROM sessoes WHERE visitante=? ORDER BY inicio DESC LIMIT 1').get(vis);
+      if (r) s = { id: r.id, inicio: r.inicio, fim: r.fim, funil: r.funil, pitch: 0, checkout: 0, eventos: 0 };
+    }
+    const aberta = s && (agora - s.fim) < SESSAO_MS;
+    if (!aberta && (tipo === 'saiu' || tipo === 'video')) {
+      // Saída ou pulso do vídeo depois de 30 min parado não abre visita nova:
+      // é o fim da anterior chegando atrasado. Só marca, sem esticar o tempo.
+      if (s && tipo === 'saiu') _q('UPDATE sessoes SET saiu=1 WHERE id=?').run(s.id);
+      db.exec('COMMIT');
+      return;
+    }
+    if (!aberta) {
+      const o = aqui || {};
+      // Sessão nova: a origem é a DESTE acesso. Sem UTM na URL agora, é direto
+      // (ou quem trouxe a pessoa de volta foi o referrer), não o anúncio antigo.
+      const semAqui = !aqui && !c.retorno;   // pixel antigo: não sabe separar, usa o que tem
+      const fonte = o.utm_source || (semAqui ? utm.source : '') || '';
+      s = { id: String(c.sid || '').slice(0, 30) || ('s' + agora.toString(36) + Math.random().toString(36).slice(2, 6)),
+            inicio: agora, fim: agora, funil, pitch: 0, checkout: 0, eventos: 0 };
+      // o sid do navegador pode repetir entre visitantes em aba compartilhada: nunca reaproveita
+      if (_q('SELECT 1 FROM sessoes WHERE id=?').get(s.id)) s.id = s.id + '_' + Math.random().toString(36).slice(2, 5);
+      _q(`INSERT INTO sessoes(id, visitante, inicio, fim, funil, versao, entrada, fonte, midia, camp, cont, termo,
+            fbclid, fbc, fbp, teste, variante, interno)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(s.id, vis, agora, agora, funil || null, txt(c.versao, 40), pg || null,
+        txt(fonte, 80), txt(o.utm_medium || (semAqui ? utm.medium : ''), 80),
+        txt(o.utm_campaign || (semAqui ? utm.campaign : ''), 120), txt(o.utm_content || (semAqui ? utm.content : ''), 160),
+        txt(o.utm_term || (semAqui ? utm.term : ''), 80),
+        txt(o.fbclid, 200), txt(o.fbc || pr.fbc, 200), txt(o.fbp || pr.fbp, 80),
+        txt(c.teste, 60), txt(c.variante, 40), eInt);
+      // último toque PAGO: é o que leva o crédito da venda
+      const canal = fonte ? _canalDe(fonte, _canaisCache()) : null;
+      if (canal && canal.anuncios && !canal.apoio) {
+        _q(`UPDATE visitantes SET u_fonte=?, u_midia=?, u_camp=?, u_cont=?, u_termo=?, u_em=? WHERE id=?`)
+          .run(txt(fonte, 80), txt(o.utm_medium || utm.medium, 80), txt(o.utm_campaign || utm.campaign, 120),
+               txt(o.utm_content || utm.content, 160), txt(o.utm_term || utm.term, 80), agora, vis);
+      }
+      _q('UPDATE visitantes SET sessoes=sessoes+1 WHERE id=?').run(vis);
+    }
+    _pSess.set(vis, s);
+
+    // ── página vista nesta sessão (uma linha por página, não por evento) ──
+    if (pg && tipo !== 'saiu') {
+      _q(`INSERT OR IGNORE INTO paginas(sessao, pg, visitante, funil, etapa, em, dia, interno) VALUES(?,?,?,?,?,?,?,?)`)
+        .run(s.id, pg, vis, funil || null, etapa || null, agora, dia, eInt);
+    }
+
+    // ── marcos: checkout e pitch ──
+    let marco = '';
+    if (tipo === 'checkout' || (tipo === 'entrou' && tipoEtapa === 'checkout')) {
+      if (!s.checkout) {
+        s.checkout = 1; marco = 'checkout';
+        _q('UPDATE sessoes SET checkout=1 WHERE id=?').run(s.id);
+        _q('UPDATE visitantes SET checkout_em=COALESCE(checkout_em, ?) WHERE id=?').run(agora, vis);
+      }
+    }
+    if (tipo === 'video') {
+      const seg = Math.max(0, Math.round(Number(c.max || c.seg) || 0));
+      const pitch = cache.etapaPitch[etapa] || cache.pitchPlayer[String(c.player || '')] || 0;
+      _q('UPDATE sessoes SET video=MAX(video, ?) WHERE id=?').run(seg, s.id);
+      _q('UPDATE visitantes SET video=MAX(video, ?) WHERE id=?').run(seg, vis);
+      if (!quando) _pVideo.set(vis, { seg: Number(c.seg) || seg, em: agora, funil, pg, pitch, interno: eInt });
+      if (pitch && seg >= pitch && !s.pitch) {
+        s.pitch = 1; marco = 'pitch';
+        _q('UPDATE sessoes SET pitch=1 WHERE id=?').run(s.id);
+        _q('UPDATE visitantes SET pitch_em=COALESCE(pitch_em, ?) WHERE id=?').run(agora, vis);
+      }
+    }
+
+    // ── o evento em si (só os que contam a história, com teto por visita) ──
+    const extra = {};
+    if (tipo === 'saiu') { extra.seg = Math.min(Number(c.segundos) || 0, 6 * 3600); if (c.rolagem) extra.rol = Number(c.rolagem); }
+    if (tipo === 'video') { extra.seg = Number(c.seg) || 0; if (c.marco) extra.marco = String(c.marco).slice(0, 12); }
+    if (tipo === 'friccao') extra.motivo = String(c.motivo || '').slice(0, 12);
+    if (tipo === 'clique' && Number(c.player)) extra.player = 1;
+    if (tipo === 'checkout' && c.destino) extra.destino = String(c.destino).slice(0, 60);
+    if (tipo === 'entrou') { if (c.variante) extra.variante = String(c.variante).slice(0, 40); if (c.teste) extra.teste = String(c.teste).slice(0, 60); if (c.retorno) extra.retorno = 1; }
+    const rot = txt(c.rotulo, 80);
+    if (_EV_GUARDA.has(tipo) && s.eventos < EVENTOS_POR_SESSAO) {
+      // vídeo guarda só os marcos (play, 1 min, 10 min); o pulso de cada minuto
+      // fica na memória, pra tela ao vivo
+      const segV = Number(c.seg) || 0;
+      const marcoVideo = tipo !== 'video' || c.marco === 'play' ||
+        (segV >= 60 && segV < 120) || (segV >= 600 && segV < 660);
+      if (tipo === 'saiu') {
+        // uma saída por página por visita: a segunda só atualiza a primeira
+        const ja = _q("SELECT id FROM eventos WHERE sessao=? AND tipo='saiu' AND pg=? LIMIT 1").get(s.id, pg);
+        if (ja) _q('UPDATE eventos SET em=?, extra=? WHERE id=?').run(agora, JSON.stringify(extra), ja.id);
+        else { _q('INSERT INTO eventos(sessao, visitante, funil, etapa, tipo, pg, em, rot, extra) VALUES(?,?,?,?,?,?,?,?,?)')
+                 .run(s.id, vis, funil || null, etapa || null, tipo, pg || null, agora, rot, JSON.stringify(extra)); s.eventos++; }
+        _q('UPDATE sessoes SET saiu=1 WHERE id=?').run(s.id);
+      } else if (marcoVideo) {
+        _q('INSERT INTO eventos(sessao, visitante, funil, etapa, tipo, pg, em, rot, extra) VALUES(?,?,?,?,?,?,?,?,?)')
+          .run(s.id, vis, funil || null, etapa || null, tipo, pg || null, agora, rot,
+               Object.keys(extra).length ? JSON.stringify(extra) : null);
+        s.eventos++;
+      }
+    }
+    if (marco === 'pitch') {
+      _q('INSERT INTO eventos(sessao, visitante, funil, etapa, tipo, pg, em, rot, extra) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(s.id, vis, funil || null, etapa || null, 'pitch', pg || null, agora, null, JSON.stringify({ seg: Number(c.max || c.seg) || 0 }));
+    }
+    if (tipo === 'friccao' && c.motivo === 'morto') {
+      _q('UPDATE sessoes SET mortos=mortos+1 WHERE id=?').run(s.id);
+      _q('UPDATE visitantes SET mortos=mortos+1 WHERE id=?').run(vis);
+    }
+
+    // ── fecha a conta da visita e do visitante ──
+    s.fim = agora;
+    _q('UPDATE sessoes SET fim=?, dur=?, eventos=eventos+1 WHERE id=?').run(agora, Math.round((agora - s.inicio) / 1000), s.id);
+    const conta = tipo !== 'video' && tipo !== 'saiu';
+    const q = c.quem || null;
+    _q(`UPDATE visitantes SET ultimo=?, eventos=eventos+1,
+          ult_tipo=CASE WHEN ? THEN ? ELSE ult_tipo END, ult_rot=CASE WHEN ? THEN ? ELSE ult_rot END,
+          ult_em=CASE WHEN ? THEN ? ELSE ult_em END, ult_pg=CASE WHEN ? THEN ? ELSE ult_pg END,
+          aparelho=COALESCE(?, aparelho), sistema=COALESCE(?, sistema), navegador=COALESCE(?, navegador),
+          pais=COALESCE(?, pais), tela=COALESCE(?, tela), ip=COALESCE(?, ip),
+          funil=COALESCE(?, funil), teste=COALESCE(?, teste), variante=COALESCE(?, variante), versao=COALESCE(?, versao),
+          interno=CASE WHEN ?=1 THEN 1 ELSE interno END, interno_por=COALESCE(interno_por, ?)
+        WHERE id=?`).run(agora,
+      conta ? 1 : 0, marco || tipo, conta ? 1 : 0, rot, conta ? 1 : 0, agora, conta ? 1 : 0, pg || null,
+      q && q.aparelho || null, q && q.sistema || null, q && q.navegador || null, q && q.pais || null,
+      txt(c.tela, 20), tipo === 'entrou' ? (_ipHash(req) || null) : null,
+      funil || null, txt(c.teste, 60), txt(c.variante, 40), txt(c.versao, 40),
+      eInt, interno || null, vis);
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (e2) {}
+    const t = Date.now();
+    if (t - (_pxRegistrar._ultErro || 0) > 60000) { _pxRegistrar._ultErro = t; console.error('[PESSOAS] evento não gravou:', e.message); }
+  }
+}
+// primeira página do first-touch vem só com o caminho; completa com o host atual
+function _pgCompleta(pgPrimeiro, pgAtual) {
+  const p = String(pgPrimeiro || '');
+  if (!p || /^[a-z0-9-]+\.[a-z]/i.test(p.replace(/^https?:\/\//, ''))) return p;
+  const host = String(pgAtual || '').split('/')[0];
+  return host ? host + (p.charAt(0) === '/' ? p : '/' + p) : p;
+}
+let _canaisMem = { em: 0, lista: [] };
+function _canaisCache() {
+  if (_canaisMem.em && Date.now() - _canaisMem.em < 60000) return _canaisMem.lista;
+  try { _canaisMem = { em: Date.now(), lista: _canaisCfg(readDB()) }; }
+  catch (e) { _canaisMem.em = Date.now(); }
+  return _canaisMem.lista;
+}
+// a sessão aberta sai do atalho de memória depois de 1h parada
+setInterval(() => {
+  const corte = Date.now() - 60 * 60 * 1000;
+  for (const [k, s] of _pSess) if (s.fim < corte) _pSess.delete(k);
+  const corteV = Date.now() - 3 * 60 * 1000;
+  for (const [k, v] of _pVideo) if (v.em < corteV) _pVideo.delete(k);
+}, 5 * 60 * 1000);
+
+// ── Casamento venda ↔ pessoa ────────────────────────────────────────────────
+// A Payt não devolve o src e às vezes limpa o sck: ligar só pelo id deixava a
+// venda "sem origem" e a ficha dizendo "não comprou nesta jornada" de quem
+// comprou. Agora, em ordem, parando no primeiro que achar:
+//   1. sck/src com o id do visitante (o pixel põe no link do checkout)
+//   2. e-mail  3. telefone  4. documento — cada um liga ao lead, e o lead ao
+//      visitante mais recente dele (o lead nasce dos eventos do checkout:
+//      pix gerado, carrinho abandonado, com sck, deixam o e-mail ligado)
+//   5. nada → sem origem, com o motivo
+// Crédito: o último toque PAGO do visitante nos 7 dias antes da venda.
+// Recuperação (ligação, WhatsApp, e-mail) ajuda, mas nunca leva o crédito.
+const _DOC_CAMPOS = ['customer.doc', 'customer.document', 'customer.cpf', 'customer.tax_id',
+                     'customer.identification', 'cliente.cpf', 'cliente.documento', 'buyer.document'];
+const _LIQ_CAMPOS = ['transaction.net_price', 'transaction.net_amount', 'transaction.seller_price',
+                     'commission.net', 'net_amount', 'valor_liquido'];
+function _pedidoRegistrar(venda, p, opts) {
+  const db = _pessoas(); if (!db || !venda) return null;
+  opts = opts || {};
+  const em = Date.parse(venda.recebidoEm) || Date.now();
+  // venda antiga sem status valia como paga (tudo contava); sem valor, não
+  const stV = String(venda.status || '').trim();
+  const pago = stV ? _PAGO.test(stV) : Number(venda.valor) > 0;
+  const estorno = _ESTORNO.test(String(venda.status || '')) ? 1 : 0;
+  const payload = p || {};
+  const txt = (v, n) => { const s = String(v == null ? '' : v).trim(); return s ? s.slice(0, n || 120) : null; };
+
+  // ── o lead: quem é, pelos dados que o checkout manda ──
+  const email = String(venda.email || '').trim().toLowerCase();
+  const eh = email.indexOf('@') > 0 ? _hashCurto(_pSal + '|e|' + email) : '';
+  const tel = _telNorm(venda.telefone);
+  const th = tel ? _hashCurto(_pSal + '|t|' + tel) : '';
+  const doc = String(_pega(payload, _DOC_CAMPOS) || '').replace(/\D/g, '');
+  const dh = doc.length >= 11 ? _hashCurto(_pSal + '|d|' + doc) : '';
+
+  let resultado = null;
+  db.exec('BEGIN');
+  try {
+    let lead = null;
+    if (eh) lead = _q('SELECT id FROM leads WHERE email_h=? LIMIT 1').get(eh);
+    if (!lead && th) lead = _q('SELECT id FROM leads WHERE tel_h=? LIMIT 1').get(th);
+    if (!lead && dh) lead = _q('SELECT id FROM leads WHERE doc_h=? LIMIT 1').get(dh);
+    let leadId = lead ? lead.id : null;
+    if (!leadId && (eh || th || dh)) {
+      leadId = 'L' + (eh || th || dh).slice(0, 16);
+      _q('INSERT OR IGNORE INTO leads(id, email_h, tel_h, doc_h, email_mask, nome, criado) VALUES(?,?,?,?,?,?,?)')
+        .run(leadId, eh || null, th || null, dh || null, _mascEmail(email) || null,
+             venda.cliente ? _iniciais(venda.cliente) : null, em);
+    } else if (leadId) {
+      _q(`UPDATE leads SET email_h=COALESCE(email_h, ?), tel_h=COALESCE(tel_h, ?), doc_h=COALESCE(doc_h, ?),
+            email_mask=COALESCE(email_mask, ?), nome=COALESCE(nome, ?) WHERE id=?`)
+        .run(eh || null, th || null, dh || null, _mascEmail(email) || null,
+             venda.cliente ? _iniciais(venda.cliente) : null, leadId);
+    }
+
+    // ── casamento em camadas ──
+    let vis = '', casou = '';
+    if (venda.vid) { vis = String(venda.vid).slice(0, 40); casou = 'sck'; }
+    const porLead = (col, h) => h ? _q(`SELECT lv.visitante FROM leads l JOIN lead_visitante lv ON lv.lead = l.id
+        LEFT JOIN visitantes v ON v.id = lv.visitante WHERE l.${col} = ? ORDER BY v.ultimo DESC LIMIT 1`).get(h) : null;
+    if (!vis) { const r = porLead('email_h', eh); if (r) { vis = r.visitante; casou = 'email'; } }
+    if (!vis) { const r = porLead('tel_h', th);   if (r) { vis = r.visitante; casou = 'telefone'; } }
+    if (!vis) { const r = porLead('doc_h', dh);   if (r) { vis = r.visitante; casou = 'documento'; } }
+    if (vis && leadId) {
+      _q('INSERT OR IGNORE INTO lead_visitante(lead, visitante, por, em) VALUES(?,?,?,?)').run(leadId, vis, casou, em);
+      _q('UPDATE visitantes SET lead=COALESCE(lead, ?) WHERE id=?').run(leadId, vis);
+    }
+
+    // ── crédito ──
+    const canais = _canaisCache();
+    let cred = null, sessaoRef = null;
+    if (vis) {
+      const ss = _q(`SELECT id, fonte, midia, camp, cont, termo, inicio, funil, teste, variante FROM sessoes
+                     WHERE visitante=? AND inicio<=? AND inicio>=? ORDER BY inicio DESC LIMIT 60`)
+        .all(vis, em + 60000, em - JANELA_CREDITO_DIAS * 86400000);
+      sessaoRef = ss[0] || null;
+      for (const s of ss) {
+        const c = _canalDe(s.fonte, canais);
+        if (c && c.anuncios && !c.apoio) { cred = { fonte: s.fonte, camp: s.camp, cont: s.cont, canal: c.id, s }; break; }
+      }
+      if (!cred) {
+        // sem anúncio no caminho: fica com o último toque que não é de apoio
+        for (const s of ss) {
+          const c = _canalDe(s.fonte, canais);
+          if (c && c.apoio) continue;
+          cred = { fonte: s.fonte || 'direto', camp: s.camp, cont: s.cont, canal: c ? c.id : (s.fonte ? 'outro' : 'direto'), s };
+          break;
+        }
+      }
+    }
+    const cVenda = _canalDe(venda.utmSource, canais);
+    if (!cred && _origemVale(venda.utmSource) && !(cVenda && cVenda.apoio)) {
+      cred = { fonte: venda.utmSource, camp: venda.utmCampaign, cont: venda.utmContent, canal: cVenda ? cVenda.id : 'outro' };
+    }
+    const apoio = (cVenda && cVenda.apoio) ? cVenda.nome : null;
+
+    // ── sem origem: por quê ──
+    let semOrigem = null;
+    if (!cred && !venda.renovacao) {
+      const utmTxt = [venda.utmSource, venda.utmCampaign, venda.utmContent, venda.utmTerm].join(' ');
+      if (/\{\{/.test(utmTxt)) semOrigem = 'UTM com macro vazia';
+      else if (vis) semOrigem = 'Jornada expirou (> 7 dias)';
+      else if (apoio) semOrigem = null;          // veio pela recuperação: aparece como apoio
+      else if (/^organic/i.test(String(venda.utmSource || '').trim())) semOrigem = 'Checkout limpou o src/sck';
+      else semOrigem = 'Sem id nem UTM';
+    }
+
+    // ── líquido: o que o gateway diz que fica; sem isso, a tela desconta a taxa ──
+    const liq = _pegaCom(payload, _LIQ_CAMPOS);
+    let liquido = _num(liq.valor);
+    if (liquido !== null && /^transaction\./.test(liq.caminho)) liquido = liquido / 100;
+    if (liquido !== null && Number(venda.valor) > 0 && liquido > Number(venda.valor) * 1.01) liquido = liquido / 100;
+
+    const ref = (cred && cred.s) || sessaoRef || {};
+    const idPed = venda.pedidoId ? (String(venda.pedidoId).slice(0, 60) + '|' + String(venda.status || '').slice(0, 30)) : venda.id;
+    const ins = _q(`INSERT OR IGNORE INTO pedidos(id, pedido, status, pago, estorno, valor, liquido, produto, plano, metodo, motivo,
+        visitante, lead, casou, sem_origem, sck, fonte, camp, cont, termo, cred_fonte, cred_camp, cred_cont, cred_canal, apoio,
+        funil, teste, variante, renovacao, em, dia)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      idPed, txt(venda.pedidoId, 60), txt(venda.status, 30), pago ? 1 : 0, estorno,
+      Number(venda.valor) || 0, liquido, txt(venda.produto, 120), txt(venda.plano, 80), txt(venda.metodo, 30),
+      pago ? null : txt(_motivoFalha(venda), 60),
+      vis || null, leadId, casou || null, semOrigem, txt(venda.vid, 40),
+      txt(venda.utmSource, 80), txt(venda.utmCampaign, 120), txt(venda.utmContent, 160), txt(venda.utmTerm, 80),
+      cred ? txt(cred.fonte, 80) : null, cred ? txt(cred.camp, 120) : null, cred ? txt(cred.cont, 160) : null,
+      cred ? cred.canal : null, apoio, ref.funil || null, ref.teste || null, ref.variante || null,
+      venda.renovacao ? 1 : 0, em, _diaBR(em));
+
+    if (ins.changes && vis) {
+      const sid = sessaoRef ? sessaoRef.id : null;
+      const rot = (txt(venda.produto, 60) || 'Pedido') + (Number(venda.valor) ? ' · R$ ' + Number(venda.valor).toFixed(2).replace('.', ',') : '');
+      if (pago && !estorno) {
+        _q('UPDATE visitantes SET compras=compras+1, pago=pago+?, compra_em=COALESCE(compra_em, ?), ult_tipo=?, ult_rot=?, ult_em=? WHERE id=?')
+          .run(Number(venda.valor) || 0, em, 'compra', rot, em, vis);
+      }
+      _q('INSERT INTO eventos(sessao, visitante, funil, etapa, tipo, pg, em, rot, extra) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(sid, vis, ref.funil || null, null, estorno ? 'estorno' : (pago ? 'compra' : 'tentativa'), null, em, rot,
+             JSON.stringify({ status: venda.status || '', casou, metodo: venda.metodo || '',
+                              motivo: pago ? '' : _motivoFalha(venda) }));
+    }
+    db.exec('COMMIT');
+    resultado = { visitante: vis, casou, lead: leadId, semOrigem, cred: cred ? { fonte: cred.fonte, cont: cred.cont, canal: cred.canal } : null };
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (e2) {}
+    console.error('[PESSOAS] pedido não gravou:', e.message);
+    return null;
+  }
+  if (!opts.naoMexer && resultado) {
+    // a venda do db.json passa a saber com quem casou — é o que o A/B e a
+    // jornada antigos leem
+    if (!venda.vid && resultado.visitante) venda.vid = resultado.visitante;
+    if (resultado.casou === 'email' || resultado.casou === 'telefone' || resultado.casou === 'documento') venda.casadaPor = resultado.casou;
+  }
+  return resultado;
+}
+
+// ── Importação do que já existe ─────────────────────────────────────────────
+// Na primeira vez, a base nasce com a jornada dos últimos 7 dias e todas as
+// vendas do webhook — senão a lista de Leads abriria vazia no dia do deploy.
+function _pessoasImportar() {
+  const db = _pessoas(); if (!db) return;
+  if (_pCfg('importado_v1')) return;
+  try {
+    const t0 = Date.now();
+    const dbj = readDB();
+    const jn = Array.isArray(dbj.store[KEY_JORNADA]) ? dbj.store[KEY_JORNADA] : [];
+    const evs = [];
+    jn.forEach(j => (j.eventos || []).forEach(e => {
+      const t = Date.parse(e.em); if (!Number.isFinite(t)) return;
+      evs.push({ t, c: {
+        id: j.id, funil: j.funil, etapa: e.etapa, tipo: e.tipo, pg: e.pg, segundos: e.segundos,
+        rotulo: e.rotulo, motivo: e.motivo, versao: e.versao, teste: e.teste, variante: e.variante,
+        utm: { source: e.origem, medium: e.midia, campaign: e.campanha, content: e.criativo },
+        primeiro: e.primeiro || null, ref: e.ref,
+        quem: (e.aparelho || e.navegador) ? { aparelho: e.aparelho, navegador: e.navegador, sistema: e.sistema, pais: e.pais } : null
+      } });
+    }));
+    evs.sort((a, b) => a.t - b.t);
+    evs.forEach(x => { try { _pxRegistrar(x.c, null, _pIntVis.has(String(x.c.id)) ? 'manual' : '', x.t); } catch (e) {} });
+    _pSess.clear();
+    const vendas = (Array.isArray(dbj.store[KEY_VENDAS]) ? dbj.store[KEY_VENDAS] : []).slice()
+      .sort((a, b) => (Date.parse(a.recebidoEm) || 0) - (Date.parse(b.recebidoEm) || 0));
+    vendas.forEach(v => { try { _pedidoRegistrar(Object.assign({}, v), null, { naoMexer: true }); } catch (e) {} });
+    _pCfg('importado_v1', new Date().toISOString());
+    console.log('[PESSOAS] importei ' + evs.length + ' eventos de ' + jn.length + ' jornadas e ' +
+                vendas.length + ' vendas em ' + Math.round((Date.now() - t0) / 1000) + 's.');
+  } catch (e) { console.error('[PESSOAS] importação falhou:', e.message); }
+}
+setTimeout(_pessoasImportar, 20 * 1000);
+
+// ── Retenção e cópia ────────────────────────────────────────────────────────
+// Evento vive 90 dias e sessão 12 meses; visitante, lead e pedido ficam. Se o
+// disco apertar, o evento velho sai antes (o volume do Railway é pequeno e o
+// db.json com os snapshots já ocupa a maior parte dele).
+function _pessoasManter() {
+  const db = _pessoas(); if (!db) return;
+  try {
+    const livre = _espacoLivreMB(DATA_DIR);
+    const diasEv = (livre !== null && livre < 80) ? 21 : EVENTOS_DIAS;
+    const agora = Date.now();
+    const r1 = _q('DELETE FROM eventos WHERE em < ?').run(agora - diasEv * 86400000);
+    const r2 = _q('DELETE FROM sessoes WHERE inicio < ?').run(agora - SESSOES_DIAS * 86400000);
+    _q('DELETE FROM paginas WHERE em < ?').run(agora - SESSOES_DIAS * 86400000);
+    if (r1.changes || r2.changes) console.log('[PESSOAS] retenção: ' + r1.changes + ' eventos e ' + r2.changes + ' sessões antigas saíram.');
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  } catch (e) { console.error('[PESSOAS] manutenção falhou:', e.message); }
+}
+setInterval(_pessoasManter, 6 * 60 * 60 * 1000);
+
+// Cópia diária compactada ao lado dos snapshots do db.json (a base não entra
+// neles). Fica só a de hoje e a de ontem; se o disco estiver apertado, pula.
+async function _pessoasCopia() {
+  const db = _pessoas(); if (!db) return;
+  try {
+    const livre = _espacoLivreMB(DATA_DIR);
+    let tam = 0; try { tam = fs.statSync(PESSOAS_ARQ).size / (1024 * 1024); } catch (e) {}
+    if (livre !== null && livre < tam * 2 + 60) { console.warn('[PESSOAS] sem espaço pra cópia de hoje.'); return; }
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const dia = _diaBR(Date.now()).replace(/-/g, '');
+    const alvo = path.join(BACKUP_DIR, 'pessoas-' + dia + '.sqlite.gz');
+    if (fs.existsSync(alvo)) return;
+    const tmp = path.join(BACKUP_DIR, 'pessoas-tmp.sqlite');
+    try { fs.unlinkSync(tmp); } catch (e) {}
+    db.exec("VACUUM INTO '" + tmp.replace(/'/g, "''") + "'");
+    await new Promise((ok, erro) => {
+      fs.createReadStream(tmp).pipe(require('zlib').createGzip()).pipe(fs.createWriteStream(alvo))
+        .on('finish', ok).on('error', erro);
+    });
+    try { fs.unlinkSync(tmp); } catch (e) {}
+    fs.readdirSync(BACKUP_DIR).filter(f => /^pessoas-\d{8}\.sqlite\.gz$/.test(f)).sort().reverse().slice(2)
+      .forEach(f => { try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch (e) {} });
+  } catch (e) { console.error('[PESSOAS] cópia falhou:', e.message); }
+}
+setInterval(_pessoasCopia, 6 * 60 * 60 * 1000);
+setTimeout(_pessoasCopia, 10 * 60 * 1000);
+
+// ══════════════════════════════════════════════════════
+// ── ESCOPO DO FUNIL: uma regra só pra todas as telas ──
+// "Chegaram 7" no topo contra 3.389 na Jornada: cada tela decidia sozinha o
+// que era do funil. Agora o topo, o Resultado, o Mapa e os Leads perguntam
+// aqui. A URL cadastrada na etapa manda; etapa sem URL (ou com URL que nunca
+// apareceu, digitada errada) aceita pelo data-e do pixel deste funil; página
+// ignorada não conta. O resto que tem o pixel deste funil é "fora do mapa".
+// ══════════════════════════════════════════════════════
+function _escopoFunil(dbj, funilId) {
+  const f = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).find(x => x && x.id === funilId);
+  if (!f || !_pessoas()) return null;
+  const ids = new Set([f.id]);
+  const ado = _adocoes(dbj).filter(a => a.funil === f.id);
+  ado.forEach(a => { if (a.origemFunil) ids.add(a.origemFunil); });
+  const etapaDeUrl = {}, etapaDeData = {}, tipoEtapa = {}, nomeEtapa = {};
+  (f.etapas || []).forEach(e => {
+    tipoEtapa[e.id] = e.tipo || 'pagina'; nomeEtapa[e.id] = e.nome || '';
+    const urls = [e.url].concat(Array.isArray(e.urls) ? e.urls : []).map(_normPg).filter(Boolean);
+    let viu = false;
+    urls.forEach(u => { if (_q('SELECT 1 FROM paginas WHERE pg=? LIMIT 1').get(u)) { etapaDeUrl[u] = e.id; viu = true; } });
+    if (!viu) {
+      etapaDeData[e.id] = e.id;
+      urls.forEach(u => { etapaDeUrl[u] = e.id; });   // ainda sem tráfego: vale quando chegar
+    }
+  });
+  ado.forEach(a => { if (etapaDeData[a.etapa] && a.origemEtapa) etapaDeData[a.origemEtapa] = a.etapa; });
+  const ignoradas = new Set((Array.isArray(f.paginasIgnoradas) ? f.paginasIgnoradas : []).map(_normPg).filter(Boolean));
+  return { f, ids: [...ids], etapaDeUrl, etapaDeData, ignoradas, tipoEtapa, nomeEtapa };
+}
+const _ph = n => new Array(n).fill('?').join(',');
+// pedaço de WHERE que diz "esta linha de páginas é do mapa deste funil"
+function _escopoSql(esc, a) {
+  a = a || 'p';
+  const urls = Object.keys(esc.etapaDeUrl), dados = Object.keys(esc.etapaDeData);
+  const partes = [], args = [];
+  if (urls.length) { partes.push(a + '.pg IN (' + _ph(urls.length) + ')'); args.push(...urls); }
+  if (dados.length) {
+    partes.push('(' + a + '.funil IN (' + _ph(esc.ids.length) + ') AND ' + a + '.etapa IN (' + _ph(dados.length) + '))');
+    args.push(...esc.ids, ...dados);
+  }
+  let where = partes.length ? '(' + partes.join(' OR ') + ')' : '0';
+  const ign = [...esc.ignoradas];
+  if (ign.length) { where += ' AND ' + a + '.pg NOT IN (' + _ph(ign.length) + ')'; args.push(...ign); }
+  return { where, args };
+}
+// qual etapa daqui uma linha de páginas representa
+function _etapaDaLinha(esc, pg, etapa) {
+  return esc.etapaDeUrl[pg] || esc.etapaDeData[etapa] || null;
+}
+function _periodoMs(de, ate) {
+  const ini = /^\d{4}-\d{2}-\d{2}$/.test(de) ? Date.parse(de + 'T00:00:00-03:00') : Date.now() - 7 * 86400000;
+  const fim = /^\d{4}-\d{2}-\d{2}$/.test(ate) ? Date.parse(ate + 'T23:59:59.999-03:00') : Date.now();
+  return { ini, fim, de: _diaBR(ini), ate: _diaBR(fim) };
+}
+
+// ══════════════════════════════════════════════════════
+// ── LEADS ──
+// Todas as pessoas do funil, sem o teto de 4.000. Busca, filtros e atalhos
+// ("checkout e não comprou"). A paginação é no servidor: 78 mil linhas não
+// cabem numa resposta, e nem precisam.
+// ══════════════════════════════════════════════════════
+function _leadsFiltro(req, esc) {
+  const q = req.query || {};
+  const per = _periodoMs(String(q.de || ''), String(q.ate || ''));
+  const esq = _escopoSql(esc, 'p');
+  const modo = ['atividade', 'primeiro', 'compra'].includes(q.quando) ? q.quando : 'atividade';
+  const onde = [], args = [];
+  // quem é do funil: esteve numa página do mapa (no período, no modo padrão)
+  if (modo === 'atividade') {
+    onde.push('v.id IN (SELECT DISTINCT p.visitante FROM paginas p WHERE p.dia BETWEEN ? AND ? AND ' + esq.where + ')');
+    args.push(per.de, per.ate, ...esq.args);
+  } else {
+    onde.push('v.id IN (SELECT DISTINCT p.visitante FROM paginas p WHERE ' + esq.where + ')');
+    args.push(...esq.args);
+    onde.push(modo === 'primeiro' ? 'v.primeiro BETWEEN ? AND ?' : 'v.compra_em BETWEEN ? AND ?');
+    args.push(per.ini, per.fim);
+  }
+  const base = { onde: onde.slice(), args: args.slice() };   // pros cards: sem os filtros da lista
+  const interno = String(q.interno || '');
+  if (interno === '1') onde.push('v.interno=1');
+  else if (interno !== 'todos') onde.push('v.interno=0');
+  const st = String(q.status || '');
+  if (st === 'comprador') onde.push('v.compras>0');
+  if (st === 'checkout') onde.push('v.checkout_em IS NOT NULL AND v.compras=0');
+  if (st === 'identificado') onde.push('v.lead IS NOT NULL AND v.compras=0 AND v.checkout_em IS NULL');
+  if (st === 'anonimo') onde.push('v.lead IS NULL AND v.compras=0 AND v.checkout_em IS NULL');
+  if (q.checkout === 'sim') onde.push('v.checkout_em IS NOT NULL');
+  if (q.checkout === 'nao') onde.push('v.checkout_em IS NULL');
+  if (q.pitch === 'sim') onde.push('v.pitch_em IS NOT NULL');
+  if (q.pitch === 'nao') onde.push('v.pitch_em IS NULL');
+  if (q.pitch === 'hoje') { onde.push('v.pitch_em >= ?'); args.push(Date.parse(_diaBR(Date.now()) + 'T00:00:00-03:00')); }
+  if (q.anuncio) { onde.push('(v.p_cont LIKE ? OR v.u_cont LIKE ?)'); const a = '%' + String(q.anuncio).slice(0, 80) + '%'; args.push(a, a); }
+  if (q.pagina) { onde.push('EXISTS (SELECT 1 FROM paginas p2 WHERE p2.visitante=v.id AND p2.pg=?)'); args.push(_normPg(q.pagina)); }
+  if (q.etapa) {
+    const urls = Object.keys(esc.etapaDeUrl).filter(u => esc.etapaDeUrl[u] === q.etapa);
+    const dados = Object.keys(esc.etapaDeData).filter(k => esc.etapaDeData[k] === q.etapa);
+    const ps = [], pa = [];
+    if (urls.length) { ps.push('p3.pg IN (' + _ph(urls.length) + ')'); pa.push(...urls); }
+    if (dados.length) { ps.push('(p3.funil IN (' + _ph(esc.ids.length) + ') AND p3.etapa IN (' + _ph(dados.length) + '))'); pa.push(...esc.ids, ...dados); }
+    onde.push(ps.length ? 'EXISTS (SELECT 1 FROM paginas p3 WHERE p3.visitante=v.id AND p3.dia BETWEEN ? AND ? AND (' + ps.join(' OR ') + '))' : '0');
+    if (ps.length) args.push(per.de, per.ate, ...pa);
+  }
+  if (q.origem) {
+    const canal = _canaisCache().find(c => c.id === q.origem);
+    if (q.origem === 'sem') onde.push("(v.p_fonte IS NULL OR v.p_fonte='')");
+    else if (canal) {
+      const ps = [];
+      (canal.fontes || []).forEach(x => {
+        const y = _nrm(x); if (!y) return;
+        if (y.slice(-1) === '*') { ps.push('lower(v.p_fonte) LIKE ?'); args.push(y.slice(0, -1) + '%'); }
+        else { ps.push('lower(v.p_fonte) = ?'); args.push(y); }
+      });
+      onde.push(ps.length ? '(' + ps.join(' OR ') + ')' : '0');
+    }
+  }
+  const busca = String(q.q || '').trim().slice(0, 120);
+  if (busca) {
+    const dig = busca.replace(/\D/g, '');
+    if (busca.indexOf('@') > 0) {
+      onde.push('v.lead IN (SELECT id FROM leads WHERE email_h=?)'); args.push(_hashCurto(_pSal + '|e|' + busca.toLowerCase()));
+    } else if (dig.length >= 10 && /^[\d\s()+-]+$/.test(busca)) {
+      onde.push('v.lead IN (SELECT id FROM leads WHERE tel_h=?)'); args.push(_hashCurto(_pSal + '|t|' + _telNorm(dig)));
+    } else if (/^#?v?[a-z0-9]{4,}$/i.test(busca) && !/\s/.test(busca)) {
+      const t = busca.replace(/^#/, '').toLowerCase();
+      onde.push('(v.id LIKE ? OR v.id LIKE ? OR v.lead IN (SELECT id FROM leads WHERE nome LIKE ?))');
+      args.push(t + '%', '%' + t, '%' + busca + '%');
+    } else {
+      onde.push('v.lead IN (SELECT id FROM leads WHERE nome LIKE ?)'); args.push('%' + busca + '%');
+    }
+  }
+  return { onde, args, base, per };
+}
+// o que a lista mostra de cada pessoa
+function _leadLinha(r, suspeitos) {
+  const st = r.compras > 0 ? 'comprador' : (r.checkout_em ? 'checkout' : (r.lead ? 'identificado' : 'anonimo'));
+  return {
+    id: r.id, nome: r.nome || '', email: r.email_mask || '', status: st,
+    toque: { fonte: r.p_fonte || '', cont: r.p_cont || '', camp: r.p_camp || '', em: r.p_em || r.primeiro },
+    ultimo: { tipo: r.ult_tipo || '', rot: r.ult_rot || '', em: r.ult_em || r.ultimo, pg: r.ult_pg || '' },
+    video: r.video || 0, pitch: !!r.pitch_em, visitas: r.sessoes || 0, pago: r.pago || 0,
+    primeiro: r.primeiro, interno: !!r.interno, suspeito: !!(suspeitos && suspeitos.has(r.id))
+  };
+}
+// "interno?": mais de 30 visitas em 14 dias, 3 páginas ou mais, e nunca comprou
+function _suspeitosDe(ids) {
+  const out = new Set();
+  if (!ids.length) return out;
+  _q('SELECT s.visitante, COUNT(*) n FROM sessoes s WHERE s.visitante IN (' + _ph(ids.length) + ') AND s.inicio > ? GROUP BY s.visitante HAVING n > 30')
+    .all(...ids, Date.now() - 14 * 86400000).forEach(r => {
+      const pgs = _q('SELECT COUNT(DISTINCT pg) n FROM paginas WHERE visitante=?').get(r.visitante);
+      const v = _q('SELECT compras FROM visitantes WHERE id=?').get(r.visitante);
+      if (pgs && pgs.n >= 3 && v && !v.compras) out.add(r.visitante);
+    });
+  return out;
+}
+
+app.get('/api/funil/pessoas', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const fl = _leadsFiltro(req, esc);
+    const por = [20, 50, 100].includes(Number(req.query.por)) ? Number(req.query.por) : 20;
+    const pag = Math.max(1, parseInt(req.query.pag, 10) || 1);
+    const ordem = { recente: 'v.ultimo DESC', primeiro: 'v.primeiro DESC', pago: 'v.pago DESC, v.ultimo DESC',
+                    visitas: 'v.sessoes DESC', video: 'v.video DESC' }[req.query.ordem] || 'v.ultimo DESC';
+    const where = fl.onde.join(' AND ');
+    const total = _q('SELECT COUNT(*) n FROM visitantes v WHERE ' + where).get(...fl.args).n;
+    const linhas = _q('SELECT v.*, l.nome, l.email_mask FROM visitantes v LEFT JOIN leads l ON l.id = v.lead WHERE ' +
+                      where + ' ORDER BY ' + ordem + ' LIMIT ? OFFSET ?').all(...fl.args, por, (pag - 1) * por);
+    const sus = _suspeitosDe(linhas.filter(r => !r.interno).map(r => r.id));
+    // cards: o funil inteiro no período, sem os filtros da lista
+    const bw = fl.base.onde.join(' AND ');
+    const c = _q(`SELECT
+        SUM(CASE WHEN v.interno=0 THEN 1 ELSE 0 END) pessoas,
+        SUM(CASE WHEN v.interno=0 AND v.lead IS NOT NULL THEN 1 ELSE 0 END) identificadas,
+        SUM(CASE WHEN v.interno=0 AND v.compras>0 THEN 1 ELSE 0 END) compradores,
+        SUM(CASE WHEN v.interno=0 AND v.checkout_em IS NOT NULL AND v.compras=0 THEN 1 ELSE 0 END) checkout,
+        SUM(CASE WHEN v.interno=1 THEN 1 ELSE 0 END) internos
+      FROM visitantes v WHERE ` + bw).get(...fl.base.args);
+    // gente em páginas com o pixel deste funil que não são etapa
+    const esq = _escopoSql(esc, 'p');
+    const fora = _q('SELECT COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND p.funil IN (' +
+                    _ph(esc.ids.length) + ') AND NOT ' + esq.where).get(fl.per.de, fl.per.ate, ...esc.ids, ...esq.args).n;
+    res.json({ ok: true, total, pag, por, cards: {
+        pessoas: c.pessoas || 0, identificadas: c.identificadas || 0, compradores: c.compradores || 0,
+        checkoutSemCompra: c.checkout || 0, internos: c.internos || 0, foraDoMapa: fora || 0 },
+      // valor de venda é da Diretoria (igual sl_vendas): os outros veem só que comprou
+      linhas: linhas.map(r => { const l = _leadLinha(r, sus); if (!_ehDir(req)) { l.pago = l.pago > 0 ? true : 0; l.ultimo.rot = _semValor(l.ultimo.rot); } return l; }) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Exportar: a mesma lista, com os mesmos filtros, em CSV (até 50 mil linhas)
+app.get('/api/funil/pessoas.csv', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).send('Base de pessoas indisponível.');
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).send('Funil não encontrado.');
+    const fl = _leadsFiltro(req, esc);
+    const linhas = _q('SELECT v.*, l.nome, l.email_mask FROM visitantes v LEFT JOIN leads l ON l.id = v.lead WHERE ' +
+                      fl.onde.join(' AND ') + ' ORDER BY v.ultimo DESC LIMIT 50000').all(...fl.args);
+    const cel = x => { const s = String(x == null ? '' : x); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const dt = ms => ms ? new Date(ms - 3 * 3600000).toISOString().slice(0, 16).replace('T', ' ') : '';
+    const out = ['id;nome;email;status;fonte;anuncio;campanha;ultimo_evento;ultimo_em;video_seg;passou_pitch;visitas;total_pago;primeiro_contato;interno'];
+    linhas.forEach(r => {
+      const l = _leadLinha(r);
+      out.push([l.id, l.nome, l.email, l.status, l.toque.fonte, l.toque.cont, l.toque.camp, l.ultimo.tipo + (l.ultimo.rot ? ' ' + l.ultimo.rot : ''),
+                dt(l.ultimo.em), l.video, l.pitch ? 'sim' : 'nao', l.visitas, String(l.pago.toFixed(2)).replace('.', ','),
+                dt(l.primeiro), l.interno ? 'sim' : 'nao'].map(cel).join(';'));
+    });
+    const db = readDB();
+    audit(db, 'leads_exportados', { funil: esc.f.id }, { linhas: linhas.length }, req.user);
+    writeDB(db);
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', 'attachment; filename="leads-' + String(esc.f.nome || 'funil').replace(/[^\w-]+/g, '-').slice(0, 40) + '.csv"');
+    res.send('﻿' + out.join('\n'));
+  } catch (e) { res.status(500).send(e.message); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── FICHA DA PESSOA ──
+// Lê sessões + pedidos, não a jornada de 7 dias: lead de 60 dias atrás
+// continua abrindo inteiro.
+// ══════════════════════════════════════════════════════
+function _resumoDaPessoa(v, evs, peds, nomeEtapa) {
+  const curto = s => String(s || '').split('|')[0].trim().slice(0, 40);
+  const frases = [];
+  let a = '';
+  if (v.p_cont) a = 'Veio do ' + curto(v.p_cont);
+  else if (v.p_fonte) a = 'Veio de ' + curto(v.p_fonte);
+  else a = 'Chegou direto';
+  if (v.video >= 60) a += ', assistiu ' + Math.round(v.video / 60) + ' min' + (v.pitch_em ? ' e passou do pitch' : '');
+  else if (v.video > 0) a += ', deu play e parou antes de 1 min';
+  const morto = evs.filter(e => e.tipo === 'friccao' && /morto|raiva/.test(e.extra || '')).map(e => e.rot).filter(Boolean);
+  if (morto.length) a += ', travou em "' + morto[0] + '"';
+  const recusas = peds.filter(p => !p.pago && /cart|recus/i.test(p.motivo || ''));
+  if (recusas.length) a += ', tentou ' + (recusas[0].produto || 'comprar') + ' e foi recusado' + (recusas[0].motivo ? ' (' + recusas[0].motivo.toLowerCase() + ')' : '');
+  const pagos = peds.filter(p => p.pago && !p.estorno);
+  if (pagos.length) a += (recusas.length ? ' e fechou ' : ', comprou ') + (pagos[0].produto || 'o produto') +
+                         (pagos[0].metodo ? ' no ' + (/pix/.test(pagos[0].metodo) ? 'pix' : /card|cart/.test(pagos[0].metodo) ? 'cartão' : pagos[0].metodo) : '');
+  else if (v.checkout_em) a += ', abriu o checkout e não comprou';
+  frases.push(a + '.');
+  let s = '';
+  if (morto.length) s = 'Sinal: "' + morto[0] + '" parece clicável e não é.';
+  else if (v.checkout_em && !pagos.length) s = 'Sinal: está na fila de recuperação.';
+  else if (v.pitch_em && !v.checkout_em) s = 'Sinal: viu a oferta e não clicou em comprar.';
+  else if (!v.video && !v.checkout_em && !pagos.length && v.sessoes <= 1) s = 'Sinal: saiu antes do vídeo começar.';
+  if (s) frases.push(s);
+  return frases.join(' ');
+}
+
+app.get('/api/pessoa/:id', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const id = String(req.params.id || '').slice(0, 40);
+    const v = _q('SELECT * FROM visitantes WHERE id=?').get(id);
+    if (!v) return res.status(404).json({ error: 'Pessoa não encontrada.' });
+    const lead = v.lead ? _q('SELECT id, nome, email_mask, email_h, tel_h FROM leads WHERE id=?').get(v.lead) : null;
+    const outros = v.lead ? _q('SELECT visitante FROM lead_visitante WHERE lead=? AND visitante<>?').all(v.lead, id).map(r => r.visitante) : [];
+    const peds = _q('SELECT * FROM pedidos WHERE visitante=? OR (lead IS NOT NULL AND lead=?) ORDER BY em DESC LIMIT 40').all(id, v.lead || '');
+    const sessoes = _q('SELECT * FROM sessoes WHERE visitante=? ORDER BY inicio DESC LIMIT 20').all(id);
+    const evs = _q('SELECT * FROM eventos WHERE visitante=? ORDER BY em ASC LIMIT 600').all(id);
+    const dbj = readDB();
+    const funis = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
+    const nomeEtapa = {}; funis.forEach(f => (f.etapas || []).forEach(e => { nomeEtapa[e.id] = e.nome; }));
+    const funil = funis.find(f => f.id === v.funil) || null;
+    // contato completo só pra Diretoria: a lista mostra o e-mail mascarado
+    let contato = null;
+    if (req.user && req.user.cargo === 'Diretoria' && lead) {
+      const vendas = Array.isArray(dbj.store[KEY_VENDAS]) ? dbj.store[KEY_VENDAS] : [];
+      const achada = vendas.slice().reverse().find(x => {
+        const e = String(x.email || '').trim().toLowerCase();
+        if (lead.email_h && e && _hashCurto(_pSal + '|e|' + e) === lead.email_h) return true;
+        const t = _telNorm(x.telefone);
+        return !!(lead.tel_h && t && _hashCurto(_pSal + '|t|' + t) === lead.tel_h);
+      });
+      if (achada) contato = { email: achada.email || '', telefone: _telNorm(achada.telefone) || '', nome: achada.cliente || '' };
+    }
+    const dir = _ehDir(req);
+    const pagos = peds.filter(p => p.pago && !p.estorno);
+    const credito = pagos[0] ? { fonte: pagos[0].cred_fonte, camp: pagos[0].cred_camp, cont: pagos[0].cred_cont,
+                                 canal: pagos[0].cred_canal, casou: pagos[0].casou, apoio: pagos[0].apoio } : null;
+    const pitchSeg = (() => { const e = evs.find(x => x.tipo === 'pitch'); try { return e ? JSON.parse(e.extra || '{}').seg || 0 : 0; } catch (er) { return 0; } })();
+    const visitas = sessoes.map(s => ({
+      id: s.id, inicio: s.inicio, fim: s.fim, dur: s.dur, entrada: s.entrada, fonte: s.fonte, cont: s.cont, camp: s.camp,
+      teste: s.teste, variante: s.variante, pitch: !!s.pitch, checkout: !!s.checkout, video: s.video, interno: !!s.interno,
+      eventos: evs.filter(e => e.sessao === s.id).map(e => {
+        let x = {}; try { x = JSON.parse(e.extra || '{}'); } catch (er) {}
+        return { tipo: e.tipo, em: e.em, pg: e.pg, rot: dir ? e.rot : _semValor(e.rot), etapa: nomeEtapa[e.etapa] || '', extra: x };
+      })
+    }));
+    // eventos sem sessão (venda que chegou quando a pessoa não estava no site)
+    const soltos = evs.filter(e => !e.sessao || !sessoes.some(s => s.id === e.sessao)).map(e => {
+      let x = {}; try { x = JSON.parse(e.extra || '{}'); } catch (er) {}
+      return { tipo: e.tipo, em: e.em, pg: e.pg, rot: dir ? e.rot : _semValor(e.rot), etapa: nomeEtapa[e.etapa] || '', extra: x };
+    });
+    res.json({ ok: true,
+      pessoa: { id: v.id, nome: (contato && contato.nome) ? _iniciais(contato.nome) : (lead && lead.nome) || '',
+                email: lead ? lead.email_mask : '', status: v.compras > 0 ? 'comprador' : (v.checkout_em ? 'checkout' : (v.lead ? 'identificado' : 'anonimo')),
+                primeiro: v.primeiro, ultimo: v.ultimo, eventos: v.eventos, sessoes: v.sessoes, interno: !!v.interno, internoPor: v.interno_por || '',
+                aparelho: v.aparelho, sistema: v.sistema, navegador: v.navegador, pais: v.pais, tela: v.tela, outrosAparelhos: outros.length },
+      contato,
+      cards: { pago: dir ? (v.pago || 0) : null, compras: v.compras || 0, ateCompra: v.compra_em ? Math.max(0, v.compra_em - v.primeiro) : null,
+               video: v.video || 0, pitch: !!v.pitch_em, pitchSeg, mortos: v.mortos || 0 },
+      marcos: { visitou: v.primeiro, pitch: v.pitch_em, checkout: v.checkout_em, comprou: v.compra_em },
+      funil: funil ? { id: funil.id, nome: funil.nome, versao: v.versao || '', teste: v.teste || '', variante: v.variante || '' } : null,
+      atribuicao: {
+        primeiro: { fonte: v.p_fonte, midia: v.p_midia, camp: v.p_camp, cont: v.p_cont, termo: v.p_termo, em: v.p_em },
+        ultimo: v.u_em ? { fonte: v.u_fonte, midia: v.u_midia, camp: v.u_camp, cont: v.u_cont, termo: v.u_termo, em: v.u_em } : null,
+        credito, regra: 'Crédito: último anúncio pago nos ' + JANELA_CREDITO_DIAS + ' dias antes da venda. Recuperação ajuda, mas não leva o crédito.',
+        fbclid: !!v.fbclid, fbc: !!v.fbc, fbp: !!v.fbp },
+      pedidos: peds.map(p => ({ id: p.id, pedido: p.pedido, status: p.status, pago: !!p.pago, estorno: !!p.estorno, valor: dir ? p.valor : null,
+        produto: p.produto, plano: p.plano, metodo: p.metodo, motivo: p.motivo, casou: p.casou, em: p.em })),
+      capi: { conectado: false, aviso: 'Envio de Purchase à Meta (CAPI) ainda não está ligado: precisa do token da Meta.' },
+      visitas, soltos,
+      resumo: _resumoDaPessoa(v, evs, peds, nomeEtapa) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const _ehDir = req => !!(req && req.user && req.user.cargo === 'Diretoria');
+const _semValor = t => String(t || '').replace(/\s*·\s*R\$\s*[\d.,]+/g, '');
+// "Ydeshi G. O.": o primeiro nome inteiro e as iniciais do resto
+function _iniciais(n) {
+  const p = String(n || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '';
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  return [cap(p[0])].concat(p.slice(1).filter(w => w.length > 2).map(w => w.charAt(0).toUpperCase() + '.')).join(' ');
+}
+
+// Marcar como tráfego interno: sai de todas as métricas e do A/B, mas continua
+// visível na lista com o filtro. Pode levar o IP junto (o resto do time que
+// usa a mesma rede some também).
+app.post('/api/pessoa/:id/interno', authDiretoria, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const id = String(req.params.id || '').slice(0, 40);
+    const v = _q('SELECT id, ip FROM visitantes WHERE id=?').get(id);
+    if (!v) return res.status(404).json({ error: 'Pessoa não encontrada.' });
+    const marcar = req.body && req.body.interno !== false;
+    const comIp = !!(req.body && req.body.ip) && !!v.ip;
+    const agora = Date.now(), por = (req.user && req.user.nome) || '';
+    const db = _pessoas();
+    db.exec('BEGIN');
+    try {
+      if (marcar) {
+        _q('INSERT OR IGNORE INTO internos(tipo, valor, em, por) VALUES(?,?,?,?)').run('visitante', id, agora, por);
+        _pIntVis.add(id);
+        if (comIp) { _q('INSERT OR IGNORE INTO internos(tipo, valor, em, por) VALUES(?,?,?,?)').run('ip', v.ip, agora, por); _pIntIp.add(v.ip); }
+      } else {
+        _q("DELETE FROM internos WHERE tipo='visitante' AND valor=?").run(id); _pIntVis.delete(id);
+        if (v.ip) { _q("DELETE FROM internos WHERE tipo='ip' AND valor=?").run(v.ip); _pIntIp.delete(v.ip); }
+      }
+      // o passado também: senão ele sai das contas só daqui pra frente
+      const alvo = comIp ? _q('SELECT id FROM visitantes WHERE ip=?').all(v.ip).map(r => r.id) : [id];
+      if (!alvo.includes(id)) alvo.push(id);
+      const val = marcar ? 1 : 0;
+      alvo.forEach(x => {
+        _q('UPDATE visitantes SET interno=?, interno_por=? WHERE id=?').run(val, marcar ? (comIp ? 'ip' : 'manual') : null, x);
+        _q('UPDATE sessoes SET interno=? WHERE visitante=?').run(val, x);
+        _q('UPDATE paginas SET interno=? WHERE visitante=?').run(val, x);
+      });
+      db.exec('COMMIT');
+      const dbj = readDB();
+      audit(dbj, marcar ? 'trafego_interno_marcado' : 'trafego_interno_desmarcado', { visitante: id }, { ip: comIp, pessoas: alvo.length }, req.user);
+      writeDB(dbj);
+      res.json({ ok: true, interno: marcar, pessoas: alvo.length });
+    } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/interno/regras', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.json({ ok: true, ips: 0, pessoas: 0 });
+    const r = _q("SELECT SUM(tipo='ip') ips, SUM(tipo='visitante') pessoas FROM internos").get();
+    res.json({ ok: true, ips: r.ips || 0, pessoas: r.pessoas || 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── Diagnostico: pra onde o pixel esta mandando de verdade ──
 // Sem isso, pixel apontando pro funil errado vira zero calado — e zero calado
@@ -11726,18 +12736,50 @@ const PIXEL_JS = `(function(w,d){
   var teste = '', variante = '';
   try{ teste = localStorage.getItem('tmx_ab_t') || ''; variante = localStorage.getItem('tmx_ab_v') || ''; }catch(e){}
 
-  var entrou = Date.now();
   // A pagina, sem query nem hash: com ela da pra comparar 5 VSLs que usam a
   // MESMA etapa do mapa. Query fora de proposito — leva utm e as vezes dado
   // pessoal, e viraria uma chave diferente por visitante.
   // Sem tirar o www aqui, a pagina medida ("www.site.com/x") nunca casaria com o
   // link cadastrado no teste ("https://site.com/x/") — e o seletor mostraria as
-  // duas como se fossem paginas diferentes.
-  var PAGINA = (location.host + location.pathname)
-                 .replace(/^www\\./i, '').replace(/\\/+$/, '').slice(0, 160);
+  // duas como se fossem paginas diferentes. Minuscula tambem: /697 e /697/ e
+  // /VSL e /vsl viravam linhas separadas na mesma tela.
+  var PAGINA = (location.host + location.pathname).toLowerCase()
+                 .replace(/^www\\./, '').replace(/\\/+$/, '').slice(0, 160);
+
+  // ── Trafego interno ──────────────────────────────────────────────────────
+  // Quem e do time abre a pagina uma vez com ?tmx_interno=1 e fica marcado por
+  // um ano neste aparelho: continua aparecendo nos Leads, mas sai das metricas
+  // e do teste A/B. ?tmx_interno=0 desfaz.
+  try{
+    var qi = q.get('tmx_interno');
+    if(qi === '1' || qi === '0'){
+      var bi = 'tmx_int=' + (qi === '1' ? '1;max-age=31536000' : ';max-age=0') + ';path=/;SameSite=Lax' +
+               (location.protocol === 'https:' ? ';Secure' : '');
+      d.cookie = bi + (RAIZ ? ';domain=' + RAIZ : '');
+    }
+  }catch(e){}
+  var INTERNO = bisc('tmx_int') === '1';
+
+  // ── Sessao: 30 min sem nada fecha ────────────────────────────────────────
+  // Sem isso uma aba esquecida aberta a noite inteira virava "saiu depois de
+  // 600 min", e cada volta ao site era a mesma visita. A sessao vale entre
+  // abas (fica no localStorage) e so a atividade de verdade a mantem viva:
+  // rolar, clicar, digitar, voltar pra aba ou o video tocando.
+  var SESS_MS = 30 * 60 * 1000;
+  function novoSid(){ return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  var SID = '';
+  try{
+    var s0 = JSON.parse(localStorage.getItem('tmx_sess') || 'null');
+    if(s0 && s0.id && Date.now() - s0.ult < SESS_MS) SID = s0.id;
+  }catch(e){}
+  if(!SID) SID = novoSid();
+  var inicioPagina = Date.now(), inicioSessao = Date.now(), ativoEm = Date.now(), saiuSessao = false;
+  function marcaSessao(){ try{ localStorage.setItem('tmx_sess', JSON.stringify({ id: SID, ult: ativoEm })); }catch(e){} }
+  marcaSessao();
+
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
-                                pg:PAGINA, primeiro:primeiro,
+                                pg:PAGINA, primeiro:primeiro, sid:SID, interno:INTERNO ? 1 : 0,
                                 teste:teste, variante:variante, versao:VERSAO, ref:d.referrer, qid:QID }, extra||{});
     var corpo = JSON.stringify(dados);
     try{
@@ -11746,7 +12788,40 @@ const PIXEL_JS = `(function(w,d){
         : fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:corpo,keepalive:true});
     }catch(e){}
   }
-  manda('entrou');
+  // A origem DESTE acesso (so o que veio na URL agora). O 'utm' acima e o
+  // ultimo com UTM guardado; sem separar, voltar direto ao site parecia mais
+  // um clique no anuncio antigo.
+  var aqui = {};
+  MARCAS.forEach(function(k){ if(agora[k]) aqui[k] = agora[k]; });
+  function mandaSaiu(){
+    if(saiuSessao) return;
+    saiuSessao = true;
+    // Ate o ultimo sinal de vida, nunca ate agora: se a pessoa largou a aba,
+    // o tempo parado nao entra na conta.
+    var fim = (Date.now() - ativoEm < SESS_MS) ? Date.now() : ativoEm;
+    // tempo NESTA pagina (a Atencao compara paginas), dentro desta visita
+    manda('saiu', {
+      segundos: Math.max(0, Math.round((fim - Math.max(inicioPagina, inicioSessao)) / 1000)),
+      atencao:  Math.round(atencao/1000),
+      rolagem:  Math.round(Math.max(fundo, fracaoVista())),
+      lcp: lcp, cls: Math.round(cls*1000)/1000, fcp: fcp, erros: errosJs
+    });
+  }
+  function mexeu(){
+    var t = Date.now();
+    if(t - ativoEm >= SESS_MS){
+      // voltou depois de 30 min parado: a visita anterior acabou onde parou
+      mandaSaiu();
+      SID = novoSid(); inicioSessao = t; saiuSessao = false; ativoEm = t;
+      marcaSessao();
+      manda('entrou', { retorno: 1 });
+      return;
+    }
+    ativoEm = t;
+    marcaSessao();
+  }
+  var fundo = 0, atencao = 0, lcp = 0, cls = 0, fcp = 0, errosJs = 0;
+  manda('entrou', { aqui: aqui, tela: (screen.width||0) + 'x' + (screen.height||0) });
 
   // ── rolagem ──
   // So o evento de scroll alimentava isto, entao quem NAO rolava ficava com 0 —
@@ -11754,16 +12829,22 @@ const PIXEL_JS = `(function(w,d){
   // nao passaram do topo quando na verdade tinham visto a pagina inteira.
   // Agora tambem se mede na saida, com a altura final: se a pagina cabe na tela,
   // quem nao rolou viu 100%; se e longa, viu a fracao que coube.
-  var fundo = 0;
   function fracaoVista(){
     var alt = d.body.scrollHeight || d.documentElement.scrollHeight || 0;
     if(!alt) return 0;
     return Math.min(100, (scrollY + innerHeight) / alt * 100);
   }
+  var mexeuScroll = 0;
   w.addEventListener('scroll', function(){
     var p = fracaoVista();
     if(p>fundo) fundo = p;
+    if(Date.now() - mexeuScroll > 5000){ mexeuScroll = Date.now(); mexeu(); }
   },{passive:true});
+  d.addEventListener('keydown', function(){ mexeu(); }, true);
+  var mexeuPonteiro = 0;
+  d.addEventListener('pointermove', function(){
+    if(Date.now() - mexeuPonteiro > 10000){ mexeuPonteiro = Date.now(); mexeu(); }
+  }, { passive:true, capture:true });
 
   // ── atencao: so conta o tempo com a aba VISIVEL. Tempo de parede contava
   //    quem abriu numa aba de fundo e esqueceu como se estivesse assistindo. ──
@@ -11771,15 +12852,13 @@ const PIXEL_JS = `(function(w,d){
   // vira o tempo de parede — que e o melhor palpite honesto. Comecar em zero
   // fazia a atencao ser sempre 0 quando o evento nao vinha.
   var visivelDesde = Date.now();
-  var atencao = 0;
   function fechaJanela(){ if(visivelDesde){ atencao += Date.now()-visivelDesde; visivelDesde = 0; } }
   d.addEventListener('visibilitychange', function(){
-    if(d.visibilityState === 'visible'){ if(!visivelDesde) visivelDesde = Date.now(); }
+    if(d.visibilityState === 'visible'){ if(!visivelDesde) visivelDesde = Date.now(); mexeu(); }
     else fechaJanela();
   });
 
   // ── Web Vitals de campo: mede o aparelho do lead, nao o laboratorio ──
-  var lcp = 0, cls = 0, fcp = 0;
   try{
     new PerformanceObserver(function(l){
       var e = l.getEntries(); if(e.length) lcp = Math.round(e[e.length-1].startTime);
@@ -11791,7 +12870,6 @@ const PIXEL_JS = `(function(w,d){
       l.getEntries().forEach(function(e){ if(e.name === 'first-contentful-paint') fcp = Math.round(e.startTime); });
     }).observe({type:'paint', buffered:true});
   }catch(e){}
-  var errosJs = 0;
   w.addEventListener('error', function(){ errosJs++; });
 
   // ── friccao: clique morto e rage click ──
@@ -11803,14 +12881,43 @@ const PIXEL_JS = `(function(w,d){
   function acionavel(el){
     return !!(el.closest && el.closest('a[href],button,input,select,textarea,label,[onclick],[role=button],[type=submit]'));
   }
+  // Onde o clique nunca e "morto": o player (Vturb e qualquer video), iframes,
+  // FAQ (summary/details e sanfonas com aria), campos de formulario e
+  // componentes proprios (tag com hifen, como VTURB-SMARTPLAYER). Eram 738
+  // "cliques que nao funcionam" num dia — quase todos no play do video.
+  var IGNORAR = 'vturb-smartplayer,iframe,video,summary,details,[aria-expanded],[aria-controls],label,input,select,textarea,[contenteditable]';
+  function ignoravel(el){
+    try{
+      if(el.closest(IGNORAR)) return true;
+      for(var n = el, i = 0; n && i < 6; n = n.parentElement, i++){
+        if(n.tagName && n.tagName.indexOf('-') > 0) return true;
+      }
+    }catch(e){}
+    return false;
+  }
+  // So conta como morto o que PARECE clicavel: cursor de mao, ou cara de botao
+  // e de card de plano. Clique em texto corrido nao e defeito da pagina.
+  function pareceClicavel(el){
+    try{
+      if(getComputedStyle(el).cursor === 'pointer') return true;
+      if(el.tagName === 'IMG') return true;
+      for(var n = el, i = 0; n && i < 4; n = n.parentElement, i++){
+        var c = (typeof n.className === 'string' ? n.className : '') + ' ' + (n.id || '');
+        if(/btn|button|botao|bot[aã]o|cta|card|plano|plan|price|preco|comprar|oferta/i.test(c)) return true;
+      }
+    }catch(e){}
+    return false;
+  }
   d.addEventListener('click', function(ev){
+    mexeu();
     var el = ev.target && ev.target.closest ? ev.target.closest('a,button,[role=button],input[type=submit],img,video') : null;
     if(!el) el = ev.target;
     if(!el || !el.getBoundingClientRect) return;
     var rot = rotuloDe(el);
     var alt = d.body.scrollHeight || 1;
     var y = el.getBoundingClientRect().top + scrollY;
-    manda('clique', { rotulo: rot, posicao: Math.round(y/alt*100) });
+    var noPlayer = ignoravel(el);
+    manda('clique', { rotulo: rot, posicao: Math.round(y/alt*100), player: noPlayer ? 1 : 0 });
 
     // rage click: 3+ no mesmo ponto em ~1s
     var agora = Date.now();
@@ -11824,14 +12931,83 @@ const PIXEL_JS = `(function(w,d){
       return;
     }
 
-    // clique morto: elemento nao acionavel e nada mudou logo depois
-    if(acionavel(el)) return;
-    var urlAntes = location.href, focoAntes = d.activeElement, htmlAntes = d.body.childElementCount;
+    // clique morto: parece clicavel, nao e acionavel, nao e player nem FAQ,
+    // e NADA na pagina mudou logo depois (nem classe, nem atributo, nem texto
+    // — contar so filhos do body marcava como morto a sanfona que abriu)
+    if(acionavel(el) || noPlayer || !pareceClicavel(el)) return;
+    var urlAntes = location.href, focoAntes = d.activeElement, mudou = false, obsM = null;
+    try{
+      obsM = new MutationObserver(function(){ mudou = true; });
+      obsM.observe(d.body, { subtree:true, childList:true, attributes:true, characterData:true });
+    }catch(e){}
     setTimeout(function(){
-      if(location.href === urlAntes && d.activeElement === focoAntes && d.body.childElementCount === htmlAntes)
+      try{ if(obsM) obsM.disconnect(); }catch(e){}
+      if(!mudou && location.href === urlAntes && d.activeElement === focoAntes)
         manda('friccao', { rotulo: rot, motivo: 'morto', posicao: Math.round(y/alt*100) });
     }, 450);
   }, true);
+
+  // ── Video (Vturb ou qualquer <video>) ────────────────────────────────────
+  // O pitch e o que separa quem assistiu de quem so abriu a pagina. O player
+  // da Vturb vive dentro de um componente proprio; aqui a gente procura o
+  // <video> na pagina, dentro do componente (quando ele deixa) e na API antiga
+  // smartplayer.instances. A cada minuto tocando, manda em que segundo esta:
+  // o servidor sabe onde fica o pitch de cada VSL e marca quem passou.
+  var VID = { tocou: false, max: 0, env: 0, player: '' };
+  function idDoPlayer(){
+    try{
+      var el = d.querySelector('vturb-smartplayer,[id^="vid_"],[id^="vid-"]');
+      var m = el && String(el.id || '').match(/vid[-_]([a-z0-9]{12,40})/i);
+      if(m) return m[1];
+      var sc = d.querySelector('script[src*="/players/"]');
+      m = sc && String(sc.src).match(/\\/players\\/([a-z0-9]{12,40})/i);
+      if(m) return m[1];
+    }catch(e){}
+    return '';
+  }
+  function acharVideo(){
+    try{
+      var v = d.querySelector('video'); if(v) return v;
+      var hs = d.querySelectorAll('vturb-smartplayer,[id^="vid_"],[id^="vid-"]');
+      for(var i=0;i<hs.length;i++){
+        var sr = hs[i].shadowRoot; if(sr){ var x = sr.querySelector('video'); if(x) return x; }
+      }
+      var ins = w.smartplayer && w.smartplayer.instances;
+      if(ins && ins[0] && ins[0].video) return ins[0].video;
+    }catch(e){}
+    return null;
+  }
+  setInterval(function(){
+    var v = acharVideo(); if(!v) return;
+    var t = Math.floor(v.currentTime || 0), tocando = !v.paused && !v.ended;
+    if(tocando) mexeu();
+    if(t > VID.max) VID.max = t;
+    if(!VID.player) VID.player = idDoPlayer();
+    var dur = Math.floor(v.duration || 0);
+    if(!VID.tocou && t > 0){
+      VID.tocou = true; VID.env = Date.now();
+      manda('video', { seg: t, max: VID.max, dur: dur, player: VID.player, marco: 'play' });
+      return;
+    }
+    if(VID.tocou && tocando && Date.now() - VID.env >= 60000){
+      VID.env = Date.now();
+      manda('video', { seg: t, max: VID.max, dur: dur, player: VID.player });
+    }
+  }, 5000);
+
+  // Sem nada acontecendo por 30 min a visita fecha ali, com o tempo ate o
+  // ultimo sinal de vida — nao ate a hora em que a aba for fechada.
+  setInterval(function(){
+    if(!saiuSessao && Date.now() - ativoEm >= SESS_MS) mandaSaiu();
+  }, 60000);
+
+  // Voltou pela memoria do navegador (botao voltar): a pagina nao recarrega,
+  // entao e aqui que a visita continua — ou comeca outra, se passou de 30 min.
+  w.addEventListener('pageshow', function(ev){
+    if(!ev.persisted) return;
+    if(Date.now() - ativoEm >= SESS_MS) mexeu();
+    else saiuSessao = false;
+  });
 
   w.addEventListener('pagehide', function(){
     fechaJanela();
@@ -11851,12 +13027,7 @@ const PIXEL_JS = `(function(w,d){
         if(nav && nav.domContentLoadedEventEnd) lcp = Math.round(nav.domContentLoadedEventEnd);
       }
     }catch(e){}
-    manda('saiu',{
-      segundos: Math.round((Date.now()-entrou)/1000),
-      atencao:  Math.round(atencao/1000),
-      rolagem:  Math.round(Math.max(fundo, fracaoVista())),
-      lcp: lcp, cls: Math.round(cls*1000)/1000, fcp: fcp, erros: errosJs
-    });
+    mandaSaiu();
   });
 
   // Marca uma etapa no clique de um botao — serve pro checkout do gateway,
@@ -11983,26 +13154,40 @@ const PIXEL_JS = `(function(w,d){
 
   // Rede de seguranca: se algo escapou, corrige no clique — antes de qualquer
   // handler da pagina, porque esta na fase de captura.
+  // "Abriu o checkout" sai sozinho do clique no botao de compra: o checkout e
+  // do gateway e o nosso codigo nao entra la, mas o clique acontece aqui.
+  // Uma vez por pagina; o servidor tambem so conta uma por visita.
+  var foiCheckout = false;
+  function marcaCheckout(href, rot){
+    if(foiCheckout) return;
+    try{
+      var u = new URL(href, location.href);
+      if(!CHECKOUTS.test(u.host + u.pathname)) return;
+      foiCheckout = true;
+      manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host });
+    }catch(e){}
+  }
   d.addEventListener('click', function(ev){
     var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
     if(!a) return;
     var novo = enriquecer(a.getAttribute('href') || a.href);
     if(novo && novo !== a.href){ a.href = novo; a.setAttribute(MARCA, novo); }
+    marcaCheckout(a.href, rotuloDe(a));
   }, true);
 
   // Botao que navega por JS (player de VSL costuma fazer isso) nao passa pelo
   // <a>, entao os dois caminhos de navegacao tambem sao cobertos.
   try{
     var _assign = w.location.assign.bind(w.location);
-    w.location.assign = function(u){ return _assign(enriquecer(String(u))); };
+    w.location.assign = function(u){ marcaCheckout(String(u), 'botão'); return _assign(enriquecer(String(u))); };
     var _replace = w.location.replace.bind(w.location);
-    w.location.replace = function(u){ return _replace(enriquecer(String(u))); };
+    w.location.replace = function(u){ marcaCheckout(String(u), 'botão'); return _replace(enriquecer(String(u))); };
   }catch(e){}
   try{
     var _open = w.open;
     w.open = function(u){
       var args = Array.prototype.slice.call(arguments);
-      if(u) args[0] = enriquecer(String(u));
+      if(u){ marcaCheckout(String(u), 'botão'); args[0] = enriquecer(String(u)); }
       return _open.apply(w, args);
     };
   }catch(e){}
