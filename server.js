@@ -9165,6 +9165,211 @@ app.get('/api/funil/diagnostico', authUsuario, (req, res) => {
 //   venda    — a ultima pagina antes do checkout: quem convenceu
 // Numa VSL unica as duas dao igual. Com pre-venda + VSL elas divergem, e a
 // diferenca e exatamente o que diz qual das duas esta fazendo o trabalho.
+// ══════════════════════════════════════════════════════
+// ── SAÚDE DO FUNIL ──
+// Uma pergunta só: dá pra confiar nos números deste funil? Cada checagem diz o
+// que está quebrado, o que isso estraga na leitura e o que fazer — ordenadas
+// pelo estrago. Tudo aqui é leitura: nada é corrigido sozinho.
+// ══════════════════════════════════════════════════════
+const _saudeCache = {};   // funil -> { em, saida }: cada rodada abre as páginas de verdade
+
+// Só abre endereço público: a URL vem do cadastro do funil, e sem essa trava
+// qualquer usuário faria o servidor bater em endereço interno da rede.
+function _saudeUrlPublica(u) {
+  try {
+    const x = new URL(u);
+    if (!/^https?:$/.test(x.protocol)) return false;
+    const h = x.hostname.toLowerCase();
+    if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.railway.internal')) return false;
+    if (/^[\d.]+$/.test(h) || h.indexOf(':') >= 0) return false;   // IP cru (v4 ou v6)
+    return true;
+  } catch (e) { return false; }
+}
+
+async function _saudeAbrirPagina(url, funilId) {
+  if (!_saudeUrlPublica(url)) return { erro: 'endereço inválido ou interno' };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 7000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CentralTMX-Saude/1.0)' } });
+    const html = (await r.text()).slice(0, 800000);
+    const tags = html.match(/<script[^>]*px\.js[^>]*>/gi) || [];
+    const doFunil = tags.filter(tg => tg.indexOf('"' + funilId + '"') >= 0 || tg.indexOf("'" + funilId + "'") >= 0);
+    const etapas = doFunil.map(tg => (tg.match(/data-e=["']([^"']+)["']/i) || [])[1] || '');
+    return { http: r.status, tag: tags.length > 0, doFunil: doFunil.length > 0, etapas };
+  } catch (e) {
+    return { erro: e.name === 'AbortError' ? 'não respondeu em 7s' : 'não abriu (' + ((e.cause && e.cause.code) || e.message) + ')' };
+  } finally { clearTimeout(t); }
+}
+
+app.get('/api/funil/saude', authUsuario, async (req, res) => {
+  try {
+    const fid = String(req.query.funil || '').slice(0, 80);
+    const forcar = req.query.forcar === '1';
+    const pronto = _saudeCache[fid];
+    if (!forcar && pronto && Date.now() - pronto.em < 60 * 1000) return res.json(Object.assign({ doCache: true }, pronto.saida));
+
+    const db = readDB();
+    const funis = Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [];
+    const f = funis.find(x => x && x.id === fid);
+    if (!f) return res.status(404).json({ error: 'Funil não encontrado.' });
+
+    const checks = [];   // { nivel: 'ruim'|'atencao'|'ok', peso, titulo, texto, acao }
+    const agora = Date.now(), corte24 = agora - 86400000, corte7 = agora - 7 * 86400000;
+
+    // ── 1. Páginas: a tag está lá? e o pixel está chegando? ──────────────
+    const jorn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      .concat(Object.values(typeof _jBuffer === 'object' && _jBuffer ? _jBuffer : {}));
+    const porEtapa = {};
+    jorn.forEach(j => {
+      if (!j || j.funil !== f.id) return;
+      (j.eventos || []).forEach(ev => {
+        if (!ev || ev.tipo !== 'entrou') return;
+        const x = porEtapa[ev.etapa] = porEtapa[ev.etapa] || { ultimo: '', n24: 0 };
+        if (String(ev.em) > x.ultimo) x.ultimo = String(ev.em);
+        if (new Date(ev.em).getTime() >= corte24) x.n24++;
+      });
+    });
+    const paginas = (f.etapas || []).filter(e => e && e.tipo !== 'fonte' && e.tipo !== 'checkout');
+    const abertas = await Promise.all(paginas.slice(0, 10).map(async e => {
+      const url = String(e.url || '').trim();
+      const med = porEtapa[e.id] || { ultimo: '', n24: 0 };
+      const linha = { etapa: e.id, nome: e.nome || e.id, tipo: e.tipo || '', url, ultimo: med.ultimo || null, n24: med.n24 };
+      if (!url) { linha.status = 'sem_link'; return linha; }
+      const r = await _saudeAbrirPagina(/^https?:\/\//i.test(url) ? url : 'https://' + url, f.id);
+      Object.assign(linha, r);
+      const chegando = med.ultimo && new Date(med.ultimo).getTime() >= corte24;
+      if (r.erro || (r.http && r.http >= 400)) linha.status = chegando ? 'ok' : 'fora_do_ar';
+      else if (r.doFunil) linha.status = chegando ? 'ok' : 'sem_visita';
+      else if (chegando) linha.status = 'ok_dinamico';    // tag injetada por script: não aparece no HTML cru
+      else if (r.tag) linha.status = 'outro_funil';
+      else linha.status = 'sem_tag';
+      if (r.doFunil && r.etapas.length && r.etapas.indexOf(e.id) < 0) linha.etapaErrada = r.etapas[0];
+      return linha;
+    }));
+    const semTag = abertas.filter(p => p.status === 'sem_tag' || p.status === 'outro_funil');
+    const semLink = abertas.filter(p => p.status === 'sem_link');
+    const foraAr = abertas.filter(p => p.status === 'fora_do_ar');
+    const etapaErr = abertas.filter(p => p.etapaErrada);
+    // a primeira página sem pixel pesa mais; as seguintes somam menos, senão
+    // um funil de 5 páginas iria a zero só por isso e esconderia o resto
+    semTag.forEach((p, i) => checks.push({ nivel: 'ruim', peso: i ? 12 : 25,
+      titulo: 'Página "' + p.nome + '" sem o pixel deste funil',
+      texto: (p.status === 'outro_funil' ? 'Tem uma tag do Central TMX, mas de outro funil. ' : 'Não encontrei a tag no código da página. ') +
+             'Ninguém que passa por ela é contado, e as vendas que saem dela chegam sem dizer de onde vieram.',
+      acao: { rotulo: 'Copiar o pixel', aba: 'pixel', etapa: p.etapa } }));
+    foraAr.forEach(p => checks.push({ nivel: 'ruim', peso: 20,
+      titulo: 'Página "' + p.nome + '" não abriu',
+      texto: (p.erro || ('respondeu ' + p.http)) + '. Se o anúncio manda gente pra cá, esse tráfego está sendo pago à toa.',
+      acao: { rotulo: 'Abrir a página', url: p.url } }));
+    semLink.forEach(p => checks.push({ nivel: 'atencao', peso: 5,
+      titulo: 'Etapa "' + p.nome + '" sem link no mapa',
+      texto: 'Sem o endereço, não dá pra conferir se o pixel está nela.',
+      acao: { rotulo: 'Pôr o link no mapa', aba: 'mapa' } }));
+    etapaErr.forEach(p => checks.push({ nivel: 'atencao', peso: 8,
+      titulo: 'Página "' + p.nome + '" marcada como outra etapa',
+      texto: 'O pixel dela diz data-e="' + p.etapaErrada + '". Os números dessa página caem em outro bloco do mapa.',
+      acao: { rotulo: 'Copiar o pixel certo', aba: 'pixel', etapa: p.etapa } }));
+    const okPag = abertas.filter(p => p.status === 'ok' || p.status === 'ok_dinamico');
+    if (abertas.length && okPag.length === abertas.length)
+      checks.push({ nivel: 'ok', peso: 0, titulo: 'Pixel em todas as páginas', texto: okPag.length + ' página(s) com a tag e recebendo visitas nas últimas 24h.' });
+
+    // ── 2. Webhook de vendas ────────────────────────────────────────────
+    const cfgV = _vendasCfg(db);
+    const vendas = Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [];
+    const ultimoEv = vendas.length ? vendas[vendas.length - 1].recebidoEm : null;
+    const hojeBRT = new Date(agora - 3 * 3600000).toISOString().slice(0, 10);
+    const evHoje = vendas.filter(v => String(v.recebidoEm || '').slice(0, 10) === hojeBRT);
+    const webhook = { configurado: !!(cfgV && cfgV.token), ultimo: ultimoEv, hoje: evHoje.length,
+                      pagasHoje: evHoje.filter(_vendaPaga).length };
+    if (!webhook.configurado) {
+      checks.push({ nivel: 'ruim', peso: 30, titulo: 'Webhook de vendas não configurado',
+        texto: 'Sem ele, nenhuma venda do checkout chega aqui: o funil não tem como saber quem comprou.',
+        acao: { rotulo: 'Configurar', link: 'integracoes' } });
+    } else if (!ultimoEv || new Date(ultimoEv).getTime() < agora - 6 * 3600000) {
+      checks.push({ nivel: 'atencao', peso: 15, titulo: 'Webhook sem evento há mais de 6h',
+        texto: ultimoEv ? 'Último evento em ' + new Date(ultimoEv).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + '. Se houve venda nesse intervalo, o checkout parou de avisar.' : 'Nenhum evento recebido ainda.',
+        acao: { rotulo: 'Ver integração', link: 'integracoes' } });
+    } else {
+      checks.push({ nivel: 'ok', peso: 0, titulo: 'Webhook de vendas recebendo',
+        texto: 'Último evento às ' + new Date(ultimoEv).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }) +
+               ' · ' + evHoje.length + ' evento(s) hoje · ' + webhook.pagasHoje + ' pago(s).' });
+    }
+
+    // ── 3. Vendas com origem (últimos 7 dias) ───────────────────────────
+    const pagas7 = vendas.filter(v => _vendaPaga(v) && new Date(v.recebidoEm).getTime() >= corte7 && !v.renovacao);
+    const comVid = pagas7.filter(v => v.vid).length;
+    const comUtm = pagas7.filter(v => v.vid || _origemVale(v.utmContent) || _origemVale(v.utmCampaign)).length;
+    const porId  = pagas7.filter(v => /^\d{6,}$/.test(String(v.utmCampaign || '').trim())).length;
+    const porNome = pagas7.filter(v => _origemVale(v.utmCampaign) && !/^\d{6,}$/.test(String(v.utmCampaign).trim())).length;
+    const origem = { pagas: pagas7.length, comVid, comUtm, porId, porNome };
+    if (pagas7.length) {
+      const pct = x => Math.round(x / pagas7.length * 100);
+      if (pct(comUtm) < 70) checks.push({ nivel: 'ruim', peso: 20,
+        titulo: pct(comUtm) + '% das vendas chegam com origem',
+        texto: (pagas7.length - comUtm) + ' de ' + pagas7.length + ' vendas pagas nos últimos 7 dias não trazem anúncio nem id de visitante. ' +
+               'Elas somam no faturamento mas não entram no CPA de nenhum criativo.',
+        acao: { rotulo: 'Ver como marcar as vendas', aba: 'pixel' } });
+      if (porNome > 0) checks.push({ nivel: 'atencao', peso: 10,
+        titulo: 'Anúncios mandando a campanha pelo nome',
+        texto: porNome + ' venda(s) chegaram com utm_campaign = nome da campanha. Duplicou ou renomeou, perdeu o vínculo. ' +
+               'O padrão seguro usa o id: utm_campaign={{campaign.id}}.' });
+    }
+
+    // ── 4. Produtos que venderam sem plano identificado ─────────────────
+    const cfgPl = _planosCfg(db);
+    const soltos = {};
+    pagas7.forEach(v => {
+      if (_planoPorNome(v.produto) || _planoPorValor(v.valor, cfgPl)) return;
+      const k = String(v.produto || '(sem nome)').trim() || '(sem nome)';
+      const x = soltos[k] = soltos[k] || { produto: k, vendas: 0, receita: 0 };
+      x.vendas++; x.receita += Number(v.valor) || 0;
+    });
+    const produtosSoltos = Object.values(soltos).sort((a, b) => b.receita - a.receita || b.vendas - a.vendas);
+    if (produtosSoltos.length) {
+      const tot = produtosSoltos.reduce((a, x) => a + x.receita, 0);
+      checks.push({ nivel: 'atencao', peso: 8,
+        titulo: 'Produto vendendo sem plano identificado',
+        texto: produtosSoltos.slice(0, 3).map(x => x.produto + ' (' + x.vendas + ')').join(', ') +
+               (tot ? ' — R$ ' + Math.round(tot).toLocaleString('pt-BR') : '') +
+               '. Sem o plano, a margem e o ranking por plano não contam essas vendas.',
+        acao: { rotulo: 'Cadastrar preços dos planos', link: 'metricas' } });
+    }
+
+    // ── 5. Campanhas contadas em mais de um funil ───────────────────────
+    const fontesDe = x => (x.fontes || []).concat((x.etapas || []).filter(e => e && e.tipo === 'fonte'));
+    const camposDe = x => fontesDe(x).map(o => String(o.utmCampanha || '').trim()).filter(Boolean);
+    const irmaos = funis.filter(x => x && x.id !== f.id && (x.projeto || '') === (f.projeto || ''));
+    const minhas = camposDe(f);
+    if (!minhas.length) {
+      const tambemTudo = irmaos.filter(x => !camposDe(x).length);
+      if (tambemTudo.length) checks.push({ nivel: 'atencao', peso: 8,
+        titulo: 'Este funil e mais ' + tambemTudo.length + ' contam o projeto inteiro',
+        texto: 'Nenhum deles tem campanha amarrada na origem (' + tambemTudo.slice(0, 3).map(x => '"' + x.nome + '"').join(', ') + '). ' +
+               'O clique e o gasto do projeto aparecem em todos — somar os funis conta o mesmo dinheiro duas vezes.',
+        acao: { rotulo: 'Amarrar a campanha', aba: 'mapa' } });
+    } else {
+      const repetidas = [];
+      irmaos.forEach(x => camposDe(x).forEach(c => { if (minhas.indexOf(c) >= 0) repetidas.push({ campanha: c, funil: x.nome }); }));
+      if (repetidas.length) checks.push({ nivel: 'atencao', peso: 8,
+        titulo: 'Campanha contada em dois funis',
+        texto: repetidas.slice(0, 3).map(r => '"' + r.campanha + '" também está em "' + r.funil + '"').join('; ') + '.',
+        acao: { rotulo: 'Ver no mapa', aba: 'mapa' } });
+    }
+
+    // ── nota: 100 menos o estrago, nunca abaixo de zero ─────────────────
+    const nota = Math.max(0, 100 - checks.reduce((a, c) => a + (c.peso || 0), 0));
+    const ordem = { ruim: 0, atencao: 1, ok: 2 };
+    checks.sort((a, b) => (ordem[a.nivel] - ordem[b.nivel]) || (b.peso - a.peso));
+    const saida = { ok: true, funil: { id: f.id, nome: f.nome }, nota,
+      bloqueiam: checks.filter(c => c.nivel === 'ruim').length,
+      checks, paginas: abertas, webhook, origem, produtosSoltos, rodouEm: new Date().toISOString() };
+    _saudeCache[fid] = { em: Date.now(), saida };
+    res.json(saida);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
   try {
     const db = readDB();

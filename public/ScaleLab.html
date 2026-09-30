@@ -1630,6 +1630,34 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-cc h3{font-size:14.5px;font-weight:700;margin:0;letter-spacing:-.01em}
 .fx-sub{font-size:11.5px;color:var(--text2)}
 .fx-vazio{font-size:12.5px;color:var(--text2);line-height:1.6;padding:6px 0}
+/* saúde do funil */
+.sv-topo{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-bottom:16px}
+@media (min-width:900px){ .sv-topo{grid-template-columns:280px minmax(0,1fr);align-items:start} }
+.sv-n{font-size:50px;font-weight:800;letter-spacing:-.04em;line-height:1;margin:8px 0 10px;font-variant-numeric:tabular-nums}
+.sv-n small{font-size:18px;color:var(--text2);font-weight:600;margin-left:2px}
+.sv-barra{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden;margin-bottom:12px}
+.sv-barra i{display:block;height:100%;border-radius:99px}
+.sv-resumo{font-size:12.5px;line-height:1.55;margin-bottom:12px}
+.sv-num{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:5px 0;border-top:1px solid var(--border)}
+.sv-num span{color:var(--text2)} .sv-num b{font-variant-numeric:tabular-nums}
+.sv-lista{padding-block:4px}
+.sv-chk{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:12px;align-items:start;padding:13px 0;border-top:1px solid var(--border)}
+.sv-chk:first-child{border-top:none}
+.sv-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:13px}
+.sv-ruim.sv-ic,.sv-pill.sv-ruim{background:rgba(229,72,77,.14);color:var(--red)}
+.sv-atencao.sv-ic,.sv-pill.sv-atencao{background:rgba(245,158,11,.15);color:#d97706}
+.sv-ok.sv-ic,.sv-pill.sv-ok{background:rgba(18,161,80,.13);color:var(--green)}
+.sv-txt b{display:block;font-size:13.5px;margin-bottom:3px}
+.sv-txt span{font-size:12.5px;color:var(--text2);line-height:1.55}
+.sv-chk .fn-btn{white-space:nowrap}
+@media (max-width:620px){ .sv-chk{grid-template-columns:30px minmax(0,1fr)} .sv-chk .fn-btn{grid-column:2} }
+.sv-tab{width:100%;border-collapse:collapse;font-size:12.5px;min-width:620px}
+.sv-tab th{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;padding:0 8px 8px;border-bottom:1px solid var(--border)}
+.sv-tab td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.sv-tab tr:last-child td{border-bottom:none}
+.sv-tab .n{text-align:right;font-variant-numeric:tabular-nums}
+.sv-url{color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sv-pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
 /* ── Desenhar funil ──────────────────────────────────────────────────────── */
 /* seletor de dominio, compartilhado entre Quiz e Testes A/B */
 .dm-linha{display:flex;gap:7px;align-items:center}
@@ -4245,6 +4273,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <button class="fx-nav-i on" onclick="fnAba('geral',this)"><span>◱</span>Visão geral</button>
             <button class="fx-nav-i" onclick="fnAba('mapa',this)"><span>🧭</span>Mapa</button>
             <div class="fx-nav-g">Instrumentação</div>
+            <button class="fx-nav-i" onclick="fnAba('saude',this)"><span>🩺</span>Saúde<i class="fx-nav-n" id="fx-n-saude"></i></button>
             <button class="fx-nav-i" onclick="fnAba('pixel',this)"><span>📡</span>Pixel<i class="fx-nav-p" id="fx-p-pixel"></i></button>
             <button class="fx-nav-i" onclick="fnAba('redir',this)"><span>🔀</span>Testes A/B<i class="fx-nav-n" id="fx-n-ab"></i></button>
             <div class="fx-nav-g">Comportamento</div>
@@ -4315,6 +4344,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="fn-painel" id="fn-p-saude">
+          <div id="sv-corpo"></div>
         </div>
 
         <div class="fn-painel" id="fn-p-pixel">
@@ -29406,13 +29439,14 @@ function fnPintarProjetos(){
 
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
-function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); }
-var FN_ABAS = ['geral','mapa','pixel','redir','jornada','atencao'];
+function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
+var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
   geral:   ['Visão geral', 'O funil inteiro num lugar: onde o volume se perde e quanto sobra.'],
   mapa:    ['Mapa',        'O desenho do funil. Cada bloco é uma página, cada seta é um caminho.'],
+  saude:   ['Saúde do funil', 'Dá pra confiar nos números deste funil? O que está quebrado, em ordem de estrago.'],
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
@@ -29436,6 +29470,7 @@ function fnAba(qual, bt){
   fnCabecalho();
   if(qual==='geral')   gePintar();
   if(qual==='mapa')    { mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); }
+  if(qual==='saude')   svCarregar(false);
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -29458,6 +29493,89 @@ function fnCabecalho(){
 // responde uma pergunta so: onde o volume se perde. Nao inventa numero — usa
 // o mesmo fnVal() do mapa e da faixa, entao os tres nunca discordam.
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// ── SAÚDE DO FUNIL ──
+// Os números das outras abas só valem se a coleta estiver inteira. Aqui o
+// servidor abre cada página do mapa, confere a tag, olha o webhook e as vendas,
+// e devolve o que está quebrado em ordem de estrago — cada item com o que fazer.
+// ══════════════════════════════════════════════════════
+var svDados = null, svPedido = 0;
+function svCarregar(forcar){
+  var el = document.getElementById('sv-corpo'); if(!el) return;
+  var f = fnAtual();
+  if(!f){ el.innerHTML = '<div class="fx-vazio">Escolha um funil.</div>'; return; }
+  if(!svDados || svDados.funil.id !== f.id || forcar)
+    el.innerHTML = '<div class="fx-vazio">Abrindo as páginas do funil e conferindo a coleta… leva alguns segundos.</div>';
+  var meu = ++svPedido;
+  fetch('/api/funil/saude?funil='+encodeURIComponent(f.id)+(forcar?'&forcar=1':''))
+    .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+    .then(function(x){
+      if(meu !== svPedido) return;
+      if(!x.ok){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui rodar a checagem</b>'+fnEsc((x.d&&x.d.error)||'erro')+'</div>'; return; }
+      svDados = x.d; svPintar();
+    })
+    .catch(function(e){ if(meu === svPedido) el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui rodar a checagem</b>'+fnEsc(e.message)+'</div>'; });
+}
+function svAcao(i){
+  var c = svDados && svDados.checks[i]; if(!c || !c.acao) return;
+  var a = c.acao;
+  if(a.url){ window.open(/^https?:/i.test(a.url)?a.url:'https://'+a.url, '_blank', 'noopener'); return; }
+  if(a.aba === 'pixel' && a.etapa){ fnIrPixel(a.etapa); return; }
+  if(a.aba){ fnAba(a.aba); return; }
+  if(a.link === 'integracoes'){ goTo('configuracoes'); setTimeout(function(){ var b = document.getElementById('cfg-grupo-integracoes'); if(b) switchCfgGrupo('integracoes', b); }, 60); return; }
+  if(a.link === 'metricas'){ goTo('metricas'); }
+}
+function svPintar(){
+  var el = document.getElementById('sv-corpo'); var d = svDados; if(!el || !d) return;
+  var cor = d.nota >= 80 ? 'var(--green)' : d.nota >= 50 ? '#f59e0b' : 'var(--red)';
+  var nav = document.getElementById('fx-n-saude'); if(nav) nav.textContent = d.bloqueiam ? String(d.bloqueiam) : '';
+  var o = d.origem || {}, pg = d.paginas || [];
+  var okPg = pg.filter(function(p){ return p.status === 'ok' || p.status === 'ok_dinamico'; }).length;
+  var pct = function(a, b){ return b ? Math.round(a / b * 100) + '%' : '—'; };
+  var linhaNum = function(r, v){ return '<div class="sv-num"><span>'+r+'</span><b>'+v+'</b></div>'; };
+  var ic = { ruim:'!', atencao:'!', ok:'✓' };
+
+  var h = '<div class="sv-topo">'+
+    '<div class="fx-cart sv-nota"><div class="fx-sub">Nota da coleta</div>'+
+      '<div class="sv-n" style="color:'+cor+'">'+d.nota+'<small>/100</small></div>'+
+      '<div class="sv-barra"><i style="width:'+d.nota+'%;background:'+cor+'"></i></div>'+
+      '<div class="sv-resumo">'+(d.bloqueiam ? '<b>'+d.bloqueiam+' problema'+(d.bloqueiam>1?'s':'')+'</b> deixa'+(d.bloqueiam>1?'m':'')+' os números de venda e CPA sem base.' : 'Nada bloqueando a leitura dos números.')+'</div>'+
+      linhaNum('Páginas com pixel', pg.length ? okPg+' de '+pg.length : '—')+
+      linhaNum('Vendas com origem (7 dias)', pct(o.comUtm||0, o.pagas||0))+
+      linhaNum('Vendas com id do visitante', pct(o.comVid||0, o.pagas||0))+
+      linhaNum('Campanha por id', pct(o.porId||0, (o.porId||0)+(o.porNome||0)))+
+      '<button class="fn-btn g sm" style="margin-top:12px;width:100%" onclick="svCarregar(true)">Rodar a checagem de novo</button>'+
+      '<div class="fx-sub" style="margin-top:8px">Rodou às '+new Date(d.rodouEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'</div>'+
+    '</div>'+
+    '<div class="fx-cart sv-lista">'+(d.checks||[]).map(function(c, i){
+      return '<div class="sv-chk"><div class="sv-ic sv-'+c.nivel+'">'+ic[c.nivel]+'</div>'+
+        '<div class="sv-txt"><b>'+fnEsc(c.titulo)+'</b><span>'+fnEsc(c.texto)+'</span></div>'+
+        (c.acao ? '<button class="fn-btn '+(c.nivel==='ruim'?'':'g ')+'sm" onclick="svAcao('+i+')">'+fnEsc(c.acao.rotulo)+'</button>' : '')+
+      '</div>';
+    }).join('')+'</div>'+
+  '</div>';
+
+  var rot = { ok:['ok','OK'], ok_dinamico:['ok','OK · tag injetada'], sem_tag:['ruim','Sem pixel'], outro_funil:['ruim','Pixel de outro funil'],
+              fora_do_ar:['ruim','Não abriu'], sem_visita:['atencao','Tag ok · sem visita em 24h'], sem_link:['atencao','Sem link no mapa'] };
+  var quando = function(iso){
+    if(!iso) return '—';
+    var m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    return m < 60 ? 'há '+m+' min' : m < 1440 ? 'há '+Math.round(m/60)+'h' : 'há '+Math.round(m/1440)+'d';
+  };
+  h += '<div class="fx-cart"><div class="fx-cc"><h3>Pixel por página</h3><span class="fx-sub">O servidor abre cada link do mapa e procura a tag deste funil no código</span></div>'+
+    (pg.length ? '<div style="overflow-x:auto"><table class="sv-tab"><tr><th>Etapa</th><th>Endereço</th><th>Tag no código</th><th>Última visita</th><th class="n">Visitas 24h</th><th>Situação</th></tr>'+
+      pg.map(function(p){
+        var r = rot[p.status] || ['atencao', p.status];
+        var tag = p.status === 'sem_link' ? '—' : p.erro ? fnEsc(p.erro) : p.doFunil ? 'encontrada' + (p.etapaErrada ? ' · etapa '+fnEsc(p.etapaErrada) : '') : p.tag ? 'de outro funil' : 'não encontrada';
+        return '<tr><td><b>'+fnEsc(p.nome)+'</b></td><td class="sv-url">'+(p.url ? fnEsc(String(p.url).replace(/^https?:\/\//,'')) : '—')+'</td>'+
+          '<td>'+tag+'</td><td>'+quando(p.ultimo)+'</td><td class="n">'+fnNum(p.n24||0)+'</td>'+
+          '<td><span class="sv-pill sv-'+r[0]+'">'+r[1]+'</span></td></tr>';
+      }).join('')+'</table></div>' : '<div class="fx-vazio">Este funil não tem páginas no mapa.</div>')+
+    '<div class="fx-sub" style="margin-top:10px">“Tag injetada” = a tag não aparece no HTML cru (vem por gerenciador de tags), mas as visitas estão chegando — está funcionando.</div>'+
+  '</div>';
+  el.innerHTML = h;
+}
+
 function gePintar(){
   var el = document.getElementById('ge-corpo'); if(!el) return;
   var f = fnAtual();
@@ -29467,12 +29585,9 @@ function gePintar(){
   // Sem isso a tela comparava o funil "Bio insta" com o clique do projeto
   // inteiro — 2.500 cliques contra 39 pessoas, e a leitura da queda virava
   // ficcao. Sem campanha amarrada, continua o total do projeto, mas dizendo.
-  var fontes = (f.etapas||[]).filter(function(e){ return e.tipo==='fonte'; });
-  var comCamp = fontes.filter(function(e){ return e.utmCampanha; });
-  var cliquesDoFunil = comCamp.reduce(function(a, e){
-    return a + ((fnCliques && fnCliques.campanhas[e.utmCampanha]) || 0); }, 0);
-  var cliques = fnCliques ? (comCamp.length ? cliquesDoFunil : (fnCliques.total||0)) : null;
-  var deOnde = comCamp.length
+  var ci = fnCliquesInfo(f);
+  var cliques = fnCliques ? ci.n : null;
+  var deOnde = ci.doFunil
     ? 'da(s) campanha(s) deste funil'
     : 'do projeto inteiro — amarre a campanha na origem pra separar';
   var chegaram = fnBase(f);
@@ -31362,11 +31477,18 @@ function fnVerPaginas(id){
   ov.onclick = function(){ ov.remove(); };
   document.body.appendChild(ov);
 }
-function fnCliquesTotais(f){
-  if(!f || !fnCliques) return 0;
-  return (f.etapas||[]).filter(function(e){ return e.tipo==='fonte'; })
-                       .reduce(function(a,e){ return a + fnCliquesDe(e); }, 0);
+// As origens moram em f.fontes, nao em f.etapas — filtrar etapas por tipo
+// 'fonte' devolvia sempre lista vazia, e a conta caia no zero.
+// Com campanha amarrada: soma so essas. Sem nenhuma: o total do projeto (uma
+// vez so — somar o total por origem multiplicava o clique pelo n. de origens).
+function fnCliquesInfo(f){
+  if(!f || !fnCliques) return { n: 0, doFunil: false };
+  var fontes = (f.fontes||[]).concat((f.etapas||[]).filter(function(e){ return e.tipo==='fonte'; }));
+  var com = fontes.filter(function(e){ return e.utmCampanha; });
+  if(!com.length) return { n: fnCliques.total || 0, doFunil: false };
+  return { n: com.reduce(function(a,e){ return a + (fnCliques.campanhas[e.utmCampanha] || 0); }, 0), doFunil: true };
 }
+function fnCliquesTotais(f){ return fnCliquesInfo(f).n; }
 function fnEhEntrada(f, id){
   if(!f) return false;
   var ent = false;
