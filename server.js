@@ -6324,7 +6324,9 @@ const KEYS_SERVIDOR = new Set([
   'sl_ads_hist',            // historico de ads por dia; a tela le pelo endpoint
   'sl_desenhos',            // quadros de rascunho; carregam prints, a tela le por /api/desenhos
   'sl_produtos',            // catalogo de produtos; a tela le por /api/produtos
-  'sl_canais'               // canais de trafego; a tela le por /api/canais
+  'sl_canais',              // canais de trafego; a tela le por /api/canais
+  'sl_regras',              // regras automaticas; a tela le por /api/regras
+  'sl_regras_log'           // log das regras; idem
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -9950,6 +9952,172 @@ app.get('/api/criativos/ate-a-venda', authUsuario, async (req, res) => {
       temPixel: linhas.some(x => x.chegaram > 0), erros: ads.erros || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ══════════════════════════════════════════════════════
+// ── REGRAS E ALERTAS ──
+// Kill por CPIC/CPA, escala por ROAS, página que caiu, webhook parado. Tudo em
+// MODO SIMULAÇÃO: a regra registra o que faria, com o motivo e o número que a
+// disparou, e nada é mexido na Meta — isso exige a API da Meta com permissão
+// de gerenciar anúncios, que ainda não está conectada. A avaliação automática
+// e o aviso no WhatsApp nascem desligados: quem liga é a Diretoria, na tela.
+// ══════════════════════════════════════════════════════
+const KEY_REGRAS = 'sl_regras', KEY_REGRAS_LOG = 'sl_regras_log';
+const REGRAS_PADRAO = [
+  { id: 'kill_cpic', nome: 'Kill por CPIC', tipo: 'kill_cpic', ativa: true, gastoMin: 120, acao: 'pausar' },
+  { id: 'kill_cpa', nome: 'Kill por CPA', tipo: 'kill_cpa', ativa: true, cpaAlvo: 150, multiplo: 2, acao: 'pausar' },
+  { id: 'escala', nome: 'Escala', tipo: 'escala', ativa: true, roasMin: 1.8, vendasMin: 3, aumento: 20, acao: 'orcamento' },
+  { id: 'pagina_caiu', nome: 'Página caiu', tipo: 'pagina_caiu', ativa: true, minutos: 15, acao: 'alerta' },
+  { id: 'webhook_parado', nome: 'Webhook parado', tipo: 'webhook_parado', ativa: true, minutos: 30, acao: 'alerta' },
+  { id: 'protecao', nome: 'Janela de proteção', tipo: 'protecao', ativa: true, acao: 'trava' }
+];
+function _regrasCfg(db) {
+  const c = (db || readDB()).store[KEY_REGRAS] || {};
+  const salvas = Array.isArray(c.lista) ? c.lista : [];
+  // regra nova do padrão entra sozinha; a configuração que ele mexeu fica
+  const lista = REGRAS_PADRAO.map(p => Object.assign({}, p, salvas.find(x => x.id === p.id) || {}));
+  return { lista, automatico: !!c.automatico, whatsapp: !!c.whatsapp, simulacao: true };
+}
+
+async function _regrasAvaliar(origem) {
+  const db0 = readDB(), cfg = _regrasCfg(db0), R = {};
+  cfg.lista.forEach(r => { R[r.id] = r; });
+  const agora = Date.now(), hojeBRT = new Date(agora - 3 * 3600000).toISOString().slice(0, 10);
+  const horaBRT = new Date(agora - 3 * 3600000).getUTCHours() + new Date(agora - 3 * 3600000).getUTCMinutes() / 60;
+  const novas = [];
+  const acao = (regra, alvo, tipo, racional, extra) => novas.push(Object.assign({
+    id: 'ra' + agora.toString(36) + Math.random().toString(36).slice(2, 6), em: new Date(agora).toISOString(), dia: hojeBRT,
+    regra: regra.id, regraNome: regra.nome, alvo, tipo, racional, simulado: true, origem: origem || 'manual', desfeito: null }, extra || {}));
+
+  // anúncios de hoje (mesma fonte das Métricas de Ads)
+  let ads = [], erroAds = '';
+  try {
+    const r = await new Promise(resolve => _rotaAnuncios({ query: { de: hojeBRT, ate: hojeBRT, projeto: '' } },
+      { json: d => resolve(d), status: () => ({ json: d => resolve(Object.assign({ erroRota: true }, d)) }) }));
+    if (r && !r.erroRota && !r.error) ads = r.anuncios || []; else erroAds = (r && r.error) || 'Utmify não respondeu';
+  } catch (e) { erroAds = e.message; }
+  // janela de proteção: anúncio no primeiro dia de gasto (a Utmify não diz a hora em que nasceu)
+  const hist = db0.store[KEY_ADS_HIST] || {};
+  const jaGastou = new Set();
+  Object.keys(hist).forEach(k => { if (k.slice(0, 10) < hojeBRT) ((hist[k] || {}).anuncios || []).forEach(a => { if ((a.investimento || 0) > 0) jaGastou.add(String(a.nome || '').trim().toLowerCase()); }); });
+  const protegido = a => R.protecao && R.protecao.ativa && !jaGastou.has(String(a.nome || '').trim().toLowerCase());
+  const horasDia = Math.max(1, horaBRT), restante = Math.max(0, 24 - horaBRT);
+
+  ads.forEach(a => {
+    const nome = a.nome, inv = a.investimento || 0;
+    const evita = Math.round(inv / horasDia * restante);
+    if (R.kill_cpic && R.kill_cpic.ativa && inv >= R.kill_cpic.gastoMin && !(a.ics > 0)) {
+      if (protegido(a)) acao(R.protecao, nome, 'trava', 'Seria pausado (gastou R$ ' + Math.round(inv) + ' sem checkout), mas está no 1º dia de gasto.');
+      else acao(R.kill_cpic, nome, 'pausar', 'Gastou R$ ' + Math.round(inv) + ' e nenhum checkout. Limite: R$ ' + R.kill_cpic.gastoMin + '.', { gasto: inv, evitado: evita });
+    } else if (R.kill_cpa && R.kill_cpa.ativa && inv >= R.kill_cpa.cpaAlvo * R.kill_cpa.multiplo && !(a.vendas > 0)) {
+      if (protegido(a)) acao(R.protecao, nome, 'trava', 'Seria pausado (R$ ' + Math.round(inv) + ' sem venda), mas está no 1º dia de gasto.');
+      else acao(R.kill_cpa, nome, 'pausar', 'Gastou R$ ' + Math.round(inv) + ' (' + R.kill_cpa.multiplo + 'x o CPA alvo de R$ ' + R.kill_cpa.cpaAlvo + ') e nenhuma venda.', { gasto: inv, evitado: evita });
+    }
+    if (R.escala && R.escala.ativa && (a.vendas || 0) >= R.escala.vendasMin && (a.roas || 0) >= R.escala.roasMin) {
+      acao(R.escala, nome, 'orcamento', 'ROAS ' + (a.roas || 0).toFixed(2).replace('.', ',') + ' com ' + a.vendas + ' vendas hoje. Orçamento +' + R.escala.aumento + '%.', { gasto: inv });
+    }
+  });
+
+  // página caiu: gasto rodando e nenhuma visita no pixel nos últimos N minutos
+  if (R.pagina_caiu && R.pagina_caiu.ativa && ads.some(a => (a.investimento || 0) > 0) && horaBRT >= 7) {
+    const corte = agora - R.pagina_caiu.minutos * 60000;
+    const jorn = (Array.isArray(db0.store[KEY_JORNADA]) ? db0.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {}));
+    const temPixel = jorn.some(j => (j.eventos || []).some(e => new Date(e.em).getTime() >= agora - 86400000));
+    const recente = jorn.some(j => (j.eventos || []).some(e => e.tipo === 'entrou' && new Date(e.em).getTime() >= corte));
+    if (temPixel && !recente) acao(R.pagina_caiu, 'Páginas do funil', 'alerta', 'Anúncio gastando e nenhuma visita no pixel nos últimos ' + R.pagina_caiu.minutos + ' min. Página fora do ar ou pixel caiu.');
+  }
+  // webhook parado, só em horário de venda
+  if (R.webhook_parado && R.webhook_parado.ativa && horaBRT >= 8) {
+    const v = Array.isArray(db0.store[KEY_VENDAS]) ? db0.store[KEY_VENDAS] : [];
+    const ult = v.length ? new Date(v[v.length - 1].recebidoEm).getTime() : 0;
+    if (ult && agora - ult > R.webhook_parado.minutos * 60000)
+      acao(R.webhook_parado, 'Webhook de vendas', 'alerta', 'Nenhum evento do checkout há ' + Math.round((agora - ult) / 60000) + ' min.');
+  }
+
+  // grava sem repetir a mesma regra no mesmo alvo no mesmo dia
+  const db = readDB();
+  const log = Array.isArray(db.store[KEY_REGRAS_LOG]) ? db.store[KEY_REGRAS_LOG] : [];
+  const visto = new Set(log.filter(x => x.dia === hojeBRT).map(x => x.regra + '|' + x.alvo));
+  const entram = novas.filter(n => !visto.has(n.regra + '|' + n.alvo));
+  if (entram.length) {
+    db.store[KEY_REGRAS_LOG] = log.concat(entram).slice(-1500);
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_REGRAS_LOG] = now();
+    writeDB(db);
+    // aviso no WhatsApp só quando ligado na tela, e só o que é alerta ou pausa
+    if (cfg.whatsapp && typeof _notificarViaWhatsApp === 'function') {
+      const importantes = entram.filter(x => x.tipo === 'alerta' || x.tipo === 'pausar');
+      if (importantes.length) {
+        const dir = (db.store['sl_usuarios'] || []).filter(u => u && u.cargo === 'Diretoria');
+        const texto = importantes.slice(0, 6).map(x => '• ' + x.regraNome + ' — ' + x.alvo + ': ' + x.racional).join('\n') + '\n(modo simulação: nada foi mexido na Meta)';
+        dir.forEach(u => { try { _notificarViaWhatsApp(u.id, 'Regras do Central TMX', texto); } catch (e) {} });
+      }
+    }
+  }
+  return { novas: entram.length, avaliados: ads.length, erroAds };
+}
+
+app.get('/api/regras', authDiretoria, (req, res) => {
+  try {
+    const db = readDB(), cfg = _regrasCfg(db);
+    const hojeBRT = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+    const log = (Array.isArray(db.store[KEY_REGRAS_LOG]) ? db.store[KEY_REGRAS_LOG] : []).slice().reverse();
+    const hoje = log.filter(x => x.dia === hojeBRT);
+    const porRegraHoje = {}; hoje.forEach(x => { porRegraHoje[x.regra] = (porRegraHoje[x.regra] || 0) + 1; });
+    res.json({ ok: true, config: cfg, porRegraHoje,
+      resumo: { acoes: hoje.length, pausas: hoje.filter(x => x.tipo === 'pausar').length, escalas: hoje.filter(x => x.tipo === 'orcamento').length,
+                alertas: hoje.filter(x => x.tipo === 'alerta').length, travas: hoje.filter(x => x.tipo === 'trava').length,
+                evitado: hoje.filter(x => x.tipo === 'pausar' && !x.desfeito).reduce((a, x) => a + (x.evitado || 0), 0),
+                revertidas: log.filter(x => x.desfeito && x.tipo === 'pausar').length },
+      log: log.slice(0, 120) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/regras', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {}, db = readDB(), atual = _regrasCfg(db);
+    const num = (v, min, max, pad) => { const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : pad; };
+    const lista = atual.lista.map(r => {
+      const x = (Array.isArray(b.lista) ? b.lista : []).find(y => y && y.id === r.id) || {};
+      const o = Object.assign({}, r, { ativa: x.ativa !== undefined ? !!x.ativa : r.ativa });
+      if ('gastoMin' in r) o.gastoMin = num(x.gastoMin, 10, 100000, r.gastoMin);
+      if ('cpaAlvo' in r) o.cpaAlvo = num(x.cpaAlvo, 1, 100000, r.cpaAlvo);
+      if ('multiplo' in r) o.multiplo = num(x.multiplo, 1, 10, r.multiplo);
+      if ('roasMin' in r) o.roasMin = num(x.roasMin, 0.1, 20, r.roasMin);
+      if ('vendasMin' in r) o.vendasMin = Math.round(num(x.vendasMin, 1, 1000, r.vendasMin));
+      if ('aumento' in r) o.aumento = Math.round(num(x.aumento, 1, 100, r.aumento));
+      if ('minutos' in r) o.minutos = Math.round(num(x.minutos, 5, 720, r.minutos));
+      return o;
+    });
+    db.store[KEY_REGRAS] = { lista, automatico: !!b.automatico, whatsapp: !!b.whatsapp, _updatedAt: Date.now() };
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_REGRAS] = now();
+    audit(db, 'regras_salvas', KEY_REGRAS, { automatico: !!b.automatico, whatsapp: !!b.whatsapp }, req.user);
+    writeDB(db);
+    res.json({ ok: true, config: _regrasCfg(db) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/regras/avaliar', authDiretoria, async (req, res) => {
+  try { res.json(Object.assign({ ok: true }, await _regrasAvaliar('manual'))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/regras/desfazer', authDiretoria, (req, res) => {
+  try {
+    const id = String((req.body && req.body.id) || '');
+    const db = readDB(), log = Array.isArray(db.store[KEY_REGRAS_LOG]) ? db.store[KEY_REGRAS_LOG] : [];
+    const x = log.find(y => y.id === id);
+    if (!x) return res.status(404).json({ error: 'Ação não encontrada.' });
+    x.desfeito = { em: new Date().toISOString(), por: (req.user && req.user.nome) || '' };
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_REGRAS_LOG] = now();
+    audit(db, 'regra_desfeita', x.regra, { alvo: x.alvo, tipo: x.tipo }, req.user);
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Avaliação automática a cada 30 min — só roda se a Diretoria ligou na tela.
+setInterval(() => {
+  try { if (_regrasCfg().automatico) _regrasAvaliar('automatico').catch(e => console.error('[regras]', e.message)); }
+  catch (e) {}
+}, 30 * 60 * 1000);
 
 app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
   try {

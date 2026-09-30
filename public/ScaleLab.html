@@ -1677,6 +1677,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 @media (max-width:700px){ .lc-edit-l{grid-template-columns:1fr} }
 .rc-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
 .cr-l{cursor:pointer}
+.rg-n{width:56px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 6px;color:var(--text);font:inherit;font-size:12px;text-align:right}
+.rg-q{font-size:12.5px;line-height:2}
+.rg-ops{display:flex;flex-direction:column;gap:6px;margin-top:14px;font-size:12.5px}
+.rg-ops label{display:flex;gap:8px;align-items:center}
 .cr-l:hover td{background:var(--bg3)}
 .abb{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:12px 0;background:var(--bg3)}
 .abb-l{margin-bottom:10px}
@@ -4318,6 +4322,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <button class="fx-nav-i" onclick="fnAba('recup',this)"><span>💸</span>Recuperação</button>
             <button class="fx-nav-i" onclick="fnAba('criativos',this)"><span>🎬</span>Criativos</button>
             <button class="fx-nav-i" onclick="fnAba('assin',this)"><span>🔁</span>Assinaturas</button>
+            <button class="fx-nav-i" onclick="fnAba('regras',this)"><span>⚙️</span>Regras e alertas</button>
           </nav>
           <div class="fx-conteudo">
 
@@ -4390,6 +4395,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
         <div class="fn-painel" id="fn-p-recup"><div id="rc-corpo"></div></div>
         <div class="fn-painel" id="fn-p-assin"><div id="as-corpo"></div></div>
         <div class="fn-painel" id="fn-p-criativos"><div id="cr-corpo"></div></div>
+        <div class="fn-painel" id="fn-p-regras"><div id="rg-corpo"></div></div>
 
         <div class="fn-painel" id="fn-p-saude">
           <div id="sv-corpo"></div>
@@ -29485,7 +29491,7 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
-var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup','assin','criativos'];
+var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup','assin','criativos','regras'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
@@ -29497,6 +29503,7 @@ var FN_ABA_INFO = {
   recup:   ['Dinheiro na mesa', 'Quem tentou pagar e não pagou, quanto isso vale, por quê — e quem chamar primeiro.'],
   assin:   ['Assinaturas e LTV', 'Quanto cada cliente vale depois da primeira venda — e o CPA máximo que ainda empata.'],
   criativos:['Criativo até a venda', 'Cada anúncio do gasto à venda: se ele para o dedo, se traz a pessoa certa e se ela compra.'],
+  regras:  ['Regras e alertas', 'O que a ferramenta faria sozinha, com o motivo — em modo simulação até a Meta ser conectada.'],
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
@@ -29526,6 +29533,7 @@ function fnAba(qual, bt){
   if(qual==='recup')   rcCarregar();
   if(qual==='assin')   asCarregar();
   if(qual==='criativos') crCarregar();
+  if(qual==='regras')  rgCarregar();
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -29983,6 +29991,92 @@ function crPintar(){
     '<div class="fx-cart"><b style="font-size:13px">De onde vem cada coluna</b><div class="fx-sub" style="margin-top:4px">Utmify (gasto, CTR, cliques, checkout, vendas) + pixel (chega na VSL) + VTurb pelo utm_content (pitch). Hook e hold rate precisam das métricas de vídeo da API da Meta — ainda não conectada.</div></div>'+
   '</div>';
   el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════
+// ── REGRAS E ALERTAS ──
+// ══════════════════════════════════════════════════════
+var rgDados = null, rgRascunho = null;
+var RG_QUANDO = {
+  kill_cpic: function(r){ return 'gasto ≥ R$ <input class="rg-n" data-k="gastoMin" value="'+r.gastoMin+'"> e 0 checkout'; },
+  kill_cpa:  function(r){ return 'gasto ≥ <input class="rg-n" data-k="multiplo" value="'+r.multiplo+'">x o CPA alvo de R$ <input class="rg-n" data-k="cpaAlvo" value="'+r.cpaAlvo+'"> e 0 venda'; },
+  escala:    function(r){ return 'ROAS ≥ <input class="rg-n" data-k="roasMin" value="'+String(r.roasMin).replace('.',',')+'"> com <input class="rg-n" data-k="vendasMin" value="'+r.vendasMin+'">+ vendas'; },
+  pagina_caiu: function(r){ return '0 visita em <input class="rg-n" data-k="minutos" value="'+r.minutos+'"> min com anúncio gastando'; },
+  webhook_parado: function(r){ return '<input class="rg-n" data-k="minutos" value="'+r.minutos+'"> min sem evento do checkout'; },
+  protecao:  function(){ return 'anúncio no 1º dia de gasto'; }
+};
+var RG_FAZ = { kill_cpic:'pausa o anúncio', kill_cpa:'pausa o anúncio', escala:function(r){ return 'orçamento +'+r.aumento+'%'; }, pagina_caiu:'alerta', webhook_parado:'alerta', protecao:'nunca pausa' };
+function rgCarregar(){
+  var el = document.getElementById('rg-corpo'); if(!el) return;
+  if(!lcEhDir()){ el.innerHTML = '<div class="fx-vazio">Regras e alertas são da Diretoria.</div>'; return; }
+  if(!rgDados) el.innerHTML = '<div class="fx-vazio">Carregando as regras…</div>';
+  fetch('/api/regras').then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){ rgDados = d; rgRascunho = JSON.parse(JSON.stringify(d.config)); rgPintar(); })
+    .catch(function(e){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+function rgLer(){
+  document.querySelectorAll('#rg-corpo [data-regra]').forEach(function(tr){
+    var r = rgRascunho.lista.filter(function(x){ return x.id === tr.dataset.regra; })[0]; if(!r) return;
+    var ck = tr.querySelector('input[type=checkbox]'); if(ck) r.ativa = ck.checked;
+    tr.querySelectorAll('.rg-n').forEach(function(i){ r[i.dataset.k] = String(i.value).replace(',', '.'); });
+  });
+  var a = document.getElementById('rg-auto'), w = document.getElementById('rg-wpp');
+  rgRascunho.automatico = !!(a && a.checked); rgRascunho.whatsapp = !!(w && w.checked);
+}
+function rgSalvar(){
+  rgLer();
+  fetch('/api/regras', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(rgRascunho) })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(){ toastFn('Regras salvas'); rgCarregar(); }).catch(function(e){ toastFn('Não salvou: '+e.message); });
+}
+function rgAvaliar(bt){
+  if(bt){ bt.disabled = true; bt.textContent = 'Avaliando…'; }
+  fetch('/api/regras/avaliar', { method:'POST' }).then(function(r){ return r.json(); })
+    .then(function(d){ toastFn(d.novas ? d.novas+' ação(ões) nova(s)' : 'Nada novo — '+(d.avaliados||0)+' anúncio(s) avaliado(s)'); if(d.erroAds) toastFn('Utmify: '+d.erroAds); rgCarregar(); })
+    .catch(function(e){ toastFn('Falhou: '+e.message); rgCarregar(); });
+}
+function rgDesfazer(id){
+  if(!confirm('Desfazer esta ação?\n\nEm modo simulação isso só registra que você discordou — a regra usa isso pra você calibrar os limites.')) return;
+  fetch('/api/regras/desfazer', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: id }) })
+    .then(function(){ rgCarregar(); });
+}
+function rgPintar(){
+  var el = document.getElementById('rg-corpo'); var d = rgDados, c = rgRascunho; if(!el || !d) return;
+  var res = d.resumo || {};
+  var kpi = function(r, v, sub, cls){ return '<div class="fx-kpi '+(cls||'')+'"><div class="r">'+r+'</div><div class="v">'+v+'</div><div class="d">'+sub+'</div></div>'; };
+  var h = '<div class="rc-topo"><span class="sv-pill sv-atencao">MODO SIMULAÇÃO · nada é mexido na Meta</span>'+
+    '<div class="lc-bts" style="margin:0"><button class="fn-btn g sm" onclick="rgAvaliar(this)">Avaliar agora</button><button class="fn-btn sm" onclick="rgSalvar()">Salvar regras</button></div></div>'+
+    '<div class="fx-kpis">'+
+      kpi('Ações hoje', fnNum(res.acoes), (res.pausas||0)+' pausa(s) · '+(res.escalas||0)+' escala(s) · '+(res.alertas||0)+' alerta(s)')+
+      kpi('Gasto que seria evitado', fnDin(res.evitado||0), 'pelo ritmo de gasto até o fim do dia', res.evitado?'bom':'')+
+      kpi('Pausas desfeitas por você', fnNum(res.revertidas), 'sinal de limite apertado demais')+
+      kpi('Alertas', c.whatsapp ? 'WhatsApp' : 'Só na tela', c.whatsapp ? 'Diretoria recebe alerta e pausa' : 'ligue abaixo pra receber no WhatsApp')+
+    '</div>';
+  var hojeR = d.porRegraHoje || {};
+  var esq = '<div class="fx-cart"><div class="fx-cc"><h3>Regras</h3><span class="fx-sub">edite o número e salve</span></div>'+
+    '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:560px"><tr><th></th><th>Regra</th><th>Quando</th><th>Faz</th><th class="n">Hoje</th></tr>'+
+    c.lista.map(function(r){
+      var faz = typeof RG_FAZ[r.tipo] === 'function' ? RG_FAZ[r.tipo](r) : RG_FAZ[r.tipo];
+      return '<tr data-regra="'+fnEsc(r.id)+'"><td><input type="checkbox"'+(r.ativa?' checked':'')+' aria-label="Regra ativa"></td><td><b>'+fnEsc(r.nome)+'</b></td>'+
+        '<td class="rg-q">'+(RG_QUANDO[r.tipo] ? RG_QUANDO[r.tipo](r) : '')+'</td><td>'+(r.tipo==='protecao'?'<span class="sv-pill lc-info">trava</span>':fnEsc(faz))+'</td><td class="n">'+(hojeR[r.id]||0)+'</td></tr>';
+    }).join('')+
+    '<tr><td><input type="checkbox" disabled></td><td><b style="opacity:.6">Hook fraco</b></td><td class="fx-sub" colspan="3">precisa das métricas de vídeo da API da Meta</td></tr>'+
+    '</table></div>'+
+    '<div class="rg-ops"><label><input type="checkbox" id="rg-auto"'+(c.automatico?' checked':'')+'> Avaliar sozinho a cada 30 min</label>'+
+      '<label><input type="checkbox" id="rg-wpp"'+(c.whatsapp?' checked':'')+'> Mandar alerta e pausa no WhatsApp da Diretoria</label></div>'+
+    '<div class="fx-sub" style="margin-top:8px">Pausar e mexer em orçamento de verdade exige conectar a Meta com permissão de gerenciar anúncios. Até lá, cada ação fica só no registro ao lado — dá pra ver se a regra acertaria antes de dar a chave pra ela.</div>'+
+  '</div>';
+  var ic = { pausar:['sv-ruim','⏸'], orcamento:['sv-ok','↑'], alerta:['sv-atencao','!'], trava:['lc-info','🔒'] };
+  var dir = '<div class="fx-cart"><div class="fx-cc"><h3>Registro com o motivo</h3><span class="fx-sub">o que cada regra faria, e por quê</span></div>'+
+    ((d.log||[]).length ? d.log.slice(0, 40).map(function(x){
+      var i = ic[x.tipo] || ['lc-info','•'];
+      var hora = new Date(x.em).toLocaleString('pt-BR',{ day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      return '<div class="sv-chk"><div class="sv-ic '+i[0]+'">'+i[1]+'</div><div class="sv-txt"><b>'+fnEsc(x.alvo)+' · '+fnEsc(x.regraNome)+'</b>'+
+        '<span>'+hora+' · '+fnEsc(x.racional)+(x.desfeito ? ' · <i>desfeito por '+fnEsc(x.desfeito.por||'você')+'</i>' : '')+'</span></div>'+
+        (!x.desfeito && (x.tipo==='pausar' || x.tipo==='orcamento') ? '<button class="fn-btn g sm" onclick="rgDesfazer(\''+fnEsc(x.id)+'\')">Desfazer</button>' : '')+'</div>';
+    }).join('') : '<div class="fx-vazio">Nenhuma ação ainda. Use “Avaliar agora” pra rodar as regras nos anúncios de hoje.</div>')+
+  '</div>';
+  el.innerHTML = h + '<div class="rc-duas">'+esq+dir+'</div>';
 }
 
 var svDados = null, svPedido = 0;
