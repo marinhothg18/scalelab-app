@@ -3344,6 +3344,9 @@ async function _rotaAnuncios(req, res) {
           m.ics      += Number(a.initiateCheckout) || 0;
           m.cliques  += Number(a.inlineLinkClicks) || 0;
           m.impressoes += Number(a.impressions) || 0;
+          // o id do anúncio é o que chega no utm_content quando a UTM segue o padrão por id
+          const aid = String(a.id || a.adId || a.ad_id || '').trim();
+          if (aid) { m.ids = m.ids || []; if (m.ids.indexOf(aid) < 0 && m.ids.length < 30) m.ids.push(aid); }
         });
       } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
     }
@@ -9857,6 +9860,94 @@ app.get('/api/assinaturas', authUsuario, async (req, res) => {
       ltv90Medio, ltvAteHoje, cpaMaximo: ltv90Medio != null ? ltv90Medio : ltvAteHoje, cpaBase: ltv90Medio != null ? '90d' : 'ateHoje',
       cpa30, coortes: tabCoortes, planos, criativos,
       historicoDesde: primeiro, diasDeHistorico: primeiro ? Math.floor((agora - new Date(primeiro).getTime()) / 86400000) : 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── CRIATIVO ATÉ A VENDA ──
+// Uma linha por anúncio, do gasto à venda: Utmify (gasto, clique, checkout,
+// venda), o pixel (quem chegou de verdade na página) e — na tela — a VTurb
+// (quem passou do pitch, pelo utm_content). O nome do anúncio é quebrado no
+// padrão da casa (estrutura | nicho | AD | conta | data) e as veiculações do
+// mesmo AD somam juntas.
+// ══════════════════════════════════════════════════════
+function _partesDoNome(nome) {
+  const t = String(nome || '').split('|').map(x => x.trim()).filter(Boolean);
+  const achaAd = t.find(x => /^AD[\w.\-]*$/i.test(x)) || (String(nome).match(/\bAD[\w.\-]+/i) || [])[0] || '';
+  const data = t.find(x => /^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/.test(x)) || '';
+  const out = { ad: achaAd ? achaAd.toUpperCase() : '', estrutura: '', nicho: '', conta: '', data };
+  if (t.length >= 4 && achaAd) {
+    const i = t.indexOf(achaAd);
+    out.estrutura = t[0] !== achaAd ? t[0] : '';
+    out.nicho = i > 1 ? t[i - 1] : '';
+    out.conta = t[i + 1] && t[i + 1] !== data ? t[i + 1] : '';
+  }
+  return out;
+}
+function _diagnosticoCriativo(x) {
+  const temVolume = x.cliques >= 50;
+  if (x.vendas >= 3 && x.roas >= 1.5) return { nivel: 'ok', rot: 'Escalar' };
+  if (temVolume && x.pctChegou != null && x.pctChegou < 0.7) return { nivel: 'ruim', rot: 'Perde ' + Math.round((1 - x.pctChegou) * 100) + '% antes da página' };
+  if (x.investimento < 800 && x.roas >= 1.3) return { nivel: 'ok', rot: 'Pouco gasto, testar mais' };
+  if (x.investimento >= 1000 && x.roas < 0.6) return { nivel: 'ruim', rot: 'Cortar' };
+  if (x.ctr >= 3 && x.roas < 1) return { nivel: 'atencao', rot: 'Traz clique, não traz comprador' };
+  return { nivel: 'info', rot: 'Segurar' };
+}
+app.get('/api/criativos/ate-a-venda', authUsuario, async (req, res) => {
+  try {
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe de/ate.' });
+    const projeto = String(req.query.projeto || '').slice(0, 40);
+    const ads = await new Promise(resolve => _rotaAnuncios({ query: { de, ate, projeto } },
+      { json: d => resolve(d), status: () => ({ json: d => resolve(Object.assign({ erroRota: true }, d)) }) }));
+    if (!ads || ads.erroRota || ads.error) return res.status(400).json({ error: (ads && ads.error) || 'Não consegui buscar os anúncios.' });
+    const por = {};
+    (ads.anuncios || []).forEach(a => {
+      const pt = _partesDoNome(a.nome);
+      const k = pt.ad || String(a.nome || '').trim();
+      const x = por[k] = por[k] || { chave: k, nomes: [], estrutura: pt.estrutura, nicho: pt.nicho, contas: [], ids: [],
+        investimento: 0, receita: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0, chegaram: 0, conteudos: {} };
+      if (x.nomes.length < 6 && x.nomes.indexOf(a.nome) < 0) x.nomes.push(a.nome);
+      if (pt.conta && x.contas.indexOf(pt.conta) < 0) x.contas.push(pt.conta);
+      (a.ids || []).forEach(i => { if (x.ids.indexOf(i) < 0) x.ids.push(i); });
+      x.investimento += a.investimento || 0; x.receita += a.receita || 0; x.vendas += a.vendas || 0;
+      x.ics += a.ics || 0; x.cliques += a.cliques || 0; x.impressoes += a.impressoes || 0;
+    });
+    // pixel: quem chegou, pelo utm_content do primeiro toque (código AD no texto, ou id do anúncio)
+    const db = readDB();
+    const iniMs = new Date(de + 'T03:00:00Z').getTime(), fimMs = new Date(ate + 'T03:00:00Z').getTime() + 86400000;
+    const porId = {}; Object.values(por).forEach(x => x.ids.forEach(i => { porId[i] = x; }));
+    const chaves = Object.keys(por).filter(k => /^AD/i.test(k)).sort((a, b) => b.length - a.length);
+    const casar = c => {
+      const t = String(c || '').trim(); if (!t) return null;
+      if (porId[t]) return porId[t];
+      const T = t.toUpperCase();
+      const k = chaves.find(ch => T === ch || T.indexOf(ch) >= 0);
+      return k ? por[k] : (por[t] || null);
+    };
+    let semAnuncio = 0;
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+      const ev = (j && j.eventos || []).find(e => e && e.tipo === 'entrou' && new Date(e.em).getTime() >= iniMs && new Date(e.em).getTime() < fimMs);
+      if (!ev) return;
+      const c = (ev.primeiro && ev.primeiro.utm_content) || ev.criativo;
+      const x = casar(c);
+      if (!x) { if (c) semAnuncio++; return; }
+      x.chegaram++; x.conteudos[c] = (x.conteudos[c] || 0) + 1;
+    });
+    const linhas = Object.values(por).map(x => {
+      const r = Object.assign(x, {
+        ctr: x.impressoes ? x.cliques / x.impressoes * 100 : 0,
+        pctChegou: x.cliques >= 20 && x.chegaram ? Math.min(1, x.chegaram / x.cliques) : null,
+        pctCheckout: x.cliques ? x.ics / x.cliques : 0,
+        cpa: x.vendas ? x.investimento / x.vendas : null,
+        roas: x.investimento ? x.receita / x.investimento : 0,
+        conteudos: Object.keys(x.conteudos).slice(0, 5)
+      });
+      r.diagnostico = _diagnosticoCriativo(r);
+      return r;
+    }).filter(x => x.investimento > 0 || x.vendas > 0).sort((a, b) => b.investimento - a.investimento);
+    res.json({ ok: true, de, ate, linhas: linhas.slice(0, 80), semAnuncio,
+      temPixel: linhas.some(x => x.chegaram > 0), erros: ads.erros || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

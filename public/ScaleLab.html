@@ -1676,6 +1676,8 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .pr-ofertas>.fn-btn{justify-self:start}
 @media (max-width:700px){ .lc-edit-l{grid-template-columns:1fr} }
 .rc-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.cr-l{cursor:pointer}
+.cr-l:hover td{background:var(--bg3)}
 .abb{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:12px 0;background:var(--bg3)}
 .abb-l{margin-bottom:10px}
 .abb-r{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:5px}
@@ -4314,6 +4316,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <button class="fx-nav-i" onclick="fnAba('links',this)"><span>🔗</span>Links e canais<i class="fx-nav-n" id="fx-n-links"></i></button>
             <button class="fx-nav-i" onclick="fnAba('produtos',this)"><span>📦</span>Produtos<i class="fx-nav-p" id="fx-p-produtos"></i></button>
             <button class="fx-nav-i" onclick="fnAba('recup',this)"><span>💸</span>Recuperação</button>
+            <button class="fx-nav-i" onclick="fnAba('criativos',this)"><span>🎬</span>Criativos</button>
             <button class="fx-nav-i" onclick="fnAba('assin',this)"><span>🔁</span>Assinaturas</button>
           </nav>
           <div class="fx-conteudo">
@@ -4386,6 +4389,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
         <div class="fn-painel" id="fn-p-produtos"><div id="pr-corpo"></div></div>
         <div class="fn-painel" id="fn-p-recup"><div id="rc-corpo"></div></div>
         <div class="fn-painel" id="fn-p-assin"><div id="as-corpo"></div></div>
+        <div class="fn-painel" id="fn-p-criativos"><div id="cr-corpo"></div></div>
 
         <div class="fn-painel" id="fn-p-saude">
           <div id="sv-corpo"></div>
@@ -29481,7 +29485,7 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
-var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup','assin'];
+var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup','assin','criativos'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
@@ -29492,6 +29496,7 @@ var FN_ABA_INFO = {
   produtos:['Produtos',       'Qual produto é o principal e em que projeto ele vende. Venda fora do cadastro some da conta.'],
   recup:   ['Dinheiro na mesa', 'Quem tentou pagar e não pagou, quanto isso vale, por quê — e quem chamar primeiro.'],
   assin:   ['Assinaturas e LTV', 'Quanto cada cliente vale depois da primeira venda — e o CPA máximo que ainda empata.'],
+  criativos:['Criativo até a venda', 'Cada anúncio do gasto à venda: se ele para o dedo, se traz a pessoa certa e se ela compra.'],
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
@@ -29520,6 +29525,7 @@ function fnAba(qual, bt){
   if(qual==='produtos') prCarregar();
   if(qual==='recup')   rcCarregar();
   if(qual==='assin')   asCarregar();
+  if(qual==='criativos') crCarregar();
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -29859,6 +29865,124 @@ function asPintar(){
       : '<div class="fx-vazio">Ainda não há anúncio com dois ou mais clientes identificados pela UTM.</div>')+
   '</div>';
   el.innerHTML = h + '<div class="rc-duas">'+esq+dir+'</div>';
+}
+
+// ══════════════════════════════════════════════════════
+// ── CRIATIVO ATÉ A VENDA ──
+// ══════════════════════════════════════════════════════
+var crDias = 7, crDados = null, crPlayers = null, crPlayer = '', crVturb = null, crAberto = null;
+function crPeriodo(){ var fim = hojeBR(0), ini = hojeBR(crDias - 1); return { de: ini, ate: fim }; }
+function crCarregar(){
+  var el = document.getElementById('cr-corpo'); if(!el) return;
+  el.innerHTML = crTopo() + '<div class="fx-vazio">Juntando Utmify, pixel e vendas por anúncio…</div>';
+  var p = crPeriodo();
+  if(!crPlayers) fetch('/api/vturb/players').then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ crPlayers = (d && d.players) || []; var t = document.getElementById('cr-topo'); if(t) t.outerHTML = crTopo(); }).catch(function(){ crPlayers = []; });
+  fetch('/api/criativos/ate-a-venda?de='+p.de+'&ate='+p.ate+'&projeto='+encodeURIComponent(fnProjId ? (fnProjId()||'') : ''))
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){ crDados = d; crVturb = null; crPintar(); if(crPlayer) crBuscarVturb(); })
+    .catch(function(e){ el.innerHTML = crTopo() + '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+function crTopo(){
+  var ps = crPlayers || [];
+  return '<div class="rc-topo" id="cr-topo"><div class="lc-bts" style="margin:0">'+[[1,'Hoje'],[7,'7 dias'],[30,'30 dias']].map(function(x){
+      return '<button class="fn-btn g sm'+(crDias===x[0]?' on':'')+'" onclick="crDias='+x[0]+';crCarregar()">'+x[1]+'</button>'; }).join('')+'</div>'+
+    '<label class="fx-sub" style="display:flex;align-items:center;gap:8px">Passa do pitch na VSL '+
+      '<select class="dm-sel" style="max-width:240px" onchange="crPlayer=this.value;crVturb=null;crPintar();if(crPlayer)crBuscarVturb()">'+
+      '<option value="">— escolher a VSL —</option>'+ps.map(function(p){ return '<option value="'+fnEsc(p.id)+'"'+(crPlayer===String(p.id)?' selected':'')+'>'+fnEsc(p.nome||p.id)+(p.pitch?'':' (sem pitch)')+'</option>'; }).join('')+
+    '</select></label></div>';
+}
+// mesma regra da tela de VSL: sobrevivência nunca sobe; se sobe, é histograma de abandono
+function crCurva(pontos){
+  var pts = (pontos||[]).map(function(p){ return { t:+p.timed||0, n:+p.total_users||0 }; }).sort(function(a,b){ return a.t-b.t; });
+  if(!pts.length) return [];
+  var sobrev = true; for(var i=1;i<pts.length;i++) if(pts[i].n > pts[i-1].n*1.02+1){ sobrev = false; break; }
+  if(sobrev){ var topo = pts[0].n || 1; return pts.map(function(p){ return { t:p.t, y:Math.min(1, p.n/topo) }; }); }
+  var acc = 0, out = []; for(var j=pts.length-1;j>=0;j--){ acc += pts[j].n; out.unshift({ t:pts[j].t, n:acc }); }
+  var tot = out[0].n || 1; return out.map(function(p){ return { t:p.t, y:p.n/tot }; });
+}
+function crEm(curva, seg){ var m = null; curva.forEach(function(p){ if(p.t <= seg) m = p; }); return m ? m.y : null; }
+function crBuscarVturb(){
+  var p = crPeriodo(), player = (crPlayers||[]).filter(function(x){ return String(x.id) === crPlayer; })[0] || {};
+  var valores = []; (crDados && crDados.linhas || []).forEach(function(l){ (l.conteudos||[]).forEach(function(c){ if(valores.length < 12 && valores.indexOf(c) < 0) valores.push(c); }); });
+  crVturb = { carregando: true };
+  fetch('/api/vturb/por-campo?player='+encodeURIComponent(crPlayer)+'&campo=utm_content&de='+p.de+'&ate='+p.ate+
+        (valores.length ? '&valores='+encodeURIComponent(valores.join(',')) : '')+(player.duracao ? '&duracao='+player.duracao : ''))
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){
+      var pitch = Number(player.pitch) || 0, porLinha = {}, todas = [];
+      (d.grupos||[]).forEach(function(g){
+        var curva = crCurva(g.pontos); if(!curva.length) return;
+        todas.push(curva);
+        var l = crCasarLinha(g.nome); if(!l) return;
+        porLinha[l.chave] = { curva: curva, pitch: pitch ? crEm(curva, pitch) : null, grupo: g.nome };
+      });
+      crVturb = { porLinha: porLinha, pitch: pitch, media: crMedia(todas), aviso: d.aviso || (pitch ? '' : 'Essa VSL não tem o pitch marcado — marque em Criativos & VSL pra ver quem passou dele.') };
+      crPintar();
+    }).catch(function(e){ crVturb = { erro: e.message }; crPintar(); });
+}
+function crCasarLinha(conteudo){
+  var t = String(conteudo||'').trim(), T = t.toUpperCase();
+  var ls = (crDados && crDados.linhas) || [];
+  return ls.filter(function(l){ return (l.ids||[]).indexOf(t) >= 0 || (l.conteudos||[]).indexOf(t) >= 0; })[0] ||
+         ls.filter(function(l){ return /^AD/i.test(l.chave) && T.indexOf(String(l.chave).toUpperCase()) >= 0; })[0] || null;
+}
+function crMedia(curvas){
+  if(!curvas.length) return [];
+  var ts = {}; curvas.forEach(function(c){ c.forEach(function(p){ ts[p.t] = 1; }); });
+  return Object.keys(ts).map(Number).sort(function(a,b){ return a-b; }).map(function(t){
+    var s = 0, n = 0; curvas.forEach(function(c){ var y = crEm(c, t); if(y != null){ s += y; n++; } });
+    return { t:t, y: n ? s/n : 0 };
+  });
+}
+function crSvg(curva, media, pitch){
+  var W = 560, H = 150, P = 26, maxT = 1;
+  curva.concat(media||[]).forEach(function(p){ if(p.t > maxT) maxT = p.t; });
+  var x = function(t){ return P + (t/maxT)*(W-2*P); }, y = function(v){ return 10 + (1-v)*(H-36); };
+  var linha = function(c){ return c.map(function(p,i){ return (i?'L':'M')+x(p.t).toFixed(1)+' '+y(p.y).toFixed(1); }).join(' '); };
+  var grade = [0,.25,.5,.75,1].map(function(v){ return '<line x1="'+P+'" x2="'+(W-P)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="currentColor" opacity=".08"/>'+
+    '<text x="'+(P-6)+'" y="'+(y(v)+3)+'" font-size="9" text-anchor="end" fill="currentColor" opacity=".5">'+Math.round(v*100)+'%</text>'; }).join('');
+  var mm = function(s){ return Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0'); };
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:720px;height:auto;display:block;color:var(--text)" role="img" aria-label="Retenção da VSL de quem veio deste anúncio, comparada com a média">'+grade+
+    (pitch ? '<line x1="'+x(pitch)+'" x2="'+x(pitch)+'" y1="8" y2="'+(H-26)+'" stroke="#FF5926" stroke-dasharray="4 3"/><text x="'+(x(pitch)+4)+'" y="18" font-size="10" fill="#FF5926">pitch '+mm(pitch)+'</text>' : '')+
+    (media && media.length ? '<path d="'+linha(media)+'" fill="none" stroke="currentColor" opacity=".35" stroke-width="1.5" stroke-dasharray="3 3"/>' : '')+
+    '<path d="'+linha(curva)+'" fill="none" stroke="#1B9CFA" stroke-width="2.2"/>'+
+    '<text x="'+P+'" y="'+(H-8)+'" font-size="9" fill="currentColor" opacity=".5">0:00</text><text x="'+(W-P)+'" y="'+(H-8)+'" font-size="9" text-anchor="end" fill="currentColor" opacity=".5">'+mm(maxT)+'</text></svg>'+
+    '<div class="fx-sub">Azul: quem veio deste anúncio. Tracejado: média de todos os anúncios da VSL.</div>';
+}
+function crPintar(){
+  var el = document.getElementById('cr-corpo'); var d = crDados; if(!el || !d) return;
+  var ls = d.linhas || [], vt = crVturb;
+  var pc = function(x){ return x==null ? '—' : Math.round(x*100)+'%'; };
+  var ex = ls.filter(function(l){ return l.estrutura || l.contas.length; })[0];
+  var h = crTopo();
+  if(ex) h += '<div class="fx-cart" style="padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:var(--text2)">O nome <b style="color:var(--text)">'+fnEsc(ex.nomes[0])+'</b> vira colunas: '+
+    [ex.estrutura && 'estrutura '+fnEsc(ex.estrutura), ex.nicho && 'nicho '+fnEsc(ex.nicho), 'anúncio '+fnEsc(ex.chave), ex.contas[0] && 'conta '+fnEsc(ex.contas[0])].filter(Boolean).join(' · ')+
+    '. Veiculações do mesmo AD somam juntas.</div>';
+  if(vt && vt.erro) h += '<div class="fx-aviso"><b>A VTurb não respondeu</b>'+fnEsc(vt.erro)+'</div>';
+  else if(vt && vt.aviso) h += '<div class="fx-aviso"><b>Sobre a coluna do pitch</b>'+fnEsc(vt.aviso)+'</div>';
+  if(!d.temPixel && ls.length) h += '<div class="fx-aviso"><b>“Chega na VSL” está vazio</b>Sem o pixel na página, não dá pra saber quantos dos cliques chegaram de verdade. As outras colunas vêm da Utmify e funcionam normal.</div>';
+  h += '<div class="fx-cart"><div style="overflow-x:auto"><table class="sv-tab" style="min-width:880px"><tr><th>Anúncio</th><th class="n">Gasto</th><th class="n">CTR</th><th class="n">Cliques</th><th class="n">Chega na VSL</th><th class="n">Passa do pitch</th><th class="n">Checkout</th><th class="n">Vendas</th><th class="n">CPA</th><th class="n">ROAS</th><th>Diagnóstico</th></tr>'+
+    (ls.length ? ls.map(function(l, i){
+      var v = vt && vt.porLinha && vt.porLinha[l.chave];
+      var cls = { ok:'sv-ok', ruim:'sv-ruim', atencao:'sv-atencao', info:'lc-info' }[l.diagnostico.nivel] || 'lc-info';
+      var linha = '<tr class="cr-l" onclick="crAberto=(crAberto==='+i+'?null:'+i+');crPintar()"><td><b>'+fnEsc(l.chave)+'</b>'+(l.contas.length?'<div class="fx-sub">'+fnEsc(l.contas.join(', '))+'</div>':'')+'</td>'+
+        '<td class="n">'+fnDin(l.investimento)+'</td><td class="n">'+l.ctr.toFixed(1).replace('.',',')+'%</td><td class="n">'+fnNum(l.cliques)+'</td>'+
+        '<td class="n">'+pc(l.pctChegou)+'</td><td class="n">'+(v && v.pitch!=null ? '<b style="color:'+(v.pitch>=.25?'var(--green)':'var(--text)')+'">'+pc(v.pitch)+'</b>' : (vt && vt.carregando ? '…' : '—'))+'</td>'+
+        '<td class="n">'+(l.cliques?(l.pctCheckout*100).toFixed(1).replace('.',',')+'%':'—')+'</td><td class="n">'+fnNum(l.vendas)+'</td>'+
+        '<td class="n">'+(l.cpa!=null?fnDin(l.cpa):'—')+'</td><td class="n"><b style="color:'+(l.roas>=1.5?'var(--green)':l.roas<.8?'var(--red)':'var(--text)')+'">'+l.roas.toFixed(2).replace('.',',')+'</b></td>'+
+        '<td><span class="sv-pill '+cls+'">'+fnEsc(l.diagnostico.rot)+'</span></td></tr>';
+      if(crAberto === i) linha += '<tr><td colspan="11" style="background:var(--bg3)">'+(v && v.curva ? crSvg(v.curva, vt.media, vt.pitch) :
+        '<div class="fx-sub">'+(crPlayer ? 'A VTurb não tem visitas com o utm_content deste anúncio nessa VSL.' : 'Escolha a VSL lá em cima pra ver a curva de retenção de quem veio deste anúncio.')+'</div>')+
+        '<div class="fx-sub" style="margin-top:6px">Veiculações: '+fnEsc(l.nomes.join(' · '))+'</div></td></tr>';
+      return linha;
+    }).join('') : '<tr><td colspan="11" class="fx-sub">Nenhum anúncio com gasto no período.</td></tr>')+
+  '</table></div></div>'+
+  '<div class="fx-dupla" style="margin-top:14px">'+
+    '<div class="fx-cart"><b style="font-size:13px">Por que isso importa</b><div class="fx-sub" style="margin-top:4px">CTR mostra se o anúncio para o dedo. “Passa do pitch” mostra se ele traz a pessoa certa. Anúncio com CTR alto e pitch baixo traz gente que sai antes da oferta.</div></div>'+
+    '<div class="fx-cart"><b style="font-size:13px">De onde vem cada coluna</b><div class="fx-sub" style="margin-top:4px">Utmify (gasto, CTR, cliques, checkout, vendas) + pixel (chega na VSL) + VTurb pelo utm_content (pitch). Hook e hold rate precisam das métricas de vídeo da API da Meta — ainda não conectada.</div></div>'+
+  '</div>';
+  el.innerHTML = h;
 }
 
 var svDados = null, svPedido = 0;
