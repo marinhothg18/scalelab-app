@@ -6332,7 +6332,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_canais',              // canais de trafego; a tela le por /api/canais
   'sl_regras',              // regras automaticas; a tela le por /api/regras
   'sl_regras_log',          // log das regras; idem
-  'sl_funis_versoes'        // fotos das versoes do funil; a tela le por /api/funis/versoes
+  'sl_funis_versoes',       // fotos das versoes do funil; a tela le por /api/funis/versoes
+  'sl_funil_notas'          // anotacoes do grafico por dia; a tela le por /api/funil/resultado
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -8876,7 +8877,7 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     if (!interno) {
       if (tipo === 'saiu')    _atSaida(etapa, c, pg);
       if (tipo === 'clique' && !Number(c.player))  _atClique(etapa, c.rotulo, c.posicao, pg);
-      if (tipo === 'friccao') _atFriccao(etapa, c.rotulo, c.motivo, pg);
+      if (tipo === 'friccao' && !_ehPlayer(c.rotulo)) _atFriccao(etapa, c.rotulo, c.motivo, pg);
     }
 
     _fFeedPush({ momento: new Date().toISOString(), funil, etapa, tipo,
@@ -9236,8 +9237,10 @@ function _pxRegistrar(c, req, interno, quando) {
     // ── visitante ──
     let v = _q('SELECT id, interno, sessoes, pitch_em, checkout_em FROM visitantes WHERE id=?').get(vis);
     if (!v) {
-      const pf = pr.utm_source || utm.source, pm = pr.utm_medium || utm.medium, pc = pr.utm_campaign || utm.campaign,
-            pn = pr.utm_content || utm.content, pt = pr.utm_term || utm.term;
+      const aq = aqui || {};
+      const pf = pr.utm_source || aq.utm_source || utm.source, pm = pr.utm_medium || aq.utm_medium || utm.medium,
+            pc = pr.utm_campaign || aq.utm_campaign || utm.campaign, pn = pr.utm_content || aq.utm_content || utm.content,
+            pt = pr.utm_term || aq.utm_term || utm.term;
       _q(`INSERT INTO visitantes(id, primeiro, ultimo, p_fonte, p_midia, p_camp, p_cont, p_termo, p_em, p_pg, p_ref,
             fbclid, fbc, fbp, interno, interno_por)
           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(vis, agora, agora,
@@ -9328,7 +9331,7 @@ function _pxRegistrar(c, req, interno, quando) {
     if (tipo === 'checkout' && c.destino) extra.destino = String(c.destino).slice(0, 60);
     if (tipo === 'entrou') { if (c.variante) extra.variante = String(c.variante).slice(0, 40); if (c.teste) extra.teste = String(c.teste).slice(0, 60); if (c.retorno) extra.retorno = 1; }
     const rot = txt(c.rotulo, 80);
-    if (_EV_GUARDA.has(tipo) && s.eventos < EVENTOS_POR_SESSAO) {
+    if (_EV_GUARDA.has(tipo) && s.eventos < EVENTOS_POR_SESSAO && !(tipo === 'friccao' && _ehPlayer(c.rotulo))) {
       // vídeo guarda só os marcos (play, 1 min, 10 min); o pulso de cada minuto
       // fica na memória, pra tela ao vivo
       const segV = Number(c.seg) || 0;
@@ -9352,7 +9355,7 @@ function _pxRegistrar(c, req, interno, quando) {
       _q('INSERT INTO eventos(sessao, visitante, funil, etapa, tipo, pg, em, rot, extra) VALUES(?,?,?,?,?,?,?,?,?)')
         .run(s.id, vis, funil || null, etapa || null, 'pitch', pg || null, agora, null, JSON.stringify({ seg: Number(c.max || c.seg) || 0 }));
     }
-    if (tipo === 'friccao' && c.motivo === 'morto') {
+    if (tipo === 'friccao' && c.motivo === 'morto' && !_ehPlayer(c.rotulo)) {
       _q('UPDATE sessoes SET mortos=mortos+1 WHERE id=?').run(s.id);
       _q('UPDATE visitantes SET mortos=mortos+1 WHERE id=?').run(vis);
     }
@@ -9403,6 +9406,9 @@ setInterval(() => {
   const corteV = Date.now() - 3 * 60 * 1000;
   for (const [k, v] of _pVideo) if (v.em < corteV) _pVideo.delete(k);
 }, 5 * 60 * 1000);
+
+// rótulo de clique que é o player (ou um iframe/vídeo): nunca é clique morto
+const _ehPlayer = r => /vturb|smartplayer|converteai|^iframe$|^video$|^vid[-_]/i.test(String(r || '').trim());
 
 // ── Casamento venda ↔ pessoa ────────────────────────────────────────────────
 // A Payt não devolve o src e às vezes limpa o sck: ligar só pelo id deixava a
@@ -10008,6 +10014,340 @@ app.post('/api/pessoa/:id/interno', authDiretoria, (req, res) => {
       writeDB(dbj);
       res.json({ ok: true, interno: marcar, pessoas: alvo.length });
     } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── RESULTADO DO FUNIL ──
+// O dinheiro do funil: o gasto das campanhas DESTE funil (pela regra de
+// campanha da origem) contra as vendas que chegaram por ele. Antes o gasto
+// vivia em Métricas de Ads, sem ligação nenhuma com o funil.
+// ══════════════════════════════════════════════════════
+// Gasto por campanha e por dia, guardado aqui: dia fechado não é buscado de
+// novo; hoje e ontem são relidos a cada 10 min (a Meta fecha o dia atrasada).
+async function _campDia(dia, projetoId, podeBuscar) {
+  const proj = String(projetoId || '');
+  const ok = _q('SELECT em FROM camp_dia_ok WHERE dia=? AND projeto=?').get(dia, proj);
+  const recente = dia >= _diaBR(Date.now() - 86400000);
+  const precisa = !ok || (recente && Date.now() - ok.em > 10 * 60000);
+  const arquivo = () => _q('SELECT * FROM camp_dia WHERE dia=? AND projeto=?').all(dia, proj);
+  if (!precisa) return { linhas: arquivo(), buscou: false };
+  if (!podeBuscar) return { linhas: arquivo(), buscou: false, faltou: !ok };
+  try {
+    const achado = await _utmifyDashboardsAtivos();
+    const lista = _filtrarProjeto(achado.lista, proj);
+    const soma = {};
+    for (const d of lista) {
+      const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      const r = await _utmifyChamarTool(achado.cfg.token, 'get_meta_ad_objects', {
+        dashboardId: d.id, level: 'campaign', dateRange: { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off } });
+      ((r && r.results) || []).forEach(c => {
+        const id = String(c.id || c.campaignId || c.name || '').slice(0, 40);
+        if (!id) return;
+        const x = soma[id] || (soma[id] = { id, nome: String(c.name || '').trim().slice(0, 160), conta: String(c.accountId || '').slice(0, 40), gasto: 0, imp: 0, cliques: 0 });
+        x.gasto += (Number(c.spend) || 0) / 100; x.imp += Number(c.impressions) || 0; x.cliques += Number(c.inlineLinkClicks) || 0;
+      });
+    }
+    const db = _pessoas();
+    db.exec('BEGIN');
+    try {
+      _q('DELETE FROM camp_dia WHERE dia=? AND projeto=?').run(dia, proj);
+      Object.values(soma).forEach(x => _q('INSERT INTO camp_dia(dia, projeto, id, nome, conta, gasto, imp, cliques) VALUES(?,?,?,?,?,?,?,?)')
+        .run(dia, proj, x.id, x.nome, x.conta, x.gasto, x.imp, x.cliques));
+      _q('INSERT INTO camp_dia_ok(dia, projeto, em) VALUES(?,?,?) ON CONFLICT(dia, projeto) DO UPDATE SET em=excluded.em').run(dia, proj, Date.now());
+      db.exec('COMMIT');
+    } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; }
+    return { linhas: arquivo(), buscou: true };
+  } catch (e) {
+    return { linhas: arquivo(), buscou: false, erro: e.message, faltou: !ok };
+  }
+}
+const _campNaFila = new Set();
+function _campAtualizarDepois(de, ate, proj) {
+  const k = de + '|' + ate + '|' + proj;
+  if (_campNaFila.has(k)) return;
+  _campNaFila.add(k);
+  _campanhasPeriodo(de, ate, proj, 3).catch(() => {}).then(() => _campNaFila.delete(k));
+}
+async function _campanhasPeriodo(de, ate, projetoId, maxBuscas) {
+  const dias = [];
+  for (let t = Date.parse(ate + 'T12:00:00Z'); dias.length < 400; t -= 86400000) {
+    const d = new Date(t).toISOString().slice(0, 10);
+    if (d < de) break;
+    dias.push(d);
+  }
+  const porDia = {}; let buscas = 0, faltam = 0; const erros = [];
+  for (const d of dias) {            // do mais recente pro mais antigo: o que importa chega antes
+    const r = await _campDia(d, projetoId, buscas < (maxBuscas == null ? 8 : maxBuscas));
+    if (r.buscou) buscas++;
+    if (r.faltou) faltam++;
+    if (r.erro && erros.indexOf(r.erro) < 0) erros.push(r.erro);
+    porDia[d] = r.linhas;
+  }
+  return { porDia, faltam, erros };
+}
+// Que campanhas são deste funil: a regra do Resultado (se houver) ou a que
+// está nas origens do mapa (campanha fixa ou "contém CONCURSO").
+function _regraCampanhas(f) {
+  const esc = f && f.escopoCampanhas;
+  if (esc && esc.valor) {
+    const v = String(esc.valor);
+    if (esc.tipo === 'lista') { const l = v.split(/[\n,;]+/).map(_nrm).filter(Boolean); return n => l.includes(_nrm(n)); }
+    if (esc.tipo === 'regex') { try { const re = new RegExp(v, 'i'); return n => re.test(String(n || '')); } catch (e) { return null; } }
+    const r = _nrm(v); return n => _nrm(n).indexOf(r) >= 0;
+  }
+  const fontes = (f.fontes || []).concat((f.etapas || []).filter(e => e.tipo === 'fonte'));
+  const fixas = fontes.map(x => x.utmCampanha).filter(Boolean).map(_nrm);
+  const contem = fontes.map(x => x.utmRegra).filter(Boolean).map(_nrm);
+  if (!fixas.length && !contem.length) return null;
+  return n => { const x = _nrm(n); return fixas.includes(x) || contem.some(r => x.indexOf(r) >= 0); };
+}
+function _descRegra(f) {
+  const esc = f && f.escopoCampanhas;
+  if (esc && esc.valor) return esc.tipo === 'lista' ? 'lista de campanhas' : (esc.tipo === 'regex' ? 'regex ' + esc.valor : 'campanhas com “' + esc.valor + '”');
+  const fontes = (f.fontes || []);
+  const c = fontes.find(x => x.utmRegra); if (c) return 'campanhas com “' + c.utmRegra + '”';
+  const x = fontes.find(y => y.utmCampanha); if (x) return 'campanha ' + x.utmCampanha;
+  return '';
+}
+async function _projetoIdDoFunil(f) {
+  try {
+    const { lista } = await _utmifyDashboardsAtivos();
+    const d = lista.find(x => String((x.nome || '').trim()) === String(f.projeto || '').trim());
+    return d ? String(d.id) : '';
+  } catch (e) { return ''; }
+}
+// Vendas pagas do período que são deste funil, e por onde cada uma entrou:
+//   jornada  — a pessoa esteve numa página do mapa
+//   campanha — sem pessoa, mas a campanha da UTM é deste funil
+//   produto  — sem pessoa nem campanha, funil único do projeto e produto do projeto
+function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
+  const esq = _escopoSql(esc, 'p');
+  const todos = _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND renovacao=0').all(per.de, per.ate);
+  const cacheVis = {};
+  const doFunil = vis => {
+    if (cacheVis[vis] === undefined) cacheVis[vis] = !!_q('SELECT 1 FROM paginas p WHERE p.visitante=? AND ' + esq.where + ' LIMIT 1').get(vis, ...esq.args);
+    return cacheVis[vis];
+  };
+  const funisDoProj = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(x => x && x.projeto === esc.f.projeto);
+  const produtos = _produtosCfg(dbj);
+  const unico = funisDoProj.length === 1;
+  const campDe = v => {
+    const t = String(v || '').trim(); if (!t) return '';
+    const partes = t.split('|').map(x => x.trim());
+    for (const p of partes) { if (/^\d{6,}$/.test(p) && nomeCampanha[p]) return nomeCampanha[p]; }
+    return partes[0];
+  };
+  const out = [];
+  todos.forEach(o => {
+    let por = '';
+    if (o.visitante && doFunil(o.visitante)) por = 'jornada';
+    else if (!o.visitante && regra) { const n = campDe(o.cred_camp || o.camp); if (n && regra(n)) por = 'campanha'; }
+    if (!por && !o.visitante && unico) {
+      const pr = _produtoDe(o.produto, produtos);
+      if (pr ? (pr.projeto === esc.f.projeto) : !produtos.length) por = 'produto';
+    }
+    if (por) out.push(Object.assign({ por }, o));
+  });
+  return out;
+}
+
+// faturamento e margem: mesma regra de sl_vendas (Diretoria)
+app.get('/api/funil/resultado', authDiretoria, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const f = esc.f, per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const custos = _custosCfg(dbj);
+
+    // ── investimento: só as campanhas deste funil ──
+    const projetoId = await _projetoIdDoFunil(f);
+    const camp = await _campanhasPeriodo(per.de, per.ate, projetoId, Number(req.query.buscar) === 0 ? 0 : 8);
+    const regra = _regraCampanhas(f);
+    const nomeCampanha = {}, contas = new Set(), porDiaGasto = {};
+    let gasto = 0, imp = 0, cliques = 0, campanhas = {};
+    Object.keys(camp.porDia).forEach(d => camp.porDia[d].forEach(c => {
+      nomeCampanha[c.id] = c.nome;
+      if (regra && !regra(c.nome)) return;
+      gasto += c.gasto; imp += c.imp; cliques += c.cliques;
+      porDiaGasto[d] = (porDiaGasto[d] || 0) + c.gasto;
+      if (c.conta && c.gasto > 0) contas.add(c.conta);
+      const k = c.nome || c.id;
+      const x = campanhas[k] || (campanhas[k] = { nome: c.nome, gasto: 0, cliques: 0, imp: 0 });
+      x.gasto += c.gasto; x.cliques += c.cliques; x.imp += c.imp;
+    }));
+
+    // ── pessoas: a mesma contagem do topo, do Mapa e dos Leads ──
+    const esq = _escopoSql(esc, 'p');
+    const conta = extra => _q('SELECT COUNT(DISTINCT p.visitante) n FROM paginas p JOIN sessoes s ON s.id = p.sessao WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ' +
+                              esq.where + (extra || '')).get(per.de, per.ate, ...esq.args).n || 0;
+    const chegaram = conta(), pitch = conta(' AND s.pitch=1'), checkout = conta(' AND s.checkout=1');
+    const porDiaPessoas = {};
+    _q('SELECT p.dia, COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ' + esq.where + ' GROUP BY p.dia')
+      .all(per.de, per.ate, ...esq.args).forEach(r => { porDiaPessoas[r.dia] = r.n; });
+
+    // ── vendas ──
+    const vendas = _vendasDoFunil(dbj, esc, per, nomeCampanha, regra);
+    const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
+    const pagas = vendas.filter(o => o.pago && !o.estorno);
+    const estornos = vendas.filter(o => o.estorno);
+    const fat = pagas.reduce((a, o) => a + liq(o), 0);
+    const reembolso = estornos.reduce((a, o) => a + (Number(o.valor) || 0), 0);
+    const clientes = new Set(pagas.map(o => o.lead || o.visitante || o.pedido || o.id)).size;
+    const produtos = _produtosCfg(dbj);
+    const principal = produtos.find(p => p.papel === 'principal' && (p.projeto === f.projeto || p.projeto === projetoId));
+    const doPrincipal = principal ? pagas.filter(o => { const pr = _produtoDe(o.produto, produtos); return pr && pr.id === principal.id; }) : pagas;
+    const ticketPrincipal = doPrincipal.length ? doPrincipal.reduce((a, o) => a + liq(o), 0) / doPrincipal.length : 0;
+    const saldo = fat - reembolso;
+    const imposto = saldo * (custos.imposto || 0) / 100;
+    const impostoFb = gasto * (custos.impostoAds || 0) / 100;
+    const custoProduto = pagas.length * (custos.custoVenda || 0);
+    const margem = saldo - imposto - gasto - impostoFb - custoProduto;
+    const aliquota = (custos.imposto || 0) / 100;
+    const roasEmpate = (1 + (custos.impostoAds || 0) / 100) / Math.max(0.05, 1 - aliquota);
+    const roasAlvo = Number(f.roasAlvo) > 0 ? Number(f.roasAlvo) : Math.round(roasEmpate * 100) / 100;
+    const porDiaVendas = {};
+    pagas.forEach(o => { const x = porDiaVendas[o.dia] || (porDiaVendas[o.dia] = { n: 0, fat: 0 }); x.n++; x.fat += liq(o); });
+
+    // ── etapas com custo e a maior queda ──
+    const compraram = pagas.length;
+    const etapas = [
+      { k: 'impressoes', nome: 'Impressões', fonte: 'Meta', n: imp, custo: imp ? gasto / imp * 1000 : 0, rotCusto: 'CPM' },
+      { k: 'cliques', nome: 'Cliques', fonte: 'Meta', n: cliques, custo: cliques ? gasto / cliques : 0, rotCusto: 'CPC' },
+      { k: 'chegaram', nome: 'Chegaram na página', fonte: 'pixel TMX', n: chegaram, custo: chegaram ? gasto / chegaram : 0 },
+      { k: 'pitch', nome: 'Passaram do pitch', fonte: 'Vturb', n: pitch, custo: pitch ? gasto / pitch : 0 },
+      { k: 'checkout', nome: 'Abriram checkout', fonte: 'clique no botão', n: checkout, custo: checkout ? gasto / checkout : 0 },
+      { k: 'compraram', nome: 'Compraram', fonte: 'webhook Payt', n: compraram, custo: compraram ? gasto / compraram : 0, rotCusto: 'CPA' }
+    ];
+    let queda = null;
+    for (let i = 1; i < etapas.length; i++) {
+      const a = etapas[i - 1], b = etapas[i];
+      if (a.k === 'impressoes' || !a.n || (b.k === 'pitch' && !b.n)) continue;   // sem Vturb no funil, o pitch fica fora
+      const de = (b.k === 'checkout' && !pitch) ? etapas[2] : a;
+      const taxa = b.n / (de.n || 1);
+      if (!queda || taxa < queda.taxa) queda = { de: de.k, para: b.k, deNome: de.nome, paraNome: b.nome, taxa };
+    }
+    if (queda) {
+      const tent = _q('SELECT motivo, COUNT(*) n FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=0 AND motivo IS NOT NULL GROUP BY motivo ORDER BY n DESC')
+        .all(per.de, per.ate);
+      const totT = tent.reduce((a, r) => a + r.n, 0), cartao = tent.filter(r => /cart/i.test(r.motivo)).reduce((a, r) => a + r.n, 0);
+      if (queda.para === 'compraram') {
+        queda.frase = totT ? (Math.round(cartao / totT * 10) + ' de cada 10 tentativas que não pagaram foram ' + (cartao / totT >= 0.5 ? 'cartão recusado' : 'pix ou boleto sem pagar') +
+                        '. Veja quem abriu o checkout e não comprou antes de mexer em criativo.')
+                     : 'Veja quem abriu o checkout e não comprou antes de mexer em criativo.';
+        queda.acao = { rotulo: 'Ver checkout sem compra', aba: 'leads', filtro: { status: 'checkout' } };
+      } else if (queda.para === 'chegaram') {
+        queda.frase = Math.round((1 - queda.taxa) * 100) + '% de quem clica não chega na página. É redirect lento, página pesada ou pixel faltando.';
+        queda.acao = { rotulo: 'Abrir Pixel e saúde', aba: 'pixel' };
+      } else if (queda.para === 'pitch') {
+        queda.frase = 'A VSL perde a maioria antes da oferta. Veja em que minuto eles saem.';
+        queda.acao = { rotulo: 'Ver onde saem', aba: 'atencao' };
+      } else if (queda.para === 'checkout') {
+        queda.frase = 'Viram a oferta e não clicaram em comprar. Confira cliques mortos no botão e no card do plano.';
+        queda.acao = { rotulo: 'Ver cliques', aba: 'atencao' };
+      } else {
+        queda.frase = 'Esta é a passagem que mais perde gente no período.';
+      }
+    }
+
+    // ── por dia ──
+    const dias = [];
+    for (let t = Date.parse(per.de + 'T12:00:00Z'); ; t += 86400000) {
+      const d = new Date(t).toISOString().slice(0, 10); if (d > per.ate || dias.length > 400) break;
+      const g = porDiaGasto[d] || 0, v = porDiaVendas[d] || { n: 0, fat: 0 };
+      dias.push({ dia: d, gasto: g, fat: v.fat, vendas: v.n, roas: g ? v.fat / g : 0, chegaram: porDiaPessoas[d] || 0 });
+    }
+    const notas = (Array.isArray(dbj.store[KEY_FUNIL_NOTAS]) ? dbj.store[KEY_FUNIL_NOTAS] : [])
+      .filter(n => n.funil === f.id && n.dia >= per.de && n.dia <= per.ate);
+
+    // ── vendas sem origem (do projeto, no período) ──
+    const semOrigemTodas = _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND sem_origem IS NOT NULL")
+      .all(per.de, per.ate).filter(o => { const pr = _produtoDe(o.produto, produtos); return !produtos.length || !pr || pr.projeto === f.projeto || pr.projeto === projetoId; });
+    const motivos = {};
+    semOrigemTodas.forEach(o => { const m = motivos[o.sem_origem] || (motivos[o.sem_origem] = { motivo: o.sem_origem, vendas: 0, valor: 0 }); m.vendas++; m.valor += Number(o.valor) || 0; });
+
+    // ── por onde a venda chegou ──
+    const canais = _canaisCache();
+    const porCanal = {};
+    pagas.forEach(o => {
+      let k, nome, apoio = false;
+      if (o.cred_canal) {
+        const c = canais.find(x => x.id === o.cred_canal);
+        k = o.cred_canal; nome = c ? c.nome : (o.cred_canal === 'direto' ? 'Direto' : (o.cred_fonte || 'Outro'));
+        if (k === 'meta' && /^ig|insta/i.test(o.cred_fonte || '')) { k = 'meta_ig'; nome = 'Instagram'; }
+        else if (k === 'meta') nome = 'Facebook';
+      } else if (o.apoio) { k = 'apoio'; nome = o.apoio; apoio = true; }
+      else { k = 'sem'; nome = 'Sem origem'; }
+      const x = porCanal[k] || (porCanal[k] = { k, nome, vendas: 0, fat: 0, apoio });
+      x.vendas++; x.fat += liq(o);
+    });
+    const gastoMeta = gasto;
+    const fontes = Object.values(porCanal).sort((a, b) => b.fat - a.fat).map(x => Object.assign(x, {
+      roas: (x.k === 'meta' || x.k === 'meta_ig') && gastoMeta ? x.fat / gastoMeta : null }));
+
+    res.json({ ok: true, funil: { id: f.id, nome: f.nome }, de: per.de, ate: per.ate,
+      regra: _descRegra(f), semRegra: !regra, contas: contas.size, faltamDias: camp.faltam, erros: camp.erros,
+      cards: {
+        investimento: gasto, faturamento: fat, vendas: pagas.length, roas: gasto ? fat / gasto : 0, roasAlvo, roasEmpate,
+        margem, imposto, impostoFb, custoProduto, aliquota: custos.imposto || 0, aliquotaFb: custos.impostoAds || 0,
+        cpa: doPrincipal.length ? gasto / doPrincipal.length : 0, vendasPrincipal: doPrincipal.length,
+        principal: principal ? principal.nome : '', cpaMax: ticketPrincipal * (1 - aliquota) - (custos.custoVenda || 0),
+        ticket: clientes ? fat / clientes : 0, clientes, cac: clientes ? gasto / clientes : 0,
+        reembolso, reembolsoPct: (fat + reembolso) ? reembolso / (fat + reembolso) * 100 : 0, estornos: estornos.length,
+        chargebacks: estornos.filter(o => /chargeback/i.test(o.status || '')).length,
+        porJornada: vendas.filter(o => o.por === 'jornada' && o.pago).length,
+        porCampanha: vendas.filter(o => o.por === 'campanha' && o.pago).length,
+        porProduto: vendas.filter(o => o.por === 'produto' && o.pago).length
+      },
+      topo: { investido: gasto, cliques, chegaram, checkout, compraram },
+      etapas, queda, dias, notas,
+      semOrigem: { total: semOrigemTodas.length, motivos: Object.values(motivos).sort((a, b) => b.vendas - a.vendas) },
+      fontes, campanhas: Object.values(campanhas).sort((a, b) => b.gasto - a.gasto).slice(0, 30) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Anotações da equipe no gráfico por dia ("trocou a VSL em 26/09")
+const KEY_FUNIL_NOTAS = 'sl_funil_notas';
+app.post('/api/funil/notas', authUsuario, (req, res) => {
+  try {
+    const b = req.body || {};
+    const funil = String(b.funil || '').slice(0, 80), dia = String(b.dia || '').slice(0, 10), texto = String(b.texto || '').trim().slice(0, 140);
+    if (!funil || !/^\d{4}-\d{2}-\d{2}$/.test(dia)) return res.status(400).json({ error: 'Informe o funil e o dia.' });
+    const db = readDB();
+    let l = Array.isArray(db.store[KEY_FUNIL_NOTAS]) ? db.store[KEY_FUNIL_NOTAS] : [];
+    if (b.apagar) l = l.filter(n => n.id !== b.apagar);
+    else {
+      if (!texto) return res.status(400).json({ error: 'Escreva a anotação.' });
+      l.push({ id: 'nt' + Date.now().toString(36), funil, dia, texto, autor: (req.user && req.user.nome) || '', em: new Date().toISOString() });
+    }
+    db.store[KEY_FUNIL_NOTAS] = l.slice(-2000);
+    db.timestamps[KEY_FUNIL_NOTAS] = now();
+    writeDB(db);
+    res.json({ ok: true, notas: l.filter(n => n.funil === funil) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Vendas do funil ou sem origem, pra tela abrir a lista por trás do número
+app.get('/api/funil/vendas-lista', authDiretoria, async (req, res) => {
+  try {
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    let l;
+    if (req.query.tipo === 'sem') {
+      l = _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND sem_origem IS NOT NULL ORDER BY em DESC LIMIT 300").all(per.de, per.ate);
+      if (req.query.motivo) l = l.filter(o => o.sem_origem === req.query.motivo);
+    } else {
+      l = _vendasDoFunil(dbj, esc, per, {}, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).sort((a, b) => b.em - a.em).slice(0, 300);
+      if (req.query.dia) l = l.filter(o => o.dia === req.query.dia);
+    }
+    res.json({ ok: true, vendas: l.map(o => ({ pedido: o.pedido, em: o.em, produto: o.produto, valor: o.valor, metodo: o.metodo,
+      visitante: o.visitante, casou: o.casou, semOrigem: o.sem_origem, fonte: o.cred_fonte || o.fonte, anuncio: o.cred_cont || o.cont,
+      utm: [o.fonte, o.camp, o.cont].filter(Boolean).join(' · '), por: o.por || '' })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -10640,6 +10980,331 @@ app.get('/api/links/validador', authUsuario, (req, res) => {
                ok: tipo === 'id' && x.criativo !== '(sem utm_content)' };
     }).sort((a, b) => (a.ok - b.ok) || (b.visitas + b.vendas * 50) - (a.visitas + a.vendas * 50));
     res.json({ ok: true, dias, linhas: linhas.slice(0, 80), foraDoPadrao: linhas.filter(l => !l.ok).length, total: linhas.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── PIXEL E SAÚDE ──
+// Junta o pixel com os alertas que ficavam soltos. A nota vale dinheiro: cada
+// ponto é uma parte das vendas que dá (ou não) pra ligar a um anúncio.
+//   vendas ligadas à jornada 35 · webhook com sck 20 · UTM por ID 15 ·
+//   páginas no mapa 15 · páginas com pixel 15
+// Os problemas vêm em ordem de R$ em jogo, cada um com o botão que resolve.
+// ══════════════════════════════════════════════════════
+const _pxsCache = {};
+app.get('/api/funil/pixel-saude', authUsuario, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const fid = String(req.query.funil || '').slice(0, 80);
+    const pronto = _pxsCache[fid];
+    if (req.query.forcar !== '1' && pronto && Date.now() - pronto.em < 60 * 1000) return res.json(Object.assign({ doCache: true }, pronto.saida));
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, fid);
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const f = esc.f, agora = Date.now(), ini7 = agora - 7 * 86400000, de7 = _diaBR(ini7), hoje = _diaBR(agora);
+    const esq = _escopoSql(esc, 'p');
+    const dir = _ehDir(req);
+
+    // ── vendas pagas dos últimos 7 dias do projeto: quantas ligadas a alguém ──
+    const produtos = _produtosCfg(dbj);
+    const doProjeto = o => { const pr = _produtoDe(o.produto, produtos); return !produtos.length || !pr || pr.projeto === f.projeto; };
+    const pagas7 = _q('SELECT * FROM pedidos WHERE em >= ? AND pago=1 AND estorno=0 AND renovacao=0').all(ini7).filter(doProjeto);
+    const ligadas = pagas7.filter(o => o.visitante);
+    const pctLigadas = pagas7.length ? ligadas.length / pagas7.length : null;
+    const semOrigem = pagas7.filter(o => !o.visitante && !o.cred_canal);
+    const valorSemOrigem = semOrigem.reduce((a, o) => a + (Number(o.valor) || 0), 0);
+
+    // ── webhook com sck: dos eventos do checkout, quantos trouxeram o id ──
+    const ev7 = _q('SELECT COUNT(*) n, SUM(CASE WHEN sck IS NOT NULL AND sck<>\'\' THEN 1 ELSE 0 END) c FROM pedidos WHERE em >= ?').get(ini7);
+    const pctSck = ev7.n ? (ev7.c || 0) / ev7.n : null;
+
+    // ── UTM por id: visitas de anúncio que chegaram com o id do anúncio ──
+    const ses = _q('SELECT s.fonte, s.cont, s.camp FROM sessoes s WHERE s.inicio >= ? AND s.interno=0 AND s.id IN (SELECT DISTINCT p.sessao FROM paginas p WHERE p.dia >= ? AND ' + esq.where + ')')
+      .all(ini7, de7, ...esq.args);
+    const canais = _canaisCache();
+    const deAnuncio = ses.filter(s => { const c = _canalDe(s.fonte, canais); return c && c.anuncios; });
+    const comId = deAnuncio.filter(s => /\d{6,}/.test(String(s.cont || '')));
+    const pctUtm = deAnuncio.length ? comId.length / deAnuncio.length : null;
+    const macros = {};
+    ses.forEach(s => { [s.cont, s.camp].forEach(v => { if (/\{\{/.test(String(v || ''))) macros[v] = (macros[v] || 0) + 1; }); });
+
+    // ── páginas: no mapa x fora; com pixel x sem ──
+    const fora = _q('SELECT p.pg, COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia >= ? AND p.interno=0 AND p.funil IN (' + _ph(esc.ids.length) + ') AND NOT ' +
+                    esq.where + ' GROUP BY p.pg ORDER BY n DESC').all(de7, ...esc.ids, ...esq.args);
+    const dentro = _q('SELECT p.pg, COUNT(DISTINCT p.visitante) n, MAX(p.em) ult FROM paginas p WHERE p.dia >= ? AND ' + esq.where + ' GROUP BY p.pg').all(de7, ...esq.args);
+    const pgsMapa = dentro.length, pgsTotal = dentro.length + fora.length;
+    const gentePorPg = {}; dentro.forEach(x => { gentePorPg[x.pg] = x; });
+    const etapasUrl = (f.etapas || []).filter(e => e.url && e.tipo !== 'checkout' && e.tipo !== 'recuperacao' && e.tipo !== 'fonte');
+    const comPixel = etapasUrl.filter(e => { const x = gentePorPg[_normPg(e.url)]; return x && x.ult >= agora - 86400000; });
+
+    const pontos = {
+      ligadas: { peso: 35, valor: pctLigadas, rot: 'Vendas ligadas à jornada', txt: pctLigadas == null ? 'sem venda em 7 dias' : Math.round(pctLigadas * 100) + '%' },
+      sck:     { peso: 20, valor: pctSck, rot: 'Webhook com sck', txt: pctSck == null ? 'sem evento' : Math.round(pctSck * 100) + '%' },
+      utm:     { peso: 15, valor: pctUtm, rot: 'UTM por ID', txt: pctUtm == null ? 'sem anúncio' : Math.round(pctUtm * 100) + '%' },
+      mapa:    { peso: 15, valor: pgsTotal ? pgsMapa / pgsTotal : null, rot: 'Páginas no mapa', txt: pgsTotal ? pgsMapa + ' de ' + pgsTotal : 'sem visita' },
+      pixel:   { peso: 15, valor: etapasUrl.length ? comPixel.length / etapasUrl.length : null, rot: 'Páginas com pixel', txt: etapasUrl.length ? comPixel.length + ' de ' + etapasUrl.length : 'sem link' }
+    };
+    // critério sem dado nenhum não pesa contra: a nota é sobre o que dá pra medir
+    let soma = 0, pesoMedido = 0;
+    Object.values(pontos).forEach(p => { if (p.valor != null) { soma += p.peso * p.valor; pesoMedido += p.peso; } });
+    const nota = pesoMedido ? Math.round(soma / pesoMedido * 100) : 0;
+
+    // ── problemas, por R$ em jogo ──
+    const ticket = pagas7.length ? pagas7.reduce((a, o) => a + (Number(o.valor) || 0), 0) / pagas7.length : 0;
+    const probs = [];
+    const raw = Array.isArray(dbj.store[KEY_VENDAS_RAW]) ? dbj.store[KEY_VENDAS_RAW] : [];
+    const ultRaw = raw.length ? raw[raw.length - 1] : null;
+    const ultLink = ultRaw ? _doLink(ultRaw.payload || {}) : {};
+    const ultSck = ultRaw ? (_pega(ultRaw.payload || {}, ['sck', 'src', 'trackingParameters.sck']) || ultLink.sck || ultLink.src || '') : '';
+    if (ultRaw && !/tmx_/.test(String(ultSck))) {
+      probs.push({ nivel: 'ruim', emJogo: valorSemOrigem, chave: 'sck',
+        titulo: 'Checkout está chegando sem o id do visitante',
+        texto: 'Último webhook: utm_source=' + (ultLink.utm_source || _pega(ultRaw.payload || {}, ['utm_source']) || 'vazio') + ', sck ' + (ultSck ? '"' + String(ultSck).slice(0, 30) + '"' : 'vazio') +
+               '. Sem o id, a venda só liga pela jornada se o e-mail já apareceu antes. Confira se o pixel está na página do botão de compra.',
+        acao: { rotulo: 'Ver como resolver', tipo: 'sck' } });
+    }
+    if (fora.length) {
+      const gente = fora.reduce((a, x) => a + x.n, 0);
+      probs.push({ nivel: 'ruim', emJogo: ticket * Math.max(1, Math.round(gente * 0.004)), chave: 'fora',
+        titulo: fora.length + ' página' + (fora.length === 1 ? ' recebe' : 's recebem') + ' gente e não ' + (fora.length === 1 ? 'está' : 'estão') + ' no mapa',
+        texto: fora.slice(0, 2).map(x => '/' + x.pg.split('/').slice(1).join('/') + ' (' + x.n.toLocaleString('pt-BR') + ' pessoas)').join(' e ') +
+               (fora.length > 2 ? ' são as principais' : '') + '. Quem passa só por elas não entra em nenhuma etapa do funil.',
+        acao: { rotulo: 'Adicionar ao mapa', aba: 'mapa' } });
+    }
+    const semUrl = (f.etapas || []).filter(e => !e.url && e.tipo !== 'fonte' && (e.tipo === 'checkout' || e.tipo === 'obrigado'));
+    if (semUrl.length) probs.push({ nivel: 'atencao', emJogo: 0, chave: 'semurl',
+      titulo: semUrl.map(e => e.nome).join(' e ') + ' sem URL',
+      texto: 'Sem URL a etapa nunca conta ninguém. Checkout de terceiro: o clique no botão já marca "abriu checkout" sozinho.',
+      acao: { rotulo: 'Configurar', aba: 'mapa', etapa: semUrl[0].id } });
+    const nMacro = Object.keys(macros).length;
+    if (nMacro) probs.push({ nivel: 'atencao', emJogo: 0, chave: 'macro',
+      titulo: nMacro + ' anúncio' + (nMacro === 1 ? '' : 's') + ' com macro vazia',
+      texto: 'Chegou ' + Object.keys(macros).slice(0, 2).map(m => String(m).slice(0, 40)).join(' e ') + ' ao pé da letra. O anúncio está com a UTM digitada errada.',
+      acao: { rotulo: 'Ver anúncio', tipo: 'macro' } });
+    if (pctUtm != null && pctUtm < 0.8 && deAnuncio.length >= 20) probs.push({ nivel: 'atencao', emJogo: 0, chave: 'utm',
+      titulo: Math.round((1 - pctUtm) * 100) + '% das visitas de anúncio sem o id do anúncio',
+      texto: 'Com o nome no lugar do id, renomear o anúncio quebra o vínculo. Padrão: utm_content={{ad.id}}.',
+      acao: { rotulo: 'Ver o padrão', tipo: 'utm' } });
+    const semPix = etapasUrl.filter(e => comPixel.indexOf(e) < 0);
+    semPix.forEach(e => probs.push({ nivel: 'ruim', emJogo: 0, chave: 'pixel', titulo: 'Página "' + (e.nome || e.id) + '" sem visita do pixel há 24h',
+      texto: 'Ou o pixel não está nela, ou está com o id de outro funil. Teste a URL abaixo.', acao: { rotulo: 'Testar a URL', tipo: 'testar', url: e.url } }));
+    probs.push({ nivel: 'ok', emJogo: 0, chave: 'norm', titulo: '/697 e /697/ contadas como uma página só',
+      texto: 'Normalização de URL ligada: maiúscula, barra no fim e ?parâmetros não viram página nova.', selo: 'corrigido' });
+    const ultEv = _q('SELECT MAX(p.em) m FROM paginas p WHERE ' + esq.where).get(...esq.args).m;
+    const hojeGente = _q('SELECT COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia=? AND ' + esq.where).get(hoje, ...esq.args).n;
+    if (comPixel.length) probs.push({ nivel: 'ok', emJogo: 0, chave: 'vivo', titulo: 'Pixel recebendo em ' + comPixel.length + ' página' + (comPixel.length === 1 ? '' : 's'),
+      texto: (ultEv ? 'último evento há ' + _haQuanto(agora - ultEv) + ' · ' : '') + hojeGente.toLocaleString('pt-BR') + ' pessoas hoje · clique no player Vturb não conta como clique morto' });
+    const ordem = { ruim: 0, atencao: 1, ok: 2 };
+    probs.sort((a, b) => (ordem[a.nivel] - ordem[b.nivel]) || (b.emJogo - a.emJogo));
+    if (!dir) probs.forEach(p => { p.emJogo = null; });
+
+    // ── o que o pixel faz sozinho ──
+    const conta7 = t => _q('SELECT COUNT(*) n FROM eventos WHERE em >= ? AND tipo=?').get(ini7, t).n;
+    const reg = _q("SELECT SUM(tipo='ip') ips, SUM(tipo='visitante') pessoas FROM internos").get();
+    const sozinho = [
+      { ic: '🔗', rot: 'Cola sck e UTMs em todo link de checkout', status: 'ligado' },
+      { ic: '🛒', rot: 'Marca "abriu checkout" no clique do botão', status: conta7('checkout') ? 'ligado' : 'esperando clique' },
+      { ic: '🎬', rot: 'Lê retenção e pitch do player Vturb', status: conta7('video') ? 'ligado' : 'sem player visto' },
+      { ic: '🧑‍💻', rot: 'Ignora tráfego interno (cookie ou IP)', status: (reg.ips || 0) ? reg.ips + ' IP' + (reg.ips === 1 ? '' : 's') : ((reg.pessoas || 0) ? reg.pessoas + ' pessoa' + (reg.pessoas === 1 ? '' : 's') : 'ligado') },
+      { ic: '🔒', rot: 'Consentimento LGPD', status: 'desligado' }
+    ];
+
+    // ── webhook ao vivo: o último que chegou e como foi ligado ──
+    let webhook = null;
+    if (ultRaw) {
+      const p = ultRaw.payload || {}, vn = _normalizarVenda(p);
+      const campo = (k, v, st) => ({ campo: k, valor: v, status: st });
+      const temSck = /tmx_/.test(String(ultSck));
+      const ped = _q('SELECT * FROM pedidos ORDER BY em DESC LIMIT 1').get();
+      webhook = { em: ultRaw.em, campos: [
+          campo('status', vn.status || '', vn.status ? 'ok' : 'falta'),
+          campo('email', _mascEmail(vn.email) || '', vn.email ? 'ok' : 'falta'),
+          campo('sck', ultSck ? String(ultSck).slice(0, 40) : '', temSck ? 'ok' : (ultSck ? 'sem id' : 'falta')),
+          campo('utm_content', vn.utmContent ? String(vn.utmContent).slice(0, 40) : '', _origemVale(vn.utmContent) ? 'ok' : 'vazio'),
+          campo('amount', dir && vn.valor != null ? 'R$ ' + Number(vn.valor).toFixed(2).replace('.', ',') : (vn.valor != null ? '•••' : ''), vn.valor != null ? 'ok' : 'falta')
+        ],
+        ligacao: ped ? { casou: ped.casou || '', visitante: ped.visitante || '', anuncio: ped.cred_cont ? String(ped.cred_cont).split('|')[0] : '',
+                         variante: ped.variante || '', teste: ped.teste || '', semOrigem: ped.sem_origem || '' } : null };
+    }
+
+    const saida = { ok: true, funil: { id: f.id, nome: f.nome }, nota, pontos, emJogo: dir ? valorSemOrigem : null, vendasSemOrigem: semOrigem.length,
+      problemas: probs, sozinho, webhook, macros: Object.entries(macros).map(([v, n]) => ({ valor: v, n })).slice(0, 20),
+      paginas: dentro.map(x => ({ pg: x.pg, pessoas: x.n, ultimo: x.ult })).sort((a, b) => b.pessoas - a.pessoas).slice(0, 30) };
+    _pxsCache[fid] = { em: Date.now(), saida };
+    res.json(saida);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+function _haQuanto(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.round(s / 60) + ' min';
+  if (s < 86400) return Math.round(s / 3600) + 'h';
+  return Math.round(s / 86400) + ' dias';
+}
+
+// "Testar uma URL": abre a página, procura a tag e diz quando foi o último evento
+app.post('/api/funil/testar-url', authUsuario, async (req, res) => {
+  try {
+    const fid = String((req.body && req.body.funil) || '').slice(0, 80);
+    let url = String((req.body && req.body.url) || '').trim().slice(0, 400);
+    if (!url) return res.status(400).json({ error: 'Cole a URL da página.' });
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    const r = await _saudeAbrirPagina(url, fid);
+    const pg = _normPg(url);
+    const ult = _pessoas() ? _q('SELECT MAX(em) m, COUNT(DISTINCT visitante) n FROM paginas WHERE pg=? AND em >= ?').get(pg, Date.now() - 86400000) : null;
+    const quais = _pessoas() ? _q('SELECT funil, etapa, COUNT(*) n FROM paginas WHERE pg=? AND em >= ? GROUP BY funil, etapa ORDER BY n DESC LIMIT 3').all(pg, Date.now() - 7 * 86400000) : [];
+    res.json({ ok: true, url, pg, abriu: !r.erro, http: r.http || null, erro: r.erro || null, tag: !!r.tag, doFunil: !!r.doFunil,
+      etapas: r.etapas || [], ultimoEvento: ult && ult.m ? ult.m : null, pessoas24h: ult ? ult.n : 0, reportaComo: quais });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Páginas fora do mapa ────────────────────────────────────────────────────
+// URLs com o pixel deste funil que não são etapa. Ordenadas por gente, com o
+// data-e mais comum (pra sugerir onde encaixar) e a sugestão automática: se
+// elas levam mais da metade do tráfego de um split, são as variantes dele.
+app.get('/api/funil/fora-do-mapa', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const esq = _escopoSql(esc, 'p');
+    const linhas = _q('SELECT p.pg, COUNT(DISTINCT p.visitante) pessoas FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND p.funil IN (' +
+                      _ph(esc.ids.length) + ') AND NOT ' + esq.where + ' GROUP BY p.pg ORDER BY pessoas DESC LIMIT 60')
+      .all(per.de, per.ate, ...esc.ids, ...esq.args);
+    const pgs = linhas.map(l => {
+      const vendas = _q('SELECT COUNT(DISTINCT o.visitante) n FROM pedidos o WHERE o.pago=1 AND o.estorno=0 AND o.visitante IN (SELECT DISTINCT visitante FROM paginas WHERE pg=? AND dia BETWEEN ? AND ?)')
+        .get(l.pg, per.de, per.ate).n;
+      const de = _q('SELECT etapa, COUNT(*) n FROM paginas WHERE pg=? AND dia BETWEEN ? AND ? GROUP BY etapa ORDER BY n DESC LIMIT 1').get(l.pg, per.de, per.ate);
+      return { pg: l.pg, pessoas: l.pessoas, vendas, etapaDeclarada: de ? de.etapa : '', ignorada: false };
+    });
+    // sugestão: pra cada teste do projeto, que páginas de fora recebem o tráfego dele
+    const sugestoes = [];
+    (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : []).filter(r => r && (r.projeto || '') === (esc.f.projeto || '')).forEach(r => {
+      const slug = String(r.slug || '').toLowerCase(); if (!slug) return;
+      const tot = _q('SELECT COUNT(*) n FROM sessoes WHERE lower(teste)=? AND inicio BETWEEN ? AND ?').get(slug, per.ini, per.fim).n;
+      if (tot < 20) return;
+      const porPg = _q('SELECT entrada pg, COUNT(*) n FROM sessoes WHERE lower(teste)=? AND inicio BETWEEN ? AND ? GROUP BY entrada').all(slug, per.ini, per.fim);
+      const foraSet = new Set(pgs.map(x => x.pg));
+      const delas = porPg.filter(x => foraSet.has(x.pg) && x.n / tot >= 0.1);
+      const share = delas.reduce((a, x) => a + x.n, 0) / tot;
+      if (share > 0.5) sugestoes.push({ teste: slug, nome: r.nome || slug, paginas: delas.map(x => x.pg), pct: share });
+    });
+    res.json({ ok: true, paginas: pgs, sugestoes, ignoradas: [...esc.ignoradas] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Números de cada bloco do mapa no período, da mesma base do topo e dos Leads
+app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const esq = _escopoSql(esc, 'p');
+    const linhas = _q('SELECT p.pg, p.etapa, p.visitante, s.pitch, s.checkout FROM paginas p JOIN sessoes s ON s.id = p.sessao WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ' + esq.where)
+      .all(per.de, per.ate, ...esq.args);
+    const por = {}, todos = new Set(), pitch = new Set(), ck = new Set();
+    linhas.forEach(l => {
+      const et = _etapaDaLinha(esc, l.pg, l.etapa); if (!et) return;
+      const x = por[et] || (por[et] = { pessoas: new Set(), pitch: new Set(), checkout: new Set() });
+      x.pessoas.add(l.visitante); todos.add(l.visitante);
+      if (l.pitch) { x.pitch.add(l.visitante); pitch.add(l.visitante); }
+      if (l.checkout) { x.checkout.add(l.visitante); ck.add(l.visitante); }
+    });
+    const etapas = {};
+    Object.keys(por).forEach(k => { etapas[k] = { pessoas: por[k].pessoas.size, pitch: por[k].pitch.size, checkout: por[k].checkout.size }; });
+    // o nome das campanhas vem do arquivo do Resultado (sem buscar nada fora)
+    const nomes = {};
+    _q('SELECT id, nome FROM camp_dia WHERE dia BETWEEN ? AND ?').all(per.de, per.ate).forEach(c => { nomes[c.id] = c.nome; });
+    const comprou = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).length;
+    // investido e cliques do topo: o mesmo arquivo de campanhas do Resultado,
+    // pela mesma regra — nunca um número de clique diferente do da outra aba
+    let investido = null, cliques = null;
+    try {
+      // responde com o que já está guardado (sem esperar a Utmify) e manda
+      // buscar o que falta em segundo plano: a próxima leitura já vem completa
+      const proj = await _projetoIdDoFunil(esc.f);
+      const camp = await _campanhasPeriodo(per.de, per.ate, proj, 0);
+      _campAtualizarDepois(per.de, per.ate, proj);
+      const regra = _regraCampanhas(esc.f);
+      investido = 0; cliques = 0;
+      Object.keys(camp.porDia).forEach(d => camp.porDia[d].forEach(c => { if (!regra || regra(c.nome)) { investido += c.gasto; cliques += c.cliques; } }));
+    } catch (e) {}
+    res.json({ ok: true, chegaram: todos.size, pitch: pitch.size, checkout: ck.size, compraram: comprou, etapas,
+               investido, cliques, semRegra: !_regraCampanhas(esc.f) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── JORNADA AO VIVO ──
+// Quem está no funil agora: na página (5 min), vendo a VSL e em que minuto,
+// no checkout (15 min), a última venda e o feed do que importa. A tela pede
+// de 5 em 5 segundos; tudo aqui é consulta curta na base de pessoas.
+// ══════════════════════════════════════════════════════
+app.get('/api/funil/ao-vivo', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const agora = Date.now(), hoje = _diaBR(agora), iniHoje = Date.parse(hoje + 'T00:00:00-03:00');
+    const esq = _escopoSql(esc, 'p');
+    const dir = _ehDir(req);
+    // na página agora: visita com sinal de vida nos últimos 5 min
+    const agoraPg = _q(`SELECT p.pg, COUNT(DISTINCT s.visitante) n FROM sessoes s JOIN paginas p ON p.sessao = s.id
+                        WHERE s.fim >= ? AND s.interno=0 AND ` + esq.where + ` GROUP BY p.pg ORDER BY n DESC`).all(agora - 5 * 60000, ...esq.args);
+    const naPagina = _q(`SELECT COUNT(DISTINCT s.visitante) n FROM sessoes s JOIN paginas p ON p.sessao = s.id
+                         WHERE s.fim >= ? AND s.interno=0 AND ` + esq.where).get(agora - 5 * 60000, ...esq.args).n;
+    // na VSL agora: pulso do vídeo nos últimos 2 min (fica na memória)
+    const urls = new Set(Object.keys(esc.etapaDeUrl)), ids = new Set(esc.ids);
+    const vendo = [];
+    for (const [vis, v] of _pVideo) if (agora - v.em < 2 * 60000 && !v.interno && (urls.has(v.pg) || ids.has(v.funil))) vendo.push(v);
+    const faixas = [
+      { rot: '0 a 1 min', n: vendo.filter(v => v.seg < 60).length },
+      { rot: '1 a 10 min', n: vendo.filter(v => v.seg >= 60 && v.seg < 600 && !(v.pitch && v.seg >= v.pitch)).length },
+      { rot: '10 min a pitch', n: vendo.filter(v => v.seg >= 600 && !(v.pitch && v.seg >= v.pitch)).length },
+      { rot: 'Depois do pitch', n: vendo.filter(v => v.pitch && v.seg >= v.pitch).length }
+    ];
+    const noCheckout = _q(`SELECT COUNT(DISTINCT e.visitante) n FROM eventos e WHERE e.tipo='checkout' AND e.em >= ? AND (e.funil IN (` + _ph(esc.ids.length) + `) OR e.pg IN (` +
+                           _ph(Math.max(1, urls.size)) + `))`).get(agora - 15 * 60000, ...esc.ids, ...(urls.size ? [...urls] : [''])).n;
+    const ultVenda = _q(`SELECT o.* FROM pedidos o WHERE o.pago=1 AND o.estorno=0 AND (o.funil IN (` + _ph(esc.ids.length) + `) OR o.visitante IN
+                          (SELECT DISTINCT p.visitante FROM paginas p WHERE p.dia >= ? AND ` + esq.where + `)) ORDER BY o.em DESC LIMIT 1`)
+      .get(...esc.ids, _diaBR(agora - 30 * 86400000), ...esq.args);
+    // o feed: o que aconteceu, do mais novo pro mais velho
+    const tipos = req.query.tudo === '1' ? null : ['compra', 'tentativa', 'checkout', 'pitch', 'friccao', 'estorno'];
+    const evs = _q(`SELECT e.*, v.p_fonte, v.p_cont, l.nome FROM eventos e LEFT JOIN visitantes v ON v.id = e.visitante LEFT JOIN leads l ON l.id = v.lead
+                    WHERE e.em >= ? AND (e.funil IN (` + _ph(esc.ids.length) + `) OR e.pg IN (` + _ph(Math.max(1, urls.size)) + `))` +
+                    (tipos ? ` AND e.tipo IN (` + _ph(tipos.length) + `)` : ``) + ` AND COALESCE(v.interno,0)=0 ORDER BY e.em DESC LIMIT 40`)
+      .all(agora - 24 * 3600000, ...esc.ids, ...(urls.size ? [...urls] : ['']), ...(tipos || []));
+    const feed = evs.filter(e => tipos || e.tipo !== 'video').map(e => {
+      let x = {}; try { x = JSON.parse(e.extra || '{}'); } catch (er) {}
+      // no "só importantes" o clique morto fica de fora; o de raiva entra
+      if (tipos && e.tipo === 'friccao' && x.motivo !== 'raiva') return null;
+      return { tipo: e.tipo, em: e.em, visitante: e.visitante, nome: e.nome || '', fonte: e.p_fonte || '', anuncio: e.p_cont ? String(e.p_cont).split('|')[0] : '',
+               pg: e.pg || '', rot: dir ? (e.rot || '') : _semValor(e.rot), extra: x };
+    }).filter(Boolean);
+    // alertas do dia: clique morto por elemento + o que as regras apontaram hoje
+    const mortos = _q(`SELECT e.rot, COUNT(*) n FROM eventos e WHERE e.tipo='friccao' AND e.em >= ? AND e.extra LIKE '%morto%' AND
+                       (e.funil IN (` + _ph(esc.ids.length) + `) OR e.pg IN (` + _ph(Math.max(1, urls.size)) + `)) GROUP BY e.rot ORDER BY n DESC LIMIT 3`)
+      .all(iniHoje, ...esc.ids, ...(urls.size ? [...urls] : ['']));
+    const alertas = mortos.filter(m => m.n >= 5 && m.rot).map(m => ({ nivel: 'atencao',
+      titulo: '"' + String(m.rot).slice(0, 40) + '" com ' + m.n + ' cliques mortos hoje',
+      texto: 'Parece clicável e não é. Transformar em botão (ou tirar a cara de botão) tende a subir o checkout.' }));
+    const regLog = Array.isArray(dbj.store['sl_regras_log']) ? dbj.store['sl_regras_log'] : [];
+    const verbo = { pausar: 'sugere pausar', orcamento: 'sugere subir o orçamento', alerta: 'avisa', trava: 'segurou' };
+    regLog.filter(l => l.dia === hoje && !l.desfeito).slice(-3).reverse().forEach(l => {
+      alertas.unshift({ nivel: l.tipo === 'orcamento' ? 'bom' : 'ruim', titulo: String(l.alvo || 'Regra').slice(0, 60) + ': ' + String(l.racional || '').split('.')[0],
+        texto: 'Regra "' + (l.regraNome || l.regra) + '" ' + (verbo[l.tipo] || 'avisa') + (l.simulado ? ' (simulação).' : '.'), regras: true });
+    });
+    res.json({ ok: true, em: agora,
+      cards: { naPagina, porPagina: agoraPg.slice(0, 3).map(x => ({ pg: x.pg, n: x.n })), vendo: vendo.length,
+               passaramPitch: vendo.filter(v => v.pitch && v.seg >= v.pitch).length, noCheckout,
+               ultimaVenda: ultVenda ? { em: ultVenda.em, valor: dir ? ultVenda.valor : null, produto: ultVenda.produto || '',
+                                         anuncio: ultVenda.cred_cont ? String(ultVenda.cred_cont).split('|')[0] : '' } : null },
+      faixas, feed, alertas });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -11879,11 +12544,12 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
     linhas.forEach(l => {
       if (de && l.data < de) return;
       if (ate && l.data > ate) return;
-      const k = l.pg || '';
+      // histórico gravado antes da normalização: /697 e /697/ viram uma linha só
+      const k = _normPg(l.pg) || '';
       if (!paginas[k]) paginas[k] = { pg: k, saidas: 0 };
       paginas[k].saidas += l.saidas || 0;
     });
-    if (pg) linhas = linhas.filter(l => (l.pg || '') === pg);
+    if (pg) { const alvo = _normPg(pg); linhas = linhas.filter(l => (_normPg(l.pg) || '') === alvo); }
     if (de)  linhas = linhas.filter(l => l.data >= de);
     if (ate) linhas = linhas.filter(l => l.data <= ate);
 
@@ -11898,11 +12564,15 @@ app.get('/api/funil/atencao', authUsuario, (req, res) => {
       (l.tempos || []).forEach((q, i) => { tempos[i] += q; });
       ['lcp','fcp','cls'].forEach(m => { vit[m] = vit[m].concat(l[m] || []); });
       Object.keys(l.cliques || {}).forEach(r => {
+        if (_ehPlayer(r)) return;      // play no vídeo não diz nada sobre a página
         if (!cl[r]) cl[r] = { rotulo: r, n: 0, pos: l.cliques[r].pos };
         cl[r].n += l.cliques[r].n;
         if (l.cliques[r].pos) cl[r].pos = l.cliques[r].pos;
       });
       Object.keys(l.friccao || {}).forEach(r => {
+        // o pixel antigo marcava o player e a FAQ como clique morto; o novo
+        // não marca mais, e o histórico sai da conta pelo mesmo critério
+        if (_ehPlayer(r)) return;
         if (!fr[r]) fr[r] = { rotulo: r, mortos: 0, raiva: 0 };
         fr[r].mortos += l.friccao[r].mortos;
         fr[r].raiva  += l.friccao[r].raiva;
@@ -12222,7 +12892,21 @@ app.post('/api/ab/vencedora', authDiretoria, (req, res) => {
     if (variante && !(r.destinos || []).some((d, i) => String(d.id || ('v' + i)) === variante))
       return res.status(400).json({ error: 'Essa variante não é deste teste.' });
     const antes = r.vencedora || null;
-    if (variante) { r.vencedora = variante; r.encerradoEm = new Date().toISOString(); r.estado = 'encerrado'; }
+    // Só declara com 95% de chance e o mínimo de vendas dos dois lados. Antes
+    // disso a "vencedora" é sorte, e o link passaria a mandar 100% pra ela.
+    let resultado = null;
+    if (variante) {
+      const st = _abV2(slug, '', '');
+      const vd = st && st.veredito;
+      if (!vd || !vd.podeDeclarar || vd.sugerida !== variante) {
+        return res.status(409).json({ error: vd
+          ? (vd.podeDeclarar ? 'Os dados apontam a outra variante como vencedora.' : 'Ainda não dá pra declarar: ' + Math.round(Math.max(vd.chance || 0, 1 - (vd.chance || 0)) * 100) + '% de chance e ' + vd.vendasMenorLado +
+            ' vendas no lado com menos (precisa de 95% e ' + vd.minPorLado + ').')
+          : 'Ainda não há dados suficientes pra declarar.' });
+      }
+      resultado = { chance: vd.chance, liftRpp: variante === vd.desafiante ? vd.liftRpp : (vd.liftRpp != null ? -vd.liftRpp : null), em: new Date().toISOString() };
+    }
+    if (variante) { r.vencedora = variante; r.encerradoEm = new Date().toISOString(); r.estado = 'encerrado'; r.resultado = resultado; }
     else { delete r.vencedora; delete r.encerradoEm; r.estado = 'rodando'; }
     r._updatedAt = Date.now();
     if (!db.timestamps) db.timestamps = {};
@@ -12375,6 +13059,218 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
         return comReceita.sort((x, y) => (y.receitaPorPessoa || 0) - (x.receitaPorPessoa || 0))[0].id;
       })()
     });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── TESTE A/B v2 ──
+// A comparação sai da base de pessoas: quem caiu em cada variante (pela visita
+// que chegou com o teste), quem passou do pitch, quem abriu o checkout e quem
+// COMPROU (venda ligada à pessoa, não página de obrigado). Sem meta escolhida,
+// a meta é a compra: teste que "só divide" não diz quem ganhou.
+// ══════════════════════════════════════════════════════
+// Bootstrap do R$ por pessoa sem reamostrar 8 mil zeros: o número de
+// compradores de cada reamostra sai da binomial (aproximação normal) e só as
+// receitas deles são sorteadas.
+function _normalPadrao() { const u = Math.random() || 1e-12, v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function _bootRpp(n, receitas, B) {
+  const out = new Float64Array(B), k = receitas.length;
+  if (!n) return out;
+  const p = k / n;
+  for (let b = 0; b < B; b++) {
+    let kk = n < 60 ? (() => { let c = 0; for (let i = 0; i < n; i++) if (Math.random() < p) c++; return c; })()
+                    : Math.round(n * p + Math.sqrt(n * p * (1 - p)) * _normalPadrao());
+    kk = Math.max(0, Math.min(n, kk));
+    let soma = 0;
+    for (let i = 0; i < kk && k; i++) soma += receitas[(Math.random() * k) | 0];
+    out[b] = soma / n;
+  }
+  return out;
+}
+function _abV2(slug, de, ate) {
+  const dbj = readDB();
+  const r = (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : []).find(x => String(x.slug || '').toLowerCase() === slug);
+  if (!r) return null;
+  const custos = _custosCfg(dbj);
+  const inicioTeste = r.criadoEm ? Date.parse(r.criadoEm) : 0;
+  const per = (de || ate) ? _periodoMs(de, ate) : { ini: inicioTeste || Date.now() - 30 * 86400000, fim: Date.now() };
+  per.de = _diaBR(per.ini); per.ate = _diaBR(per.fim);
+  const meta = r.meta || 'compra';
+  const vars = (r.destinos || []).map((d, i) => ({ id: String(d.id || ('v' + i)), nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '',
+    peso: Number(d.peso) || 1, sorteios: 0, pessoas: 0, pitch: 0, checkout: 0, vendas: 0, receita: 0, metas: 0, receitas: [], porDia: {} }));
+  const porId = {}; vars.forEach(v => { porId[v.id] = v; });
+
+  // cliques no link (o sorteio acontece no redirecionador)
+  (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer))
+    .filter(l => l.teste === slug && l.data >= per.de && l.data <= per.ate)
+    .forEach(l => { const v = porId[l.variante]; if (v) { v.sorteios += l.sorteios || 0; v.metasEtapa = (v.metasEtapa || 0) + (l.metas || 0); } });
+
+  // quem caiu em qual variante: a primeira visita com o teste, sem o time
+  const db = _pessoas();
+  const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
+  const quem = {};
+  if (db) {
+    _q(`SELECT visitante, variante, MIN(inicio) ini, MAX(pitch) pitch, MAX(checkout) ck FROM sessoes
+        WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ? GROUP BY visitante`).all(slug, per.ini, per.fim)
+      .forEach(x => {
+        const v = porId[String(x.variante || '')]; if (!v) return;
+        quem[x.visitante] = v.id;
+        v.pessoas++; if (x.pitch) v.pitch++; if (x.ck) v.checkout++;
+        const d = _diaBR(x.ini); const pd = v.porDia[d] || (v.porDia[d] = { pessoas: 0, vendas: 0 }); pd.pessoas++;
+      });
+    const ids = Object.keys(quem);
+    for (let i = 0; i < ids.length; i += 500) {
+      const lote = ids.slice(i, i + 500);
+      _q('SELECT visitante, valor, liquido, dia FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND em BETWEEN ? AND ? AND visitante IN (' + _ph(lote.length) + ')')
+        .all(per.ini, per.fim + 7 * 86400000, ...lote).forEach(o => {
+          const v = porId[quem[o.visitante]]; if (!v) return;
+          v.vendas++; v.receita += liq(o); v.receitas.push(liq(o));
+          const pd = v.porDia[o.dia] || (v.porDia[o.dia] = { pessoas: 0, vendas: 0 }); pd.vendas++;
+        });
+    }
+  }
+  vars.forEach(v => { v.metas = meta === 'compra' ? v.vendas : (v.metasEtapa || 0); });
+
+  // ── veredito ──
+  const ctrl = vars[0];
+  const bayes = _abBayes(vars.map((v, i) => Object.assign({}, v, { usaVendas: meta === 'compra', controle: i === 0 })),
+                         { diasRodando: Math.max(1, (Date.now() - (inicioTeste || per.ini)) / 86400000), minVendas: Number(r.minVendas) || 40 });
+  const B = 2000;
+  const boots = vars.map(v => _bootRpp(v.pessoas, v.receitas, B));
+  const rpp = v => v.pessoas ? v.receita / v.pessoas : 0;
+  const ordem = vars.filter(v => v.pessoas).slice().sort((a, b) => rpp(b) - rpp(a));
+  const lider = ordem[0] || null;
+  let veredito = null;
+  if (lider && ctrl && vars.length >= 2) {
+    // o desafiante: o líder, ou (se o controle lidera) o melhor dos outros
+    const desafiante = lider === ctrl ? (ordem[1] || null) : lider;
+    if (desafiante) {
+      const ia = vars.indexOf(ctrl), ib = vars.indexOf(desafiante);
+      const razoes = [];
+      let perda = 0, melhor = 0;
+      for (let b = 0; b < B; b++) {
+        const a = boots[ia][b], x = boots[ib][b];
+        if (a > 0) razoes.push(x / a - 1);
+        perda += Math.max(0, a - x);
+        if (x > a) melhor++; else if (x === a) melhor += 0.5;
+      }
+      razoes.sort((p, q) => p - q);
+      // A chance mostrada é no mesmo critério do "na frente" e do lift: R$ por
+      // pessoa. Com ticket diferente entre as variantes, a conversão sozinha
+      // aponta uma e o dinheiro outra — a tela dizia as duas coisas ao mesmo tempo.
+      const bv = (bayes.variantes || []).find(x => x.id === desafiante.id) || {};
+      const chanceConversao = bv.chanceMelhorQueControle != null ? bv.chanceMelhorQueControle : null;
+      const chance = (ctrl.vendas + desafiante.vendas) > 0 ? melhor / B : chanceConversao;
+      const minLado = Math.min(ctrl.vendas, desafiante.vendas), minV = Number(r.minVendas) || 40;
+      // quantas vendas faltam: o que falta pro mínimo por lado, ou pro tamanho
+      // que a diferença atual pede pra chegar a 95% — o que for maior
+      const pa = ctrl.pessoas ? ctrl.vendas / ctrl.pessoas : 0, pb = desafiante.pessoas ? desafiante.vendas / desafiante.pessoas : 0;
+      let faltaVendas = Math.max(0, minV - minLado) * 2;
+      if (pa !== pb && (pa + pb) > 0) {
+        const nAlvo = Math.ceil(Math.pow(1.645 + 0.84, 2) * (pa * (1 - pa) + pb * (1 - pb)) / Math.pow(pb - pa, 2));
+        const faltaPessoas = Math.max(0, nAlvo - Math.min(ctrl.pessoas, desafiante.pessoas));
+        faltaVendas = Math.max(faltaVendas, Math.round(faltaPessoas * (pa + pb)));
+      }
+      // 95% pros dois lados: o controle também pode ser o vencedor claro
+      const pode = chance != null && Math.max(chance, 1 - chance) >= 0.95 && minLado >= minV;
+      veredito = {
+        controle: ctrl.id, desafiante: desafiante.id, chance, chanceConversao, liftRpp: razoes.length ? razoes[Math.floor(razoes.length / 2)] : null,
+        perda: rpp(ctrl) ? (perda / B) / rpp(ctrl) : null, faltaVendas: pode ? 0 : faltaVendas,
+        minPorLado: minV, vendasMenorLado: minLado, podeDeclarar: pode,
+        sugerida: chance != null && chance < 0.5 ? ctrl.id : desafiante.id,
+        leitura: _abLeitura(ctrl, desafiante, chance, pode, minV)
+      };
+    }
+  }
+
+  // ── divisão real x configurada, perda clique → página ──
+  const totS = vars.reduce((a, v) => a + v.sorteios, 0), totP = vars.reduce((a, v) => a + v.peso, 0);
+  vars.forEach(v => { v.fatiaReal = totS ? v.sorteios / totS * 100 : null; v.fatiaAlvo = totP ? v.peso / totP * 100 : null; });
+  const divisao = { total: totS, torta: totS > 200 && vars.some(v => v.fatiaReal != null && Math.abs(v.fatiaReal - v.fatiaAlvo) > 5) };
+  const chegaram = vars.reduce((a, v) => a + v.pessoas, 0);
+  const perdaClique = totS ? Math.max(0, 1 - chegaram / totS) : null;
+
+  // ── fora do teste: gente do funil que não passou pelo link ──
+  let fora = null;
+  const funil = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).find(f => f && (f.id === r.funil ||
+    (f.projeto === r.projeto && (f.etapas || []).some(e => (r.destinos || []).some(d => _normPg(d.url) && _normPg(d.url) === _normPg(e.url))))));
+  if (db && funil) {
+    const esc = _escopoFunil(dbj, funil.id);
+    if (esc) {
+      const esq = _escopoSql(esc, 'p');
+      const lista = _q(`SELECT DISTINCT p.visitante FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ` + esq.where)
+        .all(per.de, per.ate, ...esq.args).map(x => x.visitante).filter(x => !quem[x]);
+      let vendas = 0, receita = 0;
+      const fontes = {}, anuncios = {};
+      for (let i = 0; i < lista.length; i += 500) {
+        const lote = lista.slice(i, i + 500);
+        _q('SELECT valor, liquido FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND em BETWEEN ? AND ? AND visitante IN (' + _ph(lote.length) + ')')
+          .all(per.ini, per.fim + 7 * 86400000, ...lote).forEach(o => { vendas++; receita += liq(o); });
+        _q('SELECT fonte, cont FROM sessoes WHERE inicio BETWEEN ? AND ? AND (teste IS NULL OR teste=\'\') AND visitante IN (' + _ph(lote.length) + ')')
+          .all(per.ini, per.fim, ...lote).forEach(s => {
+            const f = s.fonte || 'direto'; fontes[f] = (fontes[f] || 0) + 1;
+            const c = _canalDe(s.fonte, _canaisCache());
+            if (c && c.anuncios && s.cont) { const k = String(s.cont).split('|')[0].slice(0, 60); anuncios[k] = (anuncios[k] || 0) + 1; }
+          });
+      }
+      fora = { visitas: lista.length, vendas, receita, rpp: lista.length ? receita / lista.length : 0,
+               fontes: Object.entries(fontes).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([fonte, n]) => ({ fonte, n })),
+               anunciosDiretos: Object.entries(anuncios).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([anuncio, n]) => ({ anuncio, n })) };
+    }
+  }
+
+  // ── conversão por dia ──
+  const dias = [];
+  for (let t = Date.parse(per.de + 'T12:00:00Z'); dias.length < 120; t += 86400000) {
+    const d = new Date(t).toISOString().slice(0, 10); if (d > per.ate) break; dias.push(d);
+  }
+  const serie = vars.map(v => ({ id: v.id, nome: v.nome, pontos: dias.map(d => { const x = v.porDia[d] || { pessoas: 0, vendas: 0 }; return { dia: d, pessoas: x.pessoas, vendas: x.vendas, conv: x.pessoas ? x.vendas / x.pessoas : null }; }) }));
+
+  // ── histórico: os testes que já acabaram neste projeto ──
+  const historico = (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [])
+    .filter(x => x && x.slug !== r.slug && (x.projeto || '') === (r.projeto || '') && (x.vencedora || x.estado === 'encerrado'))
+    .map(x => {
+      const v = (x.destinos || []).find((d, i) => String(d.id || ('v' + i)) === String(x.vencedora));
+      return { nome: x.nome || x.slug, de: x.criadoEm || null, ate: x.encerradoEm || null,
+               vencedora: v ? (v.nome || x.vencedora) : (x.vencedora ? String(x.vencedora) : 'empate'),
+               ganho: x.resultado && x.resultado.liftRpp != null ? x.resultado.liftRpp : null };
+    }).sort((a, b) => String(b.ate || '').localeCompare(String(a.ate || ''))).slice(0, 12);
+
+  return { ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '', meta, metaNome: meta === 'compra' ? 'Compra (webhook)' : 'etapa do funil',
+    link: r.dominio ? ('https://' + r.dominio + '/r/' + slug) : ('/r/' + slug), estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
+    criadoEm: r.criadoEm || null, diaDoTeste: inicioTeste ? Math.max(1, Math.ceil((Date.now() - inicioTeste) / 86400000)) : null,
+    vencedora: r.vencedora || null, de: per.de, ate: per.ate,
+    variantes: vars.map(v => ({ id: v.id, nome: v.nome, url: v.url, peso: v.peso, sorteios: v.sorteios, pessoas: v.pessoas,
+      pitch: v.pitch, checkout: v.checkout, vendas: v.vendas, receita: v.receita, metas: v.metas,
+      pctPitch: v.pessoas ? v.pitch / v.pessoas : 0, taxaCheckout: v.pessoas ? v.checkout / v.pessoas : 0,
+      conversao: v.pessoas ? v.vendas / v.pessoas : 0, ticket: v.vendas ? v.receita / v.vendas : 0, rpp: rpp(v),
+      fatiaReal: v.fatiaReal, fatiaAlvo: v.fatiaAlvo, controle: v === ctrl })),
+    lider: lider ? lider.id : null, veredito, bayes: { chanceLider: bayes.chanceLider, lider: bayes.lider },
+    divisao, perdaClique, chegaram, fora, serie, historico };
+}
+function _abLeitura(a, b, chance, pode, minV) {
+  const nome = v => v.nome || v.id;
+  const partes = [];
+  const pa = a.pessoas ? a.pitch / a.pessoas : 0, pb = b.pessoas ? b.pitch / b.pessoas : 0;
+  const ra = a.pessoas ? a.receita / a.pessoas : 0, rb = b.pessoas ? b.receita / b.pessoas : 0;
+  if (pb > pa * 1.05) partes.push('A ' + nome(b) + ' segura mais gente até o pitch');
+  else if (pa > pb * 1.05) partes.push('A ' + nome(a) + ' segura mais gente até o pitch');
+  if (rb > ra) partes.push((partes.length ? 'e ' : 'A ' + nome(b) + ' ') + 'vende mais por pessoa');
+  else if (ra > rb) partes.push((partes.length ? 'mas a ' + nome(a) + ' ' : 'A ' + nome(a) + ' ') + 'vende mais por pessoa');
+  const ta = a.vendas ? a.receita / a.vendas : 0, tb = b.vendas ? b.receita / b.vendas : 0;
+  let s = partes.join(' ') + (partes.length ? '.' : '');
+  if (ta && tb && Math.abs(ta - tb) / Math.min(ta, tb) > 0.1) s += ' A ' + nome(ta > tb ? a : b) + ' vende mais caro por venda.';
+  s += pode ? ' Já dá pra declarar.' : ' Mantenha a divisão até 95% ou ' + minV + ' vendas por lado.';
+  return s.trim();
+}
+
+app.get('/api/ab/v2', authUsuario, (req, res) => {
+  try {
+    const slug = String(req.query.teste || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (!slug) return res.status(400).json({ error: 'Informe o teste.' });
+    const out = _abV2(slug, String(req.query.de || '').slice(0, 10), String(req.query.ate || '').slice(0, 10));
+    if (!out) return res.status(404).json({ error: 'Teste não encontrado.' });
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
