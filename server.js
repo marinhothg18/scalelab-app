@@ -10119,6 +10119,60 @@ setInterval(() => {
   catch (e) {}
 }, 30 * 60 * 1000);
 
+// ══════════════════════════════════════════════════════
+// ── PAGAMENTOS E ATRIBUIÇÃO DE UMA PESSOA (ficha do lead) ──
+// Todas as tentativas de pagamento dela (pelo id do visitante e, a partir
+// dele, pelo e-mail/telefone), o motivo de cada falha e de onde ela veio no
+// primeiro e no último toque — com a regra de crédito dita em texto: canal de
+// apoio (recuperação) e "organic" cravado pelo checkout nunca roubam a venda
+// do anúncio de origem.
+// ══════════════════════════════════════════════════════
+app.get('/api/lead/pagamentos', authDiretoria, (req, res) => {
+  try {
+    const vid = String(req.query.vid || '').slice(0, 40);
+    if (!vid) return res.status(400).json({ error: 'Informe o visitante.' });
+    const db = readDB(), canais = _canaisCfg(db);
+    const todas = Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [];
+    const doVid = todas.filter(v => v && v.vid === vid);
+    const chaves = new Set(doVid.map(_pessoaDaVenda).filter(Boolean));
+    const dela = todas.filter(v => v && (v.vid === vid || chaves.has(_pessoaDaVenda(v))))
+      .slice().sort((a, b) => String(a.recebidoEm).localeCompare(String(b.recebidoEm)));
+    const tentativas = dela.map(v => ({
+      em: v.recebidoEm, status: v.status, pago: _vendaPaga(v), estorno: _ESTORNO.test(String(v.status || '')),
+      motivo: _vendaPaga(v) ? '' : _motivoFalha(v), valor: Number(v.valor) || 0,
+      oferta: v.plano || v.produto || '', metodo: v.metodo || '', origem: v.utmSource || '', renovacao: !!v.renovacao }));
+    const pagos = tentativas.filter(t => t.pago && !t.estorno);
+    const falhas = tentativas.filter(t => !t.pago && !t.estorno && _FALHOU.test(String(t.status || '')));
+    // primeiro toque: o que o pixel guardou na primeira visita dessa pessoa
+    let primeiro = null;
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+      if (!j || j.id !== vid) return;
+      (j.eventos || []).forEach(e => {
+        if (e && e.primeiro && (!primeiro || String(e.em) < primeiro.em)) {
+          const p = e.primeiro;
+          primeiro = { em: e.em, origem: p.utm_source || '', campanha: p.utm_campaign || '', anuncio: p.utm_content || '', termo: p.utm_term || '' };
+        }
+      });
+    });
+    const ultPago = dela.filter(v => _vendaPaga(v)).pop() || dela[dela.length - 1] || null;
+    const ultimo = ultPago ? { em: ultPago.recebidoEm, origem: ultPago.utmSource || '', campanha: ultPago.utmCampaign || '', anuncio: ultPago.utmContent || '' } : null;
+    const cPrim = primeiro ? _canalDe(primeiro.origem, canais) : null;
+    const cUlt = ultimo ? _canalDe(ultimo.origem, canais) : null;
+    let credito = 'ultimo', regra = 'O crédito fica com o último toque.';
+    if (cPrim && cPrim.anuncios && (!cUlt || !cUlt.anuncios)) {
+      credito = 'primeiro';
+      regra = (cUlt && cUlt.apoio ? 'O último toque foi ' + cUlt.nome + ', que é canal de apoio: ' : 'O último toque não é anúncio: ') +
+              'o crédito fica com o anúncio que trouxe a pessoa, e o apoio aparece como ajuda.';
+    } else if (!ultimo || (!_origemVale(ultimo.origem) && !_origemVale(ultimo.anuncio))) {
+      credito = primeiro ? 'primeiro' : 'nenhum';
+      regra = primeiro ? 'A venda chegou sem origem: vale o primeiro toque que o pixel guardou.' : 'Sem origem no checkout e sem visita com UTM no pixel.';
+    }
+    res.json({ ok: true, vid, tentativas, pagos: pagos.length, totalPago: pagos.reduce((a, t) => a + t.valor, 0),
+      falhas: falhas.length, recusasCartao: falhas.filter(t => t.motivo === 'Cartão recusado').length,
+      atribuicao: { primeiro, ultimo, canalPrimeiro: cPrim ? cPrim.nome : '', canalUltimo: cUlt ? cUlt.nome : '', credito, regra } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
   try {
     const db = readDB();
