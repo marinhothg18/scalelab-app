@@ -33754,6 +33754,39 @@ function fnPitchEtapa(id, txt){
   toastFn(seg ? 'Pitch marcado em '+t : 'Pitch tirado: vale o da Vturb');
 }
 
+// Métricas de Ads › campanha → "ver no funil": acha o funil cuja regra de
+// campanha pega aquele nome (a do Resultado ou a das origens do mapa)
+function fnFunilDaCampanha(nome){
+  var n = String(nome||'').toLowerCase().trim(); if(!n) return null;
+  var l = fnFunis();
+  for(var i=0;i<l.length;i++){
+    var f = l[i], esc = f.escopoCampanhas;
+    if(esc && esc.valor){
+      var v = String(esc.valor);
+      if((esc.tipo||'contem') === 'contem' && n.indexOf(v.toLowerCase()) >= 0) return f;
+      if(esc.tipo === 'lista' && v.toLowerCase().split(/[\n,;]+/).map(function(x){ return x.trim(); }).indexOf(n) >= 0) return f;
+      if(esc.tipo === 'regex'){ try{ if(new RegExp(v, 'i').test(nome)) return f; }catch(e){} }
+      continue;
+    }
+    var ok = (f.fontes||[]).some(function(o){
+      return (o.utmCampanha && String(o.utmCampanha).toLowerCase().trim() === n) ||
+             (o.utmRegra && n.indexOf(String(o.utmRegra).toLowerCase().trim()) >= 0);
+    });
+    if(ok) return f;
+  }
+  return null;
+}
+function fnAbrirDaCampanha(fid){
+  var f = fnFunis().filter(function(x){ return x.id === fid; })[0]; if(!f) return;
+  goTo('funis');
+  setTimeout(function(){
+    fnEntrarProjeto(f.projeto);
+    var i = fnDoProjeto().map(function(x){ return x.id; }).indexOf(fid);
+    if(i >= 0) fnEscolher(i);
+    fnAba('resultado');
+  }, 60);
+}
+
 // ══════════════════════════════════════════════════════
 // ── FUNIS v2: utilitários das telas novas ──
 // ══════════════════════════════════════════════════════
@@ -37686,8 +37719,11 @@ function renderAdsTable(tipo, data, namesMap, idField){
     // CR: use pre-calculated % field if present, else calculate
     const crVal = r.cr>0 ? r.cr.toFixed(2)+'%' : (r.clicks>0 ? ((r.approved/r.clicks)*100).toFixed(2)+'%' : '—');
     const safeName = String(name).replace(/"/g,'&quot;');
+    // campanha que é de um funil (pela regra de campanha dele): um clique leva ao Resultado
+    const fDaCamp = (tipo === 'campanhas' && typeof fnFunilDaCampanha === 'function') ? fnFunilDaCampanha(name) : null;
+    const verFunil = fDaCamp ? ` <a href="#" onclick="fnAbrirDaCampanha('${String(fDaCamp.id).replace(/'/g,'')}');return false" style="font-size:11px;font-weight:700;color:var(--accent)" title="Abrir o Resultado do funil ${String(fDaCamp.nome||'').replace(/"/g,'&quot;')}">ver no funil ›</a>` : '';
     return `<tr style="border-bottom:1px solid rgba(255,255,255,.05);">
-      <td style="padding:9px 10px;font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeName}">${name}</td>
+      <td style="padding:9px 10px;font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeName}">${name}${verFunil}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtN(r.clicks)}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtM(r.cost)}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtM(r.total_revenue||r.revenue||0)}</td>
