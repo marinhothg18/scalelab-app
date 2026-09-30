@@ -4306,6 +4306,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <button class="fx-nav-i" onclick="fnAba('links',this)"><span>🔗</span>Links e canais<i class="fx-nav-n" id="fx-n-links"></i></button>
             <button class="fx-nav-i" onclick="fnAba('produtos',this)"><span>📦</span>Produtos<i class="fx-nav-p" id="fx-p-produtos"></i></button>
             <button class="fx-nav-i" onclick="fnAba('recup',this)"><span>💸</span>Recuperação</button>
+            <button class="fx-nav-i" onclick="fnAba('assin',this)"><span>🔁</span>Assinaturas</button>
           </nav>
           <div class="fx-conteudo">
 
@@ -4376,6 +4377,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
         <div class="fn-painel" id="fn-p-links"><div id="lc-corpo"></div></div>
         <div class="fn-painel" id="fn-p-produtos"><div id="pr-corpo"></div></div>
         <div class="fn-painel" id="fn-p-recup"><div id="rc-corpo"></div></div>
+        <div class="fn-painel" id="fn-p-assin"><div id="as-corpo"></div></div>
 
         <div class="fn-painel" id="fn-p-saude">
           <div id="sv-corpo"></div>
@@ -29471,7 +29473,7 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
-var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup'];
+var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos','recup','assin'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
@@ -29481,6 +29483,7 @@ var FN_ABA_INFO = {
   links:   ['Links e canais', 'O padrão de UTM que não quebra, quem está fora dele e de qual canal vem cada venda.'],
   produtos:['Produtos',       'Qual produto é o principal e em que projeto ele vende. Venda fora do cadastro some da conta.'],
   recup:   ['Dinheiro na mesa', 'Quem tentou pagar e não pagou, quanto isso vale, por quê — e quem chamar primeiro.'],
+  assin:   ['Assinaturas e LTV', 'Quanto cada cliente vale depois da primeira venda — e o CPA máximo que ainda empata.'],
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
@@ -29508,6 +29511,7 @@ function fnAba(qual, bt){
   if(qual==='links')   lcCarregar();
   if(qual==='produtos') prCarregar();
   if(qual==='recup')   rcCarregar();
+  if(qual==='assin')   asCarregar();
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -29794,6 +29798,58 @@ function rcPintar(){
       'Motivo e telefone são guardados a partir de 29/09'+(d.semMetodo?' — '+d.semMetodo+' evento(s) desse período ainda sem o método de pagamento':'')+'.</div>'+
   '</div>';
 
+  el.innerHTML = h + '<div class="rc-duas">'+esq+dir+'</div>';
+}
+
+// ══════════════════════════════════════════════════════
+// ── ASSINATURAS E LTV ──
+// ══════════════════════════════════════════════════════
+var asDados = null;
+var AS_PLANO = { mensal:'Mensal', trimestral:'Trimestral', semestral:'Semestral', anual:'Anual', outro:'Outro / não identificado' };
+function asCarregar(){
+  var el = document.getElementById('as-corpo'); if(!el) return;
+  if(!asDados) el.innerHTML = '<div class="fx-vazio">Montando a linha do tempo de cada assinatura…</div>';
+  fetch('/api/assinaturas').then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){ asDados = d; asPintar(); })
+    .catch(function(e){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+function asMes(m){ var n = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']; var p = String(m).split('-'); return n[(+p[1]||1)-1]+'/'+String(p[0]).slice(2); }
+function asPct(x){ return x==null ? '—' : Math.round(x*100)+'%'; }
+function asPintar(){
+  var el = document.getElementById('as-corpo'); var d = asDados; if(!el || !d) return;
+  var kpi = function(r, v, sub, cls){ return '<div class="fx-kpi '+(cls||'')+'"><div class="r">'+r+'</div><div class="v">'+v+'</div><div class="d">'+sub+'</div></div>'; };
+  var base90 = d.cpaBase === '90d';
+  var comp = d.cpa30 ? (d.cpaMaximo >= d.cpa30 ? 'acima do CPA atual ('+fnDin(d.cpa30)+')' : 'abaixo do CPA atual ('+fnDin(d.cpa30)+') — hoje cada venda não se paga') : 'usar como teto nas regras';
+  var h = '<div class="fx-kpis">'+
+    kpi('Assinantes ativos', fnNum(d.ativos), 'de '+fnNum(d.assinantes)+' que já pagaram')+
+    kpi('Renovações no mês', fnDin(d.recorrenteMes), 'cobranças automáticas em '+asMes(d.mesAtual))+
+    kpi(base90 ? 'LTV médio (90 dias)' : 'LTV médio até hoje', fnDin(base90 ? d.ltv90Medio : d.ltvAteHoje), base90 ? 'quem já tem 90 dias de casa' : 'ninguém tem 90 dias de histórico ainda')+
+    kpi('CPA máximo que empata', fnDin(d.cpaMaximo), comp, d.cpa30 ? (d.cpaMaximo >= d.cpa30 ? 'bom' : 'ruim') : 'foco')+
+  '</div>';
+  if(d.diasDeHistorico < 90){
+    h += '<div class="fx-aviso"><b>Só '+d.diasDeHistorico+' dias de histórico</b>O webhook começou a guardar venda em '+
+      (d.historicoDesde ? new Date(d.historicoDesde).toLocaleDateString('pt-BR') : '—')+'. Coorte e LTV de 90 dias ficam confiáveis conforme o histórico cresce — até lá, o “até hoje” subestima quanto o cliente vale.</div>';
+  }
+  var cor = function(x){ if(x==null) return ''; var a = Math.max(.08, x); return 'background:rgba(18,161,80,'+(a*.28).toFixed(3)+')'; };
+  var esq = '<div class="fx-cart"><div class="fx-cc"><h3>Quantos continuam pagando</h3><span class="fx-sub">por mês de entrada · coberto pelo que já pagou</span></div>'+
+    ((d.coortes||[]).length ? '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:440px"><tr><th>Entrada</th><th class="n">Clientes</th><th class="n">Mês 1</th><th class="n">Mês 2</th><th class="n">Mês 3</th><th class="n">Mês 4</th></tr>'+
+      d.coortes.map(function(c){
+        return '<tr><td><b>'+asMes(c.mes)+'</b></td><td class="n">'+fnNum(c.clientes)+'</td>'+c.pct.map(function(x){ return '<td class="n" style="'+cor(x)+'">'+asPct(x)+'</td>'; }).join('')+'</tr>';
+      }).join('')+'</table></div>' : '<div class="fx-vazio">Nenhuma assinatura paga ainda.</div>')+
+    '<div class="fx-sub" style="margin-top:8px">Anual e semestral aparecem cobertos nos meses que já pagaram — a queda de verdade deles só aparece na renovação.</div>'+
+  '</div>';
+  var dir = '<div class="fx-cart"><div class="fx-cc"><h3>LTV por plano</h3></div>'+
+    '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:420px"><tr><th>Plano</th><th class="n">Clientes</th><th class="n">Entrada</th><th class="n">LTV 90d</th><th class="n">Até hoje</th><th class="n">Cancela no 1º mês</th></tr>'+
+    (d.planos||[]).map(function(p){
+      return '<tr><td><b>'+fnEsc(AS_PLANO[p.plano]||p.plano)+'</b></td><td class="n">'+fnNum(p.clientes)+'</td><td class="n">'+fnDin(p.entrada)+'</td>'+
+        '<td class="n">'+(p.ltv90==null?'—':fnDin(p.ltv90))+'</td><td class="n">'+fnDin(p.ltvAteHoje)+'</td><td class="n">'+asPct(p.cancelaMes1)+'</td></tr>';
+    }).join('')+'</table></div>'+
+    '<div class="fx-cc" style="margin:18px 0 6px"><h3 style="font-size:13.5px">LTV por anúncio de origem</h3><span class="fx-sub">anúncio da primeira compra · 2+ clientes</span></div>'+
+    ((d.criativos||[]).length ? '<table class="sv-tab" style="min-width:0"><tr><th>Anúncio</th><th class="n">Clientes</th><th class="n">LTV até hoje</th><th class="n">Renova mês 2</th></tr>'+
+      d.criativos.map(function(c){ return '<tr><td><b>'+fnEsc(c.criativo)+'</b></td><td class="n">'+c.clientes+'</td><td class="n">'+fnDin(c.ltvAteHoje)+'</td><td class="n">'+asPct(c.renovacaoMes2)+'</td></tr>'; }).join('')+'</table>'+
+      '<div class="fx-sub" style="margin-top:8px">O ROAS do dia não mostra isso: dois anúncios com o mesmo CPA podem trazer clientes que valem bem diferente.</div>'
+      : '<div class="fx-vazio">Ainda não há anúncio com dois ou mais clientes identificados pela UTM.</div>')+
+  '</div>';
   el.innerHTML = h + '<div class="rc-duas">'+esq+dir+'</div>';
 }
 

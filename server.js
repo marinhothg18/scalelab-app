@@ -9751,6 +9751,115 @@ app.get('/api/recuperacao', authDiretoria, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════
+// ── ASSINATURAS E LTV ──
+// O ROAS do dia não enxerga renovação: um criativo que "empata" pode trazer
+// cliente que vale 30% menos no terceiro mês. Aqui cada assinatura vira uma
+// linha do tempo de pagamentos — pelo código da assinatura quando o checkout
+// manda, e pela pessoa + produto quando é venda antiga.
+// ══════════════════════════════════════════════════════
+const _DIAS_PLANO = { mensal: 31, trimestral: 92, semestral: 183, anual: 366 };
+function _planoDaVenda(v, cfg) {
+  const per = String(v.periodicidade || '').toLowerCase();
+  if (/month|mensal/.test(per)) return 'mensal';
+  if (/quarter|trimes/.test(per)) return 'trimestral';
+  if (/semi|semes|six/.test(per)) return 'semestral';
+  if (/year|annual|anual/.test(per)) return 'anual';
+  const pn = _planoPorNome(v.plano) || _planoPorNome(v.produto);
+  if (pn) return pn.chave;
+  const pv = cfg ? _planoPorValor(v.valor, cfg) : null;
+  return pv ? pv.chave : 'outro';
+}
+const _mesDe = iso => String(iso || '').slice(0, 7);
+function _mesesEntre(a, b) { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (yb - ya) * 12 + (mb - ma); }
+
+app.get('/api/assinaturas', authUsuario, async (req, res) => {
+  try {
+    const db = readDB(), cfg = _planosCfg(db), agora = Date.now();
+    const pagas = (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).filter(_vendaPaga)
+      .slice().sort((a, b) => String(a.recebidoEm).localeCompare(String(b.recebidoEm)));
+    const subs = {};
+    pagas.forEach(v => {
+      const k = v.assinatura ? 's:' + v.assinatura : (_pessoaDaVenda(v) ? _pessoaDaVenda(v) + '|' + _nrm(v.produto) : '');
+      if (!k) return;
+      const x = subs[k] = subs[k] || { pagamentos: [], plano: '', criativo: '', produto: v.produto || '' };
+      x.pagamentos.push({ em: v.recebidoEm, valor: Number(v.valor) || 0 });
+      if (!x.plano || x.plano === 'outro') x.plano = _planoDaVenda(v, cfg);
+      if (!x.criativo && _origemVale(v.utmContent)) x.criativo = String(v.utmContent);
+    });
+    const lista = Object.values(subs).map(x => {
+      const inicio = x.pagamentos[0].em, ultimo = x.pagamentos[x.pagamentos.length - 1].em;
+      const dur = _DIAS_PLANO[x.plano] || 31;
+      const cobreAte = new Date(new Date(ultimo).getTime() + dur * 86400000);
+      const total = x.pagamentos.reduce((a, p) => a + p.valor, 0);
+      const ate90 = x.pagamentos.filter(p => new Date(p.em) - new Date(inicio) <= 90 * 86400000).reduce((a, p) => a + p.valor, 0);
+      return { plano: x.plano, criativo: x.criativo, inicio, ultimo, cobreAte: cobreAte.toISOString(),
+               ativo: cobreAte.getTime() + 7 * 86400000 >= agora, pagamentos: x.pagamentos.length, total, ate90,
+               idadeDias: Math.floor((agora - new Date(inicio).getTime()) / 86400000) };
+    });
+    const mesAtual = new Date(agora - 3 * 3600000).toISOString().slice(0, 7);
+    const ativos = lista.filter(x => x.ativo).length;
+    const recorrenteMes = pagas.filter(v => _mesDe(v.recebidoEm) === mesAtual && (v.renovacao || Number(v.cobrancas) > 1))
+                               .reduce((a, v) => a + (Number(v.valor) || 0), 0);
+    // coortes por mês de entrada: % que ainda está coberta (pagou e o período vale) em cada mês
+    const coortes = {};
+    lista.forEach(x => {
+      const m0 = _mesDe(x.inicio), c = coortes[m0] = coortes[m0] || { mes: m0, clientes: 0, meses: [0, 0, 0, 0] };
+      c.clientes++;
+      for (let k = 0; k < 4; k++) {
+        const [y, m] = m0.split('-').map(Number);
+        const ini = new Date(Date.UTC(y, m - 1 + k, 1)), fim = new Date(Date.UTC(y, m + k, 0));
+        if (ini.getTime() > agora) { c.meses[k] = null; continue; }
+        if (c.meses[k] === null) continue;
+        // coberto nesse mês = algum pagamento cobre o começo do mês (ou é o próprio mês de entrada)
+        const coberto = k === 0 || new Date(x.cobreAte).getTime() >= ini.getTime() + 5 * 86400000;
+        if (coberto) c.meses[k]++;
+      }
+    });
+    const tabCoortes = Object.values(coortes).sort((a, b) => a.mes.localeCompare(b.mes)).map(c => ({
+      mes: c.mes, clientes: c.clientes, pct: c.meses.map(n => n === null ? null : (c.clientes ? n / c.clientes : 0)) }));
+    // LTV por plano: 90 dias só com quem já tem 90 dias; senão, o que pagou até hoje
+    const porPlano = {};
+    lista.forEach(x => {
+      const p = porPlano[x.plano] = porPlano[x.plano] || { plano: x.plano, clientes: 0, entrada: 0, somaAteHoje: 0, com90: 0, soma90: 0, mensalVelhos: 0, mensalSo1: 0 };
+      p.clientes++; p.entrada += x.pagamentos ? (x.total / x.pagamentos) : 0; p.somaAteHoje += x.total;
+      if (x.idadeDias >= 90) { p.com90++; p.soma90 += x.ate90; }
+      if (x.plano === 'mensal' && x.idadeDias >= 35) { p.mensalVelhos++; if (x.pagamentos < 2) p.mensalSo1++; }
+    });
+    const planos = Object.values(porPlano).map(p => ({ plano: p.plano, clientes: p.clientes,
+      entrada: p.clientes ? p.entrada / p.clientes : 0,
+      ltv90: p.com90 ? p.soma90 / p.com90 : null, ltvAteHoje: p.clientes ? p.somaAteHoje / p.clientes : 0,
+      cancelaMes1: p.mensalVelhos ? p.mensalSo1 / p.mensalVelhos : null }))
+      .sort((a, b) => b.clientes - a.clientes);
+    const porCri = {};
+    lista.forEach(x => {
+      if (!x.criativo) return;
+      const c = porCri[x.criativo] = porCri[x.criativo] || { criativo: x.criativo, clientes: 0, soma: 0, velhos: 0, renovaram: 0 };
+      c.clientes++; c.soma += x.total;
+      if (x.plano === 'mensal' && x.idadeDias >= 35) { c.velhos++; if (x.pagamentos >= 2) c.renovaram++; }
+    });
+    const criativos = Object.values(porCri).filter(c => c.clientes >= 2).map(c => ({ criativo: c.criativo, clientes: c.clientes,
+      ltvAteHoje: c.soma / c.clientes, renovacaoMes2: c.velhos ? c.renovaram / c.velhos : null }))
+      .sort((a, b) => b.ltvAteHoje - a.ltvAteHoje).slice(0, 20);
+    const com90 = lista.filter(x => x.idadeDias >= 90);
+    const ltv90Medio = com90.length ? com90.reduce((a, x) => a + x.ate90, 0) / com90.length : null;
+    const ltvAteHoje = lista.length ? lista.reduce((a, x) => a + x.total, 0) / lista.length : 0;
+    // CPA atual pra comparar: gasto ÷ vendas aprovadas dos últimos 30 dias (Utmify)
+    let cpa30 = null;
+    try {
+      const fim = new Date(agora - 3 * 3600000).toISOString().slice(0, 10), ini = new Date(agora - 30 * 86400000 - 3 * 3600000).toISOString().slice(0, 10);
+      const pano = await _utmifyPanorama(ini, fim, '');
+      const k = pano.kpis || {};
+      if (Number(k.cpa) > 0) cpa30 = Number(k.cpa);
+    } catch (e) {}
+    const primeiro = pagas.length ? pagas[0].recebidoEm : null;
+    res.json({ ok: true, assinantes: lista.length, ativos, recorrenteMes, mesAtual,
+      ltv90Medio, ltvAteHoje, cpaMaximo: ltv90Medio != null ? ltv90Medio : ltvAteHoje, cpaBase: ltv90Medio != null ? '90d' : 'ateHoje',
+      cpa30, coortes: tabCoortes, planos, criativos,
+      historicoDesde: primeiro, diasDeHistorico: primeiro ? Math.floor((agora - new Date(primeiro).getTime()) / 86400000) : 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
   try {
     const db = readDB();
