@@ -1658,6 +1658,23 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .sv-tab .n{text-align:right;font-variant-numeric:tabular-nums}
 .sv-url{color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sv-pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap}
+/* links e canais · produtos */
+.lc-code{display:block;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;line-height:1.6;background:var(--bg3);border:1px solid var(--border);
+  border-radius:9px;padding:10px 12px;word-break:break-all;color:var(--text)}
+.lc-code b{color:var(--accent);font-weight:600}
+.lc-bts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.fn-btn.g.on{border-color:var(--accent);color:var(--accent)}
+.lc-apoio{background:rgba(139,92,246,.14);color:#8b5cf6;margin-left:4px}
+.lc-edit-l{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto auto;gap:8px;align-items:center;margin-bottom:8px}
+.lc-edit-l label{font-size:12px;color:var(--text2);display:flex;gap:4px;align-items:center;white-space:nowrap}
+.pr-item{padding:12px 0;border-top:1px solid var(--border)}
+.pr-item:first-of-type{border-top:none}
+.pr-linha{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pr-linha .fi{flex:1;min-width:160px}
+.pr-linha .dm-sel{flex:0 0 auto;max-width:170px}
+.pr-ofertas{display:grid;gap:6px;margin:8px 0 0 14px;padding-left:12px;border-left:2px solid var(--border)}
+.pr-ofertas>.fn-btn{justify-self:start}
+@media (max-width:700px){ .lc-edit-l{grid-template-columns:1fr} }
 /* ── Desenhar funil ──────────────────────────────────────────────────────── */
 /* seletor de dominio, compartilhado entre Quiz e Testes A/B */
 .dm-linha{display:flex;gap:7px;align-items:center}
@@ -4279,6 +4296,9 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             <div class="fx-nav-g">Comportamento</div>
             <button class="fx-nav-i" onclick="fnAba('jornada',this)"><span>👣</span>Jornada</button>
             <button class="fx-nav-i" onclick="fnAba('atencao',this)"><span>👁</span>Atenção</button>
+            <div class="fx-nav-g">Projeto</div>
+            <button class="fx-nav-i" onclick="fnAba('links',this)"><span>🔗</span>Links e canais<i class="fx-nav-n" id="fx-n-links"></i></button>
+            <button class="fx-nav-i" onclick="fnAba('produtos',this)"><span>📦</span>Produtos<i class="fx-nav-p" id="fx-p-produtos"></i></button>
           </nav>
           <div class="fx-conteudo">
 
@@ -4345,6 +4365,9 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
             </div>
           </div>
         </div>
+
+        <div class="fn-painel" id="fn-p-links"><div id="lc-corpo"></div></div>
+        <div class="fn-painel" id="fn-p-produtos"><div id="pr-corpo"></div></div>
 
         <div class="fn-painel" id="fn-p-saude">
           <div id="sv-corpo"></div>
@@ -29440,13 +29463,15 @@ function fnPintarProjetos(){
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); }
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); if(fnAbaAtual==='saude') svCarregar(false); }
-var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao'];
+var FN_ABAS = ['geral','mapa','saude','pixel','redir','jornada','atencao','links','produtos'];
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
 var FN_ABA_INFO = {
   geral:   ['Visão geral', 'O funil inteiro num lugar: onde o volume se perde e quanto sobra.'],
   mapa:    ['Mapa',        'O desenho do funil. Cada bloco é uma página, cada seta é um caminho.'],
   saude:   ['Saúde do funil', 'Dá pra confiar nos números deste funil? O que está quebrado, em ordem de estrago.'],
+  links:   ['Links e canais', 'O padrão de UTM que não quebra, quem está fora dele e de qual canal vem cada venda.'],
+  produtos:['Produtos',       'Qual produto é o principal e em que projeto ele vende. Venda fora do cadastro some da conta.'],
   pixel:   ['Pixel',       'O código pra colar em cada página, e o que já está chegando.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e conta quem converteu.'],
   jornada: ['Jornada',     'O caminho de cada visitante, do anúncio ao fim.'],
@@ -29471,6 +29496,8 @@ function fnAba(qual, bt){
   if(qual==='geral')   gePintar();
   if(qual==='mapa')    { mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); }
   if(qual==='saude')   svCarregar(false);
+  if(qual==='links')   lcCarregar();
+  if(qual==='produtos') prCarregar();
   if(qual==='pixel')   { pxInstalacao(); pxColeta(); }
   if(qual==='redir')   fnPintarRed();
   if(qual==='jornada') jnCarregar();
@@ -29499,6 +29526,194 @@ function fnCabecalho(){
 // servidor abre cada página do mapa, confere a tag, olha o webhook e as vendas,
 // e devolve o que está quebrado em ordem de estrago — cada item com o que fazer.
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// ── LINKS E CANAIS ──
+// ══════════════════════════════════════════════════════
+var lcTemp = 'frio', lcDados = null, lcCanais = null, lcEditando = false;
+function lcEhDir(){ return !!(currentUser && currentUser.cargo === 'Diretoria'); }
+function lcPadrao(){
+  return 'utm_source={{site_source_name}}&utm_campaign={{campaign.id}}&utm_medium={{adset.id}}' +
+         '&utm_content={{ad.id}}&utm_term={{placement}}&utm_target=' + lcTemp;
+}
+function lcCopiar(txt, bt){
+  var feito = function(){ if(bt){ var a = bt.textContent; bt.textContent = 'Copiado'; setTimeout(function(){ bt.textContent = a; }, 1300); } };
+  try { navigator.clipboard.writeText(txt).then(feito, feito); } catch(e){ feito(); }
+}
+function lcCarregar(){
+  var el = document.getElementById('lc-corpo'); if(!el) return;
+  if(!lcDados) el.innerHTML = '<div class="fx-vazio">Buscando anúncios, canais e vendas…</div>';
+  Promise.all([
+    fetch('/api/links/validador?dias=7').then(function(r){ return r.json(); }),
+    fetch('/api/canais/resumo?dias=28').then(function(r){ return r.json(); }),
+    fetch('/api/canais').then(function(r){ return r.json(); })
+  ]).then(function(x){
+    lcDados = { val: x[0], res: x[1] }; lcCanais = (x[2] && x[2].lista) || [];
+    var n = document.getElementById('fx-n-links'); if(n) n.textContent = (x[0] && x[0].foraDoPadrao) ? String(x[0].foraDoPadrao) : '';
+    lcPintar();
+  }).catch(function(e){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+function lcSalvarCanais(){
+  return fetch('/api/canais', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lista: lcCanais }) })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
+    .then(function(d){ lcCanais = d.lista; toastFn('Canais salvos'); lcEditando = false; lcCarregar(); })
+    .catch(function(e){ toastFn('Não salvou: ' + e.message); });
+}
+function lcAdicionarFonteIdx(k){
+  var x = ((lcDados && lcDados.res && lcDados.res.semCanal) || [])[k]; if(!x) return;
+  var fonte = x.fonte;
+  var sel = document.getElementById('lc-alvo-' + k);
+  var id = sel ? sel.value : ''; if(!id) return;
+  var c = lcCanais.filter(function(x){ return x.id === id; })[0]; if(!c) return;
+  if((c.fontes || []).indexOf(fonte.toLowerCase()) < 0) c.fontes = (c.fontes || []).concat([fonte.toLowerCase()]);
+  lcSalvarCanais();
+}
+function lcNovoCanal(){ lcCanais.push({ id:'', nome:'Novo canal', fontes:[], anuncios:false, apoio:false }); lcEditando = true; lcPintar(); }
+function lcEditar(i, campo, v){
+  var c = lcCanais[i]; if(!c) return;
+  if(campo === 'fontes') c.fontes = String(v).split(',').map(function(x){ return x.trim().toLowerCase(); }).filter(Boolean);
+  else if(campo === 'apoio' || campo === 'anuncios') c[campo] = !!v;
+  else c[campo] = v;
+}
+function lcPintar(){
+  var el = document.getElementById('lc-corpo'); if(!el || !lcDados) return;
+  var v = lcDados.val || {}, r = lcDados.res || {}, dir = lcEhDir();
+  var tipoRot = { id:['ok','ID'], nome:['ruim','Nome'], macro:['ruim','Macro sem valor'], vazio:['ruim','Sem UTM'] };
+  var h = '';
+
+  h += '<div class="fx-cart" style="margin-bottom:16px"><div class="fx-cc"><h3>Padrão de UTM da Meta</h3></div>'+
+    '<p class="fx-sub" style="margin:-6px 0 12px">Cole em “Parâmetros de URL” de todos os anúncios. Usa os <b>ids</b>: duplicar ou renomear a campanha não quebra o vínculo com a venda.</p>'+
+    '<code class="lc-code" id="lc-code">'+fnEsc(lcPadrao()).replace(/(\{\{[^}]+\}\})/g, '<b>$1</b>')+'</code>'+
+    '<div class="lc-bts"><button class="fn-btn sm" onclick="lcCopiar(lcPadrao(), this)">Copiar</button>'+
+    '<button class="fn-btn g sm'+(lcTemp==='frio'?' on':'')+'" onclick="lcTemp=\'frio\';lcPintar()">Frio</button>'+
+    '<button class="fn-btn g sm'+(lcTemp==='quente'?' on':'')+'" onclick="lcTemp=\'quente\';lcPintar()">Quente</button></div>'+
+    '<div class="fx-sub" style="margin-top:12px;line-height:1.55">No teste A/B, o link do anúncio é o do split (aba Testes A/B) e os parâmetros vão iguais — o redirecionador repassa tudo pra variante.</div>'+
+  '</div>';
+
+  var linhas = v.linhas || [];
+  h += '<div class="fx-cart" style="margin-bottom:16px"><div class="fx-cc"><h3>Validador dos anúncios</h3>'+
+    (v.foraDoPadrao ? '<span class="sv-pill sv-atencao">'+v.foraDoPadrao+' fora do padrão</span>' : (linhas.length ? '<span class="sv-pill sv-ok">todos no padrão</span>' : ''))+'</div>'+
+    '<p class="fx-sub" style="margin:-6px 0 10px">O que chegou nos últimos '+(v.dias||7)+' dias, pelo pixel e pelas vendas — não o que está escrito no gerenciador.</p>'+
+    (linhas.length ? '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:520px"><tr><th>Anúncio (utm_content)</th><th class="n">Visitas</th><th class="n">Vendas</th><th>utm_campaign recebido</th><th>Situação</th></tr>'+
+      linhas.slice(0, 14).map(function(l){
+        var t = tipoRot[l.tipo] || ['atencao', l.tipo];
+        if(l.criativo === '(sem utm_content)') t = ['ruim', 'Sem utm_content'];
+        return '<tr><td><b>'+fnEsc(l.criativo)+'</b></td><td class="n">'+fnNum(l.visitas)+'</td><td class="n">'+fnNum(l.vendas)+'</td>'+
+          '<td class="sv-url" title="'+fnEsc(l.campanha)+'">'+fnEsc(l.campanha || '(vazio)')+'</td><td><span class="sv-pill sv-'+t[0]+'">'+t[1]+'</span></td></tr>';
+      }).join('')+'</table></div>' +
+      (linhas.length > 14 ? '<div class="fx-sub" style="margin-top:8px">Mostrando 14 de '+linhas.length+', os fora do padrão primeiro.</div>' : '')
+    : '<div class="fx-vazio">Nenhuma visita nem venda com UTM nos últimos '+(v.dias||7)+' dias. Sem o pixel nas páginas, o validador só enxerga as vendas.</div>')+
+  '</div>';
+
+  // canais
+  var cs = r.canais || [];
+  h += '<div class="fx-cart" style="margin-bottom:16px"><div class="fx-cc"><h3>Canais</h3><span class="fx-sub">Últimos '+(r.dias||28)+' dias · vendas pagas · renovação de assinatura fica de fora</span></div>';
+  if(lcEditando && dir){
+    h += '<div class="lc-edit">'+lcCanais.map(function(c, i){
+      return '<div class="lc-edit-l"><input class="fi" value="'+fnEsc(c.nome)+'" oninput="lcEditar('+i+',\'nome\',this.value)" aria-label="Nome do canal">'+
+        '<input class="fi" value="'+fnEsc((c.fontes||[]).join(', '))+'" oninput="lcEditar('+i+',\'fontes\',this.value)" aria-label="Fontes" placeholder="fb*, ig*, facebook">'+
+        '<label><input type="checkbox"'+(c.anuncios?' checked':'')+' onchange="lcEditar('+i+',\'anuncios\',this.checked)"> anúncio</label>'+
+        '<label><input type="checkbox"'+(c.apoio?' checked':'')+' onchange="lcEditar('+i+',\'apoio\',this.checked)"> apoio</label></div>';
+    }).join('')+'<div class="fx-sub" style="margin:6px 0 10px">Fontes separadas por vírgula. Com <b>*</b> no fim vale “começa com” (fb* pega fb, fbads…). Canal de <b>apoio</b> nunca fica com o crédito da venda quando se sabe de onde a pessoa veio.</div>'+
+      '<div class="lc-bts"><button class="fn-btn sm" onclick="lcSalvarCanais()">Salvar canais</button><button class="fn-btn g sm" onclick="lcNovoCanal()">+ Canal</button><button class="fn-btn g sm" onclick="lcEditando=false;lcCarregar()">Cancelar</button></div></div>';
+  } else {
+    h += '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:560px"><tr><th>Canal</th><th>Fontes</th><th class="n">Vendas</th><th class="n">Faturamento</th><th class="n">ROAS</th></tr>'+
+      cs.map(function(c){
+        return '<tr><td><b>'+fnEsc(c.nome)+'</b>'+(c.apoio?' <span class="sv-pill lc-apoio">apoio</span>':'')+
+          (c.ajudou ? '<div class="fx-sub">ajudou em '+c.ajudou+' venda(s) creditadas ao anúncio</div>' : '')+
+          (c.id==='organico' && c.vendas ? '<div class="fx-sub">inclui o “organic” que o checkout crava quando a UTM se perde</div>' : '')+'</td>'+
+          '<td class="fx-sub">'+fnEsc((c.fontes||[]).join(', '))+'</td><td class="n">'+fnNum(c.vendas)+'</td><td class="n">'+fnDin(c.faturamento)+'</td>'+
+          '<td class="n">'+(c.roas!=null ? c.roas.toFixed(2).replace('.',',') : '—')+'</td></tr>';
+      }).join('')+
+      '<tr><td><b>Sem utm_source</b></td><td class="fx-sub">link direto ou UTM apagada</td><td class="n">'+fnNum((r.semUtm||{}).vendas)+'</td><td class="n">'+fnDin((r.semUtm||{}).faturamento)+'</td><td class="n">—</td></tr>'+
+      '<tr><td class="fx-sub">Renovações</td><td class="fx-sub">cobrança automática, sem clique</td><td class="n">'+fnNum((r.renovacao||{}).vendas)+'</td><td class="n">'+fnDin((r.renovacao||{}).faturamento)+'</td><td class="n">—</td></tr>'+
+    '</table></div>'+
+    (r.avisoGasto ? '<div class="fx-sub" style="margin-top:8px">'+fnEsc(r.avisoGasto)+'</div>' : '')+
+    '<div class="fx-sub" style="margin-top:8px">Os dados de canal valem a partir de 29/09: antes disso a origem das vendas da Payt não era lida.</div>'+
+    (dir ? '<div class="lc-bts" style="margin-top:12px"><button class="fn-btn g sm" onclick="lcEditando=true;lcPintar()">Editar canais</button></div>' : '');
+    var sc = r.semCanal || [];
+    if(sc.length){
+      var tot = sc.reduce(function(a, x){ return a + x.faturamento; }, 0);
+      h += '<div class="fx-cc" style="margin:18px 0 6px"><h3 style="font-size:13.5px">Fontes sem canal</h3><span class="sv-pill sv-atencao">'+fnDin(tot)+' sem dono</span></div>'+
+        sc.map(function(x, k){
+          var idSel = 'lc-alvo-' + k;
+          return '<div class="sv-chk"><div class="sv-ic sv-atencao">?</div><div class="sv-txt"><b>'+fnEsc(x.fonte)+'</b><span>'+x.vendas+' venda(s) · '+fnDin(x.faturamento)+'</span></div>'+
+            (dir ? '<div class="lc-bts" style="margin:0"><select class="dm-sel" id="'+idSel+'" style="max-width:150px">'+(lcCanais||[]).map(function(c){ return '<option value="'+fnEsc(c.id)+'">'+fnEsc(c.nome)+'</option>'; }).join('')+'</select>'+
+              '<button class="fn-btn g sm" onclick="lcAdicionarFonteIdx('+k+')">Adicionar</button></div>' : '')+'</div>';
+        }).join('');
+    }
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════
+// ── PRODUTOS ──
+// ══════════════════════════════════════════════════════
+var prDados = null, prLista = null;
+function prCarregar(){
+  var el = document.getElementById('pr-corpo'); if(!el) return;
+  if(!prDados) el.innerHTML = '<div class="fx-vazio">Buscando produtos que venderam…</div>';
+  fetch('/api/produtos').then(function(r){ return r.json(); }).then(function(d){
+    prDados = d; prLista = JSON.parse(JSON.stringify(d.lista || []));
+    var soltos = (d.vistos || []).filter(function(x){ return !x.cadastrado; }).length;
+    var pt = document.getElementById('fx-p-produtos'); if(pt){ pt.className = 'fx-nav-p' + (soltos && (d.lista||[]).length ? ' on' : ''); }
+    prPintar();
+  }).catch(function(e){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+function prCadastrarIdx(k){ var x = (prDados.vistos || [])[k]; if(x) prCadastrar(x.nome); }
+function prCadastrar(nome){
+  prLista.push({ id:'', nome:nome, apelidos:[], projeto: fnProj || '', papel:'principal', ofertas:[] });
+  prPintar();
+}
+function prCampo(i, campo, v){
+  var p = prLista[i]; if(!p) return;
+  if(campo === 'apelidos') p.apelidos = String(v).split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+  else p[campo] = v;
+}
+function prOferta(i, j, campo, v){ var o = (prLista[i].ofertas || [])[j]; if(o) o[campo] = v; }
+function prMaisOferta(i){ (prLista[i].ofertas = prLista[i].ofertas || []).push({ nome:'', preco:0, periodo:'mes' }); prPintar(); }
+function prTirar(i){ if(!confirm('Tirar "'+prLista[i].nome+'" do cadastro?')) return; prLista.splice(i, 1); prPintar(); }
+function prSalvar(){
+  fetch('/api/produtos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lista: prLista }) })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
+    .then(function(){ toastFn('Produtos salvos'); prCarregar(); if(svDados) svCarregar(true); })
+    .catch(function(e){ toastFn('Não salvou: ' + e.message); });
+}
+function prPintar(){
+  var el = document.getElementById('pr-corpo'); if(!el || !prDados) return;
+  var dir = lcEhDir(), vis = prDados.vistos || [];
+  var cad = function(nome){ var n = String(nome||'').trim().toLowerCase(); return prLista.some(function(p){ return String(p.nome).trim().toLowerCase() === n || (p.apelidos||[]).some(function(a){ return String(a).trim().toLowerCase() === n; }); }); };
+  var h = '<div class="fx-cart" style="margin-bottom:16px"><div class="fx-cc"><h3>O que vendeu nos últimos 30 dias</h3><span class="fx-sub">nome exatamente como o checkout manda</span></div>'+
+    (vis.length ? '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:520px"><tr><th>Produto</th><th class="n">Vendas</th><th class="n">Faturamento</th><th>Cadastro</th><th></th></tr>'+
+      vis.map(function(x, k){
+        var ok = cad(x.nome);
+        return '<tr><td><b>'+fnEsc(x.nome)+'</b></td><td class="n">'+fnNum(x.vendas)+'</td><td class="n">'+fnDin(x.receita)+'</td>'+
+          '<td>'+(ok ? '<span class="sv-pill sv-ok">cadastrado</span>' : '<span class="sv-pill sv-ruim">fora do cadastro</span>')+'</td>'+
+          '<td>'+(!ok && dir ? '<button class="fn-btn sm" onclick="prCadastrarIdx('+k+')">Cadastrar</button>' : '')+'</td></tr>';
+      }).join('')+'</table></div>' : '<div class="fx-vazio">Nenhuma venda paga nos últimos 30 dias.</div>')+
+    '<div class="fx-sub" style="margin-top:8px">O valor das vendas vale a partir de 29/09 — antes disso a Payt mandava o preço num campo que não era lido.</div>'+
+  '</div>';
+
+  h += '<div class="fx-cart"><div class="fx-cc"><h3>Cadastro</h3><span class="fx-sub">'+prLista.length+' produto(s)</span></div>'+
+    (prLista.length ? prLista.map(function(p, i){
+      return '<div class="pr-item">'+
+        '<div class="pr-linha"><input class="fi" value="'+fnEsc(p.nome)+'" oninput="prCampo('+i+',\'nome\',this.value)" aria-label="Nome do produto"'+(dir?'':' disabled')+'>'+
+        '<select class="dm-sel" onchange="prCampo('+i+',\'papel\',this.value)"'+(dir?'':' disabled')+'>'+[['principal','Principal'],['bump','Order bump'],['upsell','Upsell'],['downsell','Downsell']].map(function(o){ return '<option value="'+o[0]+'"'+(p.papel===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
+        '<select class="dm-sel" onchange="prCampo('+i+',\'projeto\',this.value)"'+(dir?'':' disabled')+'>'+['' ].concat(fnProjetos||[]).map(function(pj){ return '<option value="'+fnEsc(pj)+'"'+(p.projeto===pj?' selected':'')+'>'+(pj?fnEsc(pj):'— projeto —')+'</option>'; }).join('')+'</select>'+
+        (dir ? '<button class="fn-btn g sm" onclick="prTirar('+i+')" aria-label="Tirar">✕</button>' : '')+'</div>'+
+        '<input class="fi" style="margin-top:6px;width:100%" value="'+fnEsc((p.apelidos||[]).join(', '))+'" oninput="prCampo('+i+',\'apelidos\',this.value)" placeholder="Outros nomes que o checkout usa (separados por vírgula)"'+(dir?'':' disabled')+'>'+
+        '<div class="pr-ofertas">'+(p.ofertas||[]).map(function(o, j){
+          return '<div class="pr-linha"><input class="fi" value="'+fnEsc(o.nome)+'" oninput="prOferta('+i+','+j+',\'nome\',this.value)" placeholder="Oferta (ex.: Elite anual)"'+(dir?'':' disabled')+'>'+
+            '<input class="fi" style="max-width:110px" value="'+(o.preco||'')+'" oninput="prOferta('+i+','+j+',\'preco\',this.value)" placeholder="R$" inputmode="decimal"'+(dir?'':' disabled')+'>'+
+            '<select class="dm-sel" style="max-width:130px" onchange="prOferta('+i+','+j+',\'periodo\',this.value)"'+(dir?'':' disabled')+'>'+[['mes','Mensal'],['trimestre','Trimestral'],['semestre','Semestral'],['ano','Anual'],['unico','Pagamento único']].map(function(x){ return '<option value="'+x[0]+'"'+(o.periodo===x[0]?' selected':'')+'>'+x[1]+'</option>'; }).join('')+'</select></div>';
+        }).join('')+(dir ? '<button class="fn-btn g sm" onclick="prMaisOferta('+i+')">+ Oferta</button>' : '')+'</div>'+
+      '</div>';
+    }).join('') : '<div class="fx-vazio">Nenhum produto cadastrado. Use “Cadastrar” na lista de cima.</div>')+
+    (dir ? '<div class="lc-bts" style="margin-top:14px"><button class="fn-btn sm" onclick="prSalvar()">Salvar cadastro</button></div>' : '<div class="fx-sub" style="margin-top:10px">Só a Diretoria edita o cadastro.</div>')+
+  '</div>';
+  el.innerHTML = h;
+}
+
 var svDados = null, svPedido = 0;
 function svCarregar(forcar){
   var el = document.getElementById('sv-corpo'); if(!el) return;

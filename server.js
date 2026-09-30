@@ -2925,6 +2925,19 @@ function _normalizarVenda(p) {
     // assinatura que se renova sozinha nao teve clique nenhum: contar como
     // "venda sem origem" fazia a conta de orfas parecer defeito de rastreio
     renovacao: Number((p && p.subscription && p.subscription.charges) || 0) > 1,
+    // O que Recuperacao, Assinaturas e a ficha do lead precisam. Guardado a
+    // partir de 29/09: venda anterior nao tem, e a tela diz isso.
+    metodo:       String(_pega(p, ['transaction.payment_method','payment_method','payment.method','metodo']) || '').toLowerCase().slice(0, 30),
+    telefone:     String(_pega(p, ['customer.phone','cliente.telefone','customer_phone','buyer.phone']) || '').replace(/[^\d+]/g, '').slice(0, 20),
+    plano:        String(_pega(p, ['subscription.plan_name','plan_name','link.title']) || '').slice(0, 80),
+    assinatura:   String(_pega(p, ['subscription.code','subscription.id','subscription_id']) || '').slice(0, 40),
+    cobrancas:    Number(_pega(p, ['subscription.charges']) || 0) || 0,
+    periodicidade:String(_pega(p, ['subscription.periodicity']) || '').toLowerCase().slice(0, 20),
+    assinaturaStatus: String(_pega(p, ['subscription.status']) || '').toLowerCase().slice(0, 20),
+    assinaturaDesde:  String(_pega(p, ['subscription.started_at']) || '').slice(0, 30),
+    pedidoCriado: String(_pega(p, ['transaction.created_at','created_at','started_at']) || '').slice(0, 30),
+    pagoEm:       String(_pega(p, ['transaction.paid_at','paid_at']) || '').slice(0, 30),
+    expiraEm:     String(_pega(p, ['transaction.expires_at','expires_at']) || '').slice(0, 30),
     // o visitante que o pixel anexou no link do checkout — e o que liga a venda
     // a jornada inteira, mesmo quando a UTM se perdeu no caminho
     // O vid pode voltar em tres lugares, em ordem de confianca:
@@ -6306,7 +6319,9 @@ const KEYS_SERVIDOR = new Set([
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
   'sl_funil_adocoes',       // so o servidor decide; o navegador sobrescreveria
   'sl_ads_hist',            // historico de ads por dia; a tela le pelo endpoint
-  'sl_desenhos'             // quadros de rascunho; carregam prints, a tela le por /api/desenhos
+  'sl_desenhos',            // quadros de rascunho; carregam prints, a tela le por /api/desenhos
+  'sl_produtos',            // catalogo de produtos; a tela le por /api/produtos
+  'sl_canais'               // canais de trafego; a tela le por /api/canais
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -9317,11 +9332,15 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
                'O padrão seguro usa o id: utm_campaign={{campaign.id}}.' });
     }
 
-    // ── 4. Produtos que venderam sem plano identificado ─────────────────
+    // ── 4. Produtos que venderam fora do cadastro ───────────────────────
+    // Com catalogo: produto que nao esta nele e BLOQUEANTE — foi o Acervo fora do
+    // cadastro que deixou R$ 4 mil sem dono num dia no FunnelWay. Sem catalogo
+    // ainda, cai na regra antiga: plano que nao se identifica pelo nome nem preco.
     const cfgPl = _planosCfg(db);
+    const catalogo = typeof _produtosCfg === 'function' ? _produtosCfg(db) : [];
     const soltos = {};
     pagas7.forEach(v => {
-      if (_planoPorNome(v.produto) || _planoPorValor(v.valor, cfgPl)) return;
+      if (catalogo.length ? _produtoDe(v.produto, catalogo) : (_planoPorNome(v.produto) || _planoPorValor(v.valor, cfgPl))) return;
       const k = String(v.produto || '(sem nome)').trim() || '(sem nome)';
       const x = soltos[k] = soltos[k] || { produto: k, vendas: 0, receita: 0 };
       x.vendas++; x.receita += Number(v.valor) || 0;
@@ -9329,12 +9348,16 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
     const produtosSoltos = Object.values(soltos).sort((a, b) => b.receita - a.receita || b.vendas - a.vendas);
     if (produtosSoltos.length) {
       const tot = produtosSoltos.reduce((a, x) => a + x.receita, 0);
-      checks.push({ nivel: 'atencao', peso: 8,
-        titulo: 'Produto vendendo sem plano identificado',
+      checks.push(catalogo.length ? { nivel: 'ruim', peso: 20,
+        titulo: 'Produto vendendo fora do cadastro',
         texto: produtosSoltos.slice(0, 3).map(x => x.produto + ' (' + x.vendas + ')').join(', ') +
                (tot ? ' — R$ ' + Math.round(tot).toLocaleString('pt-BR') : '') +
-               '. Sem o plano, a margem e o ranking por plano não contam essas vendas.',
-        acao: { rotulo: 'Cadastrar preços dos planos', link: 'metricas' } });
+               ' nos últimos 7 dias sem estar em Produtos. CPA, ROAS por produto e esteira não contam essas vendas.',
+        acao: { rotulo: 'Cadastrar e vincular', aba: 'produtos' } } : { nivel: 'atencao', peso: 8,
+        titulo: 'Nenhum produto cadastrado',
+        texto: 'Sem o cadastro, não dá pra saber qual é o produto principal nem separar upsell. ' +
+               produtosSoltos.slice(0, 3).map(x => x.produto + ' (' + x.vendas + ')').join(', ') + ' venderam nos últimos 7 dias.',
+        acao: { rotulo: 'Cadastrar produtos', aba: 'produtos' } });
     }
 
     // ── 5. Campanhas contadas em mais de um funil ───────────────────────
@@ -9367,6 +9390,232 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
       checks, paginas: abertas, webhook, origem, produtosSoltos, rodouEm: new Date().toISOString() };
     _saudeCache[fid] = { em: Date.now(), saida };
     res.json(saida);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── PRODUTOS, CANAIS E LINKS ──
+// Tres cadastros pequenos que destravam o resto: qual produto e principal (e
+// em que projeto ele vende), qual utm_source e de qual canal, e quais anuncios
+// estao mandando a campanha pelo id. Sem eles, venda de upsell some da conta,
+// recuperacao rouba o credito do anuncio e renomear campanha quebra o vinculo.
+// ══════════════════════════════════════════════════════
+const KEY_PRODUTOS = 'sl_produtos';
+const KEY_CANAIS   = 'sl_canais';
+// '*' no fim = comeca com. Sem ele, igual — 'an' (audience network) casaria
+// com 'android' se fosse prefixo.
+const CANAIS_PADRAO = [
+  { id: 'meta', nome: 'Meta Ads', fontes: ['fb*', 'ig*', 'facebook*', 'instagram*', 'meta*', 'an', 'msg', 'messenger'], anuncios: true, apoio: false },
+  { id: 'recuperacao', nome: 'Recuperação', fontes: ['paytcall*', 'whatsapp*', 'wpp', 'email', 'e-mail', 'sms', 'recuperacao*', 'remarketing'], anuncios: false, apoio: true },
+  { id: 'organico', nome: 'Orgânico', fontes: ['organic', 'organico', 'orgânico', 'seo', 'bio', 'link_in_bio', 'direct', 'direto'], anuncios: false, apoio: false },
+  { id: 'google', nome: 'Google', fontes: ['google*', 'gads', 'youtube*', 'yt'], anuncios: true, apoio: false }
+];
+const _nrm = t => String(t || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+
+function _canaisCfg(db) {
+  const c = (db || readDB()).store[KEY_CANAIS];
+  return (c && Array.isArray(c.lista) && c.lista.length) ? c.lista : CANAIS_PADRAO;
+}
+function _canalDe(fonte, canais) {
+  const f = _nrm(fonte);
+  if (!f) return null;
+  for (const c of canais) {
+    for (const x of (c.fontes || [])) {
+      const y = _nrm(x);
+      if (!y) continue;
+      if (y.slice(-1) === '*' ? f.indexOf(y.slice(0, -1)) === 0 : f === y) return c;
+    }
+  }
+  return null;
+}
+function _produtosCfg(db) {
+  const c = (db || readDB()).store[KEY_PRODUTOS];
+  return (c && Array.isArray(c.lista)) ? c.lista : [];
+}
+function _produtoDe(nome, lista) {
+  const n = _nrm(nome);
+  if (!n) return null;
+  return lista.find(p => _nrm(p.nome) === n || (p.apelidos || []).some(a => _nrm(a) === n)) || null;
+}
+// campanha por id (a Meta devolve so digitos) x pelo nome x macro que nao virou valor
+function _tipoCampanha(v) {
+  const t = String(v || '').trim();
+  if (!t) return 'vazio';
+  if (/^\{\{.*\}\}$/.test(t)) return 'macro';
+  if (/^\d{6,}$/.test(t)) return 'id';
+  return 'nome';
+}
+
+app.get('/api/produtos', authUsuario, (req, res) => {
+  try {
+    const db = readDB(), lista = _produtosCfg(db);
+    const corte = Date.now() - 30 * 86400000, vistos = {};
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (!_vendaPaga(v) || new Date(v.recebidoEm).getTime() < corte) return;
+      const nome = String(v.produto || '').trim() || '(sem nome)';
+      const x = vistos[nome] = vistos[nome] || { nome, vendas: 0, receita: 0, ultima: '' };
+      x.vendas++; x.receita += Number(v.valor) || 0;
+      if (String(v.recebidoEm) > x.ultima) x.ultima = String(v.recebidoEm);
+    });
+    const saida = Object.values(vistos).map(x => {
+      const p = _produtoDe(x.nome, lista);
+      return Object.assign(x, { cadastrado: !!p, produtoId: p ? p.id : null, projeto: p ? (p.projeto || '') : '' });
+    }).sort((a, b) => b.receita - a.receita || b.vendas - a.vendas);
+    res.json({ ok: true, lista, vistos: saida });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/produtos', authDiretoria, (req, res) => {
+  try {
+    const bruto = Array.isArray(req.body && req.body.lista) ? req.body.lista : null;
+    if (!bruto) return res.status(400).json({ error: 'Mande a lista de produtos.' });
+    const PAPEIS = ['principal', 'bump', 'upsell', 'downsell'];
+    const lista = bruto.slice(0, 200).map(p => ({
+      id: String(p.id || ('pr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6))).slice(0, 40),
+      nome: String(p.nome || '').trim().slice(0, 120),
+      apelidos: (Array.isArray(p.apelidos) ? p.apelidos : []).map(a => String(a).trim().slice(0, 120)).filter(Boolean).slice(0, 20),
+      projeto: String(p.projeto || '').slice(0, 60),
+      papel: PAPEIS.indexOf(p.papel) >= 0 ? p.papel : 'principal',
+      ofertas: (Array.isArray(p.ofertas) ? p.ofertas : []).slice(0, 30).map(o => ({
+        nome: String(o.nome || '').trim().slice(0, 80),
+        preco: Math.max(0, Number(String(o.preco).replace(',', '.')) || 0),
+        periodo: ['mes', 'trimestre', 'semestre', 'ano', 'unico'].indexOf(o.periodo) >= 0 ? o.periodo : 'unico'
+      })).filter(o => o.nome)
+    })).filter(p => p.nome);
+    const db = readDB();
+    db.store[KEY_PRODUTOS] = { lista, _updatedAt: Date.now() };
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_PRODUTOS] = now();
+    audit(db, 'produtos_salvos', KEY_PRODUTOS, { total: lista.length }, req.user);
+    writeDB(db);
+    res.json({ ok: true, lista });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/canais', authUsuario, (req, res) => {
+  try {
+    const db = readDB(), c = db.store[KEY_CANAIS];
+    res.json({ ok: true, lista: _canaisCfg(db), padrao: !(c && Array.isArray(c.lista) && c.lista.length) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/canais', authDiretoria, (req, res) => {
+  try {
+    const bruto = Array.isArray(req.body && req.body.lista) ? req.body.lista : null;
+    if (!bruto) return res.status(400).json({ error: 'Mande a lista de canais.' });
+    const lista = bruto.slice(0, 40).map(c => ({
+      id: String(c.id || ('cn' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5))).slice(0, 40),
+      nome: String(c.nome || '').trim().slice(0, 60),
+      fontes: (Array.isArray(c.fontes) ? c.fontes : []).map(f => String(f).trim().toLowerCase().slice(0, 60)).filter(Boolean).slice(0, 40),
+      anuncios: !!c.anuncios, apoio: !!c.apoio
+    })).filter(c => c.nome);
+    const db = readDB();
+    db.store[KEY_CANAIS] = { lista, _updatedAt: Date.now() };
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_CANAIS] = now();
+    audit(db, 'canais_salvos', KEY_CANAIS, { total: lista.length }, req.user);
+    writeDB(db);
+    res.json({ ok: true, lista });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Faturamento por canal. Regra de credito: canal de APOIO (recuperacao) nunca
+// fica com a venda quando se sabe de onde a pessoa veio — o anuncio de origem
+// leva, e o apoio aparece como "ajudou". Foi assim que o FunnelWay jogava a
+// venda recuperada por ligacao no colo da Payt e tirava do criativo.
+app.get('/api/canais/resumo', authUsuario, async (req, res) => {
+  try {
+    const dias = Math.max(1, Math.min(90, parseInt(req.query.dias, 10) || 28));
+    const db = readDB(), canais = _canaisCfg(db);
+    const corte = Date.now() - dias * 86400000;
+    // primeira origem conhecida de cada visitante (jornada guarda 7 dias)
+    const origemDoVid = {};
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+      if (!j || !j.id || origemDoVid[j.id]) return;
+      const ev = (j.eventos || []).find(e => e && e.primeiro && e.primeiro.utm_source);
+      if (ev) origemDoVid[j.id] = ev.primeiro.utm_source;
+    });
+    const por = {}, semCanal = {};
+    canais.forEach(c => { por[c.id] = { id: c.id, nome: c.nome, fontes: c.fontes, apoio: !!c.apoio, anuncios: !!c.anuncios, vendas: 0, faturamento: 0, ajudou: 0, ajudouValor: 0 }; });
+    let semUtm = { vendas: 0, faturamento: 0 }, renov = { vendas: 0, faturamento: 0 }, total = 0;
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (!_vendaPaga(v) || new Date(v.recebidoEm).getTime() < corte) return;
+      const val = Number(v.valor) || 0; total += val;
+      if (v.renovacao) { renov.vendas++; renov.faturamento += val; return; }
+      // a fonte crua: 'organic' tambem classifica (no canal Organico), porque
+      // tratar como vazio escondia o tamanho do buraco que a tela precisa mostrar
+      const fonte = String(v.utmSource || '').trim();
+      let c = _canalDe(fonte, canais);
+      // venda que caiu em canal sem anuncio (recuperacao, "organic" cravado pelo
+      // checkout) mas cuja pessoa veio de anuncio: o credito volta pro anuncio
+      if ((!c || !c.anuncios) && v.vid && origemDoVid[v.vid]) {
+        const orig = _canalDe(origemDoVid[v.vid], canais);
+        if (orig && orig.anuncios) {
+          if (c) { por[c.id].ajudou++; por[c.id].ajudouValor += val; }
+          c = orig;
+        }
+      }
+      if (c) { por[c.id].vendas++; por[c.id].faturamento += val; return; }
+      if (!fonte) { semUtm.vendas++; semUtm.faturamento += val; return; }
+      const k = String(fonte).slice(0, 60);
+      const x = semCanal[k] = semCanal[k] || { fonte: k, vendas: 0, faturamento: 0 };
+      x.vendas++; x.faturamento += val;
+    });
+    // gasto: o mesmo panorama das Metricas de Ads; vai pro canal de anuncio principal
+    let investimento = null, avisoGasto = '';
+    try {
+      const hojeBRT = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+      const deBRT = new Date(corte - 3 * 3600000).toISOString().slice(0, 10);
+      const pano = await _utmifyPanorama(deBRT, hojeBRT, '');
+      investimento = Number((pano.kpis || {}).investimento) || 0;
+    } catch (e) { avisoGasto = 'Sem o gasto da Utmify agora: ' + e.message; }
+    const alvoGasto = canais.find(c => c.anuncios && c.id === 'meta') || canais.find(c => c.anuncios);
+    const lista = Object.values(por).map(c => Object.assign(c, {
+      investimento: (alvoGasto && c.id === alvoGasto.id) ? investimento : null,
+      roas: (alvoGasto && c.id === alvoGasto.id && investimento) ? c.faturamento / investimento : null
+    })).sort((a, b) => b.faturamento - a.faturamento);
+    res.json({ ok: true, dias, total, canais: lista, semUtm, renovacao: renov,
+      semCanal: Object.values(semCanal).sort((a, b) => b.faturamento - a.faturamento).slice(0, 30),
+      avisoGasto, historicoDesde: '2026-09-29' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Validador: como cada anuncio esta mandando a campanha. Olha o que CHEGOU
+// (pixel + vendas), nao o que esta escrito no gerenciador — e o que chegou que
+// decide se a venda vai ter dono.
+app.get('/api/links/validador', authUsuario, (req, res) => {
+  try {
+    const dias = Math.max(1, Math.min(30, parseInt(req.query.dias, 10) || 7));
+    const db = readDB(), corte = Date.now() - dias * 86400000;
+    const por = {};
+    const somar = (criativo, campanha, fonte, visita, venda, valor) => {
+      const k = String(criativo || '').trim() || '(sem utm_content)';
+      const x = por[k] = por[k] || { criativo: k, visitas: 0, vendas: 0, faturamento: 0, campanhas: {}, fontes: {} };
+      x.visitas += visita; x.vendas += venda; x.faturamento += valor;
+      const c = String(campanha || '').trim();
+      x.campanhas[c] = (x.campanhas[c] || 0) + 1;
+      if (fonte) x.fontes[fonte] = (x.fontes[fonte] || 0) + 1;
+    };
+    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+      const ev = (j && j.eventos || []).find(e => e && e.tipo === 'entrou' && new Date(e.em).getTime() >= corte);
+      if (!ev) return;
+      const pr = ev.primeiro || {};
+      somar(pr.utm_content || ev.criativo, pr.utm_campaign || ev.campanha, pr.utm_source || ev.origem, 1, 0, 0);
+    });
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      if (!_vendaPaga(v) || v.renovacao || new Date(v.recebidoEm).getTime() < corte) return;
+      if (!_origemVale(v.utmContent) && !_origemVale(v.utmCampaign)) return;
+      somar(v.utmContent, v.utmCampaign, v.utmSource, 0, 1, Number(v.valor) || 0);
+    });
+    const linhas = Object.values(por).map(x => {
+      const lista = Object.entries(x.campanhas).sort((a, b) => b[1] - a[1]);
+      const principal = lista.length ? lista[0][0] : '';
+      const tipos = {};
+      lista.forEach(([c, n]) => { const t = _tipoCampanha(c); tipos[t] = (tipos[t] || 0) + n; });
+      const tipo = _tipoCampanha(principal);
+      return { criativo: x.criativo, visitas: x.visitas, vendas: x.vendas, faturamento: x.faturamento,
+               campanha: principal, tipo, tipos, fonte: (Object.entries(x.fontes).sort((a, b) => b[1] - a[1])[0] || [''])[0],
+               ok: tipo === 'id' && x.criativo !== '(sem utm_content)' };
+    }).sort((a, b) => (a.ok - b.ok) || (b.visitas + b.vendas * 50) - (a.visitas + a.vendas * 50));
+    res.json({ ok: true, dias, linhas: linhas.slice(0, 80), foraDoPadrao: linhas.filter(l => !l.ok).length, total: linhas.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
