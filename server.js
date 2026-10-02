@@ -11252,6 +11252,153 @@ app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════
+// ── NÚMEROS DE CADA BLOCO DO DESENHO ──
+// O funil é o que a pessoa desenhou: fontes, redirect do teste, páginas,
+// checkout, obrigado. Aqui cada bloco ganha os números do período, conferidos
+// na base de pessoas, e cada seta ganha quantos de um bloco chegaram no outro.
+// Página com pixel que não está no desenho não entra em bloco nenhum.
+//   fonte Meta Ads   → cliques e gasto pela regra de campanha + quem chegou
+//                      vindo de anúncio (utm_source fb/ig… sem "bio")
+//   fonte Instagram  → quem chegou com "bio" na UTM (link da bio)
+//   fonte UTM        → quem chegou com a UTM que você definir
+//   fonte orgânico   → quem chegou sem UTM nenhuma
+//   redirect (split) → cliques no link do teste e a divisão real
+// ══════════════════════════════════════════════════════
+app.get('/api/funil/blocos', authUsuario, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const f = esc.f, per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const dir = _ehDir(req), custos = _custosCfg(dbj), canais = _canaisCache();
+    const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
+    const esq = _escopoSql(esc, 'p');
+    const linhas = _q(`SELECT p.visitante, p.pg, p.etapa, s.checkout, s.pitch, s.fonte, s.midia, s.camp, s.cont, s.teste
+                       FROM paginas p JOIN sessoes s ON s.id = p.sessao
+                       WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ` + esq.where).all(per.de, per.ate, ...esq.args);
+    const porEtapa = {}, todos = new Set(), ck = new Set(), pit = new Set(), toques = {}, testes = {};
+    linhas.forEach(l => {
+      const et = _etapaDaLinha(esc, l.pg, l.etapa);
+      if (!et) return;
+      (porEtapa[et] = porEtapa[et] || new Set()).add(l.visitante);
+      todos.add(l.visitante);
+      if (l.checkout) ck.add(l.visitante);
+      if (l.pitch) pit.add(l.visitante);
+      const k = [l.fonte, l.midia, l.camp, l.cont].join('|');
+      const t = toques[l.visitante] || (toques[l.visitante] = {});
+      if (!t[k]) t[k] = { fonte: l.fonte || '', midia: l.midia || '', camp: l.camp || '', cont: l.cont || '' };
+      if (l.teste) (testes[l.visitante] = testes[l.visitante] || new Set()).add(String(l.teste).toLowerCase());
+    });
+
+    // vendas do funil no período, por pessoa
+    const nomes = {};
+    _q('SELECT id, nome FROM camp_dia WHERE dia BETWEEN ? AND ?').all(per.de, per.ate).forEach(c => { nomes[c.id] = c.nome; });
+    const nomeCamp = v => { const t = String(v || '').trim(); const p = t.split('|').map(x => x.trim()); for (const x of p) if (/^\d{6,}$/.test(x) && nomes[x]) return nomes[x]; return p[0] || ''; };
+    const vendas = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(f)).filter(o => o.pago && !o.estorno);
+    const vendaPor = {}, compradores = new Set();
+    vendas.forEach(o => { if (o.visitante) { (vendaPor[o.visitante] = vendaPor[o.visitante] || []).push(o); compradores.add(o.visitante); } });
+    const medir = s => {
+      let n = 0, fat = 0, c = 0, p = 0;
+      s.forEach(v => { if (ck.has(v)) c++; if (pit.has(v)) p++; (vendaPor[v] || []).forEach(o => { n++; fat += liq(o); }); });
+      return { pessoas: s.size, checkout: c, pitch: p, vendas: n, faturamento: dir ? fat : null, conversao: s.size ? n / s.size : 0 };
+    };
+    const ehBio = t => /bio/i.test([t.fonte, t.midia, t.camp, t.cont].join(' '));
+    const casa = (t, fl) => ['fonte', 'midia', 'camp', 'cont'].every(k => {
+      const q = fl && String(fl[k] || '').trim().toLowerCase(); if (!q) return true;
+      return String(t[k] || '').toLowerCase().indexOf(q) >= 0;
+    });
+    const quem = teste => { const s = new Set(); Object.keys(toques).forEach(v => { if (Object.values(toques[v]).some(teste)) s.add(v); }); return s; };
+
+    // gasto por campanha (arquivo do Resultado, sem esperar a Utmify)
+    let camps = [];
+    try {
+      const proj = await _projetoIdDoFunil(f);
+      const camp = await _campanhasPeriodo(per.de, per.ate, proj, 0);
+      _campAtualizarDepois(per.de, per.ate, proj);
+      Object.keys(camp.porDia).forEach(d => { camps = camps.concat(camp.porDia[d]); });
+    } catch (e) {}
+    const regraFunil = _regraCampanhas(f);
+
+    const conj = {}, nos = {};
+    (f.fontes || []).forEach(o => {
+      const canal = o.canal || 'meta';
+      let s, extra = {};
+      if (canal === 'instagram') s = quem(t => (o.filtro && Object.values(o.filtro).some(Boolean)) ? casa(t, o.filtro) : ehBio(t));
+      else if (canal === 'utm') s = quem(t => casa(t, o.filtro || {}));
+      else if (canal === 'organico') s = quem(t => !t.fonte);
+      else {
+        // Meta Ads: a regra da própria origem (campanha fixa ou "contém"), senão a do funil
+        const fixa = o.utmCampanha ? _nrm(o.utmCampanha) : '', contem = o.utmRegra ? _nrm(o.utmRegra) : '';
+        const regra = (fixa || contem) ? (n => { const x = _nrm(n); return (fixa && x === fixa) || (contem && x.indexOf(contem) >= 0); }) : regraFunil;
+        // campanha que veio só pelo id e não está no arquivo: não dá pra dizer
+        // que é de outro funil, então conta (só exclui quando o nome não bate)
+        s = quem(t => {
+          const c = _canalDe(t.fonte, canais);
+          if (!c || c.id !== 'meta' || ehBio(t)) return false;
+          if (!regra || !t.camp) return true;
+          const nm = nomeCamp(t.camp);
+          return /^\d{6,}$/.test(nm) || regra(nm);
+        });
+        let cl = 0, gasto = 0;
+        camps.forEach(c => { if (!regra || regra(c.nome)) { cl += c.cliques; gasto += c.gasto; } });
+        extra = { cliques: cl, investido: gasto, regra: o.utmCampanha || o.utmRegra || '' };
+      }
+      conj[o.id] = s;
+      nos[o.id] = Object.assign({ tipo: 'fonte', canal }, medir(s), extra);
+    });
+    const abst = (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer));
+    const redirs = Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [];
+    (f.etapas || []).forEach(e => {
+      const temPagina = porEtapa[e.id] && porEtapa[e.id].size;
+      if (e.tipo === 'split') {
+        const slug = String(e.slug || '').toLowerCase();
+        const s = new Set();
+        if (slug) _q('SELECT DISTINCT visitante FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ?')
+          .all(slug, per.ini, per.fim).forEach(r => s.add(r.visitante));
+        const r = redirs.find(x => String(x.slug || '').toLowerCase() === slug);
+        const sorteio = {};
+        abst.filter(l => l.teste === slug && l.data >= per.de && l.data <= per.ate).forEach(l => { sorteio[l.variante] = (sorteio[l.variante] || 0) + (l.sorteios || 0); });
+        const tot = Object.values(sorteio).reduce((a, n) => a + n, 0);
+        conj[e.id] = s;
+        nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot,
+          divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
+      } else if (e.tipo === 'checkout' && !temPagina) {
+        // checkout do gateway não recebe pixel: vale quem clicou em comprar
+        conj[e.id] = ck;
+        nos[e.id] = Object.assign({ tipo: 'checkout', viaClique: true }, medir(ck));
+      } else if (e.tipo === 'obrigado' && !temPagina) {
+        const fat = vendas.reduce((a, o) => a + liq(o), 0);
+        conj[e.id] = compradores;
+        nos[e.id] = { tipo: 'obrigado', viaVenda: true, pessoas: compradores.size, vendas: vendas.length, faturamento: dir ? fat : null,
+                      semPessoa: vendas.filter(o => !o.visitante).length };
+      } else if (e.tipo === 'recuperacao') {
+        const vr = vendas.filter(o => o.apoio);
+        const s = new Set(vr.map(o => o.visitante).filter(Boolean));
+        conj[e.id] = s;
+        nos[e.id] = { tipo: 'recuperacao', pessoas: s.size, vendas: vr.length, faturamento: dir ? vr.reduce((a, o) => a + liq(o), 0) : null };
+      } else {
+        const s = porEtapa[e.id] || new Set();
+        conj[e.id] = s;
+        nos[e.id] = Object.assign({ tipo: e.tipo || 'pagina' }, medir(s));
+      }
+    });
+    const fios = {};
+    (f.ligacoes || []).forEach(l => {
+      const A = conj[l[0]], B = conj[l[1]];
+      if (!A || !B || !A.size) return;
+      let n = 0; A.forEach(v => { if (B.has(v)) n++; });
+      fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
+    });
+    // páginas com o pixel do funil que não estão no desenho (só a contagem)
+    const fora = _q('SELECT p.pg, COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND p.funil IN (' +
+                    _ph(esc.ids.length) + ') AND NOT ' + esq.where + ' GROUP BY p.pg ORDER BY n DESC LIMIT 30')
+      .all(per.de, per.ate, ...esc.ids, ...esq.args).filter(x => !esc.ignoradas.has(x.pg));
+    res.json({ ok: true, de: per.de, ate: per.ate, chegaram: todos.size, vendas: vendas.length, nos, fios, fora });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
 // ── FLUXO DO FUNIL ──
 // O mapa desenhado à mão misturava setas que ninguém liga com números que
 // vinham de lugares diferentes ("740% de quem entrou"). O Fluxo é montado

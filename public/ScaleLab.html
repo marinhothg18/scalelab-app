@@ -1665,6 +1665,12 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-conteudo,.v2-ov{--v2-verde:#22C55E;--v2-laranja:#F59E0B;--v2-verm:#EF4444;--v2-azul:#1B9CFA;--v2-roxo:#5B5BF6;--v2-linha:var(--border)}
 .light-mode .fx-conteudo,.light-mode .v2-ov{--v2-verde:#16A34A;--v2-laranja:#D97706;--v2-verm:#DC2626;--v2-azul:#0284C7;--v2-roxo:#4F46E5}
 .fn-btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+.fn-no.v3{background:var(--bg2);min-width:210px;width:230px;padding:12px 14px;border-width:1px;box-shadow:0 4px 16px rgba(0,0,0,.10)}
+.fn-no.v3 .c{margin-bottom:2px} .fn-no.v3 .nm{font-size:13px}
+.fn-no.v3 .lk{margin:0 0 8px}
+.fn-no.v3 .fx-g{gap:7px 12px} .fn-no.v3 .fx-m-v{font-size:14.5px}
+.fn-div{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--border);font-size:11px;color:var(--text2)}
+.fn-div b{color:var(--text)}
 .fx-palco-w{overflow-x:auto;padding:4px 2px 10px;background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:18px 18px;border:1px solid var(--border);border-radius:14px}
 .fx-palco{position:relative;margin:16px}
 .fx-c{position:absolute;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:0 4px 14px rgba(0,0,0,.08);overflow:hidden}
@@ -4471,9 +4477,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <div id="mp-fluxo"></div>
           <div id="mp-desenho" style="display:none">
           <div id="mp-versao"></div>
-          <div class="fn-faixa" id="fn-etapas"></div>
-          <div id="mp-aviso"></div>
-          <div id="mp-fora-aviso"></div>
+          <div class="fn-faixa" id="fn-etapas" style="display:none"></div>
+          <div id="mp-aviso" style="display:none"></div>
+          <div id="mp-fora-aviso" style="display:none"></div>
           <div class="fn-cols">
             <div>
               <div class="fn-aviso-lig" id="fn-aviso-lig" style="display:none"></div>
@@ -4501,7 +4507,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
               </div>
             </div>
             <div>
-              <div id="mp-fora"></div>
+              <div id="mp-fora" style="display:none"></div>
               <div class="fn-cx2" id="fn-detalhe"></div>
               <div class="fn-cx2">
                 <h3>📣 Origens de tráfego</h3>
@@ -28375,10 +28381,10 @@ function saveAdsApiKey(){
 // 'pagina', misturado com tela de quiz.
 var FN_CORES = { pagina:'#1B9CFA', prevenda:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926',
                  upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC',
-                 quiz:'#0EA5A0', recuperacao:'#DC2626' };
+                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6' };
 var FN_ROT   = { pagina:'PÁGINA', prevenda:'PRÉ-VENDA', vsl:'VSL', checkout:'CHECKOUT',
                  upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM',
-                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO' };
+                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B' };
 
 // A paleta do mapa. Um clique poe o bloco no funil, ligado no que estiver
 // selecionado — em vez de preencher tres campos de formulario a cada etapa.
@@ -31943,7 +31949,19 @@ function mpPaleta(){
       (extra||'')+'</button>';
   };
 
-  var html = '<div class="mp-grp">Páginas</div>' +
+  var fonteBt = function(canal, nome, dica, cor){
+    return '<button class="mp-bl" onclick="mpAddFonte(\''+canal+'\')" title="Origem de tráfego"><span class="pt" style="background:'+cor+'"></span>'+
+      '<span class="tx"><b>'+nome+'</b><small>'+dica+'</small></span></button>';
+  };
+  var html = '<div class="mp-grp">Fontes de tráfego</div>' +
+    fonteBt('meta', 'Facebook / Instagram Ads', 'cliques e gasto da campanha', '#1877F2') +
+    fonteBt('instagram', 'Instagram · link da bio', 'quem veio pela bio', '#E1306C') +
+    fonteBt('utm', 'Link com UTM', 'e-mail, WhatsApp, parceiro', '#8A94AC') +
+    fonteBt('organico', 'Orgânico / direto', 'sem UTM', '#22C55E') +
+    '<div class="mp-grp">Redirect</div>' +
+    '<button class="mp-bl" onclick="mpAddSplit()" title="O link /r/ do teste A/B"><span class="pt" style="background:#5B5BF6"></span>'+
+      '<span class="tx"><b>Teste A/B (link /r/)</b><small>divide entre as variantes</small></span></button>' +
+    '<div class="mp-grp">Páginas</div>' +
     FN_PALETA.map(function(b){ return bloco(b.tipo, b.nome, b.dica); }).join('');
 
   // Planos: so aparecem quando ha preco cadastrado — sem preco nao da pra
@@ -32196,6 +32214,10 @@ function fnCarregarStats(){
   // Leads (pessoa única, páginas do mapa, sem o time). Antes cada tela contava
   // do seu jeito e o topo mostrava 7 chegadas contra 3.389 na Jornada.
   var fid = f.id, meu = ++fnNovosPedido;
+  fetch('/api/funil/blocos?funil='+encodeURIComponent(fid)+'&'+fnQsPeriodo())
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ if(meu !== fnNovosPedido) return; fnBlocos = (d && d.ok) ? d : null; fnNos(); fnFios(); mpForaLinha(); })
+    .catch(function(){});
   fetch('/api/funil/mapa-numeros?funil='+encodeURIComponent(fid)+'&'+fnQsPeriodo())
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){ if(meu !== fnNovosPedido) return; fnNovos = (d && d.ok) ? d : null; fnPintarCtx(); fnNos(); fnFaixa(); fnFios(); if(fnAbaAtual==='geral') gePintar(); })
@@ -32203,7 +32225,7 @@ function fnCarregarStats(){
   var p = fnPeriodo();
   fnCarregarCliques(p.de, p.ate);
 }
-var fnNovos = null, fnNovosPedido = 0;
+var fnNovos = null, fnNovosPedido = 0, fnBlocos = null;
 
 // Os cliques do anúncio quem tem é a Utmify — o nosso pixel só começa a contar
 // depois que a pessoa chega na página. Vem do mesmo lugar que Métricas de Ads
@@ -32285,7 +32307,8 @@ function fnVal(id){ return fnValFonte(id).valor; }
 // fora nao pode virar sumir: quem tem 257 pessoas numa pagina precisa saber.
 function fnPintarFora(){
   var el = document.getElementById('fn-fora-aviso'); if(!el) return;
-  // o alerta de cima (mp-fora-aviso) e a lista ao lado já dizem isso, com ação
+  // com a base de pessoas, é a linha discreta (só páginas fora do desenho)
+  if(fnBlocos){ mpForaLinha(); return; }
   if(document.getElementById('mp-fora')){ el.innerHTML = ''; return; }
   var n = (fnFora||[]).length;
   if(!n){ el.innerHTML = ''; return; }
@@ -32630,6 +32653,58 @@ function fnLinkCurto(url){
   }catch(e){ return String(url).replace(/^https?:\/\//,'').replace(/\/$/,''); }
 }
 
+// Cartão do bloco no jeito do FunnelWay: nome, de onde vem o número e uma
+// grade curta de métricas. Cada tipo mostra o que responde a pergunta dele.
+var FN_CANAL_ROT = { meta:'Facebook / Instagram Ads', instagram:'Instagram · link da bio', utm:'Link com UTM', organico:'Orgânico / direto' };
+function fnNoCorpo(n, b, vt){
+  var cor = FN_CORES[n.tipo] || '#1B9CFA';
+  var m = function(r, v, c){ return '<div><div class="fx-m-r">'+r+'</div><div class="fx-m-v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div></div>'; };
+  var pc = function(x){ return x == null ? '—' : v2Pct(x, x > 0 && x < .1 ? 2 : 1); };
+  var din = function(x){ return x == null ? (b.vendas ? '•••' : '-') : v2Din(x); };
+  var rot = n.tipo === 'fonte' ? (b.canal === 'meta' ? 'ADS' : b.canal === 'instagram' ? 'BIO' : b.canal === 'organico' ? 'ORGÂNICO' : 'UTM') : (FN_ROT[n.tipo] || 'PÁGINA');
+  var cab = '<div class="c"><span class="nm"><span class="fx-pt" style="background:'+cor+';display:inline-block;margin-right:7px;vertical-align:1px"></span>'+fnEsc(n.nome)+'</span>'+
+    '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+rot+'</span></div>';
+  var sub = '', grade = '', pe = '';
+  var verde = 'var(--v2-verde,#22C55E)', laranja = 'var(--v2-laranja,#F59E0B)';
+  if(n.tipo === 'fonte'){
+    var regra = b.canal === 'meta' ? (b.regra ? 'campanhas com “'+b.regra+'”' : 'campanhas do funil') :
+                b.canal === 'utm' ? Object.keys(n.filtro||{}).filter(function(k){ return n.filtro[k]; }).map(function(k){ return {fonte:'source',midia:'medium',camp:'campaign',cont:'content'}[k]+'='+n.filtro[k]; }).join(' · ') : '';
+    sub = (FN_CANAL_ROT[b.canal]||'') + (regra ? ' · '+regra : '');
+    grade = (b.canal === 'meta' ? m('Cliques no anúncio', fnNum(b.cliques)) + m('Investido', v2Din(b.investido)) : '') +
+      m('Chegaram', fnNum(b.pessoas)) + (b.canal !== 'meta' ? m('Checkouts', fnNum(b.checkout)) : m('Clique → página', b.cliques ? pc(Math.min(1, b.pessoas / b.cliques)) : '—')) +
+      m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Conversão', pc(b.conversao));
+  } else if(n.tipo === 'split'){
+    sub = b.slug ? 'link /r/'+b.slug+(b.nomeTeste ? ' · '+b.nomeTeste : '') : 'escolha o teste no painel ao lado';
+    grade = m('Cliques no link', fnNum(b.cliques)) + m('Chegaram', fnNum(b.pessoas)) +
+      m('Checkouts', fnNum(b.checkout)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '');
+    if(b.divisao && b.divisao.length) pe = '<div class="fn-div">'+b.divisao.map(function(d){ return '<span>'+fnEsc(d.nome)+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'; }).join('')+'</div>';
+  } else if(n.tipo === 'checkout' && b.viaClique){
+    sub = 'clique no botão de compra';
+    grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
+      m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
+  } else if(n.tipo === 'obrigado' && b.viaVenda){
+    sub = 'venda aprovada (webhook)';
+    grade = m('Compraram', fnNum(b.vendas), verde) + m('Faturamento', din(b.faturamento));
+    if(b.semPessoa) pe = '<div class="fx-c-url" style="margin-top:6px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>';
+  } else if(n.tipo === 'recuperacao'){
+    sub = 'ligação, WhatsApp, e-mail';
+    grade = m('Pessoas', fnNum(b.pessoas)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
+  } else {
+    sub = n.url ? fnLinkCurto(n.url) : '';
+    grade = m('Pessoas', fnNum(b.pessoas)) + m('Checkouts', fnNum(b.checkout)) +
+      (n.tipo === 'vsl' ? m('Passaram do pitch', b.pitch ? fnNum(b.pitch) : '-') : '') +
+      m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
+    pe = '<div class="fx-c-pe"><span>Taxa de conversão</span><b>'+v2Pct(b.conversao, 2)+'</b></div>'+
+         '<div class="v2-trilho" style="height:5px"><i style="width:'+Math.min(100, (b.conversao||0)*800).toFixed(1)+'%;background:#22C55E"></i></div>';
+  }
+  return cab +
+    (vt ? '<div class="fn-var" title="Variante do teste '+fnEsc(vt.teste)+'">⇄ '+fnEsc(vt.nome)+'</div>' : '') +
+    (sub ? '<div class="lk" title="'+fnEsc(n.url || sub)+'">'+fnEsc(sub)+'</div>' : '') +
+    '<div class="fx-g">'+grade+'</div>' + pe +
+    ((n.tipo !== 'fonte' && n.tipo !== 'split' && n.tipo !== 'recuperacao' && !n.url && !b.viaClique && !b.viaVenda)
+      ? '<div style="font-size:10px;color:var(--red);margin-top:6px;font-weight:700">⚠ sem link: cole a URL no painel ao lado</div>' : '');
+}
+
 function fnNos(){
   var f = fnAtual(), palco = document.getElementById('fn-palco');
   if(!f || !palco) return;
@@ -32665,6 +32740,17 @@ function fnNos(){
                       v > fnCliquesTotais(f) * 1.05;
     var compraram = (!src && n.tipo==='checkout') ? fnCompraram(f, n) : null;
     var taxa = (compraram !== null && v > 0) ? (compraram/v)*100 : null;
+
+    var bl = fnBlocos && fnBlocos.nos ? fnBlocos.nos[n.id] : null;
+    if(bl){
+      el.classList.add('v3');
+      if(n.h){ el.style.height = ''; el.style.minHeight = n.h+'px'; }
+      el.innerHTML = fnNoCorpo(n, bl, vt);
+      var alca2 = document.createElement('div'); alca2.className = 'fn-alca'; alca2.title = 'Arraste pra mudar o tamanho do bloco';
+      el.appendChild(alca2); palco.appendChild(el);
+      fnArrastar(el, n, f); fnRedimensionar(alca2, el, n, f);
+      return;
+    }
 
     el.innerHTML = '<div class="c"><span class="nm">'+fnEsc(n.nome)+'</span>'+
       '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+FN_ROT[n.tipo]+'</span></div>'+
@@ -32764,6 +32850,11 @@ function fnFios(){
     var meio = (x2-x1)/2;
     var vb = fnVal(nb.id), va = na.tipo==='fonte' ? base : fnVal(na.id);
     var passou = va ? (vb/va) : 0;
+    // Com a base de pessoas, a seta diz quantos do bloco de origem estiveram
+    // também no de destino — nunca passa de 100%.
+    var fb = fnBlocos && fnBlocos.fios ? fnBlocos.fios[par[0]+'|'+par[1]] : null;
+    var temFio = !!(fnBlocos && fnBlocos.nos && fnBlocos.nos[par[0]]);
+    if(temFio) passou = fb ? fb.pct : 0;
     // mais de 100% entre dois blocos não é passagem: é tráfego que entrou por
     // outro caminho. Mostrar "24522%" só confundia — a seta fica sem número.
     var acimaDe100 = passou > 1.02;
@@ -32804,12 +32895,13 @@ function fnFios(){
         mp.setAttributeNS('http://www.w3.org/1999/xlink','href','#'+pid);
         mo.appendChild(mp); c.appendChild(mo); svg.appendChild(c);
       }
-      if(na.tipo!=='fonte' && !acimaDe100){
+      if((temFio || na.tipo!=='fonte') && !acimaDe100){
         var t = document.createElementNS('http://www.w3.org/2000/svg','text');
         t.setAttribute('x',(x1+x2)/2); t.setAttribute('y',(y1+y2)/2-8);
         t.setAttribute('fill',cor); t.setAttribute('font-size','10');
         t.setAttribute('font-weight','800'); t.setAttribute('text-anchor','middle');
-        t.textContent = (passou*100).toFixed(0)+'%';
+        t.textContent = (passou*100 < 1 && passou > 0) ? (passou*100).toFixed(1).replace('.',',')+'%' : (passou*100).toFixed(0)+'%';
+        if(fb){ var tt2 = document.createElementNS('http://www.w3.org/2000/svg','title'); tt2.textContent = fb.n+' pessoa(s) de '+na.nome+' chegaram em '+nb.nome; t.appendChild(tt2); }
         svg.appendChild(t);
       }
     }
@@ -32990,14 +33082,32 @@ function fnDetalhe(){
               (v ? (base/v*100).toFixed(1) : '0.0')+'%</span></div>' : '')+
       '<div class="fn-campo" style="margin-top:12px"><label>Nome da origem</label>'+
       '<input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+      fnCampoCanal(n)+
+      ((n.canal||'meta') !== 'meta' ? '' :
       '<div class="fn-campo"><label>De onde vêm os cliques</label>'+
       '<select onchange="fnAmarrarCampanha(\''+n.id+'\',this.value)">'+opts+'</select>'+
       '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Os cliques saem da Utmify. Escolha uma campanha pra separar as origens.</div></div>'+
       '<div class="fn-campo"><label>Ou uma regra: campanha contém</label>'+
       '<input value="'+fnEsc(n.utmRegra||'')+'" placeholder="ex.: CONCURSO" onchange="fnRegraCampanha(\''+n.id+'\',this.value)"'+(n.utmCampanha?' disabled title="Tire a campanha fixa acima pra usar a regra"':'')+'>'+
-      '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Soma toda campanha cujo nome tem esse texto — campanha nova entra sozinha. Cada campanha deve pertencer a um funil só.</div></div>'+
+      '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Soma toda campanha cujo nome tem esse texto — campanha nova entra sozinha. Cada campanha deve pertencer a um funil só.</div></div>')+
       htmlLig+
       '<button class="fn-btn g sm" style="width:100%;margin-top:9px;color:var(--red)" onclick="fnRemoverFonte(\''+n.id+'\')">Remover origem</button>';
+    return;
+  }
+
+  if(n.tipo === 'split'){
+    var testes = abDoProjeto();
+    var bl = fnBlocos && fnBlocos.nos ? fnBlocos.nos[n.id] : null;
+    cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
+      '<div class="fn-campo"><label>Nome do bloco</label><input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+      '<div class="fn-campo"><label>Qual teste (link /r/…)</label><select onchange="fnSplitTeste(\''+n.id+'\',this.value)">'+
+        '<option value="">— escolher —</option>'+testes.map(function(t){ return '<option value="'+fnEsc(t.slug)+'"'+(n.slug===t.slug?' selected':'')+'>'+fnEsc(t.nome||t.slug)+' · /r/'+fnEsc(t.slug)+'</option>'; }).join('')+
+      '</select><div style="font-size:10.5px;color:var(--text2);margin-top:5px">O link que vai no anúncio. Ele sorteia a variante; aqui você vê quantos clicaram e como dividiu.</div></div>'+
+      (bl ? '<div class="fn-l"><span>Cliques no link</span><span>'+fnNum(bl.cliques)+'</span></div><div class="fn-l"><span>Chegaram</span><span>'+fnNum(bl.pessoas)+'</span></div>' : '')+
+      (n.slug ? '<button class="fn-btn g sm" style="width:100%;margin:8px 0" onclick="fnSplitVariantes(\''+n.id+'\')">Pôr as páginas das variantes no desenho</button>' : '')+
+      (!testes.length ? '<div class="fx-sub">Nenhum teste neste projeto ainda. Crie em Testes A/B.</div>' : '')+
+      htmlLig+
+      '<button class="fn-btn g sm" style="width:100%;margin-top:9px;color:var(--red)" onclick="fnRemoverEtapa(\''+n.id+'\')">Remover bloco</button>';
     return;
   }
 
@@ -33131,6 +33241,110 @@ function fnAddFonte(){
   document.getElementById('fn-f-nome').value='';
   fnSel=id; fnGravar(f); fnPintar(); toastFn('Origem criada');
 }
+// Que tipo de origem é: anúncio (cliques da Utmify pela campanha), link da
+// bio do Instagram, um link com UTM própria, ou orgânico. As pessoas de cada
+// origem são separadas pela UTM com que chegaram.
+function fnCampoCanal(n){
+  var canal = n.canal || 'meta', fl = n.filtro || {};
+  var op = function(v, r){ return '<option value="'+v+'"'+(canal===v?' selected':'')+'>'+r+'</option>'; };
+  var campo = function(k, rot, ph){ return '<div style="display:flex;gap:6px;align-items:center;margin-top:5px"><span style="font-size:11px;color:var(--text2);width:92px">'+rot+'</span>'+
+    '<input style="flex:1" value="'+fnEsc(fl[k]||'')+'" placeholder="'+ph+'" onchange="fnFiltroFonte(\''+n.id+'\',\''+k+'\',this.value)"></div>'; };
+  return '<div class="fn-campo"><label>Tipo da origem</label><select onchange="fnCanalFonte(\''+n.id+'\',this.value)">'+
+    op('meta','Facebook / Instagram Ads')+op('instagram','Instagram · link da bio')+op('utm','Link com UTM própria')+op('organico','Orgânico / direto (sem UTM)')+'</select>'+
+    (canal === 'instagram' ? '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Conta quem chegou com "bio" na UTM (ex.: utm_content=link_in_bio). Se o seu link da bio usa outra UTM, preencha abaixo.</div>' : '')+
+    (canal === 'utm' || canal === 'instagram' ? '<div style="margin-top:6px">'+campo('fonte','utm_source contém','ex.: ig')+campo('midia','utm_medium contém','')+
+       campo('camp','utm_campaign contém','')+campo('cont','utm_content contém','ex.: link_in_bio')+'</div>' : '')+
+    (canal === 'organico' ? '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Quem chegou sem UTM nenhuma: digitou o endereço, salvou o link ou veio de um lugar que não marca.</div>' : '')+'</div>';
+}
+function fnCanalFonte(id, canal){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.canal = canal;
+  if(canal === 'instagram' && !n.filtro) n.filtro = {};
+  fnGravar(f); fnDetalhe(); fnNos(); setTimeout(fnCarregarStats, 1200);
+}
+function fnFiltroFonte(id, k, v){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.filtro = n.filtro || {}; n.filtro[k] = String(v||'').trim();
+  fnGravar(f); setTimeout(fnCarregarStats, 1200);
+}
+// Origem nova pela paleta: já com o tipo escolhido e ligada no 1º bloco
+function mpAddFonte(canal){
+  var f = fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
+  var nomes = { meta:'Facebook Ads', instagram:'Instagram · bio', utm:'Link com UTM', organico:'Orgânico' };
+  f.fontes = f.fontes || []; f.ligacoes = f.ligacoes || [];
+  var id = 'o'+Date.now();
+  f.fontes.push({ id:id, nome:nomes[canal]||'Origem', canal:canal, filtro: canal==='meta' ? undefined : {}, x:30, y:60 + f.fontes.length*170 });
+  var alvo = fnSel && fnAcha(f, fnSel) && fnAcha(f, fnSel).tipo !== 'fonte' ? fnSel : (f.etapas && f.etapas[0] ? f.etapas[0].id : null);
+  if(alvo) f.ligacoes.push([id, alvo]);
+  fnSel = id; fnGravar(f); fnPintar(); fnDetalhe();
+  toastFn((nomes[canal]||'Origem')+' no desenho');
+  setTimeout(fnCarregarStats, 1200);
+}
+// Bloco do redirect (link /r/ do teste A/B)
+function mpAddSplit(){
+  var f = fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
+  var ts = abDoProjeto();
+  var slug = '';
+  if(ts.length === 1) slug = ts[0].slug;
+  else if(ts.length > 1){
+    var txt = prompt('Qual teste?\n\n'+ts.map(function(t, i){ return (i+1)+') '+(t.nome||t.slug)+'  /r/'+t.slug; }).join('\n'));
+    if(txt === null) return;
+    var t = ts[(parseInt(txt, 10) || 0) - 1]; slug = t ? t.slug : '';
+  }
+  var r = ts.filter(function(t){ return t.slug === slug; })[0];
+  f.etapas = f.etapas || []; f.ligacoes = f.ligacoes || [];
+  var id = 'e'+Date.now();
+  var fonte = (f.fontes||[])[0];
+  f.etapas.push({ id:id, nome: r ? 'Teste '+(r.nome||r.slug) : 'Teste A/B', tipo:'split', slug: slug, url:'',
+                  x: fonte ? (fonte.x||30) + 290 : 300, y: fonte ? (fonte.y||60) : 120 });
+  if(fonte) f.ligacoes.push([fonte.id, id]);
+  fnSel = id; fnGravar(f); fnPintar(); fnDetalhe();
+  if(slug) setTimeout(function(){ fnSplitVariantes(id, true); }, 50);
+  else toastFn('Escolha o teste no painel ao lado');
+}
+function fnSplitTeste(id, slug){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.slug = slug;
+  var r = abDoProjeto().filter(function(t){ return t.slug === slug; })[0];
+  if(r && /^Teste( A\/B)?$/.test(n.nome)) n.nome = 'Teste '+(r.nome||r.slug);
+  fnGravar(f); fnDetalhe(); fnNos(); setTimeout(fnCarregarStats, 1200);
+}
+// As páginas das variantes entram no desenho saindo do bloco do teste. Página
+// que já é etapa só ganha a seta; a que não é vira etapa nova.
+function fnSplitVariantes(id, calado){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  var r = abDoProjeto().filter(function(t){ return t.slug === n.slug; })[0]; if(!r) return;
+  var norm = function(u){ return String(u||'').toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/[?#].*$/,'').replace(/\/+$/,''); };
+  var novas = 0;
+  (r.destinos||[]).forEach(function(d, i){
+    var u = norm(d.url); if(!u) return;
+    var e = (f.etapas||[]).filter(function(x){ return norm(x.url) === u; })[0];
+    if(!e){
+      e = { id:'e'+Date.now()+i, nome: d.nome || ('Variante '+(i+1)), tipo:'vsl', url: d.url, x:(n.x||300) + 290, y:(n.y||120) + (i - ((r.destinos.length-1)/2)) * 250 };
+      f.etapas.push(e); novas++;
+    }
+    if(!(f.ligacoes||[]).some(function(l){ return l[0] === n.id && l[1] === e.id; })) f.ligacoes.push([n.id, e.id]);
+  });
+  fnGravar(f); fnPintar(); fnDetalhe(); setTimeout(fnCarregarStats, 1200);
+  if(!calado || novas) toastFn(novas ? novas+' página(s) de variante no desenho' : 'Variantes ligadas no teste');
+}
+// Uma linha só, discreta, pras páginas com o pixel que não estão no desenho
+function mpForaLinha(){
+  var el = document.getElementById('fn-fora-aviso'); if(!el) return;
+  var l = (fnBlocos && fnBlocos.fora) || [];
+  if(!l.length){ el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="fx-sub" style="margin-bottom:8px">'+l.length+' página'+(l.length===1?'':'s')+' com o pixel deste funil fora do desenho ('+
+    fnNum(l.reduce(function(a, x){ return a + x.n; }, 0))+' pessoas). Não entram nos números. <a href="#" onclick="mpForaVer();return false">ver quais</a></div>';
+}
+function mpForaVer(){
+  var l = (fnBlocos && fnBlocos.fora) || [];
+  v2Modal('<div class="v2-cab"><h2>Páginas fora do desenho</h2><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div>'+
+    '<div class="fx-sub" style="margin-bottom:10px">Têm o pixel deste funil, mas não são bloco do desenho. Se alguma faz parte, adicione como página na paleta e cole o link.</div>'+
+    '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Página</th><th class="n">Pessoas</th><th></th></tr></thead><tbody>'+
+    l.map(function(x){ return '<tr><td>'+fnEsc(x.pg)+'</td><td class="n">'+fnNum(x.n)+'</td><td class="n"><button class="fn-btn g sm" onclick="v2Fechar(this);fxAdicionar(\''+fnEsc(x.pg).replace(/'/g,'')+'\')">+ Pôr no desenho</button></td></tr>'; }).join('')+
+    '</tbody></table></div>', 'p');
+}
+
 function fnRemoverFonte(id){
   var f=fnAtual(); if(!f) return;
   if(!confirm('Remover esta origem de tráfego?')) return;
@@ -34846,9 +35060,17 @@ function mpForaDepois(){ setTimeout(function(){ fnCarregarStats(); mpForaCarrega
 // O desenho feito à mão continua em "Desenho". O Fluxo se monta sozinho com
 // o que aconteceu no período: fonte → página de entrada → checkout → compra.
 // ══════════════════════════════════════════════════════
-var mpVista = 'fluxo', fxDados = null, fxPedido = 0;
+// O funil é o desenho de quem monta: a vista automática (que listava toda
+// página com pixel) ficou guardada, mas o Mapa abre e fica no desenho.
+var mpVista = 'desenho', fxDados = null, fxPedido = 0;
 function mpVistaPintar(){
   var el = document.getElementById('mp-vista'); if(!el) return;
+  if(mpVista === 'desenho'){
+    el.innerHTML = '';
+    var fl0 = document.getElementById('mp-fluxo'), de0 = document.getElementById('mp-desenho');
+    if(fl0) fl0.style.display = 'none'; if(de0) de0.style.display = '';
+    return;
+  }
   el.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'+
     '<button class="fn-btn g sm'+(mpVista==='fluxo'?' on':'')+'" onclick="mpTrocarVista(\'fluxo\')">📊 Fluxo</button>'+
     '<button class="fn-btn g sm'+(mpVista==='desenho'?' on':'')+'" onclick="mpTrocarVista(\'desenho\')">✏️ Desenho</button>'+
