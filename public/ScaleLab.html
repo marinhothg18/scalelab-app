@@ -18926,7 +18926,7 @@ function arqStatusMenu(bt, itemId){
   var m = document.createElement('div');
   m.id = 'arq-st-menu'; m._item = itemId;
   m.style.cssText = 'position:fixed;z-index:10001;min-width:190px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;'+
-    'box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;left:'+Math.max(8, Math.min(window.innerWidth-206, r.left))+'px;top:'+(r.bottom+6)+'px;';
+    'box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;overflow-y:auto;visibility:hidden;left:'+Math.max(8, Math.min(window.innerWidth-206, r.left))+'px;top:0;';
   // os status já usados que não estão na lista padrão também aparecem
   var extras = [];
   var p = _arqProjAtual();
@@ -18942,6 +18942,15 @@ function arqStatusMenu(bt, itemId){
     '<div onclick="arqStatusOutro(\''+itemId+'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">✎ Outro…</div>'+
     '<div onclick="arqStatusSalvar(\''+itemId+'\',\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">Tirar status</div>';
   document.body.appendChild(m);
+  // Abre pra baixo se couber; senão pra cima (card no fim da tela cortava a
+  // lista). Se não couber em nenhum dos dois, fica do lado maior e rola.
+  var alto = m.offsetHeight, baixo = window.innerHeight - r.bottom - 12, cima = r.top - 12;
+  if(alto <= baixo || baixo >= cima){ m.style.top = (r.bottom + 6) + 'px'; m.style.maxHeight = Math.max(140, baixo) + 'px'; }
+  else { var h = Math.min(alto, cima); m.style.top = (r.top - 6 - h) + 'px'; m.style.maxHeight = Math.max(140, cima) + 'px'; }
+  m.style.visibility = 'visible';
+  // rolar a página fecha o menu: ele é fixo e ficaria solto longe do botão
+  var rolou = function(e){ if(e && e.target && e.target.nodeType === 1 && m.contains(e.target)) return; m.remove(); window.removeEventListener('scroll', rolou, true); };
+  window.addEventListener('scroll', rolou, true);
   setTimeout(function(){
     var fora = function(e){ if(!m.contains(e.target)){ m.remove(); document.removeEventListener('mousedown', fora, true); } };
     document.addEventListener('mousedown', fora, true);
