@@ -10557,7 +10557,10 @@ function _saudeUrlPublica(u) {
   } catch (e) { return false; }
 }
 
+// funilId pode ser um id ou a lista de ids que valem pelo funil (o dele e os
+// ids antigos adotados): pixel antigo já ligado não é "pixel de outro funil".
 async function _saudeAbrirPagina(url, funilId) {
+  const ids = Array.isArray(funilId) ? funilId : [funilId];
   if (!_saudeUrlPublica(url)) return { erro: 'endereço inválido ou interno' };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 7000);
@@ -10566,7 +10569,7 @@ async function _saudeAbrirPagina(url, funilId) {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CentralTMX-Saude/1.0)' } });
     const html = (await r.text()).slice(0, 800000);
     const tags = html.match(/<script[^>]*px\.js[^>]*>/gi) || [];
-    const doFunil = tags.filter(tg => tg.indexOf('"' + funilId + '"') >= 0 || tg.indexOf("'" + funilId + "'") >= 0);
+    const doFunil = tags.filter(tg => ids.some(id => id && (tg.indexOf('"' + id + '"') >= 0 || tg.indexOf("'" + id + "'") >= 0)));
     const etapas = doFunil.map(tg => (tg.match(/data-e=["']([^"']+)["']/i) || [])[1] || '');
     return { http: r.status, tag: tags.length > 0, doFunil: doFunil.length > 0, etapas };
   } catch (e) {
@@ -10587,6 +10590,8 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
     if (!f) return res.status(404).json({ error: 'Funil não encontrado.' });
 
     const checks = [];   // { nivel: 'ruim'|'atencao'|'ok', peso, titulo, texto, acao }
+    // o id deste funil e os ids antigos que ele adotou (pixel velho já ligado)
+    const idsAceitos = [f.id].concat(_adocoes(db).filter(a => a.funil === f.id && a.origemFunil).map(a => a.origemFunil));
     const agora = Date.now(), corte24 = agora - 86400000, corte7 = agora - 7 * 86400000;
 
     // ── 1. Páginas: a tag está lá? e o pixel está chegando? ──────────────
@@ -10594,7 +10599,7 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
       .concat(Object.values(typeof _jBuffer === 'object' && _jBuffer ? _jBuffer : {}));
     const porEtapa = {};
     jorn.forEach(j => {
-      if (!j || j.funil !== f.id) return;
+      if (!j || idsAceitos.indexOf(j.funil) < 0) return;
       (j.eventos || []).forEach(ev => {
         if (!ev || ev.tipo !== 'entrou') return;
         const x = porEtapa[ev.etapa] = porEtapa[ev.etapa] || { ultimo: '', n24: 0 };
@@ -10605,10 +10610,16 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
     const paginas = (f.etapas || []).filter(e => e && e.tipo !== 'fonte' && e.tipo !== 'checkout' && e.tipo !== 'recuperacao');
     const abertas = await Promise.all(paginas.slice(0, 10).map(async e => {
       const url = String(e.url || '').trim();
-      const med = porEtapa[e.id] || { ultimo: '', n24: 0 };
+      let med = porEtapa[e.id] || { ultimo: '', n24: 0 };
+      // pela URL, na base de pessoas: a página com pixel antigo reporta com o
+      // data-e velho e nunca caía no contador da etapa nova
+      if (url && _pessoas()) {
+        const r = _q('SELECT MAX(em) ult, SUM(CASE WHEN em >= ? THEN 1 ELSE 0 END) n FROM paginas WHERE pg=?').get(corte24, _normPg(url));
+        if (r && r.ult && (!med.ultimo || r.ult > Date.parse(med.ultimo))) med = { ultimo: new Date(r.ult).toISOString(), n24: r.n || 0 };
+      }
       const linha = { etapa: e.id, nome: e.nome || e.id, tipo: e.tipo || '', url, ultimo: med.ultimo || null, n24: med.n24 };
       if (!url) { linha.status = 'sem_link'; return linha; }
-      const r = await _saudeAbrirPagina(/^https?:\/\//i.test(url) ? url : 'https://' + url, f.id);
+      const r = await _saudeAbrirPagina(/^https?:\/\//i.test(url) ? url : 'https://' + url, idsAceitos);
       Object.assign(linha, r);
       const chegando = med.ultimo && new Date(med.ultimo).getTime() >= corte24;
       if (r.erro || (r.http && r.http >= 400)) linha.status = chegando ? 'ok' : 'fora_do_ar';
@@ -11149,7 +11160,9 @@ app.post('/api/funil/testar-url', authUsuario, async (req, res) => {
     let url = String((req.body && req.body.url) || '').trim().slice(0, 400);
     if (!url) return res.status(400).json({ error: 'Cole a URL da página.' });
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-    const r = await _saudeAbrirPagina(url, fid);
+    const dbT = readDB();
+    const idsT = [fid].concat(_adocoes(dbT).filter(a => a.funil === fid && a.origemFunil).map(a => a.origemFunil));
+    const r = await _saudeAbrirPagina(url, idsT);
     const pg = _normPg(url);
     const ult = _pessoas() ? _q('SELECT MAX(em) m, COUNT(DISTINCT visitante) n FROM paginas WHERE pg=? AND em >= ?').get(pg, Date.now() - 86400000) : null;
     const quais = _pessoas() ? _q('SELECT funil, etapa, COUNT(*) n FROM paginas WHERE pg=? AND em >= ? GROUP BY funil, etapa ORDER BY n DESC LIMIT 3').all(pg, Date.now() - 7 * 86400000) : [];
@@ -11235,6 +11248,111 @@ app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
     } catch (e) {}
     res.json({ ok: true, chegaram: todos.size, pitch: pitch.size, checkout: ck.size, compraram: comprou, etapas,
                investido, cliques, semRegra: !_regraCampanhas(esc.f) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── FLUXO DO FUNIL ──
+// O mapa desenhado à mão misturava setas que ninguém liga com números que
+// vinham de lugares diferentes ("740% de quem entrou"). O Fluxo é montado
+// sozinho: fonte → página de entrada → checkout → compra. Cada pessoa conta
+// UMA vez, na primeira página do funil em que chegou no período; então as
+// páginas somam o total e nenhuma porcentagem passa de 100%.
+// A venda vai pra página de entrada de quem comprou (ligada pela jornada).
+// ══════════════════════════════════════════════════════
+app.get('/api/funil/fluxo', authUsuario, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const dir = _ehDir(req), custos = _custosCfg(dbj);
+    const esq = _escopoSql(esc, 'p');
+    const linhas = _q(`SELECT p.visitante, p.pg, p.etapa, p.funil, p.em, s.checkout, s.pitch FROM paginas p JOIN sessoes s ON s.id = p.sessao
+                       WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ((` + esq.where + `) OR p.funil IN (` + _ph(esc.ids.length) + `))
+                       ORDER BY p.em`).all(per.de, per.ate, ...esq.args, ...esc.ids);
+    const pessoa = {};
+    linhas.forEach(l => {
+      if (esc.ignoradas.has(l.pg)) return;
+      const noMapa = !!(esc.etapaDeUrl[l.pg] || (esc.ids.indexOf(l.funil) >= 0 && esc.etapaDeData[l.etapa]));
+      const x = pessoa[l.visitante] || (pessoa[l.visitante] = { entrada: null, entradaFora: null, checkout: 0, pitch: 0, noMapa: false });
+      if (noMapa && !x.entrada) x.entrada = l.pg;
+      if (!noMapa && !x.entradaFora) x.entradaFora = l.pg;
+      if (noMapa) x.noMapa = true;
+      if (l.checkout) x.checkout = 1;
+      if (l.pitch) x.pitch = 1;
+      if (noMapa && !x.etapa) x.etapa = _etapaDaLinha(esc, l.pg, l.etapa);
+    });
+    const pgs = {};
+    const pg = (k, fora) => pgs[k] || (pgs[k] = { pg: k, fora, pessoas: 0, checkout: 0, pitch: 0, vendas: 0, compradores: new Set(), fat: 0, etapa: null });
+    let chegaram = 0, checkout = 0, pitch = 0;
+    Object.keys(pessoa).forEach(v => {
+      const x = pessoa[v];
+      if (x.noMapa) {
+        const p = pg(x.entrada, false); p.etapa = p.etapa || x.etapa;
+        p.pessoas++; p.checkout += x.checkout; p.pitch += x.pitch;
+        chegaram++; checkout += x.checkout; pitch += x.pitch;
+      } else if (x.entradaFora) {
+        const p = pg(x.entradaFora, true); p.pessoas++; p.checkout += x.checkout; p.pitch += x.pitch;
+      }
+    });
+
+    // vendas do funil no período (a mesma regra do Resultado)
+    const nomes = {};
+    _q('SELECT id, nome FROM camp_dia WHERE dia BETWEEN ? AND ?').all(per.de, per.ate).forEach(c => { nomes[c.id] = c.nome; });
+    const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
+    const vendas = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno);
+    let semPagina = 0, fatSemPagina = 0, fat = 0;
+    const porComo = { jornada: 0, campanha: 0, produto: 0 };
+    vendas.forEach(o => {
+      porComo[o.por] = (porComo[o.por] || 0) + 1;
+      fat += liq(o);
+      let alvo = o.visitante && pessoa[o.visitante] && pessoa[o.visitante].noMapa ? pessoa[o.visitante].entrada : null;
+      if (!alvo && o.visitante) {
+        // comprou hoje, mas chegou antes do período: vai pra última página do mapa dele
+        const r = _q('SELECT p.pg FROM paginas p WHERE p.visitante=? AND ' + esq.where + ' ORDER BY p.em DESC LIMIT 1').get(o.visitante, ...esq.args);
+        if (r) alvo = r.pg;
+      }
+      if (!alvo) { semPagina++; fatSemPagina += liq(o); return; }
+      const p = pg(alvo, false);
+      p.vendas++; p.fat += liq(o); if (o.visitante) p.compradores.add(o.visitante);
+    });
+
+    // páginas que são variante de um teste A/B do projeto
+    const teste = {};
+    (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : []).filter(r => r && (r.projeto || '') === (esc.f.projeto || '') && r.ativo !== false && !r.vencedora)
+      .forEach(r => (r.destinos || []).forEach((d, i) => {
+        const k = _normPg(d.url); if (k && !teste[k]) teste[k] = { teste: r.nome || r.slug, variante: d.nome || ('Variante ' + (i + 1)), controle: i === 0 };
+      }));
+
+    // fonte: o arquivo de campanhas do Resultado (sem esperar a Utmify)
+    let cliques = null, investido = null;
+    try {
+      const proj = await _projetoIdDoFunil(esc.f);
+      const camp = await _campanhasPeriodo(per.de, per.ate, proj, 0);
+      _campAtualizarDepois(per.de, per.ate, proj);
+      const regra = _regraCampanhas(esc.f);
+      cliques = 0; investido = 0;
+      Object.keys(camp.porDia).forEach(d => camp.porDia[d].forEach(c => { if (!regra || regra(c.nome)) { cliques += c.cliques; investido += c.gasto; } }));
+    } catch (e) {}
+
+    const lista = Object.values(pgs).map(p => ({
+      pg: p.pg, fora: p.fora, nome: p.etapa ? (esc.nomeEtapa[p.etapa] || '') : '', tipo: p.etapa ? (esc.tipoEtapa[p.etapa] || '') : '',
+      etapa: p.etapa || null, pessoas: p.pessoas, pitch: p.pitch, checkout: p.checkout, vendas: p.vendas,
+      faturamento: dir ? p.fat : null, teste: teste[p.pg] || null,
+      share: (!p.fora && chegaram) ? p.pessoas / chegaram : null,
+      conversao: p.pessoas ? p.vendas / p.pessoas : 0, taxaCheckout: p.pessoas ? p.checkout / p.pessoas : 0
+    }));
+    const dentro = lista.filter(p => !p.fora).sort((a, b) => b.pessoas - a.pessoas);
+    const fora = lista.filter(p => p.fora && p.pessoas > 0).sort((a, b) => b.pessoas - a.pessoas).slice(0, 6);
+    res.json({ ok: true, de: per.de, ate: per.ate, semRegra: !_regraCampanhas(esc.f),
+      fonte: { cliques, investido, chegaram, perdaClique: (cliques && chegaram <= cliques) ? 1 - chegaram / cliques : null },
+      paginas: dentro, fora,
+      checkout: { pessoas: checkout, pct: chegaram ? checkout / chegaram : 0 },
+      pitch: { pessoas: pitch, pct: chegaram ? pitch / chegaram : 0 },
+      compraram: { vendas: vendas.length, faturamento: dir ? fat : null, conversao: chegaram ? (vendas.length - semPagina) / chegaram : 0,
+                   deCheckout: checkout ? (vendas.length - semPagina) / checkout : 0, semPagina, fatSemPagina: dir ? fatSemPagina : null, porComo } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

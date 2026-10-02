@@ -1665,6 +1665,20 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-conteudo,.v2-ov{--v2-verde:#22C55E;--v2-laranja:#F59E0B;--v2-verm:#EF4444;--v2-azul:#1B9CFA;--v2-roxo:#5B5BF6;--v2-linha:var(--border)}
 .light-mode .fx-conteudo,.light-mode .v2-ov{--v2-verde:#16A34A;--v2-laranja:#D97706;--v2-verm:#DC2626;--v2-azul:#0284C7;--v2-roxo:#4F46E5}
 .fn-btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+.fx-palco-w{overflow-x:auto;padding:4px 2px 10px;background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:18px 18px;border:1px solid var(--border);border-radius:14px}
+.fx-palco{position:relative;margin:16px}
+.fx-c{position:absolute;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:0 4px 14px rgba(0,0,0,.08);overflow:hidden}
+.fx-c.clica{cursor:pointer} .fx-c.clica:hover{border-color:var(--accent)}
+.fx-c.fora{border-style:dashed;opacity:.8}
+.fx-c-cab{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.fx-c-cab b{font-size:13.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fx-pt{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.fx-c-url{font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.fx-g{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.fx-m-r{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700}
+.fx-m-v{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:1px}
+.fx-c-pe{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin:10px 0 4px}
+.fx-c-pe b{color:var(--text)}
 .cr-vsl{position:relative;width:min(340px,70vw)}
 .cr-vsl input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:8px 30px 8px 11px;color:var(--text);font-size:12.5px;font-family:inherit;outline:none}
 .cr-vsl input:focus{border-color:var(--accent)}
@@ -4453,6 +4467,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
 
         <div class="fn-painel" id="fn-p-mapa">
+          <div id="mp-vista"></div>
+          <div id="mp-fluxo"></div>
+          <div id="mp-desenho" style="display:none">
           <div id="mp-versao"></div>
           <div class="fn-faixa" id="fn-etapas"></div>
           <div id="mp-aviso"></div>
@@ -4513,6 +4530,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
               </div>
             </div>
           </div>
+        </div><!-- /mp-desenho -->
         </div>
 
         <div class="fn-painel" id="fn-p-links"><div id="lc-corpo"></div></div>
@@ -28428,7 +28446,7 @@ function fnAtualizar(bt){
   if(id==='redir')   fnPintarRed();
   if(id==='jornada') jvCarregar();
   if(id==='atencao') atCarregar();
-  if(id==='mapa')    { setTimeout(fnFios, 40); mpForaCarregar(); }
+  if(id==='mapa')    { setTimeout(fnFios, 40); mpForaCarregar(); if(mpVista === 'fluxo') fxCarregar(); }
   if(id==='resultado') rsCarregar();
   if(id==='leads')   { ldF.pag = 1; ldCarregar(); }
   if(id==='pixel')   psCarregar(!!bt);
@@ -29688,8 +29706,8 @@ function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); 
 function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); fnRecarregarAba(); }
 // Trocou o funil: a aba aberta busca de novo (antes ficava com o do funil anterior)
 function fnRecarregarAba(){
-  rsDados = null; ldDados = null; psDados = null; mpForaDados = null;
-  if(fnAbaAtual==='mapa'){ var mv=document.getElementById('mp-versao'); if(mv) mv.innerHTML=''; mpVersoes=null; mpVersaoInfo(); svCarregar(false); mpForaCarregar(); }
+  rsDados = null; ldDados = null; psDados = null; mpForaDados = null; fxDados = null;
+  if(fnAbaAtual==='mapa'){ if(mpVista === 'fluxo') fxCarregar(); var mv=document.getElementById('mp-versao'); if(mv) mv.innerHTML=''; mpVersoes=null; mpVersaoInfo(); svCarregar(false); mpForaCarregar(); }
   if(fnAbaAtual==='resultado') rsCarregar();
   if(fnAbaAtual==='leads') { ldF.pag = 1; ldCarregar(); }
   if(fnAbaAtual==='pixel') psCarregar(false);
@@ -29738,7 +29756,8 @@ function fnAba(qual, bt){
   if(qual==='resultado') rsCarregar();
   if(qual==='leads')   ldCarregar();
   if(qual==='geral')   gePintar();
-  if(qual==='mapa')    { mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); mpVersaoInfo(); mpForaCarregar();
+  if(qual==='mapa')    { mpVistaPintar(); if(mpVista === 'fluxo') fxCarregar();
+                         mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); mpVersaoInfo(); mpForaCarregar();
                          if(!svDados || !fnAtual() || svDados.funil.id !== fnAtual().id) svCarregar(false); }
   if(qual==='links')   lcCarregar();
   if(qual==='produtos') prCarregar();
@@ -32496,6 +32515,10 @@ function fnPortas(f){
   return ids.length ? ids : [f.etapas[0].id];
 }
 function fnBase(f){
+  // "quem entrou" é a contagem única do funil (a mesma do topo). Somar só as
+  // portas ligadas na origem dava 5 quando a página nova não estava ligada,
+  // e o checkout aparecia com "740% de quem entrou".
+  if(fnNovos && fnNovos.chegaram) return fnNovos.chegaram;
   return fnPortas(f).reduce(function(a, id){ return a + fnVal(id); }, 0);
 }
 
@@ -32741,6 +32764,10 @@ function fnFios(){
     var meio = (x2-x1)/2;
     var vb = fnVal(nb.id), va = na.tipo==='fonte' ? base : fnVal(na.id);
     var passou = va ? (vb/va) : 0;
+    // mais de 100% entre dois blocos não é passagem: é tráfego que entrou por
+    // outro caminho. Mostrar "24522%" só confundia — a seta fica sem número.
+    var acimaDe100 = passou > 1.02;
+    if(acimaDe100) passou = 1;
     var cor = (vb/base) > .5 ? 'var(--green)' : ((vb/base) > .15 ? 'var(--accent)' : 'var(--text2)');
     var pid = 'fnfio'+idx;
     var pa = document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -32777,7 +32804,7 @@ function fnFios(){
         mp.setAttributeNS('http://www.w3.org/1999/xlink','href','#'+pid);
         mo.appendChild(mp); c.appendChild(mo); svg.appendChild(c);
       }
-      if(na.tipo!=='fonte'){
+      if(na.tipo!=='fonte' && !acimaDe100){
         var t = document.createElementNS('http://www.w3.org/2000/svg','text');
         t.setAttribute('x',(x1+x2)/2); t.setAttribute('y',(y1+y2)/2-8);
         t.setAttribute('fill',cor); t.setAttribute('font-size','10');
@@ -34812,7 +34839,148 @@ function mpForaSplit(slug){
   toastFn('Páginas do split no mapa');
 }
 // o servidor lê o funil depois que a sincronização grava
-function mpForaDepois(){ setTimeout(function(){ fnCarregarStats(); mpForaCarregar(); }, 1500); }
+function mpForaDepois(){ setTimeout(function(){ fnCarregarStats(); mpForaCarregar(); if(mpVista === 'fluxo') fxCarregar(); }, 1500); }
+
+// ══════════════════════════════════════════════════════
+// ── 🧭 MAPA › FLUXO ──
+// O desenho feito à mão continua em "Desenho". O Fluxo se monta sozinho com
+// o que aconteceu no período: fonte → página de entrada → checkout → compra.
+// ══════════════════════════════════════════════════════
+var mpVista = 'fluxo', fxDados = null, fxPedido = 0;
+function mpVistaPintar(){
+  var el = document.getElementById('mp-vista'); if(!el) return;
+  el.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">'+
+    '<button class="fn-btn g sm'+(mpVista==='fluxo'?' on':'')+'" onclick="mpTrocarVista(\'fluxo\')">📊 Fluxo</button>'+
+    '<button class="fn-btn g sm'+(mpVista==='desenho'?' on':'')+'" onclick="mpTrocarVista(\'desenho\')">✏️ Desenho</button>'+
+    '<span class="fx-sub">'+(mpVista==='fluxo' ? 'Montado sozinho com o que aconteceu no período. Cada pessoa conta uma vez, na página em que chegou.'
+                                              : 'O desenho do funil: onde você cola os links das páginas e liga as etapas.')+'</span></div>';
+  var fl = document.getElementById('mp-fluxo'), de = document.getElementById('mp-desenho');
+  if(fl) fl.style.display = mpVista === 'fluxo' ? '' : 'none';
+  if(de) de.style.display = mpVista === 'desenho' ? '' : 'none';
+}
+function mpTrocarVista(v){
+  mpVista = v; mpVistaPintar();
+  if(v === 'fluxo') fxCarregar(); else { setTimeout(fnFios, 40); fnNos(); }
+}
+function fxCarregar(){
+  var el = document.getElementById('mp-fluxo'), f = fnAtual(); if(!el || !f) return;
+  if(!fxDados) el.innerHTML = '<div class="fx-vazio">Montando o fluxo do período…</div>';
+  var meu = ++fxPedido;
+  v2Json('/api/funil/fluxo?funil='+encodeURIComponent(f.id)+'&'+fnQsPeriodo())
+    .then(function(d){ if(meu !== fxPedido) return; fxDados = d; fxPintar(); })
+    .catch(function(e){ if(meu === fxPedido) v2Erro(el, e.message); });
+}
+// Linha "rótulo / número" dos cartões, no jeito do FunnelWay
+function fxM(rot, val, cor){ return '<div><div class="fx-m-r">'+rot+'</div><div class="fx-m-v"'+(cor?' style="color:'+cor+'"':'')+'>'+val+'</div></div>'; }
+function fxPintar(){
+  var el = document.getElementById('mp-fluxo'), d = fxDados; if(!el || !d) return;
+  var dir = lcEhDir(), f = fnAtual();
+  var pct = function(x){ return v2Pct(x, x != null && x < .1 ? 1 : 0); };
+  // páginas pequenas (menos de 1% e além das 5 maiores) viram um cartão só
+  var pgs = d.paginas.slice(), outras = null;
+  if(pgs.length > 5){
+    var resto = pgs.slice(5).filter(function(p){ return (p.share||0) < .01 && !p.vendas; });
+    if(resto.length >= 2){
+      pgs = pgs.filter(function(p){ return resto.indexOf(p) < 0; });
+      outras = resto.reduce(function(a, p){ a.pessoas += p.pessoas; a.checkout += p.checkout; a.vendas += p.vendas; a.n++; return a; }, { pessoas:0, checkout:0, vendas:0, n:0 });
+    }
+  }
+  // as quatro colunas se ajustam à largura disponível (notebook não rola de lado)
+  var disp = Math.max(860, (el.clientWidth || 1000) - 44);
+  var largo = disp >= 1200;
+  var CW = largo ? 268 : 192, PW = largo ? 300 : 236, CHW = largo ? 248 : 168, ALT = 214, ALT_O = 150, GAP = 16;
+  var vao = Math.max(34, (disp - (CW + PW + CHW + CW)) / 3);
+  var X0 = 0, X1 = CW + vao, X2 = X1 + PW + vao, X3 = X2 + CHW + vao;
+  var cartoes = [], fios = [];
+  var y = 0;
+  pgs.forEach(function(p){ cartoes.push({ tipo:'pg', p:p, x:X1, y:y, w:PW, h:ALT }); y += ALT + GAP; });
+  if(outras){ cartoes.push({ tipo:'outras', p:outras, x:X1, y:y, w:PW, h:ALT_O }); y += ALT_O + GAP; }
+  var foraIni = y + (d.fora.length ? 18 : 0);
+  if(d.fora.length) y = foraIni;
+  d.fora.forEach(function(p){ cartoes.push({ tipo:'fora', p:p, x:X1, y:y, w:PW, h:ALT_O }); y += ALT_O + GAP; });
+  var alturaDentro = Math.max(ALT, (foraIni || y) - GAP);
+  var meio = alturaDentro / 2;
+  var fonte = { x:X0, y:Math.max(0, meio - 95), w:CW, h:190 };
+  var chk   = { x:X2, y:Math.max(0, meio - 75), w:CHW, h:150 };
+  var cmp   = { x:X3, y:Math.max(0, meio - 105), w:CW, h:210 };
+  var H = Math.max(y, fonte.y + fonte.h, cmp.y + cmp.h) + 10, W = X3 + CW + 10;
+  var curva = function(a, b, cor, rot, tracejado){
+    var x1 = a.x + a.w, y1 = a.y + a.h/2, x2 = b.x, y2 = b.y + b.h/2, mx = (x1 + x2) / 2;
+    fios.push('<path d="M'+x1+','+y1+' C'+mx+','+y1+' '+mx+','+y2+' '+x2+','+y2+'" fill="none" stroke="'+cor+'" stroke-width="1.6" '+(tracejado?'stroke-dasharray="4 4" ':'')+'opacity=".75"/>'+
+      '<circle cx="'+x2+'" cy="'+y2+'" r="3.5" fill="'+cor+'"/>'+
+      (rot ? '<g><rect x="'+(mx-26)+'" y="'+((y1+y2)/2-10)+'" width="52" height="20" rx="6" fill="var(--bg2)" stroke="var(--border)"/>'+
+             '<text x="'+mx+'" y="'+((y1+y2)/2+4)+'" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">'+rot+'</text></g>' : ''));
+  };
+  cartoes.forEach(function(c){
+    if(c.tipo === 'fora') return;
+    curva(fonte, c, '#8B8FA8', c.tipo === 'pg' ? pct(c.p.share) : null, true);
+    if(c.p.checkout) curva(c, chk, '#F59E0B', c.tipo === 'pg' ? pct(c.p.taxaCheckout) : null, false);
+  });
+  curva(chk, cmp, '#22C55E', pct(d.compraram.deCheckout), false);
+
+  var cor = ['#5B5BF6','#22C55E','#1B9CFA','#F59E0B','#C52C58','#8B5CF6'];
+  var htmlCartao = function(c, i){
+    var p = c.p, est = 'left:'+c.x+'px;top:'+c.y+'px;width:'+c.w+'px;height:'+c.h+'px';
+    if(c.tipo === 'outras') return '<div class="fx-c" style="'+est+'"><div class="fx-c-cab"><span class="fx-pt" style="background:#94A3B8"></span><b>Outras '+p.n+' páginas</b></div>'+
+      '<div class="fx-g">'+fxM('Pessoas', fnNum(p.pessoas))+fxM('Checkouts', fnNum(p.checkout))+fxM('Vendas', fnNum(p.vendas))+'</div></div>';
+    if(c.tipo === 'fora') return '<div class="fx-c fora" style="'+est+'"><div class="fx-c-cab"><span class="fx-pt" style="background:#94A3B8"></span><b title="'+fnEsc(p.pg)+'">'+fnEsc(v2Pg(p.pg))+'</b>'+
+      '<span class="v2-pill warn">fora do mapa</span></div>'+
+      '<div class="fx-g">'+fxM('Pessoas', fnNum(p.pessoas))+fxM('Checkouts', fnNum(p.checkout))+fxM('Vendas', fnNum(p.vendas))+'</div>'+
+      '<button class="fn-btn g sm" style="margin-top:8px" onclick="fxAdicionar(\''+fnEsc(p.pg).replace(/'/g,'')+'\')">+ Pôr no funil</button></div>';
+    var nome = p.nome || v2Pg(p.pg);
+    var pill = p.teste ? '<span class="v2-pill '+(p.teste.controle?'neu':'info')+'" title="Teste '+fnEsc(p.teste.teste)+'">'+(p.teste.controle ? 'Controle' : fnEsc(p.teste.variante))+'</span>' : '';
+    var conv = p.conversao || 0;
+    return '<div class="fx-c clica" style="'+est+'" onclick="ldIrPara({pagina:\''+fnEsc(p.pg).replace(/'/g,'')+'\'})" title="Abrir essas pessoas nos Leads">'+
+      '<div class="fx-c-cab"><span class="fx-pt" style="background:'+cor[i % cor.length]+'"></span><b>'+fnEsc(nome)+'</b>'+pill+'</div>'+
+      '<div class="fx-c-url">'+fnEsc(p.pg)+'</div>'+
+      '<div class="fx-g">'+
+        fxM('Pessoas', fnNum(p.pessoas))+fxM('% do tráfego', pct(p.share))+
+        fxM('Passaram do pitch', p.pitch ? fnNum(p.pitch) : '-')+fxM('Checkouts', fnNum(p.checkout))+
+        fxM('Vendas', fnNum(p.vendas), p.vendas ? '#22C55E' : '')+fxM('Faturamento', p.faturamento == null ? (p.vendas ? '•••' : '-') : v2Din(p.faturamento))+
+      '</div>'+
+      '<div class="fx-c-pe"><span>Taxa de conversão</span><b>'+v2Pct(conv, 2)+'</b></div>'+
+      '<div class="v2-trilho" style="height:5px"><i style="width:'+Math.min(100, conv*100*8).toFixed(1)+'%;background:#22C55E"></i></div></div>';
+  };
+  var fz = d.fonte, c0 = d.compraram;
+  var htmlFonte = '<div class="fx-c" style="left:'+fonte.x+'px;top:'+fonte.y+'px;width:'+fonte.w+'px;height:'+fonte.h+'px">'+
+    '<div class="fx-c-cab"><span class="fx-pt" style="background:#8B5CF6"></span><b>Fonte de tráfego</b></div>'+
+    '<div class="fx-c-url">'+(d.semRegra ? 'Meta Ads · projeto todo (sem regra de campanha)' : 'Meta Ads · campanhas deste funil')+'</div>'+
+    '<div class="fx-g">'+
+      fxM('Cliques no anúncio', fz.cliques == null ? '—' : fnNum(fz.cliques))+fxM('Investido', fz.investido == null ? '—' : v2Din(fz.investido))+
+      fxM('Chegaram na página', fnNum(fz.chegaram))+fxM('Clique → página', fz.perdaClique == null ? '—' : pct(1 - fz.perdaClique))+
+    '</div></div>';
+  var htmlChk = '<div class="fx-c" style="left:'+chk.x+'px;top:'+chk.y+'px;width:'+chk.w+'px;height:'+chk.h+'px">'+
+    '<div class="fx-c-cab"><span class="fx-pt" style="background:#F59E0B"></span><b>Checkout</b></div>'+
+    '<div class="fx-g">'+fxM('Abriram o checkout', fnNum(d.checkout.pessoas), '#F59E0B')+fxM('De quem chegou', pct(d.checkout.pct))+'</div>'+
+    '<div class="fx-c-url" style="margin-top:6px">clique no botão de compra</div></div>';
+  var htmlCmp = '<div class="fx-c" style="left:'+cmp.x+'px;top:'+cmp.y+'px;width:'+cmp.w+'px;height:'+cmp.h+'px;border-color:rgba(34,197,94,.55)">'+
+    '<div class="fx-c-cab"><span class="fx-pt" style="background:#22C55E"></span><b>Compraram</b></div>'+
+    '<div class="fx-g">'+fxM('Vendas', fnNum(c0.vendas), '#22C55E')+fxM('Faturamento', c0.faturamento == null ? '•••' : v2Din(c0.faturamento))+
+      fxM('Conversão', v2Pct(c0.conversao, 2))+fxM('De quem abriu checkout', pct(c0.deCheckout))+'</div>'+
+    '<div class="fx-c-url" style="margin-top:6px">'+[c0.porComo.jornada ? c0.porComo.jornada+' pela jornada' : '', c0.porComo.campanha ? c0.porComo.campanha+' pela campanha' : '', c0.porComo.produto ? c0.porComo.produto+' pelo produto' : ''].filter(Boolean).join(' · ')+'</div></div>';
+
+  el.innerHTML =
+    (d.fora.length ? '<div class="v2-alerta warn"><div><b>'+d.fora.length+' página'+(d.fora.length===1?'':'s')+' com o pixel deste funil fora do funil</b>'+
+      '<span>Aparecem tracejadas embaixo e não entram nos números. Se fazem parte do funil, clique em "+ Pôr no funil".</span></div></div>' : '')+
+    '<div class="fx-palco-w"><div class="fx-palco" style="width:'+W+'px;height:'+H+'px">'+
+      '<svg width="'+W+'" height="'+H+'" style="position:absolute;inset:0;color:var(--text)">'+fios.join('')+'</svg>'+
+      htmlFonte + cartoes.map(htmlCartao).join('') + htmlChk + htmlCmp +
+      (d.fora.length ? '<div class="v2-rot" style="position:absolute;left:'+X1+'px;top:'+(foraIni-16)+'px">Fora do funil</div>' : '')+
+    '</div></div>'+
+    '<details class="v2-cx" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">Como uma venda chega neste funil</summary>'+
+      '<div style="font-size:13px;line-height:1.65;margin-top:10px">'+
+      '<p><b>1. A pessoa chega na página.</b> O pixel do Central TMX dá um id pra ela e guarda de qual anúncio veio.</p>'+
+      '<p><b>2. Ela clica em comprar.</b> O pixel cola esse id (sck) e as UTMs no link do checkout.</p>'+
+      '<p><b>3. O checkout avisa a venda (webhook da Payt).</b> Se o sck voltou, a venda é ligada à pessoa e entra na página em que ela chegou. Sem o sck, tenta pelo e-mail ou telefone de uma tentativa anterior (pix gerado, carrinho).</p>'+
+      '<p><b>4. Sem pessoa nenhuma</b>, a venda ainda entra no funil se a campanha da UTM é deste funil (regra de campanha) ou, sendo o único funil do projeto, pelo produto. O que sobra aparece em "Vendas sem origem" no Resultado.</p>'+
+      '<p class="fx-sub">Neste período: '+c0.porComo.jornada+' venda(s) pela jornada, '+c0.porComo.campanha+' pela campanha, '+c0.porComo.produto+' pelo produto.</p></div></details>';
+}
+function fxAdicionar(pg){
+  var f = fnAtual(); if(!f) return;
+  var nova = mpNovaEtapa(f, pg, null, false);
+  toastFn('"'+(nova.nome||pg)+'" entrou no funil');
+  setTimeout(function(){ fnCarregarStats(); fxCarregar(); mpForaCarregar(); }, 1500);
+}
 
 // ══════════════════════════════════════════════════════
 // ── 🔀 TESTE A/B v2 ──
