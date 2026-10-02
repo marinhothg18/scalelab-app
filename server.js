@@ -13220,11 +13220,32 @@ function _abV2(slug, de, ate) {
   }
 
   // ── conversão por dia ──
-  const dias = [];
-  for (let t = Date.parse(per.de + 'T12:00:00Z'); dias.length < 120; t += 86400000) {
-    const d = new Date(t).toISOString().slice(0, 10); if (d > per.ate) break; dias.push(d);
+  // Sempre do teste inteiro (até 60 dias), não só do período escolhido: com
+  // "Ontem" o gráfico viraria um ponto só, e o que ele responde é a evolução.
+  const iniSerie = Math.max(inicioTeste || per.ini, Date.now() - 60 * 86400000);
+  const porDiaT = {}; vars.forEach(v => { porDiaT[v.id] = {}; });
+  if (db) {
+    const quemT = {};
+    _q(`SELECT visitante, variante, MIN(inicio) ini FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio >= ? GROUP BY visitante`)
+      .all(slug, iniSerie).forEach(x => {
+        const vid = String(x.variante || ''); if (!porDiaT[vid]) return;
+        quemT[x.visitante] = vid;
+        const d = _diaBR(x.ini); const pd = porDiaT[vid][d] || (porDiaT[vid][d] = { pessoas: 0, vendas: 0 }); pd.pessoas++;
+      });
+    const idsT = Object.keys(quemT);
+    for (let i = 0; i < idsT.length; i += 500) {
+      const lote = idsT.slice(i, i + 500);
+      _q('SELECT visitante, dia FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND em >= ? AND visitante IN (' + _ph(lote.length) + ')')
+        .all(iniSerie, ...lote).forEach(o => {
+          const vid = quemT[o.visitante]; const pd = porDiaT[vid][o.dia] || (porDiaT[vid][o.dia] = { pessoas: 0, vendas: 0 }); pd.vendas++;
+        });
+    }
   }
-  const serie = vars.map(v => ({ id: v.id, nome: v.nome, pontos: dias.map(d => { const x = v.porDia[d] || { pessoas: 0, vendas: 0 }; return { dia: d, pessoas: x.pessoas, vendas: x.vendas, conv: x.pessoas ? x.vendas / x.pessoas : null }; }) }));
+  const dias = [];
+  for (let t = Date.parse(_diaBR(iniSerie) + 'T12:00:00Z'); dias.length < 61; t += 86400000) {
+    const d = new Date(t).toISOString().slice(0, 10); if (d > _diaBR(Date.now())) break; dias.push(d);
+  }
+  const serie = vars.map(v => ({ id: v.id, nome: v.nome, pontos: dias.map(d => { const x = porDiaT[v.id][d] || { pessoas: 0, vendas: 0 }; return { dia: d, pessoas: x.pessoas, vendas: x.vendas, conv: x.pessoas ? x.vendas / x.pessoas : null, noPeriodo: d >= per.de && d <= per.ate }; }) }));
 
   // ── histórico: os testes que já acabaram neste projeto ──
   const historico = (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [])
@@ -13239,7 +13260,8 @@ function _abV2(slug, de, ate) {
   return { ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '', meta, metaNome: meta === 'compra' ? 'Compra (webhook)' : 'etapa do funil',
     link: r.dominio ? ('https://' + r.dominio + '/r/' + slug) : ('/r/' + slug), estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
     criadoEm: r.criadoEm || null, diaDoTeste: inicioTeste ? Math.max(1, Math.ceil((Date.now() - inicioTeste) / 86400000)) : null,
-    vencedora: r.vencedora || null, de: per.de, ate: per.ate,
+    vencedora: r.vencedora || null, de: per.de, ate: per.ate, testeInteiro: !(de || ate),
+    inicioTeste: inicioTeste ? _diaBR(inicioTeste) : null,
     variantes: vars.map(v => ({ id: v.id, nome: v.nome, url: v.url, peso: v.peso, sorteios: v.sorteios, pessoas: v.pessoas,
       pitch: v.pitch, checkout: v.checkout, vendas: v.vendas, receita: v.receita, metas: v.metas,
       pctPitch: v.pessoas ? v.pitch / v.pessoas : 0, taxaCheckout: v.pessoas ? v.checkout / v.pessoas : 0,

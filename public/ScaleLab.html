@@ -28422,6 +28422,7 @@ function fnAtualizar(bt){
   fnDiag = null;
   fnCarregarStats();
   if(typeof abDados==='object'){ abDados = {}; abBuscando = {}; }
+  if(typeof abDados2==='object'){ abDados2 = {}; abBuscando2 = {}; }
   var aberta = document.querySelector('.fn-painel.on');
   var id = aberta ? aberta.id.replace('fn-p-','') : '';
   if(id==='redir')   fnPintarRed();
@@ -33487,6 +33488,7 @@ function abPintarDetalhe(){
   var r = fnRedAtual(); if(!r) return;
   var det = document.getElementById('ab-detalhe'); if(!det) return;
   var d2 = abDados2[r.slug];
+  if(d2 && d2._chave !== abChave2()){ d2 = null; }
   if(!d2) abCarregar2(r.slug);
   if(!abDados[r.slug]) abCarregar(r.slug);
   det.innerHTML = '<button class="ab-voltar" onclick="abVoltar()">‹ Todos os testes e links</button>'+
@@ -34815,14 +34817,20 @@ function mpForaDepois(){ setTimeout(function(){ fnCarregarStats(); mpForaCarrega
 // ══════════════════════════════════════════════════════
 // ── 🔀 TESTE A/B v2 ──
 // ══════════════════════════════════════════════════════
-var abDados2 = {}, abBuscando2 = {};
+// O teste segue o período do topo (Hoje, Ontem, 7 dias…), pra dar pra ver
+// como cada variante foi num dia só. "Teste inteiro" volta pro acumulado,
+// que é o que decide o veredito.
+var abDados2 = {}, abBuscando2 = {}, abTesteInteiro = false;
+function abChave2(){ return abTesteInteiro ? 'tudo' : fnQsPeriodo(); }
 function abCarregar2(slug){
-  if(abBuscando2[slug]) return;
-  abBuscando2[slug] = true;
-  v2Json('/api/ab/v2?teste='+encodeURIComponent(slug))
-    .then(function(d){ abBuscando2[slug] = false; abDados2[slug] = d; fnPintarRed(); })
-    .catch(function(){ abBuscando2[slug] = false; });
+  var chave = abChave2(), k = slug+'|'+chave;
+  if(abBuscando2[k]) return;
+  abBuscando2[k] = true;
+  v2Json('/api/ab/v2?teste='+encodeURIComponent(slug)+(abTesteInteiro ? '' : '&'+chave))
+    .then(function(d){ abBuscando2[k] = false; d._chave = chave; abDados2[slug] = d; fnPintarRed(); })
+    .catch(function(){ abBuscando2[k] = false; });
 }
+function abAlternarInteiro(v){ abTesteInteiro = v; var r = fnRedAtual(); if(r){ delete abDados2[r.slug]; abCarregar2(r.slug); fnPintarRed(); } }
 function abV2Html(r, d){
   var vs = d.variantes || [], ver = d.veredito, dir = lcEhDir();
   var ctrl = vs[0], lider = vs.filter(function(v){ return v.id === d.lider; })[0];
@@ -34834,7 +34842,14 @@ function abV2Html(r, d){
   var cab = '<div class="v2-cx" style="margin-bottom:14px"><div class="v2-cab" style="margin-bottom:0">'+
     '<div><h3 style="font-size:17px">🔀 '+fnEsc(r.nome||r.slug)+' '+estado+'</h3>'+
       '<div class="s" style="font-family:ui-monospace,Menlo,monospace">'+fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,''))+' · meta: <b style="color:var(--text)">'+fnEsc(d.metaNome)+'</b>'+
-      (r.hipotese ? ' · hipótese: '+fnEsc(r.hipotese) : '')+'</div></div>'+
+      (r.hipotese ? ' · hipótese: '+fnEsc(r.hipotese) : '')+'</div>'+
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">'+
+        '<span class="v2-rot">Mostrando</span>'+
+        '<button class="fn-btn g sm'+(!abTesteInteiro?' on':'')+'" onclick="abAlternarInteiro(false)">'+fnEsc(fnPeriodoRotulo())+
+          (d.de && !abTesteInteiro ? ' · '+(d.de === d.ate ? v2Dia(d.de) : v2Dia(d.de)+' a '+v2Dia(d.ate)) : '')+'</button>'+
+        '<button class="fn-btn g sm'+(abTesteInteiro?' on':'')+'" onclick="abAlternarInteiro(true)">Teste inteiro'+(d.inicioTeste ? ' · desde '+v2Dia(d.inicioTeste) : '')+'</button>'+
+        (!abTesteInteiro ? '<span class="fx-sub">o veredito pra declarar usa o teste inteiro</span>' : '')+
+      '</div></div>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><span id="ab-url2" style="display:none">'+fnEsc(abUrlDoTeste(r))+'</span>'+
       '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url2\')">Copiar link</button>'+
       '<button class="fn-btn g sm" onclick="abPausar()">'+(r.ativo===false ? '▶ Reativar' : '⏸ Pausar')+'</button>'+
@@ -34898,6 +34913,14 @@ function abV2Html(r, d){
   var x = function(i){ return L + (W-L-R) * (n > 1 ? i/(n-1) : .5); }, y = function(v){ return T + (H-T-B) * (1 - v/maxC); };
   var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto" role="img" aria-label="Conversão por dia de cada variante">';
   for(var g=1; g<=3; g++) svg += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+(T+(H-T-B)*g/4)+'" y2="'+(T+(H-T-B)*g/4)+'" stroke="currentColor" stroke-opacity=".07"/>';
+  if(!abTesteInteiro && serie[0]){
+    var ids = []; serie[0].pontos.forEach(function(p, i){ if(p.noPeriodo) ids.push(i); });
+    if(ids.length && ids.length < n){
+      var meio = (W-L-R) / Math.max(1, n-1) / 2;
+      var x0 = Math.max(L, x(ids[0]) - meio), x1 = Math.min(W-R, x(ids[ids.length-1]) + meio);
+      svg += '<rect x="'+x0+'" y="'+T+'" width="'+Math.max(4, x1-x0)+'" height="'+(H-T-B)+'" fill="#1B9CFA" fill-opacity=".10" rx="4"><title>Período escolhido</title></rect>';
+    }
+  }
   serie.forEach(function(s, k){
     var pts = s.pontos.map(function(p, i){ return p.conv == null ? null : x(i)+','+y(p.conv); }).filter(Boolean);
     if(pts.length > 1) svg += '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+PAL[k%4]+'" stroke-width="2.2"/>';
@@ -34911,7 +34934,7 @@ function abV2Html(r, d){
     serie[0].pontos.forEach(function(p, i){ var q = serie[1].pontos[i]; if(p.pessoas && q.pessoas){ dias++; if((q.conv||0) > (p.conv||0)) venceu++; } });
     if(dias) ganhou = String.fromCharCode(66)+' ganhou em '+venceu+' de '+dias+' dia'+(dias===1?'':'s');
   }
-  var graf = '<div class="v2-cx"><h3>Conversão por dia</h3>'+svg+
+  var graf = '<div class="v2-cx"><h3>Conversão por dia</h3><div class="s" style="margin-bottom:6px">Teste inteiro'+(!abTesteInteiro ? '; a faixa azul é o período escolhido' : '')+'</div>'+svg+
     '<div class="fx-sub">'+serie.map(function(s, k){ return '<span style="color:'+PAL[k%4]+'">━ '+String.fromCharCode(65+k)+' · '+fnEsc(s.nome)+'</span>'; }).join(' ')+(ganhou?' · '+ganhou:'')+'</div></div>';
 
   var tot = vs.reduce(function(a, v){ return a + v.sorteios; }, 0);
