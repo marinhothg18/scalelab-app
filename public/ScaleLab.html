@@ -18895,6 +18895,101 @@ function arqNavProjeto(id){
   renderArquivos();
 }
 function arqNavSetor(setor){ _arqNav.setor = setor; _arqNav.subpasta = null; renderArquivos(); }
+
+// ── Status de cada material (copy testada, falta gravar, gravada parcial…) ──
+// Fica no próprio item, junto com quem mudou e quando. Qualquer pessoa do time
+// pode atualizar: é acompanhamento, não permissão.
+var ARQ_STATUS = [
+  { id:'Escrevendo',      cor:'#6366F1' },
+  { id:'Falta gravar',    cor:'#F59E0B' },
+  { id:'Gravado parcial', cor:'#EAB308' },
+  { id:'Gravado',         cor:'#1B9CFA' },
+  { id:'Em teste',        cor:'#8B5CF6' },
+  { id:'Testado',         cor:'#22C55E' },
+  { id:'Pausado',         cor:'#94A3B8' }
+];
+var _arqFiltroStatus = { area:'', st:'' };
+function arqStatusCor(st){ var x = ARQ_STATUS.filter(function(s){ return s.id === st; })[0]; return x ? x.cor : '#64748B'; }
+function arqStatusBotao(item){
+  var st = item.status || '';
+  var id = String(item.id).replace(/'/g, '');
+  var tit = st ? (st+(item.statusPor ? ' · '+item.statusPor : '')+(item.statusEm ? ' · '+new Date(item.statusEm).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '')) : 'Definir o status';
+  if(!st) return '<button onclick="event.stopPropagation();arqStatusMenu(this,\''+id+'\')" title="'+_esc(tit)+'" '+
+    'style="background:none;border:1px dashed var(--border);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;color:var(--text2);cursor:pointer;">+ Status</button>';
+  var c = arqStatusCor(st);
+  return '<button onclick="event.stopPropagation();arqStatusMenu(this,\''+id+'\')" title="'+_esc(tit)+'" '+
+    'style="background:'+c+'1f;border:1px solid '+c+'66;color:'+c+';border-radius:20px;padding:3px 12px;font-size:11px;font-weight:800;cursor:pointer;">● '+_esc(st)+' ▾</button>';
+}
+function arqStatusMenu(bt, itemId){
+  var velho = document.getElementById('arq-st-menu'); if(velho){ velho.remove(); if(velho._item === itemId) return; }
+  var r = bt.getBoundingClientRect();
+  var m = document.createElement('div');
+  m.id = 'arq-st-menu'; m._item = itemId;
+  m.style.cssText = 'position:fixed;z-index:10001;min-width:190px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;'+
+    'box-shadow:0 16px 40px rgba(0,0,0,.25);padding:6px;left:'+Math.max(8, Math.min(window.innerWidth-206, r.left))+'px;top:'+(r.bottom+6)+'px;';
+  // os status já usados que não estão na lista padrão também aparecem
+  var extras = [];
+  var p = _arqProjAtual();
+  if(p && p.items) Object.keys(p.items).forEach(function(k){ (p.items[k]||[]).forEach(function(it){
+    if(it.status && !ARQ_STATUS.some(function(s){ return s.id === it.status; }) && extras.indexOf(it.status) < 0) extras.push(it.status); }); });
+  var op = function(st, cor){
+    return '<div onclick="arqStatusSalvar(\''+itemId+'\',\''+String(st).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);" '+
+      'onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'"><span style="width:9px;height:9px;border-radius:50%;background:'+cor+';flex:0 0 auto"></span>'+_esc(st)+'</div>';
+  };
+  m.innerHTML = ARQ_STATUS.map(function(s){ return op(s.id, s.cor); }).join('') +
+    extras.map(function(st){ return op(st, '#64748B'); }).join('') +
+    '<div style="border-top:1px solid var(--border);margin:4px 0"></div>'+
+    '<div onclick="arqStatusOutro(\''+itemId+'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">✎ Outro…</div>'+
+    '<div onclick="arqStatusSalvar(\''+itemId+'\',\'\')" style="padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text2);" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">Tirar status</div>';
+  document.body.appendChild(m);
+  setTimeout(function(){
+    var fora = function(e){ if(!m.contains(e.target)){ m.remove(); document.removeEventListener('mousedown', fora, true); } };
+    document.addEventListener('mousedown', fora, true);
+  }, 0);
+}
+function arqStatusOutro(itemId){
+  var t = prompt('Qual o status? (ex.: Aprovado pelo Kalebe)');
+  if(t === null) return;
+  t = String(t).trim().slice(0, 40); if(!t) return;
+  arqStatusSalvar(itemId, t);
+}
+function arqStatusSalvar(itemId, st){
+  var m = document.getElementById('arq-st-menu'); if(m) m.remove();
+  var arr = getArqProjetos();
+  var pr = arr.find(function(x){ return x.id==_arqNav.projetoId; });
+  if(!pr) return;
+  var a = _arqAcharItem(pr, _arqNav.setor, itemId);
+  if(!a) return;
+  if(st){ a.item.status = st; a.item.statusEm = Date.now(); a.item.statusPor = (currentUser && currentUser.nome) || ''; }
+  else { delete a.item.status; delete a.item.statusEm; delete a.item.statusPor; }
+  pr._updatedAt = Date.now();
+  saveArqProjetos(arr);
+  renderArquivos();
+  notif(st ? '✅ '+(a.item.nome||'Material')+': '+st : 'Status tirado');
+}
+// Linha com quantos materiais em cada status; clicar filtra a grade
+function arqStatusResumo(items, ativo){
+  var cont = {}, sem = 0;
+  items.forEach(function(it){ if(it.status) cont[it.status] = (cont[it.status]||0) + 1; else sem++; });
+  var ordem = ARQ_STATUS.map(function(s){ return s.id; }).filter(function(id){ return cont[id]; })
+    .concat(Object.keys(cont).filter(function(id){ return !ARQ_STATUS.some(function(s){ return s.id === id; }); }));
+  if(!ordem.length) return '';
+  var chip = function(val, rot, n, cor){
+    var on = ativo === val;
+    return '<button onclick="arqStatusFiltrar(\''+String(val).replace(/'/g,"\\'")+'\')" style="display:inline-flex;align-items:center;gap:6px;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;'+
+      'background:'+(on ? cor+'26' : 'var(--bg2)')+';border:1px solid '+(on ? cor : 'var(--border)')+';color:'+(on ? cor : 'var(--text)')+';">'+
+      (cor ? '<span style="width:8px;height:8px;border-radius:50%;background:'+cor+'"></span>' : '')+_esc(rot)+' <span style="opacity:.7">'+n+'</span></button>';
+  };
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:-6px 0 16px;">'+
+    chip('', 'Todos', items.length, '#64748B')+
+    ordem.map(function(id){ return chip(id, id, cont[id], arqStatusCor(id)); }).join('')+
+    (sem ? chip('__sem', 'Sem status', sem, '#94A3B8') : '')+'</div>';
+}
+function arqStatusFiltrar(st){
+  var area = _arqNav.projetoId+'|'+_arqNav.setor;
+  _arqFiltroStatus = (_arqFiltroStatus.area === area && _arqFiltroStatus.st === st) ? { area:'', st:'' } : { area: area, st: st };
+  renderArquivos();
+}
 function arqNavSubpasta(sub){ _arqNav.subpasta = sub; renderArquivos(); }
 function arqNavBack(level){
   if(level==='home') _arqNav = {nicho:null,projetoId:null,setor:null,subpasta:null};
@@ -19312,8 +19407,13 @@ function renderArquivos(){
     if(_isDir) h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
     h += '<button onclick="arqAddItem()" class="btn btn-primary" style="font-size:13px;">+ Adicionar Arquivo</button>';
     h += '</div></div>';
+    // status de cada material: contagem clicável que filtra a grade
+    var _fst = (_arqFiltroStatus.area === _arqNav.projetoId+'|'+_arqNav.setor) ? _arqFiltroStatus.st : '';
+    if(items.length) h += arqStatusResumo(items, _fst);
+    if(_fst) items = items.filter(function(it){ return (it.status||'') === (_fst === '__sem' ? '' : _fst); });
     if(!items.length){
-      h += '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nada aqui ainda. Use <b>+ Adicionar Arquivo</b>.</div></div>';
+      h += _fst ? '<div class="empty"><div class="empty-text">Nenhum material com esse status.</div></div>'
+                : '<div class="empty"><div class="empty-icon">📁</div><div class="empty-text">Nada aqui ainda. Use <b>+ Adicionar Arquivo</b>.</div></div>';
     } else {
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">';
       for(var ii=0;ii<items.length;ii++){
@@ -19326,6 +19426,7 @@ function renderArquivos(){
         h += '<div style="display:flex;gap:6px;justify-content:center;">';
         h += '<span style="background:'+cor+'22;color:'+cor+';padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">'+item.tipo+'</span>';
         h += '</div>';
+        h += '<div>'+arqStatusBotao(item)+'</div>';
         if(item.desc) h += '<div style="font-size:12px;color:var(--text2);">'+item.desc+'</div>';
         h += '<div style="font-size:11px;color:var(--text2);">'+item.data+'</div>';
         h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:6px;flex-wrap:wrap;">';
