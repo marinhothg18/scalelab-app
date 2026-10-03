@@ -34671,6 +34671,20 @@ function v2Pct(x, casas){ return x==null ? '—' : (x*100).toFixed(casas==null?1
 function v2Hora(ms){ if(!ms) return ''; var d = new Date(ms); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function v2Data(ms){ if(!ms) return ''; var d = new Date(ms); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+v2Hora(ms); }
 function v2Dia(iso){ return iso ? iso.slice(8,10)+'/'+iso.slice(5,7) : ''; }
+// "03/10 12:31" — com o ano só quando não é o ano corrente. No histórico só a
+// hora não dizia de que dia era, e a pessoa volta 4, 5 dias depois.
+function v2DiaHora(ms){
+  if(!ms) return '';
+  var d = new Date(ms), ano = d.getFullYear() !== new Date().getFullYear() ? '/'+String(d.getFullYear()).slice(2) : '';
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+ano+' '+v2Hora(ms);
+}
+// "hoje", "ontem", "há 4 dias" — pelo dia do calendário, não por 24h
+function v2DiasAtras(ms){
+  if(!ms) return '';
+  var a = new Date(ms), b = new Date();
+  var n = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()) - new Date(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000);
+  return n <= 0 ? 'hoje' : n === 1 ? 'ontem' : 'há '+n+' dias';
+}
 // "há 4h", "3 min", "2 dias", "3 sem."
 function v2Ha(ms){
   if(!ms) return '';
@@ -35111,13 +35125,13 @@ function ldFichaPintar(){
   var p = d.pessoa, c = d.cards, dir = lcEhDir(), st = LD_STATUS[p.status] || ['—','neu'];
   var nome = p.nome ? fnEsc(p.nome) : '#'+fnEsc(p.id.slice(-7));
   var tel = d.contato && d.contato.telefone;
-  var marco = function(rot, ms){ return '<span class="m'+(ms?' ok':'')+'">'+(ms?'✓ ':'')+rot+(ms?' '+v2Hora(ms):'')+'</span>'; };
+  var marco = function(rot, ms){ return '<span class="m'+(ms?' ok':'')+'">'+(ms?'✓ ':'')+rot+(ms?' '+v2DiaHora(ms):'')+'</span>'; };
   var at = d.atribuicao, p1 = at.primeiro || {}, u1 = at.ultimo || {};
   var linhaAt = function(rot, a, b){ return '<tr><td>'+rot+'</td><td>'+fnEsc(a||'—')+'</td><td>'+fnEsc(b||'—')+'</td></tr>'; };
   var dia = function(ms){ return ms ? v2Dia(new Date(ms - 3*3600000).toISOString().slice(0,10)) : ''; };
   var visitas = (d.visitas || []).map(function(v, i){
     var evs = v.eventos.filter(function(e){ return !(ldOcultarPlayer && e.tipo === 'clique' && e.extra.player); });
-    return '<div class="v2-visita">VISITA '+(d.visitas.length - i)+' · '+fnEsc(v.entrada || '')+' · '+v2Hora(v.inicio)+' · '+v2MinSeg(v.dur).replace(/ \d+s$/,'')+
+    return '<div class="v2-visita">VISITA '+(d.visitas.length - i)+' · '+v2DiaHora(v.inicio)+' ('+v2DiasAtras(v.inicio)+') · '+fnEsc(v.entrada || '')+' · '+v2MinSeg(v.dur).replace(/ \d+s$/,'')+
       (v.fonte ? ' · '+v2Fonte(v.fonte)+(v.cont ? ' '+fnEsc(v2Anuncio(v.cont)) : '') : ' · direto')+
       (v.variante ? ' · variante '+fnEsc(v.variante) : '')+'</div>'+
       evs.map(ldEvHtml).join('');
@@ -35177,7 +35191,7 @@ function ldEvHtml(e){
   var fn = LD_EV[e.tipo]; if(!fn) return '';
   var x = fn(e);
   return '<div class="v2-feed-i"><span class="v2-ic '+x[1]+'">'+x[0]+'</span><div><b>'+fnEsc(x[2])+'</b>'+(x[3]?'<div class="sub">'+fnEsc(x[3])+'</div>':'')+'</div>'+
-    '<span class="h">'+v2Hora(e.em)+'</span></div>';
+    '<span class="h">'+v2DiaHora(e.em)+'</span></div>';
 }
 function ldFichaExportar(){
   var d = ldFichaDados; if(!d) return;
