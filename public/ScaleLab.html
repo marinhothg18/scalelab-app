@@ -1665,6 +1665,44 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fx-conteudo,.v2-ov{--v2-verde:#22C55E;--v2-laranja:#F59E0B;--v2-verm:#EF4444;--v2-azul:#1B9CFA;--v2-roxo:#5B5BF6;--v2-linha:var(--border)}
 .light-mode .fx-conteudo,.light-mode .v2-ov{--v2-verde:#16A34A;--v2-laranja:#D97706;--v2-verm:#DC2626;--v2-azul:#0284C7;--v2-roxo:#4F46E5}
 .fn-btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.4)}
+#mp-desenho .fn-cols{grid-template-columns:minmax(0,1fr)}
+#mp-desenho .fn-cols > div:nth-child(2),#mp-desenho .fn-lista-cx,#mp-desenho .fn-mapa-wrap > .fx-cc,
+#mp-desenho #mp-paleta,#mp-desenho .fn-barra,#mp-desenho #fn-fora-aviso{display:none}
+#mp-desenho.mp-modo-ver #mp-versao{display:none}
+#mp-desenho .fn-mapa-wrap{padding:0;border:none;background:none;position:relative}
+#mp-desenho .fn-mapa{height:clamp(520px,76vh,980px);resize:none}
+.mp-modo-ver .fn-alca{display:none}
+.mp-modo-ver .fn-no{cursor:pointer}
+#mp-desenho .fn-mapa-wrap{display:flex;flex-direction:column}
+.mp-topo{order:-1;display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:10px}
+.mp-selo{font-size:11px;font-weight:700;color:var(--text2);background:var(--bg2);border:1px solid var(--border);border-radius:99px;padding:4px 10px}
+.mp-selo.ed{color:#fff;background:#5B5BF6;border-color:#5B5BF6}
+.mp-ctl{position:absolute;left:12px;bottom:12px;z-index:6;display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--border);border-radius:9px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.mp-ctl button{width:34px;height:32px;border:none;background:none;color:var(--text);cursor:pointer;font-size:15px;font-family:inherit}
+.mp-ctl button+button{border-top:1px solid var(--border)}
+.mp-ctl button:hover{background:var(--bg3)}
+.mp-mini{position:absolute;right:12px;bottom:12px;z-index:6;width:190px;height:118px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;overflow:hidden;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.mp-mini i{position:absolute;border-radius:2px;opacity:.75}
+.mp-mini b{position:absolute;border:1.5px solid var(--accent);border-radius:3px;background:rgba(27,156,250,.08)}
+.mp-gaveta{position:fixed;top:0;right:0;bottom:0;width:360px;max-width:92vw;background:var(--bg2);border-left:1px solid var(--border);box-shadow:-18px 0 40px rgba(0,0,0,.18);z-index:900;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .2s ease}
+.mp-gaveta.on{transform:none}
+@media (prefers-reduced-motion:reduce){.mp-gaveta{transition:none}}
+body.mp-gaveta-on #fn-dentro{margin-right:350px}
+.gv-cab{padding:16px 16px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start}
+.gv-cab h3{margin:0;font-size:17px}
+.gv-x{background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--text);font-size:16px;flex:0 0 auto}
+.gv-corpo{flex:1;overflow-y:auto;padding:6px 14px 20px}
+.gv-grp{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);margin:16px 2px 8px}
+.gv-mod{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);margin-bottom:8px;cursor:grab;user-select:none}
+.gv-mod:hover{border-color:var(--accent)}
+.gv-mod .pt{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.gv-mod b{display:block;font-size:13px} .gv-mod small{font-size:11px;color:var(--text2)}
+.gv-mod .ar{color:var(--text3);font-size:11px;letter-spacing:-1px}
+#gv-det .fn-cx2{border:none;padding:0;background:none;margin:0}
+.fn-no.v3{overflow:visible}
+.fn-porta{position:absolute;top:50%;width:12px;height:12px;margin-top:-6px;border-radius:50%;background:var(--bg2);border:2px solid var(--text2);z-index:3;box-sizing:border-box}
+.fn-porta.sai{right:-7px;cursor:crosshair} .fn-porta.entra{left:-7px;pointer-events:none}
+.fn-porta.sai:hover{border-color:var(--accent);background:var(--accent)}
 .fn-no.v3{background:var(--bg2);min-width:210px;width:230px;padding:12px 14px;border-width:1px;box-shadow:0 4px 16px rgba(0,0,0,.10)}
 .fn-no.v3 .c{margin-bottom:2px} .fn-no.v3 .nm{font-size:13px}
 .fn-no.v3 .lk{margin:0 0 8px}
@@ -4499,8 +4537,11 @@ a.fn-btn{text-decoration:none;display:inline-block}
                   <div class="fn-grade"></div>
                   <div class="fn-palco" id="fn-palco"><svg class="fn-fios" id="fn-svg"></svg></div>
                 </div>
+                <div class="mp-topo" id="mp-topo"></div>
+                <div class="mp-ctl" id="mp-ctl"></div>
+                <div class="mp-mini" id="mp-mini" title="Clique pra ir até essa parte do mapa"></div>
               </div>
-              <div class="fx-cart" style="margin-top:16px">
+              <div class="fx-cart fn-lista-cx" style="margin-top:16px">
                 <div class="fx-cc"><h3>Funis deste projeto</h3>
                   <span class="fx-sub">clique pra trocar</span></div>
                 <div class="fn-cards" id="fn-lista"></div>
@@ -7086,6 +7127,8 @@ let cur='dashboard';
 var PAGINAS_DIRETORIA = ['gestao','protocolo','configuracoes'];
 
 function goTo(id){
+  // saiu do Funis com o mapa em edição: fecha a aba lateral (ela fica no body)
+  try{ if(id !== 'funis' && typeof mpEditando !== 'undefined' && document.getElementById('mp-gaveta')){ mpEditando = false; fnSel = null; mpModo(); } }catch(e){}
   // Módulo arquivado: bloqueia a página (link antigo, aba velha, digitar na URL).
   // Diretoria consegue abrir pra conferir antes de reativar — os outros voltam pro dashboard.
   try{
@@ -28381,10 +28424,10 @@ function saveAdsApiKey(){
 // 'pagina', misturado com tela de quiz.
 var FN_CORES = { pagina:'#1B9CFA', prevenda:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926',
                  upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC',
-                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6' };
+                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6', typeform:'#0EA5E9', typebot:'#14B8A6' };
 var FN_ROT   = { pagina:'PÁGINA', prevenda:'PRÉ-VENDA', vsl:'VSL', checkout:'CHECKOUT',
                  upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM',
-                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B' };
+                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B', typeform:'TYPEFORM', typebot:'TYPEBOT' };
 
 // A paleta do mapa. Um clique poe o bloco no funil, ligado no que estiver
 // selecionado — em vez de preencher tres campos de formulario a cada etapa.
@@ -29750,6 +29793,7 @@ function fnAba(qual, bt){
   if(qual === 'saude') qual = 'pixel';
   if(FN_ABAS.indexOf(qual) < 0) qual = 'resultado';
   if(fnAbaAtual === 'jornada' && qual !== 'jornada') jvParar();
+  if(fnAbaAtual === 'mapa' && qual !== 'mapa' && typeof mpEditando !== 'undefined'){ mpEditando = false; fnSel = null; mpModo(); }
   fnAbaAtual = qual;
   FN_ABAS.forEach(function(k){
     var el = document.getElementById('fn-p-'+k); if(el) el.classList.remove('on'); });
@@ -29763,6 +29807,8 @@ function fnAba(qual, bt){
   if(qual==='leads')   ldCarregar();
   if(qual==='geral')   gePintar();
   if(qual==='mapa')    { mpVistaPintar(); if(mpVista === 'fluxo') fxCarregar();
+                         mpLigarSoltar(); mpModo();
+                         var fm = fnAtual(); if(fm && !mpCabido[fm.id]){ mpCabido[fm.id] = 1; setTimeout(function(){ fnCaber(); mpMiniMapa(); }, 120); }
                          mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); mpVersaoInfo(); mpForaCarregar();
                          if(!svDados || !fnAtual() || svDados.funil.id !== fnAtual().id) svCarregar(false); }
   if(qual==='links')   lcCarregar();
@@ -32788,6 +32834,15 @@ function fnNos(){
     fnArrastar(el, n, f);
     fnRedimensionar(alca, el, n, f);
   });
+  // editando: bolinha de saída (puxa pra ligar) e de entrada em cada bloco
+  if(mpEditando) palco.querySelectorAll('.fn-no').forEach(function(el){
+    var no = fnAcha(f, el.dataset.id); if(!no) return;
+    if(no.tipo !== 'fonte'){ var ent = document.createElement('span'); ent.className = 'fn-porta entra'; el.appendChild(ent); }
+    var sai = document.createElement('span'); sai.className = 'fn-porta sai'; sai.title = 'Puxe até outro bloco pra ligar';
+    sai.addEventListener('mousedown', function(ev){ mpPuxarLigacao(ev, no.id); });
+    el.appendChild(sai);
+  });
+  mpMiniMapa();
 }
 
 // Alca do canto: cresce/encolhe o bloco e guarda o tamanho junto com a posicao.
@@ -32822,6 +32877,7 @@ function fnArrastar(el, dado, f){
   });
   window.addEventListener('mousemove', function(ev){
     if(!mov) return;
+    if(!mpEditando) return;          // modo de ver: o desenho fica travado
     moveu = true;
     dado.x = Math.max(0, ev.clientX/fnEscala - ox);
     dado.y = Math.max(0, ev.clientY/fnEscala - oy);
@@ -32992,7 +33048,7 @@ function fnCaber(){
 }
 function fnSelecionar(id){
   if(fnLigando){ fnLigarEm(id); return; }
-  fnSel = id; fnNos(); fnFios(); fnDetalhe(); fnFaixa();
+  fnSel = id; fnNos(); fnFios(); fnDetalhe(); fnFaixa(); mpGaveta();
 }
 
 // A divisao por pagina dentro de uma etapa. Com teste A/B, uma etapa recebe
@@ -33113,8 +33169,14 @@ function fnDetalhe(){
 
   // Etapa sem link nao mede nada: o campo vai pro TOPO, antes dos numeros, que
   // nesse caso sao todos zero e nao explicam o porque.
-  var faltaUrl = !n.url;
-  var campoUrl = '<div class="fn-campo"><label>Link da página</label>'+
+  var ehPagamento = n.tipo === 'checkout' || n.pagamento;
+  // checkout de gateway não recebe o pixel: o link é só referência
+  var faltaUrl = !n.url && !ehPagamento;
+  var campoUrl = ehPagamento
+    ? '<div class="fn-campo"><label>Link do checkout (opcional)</label>'+
+      '<input id="fn-url-'+n.id+'" value="'+fnEsc(n.url||'')+'" placeholder="https://checkout.payt.com.br/..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
+      '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">O checkout do gateway não recebe o pixel: quem clica em comprar na sua página já é contado aqui.</div></div>'
+    : '<div class="fn-campo"><label>Link da página</label>'+
     '<input id="fn-url-'+n.id+'" value="'+fnEsc(n.url||'')+'" placeholder="https://..." '+
       'onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
     (faltaUrl ? '<div style="font-size:10.5px;color:var(--red);margin-top:5px">'+
@@ -33122,6 +33184,8 @@ function fnDetalhe(){
       'e o bloco fica zerado pra sempre.</div>' : '')+'</div>';
 
   cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
+    '<div class="fn-campo"><label>Nome do bloco</label><input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+    fnCampoIntegracao(n)+
     (faltaUrl ? campoUrl : '')+
     '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
     (v && n.tipo !== 'obrigado' ? '<button class="fn-btn g sm" style="width:100%;margin:6px 0 8px" onclick="ldIrPara({etapa:\''+n.id+'\'})">👥 Ver quem está nesta etapa</button>' : '')+
@@ -33328,6 +33392,240 @@ function fnSplitVariantes(id, calado){
   fnGravar(f); fnPintar(); fnDetalhe(); setTimeout(fnCarregarStats, 1200);
   if(!calado || novas) toastFn(novas ? novas+' página(s) de variante no desenho' : 'Variantes ligadas no teste');
 }
+// ══════════════════════════════════════════════════════
+// ── MAPA: modo de ver e modo de editar ──
+// Por padrão o mapa só mostra o funil, travado. "Editar" pede confirmação e
+// abre a aba lateral de Módulos: arrasta o bloco pro mapa, puxa a bolinha da
+// direita até outro bloco pra ligar, clica no bloco pra configurar.
+// ══════════════════════════════════════════════════════
+var mpEditando = false, mpCabido = {};
+var MP_MODULOS = [
+  { grupo:'Fontes de tráfego', ic:'📣', itens:[
+    { k:'fonte', canal:'meta',      nome:'Facebook / Instagram Ads', dica:'Cliques e gasto da campanha', cor:'#1877F2' },
+    { k:'fonte', canal:'instagram', nome:'Instagram · link da bio',  dica:'Quem veio pela bio',          cor:'#E1306C' },
+    { k:'fonte', canal:'utm',       nome:'Link com UTM',             dica:'E-mail, WhatsApp, parceiro',  cor:'#8A94AC' },
+    { k:'fonte', canal:'organico',  nome:'Orgânico / direto',        dica:'Sem UTM',                     cor:'#22C55E' } ] },
+  { grupo:'Módulo de páginas', ic:'🧩', itens:[
+    { k:'etapa', tipo:'prevenda', nome:'Página de Pre-sell',  dica:'Aquecimento antes da venda' },
+    { k:'etapa', tipo:'vsl',      nome:'Página de Vendas',    dica:'Landing page com VSL' },
+    { k:'etapa', tipo:'upsell',   nome:'Página de Upsell',    dica:'Página de oferta adicional' },
+    { k:'etapa', tipo:'downsell', nome:'Página de Downsell',  dica:'Página de oferta menor' },
+    { k:'etapa', tipo:'obrigado', nome:'Página de Obrigado',  dica:'Confirmação de compra' },
+    { k:'etapa', tipo:'quiz',     nome:'Quiz Central TMX',    dica:'Quiz com respostas' } ] },
+  { grupo:'Módulo de pagamento', ic:'💳', itens:[
+    { k:'etapa', tipo:'checkout', nome:'Checkout',  dica:'Produto principal + Order Bump' },
+    { k:'etapa', tipo:'upsell',   nome:'Upsell',    dica:'Oferta adicional após aceite',   pagamento:true },
+    { k:'etapa', tipo:'downsell', nome:'Downsell',  dica:'Oferta alternativa após recusa', pagamento:true } ] },
+  { grupo:'Teste A/B', ic:'🔀', itens:[
+    { k:'split', tipo:'split', nome:'Teste A/B', dica:'Divida visitantes entre variantes (link /r/)' } ] },
+  { grupo:'Recuperação', ic:'☎', itens:[
+    { k:'etapa', tipo:'recuperacao', nome:'Recuperação', dica:'Ligação, WhatsApp, e-mail' } ] },
+  { grupo:'Integração', ic:'🔌', itens:[
+    { k:'etapa', tipo:'typeform', nome:'Typeform', dica:'Formulário ou quiz externo' },
+    { k:'etapa', tipo:'typebot',  nome:'Typebot',  dica:'Chatbot conversacional' } ] }
+];
+var MP_INTEGRACOES = ['Payt','Kiwify','Hotmart','Eduzz','Monetizze','Kirvano','Cakto','Ticto','Outra'];
+
+function mpModo(){
+  var de = document.getElementById('mp-desenho'); if(!de) return;
+  de.classList.toggle('mp-modo-editar', mpEditando);
+  de.classList.toggle('mp-modo-ver', !mpEditando);
+  document.body.classList.toggle('mp-gaveta-on', mpEditando);
+  mpControles(); mpGaveta();
+}
+function mpEditar(){
+  if(!confirm('Quer editar o desenho deste funil?\n\nVocê vai poder arrastar blocos, ligar e trocar as páginas. Cada mudança é salva na hora.')) return;
+  mpEditando = true; fnSel = null; fnLigando = null;
+  mpModo(); fnNos(); fnFios();
+}
+function mpConcluir(){
+  mpEditando = false; fnSel = null; fnLigando = null;
+  mpModo(); fnNos(); fnFios(); fnAvisoLigacao();
+  toastFn('Desenho salvo');
+  setTimeout(fnCarregarStats, 1200);
+}
+function mpControles(){
+  var topo = document.getElementById('mp-topo'), ctl = document.getElementById('mp-ctl');
+  if(topo) topo.innerHTML = mpEditando
+    ? '<span class="fx-sub" style="margin-right:auto">Arraste os módulos da direita pro mapa. Puxe a bolinha de um bloco até outro pra ligar.</span>'+
+      '<span class="mp-selo ed">Editando</span><button class="fn-btn sm" onclick="mpConcluir()">✓ Concluir edição</button>'
+    : '<span class="fx-sub" style="margin-right:auto">Números de '+fnEsc(fnPeriodoRotulo().toLowerCase())+'. Clique num bloco pra ver os detalhes.</span>'+
+      '<button class="fn-btn g sm" onclick="mpEditar()">✏️ Editar</button>';
+  if(ctl) ctl.innerHTML = '<button title="Aproximar" onclick="fnZoom(10);mpMiniMapa()">+</button>'+
+    '<button title="Afastar" onclick="fnZoom(-10);mpMiniMapa()">−</button>'+
+    '<button title="Encaixar o funil inteiro" onclick="fnCaber();mpMiniMapa()">⤢</button>'+
+    '<button title="'+(mpEditando ? 'Concluir edição' : 'Desenho travado. Clique pra editar')+'" onclick="'+(mpEditando ? 'mpConcluir()' : 'mpEditar()')+'">'+(mpEditando ? '🔓' : '🔒')+'</button>';
+}
+// A aba lateral: módulos (editando), o bloco escolhido (editando) ou a
+// leitura dos números do bloco (no modo de ver)
+function mpGaveta(){
+  var g = document.getElementById('mp-gaveta');
+  if(!g){
+    g = document.createElement('div'); g.id = 'mp-gaveta'; g.className = 'mp-gaveta';
+    g.innerHTML = '<div class="gv-cab" id="gv-cab"></div><div class="gv-corpo"><div id="gv-mod"></div><div id="gv-det"></div><div id="gv-ver"></div></div>';
+    document.body.appendChild(g);
+    var det = document.getElementById('fn-detalhe');
+    if(det) document.getElementById('gv-det').appendChild(det);
+    document.getElementById('gv-mod').innerHTML = MP_MODULOS.map(function(gr, gi){
+      return '<div class="gv-grp">'+gr.ic+' '+gr.grupo+'</div>'+gr.itens.map(function(it, ii){
+        var cor = it.cor || FN_CORES[it.tipo] || '#1B9CFA';
+        return '<div class="gv-mod" draggable="true" ondragstart="mpArrastarModulo(event,'+gi+','+ii+')" onclick="mpSoltarModulo('+gi+','+ii+')" title="Arraste pro mapa (ou clique)">'+
+          '<span class="ar">⋮⋮</span><span class="pt" style="background:'+cor+'"></span><span><b>'+fnEsc(it.nome)+'</b><small>'+fnEsc(it.dica)+'</small></span></div>';
+      }).join('');
+    }).join('') + '<div class="gv-grp">🧹 Organizar</div>'+
+      '<button class="fn-btn g sm" style="width:100%" onclick="fnArrumar();setTimeout(fnCaber,60)">✨ Arrumar o mapa sozinho</button>'+
+      '<div id="gv-fora" style="margin-top:12px"></div>';
+  }
+  var cab = document.getElementById('gv-cab'), mod = document.getElementById('gv-mod'),
+      det = document.getElementById('gv-det'), ver = document.getElementById('gv-ver');
+  var f = fnAtual(), n = (f && fnSel) ? fnAcha(f, fnSel) : null;
+  var aberta = mpEditando || !!n;
+  g.classList.toggle('on', aberta);
+  if(!aberta) return;
+  if(mpEditando && !n){
+    cab.innerHTML = '<div style="flex:1"><h3>Módulos</h3><div class="fx-sub">Arraste para o mapa</div></div><button class="gv-x" title="Concluir edição" onclick="mpConcluir()">✓</button>';
+    mod.style.display = ''; det.style.display = 'none'; ver.style.display = 'none';
+    var fora = document.getElementById('gv-fora'), l = (fnBlocos && fnBlocos.fora) || [];
+    if(fora) fora.innerHTML = l.length ? '<div class="fx-sub">'+l.length+' página'+(l.length===1?'':'s')+' com o pixel deste funil fora do desenho. <a href="#" onclick="mpForaVer();return false">ver quais</a></div>' : '';
+  } else if(mpEditando && n){
+    cab.innerHTML = '<button class="gv-x" title="Voltar aos módulos" onclick="fnSel=null;fnNos();fnFios();mpGaveta()">‹</button>'+
+      '<div style="flex:1"><h3>Configurar bloco</h3><div class="fx-sub">'+fnEsc(n.nome)+'</div></div><button class="gv-x" title="Concluir edição" onclick="mpConcluir()">✓</button>';
+    mod.style.display = 'none'; det.style.display = ''; ver.style.display = 'none';
+  } else {
+    cab.innerHTML = '<div style="flex:1"><h3>'+fnEsc(n.nome)+'</h3><div class="fx-sub">'+fnEsc(fnPeriodoRotulo())+'</div></div>'+
+      '<button class="gv-x" title="Fechar" onclick="fnSel=null;fnNos();fnFios();mpGaveta()">×</button>';
+    mod.style.display = 'none'; det.style.display = 'none'; ver.style.display = '';
+    ver.innerHTML = mpLeitura(n);
+  }
+}
+// Só leitura: os números do bloco e pra onde ir a partir dele
+function mpLeitura(n){
+  var b = fnBlocos && fnBlocos.nos ? fnBlocos.nos[n.id] : null;
+  var linha = function(r, v){ return '<div class="fn-l"><span>'+r+'</span><span>'+v+'</span></div>'; };
+  if(!b) return '<div class="fx-vazio">Sem números pra este bloco no período.</div>';
+  var h = '';
+  if(n.url) h += '<div class="fx-sub" style="margin-bottom:10px;word-break:break-all">🔗 <a href="'+fnEsc(/^https?:/i.test(n.url)?n.url:'https://'+n.url)+'" target="_blank" rel="noopener">'+fnEsc(n.url)+'</a></div>';
+  if(n.integracao) h += linha('Integração', fnEsc(n.integracao));
+  if(b.cliques != null) h += linha(n.tipo === 'split' ? 'Cliques no link' : 'Cliques no anúncio', fnNum(b.cliques));
+  if(b.investido != null) h += linha('Investido', v2Din(b.investido));
+  if(b.pessoas != null) h += linha(n.tipo === 'checkout' && b.viaClique ? 'Abriram o checkout' : n.tipo === 'fonte' ? 'Chegaram' : 'Pessoas', fnNum(b.pessoas));
+  if(b.checkout != null && n.tipo !== 'checkout') h += linha('Checkouts', fnNum(b.checkout));
+  if(b.pitch) h += linha('Passaram do pitch', fnNum(b.pitch));
+  if(b.vendas != null) h += linha('Vendas', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendas)+'</b>');
+  if(b.faturamento != null) h += linha('Faturamento', v2Din(b.faturamento));
+  if(b.conversao != null && b.pessoas) h += linha('Conversão', v2Pct(b.conversao, 2));
+  if(b.divisao) h += '<div class="gv-grp">Divisão real</div>'+b.divisao.map(function(d){ return linha(fnEsc(d.nome), d.pct == null ? '—' : v2Pct(d.pct, 0)); }).join('');
+  var f = fnAtual();
+  var entra = (f.ligacoes||[]).filter(function(l){ return l[1] === n.id; }), sai = (f.ligacoes||[]).filter(function(l){ return l[0] === n.id; });
+  var fio = function(l, ida){ var o = fnAcha(f, ida ? l[1] : l[0]); var x = fnBlocos.fios[l[0]+'|'+l[1]]; return o ? linha((ida ? '→ ' : '← ')+fnEsc(o.nome), x ? fnNum(x.n)+' · '+v2Pct(x.pct, 0) : '—') : ''; };
+  if(entra.length || sai.length) h += '<div class="gv-grp">Caminhos</div>'+entra.map(function(l){ return fio(l, false); }).join('')+sai.map(function(l){ return fio(l, true); }).join('');
+  if(b.pessoas && n.tipo !== 'obrigado') h += '<button class="fn-btn g sm" style="width:100%;margin-top:12px" onclick="ldIrPara('+(n.tipo === 'fonte' || n.tipo === 'split' ? '{}' : '{etapa:\''+n.id+'\'}')+')">👥 Ver essas pessoas nos Leads</button>';
+  h += '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>';
+  return h;
+}
+// Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
+function fnCampoIntegracao(n){
+  if(!(n.tipo === 'checkout' || n.pagamento)) return '';
+  return '<div class="fn-campo"><label>Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
+    '<option value="">— escolher —</option>'+MP_INTEGRACOES.map(function(x){ return '<option'+(n.integracao===x?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'+
+    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. As vendas entram pelo webhook configurado em Configurações › Integrações; o clique no botão de compra é marcado pelo pixel.</div></div>';
+}
+function fnSalvarIntegracao(id, v){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.integracao = v; fnGravar(f); fnNos(); toastFn(v ? 'Integração: '+v : 'Integração tirada');
+}
+// ── arrastar módulo da aba lateral pro mapa ──
+function mpArrastarModulo(ev, gi, ii){
+  try{ ev.dataTransfer.setData('text/plain', 'tmxmod:'+gi+':'+ii); ev.dataTransfer.effectAllowed = 'copy'; }catch(e){}
+}
+function mpPosMapa(cx, cy){
+  var palco = document.getElementById('fn-palco'); if(!palco) return { x:200, y:120 };
+  var r = palco.getBoundingClientRect();
+  return { x: Math.max(0, Math.round((cx - r.left)/fnEscala)), y: Math.max(0, Math.round((cy - r.top)/fnEscala)) };
+}
+function mpLigarSoltar(){
+  var mapa = document.getElementById('fn-mapa'); if(!mapa || mapa._soltar) return;
+  mapa._soltar = true;
+  mapa.addEventListener('dragover', function(ev){ if(mpEditando){ ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; } });
+  mapa.addEventListener('drop', function(ev){
+    if(!mpEditando) return;
+    var t = ''; try{ t = ev.dataTransfer.getData('text/plain'); }catch(e){}
+    var m = /^tmxmod:(\d+):(\d+)$/.exec(t || ''); if(!m) return;
+    ev.preventDefault();
+    var p = mpPosMapa(ev.clientX, ev.clientY);
+    mpCriarBloco(MP_MODULOS[+m[1]].itens[+m[2]], p.x - 110, p.y - 40);
+  });
+  mapa.addEventListener('scroll', function(){ mpMiniMapa(); }, { passive:true });
+}
+// clique no módulo (sem arrastar): põe no meio do que está à vista
+function mpSoltarModulo(gi, ii){
+  var mapa = document.getElementById('fn-mapa'); if(!mapa) return;
+  var r = mapa.getBoundingClientRect();
+  var p = mpPosMapa(r.left + r.width/2, r.top + r.height/2);
+  mpCriarBloco(MP_MODULOS[gi].itens[ii], p.x - 110, p.y - 60);
+}
+function mpCriarBloco(it, x, y){
+  var f = fnAtual(); if(!f || !it) return;
+  f.fontes = f.fontes || []; f.etapas = f.etapas || []; f.ligacoes = f.ligacoes || [];
+  var nome = it.nome, base = nome, k = 1;
+  var nomes = fnTodos(f).map(function(n){ return n.nome; });
+  while(nomes.indexOf(nome) >= 0){ k++; nome = base+' '+k; }
+  var id;
+  if(it.k === 'fonte'){
+    id = 'o'+Date.now();
+    f.fontes.push({ id:id, nome:nome, canal:it.canal, filtro: it.canal === 'meta' ? undefined : {}, x:Math.max(0,x), y:Math.max(0,y) });
+  } else {
+    id = 'e'+Date.now();
+    var e = { id:id, nome:nome, tipo:it.tipo, url:'', x:Math.max(0,x), y:Math.max(0,y) };
+    if(it.pagamento) e.pagamento = true;
+    if(it.tipo === 'split') e.slug = '';
+    f.etapas.push(e);
+  }
+  fnSel = id; fnGravar(f); fnPintar(); fnDetalhe(); mpGaveta();
+  toastFn(nome+' no mapa. Configure ao lado e puxe a bolinha da direita pra ligar.');
+  setTimeout(fnCarregarStats, 1200);
+}
+// ── ligar puxando a bolinha da direita até outro bloco ──
+function mpPuxarLigacao(ev, de){
+  ev.preventDefault(); ev.stopPropagation();
+  var svg = document.getElementById('fn-svg'), f = fnAtual(); if(!svg || !f) return;
+  var a = fnAcha(f, de), el = document.querySelector('.fn-no[data-id="'+de+'"]'); if(!a || !el) return;
+  var x1 = (a.x||0) + el.offsetWidth, y1 = (a.y||0) + el.offsetHeight/2;
+  var tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  tmp.setAttribute('fill', 'none'); tmp.setAttribute('stroke', '#1B9CFA'); tmp.setAttribute('stroke-width', '2'); tmp.setAttribute('stroke-dasharray', '5 4');
+  svg.appendChild(tmp);
+  var mover = function(e){
+    var p = mpPosMapa(e.clientX, e.clientY), mx = (x1 + p.x)/2;
+    tmp.setAttribute('d', 'M'+x1+','+y1+' C'+mx+','+y1+' '+mx+','+p.y+' '+p.x+','+p.y);
+  };
+  var soltar = function(e){
+    window.removeEventListener('mousemove', mover); window.removeEventListener('mouseup', soltar);
+    tmp.remove();
+    var alvo = document.elementFromPoint(e.clientX, e.clientY);
+    var no = alvo && alvo.closest ? alvo.closest('.fn-no') : null;
+    if(no && no.dataset.id && no.dataset.id !== de){ fnLigando = de; fnLigarEm(no.dataset.id); }
+  };
+  window.addEventListener('mousemove', mover); window.addEventListener('mouseup', soltar);
+}
+// ── mapinha no canto: onde você está no desenho ──
+function mpMiniMapa(){
+  var box = document.getElementById('mp-mini'), mapa = document.getElementById('fn-mapa'), f = fnAtual();
+  if(!box || !mapa || !f) return;
+  var nos = fnTodos(f); if(!nos.length){ box.innerHTML = ''; return; }
+  var maxX = 0, maxY = 0;
+  nos.forEach(function(n){ maxX = Math.max(maxX, (n.x||0) + 240); maxY = Math.max(maxY, (n.y||0) + 220); });
+  maxX = Math.max(maxX, mapa.clientWidth/fnEscala); maxY = Math.max(maxY, mapa.clientHeight/fnEscala);
+  var W = box.clientWidth || 190, H = box.clientHeight || 118, k = Math.min(W/maxX, H/maxY);
+  box.innerHTML = nos.map(function(n){
+    return '<i style="left:'+((n.x||0)*k)+'px;top:'+((n.y||0)*k)+'px;width:'+Math.max(6, 230*k)+'px;height:'+Math.max(4, 150*k)+'px;background:'+(FN_CORES[n.tipo]||'#1B9CFA')+'"></i>';
+  }).join('') + '<b style="left:'+(mapa.scrollLeft/fnEscala*k)+'px;top:'+(mapa.scrollTop/fnEscala*k)+'px;width:'+(mapa.clientWidth/fnEscala*k)+'px;height:'+(mapa.clientHeight/fnEscala*k)+'px"></b>';
+  box.onclick = function(e){
+    var r = box.getBoundingClientRect();
+    var x = (e.clientX - r.left)/k*fnEscala - mapa.clientWidth/2, y = (e.clientY - r.top)/k*fnEscala - mapa.clientHeight/2;
+    mapa.scrollTo({ left: Math.max(0, x), top: Math.max(0, y), behavior: 'smooth' });
+  };
+}
+
 // Uma linha só, discreta, pras páginas com o pixel que não estão no desenho
 function mpForaLinha(){
   var el = document.getElementById('fn-fora-aviso'); if(!el) return;
