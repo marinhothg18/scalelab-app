@@ -11393,21 +11393,34 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0 });
       });
     }
-    const vendaDaEtapa = {};
+    // A venda é da página que TROUXE a pessoa (a primeira do funil nos 7 dias
+    // antes da compra). Se o clique de compra foi em outra página (o back
+    // redirect, por exemplo), essa outra ganha a venda como "salva" por ela,
+    // sem tirar da página de origem — e o total continua batendo.
+    const vendaDaEtapa = {}, salvasDaEtapa = {};
     vendas.forEach(o => {
       if (!o.visitante) return;
-      const lim = (o.em || 0) + 10 * 60000;
-      const evs = (evDe[o.visitante] || []).filter(x => x.em <= lim).sort((a, b) => b.em - a.em);
-      const pick = evs.find(x => x.ck) || evs[0];
-      if (pick) (vendaDaEtapa[pick.et] = vendaDaEtapa[pick.et] || []).push(o);
+      const lim = (o.em || 0) + 10 * 60000, desde = (o.em || 0) - 7 * 86400000;
+      const evs = (evDe[o.visitante] || []).filter(x => x.em <= lim && x.em >= desde);
+      const pags = evs.filter(x => !x.ck).sort((a, b) => a.em - b.em);
+      const cliques = evs.filter(x => x.ck).sort((a, b) => b.em - a.em);
+      const entrada = pags.length ? pags[0].et : (cliques.length ? cliques[cliques.length - 1].et : null);
+      if (entrada) (vendaDaEtapa[entrada] = vendaDaEtapa[entrada] || []).push(o);
+      const clique = cliques.length ? cliques[0].et : null;
+      if (clique && entrada && clique !== entrada) {
+        const x = salvasDaEtapa[clique] || (salvasDaEtapa[clique] = { n: 0, de: {} });
+        x.n++; x.de[entrada] = (x.de[entrada] || 0) + 1;
+      }
     });
     // página: pessoas da página, pitch e cliques NELA, e as vendas que saíram dela
     const medirPagina = (id, lst) => {
       const s = porEtapa[id] || new Set();
       const vf = (vendaDaEtapa[id] || []).filter(o => casaProd(o, lst));
+      const sv = salvasDaEtapa[id];
       return { pessoas: s.size, checkout: (ckEtapa[id] || new Set()).size, pitch: (pitEtapa[id] || new Set()).size,
                vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
-               conversao: s.size ? vf.length / s.size : 0, produtos: topProd(vf) };
+               conversao: s.size ? vf.length / s.size : 0, produtos: topProd(vf),
+               salvas: sv ? sv.n : 0, salvasDe: sv ? Object.entries(sv.de).sort((a, b) => b[1] - a[1]).map(([et, n]) => ({ nome: esc.nomeEtapa[et] || et, n })) : [] };
     };
     // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
