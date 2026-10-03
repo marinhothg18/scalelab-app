@@ -238,12 +238,17 @@ const globalLimiter = rateLimit({
   max: 200,
   message: { error: 'Muitas requisições. Tente novamente em 1 minuto.' },
   // o pixel e o quiz tem limite proprio: um visitante dispara varios eventos por pagina
-  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento' || req.path === '/api/quiz/evento'
+  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento' || req.path === '/api/funil/vivo' || req.path === '/api/quiz/evento'
 });
 // Continua limitado, so que com folga pra trafego real (e por IP do visitante)
 const pixelLimiter = rateLimit({ windowMs: 60*1000, max: 120,
   message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
 app.use('/api/funil/evento', pixelLimiter);
+// "Estou aqui" do pixel: 1 por minuto por pessoa. Separado do limite dos eventos
+// pra muita gente atrás do mesmo IP de operadora não derrubar o evento que conta.
+const vivoLimiter = rateLimit({ windowMs: 60*1000, max: 240,
+  message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
+app.use('/api/funil/vivo', vivoLimiter);
 // Quiz: cada tela e cada resposta e um evento. 180/min por IP cobre muita gente
 // atras do mesmo IP de operadora (CGNAT) sem abrir porta pra inundacao.
 const quizLimiter = rateLimit({ windowMs: 60*1000, max: 180,
@@ -298,7 +303,7 @@ const ALLOWED_ORIGINS = [
 // abaixo so aceita a whitelist — correto pro resto do sistema, mas bloquearia o
 // pixel. Este endpoint nao le cookie, sessao nem devolve dado: so recebe
 // contador. Por isso e liberado aqui, e so ele.
-app.use('/api/funil/evento', (req, res, next) => {
+app.use(['/api/funil/evento', '/api/funil/vivo'], (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
@@ -8855,6 +8860,7 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     // Trafego do time aparece na lista de Leads (com filtro), mas nao entra em
     // nenhuma conta: nem nos blocos do mapa, nem no teste A/B.
     const interno = _pEhInterno(c, req);
+    _agoraMarcar(visitante, c, interno, tipo === 'saiu');
     if (!interno) _fContar(funil, etapa, tipo, visitante, c);
 
     // Teste A/B: a variante chegou pela URL do redirecionador e o pixel a devolve
@@ -8889,6 +8895,47 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
                  variante: variante || '' });
     res.sendStatus(204);
   } catch (e) { res.sendStatus(204); }
+});
+
+// "Estou aqui": o pixel manda enquanto a aba está à vista e a pessoa está na
+// página. Não grava nada — é só pra contar quem está em cada página agora.
+app.post('/api/funil/vivo', express.text({ type: '*/*', limit: '4kb' }), (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  try {
+    let c = req.body;
+    if (typeof c === 'string') { try { c = JSON.parse(c); } catch (e) { c = {}; } }
+    c = c || {};
+    if (c.funil && c.pg) {
+      c.pg = _normPg(c.pg);
+      _agoraMarcar(c.id, c, _pEhInterno(c, req), Number(c.oculto) === 1);
+    }
+  } catch (e) {}
+  res.sendStatus(204);
+});
+
+// Quantas pessoas estão em cada bloco do mapa agora. A tela do mapa pede de
+// 10 em 10 segundos; é tudo memória, mais uma consulta curta pro checkout.
+app.get('/api/funil/agora', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dbj = readDB();
+    const esc = _escopoFunil(dbj, String(req.query.funil || ''));
+    if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
+    const ag = _agoraDoFunil(esc), agora = Date.now();
+    const blocos = {};
+    Object.keys(ag.porEtapa).forEach(id => { blocos[id] = ag.porEtapa[id].size; });
+    // Checkout do gateway não tem pixel: "no checkout agora" é quem clicou em
+    // comprar nos últimos 15 min, não pagou depois disso e não voltou pra página.
+    const urls = Object.keys(esc.etapaDeUrl);
+    const cliques = _q(`SELECT e.visitante, MAX(e.em) em FROM eventos e LEFT JOIN visitantes v ON v.id = e.visitante
+                        WHERE e.tipo='checkout' AND e.em >= ? AND COALESCE(v.interno,0)=0 AND (e.funil IN (` + _ph(esc.ids.length) + `) OR e.pg IN (` +
+                        _ph(Math.max(1, urls.length)) + `)) GROUP BY e.visitante`)
+      .all(agora - 15 * 60000, ...esc.ids, ...(urls.length ? urls : ['']));
+    const pagou = _q('SELECT 1 FROM pedidos WHERE visitante=? AND pago=1 AND em >= ? LIMIT 1');
+    const noCheckout = cliques.filter(x => !ag.todos.has(x.visitante) && !pagou.get(x.visitante, x.em - 60000)).length;
+    (esc.f.etapas || []).forEach(e => { if (e.tipo === 'checkout' && esc.etapaDeData[e.id] === e.id) blocos[e.id] = noCheckout; });
+    res.json({ ok: true, em: agora, total: ag.todos.size, fora: ag.fora.size, noCheckout, blocos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ══════════════════════════════════════════════════════
@@ -9046,6 +9093,40 @@ const _pq = {};
 const _pIntIp = new Set(), _pIntVis = new Set();   // regras de tráfego interno
 const _pSess = new Map();                           // visitante -> sessão aberta (atalho)
 const _pVideo = new Map();                          // visitante -> onde está na VSL agora
+// Quem está em qual página AGORA: 'visitante|página' -> último sinal. Só memória.
+// Qualquer evento do pixel marca; a saída (fechou, trocou de página, escondeu a
+// aba) tira na hora; sem sinal por 2,5 min some sozinho — o pixel avisa a cada
+// minuto enquanto a aba está à vista e a pessoa está ali.
+const _pAgora = new Map();
+const AGORA_MS = 150 * 1000, AGORA_TETO = 50000;
+function _agoraMarcar(vis, c, interno, sai) {
+  vis = String(vis || '').slice(0, 40);
+  const pg = String((c && c.pg) || '').slice(0, 160);
+  if (!vis || !pg) return;
+  const k = vis + '|' + pg;
+  if (sai) { _pAgora.delete(k); return; }
+  if (!_pAgora.has(k) && _pAgora.size >= AGORA_TETO) return;
+  _pAgora.set(k, { vis, pg, funil: String(c.funil || '').slice(0, 80), etapa: String(c.etapa || '').slice(0, 60),
+                   em: Date.now(), interno: !!interno });
+}
+setInterval(() => {
+  const lim = Date.now() - AGORA_MS;
+  for (const [k, v] of _pAgora) if (v.em < lim) _pAgora.delete(k);
+}, 60000);
+// quem está agora nas páginas deste funil, por bloco do mapa e por página
+function _agoraDoFunil(esc) {
+  const lim = Date.now() - AGORA_MS, porEtapa = {}, porPg = {}, todos = new Set(), fora = new Set();
+  for (const v of _pAgora.values()) {
+    if (v.em < lim || v.interno || esc.ignoradas.has(v.pg)) continue;
+    const doFunil = esc.ids.includes(v.funil);
+    const et = esc.etapaDeUrl[v.pg] || (doFunil ? esc.etapaDeData[v.etapa] : null);
+    if (!et) { if (doFunil) fora.add(v.vis); continue; }
+    (porEtapa[et] = porEtapa[et] || new Set()).add(v.vis);
+    (porPg[v.pg] = porPg[v.pg] || new Set()).add(v.vis);
+    todos.add(v.vis);
+  }
+  return { porEtapa, porPg, todos, fora };
+}
 let _pSal = '';
 
 function _pessoas() {
@@ -11679,11 +11760,10 @@ app.get('/api/funil/ao-vivo', authUsuario, (req, res) => {
     const agora = Date.now(), hoje = _diaBR(agora), iniHoje = Date.parse(hoje + 'T00:00:00-03:00');
     const esq = _escopoSql(esc, 'p');
     const dir = _ehDir(req);
-    // na página agora: visita com sinal de vida nos últimos 5 min
-    const agoraPg = _q(`SELECT p.pg, COUNT(DISTINCT s.visitante) n FROM sessoes s JOIN paginas p ON p.sessao = s.id
-                        WHERE s.fim >= ? AND s.interno=0 AND ` + esq.where + ` GROUP BY p.pg ORDER BY n DESC`).all(agora - 5 * 60000, ...esq.args);
-    const naPagina = _q(`SELECT COUNT(DISTINCT s.visitante) n FROM sessoes s JOIN paginas p ON p.sessao = s.id
-                         WHERE s.fim >= ? AND s.interno=0 AND ` + esq.where).get(agora - 5 * 60000, ...esq.args).n;
+    // na página agora: a mesma conta do mapa (sinal do pixel nos últimos 2,5 min)
+    const ag = _agoraDoFunil(esc);
+    const agoraPg = Object.keys(ag.porPg).map(pg => ({ pg, n: ag.porPg[pg].size })).sort((x, y) => y.n - x.n);
+    const naPagina = ag.todos.size;
     // na VSL agora: pulso do vídeo nos últimos 2 min (fica na memória)
     const urls = new Set(Object.keys(esc.etapaDeUrl)), ids = new Set(esc.ids);
     const vendo = [];
@@ -14201,9 +14281,24 @@ const PIXEL_JS = `(function(w,d){
   var visivelDesde = Date.now();
   function fechaJanela(){ if(visivelDesde){ atencao += Date.now()-visivelDesde; visivelDesde = 0; } }
   d.addEventListener('visibilitychange', function(){
-    if(d.visibilityState === 'visible'){ if(!visivelDesde) visivelDesde = Date.now(); mexeu(); }
-    else fechaJanela();
+    if(d.visibilityState === 'visible'){ if(!visivelDesde) visivelDesde = Date.now(); mexeu(); vivo(false); }
+    else { fechaJanela(); vivo(true); }
   });
+
+  // ── Ao vivo: "estou aqui" a cada minuto ──────────────────────────────────
+  // So com a aba a vista e alguem ali (mexeu ou o video tocou nos ultimos
+  // 5 min). Esconder a aba avisa na hora: a pessoa sai da conta do mapa.
+  // Vai pra uma rota so de memoria, que nao grava nada.
+  var VIVO = API.replace(/evento$/, 'vivo');
+  function vivo(oculto){
+    var corpo = JSON.stringify({ id:id, funil:FUNIL, etapa:ETAPA, pg:PAGINA, interno:INTERNO ? 1 : 0, oculto: oculto ? 1 : 0 });
+    try{ if(navigator.sendBeacon) navigator.sendBeacon(VIVO, new Blob([corpo],{type:'text/plain;charset=UTF-8'})); }catch(e){}
+  }
+  setInterval(function(){
+    if(d.visibilityState !== 'visible' || saiuSessao) return;
+    if(Date.now() - ativoEm > 5 * 60000) return;
+    vivo(false);
+  }, 60000);
 
   // ── Web Vitals de campo: mede o aparelho do lead, nao o laboratorio ──
   try{
@@ -14354,6 +14449,7 @@ const PIXEL_JS = `(function(w,d){
     if(!ev.persisted) return;
     if(Date.now() - ativoEm >= SESS_MS) mexeu();
     else saiuSessao = false;
+    vivo(false);
   });
 
   w.addEventListener('pagehide', function(){

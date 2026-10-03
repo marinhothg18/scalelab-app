@@ -1437,6 +1437,13 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-no .c{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
 .fn-no .nm{font-size:12.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fn-no .tg{font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:5px}
+/* quantas pessoas estão no bloco agora */
+.fn-agora{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;margin:1px 0 7px;
+  white-space:nowrap;color:var(--green);background:rgba(52,199,89,.14);font-variant-numeric:tabular-nums}
+.fn-agora b{font-size:13px}
+.fn-agora i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:fxpulsa 1.8s infinite}
+.fn-agora.zero{color:var(--text2);background:transparent;border:1px solid var(--border);padding:2px 8px;font-weight:700}
+.fn-agora.zero i{animation:none;opacity:.45}
 .fn-no .vl{font-size:22px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
 .fn-no .sb{font-size:10.5px;color:var(--text2);margin-top:2px}
 .fn-no.src{border-style:dashed;min-width:150px}
@@ -29757,7 +29764,7 @@ function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); fnRe
 // Trocou o funil: a aba aberta busca de novo (antes ficava com o do funil anterior)
 function fnRecarregarAba(){
   rsDados = null; ldDados = null; psDados = null; mpForaDados = null; fxDados = null;
-  if(fnAbaAtual==='mapa'){ if(mpVista === 'fluxo') fxCarregar(); var mv=document.getElementById('mp-versao'); if(mv) mv.innerHTML=''; mpVersoes=null; mpVersaoInfo(); svCarregar(false); mpForaCarregar(); }
+  if(fnAbaAtual==='mapa'){ if(mpVista === 'fluxo') fxCarregar(); var mv=document.getElementById('mp-versao'); if(mv) mv.innerHTML=''; mpVersoes=null; mpVersaoInfo(); svCarregar(false); mpForaCarregar(); mpAgoraLigar(); }
   if(fnAbaAtual==='resultado') rsCarregar();
   if(fnAbaAtual==='leads') { ldF.pag = 1; ldCarregar(); }
   if(fnAbaAtual==='pixel') psCarregar(false);
@@ -29808,7 +29815,7 @@ function fnAba(qual, bt){
   if(qual==='leads')   ldCarregar();
   if(qual==='geral')   gePintar();
   if(qual==='mapa')    { mpVistaPintar(); if(mpVista === 'fluxo') fxCarregar();
-                         mpLigarSoltar(); mpModo();
+                         mpLigarSoltar(); mpModo(); mpAgoraLigar();
                          var fm = fnAtual(); if(fm && !mpCabido[fm.id]){ mpCabido[fm.id] = 1; setTimeout(function(){ fnCaber(); mpMiniMapa(); }, 120); }
                          mpAviso(); mpCarregarPlanos().then(mpPaleta); setTimeout(fnFios, 40); mpVersaoInfo(); mpForaCarregar();
                          if(!svDados || !fnAtual() || svDados.funil.id !== fnAtual().id) svCarregar(false); }
@@ -29830,7 +29837,7 @@ function fnCabecalho(){
   var info = FN_ABA_INFO[fnAbaAtual] || ['', ''];
   var f = fnAtual();
   el.innerHTML = '<h2>'+fnEsc(info[0])+'</h2>'+
-    '<span class="fx-vivo"><i></i>AO VIVO</span>'+
+    '<span class="fx-vivo"'+(fnAbaAtual === 'mapa' ? ' id="mp-agora-tot"' : '')+'><i></i>'+(fnAbaAtual === 'mapa' ? mpAgoraTotal() : 'AO VIVO')+'</span>'+
     '<p>'+fnEsc(info[1])+(f ? ' · funil <b>'+fnEsc(f.nome)+'</b>' : '')+'</p>';
 }
 
@@ -32274,6 +32281,72 @@ function fnCarregarStats(){
 }
 var fnNovos = null, fnNovosPedido = 0, fnBlocos = null;
 
+// ── Ao vivo no mapa ──
+// Quantas pessoas estão em cada bloco AGORA: o pixel manda um sinal por minuto
+// enquanto a página está aberta e à vista. Não depende do período escolhido no
+// topo. O mapa pede de 10 em 10 segundos, só com a aba do mapa aberta.
+var mpAgora = null, mpAgoraTimer = null, mpAgoraPedido = 0;
+function mpAgoraLigar(){
+  mpAgoraBuscar();
+  clearInterval(mpAgoraTimer);
+  mpAgoraTimer = setInterval(function(){
+    if(cur !== 'funis' || fnAbaAtual !== 'mapa' || !fnDentro){ clearInterval(mpAgoraTimer); mpAgoraTimer = null; return; }
+    if(!document.hidden) mpAgoraBuscar();
+  }, 10000);
+}
+function mpAgoraBuscar(){
+  var f = fnAtual(); if(!f) return;
+  var meu = ++mpAgoraPedido, fid = f.id;
+  v2Json('/api/funil/agora?funil='+encodeURIComponent(fid))
+    .then(function(d){ if(meu !== mpAgoraPedido) return; mpAgora = (d && d.ok) ? Object.assign({ funil: fid }, d) : null; mpAgoraPintar(); })
+    .catch(function(){});
+}
+function mpAgoraDados(){ var f = fnAtual(); return (mpAgora && f && mpAgora.funil === f.id) ? mpAgora : null; }
+// o que o selo do bloco mostra: null = bloco sem selo
+function fnAgoraInfo(n, b){
+  if(!n || n.tipo === 'fonte' || n.tipo === 'recuperacao' || (b && b.viaVenda)) return null;
+  var ck = n.tipo === 'checkout' && b && b.viaClique;
+  if(!ck && !(n.tipo === 'split' ? n.slug : n.url)) return null;
+  var d = mpAgoraDados(); if(!d) return { pronto: false };
+  var q = (d.blocos && d.blocos[n.id]) || 0;
+  return { pronto: true, n: q, ck: ck,
+    titulo: ck ? q+' pessoa(s) clicaram em comprar nos últimos 15 min e ainda não pagaram (o checkout do gateway não tem pixel)'
+               : q+' pessoa(s) com esta página aberta agora' };
+}
+function fnAgoraChip(n, b){
+  var x = fnAgoraInfo(n, b); if(!x) return '';
+  return '<div><span class="fn-agora'+(x.pronto && x.n ? '' : ' zero')+'" data-agora="'+fnEsc(n.id)+'"'+(x.pronto ? '' : ' style="display:none"')+
+    ' title="'+fnEsc(x.titulo || '')+'">'+(x.pronto ? fnAgoraTexto(x) : '')+'</span></div>';
+}
+function fnAgoraTexto(x){
+  if(!x.n) return '<i></i>ninguém '+(x.ck ? 'no checkout ' : '')+'agora';
+  return '<i></i><b>'+fnNum(x.n)+'</b> '+(x.ck ? 'no checkout agora' : (x.n === 1 ? 'pessoa aqui agora' : 'pessoas aqui agora'));
+}
+function mpAgoraTotal(){
+  var d = mpAgoraDados();
+  return d ? 'AO VIVO · '+fnNum(d.total)+(d.total === 1 ? ' pessoa' : ' pessoas')+' agora' : 'AO VIVO';
+}
+function mpAgoraPintar(){
+  var f = fnAtual(); if(!f) return;
+  document.querySelectorAll('#fn-palco .fn-agora[data-agora]').forEach(function(el){
+    var id = el.getAttribute('data-agora'), n = fnAcha(f, id);
+    var x = fnAgoraInfo(n, fnBlocos && fnBlocos.nos ? fnBlocos.nos[id] : null);
+    if(!x || !x.pronto){ el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.classList.toggle('zero', !x.n);
+    el.title = x.titulo;
+    el.innerHTML = fnAgoraTexto(x);
+  });
+  var tot = document.getElementById('mp-agora-tot');
+  if(tot){
+    var d = mpAgoraDados();
+    tot.innerHTML = '<i></i>'+mpAgoraTotal();
+    tot.title = d ? 'Pessoas com uma página deste mapa aberta agora' +
+      (d.noCheckout ? ' · mais '+d.noCheckout+' no checkout (clicaram em comprar nos últimos 15 min)' : '') +
+      (d.fora ? ' · mais '+d.fora+' em páginas com o pixel fora do desenho' : '') : '';
+  }
+}
+
 // Os cliques do anúncio quem tem é a Utmify — o nosso pixel só começa a contar
 // depois que a pessoa chega na página. Vem do mesmo lugar que Métricas de Ads
 // usa, pra não existir dois números de clique diferentes no sistema.
@@ -32716,7 +32789,7 @@ function fnNoCorpo(n, b, vt){
   var din = function(x){ return x == null ? (b.vendas ? '•••' : '-') : v2Din(x); };
   var rot = n.tipo === 'fonte' ? (b.canal === 'meta' ? 'ADS' : b.canal === 'instagram' ? 'BIO' : b.canal === 'organico' ? 'ORGÂNICO' : 'UTM') : (FN_ROT[n.tipo] || 'PÁGINA');
   var cab = '<div class="c"><span class="nm"><span class="fx-pt" style="background:'+cor+';display:inline-block;margin-right:7px;vertical-align:1px"></span>'+fnEsc(n.nome)+'</span>'+
-    '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+rot+'</span></div>';
+    '<span class="tg" style="background:'+cor+'22;color:'+cor+'">'+rot+'</span></div>' + fnAgoraChip(n, b);
   var sub = '', grade = '', pe = '';
   var verde = 'var(--v2-verde,#22C55E)', laranja = 'var(--v2-laranja,#F59E0B)';
   if(n.tipo === 'fonte'){
@@ -35177,7 +35250,7 @@ function jvPintar(){
   var uv = c.ultimaVenda;
   el.innerHTML =
     '<div class="v2-cards">'+
-      v2Card('Na página agora', '<span class="v2-azul">'+fnNum(c.naPagina)+'</span>', (c.porPagina||[]).map(function(x){ return x.n+' na '+fnEsc(v2Pg(x.pg)); }).join(' · ') || 'últimos 5 min')+
+      v2Card('Na página agora', '<span class="v2-azul">'+fnNum(c.naPagina)+'</span>', (c.porPagina||[]).map(function(x){ return x.n+' na '+fnEsc(v2Pg(x.pg)); }).join(' · ') || 'com a página aberta agora')+
       v2Card('Assistindo a VSL', fnNum(c.vendo), c.passaramPitch+' já passaram do pitch')+
       v2Card('No checkout agora', '<span class="v2-meio">'+fnNum(c.noCheckout)+'</span>', 'abriram nos últimos 15 min')+
       v2Card('Última venda', uv ? '<span class="v2-bom">há '+v2Ha(uv.em)+'</span>' : '-', uv ? [uv.valor != null ? v2Din(uv.valor) : '', uv.anuncio].filter(Boolean).map(fnEsc).join(' · ') : 'nenhuma nos últimos 30 dias')+
