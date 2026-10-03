@@ -32918,15 +32918,27 @@ function fnCoordFio(f, a, b){
   if(!ea || !eb) return null;
   var x1 = ea.offsetLeft + ea.offsetWidth, y1 = ea.offsetTop + ea.offsetHeight/2;
   var x2 = eb.offsetLeft, y2 = eb.offsetTop + eb.offsetHeight/2;
+  if(x2 < x1 - 10){
+    // volta: sai pela direita, contorna os dois blocos e entra pela esquerda.
+    // Quem volta pra um bloco mais acima contorna por cima, o resto por baixo —
+    // assim ida e volta entre os mesmos dois blocos não ficam uma sobre a outra.
+    var porCima = eb.offsetTop < ea.offsetTop - 10;
+    var yv = porCima ? Math.max(6, Math.min(ea.offsetTop, eb.offsetTop) - 50)
+                     : Math.max(ea.offsetTop + ea.offsetHeight, eb.offsetTop + eb.offsetHeight) + 60;
+    return { x1:x1, y1:y1, x2:x2, y2:y2, lx:(x1+x2)/2, ly: porCima ? yv + 14 : yv - 8,
+             d:'M '+x1+' '+y1+' C '+(x1+90)+' '+y1+', '+(x1+90)+' '+yv+', '+((x1+x2)/2)+' '+yv+
+             ' S '+(x2-90)+' '+y2+', '+x2+' '+y2 };
+  }
   var c = Math.max(50, Math.abs(x2 - x1)/2);
-  return { x1:x1, y1:y1, x2:x2, y2:y2, d:'M '+x1+' '+y1+' C '+(x1+c)+' '+y1+', '+(x2-c)+' '+y2+', '+x2+' '+y2 };
+  return { x1:x1, y1:y1, x2:x2, y2:y2, lx:(x1+x2)/2, ly:(y1+y2)/2 - 8,
+           d:'M '+x1+' '+y1+' C '+(x1+c)+' '+y1+', '+(x2-c)+' '+y2+', '+x2+' '+y2 };
 }
 function fnFiosMover(id){
   var f = fnAtual(), svg = document.getElementById('fn-svg'); if(!f || !svg) return;
   svg.querySelectorAll('[data-par]').forEach(function(el){
     var par = el.getAttribute('data-par').split('|'); if(par[0] !== id && par[1] !== id) return;
     var c = fnCoordFio(f, par[0], par[1]); if(!c) return;
-    if(el.tagName.toLowerCase() === 'text'){ el.setAttribute('x', (c.x1+c.x2)/2); el.setAttribute('y', (c.y1+c.y2)/2 - 8); }
+    if(el.tagName.toLowerCase() === 'text'){ el.setAttribute('x', c.lx); el.setAttribute('y', c.ly); }
     else el.setAttribute('d', c.d);
   });
 }
@@ -32993,7 +33005,7 @@ function fnFios(){
       }
       if((temFio || na.tipo!=='fonte') && !acimaDe100){
         var t = document.createElementNS('http://www.w3.org/2000/svg','text');
-        t.setAttribute('x',(x1+x2)/2); t.setAttribute('y',(y1+y2)/2-8);
+        t.setAttribute('x',cf.lx); t.setAttribute('y',cf.ly);
         t.setAttribute('data-par', par[0]+'|'+par[1]);
         t.setAttribute('fill',cor); t.setAttribute('font-size','10');
         t.setAttribute('font-weight','800'); t.setAttribute('text-anchor','middle');
@@ -33022,8 +33034,9 @@ function fnArrumar(){
   while(fila.length && voltas++ < 4000){
     var id = fila.shift();
     (filhos[id]||[]).forEach(function(fid){
-      var novo = nivel[id] + 1;
-      if(nivel[fid] === undefined || novo > nivel[fid]){ nivel[fid] = novo; fila.push(fid); }
+      // primeira vez que chega: com ida e volta entre páginas, "o maior
+      // caminho" não tem fim — a coluna é a do caminho mais curto
+      if(nivel[fid] === undefined){ nivel[fid] = nivel[id] + 1; fila.push(fid); }
     });
   }
   // bloco solto nao trava o layout: vai pra ultima coluna
@@ -33291,13 +33304,13 @@ document.addEventListener('keydown', function(ev){
   if(ev.key==='Escape' && fnLigando) fnCancelarLigacao();
 });
 
-// destino serve? nao pode ser ele mesmo, nem origem, nem repetido, nem circular
+// destino serve? nao pode ser ele mesmo, nem origem, nem repetido.
+// Ida e volta pode (697 → back redirect → 697): funil de verdade tem isso.
 function fnPodeLigar(f, de, destino){
   if(!f || de===destino) return false;
   var alvo = fnAcha(f, destino);
   if(!alvo || alvo.tipo==='fonte') return false;
-  if((f.ligacoes||[]).some(function(l){ return l[0]===de && l[1]===destino; })) return false;
-  return !fnAlcanca(f, destino, de);
+  return !(f.ligacoes||[]).some(function(l){ return l[0]===de && l[1]===destino; });
 }
 
 function fnLigarEm(destino){
@@ -33309,23 +33322,9 @@ function fnLigarEm(destino){
   f.ligacoes = f.ligacoes || [];
   var existe = f.ligacoes.some(function(l){ return l[0]===de && l[1]===destino; });
   if(existe){ toastFn('Essas duas já estão ligadas'); fnCancelarLigacao(); return; }
-  // evita caminho circular: A→B→A deixaria o funil sem inicio nem fim
-  if(fnAlcanca(f, destino, de)){ toastFn('Não dá: isso criaria um caminho circular'); fnCancelarLigacao(); return; }
   f.ligacoes.push([de,destino]);
   fnLigando=null;
   fnGravar(f); fnPintar(); fnAvisoLigacao(); toastFn('Ligado');
-}
-// existe caminho de A ate B seguindo as setas?
-function fnAlcanca(f, de, ate){
-  var vistos={}, fila=[de];
-  while(fila.length){
-    var atual=fila.shift();
-    if(atual===ate) return true;
-    if(vistos[atual]) continue;
-    vistos[atual]=1;
-    (f.ligacoes||[]).forEach(function(l){ if(l[0]===atual) fila.push(l[1]); });
-  }
-  return false;
 }
 function fnDesligar(de, para){
   var f=fnAtual(); if(!f) return;
