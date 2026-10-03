@@ -9119,6 +9119,11 @@ function _pessoas() {
         gasto REAL, imp INTEGER, cliques INTEGER, PRIMARY KEY (dia, projeto, id));
       CREATE TABLE IF NOT EXISTS camp_dia_ok (dia TEXT, projeto TEXT, em INTEGER, PRIMARY KEY (dia, projeto));
     `);
+    // vídeo e pitch POR PÁGINA (antes só por visita: quem viu a VSL na 697 e
+    // depois caiu no back redirect "passava do pitch" nas duas)
+    try { db.exec('ALTER TABLE paginas ADD COLUMN video INTEGER DEFAULT 0'); } catch (e) {}
+    try { db.exec('ALTER TABLE paginas ADD COLUMN pitch INTEGER DEFAULT 0'); } catch (e) {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS ev_tipo_em ON eventos(tipo, em)'); } catch (e) {}
     _pdb = db;
     let sal = db.prepare("SELECT v FROM cfg WHERE k='sal'").get();
     if (!sal) {
@@ -9319,10 +9324,14 @@ function _pxRegistrar(c, req, interno, quando) {
       // achava o minuto do pitch — ninguém era marcado
       const pitch = (porUrl && porUrl.pitch) || cache.etapaPitch[etapa] || cache.pitchPlayer[String(c.player || '')] || 0;
       _q('UPDATE sessoes SET video=MAX(video, ?) WHERE id=?').run(seg, s.id);
+      if (pg) _q('UPDATE paginas SET video=MAX(video, ?) WHERE sessao=? AND pg=?').run(seg, s.id, pg);
       _q('UPDATE visitantes SET video=MAX(video, ?) WHERE id=?').run(seg, vis);
       if (!quando && tipo === 'video') _pVideo.set(vis, { seg: Number(c.seg) || seg, em: agora, funil, pg, pitch, interno: eInt });
-      if (pitch && seg >= pitch && !s.pitch) {
+      // o pitch é da página: a mesma visita pode passar do pitch na 697 e não no back redirect
+      const jaPg = pg ? _q('SELECT pitch FROM paginas WHERE sessao=? AND pg=?').get(s.id, pg) : null;
+      if (pitch && seg >= pitch && !(jaPg && jaPg.pitch)) {
         s.pitch = 1; marco = 'pitch';
+        if (pg) _q('UPDATE paginas SET pitch=1 WHERE sessao=? AND pg=?').run(s.id, pg);
         _q('UPDATE sessoes SET pitch=1 WHERE id=?').run(s.id);
         _q('UPDATE visitantes SET pitch_em=COALESCE(pitch_em, ?) WHERE id=?').run(agora, vis);
       }
@@ -9590,10 +9599,15 @@ function _pitchRecalcular() {
     try {
       Object.keys(urls).forEach(u => {
         const p = urls[u], mudou = _pitchAssinatura[u] !== p;
-        const r = _q(`UPDATE sessoes SET pitch = CASE WHEN video >= ? THEN 1 ELSE 0 END
-                      WHERE video > 0 AND inicio >= ? AND id IN (SELECT sessao FROM paginas WHERE pg = ?)`)
-          .run(p, mudou ? 0 : desde3, u);
-        marcadas += r.changes || 0;
+        const desde = mudou ? 0 : desde3;
+        // página com o próprio vídeo medido
+        const r = _q(`UPDATE paginas SET pitch = CASE WHEN video >= ? THEN 1 ELSE 0 END WHERE pg = ? AND video > 0 AND em >= ?`).run(p, u, desde);
+        // visitas de antes da medição por página: o vídeo da visita vale pra página de entrada dela
+        const r2 = _q(`UPDATE paginas SET pitch = CASE WHEN (SELECT s.video FROM sessoes s WHERE s.id = paginas.sessao) >= ? THEN 1 ELSE 0 END
+                       WHERE pg = ? AND video = 0 AND em >= ? AND sessao IN (SELECT s.id FROM sessoes s WHERE s.entrada = ? AND s.video > 0)`).run(p, u, desde, u);
+        _q(`UPDATE sessoes SET pitch = CASE WHEN EXISTS (SELECT 1 FROM paginas x WHERE x.sessao = sessoes.id AND x.pitch = 1) THEN 1 ELSE 0 END
+            WHERE id IN (SELECT sessao FROM paginas WHERE pg = ? AND em >= ?)`).run(u, desde);
+        marcadas += (r.changes || 0) + (r2.changes || 0);
         _q(`UPDATE visitantes SET pitch_em = (SELECT MIN(s.fim) FROM sessoes s WHERE s.visitante = visitantes.id AND s.pitch = 1)
             WHERE id IN (SELECT DISTINCT visitante FROM paginas WHERE pg = ? AND em >= ?)`).run(u, mudou ? 0 : desde3);
         _pitchAssinatura[u] = p;
@@ -11331,14 +11345,16 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const dir = _ehDir(req), custos = _custosCfg(dbj), canais = _canaisCache();
     const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
     const esq = _escopoSql(esc, 'p');
-    const linhas = _q(`SELECT p.visitante, p.pg, p.etapa, s.checkout, s.pitch, s.fonte, s.midia, s.camp, s.cont, s.teste
+    const linhas = _q(`SELECT p.visitante, p.pg, p.etapa, p.pitch ppitch, s.checkout, s.pitch, s.fonte, s.midia, s.camp, s.cont, s.teste
                        FROM paginas p JOIN sessoes s ON s.id = p.sessao
                        WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ` + esq.where).all(per.de, per.ate, ...esq.args);
     const porEtapa = {}, todos = new Set(), ck = new Set(), pit = new Set(), toques = {}, testes = {};
+    const pitEtapa = {};      // quem passou do pitch NESTA página
     linhas.forEach(l => {
       const et = _etapaDaLinha(esc, l.pg, l.etapa);
       if (!et) return;
       (porEtapa[et] = porEtapa[et] || new Set()).add(l.visitante);
+      if (l.ppitch) (pitEtapa[et] = pitEtapa[et] || new Set()).add(l.visitante);
       todos.add(l.visitante);
       if (l.checkout) ck.add(l.visitante);
       if (l.pitch) pit.add(l.visitante);
@@ -11356,6 +11372,43 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const vendaPor = {}, compradores = new Set();
     vendas.forEach(o => { if (o.visitante) { (vendaPor[o.visitante] = vendaPor[o.visitante] || []).push(o); compradores.add(o.visitante); } });
     const abriramSet = new Set([...ck, ...compradores]);
+
+    // ── Cada venda é de UMA página: a do último clique em comprar antes da
+    // compra (sem clique visto, a última página do funil antes dela). Antes a
+    // venda contava em toda página por onde o comprador passou: quem comprou
+    // na 697 e depois caiu no back redirect virava venda das duas.
+    const ckEtapa = {};      // quem clicou em comprar NESTA página (no período)
+    const evDe = {};         // visitante -> [{em, et, ck}]
+    const alvoEv = [...compradores];
+    _q(`SELECT visitante, pg, etapa, em FROM eventos WHERE tipo='checkout' AND em BETWEEN ? AND ?`).all(per.ini, per.fim).forEach(x => {
+      const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (!et || !todos.has(x.visitante)) return;
+      (ckEtapa[et] = ckEtapa[et] || new Set()).add(x.visitante);
+    });
+    for (let i = 0; i < alvoEv.length; i += 400) {
+      const lote = alvoEv.slice(i, i + 400);
+      _q(`SELECT visitante, pg, etapa, em FROM eventos WHERE tipo='checkout' AND em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
+        const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 1 });
+      });
+      _q(`SELECT visitante, pg, etapa, em FROM paginas WHERE em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
+        const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0 });
+      });
+    }
+    const vendaDaEtapa = {};
+    vendas.forEach(o => {
+      if (!o.visitante) return;
+      const lim = (o.em || 0) + 10 * 60000;
+      const evs = (evDe[o.visitante] || []).filter(x => x.em <= lim).sort((a, b) => b.em - a.em);
+      const pick = evs.find(x => x.ck) || evs[0];
+      if (pick) (vendaDaEtapa[pick.et] = vendaDaEtapa[pick.et] || []).push(o);
+    });
+    // página: pessoas da página, pitch e cliques NELA, e as vendas que saíram dela
+    const medirPagina = (id, lst) => {
+      const s = porEtapa[id] || new Set();
+      const vf = (vendaDaEtapa[id] || []).filter(o => casaProd(o, lst));
+      return { pessoas: s.size, checkout: (ckEtapa[id] || new Set()).size, pitch: (pitEtapa[id] || new Set()).size,
+               vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
+               conversao: s.size ? vf.length / s.size : 0, produtos: topProd(vf) };
+    };
     // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
     // o bloco separa o que é dele.
@@ -11475,7 +11528,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       } else {
         const s = porEtapa[e.id] || new Set(), lst = prodLista(e);
         conj[e.id] = s;
-        nos[e.id] = Object.assign({ tipo: e.tipo || 'pagina', produto: e.produto || '' }, medir(s, lst.length ? (o => casaProd(o, lst)) : null));
+        nos[e.id] = Object.assign({ tipo: e.tipo || 'pagina', produto: e.produto || '' }, medirPagina(e.id, lst));
       }
     });
     const fios = {};
