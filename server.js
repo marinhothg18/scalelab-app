@@ -9312,15 +9312,15 @@ function _pxRegistrar(c, req, interno, quando) {
         _q('UPDATE visitantes SET checkout_em=COALESCE(checkout_em, ?) WHERE id=?').run(agora, vis);
       }
     }
-    if (tipo === 'video') {
-      const seg = Math.max(0, Math.round(Number(c.max || c.seg) || 0));
+    if (tipo === 'video' || (tipo === 'saiu' && Number(c.vmax) > 0)) {
+      const seg = Math.max(0, Math.round(Number(c.max || c.seg || c.vmax) || 0));
       // o pitch vem da página (URL cadastrada no mapa) antes do data-e: a /697
       // tem o pixel antigo, com o id e a etapa de outro funil, e assim nunca
       // achava o minuto do pitch — ninguém era marcado
       const pitch = (porUrl && porUrl.pitch) || cache.etapaPitch[etapa] || cache.pitchPlayer[String(c.player || '')] || 0;
       _q('UPDATE sessoes SET video=MAX(video, ?) WHERE id=?').run(seg, s.id);
       _q('UPDATE visitantes SET video=MAX(video, ?) WHERE id=?').run(seg, vis);
-      if (!quando) _pVideo.set(vis, { seg: Number(c.seg) || seg, em: agora, funil, pg, pitch, interno: eInt });
+      if (!quando && tipo === 'video') _pVideo.set(vis, { seg: Number(c.seg) || seg, em: agora, funil, pg, pitch, interno: eInt });
       if (pitch && seg >= pitch && !s.pitch) {
         s.pitch = 1; marco = 'pitch';
         _q('UPDATE sessoes SET pitch=1 WHERE id=?').run(s.id);
@@ -14043,7 +14043,10 @@ const PIXEL_JS = `(function(w,d){
       segundos: Math.max(0, Math.round((fim - Math.max(inicioPagina, inicioSessao)) / 1000)),
       atencao:  Math.round(atencao/1000),
       rolagem:  Math.round(Math.max(fundo, fracaoVista())),
-      lcp: lcp, cls: Math.round(cls*1000)/1000, fcp: fcp, erros: errosJs
+      lcp: lcp, cls: Math.round(cls*1000)/1000, fcp: fcp, erros: errosJs,
+      // até que segundo do vídeo foi: o aviso é de minuto em minuto, e quem
+      // passa do pitch e sai antes do próximo aviso ficava sem marcar
+      vmax: (typeof VID === 'object' && VID.max) ? VID.max : 0, player: (typeof VID === 'object' && VID.player) || ''
     });
   }
   function mexeu(){
