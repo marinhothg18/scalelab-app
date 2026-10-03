@@ -5342,6 +5342,9 @@ function _mergeArrayById(existing, incoming) {
 app.put('/api/store/:key', authUsuario, (req, res) => {
   const db = readDB();
   const key = req.params.key;
+  // mudou o desenho do funil (ex.: o minuto do pitch): o retrato em memória
+  // e as visitas já marcadas se refazem logo, sem esperar os 15 min
+  if (key === 'sl_funis') { clearTimeout(_pitchTimer); _pitchTimer = setTimeout(() => { try { _fcCache.em = 0; _pitchRecalcular(); } catch (e) {} }, 3000); }
   let incoming = req.body;
   const existing = db.store[key];
 
@@ -9311,7 +9314,10 @@ function _pxRegistrar(c, req, interno, quando) {
     }
     if (tipo === 'video') {
       const seg = Math.max(0, Math.round(Number(c.max || c.seg) || 0));
-      const pitch = cache.etapaPitch[etapa] || cache.pitchPlayer[String(c.player || '')] || 0;
+      // o pitch vem da página (URL cadastrada no mapa) antes do data-e: a /697
+      // tem o pixel antigo, com o id e a etapa de outro funil, e assim nunca
+      // achava o minuto do pitch — ninguém era marcado
+      const pitch = (porUrl && porUrl.pitch) || cache.etapaPitch[etapa] || cache.pitchPlayer[String(c.player || '')] || 0;
       _q('UPDATE sessoes SET video=MAX(video, ?) WHERE id=?').run(seg, s.id);
       _q('UPDATE visitantes SET video=MAX(video, ?) WHERE id=?').run(seg, vis);
       if (!quando) _pVideo.set(vis, { seg: Number(c.seg) || seg, em: agora, funil, pg, pitch, interno: eInt });
@@ -9564,6 +9570,41 @@ function _pedidoRegistrar(venda, p, opts) {
   }
   return resultado;
 }
+
+// ── Pitch das visitas que já chegaram ───────────────────────────────────────
+// A visita guarda até que segundo do vídeo a pessoa foi. Quando o minuto do
+// pitch de uma página muda (ou nunca tinha sido achado), refaz a marcação
+// das visitas daquela página. Roda no boot e a cada 15 min; refaz tudo só
+// da página cujo pitch mudou, e os últimos 3 dias das outras.
+let _pitchAssinatura = {}, _pitchTimer = null;
+function _pitchRecalcular() {
+  const db = _pessoas(); if (!db) return;
+  try {
+    _fcCache.em = 0;
+    const cache = _funisCache();
+    const urls = {};
+    Object.keys(cache.urlEtapa).forEach(u => { const p = cache.urlEtapa[u].pitch; if (p > 0) urls[u] = p; });
+    const desde3 = Date.now() - 3 * 86400000;
+    let marcadas = 0;
+    db.exec('BEGIN');
+    try {
+      Object.keys(urls).forEach(u => {
+        const p = urls[u], mudou = _pitchAssinatura[u] !== p;
+        const r = _q(`UPDATE sessoes SET pitch = CASE WHEN video >= ? THEN 1 ELSE 0 END
+                      WHERE video > 0 AND inicio >= ? AND id IN (SELECT sessao FROM paginas WHERE pg = ?)`)
+          .run(p, mudou ? 0 : desde3, u);
+        marcadas += r.changes || 0;
+        _q(`UPDATE visitantes SET pitch_em = (SELECT MIN(s.fim) FROM sessoes s WHERE s.visitante = visitantes.id AND s.pitch = 1)
+            WHERE id IN (SELECT DISTINCT visitante FROM paginas WHERE pg = ? AND em >= ?)`).run(u, mudou ? 0 : desde3);
+        _pitchAssinatura[u] = p;
+      });
+      db.exec('COMMIT');
+    } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; }
+    if (marcadas) console.log('[PESSOAS] pitch refeito em ' + marcadas + ' visita(s).');
+  } catch (e) { console.error('[PESSOAS] recálculo do pitch falhou:', e.message); }
+}
+setTimeout(_pitchRecalcular, 60 * 1000);
+setInterval(_pitchRecalcular, 15 * 60 * 1000);
 
 // ── Importação do que já existe ─────────────────────────────────────────────
 // Na primeira vez, a base nasce com a jornada dos últimos 7 dias e todas as
