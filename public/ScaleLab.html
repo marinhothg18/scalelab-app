@@ -32721,7 +32721,7 @@ function fnNoCorpo(n, b, vt){
   if(n.tipo === 'fonte'){
     var regra = b.canal === 'meta' ? (b.regra ? 'campanhas com “'+b.regra+'”' : 'campanhas do funil') :
                 b.canal === 'utm' ? Object.keys(n.filtro||{}).filter(function(k){ return n.filtro[k]; }).map(function(k){ return {fonte:'source',midia:'medium',camp:'campaign',cont:'content'}[k]+'='+n.filtro[k]; }).join(' · ') : '';
-    sub = (FN_CANAL_ROT[b.canal]||'') + (regra ? ' · '+regra : '');
+    sub = (FN_CANAL_ROT[b.canal]||'') + (regra ? ' · '+regra : '') + ((b.testes && b.testes.length) ? ' · /r/'+b.testes.join(', /r/') : '');
     grade = (b.canal === 'meta' ? m('Cliques no anúncio', fnNum(b.cliques)) + m('Investido', v2Din(b.investido)) : '') +
       m('Chegaram', fnNum(b.pessoas)) + (b.canal !== 'meta' ? m('Checkouts', fnNum(b.checkout)) : m('Clique → página', b.cliques ? pc(Math.min(1, b.pessoas / b.cliques)) : '—')) +
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Conversão', pc(b.conversao));
@@ -32735,7 +32735,9 @@ function fnNoCorpo(n, b, vt){
     sub = [n.integracao || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
     grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
       m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
-    pe = fnNoProdutos(b);
+    pe = fnNoProdutos(b) + (b.semClique ? '<div class="fx-c-url" style="margin-top:4px" title="Compraram, mas o clique no botão de compra não foi registrado (botão por JavaScript, ou abriu o checkout por outro link)">'+
+      b.semClique+' comprador'+(b.semClique===1?'':'es')+' sem o clique registrado</div>' : '') +
+      (b.semPessoa ? '<div class="fx-c-url" style="margin-top:2px">'+b.semPessoa+' venda'+(b.semPessoa===1?'':'s')+' sem pessoa ligada (pela campanha ou produto)</div>' : '');
   } else if(b.viaVenda){
     sub = n.tipo === 'obrigado' ? ('venda aprovada' + (n.produto ? ' · '+n.produto : ' · todos os produtos'))
                                 : [n.integracao || (n.pagamento ? 'pagamento' : ''), n.produto || ''].filter(Boolean).join(' · ');
@@ -33353,7 +33355,16 @@ function fnCampoCanal(n){
     (canal === 'instagram' ? '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Conta quem chegou com "bio" na UTM (ex.: utm_content=link_in_bio). Se o seu link da bio usa outra UTM, preencha abaixo.</div>' : '')+
     (canal === 'utm' || canal === 'instagram' ? '<div style="margin-top:6px">'+campo('fonte','utm_source contém','ex.: ig')+campo('midia','utm_medium contém','')+
        campo('camp','utm_campaign contém','')+campo('cont','utm_content contém','ex.: link_in_bio')+'</div>' : '')+
-    (canal === 'organico' ? '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Quem chegou sem UTM nenhuma: digitou o endereço, salvou o link ou veio de um lugar que não marca.</div>' : '')+'</div>';
+    (canal === 'organico' ? '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Quem chegou sem UTM nenhuma: digitou o endereço, salvou o link ou veio de um lugar que não marca.</div>' : '')+
+    (canal !== 'meta' ? '<div style="margin-top:10px"><label>O link é um teste A/B (/r/…)?</label><select onchange="fnSlugFonte(\''+n.id+'\',this.value)">'+
+       '<option value="">Não</option>'+abDoProjeto().map(function(t){ return '<option value="'+fnEsc(t.slug)+'"'+(n.slug===t.slug?' selected':'')+'>/r/'+fnEsc(t.slug)+' · '+fnEsc(t.nome||t.slug)+'</option>'; }).join('')+'</select>'+
+       '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Se a bio leva pro link do teste (ex.: /r/bio), quem entrou por ele conta como vindo daqui, com ou sem UTM. Ligar esta origem no bloco do teste no desenho faz o mesmo.</div></div>' : '')+'</div>';
+}
+function fnSlugFonte(id, slug){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  if(slug) n.slug = slug; else delete n.slug;
+  fnGravar(f); fnDetalhe(); setTimeout(fnCarregarStats, 1200);
+  toastFn(slug ? 'Origem conta quem veio por /r/'+slug : 'Teste tirado da origem');
 }
 function fnCanalFonte(id, canal){
   var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;

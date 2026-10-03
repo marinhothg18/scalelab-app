@@ -9712,6 +9712,15 @@ function _escopoFunil(dbj, funilId) {
     }
   });
   ado.forEach(a => { if (etapaDeData[a.etapa] && a.origemEtapa) etapaDeData[a.origemEtapa] = a.etapa; });
+  // Bloco de teste A/B no desenho: as páginas das variantes dele são deste
+  // funil, mesmo sem um bloco próprio. Sem isso, quem entrava pelo /r/bio
+  // ficava fora da conta do funil (e a venda dele também).
+  const redirs = Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [];
+  (f.etapas || []).filter(e => e.tipo === 'split' && e.slug).forEach(e => {
+    const r = redirs.find(x => String(x.slug || '').toLowerCase() === String(e.slug).toLowerCase());
+    ((r && r.destinos) || []).forEach(d => { const u = _normPg(d.url); if (u && !etapaDeUrl[u]) etapaDeUrl[u] = e.id; });
+    tipoEtapa[e.id] = 'split';
+  });
   const ignoradas = new Set((Array.isArray(f.paginasIgnoradas) ? f.paginasIgnoradas : []).map(_normPg).filter(Boolean));
   return { f, ids: [...ids], etapaDeUrl, etapaDeData, ignoradas, tipoEtapa, nomeEtapa };
 }
@@ -10225,7 +10234,9 @@ app.get('/api/funil/resultado', authDiretoria, async (req, res) => {
     const esq = _escopoSql(esc, 'p');
     const conta = extra => _q('SELECT COUNT(DISTINCT p.visitante) n FROM paginas p JOIN sessoes s ON s.id = p.sessao WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ' +
                               esq.where + (extra || '')).get(per.de, per.ate, ...esq.args).n || 0;
-    const chegaram = conta(), pitch = conta(' AND s.pitch=1'), checkout = conta(' AND s.checkout=1');
+    const chegaram = conta(), pitch = conta(' AND s.pitch=1');
+    const ckSet = new Set(_q('SELECT DISTINCT p.visitante FROM paginas p JOIN sessoes s ON s.id = p.sessao WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND s.checkout=1 AND ' +
+                             esq.where).all(per.de, per.ate, ...esq.args).map(r => r.visitante));
     const porDiaPessoas = {};
     _q('SELECT p.dia, COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ' + esq.where + ' GROUP BY p.dia')
       .all(per.de, per.ate, ...esq.args).forEach(r => { porDiaPessoas[r.dia] = r.n; });
@@ -10235,6 +10246,8 @@ app.get('/api/funil/resultado', authDiretoria, async (req, res) => {
     const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
     const pagas = vendas.filter(o => o.pago && !o.estorno);
     const estornos = vendas.filter(o => o.estorno);
+    pagas.forEach(o => { if (o.visitante) ckSet.add(o.visitante); });
+    const checkout = ckSet.size;
     const fat = pagas.reduce((a, o) => a + liq(o), 0);
     const reembolso = estornos.reduce((a, o) => a + (Number(o.valor) || 0), 0);
     const clientes = new Set(pagas.map(o => o.lead || o.visitante || o.pedido || o.id)).size;
@@ -11273,7 +11286,10 @@ app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
     // o nome das campanhas vem do arquivo do Resultado (sem buscar nada fora)
     const nomes = {};
     _q('SELECT id, nome FROM camp_dia WHERE dia BETWEEN ? AND ?').all(per.de, per.ate).forEach(c => { nomes[c.id] = c.nome; });
-    const comprou = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).length;
+    const pagasT = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno);
+    const comprou = pagasT.length;
+    // quem comprou passou pelo checkout, mesmo se o clique no botão não foi visto
+    pagasT.forEach(o => { if (o.visitante) ck.add(o.visitante); });
     // investido e cliques do topo: o mesmo arquivo de campanhas do Resultado,
     // pela mesma regra — nunca um número de clique diferente do da outra aba
     let investido = null, cliques = null;
@@ -11339,6 +11355,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const vendas = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(f)).filter(o => o.pago && !o.estorno);
     const vendaPor = {}, compradores = new Set();
     vendas.forEach(o => { if (o.visitante) { (vendaPor[o.visitante] = vendaPor[o.visitante] || []).push(o); compradores.add(o.visitante); } });
+    const abriramSet = new Set([...ck, ...compradores]);
     // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
     // o bloco separa o que é dele.
@@ -11394,6 +11411,19 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         camps.forEach(c => { if (!regra || regra(c.nome)) { cl += c.cliques; gasto += c.gasto; } });
         extra = { cliques: cl, investido: gasto, regra: o.utmCampanha || o.utmRegra || '' };
       }
+      // Link da bio que é um teste A/B (/r/bio): quem chegou por ele veio da
+      // bio, com ou sem "bio" na UTM. Vale o teste escolhido na origem e o
+      // bloco de teste ligado nela no desenho.
+      if (canal !== 'meta') {
+        const slugs = new Set();
+        if (o.slug) slugs.add(String(o.slug).toLowerCase());
+        (f.ligacoes || []).forEach(l => { if (l[0] !== o.id) return; const alvo = (f.etapas || []).find(e => e.id === l[1]); if (alvo && alvo.tipo === 'split' && alvo.slug) slugs.add(String(alvo.slug).toLowerCase()); });
+        if (slugs.size) {
+          slugs.forEach(sl => _q('SELECT DISTINCT visitante FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ?')
+            .all(sl, per.ini, per.fim).forEach(r => s.add(r.visitante)));
+          extra.testes = [...slugs];
+        }
+      }
       conj[o.id] = s;
       nos[o.id] = Object.assign({ tipo: 'fonte', canal }, medir(s), extra);
     });
@@ -11414,11 +11444,20 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot,
           divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
       } else if (e.tipo === 'checkout' && !temPagina) {
-        // checkout do gateway não recebe pixel: vale quem clicou em comprar
+        // Checkout do gateway não recebe pixel: vale quem clicou em comprar, e
+        // quem comprou (passou pelo checkout mesmo se o clique não foi visto).
+        // "Compraram" é toda venda do funil (do produto do bloco, se escolhido):
+        // o mesmo número do Obrigado e do topo.
         const lst = prodLista(e);
-        conj[e.id] = ck;
-        nos[e.id] = Object.assign({ tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '' },
-                                  medir(ck, o => casaProd(o, lst)));
+        const vf = vendas.filter(o => casaProd(o, lst));
+        conj[e.id] = abriramSet;
+        nos[e.id] = { tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '',
+                      pessoas: abriramSet.size, cliques: ck.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
+                      // conversão só com venda que tem pessoa: a que entrou pela campanha
+                      // ou pelo produto não passou por clique nenhum que dê pra contar
+                      conversao: abriramSet.size ? vf.filter(o => o.visitante).length / abriramSet.size : 0,
+                      semPessoa: vf.filter(o => !o.visitante).length,
+                      produtos: topProd(vf), semClique: [...compradores].filter(v => !ck.has(v)).length };
       } else if ((e.tipo === 'obrigado' || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) && !temPagina) {
         // sem página com pixel: o bloco é a venda em si (do produto dele, se escolhido)
         const lst = prodLista(e);
@@ -13443,7 +13482,7 @@ function _abV2(slug, de, ate) {
     for (let i = 0; i < ids.length; i += 500) {
       const lote = ids.slice(i, i + 500);
       _q('SELECT visitante, valor, liquido, dia FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND em BETWEEN ? AND ? AND visitante IN (' + _ph(lote.length) + ')')
-        .all(per.ini, per.fim + 7 * 86400000, ...lote).forEach(o => {
+        .all(per.ini, per.fim, ...lote).forEach(o => {
           const v = porId[quem[o.visitante]]; if (!v) return;
           v.vendas++; v.receita += liq(o); v.receitas.push(liq(o));
           const pd = v.porDia[o.dia] || (v.porDia[o.dia] = { pessoas: 0, vendas: 0 }); pd.vendas++;
@@ -13526,7 +13565,7 @@ function _abV2(slug, de, ate) {
       for (let i = 0; i < lista.length; i += 500) {
         const lote = lista.slice(i, i + 500);
         _q('SELECT valor, liquido FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND em BETWEEN ? AND ? AND visitante IN (' + _ph(lote.length) + ')')
-          .all(per.ini, per.fim + 7 * 86400000, ...lote).forEach(o => { vendas++; receita += liq(o); });
+          .all(per.ini, per.fim, ...lote).forEach(o => { vendas++; receita += liq(o); });
         _q('SELECT fonte, cont FROM sessoes WHERE inicio BETWEEN ? AND ? AND (teste IS NULL OR teste=\'\') AND visitante IN (' + _ph(lote.length) + ')')
           .all(per.ini, per.fim, ...lote).forEach(s => {
             const f = s.fonte || 'direto'; fontes[f] = (fontes[f] || 0) + 1;
