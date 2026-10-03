@@ -1432,6 +1432,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   border-right:2px solid var(--text2);border-bottom:2px solid var(--text2);border-radius:0 0 3px 0}
 .fn-no:hover .fn-alca{opacity:1}
 .fn-no:active{cursor:grabbing}
+.fn-mapa.panando,.fn-mapa.panando *{cursor:grabbing!important;user-select:none}
 .fn-no.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.18)}
 .fn-no .c{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
 .fn-no .nm{font-size:12.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -32864,6 +32865,7 @@ function fnNos(){
 // Alca do canto: cresce/encolhe o bloco e guarda o tamanho junto com a posicao.
 function fnRedimensionar(alca, el, dado, f){
   alca.addEventListener('mousedown', function(ev){
+    if(ev.button !== 0) return;                  // botão do meio: deixa o mapa rolar
     ev.preventDefault(); ev.stopPropagation();   // nao arrasta o bloco junto
     var x0 = ev.clientX, y0 = ev.clientY, w0 = el.offsetWidth, h0 = el.offsetHeight, quadro = 0;
     el.style.zIndex = 21;
@@ -33635,6 +33637,24 @@ function mpLigarSoltar(){
     mpCriarBloco(MP_MODULOS[+m[1]].itens[+m[2]], p.x - 110, p.y - 40);
   });
   mapa.addEventListener('scroll', function(){ mpMiniMapa(); }, { passive:true });
+
+  // Botão do meio (a rodinha apertada) segura o mapa e arrasta, em qualquer
+  // ponto — em cima de bloco também. Vale no modo de ver e no de editar.
+  mapa.addEventListener('mousedown', function(ev){
+    if(ev.button !== 1) return;
+    ev.preventDefault();               // sem isso o navegador abre a setinha de rolagem automática
+    var sx = ev.clientX, sy = ev.clientY, l0 = mapa.scrollLeft, t0 = mapa.scrollTop;
+    mapa.classList.add('panando');
+    var mover = function(e){ mapa.scrollLeft = l0 - (e.clientX - sx); mapa.scrollTop = t0 - (e.clientY - sy); };
+    var soltar = function(e){
+      if(e.button !== 1) return;
+      window.removeEventListener('mousemove', mover); window.removeEventListener('mouseup', soltar);
+      mapa.classList.remove('panando');
+    };
+    window.addEventListener('mousemove', mover); window.addEventListener('mouseup', soltar);
+  });
+  // clique do meio num link dentro do mapa abriria aba nova no meio do arrasto
+  mapa.addEventListener('auxclick', function(ev){ if(ev.button === 1) ev.preventDefault(); });
 }
 // clique no módulo (sem arrastar): põe no meio do que está à vista
 function mpSoltarModulo(gi, ii){
@@ -33666,6 +33686,7 @@ function mpCriarBloco(it, x, y){
 }
 // ── ligar puxando a bolinha da direita até outro bloco ──
 function mpPuxarLigacao(ev, de){
+  if(ev.button !== 0) return;          // botão do meio: deixa o mapa rolar
   ev.preventDefault(); ev.stopPropagation();
   var svg = document.getElementById('fn-svg'), f = fnAtual(); if(!svg || !f) return;
   var el = document.querySelector('#fn-palco .fn-no[data-id="'+de+'"]'); if(!el) return;
