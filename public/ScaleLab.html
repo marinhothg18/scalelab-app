@@ -28424,10 +28424,10 @@ function saveAdsApiKey(){
 // 'pagina', misturado com tela de quiz.
 var FN_CORES = { pagina:'#1B9CFA', prevenda:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926',
                  upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC',
-                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6', typeform:'#0EA5E9', typebot:'#14B8A6' };
+                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6', typeform:'#0EA5E9', typebot:'#14B8A6', backredirect:'#F97316' };
 var FN_ROT   = { pagina:'PÁGINA', prevenda:'PRÉ-VENDA', vsl:'VSL', checkout:'CHECKOUT',
                  upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM',
-                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B', typeform:'TYPEFORM', typebot:'TYPEBOT' };
+                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B', typeform:'TYPEFORM', typebot:'TYPEBOT', backredirect:'BACK REDIRECT' };
 
 // A paleta do mapa. Um clique poe o bloco no funil, ligado no que estiver
 // selecionado — em vez de preencher tres campos de formulario a cada etapa.
@@ -32750,7 +32750,7 @@ function fnNoCorpo(n, b, vt){
   } else {
     sub = (n.url ? fnLinkCurto(n.url) : '') + (n.produto ? ' · '+n.produto : '');
     grade = m('Pessoas', fnNum(b.pessoas)) + m('Checkouts', fnNum(b.checkout)) +
-      (n.tipo === 'vsl' ? m('Passaram do pitch', b.pitch ? fnNum(b.pitch) : '-') : '') +
+      ((n.tipo === 'vsl' || n.tipo === 'backredirect') ? m('Passaram do pitch', b.pitch ? fnNum(b.pitch) : '-') : '') +
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
     pe = '<div class="fx-c-pe"><span>Taxa de conversão</span><b>'+v2Pct(b.conversao, 2)+'</b></div>'+
          '<div class="v2-trilho" style="height:5px"><i style="width:'+Math.min(100, (b.conversao||0)*800).toFixed(1)+'%;background:#22C55E"></i></div>';
@@ -33226,7 +33226,7 @@ function fnDetalhe(){
     (faltaUrl ? campoUrl : '')+
     '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
     (v && n.tipo !== 'obrigado' ? '<button class="fn-btn g sm" style="width:100%;margin:6px 0 8px" onclick="ldIrPara({etapa:\''+n.id+'\'})">👥 Ver quem está nesta etapa</button>' : '')+
-    (n.tipo === 'vsl' ? '<div class="fn-campo" style="margin-top:6px"><label>Minuto do pitch (mm:ss)</label>'+
+    ((n.tipo === 'vsl' || n.tipo === 'backredirect') ? '<div class="fn-campo" style="margin-top:6px"><label>Minuto do pitch (mm:ss)</label>'+
       '<input value="'+(n.pitch ? Math.floor(n.pitch/60)+':'+String(n.pitch%60).padStart(2,'0') : '')+'" placeholder="vem da Vturb; ex.: 18:40" onchange="fnPitchEtapa(\''+n.id+'\',this.value)"></div>' : '')+
     (fnBase(f) ? '<div class="fn-l"><span>% de quem entrou</span><span>'+((v/base)*100).toFixed(1)+'%</span></div>'
                : '<div class="fn-l"><span>% de quem entrou</span><span style="color:var(--text2)">'+
@@ -33456,6 +33456,7 @@ var MP_MODULOS = [
     { k:'etapa', tipo:'vsl',      nome:'Página de Vendas',    dica:'Landing page com VSL' },
     { k:'etapa', tipo:'upsell',   nome:'Página de Upsell',    dica:'Página de oferta adicional' },
     { k:'etapa', tipo:'downsell', nome:'Página de Downsell',  dica:'Página de oferta menor' },
+    { k:'etapa', tipo:'backredirect', nome:'Back redirect',   dica:'Pra onde vai quem tenta sair (voltar)' },
     { k:'etapa', tipo:'obrigado', nome:'Página de Obrigado',  dica:'Confirmação de compra' },
     { k:'etapa', tipo:'quiz',     nome:'Quiz Central TMX',    dica:'Quiz com respostas' } ] },
   { grupo:'Módulo de pagamento', ic:'💳', itens:[
