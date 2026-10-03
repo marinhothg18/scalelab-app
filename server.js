@@ -11298,10 +11298,19 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const vendas = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(f)).filter(o => o.pago && !o.estorno);
     const vendaPor = {}, compradores = new Set();
     vendas.forEach(o => { if (o.visitante) { (vendaPor[o.visitante] = vendaPor[o.visitante] || []).push(o); compradores.add(o.visitante); } });
-    const medir = s => {
-      let n = 0, fat = 0, c = 0, p = 0;
-      s.forEach(v => { if (ck.has(v)) c++; if (pit.has(v)) p++; (vendaPor[v] || []).forEach(o => { n++; fat += liq(o); }); });
-      return { pessoas: s.size, checkout: c, pitch: p, vendas: n, faturamento: dir ? fat : null, conversao: s.size ? n / s.size : 0 };
+    // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
+    // venda de cada um chega no webhook com o nome do produto, e é por ele que
+    // o bloco separa o que é dele.
+    const prodLista = e => String((e && e.produto) || '').split(/[,;\n]+/).map(_nrm).filter(Boolean);
+    const casaProd = (o, lst) => !lst.length || lst.some(p => { const x = _nrm(o.produto); return x === p || x.indexOf(p) >= 0; });
+    const topProd = lst => {
+      const c = {}; lst.forEach(o => { const k = String(o.produto || '(sem nome)').trim(); c[k] = (c[k] || 0) + 1; });
+      return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([nome, n]) => ({ nome, n }));
+    };
+    const medir = (s, filtro) => {
+      let n = 0, fat = 0, c = 0, p = 0; const doBloco = [];
+      s.forEach(v => { if (ck.has(v)) c++; if (pit.has(v)) p++; (vendaPor[v] || []).forEach(o => { if (filtro && !filtro(o)) return; n++; fat += liq(o); doBloco.push(o); }); });
+      return { pessoas: s.size, checkout: c, pitch: p, vendas: n, faturamento: dir ? fat : null, conversao: s.size ? n / s.size : 0, produtos: topProd(doBloco) };
     };
     const ehBio = t => /bio/i.test([t.fonte, t.midia, t.camp, t.cont].join(' '));
     const casa = (t, fl) => ['fonte', 'midia', 'camp', 'cont'].every(k => {
@@ -11365,22 +11374,28 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
           divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
       } else if (e.tipo === 'checkout' && !temPagina) {
         // checkout do gateway não recebe pixel: vale quem clicou em comprar
+        const lst = prodLista(e);
         conj[e.id] = ck;
-        nos[e.id] = Object.assign({ tipo: 'checkout', viaClique: true }, medir(ck));
-      } else if (e.tipo === 'obrigado' && !temPagina) {
-        const fat = vendas.reduce((a, o) => a + liq(o), 0);
-        conj[e.id] = compradores;
-        nos[e.id] = { tipo: 'obrigado', viaVenda: true, pessoas: compradores.size, vendas: vendas.length, faturamento: dir ? fat : null,
-                      semPessoa: vendas.filter(o => !o.visitante).length };
+        nos[e.id] = Object.assign({ tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '' },
+                                  medir(ck, o => casaProd(o, lst)));
+      } else if ((e.tipo === 'obrigado' || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) && !temPagina) {
+        // sem página com pixel: o bloco é a venda em si (do produto dele, se escolhido)
+        const lst = prodLista(e);
+        const vf = (e.tipo === 'obrigado' || lst.length) ? vendas.filter(o => casaProd(o, lst)) : [];
+        const quem = new Set(vf.map(o => o.visitante).filter(Boolean));
+        conj[e.id] = quem;
+        nos[e.id] = { tipo: e.tipo, viaVenda: true, produto: e.produto || '', integracao: e.integracao || '',
+                      pessoas: quem.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
+                      semPessoa: vf.filter(o => !o.visitante).length, produtos: topProd(vf), semProduto: e.tipo !== 'obrigado' && !lst.length };
       } else if (e.tipo === 'recuperacao') {
         const vr = vendas.filter(o => o.apoio);
         const s = new Set(vr.map(o => o.visitante).filter(Boolean));
         conj[e.id] = s;
         nos[e.id] = { tipo: 'recuperacao', pessoas: s.size, vendas: vr.length, faturamento: dir ? vr.reduce((a, o) => a + liq(o), 0) : null };
       } else {
-        const s = porEtapa[e.id] || new Set();
+        const s = porEtapa[e.id] || new Set(), lst = prodLista(e);
         conj[e.id] = s;
-        nos[e.id] = Object.assign({ tipo: e.tipo || 'pagina' }, medir(s));
+        nos[e.id] = Object.assign({ tipo: e.tipo || 'pagina', produto: e.produto || '' }, medir(s, lst.length ? (o => casaProd(o, lst)) : null));
       }
     });
     const fios = {};

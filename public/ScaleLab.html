@@ -32699,6 +32699,12 @@ function fnLinkCurto(url){
   }catch(e){ return String(url).replace(/^https?:\/\//,'').replace(/\/$/,''); }
 }
 
+// Produtos que saíram neste bloco (pra saber qual checkout é qual)
+function fnNoProdutos(b){
+  var ps = (b && b.produtos) || [];
+  if(!ps.length) return '';
+  return '<div class="fn-div">'+ps.map(function(p){ return '<span>'+fnEsc(p.nome.length > 22 ? p.nome.slice(0,21)+'…' : p.nome)+' <b>'+p.n+'</b></span>'; }).join('')+'</div>';
+}
 // Cartão do bloco no jeito do FunnelWay: nome, de onde vem o número e uma
 // grade curta de métricas. Cada tipo mostra o que responde a pergunta dele.
 var FN_CANAL_ROT = { meta:'Facebook / Instagram Ads', instagram:'Instagram · link da bio', utm:'Link com UTM', organico:'Orgânico / direto' };
@@ -32725,18 +32731,22 @@ function fnNoCorpo(n, b, vt){
       m('Checkouts', fnNum(b.checkout)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '');
     if(b.divisao && b.divisao.length) pe = '<div class="fn-div">'+b.divisao.map(function(d){ return '<span>'+fnEsc(d.nome)+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'; }).join('')+'</div>';
   } else if(n.tipo === 'checkout' && b.viaClique){
-    sub = 'clique no botão de compra';
+    // qual checkout é: a integração e o produto (ou os que mais saíram)
+    sub = [n.integracao || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
     grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
       m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
-  } else if(n.tipo === 'obrigado' && b.viaVenda){
-    sub = 'venda aprovada (webhook)';
-    grade = m('Compraram', fnNum(b.vendas), verde) + m('Faturamento', din(b.faturamento));
-    if(b.semPessoa) pe = '<div class="fx-c-url" style="margin-top:6px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>';
+    pe = fnNoProdutos(b);
+  } else if(b.viaVenda){
+    sub = n.tipo === 'obrigado' ? ('venda aprovada' + (n.produto ? ' · '+n.produto : ' · todos os produtos'))
+                                : [n.integracao || (n.pagamento ? 'pagamento' : ''), n.produto || ''].filter(Boolean).join(' · ');
+    grade = m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
+    pe = b.semProduto ? '<div style="font-size:10px;color:var(--v2-laranja,#F59E0B);margin-top:6px;font-weight:700">Escolha o produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+' no painel: é por ele que a venda fica separada da principal.</div>'
+                      : fnNoProdutos(b) + (b.semPessoa ? '<div class="fx-c-url" style="margin-top:4px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>' : '');
   } else if(n.tipo === 'recuperacao'){
     sub = 'ligação, WhatsApp, e-mail';
     grade = m('Pessoas', fnNum(b.pessoas)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
   } else {
-    sub = n.url ? fnLinkCurto(n.url) : '';
+    sub = (n.url ? fnLinkCurto(n.url) : '') + (n.produto ? ' · '+n.produto : '');
     grade = m('Pessoas', fnNum(b.pessoas)) + m('Checkouts', fnNum(b.checkout)) +
       (n.tipo === 'vsl' ? m('Passaram do pitch', b.pitch ? fnNum(b.pitch) : '-') : '') +
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
@@ -32847,46 +32857,71 @@ function fnNos(){
 
 // Alca do canto: cresce/encolhe o bloco e guarda o tamanho junto com a posicao.
 function fnRedimensionar(alca, el, dado, f){
-  var ativo=false, x0=0, y0=0, w0=0, h0=0;
   alca.addEventListener('mousedown', function(ev){
-    ativo=true; ev.preventDefault(); ev.stopPropagation();   // nao arrasta o bloco junto
-    x0=ev.clientX; y0=ev.clientY;
-    w0=el.offsetWidth; h0=el.offsetHeight;
-    el.style.zIndex=21;
-  });
-  window.addEventListener('mousemove', function(ev){
-    if(!ativo) return;
-    dado.w = Math.max(150, Math.round(w0 + (ev.clientX-x0)/fnEscala));
-    dado.h = Math.max(70,  Math.round(h0 + (ev.clientY-y0)/fnEscala));
-    el.style.width = dado.w+'px'; el.style.height = dado.h+'px';
-    fnFios();
-  });
-  window.addEventListener('mouseup', function(){
-    if(!ativo) return;
-    ativo=false; el.style.zIndex='';
-    fnGravar(f); fnFios();
+    ev.preventDefault(); ev.stopPropagation();   // nao arrasta o bloco junto
+    var x0 = ev.clientX, y0 = ev.clientY, w0 = el.offsetWidth, h0 = el.offsetHeight, quadro = 0;
+    el.style.zIndex = 21;
+    var mover = function(e){
+      dado.w = Math.max(150, Math.round(w0 + (e.clientX-x0)/fnEscala));
+      dado.h = Math.max(70,  Math.round(h0 + (e.clientY-y0)/fnEscala));
+      el.style.width = dado.w+'px';
+      if(el.classList.contains('v3')) el.style.minHeight = dado.h+'px'; else el.style.height = dado.h+'px';
+      if(!quadro) quadro = requestAnimationFrame(function(){ quadro = 0; fnFiosMover(dado.id); });
+    };
+    var soltar = function(){
+      window.removeEventListener('mousemove', mover); window.removeEventListener('mouseup', soltar);
+      el.style.zIndex = ''; fnGravar(f); fnFios();
+    };
+    window.addEventListener('mousemove', mover); window.addEventListener('mouseup', soltar);
   });
 }
 
 function fnArrastar(el, dado, f){
-  var ox=0, oy=0, mov=false, moveu=false;
+  // Os ouvintes da janela só existem enquanto o bloco está sendo arrastado.
+  // Antes cada redesenho do mapa somava mais dois, e o arrasto ia ficando pesado.
   el.addEventListener('mousedown', function(ev){
-    mov=true; moveu=false;
-    ox = ev.clientX/fnEscala - (dado.x||0); oy = ev.clientY/fnEscala - (dado.y||0);
+    if(ev.button !== 0) return;
+    if(ev.target.closest && ev.target.closest('.fn-porta,.fn-alca,a,button,input,select,textarea')) return;
+    var sx = ev.clientX, sy = ev.clientY, ox = ev.clientX/fnEscala - (dado.x||0), oy = ev.clientY/fnEscala - (dado.y||0);
+    var moveu = false, quadro = 0;
     el.style.zIndex = 20; ev.preventDefault();
+    var mover = function(e){
+      if(!mpEditando) return;          // modo de ver: o desenho fica travado
+      if(!moveu && Math.abs(e.clientX - sx) < 3 && Math.abs(e.clientY - sy) < 3) return;
+      moveu = true;
+      dado.x = Math.max(0, Math.round(e.clientX/fnEscala - ox));
+      dado.y = Math.max(0, Math.round(e.clientY/fnEscala - oy));
+      el.style.left = dado.x+'px'; el.style.top = dado.y+'px';
+      // só as setas deste bloco, uma vez por quadro: o resto do mapa fica parado
+      if(!quadro) quadro = requestAnimationFrame(function(){ quadro = 0; fnFiosMover(dado.id); });
+    };
+    var soltar = function(){
+      window.removeEventListener('mousemove', mover); window.removeEventListener('mouseup', soltar);
+      el.style.zIndex = '';
+      if(moveu){ fnGravar(f); fnFios(); mpMiniMapa(); } else fnSelecionar(dado.id);
+    };
+    window.addEventListener('mousemove', mover); window.addEventListener('mouseup', soltar);
   });
-  window.addEventListener('mousemove', function(ev){
-    if(!mov) return;
-    if(!mpEditando) return;          // modo de ver: o desenho fica travado
-    moveu = true;
-    dado.x = Math.max(0, ev.clientX/fnEscala - ox);
-    dado.y = Math.max(0, ev.clientY/fnEscala - oy);
-    el.style.left = dado.x+'px'; el.style.top = dado.y+'px';
-    fnFios();
-  });
-  window.addEventListener('mouseup', function(){
-    if(mov){ el.style.zIndex=''; if(moveu) fnGravar(f); else fnSelecionar(dado.id); }
-    mov=false;
+}
+// Onde começa e termina a seta entre dois blocos, e a curva. O ponto de
+// controle tem distância mínima: com o destino à esquerda a curva não vira um nó.
+// A posição sai do bloco NA TELA, não do funil salvo: durante o arrasto o
+// salvo ainda é o de antes (ele só grava ao soltar), e a seta ficava pra trás.
+function fnCoordFio(f, a, b){
+  var ea = document.querySelector('#fn-palco .fn-no[data-id="'+a+'"]'), eb = document.querySelector('#fn-palco .fn-no[data-id="'+b+'"]');
+  if(!ea || !eb) return null;
+  var x1 = ea.offsetLeft + ea.offsetWidth, y1 = ea.offsetTop + ea.offsetHeight/2;
+  var x2 = eb.offsetLeft, y2 = eb.offsetTop + eb.offsetHeight/2;
+  var c = Math.max(50, Math.abs(x2 - x1)/2);
+  return { x1:x1, y1:y1, x2:x2, y2:y2, d:'M '+x1+' '+y1+' C '+(x1+c)+' '+y1+', '+(x2-c)+' '+y2+', '+x2+' '+y2 };
+}
+function fnFiosMover(id){
+  var f = fnAtual(), svg = document.getElementById('fn-svg'); if(!f || !svg) return;
+  svg.querySelectorAll('[data-par]').forEach(function(el){
+    var par = el.getAttribute('data-par').split('|'); if(par[0] !== id && par[1] !== id) return;
+    var c = fnCoordFio(f, par[0], par[1]); if(!c) return;
+    if(el.tagName.toLowerCase() === 'text'){ el.setAttribute('x', (c.x1+c.x2)/2); el.setAttribute('y', (c.y1+c.y2)/2 - 8); }
+    else el.setAttribute('d', c.d);
   });
 }
 
@@ -32898,12 +32933,9 @@ function fnFios(){
   (f.ligacoes||[]).forEach(function(par, idx){
     var na = fnAcha(f,par[0]), nb = fnAcha(f,par[1]);
     if(!na || !nb) return;
-    var ea = document.querySelector('.fn-no[data-id="'+par[0]+'"]');
-    var eb = document.querySelector('.fn-no[data-id="'+par[1]+'"]');
-    if(!ea || !eb) return;
-    var x1 = na.x + ea.offsetWidth, y1 = na.y + ea.offsetHeight/2;
-    var x2 = nb.x,                  y2 = nb.y + eb.offsetHeight/2;
-    var meio = (x2-x1)/2;
+    var cf = fnCoordFio(f, par[0], par[1]);
+    if(!cf) return;
+    var x1 = cf.x1, y1 = cf.y1, x2 = cf.x2, y2 = cf.y2;
     var vb = fnVal(nb.id), va = na.tipo==='fonte' ? base : fnVal(na.id);
     var passou = va ? (vb/va) : 0;
     // Com a base de pessoas, a seta diz quantos do bloco de origem estiveram
@@ -32919,7 +32951,8 @@ function fnFios(){
     var pid = 'fnfio'+idx;
     var pa = document.createElementNS('http://www.w3.org/2000/svg','path');
     pa.setAttribute('id', pid);
-    pa.setAttribute('d','M '+x1+' '+y1+' C '+(x1+meio)+' '+y1+', '+(x2-meio)+' '+y2+', '+x2+' '+y2);
+    pa.setAttribute('d', cf.d);
+    pa.setAttribute('data-par', par[0]+'|'+par[1]);
     pa.setAttribute('fill','none'); pa.setAttribute('stroke',cor);
     pa.setAttribute('stroke-width', Math.max(1.4, Math.min(5, passou*5)));
     pa.setAttribute('opacity','.7');
@@ -32927,6 +32960,7 @@ function fnFios(){
     // faixa invisivel por cima do fio: da pra clicar sem ter que mirar em 2px
     var alvo = document.createElementNS('http://www.w3.org/2000/svg','path');
     alvo.setAttribute('d', pa.getAttribute('d'));
+    alvo.setAttribute('data-par', par[0]+'|'+par[1]);
     alvo.setAttribute('fill','none'); alvo.setAttribute('stroke','transparent');
     alvo.setAttribute('stroke-width','16'); alvo.style.cursor='pointer';
     alvo.setAttribute('pointer-events','stroke');
@@ -32954,6 +32988,7 @@ function fnFios(){
       if((temFio || na.tipo!=='fonte') && !acimaDe100){
         var t = document.createElementNS('http://www.w3.org/2000/svg','text');
         t.setAttribute('x',(x1+x2)/2); t.setAttribute('y',(y1+y2)/2-8);
+        t.setAttribute('data-par', par[0]+'|'+par[1]);
         t.setAttribute('fill',cor); t.setAttribute('font-size','10');
         t.setAttribute('font-weight','800'); t.setAttribute('text-anchor','middle');
         t.textContent = (passou*100 < 1 && passou > 0) ? (passou*100).toFixed(1).replace('.',',')+'%' : (passou*100).toFixed(0)+'%';
@@ -33185,7 +33220,7 @@ function fnDetalhe(){
 
   cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
     '<div class="fn-campo"><label>Nome do bloco</label><input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
-    fnCampoIntegracao(n)+
+    fnCampoIntegracao(n)+fnCampoProduto(n)+
     (faltaUrl ? campoUrl : '')+
     '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
     (v && n.tipo !== 'obrigado' ? '<button class="fn-btn g sm" style="width:100%;margin:6px 0 8px" onclick="ldIrPara({etapa:\''+n.id+'\'})">👥 Ver quem está nesta etapa</button>' : '')+
@@ -33525,10 +33560,39 @@ function mpLeitura(n){
 }
 // Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
 function fnCampoIntegracao(n){
-  if(!(n.tipo === 'checkout' || n.pagamento)) return '';
+  if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
   return '<div class="fn-campo"><label>Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
     '<option value="">— escolher —</option>'+MP_INTEGRACOES.map(function(x){ return '<option'+(n.integracao===x?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'+
     '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. As vendas entram pelo webhook configurado em Configurações › Integrações; o clique no botão de compra é marcado pelo pixel.</div></div>';
+}
+// Produto do bloco: é o nome que chega no webhook (ex.: "Apostilai Acervo").
+// O checkout fica com o principal, o upsell com o dele — e as vendas se separam.
+var fnProdutosVistos = null;
+function fnCarregarProdutosVistos(){
+  if(fnProdutosVistos) return;
+  fnProdutosVistos = [];
+  fetch('/api/produtos').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    fnProdutosVistos = ((d && d.vistos) || []).map(function(x){ return x.nome; }).filter(function(n){ return n && n !== '(sem nome)'; });
+    var dl = document.getElementById('fn-prod-lista');
+    if(dl) dl.innerHTML = fnProdutosVistos.map(function(n){ return '<option value="'+fnEsc(n)+'">'; }).join('');
+  }).catch(function(){});
+}
+function fnCampoProduto(n){
+  if(!(n.tipo === 'checkout' || n.tipo === 'upsell' || n.tipo === 'downsell' || n.tipo === 'obrigado' || n.pagamento)) return '';
+  fnCarregarProdutosVistos();
+  var dica = n.tipo === 'checkout' ? 'O produto principal. Vazio = toda venda de quem clicou em comprar.'
+           : n.tipo === 'obrigado' ? 'Vazio = toda venda do funil.'
+           : 'O produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+'. É por ele que a venda fica separada da principal.';
+  return '<div class="fn-campo"><label>Produto vendido aqui</label>'+
+    '<input list="fn-prod-lista" value="'+fnEsc(n.produto||'')+'" placeholder="como aparece na Payt" onchange="fnSalvarProduto(\''+n.id+'\',this.value)">'+
+    '<datalist id="fn-prod-lista">'+(fnProdutosVistos||[]).map(function(x){ return '<option value="'+fnEsc(x)+'">'; }).join('')+'</datalist>'+
+    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">'+dica+' Mais de um: separe por vírgula.</div></div>';
+}
+function fnSalvarProduto(id, v){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.produto = String(v||'').trim().slice(0, 200);
+  fnGravar(f); fnNos(); toastFn(n.produto ? 'Produto: '+n.produto : 'Produto tirado');
+  setTimeout(fnCarregarStats, 1200);
 }
 function fnSalvarIntegracao(id, v){
   var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
@@ -33589,8 +33653,8 @@ function mpCriarBloco(it, x, y){
 function mpPuxarLigacao(ev, de){
   ev.preventDefault(); ev.stopPropagation();
   var svg = document.getElementById('fn-svg'), f = fnAtual(); if(!svg || !f) return;
-  var a = fnAcha(f, de), el = document.querySelector('.fn-no[data-id="'+de+'"]'); if(!a || !el) return;
-  var x1 = (a.x||0) + el.offsetWidth, y1 = (a.y||0) + el.offsetHeight/2;
+  var el = document.querySelector('#fn-palco .fn-no[data-id="'+de+'"]'); if(!el) return;
+  var x1 = el.offsetLeft + el.offsetWidth, y1 = el.offsetTop + el.offsetHeight/2;
   var tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   tmp.setAttribute('fill', 'none'); tmp.setAttribute('stroke', '#1B9CFA'); tmp.setAttribute('stroke-width', '2'); tmp.setAttribute('stroke-dasharray', '5 4');
   svg.appendChild(tmp);
