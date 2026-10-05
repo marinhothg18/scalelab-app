@@ -5134,6 +5134,11 @@ app.get('/ajuda', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'ajuda.html'));
 });
 
+// GET /preview-suporte — protótipo da central de suporte e do formulário de
+// reembolso, com dados de exemplo (roda só no navegador, não lê nem grava nada)
+app.get('/preview-suporte', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'preview-suporte.html'));
+});
 // GET /preview-menu — 4 conceitos de layout de menu pra escolher
 app.get('/preview-menu', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'preview-menu.html'));

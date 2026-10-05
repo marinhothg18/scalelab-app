@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Suporte · protótipo</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+:root{
+  --fundo:#F4F6FA; --cartao:#FFFFFF; --linha:#E2E8F0; --linha2:#EEF1F5;
+  --texto:#0F172A; --texto2:#475569; --texto3:#64748B;
+  --azulp:#2509E4; --roxo:#3E1493; --rosa:#C52C58; --laranja:#FF5926; --azul:#1B9CFA;
+  --ok-bg:#E6F4EC; --ok:#0B6B3A; --bad-bg:#FCE9EF; --bad:#A3173F; --warn-bg:#FFF0E8; --warn:#A93A0A;
+  --neu-bg:#EEF1F6; --neu:#334155; --ia-bg:#F1ECFB; --ia:#3E1493; --az-bg:#E9F4FE; --az:#075985;
+}
+*{box-sizing:border-box}
+html{background:var(--fundo)}
+body{margin:0;background:var(--fundo);color:var(--texto);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--azulp)}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--azulp);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+.so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* faixa do protótipo */
+.proto{background:#0F172A;color:#E2E8F0;font-size:12.5px;padding:8px 16px;display:flex;gap:10px 18px;justify-content:center;align-items:center;flex-wrap:wrap}
+.proto b{color:#fff}
+.proto nav{display:flex;gap:4px;flex-wrap:wrap}
+.proto nav a{color:#CBD5E1;text-decoration:none;font-weight:700;padding:5px 10px;border-radius:7px}
+.proto nav a.on{background:#fff;color:#0F172A}
+
+.pagina{max-width:1440px;margin:0 auto;padding:24px 32px 48px;display:flex;flex-direction:column;gap:20px}
+@media (max-width:640px){.pagina{padding:16px 14px 40px}}
+.topo{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.topo h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+.topo p{margin:0;font-size:13.5px;color:var(--texto2);max-width:72ch}
+.topo .esq{display:flex;flex-direction:column;gap:6px;min-width:0}
+.linha-tit{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.vivo{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--ok);background:var(--ok-bg);border-radius:99px;padding:4px 10px}
+.vivo i{width:7px;height:7px;border-radius:50%;background:#16A34A}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:flex;background:#fff;border:1px solid var(--linha);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;border-radius:7px;padding:7px 12px;font-size:12.5px;font-weight:700;background:transparent;color:var(--neu)}
+.seg button.on{background:var(--azulp);color:#fff}
+.caixa-sel{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--linha);border-radius:10px;padding:0 10px;height:38px;font-size:12.5px;color:var(--texto2);font-weight:600}
+.caixa-sel select{border:0;background:transparent;font-size:12.5px;font-weight:700;color:var(--texto)}
+.btn{height:38px;border:1px solid var(--linha);background:#fff;border-radius:10px;padding:0 14px;font-size:12.5px;font-weight:700;color:var(--texto);display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.btn.rosa{border-color:#F1C6D3;background:#FDF1F5;color:var(--bad);font-weight:800}
+.btn.rosa span{background:var(--bad);color:#fff;border-radius:99px;padding:1px 7px;font-size:11px}
+.btn.cheio{border:0;background:var(--azulp);color:#fff;font-weight:800}
+
+.metricas{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.metrica{background:#fff;border:1px solid var(--linha);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.rot{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--texto3);font-weight:800}
+.metrica .v{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+.metrica .s{font-size:12px;font-weight:600;color:var(--texto2)}
+.pill{display:inline-block;font-size:10.5px;font-weight:800;border-radius:99px;padding:2px 8px;white-space:nowrap}
+
+/* caixa de entrada */
+.inbox{display:flex;flex-wrap:wrap;gap:16px;align-items:stretch}
+.painel{background:#fff;border:1px solid var(--linha);border-radius:14px;min-width:0;height:780px}
+.fila{flex:1 1 300px;display:flex;flex-direction:column;overflow:hidden}
+.conversa{flex:999 1 520px;display:flex;flex-direction:column;overflow:hidden}
+.cliente{flex:1 1 300px;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+@media (max-width:900px){.painel{height:auto;max-height:none}.fila .lista{max-height:420px}.conversa .fio{max-height:460px}}
+.fila .cab{padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--linha2)}
+.abas{display:flex;gap:4px;background:var(--fundo);border-radius:10px;padding:3px}
+.abas button{flex:1;border:0;border-radius:7px;padding:7px 6px;font-size:12px;font-weight:700;background:transparent;color:var(--texto2)}
+.abas button.on{background:#fff;color:var(--texto);box-shadow:0 1px 2px rgba(15,23,42,.12)}
+.abas button b{color:var(--texto3)}
+.abas button b.alerta{color:var(--bad)}
+.busca{display:flex;align-items:center;gap:8px;border:1px solid var(--linha);border-radius:10px;padding:0 10px;height:38px;color:var(--texto3)}
+.busca input{border:0;outline:0;flex:1;min-width:0;font-size:13px;background:transparent;color:var(--texto)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--linha);background:#fff;color:var(--texto2);border-radius:99px;padding:4px 10px;font-size:11.5px;font-weight:700}
+.lista{flex:1;min-height:0;overflow:auto}
+.item{display:flex;gap:10px;width:100%;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid var(--linha2);background:#fff}
+.item.on{background:#EEF0FF}
+.av{flex:none;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.item .meio{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.item .l1{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.item .nome{font-size:13.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .esp{flex:none;font-size:11.5px;font-weight:700}
+.item .prev{font-size:12.5px;color:var(--texto2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .l3{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px}
+.canal{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--texto3);font-weight:600}
+.vazio{padding:40px 20px;text-align:center;font-size:13px;color:var(--texto3)}
+.ico{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+.conv-cab{padding:14px 18px;border-bottom:1px solid var(--linha2);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+.conv-cab h2{margin:0;font-size:18px;font-weight:800}
+.conv-cab .sub{font-size:12.5px;color:var(--texto2)}
+.conv-cab .dir{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.espera{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;border-radius:99px;padding:5px 10px}
+.mini-sel{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texto2);font-weight:600}
+.mini-sel select{height:34px;border:1px solid var(--linha);border-radius:8px;padding:0 8px;font-size:12.5px;font-weight:700;background:#fff;color:var(--texto)}
+.btn-p{height:34px;border:1px solid var(--linha);background:#fff;border-radius:8px;padding:0 12px;font-size:12.5px;font-weight:700}
+.btn-p.verde{border-color:#A7D7BC;background:var(--ok-bg);color:var(--ok);font-weight:800}
+.resumo{margin:12px 18px 0;padding:10px 12px;border-radius:10px;background:#F4F0FC;color:#2E1170;font-size:13px;line-height:1.45;display:flex;gap:8px;align-items:flex-start}
+.fio{flex:1;min-height:0;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.sis{align-self:center;font-size:11.5px;color:var(--texto2);background:var(--neu-bg);border-radius:99px;padding:5px 12px;max-width:92%;text-align:center}
+.bolha{max-width:74%;display:flex;flex-direction:column;gap:3px}
+.bolha .t{border-radius:14px;padding:9px 12px;font-size:13.5px;line-height:1.45;white-space:pre-line}
+.bolha .h{font-size:11px;color:var(--texto3)}
+.bolha.cli{align-self:flex-start}
+.bolha.cli .t{background:#fff;border:1px solid var(--linha);border-radius:14px 14px 14px 4px}
+.bolha.ag{align-self:flex-end;align-items:flex-end}
+.bolha.ag .t{background:var(--azulp);color:#fff;border-radius:14px 14px 4px 14px}
+.bolha.nota{align-self:flex-end;align-items:flex-end}
+.bolha.nota .t{background:#FFF6DB;border:1px dashed #D9B44A;color:#4A3700;border-radius:12px}
+.sug{margin:0 18px 10px;border:1px solid #D9CCF5;background:#FBF9FF;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+.sug .cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sug .tit{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--roxo)}
+.sug .tit span{color:#5B4A86}
+.sug .txt{font-size:13.5px;line-height:1.5;color:#1E1537;white-space:pre-line}
+.porque{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.porque .rot{color:#5B4A86}
+.porque span.p{font-size:11.5px;color:var(--roxo);background:#EFE8FC;border-radius:99px;padding:3px 9px;font-weight:600}
+.btn-ia{height:34px;border:0;background:var(--roxo);color:#fff;border-radius:8px;padding:0 14px;font-size:12.5px;font-weight:800}
+.btn-ia2{height:34px;border:1px solid #D9CCF5;background:#fff;color:var(--roxo);border-radius:8px;padding:0 12px;font-size:12.5px;font-weight:700}
+.x{width:30px;height:30px;border:0;background:transparent;border-radius:8px;color:#5B4A86;display:flex;align-items:center;justify-content:center}
+.compor{padding:10px 18px 16px;border-top:1px solid var(--linha2);display:flex;flex-direction:column;gap:8px}
+.prontas{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.prontas button{border:1px solid var(--linha);background:#F8FAFC;border-radius:99px;padding:4px 10px;font-size:11.5px;font-weight:700}
+.tipo{display:flex;gap:14px;font-size:12.5px;font-weight:700}
+.tipo button{border:0;background:transparent;padding:4px 0;color:var(--texto3);border-bottom:2px solid transparent}
+.tipo button.on{color:var(--azulp);border-bottom-color:var(--azulp)}
+.tipo button.on.nota{color:#7A5A00;border-bottom-color:#D9B44A}
+.compor textarea{width:100%;resize:vertical;border:1px solid #D5DCE6;background:#fff;border-radius:10px;padding:10px 12px;font-size:13.5px;line-height:1.45}
+.compor textarea.nota{border-color:#E6C766;background:#FFFBEA}
+.compor .acoes{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.compor .acoes>div{display:flex;flex-wrap:wrap;gap:8px}
+.btn-iab{height:36px;border:1px solid var(--roxo);background:#F4F0FC;color:var(--roxo);border-radius:9px;padding:0 12px;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;gap:6px}
+.btn-bco{height:36px;border:1px solid var(--linha);background:#fff;border-radius:9px;padding:0 12px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+.btn-env{height:36px;border:0;background:var(--azulp);color:#fff;border-radius:9px;padding:0 16px;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:7px}
+.btn-env.nota{background:#7A5A00}
+.aviso{font-size:12px;color:var(--roxo);font-weight:600}
+
+.cli-id{display:flex;gap:12px;align-items:center}
+.cli-id .av{width:46px;height:46px;font-size:15px}
+.cli-id b{font-size:15px}
+.cli-id span{font-size:12px;color:var(--texto3)}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags span{font-size:11px;font-weight:700;border-radius:99px;padding:3px 9px;background:var(--neu-bg);color:var(--neu)}
+.campo{background:#F8FAFC;border:1px solid var(--linha2);border-radius:10px;padding:8px 10px}
+.campo .rot{font-size:10px}
+.campo div{font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.secao{display:flex;flex-direction:column;gap:8px}
+.compra{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding-bottom:8px;border-bottom:1px solid var(--linha2)}
+.compra .e{min-width:0;display:flex;flex-direction:column;gap:2px}
+.compra .e b{font-size:13px}
+.compra .e span{font-size:11.5px;color:var(--texto3)}
+.compra .d{flex:none;display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:13px;font-weight:800}
+.ponto{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.4}
+.ponto i{flex:none;width:8px;height:8px;border-radius:50%;margin-top:5px}
+.passo{display:flex;gap:10px}
+.passo .trilho{flex:none;width:12px;display:flex;flex-direction:column;align-items:center}
+.passo .trilho i{width:10px;height:10px;border-radius:50%;margin-top:3px}
+.passo .trilho u{flex:1;width:2px;min-height:14px;text-decoration:none}
+.passo .txt{padding-bottom:10px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.passo .txt b{font-size:12.5px}
+.passo .txt span{font-size:11.5px;color:var(--texto3)}
+.acoes-cli{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.acoes-cli button{min-height:38px;border-radius:9px;padding:6px 8px;font-size:12px;font-weight:800}
+.nota-fonte{margin:0;font-size:11px;color:var(--texto3);line-height:1.45}
+
+/* supervisão */
+.sup-tit{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.sup-tit h2{margin:0;font-size:18px;font-weight:800}
+.sup-tit span{font-size:12.5px;color:var(--texto2)}
+.grade3{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+@media (max-width:400px){.grade3{grid-template-columns:1fr}}
+.cartao{background:#fff;border:1px solid var(--linha);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.cartao .cc{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cartao .cc span{font-size:11.5px;color:var(--texto3)}
+.barra-l{display:grid;grid-template-columns:130px minmax(0,1fr) 30px 62px;gap:10px;align-items:center;font-size:12.5px}
+.barra-l b:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trilho{height:8px;background:var(--neu-bg);border-radius:99px;overflow:hidden}
+.trilho i{display:block;height:100%;border-radius:99px}
+.dica{padding:10px 12px;border-radius:10px;background:#F4F0FC;color:#2E1170;font-size:12.5px;line-height:1.5}
+.tabela{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--texto3);font-weight:800;padding:6px 8px;text-align:left}
+td{padding:10px 8px;border-top:1px solid var(--linha2)}
+tbody th{font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--texto);border-top:1px solid var(--linha2);padding:10px 8px}
+.num{text-align:right}
+.rev{display:flex;gap:10px;align-items:flex-start;padding-bottom:10px;border-bottom:1px solid var(--linha2)}
+.rev span.t{flex:1;min-width:0;font-size:12.5px;line-height:1.45}
+.rev button{flex:none;border:1px solid var(--linha);background:#fff;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700}
+
+/* janela de reembolso */
+.veu{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;justify-content:center;align-items:flex-start;padding:60px 16px 40px;z-index:20;overflow:auto}
+.janela{width:100%;max-width:640px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.25);display:flex;flex-direction:column;overflow:hidden}
+.janela .jc{padding:16px 20px;border-bottom:1px solid var(--linha2);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.janela .jc b{font-size:17px}
+.janela .jc span{font-size:12px;color:var(--texto3)}
+.janela .jm{padding:16px 20px;display:flex;flex-direction:column;gap:16px}
+.janela .jr{padding:14px 20px 18px;border-top:1px solid var(--linha2);display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.janela .jr>div{display:flex;flex-wrap:wrap;gap:8px}
+.fechar{flex:none;width:36px;height:36px;border:1px solid var(--linha);background:#fff;border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--neu)}
+.item-rb{display:flex;gap:10px;align-items:center;min-height:40px;padding:6px 10px;border:1px solid var(--linha2);border-radius:10px;cursor:pointer}
+.item-rb input{width:18px;height:18px;accent-color:var(--azulp);flex:none}
+.item-rb span.n{flex:1;min-width:0;font-size:13.5px;font-weight:700}
+.item-rb span.n small{font-weight:500;color:var(--texto3);font-size:12px}
+.rotulo-campo{display:flex;flex-direction:column;gap:6px}
+.rotulo-campo select,.rotulo-campo textarea,.rotulo-campo input{border:1px solid #D5DCE6;border-radius:9px;padding:9px 11px;font-size:13.5px;background:#fff;color:var(--texto)}
+.rotulo-campo select{height:40px;padding:0 10px}
+.erro{font-size:12.5px;color:var(--bad);font-weight:700;background:var(--bad-bg);border-radius:9px;padding:8px 10px}
+fieldset{margin:0;border:0;padding:0;min-width:0}
+legend{padding:0}
+
+/* reembolsos */
+.duas{display:flex;flex-wrap:wrap;gap:16px}
+.grande{flex:999 1 560px;min-width:0}
+.lateral{flex:1 1 360px;min-width:0}
+.motivo{display:grid;grid-template-columns:minmax(0,250px) minmax(0,1fr) 34px 46px 120px;gap:12px;align-items:center;width:100%;text-align:left;border:1px solid transparent;background:#fff;border-radius:10px;padding:8px 10px}
+.motivo.on{border-color:var(--azulp);background:#F2F0FF}
+.motivo b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.motivo .trilho{height:10px}
+@media (max-width:700px){.motivo{grid-template-columns:minmax(0,1fr) 34px 46px}.motivo .trilho,.motivo .dl{display:none}}
+.corrigir{background:#FBF9FF;border:1px solid #D9CCF5}
+.acao-ia{background:#fff;border:1px solid #E7DEF8;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.acao-ia .n{flex:none;font-size:12px;font-weight:800;color:#fff;background:var(--roxo);border-radius:99px;width:22px;height:22px;display:flex;align-items:center;justify-content:center}
+.histo{display:flex;align-items:flex-end;gap:8px;height:130px;padding-top:8px}
+.histo div{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end;height:100%;font-size:11.5px;font-weight:800}
+.histo div i{width:100%;border-radius:6px 6px 2px 2px}
+.histo-r{display:flex;gap:8px}
+.histo-r span{flex:1;min-width:0;text-align:center;font-size:10.5px;color:var(--texto3);line-height:1.25}
+.taxa{display:flex;flex-direction:column;gap:5px;padding-bottom:8px;border-bottom:1px solid var(--linha2)}
+.taxa div{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.taxa span{font-size:11.5px}
+figure{margin:0;padding:10px 12px;background:#F8FAFC;border:1px solid var(--linha2);border-radius:10px;display:flex;flex-direction:column;gap:4px}
+blockquote{margin:0;font-size:13.5px;line-height:1.45}
+figcaption{font-size:11.5px;color:var(--texto3)}
+
+/* formulário do cliente */
+.cel{max-width:420px;margin:0 auto;background:var(--fundo);min-height:100vh;border-left:1px solid var(--linha);border-right:1px solid var(--linha)}
+@media (max-width:440px){.cel{border:0}}
+.cel .marca{background:#fff;border-bottom:1px solid var(--linha);padding:14px 18px;display:flex;align-items:center;justify-content:space-between}
+.cel .marca b{font-size:17px;letter-spacing:-.02em;color:var(--roxo)}
+.cel .marca span{font-size:11.5px;color:var(--texto3)}
+.cel form,.cel .feito{padding:20px 18px 32px;display:flex;flex-direction:column;gap:18px}
+.cel h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.cel p{margin:0;font-size:14px;color:var(--texto2);line-height:1.5}
+.bloco{border:1px solid var(--linha);background:#fff;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.cel legend.grande-l{font-size:16px;font-weight:800;margin-bottom:8px}
+.op{display:flex;gap:12px;align-items:center;min-height:48px;padding:10px 14px;border-radius:12px;border:1.5px solid var(--linha);background:#fff;cursor:pointer;margin-bottom:8px}
+.op.on{border-color:var(--azulp);background:#F2F0FF}
+.op input{width:18px;height:18px;accent-color:var(--azulp);flex:none}
+.op span{font-size:14px;font-weight:600;line-height:1.35}
+.it{display:flex;gap:12px;align-items:center;min-height:44px;cursor:pointer}
+.it input{width:20px;height:20px;accent-color:var(--azulp);flex:none}
+.it .e{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.it .e b{font-size:14px}
+.it .e span{font-size:12px;color:var(--texto3)}
+.ch{min-height:40px;border:1.5px solid #D5DCE6;background:#fff;border-radius:99px;padding:0 14px;font-size:13px;font-weight:700}
+.ch.on{border-color:var(--azulp);background:var(--azulp);color:#fff}
+.uso{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.uso button{min-height:46px;border:1.5px solid #D5DCE6;background:#fff;border-radius:12px;font-size:13px;font-weight:700}
+.uso button.on{border-color:var(--azulp);background:#F2F0FF;color:var(--azulp)}
+.ajuda{background:var(--az-bg);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:#0B3A5C;line-height:1.45}
+.ajuda button{align-self:flex-start;min-height:40px;border-radius:10px;padding:0 14px;background:#fff;border:1px solid #B9DDF9;font-size:13px;font-weight:800;color:var(--az)}
+.enviar-cel{min-height:52px;border:0;background:var(--azulp);color:#fff;border-radius:14px;font-size:16px;font-weight:800}
+.check{width:56px;height:56px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center}
+.passo-f{display:flex;gap:10px;font-size:14px;line-height:1.45}
+.passo-f b{color:var(--azulp)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0F172A;color:#fff;font-size:13px;font-weight:600;padding:10px 16px;border-radius:10px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 10px 30px rgba(15,23,42,.3)}
+</style>
+</head>
+<body>
+<div class="proto">
+  <span><b>Protótipo</b> · dados de exemplo, nada aqui é real</span>
+  <nav aria-label="Telas do protótipo">
+    <a href="#suporte" data-tela="suporte">Suporte</a>
+    <a href="#reembolsos" data-tela="reembolsos">Reembolsos e motivos</a>
+    <a href="#formulario" data-tela="formulario">Formulário do cliente</a>
+  </nav>
+</div>
+<main id="app"></main>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// Protótipo da Central de Suporte. Tudo aqui é exemplo e roda só no
+// navegador: nenhuma mensagem é enviada, nenhum dado é salvo.
+// ══════════════════════════════════════════════════════
+var esc = function(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+var real = function(v){ return 'R$ ' + v.toFixed(2).replace('.', ','); };
+var pctBr = function(x, c){ return (x * 100).toFixed(c).replace('.', ',') + '%'; };
+var TOM = {
+  ok: ['#E6F4EC','#0B6B3A','#16A34A'], bad: ['#FCE9EF','#A3173F','#C52C58'], warn: ['#FFF0E8','#A93A0A','#FF5926'],
+  neu: ['#EEF1F6','#334155','#94A3B8'], ia: ['#F1ECFB','#3E1493','#3E1493'], azul: ['#E9F4FE','#075985','#1B9CFA']
+};
+var pill = function(txt, tom){ var t = TOM[tom] || TOM.neu; return '<span class="pill" style="background:'+t[0]+';color:'+t[1]+'">'+esc(txt)+'</span>'; };
+var ASSUNTO_TOM = { 'Acesso':'azul', 'Pagamento':'warn', 'Reembolso':'bad', 'Antes de comprar':'ia' };
+var CANAL = { whats:'WhatsApp', email:'E-mail', insta:'Instagram' };
+var PELO = { whats:'no WhatsApp', email:'por e-mail', insta:'no Instagram' };
+var AVATAR = [['#E9F4FE','#075985'],['#F1ECFB','#3E1493'],['#FFF0E8','#A93A0A'],['#FCE9EF','#A3173F'],['#E6F4EC','#0B6B3A']];
+var ICO = {
+  whats: '<svg class="ico" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.9 7.1L3 20l1.4-4.9A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+  email: '<svg class="ico" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  insta: '<svg class="ico" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8"/></svg>',
+  busca: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  relogio: '<svg class="ico" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  ia: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="stroke-width:1.8"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg>',
+  lapis: '<svg class="ico" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 4 5 5L9 20H4v-5z"/></svg>',
+  enviar: '<svg class="ico" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>',
+  x: '<svg class="ico" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" style="stroke-width:2.2"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  ok: '<svg class="ico" width="28" height="28" viewBox="0 0 24 24" aria-hidden="true" style="stroke-width:2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>'
+};
+
+// ── dados de exemplo ──
+var CONV = [
+  { id:'c1', nome:'Mariana Lopes', canal:'whats', assunto:'Acesso', status:'aberto', semResposta:true, espera:'12 min', atrasado:true, atendente:'Bia',
+    compra:'Comprou · R$ 97', compraTom:'ok', email:'mari.lopes@exemplo.com', contato:'+55 11 9••••-4471', desde:'Cliente desde 03/10 · 1ª conversa',
+    tags:['Comprou','Pix','Prova dia 19'],
+    resumo:'pagou no Pix às 13:28 e o acesso foi para o e-mail, que ainda não foi aberto. Está com pressa: a prova é dia 19.',
+    msgs:[ {t:'sis',x:'Compra aprovada · Apostila Concurso 697 · R$ 97,00 no Pix',h:'03/10 13:28'},
+           {t:'sis',x:'E-mail de acesso enviado para mari.lopes@exemplo.com · ainda não aberto',h:'03/10 13:29'},
+           {t:'cli',x:'Oi, boa tarde',h:'03/10 13:41'},
+           {t:'cli',x:'Paguei o pix agora pouco e não chegou nada no meu e-mail',h:'03/10 13:41'},
+           {t:'cli',x:'Alguém pode me ajudar? Minha prova é dia 19',h:'03/10 13:52'} ],
+    sugestoes:[ 'Oi, Mariana! Seu pagamento foi aprovado às 13:28 e o acesso foi enviado para mari.lopes@exemplo.com. Ele costuma cair na aba Promoções ou no Spam. Acabei de reenviar e deixo o link direto aqui também: [link de acesso]. O login é o seu próprio e-mail. Boa prova no dia 19!',
+                'Oi, Mariana! Está tudo certo com o seu pagamento. Reenviei o acesso agora, e você também pode entrar direto por aqui: [link de acesso] (login: mari.lopes@exemplo.com). Qualquer coisa, me chama.' ],
+    porque:['Compra aprovada há 24 min','E-mail de acesso não foi aberto','Citou a prova do dia 19'],
+    compras:[ {p:'Apostila Concurso 697',q:'03/10 13:28 · Pix',v:'R$ 97,00',s:'Pago',tom:'ok'}, {p:'Acervo Completo',q:'03/10 13:30 · oferta depois da compra',v:'R$ 47,00',s:'Não aceitou',tom:'neu'} ],
+    acesso:[ {x:'E-mail de acesso enviado às 13:29 · não aberto',tom:'warn'}, {x:'Área de membros: ainda não entrou',tom:'warn'} ],
+    jornada:[ {t:'Anúncio AD113',s:'Facebook · CBO 1.1.X Concurso · 12:58'}, {t:'VSL 697',s:'assistiu 18 min · passou do pitch'}, {t:'Checkout',s:'abriu às 13:26'}, {t:'Comprou',s:'13:28 · R$ 97'} ],
+    antes:'Primeira vez no suporte.' },
+  { id:'c2', nome:'Carlos Eduardo', canal:'whats', assunto:'Pagamento', status:'aberto', semResposta:true, espera:'3 min', atrasado:false, atendente:'Lucas',
+    compra:'Pix expirado', compraTom:'bad', email:'carlos.edu@exemplo.com', contato:'+55 21 9••••-0912', desde:'Lead desde 02/10 · 1ª conversa',
+    tags:['Pix expirado','Na recuperação'],
+    resumo:'gerou um Pix de R$ 97 ontem à noite e não pagou. Quer pagar agora pelo mesmo preço.',
+    msgs:[ {t:'sis',x:'Pix gerado · Apostila Concurso 697 · R$ 97,00',h:'02/10 21:14'},
+           {t:'sis',x:'Pix expirou sem pagamento · entrou na fila de recuperação',h:'02/10 21:44'},
+           {t:'cli',x:'Bom dia',h:'03/10 13:58'},
+           {t:'cli',x:'O pix venceu ontem, consigo pagar ainda pelo mesmo valor?',h:'03/10 13:58'} ],
+    sugestoes:[ 'Bom dia, Carlos! Consegue sim, pelo mesmo valor de R$ 97. Gerei um Pix novo pra você, válido por 30 minutos: [link do Pix]. Assim que o pagamento cair, o acesso chega no seu e-mail em poucos minutos.',
+                'Consegue sim, Carlos! O valor continua R$ 97. Aqui está um Pix novo: [link do Pix]. Se preferir pagar no cartão, é por este link: [link do checkout].' ],
+    porque:['Pix de R$ 97 expirou ontem às 21:44','Mesmo produto e mesmo preço','Fechar aqui tira ele da recuperação'],
+    compras:[ {p:'Apostila Concurso 697',q:'02/10 21:14 · Pix',v:'R$ 97,00',s:'Pix expirado',tom:'bad'} ],
+    acesso:[ {x:'Sem acesso: ainda não comprou',tom:'neu'} ],
+    jornada:[ {t:'Link da bio',s:'Instagram · 02/10 20:51'}, {t:'VSL 697',s:'assistiu 31 min · passou do pitch'}, {t:'Checkout',s:'gerou o Pix às 21:14'}, {t:'Não pagou',s:'Pix expirou às 21:44'} ],
+    antes:'Primeira vez no suporte.' },
+  { id:'c3', nome:'Fernanda Reis', canal:'email', assunto:'Reembolso', status:'aberto', semResposta:true, espera:'1h 10min', atrasado:true, atendente:'Lucas',
+    compra:'Comprou · R$ 144', compraTom:'ok', email:'fe.reis@exemplo.com', contato:'+55 31 9••••-2208', desde:'Cliente desde 29/09 · 2ª conversa',
+    tags:['Pediu reembolso','Garantia de 7 dias','Cartão'],
+    resumo:'comprou há 4 dias, está dentro da garantia de 7 dias e pede o reembolso. Entrou na área de membros 3 vezes.',
+    msgs:[ {t:'sis',x:'Compra aprovada · Apostila Concurso 697 + Acervo Completo · R$ 144,00 no cartão',h:'29/09 10:12'},
+           {t:'sis',x:'Conversa anterior resolvida · dúvida sobre o módulo de Português',h:'30/09 16:20'},
+           {t:'cli',x:'Olá. Comprei no dia 29 e quero cancelar, o material não era o que eu esperava. Como faço para receber o dinheiro de volta?',h:'03/10 12:51'} ],
+    sugestoes:[ 'Olá, Fernanda. Sinto muito que o material não tenha atendido ao que você esperava. Você está dentro da garantia de 7 dias, então o reembolso é um direito seu e eu já posso abrir agora: o valor volta no mesmo cartão. Se quiser, me conta o que faltou. Isso ajuda a gente a melhorar a apostila.',
+                'Olá, Fernanda. Pode deixar: abri o seu reembolso de R$ 144,00 agora, e ele volta no mesmo cartão da compra. Você recebe a confirmação por e-mail.' ],
+    porque:['Comprou há 4 dias: dentro da garantia','Pagou no cartão: volta no cartão','Pedido claro: não insistir'],
+    compras:[ {p:'Apostila Concurso 697',q:'29/09 10:12 · cartão',v:'R$ 97,00',s:'Pago',tom:'ok'}, {p:'Acervo Completo',q:'29/09 10:13 · cartão',v:'R$ 47,00',s:'Pago',tom:'ok'} ],
+    acesso:[ {x:'Área de membros: entrou 3 vezes · última em 30/09',tom:'ok'} ],
+    jornada:[ {t:'Anúncio AD097',s:'Facebook · 29/09 09:40'}, {t:'VSL 597',s:'assistiu 22 min · passou do pitch'}, {t:'Checkout',s:'cartão · 10:11'}, {t:'Comprou',s:'10:12 · R$ 144'} ],
+    antes:'1 conversa · 30/09 · dúvida sobre o módulo de Português · resolvida em 11 min.' },
+  { id:'c5', nome:'Ana Beatriz', canal:'whats', assunto:'Acesso', status:'aberto', semResposta:true, espera:'1 min', atrasado:false, atendente:'Bia',
+    compra:'Comprou · R$ 97', compraTom:'ok', email:'anabia.s@exemplo.com', contato:'+55 11 9••••-7735', desde:'Cliente desde 02/10 · 1ª conversa',
+    tags:['Comprou','Só pelo celular'],
+    resumo:'comprou ontem no cartão e só tentou abrir pelo celular. A apostila fica carregando.',
+    msgs:[ {t:'sis',x:'Compra aprovada · Apostila Concurso 597 · R$ 97,00 no cartão',h:'02/10 19:05'},
+           {t:'sis',x:'Entrou na área de membros pelo celular',h:'03/10 13:57'},
+           {t:'cli',x:'Oi! Não consigo abrir a apostila no celular, fica só carregando',h:'03/10 14:00'} ],
+    sugestoes:[ 'Oi, Ana! No celular, o jeito mais fácil é abrir pelo navegador (Chrome ou Safari), e não pelo app do e-mail. Entra em [link de acesso], faz login com o seu e-mail e toca em "Baixar PDF" pra ler mesmo sem internet. Se continuar carregando, me manda um print que eu vejo aqui.',
+                'Oi, Ana! Tenta abrir este link direto no Chrome ou no Safari: [link de acesso]. Lá dentro, "Baixar PDF" deixa a apostila salva no celular.' ],
+    porque:['Só entrou pelo celular','Pelo app do e-mail o PDF costuma travar','A pronta "Acesso pelo celular" resolveu casos iguais hoje'],
+    compras:[ {p:'Apostila Concurso 597',q:'02/10 19:05 · cartão',v:'R$ 97,00',s:'Pago',tom:'ok'} ],
+    acesso:[ {x:'E-mail de acesso aberto em 02/10 19:07',tom:'ok'}, {x:'Área de membros: 2 entradas, só pelo celular',tom:'warn'} ],
+    jornada:[ {t:'Anúncio AD113',s:'Facebook · 02/10 18:31'}, {t:'VSL 597',s:'assistiu 27 min · passou do pitch'}, {t:'Checkout',s:'cartão · 19:04'}, {t:'Comprou',s:'19:05 · R$ 97'} ],
+    antes:'Primeira vez no suporte.' },
+  { id:'c4', nome:'João Pedro', canal:'insta', assunto:'Antes de comprar', status:'aguardando', semResposta:false, espera:'respondida há 8 min', atrasado:false, atendente:'Carol',
+    compra:'Não comprou', compraTom:'neu', email:'—', contato:'@joaopedro.pm', contatoRot:'Instagram', desde:'Lead desde 03/10 · 1ª conversa',
+    tags:['Lead','Não comprou'],
+    resumo:'quer saber se a apostila serve pra PM-SP e quanto custa. A resposta falou do conteúdo, mas não do preço.',
+    msgs:[ {t:'cli',x:'A apostila serve pra prova da PM de SP? Quanto custa?',h:'03/10 13:44'},
+           {t:'ag',x:'Oi, João! Serve sim: ela segue o último edital da PM-SP e tem simulados no fim de cada módulo.',h:'03/10 13:50',a:'Carol'} ],
+    sugestoes:[ 'Ah, e sobre o valor: hoje está R$ 97, no Pix ou no cartão. Pra garantir a sua, é por aqui: [link do checkout]. Se ficar alguma dúvida sobre o conteúdo, me chama.',
+                'Esqueci de te passar o valor: R$ 97. Link pra garantir: [link do checkout].' ],
+    porque:['Perguntou o preço e não recebeu','Viu 18 min da VSL e não clicou em comprar','Sem o link, precisa voltar pro vídeo'],
+    compras:[ {p:'Ainda não comprou',q:'não abriu o checkout',v:'—',s:'Lead',tom:'neu'} ],
+    acesso:[ {x:'Sem acesso: ainda não comprou',tom:'neu'} ],
+    jornada:[ {t:'Instagram',s:'mensagem direta · 03/10 13:30'}, {t:'VSL 697',s:'assistiu 18 min · não chegou no pitch'}, {t:'Suporte',s:'perguntou o preço às 13:44'} ],
+    antes:'Primeira vez no suporte.' },
+  { id:'c7', nome:'Patrícia Gomes', canal:'whats', assunto:'Pagamento', status:'aguardando', semResposta:false, espera:'respondida há 26 min', atrasado:false, atendente:'Bia',
+    compra:'Boleto pendente', compraTom:'warn', email:'patigomes@exemplo.com', contato:'+55 81 9••••-5160', desde:'Lead desde 02/10 · 1ª conversa',
+    tags:['Boleto','Aguardando pagamento'],
+    resumo:'pagou o boleto ontem e quer saber quando libera. O checkout ainda não confirmou o pagamento.',
+    msgs:[ {t:'sis',x:'Boleto gerado · Apostila Concurso 697 · R$ 97,00',h:'02/10 17:22'},
+           {t:'cli',x:'Paguei o boleto ontem, quando libera?',h:'03/10 13:20'},
+           {t:'ag',x:'Oi, Patrícia! O boleto leva até 3 dias úteis pra compensar. Assim que compensar, o acesso chega no seu e-mail automaticamente.',h:'03/10 13:34',a:'Bia'} ],
+    sugestoes:[ 'Patrícia, assim que o banco confirmar eu te aviso aqui também. Se quiser, me manda o comprovante que eu acompanho de perto.' ],
+    porque:['Boleto ainda não compensou','Já pagou: acompanhar evita desistência'],
+    compras:[ {p:'Apostila Concurso 697',q:'02/10 17:22 · boleto',v:'R$ 97,00',s:'Aguardando',tom:'warn'} ],
+    acesso:[ {x:'Libera sozinho quando o boleto compensar',tom:'neu'} ],
+    jornada:[ {t:'Anúncio AD113',s:'Facebook · 02/10 16:58'}, {t:'VSL 697',s:'assistiu 24 min · passou do pitch'}, {t:'Checkout',s:'boleto · 17:22'} ],
+    antes:'Primeira vez no suporte.' },
+  { id:'c6', nome:'Rafael Souza', canal:'email', assunto:'Acesso', status:'resolvido', semResposta:false, espera:'resolvida 11:02', atrasado:false, atendente:'Bia',
+    compra:'Comprou · R$ 97', compraTom:'ok', email:'rafa.souza@exemplo.com', contato:'+55 41 9••••-3381', desde:'Cliente desde 01/10 · 1ª conversa',
+    tags:['Comprou','Resolvida em 4 min'],
+    resumo:'não achava o e-mail de acesso. Recebeu a resposta pronta "Reenviar acesso" e entrou em seguida.',
+    msgs:[ {t:'cli',x:'Bom dia, não recebi o acesso.',h:'03/10 10:58'},
+           {t:'ag',x:'Bom dia, Rafael! Acabei de reenviar o seu acesso para rafa.souza@exemplo.com. Se não aparecer, olha em Promoções e Spam. Link direto: [link de acesso].',h:'03/10 11:01',a:'Bia'},
+           {t:'cli',x:'Achei, obrigado! Deu certo.',h:'03/10 11:02'},
+           {t:'sis',x:'Resolvida por Bia em 4 min',h:'03/10 11:02'} ],
+    sugestoes:[], porque:[],
+    compras:[ {p:'Apostila Concurso 697',q:'01/10 22:40 · Pix',v:'R$ 97,00',s:'Pago',tom:'ok'} ],
+    acesso:[ {x:'Área de membros: entrou às 11:03',tom:'ok'} ],
+    jornada:[ {t:'Anúncio AD113',s:'Facebook · 01/10 22:05'}, {t:'VSL 697',s:'assistiu 26 min · passou do pitch'}, {t:'Comprou',s:'22:40 · R$ 97'} ],
+    antes:'Primeira vez no suporte.' },
+  { id:'c8', nome:'Diego Alves', canal:'whats', assunto:'Pagamento', status:'resolvido', semResposta:false, espera:'resolvida 10:41', atrasado:false, atendente:'Lucas',
+    compra:'Comprou · R$ 97', compraTom:'ok', email:'diegoalves@exemplo.com', contato:'+55 62 9••••-1047', desde:'Cliente desde 03/10 · 1ª conversa',
+    tags:['Cartão recusado','Pagou no Pix'],
+    resumo:'o cartão foi recusado. Recebeu o link do Pix e comprou 13 min depois.',
+    msgs:[ {t:'sis',x:'Cartão recusado · Apostila Concurso 697 · R$ 97,00',h:'03/10 10:17'},
+           {t:'cli',x:'O cartão recusou, tem outro jeito de pagar?',h:'03/10 10:20'},
+           {t:'ag',x:'Tem sim, Diego! Dá pra pagar no Pix por aqui: [link do Pix]. O acesso chega na hora.',h:'03/10 10:26',a:'Lucas'},
+           {t:'sis',x:'Compra aprovada · Apostila Concurso 697 · R$ 97,00 no Pix',h:'03/10 10:39'},
+           {t:'sis',x:'Resolvida por Lucas em 21 min',h:'03/10 10:41'} ],
+    sugestoes:[], porque:[],
+    compras:[ {p:'Apostila Concurso 697',q:'03/10 10:17 · cartão',v:'R$ 97,00',s:'Recusado',tom:'bad'}, {p:'Apostila Concurso 697',q:'03/10 10:39 · Pix',v:'R$ 97,00',s:'Pago',tom:'ok'} ],
+    acesso:[ {x:'Área de membros: entrou às 10:44',tom:'ok'} ],
+    jornada:[ {t:'Anúncio AD113',s:'Facebook · 03/10 09:51'}, {t:'VSL 697',s:'assistiu 29 min · passou do pitch'}, {t:'Checkout',s:'cartão recusado · 10:17'}, {t:'Comprou',s:'10:39 · Pix'} ],
+    antes:'Primeira vez no suporte.' }
+];
+var PRONTAS = [
+  { n:'Reenviar acesso', x:'Acabei de reenviar o seu acesso para [e-mail]. Se não aparecer na caixa de entrada, olha em Promoções e Spam. Link direto: [link de acesso].' },
+  { n:'Acesso pelo celular', x:'No celular, abre pelo navegador (Chrome ou Safari), não pelo app do e-mail: [link de acesso]. Lá dentro, "Baixar PDF" deixa a apostila salva pra ler sem internet.' },
+  { n:'Pix novo', x:'Gerei um Pix novo pra você, válido por 30 minutos: [link do Pix]. Assim que cair, o acesso chega no seu e-mail.' },
+  { n:'Garantia de 7 dias', x:'Você está dentro da garantia de 7 dias, então o reembolso é um direito seu. Posso abrir agora: o valor volta pelo mesmo meio de pagamento.' },
+  { n:'Boleto', x:'O boleto leva até 3 dias úteis pra compensar. Assim que compensar, o acesso chega no seu e-mail automaticamente.' },
+  { n:'Formulário de reembolso', x:'Pra abrir o reembolso, é só preencher este formulário: [link do formulário]. Leva 1 minuto, e o reembolso não depende das respostas.' }
+];
+var REEMB = {
+  c1: { itens:[{n:'Apostila Concurso 697',q:'03/10 · Pix',v:97}], dias:0, devolve:'Pix: volta pra conta que pagou', motivo:'', detalhe:'' },
+  c3: { itens:[{n:'Apostila Concurso 697',q:'29/09 · cartão',v:97},{n:'Acervo Completo',q:'29/09 · cartão',v:47}], dias:4, devolve:'Estorno no cartão final 4421', motivo:'esperava', protocolo:'R-1042',
+        detalhe:'Comprei no dia 29 e quero cancelar, o material não era o que eu esperava.', dica:'A IA leu a conversa e marcou "Não era o que eu esperava".' },
+  c5: { itens:[{n:'Apostila Concurso 597',q:'02/10 · cartão',v:97}], dias:1, devolve:'Estorno no cartão final 0187', motivo:'acesso',
+        detalhe:'Não consigo abrir a apostila no celular, fica só carregando.', dica:'A IA marcou "acesso": vale tentar resolver antes. No mês, 9 de 21 desistiram do reembolso quando o acesso foi resolvido.' },
+  c6: { itens:[{n:'Apostila Concurso 697',q:'01/10 · Pix',v:97}], dias:2, devolve:'Pix: volta pra conta que pagou', motivo:'', detalhe:'' },
+  c8: { itens:[{n:'Apostila Concurso 697',q:'03/10 · Pix',v:97}], dias:0, devolve:'Pix: volta pra conta que pagou', motivo:'', detalhe:'' }
+};
+var MOTIVOS = [
+  { k:'acesso', n:'Não consegui acessar o material', cli:'Não consegui acessar o material', q:21, d:8 },
+  { k:'esperava', n:'Não era o que eu esperava', cli:'O conteúdo não era o que eu esperava', q:16, d:1 },
+  { k:'concurso', n:'Não serve pro meu concurso', cli:'Não serve pro meu concurso', q:11, d:-2 },
+  { k:'caro', n:'Achei caro / sem dinheiro agora', cli:'Achei caro / estou sem dinheiro agora', q:8, d:0 },
+  { k:'cobranca', n:'Cobrança que não reconheço', cli:'Veio uma cobrança que não reconheço', q:7, d:5 },
+  { k:'duplicada', n:'Comprei duas vezes', cli:'Comprei duas vezes', q:4, d:-1 },
+  { k:'erros', n:'Erros ou conteúdo desatualizado', cli:'Encontrei erros ou conteúdo desatualizado', q:2, d:0 },
+  { k:'nd', n:'Preferiu não dizer', cli:'Prefiro não dizer', q:2, d:0 }
+];
+var MOTIVO_NOME = {}; MOTIVOS.forEach(function(m){ MOTIVO_NOME[m.k] = m.n; });
+var TEMAS = [ {n:'Acesso ao material',q:26,t:'9 min',cor:'#1B9CFA'}, {n:'Pagamento e Pix',q:17,t:'14 min',cor:'#FF5926'}, {n:'Antes de comprar',q:11,t:'21 min',cor:'#3E1493'}, {n:'Reembolso',q:6,t:'2h 05min',cor:'#C52C58'}, {n:'Outros',q:4,t:'30 min',cor:'#94A3B8'} ];
+var EQUIPE = [ {n:'Bia',c:24,r:'2min 48s',atraso:false,res:'38 min',nota:'4,8',ia:'52%'}, {n:'Lucas',c:19,r:'6min 10s',atraso:true,res:'1h 05min',nota:'4,6',ia:'26%'}, {n:'Carol',c:15,r:'4min 00s',atraso:false,res:'52 min',nota:'4,7',ia:'41%'} ];
+var REVISAR = [
+  { tom:'bad', rot:'Atrasada', x:'Fernanda Reis pediu reembolso por e-mail há 1h 10min e ainda não teve resposta. Reembolso parado costuma virar contestação no cartão.', conv:'c3' },
+  { tom:'bad', rot:'Atrasada', x:'Mariana Lopes está há 12 min sem resposta no WhatsApp (meta: 5 min) e citou a prova do dia 19.', conv:'c1' },
+  { tom:'warn', rot:'Faltou', x:'Carol respondeu o João Pedro sem o preço e sem o link de compra. Ele perguntou os dois.', conv:'c4' },
+  { tom:'ok', rot:'Bem feito', x:'Bia resolveu o Rafael Souza em 4 min com a resposta pronta "Reenviar acesso".', conv:'c6' }
+];
+var COMENTARIOS = [
+  { m:'acesso', x:'Paguei e não chegou nada no e-mail, já faz 2 dias.', de:'Apostila 697 · Pix · pediu 2 dias depois' },
+  { m:'acesso', x:'O PDF não abre no celular, fica só carregando.', de:'Apostila 597 · cartão · pediu no mesmo dia' },
+  { m:'esperava', x:'Achei que tinha videoaula, no anúncio parecia um curso.', de:'Apostila 697 · veio do AD097 · pediu 4 dias depois' },
+  { m:'esperava', x:'Muito resumido pra prova de nível médio.', de:'Apostila 597 · veio do AD113 · pediu 5 dias depois' },
+  { m:'concurso', x:'É pro concurso da PM de MG, não de SP.', de:'Apostila 697 · pediu 2 dias depois' },
+  { m:'cobranca', x:'Veio uma cobrança de R$ 47 que eu não lembro de ter feito.', de:'Acervo Completo · pediu 1 dia depois' },
+  { m:'caro', x:'Me apertou esse mês, depois eu compro de novo.', de:'Apostila 597 · pediu 3 dias depois' },
+  { m:'duplicada', x:'Cliquei duas vezes no botão e cobrou duas vezes.', de:'Apostila 697 · pediu no mesmo dia' },
+  { m:'erros', x:'A parte de Direito Administrativo está com a lei antiga.', de:'Apostila 697 · pediu 6 dias depois' }
+];
+var ST_PED = { analise:['Em análise','warn'], reembolsado:['Reembolsado','neu'], ficou:['Ficou · acesso resolvido','ok'], fora:['Fora dos 7 dias','bad'] };
+var PEDIDOS = [
+  { p:'R-1042', c:'Fernanda Reis', prod:'Apostila 697 + Acervo', at:'Lucas', m:'esperava', dias:'4 dias depois', v:'R$ 144,00', st:'analise' },
+  { p:'R-1041', c:'Paulo Henrique', prod:'Apostila 697', at:'Bia', m:'acesso', dias:'no mesmo dia', v:'R$ 97,00', st:'ficou' },
+  { p:'R-1040', c:'Juliana Prado', prod:'Acervo Completo', at:'Carol', m:'cobranca', dias:'1 dia depois', v:'R$ 47,00', st:'reembolsado' },
+  { p:'R-1039', c:'Marcos Vinícius', prod:'Apostila 597', at:'Lucas', m:'concurso', dias:'2 dias depois', v:'R$ 97,00', st:'reembolsado' },
+  { p:'R-1038', c:'Renata Alves', prod:'Apostila 697', at:'Bia', m:'esperava', dias:'6 dias depois', v:'R$ 97,00', st:'reembolsado' },
+  { p:'R-1037', c:'Gustavo Lima', prod:'Apostila 697', at:'Carol', m:'acesso', dias:'1 dia depois', v:'R$ 97,00', st:'reembolsado' },
+  { p:'R-1036', c:'Camila Torres', prod:'Apostila 597', at:'Bia', m:'caro', dias:'3 dias depois', v:'R$ 97,00', st:'reembolsado' },
+  { p:'R-1035', c:'André Souza', prod:'Apostila 697', at:'Lucas', m:'nd', dias:'9 dias depois', v:'R$ 97,00', st:'fora' }
+];
+var DIAS = [ {n:'No dia',q:14}, {n:'1 dia',q:12}, {n:'2–3 dias',q:18}, {n:'4–5 dias',q:15}, {n:'6–7 dias',q:10}, {n:'Depois de 7',q:2} ];
+var PRODUTOS = [ {n:'Apostila Concurso 697',p:38,v:702}, {n:'Apostila Concurso 597',p:22,v:431}, {n:'Acervo Completo (upsell)',p:11,v:151} ];
+var ORIGENS = [ {n:'AD113',p:29,v:540}, {n:'AD097',p:18,v:212,nota:'10 dos 18 disseram "não era o que eu esperava"'}, {n:'Link da bio',p:6,v:190}, {n:'Outras origens',p:18,v:342} ];
+var USO = [ {n:'Nem abriu',q:24}, {n:'Leu um pouco',q:31}, {n:'Usou bastante',q:9}, {n:'Não respondeu',q:7} ];
+var SEGUE = {
+  acesso: { q:'O que aconteceu?', chips:['Não recebi o e-mail','Não consigo entrar','O PDF não abre','Outro'], ajuda:true },
+  esperava: { q:'O que faltou?', chips:['Videoaulas','Mais exercícios','Mais aprofundado','Mais resumido','Outra coisa'] },
+  concurso: { q:'Qual concurso você vai prestar?', campo:'Concurso e cargo', ex:'Ex.: PM de Minas Gerais, soldado' },
+  cobranca: { q:'Qual cobrança?', chips:['Acervo Completo · R$ 47','Valor diferente do anunciado','Parcelas diferentes'] },
+  duplicada: { q:'A gente devolve a compra repetida e você continua com uma. Qual veio duas vezes?', chips:['Apostila','Acervo'] },
+  erros: { q:'Onde está o erro?', campo:'Matéria e página, se lembrar', ex:'Ex.: Direito Administrativo, p. 42' }
+};
+var ITENS_F = [ {k:'a',n:'Apostila Concurso 697',sub:'29/09 · cartão',v:97}, {k:'b',n:'Acervo Completo',sub:'29/09 · cartão',v:47} ];
+
+// ── estado ──
+var S = {
+  tela:'suporte',
+  sel:'c1', aba:'andamento', assunto:'todos', canal:'todos', busca:'', periodo:'hoje',
+  sug:true, sugIdx:0, draft:'', nota:false, aviso:'', enviados:{}, respondidos:{}, status:{},
+  modal:false, rbMotivo:'', rbDetalhe:'', rbItens:{}, rbErro:'',
+  rMotivo:'', rPeriodo:'30d', copiado:false,
+  fItens:{a:true,b:true}, fMotivo:'', fChips:{}, fCampo:'', fUso:'', fTexto:'', fErro:'', fFeito:false
+};
+function mudar(x, so){ Object.assign(S, x); (so || render)(); }
+var toastT = 0;
+function toast(t){ var el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ el.hidden = true; }, 3200); }
+
+// ── regras da caixa de entrada ──
+function statusDe(c){ return S.status[c.id] || c.status; }
+function semResp(c){ return !S.respondidos[c.id] && c.semResposta && statusDe(c) !== 'resolvido'; }
+function conv(id){ for(var i=0;i<CONV.length;i++) if(CONV[i].id === id) return CONV[i]; return CONV[0]; }
+function iniciais(n){ return n.split(' ').map(function(p){ return p[0]; }).slice(0,2).join(''); }
+function avatar(c){ return AVATAR[CONV.indexOf(c) % AVATAR.length]; }
+function primeiro(c){ return c.nome.split(' ')[0]; }
+function adicionar(c, lst){ var o = Object.assign({}, S.enviados); o[c.id] = (o[c.id] || []).concat(lst); return o; }
+function setDe(obj, k, v){ var o = Object.assign({}, obj); o[k] = v; return o; }
+
+// ══════════════════════════════════════════════════════
+// TELA 1 · SUPORTE
+// ══════════════════════════════════════════════════════
+function telaSuporte(){
+  var abertas = CONV.filter(function(c){ return statusDe(c) !== 'resolvido'; });
+  var semR = CONV.filter(semResp), atrasadas = CONV.filter(function(c){ return semResp(c) && c.atrasado; });
+  var metricas = [
+    ['Abertas agora', String(abertas.length), semR.length+' sem resposta · '+atrasadas.length+' passaram do prazo', atrasadas.length ? '#A3173F' : '#475569'],
+    ['1ª resposta · média', '4min 13s', 'meta: 5 min no WhatsApp', '#0B6B3A'],
+    ['Até resolver · média', '47 min', 'metade em menos de 18 min', '#475569'],
+    ['Resolvidas hoje', '58', '91% não voltaram a chamar', '#0B6B3A'],
+    ['Com ajuda da IA', '41%', 'das respostas · todas revisadas antes', '#3E1493'],
+    ['Nota dos clientes', '4,7', '39 avaliações hoje', '#475569']
+  ];
+  var per = [['hoje','Hoje'],['7d','7 dias'],['30d','30 dias']];
+  return '<div class="pagina">'+
+    '<header class="topo"><div class="esq"><div class="linha-tit"><h1>Suporte</h1><span class="vivo"><i></i>AO VIVO · '+abertas.length+' ABERTAS AGORA</span></div>'+
+      '<p>Todas as conversas de WhatsApp, e-mail e Instagram num lugar só, com a compra, o pagamento, o acesso e a jornada de cada cliente do lado.</p></div>'+
+      '<div class="ctl"><div class="seg" role="group" aria-label="Período">'+per.map(function(p){ return '<button data-acao="periodo" data-arg="'+p[0]+'" aria-pressed="'+(S.periodo===p[0])+'" class="'+(S.periodo===p[0]?'on':'')+'">'+p[1]+'</button>'; }).join('')+'</div>'+
+      '<label class="caixa-sel">Canal <select data-campo="canal">'+[['todos','Todos'],['whats','WhatsApp'],['email','E-mail'],['insta','Instagram']].map(function(o){ return '<option value="'+o[0]+'"'+(S.canal===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></label>'+
+      '<a class="btn rosa" href="#reembolsos">Reembolsos e motivos <span>4</span></a>'+
+      '<button class="btn" data-acao="toast" data-arg="Aqui você define quem atende cada canal e cada assunto.">Quem atende o quê</button></div></header>'+
+    '<div class="metricas">'+metricas.map(function(m){ return '<div class="metrica"><span class="rot">'+m[0]+'</span><span class="v">'+m[1]+'</span><span class="s" style="color:'+m[3]+'">'+esc(m[2])+'</span></div>'; }).join('')+'</div>'+
+    '<div class="inbox">'+painelFila(semR.length, abertas.length)+painelConversa()+painelCliente()+'</div>'+
+    supervisao()+
+    (S.modal ? janelaReembolso() : '')+
+  '</div>';
+}
+
+function painelFila(nSem, nAbertas){
+  var abas = [['sem','Sem resposta',nSem],['andamento','Em andamento',nAbertas],['resolvidas','Resolvidas',58]];
+  var ass = [['todos','Todos'],['Acesso','Acesso'],['Pagamento','Pagamento'],['Reembolso','Reembolso'],['Antes de comprar','Antes de comprar']];
+  return '<section class="painel fila" aria-label="Fila de conversas"><div class="cab">'+
+    '<div class="abas" role="tablist" aria-label="Situação">'+abas.map(function(a){
+      return '<button role="tab" aria-selected="'+(S.aba===a[0])+'" class="'+(S.aba===a[0]?'on':'')+'" data-acao="aba" data-arg="'+a[0]+'">'+a[1]+' <b class="'+(a[0]==='sem'&&a[2]?'alerta':'')+'">'+a[2]+'</b></button>'; }).join('')+'</div>'+
+    '<label class="busca">'+ICO.busca+'<span class="so-leitor">Buscar conversa</span><input type="search" data-campo="busca" value="'+esc(S.busca)+'" placeholder="Nome, e-mail ou telefone"></label>'+
+    '<div class="chips">'+ass.map(function(a){ var on = S.assunto===a[0], t = TOM[ASSUNTO_TOM[a[0]]||'neu'];
+      return '<button class="chip" data-acao="assunto" data-arg="'+esc(a[0])+'" aria-pressed="'+on+'" style="'+(on?'background:'+t[0]+';color:'+t[1]+';border-color:'+t[1]:'')+'">'+a[1]+'</button>'; }).join('')+'</div>'+
+  '</div><div class="lista" id="fila-lista">'+filaLista()+'</div></section>';
+}
+function filaLista(){
+  var b = S.busca.trim().toLowerCase();
+  var l = CONV.filter(function(c){
+    var st = statusDe(c);
+    if(S.aba==='sem' && !semResp(c)) return false;
+    if(S.aba==='andamento' && st==='resolvido') return false;
+    if(S.aba==='resolvidas' && st!=='resolvido') return false;
+    if(S.assunto!=='todos' && c.assunto!==S.assunto) return false;
+    if(S.canal!=='todos' && c.canal!==S.canal) return false;
+    if(b && (c.nome+' '+c.email+' '+c.contato).toLowerCase().indexOf(b) < 0) return false;
+    return true;
+  });
+  if(!l.length) return '<div class="vazio">Nenhuma conversa com esse filtro.</div>';
+  return l.map(function(c){
+    var av = avatar(c), env = S.enviados[c.id] || [];
+    var prev = env.length ? env[env.length-1] : c.msgs.filter(function(m){ return m.t!=='sis'; }).slice(-1)[0];
+    var atraso = semResp(c) && c.atrasado;
+    var espera = statusDe(c)==='resolvido' && S.status[c.id] ? 'resolvida agora' : (S.respondidos[c.id] ? 'respondida agora' : c.espera);
+    var cor = atraso ? '#A3173F' : (semResp(c) ? '#A93A0A' : '#64748B');
+    return '<button class="item'+(c.id===S.sel?' on':'')+'" data-acao="abrir" data-arg="'+c.id+'" aria-current="'+(c.id===S.sel)+'">'+
+      '<span class="av" style="background:'+av[0]+';color:'+av[1]+'">'+iniciais(c.nome)+'</span>'+
+      '<span class="meio"><span class="l1"><span class="nome">'+esc(c.nome)+'</span><span class="esp" style="color:'+cor+'">'+esc(espera)+'</span></span>'+
+      '<span class="prev">'+(prev ? ((prev.t==='ag'||prev.t==='nota')?'Você: ':'')+esc(prev.x) : '')+'</span>'+
+      '<span class="l3"><span class="canal">'+ICO[c.canal]+CANAL[c.canal]+'</span>'+pill(c.assunto, ASSUNTO_TOM[c.assunto]||'neu')+pill(c.compra, c.compraTom)+'</span></span></button>';
+  }).join('') + (S.aba==='resolvidas' ? '<div class="vazio" style="padding:14px">Mostrando as 2 mais recentes das 58 resolvidas hoje.</div>' : '');
+}
+
+function painelConversa(){
+  var c = conv(S.sel), st = statusDe(c), sr = semResp(c), atraso = sr && c.atrasado;
+  var msgs = c.msgs.concat(S.enviados[c.id] || []);
+  var temSug = c.sugestoes.length > 0, sug = temSug ? c.sugestoes[S.sugIdx % c.sugestoes.length] : '';
+  return '<section class="painel conversa" aria-label="Conversa">'+
+    '<div class="conv-cab"><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h2>'+esc(c.nome)+'</h2>'+pill(c.assunto, ASSUNTO_TOM[c.assunto]||'neu')+'</div>'+
+      '<span class="sub">'+CANAL[c.canal]+' · '+esc(c.contato)+' · atendida por <b style="color:#0F172A">'+esc(c.atendente)+'</b></span></div>'+
+      '<div class="dir">'+(sr ? '<span class="espera" style="background:'+(atraso?'#FCE9EF':'#FFF0E8')+';color:'+(atraso?'#A3173F':'#A93A0A')+'">'+ICO.relogio+'esperando há '+esc(c.espera)+'</span>' : '')+
+        '<label class="mini-sel">Situação <select data-campo="statusConv">'+[['aberto','Aberta'],['aguardando','Aguardando cliente'],['resolvido','Resolvida']].map(function(o){ return '<option value="'+o[0]+'"'+(st===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></label>'+
+        '<button class="btn-p" data-acao="toast" data-arg="Escolha pra quem passar a conversa: Bia, Lucas ou Carol.">Transferir</button>'+
+        '<button class="btn-p verde" data-acao="resolver">Resolver</button></div></div>'+
+    '<div class="resumo"><span style="color:#3E1493">'+ICO.ia+'</span><span><b>Resumo da IA:</b> '+esc(c.resumo)+'</span></div>'+
+    '<div class="fio" id="fio" aria-label="Mensagens">'+msgs.map(function(m){
+      if(m.t==='sis') return '<div class="sis">'+esc(m.x)+' · '+esc(m.h)+'</div>';
+      if(m.t==='cli') return '<div class="bolha cli"><div class="t">'+esc(m.x)+'</div><span class="h">'+esc(m.h)+'</span></div>';
+      if(m.t==='ag') return '<div class="bolha ag"><div class="t">'+esc(m.x)+'</div><span class="h">'+esc(m.a||'')+' · '+esc(m.h)+'</span></div>';
+      return '<div class="bolha nota"><div class="t"><b>Nota interna · só a equipe vê</b>\n'+esc(m.x)+'</div><span class="h">'+esc(m.a||'')+' · '+esc(m.h)+'</span></div>';
+    }).join('')+'</div>'+
+    (S.sug && temSug ? '<div class="sug"><div class="cab"><span class="tit">'+ICO.ia+'<b>Sugestão da IA</b><span>· leu a conversa, a compra e a jornada</span></span>'+
+      '<button class="x" data-acao="descartar" aria-label="Descartar sugestão">'+ICO.x+'</button></div>'+
+      '<div class="txt">'+esc(sug)+'</div>'+
+      '<div class="porque"><span class="rot">Por quê</span>'+c.porque.map(function(p){ return '<span class="p">'+esc(p)+'</span>'; }).join('')+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn-ia" data-acao="usarSug">Usar e editar</button><button class="btn-ia2" data-acao="outraSug">'+(c.sugestoes.length>1?'Outra versão':'Gerar de novo')+'</button></div></div>' : '')+
+    '<div class="compor"><div class="prontas"><span class="rot" style="margin-right:2px">Prontas</span>'+PRONTAS.map(function(r, i){ return '<button data-acao="pronta" data-arg="'+i+'">'+esc(r.n)+'</button>'; }).join('')+'</div>'+
+      '<div class="tipo" role="tablist" aria-label="Tipo de mensagem"><button role="tab" aria-selected="'+!S.nota+'" class="'+(!S.nota?'on':'')+'" data-acao="nota" data-arg="0">Responder ao cliente</button>'+
+        '<button role="tab" aria-selected="'+S.nota+'" class="nota'+(S.nota?' on':'')+'" data-acao="nota" data-arg="1">Nota interna</button></div>'+
+      '<label><span class="so-leitor">Mensagem</span><textarea rows="3" data-campo="draft" class="'+(S.nota?'nota':'')+'" placeholder="'+(S.nota?'Nota pra equipe. O cliente não vê.':'Escreva a resposta pra '+esc(primeiro(c))+', ou peça pra IA…')+'">'+esc(S.draft)+'</textarea></label>'+
+      '<div class="acoes"><div><button class="btn-iab" data-acao="pedirIA">'+ICO.ia+'Responder com IA</button><button class="btn-bco" data-acao="melhorar">'+ICO.lapis+'Melhorar meu texto</button></div>'+
+        '<button class="btn-env'+(S.nota?' nota':'')+'" data-acao="enviar">'+(S.nota?'Salvar nota':'Enviar '+PELO[c.canal])+ICO.enviar+'</button></div>'+
+      (S.aviso ? '<div class="aviso" role="status">'+esc(S.aviso)+'</div>' : '')+
+    '</div></section>';
+}
+
+function painelCliente(){
+  var c = conv(S.sel), av = avatar(c);
+  return '<aside class="painel cliente" aria-label="Cliente">'+
+    '<div class="cli-id"><span class="av" style="background:'+av[0]+';color:'+av[1]+'">'+iniciais(c.nome)+'</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><b>'+esc(c.nome)+'</b><span>'+esc(c.desde)+'</span></div></div>'+
+    '<div class="tags">'+c.tags.map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('')+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px"><div class="campo"><div class="rot">E-mail</div><div>'+esc(c.email)+'</div></div>'+
+      '<div class="campo"><div class="rot">'+esc(c.contatoRot||'Telefone')+'</div><div>'+esc(c.contato)+'</div></div></div>'+
+    '<div class="secao"><span class="rot">Compras e tentativas</span>'+c.compras.map(function(k){
+      return '<div class="compra"><div class="e"><b>'+esc(k.p)+'</b><span>'+esc(k.q)+'</span></div><div class="d">'+esc(k.v)+pill(k.s, k.tom)+'</div></div>'; }).join('')+'</div>'+
+    '<div class="secao"><span class="rot">Acesso ao material</span>'+c.acesso.map(function(x){ return '<div class="ponto"><i style="background:'+TOM[x.tom][2]+'"></i><span>'+esc(x.x)+'</span></div>'; }).join('')+'</div>'+
+    '<div class="secao" style="gap:0"><span class="rot" style="margin-bottom:8px">Como chegou até aqui</span>'+c.jornada.map(function(j, i){
+      var ult = i === c.jornada.length-1;
+      var cor = ult ? (j.t==='Comprou' ? '#16A34A' : (j.t==='Não pagou' ? '#C52C58' : '#2509E4')) : '#1B9CFA';
+      return '<div class="passo"><div class="trilho"><i style="background:'+cor+'"></i><u style="background:'+(ult?'transparent':'#D6E4F5')+'"></u></div><div class="txt"><b>'+esc(j.t)+'</b><span>'+esc(j.s)+'</span></div></div>'; }).join('')+'</div>'+
+    '<div class="secao" style="gap:4px"><span class="rot">Suporte antes</span><span style="font-size:12.5px;color:#334155">'+esc(c.antes)+'</span></div>'+
+    '<div class="acoes-cli">'+
+      '<button data-acao="acaoAcesso" style="border:1px solid #C9D7F5;background:#F2F6FE;color:#1A0FA8">Reenviar acesso</button>'+
+      '<button data-acao="acaoPix" style="border:1px solid #F6D2BF;background:#FFF5EF;color:#9A3409">Gerar Pix novo</button>'+
+      '<button data-acao="abrirReembolso" style="border:1px solid #F1C6D3;background:#FDF1F5;color:#A3173F">Abrir reembolso</button>'+
+      '<button data-acao="toast" data-arg="Abre a ficha da pessoa em Funis › Leads, com todas as visitas e compras." style="border:1px solid #E2E8F0;background:#fff;color:#0F172A">Ver ficha completa</button></div>'+
+    '<p class="nota-fonte">Compra, Pix e reembolso vêm do checkout. A jornada vem do pixel. O acesso vem da área de membros.</p>'+
+  '</aside>';
+}
+
+function supervisao(){
+  return '<section aria-label="Como o suporte está respondendo" style="display:flex;flex-direction:column;gap:12px">'+
+    '<div class="sup-tit"><h2>Como o suporte está respondendo hoje</h2><span>Tempos, assuntos e respostas que merecem um olhar</span></div>'+
+    '<div class="grade3">'+
+      '<div class="cartao"><div class="cc"><span class="rot">Assuntos de hoje</span><span>64 conversas · tempo até resolver</span></div>'+
+        TEMAS.map(function(t){ return '<div class="barra-l"><b>'+t.n+'</b><span class="trilho"><i style="width:'+Math.round(t.q/26*100)+'%;background:'+t.cor+'"></i></span><b class="num">'+t.q+'</b><span class="num" style="color:#64748B">'+t.t+'</span></div>'; }).join('')+
+        '<div class="dica"><b>O que fazer:</b> acesso ao material é o assunto nº 1 (26 de 64). Em 19 deles o e-mail de acesso nem tinha sido aberto. Mandar o acesso também no WhatsApp logo depois da compra deve cortar boa parte dessas conversas.</div></div>'+
+      '<div class="cartao"><span class="rot">Equipe</span><div class="tabela"><table style="min-width:380px"><thead><tr><th scope="col">Quem</th><th scope="col" class="num">Resolveu</th><th scope="col" class="num">1ª resposta</th><th scope="col" class="num">Até resolver</th><th scope="col" class="num">Nota</th><th scope="col" class="num">Com IA</th></tr></thead><tbody>'+
+        EQUIPE.map(function(e){ return '<tr><th scope="row">'+e.n+'</th><td class="num">'+e.c+'</td><td class="num" style="font-weight:700;color:'+(e.atraso?'#A3173F':'#0F172A')+'">'+e.r+'</td><td class="num">'+e.res+'</td><td class="num">'+e.nota+'</td><td class="num">'+e.ia+'</td></tr>'; }).join('')+
+        '</tbody></table></div><span style="font-size:11.5px;color:#64748B">Meta da 1ª resposta: 5 min no WhatsApp, 30 min no e-mail. Em rosa, quem passou.</span></div>'+
+      '<div class="cartao"><div class="cc"><span class="rot">Para revisar</span><span>a IA lê todas as respostas</span></div>'+
+        REVISAR.map(function(r){ return '<div class="rev">'+pill(r.rot, r.tom)+'<span class="t">'+esc(r.x)+'</span><button data-acao="revisar" data-arg="'+r.conv+'">Abrir</button></div>'; }).join('')+'</div>'+
+    '</div></section>';
+}
+
+function janelaReembolso(){
+  var c = conv(S.sel), d = REEMB[c.id];
+  var cab = '<div class="jc"><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><b>Pedido de reembolso · '+esc(c.nome)+'</b><span>O motivo vai pra tela Reembolsos e motivos. O reembolso não depende dele.</span></div>'+
+    '<button class="fechar" data-acao="fecharModal" aria-label="Fechar">'+ICO.x+'</button></div>';
+  if(!d){
+    return '<div class="veu" data-acao="veu"><div class="janela" role="dialog" aria-modal="true" aria-label="Pedido de reembolso">'+cab+
+      '<div class="jm"><span style="font-size:14px;line-height:1.5">'+esc(c.nome)+' não tem compra paga pra reembolsar'+(c.compraTom==='neu'?': ainda não comprou.':': o pagamento ainda não foi aprovado.')+'</span>'+
+      '<button class="btn" data-acao="fecharModal" style="align-self:flex-start">Fechar</button></div></div></div>';
+  }
+  var sel = function(i){ return S.rbItens[i] !== false; };
+  var total = d.itens.reduce(function(t, it, i){ return t + (sel(i) ? it.v : 0); }, 0);
+  var ok = d.dias <= 7;
+  return '<div class="veu" data-acao="veu"><div class="janela" role="dialog" aria-modal="true" aria-label="Pedido de reembolso">'+cab+
+    '<div class="jm"><span style="font-size:12.5px;font-weight:700;border-radius:9px;padding:8px 10px;background:'+(ok?'#E6F4EC':'#FFF0E8')+';color:'+(ok?'#0B6B3A':'#A93A0A')+'">'+
+      (d.dias===0?'Comprou hoje':d.dias===1?'Comprou ontem':'Comprou há '+d.dias+' dias')+(ok?': dentro da garantia de 7 dias.':': fora dos 7 dias de garantia.')+'</span>'+
+    '<fieldset style="display:flex;flex-direction:column;gap:6px"><legend class="rot" style="margin-bottom:6px">O que reembolsar</legend>'+
+      d.itens.map(function(it, i){ return '<label class="item-rb"><input type="checkbox" data-campo="rbItem" data-arg="'+i+'"'+(sel(i)?' checked':'')+'><span class="n">'+esc(it.n)+' <small>· '+esc(it.q)+'</small></span><b>'+real(it.v)+'</b></label>'; }).join('')+'</fieldset>'+
+    '<label class="rotulo-campo"><span class="rot">Motivo</span><select data-campo="rbMotivo"><option value="">Escolha o motivo</option>'+
+      MOTIVOS.map(function(m){ return '<option value="'+m.k+'"'+(S.rbMotivo===m.k?' selected':'')+'>'+(m.k==='nd'?'Prefere não dizer':m.n)+'</option>'; }).join('')+'</select>'+
+      (d.dica ? '<span style="font-size:12px;color:#3E1493;font-weight:600">'+esc(d.dica)+'</span>' : '')+'</label>'+
+    '<label class="rotulo-campo"><span class="rot">O que o cliente disse</span><textarea rows="3" data-campo="rbDetalhe" placeholder="Nas palavras do cliente">'+esc(S.rbDetalhe)+'</textarea></label>'+
+    '<div class="campo"><div class="rot">Como o dinheiro volta</div><div style="font-weight:700">'+esc(d.devolve)+'</div></div>'+
+    (S.rbErro ? '<div class="erro" role="alert">'+esc(S.rbErro)+'</div>' : '')+'</div>'+
+    '<div class="jr"><a href="#formulario" style="font-size:12.5px;font-weight:700">Ver o formulário do cliente</a><div>'+
+      '<button class="btn" data-acao="mandarForm">Mandar o formulário pro cliente</button>'+
+      '<button class="btn cheio" data-acao="registrar">Registrar e reembolsar '+real(total)+'</button></div></div>'+
+  '</div></div>';
+}
+
+// ══════════════════════════════════════════════════════
+// TELA 2 · REEMBOLSOS E MOTIVOS
+// ══════════════════════════════════════════════════════
+function telaReembolsos(){
+  var total = MOTIVOS.reduce(function(a, m){ return a + m.q; }, 0);
+  var maxQ = Math.max.apply(null, MOTIVOS.map(function(m){ return m.q; }));
+  var maxD = Math.max.apply(null, DIAS.map(function(d){ return d.q; }));
+  var filtro = function(k){ return !S.rMotivo || k === S.rMotivo; };
+  var filtroRot = S.rMotivo ? 'só "'+MOTIVO_NOME[S.rMotivo]+'"' : 'todos os motivos';
+  var metricas = [
+    ['Pedidos de reembolso', String(total), '5,5% das 1.284 vendas', '#0F172A'],
+    ['Valor devolvido', 'R$ 6.143', '58 reembolsados', '#0F172A'],
+    ['Ficaram', '9', 'acesso resolvido · R$ 873 mantidos', '#0B6B3A'],
+    ['Em análise', '4', 'o mais antigo há 1 dia', '#A93A0A'],
+    ['Até responder · média', '3h 20min', 'meta: 2h em dia útil', '#0F172A'],
+    ['Contestação no cartão', '1', 'pedido que ficou sem resposta', '#A3173F']
+  ];
+  var acoes = [
+    ['Mandar o acesso também no WhatsApp, logo depois da compra', 'Acesso é o motivo nº 1 (21 pedidos) e subiu 8 em relação ao mês passado. Em 15 desses 21, o e-mail de acesso nunca foi aberto. Quando o suporte resolveu o acesso, 9 desistiram do reembolso.', 'Até 21 pedidos a menos por mês'],
+    ['Rever a promessa do anúncio AD097', 'Quem veio do AD097 pede reembolso em 8,5% das compras, contra 5,5% da média. 10 dos 18 disseram que "não era o que esperava", e vários falam em videoaula, que a apostila não tem.', 'Cerca de 8 pedidos a menos se ficar na média'],
+    ['Deixar claro que o Acervo é uma compra separada', 'Os 7 pedidos de "cobrança que não reconheço" são do Acervo Completo (upsell). Os clientes não ligam a cobrança de R$ 47 ao clique na página de oferta.', 'Também evita contestação no cartão']
+  ];
+  var per = [['7d','7 dias'],['30d','30 dias'],['90d','90 dias']];
+  var peds = PEDIDOS.filter(function(p){ return filtro(p.m); });
+  var coms = COMENTARIOS.filter(function(c){ return filtro(c.m); });
+  return '<div class="pagina">'+
+    '<header class="topo"><div class="esq"><a href="#suporte" style="font-size:12.5px;font-weight:700;text-decoration:none">‹ Suporte</a><h1>Reembolsos e motivos</h1>'+
+      '<p>Todo pedido de reembolso passa pelo formulário. As respostas viram esta tela: o que mais faz as pessoas desistirem, de qual produto, de qual anúncio e em que momento.</p></div>'+
+      '<div class="ctl"><div class="seg" role="group" aria-label="Período">'+per.map(function(p){ return '<button data-acao="rPeriodo" data-arg="'+p[0]+'" aria-pressed="'+(S.rPeriodo===p[0])+'" class="'+(S.rPeriodo===p[0]?'on':'')+'">'+p[1]+'</button>'; }).join('')+'</div>'+
+      '<a class="btn" href="#formulario">Ver o formulário</a><button class="btn cheio" data-acao="copiar">'+(S.copiado?'Link copiado':'Copiar link do formulário')+'</button></div></header>'+
+    '<div class="metricas">'+metricas.map(function(m){ return '<div class="metrica"><span class="rot">'+m[0]+'</span><span class="v" style="color:'+m[3]+'">'+m[1]+'</span><span class="s">'+esc(m[2])+'</span></div>'; }).join('')+'</div>'+
+    '<div class="duas"><section class="cartao grande" aria-label="Maiores problemas" style="gap:12px"><div class="cc"><h2 style="margin:0;font-size:17px;font-weight:800">Maiores problemas</h2><span>'+total+' pedidos · clique num motivo pra ver só ele</span></div>'+
+      MOTIVOS.map(function(m){
+        var on = S.rMotivo === m.k, apagado = S.rMotivo && !on;
+        var dTxt = m.d > 0 ? '▲ '+m.d+' vs mês passado' : (m.d < 0 ? '▼ '+Math.abs(m.d)+' vs mês passado' : 'igual ao mês passado');
+        var dCor = m.d >= 3 ? '#A3173F' : (m.d < 0 ? '#0B6B3A' : '#64748B');
+        return '<button class="motivo'+(on?' on':'')+'" data-acao="rMotivo" data-arg="'+m.k+'" aria-pressed="'+on+'"><b>'+esc(m.n)+'</b>'+
+          '<span class="trilho"><i style="width:'+Math.round(m.q/maxQ*100)+'%;background:'+(apagado?'#C9C2F5':'#2509E4')+'"></i></span>'+
+          '<b class="num">'+m.q+'</b><span class="num" style="font-size:12px;color:#475569">'+pctBr(m.q/total,0)+'</span><span class="num dl" style="font-size:11.5px;font-weight:700;color:'+dCor+'">'+dTxt+'</span></button>';
+      }).join('')+
+      (S.rMotivo ? '<button data-acao="rMotivo" data-arg="" style="align-self:flex-start;border:0;background:transparent;color:#2509E4;font-size:12.5px;font-weight:700;padding:4px 0">Ver todos os motivos</button>' : '')+
+    '</section><section class="cartao lateral corrigir" aria-label="O que corrigir primeiro" style="gap:12px"><div style="display:flex;align-items:center;gap:8px;color:#3E1493">'+ICO.ia+'<h2 style="margin:0;font-size:17px;font-weight:800">O que corrigir primeiro</h2></div>'+
+      '<span style="font-size:12px;color:#5B4A86;margin-top:-6px">A IA cruzou o formulário com a compra e a jornada de cada pessoa</span>'+
+      acoes.map(function(a, i){ return '<div class="acao-ia"><div style="display:flex;gap:10px;align-items:baseline"><span class="n">'+(i+1)+'</span><b style="font-size:13.5px;line-height:1.35">'+a[0]+'</b></div>'+
+        '<span style="font-size:12.5px;color:#334155;line-height:1.5">'+a[1]+'</span><span style="font-size:11.5px;font-weight:800;color:#0B6B3A">'+a[2]+'</span></div>'; }).join('')+
+    '</section></div>'+
+    '<div class="grade3" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">'+
+      '<section class="cartao" aria-label="Quando pedem"><span class="rot">Quando pedem · dias depois da compra</span><div class="histo">'+
+        DIAS.map(function(d){ return '<div>'+d.q+'<i style="height:'+Math.round(d.q/maxD*96)+'px;background:'+(d.n==='Depois de 7'?'#C52C58':'#1B9CFA')+'"></i></div>'; }).join('')+'</div>'+
+        '<div class="histo-r">'+DIAS.map(function(d){ return '<span>'+d.n+'</span>'; }).join('')+'</div>'+
+        '<span style="font-size:12px;color:#334155;line-height:1.45">37% pedem até o dia seguinte à compra, quase sempre por acesso ou cobrança. Depois de 7 dias: 2 pedidos.</span></section>'+
+      '<section class="cartao" aria-label="Por produto"><span class="rot">Por produto · % das vendas</span>'+
+        PRODUTOS.map(function(p){ var t = p.p/p.v; return '<div class="taxa"><div><b>'+p.n+'</b><b style="color:'+(t>.065?'#A3173F':'#0F172A')+'">'+pctBr(t,1)+'</b></div><span style="color:#64748B">'+p.p+' pedidos em '+p.v.toLocaleString('pt-BR')+' vendas</span></div>'; }).join('')+
+        '<span style="font-size:11.5px;color:#64748B">Média do período: 5,5%</span></section>'+
+      '<section class="cartao" aria-label="Por origem"><span class="rot">Por origem · de onde veio quem pediu</span>'+
+        ORIGENS.map(function(o){ var t = o.p/o.v; return '<div class="taxa"><div><b>'+o.n+'</b><b style="color:'+(t>.065?'#A3173F':'#0F172A')+'">'+pctBr(t,1)+'</b></div><span style="color:'+(o.nota?'#A3173F':'#64748B')+'">'+esc(o.nota || (o.p+' pedidos em '+o.v+' vendas'))+'</span></div>'; }).join('')+'</section>'+
+      '<section class="cartao" aria-label="Quanto usaram"><span class="rot">Quanto usaram antes de pedir</span>'+
+        USO.map(function(u){ return '<div class="barra-l" style="grid-template-columns:110px minmax(0,1fr) 28px"><b>'+u.n+'</b><span class="trilho"><i style="width:'+Math.round(u.q/31*100)+'%;background:#1B9CFA"></i></span><b class="num">'+u.q+'</b></div>'; }).join('')+
+        '<span style="font-size:12px;color:#334155;line-height:1.45">A resposta do cliente, conferida com a área de membros: 22 dos 24 que disseram "nem abri" de fato nunca entraram.</span></section>'+
+    '</div>'+
+    '<div class="duas"><section class="cartao lateral" aria-label="O que escreveram" style="flex:1 1 380px"><div class="cc"><span class="rot">O que escreveram</span><span>'+esc(filtroRot)+'</span></div>'+
+      coms.map(function(c){ return '<figure><blockquote>“'+esc(c.x)+'”</blockquote><figcaption>'+esc(MOTIVO_NOME[c.m]+' · '+c.de)+'</figcaption></figure>'; }).join('')+'</section>'+
+      '<section class="cartao grande" aria-label="Pedidos" style="flex:999 1 640px"><div class="cc"><span class="rot">Pedidos</span><span>'+esc(filtroRot)+'</span></div>'+
+        (peds.length ? '<div class="tabela"><table style="min-width:640px"><thead><tr><th scope="col">Protocolo</th><th scope="col">Cliente</th><th scope="col">Motivo</th><th scope="col">Pediu</th><th scope="col" class="num">Valor</th><th scope="col">Situação</th></tr></thead><tbody>'+
+          peds.map(function(p){ return '<tr><td style="font-weight:700;color:#475569">'+p.p+'</td><td><div style="font-weight:700">'+esc(p.c)+'</div><div style="font-size:11.5px;color:#64748B">'+esc(p.prod+' · '+p.at)+'</div></td><td>'+esc(MOTIVO_NOME[p.m])+'</td><td style="color:#475569">'+p.dias+'</td><td class="num" style="font-weight:700">'+p.v+'</td><td>'+pill(ST_PED[p.st][0], ST_PED[p.st][1])+'</td></tr>'; }).join('')+
+          '</tbody></table></div>' : '<span style="font-size:12.5px;color:#64748B">Nenhum pedido recente com esse motivo.</span>')+'</section></div>'+
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════
+// TELA 3 · FORMULÁRIO DO CLIENTE (celular)
+// ══════════════════════════════════════════════════════
+function telaFormulario(){
+  var total = ITENS_F.filter(function(i){ return S.fItens[i.k]; }).reduce(function(a, i){ return a + i.v; }, 0);
+  var topo = '<div class="marca"><b>Apostilai</b><span>Pedido nº 48213</span></div>';
+  if(S.fFeito){
+    return '<div class="cel">'+topo+'<div class="feito"><span class="check">'+ICO.ok+'</span>'+
+      '<div style="display:flex;flex-direction:column;gap:6px"><h1>Pedido recebido</h1><p>Protocolo <b style="color:#0F172A">R-1042</b> · '+real(total)+' no cartão final 4421</p></div>'+
+      '<div class="bloco" style="gap:12px"><span class="rot">O que acontece agora</span>'+
+        '<div class="passo-f"><b>1</b><span>A equipe confere a compra e confirma por e-mail.</span></div>'+
+        '<div class="passo-f"><b>2</b><span>O estorno é feito no cartão final 4421.</span></div>'+
+        '<div class="passo-f"><b>3</b><span>Você recebe outro e-mail quando o valor for devolvido.</span></div></div>'+
+      '<button class="btn" data-acao="toast" data-arg="No produto de verdade, abre o WhatsApp do suporte." style="justify-content:center;min-height:48px;border-radius:14px;font-size:15px;font-weight:800">Falar com o suporte</button>'+
+      '<button data-acao="fVoltar" style="border:0;background:transparent;color:#64748B;font-size:12.5px;padding:6px">Ver o formulário de novo (protótipo)</button></div></div>';
+  }
+  var sg = SEGUE[S.fMotivo];
+  return '<div class="cel">'+topo+'<form id="form-rb" novalidate>'+
+    '<div style="display:flex;flex-direction:column;gap:6px"><h1>Pedido de reembolso</h1><p>Oi, Fernanda. Leva 1 minuto. Suas respostas ajudam a gente a melhorar a apostila. <b style="color:#0F172A">O reembolso não depende delas.</b></p></div>'+
+    '<fieldset class="bloco"><legend class="rot" style="padding:0 4px">O que reembolsar</legend>'+
+      ITENS_F.map(function(i){ return '<label class="it"><input type="checkbox" data-campo="fItem" data-arg="'+i.k+'"'+(S.fItens[i.k]?' checked':'')+'><span class="e"><b>'+i.n+'</b><span>'+i.sub+'</span></span><b>'+real(i.v)+'</b></label>'; }).join('')+
+      '<span style="font-size:12px;color:#0B6B3A;font-weight:700;background:#E6F4EC;border-radius:8px;padding:7px 10px">Compra de 29/09: dentro da garantia de 7 dias.</span></fieldset>'+
+    '<fieldset><legend class="grande-l">O que aconteceu?</legend>'+
+      MOTIVOS.map(function(m){ var on = S.fMotivo === m.k; return '<label class="op'+(on?' on':'')+'"><input type="radio" name="motivo" data-campo="fMotivo" value="'+m.k+'"'+(on?' checked':'')+'><span>'+esc(m.cli)+'</span></label>'; }).join('')+'</fieldset>'+
+    (sg ? '<div class="bloco"><b style="font-size:15px">'+esc(sg.q)+'</b>'+
+      (sg.chips ? '<div class="chips" style="gap:8px">'+sg.chips.map(function(n){ var on = !!S.fChips[n]; return '<button type="button" class="ch'+(on?' on':'')+'" data-acao="fChip" data-arg="'+esc(n)+'" aria-pressed="'+on+'">'+esc(n)+'</button>'; }).join('')+'</div>' : '')+
+      (sg.campo ? '<label class="rotulo-campo"><span style="font-size:12.5px;color:#475569">'+esc(sg.campo)+'</span><input type="text" data-campo="fCampo" value="'+esc(S.fCampo)+'" placeholder="'+esc(sg.ex)+'" style="height:44px;font-size:14px"></label>' : '')+
+      (sg.ajuda ? '<div class="ajuda"><span>Problema de acesso costuma se resolver em minutos. Se quiser tentar antes, fale com a gente. Se preferir, é só seguir com o pedido.</span><button type="button" data-acao="toast" data-arg="No produto de verdade, abre o WhatsApp do suporte.">Falar no WhatsApp</button></div>' : '')+
+    '</div>' : '')+
+    '<fieldset><legend class="grande-l">Quanto você chegou a usar?</legend><div class="uso">'+
+      [['nada','Nem abri'],['pouco','Li um pouco'],['muito','Usei bastante']].map(function(u){ var on = S.fUso === u[0]; return '<button type="button" class="'+(on?'on':'')+'" data-acao="fUso" data-arg="'+u[0]+'" aria-pressed="'+on+'">'+u[1]+'</button>'; }).join('')+'</div></fieldset>'+
+    '<label class="rotulo-campo"><span style="font-size:16px;font-weight:800">Quer contar com suas palavras? <span style="font-weight:500;color:#64748B;font-size:13px">(opcional)</span></span>'+
+      '<textarea rows="4" data-campo="fTexto" placeholder="O que faria você ficar com a apostila?" style="border-radius:12px;font-size:14px">'+esc(S.fTexto)+'</textarea></label>'+
+    '<div class="bloco" style="gap:4px"><span class="rot">Como o dinheiro volta</span><b style="font-size:14px">Estorno no cartão final 4421</b><span style="font-size:12.5px;color:#475569;line-height:1.45">O mesmo cartão da compra. Dependendo do banco, o estorno pode levar até 2 faturas para aparecer.</span></div>'+
+    (S.fErro ? '<div class="erro" role="alert">'+esc(S.fErro)+'</div>' : '')+
+    '<button type="submit" class="enviar-cel">'+(total ? 'Pedir reembolso de '+real(total) : 'Pedir reembolso')+'</button>'+
+    '<span style="font-size:12px;color:#64748B;text-align:center;line-height:1.45">Você recebe uma cópia deste pedido no e-mail fe.reis@exemplo.com.</span>'+
+  '</form></div>';
+}
+
+// ══════════════════════════════════════════════════════
+// desenhar e reagir
+// ══════════════════════════════════════════════════════
+function render(){
+  var app = document.getElementById('app');
+  app.innerHTML = S.tela === 'reembolsos' ? telaReembolsos() : S.tela === 'formulario' ? telaFormulario() : telaSuporte();
+  document.querySelectorAll('.proto nav a').forEach(function(a){ a.classList.toggle('on', a.dataset.tela === S.tela); a.setAttribute('aria-current', a.dataset.tela === S.tela ? 'page' : 'false'); });
+  var fio = document.getElementById('fio'); if(fio) fio.scrollTop = fio.scrollHeight;
+}
+function rota(){
+  var t = (location.hash || '#suporte').slice(1);
+  S.tela = ['suporte','reembolsos','formulario'].indexOf(t) >= 0 ? t : 'suporte';
+  S.modal = false;
+  render(); window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', rota);
+
+var ACOES = {
+  toast: function(a){ toast(a); },
+  periodo: function(a){ mudar({ periodo:a }); },
+  aba: function(a){ mudar({ aba:a }); },
+  assunto: function(a){ mudar({ assunto:a }); },
+  abrir: function(id){ var c = conv(id); mudar({ sel:id, sug: c.sugestoes.length > 0 && statusDe(c) !== 'resolvido', sugIdx:0, draft:'', nota:false, aviso:'' }); },
+  revisar: function(id){ var c = conv(id); mudar({ sel:id, aba: statusDe(c)==='resolvido' ? 'resolvidas' : 'andamento', assunto:'todos', canal:'todos', busca:'',
+    sug: c.sugestoes.length > 0 && statusDe(c) !== 'resolvido', sugIdx:0, draft:'', nota:false, aviso:'' });
+    var el = document.querySelector('.inbox'); if(el) el.scrollIntoView({ behavior:'smooth', block:'start' }); },
+  resolver: function(){ var c = conv(S.sel); mudar({ status: setDe(S.status, c.id, 'resolvido'), sug:false, enviados: adicionar(c, [{t:'sis',x:'Marcada como resolvida por você',h:'agora'}]), aviso:'Conversa resolvida.' }); },
+  descartar: function(){ mudar({ sug:false }); },
+  usarSug: function(){ var c = conv(S.sel); mudar({ draft: c.sugestoes[S.sugIdx % c.sugestoes.length], sug:false, nota:false, aviso:'Sugestão no campo de resposta. Revise e envie.' }); },
+  outraSug: function(){ mudar({ sugIdx: S.sugIdx + 1 }); },
+  pedirIA: function(){ var c = conv(S.sel); if(c.sugestoes.length) mudar({ sug:true, aviso:'' }); else mudar({ aviso:'Essa conversa já está resolvida: não há o que sugerir.' }); },
+  melhorar: function(){
+    var c = conv(S.sel), t = (S.draft || '').trim();
+    if(!t){ mudar({ aviso:'Escreva algo primeiro, ou use "Responder com IA".' }); return; }
+    if(!/^(oi|olá|ola|bom dia|boa tarde|boa noite)/i.test(t)) t = 'Oi, '+primeiro(c)+'! '+t.charAt(0).toUpperCase()+t.slice(1);
+    if(!/[.!?]$/.test(t)) t += '.';
+    if(!/me cham|qualquer dúvida/i.test(t)) t += ' Qualquer dúvida, é só me chamar aqui.';
+    mudar({ draft:t, aviso:'A IA ajustou a saudação, a pontuação e o fechamento. Confira antes de enviar.' });
+  },
+  pronta: function(i){ var c = conv(S.sel); mudar({ draft: 'Oi, '+primeiro(c)+'! '+PRONTAS[+i].x.replace('[e-mail]', c.email), nota:false, aviso:'' }); },
+  nota: function(a){ mudar({ nota: a === '1' }); },
+  enviar: function(){
+    var c = conv(S.sel), t = (S.draft || '').trim();
+    if(!t){ mudar({ aviso:'Nada pra enviar ainda.' }); return; }
+    var x = { enviados: adicionar(c, [{ t: S.nota ? 'nota' : 'ag', x:t, h:'agora', a:'Você' }]), draft:'', sug:false };
+    if(!S.nota){
+      x.respondidos = setDe(S.respondidos, c.id, true);
+      if(statusDe(c) === 'aberto') x.status = setDe(S.status, c.id, 'aguardando');
+      x.aviso = 'Enviado '+PELO[c.canal]+'. A conversa foi pra "aguardando cliente". (Protótipo: nada sai daqui.)';
+    } else x.aviso = 'Nota salva. Só a equipe vê.';
+    mudar(x);
+  },
+  acaoAcesso: function(){ var c = conv(S.sel); mudar({ enviados: adicionar(c, [{t:'sis',x:'Acesso reenviado para '+c.email+' por você',h:'agora'}]), aviso:'Acesso reenviado. Ficou registrado na conversa.' }); },
+  acaoPix: function(){ var c = conv(S.sel); mudar({ enviados: adicionar(c, [{t:'sis',x:'Pix novo gerado · R$ 97,00 · vale 30 min · por você',h:'agora'}]), draft:'Oi, '+primeiro(c)+'! '+PRONTAS[2].x, nota:false, aviso:'Pix gerado. O link já está no campo de resposta.' }); },
+  abrirReembolso: function(){ var d = REEMB[S.sel]; mudar({ modal:true, rbMotivo: d ? d.motivo : '', rbDetalhe: d ? d.detalhe : '', rbItens:{}, rbErro:'' }); },
+  fecharModal: function(){ mudar({ modal:false }); },
+  veu: function(a, el, ev){ if(ev.target === el) mudar({ modal:false }); },
+  mandarForm: function(){
+    var c = conv(S.sel);
+    var x = { enviados: adicionar(c, [{ t:'ag', x:'Oi, '+primeiro(c)+'! '+PRONTAS[5].x, h:'agora', a:'Você' }]), modal:false, sug:false,
+      respondidos: setDe(S.respondidos, c.id, true), aviso:'Formulário enviado. Quando '+primeiro(c)+' responder, o pedido aparece em Reembolsos e motivos.' };
+    if(statusDe(c) === 'aberto') x.status = setDe(S.status, c.id, 'aguardando');
+    mudar(x);
+  },
+  registrar: function(){
+    var c = conv(S.sel), d = REEMB[c.id]; if(!d) return;
+    var total = d.itens.reduce(function(t, it, i){ return t + (S.rbItens[i] !== false ? it.v : 0); }, 0);
+    if(!total){ mudar({ rbErro:'Marque pelo menos um item pra reembolsar.' }); return; }
+    if(!S.rbMotivo){ mudar({ rbErro:'Escolha o motivo. Se o cliente não quis dizer, use "Prefere não dizer".' }); return; }
+    var prot = d.protocolo || 'R-1043';
+    mudar({ modal:false, sug:false, enviados: adicionar(c, [{t:'sis',x:'Reembolso '+prot+' registrado por você · '+MOTIVO_NOME[S.rbMotivo]+' · '+real(total)+' · '+d.devolve,h:'agora'}]),
+      aviso:'Reembolso '+prot+' registrado. O motivo já conta em Reembolsos e motivos.' });
+  },
+  rPeriodo: function(a){ mudar({ rPeriodo:a }); },
+  rMotivo: function(a){ mudar({ rMotivo: S.rMotivo === a ? '' : a }); },
+  copiar: function(){ mudar({ copiado:true }); toast('No produto de verdade, o link do formulário vai pra área de transferência.'); },
+  fChip: function(n){ var o = Object.assign({}, S.fChips); o[n] = !o[n]; mudar({ fChips:o }); },
+  fUso: function(a){ mudar({ fUso:a }); },
+  fVoltar: function(){ mudar({ fFeito:false }); }
+};
+document.addEventListener('click', function(ev){
+  var el = ev.target.closest('[data-acao]'); if(!el) return;
+  var f = ACOES[el.dataset.acao]; if(!f) return;
+  if(el.dataset.acao === 'veu'){ f(null, el, ev); return; }
+  f(el.dataset.arg, el, ev);
+});
+document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && S.modal) mudar({ modal:false }); });
+// digitar não redesenha a tela (perderia o cursor); só guarda
+document.addEventListener('input', function(ev){
+  var c = ev.target.dataset && ev.target.dataset.campo; if(!c) return;
+  if(c === 'busca'){ S.busca = ev.target.value; document.getElementById('fila-lista').innerHTML = filaLista(); return; }
+  if(c === 'draft' || c === 'rbDetalhe' || c === 'fCampo' || c === 'fTexto') S[c] = ev.target.value;
+});
+document.addEventListener('change', function(ev){
+  var t = ev.target, c = t.dataset && t.dataset.campo; if(!c) return;
+  if(c === 'canal') mudar({ canal:t.value });
+  else if(c === 'statusConv') mudar({ status: setDe(S.status, S.sel, t.value) });
+  else if(c === 'rbMotivo') mudar({ rbMotivo:t.value, rbErro:'' });
+  else if(c === 'rbItem'){ var i = t.dataset.arg; mudar({ rbItens: setDe(S.rbItens, i, t.checked), rbErro:'' }); }
+  else if(c === 'fItem') mudar({ fItens: setDe(S.fItens, t.dataset.arg, t.checked), fErro:'' });
+  else if(c === 'fMotivo') mudar({ fMotivo:t.value, fChips:{}, fCampo:'', fErro:'' });
+});
+document.addEventListener('submit', function(ev){
+  if(ev.target.id !== 'form-rb') return;
+  ev.preventDefault();
+  var total = ITENS_F.filter(function(i){ return S.fItens[i.k]; }).length;
+  if(!total){ mudar({ fErro:'Marque pelo menos um item pra reembolsar.' }); return; }
+  if(!S.fMotivo){ mudar({ fErro:'Escolha uma opção em "O que aconteceu?" (pode ser "Prefiro não dizer").' }); return; }
+  mudar({ fFeito:true, fErro:'' }); window.scrollTo(0, 0);
+});
+rota();
+</script>
+</body>
+</html>
