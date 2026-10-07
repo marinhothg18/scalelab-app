@@ -238,7 +238,7 @@ const globalLimiter = rateLimit({
   max: 200,
   message: { error: 'Muitas requisições. Tente novamente em 1 minuto.' },
   // o pixel e o quiz tem limite proprio: um visitante dispara varios eventos por pagina
-  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento' || req.path === '/api/funil/vivo' || req.path === '/api/quiz/evento'
+  skip: (req) => req.path === '/api/sync/stream' || req.path === '/api/funil/evento' || req.path === '/api/funil/vivo' || req.path === '/api/funil/ck' || req.path === '/api/quiz/evento'
 });
 // Continua limitado, so que com folga pra trafego real (e por IP do visitante)
 const pixelLimiter = rateLimit({ windowMs: 60*1000, max: 120,
@@ -249,6 +249,7 @@ app.use('/api/funil/evento', pixelLimiter);
 const vivoLimiter = rateLimit({ windowMs: 60*1000, max: 240,
   message: { error: 'limite' }, standardHeaders: false, legacyHeaders: false });
 app.use('/api/funil/vivo', vivoLimiter);
+app.use('/api/funil/ck', vivoLimiter);
 // Quiz: cada tela e cada resposta e um evento. 180/min por IP cobre muita gente
 // atras do mesmo IP de operadora (CGNAT) sem abrir porta pra inundacao.
 const quizLimiter = rateLimit({ windowMs: 60*1000, max: 180,
@@ -2900,6 +2901,21 @@ function _vidDaVenda(p) {
   return '';
 }
 
+// Teste A/B de checkout: o pixel põe 'ck_<teste>_<versão>' no sck, junto do
+// id da pessoa ('tmx_<id>~ck_<teste>_<versão>'). O gateway devolve o sck no
+// webhook, e é assim que a venda cai na versão certa mesmo sem a jornada.
+function _ckDaVenda(p) {
+  const doLink = _doLink(p);
+  const campos = ['sck', 'src', 'utm_content', 'trackingParameters.sck', 'trackingParameters.src',
+                  'trackingParameters.utm_content', 'tracking.sck', 'tracking.src', 'metadata.sck', 'custom.sck'];
+  const valores = campos.map(c => _pega(p, [c])).concat([doLink.sck, doLink.src, doLink.utm_content]);
+  for (const v of valores) {
+    const m = String(v || '').match(/ck_([a-z0-9-]{1,60})_([A-Za-z0-9-]{1,40})/);
+    if (m) return { t: m[1], v: m[2] };
+  }
+  return null;
+}
+
 function _normalizarVenda(p) {
   const achado = _pegaCom(p, [
     'commission.totalPriceInCents','totalPriceInCents','amount_in_cents','price_in_cents',
@@ -2950,6 +2966,7 @@ function _normalizarVenda(p) {
     //   sck/src  — onde o pixel o esconde justamente porque esses SAO repassados
     //   utm_content — ultimo recurso, quando o checkout so devolve utm_*
     vid: _vidDaVenda(p),
+    ck: _ckDaVenda(p),
     recebidoEm: new Date().toISOString()
   };
 }
@@ -5354,6 +5371,8 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   const key = req.params.key;
   // mudou o desenho do funil (ex.: o minuto do pitch): o retrato em memória
   // e as visitas já marcadas se refazem logo, sem esperar os 15 min
+  // depois de gravar: refazer antes deixaria o retrato com a lista antiga por 1 min
+  if (key === KEY_REDIRS) setTimeout(() => { _ckCache.em = 0; }, 0);
   if (key === 'sl_funis') { clearTimeout(_pitchTimer); _pitchTimer = setTimeout(() => { try { _fcCache.em = 0; _pitchRecalcular(); } catch (e) {} }, 3000); }
   let incoming = req.body;
   const existing = db.store[key];
@@ -8866,7 +8885,7 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     // nenhuma conta: nem nos blocos do mapa, nem no teste A/B.
     const interno = _pEhInterno(c, req);
     _agoraMarcar(visitante, c, interno, tipo === 'saiu');
-    if (!interno) _fContar(funil, etapa, tipo, visitante, c);
+    if (!interno && tipo !== 'ckteste') _fContar(funil, etapa, tipo, visitante, c);
 
     // Teste A/B: a variante chegou pela URL do redirecionador e o pixel a devolve
     // em todo evento. 'entrou' na 1a pagina conta pessoa; alcancar a etapa que e
@@ -8885,7 +8904,7 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
 
     // so na entrada: os outros eventos sao da mesma pessoa, no mesmo aparelho
     if (tipo === 'entrou') c.quem = _quemE(req);
-    _jRegistrar(visitante, funil, etapa, tipo, c);
+    if (tipo !== 'ckteste') _jRegistrar(visitante, funil, etapa, tipo, c);
     try { _pxRegistrar(c, req, interno); } catch (e) {}
     const pg = String(c.pg || '').slice(0, 160);
     if (!interno) {
@@ -9210,6 +9229,11 @@ function _pessoas() {
     try { db.exec('ALTER TABLE paginas ADD COLUMN video INTEGER DEFAULT 0'); } catch (e) {}
     try { db.exec('ALTER TABLE paginas ADD COLUMN pitch INTEGER DEFAULT 0'); } catch (e) {}
     try { db.exec('CREATE INDEX IF NOT EXISTS ev_tipo_em ON eventos(tipo, em)'); } catch (e) {}
+    // teste A/B de checkout: em qual versão a venda caiu; e de qual plataforma veio
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_teste TEXT'); } catch (e) {}
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_var TEXT'); } catch (e) {}
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN plataforma TEXT'); } catch (e) {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS ped_ck ON pedidos(ck_teste)'); } catch (e) {}
     _pdb = db;
     let sal = db.prepare("SELECT v FROM cfg WHERE k='sal'").get();
     if (!sal) {
@@ -9306,7 +9330,7 @@ function _funisCache() {
 }
 
 // ── Gravação de cada evento do pixel ────────────────────────────────────────
-const _EV_GUARDA = new Set(['entrou', 'saiu', 'checkout', 'clique', 'friccao', 'video', 'pitch']);
+const _EV_GUARDA = new Set(['entrou', 'saiu', 'checkout', 'clique', 'friccao', 'video', 'pitch', 'ckteste']);
 // 'quando' só vem na importação do histórico (evento com a hora dele)
 function _pxRegistrar(c, req, interno, quando) {
   const db = _pessoas(); if (!db) return;
@@ -9430,6 +9454,11 @@ function _pxRegistrar(c, req, interno, quando) {
     if (tipo === 'friccao') extra.motivo = String(c.motivo || '').slice(0, 12);
     if (tipo === 'clique' && Number(c.player)) extra.player = 1;
     if (tipo === 'checkout' && c.destino) extra.destino = String(c.destino).slice(0, 60);
+    // teste de checkout: qual teste e qual versão a pessoa recebeu
+    if ((tipo === 'checkout' || tipo === 'ckteste') && c.ckt) {
+      extra.ckt = String(c.ckt).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
+      extra.ckv = String(c.ckv || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 40);
+    }
     if (tipo === 'entrou') { if (c.variante) extra.variante = String(c.variante).slice(0, 40); if (c.teste) extra.teste = String(c.teste).slice(0, 60); if (c.retorno) extra.retorno = 1; }
     const rot = txt(c.rotulo, 80);
     if (_EV_GUARDA.has(tipo) && s.eventos < EVENTOS_POR_SESSAO && !(tipo === 'friccao' && _ehPlayer(c.rotulo))) {
@@ -9464,7 +9493,7 @@ function _pxRegistrar(c, req, interno, quando) {
     // ── fecha a conta da visita e do visitante ──
     s.fim = agora;
     _q('UPDATE sessoes SET fim=?, dur=?, eventos=eventos+1 WHERE id=?').run(agora, Math.round((agora - s.inicio) / 1000), s.id);
-    const conta = tipo !== 'video' && tipo !== 'saiu';
+    const conta = tipo !== 'video' && tipo !== 'saiu' && tipo !== 'ckteste';
     const q = c.quem || null;
     _q(`UPDATE visitantes SET ultimo=?, eventos=eventos+1,
           ult_tipo=CASE WHEN ? THEN ? ELSE ult_tipo END, ult_rot=CASE WHEN ? THEN ? ELSE ult_rot END,
@@ -9627,8 +9656,8 @@ function _pedidoRegistrar(venda, p, opts) {
     const idPed = venda.pedidoId ? (String(venda.pedidoId).slice(0, 60) + '|' + String(venda.status || '').slice(0, 30)) : venda.id;
     const ins = _q(`INSERT OR IGNORE INTO pedidos(id, pedido, status, pago, estorno, valor, liquido, produto, plano, metodo, motivo,
         visitante, lead, casou, sem_origem, sck, fonte, camp, cont, termo, cred_fonte, cred_camp, cred_cont, cred_canal, apoio,
-        funil, teste, variante, renovacao, em, dia)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        funil, teste, variante, renovacao, em, dia, ck_teste, ck_var, plataforma)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       idPed, txt(venda.pedidoId, 60), txt(venda.status, 30), pago ? 1 : 0, estorno,
       Number(venda.valor) || 0, liquido, txt(venda.produto, 120), txt(venda.plano, 80), txt(venda.metodo, 30),
       pago ? null : txt(_motivoFalha(venda), 60),
@@ -9636,7 +9665,8 @@ function _pedidoRegistrar(venda, p, opts) {
       txt(venda.utmSource, 80), txt(venda.utmCampaign, 120), txt(venda.utmContent, 160), txt(venda.utmTerm, 80),
       cred ? txt(cred.fonte, 80) : null, cred ? txt(cred.camp, 120) : null, cred ? txt(cred.cont, 160) : null,
       cred ? cred.canal : null, apoio, ref.funil || null, ref.teste || null, ref.variante || null,
-      venda.renovacao ? 1 : 0, em, _diaBR(em));
+      venda.renovacao ? 1 : 0, em, _diaBR(em),
+      venda.ck ? txt(venda.ck.t, 60) : null, venda.ck ? txt(venda.ck.v, 40) : null, txt(venda.plataforma, 20));
 
     if (ins.changes && vis) {
       const sid = sessaoRef ? sessaoRef.id : null;
@@ -13610,9 +13640,12 @@ function _abV2(slug, de, ate) {
   const vars = (r.destinos || []).map((d, i) => ({ id: String(d.id || ('v' + i)), nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '',
     peso: Number(d.peso) || 1, sorteios: 0, pessoas: 0, pitch: 0, checkout: 0, vendas: 0, receita: 0, metas: 0, receitas: [], porDia: {} }));
   const porId = {}; vars.forEach(v => { porId[v.id] = v; });
+  // teste de checkout: o sorteio é no pixel, na própria página, e a base é
+  // quem abriu o checkout — a página é a mesma pras duas versões
+  const ehCk = r.tipo === 'checkout';
 
   // cliques no link (o sorteio acontece no redirecionador)
-  (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer))
+  if (!ehCk) (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer))
     .filter(l => l.teste === slug && l.data >= per.de && l.data <= per.ate)
     .forEach(l => { const v = porId[l.variante]; if (v) { v.sorteios += l.sorteios || 0; v.metasEtapa = (v.metasEtapa || 0) + (l.metas || 0); } });
 
@@ -13620,7 +13653,8 @@ function _abV2(slug, de, ate) {
   const db = _pessoas();
   const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
   const quem = {};
-  if (db) {
+  if (db && ehCk) _ckPreencher(slug, r, vars, per.ini, per.fim, liq);
+  if (db && !ehCk) {
     _q(`SELECT visitante, variante, MIN(inicio) ini, MAX(pitch) pitch, MAX(checkout) ck FROM sessoes
         WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ? GROUP BY visitante`).all(slug, per.ini, per.fim)
       .forEach(x => {
@@ -13689,7 +13723,7 @@ function _abV2(slug, de, ate) {
         perda: rpp(ctrl) ? (perda / B) / rpp(ctrl) : null, faltaVendas: pode ? 0 : faltaVendas,
         minPorLado: minV, vendasMenorLado: minLado, podeDeclarar: pode,
         sugerida: chance != null && chance < 0.5 ? ctrl.id : desafiante.id,
-        leitura: _abLeitura(ctrl, desafiante, chance, pode, minV)
+        leitura: (ehCk ? _ckLeitura : _abLeitura)(ctrl, desafiante, chance, pode, minV)
       };
     }
   }
@@ -13699,13 +13733,13 @@ function _abV2(slug, de, ate) {
   vars.forEach(v => { v.fatiaReal = totS ? v.sorteios / totS * 100 : null; v.fatiaAlvo = totP ? v.peso / totP * 100 : null; });
   const divisao = { total: totS, torta: totS > 200 && vars.some(v => v.fatiaReal != null && Math.abs(v.fatiaReal - v.fatiaAlvo) > 5) };
   const chegaram = vars.reduce((a, v) => a + v.pessoas, 0);
-  const perdaClique = totS ? Math.max(0, 1 - chegaram / totS) : null;
+  const perdaClique = (!ehCk && totS) ? Math.max(0, 1 - chegaram / totS) : null;
 
   // ── fora do teste: gente do funil que não passou pelo link ──
   let fora = null;
   const funil = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).find(f => f && (f.id === r.funil ||
     (f.projeto === r.projeto && (f.etapas || []).some(e => (r.destinos || []).some(d => _normPg(d.url) && _normPg(d.url) === _normPg(e.url))))));
-  if (db && funil) {
+  if (db && funil && !ehCk) {
     const esc = _escopoFunil(dbj, funil.id);
     if (esc) {
       const esq = _escopoSql(esc, 'p');
@@ -13735,7 +13769,11 @@ function _abV2(slug, de, ate) {
   // "Ontem" o gráfico viraria um ponto só, e o que ele responde é a evolução.
   const iniSerie = Math.max(inicioTeste || per.ini, Date.now() - 60 * 86400000);
   const porDiaT = {}; vars.forEach(v => { porDiaT[v.id] = {}; });
-  if (db) {
+  if (db && ehCk) {
+    const m = _ckMedir(slug, r, iniSerie, Date.now(), liq);
+    vars.forEach(v => { porDiaT[v.id] = (m[v.id] && m[v.id].porDia) || {}; });
+  }
+  if (db && !ehCk) {
     const quemT = {};
     _q(`SELECT visitante, variante, MIN(inicio) ini FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio >= ? GROUP BY visitante`)
       .all(slug, iniSerie).forEach(x => {
@@ -13769,6 +13807,7 @@ function _abV2(slug, de, ate) {
     }).sort((a, b) => String(b.ate || '').localeCompare(String(a.ate || ''))).slice(0, 12);
 
   return { ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '', meta, metaNome: meta === 'compra' ? 'Compra (webhook)' : 'etapa do funil',
+    tipo: ehCk ? 'checkout' : 'pagina', funilNome: funil ? (funil.nome || '') : '',
     link: r.dominio ? ('https://' + r.dominio + '/r/' + slug) : ('/r/' + slug), estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
     criadoEm: r.criadoEm || null, diaDoTeste: inicioTeste ? Math.max(1, Math.ceil((Date.now() - inicioTeste) / 86400000)) : null,
     vencedora: r.vencedora || null, de: per.de, ate: per.ate, testeInteiro: !(de || ate),
@@ -13777,9 +13816,92 @@ function _abV2(slug, de, ate) {
       pitch: v.pitch, checkout: v.checkout, vendas: v.vendas, receita: v.receita, metas: v.metas,
       pctPitch: v.pessoas ? v.pitch / v.pessoas : 0, taxaCheckout: v.pessoas ? v.checkout / v.pessoas : 0,
       conversao: v.pessoas ? v.vendas / v.pessoas : 0, ticket: v.vendas ? v.receita / v.vendas : 0, rpp: rpp(v),
-      fatiaReal: v.fatiaReal, fatiaAlvo: v.fatiaAlvo, controle: v === ctrl })),
+      fatiaReal: v.fatiaReal, fatiaAlvo: v.fatiaAlvo, controle: v === ctrl,
+      expostos: v.expostos || 0, pedidos: v.pedidos || 0, pixGerado: v.pixGerado || 0, pixPago: v.pixPago || 0, estornos: v.estornos || 0 })),
     lider: lider ? lider.id : null, veredito, bayes: { chanceLider: bayes.chanceLider, lider: bayes.lider },
     divisao, perdaClique, chegaram, fora, serie, historico };
+}
+// ── Teste de checkout: quem viu, quem abriu e quem comprou em cada versão ──
+// A versão da venda vem de dois lugares, nessa ordem: a marca que o pixel pôs
+// no sck (volta no webhook) e a própria pessoa (o pixel registrou em qual
+// versão ela caiu quando abriu o checkout). Venda de quem nunca passou pelo
+// teste não entra — senão a versão A ficava com toda venda "de sempre".
+function _ckMedir(slug, r, ini, fim, liq) {
+  const out = {};
+  (r.destinos || []).forEach((d, i) => {
+    out[String(d.id || ('v' + i))] = { expostos: new Set(), abriram: new Set(), compradores: new Set(), pedidos: 0, receita: 0,
+                                       receitas: [], pixGer: new Set(), pixPago: new Set(), estornos: new Set(), porDia: {} };
+  });
+  if (!_pessoas()) return out;
+  const vis = {};      // visitante -> { v, de, ate }
+  const conta = (o, dia, k) => { const pd = o.porDia[dia] || (o.porDia[dia] = { pessoas: 0, vendas: 0 }); pd[k]++; };
+  _q(`SELECT e.visitante, e.tipo, e.em, e.extra FROM eventos e LEFT JOIN visitantes v ON v.id = e.visitante
+      WHERE e.tipo IN ('ckteste','checkout') AND e.em BETWEEN ? AND ? AND e.extra LIKE ? AND COALESCE(v.interno,0)=0 ORDER BY e.em`)
+    .all(ini, fim, '%"ckt":"' + slug + '"%').forEach(e => {
+      let x = {}; try { x = JSON.parse(e.extra || '{}'); } catch (er) {}
+      const o = out[x.ckv]; if (!o || x.ckt !== slug || !e.visitante) return;
+      o.expostos.add(e.visitante);
+      if (e.tipo !== 'checkout') return;
+      if (!o.abriram.has(e.visitante)) { o.abriram.add(e.visitante); conta(o, _diaBR(e.em), 'pessoas'); }
+      const q = vis[e.visitante] || (vis[e.visitante] = { v: x.ckv, de: e.em, ate: e.em });
+      q.v = x.ckv; q.ate = e.em;
+    });
+  // pedidos: os marcados com o teste, e os de quem abriu o checkout nele
+  const peds = new Map(), ate = fim + 2 * 86400000;
+  _q('SELECT * FROM pedidos WHERE ck_teste=? AND em BETWEEN ? AND ?').all(slug, ini, ate).forEach(p => peds.set(p.id, p));
+  const lista = Object.keys(vis);
+  for (let i = 0; i < lista.length; i += 400) {
+    const lote = lista.slice(i, i + 400);
+    _q('SELECT * FROM pedidos WHERE em BETWEEN ? AND ? AND visitante IN (' + _ph(lote.length) + ')')
+      .all(ini - 600000, ate, ...lote).forEach(p => peds.set(p.id, p));
+  }
+  [...peds.values()].sort((a, b) => a.em - b.em).forEach(p => {
+    if (p.renovacao) return;
+    let v = (p.ck_teste === slug && out[p.ck_var]) ? p.ck_var : null;
+    const q = p.visitante ? vis[p.visitante] : null;
+    // sem a marca: vale a versão em que a pessoa abriu o checkout, se a compra
+    // veio logo depois (até 2 dias)
+    if (!v && q && p.em >= q.de - 600000 && p.em <= q.ate + 2 * 86400000) v = q.v;
+    if (!v) return;
+    const o = out[v], chave = p.pedido || p.id, quem = p.visitante || ('p:' + chave);
+    const pix = /pix/i.test(p.metodo || '');
+    if (pix) o.pixGer.add(chave);
+    if (p.estorno) { o.estornos.add(chave); return; }
+    if (!p.pago) return;
+    if (pix) o.pixPago.add(chave);
+    o.pedidos++; o.receita += liq(p); o.receitas.push(liq(p));
+    // quem comprou abriu o checkout, mesmo que o clique não tenha chegado
+    if (!o.abriram.has(quem)) { o.abriram.add(quem); conta(o, p.dia, 'pessoas'); }
+    if (!o.compradores.has(quem)) { o.compradores.add(quem); conta(o, p.dia, 'vendas'); }
+  });
+  return out;
+}
+function _ckPreencher(slug, r, vars, ini, fim, liq) {
+  const m = _ckMedir(slug, r, ini, fim, liq);
+  vars.forEach(v => {
+    const o = m[v.id]; if (!o) return;
+    // a base do teste é quem abriu o checkout: é ali que as versões diferem
+    v.expostos = o.expostos.size; v.sorteios = o.expostos.size;
+    v.pessoas = o.abriram.size; v.checkout = o.abriram.size;
+    v.vendas = o.compradores.size; v.pedidos = o.pedidos;
+    v.receita = o.receita; v.receitas = o.receitas;
+    v.pixGerado = o.pixGer.size; v.pixPago = o.pixPago.size; v.estornos = o.estornos.size;
+    v.porDia = o.porDia;
+  });
+}
+function _ckLeitura(a, b, chance, pode, minV) {
+  const nome = v => v.nome || v.id;
+  const ca = a.pessoas ? a.vendas / a.pessoas : 0, cb = b.pessoas ? b.vendas / b.pessoas : 0;
+  const ra = a.pessoas ? a.receita / a.pessoas : 0, rb = b.pessoas ? b.receita / b.pessoas : 0;
+  const ta = a.vendas ? a.receita / a.vendas : 0, tb = b.vendas ? b.receita / b.vendas : 0;
+  const partes = [];
+  if (cb > ca * 1.05) partes.push('O ' + nome(b) + ' converte mais quem abre o checkout');
+  else if (ca > cb * 1.05) partes.push('O ' + nome(a) + ' converte mais quem abre o checkout');
+  if (ta && tb && Math.abs(ta - tb) / Math.min(ta, tb) > 0.05) partes.push((partes.length ? 'e o ' : 'O ') + nome(ta > tb ? a : b) + ' tem ticket maior');
+  let s = partes.join(' ') + (partes.length ? '.' : '');
+  if (ra || rb) s += ' Por quem abriu, o ' + nome(rb > ra ? b : a) + ' rende mais.';
+  s += pode ? ' Já dá pra declarar.' : ' Mantenha a divisão até 95% ou ' + minV + ' vendas por lado.';
+  return s.trim();
 }
 function _abLeitura(a, b, chance, pode, minV) {
   const nome = v => v.nome || v.id;
@@ -14507,10 +14629,64 @@ const PIXEL_JS = `(function(w,d){
   var LEVAR = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term',
                'utm_id','fbclid','gclid','ttclid','src','sck','xcod'];
 
+  // ── Teste A/B de checkout ────────────────────────────────────────────────
+  // O botao de compra continua o mesmo na pagina. O pixel baixa os testes de
+  // checkout do funil e troca o link pelo checkout sorteado pra esta pessoa —
+  // sempre o mesmo pra ela, ate em outra aba. A versao vai junto no sck e
+  // volta no webhook da venda. So mexe em link que e de alguma versao do teste.
+  var CK = [];
+  function ckChave(u){
+    try{ var x = new URL(u, location.href); return (x.host.replace(/^www\\./, '') + x.pathname).toLowerCase().replace(/\\/+$/, ''); }
+    catch(e){ return ''; }
+  }
+  function ckSorteio(t){
+    if(t.v) return t.v;                       // teste encerrado: todo mundo na vencedora
+    var k = 'tmx_ck_' + t.t, v = '';
+    try{ v = localStorage.getItem(k) || ''; }catch(e){}
+    for(var i=0;i<t.d.length;i++) if(t.d[i].id === v) return v;
+    // sorteio pelo id da pessoa: o mesmo id cai sempre no mesmo lado
+    var h = 0, str = id + '|' + t.t;
+    for(var j=0;j<str.length;j++) h = (h * 31 + str.charCodeAt(j)) >>> 0;
+    var tot = 0; t.d.forEach(function(x){ tot += (x.p || 1); });
+    var r = (h % 10000) / 10000 * tot;
+    v = t.d[0].id;
+    for(var n=0;n<t.d.length;n++){ r -= (t.d[n].p || 1); if(r < 0){ v = t.d[n].id; break; } }
+    try{ localStorage.setItem(k, v); }catch(e){}
+    return v;
+  }
+  var ckVistos = {};
+  function ckDe(href){
+    var c = ckChave(href); if(!c) return null;
+    for(var i=0;i<CK.length;i++){
+      var t = CK[i];
+      for(var j=0;j<t.d.length;j++){
+        if(ckChave(t.d[j].u) !== c) continue;
+        var v = ckSorteio(t), alvo = null;
+        for(var n=0;n<t.d.length;n++) if(t.d[n].id === v) alvo = t.d[n];
+        if(!alvo) return null;
+        // a pessoa viu a pagina com o teste: uma vez por visita
+        if(!ckVistos[t.t]){
+          ckVistos[t.t] = 1;
+          var ja = ''; try{ ja = sessionStorage.getItem('tmx_ckv_' + t.t) || ''; }catch(e){}
+          if(ja !== SID){ try{ sessionStorage.setItem('tmx_ckv_' + t.t, SID); }catch(e){} manda('ckteste', { ckt: t.t, ckv: v }); }
+        }
+        return { t: t.t, v: v, u: alvo.u };
+      }
+    }
+    return null;
+  }
+
   function enriquecer(href){
     try{
       var u = new URL(href, location.href);
-      if(!CHECKOUTS.test(u.host + u.pathname)) return href;
+      var ck = ckDe(u.href);
+      if(ck){
+        // troca pelo checkout sorteado; o que a pagina pos no link vai junto
+        var nu = new URL(ck.u, location.href);
+        u.searchParams.forEach(function(val, k){ if(!nu.searchParams.has(k)) nu.searchParams.set(k, val); });
+        u = nu;
+      }
+      if(!ck && !CHECKOUTS.test(u.host + u.pathname)) return href;
       // Valor que o proprio site cravou no link e que NAO e informacao: a pagina
       // do apostilai.ai sai com utm_source=organic fixo em todo botao de compra,
       // e era isso que fazia venda de anuncio chegar na Utmify como organica.
@@ -14548,6 +14724,11 @@ const PIXEL_JS = `(function(w,d){
         // nao joga fora o que a pagina ja pos ali — anexa depois de um til
         u.searchParams.set('sck', (sck && !VAZIO.test(sck) ? sck + '~' : '') + 'tmx_' + id);
       }
+      if(ck){
+        // a versao do teste vai no sck, junto do id da pessoa
+        var s2 = (u.searchParams.get('sck') || '').replace(/~?ck_[a-z0-9-]+_[A-Za-z0-9-]+/g, '');
+        u.searchParams.set('sck', s2 + '~ck_' + ck.t + '_' + ck.v);
+      }
       return u.toString();
     }catch(e){ return href; }
   }
@@ -14579,6 +14760,25 @@ const PIXEL_JS = `(function(w,d){
       }
     }
   }
+  // os testes de checkout do funil: 5 min guardados na aba, pra nao pedir a cada pagina
+  function ckCarregar(){
+    var chave = 'tmx_ckcfg_' + FUNIL, guardado = null;
+    try{ guardado = JSON.parse(sessionStorage.getItem(chave) || 'null'); }catch(e){}
+    if(guardado && Date.now() - guardado.em < 5 * 60000){ CK = guardado.t || []; return; }
+    try{
+      fetch(API.replace(/evento$/, 'ck') + '?f=' + encodeURIComponent(FUNIL), { credentials: 'omit' })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          CK = (j && j.testes) || [];
+          try{ sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), t: CK })); }catch(e){}
+          if(!CK.length) return;
+          // os links ja passaram pela primeira arrumacao: refaz com o teste
+          try{ var ms = d.querySelectorAll('a[' + MARCA + ']'); for(var i=0;i<ms.length;i++) ms[i].removeAttribute(MARCA); }catch(e){}
+          arrumarLinks(d);
+        }).catch(function(){});
+    }catch(e){}
+  }
+  ckCarregar();
   arrumarLinks(d);
   if(d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function(){ arrumarLinks(d); });
   w.addEventListener('load', function(){ arrumarLinks(d); });
@@ -14610,9 +14810,11 @@ const PIXEL_JS = `(function(w,d){
     if(foiCheckout) return;
     try{
       var u = new URL(href, location.href);
-      if(!CHECKOUTS.test(u.host + u.pathname)) return;
+      var ck = ckDe(u.href);
+      if(!ck && !CHECKOUTS.test(u.host + u.pathname)) return;
       foiCheckout = true;
-      manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host });
+      manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host,
+                          ckt: ck ? ck.t : undefined, ckv: ck ? ck.v : undefined });
     }catch(e){}
   }
   d.addEventListener('click', function(ev){
@@ -14660,6 +14862,41 @@ app.get('/px.js', (req, res) => {
   // dominio — e o diagnostico de cache nao serviria pra nada
   res.set('Access-Control-Expose-Headers', 'X-TMX-Versao');
   res.send(PIXEL_JS);
+});
+
+// ── Teste A/B de checkout: a lista que o pixel baixa ──
+// O botão de compra continua o mesmo na página. O pixel pergunta aqui quais
+// testes de checkout estão rodando no funil dele e troca o link do botão pelo
+// checkout sorteado pra pessoa. Público de propósito (roda na página do funil):
+// só devolve links de checkout, que já estão na página de qualquer jeito.
+let _ckCache = { em: 0, porFunil: {} };
+function _ckTestesCache() {
+  if (_ckCache.em && Date.now() - _ckCache.em < 60000) return _ckCache;
+  const db = readDB();
+  const porFunil = {};
+  const ado = _adocoes(db);
+  (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
+    .filter(r => r && r.tipo === 'checkout' && r.ativo !== false && r.funil && Array.isArray(r.destinos))
+    .forEach(r => {
+      const d = r.destinos.map((x, i) => ({ id: String(x.id || ('v' + i)), u: String(x.url || '').trim(), p: Number(x.peso) || 1 }))
+        .filter(x => /^https?:\/\//i.test(x.u));
+      if (!d.length) return;
+      const t = { t: String(r.slug || '').toLowerCase(), v: r.vencedora ? String(r.vencedora) : null, d };
+      // o pixel pode estar com o id de um funil adotado: vale pra ele também
+      const ids = new Set([r.funil]);
+      ado.filter(a => a.funil === r.funil && a.origemFunil).forEach(a => ids.add(a.origemFunil));
+      ids.forEach(id => { (porFunil[id] = porFunil[id] || []).push(t); });
+    });
+  _ckCache = { em: Date.now(), porFunil };
+  return _ckCache;
+}
+app.get('/api/funil/ck', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'public, max-age=60');
+  try {
+    const f = String(req.query.f || '').slice(0, 80);
+    res.json({ ok: true, testes: _ckTestesCache().porFunil[f] || [] });
+  } catch (e) { res.json({ ok: true, testes: [] }); }
 });
 
 // ── Redirecionador: divide o trafego entre destinos por peso ──

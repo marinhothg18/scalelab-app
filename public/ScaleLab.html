@@ -1817,6 +1817,12 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow-y:auto}
 .v2-mod{background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .v2-mod.p{max-width:620px}
+/* escolher o tipo de teste A/B */
+.ab-tipo{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px 16px;border-radius:12px;border:1px solid var(--border);
+  background:var(--bg3);color:var(--text);font-family:inherit;cursor:pointer;transition:border-color .15s}
+.ab-tipo:hover,.ab-tipo:focus-visible{border-color:var(--accent)}
+.ab-tipo b{font-size:14.5px}
+.ab-tipo span{font-size:12.5px;color:var(--text2);line-height:1.45}
 .v2-mod h2{margin:0;font-size:20px;letter-spacing:-.02em;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .v2-marcos{display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--v2-linha);border-radius:12px;padding:10px 14px;margin:12px 0;overflow-x:auto}
 .v2-marcos .m{font-size:11.5px;font-weight:800;white-space:nowrap;padding:4px 10px;border-radius:7px;background:var(--bg3);color:var(--text2)}
@@ -34106,7 +34112,7 @@ function abPintarLista(){
     var resumo = abResumoCurto(r, d);
     return '<div class="ab-linha" onclick="abEscolher(\''+fnEsc(r.slug)+'\')">'+
       '<div><div class="t">'+fnEsc(r.nome||r.slug)+'</div>'+
-        '<div class="s">'+fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,''))+' · '+abLinhaVars(r, d)+'</div></div>'+
+        '<div class="s">'+(r.tipo === 'checkout' ? '🛒 teste de checkout' : fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,'')))+' · '+abLinhaVars(r, d)+'</div></div>'+
       '<div><span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
       '<div class="ab-res" style="color:'+resumo.cor+'">'+resumo.txt+'</div>'+
       '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div></div>';
@@ -34138,6 +34144,11 @@ function abPintarLista(){
 
 // Uma linha por teste já dizendo quanto cada variante levou de clique e de gente.
 function abLinhaVars(r, d){
+  if(r.tipo === 'checkout'){
+    var v2 = (abDados2[r.slug] && abDados2[r.slug].variantes) || [];
+    if(!v2.length) return ((r.destinos||[]).length)+' versões';
+    return v2.map(function(v, i){ return String.fromCharCode(65+i)+' <b>'+fnNum(v.pessoas)+'</b> abriram/<b>'+fnNum(v.vendas)+'</b> compraram'; }).join(' · ');
+  }
   var vs = (d && d.variantes) || [];
   if(!vs.length) return ((r.destinos||[]).length)+' variante(s)';
   return vs.map(function(v){
@@ -34160,11 +34171,14 @@ function abResumoCurto(r, d){
     var ver = d2.veredito, vs = d2.variantes || [];
     var pes = vs.reduce(function(a, v){ return a + v.pessoas; }, 0), cli = vs.reduce(function(a, v){ return a + v.sorteios; }, 0);
     if(r.vencedora){ var vv = vs.filter(function(v){ return v.id === r.vencedora; })[0]; return { txt:'Venceu: '+fnEsc(vv ? vv.nome : r.vencedora), cor:'var(--v2-verde,#22C55E)', extra:'' }; }
-    if(!pes && cli) return { txt:'Falta o pixel', cor:'var(--red)', extra:fnNum(cli)+' cliques' };
-    if(!pes) return { txt:'Sem gente ainda', cor:'var(--text2)', extra:'' };
+    if(!pes && cli && r.tipo !== 'checkout') return { txt:'Falta o pixel', cor:'var(--red)', extra:fnNum(cli)+' cliques' };
+    if(!pes) return { txt: r.tipo === 'checkout' ? 'Ninguém abriu o checkout ainda' : 'Sem gente ainda', cor:'var(--text2)', extra: r.tipo === 'checkout' && cli ? fnNum(cli)+' viram a página' : '' };
     if(!ver) return { txt:fnNum(pes)+' pessoas', cor:'var(--text)', extra:'uma variante só' };
     var ch = ver.chance == null ? null : Math.max(ver.chance, 1 - ver.chance);
     var nome = (vs.filter(function(v){ return v.id === ver.sugerida; })[0] || {}).nome || '';
+    // teste de checkout com menos de 10 vendas num lado: a porcentagem seria sorte
+    if(r.tipo === 'checkout' && (ver.vendasMenorLado || 0) < 10)
+      return { txt:'Poucas vendas ainda', cor:'var(--text2)', extra: ver.faltaVendas > 800 ? 'empate provável' : 'faltam ~'+fnNum(ver.faltaVendas)+' vendas' };
     return { txt: fnEsc(nome)+' '+v2Pct(ch, 0), cor: ver.podeDeclarar ? 'var(--v2-verde,#22C55E)' : '#f59e0b',
              extra: ver.podeDeclarar ? 'pode declarar' : (ver.faltaVendas > 800 ? 'empate provável' : 'faltam ~'+fnNum(ver.faltaVendas)+' vendas') };
   }
@@ -34204,14 +34218,16 @@ function abPintarDetalhe(){
   if(!d2) abCarregar2(r.slug);
   if(!abDados[r.slug]) abCarregar(r.slug);
   det.innerHTML = '<button class="ab-voltar" onclick="abVoltar()">‹ Todos os testes e links</button>'+
-    (d2 ? abV2Html(r, d2) : '<div class="fx-vazio">Juntando as pessoas e as vendas de cada variante…</div>')+
+    (d2 ? (r.tipo === 'checkout' ? ckV2Html(r, d2) : abV2Html(r, d2)) : '<div class="fx-vazio">Juntando as pessoas e as vendas de cada variante…</div>')+
     '<details class="v2-cx" style="margin-top:14px"'+(abConfAberta || !(r.destinos||[]).length ? ' open' : '')+' ontoggle="abConfAberta=this.open">'+
-      '<summary style="cursor:pointer;font-weight:700">⚙ Configurar teste: variantes, pesos, meta e domínio</summary><div id="ab-conf" style="margin-top:12px"></div></details>';
+      '<summary style="cursor:pointer;font-weight:700">'+(r.tipo === 'checkout' ? '⚙ Configurar teste: versões, links e divisão' : '⚙ Configurar teste: variantes, pesos, meta e domínio')+'</summary><div id="ab-conf" style="margin-top:12px"></div></details>';
   abPintarConfig(document.getElementById('ab-conf'));
 }
 function abPintarConfig(el){
   var r = fnRedAtual(); if(!r || !el) return;
-  var d = abDados[r.slug], e = abEstado(r);
+  // teste de checkout: não tem link de anúncio, domínio nem meta (é a compra)
+  var ck = r.tipo === 'checkout';
+  var d = ck ? null : abDados[r.slug], e = abEstado(r);
   var vars = (d && d.variantes) || (r.destinos||[]).map(function(x,i){
     return { id:x.id||('v'+i), nome:x.nome||('Variante '+(i+1)), url:x.url, peso:x.peso||1,
              pessoas:0, metas:0, conversao:0 };
@@ -34238,13 +34254,13 @@ function abPintarConfig(el){
         '<span class="ab-var-rot" style="margin-left:-4px">%</span>'+
         '<span class="ab-var-rot" title="Peso bruto do sorteio. A porcentagem sai daqui.">peso</span>'+
         '<input class="ab-var-peso" type="number" min="0" value="'+(v.peso||1)+'" onchange="abPeso('+i+',this.value)">'+
-        '<span class="ab-var-rot">R$</span>'+
+        (ck ? '' : '<span class="ab-var-rot">R$</span>'+
         '<input class="ab-var-peso" type="number" min="0" step="0.01" value="'+(v.valor||'')+'" '+
           'placeholder="—" title="Preço desta variante. Só preencha se as variantes têm preços diferentes." '+
-          'onchange="abValorVar('+i+',this.value)">'+
+          'onchange="abValorVar('+i+',this.value)">')+
         '<button class="fn-btn g sm" onclick="abTirarVar('+i+')">✕</button></div>'+
       '<input class="ab-var-url" value="'+fnEsc(v.url||'')+'" placeholder="https://…" onchange="abUrlVar('+i+',this.value)">'+
-      '<div class="ab-var-res auto">'+
+      (ck ? '' : '<div class="ab-var-res auto">'+
         '<div><span class="k">Cliques no link</span><span class="v">'+fnNum(v.sorteios||0)+'</span></div>'+
         '<div><span class="k">Pessoas <small title="Precisa do pixel na página">?</small></span>'+
           '<span class="v"'+((v.sorteios>0 && !v.pessoas)?' style="color:var(--red)"':'')+'>'+fnNum(v.pessoas)+'</span></div>'+
@@ -34266,7 +34282,7 @@ function abPintarConfig(el){
           : '')+
         (temPreco ? '<div><span class="k">Por visitante</span><span class="v" style="color:'+pal[i%6]+'">'+
           (v.rpv!=null ? vsBrl(v.rpv) : '—')+'</span></div>' : '')+
-      '</div></div>';
+      '</div>')+'</div>';
   }).join('');
 
   // A barra mostrava o peso CONFIGURADO. Isso e a intencao, nao o resultado:
@@ -34354,10 +34370,14 @@ function abPintarConfig(el){
           '<h3 style="margin:0">'+fnEsc(r.nome||r.slug)+'</h3>'+
           '<span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
         (r.hipotese ? '<div class="ab-hip">“'+fnEsc(r.hipotese)+'”</div>' : '')+
-        '<div class="ab-link"><span class="rot">Link pra colar no anúncio</span>'+
+        (ck ? '<div class="fx-aviso" style="margin-bottom:12px"><b>Não precisa mudar nada na página nem no anúncio</b>'+
+            'O pixel troca o link do botão de compra pelo checkout sorteado pra cada pessoa, e ela cai sempre no mesmo. '+
+            'Só links iguais aos das versões abaixo são trocados: a versão A tem que ser exatamente o link que está hoje no botão. '+
+            'Depois de mudar um link aqui, o pixel pega a mudança em até 5 minutos.</div>'
+          : '<div class="ab-link"><span class="rot">Link pra colar no anúncio</span>'+
           '<span class="u" id="ab-url">'+fnEsc(abUrlDoTeste(r))+'</span>'+
-          '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>'+
-        '<div class="fn-sec">Variantes · divisão do tráfego</div>'+
+          '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>')+
+        '<div class="fn-sec">'+(ck ? 'Versões do checkout · divisão' : 'Variantes · divisão do tráfego')+'</div>'+
         caixas+
         '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">'+
           '<input id="ab-nova-url" placeholder="https://… (nova variante)" style="flex:1;min-width:190px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none">'+
@@ -34365,32 +34385,34 @@ function abPintarConfig(el){
         avisoReceita+
         '<div class="fn-split" style="margin-top:14px">'+barra+'</div>'+
         '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
-          (temSorteio ? 'Divisão <b>real</b> do sorteio, não a configurada.' : 'É esse o sorteio que o link faz.')+
-          ' As <b>utm_*</b> do anúncio são repassadas inteiras pro destino.</div>'+
+          (ck ? 'É essa a divisão que o pixel faz no botão de compra. As <b>utm_*</b> e o id da pessoa vão junto pro checkout.'
+              : (temSorteio ? 'Divisão <b>real</b> do sorteio, não a configurada.' : 'É esse o sorteio que o link faz.')+
+                ' As <b>utm_*</b> do anúncio são repassadas inteiras pro destino.')+'</div>'+
         avisoSem+
       '</div></div>'+
       '<div>'+
         '<div class="fn-cx2"><h3>Configuração</h3>'+
           '<div class="fn-campo"><label>Nome</label>'+
             '<input value="'+fnEsc(r.nome||'')+'" onchange="abCampo(\'nome\',this.value)"></div>'+
-          '<div class="fn-campo"><label>Atalho do link</label>'+
+          (ck ? '' : '<div class="fn-campo"><label>Atalho do link</label>'+
             '<input value="'+fnEsc(r.slug)+'" onchange="abMudarSlug(this.value)"></div>'+
           '<div class="fn-campo"><label>Domínio do link</label>'+
-            '<div id="ab-dominio-sel"></div></div>'+
+            '<div id="ab-dominio-sel"></div></div>')+
           '<div class="fn-campo"><label>Hipótese</label>'+
             '<input value="'+fnEsc(r.hipotese||'')+'" placeholder="O que você espera, e por quê" onchange="abCampo(\'hipotese\',this.value)"></div>'+
-          '<div class="fn-campo"><label>Meta — o que conta como conversão</label>'+
+          (ck ? '<div style="font-size:11.5px;color:var(--text2);line-height:1.5">A meta é a compra: venda paga que voltou do checkout com a versão no sck, ou de quem abriu o checkout naquela versão.</div>'
+              : '<div class="fn-campo"><label>Meta — o que conta como conversão</label>'+
             '<select onchange="abCampo(\'meta\',this.value)">'+abOpcoesMeta(r.meta)+'</select>'+
             '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">O padrão é a compra: venda paga ligada à pessoa que caiu na variante. '+
-            'Dá pra trocar por uma etapa do funil (chegar nela conta como conversão).</div></div>'+
+            'Dá pra trocar por uma etapa do funil (chegar nela conta como conversão).</div></div>')+
         '</div>'+
         '<div class="fn-cx2"><h3>Ações</h3>'+
           '<button class="fn-btn g sm" style="width:100%;margin-bottom:8px" onclick="abPausar()">'+
-            (r.ativo===false ? '▶ Reativar link' : '⏸ Pausar link')+'</button>'+
+            (r.ativo===false ? (ck ? '▶ Reativar teste' : '▶ Reativar link') : (ck ? '⏸ Pausar teste' : '⏸ Pausar link'))+'</button>'+
           '<button class="fn-btn g sm" style="width:100%;color:var(--red)" onclick="abRemover()">Remover</button>'+
         '</div></div></div>';
   // o seletor busca a lista no servidor, entao entra depois do HTML pronto
-  dmSeletor('ab-dominio-sel', r.dominio || '', function(v){
+  if(!ck) dmSeletor('ab-dominio-sel', r.dominio || '', function(v){
     var t = fnRedAtual(); if(!t) return;
     t.dominio = v; fnGravarRed(t);
     // so atualiza o link na tela; repintar tudo destruiria o seletor aberto
@@ -34598,6 +34620,51 @@ function abRemover(){
   abSel=null; fnPintarRed(); toastFn('Removido');
 }
 function abNovo(){
+  v2Modal('<div class="v2-cab"><h3>Que teste você quer criar?</h3><button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
+    '<div style="display:grid;gap:10px;margin-top:6px">'+
+      '<button class="ab-tipo" onclick="v2Fechar(this);abNovoPagina()"><b>🔀 Teste de página</b>'+
+        '<span>Um link pro anúncio que divide as pessoas entre páginas. Ex.: VSL 597 × 697.</span></button>'+
+      '<button class="ab-tipo" onclick="v2Fechar(this);abNovoCheckout()"><b>🛒 Teste de checkout</b>'+
+        '<span>A página continua a mesma. O pixel troca o link do botão de compra entre dois checkouts: preço, order bump, layout, gateway.</span></button>'+
+    '</div>', 'p');
+}
+// ── Teste de checkout ──
+// A página e o anúncio não mudam: o pixel troca o link do botão de compra
+// pelo checkout sorteado pra cada pessoa (sempre o mesmo pra ela). A versão
+// vai no sck e volta no webhook, então a venda cai na versão certa.
+function abNovoCheckout(){
+  var fa = fnAtual(); if(!fa){ toastFn('Abra um funil primeiro'); return; }
+  v2Modal('<div class="v2-cab"><div><h3>🛒 Novo teste de checkout</h3><div class="s">Funil '+fnEsc(fa.nome)+'</div></div>'+
+      '<button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
+    '<div class="fn-campo"><label for="ckn-nome">Nome do teste</label><input id="ckn-nome" placeholder="Ex.: Checkout com order bump"></div>'+
+    '<div class="fn-campo"><label for="ckn-a">Versão A · o checkout que está hoje no botão de compra</label><input id="ckn-a" placeholder="https://…"></div>'+
+    '<div class="fn-campo"><label for="ckn-b">Versão B · o checkout novo</label><input id="ckn-b" placeholder="https://…"></div>'+
+    '<div class="fn-campo"><label for="ckn-hip">Hipótese <span style="font-weight:400;color:var(--text2)">(opcional)</span></label><input id="ckn-hip" placeholder="O que você espera, e por quê"></div>'+
+    '<div class="fx-sub" style="margin:2px 0 14px;line-height:1.5">A página não muda. O pixel troca o link do botão: metade vai pro A, metade pro B, e cada pessoa cai sempre no mesmo. '+
+      'Só links iguais ao da versão A (ou B) são trocados, então o A tem que ser exatamente o link que está hoje no botão.</div>'+
+    '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="fn-btn g" onclick="v2Fechar(this)">Cancelar</button>'+
+      '<button class="fn-btn" onclick="abCriarCheckout(this)">Criar teste</button></div>', 'p');
+  setTimeout(function(){ var el = document.getElementById('ckn-nome'); if(el) el.focus(); }, 30);
+}
+function abCriarCheckout(bt){
+  var fa = fnAtual(); if(!fa) return;
+  var val = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  var nome = val('ckn-nome'), a = val('ckn-a'), b = val('ckn-b');
+  if(!nome){ toastFn('Dê um nome ao teste'); return; }
+  if(!/^https?:\/\//i.test(a) || !/^https?:\/\//i.test(b)){ toastFn('Cole os dois links completos, começando com https://'); return; }
+  if(a === b){ toastFn('As duas versões estão com o mesmo link'); return; }
+  var l = fnReds();
+  if(l.some(function(x){ return (x.projeto||'') === fnProj && String(x.nome||'').trim().toLowerCase() === nome.toLowerCase(); })){ toastFn('Já existe um teste com esse nome neste projeto'); return; }
+  var base = 'ck-'+nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0, 40);
+  var slug = base, k = 2;
+  while(l.some(function(x){ return x.slug === slug; })) slug = base+'-'+(k++);
+  l.push({ id:'r'+Date.now(), nome:nome, slug:slug, tipo:'checkout', projeto:fnProj, funil:fa.id, ativo:true,
+           hipotese:val('ckn-hip'), meta:'', minVendas:40, criadoEm:new Date().toISOString(),
+           destinos:[ { id:'a', nome:'Checkout atual', url:a, peso:1 }, { id:'b', nome:'Checkout novo', url:b, peso:1 } ], _updatedAt:Date.now() });
+  fnSalvarReds(l); v2Fechar(bt); abSel = slug; fnPintarRed();
+  toastFn('Teste criado. O pixel começa a trocar o link do botão em até 5 minutos.');
+}
+function abNovoPagina(){
   var nome = (prompt('Nome do teste (obrigatório, ex.: VSL 597 × 697):') || '').trim();
   if(!nome){ toastFn('O teste precisa de um nome'); return; }
   var igual = fnReds().some(function(x){ return (x.projeto||'') === fnProj && String(x.nome||'').trim().toLowerCase() === nome.toLowerCase(); });
@@ -35109,6 +35176,7 @@ function ldFicha(id){
       '<button class="fn-btn g sm" onclick="v2Fechar(this)">Fechar</button></div>'; });
 }
 var LD_EV = {
+  ckteste:  function(e){ return ['⇄','', 'Caiu na versão '+String(e.extra.ckv||'').toUpperCase()+' do teste de checkout', e.extra.ckt || '']; },
   entrou:   function(e){ return ['→','', 'Chegou em '+(e.etapa || v2Pg(e.pg)), e.extra.teste ? 'veio do link do teste "'+e.extra.teste+'"'+(e.extra.variante?' · variante '+e.extra.variante:'') : (e.extra.retorno ? 'voltou depois de 30 min parado' : '')]; },
   saiu:     function(e){ return ['←','', 'Saiu de '+(e.etapa || v2Pg(e.pg)), 'ficou '+v2MinSeg(e.extra.seg||0)+(e.extra.rol ? ' · rolou '+e.extra.rol+'%' : '')]; },
   video:    function(e){ return ['▶','info', e.extra.marco === 'play' ? 'Deu play na VSL' : 'Assistindo: minuto '+Math.floor((e.extra.seg||0)/60), 'Vturb']; },
@@ -35706,6 +35774,99 @@ function abCarregar2(slug){
     .catch(function(){ abBuscando2[k] = false; });
 }
 function abAlternarInteiro(v){ abTesteInteiro = v; var r = fnRedAtual(); if(r){ delete abDados2[r.slug]; abCarregar2(r.slug); fnPintarRed(); } }
+// ── Resultado do teste de checkout ──
+// A base é quem abriu o checkout: a página é a mesma pras duas versões, então
+// quem nunca clicou em comprar não diz nada sobre o checkout. Quem decide é a
+// receita por quem abriu — converter menos e vender mais caro pode ganhar.
+function ckV2Html(r, d){
+  var vs = d.variantes || [], ver = d.veredito, dir = lcEhDir();
+  var ctrl = vs[0], lider = vs.filter(function(v){ return v.id === d.lider; })[0];
+  var chance = ver && ver.chance != null ? Math.max(ver.chance, 1 - ver.chance) : null;
+  var nomeLider = ver ? (vs.filter(function(v){ return v.id === (ver.chance != null && ver.chance < .5 ? ver.controle : ver.desafiante); })[0] || {}).nome : '';
+  var estado = r.vencedora ? '<span class="v2-pill ok">VENCEDORA DECLARADA</span>' : r.ativo === false ? '<span class="v2-pill neu">PAUSADO</span>' :
+               '<span class="v2-pill info">TESTANDO'+(d.diaDoTeste ? ' · dia '+d.diaDoTeste : '')+'</span>';
+  var sugerida = ver && ver.sugerida;
+  var host = function(u){ try{ var x = new URL(u); return x.host.replace(/^www\./,'') + x.pathname.replace(/\/+$/,''); }catch(e){ return u || ''; } };
+  var cab = '<div class="v2-cx" style="margin-bottom:14px"><div class="v2-cab" style="margin-bottom:0">'+
+    '<div><h3 style="font-size:17px">🛒 '+fnEsc(r.nome||r.slug)+' '+estado+'</h3>'+
+      '<div class="s">Teste de checkout'+(d.funilNome ? ' · funil '+fnEsc(d.funilNome) : '')+' · o pixel troca o link do botão de compra'+
+      (r.hipotese ? ' · hipótese: '+fnEsc(r.hipotese) : '')+'</div>'+
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">'+
+        '<span class="v2-rot">Mostrando</span>'+
+        '<button class="fn-btn g sm'+(!abTesteInteiro?' on':'')+'" onclick="abAlternarInteiro(false)">'+fnEsc(fnPeriodoRotulo())+
+          (d.de && !abTesteInteiro ? ' · '+(d.de === d.ate ? v2Dia(d.de) : v2Dia(d.de)+' a '+v2Dia(d.ate)) : '')+'</button>'+
+        '<button class="fn-btn g sm'+(abTesteInteiro?' on':'')+'" onclick="abAlternarInteiro(true)">Teste inteiro'+(d.inicioTeste ? ' · desde '+v2Dia(d.inicioTeste) : '')+'</button>'+
+        (!abTesteInteiro ? '<span class="fx-sub">o veredito pra declarar usa o teste inteiro</span>' : '')+
+      '</div></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button class="fn-btn g sm" onclick="abPausar()">'+(r.ativo===false ? '▶ Reativar' : '⏸ Pausar')+'</button>'+
+      (dir ? (r.vencedora ? '<button class="fn-btn g sm" onclick="abDeclarar(\'\')">Desfazer vencedora</button>'
+                          : '<button class="fn-btn sm" '+(ver && ver.podeDeclarar ? '' : 'disabled title="Precisa de 95% de chance e '+(ver?ver.minPorLado:40)+' vendas de cada lado"')+
+                            ' onclick="abDeclarar(\''+fnEsc(sugerida||'')+'\')">Declarar vencedora</button>') : '')+
+    '</div></div></div>';
+
+  var abriram = vs.reduce(function(a, v){ return a + v.pessoas; }, 0), viram = vs.reduce(function(a, v){ return a + (v.expostos||0); }, 0);
+  var aviso = '';
+  if(!abriram){
+    aviso = '<div class="fx-aviso" style="margin-bottom:14px"><b>'+(viram ? fnNum(viram)+' pessoa(s) viram a página com o teste, mas ninguém abriu o checkout ainda' : 'Ninguém passou pelo teste ainda')+'</b>'+
+      (viram ? 'Assim que alguém clicar em comprar, a conta começa.'
+             : 'Confira: o link da versão A tem que ser exatamente o que está hoje no botão de compra, e a página precisa ter o pixel deste funil. Depois de criar o teste, o pixel leva até 5 minutos pra pegar.')+'</div>';
+  }
+  var cartao = function(v, i){
+    var frente = !r.vencedora && lider && v.id === lider.id && vs.length > 1 && v.rpp > 0;
+    return '<div class="v2-var'+(frente?' frente':'')+'"><div class="v2-cab" style="margin-bottom:4px"><h3>'+String.fromCharCode(65+i)+' · '+fnEsc(v.nome)+'</h3>'+
+      (i === 0 ? '<span class="v2-pill neu">Controle</span>' : '')+(frente ? '<span class="v2-pill ok">Na frente</span>' : '')+(r.vencedora === v.id ? '<span class="v2-pill ok">Vencedora</span>' : '')+'</div>'+
+      '<div class="fx-sub" style="margin-bottom:8px;font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+fnEsc(v.url)+'">'+fnEsc(host(v.url))+'</div>'+
+      '<div class="v2-cartav">'+
+        '<div><div class="v2-rot">Abriram o checkout</div><div class="v">'+fnNum(v.pessoas)+'</div></div>'+
+        '<div><div class="v2-rot">Compraram</div><div class="v'+(frente?' v2-bom':'')+'">'+fnNum(v.vendas)+'</div></div>'+
+        '<div><div class="v2-rot">Conversão</div><div class="v">'+v2Pct(v.conversao, 1)+'</div></div>'+
+        '<div><div class="v2-rot">Ticket</div><div class="v">'+v2Din2(v.ticket)+'</div></div>'+
+        '<div><div class="v2-rot">R$ por quem abriu</div><div class="v'+(frente?' v2-bom':'')+'">'+v2Din2(v.rpp)+'</div></div>'+
+      '</div>'+
+      '<div class="fx-sub" style="margin-top:8px">'+fnNum(v.expostos)+' viram a página · Pix: '+fnNum(v.pixPago)+' pago(s) de '+fnNum(v.pixGerado)+' gerado(s)'+
+        (v.estornos ? ' · <span class="v2-ruim">'+fnNum(v.estornos)+' reembolso(s)</span>' : '')+'</div></div>';
+  };
+  var cartoes = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:14px">'+vs.map(cartao).join('')+'</div>';
+
+  var b = ver ? vs.filter(function(v){ return v.id === ver.desafiante; })[0] : vs[1];
+  var dif = function(x, y){ if(!x) return '<td class="n">-</td>'; var p = (y - x) / x; return '<td class="n '+(p > 0.001 ? 'v2-bom' : p < -0.001 ? 'v2-ruim' : '')+'">'+(p>0?'+':'')+v2Pct(p)+'</td>'; };
+  var taxaPix = function(v){ return v.pixGerado ? v.pixPago / v.pixGerado : 0; };
+  var comp = (ctrl && b) ? '<div class="v2-tab-w" style="margin-top:14px"><table class="v2-tab"><thead><tr><th>Métrica</th><th class="n">A · '+fnEsc(ctrl.nome)+'</th><th class="n">'+
+      fnEsc(String.fromCharCode(65+vs.indexOf(b))+' · '+b.nome)+'</th><th class="n">Dif.</th></tr></thead><tbody>'+
+      '<tr><td>Viram a página</td><td class="n">'+fnNum(ctrl.expostos)+'</td><td class="n">'+fnNum(b.expostos)+'</td>'+dif(ctrl.expostos, b.expostos)+'</tr>'+
+      '<tr><td>Abriram o checkout</td><td class="n">'+fnNum(ctrl.pessoas)+'</td><td class="n">'+fnNum(b.pessoas)+'</td>'+dif(ctrl.pessoas, b.pessoas)+'</tr>'+
+      '<tr><td>Conversão do checkout</td><td class="n">'+v2Pct(ctrl.conversao, 1)+'</td><td class="n">'+v2Pct(b.conversao, 1)+'</td>'+dif(ctrl.conversao, b.conversao)+'</tr>'+
+      '<tr><td>Faturamento</td><td class="n">'+v2Din(ctrl.receita)+'</td><td class="n">'+v2Din(b.receita)+'</td>'+dif(ctrl.receita, b.receita)+'</tr>'+
+      '<tr><td>Ticket</td><td class="n">'+v2Din2(ctrl.ticket)+'</td><td class="n">'+v2Din2(b.ticket)+'</td>'+dif(ctrl.ticket, b.ticket)+'</tr>'+
+      '<tr><td>R$ por quem abriu</td><td class="n">'+v2Din2(ctrl.rpp)+'</td><td class="n">'+v2Din2(b.rpp)+'</td>'+dif(ctrl.rpp, b.rpp)+'</tr>'+
+      '<tr><td>Pix pago / gerado</td><td class="n">'+v2Pct(taxaPix(ctrl), 0)+'</td><td class="n">'+v2Pct(taxaPix(b), 0)+'</td>'+dif(taxaPix(ctrl), taxaPix(b))+'</tr>'+
+      '<tr><td>Reembolsos</td><td class="n">'+fnNum(ctrl.estornos)+'</td><td class="n">'+fnNum(b.estornos)+'</td><td class="n">-</td></tr>'+
+    '</tbody></table></div>' : '';
+  var falta = !ver ? '-' : ver.podeDeclarar ? 'já dá' : ver.faltaVendas > 800 ? 'empate provável' : '~'+fnNum(ver.faltaVendas)+' vendas';
+  var poucas = !!(ver && (ver.vendasMenorLado || 0) < 10);
+  var veredito = '<div class="v2-cx"><h3>Veredito</h3>'+
+    (ver ? '<div style="display:flex;justify-content:space-between;margin:12px 0 6px;font-size:13px"><span>Chance do '+fnEsc(nomeLider||'')+' ser melhor em R$ por quem abriu o checkout</span><b>'+(poucas ? 'poucas vendas ainda' : v2Pct(chance, 0))+'</b></div>'+
+      '<div class="v2-trilho" style="height:12px"><i style="width:'+(poucas ? 50 : (chance||0)*100).toFixed(1)+'%;background:'+(poucas ? 'var(--text2)' : 'linear-gradient(90deg,#5B5BF6,#1B9CFA,#22C55E)')+'"></i></div>'+
+      (poucas ? '<div class="fx-sub" style="margin-top:5px">Com menos de 10 vendas num dos lados, qualquer porcentagem aqui é sorte. A chance aparece a partir daí.</div>' : '')+
+      '<div class="v2-cartav" style="margin-top:14px">'+
+        '<div><div class="v2-rot">Diferença em R$ por quem abriu</div><div class="v '+(ver.liftRpp > 0 ? 'v2-bom' : ver.liftRpp < 0 ? 'v2-ruim' : '')+'">'+(ver.liftRpp==null?'-':(ver.liftRpp>0?'+':'')+v2Pct(ver.liftRpp,0))+'</div></div>'+
+        '<div><div class="v2-rot">Falta para decidir</div><div class="v">'+falta+'</div></div>'+
+        '<div><div class="v2-rot">Mínimo por lado</div><div class="v">'+fnNum(ver.minPorLado)+' vendas</div></div>'+
+      '</div>' + comp +
+      '<div class="v2-resumo"><b>Leitura</b>'+fnEsc(ver.leitura)+'</div>'
+     : '<div class="fx-vazio">Precisa das duas versões com gente abrindo o checkout pra comparar.</div>'+comp)+
+    '<div class="fx-sub" style="margin-top:10px;line-height:1.5">A venda cai na versão pela marca que o pixel põe no sck (volta no webhook) ou, se o gateway a perder, pela versão em que a pessoa abriu o checkout. '+
+      'Reembolsos aparecem conforme chegam: espere 7 dias depois do fim pra fechar a conta.</div></div>';
+
+  var tot = vs.reduce(function(a, v){ return a + (v.expostos||0); }, 0);
+  var divisao = '<div class="v2-cx"><h3>Divisão real</h3>'+
+    (tot ? '<div class="v2-split">'+vs.map(function(v, k){ return '<i style="width:'+(v.fatiaReal||0)+'%;background:'+(k===0?'#5B5BF6':'#16A34A')+'">'+String.fromCharCode(65+k)+' '+v2Pct((v.fatiaReal||0)/100)+'</i>'; }).join('')+'</div>'+
+      '<div class="fx-sub">De quem viu a página com o teste · configurado '+vs.map(function(v){ return Math.round(v.fatiaAlvo||0); }).join('/')+' · '+(d.divisao && d.divisao.torta ? '<b class="v2-ruim">desvio acima de 5 pontos</b>' : 'ok')+'</div>'
+     : '<div class="fx-vazio">Ninguém viu a página com o teste ainda.</div>')+'</div>';
+
+  return cab + aviso + cartoes + veredito + '<div style="margin-top:14px">'+divisao+'</div>';
+}
 function abV2Html(r, d){
   var vs = d.variantes || [], ver = d.veredito, dir = lcEhDir();
   var ctrl = vs[0], lider = vs.filter(function(v){ return v.id === d.lider; })[0];
