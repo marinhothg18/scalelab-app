@@ -2819,6 +2819,15 @@ app.get('/api/integracoes/vendas/me', authDiretoria, (req, res) => {
       comVid: vendas.filter(v => v.vid).length,
       semValor: pagas.filter(v => !(Number(v.valor) > 0)).length,
       ultimaVenda: pagas.length ? pagas[pagas.length - 1].recebidoEm : null,
+      // por plataforma: venda guardada antes das integrações novas veio da Payt
+      porPlataforma: _PLATAFORMAS_VENDA.reduce((o, pl) => {
+        const dela = vendas.filter(v => (v.plataforma || 'payt') === pl), pg = dela.filter(_vendaPaga);
+        const brutos = raw.filter(x => (x.plataforma || 'payt') === pl);
+        o[pl] = { eventos: dela.length, pagas: pg.length, comVid: pg.filter(v => v.vid).length,
+                  ultimaVenda: pg.length ? pg[pg.length - 1].recebidoEm : null,
+                  ultimoEvento: brutos.length ? brutos[brutos.length - 1].em : null };
+        return o;
+      }, {}),
       ultimosBrutos: raw.slice(-10).reverse()
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2994,7 +3003,157 @@ function _comoCasou(v) {
   return 'nenhum';
 }
 
-app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parseado pelo express.json global
+// ══════════════════════════════════════════════════════
+// ── Plataformas de venda: Hubla e AppMax ──
+// Cada uma manda a venda num formato próprio. Aqui elas viram o formato que o
+// resto do sistema já lê (o mesmo caminho da Payt): valor em reais, status
+// com os nomes de sempre (paid, waiting_payment, refunded…), cliente, método
+// de pagamento e o rastreio (utm_*, sck, src). Devolve null quando o evento
+// não é venda — teste de conexão, membro adicionado, assinatura —, e aí o
+// webhook só guarda o cru e responde 200.
+// ══════════════════════════════════════════════════════
+function _plataformaDoPayload(p) {
+  p = p || {};
+  if (typeof p.type === 'string' && p.event && typeof p.event === 'object' && /^(invoice|lead|subscription|customer|refund_request|smart_installment)\./.test(p.type)) return 'hubla';
+  if (typeof p.event === 'string' && p.data && typeof p.data === 'object' && 'event_type' in p) return 'appmax';
+  if (p.link || p.transaction) return 'payt';
+  return 'outra';
+}
+// parâmetros da query de uma URL (onde o sck viaja quando o gateway guarda o link inteiro)
+function _queryDe(u) {
+  const out = {};
+  if (!u || typeof u !== 'string' || u.indexOf('?') < 0) return out;
+  try { new URL(u, 'https://x').searchParams.forEach((v, k) => { if (v) out[k.toLowerCase()] = v; }); } catch (e) {}
+  return out;
+}
+// chaves em minúscula: a Hubla repassa o parâmetro com a caixa da URL ("SCK")
+function _minusculas(o) {
+  const out = {};
+  if (o && typeof o === 'object') Object.keys(o).forEach(k => { if (o[k] != null && o[k] !== '') out[k.toLowerCase()] = o[k]; });
+  return out;
+}
+const _centavos = v => { const n = _num(v); return n == null ? null : n / 100; };
+
+function _vendaHubla(p, req) {
+  const tipo = String(p.type || ''), ev = p.event || {};
+  // evento de teste ("Testar configuração" e sandbox) não pode virar venda
+  const sandbox = String((req && req.headers && req.headers['x-hubla-sandbox']) || '').toLowerCase() === 'true';
+  if (sandbox) return null;
+  if (tipo === 'lead.abandoned_checkout') {
+    const lead = ev.lead || {}, ses = lead.session || {}, q = _queryDe(ses.url), utm = ses.utm || {};
+    const nome = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || lead.name || lead.fullName || '';
+    const prod = (ev.products && ev.products[0]) || ev.product || {};
+    return { orderId: 'hubla-carrinho:' + String(lead.id || lead.email || lead.phone || Date.now()), status: 'lost_cart',
+      valor: null, products: [{ name: prod.name || '' }],
+      customer: { name: nome, email: lead.email || '', phone: lead.phone || '', document: lead.document || '' },
+      trackingParameters: { utm_source: utm.source || q.utm_source || '', utm_medium: utm.medium || q.utm_medium || '', utm_campaign: utm.campaign || q.utm_campaign || '',
+        utm_content: utm.content || q.utm_content || '', utm_term: utm.term || q.utm_term || '', sck: q.sck || '', src: q.src || '' },
+      created_at: lead.createdAt || '' };
+  }
+  if (!/^invoice\./.test(tipo)) return null;      // assinatura, acesso, pedido de reembolso: não é venda
+  const inv = ev.invoice || {};
+  // modo de compatibilidade: cada produto da venda chega também como uma fatura
+  // "de mentira" (<id>-offer-<n>). A venda de verdade já vem inteira na principal.
+  if (inv.parentInvoiceId || /-offer-\d+$/.test(String(inv.id || ''))) return null;
+  if (/-tester$/.test(String(inv.id || ''))) return null;
+  const stH = String(inv.status || '').toLowerCase(), met = String(inv.paymentMethod || '').toLowerCase();
+  let status = { paid: 'paid', unpaid: 'waiting_payment', refunded: 'refunded', chargeback: 'chargeback', disputed: 'em_disputa', canceled: 'canceled' }[stH] || stH;
+  if (tipo === 'invoice.expired' || (stH === 'overdue' && met !== 'credit_card')) status = 'expired';
+  if (tipo === 'invoice.payment_failed' || (stH === 'overdue' && met === 'credit_card')) status = 'refused';
+  const amt = inv.amount || {};
+  const valor = amt.totalCents != null ? _centavos(amt.totalCents) : _num(amt.total);
+  const vend = (Array.isArray(inv.receivers) ? inv.receivers : []).find(r => r && r.role === 'seller');
+  const liquido = vend && vend.totalCents != null ? _centavos(vend.totalCents) : null;
+  const prods = (Array.isArray(ev.products) && ev.products.length ? ev.products : (ev.product ? [ev.product] : []));
+  const nomeProd = prods.map(x => x && x.name).filter(Boolean).join(' + ');
+  const payer = inv.payer || ev.user || {};
+  const ses = inv.paymentSession || inv.firstPaymentSession || {};
+  const params = Object.assign({}, _queryDe(ses.url), _minusculas(ses.params));
+  const utm = ses.utm || {};
+  const pagoEm = (Array.isArray(inv.statusAt) ? inv.statusAt : []).filter(x => x && x.status === 'paid').map(x => x.when).pop() || '';
+  return {
+    orderId: 'hubla:' + String(inv.id || inv.orderId || ''), status, valor,
+    currency: inv.currency || 'BRL', valor_liquido: liquido,
+    products: [{ name: nomeProd }], plan_name: (prods[0] && prods[0].offers && prods[0].offers[0] && prods[0].offers[0].name) || '',
+    customer: { name: [payer.firstName, payer.lastName].filter(Boolean).join(' '), email: payer.email || '', phone: payer.phone || '', document: payer.document || '' },
+    payment_method: { pix: 'pix', bank_slip: 'boleto', credit_card: 'credit_card' }[met] || met,
+    trackingParameters: { utm_source: utm.source || params.utm_source || '', utm_medium: utm.medium || params.utm_medium || '',
+      utm_campaign: utm.campaign || params.utm_campaign || '', utm_content: utm.content || params.utm_content || '',
+      utm_term: utm.term || params.utm_term || '', sck: params.sck || '', src: params.src || '' },
+    tmx_vid: params.tmx_vid || '',
+    subscription_id: inv.subscriptionId || '', created_at: inv.saleDate || inv.createdAt || '', paid_at: pagoEm
+  };
+}
+
+// AppMax: o nome do evento vem como "OrderPaid" (painel) ou "order_paid" (app)
+const _APPMAX_EVENTO = {
+  orderapproved: 'paid', orderpaid: 'paid', orderpaidbypix: 'paid', orderintegrated: 'paid', orderchargebackgain: 'paid',
+  // cartão autorizado, antifraude ainda olhando: não é venda ainda
+  orderauthorized: 'em_analise', orderauthorizedwithdelay: 'em_analise', paymentauthorizedwithdelay: 'em_analise',
+  orderpixcreated: 'waiting_payment', orderbilletcreated: 'waiting_payment',
+  paymentnotauthorized: 'refused', orderrefusedbyrisk: 'refused', orderpixexpired: 'expired', orderbilletoverdue: 'expired',
+  orderrefund: 'refunded', orderpartialrefund: 'refunded',
+  orderchargebackintreatment: 'chargeback', customerinterested: 'lost_cart'
+};
+const _APPMAX_STATUS = {
+  aprovado: 'paid', integrado: 'paid', pendente_integracao: 'paid', pendente_integracao_em_analise: 'paid',
+  pendente: 'waiting_payment', autorizado: 'em_analise', cancelado: 'canceled', estornado: 'refunded', recusado_por_risco: 'refused',
+  chargeback_em_tratativa: 'chargeback', chargeback_em_disputa: 'chargeback', chargeback_perdido: 'chargeback', chargeback_vencido: 'chargeback'
+};
+function _vendaAppmax(p) {
+  const nomeEv = String(p.event || '').split('|')[0].trim().toLowerCase().replace(/[^a-z]/g, '');
+  const d = p.data || {};
+  const centavos = p.app_id != null || d.app_id != null;      // webhook de app manda em centavos
+  const reais = v => centavos ? _centavos(v) : _num(v);
+  const c = d.customer || (nomeEv === 'customerinterested' ? d : {});
+  // rastreio: a AppMax não documenta utm nem sck no webhook. Procura onde
+  // costuma aparecer (a visita, a URL visitada) e no que vier solto.
+  const visita = Array.isArray(d.visit) && d.visit.length ? d.visit[d.visit.length - 1] : (d.visit && typeof d.visit === 'object' ? d.visit : {});
+  const q = Object.assign({}, _queryDe(c.visited_url), _queryDe(visita && (visita.url || visita.visited_url)), _minusculas(d.tracking), _minusculas(visita));
+  const rast = k => String(d[k] || q[k] || '');
+  const nome = c.fullname || [c.firstname, c.lastname].filter(Boolean).join(' ');
+  const cliente = { name: nome, email: c.email || '', phone: c.telephone || c.phone || '', document: c.document_number || c.document || '' };
+  const trk = { utm_source: rast('utm_source'), utm_medium: rast('utm_medium'), utm_campaign: rast('utm_campaign'),
+    utm_content: rast('utm_content'), utm_term: rast('utm_term'), sck: rast('sck'), src: rast('src') };
+  if (nomeEv === 'customerinterested') {
+    const b = (d.interested_bundle && (Array.isArray(d.interested_bundle) ? d.interested_bundle[0] : d.interested_bundle)) || {};
+    return { orderId: 'appmax-carrinho:' + String(d.id || c.email || Date.now()), status: 'lost_cart', valor: null,
+      products: [{ name: b.name || '' }], customer: cliente, trackingParameters: trk, created_at: d.created_at || '' };
+  }
+  const idPed = d.id || d.order_id;
+  if (!idPed || (!d.total && d.total !== 0 && !d.full_payment_amount && !d.status)) return null;   // não é pedido
+  let status = _APPMAX_EVENTO[nomeEv] || _APPMAX_STATUS[String(d.status || '').toLowerCase()] || '';
+  if (!status) return null;
+  // upsell: chega como pedido próprio; só vale quando já está pago
+  if (nomeEv === 'orderupsold' && status !== 'paid') return null;
+  const bundles = Array.isArray(d.bundles) ? d.bundles : [];
+  const nomeProd = bundles.map(b => b && b.name).filter(Boolean).join(' + ') ||
+                   (Array.isArray(d.products) ? d.products.map(x => x && x.name).filter(Boolean).join(' + ') : '') || 'Pedido AppMax';
+  const tp = String(d.payment_type || '').toLowerCase();
+  return {
+    orderId: 'appmax:' + String(idPed), status,
+    valor: d.total != null ? reais(d.total) : _num(d.full_payment_amount),
+    valor_liquido: d.merchant_total != null ? reais(d.merchant_total) : null,
+    products: [{ name: nomeProd }], customer: cliente,
+    payment_method: /pix/.test(tp) ? 'pix' : (/billet|boleto/.test(tp) ? 'boleto' : (/credit|card/.test(tp) ? 'credit_card' : tp)),
+    trackingParameters: trk, tmx_vid: rast('tmx_vid'),
+    created_at: d.created_at || '', paid_at: d.paid_at || ''
+  };
+}
+function _adaptarVenda(p, plataforma, req) {
+  try {
+    if (plataforma === 'hubla') return _vendaHubla(p || {}, req);
+    if (plataforma === 'appmax') return _vendaAppmax(p || {});
+  } catch (e) { console.error('[VENDAS] ' + plataforma + ' não traduziu:', e.message); return null; }
+  return p;
+}
+
+// Uma URL por plataforma: /api/webhook/vendas/<token>/hubla, /appmax, /payt.
+// A URL sem plataforma (a que a Payt já usa) continua valendo e descobre a
+// plataforma pelo formato do que chegou. Cada plataforma é traduzida pro
+// formato comum antes de qualquer conta, então o resto do sistema não muda.
+const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax'];
+function _receberVenda(req, res) {   // body já vem parseado pelo express.json global
   try {
     const db = readDB();
     const cfg = _vendasCfg(db);
@@ -3005,15 +3164,32 @@ app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parsead
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       return res.status(401).json({ error: 'Token inválido.' });
     }
-    const payload = req.body || {};
+    const bruto = req.body || {};
+    const pedida = String(req.params.plataforma || '').toLowerCase();
+    const plataforma = _PLATAFORMAS_VENDA.includes(pedida) ? pedida : _plataformaDoPayload(bruto);
     // guarda o cru (limitado) pra conseguir mapear os campos do gateway real
     const raw = db.store[KEY_VENDAS_RAW] || [];
-    raw.push({ em: new Date().toISOString(), payload });
+    raw.push({ em: new Date().toISOString(), plataforma, payload: bruto });
     db.store[KEY_VENDAS_RAW] = raw.slice(-VENDAS_RAW_MAX);
 
+    // evento que não é venda (teste de conexão, membro adicionado…): só registra
+    const payload = _adaptarVenda(bruto, plataforma, req);
+    if (!payload) {
+      if (!db.timestamps) db.timestamps = {};
+      db.timestamps[KEY_VENDAS_RAW] = now();
+      writeDB(db);
+      return res.json({ ok: true, ignorado: true });
+    }
     const venda = _normalizarVenda(payload);
+    venda.plataforma = plataforma;
     venda.casadaPor = _comoCasou(venda);
     const vendas = db.store[KEY_VENDAS] || [];
+    // Hubla não diz se a fatura é renovação: é, quando a mesma assinatura já
+    // teve outra fatura paga antes
+    if (plataforma === 'hubla' && venda.assinatura && _vendaPaga(venda) &&
+        vendas.some(v => v.assinatura === venda.assinatura && v.pedidoId !== venda.pedidoId && _vendaPaga(v))) {
+      venda.renovacao = true; venda.casadaPor = _comoCasou(venda);
+    }
     // dedupe por pedidoId (gateways reenviam o mesmo evento)
     const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
     if (!jaTem) {
@@ -3033,7 +3209,8 @@ app.post('/api/webhook/vendas/:token', (req, res) => {   // body já vem parsead
     // nunca devolve 500 pro gateway sem contexto — muitos desativam o webhook após erros
     res.status(200).json({ ok: false, erro: err.message });
   }
-});
+}
+app.post('/api/webhook/vendas/:token/:plataforma?', _receberVenda);
 
 // ── CLIENTE MCP DA UTMIFY (servidor -> servidor) ──
 // A API publica da Utmify so RECEBE pedidos (POST /orders). Mas o servidor MCP
@@ -12543,7 +12720,7 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
     // muitos visitantes e 0% — parecendo a pior pagina do funil, quando na
     // verdade esta fora da conta. Uma constante so, pra credito e listagem nao
     // divergirem.
-    const EH_CHECKOUT = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay/i;
+    const EH_CHECKOUT = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax/i;
 
     const paginas = {};
     const cx = pg => (paginas[pg] = paginas[pg] ||
@@ -14618,7 +14795,7 @@ const PIXEL_JS = `(function(w,d){
   var CHECKOUTS = new RegExp([
     'payt','kiwify','hotmart','monetizze','eduzz','braip','perfectpay','cakto','ticto',
     'kirvano','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
-    'octuspay','buygoods','iexperience','guru','vega',
+    'octuspay','buygoods','iexperience','guru','vega','hubla','hub\\\\.la',
     'checkout','pagamento','payment','pague','pedido','carrinho','cart','order',
     'finalizar','confirmacao','confirmation','pay\\\\.'
   ].join('|'), 'i');
@@ -15438,7 +15615,7 @@ function _quizStats(id, de, ate) {
     // entao r.vd e o id DELE na jornada da VSL. Com isso da pra responder o que
     // o quiz sozinho nao responde: quantos clicaram e nao chegaram, quanto quem
     // chegou assistiu, e se abriu o checkout.
-    const EH_CHECKOUT_Q = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay/i;
+    const EH_CHECKOUT_Q = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax/i;
     const tipoEtapa = {};
     (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
       .forEach(f => ((f && f.etapas) || []).forEach(e => { if (e && e.id) tipoEtapa[e.id] = e.tipo; }));

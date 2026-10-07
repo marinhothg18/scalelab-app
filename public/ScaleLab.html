@@ -20610,6 +20610,46 @@ function _cardMetaAds(m){
     '<div id="meta-resultado" style="margin-top:12px;"></div>'+
   '</div>';
 }
+// Uma URL por plataforma: a venda chega já dizendo de onde veio, e cada
+// plataforma é traduzida pro mesmo formato no servidor.
+var PLATAFORMAS_VENDA = [
+  { id:'payt', nome:'Payt', cor:'#1B9CFA',
+    passo:'A URL de cima, sem plataforma, é a que a Payt já usa e continua funcionando. Pra uma integração nova, use esta.' },
+  { id:'hubla', nome:'Hubla', cor:'#3E1493',
+    passo:'Na Hubla: Integrações › Automações › Webhook › Adicionar regra. Cole a URL, escolha os produtos e marque os eventos de fatura (criada, paga, expirada, reembolsada e mudança de status) e o de carrinho abandonado. Em “Como enviar seus dados”, deixe “Integração recomendada”.' },
+  { id:'appmax', nome:'AppMax', cor:'#FF5926',
+    passo:'Na AppMax: Configurações › Webhooks › Novo webhook. Escolha a loja, cole a URL, marque os eventos de Pedidos e de Pagamento não autorizado e, em “Modelo de conteúdo JSON”, deixe “Modelo Padrão (Recomendado)”.',
+    aviso:'A AppMax não documenta se devolve o sck (o id da pessoa). Faça uma compra de teste: se ela chegar sem o id, a venda é ligada pelo e-mail ou telefone quando a pessoa já é conhecida.' }
+];
+function _blocoPlataformasVenda(v, url){
+  var pp = v.porPlataforma || {};
+  var quando = function(iso){ if(!iso) return ''; var d = new Date(iso); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+  return '<div style="margin:4px 0 16px;">'+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:8px;">Por plataforma</div>'+
+    PLATAFORMAS_VENDA.map(function(p){
+      var st = pp[p.id] || {}, u = url ? url + '/' + p.id : '';
+      var estado = st.pagas
+        ? '<span style="color:#16A34A;font-weight:700;">✅ '+st.pagas+' venda(s) paga(s)</span> · última '+quando(st.ultimaVenda)+' · '+Math.round((st.comVid||0)/st.pagas*100)+'% com o id da pessoa'
+        : (st.eventos || st.ultimoEvento ? '<span style="color:#D97706;font-weight:700;">⏳ recebendo, nenhuma venda paga ainda</span>'+(st.ultimoEvento ? ' · último aviso '+quando(st.ultimoEvento) : '')
+                                         : '<span>○ nada recebido ainda</span>');
+      return '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">'+
+          '<b style="font-size:13.5px;color:'+p.cor+';">'+p.nome+'</b><span style="font-size:11.5px;color:var(--text2);">'+estado+'</span></div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'+
+          '<input type="text" class="fi" id="vendas-url-'+p.id+'" readonly value="'+_esc(u)+'" aria-label="URL de postback da '+p.nome+'" style="flex:1;min-width:220px;font-family:Menlo,monospace;font-size:11px;">'+
+          '<button class="btn btn-ghost" onclick="copiarUrlPlataforma(\''+p.id+'\', this)">📋 Copiar</button></div>'+
+        '<div style="font-size:11.5px;color:var(--text2);line-height:1.6;">'+p.passo+'</div>'+
+        (p.aviso ? '<div style="font-size:11.5px;color:#D97706;line-height:1.6;margin-top:6px;">'+p.aviso+'</div>' : '')+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+function copiarUrlPlataforma(id, bt){
+  var i = document.getElementById('vendas-url-'+id); if(!i) return;
+  i.select();
+  try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); }
+  if(bt){ var t = bt.textContent; bt.textContent = '✅ Copiado'; setTimeout(function(){ bt.textContent = t; }, 1500); }
+}
 function _cardVendas(v){
   v = v || {};
   var url = v.urlWebhook ? (location.origin + v.urlWebhook) : '';
@@ -20618,7 +20658,7 @@ function _cardVendas(v){
       '<div style="display:flex;align-items:center;gap:14px;">'+
         '<div style="width:48px;height:48px;background:linear-gradient(135deg,#16A34A,#059669);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">💰</div>'+
         '<div><div style="font-size:17px;font-weight:700;">Vendas do checkout</div>'+
-        '<div style="font-size:11px;color:var(--text2);">Faturamento em tempo real · via postback</div></div>'+
+        '<div style="font-size:11px;color:var(--text2);">Payt, Hubla e AppMax · faturamento em tempo real · via postback</div></div>'+
       '</div>'+
       _badgeInt(!!v.configurado && v.totalVendas>0, '✅ RECEBENDO', v.configurado ? '⏳ AGUARDANDO 1ª VENDA' : '○ NÃO CONFIGURADO')+
     '</div>'+
@@ -20636,6 +20676,7 @@ function _cardVendas(v){
           '</div>'+
           '<div style="font-size:11px;color:#DC2626;margin-top:6px;">⚠️ Essa URL é secreta — quem tiver ela consegue lançar vendas no sistema.</div>'+
         '</div>'+
+        _blocoPlataformasVenda(v, url)+
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px;">'+
           '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Vendas pagas</div><div style="font-size:22px;font-weight:700;margin-top:4px;color:#16A34A;">'+(v.totalVendas||0)+'</div><div style="font-size:10.5px;color:var(--text2);margin-top:2px;">'+(v.pagasHoje||0)+' hoje'+((v.receitaHoje||0)>0?' · R$ '+Math.round(v.receitaHoje).toLocaleString('pt-BR'):'')+'</div></div>'+
           '<div style="background:var(--bg);padding:14px;border-radius:10px;text-align:center;"><div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Eventos recebidos</div><div style="font-size:22px;font-weight:700;margin-top:4px;">'+(v.eventos||0)+'</div><div style="font-size:10.5px;color:var(--text2);margin-top:2px;">'+(v.pedidos||0)+' pedidos diferentes</div></div>'+
@@ -20645,7 +20686,8 @@ function _cardVendas(v){
           '<b style="color:var(--text);">O mesmo pedido chega várias vezes</b> — pix gerado, depois pago ou cancelado. Só <b style="color:#16A34A;">pago</b> vira faturamento.<br>'+
           Object.keys(v.porStatus).sort(function(a,b){ return v.porStatus[b]-v.porStatus[a]; }).map(function(k){
             var rot = {paid:'✅ pago', canceled:'✖️ cancelado', waiting_payment:'⏳ aguardando pagamento',
-                       lost_cart:'🛒 carrinho perdido', chargeback:'↩️ chargeback', refunded:'↩️ reembolsado'}[k] || k;
+                       lost_cart:'🛒 carrinho perdido', chargeback:'↩️ chargeback', refunded:'↩️ reembolsado',
+                       refused:'✖️ recusado', expired:'⌛ expirado', em_analise:'🔎 em análise (antifraude)', em_disputa:'⚖️ em disputa'}[k] || k;
             return rot+': <b style="color:var(--text);">'+v.porStatus[k]+'</b>';
           }).join(' · ')+
           (v.comVid===0 && v.eventos ? '<br><span style="color:#D97706;">⚠️ Nenhuma venda chegou com o id do visitante: sem o pixel na página, o funil não consegue dizer de qual página e de qual variante veio a compra.</span>' : '')+
