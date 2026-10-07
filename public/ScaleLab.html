@@ -5767,8 +5767,11 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
         <!-- Links -->
         <div class="fg form-full">
-          <label class="fl">Link de entrega</label>
-          <input class="fi" id="t-link" type="url" placeholder="https://...">
+          <label class="fl" for="t-link">Link de entrega</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="fi" id="t-link" type="url" placeholder="https://..." style="flex:1;" oninput="_linkEntregaAtualizar()">
+            <a class="link-ref-abrir" id="t-link-abrir" target="_blank" rel="noopener noreferrer" aria-label="Abrir link de entrega em nova aba">↗</a>
+          </div>
         </div>
         <div class="fg form-full">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
@@ -22470,6 +22473,7 @@ function abrirNovaDemanda(){
   selCl.innerHTML='<option value="">Selecionar modelo de checklist</option>'+getChecklists().map(cl=>`<option value="${cl.id}">${cl.nome}</option>`).join('');
   // Reset fields
   ['t-nome','t-link','t-inicio','t-data','t-hora-inicio','t-prazo-hora'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  _linkEntregaAtualizar();
   setLinksRef([{nome:'',url:''}]);
   setDescHtml('');
   document.getElementById('t-status').value='BACKLOG';
@@ -22550,6 +22554,14 @@ function _linkRefLinha(nome, url, exemploNome){
   inp.addEventListener('input', function(){ _linkRefAtualizar(row); });
   _linkRefAtualizar(row);
   return row;
+}
+// a mesma setinha ↗ no link de entrega
+function _linkEntregaAtualizar(){
+  var inp = document.getElementById('t-link'), a = document.getElementById('t-link-abrir');
+  if(!inp || !a) return;
+  var url = _linkRefUrl(inp.value);
+  if(url){ a.href = url; a.removeAttribute('aria-disabled'); a.title = 'Abrir em nova aba'; }
+  else { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); a.title = 'Cole um link pra poder abrir'; }
 }
 function addLinkRef(){
   var cont = document.getElementById('t-links-ref-list');
@@ -22674,6 +22686,7 @@ function abrirEditarDemanda(id){
   if(_iaBlockE) _iaBlockE.style.display = _ehDirIAEdit ? '' : 'none';
   if(_iaSepE && _iaSepE.textContent && _iaSepE.textContent.indexOf('preencha manualmente') !== -1) _iaSepE.style.display = _ehDirIAEdit ? '' : 'none';
   document.getElementById('t-link').value = t.link || '';
+  _linkEntregaAtualizar();
   // Links de referência: usa novo formato se existir, senão fallback pro antigo
   if(t.linksRef && t.linksRef.length){
     setLinksRef(t.linksRef);
