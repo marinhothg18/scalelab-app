@@ -14937,13 +14937,14 @@ const PIXEL_JS = `(function(w,d){
       }
     }
   }
-  // os testes de checkout do funil: 5 min guardados na aba, pra nao pedir a cada pagina
+  // os testes de checkout DESTA pagina (so roda nas paginas escolhidas no
+  // teste): 5 min guardados na aba, pra nao pedir a cada visita
   function ckCarregar(){
-    var chave = 'tmx_ckcfg_' + FUNIL, guardado = null;
+    var chave = 'tmx_ckcfg_' + PAGINA, guardado = null;
     try{ guardado = JSON.parse(sessionStorage.getItem(chave) || 'null'); }catch(e){}
     if(guardado && Date.now() - guardado.em < 5 * 60000){ CK = guardado.t || []; return; }
     try{
-      fetch(API.replace(/evento$/, 'ck') + '?f=' + encodeURIComponent(FUNIL), { credentials: 'omit' })
+      fetch(API.replace(/evento$/, 'ck') + '?f=' + encodeURIComponent(FUNIL) + '&pg=' + encodeURIComponent(PAGINA), { credentials: 'omit' })
         .then(function(r){ return r.json(); })
         .then(function(j){
           CK = (j && j.testes) || [];
@@ -15042,38 +15043,65 @@ app.get('/px.js', (req, res) => {
 });
 
 // ── Teste A/B de checkout: a lista que o pixel baixa ──
-// O botão de compra continua o mesmo na página. O pixel pergunta aqui quais
-// testes de checkout estão rodando no funil dele e troca o link do botão pelo
-// checkout sorteado pra pessoa. Público de propósito (roda na página do funil):
-// só devolve links de checkout, que já estão na página de qualquer jeito.
-let _ckCache = { em: 0, porFunil: {} };
+// O botão de compra continua o mesmo na página. O pixel pergunta aqui se a
+// página DELE tem teste de checkout e, se tiver, troca o link do botão pelo
+// checkout sorteado pra pessoa. Só vale nas páginas escolhidas no teste: as
+// outras páginas do funil, com o mesmo botão, continuam como estão.
+// Público de propósito (roda na página do funil): só devolve links de
+// checkout, que já estão na página de qualquer jeito.
+let _ckCache = { em: 0, porPg: {} };
 function _ckTestesCache() {
   if (_ckCache.em && Date.now() - _ckCache.em < 60000) return _ckCache;
   const db = readDB();
-  const porFunil = {};
-  const ado = _adocoes(db);
+  const porPg = {};
   (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
-    .filter(r => r && r.tipo === 'checkout' && r.ativo !== false && r.funil && Array.isArray(r.destinos))
+    .filter(r => r && r.tipo === 'checkout' && r.ativo !== false && Array.isArray(r.destinos) && Array.isArray(r.paginas))
     .forEach(r => {
       const d = r.destinos.map((x, i) => ({ id: String(x.id || ('v' + i)), u: String(x.url || '').trim(), p: Number(x.peso) || 1 }))
         .filter(x => /^https?:\/\//i.test(x.u));
       if (!d.length) return;
       const t = { t: String(r.slug || '').toLowerCase(), v: r.vencedora ? String(r.vencedora) : null, d };
-      // o pixel pode estar com o id de um funil adotado: vale pra ele também
-      const ids = new Set([r.funil]);
-      ado.filter(a => a.funil === r.funil && a.origemFunil).forEach(a => ids.add(a.origemFunil));
-      ids.forEach(id => { (porFunil[id] = porFunil[id] || []).push(t); });
+      new Set(r.paginas.map(_normPg).filter(Boolean)).forEach(pg => { (porPg[pg] = porPg[pg] || []).push(t); });
     });
-  _ckCache = { em: Date.now(), porFunil };
+  _ckCache = { em: Date.now(), porPg };
   return _ckCache;
 }
 app.get('/api/funil/ck', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cache-Control', 'public, max-age=60');
   try {
-    const f = String(req.query.f || '').slice(0, 80);
-    res.json({ ok: true, testes: _ckTestesCache().porFunil[f] || [] });
+    const pg = _normPg(String(req.query.pg || '').slice(0, 200));
+    res.json({ ok: true, testes: (pg && _ckTestesCache().porPg[pg]) || [] });
   } catch (e) { res.json({ ok: true, testes: [] }); }
+});
+
+// Os links de checkout que estão numa página: é com eles que o teste escolhe a
+// versão A. Abre a página como um visitante e lê os links de compra do HTML.
+const _CK_LINK = /(checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax|greenn|lastlink|yampi|braip)/i;
+app.post('/api/funil/ck-links', authUsuario, async (req, res) => {
+  try {
+    let url = String((req.body && req.body.url) || '').trim().slice(0, 400);
+    if (!url) return res.status(400).json({ error: 'Informe a página.' });
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    if (!_saudeUrlPublica(url)) return res.status(400).json({ error: 'Endereço inválido.' });
+    const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 7000);
+    let html = '', http = null;
+    try {
+      const r = await fetch(url, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CentralTMX-Saude/1.0)' } });
+      http = r.status; html = (await r.text()).slice(0, 800000);
+    } catch (e) {
+      return res.json({ ok: false, erro: e.name === 'AbortError' ? 'A página não respondeu em 7s.' : 'Não consegui abrir a página.' });
+    } finally { clearTimeout(t); }
+    const achados = {};
+    (html.match(/https?:\/\/[^\s"'<>()\\]+/gi) || []).forEach(u => {
+      let x; try { x = new URL(u.replace(/&amp;/g, '&')); } catch (e) { return; }
+      if (!_CK_LINK.test(x.host + x.pathname) || /\.(js|css|png|jpe?g|gif|svg|webp|woff2?)$/i.test(x.pathname)) return;
+      const k = x.origin + x.pathname.replace(/\/+$/, '');
+      achados[k] = (achados[k] || 0) + 1;
+    });
+    const links = Object.entries(achados).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([u, n]) => ({ url: u, vezes: n }));
+    res.json({ ok: true, http, pg: _normPg(url), pixel: /px\.js/i.test(html), links });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Redirecionador: divide o trafego entre destinos por peso ──
