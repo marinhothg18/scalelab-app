@@ -13831,6 +13831,10 @@ function _abV2(slug, de, ate) {
   const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
   const quem = {};
   if (db && ehCk) _ckPreencher(slug, r, vars, per.ini, per.fim, liq);
+  // onde o link do teste já apareceu: confirma que foi colado no botão certo
+  const paginasVistas = (db && ehCk) ? _q(`SELECT e.pg, COUNT(DISTINCT e.visitante) n, MAX(e.em) ult FROM eventos e
+      WHERE e.tipo IN ('ckteste','checkout') AND e.em >= ? AND e.extra LIKE ? AND e.pg IS NOT NULL GROUP BY e.pg ORDER BY n DESC LIMIT 10`)
+      .all(inicioTeste || per.ini, '%"ckt":"' + slug + '"%').map(x => ({ pg: x.pg, pessoas: x.n, ultimo: x.ult })) : [];
   if (db && !ehCk) {
     _q(`SELECT visitante, variante, MIN(inicio) ini, MAX(pitch) pitch, MAX(checkout) ck FROM sessoes
         WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ? GROUP BY visitante`).all(slug, per.ini, per.fim)
@@ -13984,7 +13988,7 @@ function _abV2(slug, de, ate) {
     }).sort((a, b) => String(b.ate || '').localeCompare(String(a.ate || ''))).slice(0, 12);
 
   return { ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '', meta, metaNome: meta === 'compra' ? 'Compra (webhook)' : 'etapa do funil',
-    tipo: ehCk ? 'checkout' : 'pagina', funilNome: funil ? (funil.nome || '') : '',
+    tipo: ehCk ? 'checkout' : 'pagina', funilNome: funil ? (funil.nome || '') : '', paginasVistas,
     link: r.dominio ? ('https://' + r.dominio + '/r/' + slug) : ('/r/' + slug), estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
     criadoEm: r.criadoEm || null, diaDoTeste: inicioTeste ? Math.max(1, Math.ceil((Date.now() - inicioTeste) / 86400000)) : null,
     vencedora: r.vencedora || null, de: per.de, ate: per.ate, testeInteiro: !(de || ate),
@@ -14807,15 +14811,12 @@ const PIXEL_JS = `(function(w,d){
                'utm_id','fbclid','gclid','ttclid','src','sck','xcod'];
 
   // ── Teste A/B de checkout ────────────────────────────────────────────────
-  // O botao de compra continua o mesmo na pagina. O pixel baixa os testes de
-  // checkout do funil e troca o link pelo checkout sorteado pra esta pessoa —
-  // sempre o mesmo pra ela, ate em outra aba. A versao vai junto no sck e
-  // volta no webhook da venda. So mexe em link que e de alguma versao do teste.
-  var CK = [];
-  function ckChave(u){
-    try{ var x = new URL(u, location.href); return (x.host.replace(/^www\\./, '') + x.pathname).toLowerCase().replace(/\\/+$/, ''); }
-    catch(e){ return ''; }
-  }
+  // O teste roda nos botoes em que o link tem ?tmx_teste=<teste> (o link que a
+  // Central da pra colar no botao). O pixel troca esse link pelo checkout
+  // sorteado pra esta pessoa — sempre o mesmo pra ela, ate em outra aba. A
+  // versao vai junto no sck e volta no webhook da venda. Botao sem a marca nao
+  // e tocado; se o pixel nao carregar, o link segue pro checkout A.
+  var CK = [], ckPedidos = {};
   function ckSorteio(t){
     if(t.v) return t.v;                       // teste encerrado: todo mundo na vencedora
     var k = 'tmx_ck_' + t.t, v = '';
@@ -14831,25 +14832,53 @@ const PIXEL_JS = `(function(w,d){
     try{ localStorage.setItem(k, v); }catch(e){}
     return v;
   }
+  // os links marcados ja passaram pela primeira arrumacao: refaz com o teste
+  function ckRefazer(){
+    try{ var ms = d.querySelectorAll('a[' + MARCA + ']'); for(var i=0;i<ms.length;i++) if((ms[i].getAttribute('href') || '').indexOf('tmx_teste=') >= 0) ms[i].removeAttribute(MARCA); }catch(e){}
+    arrumarLinks(d);
+  }
+  // baixa as versoes dos testes que aparecem na pagina (5 min guardadas na aba)
+  function ckPedir(lista){
+    var falta = lista.filter(function(t){ return t && !ckPedidos[t]; });
+    if(!falta.length) return;
+    falta.forEach(function(t){ ckPedidos[t] = 1; });
+    var chave = 'tmx_ckt_' + falta.sort().join(','), guardado = null;
+    var aplicar = function(l){
+      (l || []).forEach(function(t){ if(!CK.some(function(x){ return x.t === t.t; })) CK.push(t); });
+      if(l && l.length) setTimeout(ckRefazer, 0);
+    };
+    try{ guardado = JSON.parse(sessionStorage.getItem(chave) || 'null'); }catch(e){}
+    if(guardado && Date.now() - guardado.em < 5 * 60000){ aplicar(guardado.t); return; }
+    try{
+      fetch(API.replace(/evento$/, 'ck') + '?t=' + encodeURIComponent(falta.join(',')), { credentials: 'omit' })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          var l = (j && j.testes) || [];
+          try{ sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), t: l })); }catch(e){}
+          aplicar(l);
+        }).catch(function(){});
+    }catch(e){}
+  }
   var ckVistos = {};
   function ckDe(href){
-    var c = ckChave(href); if(!c) return null;
+    var nome = '';
+    try{ nome = (new URL(href, location.href).searchParams.get('tmx_teste') || '').toLowerCase().replace(/[^a-z0-9-]/g, ''); }
+    catch(e){ return null; }
+    if(!nome) return null;
     for(var i=0;i<CK.length;i++){
-      var t = CK[i];
-      for(var j=0;j<t.d.length;j++){
-        if(ckChave(t.d[j].u) !== c) continue;
-        var v = ckSorteio(t), alvo = null;
-        for(var n=0;n<t.d.length;n++) if(t.d[n].id === v) alvo = t.d[n];
-        if(!alvo) return null;
-        // a pessoa viu a pagina com o teste: uma vez por visita
-        if(!ckVistos[t.t]){
-          ckVistos[t.t] = 1;
-          var ja = ''; try{ ja = sessionStorage.getItem('tmx_ckv_' + t.t) || ''; }catch(e){}
-          if(ja !== SID){ try{ sessionStorage.setItem('tmx_ckv_' + t.t, SID); }catch(e){} manda('ckteste', { ckt: t.t, ckv: v }); }
-        }
-        return { t: t.t, v: v, u: alvo.u };
+      var t = CK[i]; if(t.t !== nome) continue;
+      var v = ckSorteio(t), alvo = null;
+      for(var n=0;n<t.d.length;n++) if(t.d[n].id === v) alvo = t.d[n];
+      if(!alvo) return null;
+      // a pessoa viu a pagina com o botao do teste: uma vez por visita
+      if(!ckVistos[t.t]){
+        ckVistos[t.t] = 1;
+        var ja = ''; try{ ja = sessionStorage.getItem('tmx_ckv_' + t.t) || ''; }catch(e){}
+        if(ja !== SID){ try{ sessionStorage.setItem('tmx_ckv_' + t.t, SID); }catch(e){} manda('ckteste', { ckt: t.t, ckv: v }); }
       }
+      return { t: t.t, v: v, u: alvo.u };
     }
+    ckPedir([nome]);    // ainda nao chegou: pede, e a troca acontece quando chegar
     return null;
   }
 
@@ -14858,7 +14887,8 @@ const PIXEL_JS = `(function(w,d){
       var u = new URL(href, location.href);
       var ck = ckDe(u.href);
       if(ck){
-        // troca pelo checkout sorteado; o que a pagina pos no link vai junto
+        // troca pelo checkout sorteado; o que a pagina pos no link vai junto,
+        // inclusive a marca do teste (e por ela que o clique sabe a versao)
         var nu = new URL(ck.u, location.href);
         u.searchParams.forEach(function(val, k){ if(!nu.searchParams.has(k)) nu.searchParams.set(k, val); });
         u = nu;
@@ -14937,26 +14967,6 @@ const PIXEL_JS = `(function(w,d){
       }
     }
   }
-  // os testes de checkout DESTA pagina (so roda nas paginas escolhidas no
-  // teste): 5 min guardados na aba, pra nao pedir a cada visita
-  function ckCarregar(){
-    var chave = 'tmx_ckcfg_' + PAGINA, guardado = null;
-    try{ guardado = JSON.parse(sessionStorage.getItem(chave) || 'null'); }catch(e){}
-    if(guardado && Date.now() - guardado.em < 5 * 60000){ CK = guardado.t || []; return; }
-    try{
-      fetch(API.replace(/evento$/, 'ck') + '?f=' + encodeURIComponent(FUNIL) + '&pg=' + encodeURIComponent(PAGINA), { credentials: 'omit' })
-        .then(function(r){ return r.json(); })
-        .then(function(j){
-          CK = (j && j.testes) || [];
-          try{ sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), t: CK })); }catch(e){}
-          if(!CK.length) return;
-          // os links ja passaram pela primeira arrumacao: refaz com o teste
-          try{ var ms = d.querySelectorAll('a[' + MARCA + ']'); for(var i=0;i<ms.length;i++) ms[i].removeAttribute(MARCA); }catch(e){}
-          arrumarLinks(d);
-        }).catch(function(){});
-    }catch(e){}
-  }
-  ckCarregar();
   arrumarLinks(d);
   if(d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function(){ arrumarLinks(d); });
   w.addEventListener('load', function(){ arrumarLinks(d); });
@@ -15043,65 +15053,38 @@ app.get('/px.js', (req, res) => {
 });
 
 // ── Teste A/B de checkout: a lista que o pixel baixa ──
-// O botão de compra continua o mesmo na página. O pixel pergunta aqui se a
-// página DELE tem teste de checkout e, se tiver, troca o link do botão pelo
-// checkout sorteado pra pessoa. Só vale nas páginas escolhidas no teste: as
-// outras páginas do funil, com o mesmo botão, continuam como estão.
-// Público de propósito (roda na página do funil): só devolve links de
-// checkout, que já estão na página de qualquer jeito.
-let _ckCache = { em: 0, porPg: {} };
+// O teste roda nos botões onde você colou o link dele: o link do checkout A
+// com ?tmx_teste=<teste> no fim. O pixel acha esses botões, pergunta aqui
+// quais são as versões e troca o link pelo checkout sorteado pra pessoa
+// (sempre o mesmo pra ela). Botão sem a marca não é tocado. Se o pixel não
+// carregar, o botão vai pro checkout A normalmente — ninguém fica sem comprar.
+// Público de propósito (roda na página do funil): só devolve links de checkout.
+let _ckCache = { em: 0, porSlug: {} };
 function _ckTestesCache() {
   if (_ckCache.em && Date.now() - _ckCache.em < 60000) return _ckCache;
   const db = readDB();
-  const porPg = {};
+  const porSlug = {};
   (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
-    .filter(r => r && r.tipo === 'checkout' && r.ativo !== false && Array.isArray(r.destinos) && Array.isArray(r.paginas))
+    .filter(r => r && r.tipo === 'checkout' && r.ativo !== false && Array.isArray(r.destinos))
     .forEach(r => {
       const d = r.destinos.map((x, i) => ({ id: String(x.id || ('v' + i)), u: String(x.url || '').trim(), p: Number(x.peso) || 1 }))
         .filter(x => /^https?:\/\//i.test(x.u));
       if (!d.length) return;
-      const t = { t: String(r.slug || '').toLowerCase(), v: r.vencedora ? String(r.vencedora) : null, d };
-      new Set(r.paginas.map(_normPg).filter(Boolean)).forEach(pg => { (porPg[pg] = porPg[pg] || []).push(t); });
+      const t = String(r.slug || '').toLowerCase();
+      porSlug[t] = { t, v: r.vencedora ? String(r.vencedora) : null, d };
     });
-  _ckCache = { em: Date.now(), porPg };
+  _ckCache = { em: Date.now(), porSlug };
   return _ckCache;
 }
 app.get('/api/funil/ck', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cache-Control', 'public, max-age=60');
   try {
-    const pg = _normPg(String(req.query.pg || '').slice(0, 200));
-    res.json({ ok: true, testes: (pg && _ckTestesCache().porPg[pg]) || [] });
+    const slugs = String(req.query.t || '').toLowerCase().split(',')
+      .map(x => x.replace(/[^a-z0-9-]/g, '').slice(0, 60)).filter(Boolean).slice(0, 10);
+    const c = _ckTestesCache();
+    res.json({ ok: true, testes: slugs.map(x => c.porSlug[x]).filter(Boolean) });
   } catch (e) { res.json({ ok: true, testes: [] }); }
-});
-
-// Os links de checkout que estão numa página: é com eles que o teste escolhe a
-// versão A. Abre a página como um visitante e lê os links de compra do HTML.
-const _CK_LINK = /(checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax|greenn|lastlink|yampi|braip)/i;
-app.post('/api/funil/ck-links', authUsuario, async (req, res) => {
-  try {
-    let url = String((req.body && req.body.url) || '').trim().slice(0, 400);
-    if (!url) return res.status(400).json({ error: 'Informe a página.' });
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-    if (!_saudeUrlPublica(url)) return res.status(400).json({ error: 'Endereço inválido.' });
-    const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 7000);
-    let html = '', http = null;
-    try {
-      const r = await fetch(url, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CentralTMX-Saude/1.0)' } });
-      http = r.status; html = (await r.text()).slice(0, 800000);
-    } catch (e) {
-      return res.json({ ok: false, erro: e.name === 'AbortError' ? 'A página não respondeu em 7s.' : 'Não consegui abrir a página.' });
-    } finally { clearTimeout(t); }
-    const achados = {};
-    (html.match(/https?:\/\/[^\s"'<>()\\]+/gi) || []).forEach(u => {
-      let x; try { x = new URL(u.replace(/&amp;/g, '&')); } catch (e) { return; }
-      if (!_CK_LINK.test(x.host + x.pathname) || /\.(js|css|png|jpe?g|gif|svg|webp|woff2?)$/i.test(x.pathname)) return;
-      const k = x.origin + x.pathname.replace(/\/+$/, '');
-      achados[k] = (achados[k] || 0) + 1;
-    });
-    const links = Object.entries(achados).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([u, n]) => ({ url: u, vezes: n }));
-    res.json({ ok: true, http, pg: _normPg(url), pixel: /px\.js/i.test(html), links });
-  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Redirecionador: divide o trafego entre destinos por peso ──

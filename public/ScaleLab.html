@@ -1817,15 +1817,12 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow-y:auto}
 .v2-mod{background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .v2-mod.p{max-width:620px}
-/* páginas do teste de checkout */
-.ck-pg{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:6px;background:var(--bg3)}
-.ck-pg.on{border-color:var(--accent)}
-.ck-pg label{display:flex;gap:10px;align-items:center;cursor:pointer;font-size:13px}
-.ck-pg input{width:16px;height:16px;flex:none}
-.ck-pg .u{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--text2)}
-.ck-sit{font-size:12px;color:var(--text2);margin:6px 0 0 26px;line-height:1.5}
-.ck-sit.ok{color:var(--green)}
-.ck-sit.ruim{color:var(--red)}
+/* link do teste de checkout pra colar no botão */
+.ck-link{border:1px solid var(--accent);border-radius:12px;padding:12px 14px;background:var(--bg3);margin-bottom:12px}
+.ck-link .r{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:800;margin-bottom:6px}
+.ck-link .l{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ck-link code{flex:1;min-width:220px;font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text)}
+.ck-link .d{font-size:12px;color:var(--text2);line-height:1.55;margin-top:8px}
 /* escolher o tipo de teste A/B */
 .ab-tipo{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px 16px;border-radius:12px;border:1px solid var(--border);
   background:var(--bg3);color:var(--text);font-family:inherit;cursor:pointer;transition:border-color .15s}
@@ -34163,7 +34160,7 @@ function abPintarLista(){
     var resumo = abResumoCurto(r, d);
     return '<div class="ab-linha" onclick="abEscolher(\''+fnEsc(r.slug)+'\')">'+
       '<div><div class="t">'+fnEsc(r.nome||r.slug)+'</div>'+
-        '<div class="s">'+(r.tipo === 'checkout' ? '🛒 teste de checkout · '+((r.paginas||[]).length ? (r.paginas.length === 1 ? fnEsc(r.paginas[0]) : r.paginas.length+' páginas') : '<b style="color:var(--red)">nenhuma página marcada</b>') : fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,'')))+' · '+abLinhaVars(r, d)+'</div></div>'+
+        '<div class="s">'+(r.tipo === 'checkout' ? '🛒 teste de checkout · '+ckOndeRoda(r) : fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,'')))+' · '+abLinhaVars(r, d)+'</div></div>'+
       '<div><span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
       '<div class="ab-res" style="color:'+resumo.cor+'">'+resumo.txt+'</div>'+
       '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div></div>';
@@ -34194,6 +34191,13 @@ function abPintarLista(){
 }
 
 // Uma linha por teste já dizendo quanto cada variante levou de clique e de gente.
+// onde o link do teste já foi visto (é o que confirma que foi colado no botão)
+function ckOndeRoda(r){
+  var d2 = abDados2[r.slug], pv = (d2 && d2.paginasVistas) || [];
+  if(!d2) return '…';
+  if(!pv.length) return '<b style="color:#D97706">link ainda não visto em nenhuma página</b>';
+  return pv.length === 1 ? fnEsc(pv[0].pg) : pv.length+' páginas';
+}
 function abLinhaVars(r, d){
   if(r.tipo === 'checkout'){
     var v2 = (abDados2[r.slug] && abDados2[r.slug].variantes) || [];
@@ -34421,13 +34425,7 @@ function abPintarConfig(el){
           '<h3 style="margin:0">'+fnEsc(r.nome||r.slug)+'</h3>'+
           '<span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
         (r.hipotese ? '<div class="ab-hip">“'+fnEsc(r.hipotese)+'”</div>' : '')+
-        (ck ? '<div class="fx-aviso" style="margin-bottom:12px"><b>Não precisa mudar nada na página nem no anúncio</b>'+
-            'Nas páginas marcadas abaixo, o pixel troca o link do botão de compra pelo checkout sorteado pra cada pessoa, e ela cai sempre no mesmo. '+
-            'Nas outras páginas nada muda. A versão A tem que ser exatamente o link que está hoje no botão. '+
-            'Mudanças aqui chegam nas páginas em até 5 minutos.</div>'+
-            '<div class="fn-sec">Em quais páginas o teste roda</div><div id="ck-paginas-conf"></div>'+
-            '<div style="display:flex;gap:8px;margin:8px 0 14px"><input id="ck-outra" placeholder="Outra página: apostilai.ai/minha-pagina" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none">'+
-              '<button class="fn-btn g sm" onclick="ckOutraPagina()">Adicionar página</button></div>'
+        (ck ? ckCaixaLink(r)
           : '<div class="ab-link"><span class="rot">Link pra colar no anúncio</span>'+
           '<span class="u" id="ab-url">'+fnEsc(abUrlDoTeste(r))+'</span>'+
           '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>')+
@@ -34466,7 +34464,6 @@ function abPintarConfig(el){
           '<button class="fn-btn g sm" style="width:100%;color:var(--red)" onclick="abRemover()">Remover</button>'+
         '</div></div></div>';
   // o seletor busca a lista no servidor, entao entra depois do HTML pronto
-  if(ck) ckPintarPaginas(r);
   if(!ck) dmSeletor('ab-dominio-sel', r.dominio || '', function(v){
     var t = fnRedAtual(); if(!t) return;
     t.dominio = v; fnGravarRed(t);
@@ -34687,104 +34684,51 @@ function abNovo(){
 // A página e o anúncio não mudam: o pixel troca o link do botão de compra
 // pelo checkout sorteado pra cada pessoa (sempre o mesmo pra ela). A versão
 // vai no sck e volta no webhook, então a venda cai na versão certa.
-// página como o pixel a vê: domínio + caminho, sem www, query ou barra final
-function ckPg(u){ return String(u||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/[?#].*$/,'').replace(/\/+$/,''); }
-function ckSemQuery(u){ return String(u||'').trim().replace(/[?#].*$/,'').replace(/\/+$/,'').toLowerCase().replace(/^https?:\/\/(www\.)?/,''); }
-// as páginas do mapa do funil (menos checkout e obrigado, que não têm o botão)
-function ckPaginasDoFunil(f){
-  var vistos = {}, out = [];
-  ((f && f.etapas) || []).forEach(function(e){
-    if(e.tipo === 'checkout' || e.tipo === 'obrigado') return;
-    [e.url].concat(e.urls || []).forEach(function(u){
-      var pg = ckPg(u); if(!pg || vistos[pg]) return; vistos[pg] = 1;
-      out.push({ pg: pg, url: /^https?:/i.test(u) ? u : 'https://'+u, nome: e.nome || pg });
-    });
-  });
-  return out;
+// O link que vai no botão: o checkout A com a marca do teste. Só os botões
+// com esse link entram no teste; se o pixel não carregar, o link vai pro A.
+function ckLinkBotao(r){
+  var a = String(((r && r.destinos && r.destinos[0]) || {}).url || '').trim();
+  if(!a) return '';
+  a = a.replace(/[?&]tmx_teste=[^&#]*/g, '').replace(/\?&/, '?');
+  return a + (a.indexOf('?') < 0 ? '?' : (/[?&]$/.test(a) ? '' : '&')) + 'tmx_teste=' + r.slug;
 }
-// links de checkout de cada página (lidos do HTML pelo servidor), guardados na sessão
-var ckLinks = {};
-function ckBuscarLinks(pg, url, depois){
-  if(ckLinks[pg] && !ckLinks[pg].erro && ckLinks[pg].links) { if(depois) depois(); return; }
-  ckLinks[pg] = { carregando: true };
-  v2Json('/api/funil/ck-links', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: url || ('https://'+pg) }) })
-    .then(function(d){ ckLinks[pg] = d.ok ? { links: d.links || [], pixel: d.pixel } : { erro: d.erro || 'não abriu' }; if(depois) depois(); })
-    .catch(function(e){ ckLinks[pg] = { erro: e.message }; if(depois) depois(); });
+function ckCopiarLink(slug, bt){
+  var r = fnReds().filter(function(x){ return x.slug === slug; })[0]; if(!r) return;
+  var u = ckLinkBotao(r);
+  try{ navigator.clipboard.writeText(u); }catch(e){}
+  if(bt){ var t = bt.textContent; bt.textContent = '✅ Copiado'; setTimeout(function(){ bt.textContent = t; }, 1500); }
+  toastFn('Link copiado. Cole no botão que você quer testar.');
 }
-// o que a página diz sobre o link A: está no botão? qual link está?
-function ckSituacaoPagina(pg, linkA){
-  var l = ckLinks[pg];
-  if(!l || l.carregando) return { cls:'', txt:'Lendo os links de checkout da página…' };
-  if(l.erro) return { cls:'ruim', txt:'Não consegui abrir a página ('+l.erro+'). Confira o endereço.' };
-  if(!l.links.length) return { cls:'ruim', txt:'Não achei link de checkout nesta página: o botão pode ser montado por JavaScript.' };
-  var a = ckSemQuery(linkA);
-  var bate = a && l.links.some(function(x){ return ckSemQuery(x.url) === a; });
-  if(bate) return { cls:'ok', txt:'O link da versão A está no botão desta página.'+(l.pixel ? '' : ' Mas não achei o pixel da Central nela.') };
-  return { cls: a ? 'ruim' : '', txt: (a ? 'O link da versão A não está nesta página. ' : '')+'Link do botão: ', links: l.links };
+// a caixa com o link e o passo a passo (criação, configuração e resultado)
+function ckCaixaLink(r){
+  var u = ckLinkBotao(r);
+  return '<div class="ck-link"><div class="r">Link para colar no botão</div>'+
+    '<div class="l"><code>'+fnEsc(u || 'cole o checkout da versão A pra gerar o link')+'</code>'+
+      (u ? '<button class="fn-btn sm" onclick="ckCopiarLink(\''+fnEsc(r.slug)+'\', this)">📋 Copiar</button>' : '')+'</div>'+
+    '<div class="d">No editor da página, troque o link do botão que você quer testar por este. Só os botões com este link entram no teste: '+
+      'metade das pessoas vai pro A, metade pro B, e cada uma cai sempre no mesmo. Os outros botões não mudam. '+
+      'Se o pixel não carregar, o botão vai pro checkout A normalmente.</div></div>';
 }
 
 // ── criar ──
-var ckNovo = { sel: {}, extras: [] };
 function abNovoCheckout(){
   var fa = fnAtual(); if(!fa){ toastFn('Abra um funil primeiro'); return; }
-  ckNovo = { sel: {}, extras: [] };
   v2Modal('<div class="v2-cab"><div><h3>🛒 Novo teste de checkout</h3><div class="s">Funil '+fnEsc(fa.nome)+'</div></div>'+
       '<button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
-    '<div class="fn-campo"><label for="ckn-nome">Nome do teste</label><input id="ckn-nome" placeholder="Ex.: Checkout com order bump na back redirect"></div>'+
-    '<div class="fn-campo"><label>Em quais páginas o teste roda</label>'+
-      '<div class="fx-sub" style="margin:-2px 0 8px">Só nas páginas marcadas o botão de compra é trocado. Nas outras, nada muda.</div>'+
-      '<div id="ckn-paginas"></div>'+
-      '<div style="display:flex;gap:8px;margin-top:8px"><input id="ckn-outra" placeholder="Outra página: apostilai.ai/minha-pagina" style="flex:1">'+
-        '<button class="fn-btn g sm" onclick="ckNovoOutra()">Adicionar</button></div></div>'+
-    '<div class="fn-campo"><label for="ckn-a">Versão A · o checkout que está hoje no botão</label><input id="ckn-a" placeholder="Marque a página: o link do botão aparece acima pra usar aqui" oninput="ckNovoPintar()"></div>'+
-    '<div class="fn-campo"><label for="ckn-b">Versão B · o checkout novo</label><input id="ckn-b" placeholder="https://…"></div>'+
+    '<div class="fn-campo"><label for="ckn-nome">Nome do teste</label><input id="ckn-nome" placeholder="Ex.: Raio-X · plano anual com order bump"></div>'+
+    '<div class="fn-campo"><label for="ckn-a">Versão A · o checkout de hoje (o controle)</label><input id="ckn-a" placeholder="https://checkout…"></div>'+
+    '<div class="fn-campo"><label for="ckn-b">Versão B · o checkout novo</label><input id="ckn-b" placeholder="https://checkout…"></div>'+
     '<div class="fn-campo"><label for="ckn-hip">Hipótese <span style="font-weight:400;color:var(--text2)">(opcional)</span></label><input id="ckn-hip" placeholder="O que você espera, e por quê"></div>'+
-    '<div class="fx-sub" style="margin:2px 0 14px;line-height:1.5">Nas páginas marcadas, metade das pessoas vai pro A e metade pro B, e cada uma cai sempre no mesmo. O pixel começa em até 5 minutos.</div>'+
+    '<div class="fx-sub" style="margin:2px 0 14px;line-height:1.5">Depois de criar, a Central te dá um link pra colar no botão que você quer testar. Só esse botão entra no teste.</div>'+
     '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="fn-btn g" onclick="v2Fechar(this)">Cancelar</button>'+
       '<button class="fn-btn" onclick="abCriarCheckout(this)">Criar teste</button></div>', 'p');
-  ckNovoPintar();
   setTimeout(function(){ var el = document.getElementById('ckn-nome'); if(el) el.focus(); }, 30);
 }
-function ckNovoLista(){ var fa = fnAtual(); return ckPaginasDoFunil(fa).concat(ckNovo.extras); }
-function ckNovoPintar(){
-  var el = document.getElementById('ckn-paginas'); if(!el) return;
-  var a = (document.getElementById('ckn-a')||{}).value || '';
-  var lista = ckNovoLista();
-  el.innerHTML = lista.length ? lista.map(function(p){
-    var on = !!ckNovo.sel[p.pg], sit = on ? ckSituacaoPagina(p.pg, a) : null;
-    return '<div class="ck-pg'+(on?' on':'')+'"><label><input type="checkbox"'+(on?' checked':'')+' onchange="ckNovoMarcar(\''+fnEsc(p.pg)+'\', this.checked)">'+
-      '<span><b>'+fnEsc(p.nome)+'</b> <span class="u">'+fnEsc(p.pg)+'</span></span></label>'+
-      (sit ? '<div class="ck-sit '+sit.cls+'">'+fnEsc(sit.txt)+(sit.links ? sit.links.map(function(x){
-        return '<button class="fn-btn g sm" style="margin:4px 6px 0 0" onclick="ckNovoUsarA(\''+fnEsc(x.url)+'\')" title="Usar como versão A">'+fnEsc(ckSemQuery(x.url))+' · usar como A</button>'; }).join('') : '')+'</div>' : '')+
-    '</div>';
-  }).join('') : '<div class="fx-sub">Este funil não tem páginas com link no mapa. Adicione a página abaixo.</div>';
-}
-function ckNovoMarcar(pg, on){
-  if(on){
-    ckNovo.sel[pg] = 1;
-    var p = ckNovoLista().filter(function(x){ return x.pg === pg; })[0];
-    ckBuscarLinks(pg, p && p.url, function(){
-      // um link só no botão e a versão A vazia: já preenche
-      var aEl = document.getElementById('ckn-a'), l = ckLinks[pg];
-      if(aEl && !aEl.value.trim() && l && l.links && l.links.length === 1) aEl.value = l.links[0].url;
-      ckNovoPintar();
-    });
-  } else delete ckNovo.sel[pg];
-  ckNovoPintar();
-}
-function ckNovoOutra(){
-  var el = document.getElementById('ckn-outra'); if(!el) return;
-  var pg = ckPg(el.value); if(!pg || pg.indexOf('.') < 0){ toastFn('Cole o endereço da página'); return; }
-  if(!ckNovoLista().some(function(x){ return x.pg === pg; })) ckNovo.extras.push({ pg: pg, url: 'https://'+pg, nome: 'Outra página' });
-  el.value = ''; ckNovoMarcar(pg, true);
-}
-function ckNovoUsarA(url){ var el = document.getElementById('ckn-a'); if(el){ el.value = url; ckNovoPintar(); } }
 function abCriarCheckout(bt){
   var fa = fnAtual(); if(!fa) return;
   var val = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
-  var nome = val('ckn-nome'), a = val('ckn-a'), b = val('ckn-b'), paginas = Object.keys(ckNovo.sel);
+  var nome = val('ckn-nome'), a = val('ckn-a'), b = val('ckn-b');
   if(!nome){ toastFn('Dê um nome ao teste'); return; }
-  if(!paginas.length){ toastFn('Marque em qual página o teste roda'); return; }
   if(!/^https?:\/\//i.test(a) || !/^https?:\/\//i.test(b)){ toastFn('Cole os dois links completos, começando com https://'); return; }
   if(a === b){ toastFn('As duas versões estão com o mesmo link'); return; }
   var l = fnReds();
@@ -34792,45 +34736,13 @@ function abCriarCheckout(bt){
   var base = 'ck-'+nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0, 40);
   var slug = base, k = 2;
   while(l.some(function(x){ return x.slug === slug; })) slug = base+'-'+(k++);
-  l.push({ id:'r'+Date.now(), nome:nome, slug:slug, tipo:'checkout', projeto:fnProj, funil:fa.id, ativo:true, paginas: paginas,
-           hipotese:val('ckn-hip'), meta:'', minVendas:40, criadoEm:new Date().toISOString(),
-           destinos:[ { id:'a', nome:'Checkout atual', url:a, peso:1 }, { id:'b', nome:'Checkout novo', url:b, peso:1 } ], _updatedAt:Date.now() });
-  fnSalvarReds(l); v2Fechar(bt); abSel = slug; fnPintarRed();
-  toastFn('Teste criado em '+paginas.length+' página(s). O pixel começa a trocar o link do botão em até 5 minutos.');
-}
-
-// ── páginas de um teste já criado (na configuração) ──
-function ckPintarPaginas(r){
-  var el = document.getElementById('ck-paginas-conf'); if(!el) return;
-  var f = fnFunis().filter(function(x){ return x.id === r.funil; })[0];
-  var lista = ckPaginasDoFunil(f), sel = {};
-  (r.paginas||[]).forEach(function(pg){ sel[pg] = 1; if(!lista.some(function(x){ return x.pg === pg; })) lista.push({ pg: pg, url: 'https://'+pg, nome: 'Outra página' }); });
-  var a = ((r.destinos||[])[0] || {}).url || '';
-  el.innerHTML = lista.map(function(p){
-    var on = !!sel[p.pg], sit = on ? ckSituacaoPagina(p.pg, a) : null;
-    if(on && !ckLinks[p.pg]) ckBuscarLinks(p.pg, p.url, function(){ ckPintarPaginas(fnRedAtual() || r); });
-    return '<div class="ck-pg'+(on?' on':'')+'"><label><input type="checkbox"'+(on?' checked':'')+' onchange="ckMarcarPagina(\''+fnEsc(p.pg)+'\', this.checked)">'+
-      '<span><b>'+fnEsc(p.nome)+'</b> <span class="u">'+fnEsc(p.pg)+'</span></span></label>'+
-      (sit ? '<div class="ck-sit '+sit.cls+'">'+fnEsc(sit.txt)+(sit.links ? sit.links.map(function(x){
-        return '<button class="fn-btn g sm" style="margin:4px 6px 0 0" onclick="ckUsarComoA(\''+fnEsc(x.url)+'\')">'+fnEsc(ckSemQuery(x.url))+' · usar como A</button>'; }).join('') : '')+'</div>' : '')+
-    '</div>';
-  }).join('') + (!(r.paginas||[]).length ? '<div class="fx-aviso ruim" style="margin-top:8px"><b>Nenhuma página marcada</b>O teste não roda em lugar nenhum até você marcar pelo menos uma.</div>' : '');
-}
-function ckMarcarPagina(pg, on){
-  var r = fnRedAtual(); if(!r) return;
-  var l = (r.paginas||[]).filter(function(x){ return x !== pg; });
-  if(on) l.push(pg);
-  r.paginas = l; fnGravarRed(r); ckPintarPaginas(r);
-  toastFn(on ? 'Página incluída no teste' : 'Página tirada do teste: o botão dela volta ao normal em até 5 min');
-}
-function ckOutraPagina(){
-  var el = document.getElementById('ck-outra'); var r = fnRedAtual(); if(!el || !r) return;
-  var pg = ckPg(el.value); if(!pg || pg.indexOf('.') < 0){ toastFn('Cole o endereço da página'); return; }
-  el.value = ''; if((r.paginas||[]).indexOf(pg) < 0) ckMarcarPagina(pg, true);
-}
-function ckUsarComoA(url){
-  var r = fnRedAtual(); if(!r || !r.destinos || !r.destinos[0]) return;
-  r.destinos[0].url = url; fnGravarRed(r); fnPintarRed(); toastFn('Versão A atualizada');
+  var r = { id:'r'+Date.now(), nome:nome, slug:slug, tipo:'checkout', projeto:fnProj, funil:fa.id, ativo:true,
+            hipotese:val('ckn-hip'), meta:'', minVendas:40, criadoEm:new Date().toISOString(),
+            destinos:[ { id:'a', nome:'Checkout atual', url:a, peso:1 }, { id:'b', nome:'Checkout novo', url:b, peso:1 } ], _updatedAt:Date.now() };
+  l.push(r); fnSalvarReds(l); v2Fechar(bt); abSel = slug; fnPintarRed();
+  // o próximo passo é colar o link no botão: mostra ele na hora
+  v2Modal('<div class="v2-cab"><h3>✅ Teste criado</h3><button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
+    ckCaixaLink(r)+'<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="fn-btn" onclick="v2Fechar(this)">Entendi</button></div>', 'p');
 }
 function abNovoPagina(){
   var nome = (prompt('Nome do teste (obrigatório, ex.: VSL 597 × 697):') || '').trim();
@@ -35957,8 +35869,7 @@ function ckV2Html(r, d){
   var host = function(u){ try{ var x = new URL(u); return x.host.replace(/^www\./,'') + x.pathname.replace(/\/+$/,''); }catch(e){ return u || ''; } };
   var cab = '<div class="v2-cx" style="margin-bottom:14px"><div class="v2-cab" style="margin-bottom:0">'+
     '<div><h3 style="font-size:17px">🛒 '+fnEsc(r.nome||r.slug)+' '+estado+'</h3>'+
-      '<div class="s">Teste de checkout'+(d.funilNome ? ' · funil '+fnEsc(d.funilNome) : '')+' · roda em: '+
-        ((r.paginas||[]).length ? (r.paginas||[]).map(fnEsc).join(', ') : '<b style="color:var(--red)">nenhuma página (marque em Configurar teste)</b>')+
+      '<div class="s">Teste de checkout'+(d.funilNome ? ' · funil '+fnEsc(d.funilNome) : '')+' · roda nos botões com o link do teste'+
       (r.hipotese ? ' · hipótese: '+fnEsc(r.hipotese) : '')+'</div>'+
       '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">'+
         '<span class="v2-rot">Mostrando</span>'+
@@ -35975,11 +35886,14 @@ function ckV2Html(r, d){
     '</div></div></div>';
 
   var abriram = vs.reduce(function(a, v){ return a + v.pessoas; }, 0), viram = vs.reduce(function(a, v){ return a + (v.expostos||0); }, 0);
+  var pv = d.paginasVistas || [];
+  var onde = '<div class="v2-cx" style="margin-bottom:14px">'+ckCaixaLink(r)+
+    '<div class="v2-rot" style="margin-top:12px">Onde o link já apareceu</div>'+
+    (pv.length ? '<div class="fx-sub" style="margin-top:4px;line-height:1.7">'+pv.map(function(p){ return '<b style="color:var(--text)">'+fnEsc(p.pg)+'</b> · '+fnNum(p.pessoas)+' pessoa(s) · último há '+v2Ha(p.ultimo); }).join('<br>')+'</div>'
+               : '<div class="fx-sub" style="margin-top:4px">Ainda em nenhuma página. Cole o link no botão; ele aparece aqui na primeira visita (a página precisa ter o pixel da Central).</div>')+'</div>';
   var aviso = '';
-  if(!abriram){
-    aviso = '<div class="fx-aviso" style="margin-bottom:14px"><b>'+(viram ? fnNum(viram)+' pessoa(s) viram a página com o teste, mas ninguém abriu o checkout ainda' : 'Ninguém passou pelo teste ainda')+'</b>'+
-      (viram ? 'Assim que alguém clicar em comprar, a conta começa.'
-             : 'Confira: o link da versão A tem que ser exatamente o que está hoje no botão de compra, e a página precisa ter o pixel deste funil. Depois de criar o teste, o pixel leva até 5 minutos pra pegar.')+'</div>';
+  if(!abriram && viram){
+    aviso = '<div class="fx-aviso" style="margin-bottom:14px"><b>'+fnNum(viram)+' pessoa(s) viram o botão do teste, mas ninguém abriu o checkout ainda</b>Assim que alguém clicar em comprar, a conta começa.</div>';
   }
   var cartao = function(v, i){
     var frente = !r.vencedora && lider && v.id === lider.id && vs.length > 1 && v.rpp > 0;
@@ -36034,7 +35948,7 @@ function ckV2Html(r, d){
       '<div class="fx-sub">De quem viu a página com o teste · configurado '+vs.map(function(v){ return Math.round(v.fatiaAlvo||0); }).join('/')+' · '+(d.divisao && d.divisao.torta ? '<b class="v2-ruim">desvio acima de 5 pontos</b>' : 'ok')+'</div>'
      : '<div class="fx-vazio">Ninguém viu a página com o teste ainda.</div>')+'</div>';
 
-  return cab + aviso + cartoes + veredito + '<div style="margin-top:14px">'+divisao+'</div>';
+  return cab + onde + aviso + cartoes + veredito + '<div style="margin-top:14px">'+divisao+'</div>';
 }
 function abV2Html(r, d){
   var vs = d.variantes || [], ver = d.veredito, dir = lcEhDir();
