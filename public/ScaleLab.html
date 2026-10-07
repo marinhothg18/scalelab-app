@@ -7195,6 +7195,7 @@ function goTo(id){
     }
   }
   cur=id;
+  _salvarTela();
   if(id==='dashboard')renderDash();
   if(id==='task')renderTasks();
   if(id==='metricas'){if(!_trafegoTab)_trafegoTab='contingencia';renderTrafegoSidebar();renderTrafegoContent();};
@@ -7228,6 +7229,51 @@ function goTo(id){
     if(btn) btn.classList.toggle('active', k===id);
   });
   closeMobileSidebar();
+}
+
+// ── Lembrar em que tela você estava ──
+// Recarregar (F5, o "Recarregar" da versão nova, ou abrir de novo depois de
+// horas) voltava sempre pro Dashboard. Agora a tela atual fica guardada — e no
+// Funis também o projeto, o funil, a aba e o teste A/B aberto — e a Central
+// volta direto pra ela. Por aba (sessionStorage) e, pra quem fechou a aba, a
+// última usada (localStorage).
+var _restaurandoTela = false;
+function _salvarTela(){
+  if(_restaurandoTela || typeof cur === 'undefined' || !cur) return;
+  var t = { pagina: cur, em: Date.now() };
+  try{
+    if(cur === 'metricas' && typeof _trafegoTab !== 'undefined') t.trafego = _trafegoTab;
+    if(cur === 'funis' && typeof fnDentro !== 'undefined' && fnDentro){
+      var f = (typeof fnAtual === 'function') ? fnAtual() : null;
+      t.funis = { proj: fnProj, funil: f ? f.id : '', aba: (typeof fnAbaAtual !== 'undefined') ? fnAbaAtual : '',
+                  ab: (typeof abSel !== 'undefined' && abSel) ? abSel : '' };
+    }
+  }catch(e){}
+  var j = JSON.stringify(t);
+  try{ sessionStorage.setItem('sl_tela', j); }catch(e){}
+  try{ localStorage.setItem('sl_tela', j); }catch(e){}
+}
+function _restaurarTela(){
+  var t = null;
+  try{ t = JSON.parse(sessionStorage.getItem('sl_tela') || localStorage.getItem('sl_tela') || 'null'); }catch(e){}
+  if(!t || !t.pagina || t.pagina === 'dashboard') return;
+  if(Date.now() - (t.em || 0) > 7 * 86400000) return;          // uma semana depois, começa do início
+  if(!document.getElementById('page-' + t.pagina)) return;
+  _restaurandoTela = true;
+  try{
+    if(t.pagina === 'metricas' && t.trafego) _trafegoTab = t.trafego;
+    goTo(t.pagina);
+    var fu = t.funis;
+    if(t.pagina === 'funis' && fu && fu.proj && fnFunis().some(function(f){ return f.projeto === fu.proj; })){
+      fnEntrarProjeto(fu.proj);
+      var i = fnDoProjeto().map(function(f){ return f.id; }).indexOf(fu.funil);
+      if(i >= 0) fnEscolher(i);
+      if(fu.aba) fnAba(fu.aba);
+      if(fu.aba === 'redir' && fu.ab && fnReds().some(function(r){ return r.slug === fu.ab; })){ abSel = fu.ab; fnPintarRed(); }
+    }
+  }catch(e){ console.warn('restaurar tela:', e); }
+  _restaurandoTela = false;
+  _salvarTela();
 }
 
 function toggleMobileSidebar(){
@@ -8419,12 +8465,42 @@ function _mostrarVersaoNova(){
     '<button style="background:none;border:none;color:rgba(255,255,255,.7);font-size:16px;'+
     'cursor:pointer;line-height:1;padding:0 2px">✕</button>';
   const bts = b.querySelectorAll('button');
-  bts[0].onclick = function(){ location.reload(true); };
+  bts[0].onclick = function(){ try{ _salvarTela(); }catch(e){} location.reload(true); };
   bts[1].onclick = function(){ b.remove(); };
   document.body.appendChild(b);
 }
 setInterval(_checarVersao, 120000);   // de 2 em 2 min
 _checarVersao();
+
+// ── Voltou depois de um tempo ──
+// Aba esquecida aberta por horas mostrava número velho (e às vezes o sistema
+// velho). Ao voltar depois de 5 min fora, os dados se atualizam sozinhos; se
+// saiu versão nova, recarrega — e a tela volta pra onde estava. Nunca no meio
+// de uma edição: aí fica o aviso de versão nova, como antes.
+var _escondidoEm = 0;
+function _editandoAlgo(){
+  if(document.querySelector('.modal.open, .v2-ov')) return true;
+  if(typeof mpEditando !== 'undefined' && mpEditando) return true;
+  var a = document.activeElement;
+  return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value);
+}
+async function _voltouDepoisDeUmTempo(){
+  try{
+    const r = await fetch('/api/versao', {cache:'no-store'});
+    const d = r.ok ? await r.json() : null;
+    if(d && d.versao && _versaoCarregada && d.versao !== _versaoCarregada){
+      if(!_editandoAlgo()){ _salvarTela(); location.reload(); return; }
+      _selarVersao(d.versao, false); _mostrarVersaoNova();
+    }
+  }catch(e){}
+  try{ if(typeof refreshGlobal === 'function') await refreshGlobal(true); }catch(e){}
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden){ _escondidoEm = Date.now(); return; }
+  if(!_escondidoEm || typeof currentUser === 'undefined' || !currentUser) return;
+  var fora = Date.now() - _escondidoEm; _escondidoEm = 0;
+  if(fora >= 5 * 60000) _voltouDepoisDeUmTempo();
+});
 
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
@@ -28288,6 +28364,8 @@ function restoreSession(){
   setTimeout(function(){ try{ updateNotifBadge(); }catch(e){} }, 5000);
   // 🎓 Dispara onboarding se for usuário novo (criado <24h)
   setTimeout(function(){ try{ iniciarOnboarding(false); }catch(e){} }, 2500);
+  // volta pra tela em que a pessoa estava antes de recarregar
+  setTimeout(function(){ try{ _restaurarTela(); }catch(e){} }, 0);
   return true;
 }
 
@@ -29725,6 +29803,7 @@ function fnEntrarProjeto(nome){
 }
 function fnSairProjeto(){
   fnDentro = false; abSel = null;
+  _salvarTela();
   fnPintar();
   window.scrollTo({ top:0, behavior:'smooth' });
 }
@@ -29813,8 +29892,8 @@ function fnPintarProjetos(){
 }
 
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
-function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); fnRecarregarAba(); }
-function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); fnRecarregarAba(); }
+function fnTrocarFunil(v){ fnIdx=+v; fnSel=null; fnPintar(); fnCarregarStats(); fnRecarregarAba(); _salvarTela(); }
+function fnEscolher(i){ fnIdx=i; fnSel=null; fnPintar(); fnCarregarStats(); fnRecarregarAba(); _salvarTela(); }
 // Trocou o funil: a aba aberta busca de novo (antes ficava com o do funil anterior)
 function fnRecarregarAba(){
   rsDados = null; ldDados = null; psDados = null; mpForaDados = null; fxDados = null;
@@ -29857,6 +29936,7 @@ function fnAba(qual, bt){
   if(fnAbaAtual === 'jornada' && qual !== 'jornada') jvParar();
   if(fnAbaAtual === 'mapa' && qual !== 'mapa' && typeof mpEditando !== 'undefined'){ mpEditando = false; fnSel = null; mpModo(); }
   fnAbaAtual = qual;
+  _salvarTela();
   FN_ABAS.forEach(function(k){
     var el = document.getElementById('fn-p-'+k); if(el) el.classList.remove('on'); });
   var alvo = document.getElementById('fn-p-'+qual);
@@ -34060,14 +34140,14 @@ function abDoProjeto(){
 }
 function fnRedAtual(){ return abDoProjeto().filter(function(r){ return r.slug===abSel; })[0] || null; }
 
-function abVoltar(){ abSel = null; fnPintarRed(); }
+function abVoltar(){ abSel = null; fnPintarRed(); _salvarTela(); }
 
 function abEscolher(slug){
   abSel = slug;
   var r = fnRedAtual();
   // carimba o projeto no link antigo, pra ele parar de aparecer nos outros
   if(r && !r.projeto && fnProj){ r.projeto = fnProj; fnGravarRed(r); }
-  fnPintarRed(); abCarregar(slug);
+  fnPintarRed(); abCarregar(slug); _salvarTela();
 }
 
 // ── Leitura bayesiana: a pergunta que a operação faz ("qual a chance de a B
@@ -39043,7 +39123,7 @@ function renderAdsTable(tipo, data, namesMap, idField){
 // REFRESH GLOBAL — botão "Atualizar" no header
 // Sincroniza com servidor + re-renderiza a página atual sem F5
 // ───────────────────────────────────────────────
-window.refreshGlobal = async function(){
+window.refreshGlobal = async function(silencioso){
   const btn = document.getElementById('btn-refresh-global');
   const icon = document.getElementById('btn-refresh-global-icon');
   if(btn) btn.disabled = true;
@@ -39071,11 +39151,15 @@ window.refreshGlobal = async function(){
       lixeira: () => { try{ renderLixeira && renderLixeira(); }catch(e){} },
       auditoria: () => { try{ renderAuditoria && renderAuditoria(); }catch(e){} },
       roi: () => { try{ renderRoi && renderRoi(); }catch(e){} },
+      // Funis: busca de novo os números do funil e da aba aberta (o projeto,
+      // o funil e a aba continuam os mesmos)
+      funis: () => { try{ if(fnDentro){ fnCarregarStats(); fnRecarregarAba(); } else renderFunis(); }catch(e){} },
     };
     const fn = renderers[id];
-    if(fn) fn();
+    // tela sem jeito próprio de se redesenhar: redesenha pela navegação (mesma página)
+    if(fn) fn(); else { try{ goTo(id); }catch(e){} }
     if(typeof updateNotifBadge === 'function') updateNotifBadge();
-    if(typeof notif === 'function') notif('🔄 Dados atualizados');
+    if(!silencioso && typeof notif === 'function') notif('🔄 Dados atualizados');
   } catch(e){
     console.warn('refreshGlobal:', e);
     if(typeof notif === 'function') notif('❌ Erro ao atualizar — ' + (e.message||e));
