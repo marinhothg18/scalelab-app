@@ -6271,7 +6271,7 @@ async function syncFromServer(){
       tasks = g('tasks',[]);
       criativos = g('criativos',[]);
       // Re-render a página atual em tempo real — cobre TODAS as páginas do app
-      try { _rerenderCurrentPage(); } catch(e){ console.warn('rerender erro:', e); }
+      try { _rerenderCurrentPage(Object.keys(data)); } catch(e){ console.warn('rerender erro:', e); }
       // Re-render task detail modal if open
       if(typeof taskDetalheId !== 'undefined' && taskDetalheId){
         const td = tasks.find(t=>t.id===taskDetalheId);
@@ -6322,7 +6322,7 @@ document.addEventListener('focusout', function(){
   }, 400);
 }, true);
 
-function _rerenderCurrentPage(){
+function _rerenderCurrentPage(chaves){
   if(typeof cur === 'undefined' || !cur) return;
   if(_pessoaMexendo()){ _renderDevendo = true; return; }
   _renderDevendo = false;
@@ -6369,6 +6369,12 @@ function _rerenderCurrentPage(){
     safe(window.renderControleTestes);
   }
   else if(cur === 'configuracoes' && typeof renderUsuarios === 'function') safe(window.renderUsuarios);
+  // Funis: mudou o desenho (em outro aparelho, ou a cópia daqui era velha) →
+  // redesenha com o que chegou. Nunca no meio de uma edição do mapa.
+  else if(cur === 'funis' && (!chaves || chaves.indexOf('sl_funis') >= 0 || chaves.indexOf('sl_redirecionadores') >= 0)){
+    if(typeof mpEditando !== 'undefined' && mpEditando) return;
+    safe(function(){ fnPintar(); fnCarregarStats(); if(typeof fnAbaAtual !== 'undefined' && fnAbaAtual === 'redir') fnPintarRed(); });
+  }
 }
 
 function _startSync(){
@@ -39307,6 +39313,8 @@ window.onload=()=>{
       try{ migrarOfertasParaProjetos(); }catch(e){ console.warn('migracao ofertas->projetos:', e); }
       // Re-renderiza Home depois que dados chegam do server
       try{ renderDash(); }catch(e){ console.warn('renderDash pós-sync:', e); }
+      // e a tela em que a pessoa estava (desenhada antes com a cópia do aparelho)
+      try{ if(cur !== 'dashboard') _rerenderCurrentPage(); }catch(e){ console.warn('rerender pós-sync:', e); }
     });
     _startSync();
   }
