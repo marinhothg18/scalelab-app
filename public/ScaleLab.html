@@ -6209,25 +6209,46 @@ function pushRtApiKeyToServer(key){
   }).catch(function(){});
 }
 
+// Grava no aparelho o que veio do servidor. O iPhone guarda pouco (uns 5 MB):
+// gravando na ordem em que chegava, um item grande estourava o espaço e tudo
+// que vinha depois (os funis, por exemplo) ficava com a cópia velha — o celular
+// mostrava um mapa de semanas atrás. Agora vai do menor pro maior, e um item que
+// não cabe não segura os outros.
+function _gravarDoServidor(data){
+  var itens = Object.keys(data || {}).map(function(k){ var t = JSON.stringify(data[k]); return { k:k, t:t, n:t ? t.length : 0 }; })
+    .sort(function(a, b){ return a.n - b.n; });
+  var falhou = [];
+  itens.forEach(function(it){
+    try{ localStorage.setItem(it.k, it.t); }
+    catch(e){
+      // não coube: tira a cópia velha (a tela não pode usar dado antigo) e tenta de novo
+      try{ localStorage.removeItem(it.k); localStorage.setItem(it.k, it.t); }catch(e2){ falhou.push(it.k); }
+    }
+  });
+  if(falhou.length) console.warn('[sync] sem espaço no aparelho para:', falhou.join(', '));
+  return falhou;
+}
+// Dados que agora só o servidor guarda: a cópia antiga que ficou no aparelho só
+// ocupa espaço (e era ela que fazia o resto não caber).
+try{ ['sl_metricas_ads','sl_vendas','sl_vendas_raw','sl_funil_jornada','sl_funil_atencao','sl_quiz_resp','sl_ads_hist']
+  .forEach(function(k){ localStorage.removeItem(k); }); }catch(e){}
+
 async function syncAllFromServer(){
   try{
-    const res = await fetch(API_BASE+'/api/store', {signal: AbortSignal.timeout(8000)});
+    // 20s: no celular, 8s não davam pra baixar tudo e a cópia do aparelho ficava velha
+    const res = await fetch(API_BASE+'/api/store', {signal: AbortSignal.timeout(20000)});
     if(!res.ok) return;
     const data = await res.json();
-    Object.entries(data).forEach(([k,v])=>{
-      // rt_api_key vem como objeto {value:"..."} — extrai e salva como string raw
-      if(k === 'rt_api_key'){
-        var serverKey = '';
-        if(v && typeof v === 'object' && v.value) serverKey = v.value;
-        else if(typeof v === 'string') serverKey = v;
-        // Só sobrescreve local se servidor tiver uma key válida (não vazia)
-        if(serverKey && serverKey.length > 5){
-          localStorage.setItem(k, serverKey);
-        }
-      } else {
-        localStorage.setItem(k, JSON.stringify(v));
-      }
-    });
+    // rt_api_key vem como objeto {value:"..."} — extrai e salva como string raw
+    if('rt_api_key' in data){
+      var v = data.rt_api_key, serverKey = '';
+      if(v && typeof v === 'object' && v.value) serverKey = v.value;
+      else if(typeof v === 'string') serverKey = v;
+      // Só sobrescreve local se servidor tiver uma key válida (não vazia)
+      if(serverKey && serverKey.length > 5){ try{ localStorage.setItem('rt_api_key', serverKey); }catch(e){} }
+      delete data.rt_api_key;
+    }
+    _gravarDoServidor(data);
     tasks = g('tasks',[]);
     criativos = g('criativos',[]);
     _lastSync = Math.floor(Date.now()/1000);
@@ -6246,7 +6267,7 @@ async function syncFromServer(){
     if(Object.keys(data).length > 0){
       // Snapshot ANTES de aplicar pra detectar notificações novas destinadas ao usuário
       var _notifsAntes = data.sl_notifs ? new Set(g('sl_notifs',[]).map(function(n){ return n && n.id; })) : null;
-      Object.entries(data).forEach(([k,v])=>{ localStorage.setItem(k, JSON.stringify(v)); });
+      _gravarDoServidor(data);
       tasks = g('tasks',[]);
       criativos = g('criativos',[]);
       // Re-render a página atual em tempo real — cobre TODAS as páginas do app

@@ -6533,6 +6533,10 @@ const KEYS_SERVIDOR = new Set([
   'sl_quiz_dia',            // contagem agregada do quiz; idem
   'sl_ab_stats',            // contagem do teste A/B; a tela le por /api/ab/stats
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
+  // pesados que a tela le pelas rotas, nunca pelo armazenamento do aparelho: mandar
+  // pro celular estourava o espaco dele (uns 5 MB) e o resto nao sincronizava
+  'sl_metricas_ads',        // ~1 MB; a tela le por /api/metricas/*
+  'sl_vendas',              // ~0,8 MB; a tela le por /api/funil/* e /api/integracoes/vendas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
   'sl_funil_adocoes',       // so o servidor decide; o navegador sobrescreveria
   'sl_ads_hist',            // historico de ads por dia; a tela le pelo endpoint
