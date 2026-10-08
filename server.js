@@ -11628,6 +11628,12 @@ app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
 //   fonte orgânico   → quem chegou sem UTM nenhuma
 //   redirect (split) → cliques no link do teste e a divisão real
 // ══════════════════════════════════════════════════════
+// soma das vendas por uma chave (origem, página de entrada), em ordem
+function _ckSoma(lista, chave) {
+  const c = {};
+  lista.forEach(o => { const k = chave(o); c[k] = (c[k] || 0) + 1; });
+  return Object.entries(c).sort((a, b) => b[1] - a[1]).map(([nome, n]) => ({ nome, n }));
+}
 app.get('/api/funil/blocos', authUsuario, async (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
@@ -11746,7 +11752,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     } catch (e) {}
     const regraFunil = _regraCampanhas(f);
 
-    const conj = {}, nos = {};
+    const conj = {}, nos = {}, brutos = [];
     (f.fontes || []).forEach(o => {
       const canal = o.canal || 'meta';
       let s, extra = {};
@@ -11783,9 +11789,37 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
           extra.testes = [...slugs];
         }
       }
-      conj[o.id] = s;
-      nos[o.id] = Object.assign({ tipo: 'fonte', canal }, medir(s), extra);
+      brutos.push({ o, canal, s, extra });
     });
+    // Teste A/B solto no desenho (nenhuma origem ligada nele): quem chegou pelo
+    // link dele é de Instagram (o /r/ costuma ser o link da bio), senão de UTM.
+    // Sem isso essa gente não tinha origem nenhuma e a soma das origens não fechava.
+    const ligadosDeOrigem = new Set();
+    (f.ligacoes || []).forEach(l => { if ((f.fontes || []).some(o => o.id === l[0])) ligadosDeOrigem.add(l[1]); });
+    const adotante = brutos.find(b => b.canal === 'instagram') || brutos.find(b => b.canal === 'utm');
+    if (adotante) (f.etapas || []).filter(e => e.tipo === 'split' && e.slug && !ligadosDeOrigem.has(e.id)).forEach(e => {
+      const sl = String(e.slug).toLowerCase();
+      _q('SELECT DISTINCT visitante FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ?')
+        .all(sl, per.ini, per.fim).forEach(r => adotante.s.add(r.visitante));
+      const t = adotante.extra.testes || (adotante.extra.testes = []);
+      if (t.indexOf(sl) < 0) t.push(sl);
+    });
+    // Cada pessoa conta numa origem só, pra soma das origens bater com o total.
+    // Anúncio primeiro — é ele que leva o crédito da venda no Resultado —,
+    // depois Instagram, UTM e orgânico; empate fica com o bloco de cima no desenho.
+    const PRIORIDADE = { meta: 0, instagram: 1, utm: 2, organico: 3 };
+    const dono = {};
+    brutos.slice().sort((a, b) => (PRIORIDADE[a.canal] ?? 1) - (PRIORIDADE[b.canal] ?? 1))
+      .forEach(b => b.s.forEach(v => { if (!dono[v]) dono[v] = b.o.id; }));
+    const nomeOrigem = {};
+    brutos.forEach(b => {
+      nomeOrigem[b.o.id] = b.o.nome || 'Origem';
+      const s = new Set([...b.s].filter(v => dono[v] === b.o.id));
+      conj[b.o.id] = s;
+      // quantos desta origem também vieram de outra de cima e contam lá
+      nos[b.o.id] = Object.assign({ tipo: 'fonte', canal: b.canal }, medir(s), b.extra, { contamEmOutra: b.s.size - s.size });
+    });
+    const ehDeAnuncio = v => { const b = brutos.find(x => x.o.id === dono[v]); return !!(b && b.canal === 'meta'); };
     const abst = (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer));
     const redirs = Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [];
     (f.etapas || []).forEach(e => {
@@ -11800,7 +11834,9 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         abst.filter(l => l.teste === slug && l.data >= per.de && l.data <= per.ate).forEach(l => { sorteio[l.variante] = (sorteio[l.variante] || 0) + (l.sorteios || 0); });
         const tot = Object.values(sorteio).reduce((a, n) => a + n, 0);
         conj[e.id] = s;
-        nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot,
+        let deAnuncio = 0; s.forEach(v => { if (ehDeAnuncio(v)) deAnuncio += (vendaPor[v] || []).length; });
+        nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio,
+          vendasEntrada: (vendaDaEtapa[e.id] || []).length,
           divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
       } else if (e.tipo === 'checkout' && !temPagina) {
         // Checkout do gateway não recebe pixel: vale quem clicou em comprar, e
@@ -11816,7 +11852,13 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                       // ou pelo produto não passou por clique nenhum que dê pra contar
                       conversao: abriramSet.size ? vf.filter(o => o.visitante).length / abriramSet.size : 0,
                       semPessoa: vf.filter(o => !o.visitante).length,
-                      produtos: topProd(vf), semClique: [...compradores].filter(v => !ck.has(v)).length };
+                      produtos: topProd(vf), semClique: [...compradores].filter(v => !ck.has(v)).length,
+                      porOrigem: _ckSoma(vf, o => o.visitante ? (dono[o.visitante] ? nomeOrigem[dono[o.visitante]] : 'sem origem no desenho') : 'sem pessoa ligada'),
+                      porEntrada: _ckSoma(vf, o => {
+                        if (!o.visitante) return 'sem pessoa ligada';
+                        const et = Object.keys(vendaDaEtapa).find(k => vendaDaEtapa[k].indexOf(o) >= 0);
+                        return et ? (esc.nomeEtapa[et] || et) + (esc.tipoEtapa[et] === 'split' ? ' (variantes)' : '') : 'página fora do desenho';
+                      }) };
       } else if ((e.tipo === 'obrigado' || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) && !temPagina) {
         // sem página com pixel: o bloco é a venda em si (do produto dele, se escolhido)
         const lst = prodLista(e);
@@ -11841,6 +11883,13 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     (f.ligacoes || []).forEach(l => {
       const A = conj[l[0]], B = conj[l[1]];
       if (!A || !B || !A.size) return;
+      // página → checkout: a seta diz o mesmo que o bloco ("checkouts" de quem
+      // clicou em comprar nela), não quem abriu o checkout em qualquer página
+      if (nos[l[1]] && nos[l[1]].viaClique && porEtapa[l[0]]) {
+        const n = (ckEtapa[l[0]] || new Set()).size;
+        fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
+        return;
+      }
       let n = 0; A.forEach(v => { if (B.has(v)) n++; });
       fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
     });

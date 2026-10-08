@@ -32929,6 +32929,12 @@ function fnNoProdutos(b){
 // Cartão do bloco no jeito do FunnelWay: nome, de onde vem o número e uma
 // grade curta de métricas. Cada tipo mostra o que responde a pergunta dele.
 var FN_CANAL_ROT = { meta:'Facebook / Instagram Ads', instagram:'Instagram · link da bio', utm:'Link com UTM', organico:'Orgânico / direto' };
+// "Por origem: Tráfego pago 15 · Instagram 3" — é o que mostra que a conta fecha
+function fnNoSoma(rot, lista){
+  if(!lista || !lista.length) return '';
+  return '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal"><b style="color:var(--text)">'+rot+':</b> '+
+    lista.map(function(x){ return fnEsc(x.nome)+' <b style="color:var(--text)">'+fnNum(x.n)+'</b>'; }).join(' · ')+'</div>';
+}
 function fnNoCorpo(n, b, vt){
   var cor = FN_CORES[n.tipo] || '#1B9CFA';
   var m = function(r, v, c){ return '<div><div class="fx-m-r">'+r+'</div><div class="fx-m-v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div></div>'; };
@@ -32943,6 +32949,7 @@ function fnNoCorpo(n, b, vt){
     var regra = b.canal === 'meta' ? (b.regra ? 'campanhas com “'+b.regra+'”' : 'campanhas do funil') :
                 b.canal === 'utm' ? Object.keys(n.filtro||{}).filter(function(k){ return n.filtro[k]; }).map(function(k){ return {fonte:'source',midia:'medium',camp:'campaign',cont:'content'}[k]+'='+n.filtro[k]; }).join(' · ') : '';
     sub = (FN_CANAL_ROT[b.canal]||'') + (regra ? ' · '+regra : '') + ((b.testes && b.testes.length) ? ' · /r/'+b.testes.join(', /r/') : '');
+    if(b.contamEmOutra) pe = '<div class="fx-c-url" style="margin-top:6px;white-space:normal;line-height:1.45">'+fnNum(b.contamEmOutra)+' pessoa(s) daqui também vieram de anúncio e contam no Tráfego pago.</div>';
     grade = (b.canal === 'meta' ? m('Cliques no anúncio', fnNum(b.cliques)) + m('Investido', v2Din(b.investido)) : '') +
       m('Chegaram', fnNum(b.pessoas)) + (b.canal !== 'meta' ? m('Checkouts', fnNum(b.checkout)) : m('Clique → página', b.cliques ? pc(Math.min(1, b.pessoas / b.cliques)) : '—')) +
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Conversão', pc(b.conversao));
@@ -32951,12 +32958,16 @@ function fnNoCorpo(n, b, vt){
     grade = m('Cliques no link', fnNum(b.cliques)) + m('Chegaram', fnNum(b.pessoas)) +
       m('Checkouts', fnNum(b.checkout)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '');
     if(b.divisao && b.divisao.length) pe = '<div class="fn-div">'+b.divisao.map(function(d){ return '<span>'+fnEsc(d.nome)+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'; }).join('')+'</div>';
+    if(b.vendas) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">Vendas de quem passou pelo link'+
+      (b.vendasDeAnuncio ? '. '+b.vendasDeAnuncio+' dessas pessoas também vieram de anúncio e contam no Tráfego pago' : '')+
+      (b.vendasEntrada ? '. '+b.vendasEntrada+' começaram nas variantes do teste' : '')+'.</div>';
   } else if(n.tipo === 'checkout' && b.viaClique){
     // qual checkout é: a integração e o produto (ou os que mais saíram)
     sub = [n.integracao || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
     grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
       m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
-    pe = fnNoProdutos(b) + (b.semClique ? '<div class="fx-c-url" style="margin-top:4px" title="Compraram, mas o clique no botão de compra não foi registrado (botão por JavaScript, ou abriu o checkout por outro link)">'+
+    pe = fnNoSoma('Por origem', b.porOrigem) + fnNoSoma('Por página de entrada', b.porEntrada) +
+      fnNoProdutos(b) + (b.semClique ? '<div class="fx-c-url" style="margin-top:4px" title="Compraram, mas o clique no botão de compra não foi registrado (botão por JavaScript, ou abriu o checkout por outro link)">'+
       b.semClique+' comprador'+(b.semClique===1?'':'es')+' sem o clique registrado</div>' : '') +
       (b.semPessoa ? '<div class="fx-c-url" style="margin-top:2px">'+b.semPessoa+' venda'+(b.semPessoa===1?'':'s')+' sem pessoa ligada (pela campanha ou produto)</div>' : '');
   } else if(b.viaVenda){
