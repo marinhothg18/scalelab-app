@@ -267,6 +267,37 @@ figcaption{font-size:11.5px;color:var(--texto3)}
 .passo-f{display:flex;gap:10px;font-size:14px;line-height:1.45}
 .passo-f b{color:var(--azulp)}
 
+/* fila inteligente, lote e atalhos */
+.lote{display:flex;align-items:center;gap:8px;margin:0;padding:9px 14px;background:#F4F0FC;color:#2E1170;font-size:12.5px;border-bottom:1px solid var(--linha2)}
+.lote span{flex:1;min-width:0}
+.lote button{border:0;background:var(--roxo);color:#fff;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:800}
+.ia-l{display:flex;gap:6px;align-items:center;margin-top:4px;font-size:11.5px;color:var(--texto2);min-width:0}
+.ia-l span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.atalhos{font-size:11px;color:var(--texto3);padding:8px 14px;border-top:1px solid var(--linha2);line-height:1.5}
+.atalhos b{color:var(--texto2)}
+@media (max-width:900px){.atalhos{display:none}}
+.risco{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#F8FAFC;border:1px solid var(--linha2);border-radius:10px;padding:10px 12px}
+.risco>div{display:flex;flex-direction:column;gap:4px}
+.risco b{font-size:14px}
+.risco .pq{grid-column:1 / -1;font-size:11.5px;color:var(--texto3);line-height:1.45}
+.lote-item{border:1px solid var(--linha);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.lote-item.fora{opacity:.55}
+.lote-item .ultima{font-size:12.5px;color:var(--texto2);background:#F8FAFC;border-radius:8px;padding:6px 10px}
+.lote-item textarea{width:100%;border:1px solid #D5DCE6;border-radius:9px;padding:9px 11px;font-size:13.5px;line-height:1.45;resize:vertical}
+/* prevenção */
+.prev-it{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--linha2)}
+.prev-it b{display:block;font-size:13.5px}
+.prev-it span{font-size:12px;color:var(--texto3)}
+/* automações */
+.auto .auto-l{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.auto .frase{font-size:14px;line-height:1.8;min-width:0}
+.auto .frase .rot{font-size:10.5px}
+.auto.desl{opacity:.65}
+.chave{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;cursor:pointer}
+.chave input{appearance:none;width:40px;height:22px;border-radius:99px;background:#CBD5E1;position:relative;cursor:pointer;transition:background .15s;flex:none}
+.chave input::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.chave input:checked{background:#16A34A}
+.chave input:checked::after{left:21px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0F172A;color:#fff;font-size:13px;font-weight:600;padding:10px 16px;border-radius:10px;z-index:40;max-width:calc(100% - 32px);box-shadow:0 10px 30px rgba(15,23,42,.3)}
 </style>
 </head>
@@ -275,6 +306,9 @@ figcaption{font-size:11.5px;color:var(--texto3)}
   <span><b>Protótipo</b> · dados de exemplo, nada aqui é real</span>
   <nav aria-label="Telas do protótipo">
     <a href="#suporte" data-tela="suporte">Suporte</a>
+    <a href="#prevencao" data-tela="prevencao">Prevenção</a>
+    <a href="#automacoes" data-tela="automacoes">Automações</a>
+    <a href="#prontas" data-tela="prontas">Respostas prontas</a>
     <a href="#reembolsos" data-tela="reembolsos">Reembolsos e motivos</a>
     <a href="#formulario" data-tela="formulario">Formulário do cliente</a>
   </nav>
@@ -457,6 +491,29 @@ var MOTIVOS = [
 var MOTIVO_NOME = {}; MOTIVOS.forEach(function(m){ MOTIVO_NOME[m.k] = m.n; });
 var TEMAS = [ {n:'Acesso ao material',q:26,t:'9 min',cor:'#1B9CFA'}, {n:'Pagamento e Pix',q:17,t:'14 min',cor:'#FF5926'}, {n:'Antes de comprar',q:11,t:'21 min',cor:'#3E1493'}, {n:'Reembolso',q:6,t:'2h 05min',cor:'#C52C58'}, {n:'Outros',q:4,t:'30 min',cor:'#94A3B8'} ];
 var EQUIPE = [ {n:'Bia',c:24,r:'2min 48s',atraso:false,res:'38 min',nota:'4,8',ia:'52%'}, {n:'Lucas',c:19,r:'6min 10s',atraso:true,res:'1h 05min',nota:'4,6',ia:'26%'}, {n:'Carol',c:15,r:'4min 00s',atraso:false,res:'52 min',nota:'4,7',ia:'41%'} ];
+// O que a IA lê de cada conversa: quão urgente é (e por quê) e como a pessoa está
+var IA_FILA = {
+  c3: { prio:3, motivo:'Reembolso parado há 1h10: risco de contestação no cartão', humor:'irritada' },
+  c1: { prio:3, motivo:'Passou do prazo e a prova é dia 19', humor:'ansiosa' },
+  c2: { prio:2, motivo:'Quer pagar agora: venda a um passo', humor:'neutro' },
+  c5: { prio:2, motivo:'Comprou ontem e não consegue abrir', humor:'ansiosa' },
+  c4: { prio:2, motivo:'Perguntou o preço e não recebeu', humor:'neutro' },
+  c7: { prio:1, motivo:'Boleto compensando: só acompanhar', humor:'neutro' },
+  c6: { prio:0, motivo:'Resolvida', humor:'satisfeito' },
+  c8: { prio:0, motivo:'Resolvida', humor:'satisfeito' }
+};
+var PRIO = { 3:['Alta','bad'], 2:['Média','warn'], 1:['Baixa','neu'], 0:['—','neu'] };
+// Risco de pedir reembolso, pelo que a Central sabe da pessoa
+var RISCO = {
+  c1: { nivel:'médio', tom:'warn', porque:['Pagou e ainda não acessou o material','Está com pressa (prova dia 19)'] },
+  c3: { nivel:'alto', tom:'bad', porque:['Já pediu o reembolso','Pagou no cartão: pode contestar se demorar'] },
+  c5: { nivel:'médio', tom:'warn', porque:['Não consegue abrir no celular'] },
+  c6: { nivel:'baixo', tom:'ok', porque:['Entrou no material','Resolvido em 4 min'] },
+  c8: { nivel:'baixo', tom:'ok', porque:['Entrou no material logo depois de pagar'] }
+};
+// assuntos que a IA junta pra responder de uma vez (só os sem resposta entram)
+var LOTES = [ { id:'acesso', nome:'Acesso ao material', conversas:['c1','c5'] } ];
+
 var REVISAR = [
   { tom:'bad', rot:'Atrasada', x:'Fernanda Reis pediu reembolso por e-mail há 1h 10min e ainda não teve resposta. Reembolso parado costuma virar contestação no cartão.', conv:'c3' },
   { tom:'bad', rot:'Atrasada', x:'Mariana Lopes está há 12 min sem resposta no WhatsApp (meta: 5 min) e citou a prova do dia 19.', conv:'c1' },
@@ -506,7 +563,10 @@ var S = {
   sug:true, sugIdx:0, draft:'', nota:false, aviso:'', enviados:{}, respondidos:{}, status:{},
   modal:false, rbMotivo:'', rbDetalhe:'', rbItens:{}, rbErro:'',
   rMotivo:'', rPeriodo:'30d', copiado:false,
-  fItens:{a:true,b:true}, fMotivo:'', fChips:{}, fCampo:'', fUso:'', fTexto:'', fErro:'', fFeito:false
+  fItens:{a:true,b:true}, fMotivo:'', fChips:{}, fCampo:'', fUso:'', fTexto:'', fErro:'', fFeito:false,
+  ordem:'ia', lote:'', loteFora:{}, loteTxt:{},
+  prevFeitos:{}, autosOn:{}, autoNova:false, autoForm:{}, autosNovas:[],
+  prontaEdit:-1, prontaTxt:'', sugCriadas:{}
 };
 function mudar(x, so){ Object.assign(S, x); (so || render)(); }
 var toastT = 0;
@@ -548,6 +608,7 @@ function telaSuporte(){
     '<div class="inbox">'+painelFila(semR.length, abertas.length)+painelConversa()+painelCliente()+'</div>'+
     supervisao()+
     (S.modal ? janelaReembolso() : '')+
+    (S.lote ? janelaLote() : '')+
   '</div>';
 }
 
@@ -557,10 +618,22 @@ function painelFila(nSem, nAbertas){
   return '<section class="painel fila" aria-label="Fila de conversas"><div class="cab">'+
     '<div class="abas" role="tablist" aria-label="Situação">'+abas.map(function(a){
       return '<button role="tab" aria-selected="'+(S.aba===a[0])+'" class="'+(S.aba===a[0]?'on':'')+'" data-acao="aba" data-arg="'+a[0]+'">'+a[1]+' <b class="'+(a[0]==='sem'&&a[2]?'alerta':'')+'">'+a[2]+'</b></button>'; }).join('')+'</div>'+
-    '<label class="busca">'+ICO.busca+'<span class="so-leitor">Buscar conversa</span><input type="search" data-campo="busca" value="'+esc(S.busca)+'" placeholder="Nome, e-mail ou telefone"></label>'+
+    '<label class="busca">'+ICO.busca+'<span class="so-leitor">Buscar conversa</span><input type="search" id="busca" data-campo="busca" value="'+esc(S.busca)+'" placeholder="Nome, e-mail ou telefone (atalho: /)"></label>'+
+    '<label class="mini-sel" style="justify-content:space-between">Ordenar <select data-campo="ordem">'+
+      [['ia','Prioridade da IA'],['antigas','Esperando há mais tempo'],['recentes','Mais recentes']].map(function(o){ return '<option value="'+o[0]+'"'+(S.ordem===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></label>'+
     '<div class="chips">'+ass.map(function(a){ var on = S.assunto===a[0], t = TOM[ASSUNTO_TOM[a[0]]||'neu'];
       return '<button class="chip" data-acao="assunto" data-arg="'+esc(a[0])+'" aria-pressed="'+on+'" style="'+(on?'background:'+t[0]+';color:'+t[1]+';border-color:'+t[1]:'')+'">'+a[1]+'</button>'; }).join('')+'</div>'+
-  '</div><div class="lista" id="fila-lista">'+filaLista()+'</div></section>';
+  '</div>'+bannerLote()+'<div class="lista" id="fila-lista">'+filaLista()+'</div>'+
+  '<div class="atalhos">Atalhos: <b>J/K</b> navegar · <b>R</b> sugestão da IA · <b>U</b> usar · <b>E</b> resolver · <b>Ctrl+Enter</b> enviar</div></section>';
+}
+// A IA juntou conversas iguais sem resposta: dá pra responder todas de uma vez
+function bannerLote(){
+  return LOTES.map(function(l){
+    var pend = l.conversas.filter(function(id){ return semResp(conv(id)); });
+    if(pend.length < 2) return '';
+    return '<div class="lote">'+ICO.ia+'<span><b>'+pend.length+' conversas iguais:</b> '+esc(l.nome.toLowerCase())+'</span>'+
+      '<button data-acao="abrirLote" data-arg="'+l.id+'">Responder as '+pend.length+'</button></div>';
+  }).join('');
 }
 function filaLista(){
   var b = S.busca.trim().toLowerCase();
@@ -575,6 +648,10 @@ function filaLista(){
     return true;
   });
   if(!l.length) return '<div class="vazio">Nenhuma conversa com esse filtro.</div>';
+  var ESP = function(c){ var m = String(c.espera).match(/(\d+)h/), n = String(c.espera).match(/(\d+) ?min/); return (m ? +m[1]*60 : 0) + (n ? +n[1] : 0); };
+  if(S.ordem === 'ia') l.sort(function(a, b){ return ((IA_FILA[b.id]||{}).prio||0) - ((IA_FILA[a.id]||{}).prio||0) || (semResp(b) - semResp(a)) || ESP(b) - ESP(a); });
+  else if(S.ordem === 'antigas') l.sort(function(a, b){ return (semResp(b) - semResp(a)) || ESP(b) - ESP(a); });
+  else l.sort(function(a, b){ return ESP(a) - ESP(b); });
   return l.map(function(c){
     var av = avatar(c), env = S.enviados[c.id] || [];
     var prev = env.length ? env[env.length-1] : c.msgs.filter(function(m){ return m.t!=='sis'; }).slice(-1)[0];
@@ -585,7 +662,9 @@ function filaLista(){
       '<span class="av" style="background:'+av[0]+';color:'+av[1]+'">'+iniciais(c.nome)+'</span>'+
       '<span class="meio"><span class="l1"><span class="nome">'+esc(c.nome)+'</span><span class="esp" style="color:'+cor+'">'+esc(espera)+'</span></span>'+
       '<span class="prev">'+(prev ? ((prev.t==='ag'||prev.t==='nota')?'Você: ':'')+esc(prev.x) : '')+'</span>'+
-      '<span class="l3"><span class="canal">'+ICO[c.canal]+CANAL[c.canal]+'</span>'+pill(c.assunto, ASSUNTO_TOM[c.assunto]||'neu')+pill(c.compra, c.compraTom)+'</span></span></button>';
+      '<span class="l3"><span class="canal">'+ICO[c.canal]+CANAL[c.canal]+'</span>'+pill(c.assunto, ASSUNTO_TOM[c.assunto]||'neu')+pill(c.compra, c.compraTom)+'</span>'+
+      ((IA_FILA[c.id] && statusDe(c) !== 'resolvido') ? '<span class="ia-l">'+pill(PRIO[IA_FILA[c.id].prio][0], PRIO[IA_FILA[c.id].prio][1])+
+        '<span>'+esc(IA_FILA[c.id].motivo)+(IA_FILA[c.id].humor !== 'neutro' ? ' · '+esc(IA_FILA[c.id].humor) : '')+'</span></span>' : '')+'</span></button>';
   }).join('') + (S.aba==='resolvidas' ? '<div class="vazio" style="padding:14px">Mostrando as 2 mais recentes das 58 resolvidas hoje.</div>' : '');
 }
 
@@ -627,6 +706,7 @@ function painelCliente(){
   return '<aside class="painel cliente" aria-label="Cliente">'+
     '<div class="cli-id"><span class="av" style="background:'+av[0]+';color:'+av[1]+'">'+iniciais(c.nome)+'</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><b>'+esc(c.nome)+'</b><span>'+esc(c.desde)+'</span></div></div>'+
     '<div class="tags">'+c.tags.map(function(t){ return '<span>'+esc(t)+'</span>'; }).join('')+'</div>'+
+    blocoRisco(c)+
     '<div style="display:flex;flex-direction:column;gap:8px"><div class="campo"><div class="rot">E-mail</div><div>'+esc(c.email)+'</div></div>'+
       '<div class="campo"><div class="rot">'+esc(c.contatoRot||'Telefone')+'</div><div>'+esc(c.contato)+'</div></div></div>'+
     '<div class="secao"><span class="rot">Compras e tentativas</span>'+c.compras.map(function(k){
@@ -644,6 +724,36 @@ function painelCliente(){
       '<button data-acao="toast" data-arg="Abre a ficha da pessoa em Funis › Leads, com todas as visitas e compras." style="border:1px solid #E2E8F0;background:#fff;color:#0F172A">Ver ficha completa</button></div>'+
     '<p class="nota-fonte">Compra, Pix e reembolso vêm do checkout. A jornada vem do pixel. O acesso vem da área de membros.</p>'+
   '</aside>';
+}
+
+// risco de reembolso e quanto a pessoa já pagou
+function blocoRisco(c){
+  var r = RISCO[c.id];
+  var pago = c.compras.filter(function(k){ return k.s === 'Pago'; }).reduce(function(a, k){ return a + (parseFloat(String(k.v).replace(/[^\d,]/g,'').replace(',','.')) || 0); }, 0);
+  return '<div class="risco">'+
+    '<div><span class="rot">Já pagou</span><b>'+(pago ? real(pago) : 'nada ainda')+'</b></div>'+
+    '<div><span class="rot">Risco de reembolso</span>'+(r ? pill(r.nivel, r.tom) : '<span style="font-size:12.5px;color:#64748B">sem compra</span>')+'</div>'+
+    (r ? '<span class="pq">'+r.porque.map(esc).join(' · ')+'</span>' : '')+'</div>';
+}
+// responder em lote: cada conversa com a sua sugestão, revisada antes de ir
+function janelaLote(){
+  var l = LOTES.filter(function(x){ return x.id === S.lote; })[0]; if(!l) return '';
+  var pend = l.conversas.filter(function(id){ return semResp(conv(id)); });
+  var vao = pend.filter(function(id){ return !S.loteFora[id]; });
+  return '<div class="veu" data-acao="veu"><div class="janela" role="dialog" aria-modal="true" aria-label="Responder em lote" style="max-width:760px">'+
+    '<div class="jc"><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><b>Responder '+pend.length+' conversas de uma vez</b><span>'+esc(l.nome)+' · cada uma com a sugestão da IA pra ela. Revise antes de enviar.</span></div>'+
+      '<button class="fechar" data-acao="fecharLote" aria-label="Fechar">'+ICO.x+'</button></div>'+
+    '<div class="jm">'+pend.map(function(id){
+      var c = conv(id), on = !S.loteFora[id], txt = S.loteTxt[id] != null ? S.loteTxt[id] : c.sugestoes[0];
+      return '<div class="lote-item'+(on?'':' fora')+'"><label class="item-rb" style="border:0;padding:0;min-height:0"><input type="checkbox" data-campo="loteInclui" data-arg="'+id+'"'+(on?' checked':'')+'>'+
+        '<span class="n">'+esc(c.nome)+' <small>· '+CANAL[c.canal]+' · '+esc((IA_FILA[id]||{}).motivo||'')+'</small></span></label>'+
+        '<div class="ultima">“'+esc(c.msgs.filter(function(m){ return m.t==='cli'; }).slice(-1)[0].x)+'”</div>'+
+        '<textarea rows="4" data-campo="loteTxt" data-arg="'+id+'"'+(on?'':' disabled')+'>'+esc(txt)+'</textarea></div>';
+    }).join('')+'</div>'+
+    '<div class="jr"><span style="font-size:12px;color:#64748B">'+vao.length+' de '+pend.length+' marcadas</span><div>'+
+      '<button class="btn" data-acao="fecharLote">Cancelar</button>'+
+      '<button class="btn cheio" data-acao="enviarLote"'+(vao.length?'':' disabled')+'>Enviar '+vao.length+' resposta'+(vao.length===1?'':'s')+'</button></div></div>'+
+  '</div></div>';
 }
 
 function supervisao(){
@@ -800,18 +910,159 @@ function telaFormulario(){
 }
 
 // ══════════════════════════════════════════════════════
+// TELA · PREVENÇÃO (antes de virar chamado)
+// ══════════════════════════════════════════════════════
+var PREV = [
+  { id:'acesso', tit:'Pagaram e não acessaram', tom:'azul', acao:'Mandar o acesso no WhatsApp',
+    d:'Compra aprovada há mais de 30 min e o e-mail de acesso não foi aberto. É o assunto nº 1 do suporte.',
+    itens:[ {id:'p1', nome:'Bruno Castro', det:'Apostila 697 · pagou há 42 min · e-mail não aberto'},
+            {id:'p2', nome:'Larissa Mendes', det:'Apostila 597 · pagou há 1h 15min · e-mail não aberto'},
+            {id:'p3', nome:'Felipe Rocha', det:'Apostila 697 + Acervo · pagou há 2h · abriu o e-mail, não entrou'} ] },
+  { id:'pix', tit:'Pix gerado e não pago', tom:'warn', acao:'Mandar um Pix novo',
+    d:'Gerou o Pix há mais de 30 min. Um Pix novo no WhatsApp recupera parte dessas vendas.',
+    itens:[ {id:'p4', nome:'Juliana Costa', det:'R$ 97,00 · gerou há 38 min'}, {id:'p5', nome:'Ricardo Alves', det:'R$ 144,00 · gerou há 52 min'} ] },
+  { id:'boleto', tit:'Boleto vence amanhã', tom:'neu', acao:'Lembrar do boleto',
+    d:'Ainda não pagou. Um lembrete com o link evita perder a venda.',
+    itens:[ {id:'p6', nome:'Sandra Lima', det:'R$ 97,00 · vence amanhã'} ] },
+  { id:'travou', tit:'Entrou e travou no primeiro acesso', tom:'ia', acao:'Mandar o passo a passo',
+    d:'Abriu a área de membros e saiu em menos de 1 minuto. Costuma virar "não consigo abrir" ou pedido de reembolso.',
+    itens:[ {id:'p7', nome:'Paulo Sérgio', det:'entrou 2 vezes pelo celular e saiu em menos de 1 min'} ] }
+];
+function telaPrevencao(){
+  var metricas = [
+    ['Avisados esta semana', '128', 'antes de chamarem o suporte', '#0F172A'],
+    ['Chamaram depois do aviso', '9', '7% dos avisados', '#0B6B3A'],
+    ['Pix pagos depois do aviso', '6', 'R$ 582 que iam se perder', '#0B6B3A'],
+    ['Chamados evitados', '~41', 'estimativa da semana', '#3E1493']
+  ];
+  return '<div class="pagina">'+
+    '<header class="topo"><div class="esq"><h1>Prevenção</h1><p>Quem vai virar chamado e ainda não chamou. Um aviso agora resolve antes da pessoa precisar pedir ajuda, ou desistir.</p></div>'+
+      '<div class="ctl"><a class="btn" href="#automacoes">Fazer isso sozinho (Automações)</a></div></header>'+
+    '<div class="metricas">'+metricas.map(function(m){ return '<div class="metrica"><span class="rot">'+m[0]+'</span><span class="v" style="color:'+m[3]+'">'+m[1]+'</span><span class="s">'+esc(m[2])+'</span></div>'; }).join('')+'</div>'+
+    '<div class="grade3" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">'+PREV.map(function(g){
+      var faltam = g.itens.filter(function(it){ return !S.prevFeitos[it.id]; }).length, t = TOM[g.tom];
+      return '<section class="cartao" aria-label="'+esc(g.tit)+'">'+
+        '<div class="cc"><b style="font-size:15px">'+esc(g.tit)+' <span class="pill" style="background:'+t[0]+';color:'+t[1]+'">'+g.itens.length+'</span></b>'+
+          (faltam > 1 ? '<button class="btn-p" data-acao="prevTodos" data-arg="'+g.id+'">Avisar os '+faltam+'</button>' : '')+'</div>'+
+        '<span style="font-size:12.5px;color:#475569;line-height:1.5">'+esc(g.d)+'</span>'+
+        g.itens.map(function(it){
+          var feito = !!S.prevFeitos[it.id];
+          return '<div class="prev-it"><div style="min-width:0"><b>'+esc(it.nome)+'</b><span>'+esc(it.det)+'</span></div>'+
+            (feito ? '<span class="pill" style="background:#E6F4EC;color:#0B6B3A">Avisado</span>'
+                   : '<button class="btn-p" data-acao="prevAvisar" data-arg="'+it.id+'">'+esc(g.acao)+'</button>')+'</div>';
+        }).join('')+'</section>';
+    }).join('')+'</div></div>';
+}
+
+// ══════════════════════════════════════════════════════
+// TELA · AUTOMAÇÕES
+// ══════════════════════════════════════════════════════
+var AUTOS = [
+  { id:'a1', on:true, quando:'Compra aprovada', espera:'15 min depois', se:'o e-mail de acesso não foi aberto', entao:'manda o acesso no WhatsApp (resposta pronta "Reenviar acesso")', semana:'Rodou 86 vezes esta semana · 31 pessoas nem chegaram a chamar o suporte' },
+  { id:'a2', on:true, quando:'Pix gerado', espera:'30 min depois', se:'não foi pago', entao:'manda um Pix novo no WhatsApp', semana:'Rodou 54 vezes · 11 pagaram depois (R$ 1.067)' },
+  { id:'a3', on:true, quando:'Pedido de reembolso chega', espera:'na hora', se:'', entao:'manda o formulário de reembolso e avisa o Lucas', semana:'Rodou 7 vezes' },
+  { id:'a4', on:true, quando:'Cliente responde "resolveu" ou "obrigado"', espera:'na hora', se:'', entao:'marca a conversa como resolvida e pede a nota de 1 a 5', semana:'Rodou 41 vezes' },
+  { id:'a5', on:false, quando:'Conversa sem resposta', espera:'5 min no WhatsApp', se:'', entao:'avisa a supervisão no WhatsApp', semana:'Desligada' }
+];
+var AUTO_OP = {
+  quando: ['Compra aprovada','Pix gerado','Boleto gerado','Pedido de reembolso chega','Conversa sem resposta','Primeiro acesso à área de membros'],
+  espera: ['na hora','5 min depois','15 min depois','30 min depois','1 hora depois','1 dia depois'],
+  se: ['(sempre)','o e-mail de acesso não foi aberto','não foi pago','não entrou na área de membros','ainda não teve resposta'],
+  entao: ['manda uma resposta pronta no WhatsApp','manda uma resposta pronta por e-mail','avisa um atendente','avisa a supervisão','abre uma conversa na fila']
+};
+function todasAutos(){ return AUTOS.concat(S.autosNovas); }
+function autoLigada(a){ return S.autosOn[a.id] != null ? S.autosOn[a.id] : a.on; }
+function telaAutomacoes(){
+  var lista = todasAutos(), ligadas = lista.filter(autoLigada).length;
+  var sel = function(campo, ops){ return '<select data-campo="auto_'+campo+'">'+ops.map(function(o){ return '<option'+(S.autoForm[campo]===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select>'; };
+  return '<div class="pagina">'+
+    '<header class="topo"><div class="esq"><h1>Automações</h1><p>Regras que resolvem sozinhas: quando acontece alguma coisa, a Central faz o que você faria. '+ligadas+' de '+lista.length+' ligadas.</p></div>'+
+      '<div class="ctl"><button class="btn cheio" data-acao="autoNova">+ Nova automação</button></div></header>'+
+    '<div style="display:flex;flex-direction:column;gap:12px">'+lista.map(function(a){
+      var on = autoLigada(a);
+      return '<section class="cartao auto'+(on?'':' desl')+'"><div class="auto-l">'+
+        '<div class="frase"><span class="rot">Quando</span> <b>'+esc(a.quando)+'</b> <span class="rot">·</span> <b>'+esc(a.espera)+'</b>'+
+          (a.se ? ' <span class="rot">se</span> <b>'+esc(a.se)+'</b>' : '')+'<br><span class="rot">então</span> <b>'+esc(a.entao)+'</b></div>'+
+        '<label class="chave"><input type="checkbox" data-acao="autoTroca" data-arg="'+a.id+'"'+(on?' checked':'')+'><span>'+(on?'Ligada':'Desligada')+'</span></label></div>'+
+        '<span style="font-size:12px;color:#64748B">'+esc(on ? a.semana : 'Desligada · não roda')+'</span></section>';
+    }).join('')+'</div>'+
+    (S.autoNova ? '<div class="veu" data-acao="veu"><div class="janela" role="dialog" aria-modal="true" aria-label="Nova automação">'+
+      '<div class="jc"><div style="display:flex;flex-direction:column;gap:2px"><b>Nova automação</b><span>Monte a regra como uma frase.</span></div><button class="fechar" data-acao="autoFechar" aria-label="Fechar">'+ICO.x+'</button></div>'+
+      '<div class="jm">'+
+        '<label class="rotulo-campo"><span class="rot">Quando</span>'+sel('quando', AUTO_OP.quando)+'</label>'+
+        '<label class="rotulo-campo"><span class="rot">Esperar</span>'+sel('espera', AUTO_OP.espera)+'</label>'+
+        '<label class="rotulo-campo"><span class="rot">Só se</span>'+sel('se', AUTO_OP.se)+'</label>'+
+        '<label class="rotulo-campo"><span class="rot">Então</span>'+sel('entao', AUTO_OP.entao)+'</label>'+
+        (/resposta pronta/.test(S.autoForm.entao || '') ? '<label class="rotulo-campo"><span class="rot">Qual resposta pronta</span><select data-campo="auto_pronta">'+
+          PRONTAS.map(function(r, i){ return '<option value="'+i+'"'+(String(S.autoForm.pronta)===String(i)?' selected':'')+'>'+esc(r.n)+'</option>'; }).join('')+'</select></label>' : '')+
+        '<div class="dica"><b>Fica assim:</b> quando '+esc((S.autoForm.quando||'').toLowerCase())+', '+esc(S.autoForm.espera||'')+
+          (S.autoForm.se && S.autoForm.se !== '(sempre)' ? ', se '+esc(S.autoForm.se) : '')+', a Central '+esc(S.autoForm.entao||'')+'.</div>'+
+      '</div><div class="jr"><span></span><div><button class="btn" data-acao="autoFechar">Cancelar</button><button class="btn cheio" data-acao="autoSalvar">Criar e ligar</button></div></div>'+
+    '</div></div>' : '')+
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════
+// TELA · RESPOSTAS PRONTAS
+// ══════════════════════════════════════════════════════
+var PRONTAS_STATS = {
+  'Reenviar acesso': { usos:182, resolve:.88, nota:'4,8' },
+  'Acesso pelo celular': { usos:64, resolve:.81, nota:'4,7' },
+  'Pix novo': { usos:57, resolve:.74, nota:'4,6' },
+  'Garantia de 7 dias': { usos:21, resolve:.62, nota:'4,2' },
+  'Boleto': { usos:18, resolve:.90, nota:'4,9' },
+  'Formulário de reembolso': { usos:9, resolve:1, nota:null }
+};
+var PRONTAS_SUG = [
+  { n:'Trocar o e-mail de acesso', vezes:9, x:'Consigo trocar sim! Me manda o e-mail novo que eu atualizo no seu acesso. Em até 10 minutos você já entra com ele.' },
+  { n:'Parcelamento no cartão', vezes:6, x:'Dá pra parcelar no cartão. É só escolher o número de parcelas na hora de pagar: [link do checkout].' },
+  { n:'Serve pro meu concurso?', vezes:5, x:'A apostila segue o edital mais recente. Me fala qual concurso e cargo que eu confirmo pra você.' }
+];
+function telaProntas(){
+  var sugs = PRONTAS_SUG.map(function(sg, i){ return { sg:sg, i:i }; }).filter(function(x){ return !S.sugCriadas[x.i]; });
+  return '<div class="pagina">'+
+    '<header class="topo"><div class="esq"><h1>Respostas prontas</h1><p>As respostas que a equipe usa no atendimento, e como cada uma está se saindo. Mudou aqui, muda no atendimento na hora.</p></div></header>'+
+    '<div class="duas"><section class="cartao grande" aria-label="Respostas prontas">'+
+      '<div class="tabela"><table style="min-width:560px"><thead><tr><th scope="col">Resposta</th><th scope="col" class="num">Usada</th><th scope="col" class="num">Resolve na 1ª</th><th scope="col" class="num">Nota</th><th scope="col"></th></tr></thead><tbody>'+
+      PRONTAS.map(function(r, i){
+        var st = PRONTAS_STATS[r.n] || { usos:0, resolve:null, nota:null };
+        return '<tr><td><b>'+esc(r.n)+'</b><div style="font-size:12px;color:#64748B;max-width:520px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.x)+'</div></td>'+
+          '<td class="num">'+st.usos+'x</td><td class="num" style="font-weight:700;color:'+(st.resolve != null && st.resolve < .7 ? '#A93A0A' : '#0F172A')+'">'+(st.resolve == null ? '—' : pctBr(st.resolve, 0))+'</td>'+
+          '<td class="num">'+(st.nota || '—')+'</td><td class="num"><button class="btn-p" data-acao="prontaEditar" data-arg="'+i+'">Editar</button></td></tr>';
+      }).join('')+'</tbody></table></div>'+
+      '<span style="font-size:11.5px;color:#64748B">"Resolve na 1ª": a conversa foi resolvida sem o cliente precisar voltar depois dessa resposta. Abaixo de 70% vale reescrever.</span>'+
+    '</section><section class="cartao lateral corrigir" aria-label="A IA sugere criar">'+
+      '<div style="display:flex;align-items:center;gap:8px;color:#3E1493">'+ICO.ia+'<b style="font-size:15px">A IA sugere criar</b></div>'+
+      '<span style="font-size:12px;color:#5B4A86">Perguntas que se repetiram esta semana e ainda não têm resposta pronta</span>'+
+      (sugs.length ? sugs.map(function(x){
+        return '<div class="acao-ia"><b style="font-size:13.5px">'+esc(x.sg.n)+'</b><span style="font-size:11.5px;color:#5B4A86">'+x.sg.vezes+' perguntas parecidas esta semana</span>'+
+          '<span style="font-size:12.5px;color:#334155;line-height:1.5">“'+esc(x.sg.x)+'”</span>'+
+          '<button class="btn-ia" style="align-self:flex-start" data-acao="prontaCriar" data-arg="'+x.i+'">Criar resposta pronta</button></div>';
+      }).join('') : '<span style="font-size:12.5px;color:#334155">Nada novo por enquanto.</span>')+
+    '</section></div>'+
+    (S.prontaEdit >= 0 ? '<div class="veu" data-acao="veu"><div class="janela" role="dialog" aria-modal="true" aria-label="Editar resposta pronta">'+
+      '<div class="jc"><b>'+esc(PRONTAS[S.prontaEdit].n)+'</b><button class="fechar" data-acao="prontaFechar" aria-label="Fechar">'+ICO.x+'</button></div>'+
+      '<div class="jm"><label class="rotulo-campo"><span class="rot">Texto</span><textarea rows="6" data-campo="prontaTxt">'+esc(S.prontaTxt)+'</textarea></label>'+
+        '<span style="font-size:12px;color:#64748B">Use [e-mail], [link de acesso], [link do Pix] e [link do checkout]: o atendimento troca pelos dados da pessoa.</span></div>'+
+      '<div class="jr"><span></span><div><button class="btn" data-acao="prontaFechar">Cancelar</button><button class="btn cheio" data-acao="prontaSalvar">Salvar</button></div></div>'+
+    '</div></div>' : '')+
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════════
 // desenhar e reagir
 // ══════════════════════════════════════════════════════
 function render(){
   var app = document.getElementById('app');
-  app.innerHTML = S.tela === 'reembolsos' ? telaReembolsos() : S.tela === 'formulario' ? telaFormulario() : telaSuporte();
+  var T = { reembolsos: telaReembolsos, formulario: telaFormulario, prevencao: telaPrevencao, automacoes: telaAutomacoes, prontas: telaProntas };
+  app.innerHTML = (T[S.tela] || telaSuporte)();
   document.querySelectorAll('.proto nav a').forEach(function(a){ a.classList.toggle('on', a.dataset.tela === S.tela); a.setAttribute('aria-current', a.dataset.tela === S.tela ? 'page' : 'false'); });
   var fio = document.getElementById('fio'); if(fio) fio.scrollTop = fio.scrollHeight;
 }
 function rota(){
   var t = (location.hash || '#suporte').slice(1);
-  S.tela = ['suporte','reembolsos','formulario'].indexOf(t) >= 0 ? t : 'suporte';
-  S.modal = false;
+  S.tela = ['suporte','prevencao','automacoes','prontas','reembolsos','formulario'].indexOf(t) >= 0 ? t : 'suporte';
+  S.modal = false; S.lote = ''; S.autoNova = false; S.prontaEdit = -1;
   render(); window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', rota);
@@ -855,7 +1106,68 @@ var ACOES = {
   acaoPix: function(){ var c = conv(S.sel); mudar({ enviados: adicionar(c, [{t:'sis',x:'Pix novo gerado · R$ 97,00 · vale 30 min · por você',h:'agora'}]), draft:'Oi, '+primeiro(c)+'! '+PRONTAS[2].x, nota:false, aviso:'Pix gerado. O link já está no campo de resposta.' }); },
   abrirReembolso: function(){ var d = REEMB[S.sel]; mudar({ modal:true, rbMotivo: d ? d.motivo : '', rbDetalhe: d ? d.detalhe : '', rbItens:{}, rbErro:'' }); },
   fecharModal: function(){ mudar({ modal:false }); },
-  veu: function(a, el, ev){ if(ev.target === el) mudar({ modal:false }); },
+  veu: function(a, el, ev){ if(ev.target === el) mudar({ modal:false, lote:'', autoNova:false, prontaEdit:-1 }); },
+  // responder em lote
+  abrirLote: function(id){ mudar({ lote:id, loteFora:{}, loteTxt:{} }); },
+  fecharLote: function(){ mudar({ lote:'' }); },
+  enviarLote: function(){
+    var l = LOTES.filter(function(x){ return x.id === S.lote; })[0]; if(!l) return;
+    var env = Object.assign({}, S.enviados), resp = Object.assign({}, S.respondidos), st = Object.assign({}, S.status), n = 0;
+    l.conversas.forEach(function(id){
+      var c = conv(id); if(!semResp(c) || S.loteFora[id]) return;
+      var t = S.loteTxt[id] != null ? S.loteTxt[id] : c.sugestoes[0];
+      env[id] = (env[id] || []).concat([{ t:'ag', x:t, h:'agora', a:'Você' }]); resp[id] = true;
+      if(statusDe(c) === 'aberto') st[id] = 'aguardando';
+      n++;
+    });
+    mudar({ enviados:env, respondidos:resp, status:st, lote:'', sug:false });
+    toast(n+' resposta'+(n===1?'':'s')+' enviada'+(n===1?'':'s')+'. As conversas foram pra "aguardando cliente". (Protótipo: nada sai daqui.)');
+  },
+  // prevenção
+  prevAvisar: function(id){
+    var g = null, it = null;
+    PREV.forEach(function(x){ x.itens.forEach(function(y){ if(y.id === id){ g = x; it = y; } }); });
+    if(!it) return;
+    mudar({ prevFeitos: setDe(S.prevFeitos, id, true) });
+    toast(it.nome+': '+g.acao.toLowerCase()+' — enviado. (Protótipo: nada sai daqui.)');
+  },
+  prevTodos: function(gid){
+    var g = PREV.filter(function(x){ return x.id === gid; })[0]; if(!g) return;
+    var f = Object.assign({}, S.prevFeitos), n = 0;
+    g.itens.forEach(function(y){ if(!f[y.id]){ f[y.id] = true; n++; } });
+    mudar({ prevFeitos:f });
+    toast(n+' aviso'+(n===1?'':'s')+' enviado'+(n===1?'':'s')+': '+g.acao.toLowerCase()+'. (Protótipo.)');
+  },
+  // automações
+  autoTroca: function(id){
+    var a = todasAutos().filter(function(x){ return x.id === id; })[0]; if(!a) return;
+    var on = !autoLigada(a);
+    mudar({ autosOn: setDe(S.autosOn, id, on) });
+    toast(on ? 'Automação ligada.' : 'Automação desligada.');
+  },
+  autoNova: function(){ mudar({ autoNova:true, autoForm:{ quando:AUTO_OP.quando[0], espera:AUTO_OP.espera[2], se:AUTO_OP.se[1], entao:AUTO_OP.entao[0], pronta:'0' } }); },
+  autoFechar: function(){ mudar({ autoNova:false }); },
+  autoSalvar: function(){
+    var f = S.autoForm, pr = PRONTAS[+f.pronta];
+    var entao = /resposta pronta/.test(f.entao) ? f.entao.replace('uma resposta pronta', 'a resposta pronta "'+(pr ? pr.n : '')+'"') : f.entao;
+    var nova = { id:'n'+Date.now(), on:true, quando:f.quando, espera:f.espera, se: f.se === '(sempre)' ? '' : f.se, entao:entao, semana:'Criada agora · ainda não rodou' };
+    mudar({ autosNovas: S.autosNovas.concat([nova]), autoNova:false });
+    toast('Automação criada e ligada.');
+  },
+  // respostas prontas
+  prontaEditar: function(i){ mudar({ prontaEdit:+i, prontaTxt: PRONTAS[+i].x }); },
+  prontaFechar: function(){ mudar({ prontaEdit:-1 }); },
+  prontaSalvar: function(){
+    var t = (S.prontaTxt || '').trim(); if(!t){ toast('A resposta não pode ficar vazia.'); return; }
+    PRONTAS[S.prontaEdit].x = t; mudar({ prontaEdit:-1 }); toast('Resposta pronta salva. Já aparece no atendimento.');
+  },
+  prontaCriar: function(i){
+    var sg = PRONTAS_SUG[+i]; if(!sg) return;
+    PRONTAS.push({ n:sg.n, x:sg.x });
+    PRONTAS_STATS[sg.n] = { usos:0, resolve:null, nota:null };
+    mudar({ sugCriadas: setDe(S.sugCriadas, i, true) });
+    toast('"'+sg.n+'" criada. Já aparece nas prontas do atendimento.');
+  },
   mandarForm: function(){
     var c = conv(S.sel);
     var x = { enviados: adicionar(c, [{ t:'ag', x:'Oi, '+primeiro(c)+'! '+PRONTAS[5].x, h:'agora', a:'Você' }]), modal:false, sug:false,
@@ -885,16 +1197,46 @@ document.addEventListener('click', function(ev){
   if(el.dataset.acao === 'veu'){ f(null, el, ev); return; }
   f(el.dataset.arg, el, ev);
 });
-document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && S.modal) mudar({ modal:false }); });
+// Atalhos: J/K (ou setas) navegam na fila, R pede a sugestão da IA, U usa a
+// sugestão, E resolve, / vai pra busca, Ctrl+Enter envia. Nunca enquanto se digita.
+document.addEventListener('keydown', function(ev){
+  if(ev.key === 'Escape'){ if(S.modal || S.lote || S.autoNova || S.prontaEdit >= 0) mudar({ modal:false, lote:'', autoNova:false, prontaEdit:-1 }); return; }
+  if(S.tela !== 'suporte' || S.modal || S.lote) return;
+  var t = ev.target, digitando = t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+  if(digitando){
+    if(t.dataset && t.dataset.campo === 'draft' && (ev.ctrlKey || ev.metaKey) && ev.key === 'Enter'){ ev.preventDefault(); ACOES.enviar(); }
+    return;
+  }
+  if(ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  var k = ev.key.toLowerCase();
+  if(k === 'j' || k === 'arrowdown' || k === 'k' || k === 'arrowup'){
+    var ids = Array.prototype.map.call(document.querySelectorAll('#fila-lista .item'), function(el){ return el.dataset.arg; });
+    if(!ids.length) return;
+    var i = ids.indexOf(S.sel), prox = (k === 'j' || k === 'arrowdown') ? Math.min(ids.length - 1, i + 1) : Math.max(0, i - 1);
+    if(i < 0) prox = 0;
+    ACOES.abrir(ids[prox]);
+    var el = document.querySelector('#fila-lista .item.on'); if(el) el.scrollIntoView({ block:'nearest' });
+  }
+  else if(k === 'r') ACOES.pedirIA();
+  else if(k === 'u'){ if(S.sug) { ACOES.usarSug(); var tx = document.querySelector('textarea[data-campo="draft"]'); if(tx) tx.focus(); } }
+  else if(k === 'e') ACOES.resolver();
+  else if(k === '/'){ var b = document.getElementById('busca'); if(b) b.focus(); }
+  else return;
+  ev.preventDefault();
+});
 // digitar não redesenha a tela (perderia o cursor); só guarda
 document.addEventListener('input', function(ev){
   var c = ev.target.dataset && ev.target.dataset.campo; if(!c) return;
   if(c === 'busca'){ S.busca = ev.target.value; document.getElementById('fila-lista').innerHTML = filaLista(); return; }
-  if(c === 'draft' || c === 'rbDetalhe' || c === 'fCampo' || c === 'fTexto') S[c] = ev.target.value;
+  if(c === 'draft' || c === 'rbDetalhe' || c === 'fCampo' || c === 'fTexto' || c === 'prontaTxt') S[c] = ev.target.value;
+  if(c === 'loteTxt') S.loteTxt[ev.target.dataset.arg] = ev.target.value;
 });
 document.addEventListener('change', function(ev){
   var t = ev.target, c = t.dataset && t.dataset.campo; if(!c) return;
-  if(c === 'canal') mudar({ canal:t.value });
+  if(c === 'ordem') mudar({ ordem:t.value });
+  else if(c === 'loteInclui') mudar({ loteFora: setDe(S.loteFora, t.dataset.arg, !t.checked) });
+  else if(c.indexOf('auto_') === 0) mudar({ autoForm: setDe(S.autoForm, c.slice(5), t.value) });
+  else if(c === 'canal') mudar({ canal:t.value });
   else if(c === 'statusConv') mudar({ status: setDe(S.status, S.sel, t.value) });
   else if(c === 'rbMotivo') mudar({ rbMotivo:t.value, rbErro:'' });
   else if(c === 'rbItem'){ var i = t.dataset.arg; mudar({ rbItens: setDe(S.rbItens, i, t.checked), rbErro:'' }); }
