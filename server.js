@@ -11819,7 +11819,6 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       // quantos desta origem também vieram de outra de cima e contam lá
       nos[b.o.id] = Object.assign({ tipo: 'fonte', canal: b.canal }, medir(s), b.extra, { contamEmOutra: b.s.size - s.size });
     });
-    const ehDeAnuncio = v => { const b = brutos.find(x => x.o.id === dono[v]); return !!(b && b.canal === 'meta'); };
     const abst = (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer));
     const redirs = Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [];
     (f.etapas || []).forEach(e => {
@@ -11833,9 +11832,14 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         const sorteio = {};
         abst.filter(l => l.teste === slug && l.data >= per.de && l.data <= per.ate).forEach(l => { sorteio[l.variante] = (sorteio[l.variante] || 0) + (l.sorteios || 0); });
         const tot = Object.values(sorteio).reduce((a, n) => a + n, 0);
+        // teste da bio (nenhuma origem de anúncio aponta pra ele): quem também
+        // veio de anúncio conta lá, não aqui — igual à tela do teste
+        const doAnuncio = (f.ligacoes || []).some(l => l[1] === e.id && brutos.some(x => x.o.id === l[0] && x.canal === 'meta'));
+        let deAnuncio = 0, pessoasAnuncio = 0;
+        // a mesma regra da tela do teste (_veioDeAnuncio), pra os dois números baterem
+        if (!doAnuncio) { const vda = _veioDeAnuncio([...s], per.ini, per.fim); vda.forEach(v => { if (s.has(v)) { deAnuncio += (vendaPor[v] || []).length; pessoasAnuncio++; s.delete(v); } }); }
         conj[e.id] = s;
-        let deAnuncio = 0; s.forEach(v => { if (ehDeAnuncio(v)) deAnuncio += (vendaPor[v] || []).length; });
-        nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio,
+        nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio, pessoasDeAnuncio: pessoasAnuncio,
           vendasEntrada: (vendaDaEtapa[e.id] || []).length,
           divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
       } else if (e.tipo === 'checkout' && !temPagina) {
@@ -13854,6 +13858,38 @@ function _bootRpp(n, receitas, B) {
   }
   return out;
 }
+// Teste alimentado por anúncio: o /r/ é o link do anúncio (no mapa, uma origem
+// de anúncio aponta pro bloco do teste) — ou o teste nem está desenhado.
+// Teste da bio (ou de UTM, orgânico) é o resto.
+function _testeDeAnuncio(dbj, r) {
+  const slug = String(r.slug || '').toLowerCase();
+  const funis = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
+  const ordem = funis.filter(f => f && f.id === r.funil).concat(funis.filter(f => f && f.id !== r.funil));
+  for (const f of ordem) {
+    const sp = (f.etapas || []).find(e => e.tipo === 'split' && String(e.slug || '').toLowerCase() === slug);
+    if (!sp) continue;
+    return (f.ligacoes || []).some(l => l[1] === sp.id && (f.fontes || []).some(o => o.id === l[0] && (o.canal || 'meta') === 'meta'));
+  }
+  return true;
+}
+// Quem teve visita de anúncio (Facebook/Instagram pago, sem "bio" na UTM) no
+// período. Num teste da bio essa gente fica de fora: a venda dela é do anúncio
+// — é assim no Resultado e no mapa. Sem isso o teste da bio contava como dele a
+// venda de quem viu o anúncio, foi no perfil e clicou no link da bio.
+function _veioDeAnuncio(visitantes, ini, fim) {
+  const fora = new Set(); if (!visitantes.length || !_pessoas()) return fora;
+  const canais = _canaisCache();
+  for (let i = 0; i < visitantes.length; i += 500) {
+    const lote = visitantes.slice(i, i + 500);
+    _q('SELECT visitante, fonte, midia, camp, cont FROM sessoes WHERE visitante IN (' + _ph(lote.length) + ') AND inicio BETWEEN ? AND ?')
+      .all(...lote, ini, fim).forEach(x => {
+        if (fora.has(x.visitante)) return;
+        const c = _canalDe(x.fonte, canais);
+        if (c && c.id === 'meta' && !/bio/i.test([x.fonte, x.midia, x.camp, x.cont].join(' '))) fora.add(x.visitante);
+      });
+  }
+  return fora;
+}
 function _abV2(slug, de, ate) {
   const dbj = readDB();
   const r = (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : []).find(x => String(x.slug || '').toLowerCase() === slug);
@@ -13884,9 +13920,23 @@ function _abV2(slug, de, ate) {
   const paginasVistas = (db && ehCk) ? _q(`SELECT e.pg, COUNT(DISTINCT e.visitante) n, MAX(e.em) ult FROM eventos e
       WHERE e.tipo IN ('ckteste','checkout') AND e.em >= ? AND e.extra LIKE ? AND e.pg IS NOT NULL GROUP BY e.pg ORDER BY n DESC LIMIT 10`)
       .all(inicioTeste || per.ini, '%"ckt":"' + slug + '"%').map(x => ({ pg: x.pg, pessoas: x.n, ultimo: x.ult })) : [];
+  // teste da bio: quem também veio de anúncio fica de fora (a venda é do anúncio)
+  const tiraAnuncio = !ehCk && !_testeDeAnuncio(dbj, r);
+  const foraPorAnuncio = { pessoas: 0, vendas: 0 };
   if (db && !ehCk) {
-    _q(`SELECT visitante, variante, MIN(inicio) ini, MAX(pitch) pitch, MAX(checkout) ck FROM sessoes
-        WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ? GROUP BY visitante`).all(slug, per.ini, per.fim)
+    const linhasT = _q(`SELECT visitante, variante, MIN(inicio) ini, MAX(pitch) pitch, MAX(checkout) ck FROM sessoes
+        WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ? GROUP BY visitante`).all(slug, per.ini, per.fim);
+    const deAnuncio = tiraAnuncio ? _veioDeAnuncio(linhasT.map(x => x.visitante), per.ini, per.fim) : new Set();
+    if (deAnuncio.size) {
+      const lst = [...deAnuncio];
+      foraPorAnuncio.pessoas = lst.length;
+      for (let i = 0; i < lst.length; i += 500) {
+        const lote = lst.slice(i, i + 500);
+        foraPorAnuncio.vendas += _q('SELECT COUNT(*) n FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND em BETWEEN ? AND ? AND visitante IN (' + _ph(lote.length) + ')')
+          .get(per.ini, per.fim, ...lote).n;
+      }
+    }
+    linhasT.filter(x => !deAnuncio.has(x.visitante))
       .forEach(x => {
         const v = porId[String(x.variante || '')]; if (!v) return;
         quem[x.visitante] = v.id;
@@ -13962,7 +14012,8 @@ function _abV2(slug, de, ate) {
   const totS = vars.reduce((a, v) => a + v.sorteios, 0), totP = vars.reduce((a, v) => a + v.peso, 0);
   vars.forEach(v => { v.fatiaReal = totS ? v.sorteios / totS * 100 : null; v.fatiaAlvo = totP ? v.peso / totP * 100 : null; });
   const divisao = { total: totS, torta: totS > 200 && vars.some(v => v.fatiaReal != null && Math.abs(v.fatiaReal - v.fatiaAlvo) > 5) };
-  const chegaram = vars.reduce((a, v) => a + v.pessoas, 0);
+  // quem chegou pelo link, contando também quem ficou fora por ter vindo de anúncio
+  const chegaram = vars.reduce((a, v) => a + v.pessoas, 0) + foraPorAnuncio.pessoas;
   const perdaClique = (!ehCk && totS) ? Math.max(0, 1 - chegaram / totS) : null;
 
   // ── fora do teste: gente do funil que não passou pelo link ──
@@ -14005,8 +14056,9 @@ function _abV2(slug, de, ate) {
   }
   if (db && !ehCk) {
     const quemT = {};
-    _q(`SELECT visitante, variante, MIN(inicio) ini FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio >= ? GROUP BY visitante`)
-      .all(slug, iniSerie).forEach(x => {
+    const linhasS = _q(`SELECT visitante, variante, MIN(inicio) ini FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio >= ? GROUP BY visitante`).all(slug, iniSerie);
+    const deAnuncioS = tiraAnuncio ? _veioDeAnuncio(linhasS.map(x => x.visitante), iniSerie, Date.now()) : new Set();
+    linhasS.filter(x => !deAnuncioS.has(x.visitante)).forEach(x => {
         const vid = String(x.variante || ''); if (!porDiaT[vid]) return;
         quemT[x.visitante] = vid;
         const d = _diaBR(x.ini); const pd = porDiaT[vid][d] || (porDiaT[vid][d] = { pessoas: 0, vendas: 0 }); pd.pessoas++;
@@ -14038,6 +14090,7 @@ function _abV2(slug, de, ate) {
 
   return { ok: true, teste: slug, nome: r.nome || slug, hipotese: r.hipotese || '', meta, metaNome: meta === 'compra' ? 'Compra (webhook)' : 'etapa do funil',
     tipo: ehCk ? 'checkout' : 'pagina', funilNome: funil ? (funil.nome || '') : '', paginasVistas,
+    tiraAnuncio, foraPorAnuncio,
     link: r.dominio ? ('https://' + r.dominio + '/r/' + slug) : ('/r/' + slug), estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'),
     criadoEm: r.criadoEm || null, diaDoTeste: inicioTeste ? Math.max(1, Math.ceil((Date.now() - inicioTeste) / 86400000)) : null,
     vencedora: r.vencedora || null, de: per.de, ate: per.ate, testeInteiro: !(de || ate),

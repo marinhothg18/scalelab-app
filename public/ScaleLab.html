@@ -1817,6 +1817,14 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow-y:auto}
 .v2-mod{background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .v2-mod.p{max-width:620px}
+.so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* mudar a divisão do teste A/B */
+.ab-div-ctl{margin-top:14px}
+.ab-div-barra{display:block}
+.ab-div-barra input{width:100%;accent-color:#5B5BF6}
+.ab-div-txt{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-top:6px}
+.ab-div-txt b:first-child{color:#5B5BF6}
+.ab-div-txt b:last-child{color:#16A34A}
 /* link do teste de checkout pra colar no botão */
 .ck-link{border:1px solid var(--accent);border-radius:12px;padding:12px 14px;background:var(--bg3);margin-bottom:12px}
 .ck-link .r{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:800;margin-bottom:6px}
@@ -32958,9 +32966,9 @@ function fnNoCorpo(n, b, vt){
     grade = m('Cliques no link', fnNum(b.cliques)) + m('Chegaram', fnNum(b.pessoas)) +
       m('Checkouts', fnNum(b.checkout)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '');
     if(b.divisao && b.divisao.length) pe = '<div class="fn-div">'+b.divisao.map(function(d){ return '<span>'+fnEsc(d.nome)+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'; }).join('')+'</div>';
-    if(b.vendas) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">Vendas de quem passou pelo link'+
-      (b.vendasDeAnuncio ? '. '+b.vendasDeAnuncio+' dessas pessoas também vieram de anúncio e contam no Tráfego pago' : '')+
-      (b.vendasEntrada ? '. '+b.vendasEntrada+' começaram nas variantes do teste' : '')+'.</div>';
+    if(b.vendasDeAnuncio || b.pessoasDeAnuncio) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">Fora daqui: '+
+      fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link mas também vieram de anúncio'+
+      (b.vendasDeAnuncio ? ' ('+b.vendasDeAnuncio+' venda'+(b.vendasDeAnuncio===1?'':'s')+')' : '')+'. Contam no Tráfego pago.</div>';
   } else if(n.tipo === 'checkout' && b.viaClique){
     // qual checkout é: a integração e o produto (ou os que mais saíram)
     sub = [n.integracao || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
@@ -35962,6 +35970,40 @@ function abAlternarInteiro(v){ abTesteInteiro = v; var r = fnRedAtual(); if(r){ 
 // A base é quem abriu o checkout: a página é a mesma pras duas versões, então
 // quem nunca clicou em comprar não diz nada sobre o checkout. Quem decide é a
 // receita por quem abriu — converter menos e vender mais caro pode ganhar.
+// ── Mudar a divisão do teste ──
+// Antes só dava pela configuração, variante por variante. Aqui: os atalhos de
+// sempre (50/50, 70/30, 80/20, 90/10) e uma barra. Quem já caiu numa variante
+// continua nela; a divisão nova vale pra quem chegar.
+function abControleDivisao(r){
+  var ds = r.destinos || [];
+  if(r.vencedora) return '';
+  if(ds.length !== 2) return ds.length > 2 ? '<div class="v2-cx ab-div-ctl"><h3>Mudar a divisão</h3><div class="fx-sub">Com '+ds.length+' variantes, ajuste a porcentagem de cada uma em ⚙ Configurar teste.</div></div>' : '';
+  var p0 = Number(ds[0].peso) || 1, p1 = Number(ds[1].peso) || 1, pa = Math.round(p0 / (p0 + p1) * 100);
+  var pre = [50, 70, 80, 90].map(function(x){
+    return '<button class="fn-btn g sm'+(pa === x ? ' on' : '')+'" onclick="abDividir('+x+')">'+x+'/'+(100-x)+'</button>';
+  }).join('');
+  return '<div class="v2-cx ab-div-ctl"><h3>Mudar a divisão</h3>'+
+    '<div class="fx-sub" style="margin:-2px 0 10px">Quanto do tráfego vai pra cada variante. Quem já caiu numa continua nela; a nova divisão vale pra quem chegar.</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+pre+'</div>'+
+    '<label class="ab-div-barra"><span class="so-leitor">Porcentagem da variante A</span>'+
+      '<input type="range" min="5" max="95" step="5" value="'+pa+'" oninput="abDivPrevia(this.value)" onchange="abDividir(+this.value)"></label>'+
+    '<div class="ab-div-txt" id="ab-div-txt"><b>A · '+fnEsc(ds[0].nome || 'Variante 1')+' '+pa+'%</b><b>B · '+fnEsc(ds[1].nome || 'Variante 2')+' '+(100-pa)+'%</b></div></div>';
+}
+function abDivPrevia(v){
+  var el = document.getElementById('ab-div-txt'), r = fnRedAtual(); if(!el || !r) return;
+  var ds = r.destinos || []; v = +v;
+  el.innerHTML = '<b>A · '+fnEsc((ds[0]||{}).nome || 'Variante 1')+' '+v+'%</b><b>B · '+fnEsc((ds[1]||{}).nome || 'Variante 2')+' '+(100-v)+'%</b>';
+}
+function abDividir(pa){
+  var r = fnRedAtual(); if(!r || !r.destinos || r.destinos.length !== 2) return;
+  pa = Math.max(5, Math.min(95, Math.round(+pa)));
+  var p0 = Number(r.destinos[0].peso) || 1, p1 = Number(r.destinos[1].peso) || 1;
+  if(Math.round(p0 / (p0 + p1) * 100) === pa){ return; }
+  if(!confirm('Mudar a divisão pra A '+pa+'% · B '+(100-pa)+'%?\n\nQuem já caiu numa variante continua nela. A nova divisão vale pra quem chegar a partir de agora.')){ fnPintarRed(); return; }
+  r.destinos[0].peso = pa; r.destinos[1].peso = 100 - pa;
+  fnGravarRed(r); delete abDados[r.slug]; delete abDados2[r.slug]; fnPintarRed();
+  toastFn('Divisão agora: A '+pa+'% · B '+(100-pa)+'%. Vale pra quem chegar a partir de agora.');
+}
 function ckV2Html(r, d){
   var vs = d.variantes || [], ver = d.veredito, dir = lcEhDir();
   var ctrl = vs[0], lider = vs.filter(function(v){ return v.id === d.lider; })[0];
@@ -36052,7 +36094,7 @@ function ckV2Html(r, d){
       '<div class="fx-sub">De quem viu a página com o teste · configurado '+vs.map(function(v){ return Math.round(v.fatiaAlvo||0); }).join('/')+' · '+(d.divisao && d.divisao.torta ? '<b class="v2-ruim">desvio acima de 5 pontos</b>' : 'ok')+'</div>'
      : '<div class="fx-vazio">Ninguém viu a página com o teste ainda.</div>')+'</div>';
 
-  return cab + onde + aviso + cartoes + veredito + '<div style="margin-top:14px">'+divisao+'</div>';
+  return cab + onde + aviso + cartoes + veredito + '<div style="margin-top:14px">'+divisao+abControleDivisao(r)+'</div>';
 }
 function abV2Html(r, d){
   var vs = d.variantes || [], ver = d.veredito, dir = lcEhDir();
@@ -36172,8 +36214,11 @@ function abV2Html(r, d){
   var perda = d.perdaClique != null && d.perdaClique > .15 && tot >= 50 ? '<div class="v2-alerta bad" style="margin:0"><div><b>'+v2Pct(d.perdaClique, 0)+' dos cliques não chegam na página</b>'+
       '<span>'+fnNum(tot)+' cliques no link, '+fnNum(d.chegaram)+' chegadas. É redirect lento ou clique repetido. Você paga e não aparece em nenhuma variante.</span></div></div>' : '';
 
-  return cab + cartoes +
-    '<div class="v2-2col"><div class="v2-col">'+veredito+'</div><div class="v2-col">'+graf+divisao+fora+perda+'</div></div>';
+  var foraAnuncio = (d.foraPorAnuncio && d.foraPorAnuncio.pessoas) ? '<div class="fx-aviso" style="margin:-4px 0 14px"><b>Ficaram fora da conta: '+
+      fnNum(d.foraPorAnuncio.pessoas)+' pessoa(s) e '+fnNum(d.foraPorAnuncio.vendas)+' venda(s) de quem também veio de anúncio</b>'+
+      'Passaram pelo link, mas tiveram visita de anúncio. A venda delas é do anúncio (no mapa, conta no Tráfego pago), igual ao Resultado.</div>' : '';
+  return cab + cartoes + foraAnuncio +
+    '<div class="v2-2col"><div class="v2-col">'+veredito+'</div><div class="v2-col">'+graf+divisao+abControleDivisao(r)+fora+perda+'</div></div>';
 }
 
 // ══════════════════════════════════════════════════════
