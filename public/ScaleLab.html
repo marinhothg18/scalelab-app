@@ -39197,6 +39197,15 @@ window.refreshGlobal = async function(silencioso){
   const icon = document.getElementById('btn-refresh-global-icon');
   if(btn) btn.disabled = true;
   if(icon){ icon.style.transform = 'rotate(720deg)'; }
+  // Apertou "Atualizar" e o sistema tem versão nova: traz ela também. No app
+  // do celular não existe o recarregar do navegador, e a tela ficava velha.
+  if(!silencioso){
+    try{
+      const rv = await fetch('/api/versao', {cache:'no-store'});
+      const dv = rv.ok ? await rv.json() : null;
+      if(dv && dv.versao && _versaoCarregada && dv.versao !== _versaoCarregada){ _salvarTela(); location.reload(); return; }
+    }catch(e){}
+  }
   try {
     if(typeof syncAllFromServer === 'function'){
       await syncAllFromServer();
