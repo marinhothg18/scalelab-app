@@ -11846,6 +11846,24 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio, pessoasDeAnuncio: pessoasAnuncio,
           vendasEntrada: (vendaDaEtapa[e.id] || []).length,
           divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
+      } else if (e.tipo === 'cktest') {
+        // Teste de checkout: a página é a mesma, o que muda é o checkout do
+        // botão. O bloco põe as versões lado a lado com a MESMA conta da tela
+        // do teste — se cada um contasse do seu jeito, os dois não batiam.
+        const slug = String(e.slug || '').toLowerCase();
+        const r = redirs.find(x => String(x.slug || '').toLowerCase() === slug && x.tipo === 'checkout');
+        const t = r ? _abV2(slug, per.de, per.ate, { dbj, leve: true }) : null;
+        const vs = t ? t.variantes : [];
+        conj[e.id] = t ? t.conjuntos.viram : new Set();
+        nos[e.id] = { tipo: 'cktest', slug, nomeTeste: r ? (r.nome || r.slug) : '', achou: !!r,
+          estado: t ? t.estado : '', vencedora: t ? t.vencedora : null, diaDoTeste: t ? t.diaDoTeste : null,
+          pessoas: conj[e.id].size, checkout: t ? t.conjuntos.abriram.size : 0,
+          vendas: vs.reduce((a, v) => a + v.vendas, 0), faturamento: dir ? vs.reduce((a, v) => a + v.receita, 0) : null,
+          paginas: t ? t.paginasVistas.map(p => p.pg) : [], lider: t ? t.lider : null,
+          variantes: vs.map(v => Object.assign({}, v, dir ? {} : { receita: null, ticket: null, rpp: null })),
+          veredito: t && t.veredito ? (({ controle, desafiante, chance, liftRpp, faltaVendas, minPorLado, vendasMenorLado, podeDeclarar, sugerida, leitura }) =>
+            ({ controle, desafiante, chance, liftRpp, faltaVendas, minPorLado, vendasMenorLado, podeDeclarar, sugerida, leitura }))(t.veredito) : null,
+          torta: !!(t && t.divisao && t.divisao.torta) };
       } else if (e.tipo === 'checkout' && !temPagina) {
         // Checkout do gateway não recebe pixel: vale quem clicou em comprar, e
         // quem comprou (passou pelo checkout mesmo se o clique não foi visto).
@@ -11891,6 +11909,12 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     (f.ligacoes || []).forEach(l => {
       const A = conj[l[0]], B = conj[l[1]];
       if (!A || !B || !A.size) return;
+      // teste de checkout → checkout: quem abriu o checkout em alguma versão
+      if (nos[l[0]] && nos[l[0]].tipo === 'cktest') {
+        const n = nos[l[0]].checkout;
+        fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
+        return;
+      }
       // página → checkout: a seta diz o mesmo que o bloco ("checkouts" de quem
       // clicou em comprar nela), não quem abriu o checkout em qualquer página
       if (nos[l[1]] && nos[l[1]].viaClique && porEtapa[l[0]]) {
@@ -13894,8 +13918,12 @@ function _veioDeAnuncio(visitantes, ini, fim) {
   }
   return fora;
 }
-function _abV2(slug, de, ate) {
-  const dbj = readDB();
+// op.dbj: banco já lido (o mapa chama isto dentro da própria leitura).
+// op.leve: sem a série de 60 dias e o histórico, que só a tela do teste usa;
+// devolve também quem viu e quem abriu o checkout, pras setas do mapa.
+function _abV2(slug, de, ate, op) {
+  op = op || {};
+  const dbj = op.dbj || readDB();
   const r = (Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : []).find(x => String(x.slug || '').toLowerCase() === slug);
   if (!r) return null;
   const custos = _custosCfg(dbj);
@@ -14054,6 +14082,20 @@ function _abV2(slug, de, ate) {
   // "Ontem" o gráfico viraria um ponto só, e o que ele responde é a evolução.
   const iniSerie = Math.max(inicioTeste || per.ini, Date.now() - 60 * 86400000);
   const porDiaT = {}; vars.forEach(v => { porDiaT[v.id] = {}; });
+  if (op.leve) {
+    const viram = new Set(), abriram = new Set();
+    // quem abriu o checkout passou pelo botão do teste, mesmo sem o "viu"
+    // registrado (venda que voltou só com a marca): senão a seta passa de 100%
+    vars.forEach(v => { (v._exp || []).forEach(x => viram.add(x)); (v._abr || []).forEach(x => { abriram.add(x); viram.add(x); }); });
+    return { ok: true, teste: slug, nome: r.nome || slug, tipo: ehCk ? 'checkout' : 'pagina', paginasVistas,
+      estado: r.estado || (r.ativo === false ? 'pausado' : 'rodando'), vencedora: r.vencedora || null,
+      diaDoTeste: inicioTeste ? Math.max(1, Math.ceil((Date.now() - inicioTeste) / 86400000)) : null,
+      variantes: vars.map(v => ({ id: v.id, nome: v.nome, url: v.url, peso: v.peso, expostos: v.expostos || 0, pessoas: v.pessoas,
+        vendas: v.vendas, pedidos: v.pedidos || 0, receita: v.receita, conversao: v.pessoas ? v.vendas / v.pessoas : 0,
+        ticket: v.vendas ? v.receita / v.vendas : 0, rpp: rpp(v), fatiaReal: v.fatiaReal, fatiaAlvo: v.fatiaAlvo, controle: v === ctrl,
+        pixGerado: v.pixGerado || 0, pixPago: v.pixPago || 0, estornos: v.estornos || 0 })),
+      lider: lider ? lider.id : null, veredito, divisao, conjuntos: { viram, abriram } };
+  }
   if (db && ehCk) {
     const m = _ckMedir(slug, r, iniSerie, Date.now(), liq);
     vars.forEach(v => { porDiaT[v.id] = (m[v.id] && m[v.id].porDia) || {}; });
@@ -14174,6 +14216,7 @@ function _ckPreencher(slug, r, vars, ini, fim, liq) {
     v.receita = o.receita; v.receitas = o.receitas;
     v.pixGerado = o.pixGer.size; v.pixPago = o.pixPago.size; v.estornos = o.estornos.size;
     v.porDia = o.porDia;
+    v._exp = o.expostos; v._abr = o.abriram;     // só pro mapa (não vai no JSON)
   });
 }
 function _ckLeitura(a, b, chance, pode, minV) {

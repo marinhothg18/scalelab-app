@@ -1716,6 +1716,20 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .fn-no.v3 .lk{margin:0 0 8px}
 .fn-no.v3 .fx-g{gap:7px 12px} .fn-no.v3 .fx-m-v{font-size:14.5px}
 .fn-div{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--border);font-size:11px;color:var(--text2)}
+/* bloco do teste de checkout: as versões lado a lado */
+.fn-no.v3.ckt{width:380px}
+.fn-ckt{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:2px;font-variant-numeric:tabular-nums}
+.fn-ckt th{text-align:right;padding:0 0 6px 8px;vertical-align:bottom;font-weight:700}
+.fn-ckt th:first-child{padding-left:0}
+.fn-ckt th b{display:block;font-size:12px;color:var(--text);white-space:nowrap}
+.fn-ckt th small{display:block;font-size:9.5px;font-weight:600;color:var(--text2);font-family:ui-monospace,Menlo,monospace;max-width:120px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-ckt th i.ok{font-style:normal;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--v2-verde,#22C55E);margin-left:4px}
+.fn-ckt td{padding:4px 0 4px 8px;text-align:right;font-weight:800;color:var(--text);border-top:1px solid var(--border)}
+.fn-ckt td:first-child{text-align:left;padding-left:0;font-weight:600;color:var(--text2);white-space:nowrap}
+.fn-ckt td.fr{color:var(--v2-verde,#22C55E)}
+.fn-ckt-pt{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+.fn-ckt-ver{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;color:var(--text2);line-height:1.45;white-space:normal}
+.fn-ckt-ver b{color:var(--text)}
 .fn-div b{color:var(--text)}
 .fx-palco-w{overflow-x:auto;padding:4px 2px 10px;background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:18px 18px;border:1px solid var(--border);border-radius:14px}
 .fx-palco{position:relative;margin:16px}
@@ -28612,10 +28626,10 @@ function saveAdsApiKey(){
 // 'pagina', misturado com tela de quiz.
 var FN_CORES = { pagina:'#1B9CFA', prevenda:'#1B9CFA', vsl:'#3E1493', checkout:'#FF5926',
                  upsell:'#C52C58', downsell:'#C52C58', obrigado:'#22C55E', fonte:'#8A94AC',
-                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6', typeform:'#0EA5E9', typebot:'#14B8A6', backredirect:'#F97316' };
+                 quiz:'#0EA5A0', recuperacao:'#DC2626', split:'#5B5BF6', cktest:'#8B5CF6', typeform:'#0EA5E9', typebot:'#14B8A6', backredirect:'#F97316' };
 var FN_ROT   = { pagina:'PÁGINA', prevenda:'PRÉ-VENDA', vsl:'VSL', checkout:'CHECKOUT',
                  upsell:'UPSELL', downsell:'DOWNSELL', obrigado:'OBRIGADO', fonte:'ORIGEM',
-                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B', typeform:'TYPEFORM', typebot:'TYPEBOT', backredirect:'BACK REDIRECT' };
+                 quiz:'QUIZ', recuperacao:'RECUPERAÇÃO', split:'TESTE A/B', cktest:'TESTE CHECKOUT', typeform:'TYPEFORM', typebot:'TYPEBOT', backredirect:'BACK REDIRECT' };
 
 // A paleta do mapa. Um clique poe o bloco no funil, ligado no que estiver
 // selecionado — em vez de preencher tres campos de formulario a cada etapa.
@@ -32197,6 +32211,8 @@ function mpPaleta(){
     '<div class="mp-grp">Redirect</div>' +
     '<button class="mp-bl" onclick="mpAddSplit()" title="O link /r/ do teste A/B"><span class="pt" style="background:#5B5BF6"></span>'+
       '<span class="tx"><b>Teste A/B (link /r/)</b><small>divide entre as variantes</small></span></button>' +
+    '<button class="mp-bl" onclick="mpCriarBloco({k:\'etapa\',tipo:\'cktest\',nome:\'Teste de checkout\'},320,140)" title="Os checkouts do teste lado a lado"><span class="pt" style="background:'+FN_CORES.cktest+'"></span>'+
+      '<span class="tx"><b>Teste de checkout</b><small>os checkouts lado a lado</small></span></button>' +
     '<div class="mp-grp">Páginas</div>' +
     FN_PALETA.map(function(b){ return bloco(b.tipo, b.nome, b.dica); }).join('');
 
@@ -32486,7 +32502,7 @@ function mpAgoraBuscar(){
 function mpAgoraDados(){ var f = fnAtual(); return (mpAgora && f && mpAgora.funil === f.id) ? mpAgora : null; }
 // o que o selo do bloco mostra: null = bloco sem selo
 function fnAgoraInfo(n, b){
-  if(!n || n.tipo === 'fonte' || n.tipo === 'recuperacao' || (b && b.viaVenda)) return null;
+  if(!n || n.tipo === 'fonte' || n.tipo === 'recuperacao' || n.tipo === 'cktest' || (b && b.viaVenda)) return null;
   var ck = n.tipo === 'checkout' && b && b.viaClique;
   if(!ck && !(n.tipo === 'split' ? n.slug : n.url)) return null;
   var d = mpAgoraDados(); if(!d) return { pronto: false };
@@ -32996,6 +33012,12 @@ function fnNoCorpo(n, b, vt){
     if(b.vendasDeAnuncio || b.pessoasDeAnuncio) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">Fora daqui: '+
       fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link mas também vieram de anúncio'+
       (b.vendasDeAnuncio ? ' ('+b.vendasDeAnuncio+' venda'+(b.vendasDeAnuncio===1?'':'s')+')' : '')+'. Contam no Tráfego pago.</div>';
+  } else if(n.tipo === 'cktest'){
+    sub = !b.achou ? 'escolha o teste no painel ao lado'
+        : (b.variantes||[]).map(function(v){ return fnCkHost(v.url); }).join(' × ') +
+          (b.paginas && b.paginas.length ? ' · em '+b.paginas.slice(0,2).map(function(p){ return p.replace(/^[^/]*\//,'/'); }).join(', ') : '');
+    if(b.achou){ grade = ''; pe = fnCkTabela(b, din) + fnCkVeredito(b) +
+      '<button class="fn-btn g sm" style="width:100%;margin-top:9px" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();fnAbrirCkTeste(\''+fnEsc(b.slug)+'\')">Abrir o teste ›</button>'; }
   } else if(n.tipo === 'checkout' && b.viaClique){
     // qual checkout é: a integração e o produto (ou os que mais saíram)
     sub = [n.integracao || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
@@ -33030,8 +33052,61 @@ function fnNoCorpo(n, b, vt){
     (vt ? '<div class="fn-var" title="Variante do teste '+fnEsc(vt.teste)+'">⇄ '+fnEsc(vt.nome)+'</div>' : '') +
     (sub ? '<div class="lk" title="'+fnEsc(n.url || sub)+'">'+fnEsc(sub)+'</div>' : '') +
     '<div class="fx-g">'+grade+'</div>' + pe +
-    ((n.tipo !== 'fonte' && n.tipo !== 'split' && n.tipo !== 'recuperacao' && !n.url && !b.viaClique && !b.viaVenda)
+    ((n.tipo !== 'fonte' && n.tipo !== 'split' && n.tipo !== 'cktest' && n.tipo !== 'recuperacao' && !n.url && !b.viaClique && !b.viaVenda)
       ? '<div style="font-size:10px;color:var(--red);margin-top:6px;font-weight:700">⚠ sem link: cole a URL no painel ao lado</div>' : '');
+}
+// ── Bloco do teste de checkout ──
+// As cores são as da tela do teste (A roxo, B verde), pra bater o olho e saber
+// qual é qual nas duas telas.
+var FN_CK_CORES = ['#5B5BF6', '#16A34A', '#F59E0B', '#C52C58'];
+function fnCkHost(u){
+  try{ return new URL(u).host.replace(/^(www|checkout)\./, ''); }catch(e){ return String(u||'').replace(/^https?:\/\//,'').split('/')[0]; }
+}
+function fnCkTabela(b, din){
+  var vs = b.variantes || [];
+  if(!vs.length) return '';
+  var frente = (!b.vencedora && b.lider && vs.length > 1) ? vs.filter(function(v){ return v.id === b.lider && v.rpp > 0; })[0] : null;
+  var pix = function(v){ return v.pixGerado ? fnNum(v.pixPago)+'/'+fnNum(v.pixGerado) : '-'; };
+  var din2 = function(x){ return x == null ? '•••' : v2Din2(x); };   // sem acesso a valores: escondido
+  var linha = function(rot, f, destaque){
+    return '<tr><td>'+rot+'</td>'+vs.map(function(v){
+      return '<td'+(destaque && frente && v.id === frente.id ? ' class="fr"' : '')+'>'+f(v)+'</td>'; }).join('')+'</tr>';
+  };
+  return '<table class="fn-ckt"><thead><tr><th></th>'+vs.map(function(v, i){
+      var tag = b.vencedora === v.id ? ' <i class="ok">vencedora</i>' : (frente && frente.id === v.id ? ' <i class="ok">na frente</i>' : '');
+      return '<th><b><span class="fn-ckt-pt" style="background:'+FN_CK_CORES[i % 4]+'"></span>'+String.fromCharCode(65+i)+tag+'</b>'+
+        '<small title="'+fnEsc(v.nome+' · '+v.url)+'">'+fnEsc(fnCkHost(v.url))+'</small></th>';
+    }).join('')+'</tr></thead><tbody>'+
+    linha('Viram a página', function(v){ return fnNum(v.expostos); })+
+    linha('Abriram o checkout', function(v){ return fnNum(v.pessoas); })+
+    linha('Compraram', function(v){ return fnNum(v.vendas); })+
+    linha('Conversão', function(v){ return v.pessoas ? v2Pct(v.conversao, 1) : '-'; })+
+    linha('Faturamento', function(v){ return din(v.receita); })+
+    // é por esta que o teste decide (e que "na frente" quer dizer)
+    linha('R$ por quem abriu', function(v){ return v.pessoas ? din2(v.rpp) : '-'; }, true)+
+    linha('Ticket', function(v){ return v.vendas ? din2(v.ticket) : '-'; })+
+    linha('Pix pago/gerado', pix)+
+    linha('Reembolsos', function(v){ return fnNum(v.estornos); })+
+    linha('Divisão real', function(v){ return v.fatiaReal == null ? '-' : v2Pct(v.fatiaReal / 100, 0); })+
+    '</tbody></table>';
+}
+function fnCkVeredito(b, solto){
+  var vs = b.variantes || [], ver = b.veredito;
+  var nome = function(id){ var i = -1; vs.forEach(function(v, k){ if(v.id === id) i = k; }); return i < 0 ? '' : String.fromCharCode(65+i)+' · '+vs[i].nome; };
+  var txt;
+  if(b.vencedora) txt = 'Vencedora declarada: <b>'+fnEsc(nome(b.vencedora))+'</b>.';
+  else if(ver){
+    var lid = ver.chance != null && ver.chance < .5 ? ver.controle : ver.desafiante;
+    var ch = ver.chance != null ? Math.max(ver.chance, 1 - ver.chance) : null;
+    var falta = ver.podeDeclarar ? '<b style="color:var(--v2-verde,#22C55E)">já dá pra declarar</b>' : 'falta ~'+fnNum(ver.faltaVendas)+' vendas pra decidir';
+    txt = (ver.vendasMenorLado || 0) < 10
+      ? '<b>Poucas vendas ainda</b>: com menos de 10 num dos lados, qualquer diferença é sorte. Mínimo de '+fnNum(ver.minPorLado)+' por lado · '+falta+'.'
+      : 'Chance do <b>'+fnEsc(nome(lid))+'</b> ser melhor em R$ por quem abriu: <b>'+v2Pct(ch, 0)+'</b> · '+falta+'.';
+  } else if(b.pessoas) txt = fnNum(b.pessoas)+' pessoa(s) viram o botão do teste. A comparação começa quando alguém abrir o checkout.';
+  else txt = 'Ninguém viu o botão do teste neste período.';
+  if(b.estado === 'pausado') txt = '<b>Teste pausado.</b> '+txt;
+  if(b.torta) txt += ' <span style="color:var(--red)">A divisão real está mais de 5 pontos fora da configurada.</span>';
+  return '<div class="fn-ckt-ver"'+(solto ? ' style="border:0;margin:0;padding:0"' : '')+'>'+txt+'</div>';
 }
 
 function fnNos(){
@@ -33073,6 +33148,7 @@ function fnNos(){
     var bl = fnBlocos && fnBlocos.nos ? fnBlocos.nos[n.id] : null;
     if(bl){
       el.classList.add('v3');
+      if(n.tipo === 'cktest') el.classList.add('ckt');
       if(n.h){ el.style.height = ''; el.style.minHeight = n.h+'px'; }
       el.innerHTML = fnNoCorpo(n, bl, vt);
       var alca2 = document.createElement('div'); alca2.className = 'fn-alca'; alca2.title = 'Arraste pra mudar o tamanho do bloco';
@@ -33473,8 +33549,21 @@ function fnDetalhe(){
     return;
   }
 
+  if(n.tipo === 'cktest'){
+    var cts = fnTestesCheckout();
+    cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
+      '<div class="fn-campo"><label>Nome do bloco</label><input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
+      '<div class="fn-campo"><label>Qual teste de checkout</label><select onchange="fnCkTesteEscolher(\''+n.id+'\',this.value)">'+
+        '<option value="">— escolher —</option>'+cts.map(function(t){ return '<option value="'+fnEsc(t.slug)+'"'+(n.slug===t.slug?' selected':'')+'>'+fnEsc(t.nome||t.slug)+'</option>'; }).join('')+
+      '</select><div style="font-size:10.5px;color:var(--text2);margin-top:5px">O bloco mostra as versões do checkout lado a lado, com a mesma conta da tela do teste. Ligue a página do botão nele, e ele no Checkout.</div></div>'+
+      (!cts.length ? '<div class="fx-sub">Nenhum teste de checkout neste projeto ainda. Crie em Testes A/B › Novo teste › Checkout.</div>' : '')+
+      htmlLig+
+      '<button class="fn-btn g sm" style="width:100%;margin-top:9px;color:var(--red)" onclick="fnRemoverEtapa(\''+n.id+'\')">Remover bloco</button>';
+    return;
+  }
+
   if(n.tipo === 'split'){
-    var testes = abDoProjeto();
+    var testes = fnTestesDeLink();
     var bl = fnBlocos && fnBlocos.nos ? fnBlocos.nos[n.id] : null;
     cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
       '<div class="fn-campo"><label>Nome do bloco</label><input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
@@ -33664,7 +33753,7 @@ function mpAddFonte(canal){
 // Bloco do redirect (link /r/ do teste A/B)
 function mpAddSplit(){
   var f = fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
-  var ts = abDoProjeto();
+  var ts = fnTestesDeLink();
   var slug = '';
   if(ts.length === 1) slug = ts[0].slug;
   else if(ts.length > 1){
@@ -33682,6 +33771,20 @@ function mpAddSplit(){
   fnSel = id; fnGravar(f); fnPintar(); fnDetalhe();
   if(slug) setTimeout(function(){ fnSplitVariantes(id, true); }, 50);
   else toastFn('Escolha o teste no painel ao lado');
+}
+function fnCkTesteEscolher(id, slug){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.slug = slug;
+  var r = fnTestesCheckout().filter(function(t){ return t.slug === slug; })[0];
+  if(r && /^Teste( de checkout)?( \d+)?$/.test(n.nome)) n.nome = 'Teste '+(r.nome||r.slug);
+  if(!n.w || n.w < 340) n.w = 380;
+  fnGravar(f); fnDetalhe(); fnNos(); setTimeout(fnCarregarStats, 1200);
+}
+// abre o teste na tela de Testes A/B
+function fnAbrirCkTeste(slug){
+  if(!slug) return;
+  fnAba('redir');
+  setTimeout(function(){ abEscolher(slug); }, 60);
 }
 function fnSplitTeste(id, slug){
   var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
@@ -33735,7 +33838,8 @@ var MP_MODULOS = [
     { k:'etapa', tipo:'upsell',   nome:'Upsell',    dica:'Oferta adicional após aceite',   pagamento:true },
     { k:'etapa', tipo:'downsell', nome:'Downsell',  dica:'Oferta alternativa após recusa', pagamento:true } ] },
   { grupo:'Teste A/B', ic:'🔀', itens:[
-    { k:'split', tipo:'split', nome:'Teste A/B', dica:'Divida visitantes entre variantes (link /r/)' } ] },
+    { k:'split', tipo:'split', nome:'Teste A/B', dica:'Divida visitantes entre variantes (link /r/)' },
+    { k:'etapa', tipo:'cktest', nome:'Teste de checkout', dica:'Os checkouts lado a lado (ex.: Payt × Hubla)' } ] },
   { grupo:'Recuperação', ic:'☎', itens:[
     { k:'etapa', tipo:'recuperacao', nome:'Recuperação', dica:'Ligação, WhatsApp, e-mail' } ] },
   { grupo:'Integração', ic:'🔌', itens:[
@@ -33822,6 +33926,33 @@ function mpLeitura(n){
   var linha = function(r, v){ return '<div class="fn-l"><span>'+r+'</span><span>'+v+'</span></div>'; };
   if(!b) return '<div class="fx-vazio">Sem números pra este bloco no período.</div>';
   var h = '';
+  if(n.tipo === 'cktest'){
+    if(!b.achou) return '<div class="fx-vazio">Escolha o teste de checkout deste bloco (✏️ Editar o desenho).</div>';
+    var vs = b.variantes || [];
+    vs.forEach(function(v, i){
+      h += '<div class="gv-grp"><span class="fn-ckt-pt" style="background:'+FN_CK_CORES[i % 4]+'"></span>'+String.fromCharCode(65+i)+' · '+fnEsc(v.nome)+'</div>'+
+        '<div class="fx-sub" style="margin:-2px 0 6px;word-break:break-all"><a href="'+fnEsc(v.url)+'" target="_blank" rel="noopener" style="color:var(--accent)">'+fnEsc(fnCkHost(v.url))+' ↗</a></div>'+
+        linha('Viram a página', fnNum(v.expostos))+linha('Abriram o checkout', fnNum(v.pessoas))+
+        linha('Compraram', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(v.vendas)+'</b>')+
+        linha('Conversão', v.pessoas ? v2Pct(v.conversao, 1) : '-')+
+        linha('Faturamento', v.receita == null ? '•••' : v2Din(v.receita))+
+        linha('R$ por quem abriu', v.rpp == null ? '•••' : v.pessoas ? v2Din2(v.rpp) : '-')+
+        linha('Ticket', v.ticket == null ? '•••' : v.vendas ? v2Din2(v.ticket) : '-')+
+        linha('Pix pago / gerado', fnNum(v.pixPago)+' / '+fnNum(v.pixGerado))+
+        linha('Reembolsos', fnNum(v.estornos))+
+        linha('Divisão real', v.fatiaReal == null ? '-' : v2Pct(v.fatiaReal / 100, 0)+' (configurado '+Math.round(v.fatiaAlvo||0)+'%)');
+    });
+    h += '<div class="gv-grp">Veredito</div>'+fnCkVeredito(b, true)+
+      (b.veredito && b.veredito.leitura ? '<div class="fx-sub" style="margin-top:8px;line-height:1.5">'+fnEsc(b.veredito.leitura)+'</div>' : '')+
+      (b.paginas && b.paginas.length ? '<div class="fx-sub" style="margin-top:8px">Roda em: '+b.paginas.map(fnEsc).join(', ')+'</div>' : '');
+    var fc = fnAtual();
+    var ent = (fc.ligacoes||[]).filter(function(l){ return l[1] === n.id; }), sa = (fc.ligacoes||[]).filter(function(l){ return l[0] === n.id; });
+    var fioC = function(l, ida){ var o = fnAcha(fc, ida ? l[1] : l[0]); var x = fnBlocos.fios[l[0]+'|'+l[1]]; return o ? linha((ida ? '→ ' : '← ')+fnEsc(o.nome), x ? fnNum(x.n)+' · '+v2Pct(x.pct, 0) : '—') : ''; };
+    if(ent.length || sa.length) h += '<div class="gv-grp">Caminhos</div>'+ent.map(function(l){ return fioC(l, false); }).join('')+sa.map(function(l){ return fioC(l, true); }).join('');
+    h += '<button class="fn-btn sm" style="width:100%;margin-top:12px" onclick="fnAbrirCkTeste(\''+fnEsc(b.slug)+'\')">Abrir o teste completo ›</button>'+
+      '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>';
+    return h;
+  }
   if(n.url) h += '<div class="fx-sub" style="margin-bottom:10px;word-break:break-all">🔗 <a href="'+fnEsc(/^https?:/i.test(n.url)?n.url:'https://'+n.url)+'" target="_blank" rel="noopener">'+fnEsc(n.url)+'</a></div>';
   if(n.integracao) h += linha('Integração', fnEsc(n.integracao));
   if(b.cliques != null) h += linha(n.tipo === 'split' ? 'Cliques no link' : 'Cliques no anúncio', fnNum(b.cliques));
@@ -33944,6 +34075,13 @@ function mpCriarBloco(it, x, y){
     var e = { id:id, nome:nome, tipo:it.tipo, url:'', x:Math.max(0,x), y:Math.max(0,y) };
     if(it.pagamento) e.pagamento = true;
     if(it.tipo === 'split') e.slug = '';
+    if(it.tipo === 'cktest'){
+      // com um teste de checkout só no projeto, ele já vem escolhido
+      var cts = fnTestesCheckout();
+      e.slug = cts.length === 1 ? cts[0].slug : '';
+      if(cts.length === 1) e.nome = 'Teste '+(cts[0].nome || cts[0].slug);
+      e.w = 380;
+    }
     f.etapas.push(e);
   }
   fnSel = id; fnGravar(f); fnPintar(); fnDetalhe(); mpGaveta();
@@ -34197,6 +34335,9 @@ var abSel = null, abDados = {}, abBuscando = {};
 function abDoProjeto(){
   return fnReds().filter(function(r){ return !r.projeto || r.projeto === fnProj; });
 }
+// o teste de checkout não tem link /r/: no mapa ele é um bloco à parte
+function fnTestesCheckout(){ return abDoProjeto().filter(function(r){ return r.tipo === 'checkout'; }); }
+function fnTestesDeLink(){ return abDoProjeto().filter(function(r){ return r.tipo !== 'checkout'; }); }
 function fnRedAtual(){ return abDoProjeto().filter(function(r){ return r.slug===abSel; })[0] || null; }
 
 function abVoltar(){ abSel = null; fnPintarRed(); _salvarTela(); }
