@@ -9139,7 +9139,29 @@ app.get('/api/funil/agora', authUsuario, (req, res) => {
     const pagou = _q('SELECT 1 FROM pedidos WHERE visitante=? AND pago=1 AND em >= ? LIMIT 1');
     const noCheckout = cliques.filter(x => !ag.todos.has(x.visitante) && !pagou.get(x.visitante, x.em - 60000)).length;
     (esc.f.etapas || []).forEach(e => { if (e.tipo === 'checkout' && esc.etapaDeData[e.id] === e.id) blocos[e.id] = noCheckout; });
-    res.json({ ok: true, em: agora, total: ag.todos.size, fora: ag.fora.size, noCheckout, blocos });
+    // Teste de checkout: a mesma regra, separada pela versão em que a pessoa
+    // abriu o checkout (o último clique dela vale)
+    const ck = {};
+    const cktests = (esc.f.etapas || []).filter(e => e.tipo === 'cktest' && e.slug);
+    if (cktests.length) {
+      const linhas = _q(`SELECT e.visitante, e.em, e.extra FROM eventos e LEFT JOIN visitantes v ON v.id = e.visitante
+                         WHERE e.tipo='checkout' AND e.em >= ? AND COALESCE(v.interno,0)=0 AND e.extra LIKE '%"ckt":%' ORDER BY e.em`)
+        .all(agora - 15 * 60000);
+      cktests.forEach(e => {
+        const slug = String(e.slug).toLowerCase(), ult = {}, por = {};
+        linhas.forEach(l => {
+          let x = {}; try { x = JSON.parse(l.extra || '{}'); } catch (er) {}
+          if (x.ckt === slug && x.ckv && l.visitante) ult[l.visitante] = { v: String(x.ckv), em: l.em };
+        });
+        Object.keys(ult).forEach(vis => {
+          if (ag.todos.has(vis) || pagou.get(vis, ult[vis].em - 60000)) return;
+          por[ult[vis].v] = (por[ult[vis].v] || 0) + 1;
+        });
+        ck[e.id] = por;
+        blocos[e.id] = Object.values(por).reduce((a, n) => a + n, 0);
+      });
+    }
+    res.json({ ok: true, em: agora, total: ag.todos.size, fora: ag.fora.size, noCheckout, blocos, ck });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -1718,6 +1718,8 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .fn-div{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--border);font-size:11px;color:var(--text2)}
 /* bloco do teste de checkout: as versões lado a lado */
 .fn-no.v3.ckt{width:380px}
+.fn-ckt-agora{display:flex;flex-wrap:wrap;gap:0 6px}
+.fn-ckt-agora:empty{display:none}
 .fn-ckt{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:2px;font-variant-numeric:tabular-nums}
 .fn-ckt th{text-align:right;padding:0 0 6px 8px;vertical-align:bottom;font-weight:700}
 .fn-ckt th:first-child{padding-left:0}
@@ -32535,6 +32537,10 @@ function mpAgoraPintar(){
     el.title = x.titulo;
     el.innerHTML = fnAgoraTexto(x);
   });
+  document.querySelectorAll('#fn-palco [data-agora-ck]').forEach(function(el){
+    var id = el.getAttribute('data-agora-ck');
+    el.innerHTML = fnCkAgoraHtml(id, fnBlocos && fnBlocos.nos ? fnBlocos.nos[id] : null);
+  });
   var tot = document.getElementById('mp-agora-tot');
   if(tot){
     var d = mpAgoraDados();
@@ -33013,6 +33019,7 @@ function fnNoCorpo(n, b, vt){
       fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link mas também vieram de anúncio'+
       (b.vendasDeAnuncio ? ' ('+b.vendasDeAnuncio+' venda'+(b.vendasDeAnuncio===1?'':'s')+')' : '')+'. Contam no Tráfego pago.</div>';
   } else if(n.tipo === 'cktest'){
+    if(b.achou) cab += '<div class="fn-ckt-agora" data-agora-ck="'+fnEsc(n.id)+'">'+fnCkAgoraHtml(n.id, b)+'</div>';
     sub = !b.achou ? 'escolha o teste no painel ao lado'
         : (b.variantes||[]).map(function(v){ return fnCkHost(v.url); }).join(' × ') +
           (b.paginas && b.paginas.length ? ' · em '+b.paginas.slice(0,2).map(function(p){ return p.replace(/^[^/]*\//,'/'); }).join(', ') : '');
@@ -33059,6 +33066,18 @@ function fnNoCorpo(n, b, vt){
 // As cores são as da tela do teste (A roxo, B verde), pra bater o olho e saber
 // qual é qual nas duas telas.
 var FN_CK_CORES = ['#5B5BF6', '#16A34A', '#F59E0B', '#C52C58'];
+// "no checkout agora" de cada versão: quem clicou em comprar nos últimos 15
+// min, ainda não pagou e não voltou pra página (a mesma regra do Checkout)
+function fnCkAgoraHtml(id, b){
+  var d = mpAgoraDados(); if(!d || !b) return '';
+  var por = (d.ck && d.ck[id]) || {};
+  return (b.variantes || []).map(function(v, i){
+    var q = por[v.id] || 0, L = String.fromCharCode(65+i);
+    return '<span class="fn-agora'+(q ? '' : ' zero')+'" style="'+(q ? 'color:'+FN_CK_CORES[i % 4]+';background:'+FN_CK_CORES[i % 4]+'1F' : '')+'" title="'+
+      q+' pessoa(s) abriram o checkout '+L+' ('+fnEsc(fnCkHost(v.url))+') nos últimos 15 min e ainda não pagaram">'+
+      '<i></i>'+(q ? '<b>'+fnNum(q)+'</b> no checkout '+L+' agora' : 'ninguém no '+L+' agora')+'</span>';
+  }).join('');
+}
 function fnCkHost(u){
   try{ return new URL(u).host.replace(/^(www|checkout)\./, ''); }catch(e){ return String(u||'').replace(/^https?:\/\//,'').split('/')[0]; }
 }
