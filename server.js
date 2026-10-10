@@ -3159,6 +3159,12 @@ const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax'];
 // checkout), cada bloco mostra o seu. Kiwify, Hotmart etc. não têm webhook
 // aqui: escolher um deles não filtra nada.
 const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i]];
+// Página (host/caminho) que é checkout: o nome da plataforma só vale no domínio
+// (pay.hub.la, checkout.payt...). No caminho não: /697hubla é página de venda,
+// e era tratada como checkout. As palavras genéricas valem no endereço todo.
+const _CK_MARCAS = /payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax/i;
+const _CK_PALAVRAS = /checkout|pagamento|pay\.|carrinho/i;
+function _pgEhCheckout(pg) { const x = String(pg || '').replace(/^https?:\/\//i, ''); return _CK_MARCAS.test(x.split('/')[0]) || _CK_PALAVRAS.test(x); }
 function _platDoHost(h) { const x = _PLAT_HOST.find(p => p[1].test(String(h || ''))); return x ? x[0] : ''; }
 // sem a integração escolhida, vale o link colado no bloco (pay.hub.la → Hubla):
 // foi assim que o Checkout 2 ficou somando a Payt junto
@@ -12870,7 +12876,7 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
     // muitos visitantes e 0% — parecendo a pior pagina do funil, quando na
     // verdade esta fora da conta. Uma constante so, pra credito e listagem nao
     // divergirem.
-    const EH_CHECKOUT = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax/i;
+    const EH_CHECKOUT = { test: _pgEhCheckout };
 
     const paginas = {};
     const cx = pg => (paginas[pg] = paginas[pg] ||
@@ -15014,16 +15020,26 @@ const PIXEL_JS = `(function(w,d){
   // vindi, adoorei, octuspay, buygoods, guru, iexperience e as palavras genericas
   // (pagamento, carrinho, pedido, finalizar). Link de compra que nao casa aqui
   // nao recebe a UTM — e a venda chega sem origem.
-  var CHECKOUTS = new RegExp([
+  // O nome da plataforma so vale no DOMINIO do link (pay.hub.la): no caminho
+  // ele pegava pagina do proprio site — em /697hubla, o "Assinar" (#planos)
+  // virava link de checkout, recarregava a pagina em vez de rolar e gastava o
+  // unico "abriu o checkout" da visita antes do clique de verdade.
+  var GATEWAYS = new RegExp([
     'payt','kiwify','hotmart','monetizze','eduzz','braip','perfectpay','cakto','ticto',
     'kirvano','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
-    'octuspay','buygoods','iexperience','guru','vega','hubla','hub\\\\.la',
+    'octuspay','buygoods','iexperience','guru','vega','hubla','hub\\\\.la'
+  ].join('|'), 'i');
+  var PALAVRAS = new RegExp([
     'checkout','pagamento','payment','pague','pedido','carrinho','cart','order',
     'finalizar','confirmacao','confirmation','pay\\\\.'
   ].join('|'), 'i');
-  var extraCheckout = eu.getAttribute('data-checkout') || '';
-  if(extraCheckout){
-    try{ CHECKOUTS = new RegExp(CHECKOUTS.source + '|' + extraCheckout, 'i'); }catch(e){}
+  var EXTRA = null, extraCheckout = eu.getAttribute('data-checkout') || '';
+  if(extraCheckout){ try{ EXTRA = new RegExp(extraCheckout, 'i'); }catch(e){} }
+  function ehCheckout(u){
+    // link pra propria pagina (ancora #planos, troca de query) nunca e checkout
+    if(u.host === location.host && u.pathname === location.pathname) return false;
+    var tudo = u.host + u.pathname;
+    return GATEWAYS.test(u.host) || PALAVRAS.test(tudo) || !!(EXTRA && EXTRA.test(tudo));
   }
   var LEVAR = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term',
                'utm_id','fbclid','gclid','ttclid','src','sck','xcod'];
@@ -15111,7 +15127,7 @@ const PIXEL_JS = `(function(w,d){
         u.searchParams.forEach(function(val, k){ if(!nu.searchParams.has(k)) nu.searchParams.set(k, val); });
         u = nu;
       }
-      if(!ck && !CHECKOUTS.test(u.host + u.pathname)) return href;
+      if(!ck && !ehCheckout(u)) return href;
       // Valor que o proprio site cravou no link e que NAO e informacao: a pagina
       // do apostilai.ai sai com utm_source=organic fixo em todo botao de compra,
       // e era isso que fazia venda de anuncio chegar na Utmify como organica.
@@ -15217,7 +15233,7 @@ const PIXEL_JS = `(function(w,d){
     try{
       var u = new URL(href, location.href);
       var ck = ckDe(u.href);
-      if(!ck && !CHECKOUTS.test(u.host + u.pathname)) return;
+      if(!ck && !ehCheckout(u)) return;
       foiCheckout = true;
       manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host,
                           ckt: ck ? ck.t : undefined, ckv: ck ? ck.v : undefined });
@@ -15844,7 +15860,7 @@ function _quizStats(id, de, ate) {
     // entao r.vd e o id DELE na jornada da VSL. Com isso da pra responder o que
     // o quiz sozinho nao responde: quantos clicaram e nao chegaram, quanto quem
     // chegou assistiu, e se abriu o checkout.
-    const EH_CHECKOUT_Q = /checkout|pagamento|pay\.|carrinho|payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax/i;
+    const EH_CHECKOUT_Q = { test: _pgEhCheckout };
     const tipoEtapa = {};
     (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
       .forEach(f => ((f && f.etapas) || []).forEach(e => { if (e && e.id) tipoEtapa[e.id] = e.tipo; }));
