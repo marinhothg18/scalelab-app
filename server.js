@@ -3160,7 +3160,13 @@ const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax'];
 // aqui: escolher um deles não filtra nada.
 const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i]];
 function _platDoHost(h) { const x = _PLAT_HOST.find(p => p[1].test(String(h || ''))); return x ? x[0] : ''; }
-function _platDoBloco(e) { const k = String((e && e.integracao) || '').trim().toLowerCase(); return _PLAT_HOST.some(p => p[0] === k) ? k : ''; }
+// sem a integração escolhida, vale o link colado no bloco (pay.hub.la → Hubla):
+// foi assim que o Checkout 2 ficou somando a Payt junto
+function _platDoBloco(e) {
+  const k = String((e && e.integracao) || '').trim().toLowerCase();
+  if (_PLAT_HOST.some(p => p[0] === k)) return k;
+  return (!k || k === 'outra') ? _platDoHost(e && e.url) : '';
+}
 // venda sem plataforma é de antes da Hubla e da AppMax entrarem: era da Payt
 function _vendaDaPlat(o, plat) { if (!plat) return true; const p = String(o.plataforma || '').toLowerCase(); return p ? p === plat : plat === 'payt'; }
 function _receberVenda(req, res) {   // body já vem parseado pelo express.json global

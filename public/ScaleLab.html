@@ -33043,7 +33043,7 @@ function fnNoCorpo(n, b, vt){
       '<button class="fn-btn g sm" style="width:100%;margin-top:9px" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();fnAbrirCkTeste(\''+fnEsc(b.slug)+'\')">Abrir o teste ›</button>'; }
   } else if(n.tipo === 'checkout' && b.viaClique){
     // qual checkout é: a integração e o produto (ou os que mais saíram)
-    sub = [n.integracao || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
+    sub = [n.integracao || FN_PLAT_NOME[b.plataforma] || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
     grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
       m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
     pe = fnNoSoma('Por origem', b.porOrigem) + fnNoSoma('Por página de entrada', b.porEntrada) +
@@ -33992,7 +33992,8 @@ function mpLeitura(n){
   }
   if(n.url) h += '<div class="fx-sub" style="margin-bottom:10px;word-break:break-all">🔗 <a href="'+fnEsc(/^https?:/i.test(n.url)?n.url:'https://'+n.url)+'" target="_blank" rel="noopener">'+fnEsc(n.url)+'</a></div>';
   if(n.integracao) h += linha('Integração', fnEsc(n.integracao));
-  if(b.cliques != null) h += linha(n.tipo === 'split' ? 'Cliques no link' : 'Cliques no anúncio', fnNum(b.cliques));
+  if(b.cliques != null) h += linha(n.tipo === 'split' ? 'Cliques no link' : b.viaClique ? 'Clicaram em comprar' : 'Cliques no anúncio', fnNum(b.cliques));
+  if(b.viaClique) h += linha('Plataforma', b.plataforma ? FN_PLAT_NOME[b.plataforma] + (n.integracao ? '' : ' (pelo link)') : 'todas somadas');
   if(b.investido != null) h += linha('Investido', v2Din(b.investido));
   if(b.pessoas != null) h += linha(n.tipo === 'checkout' && b.viaClique ? 'Abriram o checkout' : n.tipo === 'fonte' ? 'Chegaram' : 'Pessoas', fnNum(b.pessoas));
   if(b.checkout != null && n.tipo !== 'checkout') h += linha('Checkouts', fnNum(b.checkout));
@@ -34010,10 +34011,16 @@ function mpLeitura(n){
   return h;
 }
 // Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
+// a plataforma pelo link colado no bloco, quando a integração não foi escolhida
+// (o servidor faz a mesma conta em _platDoBloco)
+var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax' };
+function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : ''; }
 function fnCampoIntegracao(n){
   if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
+  var pelo = (!n.integracao || n.integracao === 'Outra') ? fnPlatDoLink(n.url) : '';
   return '<div class="fn-campo"><label>Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
     '<option value="">— escolher —</option>'+MP_INTEGRACOES.map(function(x){ return '<option'+(n.integracao===x?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'+
+    (pelo ? '<div style="font-size:10.5px;color:var(--accent);margin-top:5px;font-weight:700">Pelo link colado, este bloco já conta só a '+FN_PLAT_NOME[pelo]+'.</div>' : '')+
     '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. Com Payt, Hubla ou AppMax, o bloco conta só as vendas e os cliques de compra dessa plataforma: dá pra ter um Checkout Payt e outro Hubla lado a lado. As vendas entram pelo webhook em Configurações › Integrações.</div></div>';
 }
 // Produto do bloco: é o nome que chega no webhook (ex.: "Apostilai Acervo").
