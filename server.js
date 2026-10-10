@@ -3769,7 +3769,7 @@ async function _adsPreencher(dias) {
 
 // Diretoria dispara pela tela; nao roda sozinho pra nao consumir a cota da
 // Utmify sem alguem ter pedido.
-app.post('/api/metricas/utmify/preencher', authDiretoria, async (req, res) => {
+app.post('/api/metricas/utmify/preencher', authNegocio, async (req, res) => {
   try {
     const r = await _adsPreencher(req.body && req.body.dias);
     audit(readDB(), 'ads_preencher_historico', {}, r.feitos.length + ' dia(s)', req.user);
@@ -6607,6 +6607,17 @@ function authUsuario(req, res, next) {
   }
 
   return res.status(401).json({ error: 'Não autenticado. Faça login novamente.' });
+}
+
+// Números e operação do negócio (Resultado, vendas, regras de verba, vencedora
+// do A/B, custos e produtos do funil): Diretoria e Sócio. Administração
+// (integrações, backup, usuários, auditoria) continua só no authDiretoria.
+const CARGOS_NEGOCIO = new Set(['Diretoria', 'Sócio']);
+function authNegocio(req, res, next) {
+  authUsuario(req, res, () => {
+    if (!req.user || !CARGOS_NEGOCIO.has(req.user.cargo)) return res.status(403).json({ error: 'Acesso restrito à Diretoria e aos sócios.' });
+    next();
+  });
 }
 
 function authDiretoria(req, res, next) {
@@ -10296,9 +10307,9 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
     const funis = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
     const nomeEtapa = {}; funis.forEach(f => (f.etapas || []).forEach(e => { nomeEtapa[e.id] = e.nome; }));
     const funil = funis.find(f => f.id === v.funil) || null;
-    // contato completo só pra Diretoria: a lista mostra o e-mail mascarado
+    // contato completo só pra Diretoria e Sócio: a lista mostra o e-mail mascarado
     let contato = null;
-    if (req.user && req.user.cargo === 'Diretoria' && lead) {
+    if (_ehDir(req) && lead) {
       const vendas = Array.isArray(dbj.store[KEY_VENDAS]) ? dbj.store[KEY_VENDAS] : [];
       const achada = vendas.slice().reverse().find(x => {
         const e = String(x.email || '').trim().toLowerCase();
@@ -10349,7 +10360,8 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-const _ehDir = req => !!(req && req.user && req.user.cargo === 'Diretoria');
+// quem vê valores em R$ (faturamento, ticket, pagamentos): Diretoria e Sócio
+const _ehDir = req => !!(req && req.user && CARGOS_NEGOCIO.has(req.user.cargo));
 const _semValor = t => String(t || '').replace(/\s*·\s*R\$\s*[\d.,]+/g, '');
 // "Ydeshi G. O.": o primeiro nome inteiro e as iniciais do resto
 function _iniciais(n) {
@@ -10362,7 +10374,7 @@ function _iniciais(n) {
 // Marcar como tráfego interno: sai de todas as métricas e do A/B, mas continua
 // visível na lista com o filtro. Pode levar o IP junto (o resto do time que
 // usa a mesma rede some também).
-app.post('/api/pessoa/:id/interno', authDiretoria, (req, res) => {
+app.post('/api/pessoa/:id/interno', authNegocio, (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const id = String(req.params.id || '').slice(0, 40);
@@ -10537,7 +10549,7 @@ function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
 }
 
 // faturamento e margem: mesma regra de sl_vendas (Diretoria)
-app.get('/api/funil/resultado', authDiretoria, async (req, res) => {
+app.get('/api/funil/resultado', authNegocio, async (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const dbj = readDB();
@@ -10718,7 +10730,7 @@ app.post('/api/funil/notas', authUsuario, (req, res) => {
 });
 
 // Vendas do funil ou sem origem, pra tela abrir a lista por trás do número
-app.get('/api/funil/vendas-lista', authDiretoria, async (req, res) => {
+app.get('/api/funil/vendas-lista', authNegocio, async (req, res) => {
   try {
     const dbj = readDB();
     const esc = _escopoFunil(dbj, String(req.query.funil || ''));
@@ -10812,7 +10824,7 @@ app.get('/api/custos', authUsuario, (req, res) => {
   res.json({ ok: true, custos: _custosCfg(readDB()) });
 });
 
-app.post('/api/custos', authDiretoria, (req, res) => {
+app.post('/api/custos', authNegocio, (req, res) => {
   try {
     const b = req.body || {};
     const custos = {};
@@ -10842,7 +10854,7 @@ app.get('/api/planos', authUsuario, (req, res) => {
                                             meses: p.meses, preco: Number(p.preco) || 0 })) });
 });
 
-app.post('/api/planos', authDiretoria, (req, res) => {
+app.post('/api/planos', authNegocio, (req, res) => {
   try {
     const b = req.body || {};
     const entrada = Array.isArray(b.planos) ? b.planos : [];
@@ -11226,7 +11238,7 @@ app.get('/api/produtos', authUsuario, (req, res) => {
     res.json({ ok: true, lista, vistos: saida });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/produtos', authDiretoria, (req, res) => {
+app.post('/api/produtos', authNegocio, (req, res) => {
   try {
     const bruto = Array.isArray(req.body && req.body.lista) ? req.body.lista : null;
     if (!bruto) return res.status(400).json({ error: 'Mande a lista de produtos.' });
@@ -11259,7 +11271,7 @@ app.get('/api/canais', authUsuario, (req, res) => {
     res.json({ ok: true, lista: _canaisCfg(db), padrao: !(c && Array.isArray(c.lista) && c.lista.length) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/canais', authDiretoria, (req, res) => {
+app.post('/api/canais', authNegocio, (req, res) => {
   try {
     const bruto = Array.isArray(req.body && req.body.lista) ? req.body.lista : null;
     if (!bruto) return res.status(400).json({ error: 'Mande a lista de canais.' });
@@ -12177,7 +12189,7 @@ function _nomeCurto(n) {
   return p[0].charAt(0).toUpperCase() + p[0].slice(1).toLowerCase() + (p.length > 1 ? ' ' + p[p.length - 1].charAt(0).toUpperCase() + '.' : '');
 }
 
-app.get('/api/recuperacao', authDiretoria, (req, res) => {
+app.get('/api/recuperacao', authNegocio, (req, res) => {
   try {
     const dias = Math.max(1, Math.min(60, parseInt(req.query.dias, 10) || 1));
     const db = readDB(), agora = Date.now();
@@ -12561,7 +12573,7 @@ async function _regrasAvaliar(origem) {
   return { novas: entram.length, avaliados: ads.length, erroAds };
 }
 
-app.get('/api/regras', authDiretoria, (req, res) => {
+app.get('/api/regras', authNegocio, (req, res) => {
   try {
     const db = readDB(), cfg = _regrasCfg(db);
     const hojeBRT = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
@@ -12576,7 +12588,7 @@ app.get('/api/regras', authDiretoria, (req, res) => {
       log: log.slice(0, 120) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/regras', authDiretoria, (req, res) => {
+app.post('/api/regras', authNegocio, (req, res) => {
   try {
     const b = req.body || {}, db = readDB(), atual = _regrasCfg(db);
     const num = (v, min, max, pad) => { const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : pad; };
@@ -12600,11 +12612,11 @@ app.post('/api/regras', authDiretoria, (req, res) => {
     res.json({ ok: true, config: _regrasCfg(db) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/regras/avaliar', authDiretoria, async (req, res) => {
+app.post('/api/regras/avaliar', authNegocio, async (req, res) => {
   try { res.json(Object.assign({ ok: true }, await _regrasAvaliar('manual'))); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/regras/desfazer', authDiretoria, (req, res) => {
+app.post('/api/regras/desfazer', authNegocio, (req, res) => {
   try {
     const id = String((req.body && req.body.id) || '');
     const db = readDB(), log = Array.isArray(db.store[KEY_REGRAS_LOG]) ? db.store[KEY_REGRAS_LOG] : [];
@@ -12632,7 +12644,7 @@ setInterval(() => {
 // apoio (recuperação) e "organic" cravado pelo checkout nunca roubam a venda
 // do anúncio de origem.
 // ══════════════════════════════════════════════════════
-app.get('/api/lead/pagamentos', authDiretoria, (req, res) => {
+app.get('/api/lead/pagamentos', authNegocio, (req, res) => {
   try {
     const vid = String(req.query.vid || '').slice(0, 40);
     if (!vid) return res.status(400).json({ error: 'Informe o visitante.' });
@@ -13702,7 +13714,7 @@ function _abJulgar(a, b) {
 // ── Números de um teste ──
 // Declarar vencedora: o link do split continua o mesmo nos anúncios e passa a
 // mandar todo mundo pra ela. Desfaz com variante vazia.
-app.post('/api/ab/vencedora', authDiretoria, (req, res) => {
+app.post('/api/ab/vencedora', authNegocio, (req, res) => {
   try {
     const slug = String((req.body && req.body.teste) || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
     const variante = String((req.body && req.body.variante) || '').slice(0, 40);

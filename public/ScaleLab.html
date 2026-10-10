@@ -6034,6 +6034,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <select class="fs" id="u-cargo" style="width:100%;">
             <option value="">Selecionar cargo</option>
             <option>Diretoria</option>
+            <option value="Sócio">Sócio (vê o negócio com valores; sem Gestão, Protocolo e Configurações)</option>
             <option>Copy</option>
             <option>Editor</option>
             <option>Gestor de Tráfego</option>
@@ -7231,7 +7232,7 @@ function goTo(id){
   // actions
   const ac=document.getElementById('top-actions');
   ac.innerHTML='';
-  const _isDir = currentUser&&currentUser.cargo==='Diretoria';
+  const _isDir = _ehGestor();
   if(id==='criativos' && _isDir){
     ac.innerHTML=`<button class="btn btn-ghost" onclick="openRemessas()">Gerenciar Remessas</button>
     <button class="btn btn-ghost" onclick="openFormatos()">Gerenciar Formatos</button>`;
@@ -8825,10 +8826,10 @@ function renderHome(){
 
   // Permissões
   var isDir = currentUser && currentUser.cargo === 'Diretoria';
-  // Esconde botão "+ Demanda" para não-Diretoria
+  // Esconde botão "+ Demanda" para quem não é gestor (Diretoria ou Sócio)
   var btnNovaDem = document.getElementById('home-qa-demanda');
-  if(btnNovaDem) btnNovaDem.style.display = isDir ? '' : 'none';
-  // Esconde card "Em Risco" para não-Diretoria
+  if(btnNovaDem) btnNovaDem.style.display = _ehGestor() ? '' : 'none';
+  // Esconde card "Em Risco" para não-Diretoria (é da Gestão: o Sócio não vê)
   var cardRisco = document.getElementById('home-risco');
   if(cardRisco) cardRisco.style.display = isDir ? '' : 'none';
   // Ajusta grid das 2 colunas pra ocupar melhor
@@ -9111,9 +9112,12 @@ function renderDash(){
   document.getElementById('dash-minhas').textContent=0;
 
   // highlight "Subir" card when > 0
+  // o card do Pipeline saiu da Home (33b5962); sem a checagem, voltar pro
+  // Dashboard dava erro aqui e o resto da tela não era desenhado
   const subCard=document.getElementById('pip-sub-card');
   const subCount=docsByStage['Subir']||0;
-  if(subCount>0){
+  if(!subCard){}
+  else if(subCount>0){
     subCard.style.border='2px solid var(--green)';
     subCard.style.boxShadow='0 0 12px rgba(34,197,94,.35)';
     subCard.style.background='rgba(34,197,94,.08)';
@@ -9126,6 +9130,7 @@ function renderDash(){
   // ── COMPARATIVO DE MÉTRICAS (Ponto de Ouro) ──
   const compEl=document.getElementById('dash-comparativo');
   const alertEl=document.getElementById('dash-alertas');
+  if(!compEl || !alertEl) return;        // o painel antigo saiu da Home junto com o Pipeline
   alertEl.innerHTML='';
   if(metricas.length<2){
     compEl.innerHTML='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--text2);font-size:13px;">📊 Adicione pelo menos 2 registros de métricas para ver o comparativo.</div>';
@@ -14631,6 +14636,7 @@ function _renderRhOrgograma(el){
 
   var corPorCargo = {
     'Diretoria': 'linear-gradient(135deg,#FF5926,#C52C58)',
+    'Sócio': 'linear-gradient(135deg,#C52C58,#3E1493)',
     'Gestor de Tráfego': 'linear-gradient(135deg,#5b5ef4,#3E1493)',
     'Copy': 'linear-gradient(135deg,#16A34A,#1B9CFA)',
     'Editor': 'linear-gradient(135deg,#1B9CFA,#2509E4)',
@@ -17998,7 +18004,7 @@ function editCriativo(id){
   openModal('modal-criativo');
 
   // Bloquear edição pra não-Diretoria
-  var _isDirCri = currentUser&&currentUser.cargo==='Diretoria';
+  var _isDirCri = _ehGestor();
   // Bloquear pra não-Diretoria — roda múltiplas vezes pra garantir
   function _bloquearCriColab(){
     if(_isDirCri) return;
@@ -18196,7 +18202,7 @@ function setChatCanal(canalId){
 
 function podeAcessarSetor(cargoSetor){
   if(!currentUser) return false;
-  return currentUser.cargo === cargoSetor || currentUser.cargo === 'Diretoria';
+  return currentUser.cargo === cargoSetor || _ehGestor();
 }
 
 function directChanId(uidA, uidB){
@@ -19521,10 +19527,10 @@ function renderArquivos(){
   if(!_arqNav.nicho){
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
     h += '<div style="font-size:24px;font-weight:800;">Nichos</div>';
-    if(_isDir){
+    if(_ehGestor()){
       h += '<div style="display:flex;gap:8px;">';
       h += '<button onclick="arqSincronizarOfertas()" class="btn btn-ghost" style="font-size:13px;" title="Cria projeto pra cada oferta cadastrada que ainda não tem">🔁 Sincronizar com Ofertas</button>';
-      h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
+      if(_isDir) h += '<button onclick="arqOpenLixeira()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;" title="Ver lixeira">🗑️</button>';
       h += '<button onclick="arqAddProjeto()" class="btn btn-primary" style="font-size:13px;">+ Novo Projeto</button>';
       h += '</div>';
     }
@@ -19571,7 +19577,7 @@ function renderArquivos(){
     var projDoNicho = proj.filter(function(x){ return arqNichoDoProjeto(x)===_arqNav.nicho; });
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">';
     h += '<div style="font-size:24px;font-weight:800;">'+_nomeNicho(_arqNav.nicho)+'</div>';
-    if(_isDir){
+    if(_ehGestor()){
       h += '<div style="display:flex;gap:8px;">';
       h += '<button onclick="arqAddProjeto()" class="btn btn-primary" style="font-size:13px;">+ Novo Projeto</button>';
       h += '</div>';
@@ -21627,7 +21633,7 @@ function taskAvancarStatus(id){
   if(!t.setor) t.setor = _taskSetor(t);
   // Se foi pra Concluída, marca aprovacao=pendente (Diretoria precisa aprovar)
   if(prox === 'Concluída'){
-    var ehDir = currentUser && currentUser.cargo === 'Diretoria';
+    var ehDir = _ehGestor();
     t.aprovacao = ehDir ? 'aprovada' : 'pendente';
     if(ehDir){
       t.aprovadoPor = currentUser.id;
@@ -21639,7 +21645,7 @@ function taskAvancarStatus(id){
   s('tasks', tasks);
   renderTasks();
   notif(prox === 'Concluída'
-    ? (currentUser && currentUser.cargo === 'Diretoria' ? '✅ Demanda aprovada!' : '✅ Concluída! Aguardando aprovação da Diretoria.')
+    ? (_ehGestor() ? '✅ Demanda aprovada!' : '✅ Concluída! Aguardando aprovação da Diretoria.')
     : '✅ Status atualizado pra '+prox);
 }
 
@@ -21665,7 +21671,7 @@ function _criarNotifAprovacao(t){
 }
 
 function taskAprovar(id){
-  if(!currentUser || currentUser.cargo !== 'Diretoria'){ notif('Só Diretoria aprova.'); return; }
+  if(!_ehGestor()){ notif('Só a Diretoria ou um sócio aprova.'); return; }
   var t = tasks.find(function(x){ return x.id === id; });
   if(!t) return;
   t.aprovacao = 'aprovada';
@@ -21766,7 +21772,7 @@ function taskBulkUpdateBar(){
   if(counter) counter.textContent = _taskBulkSel.size;
 }
 function taskAprovarLote(){
-  if(!currentUser || currentUser.cargo !== 'Diretoria'){ notif('Só Diretoria aprova.'); return; }
+  if(!_ehGestor()){ notif('Só a Diretoria ou um sócio aprova.'); return; }
   if(!_taskBulkSel.size) return;
   if(!confirm('Aprovar '+_taskBulkSel.size+' demanda(s)?')) return;
   var n = 0;
@@ -21793,7 +21799,7 @@ function taskAprovarLote(){
 }
 
 function taskReprovar(id){
-  if(!currentUser || currentUser.cargo !== 'Diretoria'){ notif('Só Diretoria reprova.'); return; }
+  if(!_ehGestor()){ notif('Só a Diretoria ou um sócio reprova.'); return; }
   var t = tasks.find(function(x){ return x.id === id; });
   if(!t) return;
   // Modal simples
@@ -22096,11 +22102,11 @@ function renderUsuarios(){
   const el = document.getElementById('usuarios-list');
   if(!el) return;
   const cargoBg = {
-    'Diretoria':'rgba(27,156,250,.12)','Copy':'rgba(59,130,246,.15)','Editor':'rgba(168,85,247,.15)',
+    'Diretoria':'rgba(27,156,250,.12)','Sócio':'rgba(197,44,88,.14)','Copy':'rgba(59,130,246,.15)','Editor':'rgba(168,85,247,.15)',
     'Gestor de Tráfego':'rgba(249,115,22,.15)','Infra':'rgba(99,102,241,.15)','Spy':'rgba(20,184,166,.15)'
   };
   const cargoColor = {
-    'Diretoria':'#a855f7','Copy':'#3b82f6','Editor':'#d946ef',
+    'Diretoria':'#a855f7','Sócio':'#C52C58','Copy':'#3b82f6','Editor':'#d946ef',
     'Gestor de Tráfego':'#f97316','Infra':'#6366f1','Spy':'#14b8a6'
   };
   if(!lista.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2);">Nenhum membro cadastrado.</div>'; return; }
@@ -22539,7 +22545,7 @@ function abrirNovaDemanda(){
   // Bloco IA: só Diretoria vê
   var _iaBlock = document.getElementById('t-ia-block');
   var _iaSep = _iaBlock ? _iaBlock.nextElementSibling : null; // o "ou preencha manualmente"
-  var _ehDirIA = currentUser && currentUser.cargo === 'Diretoria';
+  var _ehDirIA = _ehGestor();
   if(_iaBlock) _iaBlock.style.display = _ehDirIA ? '' : 'none';
   if(_iaSep && _iaSep.textContent && _iaSep.textContent.indexOf('preencha manualmente') !== -1) _iaSep.style.display = _ehDirIA ? '' : 'none';
   // Reset prompt
@@ -22733,7 +22739,7 @@ function abrirEditarDemanda(id){
   // Bloco IA: só Diretoria vê (esconde no edit também)
   var _iaBlockE = document.getElementById('t-ia-block');
   var _iaSepE = _iaBlockE ? _iaBlockE.nextElementSibling : null;
-  var _ehDirIAEdit = currentUser && currentUser.cargo === 'Diretoria';
+  var _ehDirIAEdit = _ehGestor();
   if(_iaBlockE) _iaBlockE.style.display = _ehDirIAEdit ? '' : 'none';
   if(_iaSepE && _iaSepE.textContent && _iaSepE.textContent.indexOf('preencha manualmente') !== -1) _iaSepE.style.display = _ehDirIAEdit ? '' : 'none';
   document.getElementById('t-link').value = t.link || '';
@@ -22778,7 +22784,7 @@ function abrirEditarDemanda(id){
   if(t.diretoria) togDir.classList.add('on'); else togDir.classList.remove('on');
 
   // Update modal title and button text
-  const _isDirEdit = currentUser&&currentUser.cargo==='Diretoria';
+  const _isDirEdit = _ehGestor();
   const modalTitle = document.querySelector('#modal-task .modal-title');
   if(modalTitle) modalTitle.textContent = _isDirEdit ? 'Editar Demanda' : 'Visualizar Demanda';
   const saveBtn = document.querySelector('#modal-task .btn-salvar-task');
@@ -23110,7 +23116,7 @@ function mudaStatusComFase(taskId, novoStatus){
   const grupoNovo=FASE_GRUPO(novoStatus);
   const mudouFase = grupoAtual !== grupoNovo;
   // Se Diretoria e mudou de fase, pedir confirmação
-  if(currentUser && currentUser.cargo==='Diretoria' && mudouFase){
+  if(_ehGestor() && mudouFase){
     _fasePendente={taskId, novoStatus};
     const si=getStatusInfo(novoStatus);
     document.getElementById('modal-fase-desc').textContent=`Movendo para "${si.label}". Confirme o responsável e prazo para esta fase.`;
@@ -23693,14 +23699,14 @@ function salvarTask(){
   let status = statusNovo === 'A Aprovar' ? 'Concluída' : statusNovo;
   let aprovacao = '';
   if(statusNovo === 'A Aprovar'){
-    aprovacao = currentUser && currentUser.cargo === 'Diretoria' ? 'aprovada' : 'pendente';
+    aprovacao = _ehGestor() ? 'aprovada' : 'pendente';
   }
 
   // Multi-responsáveis: pega de _taskResps (opcional — se vazio vai pro Backlog)
   const respIds = _taskResps.map(function(r){ return r.id; });
   const respNomes = _taskResps.map(function(r){ return r.nome; });
   // Diretoria pode salvar sem responsável (Backlog); colaborador precisa ter ao menos 1
-  const ehDir = currentUser && currentUser.cargo === 'Diretoria';
+  const ehDir = _ehGestor();
   if(!respIds.length && !ehDir){ alert('Selecione pelo menos um responsável.'); return; }
   // Mantém campos legados (respId/resp) apontando pro PRIMEIRO — preserva compat
   const respId = respIds[0] || '';
@@ -23897,7 +23903,7 @@ function renderTasks(){
   taskBulkUpdateBar();
 
   const novaDemandaBtn = document.getElementById('btn-nova-demanda');
-  if(novaDemandaBtn) novaDemandaBtn.style.display = (currentUser && currentUser.cargo==='Diretoria') ? '' : 'none';
+  if(novaDemandaBtn) novaDemandaBtn.style.display = _ehGestor() ? '' : 'none';
 
   const el=document.getElementById('task-list');
   if(!filtered.length){
@@ -24028,7 +24034,7 @@ function renderTasks(){
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();duplicarDemanda(${t.id})" title="Duplicar como template" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">📋</button>` : ''}
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();abrirEditarDemanda(${t.id})" title="Editar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">✏️</button>` : ''}
       ${perms.isDiretoria ? `<button onclick="event.stopPropagation();arquivarTask(${t.id})" title="Arquivar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">📦</button>` : ''}
-      ${perms.isDiretoria ? `<button onclick="event.stopPropagation();delTask(${t.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">🗑</button>` : ''}
+      ${perms.canDelete ? `<button onclick="event.stopPropagation();delTask(${t.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 7px;cursor:pointer;font-size:12px;">🗑</button>` : ''}
     </div>
 
   </div>`;
@@ -24747,7 +24753,7 @@ function renderRituais(){
     const blocoFiltros = document.getElementById('rituais-analise-filtros');
     if(blocoFiltros) blocoFiltros.style.display = 'none';
 
-    const isDir = currentUser && currentUser.cargo==='Diretoria';
+    const isDir = _ehGestor();
     const meuNome = (currentUser&&currentUser.nome)||'';
     const nichos = g('sl_nichos', []);
     const ofertas = g('sl_ofertas_v2', []);
@@ -24825,7 +24831,7 @@ function renderRituais(){
 
   // Controle de acesso: Diretoria vê tudo, outros só veem onde são participantes marcados
   const meuNome = (currentUser&&currentUser.nome)||'';
-  const isDiretoria = currentUser&&currentUser.cargo==='Diretoria';
+  const isDiretoria = _ehGestor(), podeExcluir = !!(currentUser && currentUser.cargo==='Diretoria');
   let lista = rituais.filter(r=>{
     if(isDiretoria) return true;
     // Não-diretoria: precisa estar na lista de participantes
@@ -24889,7 +24895,7 @@ function renderRituais(){
     <div style="display:flex;gap:6px;flex-shrink:0;">
       ${isDiretoria?`<button onclick="event.stopPropagation();editarRitual(${r.id})" title="Editar" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">✏️</button>`:''}
       <button onclick="event.stopPropagation();copiarLinkRitual(${r.id})" title="Copiar link compartilhável" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🔗</button>
-      ${isDiretoria?`<button onclick="event.stopPropagation();deletarRitual(${r.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🗑</button>`:''}
+      ${podeExcluir?`<button onclick="event.stopPropagation();deletarRitual(${r.id})" title="Excluir" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;">🗑</button>`:''}
     </div>
   </div>`;}).join('');
 }
@@ -27337,7 +27343,11 @@ function renderCompGestores(){
 
 // ── LOGIN / AUTENTICAÇÃO ──
 // ── SISTEMA DE USUÁRIOS E CARGOS ──
-const CARGOS = ['Diretoria','Copy','Editor','Gestor de Tráfego','Infra','Spy'];
+const CARGOS = ['Diretoria','Sócio','Copy','Editor','Gestor de Tráfego','Infra','Spy'];
+// Sócio: vê e opera o negócio como a Diretoria (demandas, funis com valores,
+// testes, criativos, arquivos), mas sem Gestão, Meu Protocolo e Configurações
+// (PAGINAS_DIRETORIA) e sem excluir nada. É o "gestor" das checagens.
+function _ehGestor(u){ u = u || currentUser; return !!(u && (u.cargo === 'Diretoria' || u.cargo === 'Sócio')); }
 
 function getUsuarios(){
   const def = [
@@ -27356,13 +27366,16 @@ function saveUsuarios(list){
 let currentUser = null; // { id, nome, email, cargo, ativo }
 
 function getCargoPermissions(cargo){
+  // isDiretoria aqui é a visão de gestor das Demandas (ver todas, editar,
+  // aprovar): vale pro Sócio também. Excluir e Configurações, só Diretoria.
+  const gestor = cargo==='Diretoria' || cargo==='Sócio';
   const p = {
-    isDiretoria: cargo==='Diretoria',
-    canCreate: cargo==='Diretoria',
-    canArchive: cargo==='Diretoria',
+    isDiretoria: gestor,
+    canCreate: gestor,
+    canArchive: gestor,
     canDelete: cargo==='Diretoria',
     canSeeApenasDir: cargo==='Diretoria',
-    canSeeAllDemandas: cargo==='Diretoria',
+    canSeeAllDemandas: gestor,
     canAccessConfig: cargo==='Diretoria',
     allowedStatuses: [],
   };
@@ -27373,7 +27386,7 @@ function getCargoPermissions(cargo){
     'Infra':             ['INFRA_PENDENTE','INFRA_PROGRESSO','INFRA_REVISAO','INFRA','CONCLUIDO'],
     'Spy':               ['SPY','CONCLUIDO'],
   };
-  p.allowedStatuses = cargo==='Diretoria' ? Object.values(STATUS_PIPELINE).map((_,i)=>Object.keys(STATUS_PIPELINE)[i]) : (statusRanges[cargo]||[]);
+  p.allowedStatuses = gestor ? Object.values(STATUS_PIPELINE).map((_,i)=>Object.keys(STATUS_PIPELINE)[i]) : (statusRanges[cargo]||[]);
   return p;
 }
 
@@ -27562,6 +27575,8 @@ function toggleModuloArquivado(id){
 
 function _applyNavPermissions(cargo){
   var isDir = cargo==='Diretoria';
+  // Sócio: o menu inteiro menos Gestão, Meu Protocolo e Configurações
+  var isSocio = cargo==='Sócio';
   var isInfra = cargo==='Infra';
   var isCopy = cargo==='Copy';
   var isEditor = cargo==='Editor';
@@ -27594,8 +27609,8 @@ function _applyNavPermissions(cargo){
   // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
   setDisp('nav-protocolo', isDir);
 
-  // Infra — apenas Diretoria e Infra
-  setDisp('nav-infra', isDir || isInfra);
+  // Infra — Diretoria, Sócio e Infra
+  setDisp('nav-infra', isDir || isSocio || isInfra);
 
   // Ad Library — bloqueado pra Infra
   setDisp('nav-adlibrary', !isInfra);
@@ -27613,8 +27628,8 @@ function _applyNavPermissions(cargo){
   setDisp('arquivados-section', isDir);
   setDisp('btn-lixeira-tasks', isDir);
 
-  // Novo Ritual: apenas Diretoria
-  setDisp('btn-novo-ritual', isDir);
+  // Novo Ritual: Diretoria e Sócio
+  setDisp('btn-novo-ritual', isDir || isSocio);
 
   // Arquivados por último: o que está arquivado some pra todo mundo, mesmo Diretoria
   try{ _aplicarModulosArquivados(); }catch(e){}
@@ -30055,7 +30070,8 @@ function fnCabecalho(){
 // ── LINKS E CANAIS ──
 // ══════════════════════════════════════════════════════
 var lcTemp = 'frio', lcDados = null, lcCanais = null, lcEditando = false;
-function lcEhDir(){ return !!(currentUser && currentUser.cargo === 'Diretoria'); }
+// vê valores em R$ nos Funis: Diretoria e Sócio (o servidor confere o mesmo)
+function lcEhDir(){ return _ehGestor(); }
 function lcPadrao(){
   return 'utm_source={{site_source_name}}&utm_campaign={{campaign.id}}&utm_medium={{adset.id}}' +
          '&utm_content={{ad.id}}&utm_term={{placement}}&utm_target=' + lcTemp;
@@ -37168,7 +37184,7 @@ function jnAbrirLeadAntigo(id){
 // Tentativas de pagamento e atribuição: vêm do servidor porque cruzam o
 // visitante com todas as vendas da mesma pessoa (e-mail/telefone).
 function _leadPagamentos(vid){
-  if(!(currentUser && currentUser.cargo === 'Diretoria')) return;
+  if(!_ehGestor()) return;
   fetch('/api/lead/pagamentos?vid='+encodeURIComponent(vid)).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
     if(!d || !d.ok || !_leadAtual || _leadAtual.id !== vid) return;
     var pg = document.getElementById('lead-pag'), at = document.getElementById('lead-atrib');
