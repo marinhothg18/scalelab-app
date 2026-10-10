@@ -33881,7 +33881,9 @@ var MP_MODULOS = [
     { k:'etapa', tipo:'typeform', nome:'Typeform', dica:'Formulário ou quiz externo' },
     { k:'etapa', tipo:'typebot',  nome:'Typebot',  dica:'Chatbot conversacional' } ] }
 ];
-var MP_INTEGRACOES = ['Payt','Kiwify','Hotmart','Eduzz','Monetizze','Kirvano','Cakto','Ticto','Outra'];
+// Payt, Hubla e AppMax têm webhook aqui: escolher uma delas filtra o bloco
+// (só as vendas e os cliques de compra daquela plataforma)
+var MP_INTEGRACOES = ['Payt','Hubla','AppMax','Kiwify','Hotmart','Eduzz','Monetizze','Kirvano','Cakto','Ticto','Outra'];
 
 function mpModo(){
   var de = document.getElementById('mp-desenho'); if(!de) return;
@@ -34012,7 +34014,7 @@ function fnCampoIntegracao(n){
   if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
   return '<div class="fn-campo"><label>Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
     '<option value="">— escolher —</option>'+MP_INTEGRACOES.map(function(x){ return '<option'+(n.integracao===x?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'+
-    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. As vendas entram pelo webhook configurado em Configurações › Integrações; o clique no botão de compra é marcado pelo pixel.</div></div>';
+    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. Com Payt, Hubla ou AppMax, o bloco conta só as vendas e os cliques de compra dessa plataforma: dá pra ter um Checkout Payt e outro Hubla lado a lado. As vendas entram pelo webhook em Configurações › Integrações.</div></div>';
 }
 // Produto do bloco: é o nome que chega no webhook (ex.: "Apostilai Acervo").
 // O checkout fica com o principal, o upsell com o dele — e as vendas se separam.

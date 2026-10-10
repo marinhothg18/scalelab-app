@@ -3153,6 +3153,16 @@ function _adaptarVenda(p, plataforma, req) {
 // plataforma pelo formato do que chegou. Cada plataforma é traduzida pro
 // formato comum antes de qualquer conta, então o resto do sistema não muda.
 const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax'];
+// Bloco de pagamento do mapa com "Integração" escolhida: conta só o que é
+// daquela plataforma — a venda pelo campo plataforma do pedido, o clique de
+// compra pelo host pra onde foi. Com Payt e Hubla no mesmo funil (teste de
+// checkout), cada bloco mostra o seu. Kiwify, Hotmart etc. não têm webhook
+// aqui: escolher um deles não filtra nada.
+const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i]];
+function _platDoHost(h) { const x = _PLAT_HOST.find(p => p[1].test(String(h || ''))); return x ? x[0] : ''; }
+function _platDoBloco(e) { const k = String((e && e.integracao) || '').trim().toLowerCase(); return _PLAT_HOST.some(p => p[0] === k) ? k : ''; }
+// venda sem plataforma é de antes da Hubla e da AppMax entrarem: era da Payt
+function _vendaDaPlat(o, plat) { if (!plat) return true; const p = String(o.plataforma || '').toLowerCase(); return p ? p === plat : plat === 'payt'; }
 function _receberVenda(req, res) {   // body já vem parseado pelo express.json global
   try {
     const db = readDB();
@@ -9143,13 +9153,21 @@ app.get('/api/funil/agora', authUsuario, (req, res) => {
     // Checkout do gateway não tem pixel: "no checkout agora" é quem clicou em
     // comprar nos últimos 15 min, não pagou depois disso e não voltou pra página.
     const urls = Object.keys(esc.etapaDeUrl);
-    const cliques = _q(`SELECT e.visitante, MAX(e.em) em FROM eventos e LEFT JOIN visitantes v ON v.id = e.visitante
+    // (extra sai da linha do MAX: o SQLite devolve a coluna da linha do último clique)
+    const cliques = _q(`SELECT e.visitante, MAX(e.em) em, e.extra FROM eventos e LEFT JOIN visitantes v ON v.id = e.visitante
                         WHERE e.tipo='checkout' AND e.em >= ? AND COALESCE(v.interno,0)=0 AND (e.funil IN (` + _ph(esc.ids.length) + `) OR e.pg IN (` +
                         _ph(Math.max(1, urls.length)) + `)) GROUP BY e.visitante`)
       .all(agora - 15 * 60000, ...esc.ids, ...(urls.length ? urls : ['']));
     const pagou = _q('SELECT 1 FROM pedidos WHERE visitante=? AND pago=1 AND em >= ? LIMIT 1');
-    const noCheckout = cliques.filter(x => !ag.todos.has(x.visitante) && !pagou.get(x.visitante, x.em - 60000)).length;
-    (esc.f.etapas || []).forEach(e => { if (e.tipo === 'checkout' && esc.etapaDeData[e.id] === e.id) blocos[e.id] = noCheckout; });
+    const noCk = cliques.filter(x => !ag.todos.has(x.visitante) && !pagou.get(x.visitante, x.em - 60000));
+    const noCheckout = noCk.length;
+    const platDe = x => { try { return _platDoHost((JSON.parse(x.extra || '{}') || {}).destino); } catch (er) { return ''; } };
+    // bloco com integração: só quem foi pra aquela plataforma no último clique
+    (esc.f.etapas || []).forEach(e => {
+      if (e.tipo !== 'checkout' || esc.etapaDeData[e.id] !== e.id) return;
+      const pl = _platDoBloco(e);
+      blocos[e.id] = pl ? noCk.filter(x => platDe(x) === pl).length : noCheckout;
+    });
     // Teste de checkout: a mesma regra, separada pela versão em que a pessoa
     // abriu o checkout (o último clique dela vale)
     const ck = {};
@@ -11715,11 +11733,17 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     // venda contava em toda página por onde o comprador passou: quem comprou
     // na 697 e depois caiu no back redirect virava venda das duas.
     const ckEtapa = {};      // quem clicou em comprar NESTA página (no período)
+    const ckEtapaPlat = {};  // o mesmo, por plataforma do checkout (payt, hubla...)
+    const ckPlat = {};       // visitante -> plataformas pra onde clicou em comprar
     const evDe = {};         // visitante -> [{em, et, ck}]
     const alvoEv = [...compradores];
-    _q(`SELECT visitante, pg, etapa, em FROM eventos WHERE tipo='checkout' AND em BETWEEN ? AND ?`).all(per.ini, per.fim).forEach(x => {
+    _q(`SELECT visitante, pg, etapa, em, extra FROM eventos WHERE tipo='checkout' AND em BETWEEN ? AND ?`).all(per.ini, per.fim).forEach(x => {
       const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (!et || !todos.has(x.visitante)) return;
       (ckEtapa[et] = ckEtapa[et] || new Set()).add(x.visitante);
+      let dest = ''; try { dest = (JSON.parse(x.extra || '{}') || {}).destino || ''; } catch (er) {}
+      const pl = _platDoHost(dest); if (!pl) return;
+      (ckPlat[x.visitante] = ckPlat[x.visitante] || new Set()).add(pl);
+      const pe = ckEtapaPlat[et] || (ckEtapaPlat[et] = {}); (pe[pl] = pe[pl] || new Set()).add(x.visitante);
     });
     for (let i = 0; i < alvoEv.length; i += 400) {
       const lote = alvoEv.slice(i, i + 400);
@@ -11903,16 +11927,20 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         // quem comprou (passou pelo checkout mesmo se o clique não foi visto).
         // "Compraram" é toda venda do funil (do produto do bloco, se escolhido):
         // o mesmo número do Obrigado e do topo.
-        const lst = prodLista(e);
-        const vf = vendas.filter(o => casaProd(o, lst));
-        conj[e.id] = abriramSet;
-        nos[e.id] = { tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '',
-                      pessoas: abriramSet.size, cliques: ck.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
+        const lst = prodLista(e), plat = _platDoBloco(e);
+        const vf = vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat));
+        // com plataforma: quem clicou pra ela e quem comprou nela; sem: todo mundo
+        const quemComprou = new Set(vf.map(o => o.visitante).filter(Boolean));
+        const cliquesBloco = plat ? new Set([...ck].filter(v => ckPlat[v] && ckPlat[v].has(plat))) : ck;
+        const abr = plat ? new Set([...cliquesBloco, ...quemComprou]) : abriramSet;
+        conj[e.id] = abr;
+        nos[e.id] = { tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '', plataforma: plat,
+                      pessoas: abr.size, cliques: cliquesBloco.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
                       // conversão só com venda que tem pessoa: a que entrou pela campanha
                       // ou pelo produto não passou por clique nenhum que dê pra contar
-                      conversao: abriramSet.size ? vf.filter(o => o.visitante).length / abriramSet.size : 0,
+                      conversao: abr.size ? vf.filter(o => o.visitante).length / abr.size : 0,
                       semPessoa: vf.filter(o => !o.visitante).length,
-                      produtos: topProd(vf), semClique: [...compradores].filter(v => !ck.has(v)).length,
+                      produtos: topProd(vf), semClique: [...(plat ? quemComprou : compradores)].filter(v => !cliquesBloco.has(v)).length,
                       porOrigem: _ckSoma(vf, o => o.visitante ? (dono[o.visitante] ? nomeOrigem[dono[o.visitante]] : 'sem origem no desenho') : 'sem pessoa ligada'),
                       porEntrada: _ckSoma(vf, o => {
                         if (!o.visitante) return 'sem pessoa ligada';
@@ -11921,8 +11949,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                       }) };
       } else if ((e.tipo === 'obrigado' || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) && !temPagina) {
         // sem página com pixel: o bloco é a venda em si (do produto dele, se escolhido)
-        const lst = prodLista(e);
-        const vf = (e.tipo === 'obrigado' || lst.length) ? vendas.filter(o => casaProd(o, lst)) : [];
+        const lst = prodLista(e), plat = _platDoBloco(e);
+        const vf = (e.tipo === 'obrigado' || lst.length) ? vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat)) : [];
         const quem = new Set(vf.map(o => o.visitante).filter(Boolean));
         conj[e.id] = quem;
         nos[e.id] = { tipo: e.tipo, viaVenda: true, produto: e.produto || '', integracao: e.integracao || '',
@@ -11952,7 +11980,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       // página → checkout: a seta diz o mesmo que o bloco ("checkouts" de quem
       // clicou em comprar nela), não quem abriu o checkout em qualquer página
       if (nos[l[1]] && nos[l[1]].viaClique && porEtapa[l[0]]) {
-        const n = (ckEtapa[l[0]] || new Set()).size;
+        const pl = nos[l[1]].plataforma;
+        const n = (pl ? ((ckEtapaPlat[l[0]] || {})[pl] || new Set()) : (ckEtapa[l[0]] || new Set())).size;
         fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
         return;
       }
