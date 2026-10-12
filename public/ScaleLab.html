@@ -20778,7 +20778,10 @@ var PLATAFORMAS_VENDA = [
     passo:'Na Hubla: Integrações › Automações › Webhook › Adicionar regra. Cole a URL, escolha os produtos e marque os eventos de fatura (criada, paga, expirada, reembolsada e mudança de status) e o de carrinho abandonado. Em “Como enviar seus dados”, deixe “Integração recomendada”.' },
   { id:'appmax', nome:'AppMax', cor:'#FF5926',
     passo:'Na AppMax: Configurações › Webhooks › Novo webhook. Escolha a loja, cole a URL, marque os eventos de Pedidos e de Pagamento não autorizado e, em “Modelo de conteúdo JSON”, deixe “Modelo Padrão (Recomendado)”.',
-    aviso:'A AppMax não documenta se devolve o sck (o id da pessoa). Faça uma compra de teste: se ela chegar sem o id, a venda é ligada pelo e-mail ou telefone quando a pessoa já é conhecida.' }
+    aviso:'A AppMax não documenta se devolve o sck (o id da pessoa). Faça uma compra de teste: se ela chegar sem o id, a venda é ligada pelo e-mail ou telefone quando a pessoa já é conhecida.' },
+  { id:'kiwify', nome:'Kiwify', cor:'#16A34A',
+    passo:'Na Kiwify: Apps › Webhooks › Criar webhook. Cole a URL, em Produtos escolha “Todos” (ou o produto do funil) e marque: Compra aprovada, Compra recusada, Compra reembolsada, Chargeback, Boleto gerado, Pix gerado, Carrinho abandonado e Assinatura renovada. O token que a Kiwify gera pode ficar como está.',
+    aviso:'A Kiwify devolve o sck e as UTMs da venda: o pixel já põe o id da pessoa no link do checkout da Kiwify. Faça uma compra de teste pra conferir que ela chega com o id.' }
 ];
 function _blocoPlataformasVenda(v, url){
   var pp = v.porPlataforma || {};
@@ -20817,7 +20820,7 @@ function _cardVendas(v){
       '<div style="display:flex;align-items:center;gap:14px;">'+
         '<div style="width:48px;height:48px;background:linear-gradient(135deg,#16A34A,#059669);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;">💰</div>'+
         '<div><div style="font-size:17px;font-weight:700;">Vendas do checkout</div>'+
-        '<div style="font-size:11px;color:var(--text2);">Payt, Hubla e AppMax · faturamento em tempo real · via postback</div></div>'+
+        '<div style="font-size:11px;color:var(--text2);">Payt, Hubla, AppMax e Kiwify · faturamento em tempo real · via postback</div></div>'+
       '</div>'+
       _badgeInt(!!v.configurado && v.totalVendas>0, '✅ RECEBENDO', v.configurado ? '⏳ AGUARDANDO 1ª VENDA' : '○ NÃO CONFIGURADO')+
     '</div>'+
@@ -34092,7 +34095,7 @@ var MP_MODULOS = [
     { k:'etapa', tipo:'typeform', nome:'Typeform', dica:'Formulário ou quiz externo' },
     { k:'etapa', tipo:'typebot',  nome:'Typebot',  dica:'Chatbot conversacional' } ] }
 ];
-// Payt, Hubla e AppMax têm webhook aqui: escolher uma delas filtra o bloco
+// Payt, Hubla, AppMax e Kiwify têm webhook aqui: escolher uma delas filtra o bloco
 // (só as vendas e os cliques de compra daquela plataforma)
 var MP_INTEGRACOES = ['Payt','Hubla','AppMax','Kiwify','Hotmart','Eduzz','Monetizze','Kirvano','Cakto','Ticto','Outra'];
 
@@ -34224,15 +34227,15 @@ function mpLeitura(n){
 // Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
 // a plataforma pelo link colado no bloco, quando a integração não foi escolhida
 // (o servidor faz a mesma conta em _platDoBloco)
-var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax' };
-function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : ''; }
+var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax', kiwify:'Kiwify' };
+function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : /kiwify/i.test(u) ? 'kiwify' : ''; }
 function fnCampoIntegracao(n){
   if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
   var pelo = (!n.integracao || n.integracao === 'Outra') ? fnPlatDoLink(n.url) : '';
   return '<div class="fn-campo"><label>Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
     '<option value="">— escolher —</option>'+MP_INTEGRACOES.map(function(x){ return '<option'+(n.integracao===x?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'+
     (pelo ? '<div style="font-size:10.5px;color:var(--accent);margin-top:5px;font-weight:700">Pelo link colado, este bloco já conta só a '+FN_PLAT_NOME[pelo]+'.</div>' : '')+
-    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. Com Payt, Hubla ou AppMax, o bloco conta só as vendas e os cliques de compra dessa plataforma: dá pra ter um Checkout Payt e outro Hubla lado a lado. As vendas entram pelo webhook em Configurações › Integrações.</div></div>';
+    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. Com Payt, Hubla, AppMax ou Kiwify, o bloco conta só as vendas e os cliques de compra dessa plataforma: dá pra ter um Checkout Payt e outro Hubla lado a lado. As vendas entram pelo webhook em Configurações › Integrações.</div></div>';
 }
 // Produto do bloco: é o nome que chega no webhook (ex.: "Apostilai Acervo").
 // O checkout fica com o principal, o upsell com o dele — e as vendas se separam.

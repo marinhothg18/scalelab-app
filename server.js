@@ -3016,6 +3016,8 @@ function _plataformaDoPayload(p) {
   p = p || {};
   if (typeof p.type === 'string' && p.event && typeof p.event === 'object' && /^(invoice|lead|subscription|customer|refund_request|smart_installment)\./.test(p.type)) return 'hubla';
   if (typeof p.event === 'string' && p.data && typeof p.data === 'object' && 'event_type' in p) return 'appmax';
+  if (p.webhook_event_type || (p.order_id && (p.Product || p.Customer || p.Commissions || p.TrackingParameters)) ||
+      (p.checkout_link && /kiwify/i.test(String(p.checkout_link)))) return 'kiwify';
   if (p.link || p.transaction) return 'payt';
   return 'outra';
 }
@@ -3140,10 +3142,61 @@ function _vendaAppmax(p) {
     created_at: d.created_at || '', paid_at: d.paid_at || ''
   };
 }
+// Kiwify: o pedido vem com order_id, order_status, webhook_event_type e os
+// blocos Product, Customer, Commissions (valores em centavos) e
+// TrackingParameters — é ali que voltam sck/src/utm, e com eles a marca do
+// pixel (tmx_<id>, ck_<teste>_<versão>). Carrinho abandonado vem num formato à
+// parte, sem order_id e com o checkout_link. Assinatura cancelada/atrasada não
+// é venda; a renovação é (e conta como renovação pelas cobranças feitas).
+const _KIWIFY_EVENTO = {
+  order_approved: 'paid', compra_aprovada: 'paid', subscription_renewed: 'paid',
+  order_rejected: 'refused', compra_recusada: 'refused',
+  order_refunded: 'refunded', compra_reembolsada: 'refunded', chargeback: 'chargeback',
+  billet_created: 'waiting_payment', boleto_gerado: 'waiting_payment', pix_created: 'waiting_payment', pix_gerado: 'waiting_payment'
+};
+const _KIWIFY_STATUS = { paid: 'paid', approved: 'paid', waiting_payment: 'waiting_payment', pending: 'waiting_payment',
+  refused: 'refused', refunded: 'refunded', chargedback: 'chargeback', chargeback: 'chargeback', canceled: 'canceled', abandoned: 'lost_cart' };
+function _vendaKiwify(p) {
+  const ev = String(p.webhook_event_type || '').toLowerCase();
+  const rastreio = o => ({ utm_source: o.utm_source || '', utm_medium: o.utm_medium || '', utm_campaign: o.utm_campaign || '',
+                           utm_content: o.utm_content || '', utm_term: o.utm_term || '', sck: o.sck || '', src: o.src || '' });
+  if (!p.order_id && (p.checkout_link || /abandon|carrinho/.test(ev) || String(p.status || '').toLowerCase() === 'abandoned')) {
+    const q = Object.assign({}, _queryDe(p.checkout_link), _minusculas(p.TrackingParameters || p.tracking || {}));
+    return { orderId: 'kiwify-carrinho:' + String(p.id || p.email || p.phone || Date.now()), status: 'lost_cart', valor: null,
+      products: [{ name: p.product_name || p.offer_name || '' }],
+      customer: { name: p.name || '', email: p.email || '', phone: p.phone || '', document: p.cpf || p.cnpj || '' },
+      trackingParameters: rastreio(q), tmx_vid: q.tmx_vid || '', created_at: p.created_at || '' };
+  }
+  if (!p.order_id) return null;                                  // teste de conexão, outro evento
+  if (/^subscription_(canceled|late)$/.test(ev)) return null;    // assinatura: não é venda
+  const st = String(p.order_status || '').toLowerCase();
+  const status = _KIWIFY_EVENTO[ev] || _KIWIFY_STATUS[st] || st;
+  if (!status) return null;
+  const c = p.Customer || p.customer || {}, pr = p.Product || p.product || {}, cm = p.Commissions || p.commissions || {};
+  const tr = _minusculas(p.TrackingParameters || p.tracking_parameters || p.tracking || {});
+  const sub = p.Subscription || p.subscription || {}, plano = sub.plan || {};
+  const cobradas = sub.charges && Array.isArray(sub.charges.completed) ? sub.charges.completed.length : 0;
+  const met = String(p.payment_method || '').toLowerCase();
+  return {
+    orderId: 'kiwify:' + String(p.order_id), status,
+    valor: cm.charge_amount != null ? _centavos(cm.charge_amount) : (cm.product_base_price != null ? _centavos(cm.product_base_price) : null),
+    valor_liquido: cm.my_commission != null ? _centavos(cm.my_commission) : (cm.settlement_amount != null ? _centavos(cm.settlement_amount) : null),
+    currency: cm.currency || cm.product_base_price_currency || 'BRL',
+    products: [{ name: pr.product_name || pr.name || '' }], plan_name: plano.name || '',
+    customer: { name: c.full_name || c.name || c.first_name || '', email: c.email || '', phone: c.mobile || c.phone || '', document: c.CPF || c.cpf || c.cnpj || '' },
+    payment_method: /pix/.test(met) ? 'pix' : (/boleto|billet/.test(met) ? 'boleto' : (/card|credit/.test(met) ? 'credit_card' : met)),
+    trackingParameters: rastreio(tr), tmx_vid: tr.tmx_vid || '',
+    subscription: sub.id ? { id: sub.id, status: sub.status || '', charges: cobradas, plan_name: plano.name || '',
+                             periodicity: plano.frequency || '', started_at: sub.start_date || '' } : undefined,
+    subscription_id: p.subscription_id || sub.id || '',
+    created_at: p.created_at || '', paid_at: p.approved_date || ''
+  };
+}
 function _adaptarVenda(p, plataforma, req) {
   try {
     if (plataforma === 'hubla') return _vendaHubla(p || {}, req);
     if (plataforma === 'appmax') return _vendaAppmax(p || {});
+    if (plataforma === 'kiwify') return _vendaKiwify(p || {});
   } catch (e) { console.error('[VENDAS] ' + plataforma + ' não traduziu:', e.message); return null; }
   return p;
 }
@@ -3152,13 +3205,13 @@ function _adaptarVenda(p, plataforma, req) {
 // A URL sem plataforma (a que a Payt já usa) continua valendo e descobre a
 // plataforma pelo formato do que chegou. Cada plataforma é traduzida pro
 // formato comum antes de qualquer conta, então o resto do sistema não muda.
-const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax'];
+const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax', 'kiwify'];
 // Bloco de pagamento do mapa com "Integração" escolhida: conta só o que é
 // daquela plataforma — a venda pelo campo plataforma do pedido, o clique de
 // compra pelo host pra onde foi. Com Payt e Hubla no mesmo funil (teste de
-// checkout), cada bloco mostra o seu. Kiwify, Hotmart etc. não têm webhook
+// checkout), cada bloco mostra o seu. Hotmart, Eduzz etc. não têm webhook
 // aqui: escolher um deles não filtra nada.
-const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i]];
+const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i], ['kiwify', /kiwify/i]];
 // Página (host/caminho) que é checkout: o nome da plataforma só vale no domínio
 // (pay.hub.la, checkout.payt...). No caminho não: /697hubla é página de venda,
 // e era tratada como checkout. As palavras genéricas valem no endereço todo.
