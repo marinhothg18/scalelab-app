@@ -29663,13 +29663,15 @@ function vsOrigTabela(){
   var k = vsOrigChave(v), d = vsOrigDados[k]; if(!d) return;
   var m = vsOrigMarc[k] || [], busca = String(vsOrigBusca||'').toLowerCase().trim();
   var col = vsOrigOrdem.replace(/-$/, ''), asc = /-$/.test(vsOrigOrdem);
+  // conversão sobre quem deu play na VSL (vendas ÷ plays únicos)
+  d.linhas.forEach(function(l){ l.convPlay = l.playsUnicos ? l.vendas / l.playsUnicos : 0; });
   var ls = d.linhas.filter(function(l){ return !busca || l.nome.toLowerCase().indexOf(busca) >= 0; })
     .sort(function(a, b){ var p = col === 'nome' ? String(a.nome).localeCompare(String(b.nome)) : (b[col]||0) - (a[col]||0); return asc ? -p : p; });
   vsOrigVisiveis = ls.slice(0, 150);
   var temR = d.linhas.some(function(l){ return l.receita != null; });
   var cab = [['nome','Origem',''],['vis','Visualizações','num'],['visUnicas','Vis. únicas','num'],['plays','Plays','num'],['playsUnicos','Plays únicos','num'],
              ['playRate','Play rate','num'],['engajamento','Engajamento','num'],['retPitch','Retenção ao pitch','num'],['audPitch','Audiência do pitch','num'],
-             ['cliques','Cliques','num'],['vendas','Vendas','num']].concat(temR ? [['receita','Faturamento','num']] : []);
+             ['cliques','Cliques','num'],['vendas','Vendas','num'],['convPlay','Conversão do play','num']].concat(temR ? [['receita','Faturamento','num']] : []);
   var pc = function(x){ return (x*100).toFixed(2).replace('.', ',')+'%'; };
   tb.innerHTML = '<thead><tr><th></th>'+cab.map(function(c){
       return '<th class="'+c[2]+'" onclick="vsOrigOrdenar(\''+c[0]+'\')">'+c[1]+(col === c[0] ? (asc ? ' ▲' : ' ▼') : '')+'</th>'; }).join('')+'</tr></thead><tbody>'+
@@ -29682,12 +29684,13 @@ function vsOrigTabela(){
         '<td class="num">'+vsNum(l.playsUnicos)+'</td><td class="num">'+pc(l.playRate)+'</td><td class="num">'+pc(l.engajamento)+'</td>'+
         '<td class="num" style="font-weight:800">'+(l.playsUnicos ? pc(l.retPitch) : '-')+'</td><td class="num">'+vsNum(l.audPitch)+'</td>'+
         '<td class="num">'+vsNum(l.cliques)+'</td><td class="num">'+vsNum(l.vendas)+'</td>'+
+        '<td class="num" style="font-weight:800'+(l.vendas ? ';color:var(--green)' : '')+'" title="'+vsNum(l.vendas)+' venda(s) ÷ '+vsNum(l.playsUnicos)+' plays únicos">'+(l.playsUnicos ? pc(l.convPlay) : '-')+'</td>'+
         (temR ? '<td class="num">'+(l.receita == null ? '•••' : vsBrl(l.receita))+'</td>' : '')+'</tr>';
     }).join('')+'</tbody>';
   var rs = document.getElementById('vs-orig-resumo');
   if(rs) rs.innerHTML = fnNum(d.linhas.length)+' origens (a VTurb mostra '+fnNum(d.linhasVturb)+' linhas, uma por veiculação)'+
     (ls.length > vsOrigVisiveis.length ? ' · mostrando as '+vsOrigVisiveis.length+' primeiras, use a busca' : '')+
-    '. Retenção ao pitch = quem passou do pitch ÷ plays únicos, igual à VTurb.';
+    '. Retenção ao pitch = quem passou do pitch ÷ plays únicos, igual à VTurb. Conversão do play = vendas ÷ plays únicos.';
 }
 
 // mede em % de quem restou: perto do pitch a retenção já é baixa e quedas graves
