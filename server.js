@@ -9549,6 +9549,20 @@ catch (e) { console.warn('[PESSOAS] SQLite indisponível neste Node (' + process
 const PESSOAS_ARQ = path.join(DATA_DIR, 'pessoas.sqlite');
 const SESSAO_MS = 30 * 60 * 1000;
 const EVENTOS_DIAS = 90, SESSOES_DIAS = 365, EVENTOS_POR_SESSAO = 60, JANELA_CREDITO_DIAS = 7;
+// quanto tempo um clique em anúncio segue valendo pra levar a venda: o mesmo
+// tempo que o pixel guarda o "último anúncio" no navegador (cookie de 90 dias)
+const JANELA_ANUNCIO_DIAS = 90;
+// Bio e outros links orgânicos do Instagram: o próprio Instagram marca
+// ig / social / link_in_bio. "ig" também é a fonte de anúncio no Instagram,
+// por isso a fonte sozinha não basta: o que separa é o "bio" ou o social sem
+// campanha. Mesma regra do pixel (ehOrganicoSocial / ehAnuncio).
+function _toqueEhOrganicoSocial(s) {
+  const t = [s.fonte, s.midia, s.camp, s.cont].join(' ');
+  return /bio/i.test(t) || (String(s.midia || '').trim().toLowerCase() === 'social' && !String(s.camp || '').trim());
+}
+function _toqueEhAnuncio(s, c) {
+  return !!(c && c.anuncios && !c.apoio && !_toqueEhOrganicoSocial(s) && (String(s.camp || '').trim() || String(s.cont || '').trim()));
+}
 let _pdb = null, _pdbFalhou = false;
 const _pq = {};
 const _pIntIp = new Set(), _pIntVis = new Set();   // regras de tráfego interno
@@ -9812,7 +9826,18 @@ function _pxRegistrar(c, req, interno, quando) {
       const r = _q('SELECT id, inicio, fim, funil FROM sessoes WHERE visitante=? ORDER BY inicio DESC LIMIT 1').get(vis);
       if (r) s = { id: r.id, inicio: r.inicio, fim: r.fim, funil: r.funil, pitch: 0, checkout: 0, eventos: 0 };
     }
-    const aberta = s && (agora - s.fim) < SESSAO_MS;
+    let aberta = s && (agora - s.fim) < SESSAO_MS;
+    // Clique num anúncio DIFERENTE do que abriu a visita começa outra visita
+    // (como no Google Analytics). Sem isso, dois anúncios em menos de 30 min
+    // viravam uma visita só, com a origem do primeiro, e o crédito — que é do
+    // último anúncio, o mesmo que o pixel põe no checkout — não achava o segundo.
+    if (aberta && tipo === 'entrou' && aqui) {
+      const tq = { fonte: aqui.utm_source, midia: aqui.utm_medium, camp: aqui.utm_campaign, cont: aqui.utm_content };
+      if (_toqueEhAnuncio(tq, _canalDe(tq.fonte, _canaisCache()))) {
+        const r = _q('SELECT camp, cont FROM sessoes WHERE id=?').get(s.id);
+        if (r && (String(r.camp || '') !== String(tq.camp || '') || String(r.cont || '') !== String(tq.cont || ''))) aberta = false;
+      }
+    }
     if (!aberta && (tipo === 'saiu' || tipo === 'video')) {
       // Saída ou pulso do vídeo depois de 30 min parado não abre visita nova:
       // é o fim da anterior chegando atrasado. Só marca, sem esticar o tempo.
@@ -9838,9 +9863,10 @@ function _pxRegistrar(c, req, interno, quando) {
         txt(o.utm_term || (semAqui ? utm.term : ''), 80),
         txt(o.fbclid, 200), txt(o.fbc || pr.fbc, 200), txt(o.fbp || pr.fbp, 80),
         txt(c.teste, 60), txt(c.variante, 40), eInt);
-      // último toque PAGO: é o que leva o crédito da venda
+      // último toque PAGO: é o que leva o crédito da venda (a bio do Instagram,
+      // ig/social/link_in_bio, não é anúncio — era isso que apagava o anúncio)
       const canal = fonte ? _canalDe(fonte, _canaisCache()) : null;
-      if (canal && canal.anuncios && !canal.apoio) {
+      if (_toqueEhAnuncio({ fonte, midia: o.utm_medium || (semAqui ? utm.medium : ''), camp: o.utm_campaign || (semAqui ? utm.campaign : ''), cont: o.utm_content || (semAqui ? utm.content : '') }, canal)) {
         _q(`UPDATE visitantes SET u_fonte=?, u_midia=?, u_camp=?, u_cont=?, u_termo=?, u_em=? WHERE id=?`)
           .run(txt(fonte, 80), txt(o.utm_medium || utm.medium, 80), txt(o.utm_campaign || utm.campaign, 120),
                txt(o.utm_content || utm.content, 160), txt(o.utm_term || utm.term, 80), agora, vis);
@@ -10045,30 +10071,41 @@ function _pedidoRegistrar(venda, p, opts) {
     }
 
     // ── crédito ──
+    // Regra da casa: a venda é do ÚLTIMO anúncio em que a pessoa clicou (até
+    // JANELA_ANUNCIO_DIAS, o tempo que o pixel guarda). Visita sem anúncio — link
+    // da bio (o Instagram marca ig/social/link_in_bio), direto, e-mail — não tira
+    // o crédito dele: entrou pelo AD157, voltou pelo AD25 e comprou pela bio,
+    // é do AD25. Sem anúncio nenhum, fica com o último toque dos 7 dias que não
+    // é de apoio. É a mesma regra que o pixel usa no link do checkout, pra
+    // Payt/Utmify e o TMX darem a mesma resposta. Antes a bio ('ig') contava
+    // como anúncio e a venda ficava "Meta Ads" sem campanha.
     const canais = _canaisCache();
     let cred = null, sessaoRef = null;
     if (vis) {
       const ss = _q(`SELECT id, fonte, midia, camp, cont, termo, inicio, funil, teste, variante FROM sessoes
-                     WHERE visitante=? AND inicio<=? AND inicio>=? ORDER BY inicio DESC LIMIT 60`)
-        .all(vis, em + 60000, em - JANELA_CREDITO_DIAS * 86400000);
-      sessaoRef = ss[0] || null;
+                     WHERE visitante=? AND inicio<=? AND inicio>=? ORDER BY inicio DESC LIMIT 300`)
+        .all(vis, em + 60000, em - JANELA_ANUNCIO_DIAS * 86400000);
+      const ss7 = ss.filter(s => s.inicio >= em - JANELA_CREDITO_DIAS * 86400000);
+      sessaoRef = ss7[0] || null;
       for (const s of ss) {
         const c = _canalDe(s.fonte, canais);
-        if (c && c.anuncios && !c.apoio) { cred = { fonte: s.fonte, camp: s.camp, cont: s.cont, canal: c.id, s }; break; }
+        if (_toqueEhAnuncio(s, c)) { cred = { fonte: s.fonte, camp: s.camp, cont: s.cont, canal: c.id, s }; break; }
       }
       if (!cred) {
         // sem anúncio no caminho: fica com o último toque que não é de apoio
-        for (const s of ss) {
+        for (const s of ss7) {
           const c = _canalDe(s.fonte, canais);
           if (c && c.apoio) continue;
-          cred = { fonte: s.fonte || 'direto', camp: s.camp, cont: s.cont, canal: c ? c.id : (s.fonte ? 'outro' : 'direto'), s };
+          const org = _toqueEhOrganicoSocial(s);
+          cred = { fonte: s.fonte || 'direto', camp: s.camp, cont: s.cont, canal: org ? 'organico' : (c ? c.id : (s.fonte ? 'outro' : 'direto')), s };
           break;
         }
       }
     }
     const cVenda = _canalDe(venda.utmSource, canais);
     if (!cred && _origemVale(venda.utmSource) && !(cVenda && cVenda.apoio)) {
-      cred = { fonte: venda.utmSource, camp: venda.utmCampaign, cont: venda.utmContent, canal: cVenda ? cVenda.id : 'outro' };
+      const orgV = _toqueEhOrganicoSocial({ fonte: venda.utmSource, midia: venda.utmMedium, camp: venda.utmCampaign, cont: venda.utmContent });
+      cred = { fonte: venda.utmSource, camp: venda.utmCampaign, cont: venda.utmContent, canal: orgV ? 'organico' : (cVenda ? cVenda.id : 'outro') };
     }
     const apoio = (cVenda && cVenda.apoio) ? cVenda.nome : null;
 
@@ -10573,7 +10610,7 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
       atribuicao: {
         primeiro: { fonte: v.p_fonte, midia: v.p_midia, camp: v.p_camp, cont: v.p_cont, termo: v.p_termo, em: v.p_em },
         ultimo: v.u_em ? { fonte: v.u_fonte, midia: v.u_midia, camp: v.u_camp, cont: v.u_cont, termo: v.u_termo, em: v.u_em } : null,
-        credito, regra: 'Crédito: último anúncio pago nos ' + JANELA_CREDITO_DIAS + ' dias antes da venda. Recuperação ajuda, mas não leva o crédito.',
+        credito, regra: 'Crédito: o último anúncio em que a pessoa clicou (até ' + JANELA_ANUNCIO_DIAS + ' dias). Link da bio e visita direta não tiram o crédito do anúncio; sem anúncio, fica com o último toque dos ' + JANELA_CREDITO_DIAS + ' dias. Recuperação ajuda, mas não leva o crédito.',
         fbclid: !!v.fbclid, fbc: !!v.fbc, fbp: !!v.fbp },
       pedidos: peds.map(p => ({ id: p.id, pedido: p.pedido, status: p.status, pago: !!p.pago, estorno: !!p.estorno, valor: dir ? p.valor : null,
         produto: p.produto, plano: p.plano, metodo: p.metodo, motivo: p.motivo, casou: p.casou, em: p.em })),
@@ -14874,10 +14911,34 @@ const PIXEL_JS = `(function(w,d){
   }
   var primeiro = {};
   try{ primeiro = JSON.parse(le('tmx_first') || '{}'); }catch(e){ primeiro = {}; }
+
+  // ── Último anúncio: quem leva a venda ──────────────────────────────────
+  // Regra da casa: a venda é do ÚLTIMO anúncio em que a pessoa clicou. Visita
+  // sem anúncio (link da bio — o Instagram marca ig/social/link_in_bio —,
+  // direto, e-mail) não tira o crédito dele: entrou pelo AD157, voltou pelo
+  // AD25 e comprou dias depois pela bio, a venda é do AD25. Sem anúncio
+  // nenhum, vale a primeira visita (orgânico). É isso que vai no link do
+  // checkout (e a Payt repassa pra Utmify), e o servidor dá o crédito com a
+  // mesma regra (_toqueEhAnuncio). 'ig' também é anúncio no Instagram: o que
+  // separa a bio é o 'bio' ou o social sem campanha.
+  var FONTES_ANUNCIO = /^(fb|ig|facebook|instagram|meta|an$|msg|messenger|google|gads|youtube|yt)/i;
+  function ehOrganicoSocial(o){
+    return /bio/i.test([o.utm_source, o.utm_medium, o.utm_campaign, o.utm_content].join(' ')) ||
+           (String(o.utm_medium || '').toLowerCase() === 'social' && !o.utm_campaign);
+  }
+  function ehAnuncio(o){
+    return !!o && FONTES_ANUNCIO.test(String(o.utm_source || '').trim()) && !ehOrganicoSocial(o) && !!(o.utm_campaign || o.utm_content);
+  }
+  if(ehAnuncio(agora)) guarda('tmx_ad', JSON.stringify(agora));
+  var ultimoAnuncio = {};
+  try{ ultimoAnuncio = JSON.parse(le('tmx_ad') || '{}'); }catch(e){ ultimoAnuncio = {}; }
+  // quem chegou antes desta regra só tem a primeira origem: se ela foi anúncio, vale ela
+  if(!ehAnuncio(ultimoAnuncio) && ehAnuncio(primeiro)) ultimoAnuncio = primeiro;
+  var origemCompra = ehAnuncio(ultimoAnuncio) ? ultimoAnuncio : primeiro;
   // pra quem quiser ler de fora (pixel da Meta, por exemplo)
   // Versao visivel: sem isso nao da pra saber se a pagina esta rodando o pixel
   // novo ou uma copia velha em cache — e isso ja custou uma investigacao inteira.
-  w.TMXOrigem = { vid: id, primeiro: primeiro, versao: TMX_VERSAO };
+  w.TMXOrigem = { vid: id, primeiro: primeiro, ultimoAnuncio: ultimoAnuncio, versao: TMX_VERSAO };
   ['t','v'].forEach(function(k){
     var v = q.get('tmx_'+k);
     try{ if(v) localStorage.setItem('tmx_ab_'+k, v); }catch(e){}
@@ -15326,25 +15387,24 @@ const PIXEL_JS = `(function(w,d){
       // e era isso que fazia venda de anuncio chegar na Utmify como organica.
       // Se a gente sabe de onde a pessoa veio, isso ganha do padrao do site.
       var VAZIO = /^(|organic|organico|orgânico|direct|direto|none|null|undefined|nao-informado|n\\/a)$/i;
-      // First-touch vence, ponto. Foi por ser conservador demais aqui que o
-      // utm_content do anuncio chegou no checkout como "link_in_bio::...": o
-      // link da bio tem utm propria, o script da pagina faz last-touch e
-      // sobrescreve, e eu so preenchia campo vazio. Se a pessoa veio de um
-      // anuncio, o anuncio e a origem — mesmo que ela tenha passado por outro
-      // lugar no meio. E o que "first-touch" quer dizer.
+      // O ultimo anuncio vence (origemCompra, la em cima). Ser conservador aqui
+      // ja fez o utm_content do anuncio chegar no checkout como "link_in_bio::...":
+      // o link da bio tem utm propria, o script da pagina faz last-touch e
+      // sobrescreve, e eu so preenchia campo vazio. Se a pessoa veio de anuncio,
+      // o anuncio e a origem, mesmo que ela tenha passado pela bio no meio.
       var MANDA = ['utm_campaign','utm_content','utm_term','utm_id','utm_medium','fbclid','gclid','ttclid'];
       LEVAR.forEach(function(k){
-        if(!primeiro[k]) return;
+        if(!origemCompra[k]) return;
         var atual = (u.searchParams.get(k) || '').trim();
         var ehLixo = VAZIO.test(atual) || /^\\{\\{.*\\}\\}$/.test(atual);
         // utm_source fica de fora do atropelo: a pagina cola o id do lead nele
         // (ig + id) e sobrescrever quebraria o rastreio deles.
         if(ehLixo || MANDA.indexOf(k) >= 0){
-          if(atual && !ehLixo && atual !== primeiro[k]){
+          if(atual && !ehLixo && atual !== origemCompra[k]){
             // nao joga fora o que estava la — guarda pra conferencia
             u.searchParams.set('tmx_ult_' + k.replace(/^utm_/, ''), atual.slice(0, 120));
           }
-          u.searchParams.set(k, primeiro[k]);
+          u.searchParams.set(k, origemCompra[k]);
         }
       });
       if(!u.searchParams.get('tmx_vid')) u.searchParams.set('tmx_vid', id);
