@@ -2746,6 +2746,10 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .vs-lreg .info{flex:1;min-width:0}
 .vs-lreg .info b{font-size:13px;display:block}
 .vs-lreg .info small{font-size:11px;color:var(--text2)}
+.vs-busca-vsls{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:9px;background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit;outline:none;margin-bottom:8px}
+.vs-busca-vsls:focus{border-color:var(--accent)}
+.vs-busca-res{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-bottom:6px}
+.vs-busca-res b{color:var(--text)}
 .vs-sw{width:38px;height:21px;border-radius:20px;background:var(--bg3);position:relative;cursor:pointer;flex:0 0 auto;transition:.15s}
 .vs-sw.on{background:var(--green)}
 .vs-sw i{position:absolute;top:2.5px;left:2.5px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
@@ -5089,6 +5093,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
   </div>
   <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px;line-height:1.6">
     Só as ligadas entram nas métricas. As demais continuam existindo na VTurb.</p>
+  <input id="vs-busca-vsls" class="vs-busca-vsls" type="search" placeholder="Buscar VSL pelo nome (ex.: 697)" autocomplete="off"
+         oninput="vsFiltrarVsls(this.value)" aria-label="Buscar VSL pelo nome">
+  <div id="vs-busca-res" class="vs-busca-res" style="display:none"></div>
   <div id="vs-lista-vsls" style="max-height:50vh;overflow-y:auto"></div>
   <button class="vs-btn" style="width:100%;margin-top:16px" onclick="vsFecharVsls()">Pronto</button>
 </div>
@@ -29894,7 +29901,7 @@ function vsAbrirVsls(){
   document.getElementById('vs-lista-vsls').innerHTML = ordem.map(function(k){
     var lista=pastas[k];
     var ligadas=lista.filter(function(v){return v.rodando;}).length;
-    return '<div style="margin-bottom:14px">'+
+    return '<div class="vs-pasta" style="margin-bottom:14px">'+
       '<div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">'+
         '<span style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">📁 '+vsEsc(k)+'</span>'+
         '<span style="font-size:10.5px;color:var(--text2)">'+ligadas+' de '+lista.length+' ligadas</span>'+
@@ -29902,8 +29909,9 @@ function vsAbrirVsls(){
           (ligadas===lista.length?'Desligar todas':'Ligar todas')+'</button>'+
       '</div>'+
       lista.map(function(v){
-        return '<div class="vs-lreg"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
-          '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+' · '+v.vendas+' venda(s)</small></div>'+
+        // vendas só vem das VSLs consultadas no período; nas outras ficava "undefined venda(s)"
+        return '<div class="vs-lreg" data-busca="'+vsEsc(vsBuscaNorm(v.nome+' '+k))+'" data-id="'+vsEsc(v.id)+'"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
+          '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+(v.vendas != null ? ' · '+v.vendas+' venda(s)' : '')+'</small></div>'+
           '<input list="vs-grupos" value="'+vsEsc(vsGrupoDe(v))+'" title="Grupo desta VSL" '+
             'onchange="vsDefinirGrupo(\''+v.id+'\',this.value)" '+
             'style="width:112px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;'+
@@ -29915,7 +29923,55 @@ function vsAbrirVsls(){
   '<div class="vs-nota" style="margin-top:14px">A VTurb não entrega as pastas pela API — só nome, duração e '+
   'pitch. O agrupamento acima é feito pelo nome do vídeo, e você pode corrigir digitando ao lado de cada um. '+
   '<a href="#" onclick="vsReagrupar();return false" style="color:var(--accent)">Refazer pelos nomes</a></div>';
+  var jaAberto = document.getElementById('modal-vs-vsls').classList.contains('open');
+  if(!jaAberto) vsBuscaVsls = '';          // cada abertura começa sem filtro
   openModal('modal-vs-vsls');
+  // religar/desligar redesenha a lista: a busca continua valendo
+  var bx = document.getElementById('vs-busca-vsls');
+  if(bx){ bx.value = vsBuscaVsls; vsFiltrarVsls(vsBuscaVsls); if(!jaAberto && window.innerWidth > 700) setTimeout(function(){ bx.focus(); }, 60); }
+}
+// Busca por nome: "697" mostra todas que têm 697 no nome. Cada palavra digitada
+// precisa aparecer (em qualquer ordem), sem ligar pra maiúscula nem acento.
+var vsBuscaVsls = '';
+function vsBuscaNorm(t){ return String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+function vsFiltrarVsls(q){
+  vsBuscaVsls = q || '';
+  var lista = document.getElementById('vs-lista-vsls'), res = document.getElementById('vs-busca-res'); if(!lista) return;
+  var termos = vsBuscaNorm(vsBuscaVsls).split(/\s+/).filter(Boolean);
+  var achadas = [];
+  lista.querySelectorAll('.vs-lreg').forEach(function(l){
+    var ok = !termos.length || termos.every(function(t){ return (l.getAttribute('data-busca')||'').indexOf(t) >= 0; });
+    l.style.display = ok ? '' : 'none';
+    if(ok) achadas.push(l.getAttribute('data-id'));
+  });
+  lista.querySelectorAll('.vs-pasta').forEach(function(p){
+    var algum = [].some.call(p.querySelectorAll('.vs-lreg'), function(l){ return l.style.display !== 'none'; });
+    p.style.display = algum ? '' : 'none';
+  });
+  if(!res) return;
+  if(!termos.length){ res.style.display = 'none'; return; }
+  var base = (vsDados && (vsDados.todos || vsDados.vsls)) || [];
+  var ligadas = base.filter(function(v){ return achadas.indexOf(String(v.id)) >= 0 && v.rodando; }).length;
+  res.style.display = '';
+  res.innerHTML = achadas.length
+    ? '<span><b>'+achadas.length+'</b> VSL'+(achadas.length === 1 ? '' : 's')+' com “'+vsEsc(vsBuscaVsls.trim())+'” · '+ligadas+' ligada'+(ligadas === 1 ? '' : 's')+'</span>'+
+      '<button class="vs-btn g sm" onclick="vsLigarBusca()">'+(ligadas === achadas.length ? 'Desligar as encontradas' : 'Ligar as encontradas')+'</button>'
+    : '<span>Nenhuma VSL com “'+vsEsc(vsBuscaVsls.trim())+'” no nome.</span>';
+}
+// liga (ou desliga, se todas já estão ligadas) só as que a busca encontrou
+function vsLigarBusca(){
+  var lista = document.getElementById('vs-lista-vsls'); if(!lista || !vsDados) return;
+  var ids = [].filter.call(lista.querySelectorAll('.vs-lreg'), function(l){ return l.style.display !== 'none'; })
+    .map(function(l){ return l.getAttribute('data-id'); });
+  var base = vsDados.todos || vsDados.vsls;
+  var achadas = base.filter(function(v){ return ids.indexOf(String(v.id)) >= 0; });
+  var ligar = achadas.some(function(v){ return !v.rodando; });
+  achadas.forEach(function(v){ v.rodando = ligar; });
+  var lig = base.filter(function(v){ return v.rodando; }).map(function(v){ return v.id; });
+  s('sl_vsl_ativas', lig);
+  vsSel = vsSel.filter(function(id){ return lig.indexOf(id) >= 0; });
+  if(!vsSel.length && lig.length) vsSel = [lig[0]];
+  vsAbrirVsls();
 }
 function vsLigarPasta(k){
   var pasta=decodeURIComponent(k);
@@ -29936,6 +29992,7 @@ function vsLigar(id,el){
   var lig=base.filter(function(x){return x.rodando;}).map(function(x){return x.id;});
   s('sl_vsl_ativas',lig);
   if(!vsSel.length && lig.length) vsSel=[lig[0]];
+  if(vsBuscaVsls) vsFiltrarVsls(vsBuscaVsls);   // atualiza o 'N ligadas' da busca
 }
 function vsFecharVsls(){ closeModal('modal-vs-vsls'); vsCarregar(true); }
 
