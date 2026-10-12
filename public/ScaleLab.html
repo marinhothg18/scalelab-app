@@ -28854,10 +28854,11 @@ function vsCarregar(forcar){
       });
       if(!vsSel.length){ var a=vsDados.vsls.filter(function(v){return v.rodando;}); if(a.length) vsSel=[a[0].id]; }
       vsCarregarInvestimentoDaConta(p);
+      if(vsReabrirVsls){ vsReabrirVsls = false; vsAbrirVsls(); }
     })
     .catch(function(e){
       clearTimeout(relogio);
-      vsCarregando=false;
+      vsCarregando=false; vsReabrirVsls=false;
       var demorou = (e && e.name==='AbortError');
       if(el) el.innerHTML='<div class="vs-dc" style="border-left-color:var(--red)">'+
         '<div class="t">'+(demorou?'A VTurb demorou demais':'Não consegui carregar')+'</div>'+
@@ -29898,7 +29899,14 @@ function vsAbrirVsls(){
     return pastas[b].length-pastas[a].length || a.localeCompare(b);
   });
   var todosGrupos=ordem.slice();
-  document.getElementById('vs-lista-vsls').innerHTML = ordem.map(function(k){
+  // a VTurb não devolveu a lista agora: o que aparece é a última que deu certo,
+  // e vídeo novo pode faltar (foi assim que as VSLs de 697 sumiram da busca)
+  var velha = vsDados.listaFresca === false
+    ? '<div class="vs-dc" style="border-left-color:#f59e0b;margin-bottom:10px"><div class="t">A VTurb não mandou a lista de vídeos agora</div>'+
+      '<div class="d">'+vsEsc(vsDados.erroLista || '')+' Mostrando a última lista que veio'+(vsDados.listaDe ? ' ('+new Date(vsDados.listaDe).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+')' : '')+
+      ': vídeo novo pode não estar aqui.</div><div style="margin-top:9px"><button class="vs-btn sm" onclick="vsRecarregarLista()">🔄 Buscar a lista de novo</button></div></div>'
+    : '';
+  document.getElementById('vs-lista-vsls').innerHTML = velha + ordem.map(function(k){
     var lista=pastas[k];
     var ligadas=lista.filter(function(v){return v.rodando;}).length;
     return '<div class="vs-pasta" style="margin-bottom:14px">'+
@@ -29922,7 +29930,8 @@ function vsAbrirVsls(){
   '<datalist id="vs-grupos">'+todosGrupos.map(function(k){ return '<option value="'+vsEsc(k)+'">'; }).join('')+'</datalist>'+
   '<div class="vs-nota" style="margin-top:14px">A VTurb não entrega as pastas pela API — só nome, duração e '+
   'pitch. O agrupamento acima é feito pelo nome do vídeo, e você pode corrigir digitando ao lado de cada um. '+
-  '<a href="#" onclick="vsReagrupar();return false" style="color:var(--accent)">Refazer pelos nomes</a></div>';
+  '<a href="#" onclick="vsReagrupar();return false" style="color:var(--accent)">Refazer pelos nomes</a> · '+
+  '<a href="#" onclick="vsRecarregarLista();return false" style="color:var(--accent)">Atualizar a lista da VTurb</a></div>';
   var jaAberto = document.getElementById('modal-vs-vsls').classList.contains('open');
   if(!jaAberto) vsBuscaVsls = '';          // cada abertura começa sem filtro
   openModal('modal-vs-vsls');
@@ -29994,6 +30003,9 @@ function vsLigar(id,el){
   if(!vsSel.length && lig.length) vsSel=[lig[0]];
   if(vsBuscaVsls) vsFiltrarVsls(vsBuscaVsls);   // atualiza o 'N ligadas' da busca
 }
+// busca a lista da VTurb de novo e reabre esta janela quando chegar
+var vsReabrirVsls = false;
+function vsRecarregarLista(){ vsReabrirVsls = true; closeModal('modal-vs-vsls'); vsCarregar(true); }
 function vsFecharVsls(){ closeModal('modal-vs-vsls'); vsCarregar(true); }
 
 function renderFunis(){

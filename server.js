@@ -8590,6 +8590,41 @@ async function _vturbPlayers(token) {
   })).filter(x => x.id);
 }
 
+// A lista de videos que a tela mostra. Quando a VTurb recusava (limite de 300
+// consultas/min, facil de estourar abrindo a analise de uma VSL), a tela caia
+// calada na lista guardada no dia em que o token foi colado (36 videos, de
+// agosto) e as VSLs novas, como as de 697, sumiam da busca. Agora: tenta de
+// novo uma vez, usa a ultima lista boa da memoria, mantem a guardada em dia e
+// diz pra tela quando a lista nao e a de agora.
+let _vtListaMem = { em: 0, lista: null };
+async function _vturbListaFresca(cfg) {
+  let erro = null;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const l = await _vturbPlayers(cfg.token);
+      _vtListaMem = { em: Date.now(), lista: l };
+      const ids = x => (x || []).map(p => String(p.id)).sort().join(',');
+      if (ids(cfg.players) !== ids(l)) {
+        try {
+          const db = readDB(), c = db.store[KEY_VTURB];
+          if (c && typeof c === 'object') {
+            c.players = l; c.playersEm = new Date().toISOString();
+            db.timestamps = db.timestamps || {}; db.timestamps[KEY_VTURB] = now(); writeDB(db);
+          }
+        } catch (e) {}
+      }
+      return { lista: l, fresca: true };
+    } catch (e) {
+      erro = e.message;
+      if (i === 0 && /Limite/i.test(erro)) await new Promise(r => setTimeout(r, 1500));
+      else break;
+    }
+  }
+  console.warn('[VTURB] lista de vídeos falhou:', erro);
+  if (_vtListaMem.lista) return { lista: _vtListaMem.lista, fresca: false, erro, de: new Date(_vtListaMem.em).toISOString() };
+  return { lista: cfg.players || [], fresca: false, erro, de: cfg.playersEm || cfg.validadoEm || null };
+}
+
 // A VTurb recusou "2026-08-07T00:00:00.000-03:00" com "Start date must be a valid
 // datetime with hours, minutes, and seconds". A doc lista duas formas; a que ela
 // aceita e "AAAA-MM-DD HH:MM:SS UTC". Convertemos o dia em Sao Paulo pra UTC.
@@ -8887,7 +8922,8 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
 
     // Lista SEMPRE fresca: usar o cache da configuracao escondia videos criados
     // depois que o token foi salvo.
-    let todos = await _vturbPlayers(cfg.token).catch(() => (cfg.players || []));
+    const lst = await _vturbListaFresca(cfg);
+    let todos = lst.lista;
     // mais novos primeiro — video recem-subido costuma ser o que esta no ar
     todos = todos.slice().sort((a, b) =>
       String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
@@ -8937,11 +8973,13 @@ app.get('/api/vturb/painel', authUsuario, async (req, res) => {
     linhas.sort((a, b) => b.receita - a.receita);
     linhas.forEach(l => { l.ticket = l.vendas ? l.receita / l.vendas : 0; });
     const saida = { ok: true, de: per.de, ate: per.ate, vsls: linhas, erros,
+      listaFresca: lst.fresca, erroLista: lst.erro || null, listaDe: lst.de || null,
       // a tela precisa saber que existem outras, senao o corte fica invisivel
       todos: todos.map(p => ({ id: p.id, nome: p.nome, duracao: p.duracao,
                                pitch: p.pitch, criadoEm: p.criadoEm })),
       limitado: limitado };
-    _vivoSet(chave, saida);
+    // lista velha não fica guardada: o próximo carregamento tenta a VTurb de novo
+    if (lst.fresca) _vivoSet(chave, saida);
     res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
