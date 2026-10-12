@@ -8764,11 +8764,113 @@ app.get('/api/vturb/por-campo', authUsuario, async (req, res) => {
     const bruto = (d && (d.data || d)) || [];
     const grupos = (Array.isArray(bruto) ? bruto : []).map(g => ({
       nome: g.group_key || '(sem valor)',
-      pontos: (g.group_values || []).map(x => ({ timed: x.timed, total_users: x.total_users }))
+      // a VTurb manda totalUsers (camelCase); a doc fala em total_users
+      pontos: (g.group_values || []).map(x => ({ timed: x.timed, total_users: x.totalUsers != null ? x.totalUsers : x.total_users }))
     })).filter(g => g.pontos.length);
     const saida = { ok: true, player, campo, valores, de: per.de, ate: per.ate, grupos };
     _vivoSet(chave, saida);
     res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── Origem do tráfego (a aba da VTurb), com as veiculações juntas ──
+// A VTurb agrupa pelo valor cru da UTM, que traz o id da veiculação no fim
+// ("AD01-KALEB-RM|52569631627810", "CBO 1.1.X | CONCURSO | ADX | 09/10|5256...").
+// O mesmo anúncio virava dez linhas com três visitas cada. Aqui junta pelo nome.
+// Conferido com a tela da VTurb: retenção ao pitch = passaram do pitch ÷ plays
+// únicos (16 ÷ 67 = 23,88%); play rate = plays únicos ÷ visualizações únicas.
+const VT_CAMPOS_ORIGEM = ['utm_content', 'utm_campaign', 'utm_medium', 'utm_term', 'utm_source'];
+function _vtNomeOrigem(v) {
+  let s = String(v == null ? '' : v);
+  try { s = decodeURIComponent(s.replace(/\+/g, ' ')); } catch (e) { s = s.replace(/\+/g, ' '); }
+  return s.replace(/\|\s*\d{6,}\s*$/, '').replace(/\s+/g, ' ').trim() || '(sem valor)';
+}
+async function _vtOrigemStats(cfg, player, campo, per) {
+  const chave = 'vturb-origem|' + player + '|' + campo + '|' + per.de + '|' + per.ate;
+  const pronto = _vivoGet(chave, 120 * 1000);
+  if (pronto) return pronto;
+  const meta = (cfg.players || []).find(p => String(p.id) === player) || {};
+  let dur = meta.duracao || 0, pitch = meta.pitch || 0;
+  if (!dur) { const p = (await _vturbPlayers(cfg.token).catch(() => [])).find(x => String(x.id) === player); if (p) { dur = p.duracao; pitch = p.pitch; } }
+  const d = await _vturbApiData(cfg.token, '/traffic_origin/stats', {
+    player_id: player, query_key: campo, video_duration: dur || 1, pitch_time: pitch || 0,
+    start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
+  }, per);
+  const brutos = Array.isArray(d) ? d : (d && (d.data || d.results)) || [];
+  const g = {};
+  brutos.forEach(x => {
+    const nome = _vtNomeOrigem(x.grouped_field);
+    const o = g[nome] || (g[nome] = { nome, valores: [], vis: 0, visUnicas: 0, plays: 0, playsUnicos: 0, engPeso: 0,
+                                      audPitch: 0, cliques: 0, vendas: 0, receita: 0 });
+    o.valores.push(String(x.grouped_field));
+    o.vis += Number(x.total_viewed) || 0;
+    o.visUnicas += Number(x.total_viewed_device_uniq) || 0;
+    o.plays += Number(x.total_started) || 0;
+    const pu = Number(x.total_started_device_uniq) || 0;
+    o.playsUnicos += pu;
+    o.engPeso += (Number(x.engagement_rate) || 0) * pu;
+    o.audPitch += Number(x.total_over_pitch) || 0;
+    o.cliques += Number(x.total_clicked_device_uniq) || 0;
+    o.vendas += Number(x.total_conversions) || 0;
+    o.receita += (Number(x.total_amount_brl) || 0) / 100;      // vem em centavos
+  });
+  const linhas = Object.values(g).map(o => ({
+    nome: o.nome, valores: o.valores, veiculacoes: o.valores.length,
+    vis: o.vis, visUnicas: o.visUnicas, plays: o.plays, playsUnicos: o.playsUnicos,
+    playRate: o.visUnicas ? o.playsUnicos / o.visUnicas : 0,
+    engajamento: o.playsUnicos ? o.engPeso / o.playsUnicos / 100 : 0,
+    retPitch: o.playsUnicos ? o.audPitch / o.playsUnicos : 0, audPitch: o.audPitch,
+    cliques: o.cliques, vendas: o.vendas, receita: o.receita
+  })).sort((a, b) => b.vis - a.vis);
+  const saida = { campo, de: per.de, ate: per.ate, duracao: dur, pitch, linhasVturb: brutos.length, linhas };
+  _vivoSet(chave, saida);
+  return saida;
+}
+app.get('/api/vturb/origem', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const per = _vturbPeriodo(req);
+    const player = String(req.query.player || '');
+    const campo = String(req.query.campo || 'utm_content');
+    if (!player) return res.status(400).json({ error: 'Informe o player.' });
+    if (VT_CAMPOS_ORIGEM.indexOf(campo) < 0) return res.status(400).json({ error: 'Campo não suportado.' });
+    const s = await _vtOrigemStats(cfg, player, campo, per);
+    const dir = _ehDir(req);
+    res.json(Object.assign({ ok: true, player }, s, {
+      linhas: s.linhas.map(l => Object.assign({}, l, { valores: undefined }, dir ? {} : { receita: null })) }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+// curvas de retenção das origens escolhidas, somando as veiculações de cada nome
+app.get('/api/vturb/origem-curvas', authUsuario, async (req, res) => {
+  try {
+    const cfg = _vturbExige();
+    const per = _vturbPeriodo(req);
+    const player = String(req.query.player || '');
+    const campo = String(req.query.campo || 'utm_content');
+    if (!player || VT_CAMPOS_ORIGEM.indexOf(campo) < 0) return res.status(400).json({ error: 'Informe o player e o campo.' });
+    let nomes = [];
+    try { nomes = JSON.parse(String(req.query.nomes || '[]')); } catch (e) {}
+    nomes = (Array.isArray(nomes) ? nomes : []).map(String).slice(0, 10);
+    const s = await _vtOrigemStats(cfg, player, campo, per);
+    const deNome = {}, valores = [];
+    s.linhas.filter(l => nomes.indexOf(l.nome) >= 0).forEach(l => l.valores.forEach(v => {
+      if (valores.length < 80) { valores.push(v); deNome[v] = l.nome; }
+    }));
+    if (!valores.length) return res.json({ ok: true, curvas: [] });
+    const d = await _vturbApiData(cfg.token, '/times/user_engagement_by_traffic_origin', {
+      player_id: player, query_key: campo, values: valores,
+      start_date: per.ini, end_date: per.fim, timezone: 'America/Sao_Paulo'
+    }, per);
+    const grupos = (d && (d.data || d)) || [];
+    const soma = {};
+    (Array.isArray(grupos) ? grupos : []).forEach(gr => {
+      const nome = deNome[gr.group_key] || _vtNomeOrigem(gr.group_key);
+      const porT = soma[nome] || (soma[nome] = {});
+      // a VTurb manda totalUsers (camelCase); a doc fala em total_users
+      (gr.group_values || []).forEach(x => { const t = Number(x.timed) || 0; porT[t] = (porT[t] || 0) + (Number(x.totalUsers != null ? x.totalUsers : x.total_users) || 0); });
+    });
+    res.json({ ok: true, curvas: Object.keys(soma).map(nome => ({ nome,
+      pontos: Object.keys(soma[nome]).map(Number).sort((a, b) => a - b).map(t => ({ timed: t, total_users: soma[nome][t] })) })) });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
