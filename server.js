@@ -4576,6 +4576,11 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   for (const dashId of dashboards) {
     for (const dia of dias) tarefas.push({ dashId, dia });
   }
+  // O que a Utmify entregou de fato, por dashboard e dia (campanhas e conta à
+  // parte). Só isso é substituído no fim: antes o período inteiro era apagado e
+  // regravado, e um dia recusado ("Utmify recusou: ERRO") sumia do banco — foi
+  // assim que o CONCURSO de 12/10 ficou zerado depois de passar o dia certo.
+  const okCamp = new Set(), okConta = new Set();
   async function _umDia(t) {
     const dashId = t.dashId, dia = t.dia;
     const meta = (cfg.dashboards || []).find(d => d.id === dashId) || {};
@@ -4588,12 +4593,14 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
         const dIni = new Date(dia + 'T00:00:00' + off).toISOString();
         const dFim = new Date(dia + 'T23:59:59' + off).toISOString();
         campanhas = await _utmifyApiCampanhas(cfg.token, dashId, dIni, dFim);
+        okCamp.add((meta.nome || dashId) + '|' + dia);
       } else {
         const faixa = { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off };
         const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', {
           dashboardId: dashId, level: 'campaign', dateRange: faixa
         });
         campanhas = (r && r.results) ? r.results : [];
+        okCamp.add((meta.nome || dashId) + '|' + dia);
         // Nivel conta tambem: parte do gasto nao cai em campanha nenhuma, e e o
         // total da conta que a tela da Utmify exibe. Sem isso os KPIs ficam menores.
         try {
@@ -4601,7 +4608,8 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
             dashboardId: dashId, level: 'account', dateRange: faixa
           });
           contas = (rc && rc.results) ? rc.results : [];
-        } catch (e) { contas = []; }
+          okConta.add((meta.nome || dashId) + '|' + dia);
+        } catch (e) { contas = []; }     // conta falhou: a de antes fica
       }
       (contas || []).forEach(c => {
         const inv = cent(c.spend), fat = cent(c.grossRevenue);
@@ -4665,7 +4673,12 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
 
   const db = readDB();
   const atual = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
-  const mantidos = atual.filter(l => !(l.fonte === 'utmify' && l.data >= de && l.data <= ate));
+  // fica tudo, menos o que veio novo agora (o mesmo dashboard e dia, no mesmo nível)
+  const mantidos = atual.filter(l => {
+    if (l.fonte !== 'utmify' || l.data < de || l.data > ate) return true;
+    const k = String(l.dashboard || '') + '|' + l.data;
+    return l.nivel === 'conta' ? !okConta.has(k) : !okCamp.has(k);
+  });
   db.store[KEY_METRICAS] = mantidos.concat(linhas);
   const c2 = _utmifyMcpCfg(db) || cfg;
   if (!(c2.dashboards || []).length && (cfg.dashboards || []).length) c2.dashboards = cfg.dashboards;
