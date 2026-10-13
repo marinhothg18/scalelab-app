@@ -3179,8 +3179,14 @@ function _vendaKiwify(p) {
   const met = String(p.payment_method || '').toLowerCase();
   return {
     orderId: 'kiwify:' + String(p.order_id), status,
-    valor: cm.charge_amount != null ? _centavos(cm.charge_amount) : (cm.product_base_price != null ? _centavos(cm.product_base_price) : null),
-    valor_liquido: cm.my_commission != null ? _centavos(cm.my_commission) : (cm.settlement_amount != null ? _centavos(cm.settlement_amount) : null),
+    // Valor = preço do produto, como a Payt: o charge_amount traz os juros do
+    // parcelamento (R$ 865,03 num Acervo de R$ 697 em 12x). Líquido = preço menos
+    // a taxa da Kiwify, antes da divisão da coprodução: o my_commission é só a
+    // parte da conta dona do webhook (R$ 320 de R$ 640), e o faturamento do funil
+    // ficava pela metade perto da Payt.
+    valor: cm.product_base_price != null ? _centavos(cm.product_base_price) : (cm.charge_amount != null ? _centavos(cm.charge_amount) : null),
+    valor_liquido: (cm.product_base_price != null && cm.kiwify_fee != null) ? _centavos(cm.product_base_price - cm.kiwify_fee)
+      : (cm.my_commission != null ? _centavos(cm.my_commission) : (cm.settlement_amount != null ? _centavos(cm.settlement_amount) : null)),
     currency: cm.currency || cm.product_base_price_currency || 'BRL',
     products: [{ name: pr.product_name || pr.name || '' }], plan_name: plano.name || '',
     customer: { name: c.full_name || c.name || c.first_name || '', email: c.email || '', phone: c.mobile || c.phone || '', document: c.CPF || c.cpf || c.cnpj || '' },
@@ -9440,7 +9446,10 @@ app.get('/api/funil/agora', authUsuario, (req, res) => {
     (esc.f.etapas || []).forEach(e => {
       if (e.tipo !== 'checkout' || esc.etapaDeData[e.id] !== e.id) return;
       const pl = _platDoBloco(e);
-      blocos[e.id] = pl ? noCk.filter(x => platDe(x) === pl).length : noCheckout;
+      // sem plataforma, com Checkout irmão que tem: fica com o resto
+      const outras = pl ? [] : (esc.f.etapas || []).filter(x => x !== e && x.tipo === 'checkout').map(_platDoBloco).filter(Boolean);
+      blocos[e.id] = pl ? noCk.filter(x => platDe(x) === pl).length
+        : (outras.length ? noCk.filter(x => !outras.includes(platDe(x))).length : noCheckout);
     });
     // Teste de checkout: a mesma regra, separada pela versão em que a pessoa
     // abriu o checkout (o último clique dela vale)
@@ -12259,13 +12268,20 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         // "Compraram" é toda venda do funil (do produto do bloco, se escolhido):
         // o mesmo número do Obrigado e do topo.
         const lst = prodLista(e), plat = _platDoBloco(e);
-        const vf = vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat));
-        // com plataforma: quem clicou pra ela e quem comprou nela; sem: todo mundo
+        // Sem plataforma, mas com outro Checkout do funil que tem (Checkout 2 =
+        // Kiwify): este fica com o RESTO. Antes ele somava todas, e a venda da
+        // Kiwify aparecia nos dois blocos ("Apostilai Acervo 2" com uma só na Payt).
+        const outras = plat ? [] : [...new Set((f.etapas || []).filter(x => x !== e && x.tipo === 'checkout').map(_platDoBloco).filter(Boolean))];
+        const deOutra = o => outras.some(pl => _vendaDaPlat(o, pl));
+        const soOutra = v => !!(ckPlat[v] && ckPlat[v].size && [...ckPlat[v]].every(pl => outras.includes(pl)));
+        const vf = vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat) && !deOutra(o));
+        // com plataforma: quem clicou pra ela e quem comprou nela; sem: todo mundo (menos o das outras)
         const quemComprou = new Set(vf.map(o => o.visitante).filter(Boolean));
-        const cliquesBloco = plat ? new Set([...ck].filter(v => ckPlat[v] && ckPlat[v].has(plat))) : ck;
-        const abr = plat ? new Set([...cliquesBloco, ...quemComprou]) : abriramSet;
+        const cliquesBloco = plat ? new Set([...ck].filter(v => ckPlat[v] && ckPlat[v].has(plat)))
+                                  : (outras.length ? new Set([...ck].filter(v => !soOutra(v))) : ck);
+        const abr = (plat || outras.length) ? new Set([...cliquesBloco, ...quemComprou]) : abriramSet;
         conj[e.id] = abr;
-        nos[e.id] = { tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '', plataforma: plat,
+        nos[e.id] = { tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '', plataforma: plat, semPlataformas: outras,
                       pessoas: abr.size, cliques: cliquesBloco.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
                       // conversão só com venda que tem pessoa: a que entrou pela campanha
                       // ou pelo produto não passou por clique nenhum que dê pra contar
@@ -12311,8 +12327,10 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       // página → checkout: a seta diz o mesmo que o bloco ("checkouts" de quem
       // clicou em comprar nela), não quem abriu o checkout em qualquer página
       if (nos[l[1]] && nos[l[1]].viaClique && porEtapa[l[0]]) {
-        const pl = nos[l[1]].plataforma;
-        const n = (pl ? ((ckEtapaPlat[l[0]] || {})[pl] || new Set()) : (ckEtapa[l[0]] || new Set())).size;
+        const pl = nos[l[1]].plataforma, sem = nos[l[1]].semPlataformas || [];
+        const daPg = ckEtapa[l[0]] || new Set();
+        const n = pl ? ((ckEtapaPlat[l[0]] || {})[pl] || new Set()).size
+          : (sem.length ? [...daPg].filter(v => !(ckPlat[v] && ckPlat[v].size && [...ckPlat[v]].every(x => sem.includes(x)))).length : daPg.size);
         fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
         return;
       }

@@ -33270,7 +33270,8 @@ function fnNoCorpo(n, b, vt){
       '<button class="fn-btn g sm" style="width:100%;margin-top:9px" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();fnAbrirCkTeste(\''+fnEsc(b.slug)+'\')">Abrir o teste ›</button>'; }
   } else if(n.tipo === 'checkout' && b.viaClique){
     // qual checkout é: a integração e o produto (ou os que mais saíram)
-    sub = [n.integracao || FN_PLAT_NOME[b.plataforma] || 'Checkout', n.produto || 'todos os produtos'].join(' · ');
+    sub = [n.integracao || FN_PLAT_NOME[b.plataforma] || 'Checkout', n.produto || 'todos os produtos'].join(' · ') +
+          ((b.semPlataformas || []).length ? ' · sem '+b.semPlataformas.map(function(p){ return FN_PLAT_NOME[p] || p; }).join(', ') : '');
     grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
       m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
     pe = fnNoSoma('Por origem', b.porOrigem) + fnNoSoma('Por página de entrada', b.porEntrada) +
@@ -34220,7 +34221,8 @@ function mpLeitura(n){
   if(n.url) h += '<div class="fx-sub" style="margin-bottom:10px;word-break:break-all">🔗 <a href="'+fnEsc(/^https?:/i.test(n.url)?n.url:'https://'+n.url)+'" target="_blank" rel="noopener">'+fnEsc(n.url)+'</a></div>';
   if(n.integracao) h += linha('Integração', fnEsc(n.integracao));
   if(b.cliques != null) h += linha(n.tipo === 'split' ? 'Cliques no link' : b.viaClique ? 'Clicaram em comprar' : 'Cliques no anúncio', fnNum(b.cliques));
-  if(b.viaClique) h += linha('Plataforma', b.plataforma ? FN_PLAT_NOME[b.plataforma] + (n.integracao ? '' : ' (pelo link)') : 'todas somadas');
+  if(b.viaClique) h += linha('Plataforma', b.plataforma ? FN_PLAT_NOME[b.plataforma] + (n.integracao ? '' : ' (pelo link)')
+    : ((b.semPlataformas || []).length ? 'todas, menos '+b.semPlataformas.map(function(p){ return FN_PLAT_NOME[p] || p; }).join(', ')+' (que tem bloco próprio)' : 'todas somadas'));
   if(b.investido != null) h += linha('Investido', v2Din(b.investido));
   if(b.pessoas != null) h += linha(n.tipo === 'checkout' && b.viaClique ? 'Abriram o checkout' : n.tipo === 'fonte' ? 'Chegaram' : 'Pessoas', fnNum(b.pessoas));
   if(b.checkout != null && n.tipo !== 'checkout') h += linha('Checkouts', fnNum(b.checkout));
