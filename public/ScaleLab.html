@@ -2716,6 +2716,17 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .vs-dc .d{font-size:12.5px;color:var(--text2);line-height:1.6}
 .vs-dc .a{font-size:12px;margin-top:9px;font-weight:700}
 .vs-nota{font-size:11.5px;color:var(--text2);margin-top:10px;line-height:1.6}
+/* Métricas de Ads › Por Campanha: vendas do TMX ao lado da Utmify */
+.ads-tmx-cx{border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:0 0 12px;background:var(--bg2);font-size:12.5px}
+.ads-tmx-res{display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}
+.ads-tmx-det{margin-top:8px}
+.ads-tmx-det summary{cursor:pointer;font-weight:700;color:var(--accent);font-size:12px}
+.ads-tmx-det ul{margin:6px 0 2px 18px;padding:0;line-height:1.7}
+.ads-tmx-tab{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}
+.ads-tmx-tab th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);padding:6px 8px;border-bottom:1px solid var(--border)}
+.ads-tmx-tab td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.ads-tmx-tab td ul{margin:0 0 0 16px}
+.ads-tmx-nota{margin-top:8px;font-size:11px;color:var(--text2);line-height:1.5}
 /* Origem do tráfego (a aba da VTurb, com as veiculações juntas) */
 .vs-orig-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
 .vs-orig-busca{margin-left:auto;min-width:180px;flex:0 1 240px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:12.5px}
@@ -4977,6 +4988,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 
         <!-- TAB: POR CAMPANHA -->
         <div id="ads-tab-campanhas" class="ads-tab-panel">
+          <div id="ads-tmx-cmp"></div>
           <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:13px;" id="ads-table-campanhas">
               <thead>
@@ -4988,6 +5000,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
                   <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Lucro</th>
                   <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">ROAS</th>
                   <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Conv.</th>
+                  <th style="text-align:right;padding:8px 10px;color:var(--accent);font-size:11px;font-weight:600;text-transform:uppercase;" title="Vendas pagas que o TMX ligou a esta campanha (último anúncio clicado; pessoa ligada pelo sck, e-mail ou telefone)">Vendas TMX</th>
                   <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">CPA</th>
                   <th style="text-align:right;padding:8px 10px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Taxa Conv.</th>
                 </tr>
@@ -38980,6 +38993,7 @@ async function loadAdsMetricsUtmify(forcar){
     _kpisUtmify(d.kpis||{});
     _adsAtribuido = { vendas:(d.kpis&&d.kpis.vendas)||0, receita:(d.kpis&&d.kpis.faturamento)||0 };
     renderAdsTable('campanhas', adsCampanhasData, null, '_name');
+    adsTmxCarregar(from, to);
     renderGroupTable('ads-body-conta', (d.porDashboard||[]).map(x=>({
       label:x.nome, cost:x.investimento, revenue:x.faturamento, profit:x.lucro, count:0
     })), 'Gestor', ()=>'—');
@@ -39607,10 +39621,87 @@ function renderAdsTable(tipo, data, namesMap, idField){
       <td style="text-align:right;padding:9px 10px;color:${profColor};font-weight:600;">${fmtL(r.profit||0)}</td>
       <td style="text-align:right;padding:9px 10px;color:${roasColor};font-weight:700;">${roasVal>0?roasVal.toFixed(2)+'x':'—'}</td>
       <td style="text-align:right;padding:9px 10px;">${fmtN(r.approved)}</td>
+      ${tipo === 'campanhas' ? adsTmxCelula(r) : ''}
       <td style="text-align:right;padding:9px 10px;">${r.cpa>0?fmtAds(r.cpa):'—'}</td>
       <td style="text-align:right;padding:9px 10px;">${crVal}</td>
     </tr>`;
   }).join('');
+}
+
+// ── Vendas do TMX ao lado da Utmify ──
+// A Utmify diz QUANTAS vendas cada campanha teve; o TMX diz QUAIS, pela regra
+// dele (último anúncio clicado, pessoa ligada pelo sck/e-mail/telefone). A
+// coluna "Vendas TMX" e o painel em cima mostram onde os dois não batem.
+var adsTmx = null;          // { chave, carregando, dados }
+function adsCampNorm(s){
+  return String(s||'').replace(/\+/g,' ').replace(/\|\s*\d{6,}\s*$/,'').replace(/\s*\|\s*/g,' | ').replace(/\s+/g,' ').trim().toLowerCase();
+}
+function adsTmxCarregar(de, ate){
+  var chave = de+'|'+ate+'|'+(typeof _qsProjeto === 'function' ? _qsProjeto() : '');
+  if(adsTmx && adsTmx.chave === chave && adsTmx.dados){ adsTmxPintar(); return; }
+  adsTmx = { chave: chave, carregando: true, dados: null };
+  fetch('/api/metricas/tmx-campanhas?de='+de+'&ate='+ate+(typeof _qsProjeto === 'function' ? _qsProjeto() : ''))
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
+    .then(function(d){ if(!adsTmx || adsTmx.chave !== chave) return; adsTmx.carregando = false; adsTmx.dados = d; adsTmxPintar(); })
+    .catch(function(e){ if(!adsTmx || adsTmx.chave !== chave) return; adsTmx.carregando = false; adsTmx.erro = e.message; adsTmxPintar(); });
+}
+function adsTmxCelula(r){
+  var d = adsTmx && adsTmx.dados;
+  if(!d) return '<td style="text-align:right;padding:9px 10px;color:var(--text2)">'+(adsTmx && adsTmx.carregando ? '…' : '—')+'</td>';
+  var c = d.porCampanha[adsCampNorm(r._name)], n = c ? c.vendas : 0, u = Number(r.approved)||0, dif = n - u;
+  var selo = dif ? ' <span style="font-size:10.5px;font-weight:800;color:'+(dif > 0 ? 'var(--green)' : '#f59e0b')+'" title="'+
+    (dif > 0 ? dif+' venda(s) que o TMX ligou a esta campanha e a Utmify não contou' : (-dif)+' venda(s) que a Utmify contou e o TMX não ligou a esta campanha')+'">'+
+    (dif > 0 ? '+' : '−')+Math.abs(dif)+'</span>' : '';
+  return '<td style="text-align:right;padding:9px 10px;font-weight:700;color:var(--accent)">'+n+selo+'</td>';
+}
+function adsTmxPintar(){
+  // a coluna depende dos dados: redesenha a tabela e põe as campanhas que só o TMX tem
+  if(typeof adsCampanhasData !== 'undefined' && adsCampanhasData.length) renderAdsTable('campanhas', adsCampanhasData, null, '_name');
+  var cx = document.getElementById('ads-tmx-cmp'); if(!cx) return;
+  if(adsTmx && adsTmx.erro){ cx.innerHTML = '<div class="ads-tmx-cx"><span style="color:var(--text2)">Não deu pra ler as vendas do TMX: '+fnEsc(adsTmx.erro)+'</span></div>'; return; }
+  var d = adsTmx && adsTmx.dados; if(!d){ cx.innerHTML = ''; return; }
+  var esc = typeof fnEsc === 'function' ? fnEsc : function(x){ return String(x); };
+  var porNome = {}; (adsCampanhasData||[]).forEach(function(r){ porNome[adsCampNorm(r._name)] = r; });
+  var utTotal = (adsCampanhasData||[]).reduce(function(a, r){ return a + (Number(r.approved)||0); }, 0);
+  var emCamp = 0; Object.keys(d.porCampanha).forEach(function(k){ emCamp += d.porCampanha[k].vendas; });
+  // campanhas que só o TMX tem: linha extra no fim da tabela
+  var tb = document.getElementById('ads-body-campanhas');
+  if(tb){
+    var so = Object.keys(d.porCampanha).filter(function(k){ return !porNome[k]; });
+    if(so.length && !adsCampanhasData.length) tb.innerHTML = '';
+    tb.insertAdjacentHTML('beforeend', so.map(function(k){
+      var c = d.porCampanha[k];
+      return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);"><td style="padding:9px 10px;font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(c.nome)+'">'+esc(c.nome)+
+        ' <span style="font-size:10px;font-weight:800;color:var(--accent)">só no TMX</span></td>'+
+        '<td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td>'+
+        '<td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;">0</td>'+
+        '<td style="text-align:right;padding:9px 10px;font-weight:700;color:var(--accent)">'+c.vendas+' <span style="font-size:10.5px;font-weight:800;color:var(--green)">+'+c.vendas+'</span></td>'+
+        '<td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td></tr>';
+    }).join(''));
+  }
+  // onde não bate: campanha a campanha, com as vendas do TMX
+  var chaves = {}; Object.keys(d.porCampanha).forEach(function(k){ chaves[k] = 1; }); Object.keys(porNome).forEach(function(k){ chaves[k] = 1; });
+  var difs = Object.keys(chaves).map(function(k){
+    var c = d.porCampanha[k], r = porNome[k];
+    return { nome: c ? c.nome : r._name, u: r ? (Number(r.approved)||0) : 0, t: c ? c.vendas : 0, pedidos: c ? c.pedidos : [] };
+  }).filter(function(x){ return x.u !== x.t; }).sort(function(a, b){ return Math.abs(b.t - b.u) - Math.abs(a.t - a.u); });
+  var quando = function(em){ var x = new Date(em); return String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0')+' '+String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'); };
+  var venda = function(p){
+    return '<li>'+quando(p.em)+(p.valor != null ? ' · '+fmtAds(p.valor) : '')+(p.anuncio ? ' · '+esc(p.anuncio) : '')+
+      (p.motivo ? ' · <span style="color:var(--text2)">'+esc(p.motivo)+'</span>' : (p.casou ? ' · <span style="color:var(--text2)">ligada por '+esc(p.casou)+'</span>' : ''))+
+      (p.visitante ? ' · <a href="#" onclick="ldFicha(\''+esc(p.visitante)+'\');return false" style="color:var(--accent)">ver pessoa</a>' : '')+'</li>';
+  };
+  cx.innerHTML = '<div class="ads-tmx-cx">'+
+    '<div class="ads-tmx-res"><span><b>Utmify</b> '+utTotal+' venda'+(utTotal===1?'':'s')+' nas campanhas</span>'+
+      '<span><b style="color:var(--accent)">TMX</b> '+d.total+' venda'+(d.total===1?'':'s')+' paga'+(d.total===1?'':'s')+': '+emCamp+' ligada'+(emCamp===1?'':'s')+' a campanha, '+d.semCampanha.length+' sem campanha</span>'+
+      '<span style="color:var(--text2)">'+(difs.length ? difs.length+' campanha'+(difs.length===1?'':'s')+' com número diferente' : 'as campanhas batem')+'</span></div>'+
+    (difs.length ? '<details class="ads-tmx-det"><summary>Onde a Utmify e o TMX não batem</summary><table class="ads-tmx-tab"><thead><tr><th>Campanha</th><th>Utmify</th><th>TMX</th><th>Vendas que o TMX ligou a ela</th></tr></thead><tbody>'+
+      difs.map(function(x){ return '<tr><td>'+esc(x.nome)+'</td><td>'+x.u+'</td><td style="color:var(--accent);font-weight:700">'+x.t+'</td><td>'+
+        (x.pedidos.length ? '<ul>'+x.pedidos.map(venda).join('')+'</ul>' : '<span style="color:var(--text2)">nenhuma: o TMX ligou essas vendas a outra campanha, ao orgânico ou não achou a pessoa</span>')+'</td></tr>'; }).join('')+
+      '</tbody></table></details>' : '')+
+    (d.semCampanha.length ? '<details class="ads-tmx-det"><summary>Vendas do TMX sem campanha ('+d.semCampanha.length+')</summary><ul>'+d.semCampanha.map(venda).join('')+'</ul></details>' : '')+
+    '<div class="ads-tmx-nota">O TMX dá a venda ao último anúncio em que a pessoa clicou (bio e visita direta não tiram o crédito). A Utmify usa a regra dela. Vendas de renovação e reembolsadas ficam de fora.</div>'+
+  '</div>';
 }
 
 // INIT

@@ -4406,6 +4406,62 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Vendas do TMX por campanha, pra pôr do lado da Utmify ──
+// A Utmify diz QUANTAS vendas cada campanha teve; o TMX diz QUAIS, pela regra
+// dele (último anúncio clicado; pessoa ligada pelo sck, e-mail ou telefone).
+// As UTMs trazem o id no fim do nome ("… | 12/10|52569972976210") e espaços
+// soltos: compara sem eles, que é como a Utmify mostra.
+function _campNorm(s) {
+  return String(s || '').replace(/\+/g, ' ').replace(/\|\s*\d{6,}\s*$/, '')
+    .replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+const _semId = s => String(s || '').replace(/\+/g, ' ').replace(/\|\s*\d{6,}\s*$/, '').replace(/\s+/g, ' ').trim();
+app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe o período.' });
+    const db = readDB(), dir = _ehDir(req);
+    // projeto da tela = dashboard da Utmify; no TMX, os funis com o mesmo nome de projeto
+    const projeto = String(req.query.projeto || '').slice(0, 40);
+    let nomeProj = '';
+    if (projeto) {
+      const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto);
+      nomeProj = dP ? String(dP.nome || '').trim() : '';
+    }
+    const np = _nrm(nomeProj);
+    const funisProj = new Set((Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
+      .filter(f => f && np && _nrm(f.projeto) === np).map(f => f.id));
+    const prods = _produtosCfg(db);
+    const doProjeto = p => {
+      if (!np) return true;
+      if (p.funil && funisProj.has(p.funil)) return true;
+      if (_campNorm(p.cred_camp || p.camp).indexOf(np) >= 0) return true;
+      const pr = _produtoDe(p.produto, prods);
+      return !!(pr && _nrm(pr.projeto) === np);
+    };
+    const peds = _q(`SELECT pedido, valor, liquido, produto, cred_canal, cred_camp, cred_cont, camp, casou, visitante, funil, sem_origem, em
+                     FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND dia BETWEEN ? AND ? ORDER BY em`).all(de, ate).filter(doProjeto);
+    const linha = p => ({ pedido: p.pedido, em: p.em, valor: dir ? (Number(p.valor) || 0) : null, produto: p.produto || '',
+      anuncio: _semId(p.cred_cont), canal: p.cred_canal || '', casou: p.casou || '', visitante: p.visitante || '' });
+    const porCampanha = {}, semCampanha = [];
+    peds.forEach(p => {
+      const k = _campNorm(p.cred_camp);
+      if (!k) {
+        const motivo = !p.visitante ? 'Sem pessoa ligada (o checkout não devolveu o id e o e-mail não era conhecido)'
+          : p.cred_canal === 'organico' ? 'Orgânico (bio, direto) — sem anúncio antes'
+          : (p.sem_origem || 'Anúncio sem campanha na UTM');
+        semCampanha.push(Object.assign(linha(p), { motivo }));
+        return;
+      }
+      const c = porCampanha[k] || (porCampanha[k] = { nome: _semId(p.cred_camp), vendas: 0, faturamento: dir ? 0 : null, pedidos: [] });
+      c.vendas++; if (dir) c.faturamento += Number(p.valor) || 0;
+      c.pedidos.push(linha(p));
+    });
+    res.json({ ok: true, de, ate, projeto: nomeProj, total: peds.length, porCampanha, semCampanha });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── API INTERNA DA UTMIFY (a mesma que o painel deles usa) ──
 // Descoberta inspecionando o painel: POST server.utmify.com.br/orders/search-objects
 // com Authorization: Bearer <JWT da sessao>. E a mesma API que o MCP embrulha —
