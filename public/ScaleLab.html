@@ -34254,25 +34254,43 @@ function fnCampoIntegracao(n){
 }
 // Produto do bloco: é o nome que chega no webhook (ex.: "Apostilai Acervo").
 // O checkout fica com o principal, o upsell com o dele — e as vendas se separam.
-var fnProdutosVistos = null;
+var fnProdutosVistos = null, fnProdNo = null;
 function fnCarregarProdutosVistos(){
   if(fnProdutosVistos) return;
   fnProdutosVistos = [];
   fetch('/api/produtos').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
-    fnProdutosVistos = ((d && d.vistos) || []).map(function(x){ return x.nome; }).filter(function(n){ return n && n !== '(sem nome)'; });
+    fnProdutosVistos = ((d && d.vistos) || []).filter(function(x){ return x.nome && x.nome !== '(sem nome)'; });
+    // os cadastrados em Produtos também entram, mesmo antes do primeiro aviso
+    var tem = {}; fnProdutosVistos.forEach(function(x){ tem[x.nome.toLowerCase()] = 1; });
+    ((d && d.lista) || []).forEach(function(p){
+      if(p && p.nome && !tem[p.nome.toLowerCase()]) fnProdutosVistos.push({ nome: p.nome, vendas: 0, avisos: 0, plataformas: [], cadastrado: true });
+    });
     var dl = document.getElementById('fn-prod-lista');
-    if(dl) dl.innerHTML = fnProdutosVistos.map(function(n){ return '<option value="'+fnEsc(n)+'">'; }).join('');
+    if(dl) dl.innerHTML = fnProdOpcoes(fnProdNo);
   }).catch(function(){});
+}
+// opções do campo de produto: os da plataforma do bloco primeiro, com de onde vieram
+function fnProdOpcoes(n){
+  var pl = !n ? '' : FN_PLAT_NOME[String(n.integracao||'').toLowerCase()] ? String(n.integracao).toLowerCase() : fnPlatDoLink(n.url);
+  var l = (fnProdutosVistos||[]).slice().sort(function(a, b){
+    var da = pl && (a.plataformas||[]).indexOf(pl) >= 0 ? 0 : 1, db = pl && (b.plataformas||[]).indexOf(pl) >= 0 ? 0 : 1;
+    return da - db || (b.vendas||0) - (a.vendas||0) || (b.avisos||0) - (a.avisos||0);
+  });
+  return l.map(function(x){
+    var de = (x.plataformas||[]).map(function(p){ return FN_PLAT_NOME[p] || p; }).join(', ');
+    var info = !x.avisos ? 'cadastrado, ainda sem aviso de venda' : de+(x.vendas ? ' · '+x.vendas+' paga(s)' : ' · ainda sem venda paga');
+    return '<option value="'+fnEsc(x.nome)+'" label="'+fnEsc(info)+'">';
+  }).join('');
 }
 function fnCampoProduto(n){
   if(!(n.tipo === 'checkout' || n.tipo === 'upsell' || n.tipo === 'downsell' || n.tipo === 'obrigado' || n.pagamento)) return '';
-  fnCarregarProdutosVistos();
+  fnProdNo = n; fnCarregarProdutosVistos();
   var dica = n.tipo === 'checkout' ? 'O produto principal. Vazio = toda venda de quem clicou em comprar.'
            : n.tipo === 'obrigado' ? 'Vazio = toda venda do funil.'
            : 'O produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+'. É por ele que a venda fica separada da principal.';
   return '<div class="fn-campo"><label>Produto vendido aqui</label>'+
-    '<input list="fn-prod-lista" value="'+fnEsc(n.produto||'')+'" placeholder="como aparece na Payt" onchange="fnSalvarProduto(\''+n.id+'\',this.value)">'+
-    '<datalist id="fn-prod-lista">'+(fnProdutosVistos||[]).map(function(x){ return '<option value="'+fnEsc(x)+'">'; }).join('')+'</datalist>'+
+    '<input list="fn-prod-lista" value="'+fnEsc(n.produto||'')+'" placeholder="como aparece no checkout" onchange="fnSalvarProduto(\''+n.id+'\',this.value)">'+
+    '<datalist id="fn-prod-lista">'+fnProdOpcoes(n)+'</datalist>'+
     '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">'+dica+' Mais de um: separe por vírgula.</div></div>';
 }
 function fnSalvarProduto(id, v){

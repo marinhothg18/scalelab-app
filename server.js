@@ -11582,11 +11582,17 @@ app.get('/api/produtos', authUsuario, (req, res) => {
   try {
     const db = readDB(), lista = _produtosCfg(db);
     const corte = Date.now() - 30 * 86400000, vistos = {};
+    // Todo aviso conta, não só a venda paga: oferta nova costuma ter pix gerado
+    // ou cartão recusado antes da primeira aprovada, e sem isso o produto não
+    // aparecia pra escolher no bloco do mapa. A plataforma vai junto.
     (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
-      if (!_vendaPaga(v) || new Date(v.recebidoEm).getTime() < corte) return;
+      if (new Date(v.recebidoEm).getTime() < corte) return;
       const nome = String(v.produto || '').trim() || '(sem nome)';
-      const x = vistos[nome] = vistos[nome] || { nome, vendas: 0, receita: 0, ultima: '' };
-      x.vendas++; x.receita += Number(v.valor) || 0;
+      const x = vistos[nome] = vistos[nome] || { nome, vendas: 0, avisos: 0, receita: 0, ultima: '', plataformas: [] };
+      x.avisos++;
+      const pl = String(v.plataforma || 'payt').toLowerCase();
+      if (x.plataformas.indexOf(pl) < 0) x.plataformas.push(pl);
+      if (_vendaPaga(v)) { x.vendas++; x.receita += Number(v.valor) || 0; }
       if (String(v.recebidoEm) > x.ultima) x.ultima = String(v.recebidoEm);
     });
     const saida = Object.values(vistos).map(x => {
