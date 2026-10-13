@@ -10854,9 +10854,24 @@ function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
     if (cacheVis[vis] === undefined) cacheVis[vis] = !!_q('SELECT 1 FROM paginas p WHERE p.visitante=? AND ' + esq.where + ' LIMIT 1').get(vis, ...esq.args);
     return cacheVis[vis];
   };
-  const funisDoProj = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(x => x && x.projeto === esc.f.projeto);
+  const todosFunis = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(Boolean);
+  const funisDoProj = todosFunis.filter(x => x.projeto === esc.f.projeto);
   const produtos = _produtosCfg(dbj);
   const unico = funisDoProj.length === 1;
+  // Venda sem pessoa e sem campanha que case vai pelo PRODUTO. Com o cadastro de
+  // produtos, vale o projeto dele. Sem cadastro, vale o produto escrito nos
+  // blocos dos funis (checkout, upsell): só é deste projeto se só funis dele
+  // citam o produto. Antes, sem cadastro, toda venda órfã ia pro funil que
+  // estivesse sozinho no projeto — e o Milhão Iza (RENDA EXTRA) passou a mostrar
+  // vendas do Apostilai Elite, que é do CONCURSO.
+  const projPorProduto = {};
+  todosFunis.forEach(f => (f.etapas || []).forEach(e => String(e.produto || '').split(/[,;\n]+/).map(_nrm).filter(Boolean)
+    .forEach(p => { (projPorProduto[p] = projPorProduto[p] || new Set()).add(f.projeto || ''); })));
+  const projetosDoProduto = nome => {
+    const n = _nrm(nome), s = new Set();
+    if (n) Object.keys(projPorProduto).forEach(p => { if (n === p || n.indexOf(p) >= 0 || p.indexOf(n) >= 0) projPorProduto[p].forEach(x => s.add(x)); });
+    return s;
+  };
   const campDe = v => {
     const t = String(v || '').trim(); if (!t) return '';
     const partes = t.split('|').map(x => x.trim());
@@ -10870,7 +10885,12 @@ function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
     else if (!o.visitante && regra) { const n = campDe(o.cred_camp || o.camp); if (n && regra(n)) por = 'campanha'; }
     if (!por && !o.visitante && unico) {
       const pr = _produtoDe(o.produto, produtos);
-      if (pr ? (pr.projeto === esc.f.projeto) : !produtos.length) por = 'produto';
+      if (pr) { if (pr.projeto === esc.f.projeto) por = 'produto'; }
+      else {
+        const ps = projetosDoProduto(o.produto);
+        // ninguém cita o produto: só vale quando existe um funil só no sistema todo
+        if (ps.size ? (ps.size === 1 && ps.has(esc.f.projeto)) : (!produtos.length && todosFunis.length === 1)) por = 'produto';
+      }
     }
     if (por) out.push(Object.assign({ por }, o));
   });
