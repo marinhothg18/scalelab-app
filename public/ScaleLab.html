@@ -1474,6 +1474,13 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
   background:var(--border);border-radius:10px;overflow:hidden}
 .fn-ctx-num > div{background:var(--bg2);padding:11px 13px}
 .fn-ctx-num .k{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
+.fn-ctx-num > div.clica{cursor:pointer} .fn-ctx-num > div.clica:hover{background:var(--bg3)}
+.fn-ctx-num .fn-ctx-sub{font-size:10.5px;font-weight:700;color:var(--v2-laranja,#f59e0b);margin-top:3px}
+.fn-vd-res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fn-vd-res > div{background:var(--bg3);border-radius:10px;padding:10px 12px}
+.fn-vd-res b{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.fn-vd-res span{font-size:11px;color:var(--text2)}
+.fn-vd-res .warn b{color:var(--v2-laranja,#f59e0b)}
 .fn-ctx-num .v{font-size:21px;font-weight:800;letter-spacing:-.035em;margin-top:2px;
   line-height:1.15;font-variant-numeric:tabular-nums}
 .fn-seg{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:11px;
@@ -30136,8 +30143,63 @@ function fnPintarCtx(){
     cel('Cliques',   cliques===null ? '—' : fnNum(cliques)) +
     cel('Chegaram',  nv ? fnNum(nv.chegaram) : '—', '', 'Pessoas únicas em qualquer página do mapa no período, sem o tráfego do time. É a mesma base dos Leads e do Resultado.') +
     cel('Checkout',  nv ? fnNum(nv.checkout) : '—', nv && nv.checkout ? 'var(--v2-laranja,#f59e0b)' : '') +
-    cel('Compraram', nv ? fnNum(nv.compraram) : '—', nv && nv.compraram ? 'var(--v2-verde,#22C55E)' : '') +
+    fnCtxCompraram(nv) +
     cel('Testes',    fnNum(testes), testes?'var(--accent)':'');
+}
+// Compraram: as vendas que o mapa ligou a uma pessoa deste funil e, embaixo,
+// as aprovadas do projeto que chegaram sem pessoa (não entram nos blocos).
+// Gestor clica e vê cada venda.
+function fnCtxCompraram(nv){
+  var sp = nv && nv.semPessoa && nv.semPessoa.n ? nv.semPessoa : null, gest = !!nv && _ehGestor();
+  var tit = !nv ? '' : 'No mapa: '+fnNum(nv.compraram)+' venda(s) ligada(s) a uma pessoa deste funil.'+
+    (sp ? ' Mais '+fnNum(sp.n)+' aprovada(s) de produtos deste projeto chegaram sem pessoa ligada ('+
+      sp.motivos.map(function(m){ return m.n+' '+m.motivo.toLowerCase(); }).join(', ')+') e não entram nos blocos.' : '')+
+    (gest ? ' Clique pra ver cada venda.' : '');
+  return '<div'+(gest ? ' class="clica" onclick="fnVendasDetalhe()"' : (tit ? ' style="cursor:help"' : ''))+(tit ? ' title="'+fnEsc(tit)+'"' : '')+'>'+
+    '<div class="k">Compraram'+(gest ? ' ›' : '')+'</div>'+
+    '<div class="v"'+(nv && nv.compraram ? ' style="color:var(--v2-verde,#22C55E)"' : '')+'>'+(nv ? fnNum(nv.compraram) : '—')+'</div>'+
+    (sp ? '<div class="fn-ctx-sub">+'+fnNum(sp.n)+' sem pessoa ligada</div>' : '')+'</div>';
+}
+// O que cada motivo de venda sem pessoa quer dizer
+var FN_MOTIVO_SEM = {
+  'Checkout limpou o src/sck': 'Chegou com utm_source "organic" e sem o sck do TMX: a pessoa abriu o checkout por um link sem o pixel (WhatsApp, e-mail, bio, link direto) ou o checkout perdeu os parâmetros.',
+  'Sem id nem UTM': 'Nada na venda liga a uma visita: sem sck, sem UTM, e o e-mail ou telefone não bate com ninguém que o pixel viu.',
+  'UTM com macro vazia': 'O anúncio mandou a UTM com {{macro}} sem preencher.',
+  'Jornada expirou (> 7 dias)': 'A pessoa foi vista, mas a última visita foi há mais de 7 dias.'
+};
+// Cada venda do período por trás do Compraram, em duas partes: as do mapa
+// (com origem e anúncio) e as sem pessoa (com o motivo). Antes só havia o número.
+function fnVendasDetalhe(){
+  var f = fnAtual(); if(!f) return;
+  var p = fnPeriodo(), base = '/api/funil/vendas-lista?funil='+encodeURIComponent(f.id)+'&de='+p.de+'&ate='+p.ate;
+  var ov = v2Modal('<div class="v2-cab"><div><h2>Vendas · '+fnEsc(fnPeriodoRotulo().toLowerCase())+'</h2><div class="fx-sub">funil '+fnEsc(f.nome)+'</div></div>'+
+    '<button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div><div class="fn-vd fx-vazio">Buscando…</div>', 'p');
+  Promise.all([v2Json(base), v2Json(base+'&tipo=fora')]).then(function(r){
+    var no = r[0].vendas || [], fora = r[1].vendas || [];
+    var cx = ov.querySelector('.fn-vd'); if(!cx) return;
+    cx.className = 'fn-vd';
+    var soma = function(l){ return l.reduce(function(a, v){ return a + (Number(v.valor)||0); }, 0); };
+    var tabela = function(l, sem){
+      return '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Quando</th><th>Produto</th><th class="n">Valor</th><th>'+(sem ? 'Por que ficou fora' : 'Origem')+'</th></tr></thead><tbody>'+
+        l.map(function(v){
+          var orig = sem ? '<span class="v2-pill warn" style="cursor:help" title="'+fnEsc(FN_MOTIVO_SEM[v.semOrigem] || '')+'">'+fnEsc(v.semOrigem || 'Sem id nem UTM')+'</span>'
+            : (v2Fonte(v.fonte)+(v.anuncio ? ' · '+fnEsc(v2Anuncio(v.anuncio)) : '')+(v.casou ? ' <span class="v2-pill neu">'+fnEsc(v.casou)+'</span>' : ''));
+          var sub = [FN_PLAT_NOME[v.plataforma] || v.plataforma, v.metodo].filter(Boolean).join(' · ')+(v.utm ? ' · '+v.utm.slice(0, 60) : '');
+          return '<tr'+(v.visitante ? ' class="clica" onclick="ldFicha(\''+fnEsc(v.visitante)+'\')"' : '')+'><td>'+v2Data(v.em)+'</td><td>'+fnEsc(v.produto || '—')+
+            '<span class="sub">'+fnEsc(sub)+'</span></td><td class="n">'+v2Din2(v.valor)+'</td><td>'+orig+'</td></tr>';
+        }).join('')+'</tbody></table></div>';
+    };
+    cx.innerHTML = '<div class="fn-vd-res">'+
+        '<div><b>'+fnNum(no.length + fora.length)+'</b><span>aprovadas</span></div>'+
+        '<div><b>'+fnNum(no.length)+'</b><span>no mapa · '+v2Din2(soma(no))+'</span></div>'+
+        '<div'+(fora.length ? ' class="warn"' : '')+'><b>'+fnNum(fora.length)+'</b><span>sem pessoa · '+v2Din2(soma(fora))+'</span></div></div>'+
+      '<div class="v2-rot" style="margin:16px 0 6px">No mapa: ligadas a uma pessoa deste funil</div>'+
+      (no.length ? tabela(no, false) : '<div class="fx-vazio">Nenhuma.</div>')+
+      (fora.length ? '<div class="v2-rot" style="margin:20px 0 6px">Sem pessoa ligada: produtos deste projeto, fora dos blocos</div>'+
+        '<div class="fx-sub" style="margin-bottom:8px">Aprovadas na plataforma, mas sem nada que diga quem comprou: não dá pra saber a página, o anúncio nem o funil. Passe o mouse no motivo pra ver o que ele quer dizer.</div>'+
+        tabela(fora, true) : '')+
+      '<div class="fx-sub" style="margin-top:12px">Renovações de assinatura não entram. Clique numa venda do mapa pra abrir a pessoa.</div>';
+  }).catch(function(e){ var cx = ov.querySelector('.fn-vd'); if(cx) cx.textContent = e.message; });
 }
 // Investido pela mesma regra dos cliques: campanhas amarradas nas origens do
 // mapa (ou a regra do Resultado). Sem regra, é o projeto inteiro — e avisa.

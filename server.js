@@ -10855,6 +10855,36 @@ async function _projetoIdDoFunil(f) {
 //   jornada  — a pessoa esteve numa página do mapa
 //   campanha — sem pessoa, mas a campanha da UTM é deste funil
 //   produto  — sem pessoa nem campanha, funil único do projeto e produto do projeto
+// De que projetos é um produto: o do cadastro de Produtos ou, sem cadastro, o
+// dos funis cujos blocos citam o produto ("Apostilai Elite" casa com "Apostilai Elite 10").
+function _projetosDoProdutoFn(todosFunis) {
+  const projPorProduto = {};
+  todosFunis.forEach(f => (f.etapas || []).forEach(e => String(e.produto || '').split(/[,;\n]+/).map(_nrm).filter(Boolean)
+    .forEach(p => { (projPorProduto[p] = projPorProduto[p] || new Set()).add(f.projeto || ''); })));
+  return nome => {
+    const n = _nrm(nome), s = new Set();
+    if (n) Object.keys(projPorProduto).forEach(p => { if (n === p || n.indexOf(p) >= 0 || p.indexOf(n) >= 0) projPorProduto[p].forEach(x => s.add(x)); });
+    return s;
+  };
+}
+// Vendas aprovadas de produtos deste projeto que chegaram SEM pessoa ligada
+// (checkout limpou o sck, sem id nem UTM) e que o funil não pegou por campanha
+// nem por produto. Não entram em bloco nenhum — não dá pra saber a página nem
+// o funil —, mas existem: sem mostrar, o mapa dizia 4 vendas num dia em que a
+// Payt aprovou 13.
+function _vendasSemPessoaDoProjeto(dbj, esc, per, jaNoMapa) {
+  const ja = new Set((jaNoMapa || []).map(o => o.id));
+  const projeto = esc.f.projeto || '';
+  const produtos = _produtosCfg(dbj);
+  const doProduto = _projetosDoProdutoFn((Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(Boolean));
+  return _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND (visitante IS NULL OR visitante='') ORDER BY em DESC")
+    .all(per.de, per.ate).filter(o => {
+      if (ja.has(o.id)) return false;
+      const pr = _produtoDe(o.produto, produtos);
+      return pr ? pr.projeto === projeto : doProduto(o.produto).has(projeto);
+    });
+}
+function _platDoPedido(o) { const id = String((o && o.id) || ''); return id.indexOf(':') > 0 ? id.split(':')[0] : 'payt'; }
 function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
   const esq = _escopoSql(esc, 'p');
   const todos = _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND renovacao=0').all(per.de, per.ate);
@@ -10873,14 +10903,7 @@ function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
   // citam o produto. Antes, sem cadastro, toda venda órfã ia pro funil que
   // estivesse sozinho no projeto — e o Milhão Iza (RENDA EXTRA) passou a mostrar
   // vendas do Apostilai Elite, que é do CONCURSO.
-  const projPorProduto = {};
-  todosFunis.forEach(f => (f.etapas || []).forEach(e => String(e.produto || '').split(/[,;\n]+/).map(_nrm).filter(Boolean)
-    .forEach(p => { (projPorProduto[p] = projPorProduto[p] || new Set()).add(f.projeto || ''); })));
-  const projetosDoProduto = nome => {
-    const n = _nrm(nome), s = new Set();
-    if (n) Object.keys(projPorProduto).forEach(p => { if (n === p || n.indexOf(p) >= 0 || p.indexOf(n) >= 0) projPorProduto[p].forEach(x => s.add(x)); });
-    return s;
-  };
+  const projetosDoProduto = _projetosDoProdutoFn(todosFunis);
   const campDe = v => {
     const t = String(v || '').trim(); if (!t) return '';
     const partes = t.split('|').map(x => x.trim());
@@ -11095,14 +11118,17 @@ app.get('/api/funil/vendas-lista', authNegocio, async (req, res) => {
     if (!esc) return res.status(404).json({ error: 'Funil não encontrado.' });
     const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
     let l;
-    if (req.query.tipo === 'sem') {
+    if (req.query.tipo === 'fora') {
+      const no = _vendasDoFunil(dbj, esc, per, {}, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno);
+      l = _vendasSemPessoaDoProjeto(dbj, esc, per, no).slice(0, 300);
+    } else if (req.query.tipo === 'sem') {
       l = _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND sem_origem IS NOT NULL ORDER BY em DESC LIMIT 300").all(per.de, per.ate);
       if (req.query.motivo) l = l.filter(o => o.sem_origem === req.query.motivo);
     } else {
       l = _vendasDoFunil(dbj, esc, per, {}, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).sort((a, b) => b.em - a.em).slice(0, 300);
       if (req.query.dia) l = l.filter(o => o.dia === req.query.dia);
     }
-    res.json({ ok: true, vendas: l.map(o => ({ pedido: o.pedido, em: o.em, produto: o.produto, valor: o.valor, metodo: o.metodo,
+    res.json({ ok: true, vendas: l.map(o => ({ pedido: o.pedido, em: o.em, produto: o.produto, valor: o.valor, metodo: o.metodo, plataforma: _platDoPedido(o),
       visitante: o.visitante, casou: o.casou, semOrigem: o.sem_origem, fonte: o.cred_fonte || o.fonte, anuncio: o.cred_cont || o.cont,
       utm: [o.fonte, o.camp, o.cont].filter(Boolean).join(' · '), por: o.por || '' })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -11997,6 +12023,10 @@ app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
     _q('SELECT id, nome FROM camp_dia WHERE dia BETWEEN ? AND ?').all(per.de, per.ate).forEach(c => { nomes[c.id] = c.nome; });
     const pagasT = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno);
     const comprou = pagasT.length;
+    const semP = _vendasSemPessoaDoProjeto(dbj, esc, per, pagasT), motivos = {};
+    semP.forEach(o => { const m = o.sem_origem || 'Sem id nem UTM'; motivos[m] = (motivos[m] || 0) + 1; });
+    const semPessoa = { n: semP.length, valor: _ehDir(req) ? semP.reduce((a, o) => a + (Number(o.valor) || 0), 0) : null,
+                        motivos: Object.entries(motivos).sort((a, b) => b[1] - a[1]).map(([motivo, n]) => ({ motivo, n })) };
     // quem comprou passou pelo checkout, mesmo se o clique no botão não foi visto
     pagasT.forEach(o => { if (o.visitante) ck.add(o.visitante); });
     // investido e cliques do topo: o mesmo arquivo de campanhas do Resultado,
@@ -12013,7 +12043,7 @@ app.get('/api/funil/mapa-numeros', authUsuario, async (req, res) => {
       Object.keys(camp.porDia).forEach(d => camp.porDia[d].forEach(c => { if (!regra || regra(c.nome)) { investido += c.gasto; cliques += c.cliques; } }));
     } catch (e) {}
     res.json({ ok: true, chegaram: todos.size, pitch: pitch.size, checkout: ck.size, compraram: comprou, etapas,
-               investido, cliques, semRegra: !_regraCampanhas(esc.f) });
+               investido, cliques, semRegra: !_regraCampanhas(esc.f), semPessoa });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
