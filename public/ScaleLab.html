@@ -2804,7 +2804,12 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-nota{font-size:12px;color:var(--text2)}
 .cp-pop .cp-nota{grid-column:1/-1;margin-top:6px}
 .cp-vazio{text-align:center;padding:26px;color:var(--text2);font-size:13px}
-.cp-rolo{contain:inline-size;width:100%;max-height:68vh;overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg2);scrollbar-width:auto;scrollbar-color:var(--text2) var(--bg3)}
+.cp-rolo-topo{contain:inline-size;width:100%;overflow-x:auto;overflow-y:hidden;height:16px;margin:0 0 4px;scrollbar-width:auto;scrollbar-color:var(--text2) var(--bg3)}
+.cp-rolo-topo > div{height:1px}
+.cp-rolo-topo::-webkit-scrollbar{height:14px}
+.cp-rolo-topo::-webkit-scrollbar-track{background:var(--bg3);border-radius:999px}
+.cp-rolo-topo::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text2) 70%,transparent);border-radius:999px;border:3px solid var(--bg3)}
+.cp-rolo{contain:inline-size;width:100%;max-height:calc(100vh - 240px);min-height:240px;overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg2);scrollbar-width:auto;scrollbar-color:var(--text2) var(--bg3)}
 .cp-rolo::-webkit-scrollbar{height:14px;width:12px}
 .cp-rolo::-webkit-scrollbar-track{background:var(--bg3)}
 .cp-rolo::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text2) 70%,transparent);border-radius:999px;border:3px solid var(--bg3)}
@@ -30309,6 +30314,7 @@ function pgPintar(){
     '<div class="pg-auto"><div><h4>Como a página entra sozinha</h4><p>Quando o Claude Code do sistema de páginas publica uma página, ele avisa o TMX e ela aparece aqui na hora, com data, quem subiu e a versão. Publicar de novo a mesma URL vira <b>versão nova</b> no histórico, sem duplicar, e o TMX já mede a velocidade.</p>'+
       '<p>Pra ligar: gere um token em <b>Configurações › Integrações › API Tokens</b> e passe pro Claude Code junto com o exemplo ao lado.</p></div>'+
       '<pre>POST https://app.centraltmx.com/api/v1/paginas\nAuthorization: Bearer &lt;token da API do TMX&gt;\nContent-Type: application/json\n\n{\n  "projeto": "'+fnEsc(fnProj)+'",\n  "url": "https://apostilai.ai/697",\n  "titulo": "697 página nova",\n  "tipo": "vsl",\n  "versao": "troca do headline",\n  "feito_por": "Claude Code"\n}</pre></div>';
+  cpLigarRolagem(cx);
 }
 function pgFicha(url){
   var d = pgEst.dados, x = ((d && d.paginas) || []).filter(function(p){ return p.url === url; })[0] || { url:url };
@@ -40191,13 +40197,13 @@ var CP_COLS = [
   { k:'vtmx',  t:'Vendas TMX',     g:'Vendas',   on:1, tit:'Vendas que o TMX deu a esta campanha (último anúncio clicado)', v:function(c){
       var t = cpVendasTmx(c); if(t == null) return '<i>…</i>'; var d = t - (c.aprovadas||0);
       return '<b class="cp-tmx">'+t+'</b>'+(d ? '<small class="'+(d > 0 ? 'pos' : 'neg')+'"> '+(d > 0 ? '+' : '')+d+'</small>' : ''); } },
-  { k:'impressoes', t:'Impressões', g:'Anúncio', on:0, v:function(c){ return fnNum(c.impressoes||0); } },
-  { k:'cliques', t:'Cliques',      g:'Anúncio',  on:0, v:function(c){ return fnNum(c.cliques||0); } },
+  { k:'impressoes', t:'Impressões', g:'Anúncio', on:1, v:function(c){ return fnNum(c.impressoes||0); } },
+  { k:'cliques', t:'Cliques',      g:'Anúncio',  on:1, v:function(c){ return fnNum(c.cliques||0); } },
   { k:'ctr',   t:'CTR',            g:'Anúncio',  on:1, v:function(c){ return cpPct(c.ctr, 2); } },
-  { k:'cpc',   t:'CPC',            g:'Anúncio',  on:0, v:function(c){ return c.cpc != null ? fmtAds(c.cpc) : '<i>—</i>'; } },
-  { k:'cpm',   t:'CPM',            g:'Anúncio',  on:0, v:function(c){ return c.cpm != null ? fmtAds(c.cpm) : '<i>—</i>'; } },
+  { k:'cpc',   t:'CPC',            g:'Anúncio',  on:1, v:function(c){ return c.cpc != null ? fmtAds(c.cpc) : '<i>—</i>'; } },
+  { k:'cpm',   t:'CPM',            g:'Anúncio',  on:1, v:function(c){ return c.cpm != null ? fmtAds(c.cpm) : '<i>—</i>'; } },
   { k:'hook',  t:'Hook',           g:'Anúncio',  on:1, tit:'Assistiram 3 s do vídeo ÷ impressões', v:function(c){ return cpPct(c.hook, 0); } },
-  { k:'hold',  t:'Hold rate',      g:'Anúncio',  on:0, tit:'Assistiram 75% ÷ impressões', v:function(c){ return cpPct(c.hold, 1); } }
+  { k:'hold',  t:'Hold rate',      g:'Anúncio',  on:1, tit:'Assistiram 75% ÷ impressões', v:function(c){ return cpPct(c.hold, 1); } }
 ];
 (function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_cols') || 'null'); if(Array.isArray(s)) CP_COLS.forEach(function(c){ c.on = s.indexOf(c.k) >= 0 ? 1 : 0; }); }catch(e){} })();
 function cpPct(v, casas){ return v == null || isNaN(v) ? '<i>—</i>' : (v*100).toLocaleString('pt-BR',{minimumFractionDigits:casas,maximumFractionDigits:casas})+'%'; }
@@ -40213,6 +40219,20 @@ function cpPredef(q){
   CP_COLS.forEach(function(c){ c.on = sets[q].indexOf(c.k) >= 0 ? 1 : 0; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar();
 }
 function cpOrdenar(k){ if(cpEst.ord === k) cpEst.desc = !cpEst.desc; else { cpEst.ord = k; cpEst.desc = true; } cpPintar(); }
+// Barra de rolagem lateral também EM CIMA da tabela: com 45 campanhas a barra
+// de baixo fica longe, e sem ela não dava pra ver as colunas da direita.
+function cpLigarRolagem(raiz){
+  (raiz || document).querySelectorAll('.cp-rolo').forEach(function(r){
+    if(r.style.maxHeight === 'none') return;
+    var topo = r.previousElementSibling;
+    if(!topo || !topo.classList.contains('cp-rolo-topo')){ topo = document.createElement('div'); topo.className = 'cp-rolo-topo'; topo.innerHTML = '<div></div>'; r.parentNode.insertBefore(topo, r); }
+    var ajusta = function(){ topo.firstChild.style.width = (r.scrollWidth + (r.offsetWidth - r.clientWidth)) + 'px'; topo.style.visibility = r.scrollWidth > r.clientWidth + 1 ? 'visible' : 'hidden'; };
+    ajusta();
+    topo.onscroll = function(){ if(r.scrollLeft !== topo.scrollLeft) r.scrollLeft = topo.scrollLeft; };
+    r.onscroll = function(){ if(topo.scrollLeft !== r.scrollLeft) topo.scrollLeft = r.scrollLeft; };
+    if(window.ResizeObserver && !r._ro){ r._ro = new ResizeObserver(ajusta); r._ro.observe(r); }
+  });
+}
 function cpRolar(dir){ var r = document.querySelector('#cp-novo .cp-rolo'); if(r) r.scrollBy({ left: dir * 320, behavior:'smooth' }); }
 function cpFiltradas(){
   var b = cpEst.busca.toLowerCase();
@@ -40235,6 +40255,7 @@ function cpPintar(){
     '<input class="cp-busca" placeholder="Filtrar pelo nome (ex.: AD179)" value="'+fnEsc(cpEst.busca)+'" oninput="cpEst.busca=this.value;clearTimeout(window._cpb);window._cpb=setTimeout(function(){cpPintar();var i=document.querySelector(\'#cp-novo .cp-busca\');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)">'+
     (contas.length ? '' : '<span class="cp-aviso">A conta de cada campanha passa a vir na próxima sincronização com a Utmify.</span>')+'</div>';
   novo.innerHTML = h + (cpEst.nivel === 'contas' ? cpContas(contas) : cpBarra() + cpTabela(cpFiltradas()));
+  cpLigarRolagem(novo);
 }
 function cpBarra(){
   var grupos = {}; CP_COLS.forEach(function(c){ (grupos[c.g] = grupos[c.g] || []).push(c); });
