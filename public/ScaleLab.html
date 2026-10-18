@@ -1840,6 +1840,11 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow-y:auto}
 .v2-mod{background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .v2-mod.p{max-width:620px}
+/* Quiz e Análise de VSL dentro do projeto */
+.fn-painel > .content{padding:0}
+#fn-barra.fn-so-projeto #fn-funil,#fn-barra.fn-so-projeto .fn-ctx-l1 .sep,#fn-barra.fn-so-projeto .fn-ctx-l1 > .fn-btn,#fn-barra.fn-so-projeto .fn-vivo2,#fn-barra.fn-so-projeto .fn-ctx-dir,#fn-barra.fn-so-projeto #fn-ctx-num{display:none !important}
+.fn-proj-esc{margin-left:10px;background:none;border:0;color:var(--text2);font:inherit;font-size:11px;cursor:pointer;opacity:0;transition:opacity .15s}
+.fn-proj:hover .fn-proj-esc{opacity:.8}
 /* marketing de uma venda */
 .vd-abas{display:inline-flex;background:var(--bg3);border-radius:9px;padding:3px;gap:2px;margin-bottom:4px}
 .vd-abas button{border:0;background:none;border-radius:7px;padding:6px 13px;font:inherit;font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer}
@@ -3023,7 +3028,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
         <div class="nav-item" onclick="goTo('arquivos')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-          Projetos
+          Arquivos por projeto
         </div>
       </div>
     </div>
@@ -3045,16 +3050,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
         <div class="nav-item" id="nav-funis" onclick="goTo('funis')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-          Funis
+          Projetos
         </div>
-        <div class="nav-item" id="nav-quiz" onclick="goTo('quiz')">
-          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="9" cy="9" r="1.6"/><line x1="13" y1="9" x2="17" y2="9"/><circle cx="9" cy="15" r="1.6"/><line x1="13" y1="15" x2="17" y2="15"/></svg>
-          Quiz
-        </div>
-        <div class="nav-item" id="nav-vsl" onclick="goTo('vsl')">
-          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-          Criativos &amp; VSL
-        </div>
+        <!-- Quiz e Criativos & VSL moram dentro de cada projeto (Projetos › projeto › Conteúdo) -->
         <div class="nav-item" id="nav-adlibrary" onclick="goTo('adlibrary')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           Ad Library
@@ -4668,6 +4666,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <button class="fx-nav-i on" data-aba="resultado" onclick="fnAba('resultado',this)"><span>💰</span>Resultado<i class="fx-nav-novo">NOVO</i></button>
             <button class="fx-nav-i" data-aba="mapa" onclick="fnAba('mapa',this)"><span>🧭</span>Mapa<i class="fx-nav-n" id="fx-n-fora"></i></button>
             <button class="fx-nav-i" data-aba="criativos" onclick="fnAba('criativos',this)"><span>🎬</span>Criativos</button>
+            <div class="fx-nav-g">Conteúdo</div>
+            <button class="fx-nav-i" data-aba="quiz" onclick="fnAba('quiz',this)"><span>📝</span>Quiz</button>
+            <button class="fx-nav-i" data-aba="vsl" onclick="fnAba('vsl',this)"><span>🎥</span>Análise de VSL</button>
             <div class="fx-nav-g">Pessoas</div>
             <button class="fx-nav-i" data-aba="leads" onclick="fnAba('leads',this)"><span>👥</span>Leads<i class="fx-nav-novo">NOVO</i></button>
             <button class="fx-nav-i" data-aba="jornada" onclick="fnAba('jornada',this)"><span>👣</span>Jornada ao vivo</button>
@@ -4680,6 +4681,8 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <div class="fx-conteudo">
 
         <div class="fn-painel on" id="fn-p-resultado"><div id="rs-corpo"></div></div>
+        <div class="fn-painel" id="fn-p-quiz"></div>
+        <div class="fn-painel" id="fn-p-vsl"></div>
         <div class="fn-painel" id="fn-p-leads"><div id="ld-corpo"></div></div>
 
         <div class="fn-painel" id="fn-p-geral">
@@ -6278,7 +6281,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas','sl_vsl_grupos','sl_quizzes'];   // sl_vturb fica só no servidor: guarda token
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas','sl_vsl_grupos','sl_quizzes','sl_vsl_projetos','sl_projetos_ocultos'];   // sl_vturb fica só no servidor: guarda token
 // ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
 // As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
 // pontos de fetch espalhados pelo arquivo (fácil esquecer um e quebrar o sync sem
@@ -7306,11 +7309,11 @@ const titles={
   metricas:{t:'Tráfego',s:'Gestão e controle de tráfego pago.'},
   criativos:{t:'Criativos',s:'Gerencie seus materiais criativos.'},
   chat:{t:'Chat',s:''},swipe:{t:'Swipe',s:'Biblioteca de swipes e referências'},
-  arquivos:{t:'Projetos',s:'Central de arquivos por projeto.'},educacional:{t:'Educacional',s:'Conteúdos de aprendizagem da equipe'},
+  arquivos:{t:'Arquivos por projeto',s:'Central de arquivos por projeto.'},educacional:{t:'Educacional',s:'Conteúdos de aprendizagem da equipe'},
   iacopy:{t:'IA',s:'Copy de Direct Response + Análise preditiva de ads'},
   notificacoes:{t:'Notificações',s:''},configuracoes:{t:'Configurações',s:''},
   adsmetrics:{t:'Análise de tráfego',s:'Gasto, cliques e vendas por campanha e por anúncio'},
-  funis:{t:'Funis',s:'Mapa do funil, pixel de rastreamento e redirecionador'},
+  funis:{t:'Projetos',s:'Funil, quiz, VSL, pixel e testes de cada projeto'},
   quiz:{t:'Quiz',s:'Quizzes de funil: montar, publicar e ver onde abandonam'},
   vsl:{t:'Criativos & VSL',s:'Retenção da VSL, criativos e metas'},
   rituais:{t:'Rituais',s:'Rotinas e processos recorrentes da equipe.'},
@@ -7356,13 +7359,16 @@ function goTo(id){
   // Antes de trocar de página, garante que o page-roi não fique órfão dentro de outras páginas
   // (evita bug da tela branca em Tráfego > Controle de ROI)
   try { if (typeof _devolveRoiParaOrigem === 'function' && id !== 'metricas' && id !== 'roi') _devolveRoiParaOrigem(); } catch(e){}
+  // Quiz e Análise de VSL moram dentro de cada projeto: link antigo cai lá
+  if(id === 'quiz' || id === 'vsl'){ if(typeof fnAbaPendente !== 'undefined') fnAbaPendente = id; id = 'funis'; }
+  if(id !== 'funis' && typeof fnDevolverEmbutidas === 'function') fnDevolverEmbutidas();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   // match nav
   document.querySelectorAll('.nav-item').forEach(n=>{
     const t=n.textContent.trim().toLowerCase();
-    if(t.includes(id==='swipe'?'swipe':id==='educacional'?'educ':id==='notificacoes'?'noti':id==='configuracoes'?'config':id==='roi'?'controle roi':id==='adlibrary'?'ad library':id==='fila'?'fila de upload':id))
+    if(t.includes(id==='funis'?'projetos':id==='adsmetrics'?'análise de tráfego':id==='swipe'?'swipe':id==='educacional'?'educ':id==='notificacoes'?'noti':id==='configuracoes'?'config':id==='roi'?'controle roi':id==='adlibrary'?'ad library':id==='fila'?'fila de upload':id))
       n.classList.add('active');
   });
   const inf=titles[id]||{t:id,s:''};
@@ -29024,7 +29030,7 @@ function vsAba(a){
   document.getElementById('vs-sel').style.display = a==='analise'?'':'none';
   vsPintar();
 }
-function vsRodando(){ return vsDados? vsDados.vsls.filter(function(v){return v.rodando;}) : []; }
+function vsRodando(){ return vsDados? vsDados.vsls.filter(function(v){return v.rodando && (!vsProjeto || vsProjetoDe(v) === vsProjeto);}) : []; }
 function vsEscolhidas(){ return vsRodando().filter(function(v){ return vsSel.indexOf(v.id)>=0; }); }
 function vsAlternar(id){
   var i=vsSel.indexOf(id);
@@ -30017,7 +30023,9 @@ function vsAbrirVsls(){
   // Agrupa por pasta, como a própria VTurb organiza — com 36 vídeos numa lista
   // corrida não dá pra achar nada.
   var pastas={}, ordem=[];
-  (vsDados.todos||vsDados.vsls).forEach(function(v){
+  // dentro do projeto: as dele e as sem projeto (as de outro projeto ficam de fora)
+  var deOutro = 0, projs = (typeof fnProjetos !== 'undefined' ? fnProjetos : []).filter(Boolean);
+  (vsDados.todos||vsDados.vsls).filter(function(v){ if(!vsProjeto) return true; var p = vsProjetoDe(v); if(p && p !== vsProjeto){ deOutro++; return false; } return true; }).forEach(function(v){
     var k=vsGrupoDe(v);
     if(!pastas[k]){ pastas[k]=[]; ordem.push(k); }
     pastas[k].push(v);
@@ -30052,10 +30060,13 @@ function vsAbrirVsls(){
             'onchange="vsDefinirGrupo(\''+v.id+'\',this.value)" '+
             'style="width:112px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;'+
             'padding:5px 8px;color:var(--text);font-size:11.5px;outline:none;font-family:inherit">'+
+          (vsProjeto ? '<select title="Projeto desta VSL" onchange="vsDefinirProjeto(\''+v.id+'\',this.value)" style="width:118px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:5px 6px;color:var(--text);font-size:11.5px;outline:none;font-family:inherit">'+
+            '<option value="">Sem projeto</option>'+projs.map(function(p){ return '<option'+(vsProjetoDe(v)===p?' selected':'')+'>'+vsEsc(p)+'</option>'; }).join('')+'</select>' : '')+
           '<div class="vs-sw '+(v.rodando?'on':'')+'" onclick="vsLigar(\''+v.id+'\',this)"><i></i></div></div>';
       }).join('')+'</div>';
   }).join('') +
   '<datalist id="vs-grupos">'+todosGrupos.map(function(k){ return '<option value="'+vsEsc(k)+'">'; }).join('')+'</datalist>'+
+  (vsProjeto ? '<div class="vs-nota" style="margin-top:14px">Aqui aparecem as VSLs de <b>'+vsEsc(vsProjeto)+'</b> e as sem projeto'+(deOutro ? ' ('+deOutro+' de outro projeto ficam de fora)' : '')+'. O projeto de cada uma sai do nome do vídeo; corrija no seletor ao lado dela.</div>' : '')+
   '<div class="vs-nota" style="margin-top:14px">A VTurb não entrega as pastas pela API — só nome, duração e '+
   'pitch. O agrupamento acima é feito pelo nome do vídeo, e você pode corrigir digitando ao lado de cada um. '+
   '<a href="#" onclick="vsReagrupar();return false" style="color:var(--accent)">Refazer pelos nomes</a> · '+
@@ -30172,21 +30183,23 @@ function fnCarregarProjetos(){
     fnProjetosFull = (d && d.projetos) || [];
     fnProjetos = fnProjetosFull.map(function(p){ return p.nome; });
     fnJuntarProjetosDosFunis();
+    fnFiltrarOcultos();
     if(!fnProjetos.length) fnProjetos = ['Geral'];
     if(!fnProj || fnProjetos.indexOf(fnProj)<0) fnProj = fnProjetos[0];
     // funis sem projeto herdam o primeiro
     var mudou=false, l=fnFunis();
     l.forEach(function(f){ if(!f.projeto){ f.projeto=fnProj; mudou=true; } });
     if(mudou) fnSalvarFunis(l);
-    fnPintar(); fnCarregarStats();
+    fnPintar(); fnCarregarStats(); fnAbaDoLink();
   }).catch(function(){
     // Utmify fora do ar nao pode sumir com os funis: monta a lista pelo que ja
     // esta salvo, senao a tela abre vazia e parece que o trabalho se perdeu.
     fnProjetos = [];
     fnJuntarProjetosDosFunis();
+    fnFiltrarOcultos();
     if(!fnProjetos.length) fnProjetos = ['Geral'];
     if(!fnProj || fnProjetos.indexOf(fnProj) < 0) fnProj = fnProjetos[0];
-    fnPintar(); fnCarregarStats();
+    fnPintar(); fnCarregarStats(); fnAbaDoLink();
   });
 }
 
@@ -30201,6 +30214,85 @@ function fnProjId(){
   return p ? p.id : '';
 }
 // ══════════════════════════════════════════════════════
+// ── QUIZ E ANÁLISE DE VSL DENTRO DO PROJETO ──
+// As duas telas saíram do menu e moram na coluna de cada projeto. A tela é a
+// mesma de antes: o conteúdo dela muda de lugar (vai pro painel do projeto) e
+// volta pra página original quando você sai dos Projetos, como o Controle de
+// ROI faz dentro do Tráfego. Link antigo pra Quiz ou VSL cai aqui.
+// ══════════════════════════════════════════════════════
+var fnAbaPendente = '', _fnEmb = {};
+var FN_SO_PROJETO = { quiz:1, vsl:1, paginas:1 };
+function fnEmbutir(qual){
+  var pg = document.getElementById('page-'+qual), painel = document.getElementById('fn-p-'+qual);
+  if(!pg || !painel) return;
+  var c = _fnEmb[qual] || (_fnEmb[qual] = pg.querySelector(':scope > .content'));
+  if(c && c.parentNode !== painel) painel.appendChild(c);
+}
+function fnDevolverEmbutidas(){
+  Object.keys(_fnEmb).forEach(function(q){ var c = _fnEmb[q], pg = document.getElementById('page-'+q); if(c && pg && c.parentNode !== pg) pg.appendChild(c); });
+}
+function fnAbrirQuiz(){
+  fnEmbutir('quiz');
+  if(typeof quizNoProjeto === 'function') quizNoProjeto(fnProj);
+  if(typeof renderQuiz === 'function') renderQuiz();
+}
+function fnAbrirVsl(){
+  fnEmbutir('vsl');
+  if(vsProjeto !== fnProj){ vsProjeto = fnProj; vsSel = []; vsProjCache = null; }
+  if(vsDados && !vsSel.length){ var a = vsRodando(); if(a.length) vsSel = [a[0].id]; }
+  if(typeof renderVsl === 'function') renderVsl();
+}
+
+// ── projetos escondidos (o Principal vem da Utmify, mas estava vazio) ──
+function fnProjOcultos(){ var o = g('sl_projetos_ocultos', null); return Array.isArray(o) ? o : ['Principal']; }
+function fnEsconderProjeto(nome){
+  var o = fnProjOcultos().slice(); if(o.indexOf(nome) < 0) o.push(nome);
+  s('sl_projetos_ocultos', o); fnCarregarProjetos(); toastFn('Projeto '+nome+' escondido. Dá pra mostrar de novo no fim da lista.');
+}
+function fnMostrarOcultos(){ s('sl_projetos_ocultos', []); fnCarregarProjetos(); }
+function fnFiltrarOcultos(){
+  var oc = fnProjOcultos();
+  fnProjetosEscondidos = fnProjetos.filter(function(p){ return oc.indexOf(p) >= 0; });
+  fnProjetos = fnProjetos.filter(function(p){ return oc.indexOf(p) < 0; });
+  if(fnProj && oc.indexOf(fnProj) >= 0) fnProj = '';
+}
+var fnProjetosEscondidos = [];
+// link antigo pra Quiz/VSL com um projeto já aberto: vai direto pra aba
+function fnAbaDoLink(){ if(fnDentro && fnAbaPendente){ var p = fnAbaPendente; fnAbaPendente = ''; fnAba(p); } }
+
+// ── de qual projeto é cada VSL ──
+// A VTurb não sabe. Fica o que você escolheu; sem escolha, o nome do vídeo é
+// comparado com o nome e os links dos funis de cada projeto ("KALEBE", "697",
+// "apostilai" → CONCURSO; "IZA", "SVA", "rendaiza" → RENDA EXTRA). Casou com
+// um projeto só: é dele. Com nenhum ou com dois: fica sem projeto.
+var vsProjeto = '', vsProjCache = null;
+var VS_PALAVRAS_COMUNS = { vsl:1, lead:1, nova:1, novo:1, pagina:1, pag:1, copy:1, teste:1, bio:1, insta:1, pay:1, kiwify:1, direto:1, mp4:1,
+  com:1, br:1, http:1, https:1, www:1, the:1, checkout:1, obrigado:1, upsell:1, principal:1, completa:1, otimizada:1, editado:1, copia:1 };
+function vsTokens(t){ return vsBuscaNorm(t).split(/[^a-z0-9]+/).filter(function(x){ return x.length >= 3 && !VS_PALAVRAS_COMUNS[x]; }); }
+function vsProjetoAuto(v){
+  if(!vsProjCache){
+    vsProjCache = {}; var oc = fnProjOcultos();
+    fnFunis().forEach(function(f){
+      if(!f.projeto || oc.indexOf(f.projeto) >= 0) return;
+      var s0 = vsProjCache[f.projeto] || (vsProjCache[f.projeto] = {});
+      vsTokens(f.nome+' '+(f.etapas||[]).map(function(e){ return e.url || ''; }).join(' ')).forEach(function(t){ s0[t] = 1; });
+    });
+  }
+  var vt = vsTokens(v.nome), achou = [];
+  Object.keys(vsProjCache).forEach(function(p){
+    var ps = Object.keys(vsProjCache[p]);
+    if(vt.some(function(a){ return ps.some(function(b){ return a === b || (b.length >= 3 && a.indexOf(b) === 0) || (a.length >= 5 && b.indexOf(a) === 0 && b.length - a.length <= 1); }); })) achou.push(p);
+  });
+  return achou.length === 1 ? achou[0] : '';
+}
+function vsProjetosSalvos(){ var m = g('sl_vsl_projetos', null); return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {}; }
+function vsProjetoDe(v){ var m = vsProjetosSalvos(); return m[v.id] !== undefined ? m[v.id] : vsProjetoAuto(v); }
+function vsDefinirProjeto(id, p){
+  var m = Object.assign({}, vsProjetosSalvos()); m[id] = p || ''; s('sl_vsl_projetos', m);
+  vsAbrirVsls();
+}
+
+// ══════════════════════════════════════════════════════
 // ── TELA DE PROJETOS ──
 // Antes o projeto era um seletor no meio da barra, e dava pra estar vendo o mapa
 // de um projeto com o teste A/B de outro. Agora ele e uma porta: escolheu, tudo
@@ -30213,7 +30305,8 @@ function fnEntrarProjeto(nome){
   rsDados = null; ldDados = null; psDados = null; mpForaDados = null;
   fnPintar(); fnCarregarStats();
   // Resultado é a aba padrão ao abrir um funil: a primeira pergunta é dinheiro
-  fnAba('resultado');
+  var pend = fnAbaPendente; fnAbaPendente = '';
+  fnAba(pend || 'resultado');
   window.scrollTo({ top:0, behavior:'smooth' });
 }
 function fnSairProjeto(){
@@ -30339,13 +30432,14 @@ function fnPintarProjetos(){
         '<span><b>'+fs.length+'</b> funil(is)</span>'+
         '<span><b>'+etapas+'</b> etapa(s)</span>'+
         '<span><b>'+ts.length+'</b> link(s)</span>'+
+        '<span><b>'+(g('sl_quizzes',[])||[]).filter(function(q){ return q && q.projeto===nome; }).length+'</b> quiz(zes)</span>'+
       '</div>'+
       '<div class="fn-proj-r">'+
         (testando ? '<span class="fn-selo ok">'+testando+' teste(s) rodando</span>' : '')+
         (semLink  ? '<span class="fn-selo alerta">'+semLink+' etapa(s) sem link</span>' : '')+
         (!fs.length ? '<span class="fn-selo neutro">nenhum funil ainda</span>' : '')+
       '</div>'+
-      '<div class="fn-proj-ir">Abrir ›</div></div>';
+      '<div class="fn-proj-ir">Abrir ›<button class="fn-proj-esc" title="Esconder este projeto da lista" onclick="event.stopPropagation();fnEsconderProjeto(\''+fnEsc(nome).replace(/'/g,"\\'")+'\')">esconder</button></div></div>';
   }).join('');
   el.innerHTML =
     // Desenhar funil fica ACIMA da escolha do projeto: rascunho nao depende de
@@ -30357,8 +30451,9 @@ function fnPintarProjetos(){
         'notas e o caminho entre elas. Um quadro por ideia.</div></div>'+
       '<div class="dz-entrada-ir">Abrir ›</div></div>'+
     '<div class="fn-proj-cab"><h2>Escolha o projeto</h2>'+
-      '<p>Tudo que aparecer depois — mapa, pixel, testes, jornada e atenção — é só deste projeto.</p></div>'+
-    '<div class="fn-projs">'+(cards || '<div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify.</div>')+'</div>';
+      '<p>Tudo que aparecer depois — mapa, quiz, análise de VSL, pixel, testes, jornada e atenção — é só deste projeto.</p></div>'+
+    '<div class="fn-projs">'+(cards || '<div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify.</div>')+'</div>'+
+    (fnProjetosEscondidos.length ? '<div class="fn-nota" style="margin-top:14px">'+fnProjetosEscondidos.length+' projeto'+(fnProjetosEscondidos.length===1?'':'s')+' escondido'+(fnProjetosEscondidos.length===1?'':'s')+': '+fnEsc(fnProjetosEscondidos.join(', '))+' · <a href="#" onclick="fnMostrarOcultos();return false" style="color:var(--accent)">mostrar</a></div>' : '');
 }
 
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
@@ -30377,7 +30472,7 @@ function fnRecarregarAba(){
 // (Produtos pelos Ajustes do Resultado, Recuperação pelos Leads, Regras pela
 // Jornada ao vivo, Links pelo Pixel e saúde). O destaque vai pro botão "pai".
 var FN_ABAS = ['resultado','geral','mapa','criativos','leads','jornada','pixel','redir','atencao',
-               'links','produtos','recup','assin','regras','saude'];
+               'links','produtos','recup','assin','regras','saude','quiz','vsl'];
 var FN_ABA_PAI = { geral:'resultado', links:'pixel', produtos:'resultado', recup:'leads', assin:'resultado', regras:'jornada', saude:'pixel' };
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
@@ -30396,7 +30491,9 @@ var FN_ABA_INFO = {
   criativos:['Criativos',   'Cada anúncio do gasto à venda: se ele para o dedo, se traz a pessoa certa e se ela compra.'],
   regras:  ['Regras e alertas', 'O que a ferramenta faria sozinha, com o motivo. Em simulação até a Meta ser conectada.'],
   redir:   ['Testes A/B',  'Um link por teste. Ele sorteia a variante e diz, com chance e dinheiro, quem ganhou.'],
-  atencao: ['Atenção',     'Até onde descem na página e no que clicam.']
+  atencao: ['Atenção',     'Até onde descem na página e no que clicam.'],
+  quiz:    ['Quiz',        'Os quizzes deste projeto: montar, publicar e ver onde abandonam.'],
+  vsl:     ['Análise de VSL', 'Retenção, pitch e conversão das VSLs deste projeto, direto da VTurb.']
 };
 var fnAbaAtual = 'resultado';
 
@@ -30414,7 +30511,10 @@ function fnAba(qual, bt){
   var pai = FN_ABA_PAI[qual] || qual;
   document.querySelectorAll('.fx-nav-i').forEach(function(a){
     a.classList.toggle('on', a.getAttribute('data-aba') === pai); });
+  var barra = document.getElementById('fn-barra'); if(barra) barra.classList.toggle('fn-so-projeto', !!FN_SO_PROJETO[qual]);
   fnCabecalho();
+  if(qual==='quiz')    fnAbrirQuiz();
+  if(qual==='vsl')     fnAbrirVsl();
   if(qual==='resultado') rsCarregar();
   if(qual==='leads')   ldCarregar();
   if(qual==='geral')   gePintar();
@@ -30442,7 +30542,7 @@ function fnCabecalho(){
   var f = fnAtual();
   el.innerHTML = '<h2>'+fnEsc(info[0])+'</h2>'+
     '<span class="fx-vivo"'+(fnAbaAtual === 'mapa' ? ' id="mp-agora-tot"' : '')+'><i></i>'+(fnAbaAtual === 'mapa' ? mpAgoraTotal() : 'AO VIVO')+'</span>'+
-    '<p>'+fnEsc(info[1])+(f ? ' · funil <b>'+fnEsc(f.nome)+'</b>' : '')+'</p>';
+    '<p>'+fnEsc(info[1])+(FN_SO_PROJETO[fnAbaAtual] ? ' · projeto <b>'+fnEsc(fnProj)+'</b>' : (f ? ' · funil <b>'+fnEsc(f.nome)+'</b>' : ''))+'</p>';
 }
 
 // ══════════════════════════════════════════════════════
@@ -41225,6 +41325,8 @@ function garantirMotor(cb){
 function destruirMotor(){ if (motor){ try { motor.destruir(); } catch (e) {} motor = null; } }
 
 /* ═════════════ ENTRADA ═════════════ */
+// Dentro do projeto o quiz já vem filtrado nele, sem o seletor de projeto
+window.quizNoProjeto = function(p){ ui.projeto = p || ''; ui.fixo = !!p; };
 window.renderQuiz = function(){
   var raiz = document.getElementById('qz-app'); if (!raiz) return;
   if (!raiz.dataset.ligado){ ligarEventos(raiz); raiz.dataset.ligado = '1'; }
@@ -41250,7 +41352,7 @@ function pintarLista(){
   var vis = todos.filter(function(q){ return !ui.projeto || q.projeto === ui.projeto; })
                  .sort(function(a, b){ return (b._updatedAt || 0) - (a._updatedAt || 0); });
   var h = '<div class="qp-topo-lista"><div><h2>Quizzes</h2><div class="qp-sub">Cada quiz tem um link próprio pra colar no anúncio ou usar num teste A/B.</div></div>' +
-    '<div class="qp-acoes"><select class="qp-selecao" id="qp-f-projeto" aria-label="Filtrar por projeto" style="width:auto">' +
+    '<div class="qp-acoes"><select class="qp-selecao" id="qp-f-projeto" aria-label="Filtrar por projeto" style="width:auto' + (ui.fixo ? ';display:none' : '') + '">' +
     '<option value="">Todos os projetos</option>' + projetos.map(function(p){ return '<option' + (p === ui.projeto ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>' +
     '<button class="qp-btn qp-primario" type="button" data-qp="novo">+ Novo quiz</button></div></div>';
   if (ui.novoAberto){
