@@ -3634,7 +3634,7 @@ async function _rotaAnuncios(req, res) {
           const k = nome.toLowerCase().replace(/\s+/g, ' ') + '|' + d.id;
           if (!mapa[k]) mapa[k] = {
             nome: nome || '(sem nome)', dashboard: d.nome || d.id, veiculacoes: 0,
-            investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0
+            investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0, porConta: {}
           };
           const m = mapa[k];
           m.veiculacoes += 1;
@@ -3643,6 +3643,11 @@ async function _rotaAnuncios(req, res) {
           m.ics      += Number(a.initiateCheckout) || 0;
           m.cliques  += Number(a.inlineLinkClicks) || 0;
           m.impressoes += Number(a.impressions) || 0;
+          // a mesma nomenclatura roda em contas diferentes: guarda o pedaço de cada uma
+          const ct = String(a.ca || '—');
+          const pc = m.porConta[ct] || (m.porConta[ct] = { investimento: 0, receita: 0, lucro: 0, vendas: 0, cliques: 0, impressoes: 0 });
+          pc.investimento += inv; pc.receita += rec; pc.lucro += cent(a.profit); pc.vendas += Number(a.approvedOrdersCount) || 0;
+          pc.cliques += Number(a.inlineLinkClicks) || 0; pc.impressoes += Number(a.impressions) || 0;
           // o id do anúncio é o que chega no utm_content quando a UTM segue o padrão por id
           const aid = String(a.id || a.adId || a.ad_id || '').trim();
           if (aid) { m.ids = m.ids || []; if (m.ids.indexOf(aid) < 0 && m.ids.length < 30) m.ids.push(aid); }
@@ -4389,7 +4394,16 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
       const m = {};
       (fonte || deCampanha).forEach(l => {
         const k = l[campo] || '—';
-        if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0 };
+        if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0, aprovadas:0, vv:0, v3:0, v75:0, ic:0, _video:false, _data:'' };
+        m[k].aprovadas    += Number(l.vendasAprovadas !== undefined ? l.vendasAprovadas : l.vendas) || 0;
+        if (l.v3 !== undefined) { m[k]._video = true; m[k].vv += Number(l.vv)||0; m[k].v3 += Number(l.v3)||0; m[k].v75 += Number(l.v75)||0; m[k].ic += Number(l.ic)||0; }
+        // o estado (conta, status, orçamento) é o do dia mais recente do período
+        if (String(l.data || '') >= m[k]._data) {
+          m[k]._data = String(l.data || '');
+          if (l.campanhaId) m[k].campanhaId = l.campanhaId; if (l.conta) m[k].conta = l.conta; if (l.status) m[k].status = l.status;
+          if (l.orc !== undefined) { m[k].orc = l.orc; m[k].orcVida = !!l.orcVida; } if (l.bid !== undefined) m[k].bid = l.bid; if (l.criada) m[k].criada = l.criada;
+          if (l.dashboard) m[k].dashboard = l.dashboard;
+        }
         m[k].investimento += Number(l.investimento)||0;
         m[k].faturamento  += Number(l.faturamento)||0;
         m[k].lucro        += Number(l.lucro)||0;
@@ -4397,9 +4411,12 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
         m[k].cliques      += Number(l.cliques)||0;
         m[k].impressoes   += Number(l.impressoes)||0;
       });
-      return Object.values(m).map(x => Object.assign(x, {
-        roas: x.investimento > 0 ? x.faturamento / x.investimento : 0
-      })).sort((a,b) => b.investimento - a.investimento);
+      return Object.values(m).map(x => { const v = x._video; delete x._video; delete x._data; return Object.assign(x, {
+        roas: x.investimento > 0 ? x.faturamento / x.investimento : 0,
+        ctr: x.impressoes > 0 ? x.cliques / x.impressoes : null, cpc: x.cliques > 0 ? x.investimento / x.cliques : null,
+        cpm: x.impressoes > 0 ? x.investimento / x.impressoes * 1000 : null, cpa: x.aprovadas > 0 ? x.investimento / x.aprovadas : null,
+        hook: v && x.impressoes > 0 ? x.v3 / x.impressoes : null, hold: v && x.impressoes > 0 ? x.v75 / x.impressoes : null
+      }); }).sort((a,b) => b.investimento - a.investimento);
     };
     res.json({
       ok: true, de, ate, linhas: linhas.length,
@@ -4413,7 +4430,7 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
         cpa: aprov > 0 ? inv / aprov : 0
       },
       atualizadoEm: (_utmifyMcpCfg(db) || {}).ultimaSync || null,
-      porCampanha:  agrupar('campanha'),
+      porCampanha:  _comMudancas(agrupar('campanha'), de, ate),
       porAnuncio:   agrupar('anuncio'),
       porDia:       agrupar('data', baseKpi).sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
       porDashboard: agrupar('dashboard', baseKpi),
@@ -4426,11 +4443,165 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Mudanças de orçamento, bid cap e status das campanhas ──
+// A Utmify só diz o orçamento de AGORA (e o último ajuste feito por ela). A cada
+// sincronização de hoje o TMX compara com o que viu da última vez e anota o que
+// mudou, com o intervalo em que mudou. É o que deixa ver se a venda caiu depois
+// de subir o orçamento às 15h. Vale daqui pra frente: não existe histórico antes.
+function _campAnotarEstado(lista, dashboard) {
+  const db = _pessoas(); if (!db || !Array.isArray(lista) || !lista.length) return;
+  const agora = Date.now(), r2 = v => v == null ? null : Math.round(Number(v)) / 100;
+  try {
+    db.exec('BEGIN');
+    lista.forEach(c => {
+      const id = String(c.campaignId || c.id || '').slice(0, 40); if (!id) return;
+      const nome = String(c.name || '').slice(0, 160);
+      const novo = { orc: c.dailyBudget != null ? r2(c.dailyBudget) : r2(c.lifetimeBudget), bid: r2(c.bidCap), status: String(c.effectiveStatus || c.status || '') };
+      const bu = c.budgetUpdate, buEm = bu ? (Date.parse(bu.updatedAt || bu.createdAt) || 0) : 0;
+      const ant = _q('SELECT * FROM camp_estado WHERE id=?').get(id);
+      if (ant) {
+        ['orc', 'bid', 'status'].forEach(k => {
+          const a = ant[k] == null ? '' : String(ant[k]), b = novo[k] == null ? '' : String(novo[k]);
+          if (a === b) return;
+          // o ajuste foi feito pela Utmify nesse intervalo: fica a hora exata dela
+          if (k === 'orc' && buEm && buEm > (ant.em || 0) && buEm <= agora) {
+            if (!_q("SELECT 1 FROM camp_mudancas WHERE camp=? AND fonte='utmify' AND em=?").get(id, buEm))
+              _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)').run(id, nome, dashboard, k, a, b, buEm, null, 'utmify');
+            return;
+          }
+          _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)').run(id, nome, dashboard, k, a, b, agora, ant.em || null, 'tmx');
+        });
+      } else if (buEm && agora - buEm < 2 * 86400000 && !_q("SELECT 1 FROM camp_mudancas WHERE camp=? AND fonte='utmify' AND em=?").get(id, buEm)) {
+        // primeira vez que o TMX vê a campanha: o último ajuste da Utmify já entra
+        _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)').run(id, nome, dashboard, 'orc', '', novo.orc == null ? '' : String(novo.orc), buEm, null, 'utmify');
+      }
+      _q('INSERT INTO camp_estado(id, nome, dashboard, orc, bid, status, em) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET nome=excluded.nome, dashboard=excluded.dashboard, orc=excluded.orc, bid=excluded.bid, status=excluded.status, em=excluded.em')
+        .run(id, nome, dashboard, novo.orc, novo.bid, novo.status, agora);
+    });
+    db.exec('COMMIT');
+  } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} console.error('[CAMP] estado:', e.message); }
+}
+// o id da campanha vem no fim da UTM ("… | 18/10|52573798778810")
+function _idDaCampUtm(s) { const m = String(s || '').match(/(\d{10,})\s*$/); return m ? m[1] : ''; }
+
+// ── ANÁLISE DE UMA CAMPANHA ──
+// Tudo da campanha num lugar, como a Malva mostra: vídeo do anúncio, do anúncio
+// à venda (Meta até o clique, TMX daí pra frente, com o pitch no meio), as taxas,
+// resultado por dia, vendas por hora com as mudanças de orçamento marcadas e os
+// anúncios dela. Os números da Meta vêm da Utmify (60 s guardado em memória).
+app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
+  try {
+    const id = String(req.query.id || '').replace(/\D/g, '').slice(0, 40);
+    const nome = String(req.query.nome || '').slice(0, 200);
+    if (!id && !nome) return res.status(400).json({ error: 'Diga a campanha.' });
+    const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const dir = _ehDir(req);
+    const db = readDB();
+    const dias7 = []; for (let i = 6; i >= 0; i--) dias7.push(_diaBR(per.fim - i * 86400000));
+    const todas = (Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [])
+      .filter(l => l.fonte === 'utmify' && l.nivel !== 'conta' && (id ? String(l.campanhaId) === id : String(l.campanha) === nome));
+    const doPer = todas.filter(l => l.data >= per.de && l.data <= per.ate).sort((a, b) => String(a.data).localeCompare(String(b.data)));
+    const ult = doPer[doPer.length - 1] || todas.slice().sort((a, b) => String(a.data).localeCompare(String(b.data))).pop() || {};
+    const s = k => doPer.reduce((a, l) => a + (Number(l[k]) || 0), 0);
+    const temVideo = doPer.some(l => l.v3 !== undefined);
+    let m = {
+      nome: ult.campanha || nome, id: id || ult.campanhaId || '', dashboard: ult.dashboard || '', conta: ult.conta || '', status: ult.status || '',
+      orc: ult.orc != null ? ult.orc : null, orcVida: !!ult.orcVida, bid: ult.bid != null ? ult.bid : null, criada: ult.criada || '',
+      gasto: s('investimento'), faturamento: s('faturamento'), fatLiquido: s('faturamentoLiquido'), lucro: s('lucro'),
+      vendas: doPer.reduce((a, l) => a + (Number(l.vendasAprovadas !== undefined ? l.vendasAprovadas : l.vendas) || 0), 0),
+      imp: s('impressoes'), cliques: s('cliques'), vv: temVideo ? s('vv') : null, v3: temVideo ? s('v3') : null, v75: temVideo ? s('v75') : null,
+      ic: temVideo ? s('ic') : null, freq: ult.freq || null, fonte: 'arquivo'
+    };
+    // ao vivo na Utmify: o período inteiro de uma vez, com o vídeo e o estado de agora
+    const cfg = _utmifyMcpCfg(db) || {};
+    const dash = (cfg.dashboards || []).find(d => String(d.nome || '').trim() === String(m.dashboard || '').trim());
+    let anuncios = [], erroAoVivo = null;
+    if (cfg.token && dash && m.id) {
+      const tz = (dash.tz === undefined || dash.tz === null) ? -3 : dash.tz;
+      const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+      const faixa = { from: per.de + 'T00:00:00' + off, to: per.ate + 'T23:59:59' + off };
+      const chave = 'camp|' + m.id + '|' + per.de + '|' + per.ate;
+      let vivo = _vivoGet(chave, 60 * 1000);
+      if (!vivo) {
+        try {
+          const rc = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: dash.id, level: 'campaign', campaignIds: [m.id], dateRange: faixa });
+          const ra = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: dash.id, level: 'ad', campaignIds: [m.id], dateRange: faixa });
+          // o filtro por id da Utmify nem sempre vale: confere o id aqui
+          const mesma = x => String(x.campaignId || x.id || '') === m.id;
+          vivo = { c: ((rc && rc.results) || []).find(mesma) || null, ads: ((ra && ra.results) || []).filter(x => String(x.campaignId || '') === m.id) };
+          _vivoSet(chave, vivo);
+        } catch (e) { erroAoVivo = e.message; }
+      }
+      if (vivo && vivo.c) {
+        const c = vivo.c, cent = v => (Number(v) || 0) / 100;
+        m = Object.assign(m, {
+          nome: c.name || m.nome, conta: c.ca || m.conta, status: c.effectiveStatus || c.status || m.status,
+          orc: c.dailyBudget != null ? cent(c.dailyBudget) : (c.lifetimeBudget != null ? cent(c.lifetimeBudget) : m.orc),
+          orcVida: c.dailyBudget == null && c.lifetimeBudget != null, bid: c.bidCap != null ? cent(c.bidCap) : null,
+          criada: String(c.createdTime || m.criada || '').slice(0, 10),
+          gasto: cent(c.spend), faturamento: cent(c.grossRevenue), fatLiquido: cent(c.revenue), lucro: cent(c.profit),
+          vendas: Number(c.approvedOrdersCount) || 0, imp: Number(c.impressions) || 0, cliques: Number(c.inlineLinkClicks) || 0,
+          vv: Number(c.videoViews) || 0, v3: Number(c.videoViews3Seconds) || 0, v75: Number(c.video75Watched) || 0,
+          ic: Number(c.initiateCheckout) || 0, freq: c.frequency || null, fonte: 'utmify'
+        });
+      }
+      if (vivo) anuncios = (vivo.ads || []).map(a => {
+        const cent = v => (Number(v) || 0) / 100, imp = Number(a.impressions) || 0, v3 = Number(a.videoViews3Seconds) || 0, v75 = Number(a.video75Watched) || 0, cl = Number(a.inlineLinkClicks) || 0;
+        return { nome: String(a.name || ''), status: a.effectiveStatus || a.status || '', gasto: cent(a.spend), faturamento: cent(a.grossRevenue), lucro: cent(a.profit),
+          vendas: Number(a.approvedOrdersCount) || 0, imp, cliques: cl, ctr: imp ? cl / imp : null, hook: imp ? v3 / imp : null, hold: imp ? v75 / imp : null, cta: v75 ? cl / v75 : null };
+      }).filter(a => a.gasto > 0 || a.vendas > 0).sort((a, b) => b.lucro - a.lucro);
+    }
+    // do clique em diante, pelo pixel do TMX (a UTM traz o id da campanha no fim)
+    const tmx = { visitas: 0, pitch: 0, ck: 0, vendas: 0, faturamento: 0, horas: Array(24).fill(0), fatHora: Array(24).fill(0) };
+    const porDiaTmx = {};
+    if (_pessoas() && m.id) {
+      const vis = new Set(), pit = new Set(), ck = new Set();
+      _q('SELECT visitante, camp, pitch, checkout FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0').all(per.ini, per.fim).forEach(x => {
+        if (_idDaCampUtm(x.camp) !== m.id) return;
+        vis.add(x.visitante); if (x.pitch) pit.add(x.visitante); if (x.checkout) ck.add(x.visitante);
+      });
+      tmx.visitas = vis.size; tmx.pitch = pit.size; tmx.ck = ck.size;
+      const ini7 = Date.parse(dias7[0] + 'T00:00:00-03:00'), diaHora = per.ate;
+      _q('SELECT valor, liquido, cred_camp, camp, em, dia FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(Math.min(ini7, per.ini), per.fim).forEach(p => {
+        if ((_idDaCampUtm(p.cred_camp) || _idDaCampUtm(p.camp)) !== m.id) return;
+        const v = p.liquido != null ? p.liquido : (Number(p.valor) || 0);
+        const d = porDiaTmx[p.dia] || (porDiaTmx[p.dia] = { vendas: 0, faturamento: 0 }); d.vendas++; d.faturamento += v;
+        if (p.em >= per.ini) { tmx.vendas++; tmx.faturamento += v; }
+        if (p.dia === diaHora) { const h = new Date(p.em - 3 * 3600000).getUTCHours(); tmx.horas[h]++; tmx.fatHora[h] += v; }
+      });
+    }
+    // resultado por dia: os 7 dias até o fim do período (gasto da Utmify, venda pela Utmify e pelo TMX)
+    const campDia = {};
+    if (_pessoas() && m.id) _q('SELECT dia, SUM(gasto) g FROM camp_dia WHERE id=? AND dia BETWEEN ? AND ? GROUP BY dia').all(m.id, dias7[0], dias7[6]).forEach(x => { campDia[x.dia] = x.g; });
+    const porDia = dias7.map(d => {
+      const ls = todas.filter(l => l.data === d);
+      const g = ls.length ? ls.reduce((a, l) => a + (Number(l.investimento) || 0), 0) : (campDia[d] || 0);
+      const fu = ls.reduce((a, l) => a + (Number(l.faturamentoLiquido) || 0), 0), lu = ls.length ? ls.reduce((a, l) => a + (Number(l.lucro) || 0), 0) : null;
+      const t = porDiaTmx[d] || { vendas: 0, faturamento: 0 };
+      return { dia: d, gasto: g, fatUtmify: ls.length ? fu : null, lucroUtmify: lu, vendasTmx: t.vendas, fatTmx: t.faturamento };
+    });
+    const mudancas = (_pessoas() && m.id) ? _q('SELECT campo, de, para, em, desde, fonte FROM camp_mudancas WHERE camp=? AND em BETWEEN ? AND ? ORDER BY em').all(m.id, per.ini - 86400000, per.fim) : [];
+    if (!dir) { m.faturamento = null; m.fatLiquido = null; m.lucro = null; tmx.faturamento = null; tmx.fatHora = null; porDia.forEach(x => { x.fatUtmify = null; x.lucroUtmify = null; x.fatTmx = null; }); anuncios.forEach(a => { a.faturamento = null; a.lucro = null; }); }
+    res.json({ ok: true, de: per.de, ate: per.ate, campanha: m, tmx, porDia, mudancas, anuncios, erroAoVivo,
+      registroDesde: _pessoas() ? ((_q('SELECT MIN(em) em FROM camp_estado').get() || {}).em || null) : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Vendas do TMX por campanha, pra pôr do lado da Utmify ──
 // A Utmify diz QUANTAS vendas cada campanha teve; o TMX diz QUAIS, pela regra
 // dele (último anúncio clicado; pessoa ligada pelo sck, e-mail ou telefone).
 // As UTMs trazem o id no fim do nome ("… | 12/10|52569972976210") e espaços
 // soltos: compara sem eles, que é como a Utmify mostra.
+// a última mudança de orçamento/status de cada campanha no período (pro selo na tabela)
+function _comMudancas(lista, de, ate) {
+  try {
+    if (!_pessoas() || !lista.length) return lista;
+    const per = _periodoMs(de, ate), ult = {};
+    _q('SELECT camp, campo, de, para, em, fonte FROM camp_mudancas WHERE em BETWEEN ? AND ? ORDER BY em').all(per.ini, per.fim).forEach(x => { ult[x.camp] = x; });
+    lista.forEach(c => { if (c.campanhaId && ult[c.campanhaId]) c.mudanca = ult[c.campanhaId]; });
+  } catch (e) {}
+  return lista;
+}
 function _campNorm(s) {
   return String(s || '').replace(/\+/g, ' ').replace(/\|\s*\d{6,}\s*$/, '')
     .replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -4677,6 +4848,8 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
         });
         campanhas = (r && r.results) ? r.results : [];
         okCamp.add((meta.nome || dashId) + '|' + dia);
+        // orçamento e status são o de agora: anota o que mudou desde a última conferência
+        if (dia === _diaBR(Date.now())) _campAnotarEstado(campanhas, meta.nome || dashId);
         // Nivel conta tambem: parte do gasto nao cai em campanha nenhuma, e e o
         // total da conta que a tela da Utmify exibe. Sem isso os KPIs ficam menores.
         try {
@@ -4713,6 +4886,13 @@ async function _utmifySincronizar(de, ate, dashboardsPedidos) {
           data: dia, fonte: 'utmify', nivel: 'campanha', dashboard: meta.nome || dashId,
           campanhaId: String(c.campaignId || c.id || ''), campanha: String(c.name || ''),
           adsetId: '', adset: '', adId: '', anuncio: '',
+          // o que a Análise de tráfego mostra por campanha (a Utmify já manda na mesma consulta)
+          conta: String(c.ca || ''), status: String(c.effectiveStatus || c.status || ''),
+          orc: c.dailyBudget != null ? cent(c.dailyBudget) : (c.lifetimeBudget != null ? cent(c.lifetimeBudget) : null),
+          orcVida: c.dailyBudget == null && c.lifetimeBudget != null, bid: c.bidCap != null ? cent(c.bidCap) : null,
+          criada: String(c.createdTime || '').slice(0, 10),
+          vv: Number(c.videoViews) || 0, v3: Number(c.videoViews3Seconds) || 0, v75: Number(c.video75Watched) || 0,
+          ic: Number(c.initiateCheckout) || 0, lpv: Number(c.landingPageViews) || 0, freq: Number(c.frequency) || 0,
           investimento: inv, faturamento: fat,
           faturamentoLiquido: cent(c.revenue), lucro: cent(c.profit),
           vendas: Number(c.totalOrdersCount) || 0,
@@ -9766,6 +9946,10 @@ function _pessoas() {
       CREATE TABLE IF NOT EXISTS camp_dia (dia TEXT, projeto TEXT, id TEXT, nome TEXT, conta TEXT,
         gasto REAL, imp INTEGER, cliques INTEGER, PRIMARY KEY (dia, projeto, id));
       CREATE TABLE IF NOT EXISTS camp_dia_ok (dia TEXT, projeto TEXT, em INTEGER, PRIMARY KEY (dia, projeto));
+      CREATE TABLE IF NOT EXISTS camp_estado (id TEXT PRIMARY KEY, nome TEXT, dashboard TEXT, orc REAL, bid REAL, status TEXT, em INTEGER);
+      CREATE TABLE IF NOT EXISTS camp_mudancas (n INTEGER PRIMARY KEY AUTOINCREMENT, camp TEXT, nome TEXT, dashboard TEXT,
+        campo TEXT, de TEXT, para TEXT, em INTEGER, desde INTEGER, fonte TEXT);
+      CREATE INDEX IF NOT EXISTS cmud_camp ON camp_mudancas(camp, em);
     `);
     // vídeo e pitch POR PÁGINA (antes só por visita: quem viu a VSL na 697 e
     // depois caiu no back redirect "passava do pitch" nas duas)
