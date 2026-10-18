@@ -1840,6 +1840,20 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow-y:auto}
 .v2-mod{background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .v2-mod.p{max-width:620px}
+/* marketing de uma venda */
+.vd-abas{display:inline-flex;background:var(--bg3);border-radius:9px;padding:3px;gap:2px;margin-bottom:4px}
+.vd-abas button{border:0;background:none;border-radius:7px;padding:6px 13px;font:inherit;font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer}
+.vd-abas button.on{background:var(--bg2);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.vd-sec{margin:14px 0 6px}
+.vd-kvs{border:1px solid var(--v2-linha,var(--border));border-radius:12px;overflow:hidden}
+.vd-kv{display:flex;justify-content:space-between;gap:16px;padding:8px 12px;border-bottom:1px solid var(--v2-linha,var(--border));font-size:12.5px;color:var(--text2)}
+.vd-kv:last-child{border-bottom:0}
+.vd-kv b{color:var(--text);font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+.vd-kv b.mono{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.vd-kv i{color:var(--text2);font-style:normal;opacity:.6}
+.vd-brutos{margin-top:12px;font-size:12.5px}
+.vd-brutos summary{cursor:pointer;color:var(--text2);font-weight:700}
+.vd-brutos pre{margin:8px 0 0;background:var(--bg3);border-radius:10px;padding:10px 12px;font-size:11.5px;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* mudar a divisão do teste A/B */
 .ab-div-ctl{margin-top:14px}
@@ -30185,7 +30199,7 @@ function fnVendasDetalhe(){
           var orig = sem ? '<span class="v2-pill warn" style="cursor:help" title="'+fnEsc(FN_MOTIVO_SEM[v.semOrigem] || '')+'">'+fnEsc(v.semOrigem || 'Sem id nem UTM')+'</span>'
             : (v2Fonte(v.fonte)+(v.anuncio ? ' · '+fnEsc(v2Anuncio(v.anuncio)) : '')+(v.casou ? ' <span class="v2-pill neu">'+fnEsc(v.casou)+'</span>' : ''));
           var sub = [FN_PLAT_NOME[v.plataforma] || v.plataforma, v.metodo].filter(Boolean).join(' · ')+(v.utm ? ' · '+v.utm.slice(0, 60) : '');
-          return '<tr'+(v.visitante ? ' class="clica" onclick="ldFicha(\''+fnEsc(v.visitante)+'\')"' : '')+'><td>'+v2Data(v.em)+'</td><td>'+fnEsc(v.produto || '—')+
+          return '<tr class="clica" title="Ver o marketing desta venda" onclick="vdAbrir(\''+fnEsc(v.id)+'\')"><td>'+v2Data(v.em)+'</td><td>'+fnEsc(v.produto || '—')+
             '<span class="sub">'+fnEsc(sub)+'</span></td><td class="n">'+v2Din2(v.valor)+'</td><td>'+orig+'</td></tr>';
         }).join('')+'</tbody></table></div>';
     };
@@ -30198,7 +30212,7 @@ function fnVendasDetalhe(){
       (fora.length ? '<div class="v2-rot" style="margin:20px 0 6px">Sem pessoa ligada: produtos deste projeto, fora dos blocos</div>'+
         '<div class="fx-sub" style="margin-bottom:8px">Aprovadas na plataforma, mas sem nada que diga quem comprou: não dá pra saber a página, o anúncio nem o funil. Passe o mouse no motivo pra ver o que ele quer dizer.</div>'+
         tabela(fora, true) : '')+
-      '<div class="fx-sub" style="margin-top:12px">Renovações de assinatura não entram. Clique numa venda do mapa pra abrir a pessoa.</div>';
+      '<div class="fx-sub" style="margin-top:12px">Renovações de assinatura não entram. Clique numa venda pra ver o marketing dela (UTMs, qual VSL, linha do tempo).</div>';
   }).catch(function(e){ var cx = ov.querySelector('.fn-vd'); if(cx) cx.textContent = e.message; });
 }
 // Investido pela mesma regra dos cliques: campanhas amarradas nas origens do
@@ -35691,7 +35705,7 @@ function rsVendas(tipo, valor){
       d.vendas.map(function(v){
         var orig = v.semOrigem ? '<span class="v2-pill warn">'+fnEsc(v.semOrigem)+'</span>' :
                    (v2Fonte(v.fonte)+(v.anuncio ? ' · '+fnEsc(v2Anuncio(v.anuncio)) : '')+(v.casou ? ' <span class="v2-pill neu">'+fnEsc(v.casou)+'</span>' : ''));
-        return '<tr'+(v.visitante?' class="clica" onclick="ldFicha(\''+fnEsc(v.visitante)+'\')"':'')+'><td>'+v2Data(v.em)+'</td><td>'+fnEsc(v.produto||'—')+
+        return '<tr class="clica" title="Ver o marketing desta venda" onclick="vdAbrir(\''+fnEsc(v.id)+'\')"><td>'+v2Data(v.em)+'</td><td>'+fnEsc(v.produto||'—')+
           '<span class="sub">'+fnEsc(v.metodo||'')+(v.utm ? ' · '+fnEsc(v.utm.slice(0,60)) : '')+'</span></td><td class="n">'+v2Din2(v.valor)+'</td><td>'+orig+'</td></tr>';
       }).join('')+'</tbody></table>';
   }).catch(function(e){ var cx = ov.querySelector('.rs-vl'); if(cx) cx.textContent = e.message; });
@@ -35881,6 +35895,65 @@ function ldInterno(id, marcar, depois){
 // ── FICHA DA PESSOA ──
 // ══════════════════════════════════════════════════════
 var ldFichaDados = null, ldOcultarPlayer = true;
+// ══════════════════════════════════════════════════════
+// ── MARKETING DE UMA VENDA ──
+// Abre de qualquer lista de vendas e da ficha da pessoa. Três abas: Detalhes,
+// Produtos e Marketing (UTMs, códigos do checkout, qual VSL e a linha do tempo).
+// ══════════════════════════════════════════════════════
+var vdAba = 'marketing', vdDados = null;
+function vdAbrir(id){
+  if(!id) return;
+  vdAba = 'marketing'; vdDados = null;
+  var ov = v2Modal('<div class="fx-vazio">Abrindo a venda…</div>', 'p');
+  ov.id = 'vd-venda';
+  v2Json('/api/venda/'+encodeURIComponent(id)).then(function(d){ vdDados = d; vdPintar(); })
+    .catch(function(e){ var m = ov.querySelector('.v2-mod'); if(m) m.innerHTML = '<div class="v2-alerta bad"><div><b>Não abriu</b><span>'+fnEsc(e.message)+'</span></div>'+
+      '<button class="fn-btn g sm" onclick="v2Fechar(this)">Fechar</button></div>'; });
+}
+function vdPintar(){
+  var ov = document.getElementById('vd-venda'), d = vdDados; if(!ov || !d) return;
+  var v = d.venda, c = d.codigos || {}, plat = FN_PLAT_NOME[v.plataforma] || v.plataforma || '';
+  var kv = function(k, val, mono, tit){ return '<div class="vd-kv"><span>'+k+'</span><b'+(mono ? ' class="mono"' : '')+' title="'+fnEsc(tit || val || '')+'">'+(val ? fnEsc(val) : '<i>—</i>')+'</b></div>'; };
+  var ab = function(id, t){ return '<button class="'+(vdAba === id ? 'on' : '')+'" onclick="vdAba=\''+id+'\';vdPintar()">'+t+'</button>'; };
+  var corpo = '';
+  if(vdAba === 'marketing'){
+    var cred = v.credito ? (v2Anuncio(v.credito.cont) || v2Fonte(v.credito.fonte))+(v.credito.camp ? ' · '+String(v.credito.camp).split('|')[0].trim() : '') : '';
+    corpo =
+      '<div class="v2-rot vd-sec">UTM</div><div class="vd-kvs">'+
+        kv('utm_source', c.utm_source, 1)+kv('utm_medium', c.utm_medium, 1)+kv('utm_campaign', c.utm_campaign, 1)+kv('utm_term', c.utm_term, 1)+kv('utm_content', c.utm_content, 1)+kv('utm_id', c.utm_id, 1)+'</div>'+
+      '<div class="v2-rot vd-sec">Códigos do checkout</div><div class="vd-kvs">'+
+        kv('src', c.src, 1)+kv('sck', c.sck, 1)+kv('xcod', c.xcod, 1)+kv('fbclid', c.fbclid, 1, c.fbclid ? 'Guardado pra API de Conversões da Meta' : '')+'</div>'+
+      (d.codigosDe !== 'venda' && d.codigosDe !== 'aviso' && d.codigosDe !== 'lista' ? '' :
+        '<div class="fx-sub" style="margin-top:6px">'+(d.codigosDe === 'aviso' ? 'Venda de antes de 18/10: códigos tirados do aviso da plataforma.' : 'Venda de antes de 18/10: só o que ficou guardado dela (src, sck e xcod passam a vir a partir de 18/10).')+'</div>')+
+      '<div class="v2-rot vd-sec">De onde veio</div><div class="vd-kvs">'+
+        kv('Ligada por', v.visitante ? (v.casou === 'sck' ? 'ID do visitante (o sck do TMX voltou no checkout)' : v.casou ? 'pelo '+v.casou : 'pela jornada') : 'ninguém: venda sem pessoa')+
+        kv('Crédito', cred || (v.semOrigem || ''))+
+        (v.apoio ? kv('Apoio', v.apoio) : '')+
+        kv('Posicionamento', c.utm_term)+
+        kv('VSL que assistiu', d.vsl ? (d.vsl.nome || 'vídeo '+d.vsl.id)+' (pelo código do vídeo no src)' : (v.visitante ? 'não veio no src' : ''))+'</div>'+
+      (v.visitante ? '<div style="margin-top:10px"><button class="fn-btn g sm" onclick="v2Fechar(this);ldFicha(\''+fnEsc(v.visitante)+'\')">↗ Ver a jornada</button></div>'
+        : (v.semOrigem ? '<div class="v2-alerta warn" style="margin-top:10px"><div><b>'+fnEsc(v.semOrigem)+'</b><span>'+fnEsc(v.semOrigemExplica || '')+'</span></div></div>' : ''))+
+      '<div class="v2-rot vd-sec">Linha do tempo</div>'+
+      (d.linha || []).map(function(x){ return '<div class="v2-feed-i"><span class="v2-ic '+(x.tipo === 'compra' ? 'ok' : x.tipo === 'checkout' ? 'warn' : '')+'">'+(x.tipo === 'compra' ? '✓' : x.tipo === 'checkout' ? '🛒' : x.tipo === 'tentativa' ? '✕' : '→')+'</span>'+
+        '<div><b>'+fnEsc(x.texto)+'</b>'+(x.sub ? '<div class="sub">'+fnEsc(x.sub)+'</div>' : '')+'</div><span class="h">'+v2DiaHora(x.em)+'</span></div>'; }).join('')+
+      '<details class="vd-brutos"><summary>Dados brutos: os códigos de rastreio que vieram da plataforma</summary><pre>'+fnEsc(JSON.stringify(c, null, 2))+'</pre></details>';
+  } else if(vdAba === 'detalhes'){
+    corpo = '<div class="vd-kvs" style="margin-top:12px">'+kv('Pedido', '#'+(v.pedido || v.id))+kv('Plataforma', plat)+
+      kv('Status', v.estorno ? 'Estornada' : v.pago ? 'Aprovada' : (v.motivo || v.status || 'Não paga'))+
+      kv('Valor', v.valor != null ? v2Din2(v.valor) : 'só a Diretoria vê')+(v.liquido != null ? kv('Líquido', v2Din2(v.liquido)) : '')+
+      kv('Pagamento', v.metodo === 'credit_card' ? 'Cartão' : v.metodo === 'pix' ? 'Pix' : (v.metodo || ''))+kv('Quando', v2Data(v.em))+(v.renovacao ? kv('Tipo', 'Renovação de assinatura') : '')+'</div>';
+  } else {
+    corpo = '<div class="vd-kvs" style="margin-top:12px">'+kv('Produto', v.produto)+kv('Oferta', v.plano)+kv('Valor', v.valor != null ? v2Din2(v.valor) : 'só a Diretoria vê')+'</div>';
+  }
+  ov.querySelector('.v2-mod').innerHTML =
+    '<div class="v2-cab"><div><h2>'+(v.valor != null ? v2Din2(v.valor) : fnEsc(v.produto || 'Venda'))+'</h2>'+
+      '<div class="fx-sub">Venda em '+v2Data(v.em)+'</div>'+
+      '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><span class="v2-pill '+(v.estorno ? 'bad' : v.pago ? 'ok' : 'warn')+'">'+(v.estorno ? 'Estornada' : v.pago ? 'Aprovada' : 'Não paga')+'</span>'+
+        '<span class="v2-pill neu">'+fnEsc(plat)+' · #'+fnEsc(String(v.pedido || v.id).slice(0, 14))+'</span></div></div>'+
+      '<button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div>'+
+    '<div class="vd-abas">'+ab('detalhes', 'Detalhes')+ab('produtos', 'Produtos')+ab('marketing', 'Marketing')+'</div>'+corpo;
+}
+
 function ldFicha(id){
   var ov = v2Modal('<div class="fx-vazio">Abrindo a ficha…</div>');
   ov.id = 'ld-ficha';
@@ -35919,7 +35992,7 @@ function ldFichaPintar(){
   }).join('');
   var soltos = (d.soltos || []).map(ldEvHtml).join('');
   var peds = (d.pedidos || []).map(function(x){
-    return '<tr><td>'+fnEsc(x.produto || x.plano || 'Pedido')+'<span class="sub">'+fnEsc(x.metodo||'')+' · '+v2Data(x.em)+'</span></td>'+
+    return '<tr class="clica" title="Ver o marketing desta venda" onclick="vdAbrir(\''+fnEsc(x.id)+'\')"><td>'+fnEsc(x.produto || x.plano || 'Pedido')+'<span class="sub">'+fnEsc(x.metodo||'')+' · '+v2Data(x.em)+'</span></td>'+
       '<td class="n">'+(x.valor != null ? v2Din(x.valor) : '•••')+'</td>'+
       '<td>'+(x.estorno ? '<span class="v2-pill bad">Estorno</span>' : x.pago ? '<span class="v2-pill ok">Pago</span>' : '<span class="v2-pill bad">'+fnEsc(x.motivo||'Não pago')+'</span>')+'</td></tr>';
   }).join('');

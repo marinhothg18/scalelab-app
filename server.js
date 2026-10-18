@@ -2887,6 +2887,19 @@ function _doLink(p) {
   });
   return out;
 }
+// Só os códigos de rastreio do aviso, nunca dado de cliente: é o que a aba
+// Marketing da venda mostra (e o fbclid é o que a API de Conversões vai usar).
+const _CODIGOS_VENDA = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id', 'src', 'sck', 'xcod', 'fbclid'];
+function _codigosDaVenda(p, doLink) {
+  const out = {}, tp = (p && (p.trackingParameters || p.tracking)) || {};
+  _CODIGOS_VENDA.forEach(k => {
+    let v = doLink && doLink[k];
+    if (v == null || v === '') v = tp[k];
+    if ((v == null || v === '') && p) v = p[k];
+    if (v != null && v !== '' && typeof v !== 'object') out[k] = String(v).slice(0, 600);
+  });
+  return out;
+}
 // Valor que o checkout crava sozinho e que nao diz de onde a pessoa veio.
 const _ORIGEM_VAZIA = /^(organic|organico|orgânico|direct|direto|none|null|undefined|nao-informado|n\/a|sem|)$/i;
 function _origemVale(v) { return !!String(v || '').trim() && !_ORIGEM_VAZIA.test(String(v).trim()); }
@@ -2939,6 +2952,7 @@ function _normalizarVenda(p) {
   if (valor !== null && /cents|transaction\.total_price|^product\.price$/i.test(achado.caminho)) valor = valor / 100;
   const doLink = _doLink(p);
   return {
+    codigos: _codigosDaVenda(p, doLink),
     id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     pedidoId: String(_pega(p, ['orderId','order_id','id','transaction_id','codigo','code']) || ''),
     status: String(_pega(p, ['status','order_status','payment_status','situacao']) || '').toLowerCase(),
@@ -9762,6 +9776,9 @@ function _pessoas() {
     try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_teste TEXT'); } catch (e) {}
     try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_var TEXT'); } catch (e) {}
     try { db.exec('ALTER TABLE pedidos ADD COLUMN plataforma TEXT'); } catch (e) {}
+    // os códigos de rastreio que vieram na venda (UTMs, src, sck, xcod, fbclid): o
+    // aviso cru só guarda os últimos 50, e o marketing da venda precisa de todos
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN codigos TEXT'); } catch (e) {}
     try { db.exec('CREATE INDEX IF NOT EXISTS ped_ck ON pedidos(ck_teste)'); } catch (e) {}
     _pdb = db;
     let sal = db.prepare("SELECT v FROM cfg WHERE k='sal'").get();
@@ -10208,8 +10225,8 @@ function _pedidoRegistrar(venda, p, opts) {
     const idPed = venda.pedidoId ? (String(venda.pedidoId).slice(0, 60) + '|' + String(venda.status || '').slice(0, 30)) : venda.id;
     const ins = _q(`INSERT OR IGNORE INTO pedidos(id, pedido, status, pago, estorno, valor, liquido, produto, plano, metodo, motivo,
         visitante, lead, casou, sem_origem, sck, fonte, camp, cont, termo, cred_fonte, cred_camp, cred_cont, cred_canal, apoio,
-        funil, teste, variante, renovacao, em, dia, ck_teste, ck_var, plataforma)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        funil, teste, variante, renovacao, em, dia, ck_teste, ck_var, plataforma, codigos)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       idPed, txt(venda.pedidoId, 60), txt(venda.status, 30), pago ? 1 : 0, estorno,
       Number(venda.valor) || 0, liquido, txt(venda.produto, 120), txt(venda.plano, 80), txt(venda.metodo, 30),
       pago ? null : txt(_motivoFalha(venda), 60),
@@ -10218,7 +10235,8 @@ function _pedidoRegistrar(venda, p, opts) {
       cred ? txt(cred.fonte, 80) : null, cred ? txt(cred.camp, 120) : null, cred ? txt(cred.cont, 160) : null,
       cred ? cred.canal : null, apoio, ref.funil || null, ref.teste || null, ref.variante || null,
       venda.renovacao ? 1 : 0, em, _diaBR(em),
-      venda.ck ? txt(venda.ck.t, 60) : null, venda.ck ? txt(venda.ck.v, 40) : null, txt(venda.plataforma, 20));
+      venda.ck ? txt(venda.ck.t, 60) : null, venda.ck ? txt(venda.ck.v, 40) : null, txt(venda.plataforma, 20),
+      venda.codigos && Object.keys(venda.codigos).length ? JSON.stringify(venda.codigos) : null);
 
     if (ins.changes && vis) {
       const sid = sessaoRef ? sessaoRef.id : null;
@@ -10629,6 +10647,80 @@ function _resumoDaPessoa(v, evs, peds, nomeEtapa) {
   if (s) frases.push(s);
   return frases.join(' ');
 }
+
+// ── MARKETING DE UMA VENDA ──
+// O que a Malva mostra na venda e o TMX não mostrava: as UTMs inteiras, os
+// códigos do checkout (src, sck, xcod, fbclid), por onde a venda foi ligada à
+// pessoa, qual VSL ela assistiu e a linha do tempo até a compra. Nunca nome,
+// e-mail ou telefone: o aviso cru tem dado de cliente, e daqui só sai rastreio.
+const _SEM_ORIGEM_EXPLICA = {
+  'Checkout limpou o src/sck': 'A venda chegou marcada como orgânica e sem o sck do TMX: a pessoa abriu o checkout por um link sem o pixel (WhatsApp, e-mail, bio, link direto) ou o checkout perdeu os parâmetros.',
+  'Sem id nem UTM': 'Nada na venda liga a uma visita: sem sck, sem UTM, e o e-mail ou telefone não bate com ninguém que o pixel viu.',
+  'UTM com macro vazia': 'O anúncio mandou a UTM com {{macro}} sem preencher.',
+  'Jornada expirou (> 7 dias)': 'A pessoa foi vista, mas a última visita foi há mais de 7 dias.'
+};
+function _codigosDoPedido(dbj, o) {
+  try { if (o.codigos) return JSON.parse(o.codigos); } catch (e) {}
+  // venda de antes de 18/10: procura no aviso cru (só os últimos 50) e na lista de vendas
+  const cod = String(o.pedido || '').split('|')[0].replace(/^kiwify:/, '');
+  if (cod) {
+    const raw = (Array.isArray(dbj.store[KEY_VENDAS_RAW]) ? dbj.store[KEY_VENDAS_RAW] : []).slice().reverse()
+      .find(r => JSON.stringify(r.payload || {}).indexOf(cod) >= 0);
+    if (raw) {
+      const p = _adaptarVenda(raw.payload || {}, raw.plataforma) || {};
+      const c = _codigosDaVenda(p, _doLink(p));
+      if (Object.keys(c).length) return Object.assign(c, { _de: 'aviso' });
+    }
+    const v = (Array.isArray(dbj.store[KEY_VENDAS]) ? dbj.store[KEY_VENDAS] : []).find(x => String(x.pedidoId || '') === cod);
+    if (v) {
+      if (v.codigos && Object.keys(v.codigos).length) return v.codigos;
+      const c = {};
+      [['utm_source', v.utmSource], ['utm_medium', v.utmMedium], ['utm_campaign', v.utmCampaign], ['utm_content', v.utmContent], ['utm_term', v.utmTerm]]
+        .forEach(([k, x]) => { if (x) c[k] = String(x); });
+      if (Object.keys(c).length) return Object.assign(c, { _de: 'lista' });
+    }
+  }
+  // último recurso: o que a própria venda guardou
+  const c = {};
+  if (o.fonte) c.utm_source = o.fonte; if (o.camp) c.utm_campaign = o.camp; if (o.cont) c.utm_content = o.cont; if (o.termo) c.utm_term = o.termo;
+  return Object.keys(c).length ? Object.assign(c, { _de: 'venda' }) : {};
+}
+// o src da Payt carrega o id do vídeo da VTurb ("vid-6aadb9…"): é ele que diz a VSL
+function _vslDoSrc(dbj, src) {
+  const m = String(src || '').match(/vid-([0-9a-f]{24})/i); if (!m) return null;
+  const cfg = dbj.store[KEY_VTURB] || {}, p = (cfg.players || []).find(x => String(x.id) === m[1]);
+  return { id: m[1], nome: p ? String(p.name || p.nome || '').replace(/\.mp4$/i, '') : '' };
+}
+app.get('/api/venda/:id', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const o = _q('SELECT * FROM pedidos WHERE id=?').get(String(req.params.id || '').slice(0, 120));
+    if (!o) return res.status(404).json({ error: 'Venda não encontrada.' });
+    const dbj = readDB(), dir = _ehDir(req);
+    const cod = _codigosDoPedido(dbj, o), de = cod._de || 'gravado'; delete cod._de;
+    if (cod.fbclid) cod.fbclid = String(cod.fbclid).slice(0, 32) + '…';
+    let linha = [];
+    if (o.visitante) {
+      const s = _q('SELECT COUNT(*) n, MIN(inicio) ini FROM sessoes WHERE visitante=?').get(o.visitante);
+      if (s && s.ini) linha.push({ em: s.ini, tipo: 'visita', texto: 'Primeira visita', sub: s.n + ' visita' + (s.n === 1 ? '' : 's') + ' no total' });
+      const ck = _q(`SELECT pg, em, extra FROM eventos WHERE visitante=? AND tipo='checkout' AND em <= ? ORDER BY em DESC LIMIT 1`).get(o.visitante, (o.em || 0) + 600000);
+      if (ck) { let dest = ''; try { dest = String((JSON.parse(ck.extra || '{}') || {}).destino || '').split('?')[0]; } catch (e) {}
+        linha.push({ em: ck.em, tipo: 'checkout', texto: 'Clicou em comprar em ' + ck.pg, sub: dest ? 'foi pro ' + dest.replace(/^https?:\/\//, '') : '' }); }
+    }
+    linha.push({ em: o.em, tipo: o.pago ? 'compra' : 'tentativa', texto: o.pago ? 'Compra aprovada' : 'Tentativa: ' + (o.status || ''), sub: '' });
+    linha = linha.sort((a, b) => a.em - b.em);
+    const ckEv = linha.find(x => x.tipo === 'checkout');
+    if (ckEv && o.pago) linha[linha.length - 1].sub = Math.max(0, Math.round((o.em - ckEv.em) / 60000)) + ' min depois do clique';
+    res.json({ ok: true, venda: {
+      id: o.id, pedido: o.pedido, status: o.status, pago: !!o.pago, estorno: !!o.estorno, renovacao: !!o.renovacao,
+      valor: dir ? o.valor : null, liquido: dir ? o.liquido : null, produto: o.produto, plano: o.plano, metodo: o.metodo, motivo: o.motivo,
+      plataforma: o.plataforma || (String(o.id).indexOf(':') > 0 ? String(o.id).split(':')[0] : 'payt'), em: o.em,
+      visitante: o.visitante || null, casou: o.casou || null, semOrigem: o.sem_origem || null, semOrigemExplica: _SEM_ORIGEM_EXPLICA[o.sem_origem] || '',
+      credito: o.cred_fonte || o.cred_camp || o.cred_cont ? { fonte: o.cred_fonte, camp: o.cred_camp, cont: o.cred_cont, canal: o.cred_canal } : null,
+      apoio: o.apoio || null },
+      codigos: cod, codigosDe: de, vsl: _vslDoSrc(dbj, cod.src), linha });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/api/pessoa/:id', authUsuario, (req, res) => {
   try {
@@ -11128,7 +11220,7 @@ app.get('/api/funil/vendas-lista', authNegocio, async (req, res) => {
       l = _vendasDoFunil(dbj, esc, per, {}, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).sort((a, b) => b.em - a.em).slice(0, 300);
       if (req.query.dia) l = l.filter(o => o.dia === req.query.dia);
     }
-    res.json({ ok: true, vendas: l.map(o => ({ pedido: o.pedido, em: o.em, produto: o.produto, valor: o.valor, metodo: o.metodo, plataforma: _platDoPedido(o),
+    res.json({ ok: true, vendas: l.map(o => ({ id: o.id, pedido: o.pedido, em: o.em, produto: o.produto, valor: o.valor, metodo: o.metodo, plataforma: _platDoPedido(o),
       visitante: o.visitante, casou: o.casou, semOrigem: o.sem_origem, fonte: o.cred_fonte || o.fonte, anuncio: o.cred_cont || o.cont,
       utm: [o.fonte, o.camp, o.cont].filter(Boolean).join(' · '), por: o.por || '' })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
