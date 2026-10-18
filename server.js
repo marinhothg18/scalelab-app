@@ -6830,6 +6830,8 @@ app.get('/api/v1/docs', (req, res) => {
       { method: 'POST',  path: '/api/v1/demandas',           desc: 'Criar demanda (body: nome, status, resp, respId, desc, data)' },
       { method: 'PATCH', path: '/api/v1/demandas/:id',       desc: 'Atualizar demanda' },
       { method: 'GET',   path: '/api/v1/criativos',          desc: 'Listar criativos (query: nicho, oferta, status)' },
+      { method: 'POST',  path: '/api/v1/paginas',            desc: 'Registrar página publicada (body: projeto, url, titulo, tipo, versao, feito_por). Mesma URL = versão nova' },
+      { method: 'GET',   path: '/api/v1/paginas',            desc: 'Listar páginas registradas (query: projeto)' },
       { method: 'GET',   path: '/api/v1/criativos/:id',      desc: 'Detalhe de um criativo' },
       { method: 'GET',   path: '/api/v1/metricas/resumo',    desc: 'Resumo geral (demandas pendentes, atrasadas, criativos)' },
       { method: 'GET',   path: '/api/v1/usuarios',           desc: 'Listar equipe' },
@@ -10831,6 +10833,198 @@ function _resumoDaPessoa(v, evs, peds, nomeEtapa) {
   if (s) frases.push(s);
   return frases.join(' ');
 }
+
+// ══════════════════════════════════════════════════════
+// ── PÁGINAS DE CADA PROJETO ──
+// Todas as páginas do projeto num lugar: as que o Claude Code do sistema de
+// páginas registra sozinho (/api/v1/paginas), as registradas à mão e as que o
+// pixel já viu nos funis do projeto. Cada uma com data, versões, os números do
+// período (pessoas, pitch, clique em comprar, vendas, tempo, rolagem) e a
+// velocidade medida pelo PageSpeed do Google.
+// ══════════════════════════════════════════════════════
+const KEY_PAGINAS = 'sl_paginas_reg';   // server-only: registro das páginas
+const PAGINA_TIPOS = ['vsl', 'presell', 'quiz', 'checkout', 'obrigado', 'upsell', 'downsell', 'backredirect', 'bio', 'conteudo', 'outra'];
+function _paginasReg(db) { return Array.isArray(db.store[KEY_PAGINAS]) ? db.store[KEY_PAGINAS] : []; }
+function _paginaTipo(t) { const x = _nrm(t).replace(/[^a-z]/g, ''); return PAGINA_TIPOS.indexOf(x) >= 0 ? x : (/pre/.test(x) ? 'presell' : /redirect|back/.test(x) ? 'backredirect' : 'outra'); }
+// registra ou soma uma versão; devolve a página
+function _paginaRegistrar(db, d) {
+  const url = _normPg(d.url); if (!url || url.indexOf('.') < 0) throw new Error('Mande o link da página (ex.: https://apostilai.ai/697).');
+  const projeto = String(d.projeto || '').trim().slice(0, 60); if (!projeto) throw new Error('Diga o projeto (ex.: CONCURSO).');
+  const lista = _paginasReg(db), agora = new Date().toISOString();
+  let p = lista.find(x => x.url === url);
+  if (!p) {
+    p = { id: 'pg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url, projeto, titulo: '', tipo: 'outra', funil: '',
+          origem: d.origem || 'manual', por: '', criadoEm: agora, versoes: [], velocidade: [] };
+    lista.push(p);
+  }
+  if (d.titulo) p.titulo = String(d.titulo).trim().slice(0, 120);
+  if (d.tipo) p.tipo = _paginaTipo(d.tipo);
+  if (d.funil !== undefined) p.funil = String(d.funil || '').slice(0, 80);
+  if (projeto) p.projeto = projeto;
+  if (d.por) p.por = String(d.por).slice(0, 60);
+  p.versoes = (p.versoes || []).concat([{ em: agora, nota: String(d.versao || d.nota || (p.versoes && p.versoes.length ? 'versão nova' : 'criada')).slice(0, 160), por: String(d.por || d.origem || 'manual').slice(0, 60) }]).slice(-40);
+  p.atualizadoEm = agora;
+  db.store[KEY_PAGINAS] = lista;
+  if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_PAGINAS] = now();
+  return p;
+}
+
+// ── velocidade (PageSpeed Insights do Google) ──
+const _pgMedindo = new Set();
+async function _pageSpeed(url, estrategia) {
+  const chave = process.env.PAGESPEED_KEY ? '&key=' + encodeURIComponent(process.env.PAGESPEED_KEY) : '';
+  const corta = new AbortController(), relogio = setTimeout(() => corta.abort(), 110000);
+  try {
+    const r = await fetch('https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=' + encodeURIComponent('https://' + url) +
+      '&strategy=' + estrategia + '&category=performance&locale=pt_BR' + chave, { signal: corta.signal });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = (d.error && d.error.message) || ('o Google respondeu ' + r.status);
+      // sem chave a cota grátis é dividida com o mundo todo e acaba cedo
+      if (/quota/i.test(msg)) throw new Error(process.env.PAGESPEED_KEY ? 'a cota do dia da chave do PageSpeed acabou; amanhã volta.' : 'o Google só mede com a chave do PageSpeed (a cota sem chave acabou). Falta configurar PAGESPEED_KEY no Railway.');
+      throw new Error(msg);
+    }
+    const lh = d.lighthouseResult || {}, au = lh.audits || {}, num = k => (au[k] && au[k].numericValue != null) ? au[k].numericValue : null;
+    const dicas = Object.values(au).filter(a => a && a.details && a.details.type === 'opportunity' && (a.details.overallSavingsMs > 0 || a.details.overallSavingsBytes > 0))
+      .sort((a, b) => (b.details.overallSavingsMs || 0) - (a.details.overallSavingsMs || 0)).slice(0, 4)
+      .map(a => ({ titulo: String(a.title || '').slice(0, 120), ms: Math.round(a.details.overallSavingsMs || 0), kib: Math.round((a.details.overallSavingsBytes || 0) / 1024) }));
+    const le = (d.loadingExperience && d.loadingExperience.metrics) || {}, pct = k => le[k] && le[k].percentile != null ? le[k].percentile : null;
+    return { nota: lh.categories && lh.categories.performance ? Math.round(lh.categories.performance.score * 100) : null,
+      lcp: num('largest-contentful-paint'), fcp: num('first-contentful-paint'), tbt: num('total-blocking-time'), cls: num('cumulative-layout-shift'), si: num('speed-index'),
+      dicas, real: (pct('LARGEST_CONTENTFUL_PAINT_MS') != null) ? { lcp: pct('LARGEST_CONTENTFUL_PAINT_MS'), inp: pct('INTERACTION_TO_NEXT_PAINT'), cls: pct('CUMULATIVE_LAYOUT_SHIFT_SCORE') != null ? pct('CUMULATIVE_LAYOUT_SHIFT_SCORE') / 100 : null } : null };
+  } finally { clearTimeout(relogio); }
+}
+// o que fazer, em português simples, a partir da medição do celular
+function _paginaObservacao(c) {
+  if (!c || c.nota == null) return '';
+  if (c.nota >= 90) return 'Página rápida no celular. O que o Google aponta é ganho pequeno.';
+  const t = [];
+  if (c.lcp != null && c.lcp > 2500) t.push('O maior elemento do topo (quase sempre a capa da VSL ou a imagem da dobra) leva ' + (c.lcp / 1000).toFixed(1).replace('.', ',') + ' s pra aparecer; o Google considera lento acima de 2,5 s. Comprimir essa imagem e carregar ela primeiro é o que mais ajuda.');
+  if (c.tbt != null && c.tbt > 200) t.push('A página fica ' + Math.round(c.tbt) + ' ms travada rodando scripts: adiar o que não é do vídeo (chat, pixels extras, widgets) libera o toque mais cedo.');
+  if (c.cls != null && c.cls > 0.1) t.push('O conteúdo pula enquanto carrega (estabilidade ' + String(c.cls.toFixed(2)).replace('.', ',') + '): dê altura fixa ao player e às imagens.');
+  if (!t.length && c.dicas && c.dicas[0]) t.push('O que mais pesa agora: ' + c.dicas[0].titulo + '.');
+  return t.join(' ');
+}
+async function _paginaMedir(url) {
+  if (_pgMedindo.has(url)) throw new Error('Essa página já está sendo medida. Espere um minuto.');
+  _pgMedindo.add(url);
+  try {
+    const [cel, desk] = await Promise.all([_pageSpeed(url, 'mobile'), _pageSpeed(url, 'desktop')]);
+    const med = { em: new Date().toISOString(), cel, desk, obs: _paginaObservacao(cel) };
+    const db = readDB(), lista = _paginasReg(db);
+    let p = lista.find(x => x.url === url);
+    if (!p) { p = { id: 'pg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url, projeto: '', titulo: '', tipo: 'outra', funil: '', origem: 'pixel', criadoEm: med.em, versoes: [], velocidade: [] }; lista.push(p); }
+    p.velocidade = (p.velocidade || []).concat([med]).slice(-12);
+    db.store[KEY_PAGINAS] = lista; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_PAGINAS] = now();
+    writeDB(db);
+    return med;
+  } finally { _pgMedindo.delete(url); }
+}
+
+// as páginas de um projeto: registradas + vistas pelo pixel nos funis dele
+function _paginasDoProjeto(db, projeto) {
+  const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(f => f && f.projeto === projeto);
+  const idsFunis = new Set(funis.map(f => f.id)), noMapa = {};
+  funis.forEach(f => (f.etapas || []).forEach(e => { const u = _normPg(e.url); if (u) noMapa[u] = { funil: f.nome, etapa: e.nome, tipo: e.tipo }; }));
+  const mapa = {};
+  _paginasReg(db).filter(p => p.projeto === projeto).forEach(p => { mapa[p.url] = Object.assign({}, p); });
+  // o que o pixel viu nos últimos 30 dias nos funis do projeto (página de checkout de gateway fica de fora)
+  if (_pessoas() && idsFunis.size) {
+    const ini = _diaBR(Date.now() - 30 * 86400000);
+    _q('SELECT pg, funil, MIN(em) primeira, COUNT(DISTINCT visitante) n FROM paginas WHERE dia >= ? AND interno=0 GROUP BY pg, funil').all(ini).forEach(x => {
+      if (!idsFunis.has(x.funil) && !noMapa[x.pg]) return;
+      if (!x.pg || x.pg.indexOf('.') < 0 || _pgEhCheckout(x.pg)) return;
+      const m = mapa[x.pg] || (mapa[x.pg] = { id: '', url: x.pg, projeto, titulo: '', tipo: '', funil: '', origem: 'pixel', criadoEm: new Date(x.primeira).toISOString(), versoes: [], velocidade: [] });
+      if (!m.vistaDesde || x.primeira < Date.parse(m.vistaDesde)) m.vistaDesde = new Date(x.primeira).toISOString();
+    });
+  }
+  Object.keys(noMapa).forEach(u => { if (!mapa[u] && !_pgEhCheckout(u) && u.indexOf('.') > 0) mapa[u] = { id: '', url: u, projeto, titulo: '', tipo: '', funil: '', origem: 'mapa', criadoEm: null, versoes: [], velocidade: [] }; });
+  return Object.values(mapa).map(p => {
+    const m = noMapa[p.url];
+    return Object.assign(p, { noMapa: m ? m.funil : '', etapaMapa: m ? m.etapa : '', titulo: p.titulo || (m ? m.etapa : ''), tipo: p.tipo || (m ? _paginaTipo(m.tipo) : 'outra') });
+  });
+}
+
+app.get('/api/paginas', authUsuario, (req, res) => {
+  try {
+    const projeto = String(req.query.projeto || '').slice(0, 60);
+    if (!projeto) return res.status(400).json({ error: 'Diga o projeto.' });
+    const db = readDB(), dir = _ehDir(req), per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
+    const lista = _paginasDoProjeto(db, projeto);
+    if (_pessoas() && lista.length) {
+      const urls = lista.map(p => p.url), ph = _ph(urls.length);
+      const num = {}; urls.forEach(u => { num[u] = { pessoas: new Set(), pitch: new Set(), ck: new Set(), seg: [], rol: 0, saidas: 0 }; });
+      _q('SELECT pg, visitante, pitch FROM paginas WHERE dia BETWEEN ? AND ? AND interno=0 AND pg IN (' + ph + ')').all(per.de, per.ate, ...urls).forEach(x => {
+        const n = num[x.pg]; if (!n) return; n.pessoas.add(x.visitante); if (x.pitch) n.pitch.add(x.visitante);
+      });
+      _q("SELECT pg, visitante, tipo, extra FROM eventos WHERE em BETWEEN ? AND ? AND tipo IN ('checkout','saiu') AND pg IN (" + ph + ')').all(per.ini, per.fim, ...urls).forEach(x => {
+        const n = num[x.pg]; if (!n) return;
+        if (x.tipo === 'checkout') { n.ck.add(x.visitante); return; }
+        let e = {}; try { e = JSON.parse(x.extra || '{}') || {}; } catch (er) {}
+        const sg = Number(e.seg != null ? e.seg : e.segundos) || 0; if (sg > 0) n.seg.push(Math.min(sg, 3 * 3600));
+        n.saidas++; if (Number(e.rol) >= 50) n.rol++;
+      });
+      // vendas: compras pagas no período de quem passou pela página
+      const pagos = _q('SELECT visitante, valor, liquido FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND visitante IS NOT NULL').all(per.ini, per.fim);
+      lista.forEach(p => {
+        const n = num[p.url];
+        const vendas = pagos.filter(o => n.pessoas.has(o.visitante));
+        const seg = n.seg.slice().sort((a, b) => a - b), med = seg.length ? seg[Math.floor(seg.length / 2)] : null;
+        p.numeros = { pessoas: n.pessoas.size, pitch: n.pitch.size, checkout: n.ck.size, vendas: vendas.length,
+          faturamento: dir ? vendas.reduce((a, o) => a + (o.liquido != null ? o.liquido : (Number(o.valor) || 0)), 0) : null,
+          tempo: med, rolou50: n.saidas ? n.rol / n.saidas : null };
+      });
+    }
+    lista.forEach(p => { const v = (p.velocidade || []).slice(-1)[0]; p.ultimaVelocidade = v || null; p.medicoes = (p.velocidade || []).length; delete p.velocidade; });
+    lista.sort((a, b) => ((b.numeros || {}).pessoas || 0) - ((a.numeros || {}).pessoas || 0) || String(b.atualizadoEm || b.criadoEm || '').localeCompare(String(a.atualizadoEm || a.criadoEm || '')));
+    const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(f => f && f.projeto === projeto).map(f => f.nome);
+    res.json({ ok: true, de: per.de, ate: per.ate, paginas: lista, funis, temChave: !!process.env.PAGESPEED_KEY });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// a ficha: histórico de versões e de medições
+app.get('/api/paginas/ficha', authUsuario, (req, res) => {
+  try {
+    const url = _normPg(req.query.url), db = readDB();
+    const p = _paginasReg(db).find(x => x.url === url);
+    res.json({ ok: true, pagina: p || { url, versoes: [], velocidade: [] } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/paginas', authUsuario, (req, res) => {
+  try {
+    const db = readDB(), b = req.body || {};
+    const p = _paginaRegistrar(db, { url: b.url, projeto: b.projeto, titulo: b.titulo, tipo: b.tipo, funil: b.funil, origem: 'manual', por: (req.user && req.user.nome) || 'manual', versao: 'registrada à mão' });
+    writeDB(db);
+    if (b.medir) _paginaMedir(p.url).catch(e => console.error('[PAGINAS] velocidade:', e.message));
+    res.json({ ok: true, pagina: p });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/paginas/velocidade', authUsuario, async (req, res) => {
+  try {
+    const url = _normPg((req.body || {}).url);
+    if (!url || url.indexOf('.') < 0) return res.status(400).json({ error: 'Mande o link da página.' });
+    const med = await _paginaMedir(url);
+    res.json({ ok: true, medicao: med });
+  } catch (e) { res.status(502).json({ error: 'Não deu pra medir: ' + e.message }); }
+});
+// Pro Claude Code do sistema de páginas: publicou, avisa. Mesma URL de novo
+// vira versão nova (não duplica). Já manda medir a velocidade.
+app.post('/api/v1/paginas', authAPI, (req, res) => {
+  try {
+    const db = readDB(), b = req.body || {};
+    const p = _paginaRegistrar(db, { url: b.url, projeto: b.projeto, titulo: b.titulo, tipo: b.tipo, funil: b.funil,
+      origem: 'claude', por: String(b.feito_por || b.por || 'Claude Code'), versao: b.versao || b.nota });
+    writeDB(db);
+    _paginaMedir(p.url).catch(e => console.error('[PAGINAS] velocidade:', e.message));
+    res.json({ ok: true, pagina: { id: p.id, url: p.url, projeto: p.projeto, titulo: p.titulo, tipo: p.tipo, versoes: p.versoes.length } });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get('/api/v1/paginas', authAPI, (req, res) => {
+  try {
+    const db = readDB(), projeto = String(req.query.projeto || '');
+    res.json({ ok: true, paginas: _paginasReg(db).filter(p => !projeto || p.projeto === projeto)
+      .map(p => ({ url: p.url, projeto: p.projeto, titulo: p.titulo, tipo: p.tipo, origem: p.origem, criadoEm: p.criadoEm, versoes: (p.versoes || []).length })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── MARKETING DE UMA VENDA ──
 // O que a Malva mostra na venda e o TMX não mostrava: as UTMs inteiras, os
