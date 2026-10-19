@@ -36220,6 +36220,23 @@ function ldPintar(){
       '<td class="n">'+(l.pago ? '<span class="v2-bom">'+(dir ? v2Din(l.pago) : '✓')+'</span>' : '-')+'</td>'+
       '<td>'+v2Contato(l.primeiro)+'</td></tr>';
   }).join('');
+  // compradores que chegaram sem o código do TMX: sem pessoa no pixel, não têm
+  // ficha nem jornada. O clique abre a venda, com o que veio do checkout.
+  var srLinhas = (d.semRastreio || []).map(function(l){
+    var fonte = /^organic/i.test(l.toque.fonte || '') ? 'Orgânico' : (l.toque.fonte ? v2Fonte(l.toque.fonte) : '');
+    var toque = [fonte, v2Anuncio(l.toque.cont), l.toque.camp ? String(l.toque.camp).split('|')[0].slice(0,14) : ''].filter(Boolean).join(' · ');
+    var dica = 'Chegou sem o código do TMX ('+l.motivo+'). '+(l.motivoTexto || '')+' Clique pra ver o que veio na venda.';
+    var ha = l.ultimo.em ? (v2Ha(l.ultimo.em) === 'agora' ? ' · agora' : ' · há '+v2Ha(l.ultimo.em)) : '';
+    return '<tr class="clica" onclick="vdAbrir(\''+fnEsc(l.venda)+'\')">'+
+      '<td><b>'+(l.nome ? fnEsc(l.nome) : 'Comprador sem nome')+'</b>'+(l.email ? '<span class="sub">'+fnEsc(l.email)+'</span>' : '')+'</td>'+
+      '<td><span class="v2-pill ok">Comprador</span> <span class="v2-pill warn" title="'+fnEsc(dica)+'">sem rastreio</span></td>'+
+      '<td>'+fnEsc(toque || '—')+'</td>'+
+      '<td>Comprou'+(l.produto ? ' '+fnEsc(l.produto) : '')+ha+'</td>'+
+      '<td>-</td><td class="n">-</td>'+
+      '<td class="n">'+(l.pago ? '<span class="v2-bom">'+(dir ? v2Din(l.pago) : '✓')+'</span>' : '-')+'</td>'+
+      '<td>'+v2Contato(l.primeiro)+'</td></tr>';
+  }).join('');
+  var nSr = d.totalSemRastreio || 0;
   var paginas = Math.max(1, Math.ceil(d.total / d.por));
   var filtroAtivo = Object.keys(ldF).some(function(k){ return k !== 'pag' && k !== 'por' && k !== 'ordem' && k !== 'quando' && ldF[k] !== ''; });
 
@@ -36227,7 +36244,7 @@ function ldPintar(){
     '<div class="v2-cards c5">'+
       v2Card('Pessoas', fnNum(c.pessoas), 'guardadas sem limite')+
       v2Card('Identificadas', fnNum(c.identificadas), 'com e-mail ou telefone')+
-      v2Card('Compradores', fnNum(c.compradores), '', 'bom', "ldAtalho('compradores')")+
+      v2Card('Compradores', fnNum((c.compradores || 0) + (c.semRastreio || 0)), c.semRastreio ? fnNum(c.semRastreio)+' sem rastreio' : '', 'bom', "ldAtalho('compradores')")+
       v2Card('Checkout sem compra', fnNum(c.checkoutSemCompra), 'fila de recuperação', 'meio', "ldAtalho('checkout e não comprou')")+
       v2Card('Tráfego interno', fnNum(c.internos), 'fora das métricas', '', "ldAtalho('tráfego interno')")+
     '</div>'+
@@ -36246,13 +36263,14 @@ function ldPintar(){
         '<button class="fn-btn g sm" onclick="ldExportar()">⭳ Exportar</button>'+
       '</div><div class="v2-atalhos">'+atalhos+'</div></div>'+
     '<div class="v2-cx">'+
-      (linhas ? '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Pessoa</th><th>Status</th><th>1º toque</th><th>Último evento</th><th>VSL</th><th class="n">Visitas</th><th class="n">Comprou</th><th>1º contato</th></tr></thead><tbody>'+
-        linhas+'</tbody></table></div>'
+      (linhas || srLinhas ? '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Pessoa</th><th>Status</th><th>1º toque</th><th>Último evento</th><th>VSL</th><th class="n">Visitas</th><th class="n">Comprou</th><th>1º contato</th></tr></thead><tbody>'+
+        srLinhas+linhas+'</tbody></table></div>'
        : '<div class="fx-vazio">'+(filtroAtivo ? 'Ninguém com esses filtros no período.' : 'Ninguém passou pelas páginas do mapa neste período.')+'</div>')+
       (sus && dir ? '<div class="v2-alerta info" style="margin:14px 0 0"><div><b>'+v2Pessoa(sus.nome, sus.id)+' parece ser alguém do time</b>'+
         '<span>Mais de 30 visitas em 14 dias, várias páginas e nunca comprou. Marcar como interno tira da conta de todas as métricas e do teste A/B.</span></div>'+
         '<button class="fn-btn sm" onclick="ldInterno(\''+fnEsc(sus.id)+'\', true)">Marcar como interno</button></div>' : '')+
-      '<div class="v2-pag"><span>'+fnNum(d.total)+' pessoa'+(d.total===1?'':'s')+'</span>'+
+      '<div class="v2-pag"><span>'+fnNum(d.total)+' pessoa'+(d.total===1?'':'s')+
+        (nSr ? ' + '+fnNum(nSr)+' comprador'+(nSr===1?'':'es')+' sem rastreio' : '')+'</span>'+
         '<select onchange="ldMudar(\'por\',+this.value)">'+[20,50,100].map(function(n){ return '<option'+(d.por===n?' selected':'')+'>'+n+'</option>'; }).join('')+'</select> por página'+
         '<button class="fn-btn g sm" '+(d.pag<=1?'disabled':'')+' onclick="ldMudar(\'pag\','+(d.pag-1)+')">‹</button>'+
         '<span>'+d.pag+' de '+fnNum(paginas)+'</span>'+

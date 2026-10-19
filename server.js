@@ -10737,6 +10737,61 @@ function _suspeitosDe(ids) {
   return out;
 }
 
+// ── Compradores sem rastreio ──
+// Venda aprovada que chegou sem o sck do TMX (checkout limpou o src/sck, sem id
+// nem UTM) não tem pessoa no pixel e sumia dos Leads: no dia em que a Payt
+// aprovou 4, a lista de compradores mostrava 3 — e era sempre o Apostilai Elite,
+// vendido pela VSL da bio, que faltava. A pessoa comprou: entra na lista como
+// compradora, com a etiqueta "sem rastreio". As mesmas vendas que o topo do
+// funil conta como "sem pessoa ligada" (mapa-numeros), mais as que o funil pegou
+// pela campanha ou pelo produto sem ter a pessoa.
+function _compradoresSemRastreio(dbj, esc, per) {
+  const nomes = {};
+  _q('SELECT id, nome FROM camp_dia WHERE dia BETWEEN ? AND ?').all(per.de, per.ate).forEach(c => { nomes[c.id] = c.nome; });
+  const pagas = _vendasDoFunil(dbj, esc, per, nomes, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno);
+  const vendas = pagas.filter(o => !o.visitante).concat(_vendasSemPessoaDoProjeto(dbj, esc, per, pagas));
+  // uma linha por pessoa (o lead do e-mail/telefone da venda), não por venda
+  const porPessoa = new Map();
+  vendas.forEach(o => {
+    const k = o.lead ? 'l:' + o.lead : 'p:' + o.id;
+    if (porPessoa.has(k)) porPessoa.get(k).push(o); else porPessoa.set(k, [o]);
+  });
+  return [...porPessoa.values()].map(vs => {
+    vs.sort((a, b) => b.em - a.em);
+    const ult = vs[0], pri = vs[vs.length - 1];
+    const l = ult.lead ? _q('SELECT nome, email_mask FROM leads WHERE id=?').get(ult.lead) : null;
+    const motivo = ult.sem_origem || (ult.por === 'campanha' ? 'Ligada pela campanha' : 'Sem id nem UTM');
+    return {
+      id: 'venda:' + ult.id, venda: ult.id, lead: ult.lead || null, nome: (l && l.nome) || '', email: (l && l.email_mask) || '',
+      status: 'comprador', semRastreio: true, motivo,
+      motivoTexto: _SEM_ORIGEM_EXPLICA[motivo] || (motivo === 'Ligada pela campanha'
+        ? 'A venda trouxe a UTM da campanha, mas não o sck do TMX: dá pra saber o anúncio, não a pessoa nem a página.' : ''),
+      produto: [...new Set(vs.map(o => o.produto).filter(Boolean))].join(' + '),
+      toque: { fonte: pri.fonte || '', cont: pri.cont || '', camp: pri.camp || '', em: pri.em },
+      ultimo: { tipo: 'compra', rot: '', em: ult.em, pg: '' },
+      video: 0, pitch: false, visitas: 0, pago: vs.reduce((a, o) => a + (Number(o.valor) || 0), 0),
+      primeiro: pri.em, interno: false, suspeito: false
+    };
+  }).sort((a, b) => b.ultimo.em - a.ultimo.em);
+}
+// Os filtros da lista que valem pra quem não tem pessoa no pixel. Filtro que
+// depende do que o pixel viu (checkout, pitch, página, anúncio, origem) tira
+// essas linhas: não dá pra dizer se a pessoa passou por ali.
+function _srFiltrar(lista, q) {
+  q = q || {};
+  if (['checkout', 'identificado', 'anonimo'].includes(String(q.status || ''))) return [];
+  if (q.checkout || q.pitch || q.anuncio || q.pagina || q.etapa || q.origem || String(q.interno || '') === '1') return [];
+  const busca = String(q.q || '').trim().slice(0, 120);
+  if (!busca) return lista;
+  const dig = busca.replace(/\D/g, '');
+  let leads;
+  if (busca.indexOf('@') > 0) leads = _q('SELECT id FROM leads WHERE email_h=?').all(_hashCurto(_pSal + '|e|' + busca.toLowerCase()));
+  else if (dig.length >= 10 && /^[\d\s()+-]+$/.test(busca)) leads = _q('SELECT id FROM leads WHERE tel_h=?').all(_hashCurto(_pSal + '|t|' + _telNorm(dig)));
+  else leads = _q('SELECT id FROM leads WHERE nome LIKE ?').all('%' + busca + '%');
+  const ids = new Set(leads.map(r => r.id));
+  return lista.filter(x => x.lead && ids.has(x.lead));
+}
+
 app.get('/api/funil/pessoas', authUsuario, (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
@@ -10766,11 +10821,18 @@ app.get('/api/funil/pessoas', authUsuario, (req, res) => {
     const esq = _escopoSql(esc, 'p');
     const fora = _q('SELECT COUNT(DISTINCT p.visitante) n FROM paginas p WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND p.funil IN (' +
                     _ph(esc.ids.length) + ') AND NOT ' + esq.where).get(fl.per.de, fl.per.ate, ...esc.ids, ...esq.args).n;
+    // compradores que chegaram sem o sck: o card conta todos, a lista só os que
+    // passam nos filtros, e eles vêm no topo da primeira página
+    let srTodos = [], sr = [];
+    try { srTodos = _compradoresSemRastreio(dbj, esc, fl.per); sr = _srFiltrar(srTodos, req.query); }
+    catch (e) { console.error('[LEADS] compradores sem rastreio:', e.message); }
     res.json({ ok: true, total, pag, por, cards: {
         pessoas: c.pessoas || 0, identificadas: c.identificadas || 0, compradores: c.compradores || 0,
-        checkoutSemCompra: c.checkout || 0, internos: c.internos || 0, foraDoMapa: fora || 0 },
+        checkoutSemCompra: c.checkout || 0, internos: c.internos || 0, foraDoMapa: fora || 0, semRastreio: srTodos.length },
       // valor de venda é da Diretoria (igual sl_vendas): os outros veem só que comprou
-      linhas: linhas.map(r => { const l = _leadLinha(r, sus); if (!_ehDir(req)) { l.pago = l.pago > 0 ? true : 0; l.ultimo.rot = _semValor(l.ultimo.rot); } return l; }) });
+      linhas: linhas.map(r => { const l = _leadLinha(r, sus); if (!_ehDir(req)) { l.pago = l.pago > 0 ? true : 0; l.ultimo.rot = _semValor(l.ultimo.rot); } return l; }),
+      semRastreio: pag === 1 ? sr.map(l => _ehDir(req) ? l : Object.assign({}, l, { pago: l.pago > 0 ? true : 0 })) : [],
+      totalSemRastreio: sr.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -10793,6 +10855,13 @@ app.get('/api/funil/pessoas.csv', authUsuario, (req, res) => {
                 dt(l.ultimo.em), l.video, l.pitch ? 'sim' : 'nao', l.visitas, String(l.pago.toFixed(2)).replace('.', ','),
                 dt(l.primeiro), l.interno ? 'sim' : 'nao'].map(cel).join(';'));
     });
+    // compradores sem rastreio: a exportação de compradores não pode ter menos gente que a lista
+    try {
+      _srFiltrar(_compradoresSemRastreio(dbj, esc, fl.per), req.query).forEach(l => {
+        out.push([l.venda, l.nome, l.email, 'comprador sem rastreio', l.toque.fonte, l.toque.cont, l.toque.camp, 'compra ' + l.produto,
+                  dt(l.ultimo.em), 0, 'nao', 0, String(l.pago.toFixed(2)).replace('.', ','), dt(l.primeiro), 'nao'].map(cel).join(';'));
+      });
+    } catch (e) {}
     const db = readDB();
     audit(db, 'leads_exportados', { funil: esc.f.id }, { linhas: linhas.length }, req.user);
     writeDB(db);
