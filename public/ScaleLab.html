@@ -30532,13 +30532,13 @@ function fnPintarCtx(){
 function fnCtxCompraram(nv){
   var sp = nv && nv.semPessoa && nv.semPessoa.n ? nv.semPessoa : null, gest = !!nv && _ehGestor();
   var tit = !nv ? '' : 'No mapa: '+fnNum(nv.compraram)+' venda(s) ligada(s) a uma pessoa deste funil.'+
-    (sp ? ' Mais '+fnNum(sp.n)+' aprovada(s) de produtos deste projeto chegaram sem pessoa ligada ('+
+    (sp ? ' Mais '+fnNum(sp.n)+' aprovada(s) de produtos deste projeto chegaram sem rastreio ('+
       sp.motivos.map(function(m){ return m.n+' '+m.motivo.toLowerCase(); }).join(', ')+') e não entram nos blocos.' : '')+
     (gest ? ' Clique pra ver cada venda.' : '');
   return '<div'+(gest ? ' class="clica" onclick="fnVendasDetalhe()"' : (tit ? ' style="cursor:help"' : ''))+(tit ? ' title="'+fnEsc(tit)+'"' : '')+'>'+
     '<div class="k">Compraram'+(gest ? ' ›' : '')+'</div>'+
     '<div class="v"'+(nv && nv.compraram ? ' style="color:var(--v2-verde,#22C55E)"' : '')+'>'+(nv ? fnNum(nv.compraram) : '—')+'</div>'+
-    (sp ? '<div class="fn-ctx-sub">+'+fnNum(sp.n)+' sem pessoa ligada</div>' : '')+'</div>';
+    (sp ? '<div class="fn-ctx-sub">+'+fnNum(sp.n)+' sem rastreio</div>' : '')+'</div>';
 }
 // O que cada motivo de venda sem pessoa quer dizer
 var FN_MOTIVO_SEM = {
@@ -40225,7 +40225,27 @@ var CP_COLS = [
 ];
 (function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_cols') || 'null'); if(Array.isArray(s)) CP_COLS.forEach(function(c){ c.on = s.indexOf(c.k) >= 0 ? 1 : 0; }); }catch(e){} })();
 function cpPct(v, casas){ return v == null || isNaN(v) ? '<i>—</i>' : (v*100).toLocaleString('pt-BR',{minimumFractionDigits:casas,maximumFractionDigits:casas})+'%'; }
-function cpVendasTmx(c){ var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return null; var x = d.porCampanha[adsCampNorm(c.nome)]; return x ? x.vendas : 0; }
+// a linha do TMX desta campanha: pelo id da Meta primeiro (campanha renomeada
+// mantém o id), pelo nome se a venda não trouxe id
+function cpTmxDe(c){
+  var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return null;
+  if(!d._porId){ d._porId = {}; Object.keys(d.porCampanha).forEach(function(k){ var x = d.porCampanha[k]; if(x.campanhaId) d._porId[String(x.campanhaId)] = x; }); }
+  return (c.campanhaId && d._porId[String(c.campanhaId)]) || d.porCampanha[adsCampNorm(c.nome)] || null;
+}
+function cpVendasTmx(c){ var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return null; var x = cpTmxDe(c); return x ? x.vendas : 0; }
+// Vendas do TMX que não têm linha na tabela da Utmify: campanha que vendeu sem
+// gastar no período (a pessoa clicou num anúncio de outro dia) e as vendas sem
+// campanha. Sem elas, a coluna "Vendas TMX" somava 3 num dia de 11 vendas.
+function cpSoTmx(){
+  var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return { extras: [], sem: [] };
+  if(cpEst.conta || cpEst.status) return { extras: [], sem: [] };   // filtro que a venda sozinha não sabe responder
+  var usadas = []; (cpDados||[]).forEach(function(c){ var x = cpTmxDe(c); if(x) usadas.push(x); });
+  var b = cpEst.busca.toLowerCase();
+  var extras = Object.keys(d.porCampanha).map(function(k){ return d.porCampanha[k]; })
+    .filter(function(x){ return usadas.indexOf(x) < 0 && (!b || String(x.nome).toLowerCase().indexOf(b) >= 0); });
+  return { extras: extras, sem: b ? [] : (d.semCampanha || []) };
+}
+function cpAbrirSemCampanha(){ var x = document.getElementById('ads-tmx-sem'); if(x){ x.open = true; x.scrollIntoView({ behavior:'smooth', block:'center' }); } }
 function cpStatus(s){ s = String(s||'').toUpperCase(); return s === 'ACTIVE' ? ['Ativa','on'] : /PAUSED/.test(s) ? ['Pausada','off'] : !s ? ['—','off'] : [s.toLowerCase().replace(/_/g,' '),'off']; }
 function cpNomeCurto(n){ return String(n||'').replace(/\|\s*\d{10,}\s*$/, '').replace(/\s+/g,' ').trim(); }
 function cpColsOn(){ return CP_COLS.filter(function(c){ return c.on; }); }
@@ -40299,13 +40319,39 @@ function cpTabela(l){
       cs.map(function(col){ return '<td'+(col.cls ? ' class="'+col.cls(c)+'"' : '')+'>'+col.v(c, mx)+'</td>'; }).join('')+
       '<td class="f3"><button onclick="event.stopPropagation();cpAbrir('+cpDados.indexOf(c)+')">Análise ›</button></td></tr>';
   }).join('');
+  // as vendas do TMX que a Utmify não tem como linha (vendeu sem gastar no período, ou sem campanha)
+  var so = cpSoTmx();
+  var linhaTmx = function(nome, chip, dica, n, fat, clique){
+    return '<tr class="cp-so-tmx"'+(clique ? ' onclick="'+clique+'"' : ' style="cursor:default"')+'>'+
+      '<td class="f1"><span class="cp-st off">—</span></td>'+
+      '<td class="f2"><b title="'+fnEsc(nome)+'">'+fnEsc(cpNomeCurto(nome))+'</b><div class="cp-chips"><span class="mu" title="'+fnEsc(dica)+'">'+chip+'</span></div></td>'+
+      cs.map(function(col){
+        var v = col.k === 'vtmx' ? '<b class="cp-tmx">'+n+'</b><small class="pos"> +'+n+'</small>'
+              : col.k === 'aprovadas' ? '0'
+              : col.k === 'investimento' ? fmtAds(0)
+              : (col.k === 'faturamento' && fat) ? '<span title="Faturamento das vendas do TMX">'+fmtAds(fat)+'</span>'
+              : '<i>—</i>';
+        return '<td>'+v+'</td>'; }).join('')+
+      '<td class="f3"></td></tr>';
+  };
+  linhas += so.extras.map(function(x){
+    return linhaTmx(x.nome, 'sem gasto no período',
+      'A pessoa clicou num anúncio desta campanha em outro dia e comprou agora. A Utmify não lista a campanha porque ela não gastou no período.'+
+      (x.nomeNaVenda ? ' A venda veio com o nome antigo: '+x.nomeNaVenda+'.' : ''), x.vendas, x.faturamento, '');
+  }).join('');
+  var semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
+  if(so.sem.length) linhas += linhaTmx('Sem campanha', 'orgânico, bio, sem rastreio',
+    'Vendas pagas que não vieram de anúncio: link da bio, visita direta, renovação e as que chegaram sem o código do TMX. Clique pra ver cada uma.',
+    so.sem.length, semFat, 'cpAbrirSemCampanha()');
+  var nExtra = so.extras.reduce(function(a, x){ return a + x.vendas; }, 0) + so.sem.length;
   var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); };
   var tot = { investimento: fmtAds(soma('investimento')), faturamento: fmtAds(soma('faturamento')), lucro: fmtAds(soma('lucro')), aprovadas: soma('aprovadas'),
-              vtmx: l.reduce(function(a, c){ return a + (cpVendasTmx(c) || 0); }, 0), impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
+              vtmx: l.reduce(function(a, c){ return a + (cpVendasTmx(c) || 0); }, 0) + nExtra, impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
               roas: soma('investimento') ? (soma('faturamento')/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
+  var nCamp = l.length + so.extras.length;
   return '<div class="cp-rolo"><table class="cp-tab"><thead><tr><th class="f1">Status</th><th class="f2">Campanha</th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
     (linhas || '<tr><td colspan="'+(cs.length + 3)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+
-    '<tfoot><tr><td class="f1"></td><td class="f2"><b>'+l.length+' campanha'+(l.length === 1 ? '' : 's')+'</b></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(soma('lucro') >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
+    '<tfoot><tr><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(soma('lucro') >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
 }
 function cpContas(contas){
   if(!contas.length) return '<div class="cp-vazio">A conta de cada campanha passa a vir na próxima sincronização com a Utmify (a cada 15 a 30 minutos).</div>';
@@ -40492,7 +40538,7 @@ function adsTmxPintar(){
       difs.map(function(x){ return '<tr><td>'+esc(x.nome)+'</td><td>'+x.u+'</td><td style="color:var(--accent);font-weight:700">'+x.t+'</td><td>'+
         (x.pedidos.length ? '<ul>'+x.pedidos.map(venda).join('')+'</ul>' : '<span style="color:var(--text2)">nenhuma: o TMX ligou essas vendas a outra campanha, ao orgânico ou não achou a pessoa</span>')+'</td></tr>'; }).join('')+
       '</tbody></table></details>' : '')+
-    (d.semCampanha.length ? '<details class="ads-tmx-det"><summary>Vendas do TMX sem campanha ('+d.semCampanha.length+')</summary><ul>'+d.semCampanha.map(venda).join('')+'</ul></details>' : '')+
+    (d.semCampanha.length ? '<details class="ads-tmx-det" id="ads-tmx-sem"><summary>Vendas do TMX sem campanha ('+d.semCampanha.length+')</summary><ul>'+d.semCampanha.map(venda).join('')+'</ul></details>' : '')+
     '<div class="ads-tmx-nota">O TMX dá a venda ao último anúncio em que a pessoa clicou (bio e visita direta não tiram o crédito). A Utmify usa a regra dela. Vendas de renovação e reembolsadas ficam de fora.</div>'+
   '</div>';
 }

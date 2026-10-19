@@ -4624,28 +4624,53 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
     const funisProj = new Set((Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
       .filter(f => f && np && _nrm(f.projeto) === np).map(f => f.id));
     const prods = _produtosCfg(db);
+    // produto sem cadastro: vale o projeto dos funis cujos blocos citam o produto
+    // (o Apostilai Elite ficava fora do CONCURSO e as vendas dele sumiam daqui)
+    const projDoProduto = _projetosDoProdutoFn((Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean));
     const doProjeto = p => {
       if (!np) return true;
       if (p.funil && funisProj.has(p.funil)) return true;
       if (_campNorm(p.cred_camp || p.camp).indexOf(np) >= 0) return true;
       const pr = _produtoDe(p.produto, prods);
-      return !!(pr && _nrm(pr.projeto) === np);
+      if (pr) return _nrm(pr.projeto) === np;
+      return [...projDoProduto(p.produto)].some(x => _nrm(x) === np);
     };
     const peds = _q(`SELECT pedido, valor, liquido, produto, cred_canal, cred_camp, cred_cont, camp, casou, visitante, funil, sem_origem, em
                      FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND dia BETWEEN ? AND ? ORDER BY em`).all(de, ate).filter(doProjeto);
     const linha = p => ({ pedido: p.pedido, em: p.em, valor: dir ? (Number(p.valor) || 0) : null, produto: p.produto || '',
       anuncio: _semId(p.cred_cont), canal: p.cred_canal || '', casou: p.casou || '', visitante: p.visitante || '' });
+    // A venda vai pra campanha pelo ID da Meta, não pelo nome. Campanha renomeada
+    // (BID → BIDCAP) mantém o id, mas a UTM chega com o nome da hora do clique, e
+    // a venda não batia com a linha da campanha. O nome que vale é o atual.
+    const nomePorId = {};
+    _q('SELECT id, nome FROM camp_dia ORDER BY dia').all().forEach(c => { if (c.id && c.nome) nomePorId[String(c.id)] = c.nome; });
+    const idsConhecidos = Object.keys(nomePorId);
+    const idNoFim = s => { const m = String(s || '').match(/\|\s*(\d{6,})\s*$/); return m ? m[1] : ''; };
+    const idDe = p => {
+      const id = idNoFim(p.cred_camp);
+      if (id && nomePorId[id]) return id;
+      // o crédito às vezes vem com o id cortado no fim: completa pelo começo
+      if (id.length >= 10) { const c = idsConhecidos.filter(x => x.indexOf(id) === 0); if (c.length === 1) return c[0]; }
+      // mesma campanha da UTM da venda: lá o id vem inteiro
+      if (_campNorm(p.cred_camp) === _campNorm(p.camp)) { const id2 = idNoFim(p.camp); if (id2 && nomePorId[id2]) return id2; }
+      return '';
+    };
     const porCampanha = {}, semCampanha = [];
     peds.forEach(p => {
-      const k = _campNorm(p.cred_camp);
-      if (!k) {
+      if (!_campNorm(p.cred_camp)) {
         const motivo = !p.visitante ? 'Sem pessoa ligada (o checkout não devolveu o id e o e-mail não era conhecido)'
           : p.cred_canal === 'organico' ? 'Orgânico (bio, direto) — sem anúncio antes'
           : (p.sem_origem || 'Anúncio sem campanha na UTM');
         semCampanha.push(Object.assign(linha(p), { motivo }));
         return;
       }
-      const c = porCampanha[k] || (porCampanha[k] = { nome: _semId(p.cred_camp), vendas: 0, faturamento: dir ? 0 : null, pedidos: [] });
+      const id = idDe(p);
+      const k = id ? _campNorm(nomePorId[id]) : _campNorm(p.cred_camp);
+      const c = porCampanha[k] || (porCampanha[k] = { nome: id ? _semId(nomePorId[id]) : _semId(p.cred_camp), campanhaId: id,
+                                                      vendas: 0, faturamento: dir ? 0 : null, pedidos: [] });
+      if (id && !c.campanhaId) c.campanhaId = id;
+      // o nome que a venda trouxe, quando a campanha mudou de nome depois do clique
+      if (id && _campNorm(p.cred_camp) !== k) c.nomeNaVenda = _semId(p.cred_camp);
       c.vendas++; if (dir) c.faturamento += Number(p.valor) || 0;
       c.pedidos.push(linha(p));
     });
@@ -11406,17 +11431,21 @@ function _projetosDoProdutoFn(todosFunis) {
     return s;
   };
 }
-// Vendas aprovadas de produtos deste projeto que chegaram SEM pessoa ligada
+// Vendas aprovadas de produtos deste projeto que chegaram SEM rastreio
 // (checkout limpou o sck, sem id nem UTM) e que o funil não pegou por campanha
 // nem por produto. Não entram em bloco nenhum — não dá pra saber a página nem
 // o funil —, mas existem: sem mostrar, o mapa dizia 4 vendas num dia em que a
-// Payt aprovou 13.
+// Payt aprovou 13. Entra também a venda com pessoa mas sem jornada (cliente
+// antiga que volta por link de renovação, última visita há mais de 7 dias):
+// por ter pessoa ela não era "sem pessoa", por não passar pelo funil não era
+// "compraram" — sumia das duas contas.
 function _vendasSemPessoaDoProjeto(dbj, esc, per, jaNoMapa) {
   const ja = new Set((jaNoMapa || []).map(o => o.id));
   const projeto = esc.f.projeto || '';
   const produtos = _produtosCfg(dbj);
   const doProduto = _projetosDoProdutoFn((Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(Boolean));
-  return _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND (visitante IS NULL OR visitante='') ORDER BY em DESC")
+  return _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND " +
+            "(visitante IS NULL OR visitante='' OR (funil IS NULL AND sem_origem IS NOT NULL)) ORDER BY em DESC")
     .all(per.de, per.ate).filter(o => {
       if (ja.has(o.id)) return false;
       const pr = _produtoDe(o.produto, produtos);
