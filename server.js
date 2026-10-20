@@ -2852,8 +2852,10 @@ app.get('/api/meta/conexao', authDiretoria, (req, res) => {
     if (_pessoas()) _q('SELECT conta, SUM(gasto) g FROM meta_camp_dia WHERE dia>=? GROUP BY conta').all(_diaBR(Date.now() - 13 * 86400000)).forEach(x => { gasto[x.conta] = Math.round(x.g || 0); });
     out.contas = out.contas.map(c => Object.assign(c, { gasto14: gasto[c.conta] || 0,
       projetos: Object.keys(proj).filter(p => (proj[p].contas || []).indexOf(c.conta) >= 0) }));
-    out.pixels = out.pixels.map(p => Object.assign({}, p, { projetos: Object.keys(capi.pixels || {}).filter(k => capi.pixels[k] === p.id)
-      .map(k => ({ projeto: k, modo: _capiModo(capi, k) })) }));
+    const dsDoPx = {}; _destinos(db).forEach(d => { dsDoPx[d.pixel] = d; });
+    const projsDoDs = {}; Object.keys(capi.destinos || {}).forEach(p => (capi.destinos[p] || []).forEach(id => { (projsDoDs[id] = projsDoDs[id] || []).push(p); }));
+    out.pixels = out.pixels.map(p => { const d = dsDoPx[p.id];
+      return Object.assign({}, p, { destino: d ? d.nome : '', projetos: (d ? projsDoDs[d.id] || [] : []).map(k => ({ projeto: k, modo: _capiModo(capi, k) })) }); });
     out.liberaEnvioEm = _metaLiberaEnvioEm(cfg);
     res.json(Object.assign({ ok: true }, out));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -7225,7 +7227,12 @@ const KEYS_SERVIDOR = new Set([
   'sl_regras',              // regras automaticas; a tela le por /api/regras
   'sl_regras_log',          // log das regras; idem
   'sl_funis_versoes',       // fotos das versoes do funil; a tela le por /api/funis/versoes
-  'sl_funil_notas'          // anotacoes do grafico por dia; a tela le por /api/funil/resultado
+  'sl_funil_notas',         // anotacoes do grafico por dia; a tela le por /api/funil/resultado
+  'sl_destinos',            // pixels que recebem as compras, com o token da API de Conversões
+  'sl_meta_capi',           // modo de envio e código de teste de cada projeto
+  'sl_projetos_meta',       // contas de anúncio de cada projeto; a tela le por /api/projeto/config
+  'sl_links_rastreados',    // links /l/; a tela le por /api/links/rastreados
+  'sl_paginas_reg'          // páginas registradas; a tela le por /api/paginas
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
@@ -9895,6 +9902,9 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     // Trafego do time aparece na lista de Leads (com filtro), mas nao entra em
     // nenhuma conta: nem nos blocos do mapa, nem no teste A/B.
     const interno = _pEhInterno(c, req);
+    // o Pixel da Meta disparou na página: o mesmo evento vai pela API de Conversões
+    if (c.mev && !interno) { try { _capiEspelhar(c, req); } catch (e) {} }
+    if (tipo === 'meta') return res.sendStatus(204);
     // e-mail ou telefone digitado numa página: liga a pessoa ao lead e para aí
     // (não é visita nem conta em bloco nenhum). Do time não liga: quem atende
     // pode digitar o e-mail de um cliente.
@@ -10560,6 +10570,8 @@ function _pxRegistrar(c, req, interno, quando) {
       const ipV = _ipDe(req), uaV = String((req.headers && req.headers['user-agent']) || '');
       if (ipV || uaV) _q('INSERT INTO capi_visita(visitante, ip, ua, pg, em) VALUES(?,?,?,?,?) ON CONFLICT(visitante) DO UPDATE SET ip=excluded.ip, ua=excluded.ua, pg=excluded.pg, em=excluded.em')
         .run(vis, txt(ipV, 60), txt(uaV, 400), pg || null, agora);
+      // o cookie da Meta que só existe depois que o Pixel dela carregou na página
+      if (s && (c.fbp || c.fbc)) _q('UPDATE sessoes SET fbp=COALESCE(fbp, ?), fbc=COALESCE(fbc, ?) WHERE id=?').run(txt(c.fbp, 80), txt(c.fbc, 200), s.id);
     }
 
     // ── página vista nesta sessão (uma linha por página, não por evento) ──
@@ -11547,6 +11559,178 @@ function _capiProjeto(dbj, funil, produto) {
   const ps = [..._projetosDoProdutoFn(fs_)(produto)];
   return ps.length === 1 ? ps[0] : '';
 }
+// ══════════════════════════════════════════════════════
+// ── DESTINOS: OS PIXELS QUE RECEBEM AS COMPRAS ──
+// Cada destino é um pixel da Meta: o id (público, vai na página) e, se quiser,
+// o token da API de Conversões gerado no próprio pixel — com ele dá pra mandar
+// as compras sem conectar a BM. Sem token, usa o da conexão da BM. Com código
+// de teste, tudo vai só pra aba "Eventos de teste" da Meta (nada conta).
+// "Na página": o pixel do TMX também carrega o Pixel da Meta nas páginas e
+// dispara com o mesmo id do servidor, e a Meta junta os dois.
+// ══════════════════════════════════════════════════════
+const KEY_DESTINOS = 'sl_destinos';   // server-only: guarda o token do pixel
+function _destinos(db) { const l = (db || readDB()).store[KEY_DESTINOS]; return Array.isArray(l) ? l.filter(Boolean) : []; }
+function _destinoPublico(d) {
+  return { id: d.id, rede: d.rede || 'meta', nome: d.nome || '', pixel: d.pixel, temToken: !!d.token, tokenFim: d.token ? '…' + String(d.token).slice(-4) : '',
+    testCode: d.testCode || '', naPagina: !!d.naPagina, criado: d.criado || null, por: d.por || '', nomeMeta: d.nomeMeta || '',
+    conferido: d.conferido || null, aviso: d.aviso || '' };
+}
+// os destinos de um projeto. O pixel digitado antes de existir destino vale
+// como um destino sem token (usa a BM).
+function _destinosDoProjeto(db, capi, projeto) {
+  const todos = _destinos(db), ids = ((capi.destinos || {})[projeto]) || [];
+  const l = ids.map(id => todos.find(d => d.id === id)).filter(Boolean);
+  const px = (capi.pixels || {})[projeto];
+  if (!l.length && px) l.push({ id: 'px_' + px, pixel: px, nome: 'Pixel ' + px, token: '', testCode: capi.testCode || '', criado: null, legado: true });
+  return l;
+}
+function _destinoToken(d, mc) { return d.token || (mc && mc.accessToken && mc.tipo === 'sistema' ? mc.accessToken : ''); }
+// a semana de comparação conta a partir do destino mais novo do projeto
+function _liberaEnvio(dests, mc) {
+  const ts = dests.map(d => d.criado).filter(Boolean);
+  const base = ts.length ? Math.max(...ts) : (mc && mc.conectadoEm ? Date.parse(mc.conectadoEm) : 0);
+  return base ? base + META_COMPARACAO_DIAS * 86400000 : null;
+}
+app.get('/api/destinos', authUsuario, (req, res) => {
+  try {
+    const db = readDB(), capi = _capiCfg(db), mc = _metaCfg(db) || {};
+    const usos = {}; Object.keys(capi.destinos || {}).forEach(p => (capi.destinos[p] || []).forEach(id => { (usos[id] = usos[id] || []).push(p); }));
+    res.json({ ok: true, destinos: _destinos(db).map(d => Object.assign(_destinoPublico(d), { projetos: usos[d.id] || [] })),
+      metaConectada: !!(mc.accessToken && mc.tipo === 'sistema'), pixelsDaBm: (mc.pixels || []).map(p => ({ id: p.id, nome: p.nome })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/destinos', authDiretoria, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const pixel = String(b.pixel || '').replace(/\D/g, '');
+    if (pixel.length < 8 || pixel.length > 20) return res.status(400).json({ error: 'O id do pixel são só números (uns 15 ou 16). Fica no Gerenciador de Eventos → Fontes de dados.' });
+    const token = String(b.token || '').trim();
+    if (token && !/^[A-Za-z0-9_-]{40,600}$/.test(token)) return res.status(400).json({ error: 'Esse token não parece da Meta. Ele começa com EAA e tem umas 200 letras.' });
+    const testCode = String(b.testCode || '').trim();
+    if (testCode && !/^TEST[A-Za-z0-9]{2,30}$/.test(testCode)) return res.status(400).json({ error: 'O código de teste começa com TEST (ex.: TEST12345). Fica na aba "Eventos de teste" do pixel.' });
+    const db0 = readDB(), velho = b.id ? _destinos(db0).find(d => d.id === b.id) : null;
+    if (b.id && !velho) return res.status(404).json({ error: 'Destino não encontrado.' });
+    if (_destinos(db0).some(d => d.pixel === pixel && (!velho || d.id !== velho.id))) return res.status(400).json({ error: 'Esse pixel já está cadastrado. Edite o destino que já existe.' });
+    const tokenFinal = token || (b.limparToken ? '' : (velho && velho.token) || '');
+    // confere o pixel na Meta com o token que vai ser usado pra enviar
+    let nomeMeta = velho && velho.pixel === pixel ? velho.nomeMeta || '' : '', conferido = null, aviso = '';
+    const tk = tokenFinal || _destinoToken({}, _metaCfg(db0));
+    if (tk) {
+      try { const j = await _metaGet(pixel, { fields: 'id,name' }, { accessToken: tk }); nomeMeta = String(j.name || ''); conferido = Date.now(); }
+      catch (e) {
+        if (e.metaCode === 190) return res.status(400).json({ error: tokenFinal ? 'A Meta recusou esse token. Gere outro em Configurações do pixel → API de Conversões.' : 'O token da BM foi recusado pela Meta. Reconecte em Integrações → Meta.' });
+        aviso = 'Não consegui conferir o pixel agora (' + _metaErroTxt(e) + '). A primeira compra enviada confirma.';
+      }
+    } else aviso = 'Sem token: cole o token do pixel ou conecte a BM pra poder enviar.';
+    const db = readDB(), lista = _destinos(db), u = req.user || {};
+    const dados = { rede: 'meta', nome: String(b.nome || '').trim().slice(0, 80) || nomeMeta || ('Pixel ' + pixel), pixel, token: tokenFinal,
+      testCode, naPagina: b.naPagina === true, nomeMeta, conferido, aviso, _updatedAt: Date.now() };
+    let d = velho ? lista.find(x => x.id === velho.id) : null;
+    if (d) Object.assign(d, dados);
+    else { d = Object.assign({ id: 'ds' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex'), criado: Date.now(), por: u.nome || u.email || '' }, dados); lista.push(d); }
+    db.store[KEY_DESTINOS] = lista; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_DESTINOS] = now();
+    audit(db, velho ? 'destino_editado' : 'destino_criado', d.id, { pixel, nome: d.nome, token: !!tokenFinal, teste: !!testCode, naPagina: d.naPagina }, req.user);
+    writeDB(db);
+    _pxMetaCache.em = 0;
+    res.json({ ok: true, destino: _destinoPublico(d) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/destinos/remover', authDiretoria, (req, res) => {
+  try {
+    const id = String((req.body || {}).id || ''), db = readDB(), lista = _destinos(db), d = lista.find(x => x.id === id);
+    if (!d) return res.status(404).json({ error: 'Destino não encontrado.' });
+    db.store[KEY_DESTINOS] = lista.filter(x => x.id !== id);
+    const capi = Object.assign({}, _capiCfg(db)); capi.destinos = Object.assign({}, capi.destinos);
+    Object.keys(capi.destinos).forEach(p => { capi.destinos[p] = (capi.destinos[p] || []).filter(x => x !== id); });
+    db.store[KEY_META_CAPI] = capi;
+    if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_DESTINOS] = now();
+    audit(db, 'destino_removido', id, { pixel: d.pixel, nome: d.nome }, req.user);
+    writeDB(db);
+    _pxMetaCache.em = 0;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── PIXEL DA META NA PÁGINA ──
+// O px.js pergunta quais pixels da Meta carregar neste funil: os destinos do
+// projeto marcados "carregar também na página". É público (o id do pixel já
+// vai no código de qualquer página que usa a Meta).
+let _pxMetaCache = { em: 0, porFunil: {} };
+function _pxMetaDoFunil(funil) {
+  if (Date.now() - _pxMetaCache.em > 60000) {
+    try {
+      const db = readDB(), capi = _capiCfg(db), porFunil = {};
+      (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean).forEach(f => {
+        const modo = _capiModo(capi, f.projeto || '');
+        const ds = _destinosDoProjeto(db, capi, f.projeto || '').filter(d => d.naPagina && !d.legado);
+        if (ds.length && modo !== 'desligado') porFunil[f.id] = { projeto: f.projeto || '', pixels: ds.map(d => d.pixel), modo };
+      });
+      _pxMetaCache = { em: Date.now(), porFunil };
+    } catch (e) { _pxMetaCache.em = Date.now(); }
+  }
+  return _pxMetaCache.porFunil[funil] || null;
+}
+app.get('/api/px/meta', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'public, max-age=60');
+  const x = _pxMetaDoFunil(String(req.query.f || '').slice(0, 80));
+  res.json({ pixels: x ? x.pixels : [] });
+});
+// O que o Pixel da Meta disparou na página volta aqui com o mesmo id e vai pela
+// API de Conversões (só com o projeto em teste ou enviando). Fica numa fila na
+// memória e sai em lotes a cada 20 s; e-mail e telefone do Lead viram código
+// na hora e não ficam guardados.
+let _capiFila = [];
+function _capiEspelhar(c, req) {
+  const m = c && c.mev;
+  if (!m || !m.id || ['PageView', 'InitiateCheckout', 'Lead'].indexOf(m.n) < 0) return;
+  const x = _pxMetaDoFunil(String(c.funil || ''));
+  if (!x || (x.modo !== 'teste' && x.modo !== 'enviando')) return;
+  const pr = (c.primeiro && typeof c.primeiro === 'object') ? c.primeiro : {}, aq = (c.aqui && typeof c.aqui === 'object') ? c.aqui : {};
+  const ud = { external_id: [_sha(String(c.id || ''))] };
+  const ip = _ipDe(req), ua = String((req.headers && req.headers['user-agent']) || '');
+  if (ip) ud.client_ip_address = ip;
+  if (ua) ud.client_user_agent = ua.slice(0, 400);
+  const fbp = c.fbp || aq.fbp || pr.fbp, fbc = c.fbc || aq.fbc || pr.fbc;
+  if (fbp) ud.fbp = String(fbp).slice(0, 120);
+  if (fbc) ud.fbc = String(fbc).slice(0, 300);
+  if (m.n === 'Lead' && c.ident && typeof c.ident === 'object') {
+    const e = String(c.ident.e || '').trim().toLowerCase(), t = _telNorm(c.ident.t);
+    if (e.indexOf('@') > 0) ud.em = [_sha(e)];
+    if (t) ud.ph = [_sha(t)];
+  }
+  _capiFila.push({ projeto: x.projeto, ev: { event_name: m.n, event_time: Math.floor(Date.now() / 1000), event_id: String(m.id).slice(0, 100),
+    action_source: 'website', event_source_url: String(m.url || ('https://' + _normPg(c.pg))).slice(0, 500), user_data: ud } });
+  if (_capiFila.length > 20000) _capiFila.splice(0, 5000);
+}
+const _capiEspelhoConta = {};   // destino -> eventos da página aceitos desde que o servidor subiu
+async function _capiFilaEnviar() {
+  if (!_capiFila.length) return;
+  const lote = _capiFila; _capiFila = [];
+  const db = readDB(), capi = _capiCfg(db), mc = _metaCfg(db), porProj = {};
+  lote.forEach(x => { (porProj[x.projeto] = porProj[x.projeto] || []).push(x.ev); });
+  for (const p of Object.keys(porProj)) {
+    const modo = _capiModo(capi, p);
+    if (modo !== 'teste' && modo !== 'enviando') continue;
+    for (const dst of _destinosDoProjeto(db, capi, p).filter(d => d.naPagina)) {
+      const tk = _destinoToken(dst, mc), test = dst.testCode || (modo === 'teste' ? capi.testCode || '' : '');
+      if (!tk || (modo === 'teste' && !test)) continue;
+      for (let i = 0; i < porProj[p].length; i += 500) {
+        const corpo = { data: porProj[p].slice(i, i + 500), access_token: tk };
+        if (test) corpo.test_event_code = test;
+        try {
+          const r = await fetch(META_API_BASE + '/' + encodeURIComponent(dst.pixel) + '/events', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || j.error) console.error('[CAPI] eventos da página recusados (' + dst.nome + '):', (j.error && (j.error.error_user_msg || j.error.message)) || r.status);
+          else _capiEspelhoConta[dst.id] = (_capiEspelhoConta[dst.id] || 0) + corpo.data.length;
+        } catch (e) { console.error('[CAPI] eventos da página:', e.message); }
+      }
+    }
+  }
+}
+setInterval(() => _capiFilaEnviar().catch(e => console.error('[CAPI] fila:', e.message)), 20000);
+
 // ── O modo de cada projeto ──
 // comparacao: monta e não envia · teste: envia com o código de teste (aparece
 // só em "Eventos de teste" da Meta, não conta pra campanha) · enviando: de
@@ -11564,43 +11748,62 @@ let _capiEnviando = false;
 async function _capiEnviarPendentes() {
   if (_capiEnviando || !_pessoas()) return null;
   const dbj = readDB(), cfg = _capiCfg(dbj), mc = _metaCfg(dbj);
-  if (!mc || !mc.accessToken || mc.tipo !== 'sistema') return null;
-  const l = _q("SELECT id, projeto, payload, tentativas FROM capi_eventos WHERE status IN ('pendente','erro') AND criado >= ? ORDER BY criado LIMIT 300")
+  const l = _q("SELECT id, projeto, payload, tentativas, resposta FROM capi_eventos WHERE status IN ('pendente','erro') AND criado >= ? ORDER BY criado LIMIT 300")
     .all(Date.now() - 7 * 86400000);
   if (!l.length) return null;
   _capiEnviando = true;
   const r = { enviados: 0, erros: 0 };
   try {
-    const grupos = {};
+    // cada compra vai pra todos os destinos do projeto dela; o destino que já
+    // recebeu numa tentativa anterior não recebe de novo
+    const grupos = {}, porEvento = {};
     l.forEach(x => {
-      const modo = _capiModo(cfg, x.projeto), pixel = (cfg.pixels || {})[x.projeto];
-      if ((modo !== 'teste' && modo !== 'enviando') || !pixel) return;   // fica esperando o pixel ou o modo
-      if (modo === 'teste' && !cfg.testCode) return;
-      const k = pixel + '|' + modo; (grupos[k] = grupos[k] || { pixel, modo, itens: [] }).itens.push(x);
+      const modo = _capiModo(cfg, x.projeto);
+      if (modo !== 'teste' && modo !== 'enviando') return;          // fica esperando o modo
+      const dests = _destinosDoProjeto(dbj, cfg, x.projeto);
+      if (!dests.length) return;                                      // fica esperando o destino
+      let ja = {}; try { ja = (JSON.parse(x.resposta || '{}') || {}).destinos || {}; } catch (e) {}
+      const pe = porEvento[x.id] = { x, total: 0, res: Object.assign({}, ja), erro: '' };
+      dests.forEach(dst => {
+        if (ja[dst.id] && ja[dst.id].ok) return;
+        const tk = _destinoToken(dst, mc), test = dst.testCode || (modo === 'teste' ? cfg.testCode || '' : '');
+        if (!tk || (modo === 'teste' && !test)) return;
+        const k = dst.id + '|' + test;
+        (grupos[k] = grupos[k] || { dst, tk, test, itens: [] }).itens.push(x);
+        pe.total++;
+      });
     });
     for (const g of Object.values(grupos)) {
       for (let i = 0; i < g.itens.length; i += 100) {
         const lote = g.itens.slice(i, i + 100);
-        const corpo = { data: lote.map(x => JSON.parse(x.payload)), access_token: mc.accessToken };
-        if (g.modo === 'teste') corpo.test_event_code = cfg.testCode;
-        let ok = false, resposta = '';
+        const corpo = { data: lote.map(x => JSON.parse(x.payload)), access_token: g.tk };
+        if (g.test) corpo.test_event_code = g.test;
+        let ok = false, msg = '';
         try {
-          const resp = await fetch(META_API_BASE + '/' + encodeURIComponent(g.pixel) + '/events', {
+          const resp = await fetch(META_API_BASE + '/' + encodeURIComponent(g.dst.pixel) + '/events', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
           const j = await resp.json().catch(() => ({}));
           ok = resp.ok && !j.error;
-          resposta = JSON.stringify(ok ? { recebidos: j.events_received, avisos: (j.messages || []).slice(0, 3), fbtrace: j.fbtrace_id }
-                                       : { erro: (j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + resp.status), codigo: j.error && j.error.code }).slice(0, 600);
-        } catch (e) { resposta = JSON.stringify({ erro: e.message }).slice(0, 600); }
+          if (!ok) msg = (j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + resp.status);
+        } catch (e) { msg = e.message; }
         const agora = Date.now();
         lote.forEach(x => {
-          const tent = (Number(x.tentativas) || 0) + 1;
-          const st = ok ? (g.modo === 'teste' ? 'teste' : 'enviado') : (tent >= 5 ? 'falhou' : 'erro');
-          _q('UPDATE capi_eventos SET status=?, enviado=?, resposta=?, tentativas=? WHERE id=?').run(st, ok ? agora : null, resposta, tent, x.id);
+          const pe = porEvento[x.id];
+          pe.res[g.dst.id] = ok ? { ok: 1, teste: g.test ? 1 : 0, em: agora, nome: g.dst.nome } : { erro: String(msg).slice(0, 200), nome: g.dst.nome };
+          if (!ok) pe.erro = (g.dst.nome || g.dst.pixel) + ': ' + msg;
         });
-        if (ok) r.enviados += lote.length; else { r.erros += lote.length; console.error('[CAPI] Meta recusou o lote:', resposta); }
+        if (ok) r.enviados += lote.length; else { r.erros += lote.length; console.error('[CAPI] Meta recusou o lote (' + (g.dst.nome || g.dst.pixel) + '):', msg); }
       }
     }
+    Object.values(porEvento).forEach(pe => {
+      const vals = Object.values(pe.res);
+      if (!pe.total && !vals.length) return;                         // nada saiu ainda (sem token ou sem código de teste)
+      const tudoOk = vals.length && vals.every(v => v.ok);
+      const tent = (Number(pe.x.tentativas) || 0) + (pe.total ? 1 : 0);
+      const st = tudoOk ? (vals.some(v => v.teste) ? 'teste' : 'enviado') : (tent >= 5 ? 'falhou' : 'erro');
+      _q('UPDATE capi_eventos SET status=?, enviado=?, resposta=?, tentativas=? WHERE id=?')
+        .run(st, tudoOk ? Date.now() : null, JSON.stringify({ destinos: pe.res, erro: pe.erro || undefined }).slice(0, 2000), tent, pe.x.id);
+    });
   } finally { _capiEnviando = false; }
   return r;
 }
@@ -11661,7 +11864,8 @@ app.get('/api/meta/capi/resumo', authUsuario, (req, res) => {
     const dbj = readDB(), cfg = _capiCfg(dbj), fun = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
     res.json({ ok: true, dias: 7, total: l.length, status: l.reduce((a, x) => { a[x.status] = (a[x.status] || 0) + 1; return a; }, {}),
       sinais: { 'e-mail': tem('e-mail'), telefone: tem('telefone'), 'clique do anúncio': tem('clique do anúncio'), 'cookie da Meta': tem('cookie da Meta'), IP: tem('IP'), navegador: tem('navegador'), 'id da pessoa': tem('id da pessoa') },
-      porProjeto, modo: cfg.modo || 'comparacao', pixels: cfg.pixels || {}, modos: cfg.modos || {},
+      porProjeto, modo: cfg.modo || 'comparacao', modos: cfg.modos || {},
+      destinosPorProjeto: Object.keys(Object.assign({}, porProjeto, cfg.modos || {}, cfg.destinos || {})).reduce((a, p) => { a[p] = _destinosDoProjeto(dbj, cfg, p).length; return a; }, {}),
       metaConectada: !!((_metaCfg(dbj) || {}).accessToken && (_metaCfg(dbj) || {}).tipo === 'sistema'),
       projetos: [...new Set(fun.filter(Boolean).map(f => f.projeto).filter(Boolean))],
       ipDesde: (_q('SELECT MIN(em) em FROM capi_visita').get() || {}).em || null });
@@ -11693,7 +11897,8 @@ function _capiDaVenda(o, dir) {
     const ud = {}; Object.keys(p.user_data || {}).forEach(k => { ud[k] = curto(p.user_data[k]); });
     let erro = ''; try { erro = (JSON.parse(x.resposta || '{}') || {}).erro || ''; } catch (e) {}
     return { id: x.id, projeto: x.projeto, status: x.status, criado: x.criado, enviado: x.enviado, erro, sinais: String(x.sinais || '').split(',').filter(Boolean),
-      pixel: (_capiCfg().pixels || {})[x.projeto] || '', evento: dir ? Object.assign({}, p, { user_data: ud }) : null };
+      destinos: (() => { const dbj = readDB(); return _destinosDoProjeto(dbj, _capiCfg(dbj), x.projeto).map(d => d.nome || ('Pixel ' + d.pixel)); })(),
+      evento: dir ? Object.assign({}, p, { user_data: ud }) : null };
   } catch (e) { return null; }
 }
 // ── MARKETING DE UMA VENDA ──
@@ -16611,7 +16816,7 @@ const PIXEL_JS = `(function(w,d){
   // servidor guarda o codigo (hash), nunca o e-mail. A pagina tambem pode
   // chamar TMX.identificar({ email: '...', telefone: '...' }).
   // Fica de fora: campo dentro de data-tmx-ignorar, ou data-identificar="nao" no script.
-  var identVisto = {};
+  var identVisto = {}, leadMeta = false;
   function identMandar(o){
     o = o || {};
     var e = String(o.email || '').trim().toLowerCase();
@@ -16622,7 +16827,10 @@ const PIXEL_JS = `(function(w,d){
     var k = e + '|' + t;
     if(identVisto[k]) return true;
     identVisto[k] = 1;
-    manda('identificou', { ident: { e: e, t: t, n: String(o.nome || '').trim().slice(0, 80), por: o.por || 'codigo' } });
+    var mev = leadMeta ? null : metaEv('Lead');
+    if(mev) leadMeta = true;
+    manda('identificou', { ident: { e: e, t: t, n: String(o.nome || '').trim().slice(0, 80), por: o.por || 'codigo' },
+                           mev: mev || undefined, fbp: bisc('_fbp') || undefined, fbc: bisc('_fbc') || undefined });
     return true;
   }
   w.TMX.identificar = function(o){ return identMandar({ email: o && o.email, telefone: o && (o.telefone || o.whatsapp || o.phone), nome: o && o.nome, por: 'codigo' }); };
@@ -16639,6 +16847,36 @@ const PIXEL_JS = `(function(w,d){
       if(tipo === 'email' || /e-?mail/i.test(txt)) identMandar({ email: el.value, por: 'campo' });
       else if(tipo === 'tel' || /(^|[^a-z])(tel|fone|phone|celular|whats|zap)/i.test(txt)) identMandar({ telefone: el.value, por: 'campo' });
     }, true);
+  }
+  // ── Pixel da Meta na pagina ──────────────────────────────────────────────
+  // Destino marcado "carregar tambem na pagina": o TMX carrega o Pixel da Meta
+  // e dispara PageView, InitiateCheckout (clique de compra) e Lead (quando a
+  // pessoa se identifica) com um id; o mesmo id vai pro servidor, que manda o
+  // evento pela API de Conversoes. A Meta junta os dois e conta uma vez so.
+  // Pagina que ja tem o Pixel da Meta instalado por fora fica como esta, e o
+  // trafego do time nao carrega nada.
+  var META = false, mevN = 0;
+  function metaEv(nome){
+    if(!META || !w.fbq) return null;
+    mevN++;
+    var eid = ({ PageView:'pv', InitiateCheckout:'ic', Lead:'ld' }[nome] || 'ev') + '_' + SID + '_' + mevN + '_' + Math.random().toString(36).slice(2, 7);
+    try{ w.fbq('track', nome, {}, { eventID: eid }); }catch(e){ return null; }
+    return { n: nome, id: eid, url: String(location.href).split('#')[0].slice(0, 500) };
+  }
+  if(!INTERNO && !w.fbq && w.fetch){
+    try{
+      fetch(eu.src.replace(/\\/px\\.js.*$/, '') + '/api/px/meta?f=' + encodeURIComponent(FUNIL))
+        .then(function(r){ return r.json(); })
+        .then(function(c){
+          var px = (c && c.pixels) || [];
+          if(!px.length || w.fbq) return;
+          !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(w,d,'script','https://connect.facebook.net/en_US/fbevents.js');
+          px.forEach(function(p){ w.fbq('init', String(p), { external_id: id }); });
+          META = true;
+          var ev = metaEv('PageView');
+          if(ev) manda('meta', { mev: ev, fbp: bisc('_fbp') || undefined, fbc: bisc('_fbc') || undefined });
+        })['catch'](function(){});
+    }catch(e){}
   }
   // ── Levar o first-touch ate o checkout ──────────────────────────────────
   // localStorage e por dominio: quando a pessoa clica em comprar e vai pro
@@ -16867,7 +17105,8 @@ const PIXEL_JS = `(function(w,d){
       if(!ck && !ehCheckout(u)) return;
       foiCheckout = true;
       manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host,
-                          ckt: ck ? ck.t : undefined, ckv: ck ? ck.v : undefined });
+                          ckt: ck ? ck.t : undefined, ckv: ck ? ck.v : undefined,
+                          mev: metaEv('InitiateCheckout') || undefined, fbp: bisc('_fbp') || undefined, fbc: bisc('_fbc') || undefined });
     }catch(e){}
   }
   d.addEventListener('click', function(ev){
@@ -17209,9 +17448,10 @@ app.get('/api/projeto/config', authUsuario, (req, res) => {
     res.json({ ok: true, projeto, contas, sel: meu.contas || [], regra: meu.regra || '', configurado: !!(meu.contas && meu.contas.length),
       outrasRegras, fonte: temMeta ? 'meta' : 'utmify', desde,
       campanhas: camps.filter(c => (Number(c.gasto) || 0) > 0).map(c => ({ conta: c.conta, nome: c.nome, gasto: Math.round(Number(c.gasto) || 0) })),
-      pixel: (capi.pixels || {})[projeto] || '', modo: _capiModo(capi, projeto), testCode: !!capi.testCode,
-      pixels: (mc.pixels || []).map(p => ({ id: p.id, nome: p.nome, ultimo: p.ultimo })), metaConectada: !!(mc.accessToken && mc.tipo === 'sistema'),
-      liberaEnvioEm: _metaLiberaEnvioEm(mc), comparacao: _projComparacao(db, projeto), dir: _ehDir(req) });
+      destinos: _destinos(db).map(_destinoPublico), destinosSel: _destinosDoProjeto(db, capi, projeto).filter(d => !d.legado).map(d => d.id),
+      pixelAntigo: ((capi.pixels || {})[projeto] && !((capi.destinos || {})[projeto] || []).length) ? capi.pixels[projeto] : '',
+      modo: _capiModo(capi, projeto), metaConectada: !!(mc.accessToken && mc.tipo === 'sistema'),
+      liberaEnvioEm: _liberaEnvio(_destinosDoProjeto(db, capi, projeto), mc), comparacao: _projComparacao(db, projeto), dir: _ehDir(req) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/projeto/config', authDiretoria, (req, res) => {
@@ -17222,29 +17462,33 @@ app.post('/api/projeto/config', authDiretoria, (req, res) => {
     const contas = [...new Set((Array.isArray(b.contas) ? b.contas : []).map(c => String(c).replace(/^act_/, '').replace(/\D/g, '')).filter(Boolean))].slice(0, 60);
     const regra = String(b.regra || '').trim().slice(0, 60);
     cfg[projeto] = { contas, regra, _updatedAt: Date.now() };
-    if (b.pixel !== undefined) {
-      const px = String(b.pixel || '').replace(/\D/g, '').slice(0, 25);
-      capi.pixels = Object.assign({}, capi.pixels); if (px) capi.pixels[projeto] = px; else delete capi.pixels[projeto];
+    if (Array.isArray(b.destinos)) {
+      const ids = new Set(_destinos(db).map(d => d.id));
+      capi.destinos = Object.assign({}, capi.destinos); capi.destinos[projeto] = [...new Set(b.destinos.map(String))].filter(id => ids.has(id)).slice(0, 10);
+      // o pixel digitado antes dos destinos sai quando o projeto escolhe destino
+      if (capi.destinos[projeto].length && capi.pixels && capi.pixels[projeto]) { capi.pixels = Object.assign({}, capi.pixels); delete capi.pixels[projeto]; }
     }
     if (b.modo !== undefined) {
       if (CAPI_MODOS.indexOf(b.modo) < 0) return res.status(400).json({ error: 'Modo inválido.' });
       if (b.modo === 'enviando' && b.confirmar !== 'SIM_ENVIAR_PRA_META') return res.status(400).json({ error: 'Pra enviar de verdade, confirme na tela.' });
-      const libera = _metaLiberaEnvioEm(_metaCfg(db));
-      if (b.modo === 'enviando' && (!libera || Date.now() < libera)) return res.status(400).json({ error: 'O envio de verdade libera ' + (libera ? 'em ' + new Date(libera).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'depois de conectar a Meta') + ', depois de 7 dias comparando com a Utmify.' });
-      if ((b.modo === 'teste' || b.modo === 'enviando') && !capi.pixels[projeto]) return res.status(400).json({ error: 'Escolha o pixel antes de enviar.' });
-      const mc = _metaCfg(db);
-      if ((b.modo === 'teste' || b.modo === 'enviando') && !(mc && mc.accessToken && mc.tipo === 'sistema')) return res.status(400).json({ error: 'Conecte a Meta antes de enviar.' });
-      if (b.modo === 'teste') {
-        const tc = String(b.testCode || capi.testCode || '').trim().slice(0, 40);
-        if (!/^TEST[A-Za-z0-9]+$/.test(tc)) return res.status(400).json({ error: 'Cole o código de teste do Gerenciador de Eventos (começa com TEST).' });
-        capi.testCode = tc;
+      const mc = _metaCfg(db), dests = _destinosDoProjeto(db, capi, projeto);
+      if ((b.modo === 'teste' || b.modo === 'enviando') && !dests.length) return res.status(400).json({ error: 'Escolha pelo menos um destino (o pixel que recebe as compras).' });
+      const semToken = dests.filter(d => !_destinoToken(d, mc));
+      if ((b.modo === 'teste' || b.modo === 'enviando') && semToken.length) return res.status(400).json({ error: 'O destino ' + (semToken[0].nome || semToken[0].pixel) + ' não tem token: cole o token da API de Conversões nele ou conecte a BM.' });
+      if (b.modo === 'teste') { const semCod = dests.filter(d => !d.testCode); if (semCod.length) return res.status(400).json({ error: 'Coloque o código de teste no destino ' + (semCod[0].nome || semCod[0].pixel) + ' (Integrações → Destinos).' }); }
+      if (b.modo === 'enviando') {
+        const libera = _liberaEnvio(dests, mc);
+        if (!libera || Date.now() < libera) return res.status(400).json({ error: 'O envio de verdade libera ' + (libera ? 'em ' + new Date(libera).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'depois de cadastrar o destino') + ', depois de 7 dias comparando com a Utmify.' });
+        const comCod = dests.filter(d => d.testCode);
+        if (comCod.length) return res.status(400).json({ error: 'O destino ' + (comCod[0].nome || comCod[0].pixel) + ' ainda tem código de teste: com ele nada conta. Apague o código em Integrações → Destinos antes de enviar de verdade.' });
       }
       capi.modos = Object.assign({}, capi.modos); capi.modos[projeto] = b.modo;
     }
     db.store[KEY_PROJ_META] = cfg; db.store[KEY_META_CAPI] = capi;
     if (!db.timestamps) db.timestamps = {};
     db.timestamps[KEY_PROJ_META] = now(); db.timestamps[KEY_META_CAPI] = now();
-    audit(db, 'projeto_configurado', projeto, { contas: contas.length, regra, pixel: capi.pixels[projeto] || '', modo: _capiModo(capi, projeto) }, req.user);
+    audit(db, 'projeto_configurado', projeto, { contas: contas.length, regra, destinos: (capi.destinos || {})[projeto] || [], modo: _capiModo(capi, projeto) }, req.user);
+    _pxMetaCache.em = 0;
     writeDB(db);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }

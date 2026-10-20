@@ -1907,6 +1907,31 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .lk-previa{font-size:12.5px;color:var(--text2)}
 .lk-previa code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);word-break:break-all}
 @media (max-width:700px){.lk-dupla{grid-template-columns:1fr}.lk-utms{grid-template-columns:1fr 1fr}}
+/* destinos (pixels que recebem as compras) */
+.ds-l{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--border)}
+.ds-l:first-of-type{border-top:0}
+.ds-ic{flex:0 0 auto;width:34px;height:34px;border-radius:9px;background:#1877F2;color:#fff;display:grid;place-items:center;font-size:20px;font-weight:800;line-height:1}
+.ds-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.ds-t .mono{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text2)}
+.ds-mod{display:grid;gap:14px;max-width:520px}
+.ds-mod .v2-cab{display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:flex-start;gap:12px}
+.ds-mod .v2-cab > div{min-width:0}
+.ds-mod .v2-cab > button{flex:0 0 auto}
+.ds-rede{display:flex;gap:12px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.ds-rede b{display:block;font-size:14px}.ds-rede span{font-size:12px;color:var(--text2)}
+.ds-f{display:grid;gap:6px;font-size:13px}
+.ds-f > span{font-weight:650}
+.ds-f > span i{font-style:normal;font-weight:500;color:var(--text2);float:right}
+.ds-f .fi{margin:0;width:100%;box-sizing:border-box}
+.ds-f .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.ds-f small{font-size:12px;color:var(--text2);line-height:1.5}
+.ds-sug{border:1px solid var(--border);background:var(--bg3);color:var(--text);border-radius:999px;padding:1px 8px;font:inherit;font-size:11.5px;cursor:pointer;margin:2px 2px 0 0}
+.ds-chk{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;font-size:13px}
+.ds-chk input{margin-top:3px}
+.ds-chk small{display:block;color:var(--text2);font-size:12px;line-height:1.5;margin-top:2px}
+.ds-chk2{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text2);margin-top:-6px;cursor:pointer}
+.ds-res{font-size:12.5px;color:var(--v2-laranja,#F59E0B);min-height:1em}
+.ds-bts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px}
 /* Meta: conexão, Configurar e Vendas do projeto */
 .mc-passos{margin:4px 0 14px;padding-left:20px;display:grid;gap:8px;font-size:12.5px;color:var(--text2);line-height:1.55}
 .mc-passos b{color:var(--text)}
@@ -21182,11 +21207,14 @@ async function renderIntegracoesTab(){
     var _cp = {}, _mc = {};
     try { _cp = await (await fetch(API_BASE+'/api/meta/capi/resumo')).json(); } catch(e){ _cp = {erroCarga:true}; }
     try { _mc = await (await fetch(API_BASE+'/api/meta/conexao')).json(); } catch(e){ _mc = {erroCarga:true}; }
+    var _ds = {};
+    try { _ds = await (await fetch(API_BASE+'/api/destinos')).json(); } catch(e){ _ds = {erroCarga:true}; }
 
     el.innerHTML =
       _cardUtmifyMcp(_um)+
       _cardVturb(_vt)+
       _cardMeta(_mc, _cp)+
+      _cardDestinos(_ds)+
       _cardVendas(_vd)+
 
       // CARD EMAIL TRANSACIONAL (Resend)
@@ -36494,7 +36522,7 @@ function vdCapiHtml(d){
   return '<div class="v2-rot vd-sec">Meta · API de Conversões</div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span class="v2-pill '+st[0]+'">'+st[1]+'</span>'+
       '<span class="v2-pill neu">Projeto: '+fnEsc(c.projeto || 'não achei')+'</span>'+
-      '<span class="v2-pill '+(c.pixel ? 'neu' : 'warn')+'">'+(c.pixel ? 'Pixel '+fnEsc(c.pixel) : 'Pixel não cadastrado')+'</span></div>'+
+      '<span class="v2-pill '+((c.destinos || []).length ? 'neu' : 'warn')+'">'+((c.destinos || []).length ? 'Destino: '+fnEsc(c.destinos.join(', ')) : 'Sem destino')+'</span></div>'+
     (c.enviado ? '<div class="fx-sub" style="margin-bottom:6px">Enviado em '+v2Data(c.enviado)+'</div>' : '')+(c.erro ? '<div class="fx-sub" style="margin-bottom:6px;color:var(--v2-laranja,#F59E0B)">Resposta da Meta: '+fnEsc(c.erro)+'</div>' : '')+
     capiChips(c.sinais)+
     '<div class="fx-sub" style="margin-top:6px">'+(c.sinais.indexOf('clique do anúncio') >= 0 ? 'Com o clique do anúncio, a Meta liga essa compra direto à campanha.'
@@ -36516,7 +36544,7 @@ function _cardMeta(con, cp){
   if(con.erroCarga || con.error) return '<div class="capi-card"><div class="capi-cab"><div><b>Meta</b><span>Não carregou: '+fnEsc(con.error || 'sem resposta do servidor')+'</span></div></div></div>';
   var h = '<div class="capi-card" id="mc-card">';
   if(!con.conectado){
-    h += '<div class="capi-cab"><div><b>Meta</b><span>Gasto, campanhas e vídeo direto da Meta. E as compras do TMX indo pro pixel.</span></div><span class="v2-pill neu">Não conectado</span></div>'+
+    h += '<div class="capi-cab"><div><b>Meta · conexão da BM</b><span>Puxa gasto, campanhas e vídeo direto da Meta e deixa pausar campanha pelo TMX. Pra mandar as compras basta um destino com o token do pixel (quadro Destinos, abaixo).</span></div><span class="v2-pill neu">Não conectado</span></div>'+
       (con.antigo ? '<div class="capi-aviso">Hoje tem um token antigo, de uma conta só, que vence em horas. Conectar aqui troca por um que não vence e enxerga todas as contas.</div>' : '')+
       '<ol class="mc-passos">'+
         '<li>Abra <b>business.facebook.com</b> → Configurações do negócio → Usuários → <b>Usuários do sistema</b> → Adicionar. Nome: "TMX Central", função <b>Administrador</b>.</li>'+
@@ -36553,7 +36581,7 @@ function _cardMeta(con, cp){
     h += '<div class="v2-rot vd-sec">Pixels · '+px.length+'</div>'+
       (px.length ? '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:520px"><tr><th>Pixel</th><th>Último disparo</th><th>Recebe as compras de</th></tr>'+
         px.map(function(p){ return '<tr><td><b>'+fnEsc(p.nome || p.id)+'</b><div class="fx-sub mono">'+fnEsc(p.id)+'</div></td><td>'+mcHa(p.ultimo)+'</td>'+
-          '<td>'+((p.projetos || []).length ? p.projetos.map(function(x){ return '<span class="v2-pill neu">'+fnEsc(x.projeto)+' · '+fnEsc(CAPI_MODO_TXT[x.modo] || x.modo)+'</span>'; }).join(' ') : '<span class="fx-sub">nenhum projeto</span>')+'</td></tr>'; }).join('')+'</table></div>'
+          '<td>'+(p.destino ? '<span class="v2-pill ok">destino '+fnEsc(p.destino)+'</span> ' : '')+((p.projetos || []).length ? p.projetos.map(function(x){ return '<span class="v2-pill neu">'+fnEsc(x.projeto)+' · '+fnEsc(CAPI_MODO_TXT[x.modo] || x.modo)+'</span>'; }).join(' ') : '<span class="fx-sub">'+(p.destino ? 'nenhum projeto' : 'não é destino ainda')+'</span>')+'</td></tr>'; }).join('')+'</table></div>'
         : '<div class="fx-sub">O token não enxerga nenhum pixel. No usuário do sistema, atribua os pixels com Controle total.</div>');
   }
   h += capiResumoHtml(cp);
@@ -36568,7 +36596,7 @@ function capiResumoHtml(r){
   return '<div class="v2-rot vd-sec">Compras pra Meta (API de Conversões)</div>'+
     '<div class="capi-num"><div><b>'+tot+'</b><span>compras montadas nos últimos '+(r.dias || 7)+' dias</span></div>'+
       projs.map(function(p){ var m = (r.modos || {})[p] || r.modo || 'comparacao';
-        return '<div><b>'+((r.porProjeto || {})[p] || 0)+'</b><span>'+fnEsc(p)+' · '+fnEsc(CAPI_MODO_TXT[m] || m)+((r.pixels || {})[p] ? '' : ' · sem pixel')+'</span></div>'; }).join('')+'</div>'+
+        return '<div><b>'+((r.porProjeto || {})[p] || 0)+'</b><span>'+fnEsc(p)+' · '+fnEsc(CAPI_MODO_TXT[m] || m)+((r.destinosPorProjeto || {})[p] ? '' : ' · sem destino')+'</span></div>'; }).join('')+'</div>'+
     '<div class="capi-barras" style="margin-top:10px">'+CAPI_SINAIS.filter(function(x){ return x[0] !== 'nome'; }).map(function(x){ var n = (r.sinais || {})[x[0]] || 0, p = tot ? Math.round(n * 100 / tot) : 0;
       return '<div class="capi-b" title="'+fnEsc(x[2])+'"><span>'+x[1]+'</span><i><em style="width:'+p+'%"></em></i><b>'+pct(n)+'</b></div>'; }).join('')+'</div>'+
     '<div class="fx-sub" style="margin-top:8px">Em <b>comparação</b> nada é enviado: cada venda mostra o que iria (aba Marketing). O pixel e o envio de cada projeto ficam em Projetos → <b>Configurar</b>.'+
@@ -36606,6 +36634,94 @@ function mcDesconectar(bt){
 }
 
 // ══════════════════════════════════════════════════════
+// ── DESTINOS: OS PIXELS QUE RECEBEM AS COMPRAS ──
+// Cadastro igual ao das ferramentas de rastreio: nome, id do pixel, token da
+// API de Conversões (opcional: sem ele usa a BM), código de teste (opcional)
+// e "carregar também na página". Cada projeto escolhe os dele em Configurar.
+// ══════════════════════════════════════════════════════
+var dsLista = null, dsDepois = null;
+function dsCarregar(){ return v2Json('/api/destinos').then(function(d){ dsLista = d; return d; }); }
+function _cardDestinos(d){
+  d = d || {};
+  if(d.erroCarga || d.error) return '';
+  var dir = lcEhDir(), ls = d.destinos || [];
+  dsLista = d;
+  return '<div class="capi-card" id="ds-card"><div class="capi-cab"><div><b>Destinos</b><span>Os pixels que recebem as compras. Cada projeto escolhe os dele em Projetos → Configurar.</span></div>'+
+    (dir ? '<button class="fn-btn sm" onclick="dsAbrir()">+ Adicionar destino</button>' : '')+'</div>'+
+    (ls.length ? ls.map(dsLinha).join('') : '<div class="fx-vazio">Nenhum destino ainda. Adicione o pixel da Meta que deve receber as compras.</div>')+'</div>';
+}
+function dsLinha(x){
+  var pills = [x.temToken ? '<span class="v2-pill ok" title="Token da API de Conversões do próprio pixel">token '+fnEsc(x.tokenFim)+'</span>'
+                          : '<span class="v2-pill neu" title="Sem token próprio: usa a conexão da BM">usa a BM</span>'];
+  if(x.testCode) pills.push('<span class="v2-pill warn" title="Com código de teste, tudo vai só pra Eventos de teste: nada conta">teste '+fnEsc(x.testCode)+'</span>');
+  if(x.naPagina) pills.push('<span class="v2-pill neu">carrega na página</span>');
+  (x.projetos || []).forEach(function(p){ pills.push('<span class="v2-pill neu">'+fnEsc(p)+'</span>'); });
+  return '<div class="ds-l"><span class="ds-ic" aria-hidden="true">∞</span><div class="ds-t"><b>'+fnEsc(x.nome)+'</b>'+
+    '<span class="mono">'+fnEsc(x.pixel)+(x.nomeMeta && x.nomeMeta !== x.nome ? ' · na Meta: '+fnEsc(x.nomeMeta) : '')+'</span>'+
+    '<div class="capi-chips" style="margin-top:6px">'+pills.join('')+'</div>'+
+    (x.aviso ? '<div class="fx-sub" style="color:var(--v2-laranja,#F59E0B);margin-top:4px">'+fnEsc(x.aviso)+'</div>' : '')+'</div>'+
+    (lcEhDir() ? '<button class="fn-btn g sm" onclick="dsAbrir(\''+fnEsc(x.id)+'\')">Editar</button>' : '')+'</div>';
+}
+function dsAbrir(id, depois){
+  dsDepois = typeof depois === 'function' ? depois : null;
+  var abre = function(){ var l = (dsLista && dsLista.destinos) || []; dsForm(id ? l.filter(function(y){ return y.id === id; })[0] : null); };
+  if(dsLista) abre(); else dsCarregar().then(abre).catch(function(e){ toastFn('Não abriu: '+e.message); });
+}
+function dsForm(x){
+  x = x || {};
+  var bm = (dsLista && dsLista.pixelsDaBm) || [];
+  var ov = v2Modal('<div class="ds-mod">'+
+    '<div class="v2-cab"><div><h2>'+(x.id ? 'Editar destino' : 'Adicionar destino')+'</h2><div class="fx-sub">O id é público e vai na página. O token fica só no servidor e nunca mais aparece: só os últimos caracteres, pra você reconhecer.</div></div>'+
+      '<button class="fn-btn g sm" onclick="v2Fechar(this)" aria-label="Fechar">×</button></div>'+
+    '<div class="ds-rede"><span class="ds-ic" aria-hidden="true">∞</span><div><b>Pixel da Meta</b><span>Pixel + API de Conversões</span></div></div>'+
+    '<label class="ds-f"><span>Nome</span><input class="fi" id="ds-nome" value="'+fnEsc(x.nome || '')+'" placeholder="Ex.: Pixel do Apostilaí"><small>Pra você reconhecer.</small></label>'+
+    '<label class="ds-f"><span>Id do pixel</span><input class="fi mono" id="ds-pixel" inputmode="numeric" value="'+fnEsc(x.pixel || '')+'" placeholder="1234567890123456">'+
+      '<small>Gerenciador de Eventos → Fontes de dados → seu pixel. São só números.'+
+      (bm.length ? ' Da sua BM: '+bm.slice(0, 8).map(function(p){ return '<button type="button" class="ds-sug" onclick="dsUsarPixel(\''+fnEsc(p.id)+'\',\''+fnEsc(p.nome || '').replace(/'/g, '')+'\')">'+fnEsc(p.nome || p.id)+'</button>'; }).join(' ') : '')+'</small></label>'+
+    '<label class="ds-f"><span>Token da API de Conversões <i>opcional</i></span><input class="fi mono" id="ds-token" type="password" autocomplete="off" placeholder="'+(x.temToken ? fnEsc(x.tokenFim)+' (em branco mantém o atual)' : 'EAA…')+'">'+
+      '<small>Gerenciador de Eventos → Configurações do pixel → API de Conversões → Gerar token de acesso. Sem ele, usa a conexão da BM.</small></label>'+
+    (x.temToken ? '<label class="ds-chk2"><input type="checkbox" id="ds-limpar"> Tirar o token deste destino (passa a usar a BM)</label>' : '')+
+    '<label class="ds-f"><span>Código de evento de teste <i>opcional</i></span><input class="fi mono" id="ds-teste" value="'+fnEsc(x.testCode || '')+'" placeholder="TEST12345">'+
+      '<small>Só enquanto você confere na aba "Eventos de teste" da Meta. Apague depois: com ele, nada conta.</small></label>'+
+    '<label class="ds-chk"><input type="checkbox" id="ds-pagina"'+(x.naPagina ? ' checked' : '')+'><span><b>Carregar também na página</b>'+
+      '<small>O pixel do TMX carrega o Pixel da Meta nas páginas e dispara com o mesmo id do servidor: a Meta junta os dois e conta uma vez só. Página que já tem o Pixel da Meta instalado por fora fica como está. Deixe desligado enquanto a Utmify estiver nas páginas.</small></span></label>'+
+    '<div class="ds-res" id="ds-res" role="status"></div>'+
+    '<div class="ds-bts">'+(x.id ? '<button class="fn-btn g sm" onclick="dsRemover(\''+fnEsc(x.id)+'\', this)">Remover</button>' : '')+
+      '<span style="flex:1"></span><button class="fn-btn g" onclick="v2Fechar(this)">Cancelar</button>'+
+      '<button class="fn-btn" onclick="dsSalvar(\''+fnEsc(x.id || '')+'\', this)">'+(x.id ? 'Salvar' : 'Adicionar')+'</button></div>'+
+  '</div>', 'p');
+  ov.id = 'ds-modal';
+  setTimeout(function(){ var n = document.getElementById('ds-nome'); if(n) n.focus(); }, 60);
+}
+function dsUsarPixel(id, nome){ var p = document.getElementById('ds-pixel'), n = document.getElementById('ds-nome'); if(p) p.value = id; if(n && !n.value) n.value = nome; }
+function dsValor(k){ var e = document.getElementById(k); return !e ? '' : e.type === 'checkbox' ? e.checked : String(e.value || '').trim(); }
+function dsSalvar(id, bt){
+  var corpo = { id: id || undefined, nome: dsValor('ds-nome'), pixel: dsValor('ds-pixel'), token: dsValor('ds-token'), testCode: dsValor('ds-teste'),
+                naPagina: !!dsValor('ds-pagina'), limparToken: !!dsValor('ds-limpar') };
+  var rot = bt.textContent; bt.disabled = true; bt.textContent = 'Conferindo com a Meta…';
+  fetch(API_BASE+'/api/destinos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo) })
+    .then(mcResposta).then(function(d){
+      dsLista = null; v2Fechar(bt);
+      toastFn((id ? 'Destino salvo' : 'Destino adicionado')+(d.destino && d.destino.aviso ? '. '+d.destino.aviso : (d.destino && d.destino.nomeMeta ? ': a Meta confirmou o pixel "'+d.destino.nomeMeta+'"' : '')));
+      dsAtualizarTelas();
+    })
+    .catch(function(e){ bt.disabled = false; bt.textContent = rot; var o = document.getElementById('ds-res'); if(o) o.innerHTML = '<span>'+fnEsc(e.message)+'</span>'; });
+}
+function dsRemover(id, bt){
+  if(!confirm('Remover este destino? Os projetos que mandam as compras pra ele deixam de mandar.')) return;
+  bt.disabled = true;
+  fetch(API_BASE+'/api/destinos/remover', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: id }) })
+    .then(mcResposta).then(function(){ dsLista = null; v2Fechar(bt); toastFn('Destino removido'); dsAtualizarTelas(); })
+    .catch(function(e){ bt.disabled = false; var o = document.getElementById('ds-res'); if(o) o.innerHTML = '<span>'+fnEsc(e.message)+'</span>'; });
+}
+function dsAtualizarTelas(){
+  if(document.getElementById('ds-card')) renderIntegracoesTab();
+  if(dsDepois){ var f = dsDepois; dsDepois = null; f(); }
+  else if(typeof fnAbaAtual !== 'undefined' && fnAbaAtual === 'config' && document.getElementById('fn-p-config') && document.getElementById('fn-p-config').offsetParent) pcCarregar();
+}
+function pcDestino(id, on){ var i = pcSel.destinos.indexOf(id); if(on && i < 0) pcSel.destinos.push(id); if(!on && i >= 0) pcSel.destinos.splice(i, 1); }
+
+// ══════════════════════════════════════════════════════
 // ── PROJETO → CONFIGURAR ──
 // Quais contas de anúncio são do projeto, a palavra que separa as campanhas
 // nas contas divididas, o pixel e o modo de envio das compras.
@@ -36615,7 +36731,7 @@ function pcCarregar(){
   var cx = document.getElementById('fn-p-config'); if(!cx) return;
   if(!pcDados || pcDados.projeto !== fnProj) cx.innerHTML = '<div class="fx-vazio">Buscando as contas e campanhas…</div>';
   v2Json('/api/projeto/config?projeto='+encodeURIComponent(fnProj || '')).then(function(d){
-    pcDados = d; pcSel = { contas: (d.sel || []).slice(), regra: d.regra || '', pixel: d.pixel || '', modo: d.modo || 'comparacao', testCode: '' };
+    pcDados = d; pcSel = { contas: (d.sel || []).slice(), regra: d.regra || '', destinos: (d.destinosSel || []).slice(), modo: d.modo || 'comparacao' };
     pcPintar();
   }).catch(function(e){ cx.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
 }
@@ -36647,7 +36763,7 @@ function pcModo(m){ pcSel.modo = m; var t = document.getElementById('pc-teste');
 function pcPintar(){
   var cx = document.getElementById('fn-p-config'), d = pcDados; if(!cx || !d) return;
   var dir = d.dir, dis = dir ? '' : ' disabled', cm = d.comparacao || {};
-  var libera = d.liberaEnvioEm, podeEnviar = d.metaConectada && libera && Date.now() >= libera;
+  var libera = d.liberaEnvioEm, podeEnviar = !!(libera && Date.now() >= libera);
   var esq = '<div class="capi-card"><div class="capi-cab"><div><b>Campanhas deste projeto</b><span>'+(d.configurado ? 'Decidido aqui: contas e, nas contas divididas, a palavra no nome.' : 'Hoje vem do dashboard da Utmify. Passa a ser decidido aqui.')+'</span></div></div>'+
     '<div class="v2-rot" style="margin-bottom:6px">Contas de anúncio</div>'+
     ((d.contas || []).length ? (d.contas || []).map(function(c){
@@ -36663,17 +36779,20 @@ function pcPintar(){
     '<input class="fi" id="pc-regra" value="'+fnEsc(pcSel.regra)+'" placeholder="ex.: '+fnEsc(String(fnProj || 'CONCURSO').toUpperCase())+'"'+dis+' oninput="pcSel.regra=this.value;pcPintarPrevia()">'+
     (Object.keys(d.outrasRegras || {}).length ? '<div class="fx-sub" style="margin-top:4px">Outros projetos: '+Object.keys(d.outrasRegras).map(function(p){ return fnEsc(p)+' pega "'+fnEsc(d.outrasRegras[p])+'"'; }).join(' · ')+'</div>' : '')+
     '<div id="pc-previa" style="margin-top:10px"></div></div>';
-  var pxSel = (d.pixels || []).length
-    ? '<select class="fi" id="pc-pixel"'+dis+' onchange="pcSel.pixel=this.value"><option value="">Escolha o pixel…</option>'+d.pixels.map(function(p){ return '<option value="'+fnEsc(p.id)+'"'+(p.id === pcSel.pixel ? ' selected' : '')+'>'+fnEsc((p.nome || 'Pixel')+' · '+p.id)+'</option>'; }).join('')+'</select>'
-    : '<input class="fi" id="pc-pixel" inputmode="numeric" placeholder="número do pixel (15 a 16 dígitos)" value="'+fnEsc(pcSel.pixel)+'"'+dis+' oninput="pcSel.pixel=this.value.replace(/\\D/g,\'\')">';
+  var dsl = d.destinos || [];
+  var pxSel = (dsl.length ? dsl.map(function(x){ var on = pcSel.destinos.indexOf(x.id) >= 0;
+      return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+dis+' onchange="pcDestino(\''+fnEsc(x.id)+'\', this.checked)">'+
+        '<span><b>'+fnEsc(x.nome)+'</b><small>'+fnEsc(x.pixel)+' · '+(x.temToken ? 'token próprio' : 'usa a BM')+(x.testCode ? ' · código de teste '+fnEsc(x.testCode) : '')+(x.naPagina ? ' · carrega na página' : '')+'</small></span></label>'; }).join('')
+      : '<div class="fx-sub" style="margin-bottom:6px">Nenhum destino ainda. É o pixel da Meta que recebe as compras.</div>')+
+    (d.pixelAntigo ? '<div class="fx-sub" style="margin:4px 0 6px">Pixel digitado antes: '+fnEsc(d.pixelAntigo)+'. Vale até você escolher um destino.</div>' : '')+
+    (dir ? '<button class="fn-btn g sm" style="margin-top:2px" onclick="dsAbrir(null, pcCarregar)">+ Adicionar destino</button>' : '');
   var rad = function(m, t, sub, off){ return '<label class="pc-rad'+(off ? ' off' : '')+'"><input type="radio" name="pc-modo"'+(pcSel.modo === m ? ' checked' : '')+(off || !dir ? ' disabled' : '')+' onchange="pcModo(\''+m+'\')"><span><b>'+t+'</b><small>'+sub+'</small></span></label>'; };
   var dir2 = '<div class="capi-card"><div class="capi-cab"><div><b>Compras pra Meta</b><span>API de Conversões deste projeto</span></div></div>'+
-    '<div class="v2-rot" style="margin-bottom:6px">Pixel</div>'+pxSel+
+    '<div class="v2-rot" style="margin-bottom:6px">Destinos (pixels que recebem as compras)</div>'+pxSel+
     '<div class="pc-rads">'+
       rad('comparacao', 'Comparação', 'Monta o evento e não envia. Dá pra ver em cada venda.')+
-      rad('teste', 'Teste', 'Envia com o código de teste: aparece só em "Eventos de teste" da Meta, não conta pra campanha.', !d.metaConectada)+
-      '<div id="pc-teste" style="'+(pcSel.modo === 'teste' ? '' : 'display:none')+'"><input class="fi" id="pc-testcode" placeholder="'+(d.testCode ? 'código já salvo (cole outro pra trocar)' : 'código de teste: TEST12345')+'"'+dis+' oninput="pcSel.testCode=this.value.trim()"></div>'+
-      rad('enviando', 'Enviando', !d.metaConectada ? 'Conecte a Meta primeiro.' : !podeEnviar ? 'Libera em '+v2Dia(_diaIso(libera))+', depois de 7 dias comparando com a Utmify. Antes, desligar o envio da Utmify pra não contar duas vezes.' : 'De verdade: a Meta passa a usar estas compras pra otimizar. Desligue antes o envio da Utmify.', !podeEnviar)+
+      rad('teste', 'Teste', 'Envia com o código de teste do destino: aparece só em "Eventos de teste" da Meta, não conta pra campanha.', !dsl.length)+
+      rad('enviando', 'Enviando', !dsl.length ? 'Cadastre um destino primeiro.' : !podeEnviar ? (libera ? 'Libera em '+v2Dia(_diaIso(libera))+', 7 dias depois de cadastrar o destino, comparando com a Utmify.' : 'Escolha um destino e salve.')+' Antes, desligar o envio da Utmify pra não contar duas vezes.' : 'De verdade: a Meta passa a usar estas compras pra otimizar. Desligue antes o envio da Utmify.', !podeEnviar)+
       rad('desligado', 'Desligado', 'Nem monta o evento.')+
     '</div></div>'+
     '<div class="capi-card"><div class="capi-cab"><div><b>Comparação com a Utmify</b><span>Últimos 7 dias</span></div></div>'+
@@ -36690,9 +36809,9 @@ function pcPintar(){
 }
 function _diaIso(ms){ var d = new Date(ms - 3 * 3600000); return d.toISOString().slice(0, 10); }
 function pcSalvar(bt){
-  var s = pcSel, d = pcDados, corpo = { projeto: fnProj, contas: s.contas, regra: s.regra, pixel: String(s.pixel || '').replace(/\D/g, '') };
-  if(s.modo !== d.modo || (s.modo === 'teste' && s.testCode)){
-    corpo.modo = s.modo; if(s.testCode) corpo.testCode = s.testCode;
+  var s = pcSel, d = pcDados, corpo = { projeto: fnProj, contas: s.contas, regra: s.regra, destinos: s.destinos };
+  if(s.modo !== d.modo){
+    corpo.modo = s.modo;
     if(s.modo === 'enviando'){
       if(!confirm('Ligar o envio de verdade das compras de '+fnProj+' pra Meta?\n\nA Meta passa a usar essas compras pra otimizar as campanhas. Confirme que o envio da Utmify pra este pixel já está desligado, senão cada venda conta duas vezes.')) return;
       corpo.confirmar = 'SIM_ENVIAR_PRA_META';
