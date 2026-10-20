@@ -2560,7 +2560,8 @@ app.post('/api/integracoes/utmify/test', authDiretoria, async (req, res) => {
 // Os tokens ficam em chaves FORA do SYNC_KEYS: nunca são enviados pro browser.
 
 const META_API_VER  = 'v25.0';
-const META_API_BASE = `https://graph.facebook.com/${META_API_VER}`;
+// META_API_BASE_TESTE: só pra testar aqui com uma Meta falsa; no Railway (/data) nunca vale
+const META_API_BASE = (process.env.META_API_BASE_TESTE && !fs.existsSync('/data')) ? process.env.META_API_BASE_TESTE : `https://graph.facebook.com/${META_API_VER}`;
 const KEY_META      = 'sl_integracoes_meta';     // server-only (token)
 const KEY_VENDAS    = 'sl_vendas';
 const KEY_METRICAS  = 'sl_metricas_ads';   // métricas importadas (Utmify, Meta…)               // vendas normalizadas
@@ -2783,6 +2784,279 @@ app.get('/api/integracoes/meta/insights', authDiretoria, async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message, metaCode: err.metaCode });
   }
+});
+
+// ══════════════════════════════════════════════════════
+// ── CONEXÃO COM A META (usuário do sistema da BM) ──
+// Um token só, do usuário do sistema (não vence), no lugar do token de uma
+// conta que vencia em horas. Com ele o TMX lista sozinho todas as contas de
+// anúncio e pixels que a BM deu pro usuário, puxa os números de hora em hora
+// (gasto, cliques, vídeo, orçamento, mudanças) e manda as compras pro pixel
+// quando o envio for ligado. O token fica só aqui; a tela vê o fim dele.
+// ══════════════════════════════════════════════════════
+const META_STATUS_CONTA = { 1: 'ativa', 2: 'desativada', 3: 'pagamento pendente', 7: 'em análise', 8: 'acerto pendente',
+  9: 'período de carência', 100: 'fechando', 101: 'fechada', 201: 'ativa', 202: 'fechada' };
+// todas as páginas de uma listagem da Graph API (o "next" já leva o token)
+async function _metaTudo(pathRel, params, cfg, maxPaginas) {
+  let j = await _metaGet(pathRel, params, cfg), out = (j.data || []).slice(), n = 1;
+  while (j.paging && j.paging.next && n < (maxPaginas || 10)) {
+    const r = await fetch(j.paging.next);
+    j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) { const e = j.error || {}; throw new Error(e.error_user_msg || e.message || ('HTTP ' + r.status)); }
+    out = out.concat(j.data || []); n++;
+  }
+  return out;
+}
+async function _metaListar(cfg) {
+  const eu = await _metaGet('me', { fields: 'id,name' }, cfg);
+  let permissoes = [];
+  try { permissoes = ((await _metaGet('me/permissions', {}, cfg)).data || []).filter(p => p.status === 'granted').map(p => p.permission); } catch (e) {}
+  const contas = (await _metaTudo('me/adaccounts', { fields: 'id,account_id,name,account_status,currency,timezone_name,business{id,name}', limit: '200' }, cfg, 5))
+    .map(a => ({ id: String(a.id), conta: String(a.account_id || String(a.id).replace(/^act_/, '')), nome: String(a.name || ''),
+                 status: Number(a.account_status) || 0, moeda: a.currency || '', fuso: a.timezone_name || '', bm: a.business ? String(a.business.name || '') : '' }));
+  const pixels = {};
+  for (const c of contas.slice(0, 80)) {
+    try {
+      (await _metaTudo(c.id + '/adspixels', { fields: 'id,name,last_fired_time', limit: '100' }, cfg, 3)).forEach(p => {
+        const x = pixels[p.id] || (pixels[p.id] = { id: String(p.id), nome: String(p.name || ''), ultimo: p.last_fired_time ? (Date.parse(p.last_fired_time) || null) : null, contas: [] });
+        if (x.contas.indexOf(c.conta) < 0) x.contas.push(c.conta);
+      });
+    } catch (e) { /* conta sem acesso aos pixels: segue */ }
+  }
+  return { quem: { id: String(eu.id || ''), nome: String(eu.name || '') }, permissoes, contas, pixels: Object.values(pixels) };
+}
+function _metaConexaoPublica(cfg) {
+  cfg = cfg || {};
+  const con = !!(cfg.accessToken && cfg.tipo === 'sistema');
+  return { conectado: con, tokenFim: con ? '…' + String(cfg.accessToken).slice(-4) : '', conectadoEm: cfg.conectadoEm || null,
+    quem: cfg.quem || null, permissoes: cfg.permissoes || [], atualizadoEm: cfg.listasEm || null,
+    contas: (cfg.contas || []).map(c => Object.assign({}, c, { statusTxt: META_STATUS_CONTA[c.status] || ('status ' + c.status) })),
+    pixels: cfg.pixels || [], sync: cfg.sync || null, ultimoErro: cfg.ultimoErro || null, antigo: !!(cfg.accessToken && cfg.tipo !== 'sistema') };
+}
+function _metaErroTxt(e) {
+  const c = e && e.metaCode;
+  if (c === 190) return 'A Meta recusou o token (vencido, apagado ou copiado pela metade). Gere outro no usuário do sistema.';
+  if (c === 10 || c === 200 || c === 294) return 'O token não tem a permissão que precisa. Gere de novo marcando ads_read e business_management.';
+  if (c === 4 || c === 17 || c === 613 || c === 80004) return 'A Meta pediu pra esperar um pouco (limite de chamadas). Tente de novo em alguns minutos.';
+  return (e && e.message) || 'A Meta não respondeu.';
+}
+// o envio de verdade só libera depois de 7 dias de Meta conectada (a semana de comparação)
+const META_COMPARACAO_DIAS = 7;
+function _metaLiberaEnvioEm(cfg) { const t = cfg && cfg.conectadoEm ? Date.parse(cfg.conectadoEm) : 0; return t ? t + META_COMPARACAO_DIAS * 86400000 : null; }
+app.get('/api/meta/conexao', authDiretoria, (req, res) => {
+  try {
+    const db = readDB(), cfg = _metaCfg(db), out = _metaConexaoPublica(cfg), proj = _projMetaCfg(db), capi = _capiCfg(db);
+    const gasto = {};
+    if (_pessoas()) _q('SELECT conta, SUM(gasto) g FROM meta_camp_dia WHERE dia>=? GROUP BY conta').all(_diaBR(Date.now() - 13 * 86400000)).forEach(x => { gasto[x.conta] = Math.round(x.g || 0); });
+    out.contas = out.contas.map(c => Object.assign(c, { gasto14: gasto[c.conta] || 0,
+      projetos: Object.keys(proj).filter(p => (proj[p].contas || []).indexOf(c.conta) >= 0) }));
+    out.pixels = out.pixels.map(p => Object.assign({}, p, { projetos: Object.keys(capi.pixels || {}).filter(k => capi.pixels[k] === p.id)
+      .map(k => ({ projeto: k, modo: _capiModo(capi, k) })) }));
+    out.liberaEnvioEm = _metaLiberaEnvioEm(cfg);
+    res.json(Object.assign({ ok: true }, out));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/meta/conexao', authDiretoria, async (req, res) => {
+  const token = String((req.body || {}).token || '').trim();
+  if (!/^[A-Za-z0-9_-]{40,600}$/.test(token)) return res.status(400).json({ error: 'Isso não parece um token da Meta. Ele começa com EAA e tem umas 200 letras.' });
+  try {
+    const l = await _metaListar({ accessToken: token });
+    if (!l.contas.length) return res.status(400).json({ error: 'O token funciona, mas não enxerga nenhuma conta de anúncio. No usuário do sistema, use "Atribuir ativos" e marque as contas.' });
+    const db = readDB(), cfg = _metaCfg(db) || {};
+    Object.assign(cfg, { accessToken: token, tipo: 'sistema', conectadoEm: new Date().toISOString(), quem: l.quem, permissoes: l.permissoes,
+      contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null, _updatedAt: Date.now() });
+    db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
+    audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length }, req.user);
+    writeDB(db);
+    // primeira puxada: 14 dias, sem segurar a resposta
+    setTimeout(() => _metaSincronizar({ dias: 14 }).catch(() => {}), 500);
+    res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
+  } catch (e) { res.status(400).json({ error: _metaErroTxt(e) }); }
+});
+app.post('/api/meta/conexao/atualizar', authDiretoria, async (req, res) => {
+  const cfg0 = _metaCfg();
+  if (!cfg0 || !cfg0.accessToken || cfg0.tipo !== 'sistema') return res.status(400).json({ error: 'Conecte a Meta primeiro.' });
+  try {
+    const l = await _metaListar(cfg0);
+    const db = readDB(), cfg = _metaCfg(db) || {};
+    Object.assign(cfg, { quem: l.quem, permissoes: l.permissoes, contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null });
+    db.store[KEY_META] = cfg; writeDB(db);
+    if ((req.body || {}).puxar) setTimeout(() => _metaSincronizar({ dias: 2 }).catch(() => {}), 200);
+    res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
+  } catch (e) {
+    const db = readDB(), cfg = _metaCfg(db) || {}; cfg.ultimoErro = _metaErroTxt(e); db.store[KEY_META] = cfg; writeDB(db);
+    res.status(400).json({ error: cfg.ultimoErro });
+  }
+});
+app.post('/api/meta/conexao/desconectar', authDiretoria, (req, res) => {
+  try {
+    const db = readDB(), cfg = _metaCfg(db) || {};
+    delete cfg.accessToken; cfg.tipo = ''; cfg.desconectadoEm = new Date().toISOString();
+    db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
+    audit(db, 'integracao.meta.desconectar', KEY_META, {}, req.user);
+    writeDB(db);
+    res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── NÚMEROS DA META, DE HORA EM HORA ──
+// Grava em tabelas próprias (meta_camp_dia, meta_camp_hora) pra rodar uma
+// semana ao lado da Utmify sem mexer no que as telas mostram hoje. As mudanças
+// de orçamento, lance e status vêm do histórico da conta, com a hora exata.
+const _META_ACOES = {
+  lpv: ['landing_page_view', 'omni_landing_page_view'],
+  ic: ['initiate_checkout', 'offsite_conversion.fb_pixel_initiate_checkout', 'omni_initiated_checkout'],
+  compras: ['purchase', 'offsite_conversion.fb_pixel_purchase', 'omni_purchase'],
+  v3: ['video_view']
+};
+// a Meta repete a mesma ação com nomes diferentes (purchase e fb_pixel_purchase): fica o maior, nunca a soma
+function _metaAcao(arr, tipos) { let n = 0; (arr || []).forEach(a => { if (tipos.indexOf(a.action_type) >= 0) n = Math.max(n, Number(a.value) || 0); }); return n; }
+function _metaSoma(arr) { return (arr || []).reduce((s, a) => s + (Number(a.value) || 0), 0); }
+const _metaReais = v => (v === undefined || v === null || v === '') ? null : Math.round(Number(v)) / 100;
+let _metaSyncRodando = false;
+async function _metaSincronizar(opts) {
+  opts = opts || {};
+  const cfg = _metaCfg();
+  if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema' || !_pessoas()) return null;
+  if (_metaSyncRodando) return null;
+  _metaSyncRodando = true;
+  const t0 = Date.now(), dias = Math.min(Math.max(Number(opts.dias) || 2, 1), 30);
+  const hoje = _diaBR(t0), desde = _diaBR(t0 - (dias - 1) * 86400000);
+  const r = { contas: 0, campanhas: 0, linhasDia: 0, linhasHora: 0, mudancas: 0, erros: [] };
+  const STATUS_VIVOS = JSON.stringify(['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW']);
+  try {
+    for (const c of (cfg.contas || [])) {
+      if (c.status !== 1 && c.status !== 201 && c.status !== 9) continue;   // conta fora do ar: nada pra puxar
+      try {
+        // 1) campanhas e conjuntos: orçamento, lance, status
+        const camps = await _metaTudo(c.id + '/campaigns', { fields: 'id,name,status,effective_status,daily_budget,lifetime_budget,bid_strategy,created_time',
+          effective_status: STATUS_VIVOS, limit: '500' }, cfg, 6);
+        const sets = await _metaTudo(c.id + '/adsets', { fields: 'id,campaign_id,daily_budget,lifetime_budget,bid_amount,effective_status',
+          effective_status: STATUS_VIVOS, limit: '500' }, cfg, 8);
+        const porCamp = {}, campDoSet = {};
+        sets.forEach(s => {
+          campDoSet[s.id] = String(s.campaign_id);
+          const x = porCamp[s.campaign_id] || (porCamp[s.campaign_id] = { orc: 0, lance: null });
+          if (s.effective_status === 'ACTIVE' && s.daily_budget) x.orc += Number(s.daily_budget) || 0;   // ABO: soma dos conjuntos no ar
+          if (s.bid_amount) x.lance = Math.max(x.lance || 0, Number(s.bid_amount) || 0);
+        });
+        const estado = {};
+        camps.forEach(k => {
+          const pc = porCamp[k.id] || {};
+          estado[k.id] = { nome: String(k.name || '').slice(0, 160), status: String(k.effective_status || k.status || ''),
+            orc: k.daily_budget ? _metaReais(k.daily_budget) : (pc.orc ? _metaReais(pc.orc) : null),
+            orcVida: k.lifetime_budget ? _metaReais(k.lifetime_budget) : null, lance: pc.lance ? _metaReais(pc.lance) : null,
+            estrategia: k.bid_strategy || '', criada: k.created_time ? (Date.parse(k.created_time) || null) : null };
+        });
+        r.campanhas += camps.length;
+
+        // 2) resultado por dia
+        const CAMPOS = 'campaign_id,campaign_name,spend,impressions,reach,frequency,clicks,inline_link_clicks,actions,video_play_actions,' +
+          'video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p95_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions';
+        const ins = await _metaTudo(c.id + '/insights', { level: 'campaign', fields: CAMPOS, time_range: JSON.stringify({ since: desde, until: hoje }),
+          time_increment: '1', limit: '500' }, cfg, 10);
+        const agora = Date.now();
+        _pessoas().exec('BEGIN');
+        try {
+          ins.forEach(d => {
+            const e = estado[d.campaign_id] || {};
+            _q(`INSERT INTO meta_camp_dia(dia, conta, id, nome, status, orc, orc_vida, lance, gasto, imp, alcance, freq, cliques, link_cliques,
+                  lpv, ic, compras, plays, v3, v25, v50, v75, v95, v100, thruplay, criada, em)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(dia, id) DO UPDATE SET conta=excluded.conta, nome=excluded.nome, status=excluded.status, orc=excluded.orc, orc_vida=excluded.orc_vida,
+                  lance=excluded.lance, gasto=excluded.gasto, imp=excluded.imp, alcance=excluded.alcance, freq=excluded.freq, cliques=excluded.cliques,
+                  link_cliques=excluded.link_cliques, lpv=excluded.lpv, ic=excluded.ic, compras=excluded.compras, plays=excluded.plays, v3=excluded.v3,
+                  v25=excluded.v25, v50=excluded.v50, v75=excluded.v75, v95=excluded.v95, v100=excluded.v100, thruplay=excluded.thruplay,
+                  criada=excluded.criada, em=excluded.em`)
+              .run(String(d.date_start).slice(0, 10), c.conta, String(d.campaign_id), String(d.campaign_name || e.nome || '').slice(0, 160),
+                   e.status || null, e.orc == null ? null : e.orc, e.orcVida == null ? null : e.orcVida, e.lance == null ? null : e.lance,
+                   Number(d.spend) || 0, Number(d.impressions) || 0, Number(d.reach) || 0, Number(d.frequency) || 0, Number(d.clicks) || 0,
+                   Number(d.inline_link_clicks) || 0, _metaAcao(d.actions, _META_ACOES.lpv), _metaAcao(d.actions, _META_ACOES.ic),
+                   _metaAcao(d.actions, _META_ACOES.compras), _metaSoma(d.video_play_actions), _metaAcao(d.actions, _META_ACOES.v3),
+                   _metaSoma(d.video_p25_watched_actions), _metaSoma(d.video_p50_watched_actions), _metaSoma(d.video_p75_watched_actions),
+                   _metaSoma(d.video_p95_watched_actions), _metaSoma(d.video_p100_watched_actions), _metaSoma(d.video_thruplay_watched_actions),
+                   e.criada || null, agora);
+            r.linhasDia++;
+          });
+          _pessoas().exec('COMMIT');
+        } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+
+        // 3) hoje, hora a hora (no fuso da conta)
+        const hs = await _metaTudo(c.id + '/insights', { level: 'campaign', fields: 'campaign_id,spend,impressions,inline_link_clicks',
+          breakdowns: 'hourly_stats_aggregated_by_advertiser_time_zone', time_range: JSON.stringify({ since: hoje, until: hoje }), limit: '500' }, cfg, 10);
+        hs.forEach(d => {
+          const h = parseInt(String(d.hourly_stats_aggregated_by_advertiser_time_zone || '').slice(0, 2), 10);
+          if (!(h >= 0 && h < 24)) return;
+          _q(`INSERT INTO meta_camp_hora(dia, hora, id, conta, gasto, imp, cliques) VALUES(?,?,?,?,?,?,?)
+              ON CONFLICT(dia, hora, id) DO UPDATE SET gasto=excluded.gasto, imp=excluded.imp, cliques=excluded.cliques`)
+            .run(hoje, h, String(d.campaign_id), c.conta, Number(d.spend) || 0, Number(d.impressions) || 0, Number(d.inline_link_clicks) || 0);
+          r.linhasHora++;
+        });
+
+        // 4) histórico de mudanças: orçamento, lance e status, com a hora exata
+        const desdeAtv = Math.floor(Math.max(t0 - dias * 86400000, (cfg.sync && cfg.sync.atividadesAte && !opts.dias ? cfg.sync.atividadesAte - 3600000 : 0)) / 1000);
+        const atvs = await _metaTudo(c.id + '/activities', { fields: 'event_type,event_time,object_id,object_name,extra_data,actor_name',
+          since: String(desdeAtv), limit: '200' }, cfg, 5);
+        atvs.forEach(a => {
+          const campo = /budget/.test(a.event_type) ? 'orc' : /bid/.test(a.event_type) ? 'lance' : /run_status|status/.test(a.event_type) ? 'status' : '';
+          if (!campo || !/campaign|ad_set/.test(a.event_type)) return;
+          const camp = /^update_campaign/.test(a.event_type) ? String(a.object_id) : (campDoSet[a.object_id] || '');
+          if (!camp) return;
+          const em = Date.parse(a.event_time) || 0; if (!em) return;
+          let ex = {}; try { ex = typeof a.extra_data === 'string' ? JSON.parse(a.extra_data) : (a.extra_data || {}); } catch (e) {}
+          const val = v => {
+            if (v && typeof v === 'object') v = v.new_value !== undefined ? v.new_value : (v.value !== undefined ? v.value : JSON.stringify(v));
+            if (v === undefined || v === null) return '';
+            return (campo === 'orc' || campo === 'lance') && /^\d+$/.test(String(v)) ? String(Number(v) / 100) : String(v).slice(0, 60);
+          };
+          if (_q("SELECT 1 FROM camp_mudancas WHERE camp=? AND em=? AND campo=? AND fonte='meta'").get(camp, em, campo)) return;
+          const nome = (estado[camp] && estado[camp].nome) || String(a.object_name || '').slice(0, 160);
+          _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)')
+            .run(camp, nome, '', campo, val(ex.old_value), val(ex.new_value), em, null, 'meta');
+          r.mudancas++;
+        });
+        r.contas++;
+      } catch (e) { r.erros.push((c.nome || c.conta) + ': ' + _metaErroTxt(e)); }
+    }
+  } finally {
+    _metaSyncRodando = false;
+    try {
+      const db = readDB(), cf = _metaCfg(db);
+      if (cf) {
+        cf.sync = { em: Date.now(), seg: Math.round((Date.now() - t0) / 1000), contas: r.contas, campanhas: r.campanhas, linhasDia: r.linhasDia,
+                    linhasHora: r.linhasHora, mudancas: r.mudancas, erros: r.erros.slice(0, 10), atividadesAte: t0 };
+        if (r.erros.length && !r.contas) cf.ultimoErro = r.erros[0];
+        db.store[KEY_META] = cf; writeDB(db);
+      }
+    } catch (e) { console.error('[META] não gravei o resumo da puxada:', e.message); }
+  }
+  if (r.erros.length) console.error('[META] puxada com erro:', r.erros.slice(0, 3).join(' | '));
+  return r;
+}
+setTimeout(() => _metaSincronizar().catch(e => console.error('[META]', e.message)), 3 * 60 * 1000);
+setInterval(() => _metaSincronizar().catch(e => console.error('[META]', e.message)), 60 * 60 * 1000);
+setInterval(() => _capiEnviarPendentes().catch(e => console.error('[CAPI] envio:', e.message)), 60 * 1000);
+app.post('/api/meta/puxar', authDiretoria, async (req, res) => {
+  try {
+    const r = await _metaSincronizar({ dias: Math.min(Number((req.body || {}).dias) || 2, 30) });
+    if (!r) return res.status(400).json({ error: _metaSyncRodando ? 'Já está puxando. Espere terminar.' : 'Conecte a Meta primeiro.' });
+    res.json({ ok: true, resultado: r });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Comparação com a Utmify: gasto por conta e por dia, as duas fontes lado a lado
+app.get('/api/meta/comparar', authDiretoria, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const dias = Math.min(Math.max(Number(req.query.dias) || 7, 1), 30), desde = _diaBR(Date.now() - (dias - 1) * 86400000);
+    const meta = _q('SELECT conta, dia, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c, SUM(compras) v FROM meta_camp_dia WHERE dia>=? GROUP BY conta, dia').all(desde);
+    const utm = _q('SELECT conta, dia, SUM(gasto) g, SUM(imp) i, SUM(cliques) c FROM camp_dia WHERE dia>=? GROUP BY conta, dia').all(desde);
+    const nomes = {}; ((_metaCfg() || {}).contas || []).forEach(c => { nomes[c.conta] = c.nome; });
+    const porConta = {};
+    const add = (l, k) => l.forEach(x => { const o = porConta[x.conta] || (porConta[x.conta] = { conta: x.conta, nome: nomes[x.conta] || '', meta: { g: 0, i: 0, c: 0, v: 0 }, utmify: { g: 0, i: 0, c: 0 } });
+      Object.keys(o[k]).forEach(m => { o[k][m] += Number(x[m]) || 0; }); });
+    add(meta, 'meta'); add(utm, 'utmify');
+    res.json({ ok: true, dias, desde, contas: Object.values(porConta).sort((a, b) => (b.meta.g + b.utmify.g) - (a.meta.g + a.utmify.g)) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Vendas via postback do checkout ──
@@ -9985,6 +10259,14 @@ function _pessoas() {
         criado INTEGER, enviado INTEGER, resposta TEXT, sinais TEXT);
       CREATE INDEX IF NOT EXISTS capi_ped ON capi_eventos(pedido);
       CREATE INDEX IF NOT EXISTS capi_criado ON capi_eventos(criado);
+      CREATE TABLE IF NOT EXISTS meta_camp_dia (dia TEXT, conta TEXT, id TEXT, nome TEXT, status TEXT, orc REAL, orc_vida REAL, lance REAL,
+        gasto REAL, imp INTEGER, alcance INTEGER, freq REAL, cliques INTEGER, link_cliques INTEGER, lpv INTEGER, ic INTEGER, compras INTEGER,
+        plays INTEGER, v3 INTEGER, v25 INTEGER, v50 INTEGER, v75 INTEGER, v95 INTEGER, v100 INTEGER, thruplay INTEGER, criada INTEGER, em INTEGER,
+        PRIMARY KEY (dia, id));
+      CREATE INDEX IF NOT EXISTS mcd_conta ON meta_camp_dia(conta, dia);
+      CREATE TABLE IF NOT EXISTS meta_camp_hora (dia TEXT, hora INTEGER, id TEXT, conta TEXT, gasto REAL, imp INTEGER, cliques INTEGER,
+        PRIMARY KEY (dia, hora, id));
+      CREATE TABLE IF NOT EXISTS meta_contas_nome (conta TEXT PRIMARY KEY, nome TEXT, em INTEGER);
       CREATE TABLE IF NOT EXISTS camp_estado (id TEXT PRIMARY KEY, nome TEXT, dashboard TEXT, orc REAL, bid REAL, status TEXT, em INTEGER);
       CREATE TABLE IF NOT EXISTS camp_mudancas (n INTEGER PRIMARY KEY AUTOINCREMENT, camp TEXT, nome TEXT, dashboard TEXT,
         campo TEXT, de TEXT, para TEXT, em INTEGER, desde INTEGER, fonte TEXT);
@@ -9999,6 +10281,7 @@ function _pessoas() {
     try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_teste TEXT'); } catch (e) {}
     try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_var TEXT'); } catch (e) {}
     try { db.exec('ALTER TABLE pedidos ADD COLUMN plataforma TEXT'); } catch (e) {}
+    try { db.exec('ALTER TABLE capi_eventos ADD COLUMN tentativas INTEGER DEFAULT 0'); } catch (e) {}
     // o crédito veio de outro aparelho da mesma pessoa (id desse outro visitante)
     try { db.exec('ALTER TABLE pedidos ADD COLUMN cred_vis TEXT'); } catch (e) {}
     // os códigos de rastreio que vieram na venda (UTMs, src, sck, xcod, fbclid): o
@@ -10606,6 +10889,8 @@ function _pessoasManter() {
     const r2 = _q('DELETE FROM sessoes WHERE inicio < ?').run(agora - SESSOES_DIAS * 86400000);
     _q('DELETE FROM paginas WHERE em < ?').run(agora - SESSOES_DIAS * 86400000);
     _q('DELETE FROM capi_visita WHERE em < ?').run(agora - CAPI_VISITA_DIAS * 86400000);
+    _q('DELETE FROM meta_camp_hora WHERE dia < ?').run(_diaBR(agora - 30 * 86400000));
+    _q('DELETE FROM meta_camp_dia WHERE dia < ?').run(_diaBR(agora - 120 * 86400000));
     if (r1.changes || r2.changes) console.log('[PESSOAS] retenção: ' + r1.changes + ' eventos e ' + r2.changes + ' sessões antigas saíram.');
     db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   } catch (e) { console.error('[PESSOAS] manutenção falhou:', e.message); }
@@ -11187,6 +11472,64 @@ function _capiProjeto(dbj, funil, produto) {
   const ps = [..._projetosDoProdutoFn(fs_)(produto)];
   return ps.length === 1 ? ps[0] : '';
 }
+// ── O modo de cada projeto ──
+// comparacao: monta e não envia · teste: envia com o código de teste (aparece
+// só em "Eventos de teste" da Meta, não conta pra campanha) · enviando: de
+// verdade · desligado: nem monta. Sem modo próprio, vale o geral.
+const CAPI_MODOS = ['desligado', 'comparacao', 'teste', 'enviando'];
+function _capiModo(cfg, projeto) {
+  const m = (cfg.modos || {})[projeto];
+  return CAPI_MODOS.indexOf(m) >= 0 ? m : (CAPI_MODOS.indexOf(cfg.modo) >= 0 ? cfg.modo : 'comparacao');
+}
+// ── Envio pra Meta ──
+// Só sai o que foi montado com o projeto em "teste" ou "enviando" (status
+// pendente). O que nasceu em comparação nunca vai: a Utmify pode já ter
+// mandado aquela venda. A Meta recusa evento com mais de 7 dias.
+let _capiEnviando = false;
+async function _capiEnviarPendentes() {
+  if (_capiEnviando || !_pessoas()) return null;
+  const dbj = readDB(), cfg = _capiCfg(dbj), mc = _metaCfg(dbj);
+  if (!mc || !mc.accessToken || mc.tipo !== 'sistema') return null;
+  const l = _q("SELECT id, projeto, payload, tentativas FROM capi_eventos WHERE status IN ('pendente','erro') AND criado >= ? ORDER BY criado LIMIT 300")
+    .all(Date.now() - 7 * 86400000);
+  if (!l.length) return null;
+  _capiEnviando = true;
+  const r = { enviados: 0, erros: 0 };
+  try {
+    const grupos = {};
+    l.forEach(x => {
+      const modo = _capiModo(cfg, x.projeto), pixel = (cfg.pixels || {})[x.projeto];
+      if ((modo !== 'teste' && modo !== 'enviando') || !pixel) return;   // fica esperando o pixel ou o modo
+      if (modo === 'teste' && !cfg.testCode) return;
+      const k = pixel + '|' + modo; (grupos[k] = grupos[k] || { pixel, modo, itens: [] }).itens.push(x);
+    });
+    for (const g of Object.values(grupos)) {
+      for (let i = 0; i < g.itens.length; i += 100) {
+        const lote = g.itens.slice(i, i + 100);
+        const corpo = { data: lote.map(x => JSON.parse(x.payload)), access_token: mc.accessToken };
+        if (g.modo === 'teste') corpo.test_event_code = cfg.testCode;
+        let ok = false, resposta = '';
+        try {
+          const resp = await fetch(META_API_BASE + '/' + encodeURIComponent(g.pixel) + '/events', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+          const j = await resp.json().catch(() => ({}));
+          ok = resp.ok && !j.error;
+          resposta = JSON.stringify(ok ? { recebidos: j.events_received, avisos: (j.messages || []).slice(0, 3), fbtrace: j.fbtrace_id }
+                                       : { erro: (j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + resp.status), codigo: j.error && j.error.code }).slice(0, 600);
+        } catch (e) { resposta = JSON.stringify({ erro: e.message }).slice(0, 600); }
+        const agora = Date.now();
+        lote.forEach(x => {
+          const tent = (Number(x.tentativas) || 0) + 1;
+          const st = ok ? (g.modo === 'teste' ? 'teste' : 'enviado') : (tent >= 5 ? 'falhou' : 'erro');
+          _q('UPDATE capi_eventos SET status=?, enviado=?, resposta=?, tentativas=? WHERE id=?').run(st, ok ? agora : null, resposta, tent, x.id);
+        });
+        if (ok) r.enviados += lote.length; else { r.erros += lote.length; console.error('[CAPI] Meta recusou o lote:', resposta); }
+      }
+    }
+  } finally { _capiEnviando = false; }
+  return r;
+}
+
 // o id do evento é o do pedido na plataforma, sem o status: o mesmo pedido que chega
 // duas vezes aprovado (paid e depois approved) não vira duas compras na Meta
 function _capiIdDe(plataforma, pedido, linha) {
@@ -11227,9 +11570,10 @@ function _capiMontar(d) {
       custom_data: { currency: 'BRL', value: Math.round((Number(venda.valor) || 0) * 100) / 100, content_name: String(venda.produto || '').slice(0, 120),
                      content_type: 'product', order_id: String(venda.pedidoId || d.pedido).slice(0, 80) } };
     if (url) ev.event_source_url = url;
-    const dbj = readDB(), cfg = _capiCfg(dbj), projeto = _capiProjeto(dbj, d.funil, venda.produto);
+    const dbj = readDB(), cfg = _capiCfg(dbj), projeto = _capiProjeto(dbj, d.funil, venda.produto), modo = _capiModo(cfg, projeto);
+    if (modo === 'desligado') return;
     _q('INSERT OR IGNORE INTO capi_eventos(id, pedido, projeto, nome, payload, status, criado, sinais) VALUES(?,?,?,?,?,?,?,?)')
-      .run(id, String(d.pedido), projeto, 'Purchase', JSON.stringify(ev), cfg.modo === 'enviando' ? 'pendente' : 'comparacao', Date.now(), sinais.join(','));
+      .run(id, String(d.pedido), projeto, 'Purchase', JSON.stringify(ev), (modo === 'teste' || modo === 'enviando') ? 'pendente' : 'comparacao', Date.now(), sinais.join(','));
   } catch (e) { console.error('[CAPI] montar:', e.message); }
 }
 // resumo pra tela de integrações: quantas compras estão prontas e com quais sinais
@@ -11242,7 +11586,8 @@ app.get('/api/meta/capi/resumo', authUsuario, (req, res) => {
     const dbj = readDB(), cfg = _capiCfg(dbj), fun = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
     res.json({ ok: true, dias: 7, total: l.length, status: l.reduce((a, x) => { a[x.status] = (a[x.status] || 0) + 1; return a; }, {}),
       sinais: { 'e-mail': tem('e-mail'), telefone: tem('telefone'), 'clique do anúncio': tem('clique do anúncio'), 'cookie da Meta': tem('cookie da Meta'), IP: tem('IP'), navegador: tem('navegador'), 'id da pessoa': tem('id da pessoa') },
-      porProjeto, modo: cfg.modo || 'comparacao', pixels: cfg.pixels || {},
+      porProjeto, modo: cfg.modo || 'comparacao', pixels: cfg.pixels || {}, modos: cfg.modos || {},
+      metaConectada: !!((_metaCfg(dbj) || {}).accessToken && (_metaCfg(dbj) || {}).tipo === 'sistema'),
       projetos: [...new Set(fun.filter(Boolean).map(f => f.projeto).filter(Boolean))],
       ipDesde: (_q('SELECT MIN(em) em FROM capi_visita').get() || {}).em || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -11271,7 +11616,8 @@ function _capiDaVenda(o, dir) {
     let p = {}; try { p = JSON.parse(x.payload); } catch (e) {}
     const curto = v => Array.isArray(v) ? v.map(h => String(h).slice(0, 10) + '…') : (typeof v === 'string' && v.length > 40 ? v.slice(0, 18) + '…' : v);
     const ud = {}; Object.keys(p.user_data || {}).forEach(k => { ud[k] = curto(p.user_data[k]); });
-    return { id: x.id, projeto: x.projeto, status: x.status, criado: x.criado, enviado: x.enviado, sinais: String(x.sinais || '').split(',').filter(Boolean),
+    let erro = ''; try { erro = (JSON.parse(x.resposta || '{}') || {}).erro || ''; } catch (e) {}
+    return { id: x.id, projeto: x.projeto, status: x.status, criado: x.criado, enviado: x.enviado, erro, sinais: String(x.sinais || '').split(',').filter(Boolean),
       pixel: (_capiCfg().pixels || {})[x.projeto] || '', evento: dir ? Object.assign({}, p, { user_data: ud }) : null };
   } catch (e) { return null; }
 }
@@ -11550,6 +11896,7 @@ async function _campDia(dia, projetoId, podeBuscar) {
       ((r && r.results) || []).forEach(c => {
         const id = String(c.id || c.campaignId || c.name || '').slice(0, 40);
         if (!id) return;
+        if (c.accountId && c.ca) _contaNomeGuardar(c.accountId, c.ca);
         const x = soma[id] || (soma[id] = { id, nome: String(c.name || '').trim().slice(0, 160), conta: String(c.accountId || '').slice(0, 40), gasto: 0, imp: 0, cliques: 0 });
         x.gasto += (Number(c.spend) || 0) / 100; x.imp += Number(c.impressions) || 0; x.cliques += Number(c.inlineLinkClicks) || 0;
       });
@@ -16702,6 +17049,171 @@ app.post('/api/links/rastreados', authUsuario, (req, res) => {
     audit(db, b.id ? 'link_editado' : 'link_criado', l.slug, { destino: l.destino.split('?')[0], ativo: l.ativo }, req.user);
     writeDB(db);
     res.json({ ok: true, link: l });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── PROJETOS DO TMX: CONTAS DE ANÚNCIO E REGRA PELO NOME ──
+// Cada projeto diz quais contas de anúncio são dele. Conta que dois projetos
+// usam (Milhão01 tem campanha do CONCURSO e da RENDA EXTRA) é dividida pelo
+// nome da campanha: entra no projeto cuja palavra aparece no nome. Isso
+// substitui o dashboard da Utmify como o que decide "de que projeto é".
+// ══════════════════════════════════════════════════════
+const KEY_PROJ_META = 'sl_projetos_meta';   // server-only: { projeto: { contas: ['840757715420067'], regra: 'CONCURSO' } }
+function _projMetaCfg(db) { const c = (db || readDB()).store[KEY_PROJ_META]; return (c && typeof c === 'object') ? c : {}; }
+// devolve (conta, nomeDaCampanha) => projeto ('' quando nenhum projeto pega)
+function _projetoDaCampanhaFn(db) {
+  const cfg = _projMetaCfg(db), donos = {};
+  Object.keys(cfg).forEach(p => (cfg[p].contas || []).forEach(c => { (donos[c] = donos[c] || []).push(p); }));
+  return (conta, nome) => {
+    const ps = donos[String(conta || '')] || [];
+    if (ps.length === 1) return ps[0];
+    const n = _nrm(nome);
+    const achou = ps.filter(p => { const r = _nrm(cfg[p].regra); return r && n.indexOf(r) >= 0; });
+    return achou.length === 1 ? achou[0] : '';
+  };
+}
+function _contaNomes() {
+  const m = {};
+  try { _q('SELECT conta, nome FROM meta_contas_nome').all().forEach(x => { m[x.conta] = x.nome; }); } catch (e) {}
+  ((_metaCfg() || {}).contas || []).forEach(c => { if (c.nome) m[c.conta] = c.nome; });
+  return m;
+}
+const _contaNomeVisto = new Map();   // a sincronização chama uma vez por campanha: grava só quando muda
+function _contaNomeGuardar(conta, nome) {
+  conta = String(conta || '').replace(/^act_/, ''); nome = String(nome || '').trim();
+  if (!conta || !nome || nome === '—' || !_pessoas() || _contaNomeVisto.get(conta) === nome) return;
+  _contaNomeVisto.set(conta, nome);
+  try { _q('INSERT INTO meta_contas_nome(conta, nome, em) VALUES(?,?,?) ON CONFLICT(conta) DO UPDATE SET nome=excluded.nome, em=excluded.em').run(conta, nome.slice(0, 120), Date.now()); } catch (e) {}
+}
+// Tudo pra tela "Configurar" do projeto: as contas (com quem mais usa cada
+// uma), as campanhas dos últimos 14 dias pra prévia na hora, pixel e modo.
+// 7 dias: gasto da Meta (pelas contas e regra do projeto) contra o da Utmify
+// (pelo dashboard de mesmo nome), e as vendas que o TMX ligou ao projeto
+function _projComparacao(db, projeto) {
+  const desde = _diaBR(Date.now() - 6 * 86400000), np = _nrm(projeto), deQuem = _projetoDaCampanhaFn(db);
+  const temMeta = !!_q('SELECT 1 FROM meta_camp_dia WHERE dia>=? LIMIT 1').get(desde);
+  const gMeta = temMeta ? _q('SELECT conta, nome, SUM(gasto) g FROM meta_camp_dia WHERE dia>=? GROUP BY conta, id').all(desde)
+    .filter(x => deQuem(x.conta, x.nome) === projeto).reduce((s, x) => s + (x.g || 0), 0) : null;
+  const dash = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(d => _nrm(d.nome) === np);
+  const gUtm = dash ? (_q('SELECT SUM(gasto) g FROM camp_dia WHERE dia>=? AND projeto=?').get(desde, String(dash.id)).g || 0) : null;
+  const doProj = _pedidoDoProjetoFn(db, projeto), canais = _canaisCache() || [];
+  const peds = _q('SELECT funil, produto, cred_canal, cred_camp, cred_cont, cred_vis, visitante FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND dia>=?').all(desde).filter(doProj);
+  const ad = p => { const c = canais.find(x => x.id === p.cred_canal); return !!(c && c.anuncios && !c.apoio && (p.cred_cont || p.cred_camp)); };
+  return { desde, temMeta, temUtmify: !!dash, gastoMeta: gMeta == null ? null : Math.round(gMeta), gastoUtmify: gUtm == null ? null : Math.round(gUtm),
+    vendas: peds.length, comAnuncio: peds.filter(ad).length, outroAparelho: peds.filter(p => p.cred_vis).length, semPessoa: peds.filter(p => !p.visitante).length };
+}
+app.get('/api/projeto/config', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const projeto = String(req.query.projeto || '').slice(0, 80);
+    if (!projeto) return res.status(400).json({ error: 'Qual projeto?' });
+    const db = readDB(), cfg = _projMetaCfg(db), meu = cfg[projeto] || { contas: [], regra: '' }, capi = _capiCfg(db), mc = _metaCfg(db) || {};
+    const desde = _diaBR(Date.now() - 13 * 86400000), nomes = _contaNomes();
+    // campanhas dos 14 dias: da Meta quando conectada, senão da Utmify
+    const temMeta = !!_q('SELECT 1 FROM meta_camp_dia WHERE dia>=? LIMIT 1').get(desde);
+    const camps = temMeta
+      ? _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM meta_camp_dia WHERE dia>=? GROUP BY conta, id').all(desde)
+      : _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM camp_dia WHERE dia>=? GROUP BY conta, id').all(desde);
+    // de que dashboard da Utmify veio cada conta: ajuda a marcar a primeira vez
+    const dashDe = {}; const dashs = ((_utmifyMcpCfg(db) || {}).dashboards || []);
+    _q('SELECT conta, projeto, SUM(gasto) g FROM camp_dia WHERE dia>=? GROUP BY conta, projeto').all(desde).forEach(x => {
+      const d = dashs.find(y => String(y.id) === String(x.projeto)); const nm = d ? String(d.nome || '').trim() : '';
+      if (nm) (dashDe[x.conta] = dashDe[x.conta] || []).push(nm);
+    });
+    const contasSet = {};
+    (mc.contas || []).forEach(c => { contasSet[c.conta] = { conta: c.conta, nome: c.nome, status: c.status, statusTxt: META_STATUS_CONTA[c.status] || '' }; });
+    camps.forEach(c => { if (c.conta && !contasSet[c.conta]) contasSet[c.conta] = { conta: c.conta, nome: nomes[c.conta] || '', status: null }; });
+    meu.contas.forEach(c => { if (!contasSet[c]) contasSet[c] = { conta: c, nome: nomes[c] || '', status: null }; });
+    const gastoConta = {}; camps.forEach(c => { gastoConta[c.conta] = (gastoConta[c.conta] || 0) + (Number(c.gasto) || 0); });
+    const contas = Object.values(contasSet).map(c => Object.assign(c, {
+      gasto: Math.round(gastoConta[c.conta] || 0),
+      outros: Object.keys(cfg).filter(p => p !== projeto && (cfg[p].contas || []).indexOf(c.conta) >= 0),
+      utmify: dashDe[c.conta] || [] })).sort((a, b) => b.gasto - a.gasto);
+    const outrasRegras = {}; Object.keys(cfg).forEach(p => { if (p !== projeto && cfg[p].regra) outrasRegras[p] = cfg[p].regra; });
+    res.json({ ok: true, projeto, contas, sel: meu.contas || [], regra: meu.regra || '', configurado: !!(meu.contas && meu.contas.length),
+      outrasRegras, fonte: temMeta ? 'meta' : 'utmify', desde,
+      campanhas: camps.filter(c => (Number(c.gasto) || 0) > 0).map(c => ({ conta: c.conta, nome: c.nome, gasto: Math.round(Number(c.gasto) || 0) })),
+      pixel: (capi.pixels || {})[projeto] || '', modo: _capiModo(capi, projeto), testCode: !!capi.testCode,
+      pixels: (mc.pixels || []).map(p => ({ id: p.id, nome: p.nome, ultimo: p.ultimo })), metaConectada: !!(mc.accessToken && mc.tipo === 'sistema'),
+      liberaEnvioEm: _metaLiberaEnvioEm(mc), comparacao: _projComparacao(db, projeto), dir: _ehDir(req) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/projeto/config', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {}, projeto = String(b.projeto || '').trim().slice(0, 80);
+    if (!projeto) return res.status(400).json({ error: 'Qual projeto?' });
+    const db = readDB(), cfg = _projMetaCfg(db), capi = Object.assign({ modo: 'comparacao', pixels: {} }, _capiCfg(db));
+    const contas = [...new Set((Array.isArray(b.contas) ? b.contas : []).map(c => String(c).replace(/^act_/, '').replace(/\D/g, '')).filter(Boolean))].slice(0, 60);
+    const regra = String(b.regra || '').trim().slice(0, 60);
+    cfg[projeto] = { contas, regra, _updatedAt: Date.now() };
+    if (b.pixel !== undefined) {
+      const px = String(b.pixel || '').replace(/\D/g, '').slice(0, 25);
+      capi.pixels = Object.assign({}, capi.pixels); if (px) capi.pixels[projeto] = px; else delete capi.pixels[projeto];
+    }
+    if (b.modo !== undefined) {
+      if (CAPI_MODOS.indexOf(b.modo) < 0) return res.status(400).json({ error: 'Modo inválido.' });
+      if (b.modo === 'enviando' && b.confirmar !== 'SIM_ENVIAR_PRA_META') return res.status(400).json({ error: 'Pra enviar de verdade, confirme na tela.' });
+      const libera = _metaLiberaEnvioEm(_metaCfg(db));
+      if (b.modo === 'enviando' && (!libera || Date.now() < libera)) return res.status(400).json({ error: 'O envio de verdade libera ' + (libera ? 'em ' + new Date(libera).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'depois de conectar a Meta') + ', depois de 7 dias comparando com a Utmify.' });
+      if ((b.modo === 'teste' || b.modo === 'enviando') && !capi.pixels[projeto]) return res.status(400).json({ error: 'Escolha o pixel antes de enviar.' });
+      const mc = _metaCfg(db);
+      if ((b.modo === 'teste' || b.modo === 'enviando') && !(mc && mc.accessToken && mc.tipo === 'sistema')) return res.status(400).json({ error: 'Conecte a Meta antes de enviar.' });
+      if (b.modo === 'teste') {
+        const tc = String(b.testCode || capi.testCode || '').trim().slice(0, 40);
+        if (!/^TEST[A-Za-z0-9]+$/.test(tc)) return res.status(400).json({ error: 'Cole o código de teste do Gerenciador de Eventos (começa com TEST).' });
+        capi.testCode = tc;
+      }
+      capi.modos = Object.assign({}, capi.modos); capi.modos[projeto] = b.modo;
+    }
+    db.store[KEY_PROJ_META] = cfg; db.store[KEY_META_CAPI] = capi;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_PROJ_META] = now(); db.timestamps[KEY_META_CAPI] = now();
+    audit(db, 'projeto_configurado', projeto, { contas: contas.length, regra, pixel: capi.pixels[projeto] || '', modo: _capiModo(capi, projeto) }, req.user);
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+function _pedidoDoProjetoFn(db, projeto) {
+  const np = _nrm(projeto), funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean);
+  const funisProj = new Set(funis.filter(f => _nrm(f.projeto) === np).map(f => f.id));
+  const prods = _produtosCfg(db), projDoProduto = _projetosDoProdutoFn(funis);
+  return p => {
+    if (p.funil) return funisProj.has(p.funil);
+    const pr = _produtoDe(p.produto, prods);
+    if (pr && pr.projeto) return _nrm(pr.projeto) === np;
+    return [...projDoProduto(p.produto)].some(x => _nrm(x) === np);
+  };
+}
+// ── VENDAS DO PROJETO ──
+// A lista que a aba Vendas mostra: cada venda aprovada do período, de onde
+// veio e quantos dos 8 dados da Meta ela leva. Clicar abre a janela da venda.
+app.get('/api/projeto/vendas', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const projeto = String(req.query.projeto || '').slice(0, 80);
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!projeto || !/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe o projeto e o período.' });
+    const db = readDB(), dir = _ehDir(req), canais = _canaisCache() || [], doProjeto = _pedidoDoProjetoFn(db, projeto);
+    const l = _q(`SELECT p.*, c.sinais capi_sinais, c.status capi_status FROM pedidos p LEFT JOIN capi_eventos c ON c.pedido = p.id
+                  WHERE p.pago=1 AND p.dia>=? AND p.dia<=? ORDER BY p.em DESC LIMIT 2000`).all(de, ate).filter(doProjeto);
+    const vendas = l.map(p => {
+      const sinais = String(p.capi_sinais || '').split(',').filter(Boolean);
+      const ck = p.visitante ? _q("SELECT entrada FROM sessoes WHERE visitante=? AND entrada LIKE '%/l/%' AND inicio<=? ORDER BY inicio DESC LIMIT 1").get(p.visitante, p.em + 60000) : null;
+      const cn = canais.find(x => x.id === p.cred_canal);
+      const anuncio = !!(cn && cn.anuncios && !cn.apoio && (p.cred_cont || p.cred_camp));
+      return { id: p.id, em: p.em, produto: p.produto, plano: p.plano, metodo: p.metodo, plataforma: p.plataforma || 'payt', estorno: !!p.estorno,
+        renovacao: !!p.renovacao, valor: dir ? p.valor : null,
+        origem: p.renovacao ? 'renovacao' : anuncio ? 'anuncio' : (p.cred_fonte ? 'organico' : 'sem'),
+        cred: { fonte: p.cred_fonte, camp: p.cred_camp, cont: p.cred_cont, canal: p.cred_canal, outroAparelho: !!p.cred_vis },
+        link: ck && ck.entrada ? String(ck.entrada).replace(/^.*\/l\//, '/l/') : '', semOrigem: p.sem_origem || '', casou: p.casou || '',
+        meta: p.capi_status ? { status: p.capi_status, n: sinais.length, sinais } : null };
+    });
+    const tot = { vendas: vendas.filter(v => !v.estorno).length, valor: dir ? vendas.filter(v => !v.estorno).reduce((s, v) => s + (Number(v.valor) || 0), 0) : null,
+      anuncio: vendas.filter(v => v.origem === 'anuncio').length, outroAparelho: vendas.filter(v => v.cred.outroAparelho).length,
+      sem: vendas.filter(v => v.origem === 'sem').length, meta: vendas.filter(v => v.meta).length, metaCompleta: vendas.filter(v => v.meta && v.meta.n >= 8).length };
+    res.json({ ok: true, projeto, de, ate, total: tot, vendas });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
