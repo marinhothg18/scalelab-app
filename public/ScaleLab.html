@@ -30403,7 +30403,8 @@ function pgCarregar(){
 function pgNota(n){ return n == null ? 'sem' : n >= 90 ? 'bom' : n >= 50 ? 'med' : 'ruim'; }
 function pgVel(v){
   if(!v || !v.cel) return '<span class="pg-vel"><span class="sem">não medida</span></span>';
-  return '<span class="pg-vel"><span class="'+pgNota(v.cel.nota)+'" title="Celular">📱 '+(v.cel.nota == null ? '—' : v.cel.nota)+'</span><span class="'+pgNota(v.desk && v.desk.nota)+'" title="Desktop">🖥 '+(v.desk && v.desk.nota != null ? v.desk.nota : '—')+'</span></span>';
+  var tt = function(m, rot){ return m && m.erro ? rot+': o Google não conseguiu medir. '+m.erro : rot; };
+  return '<span class="pg-vel"><span class="'+pgNota(v.cel.nota)+'" title="'+fnEsc(tt(v.cel, 'Celular'))+'">📱 '+(v.cel.nota == null ? (v.cel.erro ? '?' : '—') : v.cel.nota)+'</span><span class="'+pgNota(v.desk && v.desk.nota)+'" title="'+fnEsc(tt(v.desk, 'Desktop'))+'">🖥 '+(v.desk && v.desk.nota != null ? v.desk.nota : (v.desk && v.desk.erro ? '?' : '—'))+'</span></span>';
 }
 function pgDiaHora(iso){ if(!iso) return '—'; var d = new Date(iso); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function pgMinSeg(s){ if(s == null) return '<i>—</i>'; s = Math.round(s); return s >= 60 ? Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s' : s+'s'; }
@@ -30542,6 +30543,7 @@ function pgFichaPintar(x, reg){
     '<div class="pg-2col"><div class="pg-cx"><div class="pg-cx-cab"><b>Velocidade</b><button class="fn-btn g sm" onclick="pgMedir(\''+fnEsc(x.url)+'\', this)">⟳ Medir agora</button></div>'+
         '<div class="pg-medindo" id="pg-medindo">O Google está abrindo a página no celular e no desktop. Costuma levar de 20 a 60 segundos: pode continuar trabalhando.</div>'+
         '<div class="pg-aneis">'+pgAnel(c ? c.nota : null, '📱 Celular')+pgAnel(v && v.desk ? v.desk.nota : null, '🖥 Desktop')+'</div>'+
+        ((c && c.erro) || (v && v.desk && v.desk.erro) ? '<div class="pg-obs" style="margin-bottom:8px"><b>O Google não conseguiu medir'+(c && c.erro && v.desk && v.desk.erro ? '' : c && c.erro ? ' no celular' : ' no desktop')+'</b>'+fnEsc((c && c.erro) || v.desk.erro)+' Tente “Medir agora” de novo; se repetir, a página está demorando pra mostrar o conteúdo principal.</div>' : '')+
         (c ? '<div class="fx-sub" style="margin-bottom:8px">Medida em '+pgDiaHora(v.em)+'. A nota varia alguns pontos de uma medição pra outra.</div>'+
           '<div class="pg-mets"><div>LCP · maior elemento<b class="'+cl(c.lcp, 2500, 4000)+'">'+s1(c.lcp)+'</b></div><div>FCP · primeira pintura<b class="'+cl(c.fcp, 1800, 3000)+'">'+s1(c.fcp)+'</b></div>'+
           '<div>TBT · tempo travado<b class="'+cl(c.tbt, 200, 600)+'">'+(c.tbt == null ? '—' : Math.round(c.tbt)+' ms')+'</b></div><div>CLS · estabilidade<b class="'+cl(c.cls, 0.1, 0.25)+'">'+(c.cls == null ? '—' : String(c.cls.toFixed(3)).replace('.', ','))+'</b></div>'+

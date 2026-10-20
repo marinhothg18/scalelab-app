@@ -11398,7 +11398,16 @@ async function _pageSpeed(url, estrategia) {
       .sort((a, b) => (b.details.overallSavingsMs || 0) - (a.details.overallSavingsMs || 0)).slice(0, 4)
       .map(a => ({ titulo: String(a.title || '').slice(0, 120), ms: Math.round(a.details.overallSavingsMs || 0), kib: Math.round((a.details.overallSavingsBytes || 0) / 1024) }));
     const le = (d.loadingExperience && d.loadingExperience.metrics) || {}, pct = k => le[k] && le[k].percentile != null ? le[k].percentile : null;
-    return { nota: lh.categories && lh.categories.performance ? Math.round(lh.categories.performance.score * 100) : null,
+    // Sem o "maior elemento" (LCP) o Google devolve nota 0, mas a página não está
+    // travada: ele não achou o conteúdo principal (vídeo que demora, página que
+    // redireciona, tela em branco no começo). Isso vira "não deu pra medir".
+    const rte = lh.runtimeError && lh.runtimeError.code && lh.runtimeError.code !== 'NO_ERROR' ? lh.runtimeError.code : '';
+    const sc = lh.categories && lh.categories.performance ? lh.categories.performance.score : null;
+    if (rte || (!sc && num('largest-contentful-paint') == null)) {
+      return { nota: null, erro: (rte === 'NO_LCP' || !rte ? 'O Google não achou o conteúdo principal da página (o vídeo ou a imagem do topo demorou ou não apareceu pro robô dele).' : 'O Google não conseguiu abrir a página (' + rte + ').'),
+        lcp: null, fcp: num('first-contentful-paint'), tbt: num('total-blocking-time'), cls: num('cumulative-layout-shift'), si: num('speed-index'), dicas, real: null };
+    }
+    return { nota: sc != null ? Math.round(sc * 100) : null,
       lcp: num('largest-contentful-paint'), fcp: num('first-contentful-paint'), tbt: num('total-blocking-time'), cls: num('cumulative-layout-shift'), si: num('speed-index'),
       dicas, real: (pct('LARGEST_CONTENTFUL_PAINT_MS') != null) ? { lcp: pct('LARGEST_CONTENTFUL_PAINT_MS'), inp: pct('INTERACTION_TO_NEXT_PAINT'), cls: pct('CUMULATIVE_LAYOUT_SHIFT_SCORE') != null ? pct('CUMULATIVE_LAYOUT_SHIFT_SCORE') / 100 : null } : null };
   } finally { clearTimeout(relogio); }
@@ -11422,7 +11431,16 @@ async function _paginaMedir(url) {
     const med = { em: new Date().toISOString(), cel, desk, obs: _paginaObservacao(cel) };
     const db = readDB(), lista = _paginasReg(db);
     let p = lista.find(x => x.url === url);
-    if (!p) { p = { id: 'pg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url, projeto: '', titulo: '', tipo: 'outra', funil: '', origem: 'pixel', criadoEm: med.em, versoes: [], velocidade: [] }; lista.push(p); }
+    if (!p || !p.projeto) {
+      let projeto = '';
+      try {
+        const f = _pessoas() ? _q('SELECT funil FROM paginas WHERE pg=? AND funil IS NOT NULL ORDER BY em DESC LIMIT 1').get(url) : null;
+        const fu = f ? (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).find(x => x && x.id === f.funil) : null;
+        projeto = fu ? fu.projeto || '' : '';
+      } catch (e) {}
+      if (!p) { p = { id: 'pg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), url, projeto, titulo: '', tipo: 'outra', funil: '', origem: 'pixel', criadoEm: med.em, versoes: [], velocidade: [] }; lista.push(p); }
+      else if (projeto) p.projeto = projeto;
+    }
     p.velocidade = (p.velocidade || []).concat([med]).slice(-12);
     db.store[KEY_PAGINAS] = lista; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_PAGINAS] = now();
     writeDB(db);
@@ -11472,7 +11490,33 @@ async function _paginasImportarUmaVez() {
     console.log('[PÁGINAS] velocidade medida nas páginas importadas');
   } catch (e) { console.error('[PÁGINAS] importação falhou:', e.message); }
 }
-setTimeout(() => { _paginasImportarUmaVez(); }, 20000);
+setTimeout(() => { _paginasImportarUmaVez().then(_paginasAcertarImportacao); }, 20000);
+async function _paginasAcertarImportacao() {
+  const imp = _PAGINAS_IMPORTAR, chave = 'importou:' + imp.id + ':acerto';
+  try {
+    if (!fs.existsSync('/data') || !_pessoas() || _q('SELECT 1 FROM cfg WHERE k=?').get(chave)) return;
+    const db = readDB(), lista = _paginasReg(db), refazer = [];
+    let adotadas = 0;
+    imp.itens.forEach(([cam, titulo, tipo]) => {
+      const url = _normPg('apostilai.ai/' + cam), p = lista.find(x => x.url === url);
+      if (!p) return;
+      if (!p.projeto) { p.projeto = imp.projeto; adotadas++; }
+      if (!p.titulo) p.titulo = titulo;
+      if (!p.tipo || p.tipo === 'outra') p.tipo = _paginaTipo(tipo);
+      if (!p.funil) p.funil = imp.funil;
+      const v = (p.velocidade || []).slice(-1)[0];
+      if (!v || !v.cel || !v.desk || !v.cel.nota || !v.desk.nota) refazer.push(url);
+    });
+    db.store[KEY_PAGINAS] = lista; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_PAGINAS] = now();
+    writeDB(db);
+    _q('INSERT OR REPLACE INTO cfg(k, v) VALUES(?, ?)').run(chave, String(Date.now()));
+    console.log('[PÁGINAS] acerto: ' + adotadas + ' página(s) sem projeto entraram no ' + imp.projeto + '; medindo de novo ' + refazer.length);
+    for (const url of refazer) {
+      try { await _paginaMedir(url); } catch (e) { console.error('[PÁGINAS] velocidade de', url, ':', e.message); }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  } catch (e) { console.error('[PÁGINAS] acerto falhou:', e.message); }
+}
 
 // as páginas de um projeto: registradas + vistas pelo pixel nos funis dele
 function _paginasDoProjeto(db, projeto) {
