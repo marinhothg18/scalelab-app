@@ -10617,6 +10617,7 @@ function _pxRegistrar(c, req, interno, quando) {
     if (tipo === 'friccao') extra.motivo = String(c.motivo || '').slice(0, 12);
     if (tipo === 'clique' && Number(c.player)) extra.player = 1;
     if (tipo === 'checkout' && c.destino) extra.destino = String(c.destino).slice(0, 60);
+    if (tipo === 'checkout' && c.dest) extra.dest = _normPg(String(c.dest)).slice(0, 140);
     // teste de checkout: qual teste e qual versão a pessoa recebeu
     if ((tipo === 'checkout' || tipo === 'ckteste') && c.ckt) {
       extra.ckt = String(c.ckt).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
@@ -11020,6 +11021,8 @@ setTimeout(_pessoasCopia, 10 * 60 * 1000);
 // apareceu, digitada errada) aceita pelo data-e do pixel deste funil; página
 // ignorada não conta. O resto que tem o pixel deste funil é "fora do mapa".
 // ══════════════════════════════════════════════════════
+// blocos que não são página do funil: só valem pelo endereço cadastrado neles
+const _ETAPA_SO_POR_URL = new Set(['checkout', 'obrigado', 'upsell', 'downsell', 'recuperacao']);
 function _escopoFunil(dbj, funilId) {
   const f = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).find(x => x && x.id === funilId);
   if (!f || !_pessoas()) return null;
@@ -11033,7 +11036,7 @@ function _escopoFunil(dbj, funilId) {
     let viu = false;
     urls.forEach(u => { if (_q('SELECT 1 FROM paginas WHERE pg=? LIMIT 1').get(u)) { etapaDeUrl[u] = e.id; viu = true; } });
     if (!viu) {
-      etapaDeData[e.id] = e.id;
+      if (!_ETAPA_SO_POR_URL.has(e.tipo)) etapaDeData[e.id] = e.id;
       urls.forEach(u => { etapaDeUrl[u] = e.id; });   // ainda sem tráfego: vale quando chegar
     }
   });
@@ -13658,6 +13661,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     // venda contava em toda página por onde o comprador passou: quem comprou
     // na 697 e depois caiu no back redirect virava venda das duas.
     const ckEtapa = {};      // quem clicou em comprar NESTA página (no período)
+    const ckDe = {};         // visitante -> [{plat, path, et}] dos cliques de compra
+    const ckDaEtapa = {};    // etapa -> [{v, plat, path}]
     const ckEtapaPlat = {};  // o mesmo, por plataforma do checkout (payt, hubla...)
     const ckPlat = {};       // visitante -> plataformas pra onde clicou em comprar
     const evDe = {};         // visitante -> [{em, et, ck}]
@@ -13665,8 +13670,12 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     _q(`SELECT visitante, pg, etapa, em, extra FROM eventos WHERE tipo='checkout' AND em BETWEEN ? AND ?`).all(per.ini, per.fim).forEach(x => {
       const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (!et || !todos.has(x.visitante)) return;
       (ckEtapa[et] = ckEtapa[et] || new Set()).add(x.visitante);
-      let dest = ''; try { dest = (JSON.parse(x.extra || '{}') || {}).destino || ''; } catch (er) {}
-      const pl = _platDoHost(dest); if (!pl) return;
+      let dest = '', path = ''; try { const ex = JSON.parse(x.extra || '{}') || {}; dest = ex.destino || ''; path = ex.dest || (String(dest).indexOf('/') > 0 ? _normPg(dest) : ''); } catch (er) {}
+      const pl = _platDoHost(dest);
+      const cl = { v: x.visitante, plat: pl, path, et };
+      (ckDe[x.visitante] = ckDe[x.visitante] || []).push(cl);
+      (ckDaEtapa[et] = ckDaEtapa[et] || []).push(cl);
+      if (!pl) return;
       (ckPlat[x.visitante] = ckPlat[x.visitante] || new Set()).add(pl);
       const pe = ckEtapaPlat[et] || (ckEtapaPlat[et] = {}); (pe[pl] = pe[pl] || new Set()).add(x.visitante);
     });
@@ -13712,7 +13721,17 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
     // o bloco separa o que é dele.
     const prodLista = e => String((e && e.produto) || '').split(/[,;\n]+/).map(_nrm).filter(Boolean);
+    // Os blocos de checkout do desenho (sem página com pixel). Um clique é do
+    // bloco pelo link dele (quando o clique trouxe o caminho) ou, se o bloco
+    // não tem produto, pela plataforma. Bloco com produto e clique sem caminho:
+    // não dá pra saber o produto, então o clique fica no bloco geral.
+    // A venda é do bloco com a plataforma E o produto dela; o resto, do geral.
+    const blocosCk = () => (f.etapas || []).filter(x => x.tipo === 'checkout' && !(porEtapa[x.id] && porEtapa[x.id].size))
+      .map(x => ({ id: x.id, plat: _platDoBloco(x), lst: prodLista(x), path: x.url ? _normPg(x.url) : '' }));
+    const ckDoBloco = (b, c) => (b.path && c.path) ? c.path === b.path : !!(b.plat && c.plat === b.plat && !b.lst.length && !b.path);
+    const vendaDoBloco = (b, o) => !!b.plat && _vendaDaPlat(o, b.plat) && casaProdV(o, b.lst);
     const casaProd = (o, lst) => !lst.length || lst.some(p => { const x = _nrm(o.produto); return x === p || x.indexOf(p) >= 0; });
+    const casaProdV = casaProd;
     const topProd = lst => {
       const c = {}; lst.forEach(o => { const k = String(o.produto || '(sem nome)').trim(); c[k] = (c[k] || 0) + 1; });
       return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([nome, n]) => ({ nome, n }));
@@ -13853,18 +13872,22 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         // "Compraram" é toda venda do funil (do produto do bloco, se escolhido):
         // o mesmo número do Obrigado e do topo.
         const lst = prodLista(e), plat = _platDoBloco(e);
-        // Sem plataforma, mas com outro Checkout do funil que tem (Checkout 2 =
-        // Kiwify): este fica com o RESTO. Antes ele somava todas, e a venda da
-        // Kiwify aparecia nos dois blocos ("Apostilai Acervo 2" com uma só na Payt).
-        const outras = plat ? [] : [...new Set((f.etapas || []).filter(x => x !== e && x.tipo === 'checkout').map(_platDoBloco).filter(Boolean))];
-        const deOutra = o => outras.some(pl => _vendaDaPlat(o, pl));
-        const soOutra = v => !!(ckPlat[v] && ckPlat[v].size && [...ckPlat[v]].every(pl => outras.includes(pl)));
-        const vf = vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat) && !deOutra(o));
-        // com plataforma: quem clicou pra ela e quem comprou nela; sem: todo mundo (menos o das outras)
+        // Sem plataforma, mas com outros Checkouts no desenho (Checkout 2 =
+        // Kiwify · Acervo, Checkout 3 = Payt · Elite): este fica com o RESTO —
+        // o clique e a venda que não são de nenhum dos outros. Antes "o resto"
+        // era só por plataforma: com um bloco Payt · Elite, a venda do Acervo
+        // pela Payt saía deste e não entrava naquele, e sumia do mapa.
+        const blocos = blocosCk(), eu = blocos.find(b => b.id === e.id) || { plat, lst, path: e.url ? _normPg(e.url) : '' };
+        const outros = blocos.filter(b => b.id !== e.id), geral = !plat && !eu.path;
+        const outras = geral ? [...new Set(outros.map(b => b.plat).filter(Boolean))] : [];
+        const deOutro = o => outros.some(b => vendaDoBloco(b, o));
+        const vf = geral ? vendas.filter(o => casaProd(o, lst) && (!outros.length || !deOutro(o)))
+                         : vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat));
+        // quem clicou pra este bloco (pelo link ou pela plataforma) e quem comprou nele
         const quemComprou = new Set(vf.map(o => o.visitante).filter(Boolean));
-        const cliquesBloco = plat ? new Set([...ck].filter(v => ckPlat[v] && ckPlat[v].has(plat)))
-                                  : (outras.length ? new Set([...ck].filter(v => !soOutra(v))) : ck);
-        const abr = (plat || outras.length) ? new Set([...cliquesBloco, ...quemComprou]) : abriramSet;
+        const clicouAqui = v => (ckDe[v] || []).some(c => geral ? !outros.some(b => ckDoBloco(b, c)) : ckDoBloco(eu, c));
+        const cliquesBloco = (geral && !outros.length) ? ck : new Set([...ck].filter(clicouAqui));
+        const abr = (!geral || outros.length) ? new Set([...cliquesBloco, ...quemComprou]) : abriramSet;
         conj[e.id] = abr;
         nos[e.id] = { tipo: 'checkout', viaClique: true, produto: e.produto || '', integracao: e.integracao || '', plataforma: plat, semPlataformas: outras,
                       pessoas: abr.size, cliques: cliquesBloco.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
@@ -13872,7 +13895,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                       // ou pelo produto não passou por clique nenhum que dê pra contar
                       conversao: abr.size ? vf.filter(o => o.visitante).length / abr.size : 0,
                       semPessoa: vf.filter(o => !o.visitante).length,
-                      produtos: topProd(vf), semClique: [...(plat ? quemComprou : compradores)].filter(v => !cliquesBloco.has(v)).length,
+                      produtos: topProd(vf), semClique: [...quemComprou].filter(v => !cliquesBloco.has(v)).length,
                       porOrigem: _ckSoma(vf, o => o.visitante ? (dono[o.visitante] ? nomeOrigem[dono[o.visitante]] : 'sem origem no desenho') : 'sem pessoa ligada'),
                       porEntrada: _ckSoma(vf, o => {
                         if (!o.visitante) return 'sem pessoa ligada';
@@ -13912,10 +13935,10 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       // página → checkout: a seta diz o mesmo que o bloco ("checkouts" de quem
       // clicou em comprar nela), não quem abriu o checkout em qualquer página
       if (nos[l[1]] && nos[l[1]].viaClique && porEtapa[l[0]]) {
-        const pl = nos[l[1]].plataforma, sem = nos[l[1]].semPlataformas || [];
-        const daPg = ckEtapa[l[0]] || new Set();
-        const n = pl ? ((ckEtapaPlat[l[0]] || {})[pl] || new Set()).size
-          : (sem.length ? [...daPg].filter(v => !(ckPlat[v] && ckPlat[v].size && [...ckPlat[v]].every(x => sem.includes(x)))).length : daPg.size);
+        const blocos = blocosCk(), eu = blocos.find(b => b.id === l[1]), outros = blocos.filter(b => b.id !== l[1]);
+        const geral = !eu || (!eu.plat && !eu.path);
+        const quem = new Set((ckDaEtapa[l[0]] || []).filter(c => geral ? !outros.some(b => ckDoBloco(b, c)) : ckDoBloco(eu, c)).map(c => c.v));
+        const n = quem.size;
         fios[l[0] + '|' + l[1]] = { n, pct: n / A.size };
         return;
       }
@@ -17249,7 +17272,7 @@ const PIXEL_JS = `(function(w,d){
       var ck = ckDe(u.href);
       if(!ck && !ehCheckout(u)) return;
       foiCheckout = true;
-      manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host,
+      manda('checkout', { rotulo: String(rot || '').slice(0, 70), destino: u.host, dest: (u.host + u.pathname).slice(0, 140),
                           ckt: ck ? ck.t : undefined, ckv: ck ? ck.v : undefined,
                           mev: metaEv('InitiateCheckout') || undefined, fbp: bisc('_fbp') || undefined, fbc: bisc('_fbc') || undefined });
     }catch(e){}
