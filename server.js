@@ -10246,8 +10246,9 @@ function _agoraMarcar(vis, c, interno, sai) {
   const k = vis + '|' + pg;
   if (sai) { _pAgora.delete(k); return; }
   if (!_pAgora.has(k) && _pAgora.size >= AGORA_TETO) return;
+  const ant = _pAgora.get(k);
   _pAgora.set(k, { vis, pg, funil: String(c.funil || '').slice(0, 80), etapa: String(c.etapa || '').slice(0, 60),
-                   em: Date.now(), interno: !!interno });
+                   em: Date.now(), desde: ant ? ant.desde : Date.now(), interno: !!interno });
 }
 setInterval(() => {
   const lim = Date.now() - AGORA_MS;
@@ -11486,9 +11487,65 @@ app.get('/api/paginas', authUsuario, (req, res) => {
     lista.forEach(p => { const v = (p.velocidade || []).slice(-1)[0]; p.ultimaVelocidade = v || null; p.medicoes = (p.velocidade || []).length; delete p.velocidade; });
     lista.sort((a, b) => ((b.numeros || {}).pessoas || 0) - ((a.numeros || {}).pessoas || 0) || String(b.atualizadoEm || b.criadoEm || '').localeCompare(String(a.atualizadoEm || a.criadoEm || '')));
     const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(f => f && f.projeto === projeto).map(f => f.nome);
+    const ag = _agoraPorPg(); lista.forEach(p => { p.agora = ag[p.url] ? ag[p.url].size : 0; });
     res.json({ ok: true, de: per.de, ate: per.ate, paginas: lista, funis, temChave: !!process.env.PAGESPEED_KEY });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// ── AO VIVO: QUEM ESTÁ NA PÁGINA AGORA ──
+// Só quem está com a página aberta neste momento (o pixel avisa a cada minuto
+// enquanto a aba está à vista; sem sinal por 2,5 min a pessoa sai). Nada de
+// histórico. Tráfego do time fica de fora.
+function _agoraVivos() {
+  const lim = Date.now() - AGORA_MS, l = [];
+  for (const v of _pAgora.values()) if (v.em >= lim && !v.interno) l.push(v);
+  return l;
+}
+function _agoraPorPg() { const m = {}; _agoraVivos().forEach(v => { (m[v.pg] = m[v.pg] || new Set()).add(v.vis); }); return m; }
+// a visita que a pessoa está fazendo agora: de onde veio
+function _agoraSessao(vis) {
+  const s = _pSess.get(vis);
+  return (s && s.id ? _q('SELECT fonte, midia, camp, cont, inicio, entrada FROM sessoes WHERE id=?').get(s.id) : null)
+    || _q('SELECT fonte, midia, camp, cont, inicio, entrada FROM sessoes WHERE visitante=? ORDER BY inicio DESC LIMIT 1').get(vis) || null;
+}
+app.get('/api/paginas/agora', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const pg = _normPg(req.query.url);
+    const vivos = _agoraVivos().filter(v => v.pg === pg), vistos = new Set();
+    const pessoas = vivos.filter(v => !vistos.has(v.vis) && vistos.add(v.vis)).map(v => {
+      const p = _q('SELECT aparelho, sistema, navegador, pais, lead, compras, checkout_em FROM visitantes WHERE id=?').get(v.vis) || {};
+      const s = _agoraSessao(v.vis) || {};
+      const ld = p.lead ? _q('SELECT email_mask, nome FROM leads WHERE id=?').get(p.lead) : null;
+      const vd = _pVideo.get(v.vis);
+      return { vis: v.vis, desde: v.desde || v.em, ult: v.em, aparelho: p.aparelho || '', sistema: p.sistema || '', navegador: p.navegador || '', pais: p.pais || '',
+        origem: { fonte: s.fonte || '', midia: s.midia || '', camp: s.camp || '', cont: s.cont || '' }, chegou: s.inicio || null,
+        video: vd && vd.pg === pg && Date.now() - vd.em < AGORA_MS ? { seg: vd.seg, pitch: !!vd.pitch } : null,
+        lead: ld ? { email: ld.email_mask || '', nome: ld.nome || '' } : null, comprou: (p.compras || 0) > 0, clicouComprar: !!p.checkout_em };
+    }).sort((a, b) => a.desde - b.desde);
+    res.json({ ok: true, pg, n: pessoas.length, pessoas, em: Date.now() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// quantas pessoas estão nas páginas agora vindas desta campanha (a visita de agora veio dela)
+app.get('/api/metricas/campanha/agora', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const id = String(req.query.id || '').replace(/\D/g, '').slice(0, 30);
+    const nn = _nrm(String(req.query.nome || '').replace(/\|\s*\d{10,}\s*$/, ''));
+    if (!id && !nn) return res.status(400).json({ error: 'Qual campanha?' });
+    const porVis = {};
+    _agoraVivos().forEach(v => { (porVis[v.vis] = porVis[v.vis] || new Set()).add(v.pg); });
+    const porPagina = {}; let n = 0;
+    Object.keys(porVis).forEach(vis => {
+      const s = _agoraSessao(vis); if (!s || !s.camp) return;
+      const cid = _idDaCampUtm(s.camp) || (/^\d{10,}$/.test(String(s.camp).trim()) ? String(s.camp).trim() : '');
+      const bate = (id && cid && cid === id) || (nn && _nrm(String(s.camp).replace(/\|\s*\d{10,}\s*$/, '')) === nn);
+      if (!bate) return;
+      n++; porVis[vis].forEach(pg => { porPagina[pg] = (porPagina[pg] || 0) + 1; });
+    });
+    res.json({ ok: true, n, porPagina, em: Date.now() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // a ficha: histórico de versões e de medições
 app.get('/api/paginas/ficha', authUsuario, (req, res) => {
   try {

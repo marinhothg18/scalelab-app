@@ -1907,6 +1907,19 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .lk-previa{font-size:12.5px;color:var(--text2)}
 .lk-previa code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);word-break:break-all}
 @media (max-width:700px){.lk-dupla{grid-template-columns:1fr}.lk-utms{grid-template-columns:1fr 1fr}}
+/* ao vivo: página e campanha */
+.pg-vivo,.cp-vivo{display:inline-flex;align-items:center;gap:6px}
+.cp-vivo{font-size:12px;font-weight:650;color:var(--text2);border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:default}
+.pg-vivo i,.cp-vivo i,.pg-vivo-ponto{width:8px;height:8px;border-radius:50%;background:var(--text2);opacity:.5;flex:0 0 auto}
+.pg-vivo.on,.cp-vivo.on{color:var(--v2-verde,#22C55E);border-color:rgba(34,197,94,.45)}
+.pg-vivo.on i,.cp-vivo.on i,.pg-vivo-ponto{background:var(--v2-verde,#22C55E);opacity:1;animation:pgVivoPulsa 1.6s ease-in-out infinite}
+@keyframes pgVivoPulsa{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}50%{box-shadow:0 0 0 5px rgba(34,197,94,0)}}
+@media (prefers-reduced-motion:reduce){.pg-vivo.on i,.cp-vivo.on i,.pg-vivo-ponto{animation:none}}
+.pg-vivo-p{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--border);font-size:13px}
+.pg-vivo-p:first-of-type{border-top:0}
+.pg-vivo-p > div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pg-vivo-p .pg-vivo-ponto{margin-top:6px}
+.pg-vivo-tag{background:rgba(34,197,94,.14)!important;color:var(--v2-verde,#22C55E)!important;font-weight:750}
 /* destinos (pixels que recebem as compras) */
 .ds-l{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--border)}
 .ds-l:first-of-type{border-top:0}
@@ -30408,7 +30421,7 @@ function pgPintar(){
   var linhas = vis.map(function(x){
     var n = x.numeros || {}, conv = n.pessoas ? (n.vendas / n.pessoas * 100).toFixed(2).replace('.', ',')+'%' : '<i>—</i>', o = PG_ORIGEM[x.origem] || PG_ORIGEM.manual;
     return '<tr onclick="pgFicha(\''+fnEsc(x.url)+'\')"><td class="f2"><b title="'+fnEsc(x.titulo || x.url)+'">'+fnEsc(x.titulo || x.url.split('/').slice(1).join('/') || x.url)+'</b><a>'+fnEsc(x.url)+'</a><div class="cp-chips">'+
-        '<span class="pg-o '+o[1]+'">'+o[0]+'</span>'+(x.noMapa ? '<span>funil '+fnEsc(x.noMapa)+'</span>' : '<span class="pg-fora">FORA DO MAPA</span>')+'<span>'+fnEsc(PG_TIPO[x.tipo] || 'Página')+'</span></div></td>'+
+        (x.agora ? '<span class="pg-vivo-tag" title="Com a página aberta agora">'+fnNum(x.agora)+' ao vivo</span>' : '')+'<span class="pg-o '+o[1]+'">'+o[0]+'</span>'+(x.noMapa ? '<span>funil '+fnEsc(x.noMapa)+'</span>' : '<span class="pg-fora">FORA DO MAPA</span>')+'<span>'+fnEsc(PG_TIPO[x.tipo] || 'Página')+'</span></div></td>'+
       '<td>'+(x.origem === 'pixel' ? '<small>vista '+pgDiaHora(x.vistaDesde || x.criadoEm).slice(0,5)+'</small>' : pgDiaHora(x.criadoEm))+'</td>'+
       '<td>'+fnNum(n.pessoas || 0)+'</td><td>'+(n.pitch ? fnNum(n.pitch) : '<i>—</i>')+'</td><td>'+fnNum(n.checkout || 0)+'</td><td>'+(n.vendas || 0)+'</td>'+
       '<td>'+(n.faturamento == null ? '<i>—</i>' : fmtAds(n.faturamento))+'</td><td>'+conv+'</td><td>'+pgMinSeg(n.tempo)+'</td><td>'+(n.rolou50 == null ? '<i>—</i>' : Math.round(n.rolou50*100)+'%')+'</td>'+
@@ -30429,6 +30442,73 @@ function pgPintar(){
       '<pre>POST https://app.centraltmx.com/api/v1/paginas\nAuthorization: Bearer &lt;token da API do TMX&gt;\nContent-Type: application/json\n\n{\n  "projeto": "'+fnEsc(fnProj)+'",\n  "url": "https://apostilai.ai/697",\n  "titulo": "697 página nova",\n  "tipo": "vsl",\n  "versao": "troca do headline",\n  "feito_por": "Claude Code"\n}</pre></div>';
   cpLigarRolagem(cx);
 }
+// ── AO VIVO NA PÁGINA ──
+// Quem está com a página aberta agora (atualiza a cada 15 s enquanto a janela
+// estiver aberta). Só o momento, sem histórico; o time não entra.
+var pgVivo = { url: '', dados: null, aberto: false, t: null };
+function pgVivoLigar(url, n0){
+  clearInterval(pgVivo.t);
+  pgVivo = { url: url, dados: null, aberto: false, t: null };
+  pgVivoNum(n0 || 0);
+  var vai = function(){
+    if(!document.getElementById('pg-ficha')){ clearInterval(pgVivo.t); return; }
+    v2Json('/api/paginas/agora?url='+encodeURIComponent(url)).then(function(d){
+      if(pgVivo.url !== url) return;
+      pgVivo.dados = d; pgVivoNum(d.n); if(pgVivo.aberto) pgVivoLista();
+    }).catch(function(){});
+  };
+  vai(); pgVivo.t = setInterval(vai, 15000);
+}
+function pgVivoNum(n){
+  var b = document.getElementById('pg-vivo-bt'); if(!b) return;
+  b.classList.toggle('on', n > 0);
+  b.innerHTML = '<i aria-hidden="true"></i><b>'+fnNum(n || 0)+'</b> ao vivo';
+}
+function pgVivoAbrir(){
+  pgVivo.aberto = !pgVivo.aberto;
+  var cx = document.getElementById('pg-vivo-lista'); if(!cx) return;
+  cx.style.display = pgVivo.aberto ? '' : 'none';
+  if(pgVivo.aberto) pgVivoLista();
+}
+function pgVivoMin(ms){ var s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? s+' s' : Math.floor(s/60)+' min'; }
+function pgVivoLista(){
+  var cx = document.getElementById('pg-vivo-lista'); if(!cx) return;
+  var d = pgVivo.dados;
+  if(!d){ cx.innerHTML = '<div class="fx-vazio">Vendo quem está na página…</div>'; return; }
+  var ps = d.pessoas || [];
+  cx.innerHTML = '<div class="pg-cx"><div class="pg-cx-cab"><b>Na página agora · '+fnNum(ps.length)+'</b><span class="fx-sub">atualiza a cada 15 s · '+v2Hora(d.em)+'</span></div>'+
+    (ps.length ? ps.map(function(p){
+      var o = p.origem || {}, ori = o.camp ? (v2Anuncio(o.cont) || String(o.cont || '').split('|')[0] || 'Anúncio')+' · '+String(o.camp).split('|')[0].trim()
+        : o.fonte ? v2Fonte(o.fonte)+(/bio/i.test(o.cont || '') ? ' · bio' : (o.cont ? ' · '+String(o.cont).split('|')[0] : '')) : 'Direto (sem origem)';
+      var ap = [p.aparelho, p.sistema, p.navegador].filter(Boolean).join(' · ');
+      var tags = [];
+      if(p.video) tags.push('<span class="v2-pill neu">vídeo '+v2MmSs(p.video.seg || 0)+(p.video.pitch ? ' · passou do pitch' : '')+'</span>');
+      if(p.clicouComprar) tags.push('<span class="v2-pill warn">já clicou em comprar</span>');
+      if(p.comprou) tags.push('<span class="v2-pill ok">já comprou</span>');
+      if(p.lead) tags.push('<span class="v2-pill neu">'+fnEsc(p.lead.email || p.lead.nome || 'se identificou')+'</span>');
+      return '<div class="pg-vivo-p"><span class="pg-vivo-ponto" aria-hidden="true"></span><div><b>'+fnEsc(ori)+'</b>'+
+        '<span class="fx-sub">'+fnEsc(ap || 'aparelho não identificado')+(p.pais ? ' · '+fnEsc(p.pais) : '')+' · nesta página há '+pgVivoMin(p.desde)+'</span>'+
+        (tags.length ? '<div class="capi-chips" style="margin-top:4px">'+tags.join('')+'</div>' : '')+'</div>'+
+        '<button class="fn-btn g sm" onclick="ldFicha(\''+fnEsc(p.vis)+'\')">Jornada ›</button></div>';
+    }).join('') : '<div class="fx-sub">Ninguém nesta página agora. Quem abre aparece aqui em até 1 minuto.</div>')+'</div>';
+}
+// ── AO VIVO NA CAMPANHA ──
+var cpVivoT = null;
+function cpVivoLigar(id, nome){
+  clearInterval(cpVivoT);
+  var vai = function(){
+    var el = document.getElementById('cp-vivo'); if(!el){ clearInterval(cpVivoT); return; }
+    v2Json('/api/metricas/campanha/agora?id='+encodeURIComponent(id || '')+'&nome='+encodeURIComponent(nome || '')).then(function(d){
+      var e2 = document.getElementById('cp-vivo'); if(!e2) return;
+      var pgs = Object.keys(d.porPagina || {}).sort(function(a, b){ return d.porPagina[b] - d.porPagina[a]; });
+      e2.classList.toggle('on', d.n > 0);
+      e2.innerHTML = '<i aria-hidden="true"></i><b>'+fnNum(d.n || 0)+'</b> ao vivo';
+      e2.title = d.n ? 'Agora nas páginas vindos desta campanha: '+pgs.map(function(p){ return p+' ('+d.porPagina[p]+')'; }).join(', ') : 'Ninguém desta campanha nas páginas agora';
+    }).catch(function(){});
+  };
+  vai(); cpVivoT = setInterval(vai, 15000);
+}
+
 function pgFicha(url){
   var d = pgEst.dados, x = ((d && d.paginas) || []).filter(function(p){ return p.url === url; })[0] || { url:url };
   var ov = v2Modal('<div class="fx-vazio">Abrindo '+fnEsc(url)+'…</div>'); ov.id = 'pg-ficha';
@@ -30455,9 +30535,10 @@ function pgFichaPintar(x, reg){
   ov.querySelector('.v2-mod').innerHTML =
     '<div class="v2-cab"><div><h2>'+fnEsc(x.titulo || reg.titulo || x.url)+'</h2><div class="fx-sub"><a href="https://'+fnEsc(x.url)+'" target="_blank" rel="noopener" style="color:var(--accent)">'+fnEsc(x.url)+' ↗</a></div>'+
       '<div class="cp-chips" style="margin-top:6px"><span class="pg-o '+o[1]+'">'+o[0]+'</span>'+(x.noMapa ? '<span>funil '+fnEsc(x.noMapa)+'</span>' : '<span class="pg-fora">FORA DO MAPA</span>')+'<span>'+fnEsc(PG_TIPO[x.tipo || reg.tipo] || 'Página')+'</span></div></div>'+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+(x.noMapa ? '<button class="fn-btn g sm" onclick="v2Fechar(this);fnAba(\'mapa\')">Ver no mapa</button>' : '')+'<button class="fn-btn g sm" onclick="v2Fechar(this);fnAba(\'atencao\')">Atenção (rolagem)</button><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="fn-btn g sm pg-vivo" id="pg-vivo-bt" onclick="pgVivoAbrir()" title="Quem está com esta página aberta agora"></button>'+(x.noMapa ? '<button class="fn-btn g sm" onclick="v2Fechar(this);fnAba(\'mapa\')">Ver no mapa</button>' : '')+'<button class="fn-btn g sm" onclick="v2Fechar(this);fnAba(\'atencao\')">Atenção (rolagem)</button><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
     '<div class="cp-ks">'+num('Pessoas', fnNum(n.pessoas || 0))+num('Passaram do pitch', n.pitch ? fnNum(n.pitch) : '—')+num('Clicaram em comprar', fnNum(n.checkout || 0))+num('Vendas', n.vendas || 0)+
       num('Conversão', n.pessoas ? (n.vendas / n.pessoas * 100).toFixed(2).replace('.', ',')+'%' : '—')+'</div>'+
+    '<div id="pg-vivo-lista" style="display:none;margin-bottom:14px"></div>'+
     '<div class="pg-2col"><div class="pg-cx"><div class="pg-cx-cab"><b>Velocidade</b><button class="fn-btn g sm" onclick="pgMedir(\''+fnEsc(x.url)+'\', this)">⟳ Medir agora</button></div>'+
         '<div class="pg-medindo" id="pg-medindo">O Google está abrindo a página no celular e no desktop. Costuma levar de 20 a 60 segundos: pode continuar trabalhando.</div>'+
         '<div class="pg-aneis">'+pgAnel(c ? c.nota : null, '📱 Celular')+pgAnel(v && v.desk ? v.desk.nota : null, '🖥 Desktop')+'</div>'+
@@ -30471,6 +30552,7 @@ function pgFichaPintar(x, reg){
           : '<div class="fx-sub">Ainda não medida. Clique em “Medir agora”.</div>')+
       '</div>'+
       '<div class="pg-cx"><div class="pg-cx-cab"><b>Histórico</b></div>'+(hist.length ? hist.map(function(z){ return '<div class="v2-feed-i"><span class="v2-ic">•</span><div><b>'+fnEsc(z.t)+'</b>'+(z.s ? '<div class="sub">'+fnEsc(z.s)+'</div>' : '')+'</div><span class="h">'+pgDiaHora(z.em)+'</span></div>'; }).join('') : '<div class="fx-sub">Sem registro ainda. Quando o Claude Code publicar esta página, cada versão aparece aqui.</div>')+'</div></div>';
+  pgVivoLigar(x.url, x.agora || 0);
 }
 function pgMedir(url, bt){
   var a = document.getElementById('pg-medindo'); if(a) a.classList.add('on');
@@ -40905,7 +40987,10 @@ function cpChave(c, st){
   var tit = !pode ? (cpMeta && cpMeta.conectado ? 'Pra pausar daqui, o token da Meta precisa de ads_management' : 'Pra pausar daqui, conecte a Meta em Integrações') : (on ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta');
   return '<button class="cp-sw'+(on ? ' on' : '')+(pode ? '' : ' apagada')+'" role="switch" aria-checked="'+on+'" title="'+fnEsc(tit)+'" aria-label="'+fnEsc(tit)+'" onclick="event.stopPropagation();cpAlternarStatus('+cpDados.indexOf(c)+', this)"><i></i></button>';
 }
-function cpAlternarStatus(i, bt){
+function cpPausarDaAnalise(bt){
+  cpAlternarStatus(cpAnaliseIdx, bt, function(st){ if(cpAnalise && cpAnalise.campanha){ cpAnalise.campanha.status = st; cpPintarAnalise(); } });
+}
+function cpAlternarStatus(i, bt, depois){
   var c = cpDados[i]; if(!c) return;
   if(!cpMeta || !cpMeta.pode){ toastFn(cpMeta && cpMeta.conectado ? 'O token da Meta não tem ads_management. Gere outro marcando essa permissão e troque em Integrações → Meta.' : 'Pra pausar e ativar daqui, conecte a Meta em Configurações → Integrações → Meta.'); return; }
   var ativo = cpStatus(c.status)[1] !== 'on';
@@ -40913,7 +40998,7 @@ function cpAlternarStatus(i, bt){
   if(bt) bt.disabled = true;
   fetch(API_BASE+'/api/meta/campanha/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: c.campanhaId, ativo: ativo, nome: c.nome }) })
     .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
-    .then(function(d){ c.status = d.status; c.mudanca = { campo:'status', de: ativo ? 'PAUSED' : 'ACTIVE', para: d.status, em: Date.now() }; toastFn(ativo ? 'Campanha ativada' : 'Campanha pausada'); cpPintar(); })
+    .then(function(d){ c.status = d.status; c.mudanca = { campo:'status', de: ativo ? 'PAUSED' : 'ACTIVE', para: d.status, em: Date.now() }; toastFn(ativo ? 'Campanha ativada' : 'Campanha pausada'); cpPintar(); if(depois) depois(d.status); })
     .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não mudou: '+e.message); });
 }
 function cpPintar(){
@@ -41023,8 +41108,10 @@ var CP_EXPLICA = {
   'Conv. checkout':'Vendas (TMX) ÷ pessoas que clicaram em comprar (TMX)', 'Conv. cliques':'Vendas (TMX) ÷ cliques no link'
 };
 var cpAnalise = null, cpDiaVista = 'graf';
+var cpAnaliseIdx = -1;
 function cpAbrir(i){
   var c = cpDados[i]; if(!c) return;
+  cpAnaliseIdx = i;
   var p = getAdsDates();
   var ov = v2Modal('<div class="fx-vazio">Montando a análise de '+fnEsc(cpNomeCurto(c.nome))+'…</div>');
   ov.id = 'cp-analise';
@@ -41062,7 +41149,9 @@ function cpPintarAnalise(){
   ov.querySelector('.v2-mod').innerHTML =
     '<div class="v2-cab"><div><h2>'+fnEsc(cpNomeCurto(m.nome))+'</h2><div class="cp-chips" style="margin-top:6px"><span class="cp-st '+st[1]+'">'+st[0]+'</span>'+(m.conta ? '<span>'+fnEsc(m.conta)+'</span>' : '')+
       (m.orc != null ? '<span>'+fmtAds(m.orc)+(m.orcVida ? ' total' : '/dia')+'</span>' : '')+(m.bid != null ? '<span>bid cap '+fmtAds(m.bid)+'</span>' : '')+(m.criada ? '<span>criada em '+m.criada.slice(8,10)+'/'+m.criada.slice(5,7)+'</span>' : '')+'</div></div>'+
-      '<div style="display:flex;gap:8px"><button class="fn-btn g sm" disabled title="Fase 2: precisa da permissão de anúncios da Meta">⏸ Pausar</button><button class="fn-btn g sm" disabled title="Fase 2: precisa da permissão de anúncios da Meta">✎ Orçamento</button><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="cp-vivo" id="cp-vivo" title="Pessoas nas páginas agora vindas desta campanha"><i aria-hidden="true"></i><b>…</b> ao vivo</span>'+
+        (lcEhDir() ? '<button class="fn-btn g sm" onclick="cpPausarDaAnalise(this)" title="'+(cpMeta && cpMeta.pode ? (st[1] === 'on' ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta') : 'Pra pausar daqui, conecte a Meta com ads_management (Integrações → Meta)')+'"'+(cpMeta && cpMeta.pode ? '' : ' style="opacity:.55"')+'>'+(st[1] === 'on' ? '⏸ Pausar' : '▶ Ativar')+'</button>' : '')+
+        '<button class="fn-btn g sm" disabled title="Em breve: mudar o orçamento pelo TMX">✎ Orçamento</button><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
     (d.erroAoVivo ? '<div class="v2-alerta warn"><div><b>A Utmify não respondeu agora</b><span>Mostrando o que o TMX já tinha guardado. '+fnEsc(d.erroAoVivo)+'</span></div></div>' : '')+
     '<div class="cp-ks">'+k('Gasto', fmtAds(m.gasto))+k('Faturamento', din(m.faturamento), 'Utmify')+k('Lucro', m.lucro == null ? din(null) : '<span class="'+(m.lucro >= 0 ? 'pos' : 'neg')+'">'+fmtAds(m.lucro)+'</span>')+
       k('ROAS', m.gasto && m.faturamento != null ? (m.faturamento/m.gasto).toFixed(2).replace('.',',')+'x' : '—')+k('Vendas', m.vendas+' <small>Utmify</small> · '+t.vendas+' <small>TMX</small>')+'</div>'+
@@ -41075,6 +41164,7 @@ function cpPintarAnalise(){
     '<div class="v2-rot cp-s">Orçamento e mudanças</div>'+(mud || '<div class="cp-nota">Nenhuma mudança de orçamento, bid cap ou status vista no período.'+desde+'</div>')+
     (mud ? '<div class="cp-nota" style="margin-top:6px">'+desde.trim()+'</div>' : '')+
     '<div class="v2-rot cp-s">Anúncios desta campanha</div>'+(ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th>Vendas</th><th>Lucro</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>' : '<div class="cp-nota">Nenhum anúncio com gasto no período'+(d.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
+  var cA = cpDados[cpAnaliseIdx]; if(cA) cpVivoLigar(cA.campanhaId, cA.nome);
 }
 function cpSerie(d){ return d.porDia.map(function(x){ var f = x.fatUtmify != null ? x.fatUtmify : (x.fatTmx != null ? x.fatTmx : null); var l = x.lucroUtmify != null ? x.lucroUtmify : (f != null ? f - x.gasto : null); return { dia:x.dia, g:x.gasto||0, f:f, l:l, v:x.vendasTmx||0 }; }); }
 function cpGraficoDias(d){
