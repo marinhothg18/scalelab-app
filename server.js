@@ -9973,6 +9973,11 @@ function _pessoas() {
       CREATE TABLE IF NOT EXISTS camp_dia (dia TEXT, projeto TEXT, id TEXT, nome TEXT, conta TEXT,
         gasto REAL, imp INTEGER, cliques INTEGER, PRIMARY KEY (dia, projeto, id));
       CREATE TABLE IF NOT EXISTS camp_dia_ok (dia TEXT, projeto TEXT, em INTEGER, PRIMARY KEY (dia, projeto));
+      CREATE TABLE IF NOT EXISTS capi_visita (visitante TEXT PRIMARY KEY, ip TEXT, ua TEXT, pg TEXT, em INTEGER);
+      CREATE TABLE IF NOT EXISTS capi_eventos (id TEXT PRIMARY KEY, pedido TEXT, projeto TEXT, nome TEXT, payload TEXT, status TEXT,
+        criado INTEGER, enviado INTEGER, resposta TEXT, sinais TEXT);
+      CREATE INDEX IF NOT EXISTS capi_ped ON capi_eventos(pedido);
+      CREATE INDEX IF NOT EXISTS capi_criado ON capi_eventos(criado);
       CREATE TABLE IF NOT EXISTS camp_estado (id TEXT PRIMARY KEY, nome TEXT, dashboard TEXT, orc REAL, bid REAL, status TEXT, em INTEGER);
       CREATE TABLE IF NOT EXISTS camp_mudancas (n INTEGER PRIMARY KEY AUTOINCREMENT, camp TEXT, nome TEXT, dashboard TEXT,
         campo TEXT, de TEXT, para TEXT, em INTEGER, desde INTEGER, fonte TEXT);
@@ -10180,6 +10185,15 @@ function _pxRegistrar(c, req, interno, quando) {
       _q('UPDATE visitantes SET sessoes=sessoes+1 WHERE id=?').run(vis);
     }
     _pSess.set(vis, s);
+
+    // IP e navegador de quem clicou pra ir ao checkout: é o que a Meta pede no
+    // evento de compra. Só no clique de compra (não em toda visita: o disco é
+    // pequeno) e só por CAPI_VISITA_DIAS dias (a manutenção apaga o resto).
+    if (!eInt && req && tipo === 'checkout') {
+      const ipV = _ipDe(req), uaV = String((req.headers && req.headers['user-agent']) || '');
+      if (ipV || uaV) _q('INSERT INTO capi_visita(visitante, ip, ua, pg, em) VALUES(?,?,?,?,?) ON CONFLICT(visitante) DO UPDATE SET ip=excluded.ip, ua=excluded.ua, pg=excluded.pg, em=excluded.em')
+        .run(vis, txt(ipV, 60), txt(uaV, 400), pg || null, agora);
+    }
 
     // ── página vista nesta sessão (uma linha por página, não por evento) ──
     if (pg && tipo !== 'saiu') {
@@ -10463,6 +10477,8 @@ function _pedidoRegistrar(venda, p, opts) {
     }
     db.exec('COMMIT');
     resultado = { visitante: vis, casou, lead: leadId, semOrigem, cred: cred ? { fonte: cred.fonte, cont: cred.cont, canal: cred.canal } : null };
+    if (ins.changes && pago && !estorno && !venda.renovacao && !opts.naoMexer)
+      _capiMontar({ pedido: idPed, em, visitante: vis, email, tel, venda, funil: ref.funil || null });
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch (e2) {}
     console.error('[PESSOAS] pedido não gravou:', e.message);
@@ -10564,6 +10580,7 @@ function _pessoasManter() {
     const r1 = _q('DELETE FROM eventos WHERE em < ?').run(agora - diasEv * 86400000);
     const r2 = _q('DELETE FROM sessoes WHERE inicio < ?').run(agora - SESSOES_DIAS * 86400000);
     _q('DELETE FROM paginas WHERE em < ?').run(agora - SESSOES_DIAS * 86400000);
+    _q('DELETE FROM capi_visita WHERE em < ?').run(agora - CAPI_VISITA_DIAS * 86400000);
     if (r1.changes || r2.changes) console.log('[PESSOAS] retenção: ' + r1.changes + ' eventos e ' + r2.changes + ' sessões antigas saíram.');
     db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   } catch (e) { console.error('[PESSOAS] manutenção falhou:', e.message); }
@@ -11120,6 +11137,119 @@ app.get('/api/v1/paginas', authAPI, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════
+// ── API DE CONVERSÕES DA META (modo comparação) ──
+// Cada venda aprovada vira o evento de compra que o TMX mandaria pra Meta,
+// servidor com servidor: e-mail e telefone com SHA-256, o clique do anúncio
+// (fbc), o cookie da Meta (fbp), o id da pessoa e o IP e navegador da última
+// visita. Por enquanto NADA é enviado: o evento fica guardado com o status
+// "comparacao" e a venda mostra o que iria. Venda sem pessoa ligada também
+// entra, só com e-mail e telefone: é a própria Meta que acha quem clicou no
+// anúncio, e essas vendas passam a contar pra campanha lá.
+// ══════════════════════════════════════════════════════
+const KEY_META_CAPI = 'sl_meta_capi';    // server-only: modo e pixel de cada projeto
+const CAPI_VISITA_DIAS = 30;             // IP e navegador ficam só esse tempo
+function _capiCfg(db) { const c = (db || readDB()).store[KEY_META_CAPI]; return (c && typeof c === 'object') ? c : { modo: 'comparacao', pixels: {} }; }
+const _sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+function _capiNorm(t) { return String(t || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').trim(); }
+// de que projeto é a venda: pelo funil da visita, senão pelo produto
+function _capiProjeto(dbj, funil, produto) {
+  const fs_ = (Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(Boolean);
+  const f = funil ? fs_.find(x => x.id === funil) : null;
+  if (f && f.projeto) return f.projeto;
+  const pr = _produtoDe(produto, _produtosCfg(dbj));
+  if (pr && pr.projeto) return pr.projeto;
+  const ps = [..._projetosDoProdutoFn(fs_)(produto)];
+  return ps.length === 1 ? ps[0] : '';
+}
+// o id do evento é o do pedido na plataforma, sem o status: o mesmo pedido que chega
+// duas vezes aprovado (paid e depois approved) não vira duas compras na Meta
+function _capiIdDe(plataforma, pedido, linha) {
+  const base = pedido ? (String(plataforma || 'payt') + '_' + pedido) : String(linha || '');
+  return 'tmx_' + base.replace(/[^A-Za-z0-9_:-]/g, '').slice(0, 80);
+}
+function _capiMontar(d) {
+  try {
+    const db = _pessoas(); if (!db) return;
+    const em = d.em, vis = d.visitante || null, venda = d.venda || {};
+    const id = _capiIdDe(venda.plataforma, venda.pedidoId, d.pedido);
+    if (_q('SELECT 1 FROM capi_eventos WHERE id=?').get(id)) return;
+    const ud = {}, sinais = [];
+    if (d.email && d.email.indexOf('@') > 0) { ud.em = [_sha(d.email.trim().toLowerCase())]; sinais.push('e-mail'); }
+    if (d.tel) { ud.ph = [_sha(String(d.tel).replace(/\D/g, ''))]; sinais.push('telefone'); }
+    const nome = _capiNorm(venda.cliente).split(/\s+/).filter(Boolean);
+    if (nome.length) { ud.fn = [_sha(nome[0])]; if (nome.length > 1) ud.ln = [_sha(nome[nome.length - 1])]; sinais.push('nome'); }
+    let url = '', ac = 'other';
+    if (vis) {
+      ud.external_id = [_sha(vis)]; sinais.push('id da pessoa');
+      // o clique do anúncio e o cookie da Meta: da visita mais recente que tenha
+      const ss = _q('SELECT fbclid, fbc, fbp, inicio FROM sessoes WHERE visitante=? AND inicio <= ? ORDER BY inicio DESC LIMIT 30').all(vis, em + 600000);
+      const comFbc = ss.find(s => s.fbc) || null, comClid = ss.find(s => s.fbclid) || null;
+      if (comFbc) ud.fbc = comFbc.fbc; else if (comClid) ud.fbc = 'fb.1.' + comClid.inicio + '.' + comClid.fbclid;
+      const vv = _q('SELECT fbc, fbp, fbclid FROM visitantes WHERE id=?').get(vis) || {};
+      if (!ud.fbc && vv.fbc) ud.fbc = vv.fbc;
+      const comFbp = ss.find(s => s.fbp); ud.fbp = comFbp ? comFbp.fbp : (vv.fbp || undefined);
+      if (ud.fbc) sinais.push('clique do anúncio'); if (ud.fbp) sinais.push('cookie da Meta');
+      const cv = _q('SELECT ip, ua, pg FROM capi_visita WHERE visitante=?').get(vis);
+      if (cv && cv.ip) { ud.client_ip_address = cv.ip; sinais.push('IP'); }
+      if (cv && cv.ua) { ud.client_user_agent = cv.ua; sinais.push('navegador'); ac = 'website'; }
+      const ck = _q("SELECT pg FROM eventos WHERE visitante=? AND tipo='checkout' AND em <= ? ORDER BY em DESC LIMIT 1").get(vis, em + 600000);
+      url = ck && ck.pg ? 'https://' + ck.pg : (cv && cv.pg ? 'https://' + cv.pg : '');
+    }
+    Object.keys(ud).forEach(k => { if (ud[k] === undefined) delete ud[k]; });
+    const ev = { event_name: 'Purchase', event_time: Math.floor(em / 1000), event_id: id, action_source: ac,
+      user_data: ud,
+      custom_data: { currency: 'BRL', value: Math.round((Number(venda.valor) || 0) * 100) / 100, content_name: String(venda.produto || '').slice(0, 120),
+                     content_type: 'product', order_id: String(venda.pedidoId || d.pedido).slice(0, 80) } };
+    if (url) ev.event_source_url = url;
+    const dbj = readDB(), cfg = _capiCfg(dbj), projeto = _capiProjeto(dbj, d.funil, venda.produto);
+    _q('INSERT OR IGNORE INTO capi_eventos(id, pedido, projeto, nome, payload, status, criado, sinais) VALUES(?,?,?,?,?,?,?,?)')
+      .run(id, String(d.pedido), projeto, 'Purchase', JSON.stringify(ev), cfg.modo === 'enviando' ? 'pendente' : 'comparacao', Date.now(), sinais.join(','));
+  } catch (e) { console.error('[CAPI] montar:', e.message); }
+}
+// resumo pra tela de integrações: quantas compras estão prontas e com quais sinais
+app.get('/api/meta/capi/resumo', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const desde = Date.now() - 7 * 86400000, l = _q('SELECT projeto, status, sinais FROM capi_eventos WHERE criado >= ?').all(desde);
+    const tem = s => l.filter(x => String(x.sinais || '').split(',').indexOf(s) >= 0).length;
+    const porProjeto = {}; l.forEach(x => { const k = x.projeto || '(sem projeto)'; porProjeto[k] = (porProjeto[k] || 0) + 1; });
+    const dbj = readDB(), cfg = _capiCfg(dbj), fun = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
+    res.json({ ok: true, dias: 7, total: l.length, status: l.reduce((a, x) => { a[x.status] = (a[x.status] || 0) + 1; return a; }, {}),
+      sinais: { 'e-mail': tem('e-mail'), telefone: tem('telefone'), 'clique do anúncio': tem('clique do anúncio'), 'cookie da Meta': tem('cookie da Meta'), IP: tem('IP'), navegador: tem('navegador'), 'id da pessoa': tem('id da pessoa') },
+      porProjeto, modo: cfg.modo || 'comparacao', pixels: cfg.pixels || {},
+      projetos: [...new Set(fun.filter(Boolean).map(f => f.projeto).filter(Boolean))],
+      ipDesde: (_q('SELECT MIN(em) em FROM capi_visita').get() || {}).em || null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/meta/capi/config', authDiretoria, (req, res) => {
+  try {
+    const db = readDB(), b = req.body || {}, cfg = Object.assign({ modo: 'comparacao', pixels: {} }, _capiCfg(db));
+    if (b.pixels && typeof b.pixels === 'object') {
+      cfg.pixels = {}; Object.keys(b.pixels).slice(0, 20).forEach(k => { const v = String(b.pixels[k] || '').replace(/\D/g, '').slice(0, 25); if (v) cfg.pixels[String(k).slice(0, 60)] = v; });
+    }
+    // enviar de verdade só depois da conexão com a Meta (fase 3)
+    if (b.modo === 'desligado' || b.modo === 'comparacao') cfg.modo = b.modo;
+    db.store[KEY_META_CAPI] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META_CAPI] = now();
+    audit(db, 'integracao.meta.capi', KEY_META_CAPI, { modo: cfg.modo, projetos: Object.keys(cfg.pixels) }, req.user);
+    writeDB(db);
+    res.json({ ok: true, modo: cfg.modo, pixels: cfg.pixels });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// o evento da Meta de uma venda, pra aba Marketing (hash encurtado: dá pra conferir sem expor)
+function _capiDaVenda(o, dir) {
+  try {
+    const sel = 'SELECT id, projeto, status, criado, enviado, resposta, sinais, payload FROM capi_eventos WHERE ';
+    const x = _q(sel + 'pedido=?').get(String(o.id)) || (o.pedido ? _q(sel + 'id=?').get(_capiIdDe(o.plataforma, o.pedido)) : null);
+    if (!x) return null;
+    let p = {}; try { p = JSON.parse(x.payload); } catch (e) {}
+    const curto = v => Array.isArray(v) ? v.map(h => String(h).slice(0, 10) + '…') : (typeof v === 'string' && v.length > 40 ? v.slice(0, 18) + '…' : v);
+    const ud = {}; Object.keys(p.user_data || {}).forEach(k => { ud[k] = curto(p.user_data[k]); });
+    return { id: x.id, projeto: x.projeto, status: x.status, criado: x.criado, enviado: x.enviado, sinais: String(x.sinais || '').split(',').filter(Boolean),
+      pixel: (_capiCfg().pixels || {})[x.projeto] || '', evento: dir ? Object.assign({}, p, { user_data: ud }) : null };
+  } catch (e) { return null; }
+}
 // ── MARKETING DE UMA VENDA ──
 // O que a Malva mostra na venda e o TMX não mostrava: as UTMs inteiras, os
 // códigos do checkout (src, sck, xcod, fbclid), por onde a venda foi ligada à
@@ -11190,7 +11320,7 @@ app.get('/api/venda/:id', authUsuario, (req, res) => {
       visitante: o.visitante || null, casou: o.casou || null, semOrigem: o.sem_origem || null, semOrigemExplica: _SEM_ORIGEM_EXPLICA[o.sem_origem] || '',
       credito: o.cred_fonte || o.cred_camp || o.cred_cont ? { fonte: o.cred_fonte, camp: o.cred_camp, cont: o.cred_cont, canal: o.cred_canal } : null,
       apoio: o.apoio || null },
-      codigos: cod, codigosDe: de, vsl: _vslDoSrc(dbj, cod.src), linha });
+      codigos: cod, codigosDe: de, vsl: _vslDoSrc(dbj, cod.src), linha, capi: _capiDaVenda(o, dir) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

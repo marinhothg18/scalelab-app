@@ -1895,6 +1895,29 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .vd-brutos summary{cursor:pointer;color:var(--text2);font-weight:700}
 .vd-brutos pre{margin:8px 0 0;background:var(--bg3);border-radius:10px;padding:10px 12px;font-size:11.5px;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* Meta · API de Conversões */
+.capi-chips{display:flex;flex-wrap:wrap;gap:5px}
+.capi-chip{font-size:11.5px;font-weight:650;padding:4px 9px;border-radius:999px;background:var(--bg3);color:var(--text2);opacity:.75}
+.capi-chip.on{background:rgba(34,197,94,.14);color:var(--v2-verde,#16A34A);opacity:1}
+.capi-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:18px}
+.capi-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.capi-cab b{display:block;font-size:17px;font-weight:700}
+.capi-cab span{font-size:11.5px;color:var(--text2)}
+.capi-aviso{background:var(--bg3);border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.6;color:var(--text2);margin-bottom:14px}
+.capi-num{display:flex;flex-wrap:wrap;gap:10px}
+.capi-num > div{border:1px solid var(--border);border-radius:11px;padding:9px 14px;min-width:120px}
+.capi-num b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.capi-num span{font-size:11.5px;color:var(--text2)}
+.capi-barras{display:grid;gap:6px;max-width:560px}
+.capi-b{display:grid;grid-template-columns:130px 1fr 44px;align-items:center;gap:10px;font-size:12.5px}
+.capi-b i{display:block;height:8px;border-radius:99px;background:var(--bg3);overflow:hidden}
+.capi-b em{display:block;height:100%;background:#1B9CFA;border-radius:99px}
+.capi-b b{text-align:right;font-variant-numeric:tabular-nums}
+.capi-px{display:grid;grid-template-columns:minmax(120px,200px) minmax(0,260px);gap:10px;align-items:center;margin-bottom:6px;font-size:12.5px}
+.capi-px .fi{margin:0}
+.capi-acoes{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:12.5px}
+.capi-acoes label{display:flex;align-items:center;gap:6px;cursor:pointer}
+@media (max-width:600px){.capi-b{grid-template-columns:96px 1fr 40px}.capi-px{grid-template-columns:1fr}}
 /* mudar a divisão do teste A/B */
 .ab-div-ctl{margin-top:14px}
 .ab-div-barra{display:block}
@@ -21097,11 +21120,14 @@ async function renderIntegracoesTab(){
     try { _vd = await (await fetch(API_BASE+'/api/integracoes/vendas/me')).json(); } catch(e){ _vd = {erroCarga:true}; }
     var _vt = {};
     try { _vt = await (await fetch(API_BASE+'/api/integracoes/vturb/me')).json(); } catch(e){ _vt = {erroCarga:true}; }
+    var _cp = {};
+    try { _cp = await (await fetch(API_BASE+'/api/meta/capi/resumo')).json(); } catch(e){ _cp = {erroCarga:true}; }
 
     el.innerHTML =
       _cardUtmifyMcp(_um)+
       _cardVturb(_vt)+
       _cardMetaAds(_mt)+
+      _cardMetaCapi(_cp)+
       _cardVendas(_vd)+
 
       // CARD EMAIL TRANSACIONAL (Resend)
@@ -36294,6 +36320,84 @@ var ldFichaDados = null, ldOcultarPlayer = true;
 // Produtos e Marketing (UTMs, códigos do checkout, qual VSL e a linha do tempo).
 // ══════════════════════════════════════════════════════
 var vdAba = 'marketing', vdDados = null;
+// ── META · API DE CONVERSÕES (modo comparação) ──
+// O que a Meta mais usa pra achar quem comprou: os sinais de cada compra.
+// Os 4 primeiros são os que mais pesam na nota de correspondência da Meta.
+var CAPI_SINAIS = [
+  ['e-mail', 'E-mail', 'do checkout, com SHA-256'],
+  ['telefone', 'Telefone', 'do checkout, com SHA-256'],
+  ['clique do anúncio', 'Clique do anúncio', 'o fbclid que veio no link do anúncio'],
+  ['IP', 'IP', 'de quando clicou pra comprar (guardado 30 dias)'],
+  ['navegador', 'Navegador', 'de quando clicou pra comprar (guardado 30 dias)'],
+  ['cookie da Meta', 'Cookie da Meta', 'o _fbp do pixel da Meta na página'],
+  ['id da pessoa', 'Id da pessoa', 'o id do visitante no TMX'],
+  ['nome', 'Nome', 'do checkout, com SHA-256']
+];
+function capiChips(sinais){
+  sinais = sinais || [];
+  return '<div class="capi-chips">'+CAPI_SINAIS.map(function(x){ var on = sinais.indexOf(x[0]) >= 0;
+    return '<span class="capi-chip'+(on ? ' on' : '')+'" title="'+fnEsc(x[2])+'">'+(on ? '✓ ' : '✕ ')+x[1]+'</span>'; }).join('')+'</div>';
+}
+function vdCapiHtml(d){
+  var v = d.venda, c = d.capi;
+  if(!c){
+    var pq = !v.pago ? 'Só venda aprovada vira evento de compra.' : v.estorno ? 'Venda estornada não vira evento.' : v.renovacao ? 'Renovação de assinatura não vira evento novo: a compra já foi contada na primeira vez.'
+      : 'Venda de antes de 19/10: o evento é montado nas vendas que chegam a partir de agora.';
+    return '<div class="v2-rot vd-sec">Meta · API de Conversões</div><div class="fx-sub">'+pq+'</div>';
+  }
+  var st = c.status === 'enviado' ? ['ok', 'Enviado pra Meta'] : c.status === 'erro' ? ['bad', 'Meta recusou'] : ['neu', 'Modo comparação: não foi enviado'];
+  return '<div class="v2-rot vd-sec">Meta · API de Conversões</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span class="v2-pill '+st[0]+'">'+st[1]+'</span>'+
+      '<span class="v2-pill neu">Projeto: '+fnEsc(c.projeto || 'não achei')+'</span>'+
+      '<span class="v2-pill '+(c.pixel ? 'neu' : 'warn')+'">'+(c.pixel ? 'Pixel '+fnEsc(c.pixel) : 'Pixel não cadastrado')+'</span></div>'+
+    capiChips(c.sinais)+
+    '<div class="fx-sub" style="margin-top:6px">'+(c.sinais.indexOf('clique do anúncio') >= 0 ? 'Com o clique do anúncio, a Meta liga essa compra direto à campanha.'
+      : c.sinais.indexOf('e-mail') >= 0 || c.sinais.indexOf('telefone') >= 0 ? 'Sem o clique do anúncio: a Meta tenta achar a pessoa pelo e-mail e pelo telefone.' : 'Poucos sinais: a Meta dificilmente acha quem comprou.')+'</div>'+
+    (c.evento ? '<details class="vd-brutos"><summary>O que iria pra Meta (os códigos aparecem cortados)</summary><pre>'+fnEsc(JSON.stringify(c.evento, null, 2))+'</pre></details>' : '');
+}
+function _cardMetaCapi(r){
+  r = r || {};
+  if(r.erroCarga || r.error) return '<div class="capi-card"><div class="capi-cab"><div><b>Meta · API de Conversões</b><span>Não carregou: '+fnEsc(r.error || 'sem resposta do servidor')+'</span></div></div></div>';
+  var tot = r.total || 0, pct = function(n){ return tot ? Math.round(n * 100 / tot) + '%' : '—'; };
+  var oc = typeof fnProjOcultos === 'function' ? fnProjOcultos() : [];
+  var projs = (r.projetos || []).filter(function(p){ return oc.indexOf(p) < 0; });
+  Object.keys(r.pixels || {}).forEach(function(p){ if(projs.indexOf(p) < 0) projs.push(p); });
+  var dir = typeof lcEhDir === 'function' ? lcEhDir() : true;
+  var modo = r.modo || 'comparacao';
+  return '<div class="capi-card">'+
+    '<div class="capi-cab"><div><b>Meta · API de Conversões</b><span>A compra sai do servidor do TMX direto pra Meta, sem depender do navegador da pessoa</span></div>'+
+      '<span class="v2-pill '+(modo === 'desligado' ? 'warn' : 'neu')+'">'+(modo === 'desligado' ? 'Desligado' : 'Modo comparação')+'</span></div>'+
+    '<div class="capi-aviso">'+(modo === 'desligado' ? 'Desligado: as vendas novas não montam o evento.' :
+      'Nada é enviado ainda. Cada venda aprovada monta o evento que iria pra Meta, e dá pra conferir dentro da venda (aba Marketing). O envio liga depois que a conta da Meta estiver conectada e a gente comparar uma semana com a Utmify, pra não contar a mesma venda duas vezes.')+'</div>'+
+    '<div class="capi-num"><div><b>'+tot+'</b><span>compras prontas nos últimos '+(r.dias || 7)+' dias</span></div>'+
+      Object.keys(r.porProjeto || {}).map(function(p){ return '<div><b>'+r.porProjeto[p]+'</b><span>'+fnEsc(p)+'</span></div>'; }).join('')+'</div>'+
+    '<div class="v2-rot vd-sec">Quantas compras levam cada sinal</div>'+
+    '<div class="capi-barras">'+CAPI_SINAIS.filter(function(x){ return x[0] !== 'nome'; }).map(function(x){ var n = (r.sinais || {})[x[0]] || 0, p = tot ? Math.round(n * 100 / tot) : 0;
+      return '<div class="capi-b" title="'+fnEsc(x[2])+'"><span>'+x[1]+'</span><i><em style="width:'+p+'%"></em></i><b>'+pct(n)+'</b></div>'; }).join('')+'</div>'+
+    (r.ipDesde ? '<div class="fx-sub" style="margin-top:6px">IP e navegador começaram a ser guardados em '+v2Data(r.ipDesde)+', no clique pra comprar. Vendas de quem clicou antes disso saem sem eles.</div>' : '')+
+    '<div class="v2-rot vd-sec">Pixel de cada projeto</div>'+
+    '<div class="fx-sub" style="margin-bottom:8px">O número do pixel da Meta (Gerenciador de Eventos → Fontes de dados). Cada projeto manda as compras pro próprio pixel.</div>'+
+    (projs.length ? projs.map(function(p){ return '<div class="capi-px"><label>'+fnEsc(p)+'</label><input class="fi" data-capi-px="'+fnEsc(p)+'" inputmode="numeric" placeholder="ex.: 1234567890123456" value="'+fnEsc((r.pixels || {})[p] || '')+'"'+(dir ? '' : ' disabled')+'></div>'; }).join('')
+      : '<div class="fx-sub">Nenhum projeto ainda.</div>')+
+    (dir ? '<div class="capi-acoes"><label><input type="checkbox" id="capi-ligado"'+(modo !== 'desligado' ? ' checked' : '')+'> Montar o evento das vendas novas</label>'+
+      '<button class="fn-btn sm" onclick="capiSalvar(this)">Salvar</button><span id="capi-res"></span></div>' : '')+
+  '</div>';
+}
+async function capiSalvar(bt){
+  var px = {}, out = document.getElementById('capi-res');
+  document.querySelectorAll('[data-capi-px]').forEach(function(i){ var v = String(i.value || '').replace(/\D/g, ''); if(v) px[i.getAttribute('data-capi-px')] = v; });
+  var lig = document.getElementById('capi-ligado');
+  if(bt) bt.disabled = true;
+  try{
+    var r = await fetch(API_BASE+'/api/meta/capi/config', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pixels: px, modo: lig && !lig.checked ? 'desligado' : 'comparacao' }) });
+    var j = await r.json(); if(!r.ok) throw new Error(j.error || 'falhou');
+    if(out) out.innerHTML = '<span style="color:var(--green,#16A34A)">Salvo</span>';
+    setTimeout(renderIntegracoesTab, 600);
+  }catch(e){ if(out) out.innerHTML = '<span style="color:var(--red,#DC2626)">Não salvou: '+fnEsc(e.message)+'</span>'; }
+  if(bt) bt.disabled = false;
+}
+
 function vdAbrir(id){
   if(!id) return;
   vdAba = 'marketing'; vdDados = null;
@@ -36326,6 +36430,7 @@ function vdPintar(){
         kv('VSL que assistiu', d.vsl ? (d.vsl.nome || 'vídeo '+d.vsl.id)+' (pelo código do vídeo no src)' : (v.visitante ? 'não veio no src' : ''))+'</div>'+
       (v.visitante ? '<div style="margin-top:10px"><button class="fn-btn g sm" onclick="v2Fechar(this);ldFicha(\''+fnEsc(v.visitante)+'\')">↗ Ver a jornada</button></div>'
         : (v.semOrigem ? '<div class="v2-alerta warn" style="margin-top:10px"><div><b>'+fnEsc(v.semOrigem)+'</b><span>'+fnEsc(v.semOrigemExplica || '')+'</span></div></div>' : ''))+
+      vdCapiHtml(d)+
       '<div class="v2-rot vd-sec">Linha do tempo</div>'+
       (d.linha || []).map(function(x){ return '<div class="v2-feed-i"><span class="v2-ic '+(x.tipo === 'compra' ? 'ok' : x.tipo === 'checkout' ? 'warn' : '')+'">'+(x.tipo === 'compra' ? '✓' : x.tipo === 'checkout' ? '🛒' : x.tipo === 'tentativa' ? '✕' : '→')+'</span>'+
         '<div><b>'+fnEsc(x.texto)+'</b>'+(x.sub ? '<div class="sub">'+fnEsc(x.sub)+'</div>' : '')+'</div><span class="h">'+v2DiaHora(x.em)+'</span></div>'; }).join('')+
