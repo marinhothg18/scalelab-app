@@ -1895,6 +1895,18 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .vd-brutos summary{cursor:pointer;color:var(--text2);font-weight:700}
 .vd-brutos pre{margin:8px 0 0;background:var(--bg3);border-radius:10px;padding:10px 12px;font-size:11.5px;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .so-leitor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* links rastreados (direct, WhatsApp, e-mail) */
+.lk-url{display:flex;align-items:center;gap:8px;margin-top:4px}
+.lk-url code{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.lk-form{display:grid;gap:12px;border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;max-width:760px}
+.lk-f{display:grid;gap:5px;font-size:12px;color:var(--text2);min-width:0}
+.lk-f > span{font-weight:650}
+.lk-f .fi{margin:0}
+.lk-dupla{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.lk-utms{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:6px}
+.lk-previa{font-size:12.5px;color:var(--text2)}
+.lk-previa code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);word-break:break-all}
+@media (max-width:700px){.lk-dupla{grid-template-columns:1fr}.lk-utms{grid-template-columns:1fr 1fr}}
 /* Meta · API de Conversões */
 .capi-chips{display:flex;flex-wrap:wrap;gap:5px}
 .capi-chip{font-size:11.5px;font-weight:650;padding:4px 9px;border-radius:999px;background:var(--bg3);color:var(--text2);opacity:.75}
@@ -30775,6 +30787,82 @@ function fnCabecalho(){
 // ══════════════════════════════════════════════════════
 var lcTemp = 'frio', lcDados = null, lcCanais = null, lcEditando = false;
 // vê valores em R$ nos Funis: Diretoria e Sócio (o servidor confere o mesmo)
+// ── LINKS RASTREADOS (direct, WhatsApp, e-mail) ──
+// O link que o servidor registra sozinho: onde não dá pra pôr o pixel. Indo
+// direto pro checkout, ele leva o código da pessoa e a venda volta ligada a ela.
+var lkEd = null;
+var LK_MODELOS = [
+  ['Direct do Instagram', { source:'instagram', medium:'social', content:'dm' }],
+  ['WhatsApp', { source:'whatsapp', medium:'mensagem', content:'' }],
+  ['E-mail', { source:'email', medium:'email', content:'' }]
+];
+function lkCartao(){
+  var ls = (lcDados && lcDados.links) || [], dir = lcEhDir();
+  var h = '<div class="fx-cart" style="margin-bottom:16px"><div class="fx-cc"><h3>Links pro direct, WhatsApp e e-mail</h3>'+
+    (lkEd ? '' : '<button class="fn-btn sm" onclick="lkNovo()">+ Novo link</button>')+'</div>'+
+    '<p class="fx-sub" style="margin:-6px 0 12px">Pra onde não dá pra pôr o pixel. O clique fica registrado e, se o link vai direto pro checkout, leva o código da pessoa: a venda volta ligada a ela. Se a pessoa já clicou num anúncio (neste ou em outro aparelho, reconhecida pelo e-mail ou telefone), a venda continua do anúncio.</p>';
+  if(lkEd) h += lkForm();
+  if(!ls.length && !lkEd) return h + '<div class="fx-vazio">Nenhum link ainda. Crie um pra mandar no direct no lugar do link do checkout.</div></div>';
+  if(ls.length) h += '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:640px"><tr><th>Link</th><th>Vai para</th><th class="n">Cliques</th><th class="n">Vendas</th>'+(dir ? '<th class="n">Faturamento</th>' : '')+'<th></th></tr>'+
+    ls.map(function(l, i){
+      var dest = String(l.destino || '').replace(/^https?:\/\//, '').split('?')[0];
+      return '<tr'+(l.ativo === false ? ' style="opacity:.5"' : '')+'><td><b>'+fnEsc(l.nome)+'</b>'+(l.ativo === false ? ' <span class="sv-pill">desligado</span>' : '')+
+        '<div class="lk-url"><code>'+fnEsc(l.url.replace(/^https:\/\//, ''))+'</code><button class="fn-btn g sm" onclick="lcCopiar(\''+fnEsc(l.url)+'\', this)">Copiar</button></div></td>'+
+        '<td class="sv-url" title="'+fnEsc(l.destino)+'">'+(l.ehCheckout ? '<span class="sv-pill sv-ok">checkout</span> ' : '<span class="sv-pill">página</span> ')+fnEsc(dest)+'</td>'+
+        '<td class="n">'+(l.ehCheckout ? fnNum(l.cliques || 0) : '<span class="fx-sub" title="Na página, quem conta é o pixel">pixel</span>')+'</td>'+
+        '<td class="n">'+(l.ehCheckout ? fnNum(l.vendas || 0) : '—')+'</td>'+
+        (dir ? '<td class="n">'+(l.ehCheckout ? fnDin(l.fat || 0) : '—')+'</td>' : '')+
+        '<td><button class="fn-btn g sm" onclick="lkEditar('+i+')">Editar</button></td></tr>';
+    }).join('')+'</table></div><div class="fx-sub" style="margin-top:8px">Últimos 30 dias. Link que vai pra uma página com o pixel só leva as UTMs: as visitas aparecem na jornada pelo pixel.</div>';
+  return h + '</div>';
+}
+function lkNovo(){
+  var f = typeof fnAtual === 'function' ? fnAtual() : null;
+  lkEd = { nome:'', destino:'', slug:'', dominio:'', utm:{ source:'instagram', medium:'social', content:'dm' }, projeto: fnProj || '', funil: f ? f.id : '', ativo:true };
+  lcPintar();
+}
+function lkEditar(i){
+  var l = ((lcDados && lcDados.links) || [])[i]; if(!l) return;
+  lkEd = JSON.parse(JSON.stringify(l)); lkEd.utm = lkEd.utm || {};
+  lcPintar();
+}
+function lkCampo(k, v){
+  if(!lkEd) return;
+  if(k.indexOf('utm.') === 0) lkEd.utm[k.slice(4)] = v; else lkEd[k] = v;
+  if(k === 'nome' && !lkEd.id && !lkEd.slugMexido){ var s = document.getElementById('lk-slug'); lkEd.slug = lkSlug(v); if(s) s.value = lkEd.slug; }
+  if(k === 'slug') lkEd.slugMexido = true;
+  var p = document.getElementById('lk-previa'); if(p) p.textContent = lkPrevia();
+}
+function lkSlug(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+function lkPrevia(){ return 'https://'+(lkEd.dominio || location.host)+'/l/'+(lkEd.slug || '…'); }
+function lkModelo(i){ var m = LK_MODELOS[i]; if(!m || !lkEd) return; lkEd.utm = Object.assign({}, lkEd.utm, m[1]); lcPintar(); }
+function lkForm(){
+  var e = lkEd, u = e.utm || {};
+  var inp = function(rot, k, val, ph, extra){ return '<label class="lk-f"><span>'+rot+'</span><input class="fi" value="'+fnEsc(val || '')+'" placeholder="'+fnEsc(ph || '')+'" oninput="lkCampo(\''+k+'\', this.value)"'+(extra || '')+'></label>'; };
+  return '<div class="lk-form">'+
+    inp('Nome', 'nome', e.nome, 'ex.: Direct · Elite anual')+
+    inp('Destino (checkout ou página)', 'destino', e.destino, 'https://checkout.payt.com.br/…', ' inputmode="url"')+
+    '<div class="lk-dupla">'+inp('Final do link', 'slug', e.slug, 'direct-elite', ' id="lk-slug"')+
+      '<label class="lk-f"><span>Domínio</span><div id="lk-dom"></div></label></div>'+
+    '<div class="lk-f"><span>Origem (UTMs)</span><div class="lc-bts" style="margin:0 0 8px">'+LK_MODELOS.map(function(m, i){ return '<button class="fn-btn g sm" onclick="lkModelo('+i+')">'+m[0]+'</button>'; }).join('')+'</div>'+
+      '<div class="lk-utms">'+inp('utm_source', 'utm.source', u.source, 'instagram')+inp('utm_medium', 'utm.medium', u.medium, 'social')+
+        inp('utm_content', 'utm.content', u.content, 'dm')+inp('utm_campaign', 'utm.campaign', u.campaign, 'deixe vazio')+'</div>'+
+      '<div class="fx-sub">Deixe o utm_campaign vazio: assim o link nunca tira o crédito de um anúncio. Pra separar um envio do outro, acrescente <code>?utm_content=story</code> no fim do link.</div></div>'+
+    '<div class="lk-previa">Link pra mandar: <code id="lk-previa">'+fnEsc(lkPrevia())+'</code></div>'+
+    '<div class="lc-bts">'+
+      (e.id ? '<label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox"'+(e.ativo !== false ? ' checked' : '')+' onchange="lkEd.ativo=this.checked"> Ligado</label>' : '')+
+      '<button class="fn-btn sm" onclick="lkSalvar(this)">Salvar link</button><button class="fn-btn g sm" onclick="lkEd=null;lcPintar()">Cancelar</button></div>'+
+  '</div>';
+}
+function lkSalvar(bt){
+  if(!lkEd) return;
+  if(bt) bt.disabled = true;
+  fetch('/api/links/rastreados', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(lkEd) })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
+    .then(function(d){ lkEd = null; toastFn('Link salvo: /l/'+d.link.slug); lcCarregar(); })
+    .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não salvou: '+e.message); });
+}
+
 function lcEhDir(){ return _ehGestor(); }
 function lcPadrao(){
   return 'utm_source={{site_source_name}}&utm_campaign={{campaign.id}}&utm_medium={{adset.id}}' +
@@ -30790,9 +30878,10 @@ function lcCarregar(){
   Promise.all([
     fetch('/api/links/validador?dias=7').then(function(r){ return r.json(); }),
     fetch('/api/canais/resumo?dias=28').then(function(r){ return r.json(); }),
-    fetch('/api/canais').then(function(r){ return r.json(); })
+    fetch('/api/canais').then(function(r){ return r.json(); }),
+    fetch('/api/links/rastreados?projeto=' + encodeURIComponent(fnProj || '')).then(function(r){ return r.json(); }).catch(function(){ return {}; })
   ]).then(function(x){
-    lcDados = { val: x[0], res: x[1] }; lcCanais = (x[2] && x[2].lista) || [];
+    lcDados = { val: x[0], res: x[1], links: (x[3] && x[3].links) || [] }; lcCanais = (x[2] && x[2].lista) || [];
     var n = document.getElementById('fx-n-links'); if(n) n.textContent = (x[0] && x[0].foraDoPadrao) ? String(x[0].foraDoPadrao) : '';
     lcPintar();
   }).catch(function(e){ el.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
@@ -30823,7 +30912,7 @@ function lcPintar(){
   var el = document.getElementById('lc-corpo'); if(!el || !lcDados) return;
   var v = lcDados.val || {}, r = lcDados.res || {}, dir = lcEhDir();
   var tipoRot = { id:['ok','ID'], nome:['ruim','Nome'], macro:['ruim','Macro sem valor'], vazio:['ruim','Sem UTM'] };
-  var h = '';
+  var h = lkCartao();
 
   h += '<div class="fx-cart" style="margin-bottom:16px"><div class="fx-cc"><h3>Padrão de UTM da Meta</h3></div>'+
     '<p class="fx-sub" style="margin:-6px 0 12px">Cole em “Parâmetros de URL” de todos os anúncios. Usa os <b>ids</b>: duplicar ou renomear a campanha não quebra o vínculo com a venda.</p>'+
@@ -30889,6 +30978,7 @@ function lcPintar(){
   }
   h += '</div>';
   el.innerHTML = h;
+  if(lkEd) dmSeletor('lk-dom', lkEd.dominio, function(d){ lkCampo('dominio', d); });
 }
 
 // ══════════════════════════════════════════════════════
@@ -36414,7 +36504,7 @@ function vdPintar(){
   var ab = function(id, t){ return '<button class="'+(vdAba === id ? 'on' : '')+'" onclick="vdAba=\''+id+'\';vdPintar()">'+t+'</button>'; };
   var corpo = '';
   if(vdAba === 'marketing'){
-    var cred = v.credito ? (v2Anuncio(v.credito.cont) || v2Fonte(v.credito.fonte))+(v.credito.camp ? ' · '+String(v.credito.camp).split('|')[0].trim() : '') : '';
+    var cred = v.credito ? (v2Anuncio(v.credito.cont) || v2Fonte(v.credito.fonte))+(v.credito.camp ? ' · '+String(v.credito.camp).split('|')[0].trim() : '')+(v.credito.outroAparelho ? ' (anúncio visto em outro aparelho)' : '') : '';
     corpo =
       '<div class="v2-rot vd-sec">UTM</div><div class="vd-kvs">'+
         kv('utm_source', c.utm_source, 1)+kv('utm_medium', c.utm_medium, 1)+kv('utm_campaign', c.utm_campaign, 1)+kv('utm_term', c.utm_term, 1)+kv('utm_content', c.utm_content, 1)+kv('utm_id', c.utm_id, 1)+'</div>'+

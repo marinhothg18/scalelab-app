@@ -9999,6 +9999,8 @@ function _pessoas() {
     try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_teste TEXT'); } catch (e) {}
     try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_var TEXT'); } catch (e) {}
     try { db.exec('ALTER TABLE pedidos ADD COLUMN plataforma TEXT'); } catch (e) {}
+    // o crédito veio de outro aparelho da mesma pessoa (id desse outro visitante)
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN cred_vis TEXT'); } catch (e) {}
     // os códigos de rastreio que vieram na venda (UTMs, src, sck, xcod, fbclid): o
     // aviso cru só guarda os últimos 50, e o marketing da venda precisa de todos
     try { db.exec('ALTER TABLE pedidos ADD COLUMN codigos TEXT'); } catch (e) {}
@@ -10418,6 +10420,21 @@ function _pedidoRegistrar(venda, p, opts) {
         const c = _canalDe(s.fonte, canais);
         if (_toqueEhAnuncio(s, c)) { cred = { fonte: s.fonte, camp: s.camp, cont: s.cont, canal: c.id, s }; break; }
       }
+      // A mesma pessoa em outro aparelho ou navegador (ligada pelo e-mail ou
+      // telefone): viu o anúncio no celular e comprou pelo link do direct no
+      // computador. Se este visitante não tem anúncio no caminho, o anúncio do
+      // outro leva o crédito — o que vale é a pessoa ter clicado no anúncio.
+      if (!cred && leadId) {
+        const outros = _q('SELECT visitante FROM lead_visitante WHERE lead=? AND visitante<>? LIMIT 20').all(leadId, vis).map(r => r.visitante);
+        if (outros.length) {
+          const so = _q(`SELECT visitante, fonte, midia, camp, cont, termo, inicio FROM sessoes WHERE visitante IN (${outros.map(() => '?').join(',')})
+                         AND inicio<=? AND inicio>=? ORDER BY inicio DESC LIMIT 300`).all(...outros, em + 60000, em - JANELA_ANUNCIO_DIAS * 86400000);
+          for (const s of so) {
+            const c = _canalDe(s.fonte, canais);
+            if (_toqueEhAnuncio(s, c)) { cred = { fonte: s.fonte, camp: s.camp, cont: s.cont, canal: c.id, s, outroVis: s.visitante }; break; }
+          }
+        }
+      }
       if (!cred) {
         // sem anúncio no caminho: fica com o último toque que não é de apoio
         for (const s of ss7) {
@@ -10470,6 +10487,7 @@ function _pedidoRegistrar(venda, p, opts) {
       venda.ck ? txt(venda.ck.t, 60) : null, venda.ck ? txt(venda.ck.v, 40) : null, txt(venda.plataforma, 20),
       venda.codigos && Object.keys(venda.codigos).length ? JSON.stringify(venda.codigos) : null);
 
+    if (ins.changes && cred && cred.outroVis) _q('UPDATE pedidos SET cred_vis=? WHERE id=?').run(cred.outroVis, idPed);
     if (ins.changes && vis) {
       const sid = sessaoRef ? sessaoRef.id : null;
       const rot = (txt(venda.produto, 60) || 'Pedido') + (Number(venda.valor) ? ' · R$ ' + Number(venda.valor).toFixed(2).replace('.', ',') : '');
@@ -11325,7 +11343,7 @@ app.get('/api/venda/:id', authUsuario, (req, res) => {
       valor: dir ? o.valor : null, liquido: dir ? o.liquido : null, produto: o.produto, plano: o.plano, metodo: o.metodo, motivo: o.motivo,
       plataforma: o.plataforma || (String(o.id).indexOf(':') > 0 ? String(o.id).split(':')[0] : 'payt'), em: o.em,
       visitante: o.visitante || null, casou: o.casou || null, semOrigem: o.sem_origem || null, semOrigemExplica: _SEM_ORIGEM_EXPLICA[o.sem_origem] || '',
-      credito: o.cred_fonte || o.cred_camp || o.cred_cont ? { fonte: o.cred_fonte, camp: o.cred_camp, cont: o.cred_cont, canal: o.cred_canal } : null,
+      credito: o.cred_fonte || o.cred_camp || o.cred_cont ? { fonte: o.cred_fonte, camp: o.cred_camp, cont: o.cred_cont, canal: o.cred_canal, outroAparelho: !!o.cred_vis } : null,
       apoio: o.apoio || null },
       codigos: cod, codigosDe: de, vsl: _vslDoSrc(dbj, cod.src), linha, capi: _capiDaVenda(o, dir) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -16572,6 +16590,122 @@ app.get('/r/:slug', (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════
+// ── LINKS RASTREADOS (/l/:slug) ──
+// O link pra mandar no direct, no WhatsApp ou no e-mail, onde não dá pra pôr o
+// pixel. O servidor faz o que o pixel faria: registra a visita com as UTMs do
+// link e, quando o destino é um checkout, cola o sck com o id da pessoa — a
+// venda volta ligada a ela. Destino que é página com o pixel só recebe as
+// UTMs (o pixel registra a visita lá; registrar aqui também contaria duas).
+// Quem recebe o link e já viu um anúncio em outro aparelho é ligado pelo
+// e-mail ou telefone da compra, e o crédito vai pro anúncio (ver _pedidoRegistrar).
+// ══════════════════════════════════════════════════════
+const KEY_LINKS = 'sl_links_rastreados';   // server-only: gerenciado pelas rotas abaixo
+// a mesma lista do pixel (ehCheckout no px.js): gateway no domínio, palavra de compra no caminho
+const _LK_GATEWAYS = new RegExp(['payt','kiwify','hotmart','monetizze','eduzz','braip','perfectpay','cakto','ticto',
+  'kirvano','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
+  'octuspay','buygoods','iexperience','guru','vega','hubla','hub\\.la'].join('|'), 'i');
+const _LK_PALAVRAS = new RegExp(['checkout','pagamento','payment','pague','pedido','carrinho','cart','order',
+  'finalizar','confirmacao','confirmation','pay\\.'].join('|'), 'i');
+function _ehCheckoutUrl(href) {
+  try { const u = new URL(href); return _LK_GATEWAYS.test(u.host) || _LK_PALAVRAS.test(u.host + u.pathname); } catch (e) { return false; }
+}
+function _linksLista(db) { return (Array.isArray(db.store[KEY_LINKS]) ? db.store[KEY_LINKS] : []).filter(Boolean); }
+const _LINK_UTM = ['source', 'medium', 'campaign', 'content', 'term'];
+function _linkSlug(t) {
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
+app.get('/l/:slug', (req, res) => {
+  try {
+    const slug = _linkSlug(req.params.slug);
+    const db = readDB();
+    const l = _linksLista(db).find(x => x.slug === slug && x.ativo !== false);
+    if (!l) return res.status(404).send('Link não encontrado.');
+    let u; try { u = new URL(l.destino); } catch (e) { return res.status(404).send('Link sem destino válido.'); }
+    // UTMs: as do link; as que vierem na URL ganham (o mesmo link com utm_content=story)
+    const aqui = {};
+    _LINK_UTM.forEach(k => {
+      const v = String(req.query['utm_' + k] || (l.utm || {})[k] || '').trim().slice(0, 160);
+      if (v) aqui['utm_' + k] = v;
+    });
+    const fbclid = String(req.query.fbclid || '').slice(0, 200);
+    if (fbclid) { aqui.fbclid = fbclid; aqui.fbc = 'fb.1.' + Date.now() + '.' + fbclid; }
+    Object.keys(aqui).forEach(k => { if (k !== 'fbc') u.searchParams.set(k, aqui[k]); });
+    const ehCk = l.tipo === 'checkout' || (l.tipo !== 'pagina' && _ehCheckoutUrl(u.href));
+    if (ehCk) {
+      // o id da pessoa: o mesmo tmx_id do pixel quando o link mora no domínio das páginas
+      const cook = String(req.headers.cookie || '');
+      let vid = (cook.match(/(?:^|;\s*)tmx_id=([A-Za-z0-9_-]{6,40})/) || [])[1] || '';
+      if (!vid) vid = 'v' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex').slice(0, 6);
+      res.setHeader('Set-Cookie', 'tmx_id=' + vid + ';Path=/;Max-Age=7776000;SameSite=Lax' +
+        (req.headers['x-forwarded-proto'] === 'https' ? ';Secure' : ''));
+      const sck = String(u.searchParams.get('sck') || '').trim();
+      if (!/tmx_[a-z0-9]/i.test(sck)) u.searchParams.set('sck', (sck && !/^(organic|organico|direct|direto|none|null)$/i.test(sck) ? sck + '~' : '') + 'tmx_' + vid);
+      if (!u.searchParams.get('tmx_vid')) u.searchParams.set('tmx_vid', vid);
+      try {
+        const c = { id: vid, funil: l.funil || '', etapa: 'link', pg: String(req.headers.host || '') + '/l/' + slug, aqui,
+                    utm: { source: aqui.utm_source, medium: aqui.utm_medium, campaign: aqui.utm_campaign, content: aqui.utm_content, term: aqui.utm_term },
+                    primeiro: { fbclid: aqui.fbclid, fbc: aqui.fbc }, ref: String(req.headers.referer || '').slice(0, 200) };
+        const interno = _pEhInterno(c, req);
+        _pxRegistrar(Object.assign({}, c, { tipo: 'entrou' }), req, interno);
+        _pxRegistrar(Object.assign({}, c, { tipo: 'checkout', destino: u.host + u.pathname, rot: l.nome || slug }), req, interno);
+      } catch (e) { console.error('[LINK] visita não gravou:', e.message); }
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.redirect(302, u.toString());
+  } catch (e) { res.status(500).send('Erro no link.'); }
+});
+
+// números de cada link: cliques (visitas que entraram por ele) e vendas dessas pessoas
+app.get('/api/links/rastreados', authUsuario, (req, res) => {
+  try {
+    const db = readDB(), dir = _ehDir(req), proj = String(req.query.projeto || '').slice(0, 80);
+    const lista = _linksLista(db).filter(l => !proj || l.projeto === proj);
+    const desde = Date.now() - 30 * 86400000, pdb = _pessoas();
+    const links = lista.map(l => {
+      let cliques = null, vendas = null, fat = null;
+      if (pdb) {
+        const pad = '%/l/' + l.slug;
+        cliques = _q('SELECT COUNT(*) n FROM sessoes WHERE entrada LIKE ? AND inicio >= ? AND interno=0').get(pad, desde).n;
+        const v = _q(`SELECT COUNT(*) n, SUM(valor) s FROM pedidos WHERE pago=1 AND estorno=0 AND em >= ? AND visitante IN
+                        (SELECT visitante FROM sessoes WHERE entrada LIKE ? AND inicio >= ?)`).get(desde, pad, desde - 7 * 86400000);
+        vendas = v.n; fat = dir ? (v.s || 0) : null;
+      }
+      return Object.assign({}, l, { url: 'https://' + (l.dominio || req.headers.host || '') + '/l/' + l.slug,
+        ehCheckout: l.tipo === 'checkout' || (l.tipo !== 'pagina' && _ehCheckoutUrl(l.destino)), cliques, vendas, fat });
+    }).sort((a, b) => (b.criado || 0) - (a.criado || 0));
+    res.json({ ok: true, links, dias: 30 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/links/rastreados', authUsuario, (req, res) => {
+  try {
+    const b = req.body || {}, db = readDB(), lista = _linksLista(db);
+    let destino = String(b.destino || '').trim();
+    if (destino && !/^https?:\/\//i.test(destino)) destino = 'https://' + destino;
+    try { const u = new URL(destino); if (!/^https?:$/.test(u.protocol)) throw 0; } catch (e) { return res.status(400).json({ error: 'Cole o endereço completo do destino, começando com https://' }); }
+    const nome = String(b.nome || '').trim().slice(0, 80);
+    if (!nome) return res.status(400).json({ error: 'Dê um nome pro link (ex.: Direct · Elite).' });
+    let l = b.id ? lista.find(x => x.id === b.id) : null;
+    const slug = _linkSlug(b.slug || (l && l.slug) || nome);
+    if (!slug) return res.status(400).json({ error: 'O final do link precisa de letras ou números.' });
+    if (lista.some(x => x.slug === slug && (!l || x.id !== l.id))) return res.status(400).json({ error: 'Já existe um link terminando em /l/' + slug + '. Troque o final.' });
+    const utm = {}; _LINK_UTM.forEach(k => { const v = String((b.utm || {})[k] || '').trim().slice(0, 160); if (v) utm[k] = v; });
+    const dados = { nome, slug, destino, utm, projeto: String(b.projeto || '').slice(0, 80), funil: String(b.funil || '').slice(0, 80),
+      tipo: ['checkout', 'pagina'].indexOf(b.tipo) >= 0 ? b.tipo : 'auto', dominio: _dominioLimpo(b.dominio) || '', ativo: b.ativo !== false,
+      _updatedAt: now() };
+    if (dados.dominio && !DOMINIO_RE.test(dados.dominio)) return res.status(400).json({ error: 'Domínio inválido.' });
+    const u = req.user || {};
+    if (l) Object.assign(l, dados);
+    else { l = Object.assign({ id: 'lk' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex'), criado: Date.now(), por: u.nome || u.email || '' }, dados); lista.push(l); }
+    db.store[KEY_LINKS] = lista; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_LINKS] = now();
+    audit(db, b.id ? 'link_editado' : 'link_criado', l.slug, { destino: l.destino.split('?')[0], ativo: l.ativo }, req.user);
+    writeDB(db);
+    res.json({ ok: true, link: l });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
 // ── QUIZ DE FUNIL ──
 // O quiz é montado no Central TMX (sl_quizzes, sincronizado) e servido aqui em
 // /q/:slug. Quem desenha as telas é public/quiz-motor.js, o MESMO arquivo da
@@ -16615,6 +16749,7 @@ function _dominiosConhecidos(db) {
     .forEach(r => r && r.dominio && add(r.dominio, 'Teste A/B', r.nome || r.slug));
   (Array.isArray(db.store[KEY_QUIZZES]) ? db.store[KEY_QUIZZES] : [])
     .forEach(q => q && q.dominio && add(q.dominio, 'Quiz', q.nome || q.slug));
+  _linksLista(db).forEach(l => l.dominio && add(l.dominio, 'Link', l.nome || l.slug));
   return Object.values(mapa).sort((a, b) => a.dominio.localeCompare(b.dominio));
 }
 
