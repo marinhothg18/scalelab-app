@@ -36470,7 +36470,8 @@ var LD_EV = {
   checkout: function(e){ return ['🛒','warn', 'Clicou em '+(e.rot ? '"'+e.rot+'"' : 'comprar'), 'foi pro checkout'+(e.extra.destino?' '+e.extra.destino:'')]; },
   tentativa:function(e){ return ['✕','bad', e.rot || 'Tentou pagar', (e.extra.motivo||'')+(e.extra.casou?' · ligado pelo '+(e.extra.casou==='sck'?'id (sck)':e.extra.casou):'')]; },
   compra:   function(e){ return ['✓','ok', 'Compra aprovada · '+(e.rot||''), 'webhook · '+(e.extra.casou==='sck' ? 'ligado pela jornada (sck)' : e.extra.casou ? 'ligado pelo '+e.extra.casou : 'sem casamento')]; },
-  estorno:  function(e){ return ['↩','bad', 'Estorno · '+(e.rot||''), e.extra.status||'']; }
+  estorno:  function(e){ return ['↩','bad', 'Estorno · '+(e.rot||''), e.extra.status||'']; },
+  identificou: function(e){ return ['@','info', 'Digitou o '+(e.extra.campo||e.rot||'e-mail'), e.extra.como==='pagina' ? 'a página avisou o TMX (TMX.identificar)' : 'num formulário da página: a venda casa com a jornada mesmo sem o sck']; }
 };
 function ldFichaPintar(){
   var ov = document.getElementById('ld-ficha'), d = ldFichaDados; if(!ov || !d) return;
@@ -36736,6 +36737,9 @@ function psPintar(){
         '<h3 style="margin-top:18px">O pixel agora faz sozinho</h3>'+sozinho+
         '<details style="margin-top:14px"><summary class="fx-sub" style="cursor:pointer">Botão de compra que navega por JavaScript (TMXBotao)</summary>'+
           '<div class="v2-code" id="ps-botao">'+fnEsc(psBotao(f))+'</div><button class="fn-btn g sm" onclick="fnCopiar(\'ps-botao\')">Copiar</button></details>'+
+        '<details style="margin-top:10px"><summary class="fx-sub" style="cursor:pointer">Formulário que não usa campo de e-mail comum (TMX.identificar)</summary>'+
+          '<div class="fx-sub" style="margin:8px 0">O pixel já reconhece sozinho os campos de e-mail e telefone. Se o formulário for diferente, a página avisa assim, depois que a pessoa enviar:</div>'+
+          '<div class="v2-code" id="ps-ident">'+fnEsc('<script>\n  TMX.identificar({ email: emailDigitado, telefone: telefoneDigitado });\n<\/script>')+'</div><button class="fn-btn g sm" onclick="fnCopiar(\'ps-ident\')">Copiar</button></details>'+
         '<h3 style="margin-top:18px">Validador de UTM</h3><div class="s" style="margin-bottom:8px">Macros que chegaram ao pé da letra</div>'+macros+
         '<button class="fn-btn g sm" style="margin-top:10px" onclick="fnAba(\'links\')">Padrão de UTM e anúncios fora dele ›</button>'+
       '</div>'+

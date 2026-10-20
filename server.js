@@ -9587,6 +9587,13 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
     // Trafego do time aparece na lista de Leads (com filtro), mas nao entra em
     // nenhuma conta: nem nos blocos do mapa, nem no teste A/B.
     const interno = _pEhInterno(c, req);
+    // e-mail ou telefone digitado numa página: liga a pessoa ao lead e para aí
+    // (não é visita nem conta em bloco nenhum). Do time não liga: quem atende
+    // pode digitar o e-mail de um cliente.
+    if (tipo === 'identificou') {
+      if (!interno && visitante) { try { _identRegistrar(visitante, c.ident, c); } catch (e) {} }
+      return res.sendStatus(204);
+    }
     _agoraMarcar(visitante, c, interno, tipo === 'saiu');
     if (!interno && tipo !== 'ckteste') _fContar(funil, etapa, tipo, visitante, c);
 
@@ -11386,7 +11393,7 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
         fbclid: !!v.fbclid, fbc: !!v.fbc, fbp: !!v.fbp },
       pedidos: peds.map(p => ({ id: p.id, pedido: p.pedido, status: p.status, pago: !!p.pago, estorno: !!p.estorno, valor: dir ? p.valor : null,
         produto: p.produto, plano: p.plano, metodo: p.metodo, motivo: p.motivo, casou: p.casou, em: p.em })),
-      capi: { conectado: false, aviso: 'Envio de Purchase à Meta (CAPI) ainda não está ligado: precisa do token da Meta.' },
+      capi: { conectado: false, aviso: 'Compra pra Meta (API de Conversões) em modo comparação: nada é enviado ainda. Clique na compra pra ver o que iria.' },
       visitas, soltos,
       resumo: _resumoDaPessoa(v, evs, peds, nomeEtapa) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -11396,6 +11403,59 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
 const _ehDir = req => !!(req && req.user && CARGOS_NEGOCIO.has(req.user.cargo));
 const _semValor = t => String(t || '').replace(/\s*·\s*R\$\s*[\d.,]+/g, '');
 // "Ydeshi G. O.": o primeiro nome inteiro e as iniciais do resto
+// ── QUEM É A PESSOA (pixel: e-mail ou telefone digitado numa página sua) ──
+// O pixel avisa quando a pessoa digita o e-mail ou o telefone num formulário,
+// quiz ou captura, ou quando a página chama TMX.identificar({ email, telefone }).
+// Aqui vira o mesmo lead que a venda usa (código com sal, nunca o e-mail): a
+// venda que chega sem o sck do TMX casa com a jornada pelo e-mail ou telefone
+// do checkout. Antes só uma venda anterior ligava a pessoa ao visitante.
+function _identRegistrar(vis, ident, c) {
+  const db = _pessoas(); if (!db || !vis || !ident || typeof ident !== 'object') return null;
+  const email = String(ident.e || '').trim().toLowerCase().slice(0, 160);
+  const eh = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(email) ? _hashCurto(_pSal + '|e|' + email) : '';
+  const tel = _telNorm(ident.t);
+  const th = tel ? _hashCurto(_pSal + '|t|' + tel) : '';
+  if (!eh && !th) return null;
+  if (!_q('SELECT 1 FROM visitantes WHERE id=?').get(vis)) return null;   // o pixel ainda não registrou a visita
+  const em = Date.now(), nome = ident.n ? _iniciais(String(ident.n).slice(0, 80)) || null : null;
+  const como = ident.por === 'codigo' ? 'pagina' : 'formulario';
+  db.exec('BEGIN');
+  try {
+    let lead = eh ? _q('SELECT id FROM leads WHERE email_h=? LIMIT 1').get(eh) : null;
+    if (!lead && th) lead = _q('SELECT id FROM leads WHERE tel_h=? LIMIT 1').get(th);
+    // dado novo de quem já se identificou (digitou o e-mail, agora o telefone): mesma pessoa
+    if (!lead) { const v = _q('SELECT lead FROM visitantes WHERE id=?').get(vis); if (v && v.lead) lead = { id: v.lead }; }
+    let leadId = lead ? lead.id : null;
+    if (!leadId) {
+      leadId = 'L' + (eh || th).slice(0, 16);
+      _q('INSERT OR IGNORE INTO leads(id, email_h, tel_h, email_mask, nome, criado) VALUES(?,?,?,?,?,?)')
+        .run(leadId, eh || null, th || null, _mascEmail(email) || null, nome, em);
+    } else {
+      _q('UPDATE leads SET email_h=COALESCE(email_h, ?), tel_h=COALESCE(tel_h, ?), email_mask=COALESCE(email_mask, ?), nome=COALESCE(nome, ?) WHERE id=?')
+        .run(eh || null, th || null, _mascEmail(email) || null, nome, leadId);
+    }
+    const novo = _q('INSERT OR IGNORE INTO lead_visitante(lead, visitante, por, em) VALUES(?,?,?,?)').run(leadId, vis, como, em).changes;
+    _q('UPDATE visitantes SET lead=COALESCE(lead, ?) WHERE id=?').run(leadId, vis);
+    // na jornada: uma linha por dado novo (o código, nunca o valor)
+    const campo = eh && th ? 'e-mail e telefone' : eh ? 'e-mail' : 'telefone';
+    const marca = _hashCurto((eh || '') + '|' + (th || '')).slice(0, 8);
+    const ja = _q("SELECT extra FROM eventos WHERE visitante=? AND tipo='identificou' ORDER BY em DESC LIMIT 20").all(vis)
+      .some(x => { try { return JSON.parse(x.extra || '{}').h === marca; } catch (e) { return false; } });
+    if (novo || !ja) {
+      const s = _pSess.get(vis);
+      _q('INSERT INTO eventos(sessao, visitante, funil, etapa, tipo, pg, em, rot, extra) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(s ? s.id : null, vis, String(c.funil || '').slice(0, 80) || null, String(c.etapa || '').slice(0, 60) || null, 'identificou',
+             c.pg ? _normPg(c.pg) : null, em, campo, JSON.stringify({ campo, como, h: marca }));
+    }
+    db.exec('COMMIT');
+    return leadId;
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (e2) {}
+    console.error('[PESSOAS] identificação não gravou:', e.message);
+    return null;
+  }
+}
+
 function _iniciais(n) {
   const p = String(n || '').trim().split(/\s+/).filter(Boolean);
   if (!p.length) return '';
@@ -12603,6 +12663,7 @@ app.get('/api/funil/pixel-saude', authUsuario, async (req, res) => {
       { ic: '🔗', rot: 'Cola sck e UTMs em todo link de checkout', status: 'ligado' },
       { ic: '🛒', rot: 'Marca "abriu checkout" no clique do botão', status: conta7('checkout') ? 'ligado' : 'esperando clique' },
       { ic: '🎬', rot: 'Lê retenção e pitch do player Vturb', status: conta7('video') ? 'ligado' : 'sem player visto' },
+      { ic: '✉️', rot: 'Reconhece a pessoa pelo e-mail ou telefone digitado na página', status: conta7('identificou') ? 'ligado' : 'esperando formulário' },
       { ic: '🧑‍💻', rot: 'Ignora tráfego interno (cookie ou IP)', status: (reg.ips || 0) ? reg.ips + ' IP' + (reg.ips === 1 ? '' : 's') : ((reg.pessoas || 0) ? reg.pessoas + ' pessoa' + (reg.pessoas === 1 ? '' : 's') : 'ligado') },
       { ic: '🔒', rot: 'Consentimento LGPD', status: 'desligado' }
     ];
@@ -16103,6 +16164,42 @@ const PIXEL_JS = `(function(w,d){
   // Marca uma etapa no clique de um botao — serve pro checkout do gateway,
   // onde o nosso codigo nao entra mas o clique acontece numa pagina sua.
   w.TMX = function(nome, extra){ manda(nome, extra); };
+  // ── Quem e a pessoa ──────────────────────────────────────────────────────
+  // Quando ela digita o e-mail ou o telefone numa pagina sua (quiz, formulario,
+  // captura), o pixel avisa o TMX: a venda casa com a jornada mesmo quando o
+  // checkout perde o sck. So e-mail e telefone, nunca senha nem cartao; o
+  // servidor guarda o codigo (hash), nunca o e-mail. A pagina tambem pode
+  // chamar TMX.identificar({ email: '...', telefone: '...' }).
+  // Fica de fora: campo dentro de data-tmx-ignorar, ou data-identificar="nao" no script.
+  var identVisto = {};
+  function identMandar(o){
+    o = o || {};
+    var e = String(o.email || '').trim().toLowerCase();
+    var t = String(o.telefone || o.whatsapp || o.phone || '').replace(/\\D/g, '');
+    if(!/^[^\\s@]+@[^\\s@]+\\.[a-z]{2,}$/.test(e)) e = '';
+    if(t.length < 10 || t.length > 13) t = '';
+    if(!e && !t) return false;
+    var k = e + '|' + t;
+    if(identVisto[k]) return true;
+    identVisto[k] = 1;
+    manda('identificou', { ident: { e: e, t: t, n: String(o.nome || '').trim().slice(0, 80), por: o.por || 'codigo' } });
+    return true;
+  }
+  w.TMX.identificar = function(o){ return identMandar({ email: o && o.email, telefone: o && (o.telefone || o.whatsapp || o.phone), nome: o && o.nome, por: 'codigo' }); };
+  if(eu.getAttribute('data-identificar') !== 'nao'){
+    var identTexto = function(el){ return [el.name, el.id, el.getAttribute('autocomplete'), el.getAttribute('placeholder'), el.getAttribute('aria-label')].join(' '); };
+    d.addEventListener('change', function(ev){
+      var el = ev.target;
+      if(!el || el.tagName !== 'INPUT') return;
+      var tipo = String(el.type || '').toLowerCase();
+      if(tipo === 'password' || tipo === 'hidden') return;
+      if(/^cc-/i.test(String(el.getAttribute('autocomplete') || ''))) return;
+      if(el.closest && el.closest('[data-tmx-ignorar]')) return;
+      var txt = identTexto(el);
+      if(tipo === 'email' || /e-?mail/i.test(txt)) identMandar({ email: el.value, por: 'campo' });
+      else if(tipo === 'tel' || /(^|[^a-z])(tel|fone|phone|celular|whats|zap)/i.test(txt)) identMandar({ telefone: el.value, por: 'campo' });
+    }, true);
+  }
   // ── Levar o first-touch ate o checkout ──────────────────────────────────
   // localStorage e por dominio: quando a pessoa clica em comprar e vai pro
   // gateway, a UTM fica pra tras e a venda chega sem origem. Aqui a gente
