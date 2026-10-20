@@ -2864,7 +2864,8 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-cols{position:relative}
 .cp-cols summary{list-style:none;padding:6px 11px}
 .cp-cols summary::-webkit-details-marker{display:none}
-.cp-pop{position:absolute;z-index:30;top:calc(100% + 6px);left:0;background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.28);padding:12px;width:min(520px,86vw);display:grid;grid-template-columns:repeat(3,1fr);gap:4px 14px}
+.cp-pop{position:absolute;z-index:30;top:calc(100% + 6px);left:0;background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.28);padding:12px;width:min(760px,92vw);max-height:70vh;overflow:auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 16px}
+@media (max-width:760px){.cp-pop{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .cp-pre{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2)}
 .cp-pre button{border:1px solid var(--border);background:var(--bg3);color:var(--text);border-radius:999px;padding:3px 10px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .cp-gr{display:flex;flex-direction:column;gap:5px;font-size:12.5px}
@@ -2902,6 +2903,13 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-chips span{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--bg3);color:var(--text2)}
 .cp-chips span.mu{background:rgba(139,92,246,.16);color:#a78bfa}
 .cp-st{font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:999px}
+.cp-tab td.f1{vertical-align:middle}
+.cp-sw{display:block;position:relative;width:34px;height:19px;border-radius:999px;border:0;background:var(--bg3);cursor:pointer;margin:0 0 5px;padding:0;transition:background .15s}
+.cp-sw i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:left .15s}
+.cp-sw.on{background:var(--green,#22C55E)} .cp-sw.on i{left:17px}
+.cp-sw.apagada{opacity:.45} .cp-sw:disabled{opacity:.4;cursor:wait}
+.cp-sw:focus-visible{outline:2px solid var(--accent,#1B9CFA);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.cp-sw,.cp-sw i{transition:none}}
 .cp-st.on{background:rgba(34,197,94,.15);color:var(--green)} .cp-st.off{background:var(--bg3);color:var(--text2)}
 .cp-chips .cp-st{font-size:10px}
 .cp-barra{height:4px;background:var(--bg3);border-radius:2px;margin-top:5px;min-width:70px}
@@ -40677,7 +40685,30 @@ var CP_COLS = [
   { k:'cpc',   t:'CPC',            g:'Anúncio',  on:1, v:function(c){ return c.cpc != null ? fmtAds(c.cpc) : '<i>—</i>'; } },
   { k:'cpm',   t:'CPM',            g:'Anúncio',  on:1, v:function(c){ return c.cpm != null ? fmtAds(c.cpm) : '<i>—</i>'; } },
   { k:'hook',  t:'Hook',           g:'Anúncio',  on:1, tit:'Assistiram 3 s do vídeo ÷ impressões', v:function(c){ return cpPct(c.hook, 0); } },
-  { k:'hold',  t:'Hold rate',      g:'Anúncio',  on:1, tit:'Assistiram 75% ÷ impressões', v:function(c){ return cpPct(c.hold, 1); } }
+  { k:'hold',  t:'Hold rate',      g:'Anúncio',  on:1, tit:'Assistiram 75% ÷ impressões', v:function(c){ return cpPct(c.hold, 1); } },
+  { k:'freq',  t:'Frequência',     g:'Anúncio',  on:0, tit:'Quantas vezes, em média, a mesma pessoa viu o anúncio', s:function(c){ return c.freq; }, v:function(c){ return c.freq ? c.freq.toFixed(2).replace('.',',') : '<i>—</i>'; } },
+  { k:'bid',   t:'Lance',          g:'Dinheiro', on:0, tit:'Bid cap da campanha', v:function(c){ return c.bid != null ? fmtAds(c.bid) : '<i>—</i>'; } },
+  { k:'ticket',t:'Ticket médio',   g:'Dinheiro', on:0, tit:'Faturamento ÷ vendas aprovadas', s:function(c){ return c.aprovadas ? c.faturamento / c.aprovadas : null; }, v:function(c){ return c.aprovadas ? fmtAds(c.faturamento / c.aprovadas) : '<i>—</i>'; } },
+  { k:'margem',t:'Margem',         g:'Dinheiro', on:0, tit:'Lucro ÷ faturamento', s:function(c){ return c.faturamento ? c.lucro / c.faturamento : null; }, v:function(c){ return c.faturamento ? cpPct(c.lucro / c.faturamento, 0) : '<i>—</i>'; } },
+  { k:'pendentes', t:'Pendentes',  g:'Vendas',   on:0, soma:1, tit:'Pix ou boleto gerado e ainda não pago', v:function(c){ return c.pendentes || 0; } },
+  { k:'ftmx',  t:'Faturamento TMX',g:'Vendas',   on:0, tit:'Faturamento das vendas que o TMX deu a esta campanha', s:function(c){ var x = cpTmxDe(c); return x ? x.faturamento : null; }, v:function(c){ var x = cpTmxDe(c); return x && x.faturamento != null ? fmtAds(x.faturamento) : '<i>—</i>'; } },
+  { k:'roastmx',t:'ROAS TMX',      g:'Vendas',   on:0, tit:'Faturamento TMX ÷ gasto', s:function(c){ var x = cpTmxDe(c); return x && x.faturamento != null && c.investimento ? x.faturamento / c.investimento : null; }, v:function(c){ var x = cpTmxDe(c); return x && x.faturamento != null && c.investimento ? (x.faturamento / c.investimento).toFixed(2).replace('.',',')+'x' : '<i>—</i>'; } },
+  { k:'cpatmx',t:'CPA TMX',        g:'Vendas',   on:0, tit:'Gasto ÷ vendas TMX', s:function(c){ var n = cpVendasTmx(c); return n ? c.investimento / n : null; }, v:function(c){ var n = cpVendasTmx(c); return n ? fmtAds(c.investimento / n) : '<i>—</i>'; } },
+  { k:'lpv',   t:'Visualizações da página', g:'Funil', on:0, soma:1, tit:'Quantos carregaram a página depois do clique (a Meta chama de LPV)', v:function(c){ return fnNum(c.lpv||0); } },
+  { k:'conexao',t:'Taxa de conexão', g:'Funil',  on:0, tit:'Visualizações da página ÷ cliques: quantos cliques viram a página abrir', s:function(c){ return c.cliques ? c.lpv / c.cliques : null; }, v:function(c){ return c.cliques ? cpPct(c.lpv / c.cliques, 0) : '<i>—</i>'; } },
+  { k:'cplpv', t:'Custo por visualização', g:'Funil', on:0, s:function(c){ return c.lpv ? c.investimento / c.lpv : null; }, v:function(c){ return c.lpv ? fmtAds(c.investimento / c.lpv) : '<i>—</i>'; } },
+  { k:'ic',    t:'Inícios de checkout', g:'Funil', on:0, soma:1, tit:'Quantos abriram o checkout, pelo pixel da Meta', v:function(c){ return fnNum(c.ic||0); } },
+  { k:'cpic',  t:'Custo por checkout', g:'Funil', on:0, s:function(c){ return c.ic ? c.investimento / c.ic : null; }, v:function(c){ return c.ic ? fmtAds(c.investimento / c.ic) : '<i>—</i>'; } },
+  { k:'convpag',t:'Conv. da página', g:'Funil',  on:0, tit:'Inícios de checkout ÷ visualizações da página', s:function(c){ return c.lpv ? c.ic / c.lpv : null; }, v:function(c){ return c.lpv ? cpPct(c.ic / c.lpv, 1) : '<i>—</i>'; } },
+  { k:'convck',t:'Conv. do checkout', g:'Funil', on:0, tit:'Vendas aprovadas ÷ inícios de checkout', s:function(c){ return c.ic ? c.aprovadas / c.ic : null; }, v:function(c){ return c.ic ? cpPct(c.aprovadas / c.ic, 1) : '<i>—</i>'; } },
+  { k:'vv',    t:'Plays',          g:'Vídeo',    on:0, soma:1, tit:'Quantos deram play no vídeo do anúncio', v:function(c){ return fnNum(c.vv||0); } },
+  { k:'v3',    t:'Viram 3 s',      g:'Vídeo',    on:0, soma:1, v:function(c){ return fnNum(c.v3||0); } },
+  { k:'v75',   t:'Viram 75%',      g:'Vídeo',    on:0, soma:1, v:function(c){ return fnNum(c.v75||0); } },
+  { k:'ret',   t:'Retenção',       g:'Vídeo',    on:0, tit:'Viram 3 s ÷ deram play', s:function(c){ return c.vv ? c.v3 / c.vv : null; }, v:function(c){ return c.vv ? cpPct(c.v3 / c.vv, 0) : '<i>—</i>'; } },
+  { k:'retbody',t:'Retenção do body', g:'Vídeo', on:0, tit:'Viram 75% ÷ deram play: o meio do vídeo segura?', s:function(c){ return c.vv ? c.v75 / c.vv : null; }, v:function(c){ return c.vv ? cpPct(c.v75 / c.vv, 1) : '<i>—</i>'; } },
+  { k:'cta',   t:'CTA',            g:'Vídeo',    on:0, tit:'Cliques ÷ viram 75%: o final chama pro clique?', s:function(c){ return c.v75 ? c.cliques / c.v75 : null; }, v:function(c){ return c.v75 ? (c.cliques / c.v75).toFixed(2).replace('.',',') : '<i>—</i>'; } },
+  { k:'criada',t:'Criada em',      g:'Info',     on:0, s:function(c){ return c.criada ? Date.parse(c.criada) : null; }, v:function(c){ return c.criada ? String(c.criada).slice(8,10)+'/'+String(c.criada).slice(5,7) : '<i>—</i>'; } },
+  { k:'dias',  t:'Dias no ar',     g:'Info',     on:0, s:function(c){ return c.criada ? Date.now() - Date.parse(c.criada) : null; }, v:function(c){ return c.criada ? Math.max(0, Math.floor((Date.now() - Date.parse(c.criada + 'T12:00:00')) / 86400000)) : '<i>—</i>'; } }
 ];
 (function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_cols') || 'null'); if(Array.isArray(s)) CP_COLS.forEach(function(c){ c.on = s.indexOf(c.k) >= 0 ? 1 : 0; }); }catch(e){} })();
 function cpPct(v, casas){ return v == null || isNaN(v) ? '<i>—</i>' : (v*100).toLocaleString('pt-BR',{minimumFractionDigits:casas,maximumFractionDigits:casas})+'%'; }
@@ -40709,7 +40740,9 @@ function cpGuardarCols(){ try{ localStorage.setItem('ads_cp_cols', JSON.stringif
 function cpAlternarCol(k){ CP_COLS.forEach(function(c){ if(c.k === k) c.on = c.on ? 0 : 1; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar(); }
 function cpPredef(q){
   var sets = { enxuta:['investimento','lucro','roas','aprovadas','vtmx','cpa'], dinheiro:['orc','investimento','faturamento','lucro','roas','cpa','aprovadas','vtmx'],
-               anuncio:['investimento','aprovadas','vtmx','impressoes','cliques','ctr','cpc','cpm','hook','hold'], tudo:CP_COLS.map(function(c){ return c.k; }) };
+               anuncio:['investimento','aprovadas','vtmx','impressoes','cliques','ctr','cpc','cpm','hook','hold','freq'],
+               funil:['investimento','aprovadas','vtmx','cliques','lpv','conexao','ic','convpag','convck','cpa'],
+               video:['investimento','aprovadas','impressoes','vv','v3','hook','v75','hold','ret','retbody','cta','ctr'], tudo:CP_COLS.map(function(c){ return c.k; }) };
   CP_COLS.forEach(function(c){ c.on = sets[q].indexOf(c.k) >= 0 ? 1 : 0; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar();
 }
 function cpOrdenar(k){ if(cpEst.ord === k) cpEst.desc = !cpEst.desc; else { cpEst.ord = k; cpEst.desc = true; } cpPintar(); }
@@ -40735,7 +40768,36 @@ function cpFiltradas(){
     return (!cpEst.conta || c.conta === cpEst.conta) && (!cpEst.status || st === cpEst.status) && (!b || String(c.nome).toLowerCase().indexOf(b) >= 0);
   });
 }
+// ── ligar e pausar campanha (pela Meta) ──
+// Só a Diretoria vê a chave. Sem a Meta conectada com ads_management ela
+// aparece apagada e o clique explica o que falta.
+var cpMeta = null;
+function cpMetaCarregar(){
+  if(cpMeta || !lcEhDir()) return;
+  cpMeta = { carregando: true };
+  fetch(API_BASE+'/api/meta/conexao').then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ cpMeta = { conectado: !!(d && d.conectado), pode: !!(d && d.conectado && (d.permissoes || []).indexOf('ads_management') >= 0) }; cpPintar(); })
+    .catch(function(){ cpMeta = { conectado: false, pode: false }; });
+}
+function cpChave(c, st){
+  if(!lcEhDir() || !c.campanhaId) return '';
+  var on = st[1] === 'on', pode = cpMeta && cpMeta.pode;
+  var tit = !pode ? (cpMeta && cpMeta.conectado ? 'Pra pausar daqui, o token da Meta precisa de ads_management' : 'Pra pausar daqui, conecte a Meta em Integrações') : (on ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta');
+  return '<button class="cp-sw'+(on ? ' on' : '')+(pode ? '' : ' apagada')+'" role="switch" aria-checked="'+on+'" title="'+fnEsc(tit)+'" aria-label="'+fnEsc(tit)+'" onclick="event.stopPropagation();cpAlternarStatus('+cpDados.indexOf(c)+', this)"><i></i></button>';
+}
+function cpAlternarStatus(i, bt){
+  var c = cpDados[i]; if(!c) return;
+  if(!cpMeta || !cpMeta.pode){ toastFn(cpMeta && cpMeta.conectado ? 'O token da Meta não tem ads_management. Gere outro marcando essa permissão e troque em Integrações → Meta.' : 'Pra pausar e ativar daqui, conecte a Meta em Configurações → Integrações → Meta.'); return; }
+  var ativo = cpStatus(c.status)[1] !== 'on';
+  if(!confirm((ativo ? 'Ativar' : 'Pausar')+' a campanha na Meta?\n\n'+cpNomeCurto(c.nome))) return;
+  if(bt) bt.disabled = true;
+  fetch(API_BASE+'/api/meta/campanha/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: c.campanhaId, ativo: ativo, nome: c.nome }) })
+    .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
+    .then(function(d){ c.status = d.status; c.mudanca = { campo:'status', de: ativo ? 'PAUSED' : 'ACTIVE', para: d.status, em: Date.now() }; toastFn(ativo ? 'Campanha ativada' : 'Campanha pausada'); cpPintar(); })
+    .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não mudou: '+e.message); });
+}
 function cpPintar(){
+  cpMetaCarregar();
   var novo = document.getElementById('cp-novo'), antiga = document.getElementById('ads-cp-antiga');
   if(!novo) return;
   var utm = _adsFonte() === 'utmify';
@@ -40754,7 +40816,7 @@ function cpPintar(){
 function cpBarra(){
   var grupos = {}; CP_COLS.forEach(function(c){ (grupos[c.g] = grupos[c.g] || []).push(c); });
   return '<div class="cp-tbar"><details class="cp-cols"'+(cpEst.colsAberto ? ' open' : '')+' ontoggle="cpEst.colsAberto=this.open"><summary>⚙ Colunas ('+cpColsOn().length+')</summary>'+
-      '<div class="cp-pop"><div class="cp-pre"><span>Rápido:</span><button onclick="cpPredef(\'enxuta\')">Enxuta</button><button onclick="cpPredef(\'dinheiro\')">Dinheiro</button><button onclick="cpPredef(\'anuncio\')">Anúncio</button><button onclick="cpPredef(\'tudo\')">Tudo</button></div>'+
+      '<div class="cp-pop"><div class="cp-pre"><span>Rápido:</span><button onclick="cpPredef(\'enxuta\')">Enxuta</button><button onclick="cpPredef(\'dinheiro\')">Dinheiro</button><button onclick="cpPredef(\'anuncio\')">Anúncio</button><button onclick="cpPredef(\'funil\')">Funil</button><button onclick="cpPredef(\'video\')">Vídeo</button><button onclick="cpPredef(\'tudo\')">Tudo</button></div>'+
       Object.keys(grupos).map(function(g){ return '<div class="cp-gr"><b>'+g+'</b>'+grupos[g].map(function(c){ return '<label><input type="checkbox"'+(c.on ? ' checked' : '')+' onchange="cpAlternarCol(\''+c.k+'\')"> '+c.t+'</label>'; }).join('')+'</div>'; }).join('')+
       '<div class="cp-nota">O TMX lembra a sua escolha neste aparelho.</div></div></details>'+
     '<span class="cp-dica">Shift + rodinha do mouse também anda pro lado</span>'+
@@ -40762,14 +40824,16 @@ function cpBarra(){
 }
 function cpTabela(l){
   var cs = cpColsOn(), mx = Math.max.apply(null, l.map(function(c){ return c.investimento || 0; }).concat([1]));
-  var val = function(c, k){ return k === 'vtmx' ? (cpVendasTmx(c) || 0) : (c[k] == null ? -Infinity : c[k]); };
+  var porK = {}; CP_COLS.forEach(function(x){ porK[x.k] = x; });
+  var val = function(c, k){ if(k === 'vtmx') return cpVendasTmx(c) || 0; var col = porK[k];
+    var v = col && col.s ? col.s(c) : c[k]; return v == null || isNaN(v) ? -Infinity : v; };
   l = l.slice().sort(function(a, b){ var x = val(a, cpEst.ord), y = val(b, cpEst.ord); return cpEst.desc ? y - x : x - y; });
   var th = function(c){ return '<th class="ord'+(cpEst.ord === c.k ? ' on' : '')+'" onclick="cpOrdenar(\''+c.k+'\')"'+(c.tit ? ' title="'+fnEsc(c.tit)+'"' : '')+'>'+c.t+(cpEst.ord === c.k ? (cpEst.desc ? ' ↓' : ' ↑') : '')+'</th>'; };
   var hm = function(ms){ var d = new Date(ms); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
   var linhas = l.map(function(c, i){
     var st = cpStatus(c.status), mu = c.mudanca;
     return '<tr onclick="cpAbrir('+cpDados.indexOf(c)+')">'+
-      '<td class="f1"><span class="cp-st '+st[1]+'">'+st[0]+'</span></td>'+
+      '<td class="f1">'+cpChave(c, st)+'<span class="cp-st '+st[1]+'">'+st[0]+'</span></td>'+
       '<td class="f2"><b title="'+fnEsc(c.nome)+'">'+fnEsc(cpNomeCurto(c.nome))+'</b><div class="cp-chips">'+(c.conta ? '<span>'+fnEsc(c.conta)+'</span>' : '')+
         (mu ? '<span class="mu" title="'+fnEsc((mu.campo === 'orc' ? 'Orçamento' : mu.campo === 'bid' ? 'Bid cap' : 'Status')+(mu.de ? ': '+mu.de+' → '+mu.para : ': '+mu.para))+'">'+(mu.campo === 'status' ? 'status' : mu.campo === 'bid' ? 'bid' : 'orçamento')+' mudou '+hm(mu.em)+'</span>' : '')+'</div></td>'+
       cs.map(function(col){ return '<td'+(col.cls ? ' class="'+col.cls(c)+'"' : '')+'>'+col.v(c, mx)+'</td>'; }).join('')+
@@ -40804,6 +40868,7 @@ function cpTabela(l){
   var tot = { investimento: fmtAds(soma('investimento')), faturamento: fmtAds(soma('faturamento')), lucro: fmtAds(soma('lucro')), aprovadas: soma('aprovadas'),
               vtmx: l.reduce(function(a, c){ return a + (cpVendasTmx(c) || 0); }, 0) + nExtra, impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
               roas: soma('investimento') ? (soma('faturamento')/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
+  CP_COLS.forEach(function(x){ if(x.soma && tot[x.k] == null) tot[x.k] = fnNum(soma(x.k)); });
   var nCamp = l.length + so.extras.length;
   return '<div class="cp-rolo"><table class="cp-tab"><thead><tr><th class="f1">Status</th><th class="f2">Campanha</th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
     (linhas || '<tr><td colspan="'+(cs.length + 3)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+

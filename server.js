@@ -638,7 +638,9 @@ function writeDB(db) {
   // request) pegava um arquivo vazio ou pela metade. Era a origem dos snapshots
   // de 0 KB. O rename é atômico no mesmo disco: ninguém vê estado intermediário.
   const tmp = DB_FILE + '.tmp';
-  const dados = JSON.stringify(db, null, 2);
+  // compacto: com recuo de 2 espaços o arquivo ficava bem maior e cada gravação
+  // (várias por minuto) demorava mais, travando o servidor nesse meio-tempo
+  const dados = JSON.stringify(db);
   try {
     fs.writeFileSync(tmp, dados);
   } catch (e) {
@@ -3036,6 +3038,34 @@ async function _metaSincronizar(opts) {
 setTimeout(() => _metaSincronizar().catch(e => console.error('[META]', e.message)), 3 * 60 * 1000);
 setInterval(() => _metaSincronizar().catch(e => console.error('[META]', e.message)), 60 * 60 * 1000);
 setInterval(() => _capiEnviarPendentes().catch(e => console.error('[CAPI] envio:', e.message)), 60 * 1000);
+// Pausar e ativar campanha direto da Análise de tráfego. Só a Diretoria, e só
+// com o token tendo ads_management. Fica na auditoria e no histórico da campanha.
+app.post('/api/meta/campanha/status', authDiretoria, async (req, res) => {
+  try {
+    const b = req.body || {}, id = String(b.id || '').replace(/\D/g, '').slice(0, 30), ativo = b.ativo === true;
+    if (!id) return res.status(400).json({ error: 'Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.' });
+    const cfg = _metaCfg();
+    if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema') return res.status(400).json({ error: 'Conecte a Meta primeiro (Configurações → Integrações → Meta).' });
+    if ((cfg.permissoes || []).indexOf('ads_management') < 0) return res.status(400).json({ error: 'O token da Meta não tem a permissão ads_management. Gere outro token marcando ads_management e troque em Integrações → Meta.' });
+    const corpo = new URLSearchParams({ status: ativo ? 'ACTIVE' : 'PAUSED', access_token: cfg.accessToken });
+    const r = await fetch(META_API_BASE + '/' + id, { method: 'POST', body: corpo });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error || j.success === false) {
+      const e = new Error((j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + r.status)); e.metaCode = j.error && j.error.code;
+      return res.status(400).json({ error: _metaErroTxt(e) });
+    }
+    const nome = String(b.nome || '').slice(0, 160), agora = Date.now();
+    if (_pessoas()) {
+      _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(id, nome, '', 'status', ativo ? 'PAUSED' : 'ACTIVE', ativo ? 'ACTIVE' : 'PAUSED', agora, null, 'tmx');
+      _q('UPDATE camp_estado SET status=?, em=? WHERE id=?').run(ativo ? 'ACTIVE' : 'PAUSED', agora, id);
+    }
+    const db = readDB();
+    audit(db, ativo ? 'meta_campanha_ativada' : 'meta_campanha_pausada', id, { nome }, req.user);
+    writeDB(db);
+    res.json({ ok: true, status: ativo ? 'ACTIVE' : 'PAUSED' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.post('/api/meta/puxar', authDiretoria, async (req, res) => {
   try {
     const r = await _metaSincronizar({ dias: Math.min(Number((req.body || {}).dias) || 2, 30) });
@@ -4668,7 +4698,10 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
       const m = {};
       (fonte || deCampanha).forEach(l => {
         const k = l[campo] || '—';
-        if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0, aprovadas:0, vv:0, v3:0, v75:0, ic:0, _video:false, _data:'' };
+        if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0, aprovadas:0, vv:0, v3:0, v75:0, ic:0, lpv:0, _fi:0, _video:false, _data:'' };
+        if (l.lpv !== undefined) m[k].lpv += Number(l.lpv) || 0;
+        // frequência não soma: média ponderada pelas impressões de cada dia
+        if (l.freq) m[k]._fi += (Number(l.freq) || 0) * (Number(l.impressoes) || 0);
         m[k].aprovadas    += Number(l.vendasAprovadas !== undefined ? l.vendasAprovadas : l.vendas) || 0;
         if (l.v3 !== undefined) { m[k]._video = true; m[k].vv += Number(l.vv)||0; m[k].v3 += Number(l.v3)||0; m[k].v75 += Number(l.v75)||0; m[k].ic += Number(l.ic)||0; }
         // o estado (conta, status, orçamento) é o do dia mais recente do período
@@ -4685,7 +4718,8 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
         m[k].cliques      += Number(l.cliques)||0;
         m[k].impressoes   += Number(l.impressoes)||0;
       });
-      return Object.values(m).map(x => { const v = x._video; delete x._video; delete x._data; return Object.assign(x, {
+      return Object.values(m).map(x => { const v = x._video, fi = x._fi; delete x._video; delete x._data; delete x._fi; return Object.assign(x, {
+        freq: fi && x.impressoes > 0 ? fi / x.impressoes : null, pendentes: Math.max(0, x.vendas - x.aprovadas),
         roas: x.investimento > 0 ? x.faturamento / x.investimento : 0,
         ctr: x.impressoes > 0 ? x.cliques / x.impressoes : null, cpc: x.cliques > 0 ? x.investimento / x.cliques : null,
         cpm: x.impressoes > 0 ? x.investimento / x.impressoes * 1000 : null, cpa: x.aprovadas > 0 ? x.investimento / x.aprovadas : null,
@@ -10088,12 +10122,54 @@ function _jQuando(j) {
   return Number.isFinite(t) ? t : 0;
 }
 
+// A jornada (uns 17 MB) morava dentro do db.json, que é lido inteiro a cada
+// requisição e regravado inteiro a cada escrita: com ela lá, o banco tinha
+// 39 MB e o servidor travava a cada gravação. Agora mora em jornada.json,
+// fica na memória e só ela é regravada. Não entra nos backups do db.json
+// (é de 7 dias e as pessoas já estão no pessoas.sqlite).
+const JORNADA_ARQ = path.join(DATA_DIR, 'jornada.json');
+let _jMem = null;
+function _jLista() {
+  if (_jMem) return _jMem;
+  try { const l = JSON.parse(fs.readFileSync(JORNADA_ARQ, 'utf8')); _jMem = Array.isArray(l) ? l : []; }
+  catch (e) { _jMem = []; if (fs.existsSync(JORNADA_ARQ)) console.error('[jornada] não li o arquivo:', e.message); }
+  return _jMem;
+}
+let _jEscrevendo = false;
+function _jSalvarArquivo() {
+  if (_jEscrevendo) return;
+  _jEscrevendo = true;
+  const tmp = JORNADA_ARQ + '.tmp';
+  fs.writeFile(tmp, JSON.stringify(_jMem || []), err => {
+    if (err) { _jEscrevendo = false; console.error('[jornada] não gravei:', err.message); return; }
+    fs.rename(tmp, JORNADA_ARQ, err2 => { _jEscrevendo = false; if (err2) console.error('[jornada] não troquei o arquivo:', err2.message); });
+  });
+}
+// Tira a jornada de dentro do db.json (na primeira subida, e se um backup
+// antigo restaurado trouxer ela de volta). Junta com a que já está no arquivo.
+function _jMigrar() {
+  try {
+    const db = readDB();
+    const velha = db.store && db.store[KEY_JORNADA];
+    if (!Array.isArray(velha)) return;
+    const atual = _jLista(), vistos = new Set(atual.map(j => j.funil + '|' + j.id));
+    velha.forEach(j => { if (j && !vistos.has(j.funil + '|' + j.id)) { atual.push(j); vistos.add(j.funil + '|' + j.id); } });
+    _jMem = atual;
+    fs.writeFileSync(JORNADA_ARQ + '.tmp', JSON.stringify(atual));
+    fs.renameSync(JORNADA_ARQ + '.tmp', JORNADA_ARQ);
+    delete db.store[KEY_JORNADA];
+    if (db.timestamps) delete db.timestamps[KEY_JORNADA];
+    writeDB(db);
+    console.log('[jornada] saiu do db.json:', velha.length, 'pessoas, agora em jornada.json');
+  } catch (e) { console.error('[jornada] migração falhou (fica no db.json):', e.message); }
+}
+setTimeout(_jMigrar, 5000);
+setInterval(_jMigrar, 60 * 60 * 1000);
 function _jGravar() {
   if (!_jSujo) return;
   const pendente = _jBuffer; _jBuffer = {}; _jSujo = false;
   try {
-    const db = readDB();
-    let atual = Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [];
+    let atual = _jLista().slice();
     const indice = {};
     atual.forEach(j => { indice[j.funil + '|' + j.id] = j; });
     Object.values(pendente).forEach(n => {
@@ -10107,9 +10183,8 @@ function _jGravar() {
     atual = atual.filter(j => _jQuando(j) >= corte).sort((a, b) => {
       return _jQuando(b) - _jQuando(a);
     }).slice(0, JORNADA_TETO);
-    db.store[KEY_JORNADA] = atual;
-    db.timestamps[KEY_JORNADA] = now();
-    writeDB(db);
+    _jMem = atual;
+    _jSalvarArquivo();
   } catch (e) { console.error('[jornada] falhou ao gravar:', e.message); }
 }
 setInterval(_jGravar, 45 * 1000);
@@ -10850,7 +10925,7 @@ function _pessoasImportar() {
   try {
     const t0 = Date.now();
     const dbj = readDB();
-    const jn = Array.isArray(dbj.store[KEY_JORNADA]) ? dbj.store[KEY_JORNADA] : [];
+    const jn = _jLista();
     const evs = [];
     jn.forEach(j => (j.eventos || []).forEach(e => {
       const t = Date.parse(e.em); if (!Number.isFinite(t)) return;
@@ -12501,7 +12576,7 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
     const agora = Date.now(), corte24 = agora - 86400000, corte7 = agora - 7 * 86400000;
 
     // ── 1. Páginas: a tag está lá? e o pixel está chegando? ──────────────
-    const jorn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+    const jorn = _jLista()
       .concat(Object.values(typeof _jBuffer === 'object' && _jBuffer ? _jBuffer : {}));
     const porEtapa = {};
     jorn.forEach(j => {
@@ -12815,7 +12890,7 @@ app.get('/api/canais/resumo', authUsuario, async (req, res) => {
     const corte = Date.now() - dias * 86400000;
     // primeira origem conhecida de cada visitante (jornada guarda 7 dias)
     const origemDoVid = {};
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+    _jLista().concat(Object.values(_jBuffer || {})).forEach(j => {
       if (!j || !j.id || origemDoVid[j.id]) return;
       const ev = (j.eventos || []).find(e => e && e.primeiro && e.primeiro.utm_source);
       if (ev) origemDoVid[j.id] = ev.primeiro.utm_source;
@@ -12881,7 +12956,7 @@ app.get('/api/links/validador', authUsuario, (req, res) => {
       x.campanhas[c] = (x.campanhas[c] || 0) + 1;
       if (fonte) x.fontes[fonte] = (x.fontes[fonte] || 0) + 1;
     };
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+    _jLista().concat(Object.values(_jBuffer || {})).forEach(j => {
       const ev = (j && j.eventos || []).find(e => e && e.tipo === 'entrou' && new Date(e.em).getTime() >= corte);
       if (!ev) return;
       const pr = ev.primeiro || {};
@@ -13738,7 +13813,7 @@ app.get('/api/recuperacao', authNegocio, (req, res) => {
       .filter(v => v && !v.renovacao).slice().sort((a, b) => String(a.recebidoEm).localeCompare(String(b.recebidoEm)));
     // quanto a pessoa assistiu, pelo pixel (quando existe a jornada)
     const atencao = {};
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+    _jLista().concat(Object.values(_jBuffer || {})).forEach(j => {
       if (!j || !j.id) return;
       (j.eventos || []).forEach(e => { const s = Number(e.atencao || e.segundos) || 0; if (s > (atencao[j.id] || 0)) atencao[j.id] = s; });
     });
@@ -13983,7 +14058,7 @@ app.get('/api/criativos/ate-a-venda', authUsuario, async (req, res) => {
       return k ? por[k] : (por[t] || null);
     };
     let semAnuncio = 0;
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+    _jLista().concat(Object.values(_jBuffer || {})).forEach(j => {
       const ev = (j && j.eventos || []).find(e => e && e.tipo === 'entrou' && new Date(e.em).getTime() >= iniMs && new Date(e.em).getTime() < fimMs);
       if (!ev) return;
       const c = (ev.primeiro && ev.primeiro.utm_content) || ev.criativo;
@@ -14075,7 +14150,7 @@ async function _regrasAvaliar(origem) {
   // página caiu: gasto rodando e nenhuma visita no pixel nos últimos N minutos
   if (R.pagina_caiu && R.pagina_caiu.ativa && ads.some(a => (a.investimento || 0) > 0) && horaBRT >= 7) {
     const corte = agora - R.pagina_caiu.minutos * 60000;
-    const jorn = (Array.isArray(db0.store[KEY_JORNADA]) ? db0.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {}));
+    const jorn = _jLista().concat(Object.values(_jBuffer || {}));
     const temPixel = jorn.some(j => (j.eventos || []).some(e => new Date(e.em).getTime() >= agora - 86400000));
     const recente = jorn.some(j => (j.eventos || []).some(e => e.tipo === 'entrou' && new Date(e.em).getTime() >= corte));
     if (temPixel && !recente) acao(R.pagina_caiu, 'Páginas do funil', 'alerta', 'Anúncio gastando e nenhuma visita no pixel nos últimos ' + R.pagina_caiu.minutos + ' min. Página fora do ar ou pixel caiu.');
@@ -14200,7 +14275,7 @@ app.get('/api/lead/pagamentos', authNegocio, (req, res) => {
     const falhas = tentativas.filter(t => !t.pago && !t.estorno && _FALHOU.test(String(t.status || '')));
     // primeiro toque: o que o pixel guardou na primeira visita dessa pessoa
     let primeiro = null;
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer || {})).forEach(j => {
+    _jLista().concat(Object.values(_jBuffer || {})).forEach(j => {
       if (!j || j.id !== vid) return;
       (j.eventos || []).forEach(e => {
         if (e && e.primeiro && (!primeiro || String(e.em) < primeiro.em)) {
@@ -14333,7 +14408,7 @@ app.get('/api/funil/vendas-por-pagina', authUsuario, (req, res) => {
     const noDia = iso => (!de || String(iso).slice(0,10) >= de) &&
                          (!ate || String(iso).slice(0,10) <= ate);
 
-    const jornadas = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+    const jornadas = _jLista()
       .concat(Object.values(_jBuffer));
     const porVid = {};
     jornadas.forEach(j => { if (j && j.id) porVid[j.id] = j; });
@@ -14571,7 +14646,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     // A tela mostrava 5 onde a etapa contava 1.477 e nao havia como saber onde
     // as outras sumiram: funil? periodo? pagina escolhida? teto de retencao?
     // Cada peneira agora conta quanto derrubou, e a tela diz qual foi.
-    const _brutas = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+    const _brutas = _jLista()
       .concat(Object.values(_jBuffer));
     const diag = { noBanco: _brutas.length, doFunil: 0, noPeriodo: 0, aposPagina: 0,
                    pgEscolhida: pg || null, teto: JORNADA_TETO, dias: JORNADA_DIAS };
@@ -14599,7 +14674,7 @@ app.get('/api/funil/jornadas', authUsuario, (req, res) => {
     // senao a pagina que reporta sob id antigo aparecia como "sem dado ainda".
     const paginas = {};
     const paraLista = funil && !pg
-      ? (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      ? _jLista()
           .concat(Object.values(_jBuffer))
           .filter(j => (j.eventos || []).some(e =>
             (!de || emDia(e) >= de) && (!ate || emDia(e) <= ate)))
@@ -15325,7 +15400,7 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
     // chega com o tmx_vid e a jornada daquele visitante sabe em que variante ele
     // caiu — e por ai que da pra dizer quanto cada variante realmente faturou.
     const varDoVisitante = {};
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+    _jLista()
       .concat(Object.values(_jBuffer))
       .forEach(j => {
         if (!j || !j.id) return;
@@ -15399,7 +15474,7 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
     const caminho = u => { try { const x = new URL(/^https?:/i.test(u) ? u : 'https://' + u); return (x.hostname.replace(/^www\./, '') + x.pathname).replace(/\/+$/, '').toLowerCase(); } catch (e) { return ''; } };
     const paginasDoTeste = new Set((r.destinos || []).map(d => caminho(d.url)).filter(Boolean));
     const foraVids = new Set();
-    (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : []).concat(Object.values(_jBuffer)).forEach(j => {
+    _jLista().concat(Object.values(_jBuffer)).forEach(j => {
       if (!j || !j.id) return;
       (j.eventos || []).forEach(e => {
         if (!e || e.tipo !== 'entrou' || e.teste || !e.pg) return;
@@ -15875,7 +15950,7 @@ function _funilStats(de, ate, funil) {
     // normal, nao a excecao — entao a tela tem de mostrar a divisao.
     // A jornada guarda a pagina em cada evento; e de la que ela sai.
     const porPagina = {};
-    const jn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+    const jn = _jLista()
       .concat(Object.values(_jBuffer));
     // ── Aceitar tambem pela PAGINA, nao so pelo id do funil ─────────────────
     // Existe um comentario no /api/funil/jornadas dizendo exatamente isto: o
@@ -17707,7 +17782,7 @@ function _quizStats(id, de, ate) {
     const quero = new Set(regs.filter(r => r.vd).map(r => String(r.vd)));
     const vsl = {};                                  // vd -> { atencao, checkout }
     if (quero.size) {
-      const jn = (Array.isArray(db.store[KEY_JORNADA]) ? db.store[KEY_JORNADA] : [])
+      const jn = _jLista()
         .concat(Object.values(typeof _jBuffer === 'object' && _jBuffer ? _jBuffer : {}));
       jn.forEach(j => {
         if (!j || !quero.has(String(j.id))) return;
