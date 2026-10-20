@@ -11352,7 +11352,7 @@ function _resumoDaPessoa(v, evs, peds, nomeEtapa) {
 // velocidade medida pelo PageSpeed do Google.
 // ══════════════════════════════════════════════════════
 const KEY_PAGINAS = 'sl_paginas_reg';   // server-only: registro das páginas
-const PAGINA_TIPOS = ['vsl', 'presell', 'quiz', 'checkout', 'obrigado', 'upsell', 'downsell', 'backredirect', 'bio', 'conteudo', 'outra'];
+const PAGINA_TIPOS = ['vsl', 'presell', 'quiz', 'checkout', 'obrigado', 'upsell', 'downsell', 'backredirect', 'bio', 'conteudo', 'ponte', 'planos', 'outra'];
 function _paginasReg(db) { return Array.isArray(db.store[KEY_PAGINAS]) ? db.store[KEY_PAGINAS] : []; }
 function _paginaTipo(t) { const x = _nrm(t).replace(/[^a-z]/g, ''); return PAGINA_TIPOS.indexOf(x) >= 0 ? x : (/pre/.test(x) ? 'presell' : /redirect|back/.test(x) ? 'backredirect' : 'outra'); }
 // registra ou soma uma versão; devolve a página
@@ -11429,6 +11429,50 @@ async function _paginaMedir(url) {
     return med;
   } finally { _pgMedindo.delete(url); }
 }
+
+// ── IMPORTAÇÃO ÚNICA: AS 31 PÁGINAS DO APOSTILAI.AI (20/10/2026) ──
+// A lista que o construtor de páginas mandou, todas com o pixel do funil
+// KALEBE. Roda uma vez (fica marcado na tabela cfg), não mexe em página que
+// já estava registrada e depois mede a velocidade de cada uma, uma por vez.
+// Pode sair do código quando tiver rodado no ar.
+const _PAGINAS_IMPORTAR = { id: 'apostilai-20261020', projeto: 'CONCURSO', funil: 'KALEBE', itens: [
+  ['acervo', 'Ponte · Acervo anual R$ 697', 'ponte'], ['elite10', 'Ponte · Apostilai Elite Anual', 'ponte'],
+  ['597', 'Teste de preço · 597', 'vsl'], ['697', 'Teste de preço · 697', 'vsl'], ['797', 'Teste de preço · 797', 'vsl'],
+  ['697claro', '697 · claro', 'vsl'], ['697hubla', '697 · Hubla', 'vsl'], ['697kiwify', '697 · Kiwify', 'vsl'],
+  ['bio', '697 · bio', 'bio'], ['backredirect', '697 · back redirect', 'backredirect'],
+  ['assinar', 'Planos · só o Elite Anual', 'planos'], ['assinar/planos', 'Planos · Mensal, Semestral e Anual', 'planos'], ['assinatura', 'Planos · assinatura', 'planos'],
+  ['raiox', 'Raio-X', 'outra'], ['raiox2', 'Raio-X 2', 'outra'], ['raiox3', 'Raio-X 3', 'outra'], ['raiox4', 'Raio-X 4', 'outra'], ['raiox5', 'Raio-X 5', 'outra'], ['raiox6', 'Raio-X 6', 'outra'],
+  ['segredo', 'Segredo', 'outra'], ['segredo1', 'Segredo 1', 'outra'], ['segredo2', 'Segredo 2', 'outra'], ['segredo3', 'Segredo 3', 'outra'], ['segredo5', 'Segredo 5', 'outra'], ['segredo6', 'Segredo 6', 'outra'],
+  ['aula', 'Aula', 'outra'], ['fusao', 'Fusão', 'outra'], ['fusao2', 'Fusão 2', 'outra'], ['tdgcr4', 'TDGCR 4', 'outra'], ['tdgcr6', 'TDGCR 6', 'outra'],
+  ['espere', 'Upsell Elite 10 (só abre pela Payt depois da compra)', 'upsell']
+] };
+async function _paginasImportarUmaVez() {
+  const imp = _PAGINAS_IMPORTAR, chave = 'importou:' + imp.id;
+  try {
+    if (!fs.existsSync('/data')) return;                         // só no servidor de produção
+    if (!_pessoas() || _q('SELECT 1 FROM cfg WHERE k=?').get(chave)) return;
+    const db = readDB(), ja = new Set(_paginasReg(db).map(p => p.url)), novas = [];
+    imp.itens.forEach(([cam, titulo, tipo]) => {
+      const url = _normPg('apostilai.ai/' + cam);
+      if (ja.has(url)) return;                                   // já registrada: fica como está
+      _paginaRegistrar(db, { url, projeto: imp.projeto, titulo, tipo, funil: imp.funil, origem: 'claude', por: 'Claude Code',
+        versao: 'registrada pela lista do construtor de páginas' });
+      novas.push(url);
+    });
+    audit(db, 'paginas_importadas', imp.id, { projeto: imp.projeto, paginas: novas.length }, { nome: 'sistema' });
+    writeDB(db);
+    _q('INSERT OR REPLACE INTO cfg(k, v) VALUES(?, ?)').run(chave, String(Date.now()));
+    console.log('[PÁGINAS] importadas', novas.length, 'páginas do', imp.projeto);
+    // velocidade de todas, uma por vez (cada uma leva de 20 a 60 s no Google)
+    const todas = imp.itens.map(([cam]) => _normPg('apostilai.ai/' + cam));
+    for (const url of todas) {
+      try { await _paginaMedir(url); } catch (e) { console.error('[PÁGINAS] velocidade de', url, ':', e.message); }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    console.log('[PÁGINAS] velocidade medida nas páginas importadas');
+  } catch (e) { console.error('[PÁGINAS] importação falhou:', e.message); }
+}
+setTimeout(() => { _paginasImportarUmaVez(); }, 20000);
 
 // as páginas de um projeto: registradas + vistas pelo pixel nos funis dele
 function _paginasDoProjeto(db, projeto) {
