@@ -41844,9 +41844,26 @@ var CP_EXPLICA = {
 };
 var cpAnalise = null, cpDiaVista = 'graf';
 var cpAnaliseIdx = -1;
+// período só da tabela de anúncios: 0 = o mesmo da análise; N = os N dias até o fim dela
+var cpAdsDias = 0, cpAdsCache = {};
+function cpAdsFaixa(n){
+  var d = cpAnalise, fim = Date.parse(d.ate+'T12:00:00Z');
+  return { de: new Date(fim - (n-1)*86400000).toISOString().slice(0,10), ate: d.ate };
+}
+function cpAdsPeriodo(n){
+  cpAdsDias = n;
+  if(n && !cpAdsCache[n]){
+    var c = cpDados[cpAnaliseIdx], f = cpAdsFaixa(n);
+    cpAdsCache[n] = { carregando: true };
+    v2Json('/api/metricas/campanha?so=anuncios&id='+encodeURIComponent((c && c.campanhaId) || cpAnalise.campanha.id || '')+'&nome='+encodeURIComponent((c && c.nome) || cpAnalise.campanha.nome)+'&de='+f.de+'&ate='+f.ate)
+      .then(function(r){ cpAdsCache[n] = r; if(cpAdsDias === n) cpPintarAnalise(); })
+      .catch(function(e){ cpAdsCache[n] = { erro: e.message }; if(cpAdsDias === n) cpPintarAnalise(); });
+  }
+  cpPintarAnalise();
+}
 function cpAbrir(i){
   var c = cpDados[i]; if(!c) return;
-  cpAnaliseIdx = i;
+  cpAnaliseIdx = i; cpAdsDias = 0; cpAdsCache = {};
   var p = getAdsDates();
   var ov = v2Modal('<div class="fx-vazio">Montando a análise de '+fnEsc(cpNomeCurto(c.nome))+'…</div>');
   ov.id = 'cp-analise';
@@ -41880,7 +41897,8 @@ function cpPintarAnalise(){
     return '<div class="v2-feed-i"><span class="v2-ic warn">✎</span><div><b>'+campo[x.campo]+': '+(x.de !== '' ? fv(x.campo, x.de)+' → ' : '')+fv(x.campo, x.para)+'</b>'+
       '<div class="sub">'+(x.fonte === 'utmify' ? 'feito pela Utmify, na hora exata' : (x.desde ? 'entre '+hm(x.desde)+' e '+hm(x.em)+' (o TMX confere a cada sincronização)' : 'visto às '+hm(x.em)))+'</div></div><span class="h">'+dm(x.em)+' '+hm(x.em)+'</span></div>'; }).join('');
   var desde = d.registroDesde ? ' O TMX anota as mudanças desde '+dm(d.registroDesde)+' '+hm(d.registroDesde)+'.' : '';
-  var ads = (d.anuncios || []).map(function(a){
+  var adsSel = cpAdsDias ? cpAdsCache[cpAdsDias] || {} : d;
+  var ads = (adsSel.anuncios || []).map(function(a){
     var vt = a.vendasTmx || 0, dv = vt - (a.vendas || 0);
     return '<tr'+(a.soTmx ? ' class="cp-so-tmx" title="Vendeu pelo TMX sem gasto neste período (a pessoa clicou neste anúncio em outro dia)"' : '')+'><td>'+fnEsc(a.nome)+(a.soTmx ? ' <small class="cp-tmx">sem gasto no período</small>' : '')+'</td><td>'+fmtAds(a.gasto)+'</td><td>'+(a.soTmx ? '<i>—</i>' : a.vendas)+'</td>'+
       '<td><b class="cp-tmx">'+vt+'</b>'+(dv && !a.soTmx ? '<small class="'+(dv > 0 ? 'pos' : 'neg')+'"> '+(dv > 0 ? '+' : '')+dv+'</small>' : '')+'</td>'+
@@ -41904,7 +41922,17 @@ function cpPintarAnalise(){
     '<div class="v2-rot cp-s">Vendas por hora · '+dm(Date.parse(d.ate+'T12:00:00'))+'</div>'+cpGraficoHoras(d)+
     '<div class="v2-rot cp-s">Orçamento e mudanças</div>'+(mud || '<div class="cp-nota">Nenhuma mudança de orçamento, bid cap ou status vista no período.'+desde+'</div>')+
     (mud ? '<div class="cp-nota" style="margin-top:6px">'+desde.trim()+'</div>' : '')+
-    '<div class="v2-rot cp-s">Anúncios desta campanha</div>'+(ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th title="Vendas que a Utmify deu a este anúncio">Vendas Utmify</th><th title="Vendas que o TMX deu a este anúncio (último anúncio que a pessoa clicou)">Vendas TMX</th><th>Lucro Utmify</th><th title="Faturamento das vendas do TMX menos o gasto">Lucro TMX</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>' : '<div class="cp-nota">Nenhum anúncio com gasto no período'+(d.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
+    '<div class="v2-rot cp-s" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Anúncios desta campanha <span class="cp-seg" style="margin-left:auto">'+
+      [[0, 'Período'], [1, '1 dia'], [2, '2 dias'], [3, '3 dias'], [7, '7 dias']].map(function(x){
+        return '<button class="'+(cpAdsDias === x[0] ? 'on' : '')+'" onclick="cpAdsPeriodo('+x[0]+')">'+x[1]+'</button>'; }).join('')+'</span></div>'+
+    (function(){
+      var f = cpAdsDias ? cpAdsFaixa(cpAdsDias) : { de: d.de, ate: d.ate }, dd = function(s){ return s.slice(8)+'/'+s.slice(5,7); };
+      return '<div class="cp-nota">'+(f.de === f.ate ? 'Só '+dd(f.ate) : 'De '+dd(f.de)+' a '+dd(f.ate))+'. Gasto e vendas Utmify vêm da Utmify; vendas TMX, do pixel do TMX.</div>';
+    })()+
+    (adsSel.carregando ? '<div class="cp-nota">Buscando os anúncios na Utmify…</div>'
+      : adsSel.erro ? '<div class="v2-alerta warn"><div><b>Não buscou os anúncios</b><span>'+fnEsc(adsSel.erro)+'</span></div></div>'
+      : ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th title="Vendas que a Utmify deu a este anúncio">Vendas Utmify</th><th title="Vendas que o TMX deu a este anúncio (último anúncio que a pessoa clicou)">Vendas TMX</th><th>Lucro Utmify</th><th title="Faturamento das vendas do TMX menos o gasto">Lucro TMX</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>'
+      : '<div class="cp-nota">Nenhum anúncio com gasto nesses dias'+(adsSel.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
   var cA = cpDados[cpAnaliseIdx]; if(cA) cpVivoLigar(cA.campanhaId, cA.nome);
 }
 function cpSerie(d){ return d.porDia.map(function(x){ var f = x.fatUtmify != null ? x.fatUtmify : (x.fatTmx != null ? x.fatTmx : null); var l = x.lucroUtmify != null ? x.lucroUtmify : (f != null ? f - x.gasto : null); return { dia:x.dia, g:x.gasto||0, f:f, l:l, v:x.vendasTmx||0 }; }); }

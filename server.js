@@ -4884,6 +4884,8 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
     if (!id && !nome) return res.status(400).json({ error: 'Diga a campanha.' });
     const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
     const dir = _ehDir(req);
+    // so=anuncios: só a tabela de anúncios, pra trocar o período dela sem refazer a análise toda
+    const soAds = req.query.so === 'anuncios';
     const db = readDB();
     const dias7 = []; for (let i = 6; i >= 0; i--) dias7.push(_diaBR(per.fim - i * 86400000));
     const todas = (Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [])
@@ -4908,16 +4910,16 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       const tz = (dash.tz === undefined || dash.tz === null) ? -3 : dash.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
       const faixa = { from: per.de + 'T00:00:00' + off, to: per.ate + 'T23:59:59' + off };
-      const chave = 'camp|' + m.id + '|' + per.de + '|' + per.ate;
-      let vivo = _vivoGet(chave, 60 * 1000);
+      const chave = 'camp|' + m.id + '|' + per.de + '|' + per.ate, chaveAds = 'ads|' + m.id + '|' + per.de + '|' + per.ate;
+      let vivo = _vivoGet(chave, 60 * 1000) || (soAds ? _vivoGet(chaveAds, 60 * 1000) : null);
       if (!vivo) {
         try {
-          const rc = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: dash.id, level: 'campaign', campaignIds: [m.id], dateRange: faixa });
+          const rc = soAds ? null : await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: dash.id, level: 'campaign', campaignIds: [m.id], dateRange: faixa });
           const ra = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: dash.id, level: 'ad', campaignIds: [m.id], dateRange: faixa });
           // o filtro por id da Utmify nem sempre vale: confere o id aqui
           const mesma = x => String(x.campaignId || x.id || '') === m.id;
           vivo = { c: ((rc && rc.results) || []).find(mesma) || null, ads: ((ra && ra.results) || []).filter(x => String(x.campaignId || '') === m.id) };
-          _vivoSet(chave, vivo);
+          _vivoSet(soAds ? chaveAds : chave, vivo);
         } catch (e) { erroAoVivo = e.message; }
       }
       if (vivo && vivo.c) {
@@ -4945,7 +4947,7 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
     const porDiaTmx = {};
     if (_pessoas() && m.id) {
       const vis = new Set(), pit = new Set(), ck = new Set();
-      _q('SELECT visitante, camp, pitch, checkout FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0').all(per.ini, per.fim).forEach(x => {
+      if (!soAds) _q('SELECT visitante, camp, pitch, checkout FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0').all(per.ini, per.fim).forEach(x => {
         if (_idDaCampUtm(x.camp) !== m.id) return;
         vis.add(x.visitante); if (x.pitch) pit.add(x.visitante); if (x.checkout) ck.add(x.visitante);
       });
@@ -4985,6 +4987,10 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
           vendasTmx: x.vendas, fatTmx: x.faturamento, lucroTmx: x.faturamento, soTmx: true });
       });
       anuncios.sort((a, b) => (b.vendasTmx + b.vendas) - (a.vendasTmx + a.vendas) || (b.lucro || 0) - (a.lucro || 0) || b.gasto - a.gasto);
+    }
+    if (soAds) {
+      if (!dir) anuncios.forEach(a => { a.faturamento = null; a.lucro = null; a.fatTmx = null; a.lucroTmx = null; });
+      return res.json({ ok: true, de: per.de, ate: per.ate, anuncios, erroAoVivo });
     }
     // resultado por dia: os 7 dias até o fim do período (gasto da Utmify, venda pela Utmify e pelo TMX)
     const campDia = {};
