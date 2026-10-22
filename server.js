@@ -7300,6 +7300,7 @@ const KEYS_DIRETORIA = new Set([
   'sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps',
   'sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes',
   'sl_fin_nfs','sl_fin_ofx','sl_fin_impostos',
+  'fin_recorrentes','fin_compromissos','fin_contrapartes','fin_cfg',
   'sl_candidatos',
   // guarda o API token da Utmify — não pode sincronizar pro browser do time
   'sl_integracoes_utmify','sl_integracoes_utmify_historico',
@@ -7322,6 +7323,7 @@ const KEYS_SERVIDOR = new Set([
   'sl_funil_jornada',       // caminho por visitante; a tela le por /api/funil/jornadas
   // pesados que a tela le pelas rotas, nunca pelo armazenamento do aparelho: mandar
   // pro celular estourava o espaco dele (uns 5 MB) e o resto nao sincronizava
+  'fin_recorrentes','fin_compromissos','fin_contrapartes','fin_cfg', // Financeiro: a tela le por /api/fin/*
   'sl_metricas_ads',        // ~1 MB; a tela le por /api/metricas/*
   'sl_vendas',              // ~0,8 MB; a tela le por /api/funil/* e /api/integracoes/vendas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
@@ -12885,6 +12887,285 @@ app.post('/api/custos', authNegocio, (req, res) => {
       Object.keys(custos).map(k => k + '=' + custos[k]).join(' '), req.user);
     writeDB(db);
     res.json({ ok: true, custos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── 💰 FINANCEIRO ──
+// O resultado de cada projeto sai sozinho do que o TMX já recebe: as vendas
+// (webhook da Payt, Kiwify e Hubla) e o gasto de anúncio (Utmify). O que não
+// passa por aí — recorrentes, contas a pagar e a receber, contrapartes — fica
+// nas chaves fin_*, só da Diretoria e só por estas rotas (não sincronizam pro
+// navegador). O livro-caixa da Conta Simples e da Lootrush é a fase 2.
+// ══════════════════════════════════════════════════════
+const KEY_FIN_REC = 'fin_recorrentes', KEY_FIN_COMP = 'fin_compromissos';
+const KEY_FIN_CONTRA = 'fin_contrapartes', KEY_FIN_CFG = 'fin_cfg';
+// categorias de uma operação de resposta direta (as 15 antigas eram de infoproduto
+// genérico: Hotmart, Eduzz, Stripe… e nem tinham Payt)
+const FIN_CATEGORIAS = [
+  { id:'receb',    nome:'Recebimentos',              tipo:'entrada', filhas:['Payt','Kiwify','Hubla','Vendas diretas','Outras entradas'] },
+  { id:'trafego',  nome:'Tráfego',                   tipo:'saida',   filhas:['Meta Ads','Google Ads','TikTok Ads','Agência de tráfego'] },
+  { id:'equipe',   nome:'Equipe',                    tipo:'saida',   filhas:['Gestor de tráfego','Copy','Editor','Infra','Pró-labore'] },
+  { id:'ferr',     nome:'Ferramentas e software',    tipo:'saida',   filhas:[] },
+  { id:'comis',    nome:'Comissões e co-produção',   tipo:'saida',   filhas:[] },
+  { id:'taxas',    nome:'Taxas, tarifas e impostos', tipo:'saida',   filhas:['Taxa do gateway','IOF','Tarifas de cartão','Tarifas bancárias','Impostos (DAS)'] },
+  { id:'contab',   nome:'Contabilidade e jurídico',  tipo:'saida',   filhas:[] },
+  { id:'reemb',    nome:'Reembolsos e chargebacks',  tipo:'ambos',   filhas:[] },
+  { id:'internas', nome:'Movimentações internas',    tipo:'interna', filhas:['Conta Simples → Lootrush','Troca de moeda','Pagamento de fatura'] },
+  { id:'outras',   nome:'Outras saídas',             tipo:'saida',   filhas:[] }
+];
+const FIN_CONTRA_PADRAO = [
+  { nome:'Meta Platforms', tipo:'plataforma' }, { nome:'Payt', tipo:'gateway' },
+  { nome:'Kiwify', tipo:'gateway' }, { nome:'Hubla', tipo:'gateway' }
+];
+function _finCfg(db) {
+  const c = db.store[KEY_FIN_CFG];
+  return Object.assign({ rateio:'fat', avisoDias:3, saldoInicial:0, categoriasExtras:[] }, (c && typeof c === 'object') ? c : {});
+}
+function _finArr(db, k) { if (!Array.isArray(db.store[k])) db.store[k] = []; return db.store[k]; }
+// compra de teste (plano "TESTE ANUAL", "MENSAL TESTE - R$ 5") não é venda
+function _finTeste(p) { return /\bteste\b/i.test(String(p.plano || '')) || /\bteste\b/i.test(String(p.produto || '')); }
+// De que projeto é cada venda: o funil por onde a pessoa passou (com as adoções),
+// a campanha que cita o nome do projeto, o cadastro de produtos ou, sem
+// cadastro, o projeto dos funis cujos blocos citam o produto.
+function _finCtx(db) {
+  const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean);
+  const projDoFunil = {};
+  funis.forEach(f => { if (f.id && f.projeto) projDoFunil[f.id] = String(f.projeto).trim(); });
+  _adocoes(db).forEach(a => { if (a.origemFunil && projDoFunil[a.funil]) projDoFunil[a.origemFunil] = projDoFunil[a.funil]; });
+  const projDoDash = {};
+  ((_utmifyMcpCfg(db) || {}).dashboards || []).forEach(d => { if (d && d.id) projDoDash[String(d.id)] = String(d.nome || '').trim(); });
+  const lista = [...new Set(Object.values(projDoFunil).concat(Object.values(projDoDash)).filter(Boolean))];
+  const canon = n => { const x = _nrm(n); return lista.find(p => _nrm(p) === x) || String(n || '').trim() || 'Sem projeto'; };
+  const produtos = _produtosCfg(db);
+  const doProduto = _projetosDoProdutoFn(funis);
+  const projetoDe = p => {
+    if (p.funil && projDoFunil[p.funil]) return canon(projDoFunil[p.funil]);
+    const c = _nrm(p.cred_camp || p.camp);
+    if (c) { const achou = lista.find(n => _nrm(n).length >= 4 && c.indexOf(_nrm(n)) >= 0); if (achou) return canon(achou); }
+    const pr = _produtoDe(p.produto, produtos);
+    if (pr && pr.projeto) return canon(pr.projeto);
+    const s = doProduto(p.produto);
+    if (s.size === 1) return canon([...s][0]);
+    return 'Sem projeto';
+  };
+  return { projetoDe, projDoDash, canon };
+}
+// meses (AAAA-MM) que o período toca, com quantos dias de cada um ele cobre
+function _finMeses(de, ate) {
+  const out = [];
+  let d = new Date(de + 'T12:00:00Z');
+  const fim = new Date(ate + 'T12:00:00Z');
+  while (d <= fim) {
+    const mes = d.toISOString().slice(0, 7);
+    const diasMes = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    let x = out.find(m => m.mes === mes);
+    if (!x) { x = { mes, dias:0, diasMes }; out.push(x); }
+    x.dias++;
+    d = new Date(d.getTime() + 86400000);
+  }
+  return out;
+}
+
+// O resultado do período: vendas, reembolsos e tráfego por projeto (reais), e os
+// custos fixos (recorrentes, RH e contas avulsas). A tela aplica a taxa, o
+// imposto e o rateio — mexer em Configurações e ver o lucro mudar na hora.
+app.get('/api/fin/resultado', authDiretoria, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de vendas não abriu neste servidor.' });
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate) || de > ate) return res.status(400).json({ error: 'Informe o período.' });
+    const db = readDB(), ctx = _finCtx(db);
+    const projetos = {}, porDia = {}, gateways = {};
+    const P = n => projetos[n] || (projetos[n] = { bruto:0, n:0, renov:0, liq:0, brutoComLiq:0, nComLiq:0, estornos:0, nEstornos:0, trafego:0, produtos:{} });
+    const D = d => porDia[d] || (porDia[d] = { v:0, n:0, vp:{}, t:{} });
+    let testes = 0;
+    _q('SELECT valor, liquido, produto, plano, plataforma, funil, camp, cred_camp, renovacao, dia FROM pedidos WHERE pago=1 AND estorno=0 AND dia BETWEEN ? AND ?')
+      .all(de, ate).forEach(p => {
+        if (_finTeste(p)) { testes++; return; }
+        const nome = ctx.projetoDe(p), x = P(nome), v = Number(p.valor) || 0;
+        x.bruto += v; x.n++; if (p.renovacao) x.renov++;
+        if (Number(p.liquido) > 0) { x.liq += Number(p.liquido); x.brutoComLiq += v; x.nComLiq++; }
+        const pr = String(p.produto || '(sem nome)');
+        const xp = x.produtos[pr] || (x.produtos[pr] = { n:0, v:0, renov:0 });
+        xp.n++; xp.v += v; if (p.renovacao) xp.renov++;
+        const dd = D(p.dia); dd.v += v; dd.n++; dd.vp[nome] = (dd.vp[nome] || 0) + v;
+        const g = p.plataforma ? String(p.plataforma).toLowerCase() : 'sem registro';
+        const xg = gateways[g] || (gateways[g] = { n:0, v:0 }); xg.n++; xg.v += v;
+      });
+    _q('SELECT valor, produto, plano, funil, camp, cred_camp FROM pedidos WHERE estorno=1 AND dia BETWEEN ? AND ?')
+      .all(de, ate).forEach(p => { if (_finTeste(p)) return; const x = P(ctx.projetoDe(p)); x.estornos += Number(p.valor) || 0; x.nEstornos++; });
+    _q('SELECT dia, projeto, SUM(gasto) g FROM camp_dia WHERE dia BETWEEN ? AND ? GROUP BY dia, projeto').all(de, ate).forEach(r => {
+      const nome = ctx.canon(ctx.projDoDash[r.projeto] || 'Sem projeto');
+      P(nome).trafego += Number(r.g) || 0;
+      const dd = D(r.dia); dd.t[nome] = (dd.t[nome] || 0) + (Number(r.g) || 0);
+    });
+    // custos fixos do período: o mês inteiro conta proporcional aos dias que o período cobre
+    const meses = _finMeses(de, ate), fixos = [], extras = [];
+    const ativoNoMes = (r, mes) => {
+      const ini = String(r.inicio || '').slice(0, 7), fim = String(r.fim || '').slice(0, 7);
+      return !r.pausada && (!ini || ini <= mes) && (!fim || fim >= mes);
+    };
+    _finArr(db, KEY_FIN_REC).forEach(r => {
+      const v = Number(r.valor) || 0; if (!v) return;
+      const mensal = r.frequencia === 'semanal' ? v * 52 / 12 : r.frequencia === 'anual' ? v / 12 : v;
+      let tot = 0; meses.forEach(m => { if (ativoNoMes(r, m.mes)) tot += mensal * m.dias / m.diasMes; });
+      if (!tot) return;
+      const item = { id:r.id, d:r.descricao, grupo:r.grupo || 'Outras saídas', v:tot, proj:r.projeto || '', fonte:'recorrente' };
+      (r.tipo === 'receber' ? extras : fixos).push(item);
+    });
+    // a equipe do RH entra sozinha quando o salário está preenchido
+    const rh = (Array.isArray(db.store.sl_rh_colaboradores) ? db.store.sl_rh_colaboradores : [])
+      .filter(c => c && c.status !== 'desligado' && c.ativo !== false);
+    const porCargo = {}; let comSalario = 0;
+    rh.forEach(c => {
+      const custo = (Number(c.salario) || 0) + (Number(c.salarioVariavel) || 0) + (Number(c.valeBeneficios) || 0);
+      if (custo > 0) comSalario++;
+      const k = c.cargo || 'Equipe';
+      porCargo[k] = porCargo[k] || { n:0, v:0 }; porCargo[k].n++; porCargo[k].v += custo;
+    });
+    Object.keys(porCargo).forEach(k => {
+      if (!porCargo[k].v) return;
+      let tot = 0; meses.forEach(m => { tot += porCargo[k].v * m.dias / m.diasMes; });
+      fixos.push({ d:k + ' (' + porCargo[k].n + ' do RH)', grupo:'Equipe', v:tot, proj:'', fonte:'rh' });
+    });
+    // contas avulsas (as que não vêm de um recorrente) com vencimento no período
+    _finArr(db, KEY_FIN_COMP).forEach(c => {
+      if (c.recorrenteId || !c.vencimento || c.vencimento < de || c.vencimento > ate) return;
+      const item = { id:c.id, d:c.descricao, grupo:c.grupo || 'Outras saídas', v:Number(c.valor) || 0, proj:c.projeto || '', fonte:'avulso' };
+      (c.tipo === 'receber' ? extras : fixos).push(item);
+    });
+    const dias = Object.keys(porDia).sort().map(d => ({ d, v:porDia[d].v, n:porDia[d].n, vp:porDia[d].vp, t:porDia[d].t }));
+    res.json({ ok:true, de, ate, projetos, dias, fixos, extras, testes,
+      gateways: Object.keys(gateways).map(g => Object.assign({ g }, gateways[g])).sort((a, b) => b.v - a.v),
+      rh: { pessoas: rh.length, comSalario }, custos: _custosCfg(db), cfg: _finCfg(db) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// cadastros do Financeiro: recorrentes, contas a pagar e a receber, contrapartes
+app.get('/api/fin/dados', authDiretoria, (req, res) => {
+  try {
+    const db = readDB();
+    let contra = _finArr(db, KEY_FIN_CONTRA);
+    if (!contra.length) {
+      // primeira vez: já nasce com quem está do outro lado do dinheiro hoje
+      FIN_CONTRA_PADRAO.forEach((c, i) => contra.push(Object.assign({ id:'fc' + Date.now().toString(36) + i, _updatedAt:Date.now() }, c)));
+      db.timestamps[KEY_FIN_CONTRA] = now();
+      writeDB(db);
+    }
+    const cfg = _finCfg(db);
+    res.json({ ok:true, recorrentes:_finArr(db, KEY_FIN_REC), compromissos:_finArr(db, KEY_FIN_COMP), contrapartes:contra,
+      cfg, categorias:FIN_CATEGORIAS.concat((cfg.categoriasExtras || []).map((n, i) => ({ id:'x' + i, nome:n, tipo:'saida', filhas:[] }))) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/fin/cfg', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {}, db = readDB(), cfg = _finCfg(db);
+    if (b.rateio === 'fat' || b.rateio === 'igual') cfg.rateio = b.rateio;
+    if (b.avisoDias != null) cfg.avisoDias = Math.min(30, Math.max(1, parseInt(b.avisoDias, 10) || 3));
+    if (b.saldoInicial != null) cfg.saldoInicial = Number(b.saldoInicial) || 0;
+    if (Array.isArray(b.categoriasExtras)) cfg.categoriasExtras = b.categoriasExtras.map(x => String(x || '').trim().slice(0, 60)).filter(Boolean).slice(0, 40);
+    db.store[KEY_FIN_CFG] = cfg; db.timestamps[KEY_FIN_CFG] = now();
+    audit(db, 'fin_config', {}, { rateio:cfg.rateio, avisoDias:cfg.avisoDias }, req.user);
+    writeDB(db);
+    res.json({ ok:true, cfg });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// dar baixa: numa conta avulsa, ou num vencimento de recorrente (que vira uma conta paga)
+app.post('/api/fin/baixa', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {}, db = readDB(), comps = _finArr(db, KEY_FIN_COMP);
+    const hoje = _diaBR(Date.now());
+    let c;
+    if (b.id) {
+      c = comps.find(x => x.id === b.id);
+      if (!c) return res.status(404).json({ error: 'Conta não encontrada.' });
+      c.status = b.desfazer ? 'aberto' : 'pago'; c.pagoEm = b.desfazer ? null : hoje;
+    } else {
+      const r = _finArr(db, KEY_FIN_REC).find(x => x.id === b.recorrenteId);
+      if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(String(b.data || ''))) return res.status(400).json({ error: 'Recorrente ou data inválida.' });
+      c = comps.find(x => x.recorrenteId === r.id && x.vencimento === b.data);
+      if (!c) {
+        c = { id:'fp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), recorrenteId:r.id, tipo:r.tipo, descricao:r.descricao,
+              valor:r.valor, moeda:r.moeda || 'BRL', vencimento:b.data, grupo:r.grupo, categoria:r.categoria, projeto:r.projeto, contraparte:r.contraparte };
+        comps.push(c);
+      }
+      c.status = b.desfazer ? 'aberto' : 'pago'; c.pagoEm = b.desfazer ? null : hoje;
+    }
+    c._updatedAt = Date.now();
+    db.timestamps[KEY_FIN_COMP] = now();
+    audit(db, b.desfazer ? 'fin_baixa_desfeita' : 'fin_baixa', { id:c.id }, c.descricao, req.user);
+    writeDB(db);
+    res.json({ ok:true, compromisso:c });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const FIN_TIPOS = { recorrente:KEY_FIN_REC, compromisso:KEY_FIN_COMP, contraparte:KEY_FIN_CONTRA };
+const _finTxt = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+const _finDia = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '';
+function _finLimpar(tipo, b) {
+  if (tipo === 'contraparte') {
+    return { nome:_finTxt(b.nome, 80), tipo:_finTxt(b.tipo, 20) || 'fornecedor', documento:_finTxt(b.documento, 20),
+      categoria:_finTxt(b.categoria, 60), projeto:_finTxt(b.projeto, 60), notas:_finTxt(b.notas, 300),
+      emails:(Array.isArray(b.emails) ? b.emails : String(b.emails || '').split(/[,\s]+/)).map(x => _finTxt(x, 80)).filter(Boolean).slice(0, 10),
+      carteiras:(Array.isArray(b.carteiras) ? b.carteiras : String(b.carteiras || '').split(/[,\s]+/)).map(x => _finTxt(x, 120)).filter(Boolean).slice(0, 10) };
+  }
+  const base = { tipo:b.tipo === 'receber' ? 'receber' : 'pagar', descricao:_finTxt(b.descricao, 120), valor:Math.max(0, Number(b.valor) || 0),
+    moeda:['BRL','USD','USDT'].includes(b.moeda) ? b.moeda : 'BRL', grupo:_finTxt(b.grupo, 60), categoria:_finTxt(b.categoria, 60),
+    projeto:_finTxt(b.projeto, 60), contraparte:_finTxt(b.contraparte, 80), notas:_finTxt(b.notas, 300) };
+  if (tipo === 'recorrente') {
+    return Object.assign(base, { frequencia:['semanal','mensal','anual'].includes(b.frequencia) ? b.frequencia : 'mensal',
+      dia:Math.min(31, Math.max(1, parseInt(b.dia, 10) || 1)), inicio:_finDia(b.inicio) || _diaBR(Date.now()), fim:_finDia(b.fim), pausada:!!b.pausada });
+  }
+  return Object.assign(base, { vencimento:_finDia(b.vencimento) || _diaBR(Date.now()), status:b.status === 'pago' ? 'pago' : 'aberto',
+    pagoEm:b.status === 'pago' ? (_finDia(b.pagoEm) || _diaBR(Date.now())) : null, parcela:_finTxt(b.parcela, 10) });
+}
+app.post('/api/fin/:tipo', authDiretoria, (req, res) => {
+  try {
+    const key = FIN_TIPOS[req.params.tipo];
+    if (!key) return res.status(404).json({ error: 'Tipo desconhecido.' });
+    const b = req.body || {}, db = readDB(), arr = _finArr(db, key);
+    const dados = _finLimpar(req.params.tipo, b);
+    if (!(dados.nome || dados.descricao)) return res.status(400).json({ error: 'Dê um nome.' });
+    const salvos = [];
+    const atual = b.id ? arr.find(x => x.id === b.id) : null;
+    if (atual) { Object.assign(atual, dados, { _updatedAt:Date.now() }); salvos.push(atual); }
+    else {
+      // parcelado: uma conta por mês, cada uma com o seu "2/6"
+      const n = req.params.tipo === 'compromisso' ? Math.min(48, Math.max(1, parseInt(b.parcelas, 10) || 1)) : 1;
+      for (let i = 0; i < n; i++) {
+        const item = Object.assign({ id:'f' + req.params.tipo[0] + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + i }, dados, { _updatedAt:Date.now() });
+        if (n > 1) {
+          const d = new Date(dados.vencimento + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + i);
+          item.vencimento = d.toISOString().slice(0, 10); item.parcela = (i + 1) + '/' + n;
+        }
+        arr.push(item); salvos.push(item);
+      }
+    }
+    db.timestamps[key] = now();
+    audit(db, 'fin_' + req.params.tipo + '_salvo', { id:salvos[0].id, n:salvos.length }, salvos[0].descricao || salvos[0].nome, req.user);
+    writeDB(db);
+    res.json({ ok:true, itens:salvos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// excluir vai pra lixeira (dá pra restaurar por 30 dias), igual ao resto do sistema
+app.post('/api/fin/:tipo/:id/excluir', authDiretoria, (req, res) => {
+  try {
+    const key = FIN_TIPOS[req.params.tipo];
+    if (!key) return res.status(404).json({ error: 'Tipo desconhecido.' });
+    const db = readDB(), arr = _finArr(db, key);
+    const idx = arr.findIndex(x => x.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: 'Não encontrado.' });
+    const item = arr.splice(idx, 1)[0];
+    if (!Array.isArray(db.store.sl_lixeira)) db.store.sl_lixeira = [];
+    db.store.sl_lixeira.push({ id:Date.now() + '-' + Math.random().toString(36).slice(2, 8), sourceKey:key, tipo:'Financeiro · ' + req.params.tipo,
+      deletedAt:new Date().toISOString(), deletedBy:req.user && req.user.id, deletedByNome:req.user && req.user.nome, originalId:item.id, data:item });
+    db.timestamps[key] = now(); db.timestamps.sl_lixeira = now();
+    audit(db, 'soft_delete', { sourceKey:key, itemId:item.id, tipo:req.params.tipo }, { itemNome:item.descricao || item.nome }, req.user);
+    writeDB(db);
+    res.json({ ok:true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
