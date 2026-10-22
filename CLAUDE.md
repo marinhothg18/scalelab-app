@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## REGRA Nº 1: responder sempre em português
+
+**Toda mensagem para o Thiago é em português do Brasil. Sem exceção.**
+
+- Isso vale para respostas curtas ("já subiu?"), passo a passo, resumos e explicações técnicas.
+- Vale também depois de avisos do sistema, logs ou ferramentas em inglês: o idioma da resposta não muda.
+- Antes de enviar, confira se o texto inteiro está em português.
+- Ele já teve que pedir "manda em português" várias vezes em 22/10/2026.
+
 ## Sincronização entre máquinas (LEIA ANTES DE MEXER)
 
 O projeto roda em **dois Macs** e o GitHub é a fonte de verdade:
