@@ -2863,6 +2863,12 @@ app.get('/api/meta/conexao', authDiretoria, (req, res) => {
     if (_pessoas()) _q('SELECT conta, SUM(gasto) g FROM meta_camp_dia WHERE dia>=? GROUP BY conta').all(_diaBR(Date.now() - 13 * 86400000)).forEach(x => { gasto[x.conta] = Math.round(x.g || 0); });
     out.contas = out.contas.map(c => Object.assign(c, { gasto14: gasto[c.conta] || 0,
       projetos: Object.keys(proj).filter(p => (proj[p].contas || []).indexOf(c.conta) >= 0) }));
+    // cotação usada nas contas que não são em real (a mais recente guardada)
+    out.cambio = {};
+    if (_pessoas()) [...new Set(out.contas.map(c => String(c.moeda || 'BRL').toUpperCase()).filter(m => m !== 'BRL'))].forEach(m => {
+      const x = _q('SELECT dia, valor FROM cambio WHERE moeda=? ORDER BY dia DESC LIMIT 1').get(m);
+      if (x) out.cambio[m] = { dia: x.dia, valor: x.valor };
+    });
     const dsDoPx = {}; _destinos(db).forEach(d => { dsDoPx[d.pixel] = d; });
     const projsDoDs = {}; Object.keys(capi.destinos || {}).forEach(p => (capi.destinos[p] || []).forEach(id => { (projsDoDs[id] = projsDoDs[id] || []).push(p); }));
     out.pixels = out.pixels.map(p => { const d = dsDoPx[p.id];
@@ -2928,6 +2934,50 @@ const _META_ACOES = {
 function _metaAcao(arr, tipos) { let n = 0; (arr || []).forEach(a => { if (tipos.indexOf(a.action_type) >= 0) n = Math.max(n, Number(a.value) || 0); }); return n; }
 function _metaSoma(arr) { return (arr || []).reduce((s, a) => s + (Number(a.value) || 0), 0); }
 const _metaReais = v => (v === undefined || v === null || v === '') ? null : Math.round(Number(v)) / 100;
+
+// ── CÂMBIO ──
+// Conta de anúncio em dólar: a Meta devolve gasto, orçamento e lance em USD e o
+// TMX guarda tudo em real. Usa a PTAX do Banco Central do dia (fim de semana e
+// feriado ficam com o último dia útil antes, como a Utmify faz). Hoje, antes do
+// fechamento, vale o último boletim publicado.
+const _CAMBIO_URL = 'https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoMoedaPeriodo(moeda=@moeda,dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)';
+const _cambioMDY = dia => dia.slice(5, 7) + '-' + dia.slice(8, 10) + '-' + dia.slice(0, 4);
+async function _cambioBaixar(moeda, de, ate) {
+  const url = _CAMBIO_URL + "?@moeda='" + moeda + "'&@dataInicial='" + _cambioMDY(de) + "'&@dataFinalCotacao='" + _cambioMDY(ate) +
+    "'&$format=json&$select=cotacaoVenda,dataHoraCotacao,tipoBoletim";
+  const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error('Banco Central respondeu ' + r.status);
+  const j = await r.json();
+  // por dia: o boletim de fechamento; sem ele (hoje cedo), o mais recente do dia
+  const porDia = {};
+  (j.value || []).forEach(b => {
+    const dia = String(b.dataHoraCotacao || '').slice(0, 10), v = Number(b.cotacaoVenda);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !(v > 0)) return;
+    const fech = /fech/i.test(b.tipoBoletim || ''), x = porDia[dia];
+    if (!x || (fech && !x.fech) || (fech === x.fech && String(b.dataHoraCotacao) > x.hora)) porDia[dia] = { v, fech, hora: String(b.dataHoraCotacao) };
+  });
+  Object.keys(porDia).forEach(dia => {
+    _q('INSERT INTO cambio(moeda, dia, valor, fechamento, em) VALUES(?,?,?,?,?) ON CONFLICT(moeda, dia) DO UPDATE SET valor=excluded.valor, fechamento=excluded.fechamento, em=excluded.em')
+      .run(moeda, dia, porDia[dia].v, porDia[dia].fech ? 1 : 0, Date.now());
+  });
+  return Object.keys(porDia).length;
+}
+// Devolve dia => cotação pra todos os dias de [desde, ate]. Baixa do Banco Central
+// e guarda; se ele não responder, usa o que já tem guardado. Sem nenhuma cotação, erro.
+async function _cambioPeriodo(moeda, desde, ate) {
+  moeda = String(moeda || '').toUpperCase();
+  try { await _cambioBaixar(moeda, new Date(Date.parse(desde + 'T12:00:00Z') - 10 * 86400000).toISOString().slice(0, 10), ate); }
+  catch (e) { console.error('[CAMBIO] ' + moeda + ': ' + e.message); }
+  const linhas = _q('SELECT dia, valor FROM cambio WHERE moeda=? AND dia<=? ORDER BY dia').all(moeda, ate);
+  const out = {}; let i = 0, ultimo = null;
+  for (let t = Date.parse(desde + 'T12:00:00Z'), fim = Date.parse(ate + 'T12:00:00Z'); t <= fim; t += 86400000) {
+    const dia = new Date(t).toISOString().slice(0, 10);
+    while (i < linhas.length && linhas[i].dia <= dia) ultimo = linhas[i++].valor;
+    if (!ultimo) throw new Error('sem a cotação do ' + moeda + ' no Banco Central pra ' + dia.split('-').reverse().join('/') + '. Tento de novo na próxima hora.');
+    out[dia] = ultimo;
+  }
+  return out;
+}
 let _metaSyncRodando = false;
 async function _metaSincronizar(opts) {
   opts = opts || {};
@@ -2943,6 +2993,10 @@ async function _metaSincronizar(opts) {
     for (const c of (cfg.contas || [])) {
       if (c.status !== 1 && c.status !== 201 && c.status !== 9) continue;   // conta fora do ar: nada pra puxar
       try {
+        // conta em outra moeda: todo valor em dinheiro vira real pela cotação do dia
+        const moeda = String(c.moeda || 'BRL').toUpperCase();
+        const taxa = moeda === 'BRL' ? null : await _cambioPeriodo(moeda, _diaBR(t0 - dias * 86400000), hoje);
+        const emReal = (v, dia) => (v === null || v === undefined || !taxa) ? v : Math.round(v * (taxa[dia] || taxa[hoje]) * 100) / 100;
         // 1) campanhas e conjuntos: orçamento, lance, status
         const camps = await _metaTudo(c.id + '/campaigns', { fields: 'id,name,status,effective_status,daily_budget,lifetime_budget,bid_strategy,created_time',
           effective_status: STATUS_VIVOS, limit: '500' }, cfg, 6);
@@ -2959,8 +3013,8 @@ async function _metaSincronizar(opts) {
         camps.forEach(k => {
           const pc = porCamp[k.id] || {};
           estado[k.id] = { nome: String(k.name || '').slice(0, 160), status: String(k.effective_status || k.status || ''),
-            orc: k.daily_budget ? _metaReais(k.daily_budget) : (pc.orc ? _metaReais(pc.orc) : null),
-            orcVida: k.lifetime_budget ? _metaReais(k.lifetime_budget) : null, lance: pc.lance ? _metaReais(pc.lance) : null,
+            orc: emReal(k.daily_budget ? _metaReais(k.daily_budget) : (pc.orc ? _metaReais(pc.orc) : null), hoje),
+            orcVida: emReal(k.lifetime_budget ? _metaReais(k.lifetime_budget) : null, hoje), lance: emReal(pc.lance ? _metaReais(pc.lance) : null, hoje),
             estrategia: k.bid_strategy || '', criada: k.created_time ? (Date.parse(k.created_time) || null) : null };
         });
         r.campanhas += camps.length;
@@ -2974,7 +3028,7 @@ async function _metaSincronizar(opts) {
         _pessoas().exec('BEGIN');
         try {
           ins.forEach(d => {
-            const e = estado[d.campaign_id] || {};
+            const e = estado[d.campaign_id] || {}, dia = String(d.date_start).slice(0, 10);
             _q(`INSERT INTO meta_camp_dia(dia, conta, id, nome, status, orc, orc_vida, lance, gasto, imp, alcance, freq, cliques, link_cliques,
                   lpv, ic, compras, plays, v3, v25, v50, v75, v95, v100, thruplay, criada, em)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -2983,9 +3037,9 @@ async function _metaSincronizar(opts) {
                   link_cliques=excluded.link_cliques, lpv=excluded.lpv, ic=excluded.ic, compras=excluded.compras, plays=excluded.plays, v3=excluded.v3,
                   v25=excluded.v25, v50=excluded.v50, v75=excluded.v75, v95=excluded.v95, v100=excluded.v100, thruplay=excluded.thruplay,
                   criada=excluded.criada, em=excluded.em`)
-              .run(String(d.date_start).slice(0, 10), c.conta, String(d.campaign_id), String(d.campaign_name || e.nome || '').slice(0, 160),
+              .run(dia, c.conta, String(d.campaign_id), String(d.campaign_name || e.nome || '').slice(0, 160),
                    e.status || null, e.orc == null ? null : e.orc, e.orcVida == null ? null : e.orcVida, e.lance == null ? null : e.lance,
-                   Number(d.spend) || 0, Number(d.impressions) || 0, Number(d.reach) || 0, Number(d.frequency) || 0, Number(d.clicks) || 0,
+                   emReal(Number(d.spend) || 0, dia), Number(d.impressions) || 0, Number(d.reach) || 0, Number(d.frequency) || 0, Number(d.clicks) || 0,
                    Number(d.inline_link_clicks) || 0, _metaAcao(d.actions, _META_ACOES.lpv), _metaAcao(d.actions, _META_ACOES.ic),
                    _metaAcao(d.actions, _META_ACOES.compras), _metaSoma(d.video_play_actions), _metaAcao(d.actions, _META_ACOES.v3),
                    _metaSoma(d.video_p25_watched_actions), _metaSoma(d.video_p50_watched_actions), _metaSoma(d.video_p75_watched_actions),
@@ -3004,7 +3058,7 @@ async function _metaSincronizar(opts) {
           if (!(h >= 0 && h < 24)) return;
           _q(`INSERT INTO meta_camp_hora(dia, hora, id, conta, gasto, imp, cliques) VALUES(?,?,?,?,?,?,?)
               ON CONFLICT(dia, hora, id) DO UPDATE SET gasto=excluded.gasto, imp=excluded.imp, cliques=excluded.cliques`)
-            .run(hoje, h, String(d.campaign_id), c.conta, Number(d.spend) || 0, Number(d.impressions) || 0, Number(d.inline_link_clicks) || 0);
+            .run(hoje, h, String(d.campaign_id), c.conta, emReal(Number(d.spend) || 0, hoje), Number(d.impressions) || 0, Number(d.inline_link_clicks) || 0);
           r.linhasHora++;
         });
 
@@ -3022,7 +3076,7 @@ async function _metaSincronizar(opts) {
           const val = v => {
             if (v && typeof v === 'object') v = v.new_value !== undefined ? v.new_value : (v.value !== undefined ? v.value : JSON.stringify(v));
             if (v === undefined || v === null) return '';
-            return (campo === 'orc' || campo === 'lance') && /^\d+$/.test(String(v)) ? String(Number(v) / 100) : String(v).slice(0, 60);
+            return (campo === 'orc' || campo === 'lance') && /^\d+$/.test(String(v)) ? String(emReal(Number(v) / 100, _diaBR(em))) : String(v).slice(0, 60);
           };
           if (_q("SELECT 1 FROM camp_mudancas WHERE camp=? AND em=? AND campo=? AND fonte='meta'").get(camp, em, campo)) return;
           const nome = (estado[camp] && estado[camp].nome) || String(a.object_name || '').slice(0, 160);
@@ -3048,8 +3102,21 @@ async function _metaSincronizar(opts) {
   if (r.erros.length) console.error('[META] puxada com erro:', r.erros.slice(0, 3).join(' | '));
   return r;
 }
-setTimeout(() => _metaSincronizar().catch(e => console.error('[META]', e.message)), 3 * 60 * 1000);
-setInterval(() => _metaSincronizar().catch(e => console.error('[META]', e.message)), 60 * 60 * 1000);
+// Uma vez: a primeira puxada (22/10) gravou o gasto das contas em dólar como se fosse
+// real. Tira as mudanças de orçamento/lance dessas contas e puxa os 14 dias de novo,
+// já convertidos. Repete a cada hora até a cotação do Banco Central responder.
+async function _metaRodar() {
+  const chave = 'meta:em-real-20261022', cfg = _metaCfg();
+  if (!_pessoas() || _pCfg(chave) || !cfg || !cfg.accessToken || _metaSyncRodando) return _metaSincronizar();
+  const fora = (cfg.contas || []).filter(c => c.moeda && String(c.moeda).toUpperCase() !== 'BRL').map(c => String(c.conta));
+  if (fora.length) _q(`DELETE FROM camp_mudancas WHERE fonte='meta' AND campo IN ('orc','lance') AND camp IN
+    (SELECT DISTINCT id FROM meta_camp_dia WHERE conta IN (${fora.map(() => '?').join(',')}))`).run(...fora);
+  const r = await _metaSincronizar({ dias: 14 });
+  if (r && !r.erros.some(x => /cotação/.test(x))) { _pCfg(chave, Date.now()); console.log('[META] gasto das contas em dólar refeito em real'); }
+  return r;
+}
+setTimeout(() => _metaRodar().catch(e => console.error('[META]', e.message)), 3 * 60 * 1000);
+setInterval(() => _metaRodar().catch(e => console.error('[META]', e.message)), 60 * 60 * 1000);
 setInterval(() => _capiEnviarPendentes().catch(e => console.error('[CAPI] envio:', e.message)), 60 * 1000);
 // Pausar e ativar campanha direto da Análise de tráfego. Só a Diretoria, e só
 // com o token tendo ads_management. Fica na auditoria e no histórico da campanha.
@@ -10392,6 +10459,7 @@ function _pessoas() {
       CREATE TABLE IF NOT EXISTS meta_camp_hora (dia TEXT, hora INTEGER, id TEXT, conta TEXT, gasto REAL, imp INTEGER, cliques INTEGER,
         PRIMARY KEY (dia, hora, id));
       CREATE TABLE IF NOT EXISTS meta_contas_nome (conta TEXT PRIMARY KEY, nome TEXT, em INTEGER);
+      CREATE TABLE IF NOT EXISTS cambio (moeda TEXT, dia TEXT, valor REAL, fechamento INTEGER, em INTEGER, PRIMARY KEY (moeda, dia));
       CREATE TABLE IF NOT EXISTS camp_estado (id TEXT PRIMARY KEY, nome TEXT, dashboard TEXT, orc REAL, bid REAL, status TEXT, em INTEGER);
       CREATE TABLE IF NOT EXISTS camp_mudancas (n INTEGER PRIMARY KEY AUTOINCREMENT, camp TEXT, nome TEXT, dashboard TEXT,
         campo TEXT, de TEXT, para TEXT, em INTEGER, desde INTEGER, fonte TEXT);

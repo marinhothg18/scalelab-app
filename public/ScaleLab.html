@@ -36657,11 +36657,14 @@ function _cardMeta(con, cp){
       cs.map(function(c){
         var st = c.status === 1 || c.status === 201 ? 'ok' : (c.status === 2 || c.status === 101 ? 'neu' : 'warn');
         return '<tr><td><b>'+fnEsc(c.nome || c.conta)+'</b><div class="fx-sub mono">'+fnEsc(c.conta)+(c.bm ? ' · '+fnEsc(c.bm) : '')+'</div></td>'+
-          '<td><span class="v2-pill '+st+'">'+fnEsc(c.statusTxt || '')+'</span></td><td class="n">'+fnDin(c.gasto14 || 0)+'</td>'+
+          '<td><span class="v2-pill '+st+'">'+fnEsc(c.statusTxt || '')+'</span></td><td class="n">'+fnDin(c.gasto14 || 0)+
+            (c.moeda && c.moeda !== 'BRL' ? '<div class="fx-sub">conta em '+fnEsc(c.moeda)+', convertido</div>' : '')+'</td>'+
           '<td>'+((c.projetos || []).length ? c.projetos.map(function(p){ return '<span class="v2-pill neu">'+fnEsc(p)+'</span>'; }).join(' ')+((c.projetos || []).length > 1 ? ' <span class="v2-pill warn" title="Cada projeto pega as campanhas pelo nome">pelo nome</span>' : '')
             : '<span class="fx-sub">nenhum ainda</span>')+'</td></tr>';
       }).join('')+'</table></div>'+
-      '<div class="fx-sub" style="margin-top:6px">O projeto de cada conta se escolhe dentro do projeto: Projetos → abre o projeto → <b>Configurar</b>.</div>';
+      '<div class="fx-sub" style="margin-top:6px">O projeto de cada conta se escolhe dentro do projeto: Projetos → abre o projeto → <b>Configurar</b>.'+
+        Object.keys(con.cambio || {}).map(function(m){ var x = con.cambio[m];
+          return ' Contas em '+fnEsc(m)+' viram real pela cotação do Banco Central de cada dia (última: R$ '+Number(x.valor).toFixed(4).replace('.', ',')+' em '+fnEsc(x.dia.split('-').reverse().slice(0, 2).join('/'))+').'; }).join('')+'</div>';
     var px = con.pixels || [];
     h += '<div class="v2-rot vd-sec">Pixels · '+px.length+'</div>'+
       (px.length ? '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:520px"><tr><th>Pixel</th><th>Último disparo</th><th>Recebe as compras de</th></tr>'+
