@@ -2813,7 +2813,16 @@ async function _metaListar(cfg) {
   const eu = await _metaGet('me', { fields: 'id,name' }, cfg);
   let permissoes = [];
   try { permissoes = ((await _metaGet('me/permissions', {}, cfg)).data || []).filter(p => p.status === 'granted').map(p => p.permission); } catch (e) {}
-  const contas = (await _metaTudo('me/adaccounts', { fields: 'id,account_id,name,account_status,currency,timezone_name,business{id,name}', limit: '200' }, cfg, 5))
+  // Conta de outra BM (alugada, de parceiro): ler a BM dona dela dá erro de
+  // permissão mesmo com o token certo. Sem esse campo a lista vem igual.
+  let brutas;
+  try { brutas = await _metaTudo('me/adaccounts', { fields: 'id,account_id,name,account_status,currency,timezone_name,business{id,name}', limit: '200' }, cfg, 5); }
+  catch (e) {
+    if (e.metaCode === 190) throw e;
+    try { brutas = await _metaTudo('me/adaccounts', { fields: 'id,account_id,name,account_status,currency,timezone_name', limit: '200' }, cfg, 5); }
+    catch (e2) { e2.etapa = 'listar as contas de anúncio'; throw e2; }
+  }
+  const contas = brutas
     .map(a => ({ id: String(a.id), conta: String(a.account_id || String(a.id).replace(/^act_/, '')), nome: String(a.name || ''),
                  status: Number(a.account_status) || 0, moeda: a.currency || '', fuso: a.timezone_name || '', bm: a.business ? String(a.business.name || '') : '' }));
   const pixels = {};
@@ -2838,7 +2847,7 @@ function _metaConexaoPublica(cfg) {
 function _metaErroTxt(e) {
   const c = e && e.metaCode;
   if (c === 190) return 'A Meta recusou o token (vencido, apagado ou copiado pela metade). Gere outro no usuário do sistema.';
-  if (c === 10 || c === 200 || c === 294) return 'O token não tem a permissão que precisa. Gere de novo marcando ads_read e business_management.';
+  if (c === 10 || c === 200 || c === 294) return 'O token não tem a permissão que precisa' + (e.etapa ? ' pra ' + e.etapa : '') + '. A Meta disse: "' + String(e.message || '').slice(0, 200) + '". Confira no Depurador de tokens da Meta se ads_read e business_management estão no token, e se as contas foram atribuídas ao usuário do sistema.';
   if (c === 4 || c === 17 || c === 613 || c === 80004) return 'A Meta pediu pra esperar um pouco (limite de chamadas). Tente de novo em alguns minutos.';
   return (e && e.message) || 'A Meta não respondeu.';
 }
