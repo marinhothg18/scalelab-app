@@ -4857,12 +4857,13 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       }
       if (vivo) anuncios = (vivo.ads || []).map(a => {
         const cent = v => (Number(v) || 0) / 100, imp = Number(a.impressions) || 0, v3 = Number(a.videoViews3Seconds) || 0, v75 = Number(a.video75Watched) || 0, cl = Number(a.inlineLinkClicks) || 0;
-        return { nome: String(a.name || ''), status: a.effectiveStatus || a.status || '', gasto: cent(a.spend), faturamento: cent(a.grossRevenue), lucro: cent(a.profit),
+        return { id: String(a.adId || a.id || ''), nome: String(a.name || ''), status: a.effectiveStatus || a.status || '', gasto: cent(a.spend), faturamento: cent(a.grossRevenue), lucro: cent(a.profit),
           vendas: Number(a.approvedOrdersCount) || 0, imp, cliques: cl, ctr: imp ? cl / imp : null, hook: imp ? v3 / imp : null, hold: imp ? v75 / imp : null, cta: v75 ? cl / v75 : null };
       }).filter(a => a.gasto > 0 || a.vendas > 0).sort((a, b) => b.lucro - a.lucro);
     }
     // do clique em diante, pelo pixel do TMX (a UTM traz o id da campanha no fim)
     const tmx = { visitas: 0, pitch: 0, ck: 0, vendas: 0, faturamento: 0, horas: Array(24).fill(0), fatHora: Array(24).fill(0) };
+    const tmxAd = {};   // anúncio -> { id, nome, vendas, faturamento }
     const porDiaTmx = {};
     if (_pessoas() && m.id) {
       const vis = new Set(), pit = new Set(), ck = new Set();
@@ -4872,13 +4873,40 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       });
       tmx.visitas = vis.size; tmx.pitch = pit.size; tmx.ck = ck.size;
       const ini7 = Date.parse(dias7[0] + 'T00:00:00-03:00'), diaHora = per.ate;
-      _q('SELECT valor, liquido, cred_camp, camp, em, dia FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(Math.min(ini7, per.ini), per.fim).forEach(p => {
+      _q('SELECT valor, liquido, cred_camp, camp, cred_cont, cont, em, dia FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(Math.min(ini7, per.ini), per.fim).forEach(p => {
         if ((_idDaCampUtm(p.cred_camp) || _idDaCampUtm(p.camp)) !== m.id) return;
         const v = p.liquido != null ? p.liquido : (Number(p.valor) || 0);
         const d = porDiaTmx[p.dia] || (porDiaTmx[p.dia] = { vendas: 0, faturamento: 0 }); d.vendas++; d.faturamento += v;
-        if (p.em >= per.ini) { tmx.vendas++; tmx.faturamento += v; }
+        if (p.em >= per.ini) {
+          tmx.vendas++; tmx.faturamento += v;
+          const cont = String(p.cred_camp ? (p.cred_cont || '') : (p.cont || '')).trim();
+          const aid = _idDaCampUtm(cont), anome = cont.replace(/\|\s*\d{10,}\s*$/, '').trim() || '(sem utm_content)';
+          const k = aid || ('n:' + _nrm(anome));
+          const x = tmxAd[k] || (tmxAd[k] = { id: aid, nome: anome, vendas: 0, faturamento: 0 });
+          x.vendas++; x.faturamento += v;
+        }
         if (p.dia === diaHora) { const h = new Date(p.em - 3 * 3600000).getUTCHours(); tmx.horas[h]++; tmx.fatHora[h] += v; }
       });
+    }
+    {
+      const usados = new Set();
+      // pelo id do anúncio; venda sem id (ou com id que não é de nenhum anúncio da lista) casa pelo nome
+      const porNome = {}; Object.keys(tmxAd).forEach(k => { const n = _nrm(tmxAd[k].nome); (porNome[n] = porNome[n] || []).push(k); });
+      const idsUtm = new Set(anuncios.map(a => a.id).filter(Boolean));
+      anuncios.forEach(a => {
+        const ks = [];
+        if (a.id && tmxAd[a.id] && !usados.has(a.id)) ks.push(a.id);
+        (porNome[_nrm(a.nome)] || []).forEach(k => { if (!usados.has(k) && ks.indexOf(k) < 0 && (!tmxAd[k].id || !idsUtm.has(tmxAd[k].id))) ks.push(k); });
+        a.vendasTmx = ks.reduce((n, k) => n + tmxAd[k].vendas, 0); a.fatTmx = ks.reduce((n, k) => n + tmxAd[k].faturamento, 0);
+        a.lucroTmx = a.fatTmx - (a.gasto || 0);
+        ks.forEach(k => usados.add(k));
+      });
+      Object.keys(tmxAd).filter(k => !usados.has(k)).forEach(k => {
+        const x = tmxAd[k];
+        anuncios.push({ id: x.id, nome: x.nome, status: '', gasto: 0, faturamento: null, lucro: null, vendas: 0, imp: 0, cliques: 0, ctr: null, hook: null, hold: null, cta: null,
+          vendasTmx: x.vendas, fatTmx: x.faturamento, lucroTmx: x.faturamento, soTmx: true });
+      });
+      anuncios.sort((a, b) => (b.vendasTmx + b.vendas) - (a.vendasTmx + a.vendas) || (b.lucro || 0) - (a.lucro || 0) || b.gasto - a.gasto);
     }
     // resultado por dia: os 7 dias até o fim do período (gasto da Utmify, venda pela Utmify e pelo TMX)
     const campDia = {};
@@ -4891,7 +4919,7 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       return { dia: d, gasto: g, fatUtmify: ls.length ? fu : null, lucroUtmify: lu, vendasTmx: t.vendas, fatTmx: t.faturamento };
     });
     const mudancas = (_pessoas() && m.id) ? _q('SELECT campo, de, para, em, desde, fonte FROM camp_mudancas WHERE camp=? AND em BETWEEN ? AND ? ORDER BY em').all(m.id, per.ini - 86400000, per.fim) : [];
-    if (!dir) { m.faturamento = null; m.fatLiquido = null; m.lucro = null; tmx.faturamento = null; tmx.fatHora = null; porDia.forEach(x => { x.fatUtmify = null; x.lucroUtmify = null; x.fatTmx = null; }); anuncios.forEach(a => { a.faturamento = null; a.lucro = null; }); }
+    if (!dir) { m.faturamento = null; m.fatLiquido = null; m.lucro = null; tmx.faturamento = null; tmx.fatHora = null; porDia.forEach(x => { x.fatUtmify = null; x.lucroUtmify = null; x.fatTmx = null; }); anuncios.forEach(a => { a.faturamento = null; a.lucro = null; a.fatTmx = null; a.lucroTmx = null; }); }
     res.json({ ok: true, de: per.de, ate: per.ate, campanha: m, tmx, porDia, mudancas, anuncios, erroAoVivo,
       registroDesde: _pessoas() ? ((_q('SELECT MIN(em) em FROM camp_estado').get() || {}).em || null) : null });
   } catch (e) { res.status(500).json({ error: e.message }); }

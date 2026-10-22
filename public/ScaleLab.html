@@ -41148,7 +41148,13 @@ function cpPintarAnalise(){
     return '<div class="v2-feed-i"><span class="v2-ic warn">✎</span><div><b>'+campo[x.campo]+': '+(x.de !== '' ? fv(x.campo, x.de)+' → ' : '')+fv(x.campo, x.para)+'</b>'+
       '<div class="sub">'+(x.fonte === 'utmify' ? 'feito pela Utmify, na hora exata' : (x.desde ? 'entre '+hm(x.desde)+' e '+hm(x.em)+' (o TMX confere a cada sincronização)' : 'visto às '+hm(x.em)))+'</div></div><span class="h">'+dm(x.em)+' '+hm(x.em)+'</span></div>'; }).join('');
   var desde = d.registroDesde ? ' O TMX anota as mudanças desde '+dm(d.registroDesde)+' '+hm(d.registroDesde)+'.' : '';
-  var ads = (d.anuncios || []).map(function(a){ return '<tr><td>'+fnEsc(a.nome)+'</td><td>'+fmtAds(a.gasto)+'</td><td>'+a.vendas+'</td><td class="'+(a.lucro == null ? '' : a.lucro >= 0 ? 'pos' : 'neg')+'">'+din(a.lucro)+'</td><td>'+pct(a.ctr, 2)+'</td><td>'+pct(a.hook, 0)+'</td><td>'+pct(a.cta, 0)+'</td></tr>'; }).join('');
+  var ads = (d.anuncios || []).map(function(a){
+    var vt = a.vendasTmx || 0, dv = vt - (a.vendas || 0);
+    return '<tr'+(a.soTmx ? ' class="cp-so-tmx" title="Vendeu pelo TMX sem gasto neste período (a pessoa clicou neste anúncio em outro dia)"' : '')+'><td>'+fnEsc(a.nome)+(a.soTmx ? ' <small class="cp-tmx">sem gasto no período</small>' : '')+'</td><td>'+fmtAds(a.gasto)+'</td><td>'+(a.soTmx ? '<i>—</i>' : a.vendas)+'</td>'+
+      '<td><b class="cp-tmx">'+vt+'</b>'+(dv && !a.soTmx ? '<small class="'+(dv > 0 ? 'pos' : 'neg')+'"> '+(dv > 0 ? '+' : '')+dv+'</small>' : '')+'</td>'+
+      '<td class="'+(a.lucro == null ? '' : a.lucro >= 0 ? 'pos' : 'neg')+'">'+(a.soTmx ? '<i>—</i>' : din(a.lucro))+'</td>'+
+      '<td class="'+(a.lucroTmx == null ? '' : a.lucroTmx >= 0 ? 'pos' : 'neg')+'">'+din(a.lucroTmx)+'</td>'+
+      '<td>'+pct(a.ctr, 2)+'</td><td>'+pct(a.hook, 0)+'</td><td>'+pct(a.cta, 0)+'</td></tr>'; }).join('');
   ov.querySelector('.v2-mod').innerHTML =
     '<div class="v2-cab"><div><h2>'+fnEsc(cpNomeCurto(m.nome))+'</h2><div class="cp-chips" style="margin-top:6px"><span class="cp-st '+st[1]+'">'+st[0]+'</span>'+(m.conta ? '<span>'+fnEsc(m.conta)+'</span>' : '')+
       (m.orc != null ? '<span>'+fmtAds(m.orc)+(m.orcVida ? ' total' : '/dia')+'</span>' : '')+(m.bid != null ? '<span>bid cap '+fmtAds(m.bid)+'</span>' : '')+(m.criada ? '<span>criada em '+m.criada.slice(8,10)+'/'+m.criada.slice(5,7)+'</span>' : '')+'</div></div>'+
@@ -41166,7 +41172,7 @@ function cpPintarAnalise(){
     '<div class="v2-rot cp-s">Vendas por hora · '+dm(Date.parse(d.ate+'T12:00:00'))+'</div>'+cpGraficoHoras(d)+
     '<div class="v2-rot cp-s">Orçamento e mudanças</div>'+(mud || '<div class="cp-nota">Nenhuma mudança de orçamento, bid cap ou status vista no período.'+desde+'</div>')+
     (mud ? '<div class="cp-nota" style="margin-top:6px">'+desde.trim()+'</div>' : '')+
-    '<div class="v2-rot cp-s">Anúncios desta campanha</div>'+(ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th>Vendas</th><th>Lucro</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>' : '<div class="cp-nota">Nenhum anúncio com gasto no período'+(d.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
+    '<div class="v2-rot cp-s">Anúncios desta campanha</div>'+(ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th title="Vendas que a Utmify deu a este anúncio">Vendas Utmify</th><th title="Vendas que o TMX deu a este anúncio (último anúncio que a pessoa clicou)">Vendas TMX</th><th>Lucro Utmify</th><th title="Faturamento das vendas do TMX menos o gasto">Lucro TMX</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>' : '<div class="cp-nota">Nenhum anúncio com gasto no período'+(d.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
   var cA = cpDados[cpAnaliseIdx]; if(cA) cpVivoLigar(cA.campanhaId, cA.nome);
 }
 function cpSerie(d){ return d.porDia.map(function(x){ var f = x.fatUtmify != null ? x.fatUtmify : (x.fatTmx != null ? x.fatTmx : null); var l = x.lucroUtmify != null ? x.lucroUtmify : (f != null ? f - x.gasto : null); return { dia:x.dia, g:x.gasto||0, f:f, l:l, v:x.vendasTmx||0 }; }); }
