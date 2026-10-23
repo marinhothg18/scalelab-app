@@ -5404,13 +5404,15 @@ a.fn-btn{text-decoration:none;display:inline-block}
 
         <!-- TAB: POR ANÚNCIO -->
         <div id="ads-tab-anuncio" class="ads-tab-panel" style="display:none;">
+          <!-- busca em cima: embaixo dos cards ninguém achava -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+            <input id="anuncio-search" type="search" placeholder="🔍  Buscar anúncio pelo nome (ex.: AD210)" aria-label="Buscar anúncio pelo nome" oninput="_adsFonte()==='utmify' ? pintarAnunciosUtmify() : renderAnuncios()" style="flex:1;min-width:220px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
+            <select id="anuncio-conta" onchange="pintarAnunciosUtmify()" aria-label="Conta de anúncio" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12.5px"><option value="">Todas as contas</option></select>
+            <span id="anuncio-qtd" style="font-size:12px;color:var(--text2);white-space:nowrap"></span>
+          </div>
           <div id="ads-anuncio-arquivo"></div>
           <div id="ads-anuncio-cards" style="display:none;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px;"></div>
           <div id="anuncio-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;"></div>
-          <div style="margin-bottom:14px;">
-            <select id="anuncio-conta" onchange="pintarAnunciosUtmify()" style="display:none;margin-bottom:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12.5px"><option value="">Todas as contas</option></select>
-            <input id="anuncio-search" type="text" placeholder="🔍  Buscar anúncio..." oninput="_adsFonte()==='utmify' ? pintarAnunciosUtmify() : renderAnuncios()" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
-          </div>
           <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
               <thead>
@@ -41088,6 +41090,8 @@ function pintarAnunciosUtmify(){
   const lista = termo
     ? base.filter(a => String(a.nome).toLowerCase().includes(termo) || String(a.dashboard).toLowerCase().includes(termo))
     : base;
+  const qtd = document.getElementById('anuncio-qtd');
+  if (qtd) qtd.textContent = termo ? lista.length + ' de ' + base.length + ' anúncio' + (base.length === 1 ? '' : 's') : (base.length ? base.length + ' anúncio' + (base.length === 1 ? '' : 's') : '');
   if (typeof cpEst !== 'undefined' && cpEst.nivel === 'contas' && typeof cpPintar === 'function') setTimeout(cpPintar, 0);
   const grade0 = document.getElementById('ads-anuncio-cards');
   if(!lista.length){
