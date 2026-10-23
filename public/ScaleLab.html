@@ -34129,10 +34129,15 @@ function fnNoCorpo(n, b, vt){
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
     pe = '<div class="fx-c-pe"><span>Taxa de conversão</span><b>'+v2Pct(b.conversao, 2)+'</b></div>'+
          '<div class="v2-trilho" style="height:5px"><i style="width:'+Math.min(100, (b.conversao||0)*800).toFixed(1)+'%;background:#22C55E"></i></div>'+
-         // vendas que vieram de outra página e só clicaram em comprar aqui (ex.: back redirect)
-         (b.salvas ? '<div class="fn-div" title="A venda conta na página que trouxe a pessoa; aqui fica quantas clicaram em comprar NESTA página">'+
-           '<span>'+(n.tipo === 'backredirect' ? 'Salvou' : 'Fechou aqui')+' <b style="color:var(--v2-verde,#22C55E)">'+b.salvas+'</b> venda'+(b.salvas===1?'':'s')+
-           (b.salvasDe && b.salvasDe.length ? ' de '+b.salvasDe.slice(0,2).map(function(x){ return fnEsc(x.nome)+' ('+x.n+')'; }).join(', ') : '')+'</span></div>' : '');
+         // a venda é da página do clique em comprar; o back redirect só "salva" a da página que trouxe a pessoa
+         (b.salvas ? '<div class="fn-div" title="'+(n.tipo === 'backredirect' ? 'A venda conta na página que trouxe a pessoa; o back redirect fica com o crédito de ter salvo' : 'Compraram nesta página, mas chegaram antes por outra')+'">'+
+           '<span>'+(n.tipo === 'backredirect'
+             ? 'Salvou <b style="color:var(--v2-verde,#22C55E)">'+b.salvas+'</b> venda'+(b.salvas===1?'':'s')+' de '
+             : '<b>'+b.salvas+'</b> dessas vendas entr'+(b.salvas===1?'ou':'aram')+' antes por ')+
+           (b.salvasDe || []).slice(0,2).map(function(x){ return fnEsc(x.nome)+' ('+x.n+')'; }).join(', ')+'</span></div>' : '')+
+         (b.levou ? '<div class="fn-div" title="Entraram por esta página e compraram em outra: a venda conta lá">'+
+           '<span>Mais <b>'+b.levou+'</b> de quem entrou aqui compr'+(b.levou===1?'ou':'aram')+' em '+
+           (b.levouPara || []).slice(0,2).map(function(x){ return fnEsc(x.nome)+' ('+x.n+')'; }).join(', ')+'</span></div>' : '');
   }
   return cab +
     (vt ? '<div class="fn-var" title="Variante do teste '+fnEsc(vt.teste)+'">⇄ '+fnEsc(vt.nome)+'</div>' : '') +

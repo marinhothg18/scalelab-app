@@ -14066,50 +14066,64 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       (ckEtapa[et] = ckEtapa[et] || new Set()).add(x.visitante);
       let dest = '', path = ''; try { const ex = JSON.parse(x.extra || '{}') || {}; dest = ex.destino || ''; path = ex.dest || (String(dest).indexOf('/') > 0 ? _normPg(dest) : ''); } catch (er) {}
       const pl = _platDoHost(dest);
-      const cl = { v: x.visitante, plat: pl, path, et };
+      const cl = { v: x.visitante, plat: pl, path, et, em: x.em };
       (ckDe[x.visitante] = ckDe[x.visitante] || []).push(cl);
       (ckDaEtapa[et] = ckDaEtapa[et] || []).push(cl);
       if (!pl) return;
       (ckPlat[x.visitante] = ckPlat[x.visitante] || new Set()).add(pl);
       const pe = ckEtapaPlat[et] || (ckEtapaPlat[et] = {}); (pe[pl] = pe[pl] || new Set()).add(x.visitante);
     });
+    const ckCompra = {};     // comprador -> [{em, path}] de todo clique de compra (pra saber qual checkout ele abriu)
     for (let i = 0; i < alvoEv.length; i += 400) {
       const lote = alvoEv.slice(i, i + 400);
-      _q(`SELECT visitante, pg, etapa, em FROM eventos WHERE tipo='checkout' AND em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
+      _q(`SELECT visitante, pg, etapa, em, extra FROM eventos WHERE tipo='checkout' AND em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
         const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 1 });
+        let path = ''; try { const ex = JSON.parse(x.extra || '{}') || {}; path = ex.dest || (String(ex.destino || '').indexOf('/') > 0 ? _normPg(ex.destino) : ''); } catch (er) {}
+        (ckCompra[x.visitante] = ckCompra[x.visitante] || []).push({ em: x.em, path });
       });
       _q(`SELECT visitante, pg, etapa, em FROM paginas WHERE em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
         const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0 });
       });
     }
-    // A venda é da página que TROUXE a pessoa (a primeira do funil nos 7 dias
-    // antes da compra). Se o clique de compra foi em outra página (o back
-    // redirect, por exemplo), essa outra ganha a venda como "salva" por ela,
-    // sem tirar da página de origem — e o total continua batendo.
-    const vendaDaEtapa = {}, salvasDaEtapa = {};
+    // A venda é da página onde a pessoa clicou em comprar: quem passou pela 697
+    // e voltou dias depois pra VSL 297 comprou o plano de 297, e a venda é da 297
+    // (antes ia pra 697, a página de entrada, e a 297 mostrava zero). Sem clique
+    // visto, fica a página de entrada (a primeira do funil nos 7 dias antes).
+    // Back redirect é a exceção: ele SALVA a venda da página que trouxe a pessoa,
+    // que continua com ela.
+    const vendaDaEtapa = {}, vendaEntrada = {}, salvasDaEtapa = {}, levouDaEtapa = {};
     vendas.forEach(o => {
       if (!o.visitante) return;
       const lim = (o.em || 0) + 10 * 60000, desde = (o.em || 0) - 7 * 86400000;
+      // o checkout que a pessoa abriu pra comprar: o do último clique antes da compra
+      const cc = (ckCompra[o.visitante] || []).filter(x => x.em <= lim && x.em >= desde && x.path).sort((a, b) => b.em - a.em)[0];
+      if (cc) o.ckPath = cc.path;
       const evs = (evDe[o.visitante] || []).filter(x => x.em <= lim && x.em >= desde);
       const pags = evs.filter(x => !x.ck).sort((a, b) => a.em - b.em);
       const cliques = evs.filter(x => x.ck).sort((a, b) => b.em - a.em);
       const entrada = pags.length ? pags[0].et : (cliques.length ? cliques[cliques.length - 1].et : null);
-      if (entrada) (vendaDaEtapa[entrada] = vendaDaEtapa[entrada] || []).push(o);
       const clique = cliques.length ? cliques[0].et : null;
+      const viaBack = !!clique && esc.tipoEtapa[clique] === 'backredirect';
+      const dona = clique && !viaBack ? clique : entrada;
+      if (entrada) (vendaEntrada[entrada] = vendaEntrada[entrada] || []).push(o);
+      if (dona) (vendaDaEtapa[dona] = vendaDaEtapa[dona] || []).push(o);
       if (clique && entrada && clique !== entrada) {
         const x = salvasDaEtapa[clique] || (salvasDaEtapa[clique] = { n: 0, de: {} });
         x.n++; x.de[entrada] = (x.de[entrada] || 0) + 1;
+        if (!viaBack) { const y = levouDaEtapa[entrada] || (levouDaEtapa[entrada] = { n: 0, para: {} }); y.n++; y.para[clique] = (y.para[clique] || 0) + 1; }
       }
     });
     // página: pessoas da página, pitch e cliques NELA, e as vendas que saíram dela
     const medirPagina = (id, lst) => {
       const s = porEtapa[id] || new Set();
       const vf = (vendaDaEtapa[id] || []).filter(o => casaProd(o, lst));
-      const sv = salvasDaEtapa[id];
+      const sv = salvasDaEtapa[id], lv = levouDaEtapa[id];
+      const lista = m => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([et, n]) => ({ nome: esc.nomeEtapa[et] || et, n }));
       return { pessoas: s.size, checkout: (ckEtapa[id] || new Set()).size, pitch: (pitEtapa[id] || new Set()).size,
                vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
                conversao: s.size ? vf.length / s.size : 0, produtos: topProd(vf),
-               salvas: sv ? sv.n : 0, salvasDe: sv ? Object.entries(sv.de).sort((a, b) => b[1] - a[1]).map(([et, n]) => ({ nome: esc.nomeEtapa[et] || et, n })) : [] };
+               // salvas: compraram aqui tendo entrado por outra página; levou: entraram aqui e compraram em outra
+               salvas: sv ? sv.n : 0, salvasDe: sv ? lista(sv.de) : [], levou: lv ? lv.n : 0, levouPara: lv ? lista(lv.para) : [] };
     };
     // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
@@ -14123,7 +14137,11 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const blocosCk = () => (f.etapas || []).filter(x => x.tipo === 'checkout' && !(porEtapa[x.id] && porEtapa[x.id].size))
       .map(x => ({ id: x.id, plat: _platDoBloco(x), lst: prodLista(x), path: x.url ? _normPg(x.url) : '' }));
     const ckDoBloco = (b, c) => (b.path && c.path) ? c.path === b.path : !!(b.plat && c.plat === b.plat && !b.lst.length && !b.path);
-    const vendaDoBloco = (b, o) => !!b.plat && _vendaDaPlat(o, b.plat) && casaProdV(o, b.lst);
+    // Venda e bloco: o Acervo de 297 e o de 697 são o MESMO produto em links de
+    // checkout diferentes. Quando se sabe o link que a pessoa abriu pra comprar
+    // (o último clique de compra), vale o link; sem clique visto, plataforma + produto.
+    const vendaDoBloco = (b, o) => (b.path && o.ckPath) ? (o.ckPath === b.path && casaProdV(o, b.lst))
+                                                          : (!!b.plat && _vendaDaPlat(o, b.plat) && casaProdV(o, b.lst));
     const casaProd = (o, lst) => !lst.length || lst.some(p => { const x = _nrm(o.produto); return x === p || x.indexOf(p) >= 0; });
     const casaProdV = casaProd;
     const topProd = lst => {
@@ -14240,7 +14258,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         if (!doAnuncio) { const vda = _veioDeAnuncio([...s], per.ini, per.fim); vda.forEach(v => { if (s.has(v)) { deAnuncio += (vendaPor[v] || []).length; pessoasAnuncio++; s.delete(v); } }); }
         conj[e.id] = s;
         nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio, pessoasDeAnuncio: pessoasAnuncio,
-          vendasEntrada: (vendaDaEtapa[e.id] || []).length,
+          vendasEntrada: (vendaEntrada[e.id] || []).length,
           divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
       } else if (e.tipo === 'cktest') {
         // Teste de checkout: a página é a mesma, o que muda é o checkout do
@@ -14276,7 +14294,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         const outras = geral ? [...new Set(outros.map(b => b.plat).filter(Boolean))] : [];
         const deOutro = o => outros.some(b => vendaDoBloco(b, o));
         const vf = geral ? vendas.filter(o => casaProd(o, lst) && (!outros.length || !deOutro(o)))
-                         : vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat));
+                         : vendas.filter(o => vendaDoBloco(eu, o));
         // quem clicou pra este bloco (pelo link ou pela plataforma) e quem comprou nele
         const quemComprou = new Set(vf.map(o => o.visitante).filter(Boolean));
         const clicouAqui = v => (ckDe[v] || []).some(c => geral ? !outros.some(b => ckDoBloco(b, c)) : ckDoBloco(eu, c));
@@ -14293,7 +14311,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                       porOrigem: _ckSoma(vf, o => o.visitante ? (dono[o.visitante] ? nomeOrigem[dono[o.visitante]] : 'sem origem no desenho') : 'sem pessoa ligada'),
                       porEntrada: _ckSoma(vf, o => {
                         if (!o.visitante) return 'sem pessoa ligada';
-                        const et = Object.keys(vendaDaEtapa).find(k => vendaDaEtapa[k].indexOf(o) >= 0);
+                        const et = Object.keys(vendaEntrada).find(k => vendaEntrada[k].indexOf(o) >= 0);
                         return et ? (esc.nomeEtapa[et] || et) + (esc.tipoEtapa[et] === 'split' ? ' (variantes)' : '') : 'página fora do desenho';
                       }) };
       } else if ((e.tipo === 'obrigado' || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) && !temPagina) {
