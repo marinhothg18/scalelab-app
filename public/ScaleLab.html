@@ -1913,6 +1913,27 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .fi-conn .t{flex:1;min-width:0;font-size:13px}
 .fi-conn .t b{display:block;font-size:13.5px}
 .fi-conn .t span{color:var(--text2)}
+.fi-conn{flex-wrap:wrap}
+.fi-conn .t{min-width:220px}
+.fi-conn .t .fi-cx-res{display:block;margin-top:3px;color:var(--text);font-weight:700;font-size:12.5px}
+.fi-cx-msg{margin-top:6px;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:9px}
+.fi-cx-msg.bad{background:rgba(239,68,68,.08);color:var(--v2-verm)}
+.fi-cx-msg.warn{background:rgba(245,158,11,.08);color:var(--v2-laranja)}
+.fi-cx-mais{font-size:12.5px;color:var(--text2);padding-top:10px}
+.fi-cx-mais a,.fi-passos a{color:var(--accent);cursor:pointer}
+.fi-passos{margin:12px 0 4px;padding:10px 14px 10px 32px;background:var(--bg3);border:1px solid var(--border);border-radius:11px;font-size:12.5px;line-height:1.55;color:var(--text2)}
+.fi-passos li{margin:3px 0}
+.fi-passos b{color:var(--text)}
+.fi-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace!important;font-size:11.5px!important}
+.fi-campo textarea.fi-mono{height:96px}
+.fi-pub{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.35);border-radius:11px;padding:11px 12px;margin:10px 0}
+.fi-pub b{display:block;font-size:12.5px;margin-bottom:6px}
+.fi-pub textarea,.fi-det textarea{width:100%;height:110px;background:var(--bg3);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:8px 10px;resize:vertical;outline:none}
+.fi-det{margin:8px 0;font-size:12.5px;color:var(--text2)}
+.fi-det summary{cursor:pointer;font-weight:700}
+.fi-det pre{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:9px 11px;white-space:pre-wrap;word-break:break-all;color:var(--text);margin:8px 0 4px}
+.fi-busca{background:var(--bg3);border:1px solid var(--border);border-radius:9px;height:34px;padding:0 11px;color:var(--text);font:inherit;font-size:13px;min-width:220px;outline:none}
+.fi-busca:focus{border-color:var(--accent)}
 .fi-rng{display:grid;grid-template-columns:1fr 84px;gap:12px;align-items:center}
 .fi-rng input[type=range]{width:100%;accent-color:var(--accent2);height:auto;padding:0;background:none;border:0}
 .fi-cat{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border);font-size:13px}
@@ -36304,8 +36325,8 @@ function v2SalvarFunil(mudar){
 // O resultado de cada projeto sai sozinho das vendas e do tráfego que o TMX já
 // recebe (/api/fin/resultado). Recorrentes, contas a pagar e a receber e
 // contrapartes ficam no servidor (/api/fin/*). Visual de "plataforma", com menu
-// próprio à esquerda, no layout do Malva e nas cores do TMX. O livro-caixa da
-// Conta Simples e da Lootrush (Lançamentos, Cartões, Contas e saldos) é a fase 2.
+// próprio à esquerda, no layout do Malva e nas cores do TMX. Lançamentos, Cartões e
+// Contas e saldos vêm da Conta Simples e da Lootrush conectadas em Integrações.
 // ══════════════════════════════════════════════════════
 var fiEst = { aba:'visao', per:'mes', proj:'todos', comparar:false, dre:'proj', abertos:{}, filtroAP:'30', tipoAP:'tudo', grupoRec:'tudo', subCat:'cat', fluxoDias:30 };
 var fiRes = null, fiAnt = null, fiCad = null, fiCustos = null, fiMeses = null, fiPedido = 0;
@@ -36367,12 +36388,17 @@ function fiRender(){
 function fiCarregar(){
   var meu = ++fiPedido, per = fiPeriodo(fiEst.per);
   var ps = [v2Json('/api/fin/resultado?de='+per.de+'&ate='+per.ate), fiCad ? Promise.resolve(fiCad) : v2Json('/api/fin/dados'),
-            fiCustos ? Promise.resolve({ custos:fiCustos }) : v2Json('/api/custos')];
+            fiCustos ? Promise.resolve({ custos:fiCustos }) : v2Json('/api/custos'),
+            // o que foi lido da Conta Simples e da Lootrush; se a base falhar, ao menos as conexões
+            v2Json('/api/fin/caixa?de='+per.de+'&ate='+per.ate).catch(function(e){
+              return v2Json('/api/fin/conexoes').catch(function(){ return { conexoes:[] }; }).then(function(d){ return { erro:e.message, conexoes:d.conexoes || [], saldos:[], serie:[], cartoes:[], faturas:[], movs:[] }; });
+            })];
   if(fiEst.comparar){ var a = fiAnterior(per); ps.push(v2Json('/api/fin/resultado?de='+a.de+'&ate='+a.ate)); }
   Promise.all(ps).then(function(r){
     if(meu !== fiPedido) return;
-    fiRes = r[0]; fiCad = r[1]; fiCustos = r[2].custos || fiRes.custos; fiAnt = r[3] || null; fiMeses = null;
+    fiRes = r[0]; fiCad = r[1]; fiCustos = r[2].custos || fiRes.custos; fiCaixa = r[3]; fiAnt = r[4] || null; fiMeses = null;
     fiPintar();
+    if(!fiAcompanhando && fiConexoes().some(function(c){ return c.lendoDesde; })) fiAcompanhar();
   }).catch(function(e){ if(meu === fiPedido) v2Erro(document.getElementById('fi-main'), e.message); });
 }
 function fiRecarregarCad(){ fiCad = null; fiCarregar(); }
@@ -36383,7 +36409,7 @@ function fiPintarNav(){
     '<button class="fi-novo" onclick="fiNovoCompromisso()">'+fiIc('mais')+' Nova conta a pagar</button>'+
     FI_PAGINAS.map(function(p){
       if(p.sep) return '<div class="fi-sep"></div>';
-      return '<div class="fi-nv'+(fiEst.aba === p.id ? ' on' : '')+'" onclick="fiIr(\''+p.id+'\')">'+fiIc(p.i)+'<span>'+p.t+'</span>'+(p.f2 ? '<span class="fi-tg f2">fase 2</span>' : '')+'</div>';
+      return '<div class="fi-nv'+(fiEst.aba === p.id ? ' on' : '')+'" onclick="fiIr(\''+p.id+'\')">'+fiIc(p.i)+'<span>'+p.t+'</span>'+(p.f2 && !fiTemConta() ? '<span class="fi-tg f2">fase 2</span>' : '')+'</div>';
     }).join('');
 }
 function fiPintar(){
@@ -36798,15 +36824,15 @@ function fiSalvarRecorrente(bt, id){
 
 // ── FLUXO DE CAIXA ──
 function fiTelaFluxo(){
-  var n = fiEst.fluxoDias, saldo0 = Number((fiCad.cfg || {}).saldoInicial) || 0, oc = fiOcorrencias().filter(function(o){ return !o.pago && o.dias >= 0 && o.dias <= n && (!o.moeda || o.moeda === 'BRL'); });
+  var real = fiSaldoReal(), n = fiEst.fluxoDias, saldo0 = real ? real.v : Number((fiCad.cfg || {}).saldoInicial) || 0, oc = fiOcorrencias().filter(function(o){ return !o.pago && o.dias >= 0 && o.dias <= n && (!o.moeda || o.moeda === 'BRL'); });
   var pts = [], s = saldo0, mn = saldo0, mnDia = 0;
   for(var d = 0; d <= n; d++){ oc.forEach(function(o){ if(o.dias === d) s += o.tipo === 'receber' ? o.v : -o.v; }); pts.push(s); if(s < mn){ mn = s; mnDia = d; } }
   var sg = function(x){ return '<button class="'+(fiEst.fluxoDias === x ? 'on' : '')+'" onclick="fiEst.fluxoDias='+x+';fiPintar()">'+x+' dias</button>'; };
   var h = fiCab('Fluxo de caixa', 'Como o caixa fica nos próximos dias, pelo que está cadastrado.', '', true)+
-    '<div class="fi-barra"><span class="fi-seg">'+sg(30)+sg(60)+sg(90)+'</span><span class="fi-chk">Saldo de hoje <input class="fi-ctl" style="margin:0;width:150px;height:32px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0 9px" inputmode="decimal" value="'+String(saldo0).replace('.', ',')+'" onchange="fiSalvarCfg({saldoInicial:fiNum(this.value)})"></span><span class="fi-per">até conectar a Conta Simples e a Lootrush, o saldo é o que você digitar</span></div>';
-  h += '<div class="v2-cards">'+v2Card('Saldo hoje', fiDin(saldo0), 'digitado'+fiTg('f2'))+v2Card('Daqui a '+n+' dias', fiDin(pts[pts.length - 1]), 'se nada mudar', pts[pts.length - 1] >= saldo0 ? 'bom' : 'ruim')+
+    '<div class="fi-barra"><span class="fi-seg">'+sg(30)+sg(60)+sg(90)+'</span>'+(real ? '<span class="fi-per">saldo em real das contas conectadas, lido '+fiHa(real.em)+'</span></div>' : '<span class="fi-chk">Saldo de hoje <input class="fi-ctl" style="margin:0;width:150px;height:32px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0 9px" inputmode="decimal" value="'+String(saldo0).replace('.', ',')+'" onchange="fiSalvarCfg({saldoInicial:fiNum(this.value)})"></span><span class="fi-per">até conectar a Conta Simples, o saldo é o que você digitar</span></div>');
+  h += '<div class="v2-cards">'+v2Card('Saldo hoje', fiDin(saldo0), real ? 'das contas em real'+fiTg('real') : 'digitado'+fiTg('f2'))+v2Card('Daqui a '+n+' dias', fiDin(pts[pts.length - 1]), 'se nada mudar', pts[pts.length - 1] >= saldo0 ? 'bom' : 'ruim')+
     v2Card('Menor saldo no período', fiDin(mn), mnDia ? 'em '+mnDia+' dias' : 'hoje', mn < 0 ? 'ruim' : '')+v2Card('Movimentos previstos', fnNum(oc.length), 'contas e recorrentes em aberto')+'</div>';
-  if(!oc.length) return h+'<div class="v2-cx"><div class="fi-vazio"><div class="ic">'+fiIc('fluxo')+'</div><h4>Cadastre o que você paga e recebe</h4><p>O fluxo parte do saldo de hoje e soma, dia a dia, o que está a receber e a pagar. Com a Conta Simples e a Lootrush conectadas (fase 2), o saldo vem sozinho.</p><button class="fi-bt p" onclick="fiNovoCompromisso()">Nova conta</button> <button class="fi-bt" onclick="fiNovoRecorrente()">Cadastrar um recorrente</button></div></div>';
+  if(!oc.length) return h+'<div class="v2-cx"><div class="fi-vazio"><div class="ic">'+fiIc('fluxo')+'</div><h4>Cadastre o que você paga e recebe</h4><p>O fluxo parte do saldo de hoje e soma, dia a dia, o que está a receber e a pagar. Com a Conta Simples conectada em Integrações, o saldo vem sozinho.</p><button class="fi-bt p" onclick="fiNovoCompromisso()">Nova conta</button> <button class="fi-bt" onclick="fiNovoRecorrente()">Cadastrar um recorrente</button></div></div>';
   var W = 760, H = 210, b = 24, l = 56, lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts);
   var y = function(v){ return H - b - (v - lo) / ((hi - lo) || 1) * (H - b - 12); }, x = function(i){ return l + i * (W - l - 8) / n; };
   var g = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="min-width:520px">';
@@ -36822,13 +36848,157 @@ function fiSalvarCfg(m){
     .then(function(d){ fiCad.cfg = d.cfg; toastFn('Salvo'); fiPintar(); }).catch(function(e){ toastFn('Não salvou: '+e.message); });
 }
 
-// ── FASE 2: livro-caixa, cartões e saldos chegam com a Conta Simples e a Lootrush ──
+// ── sem conta conectada: o convite pra conectar ──
 function fiFase2(t, s, ic, txt){
-  return fiCab(t, s, '', true)+'<div class="v2-cx"><div class="fi-vazio"><div class="ic">'+fiIc(ic)+'</div><h4>Chega com a Conta Simples e a Lootrush</h4><p>'+txt+'</p><button class="fi-bt p" onclick="fiIr(\'int\')">Ver as integrações</button></div></div>';
+  return fiCab(t, s, '', true)+'<div class="v2-cx"><div class="fi-vazio"><div class="ic">'+fiIc(ic)+'</div><h4>Conecte a Conta Simples e a Lootrush</h4><p>'+txt+'</p><button class="fi-bt p" onclick="fiIr(\'int\')">Conectar as contas</button></div></div>';
 }
-function fiTelaLanc(){ return fiFase2('Lançamentos', 'Tudo que entrou e saiu das contas e dos cartões.', 'lanc', 'Cada movimento da Conta Simples e da Lootrush entra sozinho, classificado pelas regras (Meta no cartão vira Tráfego, depósito da Conta Simples na Lootrush vira movimentação interna). Com ele vem a DRE de caixa e a baixa automática das contas a pagar.'); }
-function fiTelaCart(){ return fiFase2('Cartões', 'Os cartões da Lootrush e da Conta Simples, com o gasto de cada um.', 'cart', 'Cada cartão pode ficar ligado a um projeto: tudo que passar nele cai no custo daquele projeto. E dá pra conferir o que a Meta gastou contra o que o cartão cobrou de verdade, com câmbio e IOF.'); }
-function fiTelaContas(){ return fiFase2('Contas e saldos', 'O saldo de cada conta agora e as faturas abertas.', 'contas', 'O saldo da conta em real da Conta Simples, da conta em dólar e da carteira USDT da Lootrush, a série dos últimos 30 dias e as faturas do cartão. O fluxo de caixa passa a partir do saldo de verdade.'); }
+// ── CONTAS DA OPERAÇÃO: Conta Simples e Lootrush, só leitura (/api/fin/conexoes e /api/fin/caixa) ──
+// A credencial vai uma vez pro servidor, que testa, cifra e nunca devolve. A tela só
+// recebe o nome, o ambiente, os últimos 4 caracteres da chave e o que foi lido.
+var fiCaixa = null, fiParCS = null, fiTimerLeitura = null, fiAcompanhando = false;
+function fiConexoes(){ return (fiCaixa && fiCaixa.conexoes) || []; }
+function fiTemConta(){ return fiConexoes().length > 0; }
+function fiNomeConexao(id){ var c = fiConexoes().filter(function(x){ return x.id === id; })[0]; return c ? c.nome : 'conexão'; }
+function fiUsd(v){ return 'US$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fiMoeda(v, m){ return !m || m === 'BRL' ? v2Din2(v) : m === 'USD' ? fiUsd(v) : fnEsc(m)+' '+(Number(v)||0).toLocaleString('pt-BR',{maximumFractionDigits:6}); }
+function fiHa(ms){
+  if(!ms) return '';
+  var min = Math.round((Date.now() - ms) / 60000);
+  if(min < 1) return 'agora';
+  if(min < 60) return 'há '+min+' min';
+  var hm = new Date(ms).toLocaleTimeString('pt-BR',{ hour:'2-digit', minute:'2-digit' });
+  return fiDiaBR(ms) === fiDiaBR(Date.now()) ? 'hoje às '+hm : fiBR(fiDiaBR(ms))+' às '+hm;
+}
+// saldo em real das contas conectadas (pro fluxo de caixa)
+function fiSaldoReal(){
+  var l = ((fiCaixa && fiCaixa.saldos) || []).filter(function(s){ return s.moeda === 'BRL'; });
+  if(!l.length) return null;
+  return { v:l.reduce(function(a, s){ return a + (Number(s.valor) || 0); }, 0), em:Math.min.apply(null, l.map(function(s){ return s.em || Date.now(); })) };
+}
+function fiNomeCartao(m){
+  var c = ((fiCaixa && fiCaixa.cartoes) || []).filter(function(x){ return x.conexao === m.conexao && String(x.id) === String(m.cartao); })[0];
+  return c ? '•••• '+fnEsc(c.final || '')+(c.nome ? ' · '+fnEsc(c.nome) : '') : fnEsc(m.conta || '');
+}
+function fiCaixaAviso(){
+  return fiCaixa && fiCaixa.erro ? '<div class="v2-alerta bad" style="margin-bottom:14px"><div><b>Não consegui ler o que veio das contas</b><span>'+fnEsc(fiCaixa.erro)+'</span></div></div>' : '';
+}
+var FI_DIR = { entrada:'entrou', saida:'saiu', interna:'interna', '?':'a conferir' };
+function fiPillSit(st){ return st === 'cancelado' ? ' <span class="v2-pill neu">cancelado</span>' : st === 'pendente' ? ' <span class="v2-pill warn">pendente</span>' : ''; }
+
+// ── LANÇAMENTOS ──
+function fiTelaLanc(){
+  if(!fiTemConta()) return fiFase2('Lançamentos', 'Tudo que entrou e saiu das contas e dos cartões.', 'lanc', 'Cada movimento da Conta Simples e da Lootrush entra sozinho, já com uma primeira classificação (Meta no cartão vira Tráfego, pagamento da fatura vira movimentação interna). Conecte as contas em Integrações.');
+  fiEst.lancConta = fiEst.lancConta || 'tudo'; fiEst.lancDir = fiEst.lancDir || 'tudo';
+  var base = (fiCaixa.movs || []).filter(function(m){ return fiEst.lancConta === 'tudo' || m.conexao === fiEst.lancConta; });
+  var vale = base.filter(function(m){ return m.status !== 'cancelado'; });
+  var soma = function(d){ return vale.filter(function(m){ return m.dir === d; }).reduce(function(a, m){ return a + (Number(m.valor_brl) || 0); }, 0); };
+  var ent = soma('entrada'), sai = soma('saida'), conf = vale.filter(function(m){ return m.dir === '?'; }).length;
+  var semCat = vale.filter(function(m){ return !m.categoria && m.dir !== '?'; }).length;
+  var h = fiCab('Lançamentos', 'Tudo que entrou e saiu das contas e dos cartões, como a Conta Simples e a Lootrush mandaram.', '<button class="fi-bt" onclick="fiIr(\'int\')">Conexões</button>')+fiCaixaAviso();
+  h += '<div class="v2-cards">'+v2Card('Entrou'+fiTg('real'), fiDin(ent), 'nas contas e cartões', 'bom')+v2Card('Saiu'+fiTg('real'), fiDin(sai), 'dólar convertido pela PTAX do dia', 'ruim')+
+    v2Card('Resultado de caixa', fiDin(ent - sai), 'sem contar as movimentações internas', ent - sai >= 0 ? 'bom' : 'ruim')+
+    v2Card(conf ? 'Sentido a conferir' : 'Sem categoria', fnNum(conf || semCat), conf ? 'o banco não disse se entrou ou saiu' : 'movimentos sem categoria ainda', conf ? 'meio' : '')+'</div>';
+  var sgC = function(id, t){ return '<button class="'+(fiEst.lancConta === id ? 'on' : '')+'" onclick="fiEst.lancConta=\''+id+'\';fiPintar()">'+t+'</button>'; };
+  var sgD = function(id, t){ return '<button class="'+(fiEst.lancDir === id ? 'on' : '')+'" onclick="fiEst.lancDir=\''+id+'\';fiPintarLanc()">'+t+'</button>'; };
+  h += '<div class="fi-barra">'+(fiConexoes().length > 1 ? '<span class="fi-seg">'+sgC('tudo', 'Todas')+fiConexoes().map(function(c){ return sgC(c.id, fnEsc(c.nome)); }).join('')+'</span>' : '')+
+    '<span class="fi-seg" id="fi-lanc-dir">'+sgD('tudo', 'Tudo')+sgD('entrada', 'Entradas')+sgD('saida', 'Saídas')+sgD('interna', 'Internas')+(conf ? sgD('?', 'A conferir') : '')+'</span>'+
+    '<input class="fi-busca" placeholder="Buscar descrição, cartão, categoria" value="'+fnEsc(fiEst.lancBusca || '')+'" oninput="fiEst.lancBusca=this.value;fiPintarLanc()"></div>';
+  return h+'<div id="fi-lanc-tab">'+fiLancTabela(base)+'</div>';
+}
+function fiPintarLanc(){
+  var el = document.getElementById('fi-lanc-tab'); if(!el) return;
+  var base = (fiCaixa.movs || []).filter(function(m){ return fiEst.lancConta === 'tudo' || m.conexao === fiEst.lancConta; });
+  el.innerHTML = fiLancTabela(base);
+  var seg = document.getElementById('fi-lanc-dir');
+  if(seg) seg.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', (b.getAttribute('onclick') || '').indexOf("'"+fiEst.lancDir+"'") > 0); });
+}
+function fiLancTabela(base){
+  var q = (fiEst.lancBusca || '').trim().toLowerCase();
+  var l = base.filter(function(m){
+    if(fiEst.lancDir !== 'tudo' && m.dir !== fiEst.lancDir) return false;
+    if(!q) return true;
+    return [m.descricao, m.contraparte, m.tipo, m.categoria, m.conta, fiNomeCartao(m)].join(' ').toLowerCase().indexOf(q) >= 0;
+  });
+  if(!base.length){
+    var lendo = fiConexoes().some(function(c){ return c.lendoDesde; });
+    return '<div class="v2-cx"><div class="fi-vazio"><div class="ic">'+fiIc('lanc')+'</div><h4>'+(lendo ? 'Lendo as contas…' : 'Nenhum movimento no período')+'</h4><p>'+(lendo ? 'A primeira leitura traz os últimos 90 dias. A tela se atualiza sozinha quando terminar.' : 'Troque o período lá em cima, ou veja em Integrações se a última leitura deu certo.')+'</p></div></div>';
+  }
+  if(!l.length) return '<div class="v2-cx"><div class="fx-vazio">Nada com esse filtro.</div></div>';
+  var mostra = l.slice(0, 400);
+  return '<div class="v2-cx" style="padding:8px 10px"><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Data</th><th>Descrição</th><th>Conta ou cartão</th><th>Categoria</th><th class="n">Valor</th></tr></thead><tbody>'+
+    mostra.map(function(m){
+      var cor = m.status === 'cancelado' ? '' : m.dir === 'entrada' ? 'v2-bom' : m.dir === 'saida' ? 'v2-ruim' : '';
+      var sinal = m.dir === 'entrada' ? '+' : m.dir === 'saida' ? '−' : '';
+      var emReal = m.moeda !== 'BRL' && m.valor_brl != null ? '<span class="sub">'+v2Din2(m.valor_brl)+'</span>' : '';
+      var sub = [m.contraparte && m.contraparte !== m.descricao ? fnEsc(m.contraparte) : '', fnEsc(m.tipo || '')].filter(Boolean).join(' · ');
+      return '<tr><td>'+fiBR(m.dia)+'</td><td>'+fnEsc(m.descricao || '—')+fiPillSit(m.status)+(m.dir === '?' ? ' <span class="v2-pill warn">a conferir</span>' : m.dir === 'interna' ? ' <span class="v2-pill neu">interna</span>' : '')+(sub ? '<span class="sub">'+sub+'</span>' : '')+'</td>'+
+        '<td>'+(m.origem === 'cartao' ? fiNomeCartao(m) : fnEsc(m.conta || ''))+'<span class="sub">'+fnEsc(fiNomeConexao(m.conexao))+'</span></td>'+
+        '<td>'+(m.categoria ? fnEsc(m.categoria) : '<span style="color:var(--text3)">—</span>')+'</td>'+
+        '<td class="n'+(cor ? ' '+cor : '')+'"'+(m.status === 'cancelado' ? ' style="text-decoration:line-through;color:var(--text3)"' : '')+'>'+sinal+fiMoeda(m.valor, m.moeda)+emReal+'</td></tr>';
+    }).join('')+'</tbody></table></div>'+(l.length > mostra.length ? '<div class="fi-per" style="padding:8px 10px">Mostrando os '+mostra.length+' mais recentes de '+fnNum(l.length)+'. Use a busca ou diminua o período.</div>' : '')+'</div>'+
+    '<div class="s" style="color:var(--text2);font-size:12px">A categoria é uma primeira classificação pelo nome (Meta, Google e TikTok viram Tráfego; IOF e tarifa, Taxas). "A conferir" é quando o banco não disse se o dinheiro entrou ou saiu.</div>';
+}
+
+// ── CARTÕES ──
+function fiTelaCart(){
+  if(!fiTemConta()) return fiFase2('Cartões', 'Os cartões da Lootrush e da Conta Simples, com o gasto de cada um.', 'cart', 'Cada cartão aparece com o gasto do período, e dá pra conferir o que a Meta cobrou no cartão contra o que a Utmify registrou de tráfego. Conecte as contas em Integrações.');
+  var cards = (fiCaixa.cartoes || []).slice(), movs = (fiCaixa.movs || []).filter(function(m){ return m.origem === 'cartao' && m.status !== 'cancelado'; });
+  var por = {};
+  movs.forEach(function(m){
+    var k = m.conexao+'|'+m.cartao, x = por[k] || (por[k] = { n:0, v:0, brl:0, trafego:0, ult:'' });
+    if(m.dir === 'saida'){ x.n++; x.v += Number(m.valor) || 0; x.brl += Number(m.valor_brl) || 0; if(m.categoria === 'Tráfego') x.trafego += Number(m.valor_brl) || 0; }
+    if(m.dia > x.ult) x.ult = m.dia;
+  });
+  var tot = 0, traf = 0;
+  Object.keys(por).forEach(function(k){ tot += por[k].brl; traf += por[k].trafego; });
+  var ativo = function(c){ return /^(ACTIVATED|ACTIVE)$/i.test(c.status || ''); };
+  var r = fiCalc(fiRes, 'todos');
+  var h = fiCab('Cartões', 'Os cartões da Conta Simples e da Lootrush, com o gasto do período.', '<button class="fi-bt" onclick="fiIr(\'int\')">Conexões</button>')+fiCaixaAviso();
+  h += '<div class="v2-cards">'+v2Card('Cartões ativos', fnNum(cards.filter(ativo).length), fnNum(cards.length)+' no total')+v2Card('Gasto nos cartões'+fiTg('real'), fiDin(tot), 'no período, dólar pela PTAX')+
+    v2Card('Tráfego no cartão'+fiTg('real'), fiDin(traf), 'Meta, Google e TikTok cobrados')+
+    v2Card('Tráfego na Utmify', fiDin(r.trafego), !traf || !r.trafego ? 'o gasto que a DRE usa' : traf >= r.trafego ? 'o cartão cobrou '+fiDin(traf - r.trafego)+' a mais (câmbio, IOF)' : fiDin(r.trafego - traf)+' não passou nestes cartões')+'</div>';
+  if(!cards.length) return h+'<div class="v2-cx"><div class="fx-vazio">'+(fiConexoes().some(function(c){ return c.lendoDesde; }) ? 'Lendo os cartões…' : 'Nenhum cartão lido ainda. Veja em Integrações se a leitura deu certo.')+'</div></div>';
+  cards.sort(function(a, b){ return ((por[b.conexao+'|'+b.id] || {}).brl || 0) - ((por[a.conexao+'|'+a.id] || {}).brl || 0); });
+  var sit = function(c){ return ativo(c) ? '<span class="v2-pill ok">ativo</span>' : /BLOCK/i.test(c.status || '') ? '<span class="v2-pill warn">bloqueado</span>' : '<span class="v2-pill neu">'+fnEsc(String(c.status || '—').toLowerCase())+'</span>'; };
+  h += '<div class="v2-cx" style="padding:8px 10px"><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Cartão</th><th>Titular</th><th>Conta</th><th>Situação</th><th class="n">Compras</th><th class="n">Gasto no período</th><th class="n">Em real</th></tr></thead><tbody>'+
+    cards.map(function(c){
+      var x = por[c.conexao+'|'+c.id] || { n:0, v:0, brl:0, ult:'' };
+      return '<tr class="clica" onclick="fiEst.lancBusca=\'•••• '+fnEsc(c.final || '')+'\';fiEst.lancDir=\'tudo\';fiIr(\'lanc\')"><td><b>•••• '+fnEsc(c.final || '')+'</b>'+(c.nome ? '<span class="sub">'+fnEsc(c.nome)+'</span>' : '')+'</td><td>'+fnEsc(c.titular || '—')+'</td>'+
+        '<td>'+fnEsc(fiNomeConexao(c.conexao))+'<span class="sub">'+(c.moeda === 'USD' ? 'em dólar' : 'em real')+(c.tipo ? ' · '+fnEsc(String(c.tipo).toLowerCase()) : '')+'</span></td><td>'+sit(c)+'</td>'+
+        '<td class="n">'+fnNum(x.n)+(x.ult ? '<span class="sub">última '+fiBR(x.ult)+'</span>' : '')+'</td><td class="n">'+fiMoeda(x.v, c.moeda)+'</td><td class="n">'+fiDin(x.brl)+'</td></tr>';
+    }).join('')+'</tbody></table></div></div>'+
+    '<div class="s" style="color:var(--text2);font-size:12px">Clique num cartão pra ver os lançamentos dele. Bloquear ou emitir cartão continua só no app de cada banco: daqui é só leitura.</div>';
+  return h;
+}
+
+// ── CONTAS E SALDOS ──
+function fiTelaContas(){
+  if(!fiTemConta()) return fiFase2('Contas e saldos', 'O saldo de cada conta agora e as faturas abertas.', 'contas', 'O saldo da conta em real da Conta Simples, da conta e dos cartões em dólar da Lootrush, e as faturas do cartão. O fluxo de caixa passa a partir do saldo de verdade. Conecte as contas em Integrações.');
+  var sal = fiCaixa.saldos || [], fat = fiCaixa.faturas || [];
+  var some = function(l, k){ return l.reduce(function(a, x){ return a + (Number(x[k]) || 0); }, 0); };
+  var brl = sal.filter(function(s){ return s.moeda === 'BRL'; }), usd = sal.filter(function(s){ return s.moeda === 'USD'; });
+  var abertas = fat.filter(function(f){ return /OPEN|CLOSED|OVERDUE/.test(f.status || '') && !f.pago && (Number(f.a_pagar != null ? f.a_pagar : f.total) || 0) > 0; });
+  var h = fiCab('Contas e saldos', 'O saldo de cada conta agora e as faturas do cartão.', '<button class="fi-bt" onclick="fiIr(\'int\')">Conexões</button>', true)+fiCaixaAviso();
+  h += '<div class="v2-cards">'+v2Card('Em real'+fiTg('real'), fiDin(some(brl, 'valor')), brl.length ? 'Conta Simples' : 'nenhuma conta em real')+
+    v2Card('Em dólar'+fiTg('real'), fiUsd(some(usd, 'valor')), usd.length ? 'Lootrush, conta e cartões' : 'nenhuma conta em dólar')+
+    v2Card('Tudo em real', fiDin(some(sal, 'valor_brl')), 'dólar pela PTAX do dia')+
+    v2Card('Faturas a pagar', fiDin(abertas.reduce(function(a, f){ return a + (Number(f.a_pagar != null ? f.a_pagar : f.total) || 0); }, 0)), abertas.length ? abertas.length+' em aberto' : 'nenhuma em aberto', abertas.some(function(f){ return f.status === 'OVERDUE'; }) ? 'ruim' : '')+'</div>';
+  if(!sal.length) return h+'<div class="v2-cx"><div class="fx-vazio">'+(fiConexoes().some(function(c){ return c.lendoDesde; }) ? 'Lendo os saldos…' : 'Nenhum saldo lido ainda. Veja em Integrações se a leitura deu certo.')+'</div></div>';
+  h += '<div class="v2-cx" style="padding:8px 10px"><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Conta</th><th>Conexão</th><th class="n">Saldo</th><th class="n">Em real</th><th>Lido</th></tr></thead><tbody>'+
+    sal.map(function(s){ return '<tr><td><b>'+fnEsc(s.conta)+'</b></td><td>'+fnEsc(fiNomeConexao(s.conexao))+'</td><td class="n">'+fiMoeda(s.valor, s.moeda)+'</td><td class="n">'+(s.valor_brl != null ? fiDin(s.valor_brl) : '—')+'</td><td>'+fiHa(s.em)+'</td></tr>'; }).join('')+
+    '</tbody></table></div></div>';
+  // a carteira da Lootrush por moeda
+  var tokens = []; fiConexoes().forEach(function(c){ ((c.resumo || {}).tokens || []).forEach(function(t){ tokens.push(t); }); });
+  if(tokens.length) h += '<div class="v2-cx" style="margin-top:14px"><h3>Carteira da Lootrush</h3><div class="s">O que compõe o saldo em dólar.</div><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Moeda</th><th>Rede</th><th class="n">Quantidade</th><th class="n">Em dólar</th></tr></thead><tbody>'+
+    tokens.map(function(t){ return '<tr><td><b>'+fnEsc(t.token)+'</b></td><td>'+fnEsc(t.rede || '—')+'</td><td class="n">'+Number(t.qtd).toLocaleString('pt-BR',{maximumFractionDigits:6})+'</td><td class="n">'+fiUsd(t.usd)+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
+  if(fat.length){
+    var stF = { OPEN:['aberta','warn'], CLOSED:['fechada','warn'], OVERDUE:['vencida','bad'], FUTURE:['futura','neu'], EXPIRED:['expirada','neu'] };
+    h += '<div class="v2-cx" style="margin-top:14px"><h3>Faturas do cartão</h3><div class="s">Da Conta Simples.</div><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Vencimento</th><th>Corte</th><th>Situação</th><th class="n">Total</th><th class="n">A pagar</th></tr></thead><tbody>'+
+      fat.slice(0, 18).map(function(f){ var st = f.pago ? ['paga','ok'] : (stF[f.status] || [String(f.status || '—').toLowerCase(), 'neu']);
+        return '<tr><td>'+(f.vencimento ? f.vencimento.split('-').reverse().join('/') : '—')+'</td><td>'+(f.corte ? fiBR(f.corte) : '—')+'</td><td><span class="v2-pill '+st[1]+'">'+fnEsc(st[0])+'</span></td><td class="n">'+fiDin(f.total)+'</td><td class="n">'+(f.a_pagar != null ? fiDin(f.a_pagar) : '—')+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
+  }
+  return h;
+}
 
 // ── CONTRAPARTES ──
 function fiTelaContra(){
@@ -36891,16 +37061,154 @@ function fiTelaInt(){
   var con = function(cor, sigla, t, s, dir){ return '<div class="fi-conn"><div class="lg" style="background:'+cor+'">'+sigla+'</div><div class="t"><b>'+t+'</b><span>'+s+'</span></div>'+dir+'</div>'; };
   var lig = '<span class="v2-pill ok">ligado</span>';
   var vendas = function(k){ return gw[k] ? fnNum(gw[k].n)+' vendas · '+fiDin(gw[k].v)+' no período' : 'nenhuma venda no período'; };
-  return fiCab('Integrações', 'O que entra sozinho no Financeiro.', '', true)+
-    '<div class="v2-cx"><h3>Contas da operação'+fiTg('f2')+'</h3><div class="s">Cada conexão vai ler saldos, faturas, cartões e movimentos sozinha. A chave fica cifrada no servidor e nunca volta pra tela; a primeira leitura traz os últimos 3 meses.</div>'+
-      con('#0E9F6E', 'CS', 'Conta Simples', 'Conta em real, cartões corporativos e faturas', '<span class="v2-pill neu">em breve</span>')+
-      con('#3E1493', 'LR', 'Lootrush', 'Conta em dólar, carteira em USDT e cartões em dólar', '<span class="v2-pill neu">em breve</span>')+'</div><div style="height:14px"></div>'+
+  var cxs = fiConexoes();
+  var tem = function(p){ return cxs.some(function(c){ return c.provedor === p; }); };
+  var contas = cxs.map(fiLinhaConexao).join('')+
+    (tem('contasimples') ? '' : con('#0E9F6E', 'CS', 'Conta Simples', 'Conta em real, cartões corporativos e faturas', '<button class="fi-bt sm p" onclick="fiConectar(\'contasimples\')">Conectar</button>'))+
+    (tem('lootrush') ? '' : con('#3E1493', 'LR', 'Lootrush', 'Conta em dólar, carteira em USDT e cartões em dólar', '<button class="fi-bt sm p" onclick="fiConectar(\'lootrush\')">Conectar</button>'))+
+    (cxs.length ? '<div class="fi-cx-mais">Outra empresa? <a onclick="fiConectar(\'contasimples\')">Conectar outra Conta Simples</a> · <a onclick="fiConectar(\'lootrush\')">outra Lootrush</a></div>' : '');
+  return fiCab('Integrações', 'O que entra sozinho no Financeiro.', '', true)+fiCaixaAviso()+
+    '<div class="v2-cx"><h3>Contas da operação</h3><div class="s">Só leitura: saldo, extrato, cartões e faturas, relidos sozinhos a cada 3 horas (a primeira leitura traz os últimos 90 dias). A credencial é testada antes de salvar, fica cifrada no servidor e nunca volta pra esta tela. Bloquear ou emitir cartão não passa por aqui.</div>'+contas+'</div><div style="height:14px"></div>'+
     '<div class="v2-cx"><h3>Já está no TMX'+fiTg('real')+'</h3><div class="s">Não precisa conectar nada: o Financeiro lê o que o TMX já recebe.</div>'+
       con('#1B9CFA', 'PT', 'Payt', 'Vendas, reembolsos e chargebacks pelo webhook · '+vendas('payt'), lig)+
       con('#22C55E', 'KW', 'Kiwify', 'Vendas pelo webhook · '+vendas('kiwify'), lig)+
       con('#C52C58', 'HB', 'Hubla', 'Vendas pelo webhook · '+vendas('hubla'), lig)+
       con('#2509E4', 'M', 'Meta Ads (via Utmify)', 'Gasto por campanha e por projeto · '+fiDin(r.trafego)+' no período', lig)+
       con('#5b5ef4', 'RH', 'RH do TMX', 'Equipe por cargo · '+((fiRes.rh || {}).pessoas || 0)+' pessoas, '+((fiRes.rh || {}).comSalario || 0)+' com salário preenchido', (fiRes.rh && fiRes.rh.comSalario) ? lig : '<span class="v2-pill warn">falta o salário</span>')+'</div>';
+}
+function fiLinhaConexao(c){
+  var cs = c.provedor === 'contasimples';
+  var st = c.lendoDesde ? '<span class="v2-pill neu">lendo…</span>' : c.semCredencial ? '<span class="v2-pill bad">sem credencial</span>' :
+    c.status === 'erro' ? '<span class="v2-pill bad">não leu</span>' : c.status === 'parcial' ? '<span class="v2-pill warn">leu em parte</span>' : '<span class="v2-pill ok">conectada</span>';
+  var det = [cs ? (c.ambiente === 'sandbox' ? 'Sandbox' : 'Produção') : '', c.preview ? 'chave '+fnEsc(c.preview) : '', cs ? (c.assina ? 'chamadas assinadas' : 'sem assinatura') : '',
+    c.lendoDesde ? 'lendo desde '+fiHa(c.lendoDesde) : c.ultimaLeituraOk ? 'última leitura '+fiHa(c.ultimaLeituraOk) : 'ainda não leu'].filter(Boolean).join(' · ');
+  var contas = (c.resumo && c.resumo.contas) || {};
+  var res = Object.keys(contas).map(function(k){ return fnEsc(k)+' '+fiMoeda(contas[k].valor, contas[k].moeda); }).join(' · ');
+  if(c.resumo && c.resumo.movs != null) res += (res ? ' · ' : '')+fnNum(c.resumo.movs)+' movimentos desde '+fiBR(c.resumo.desde);
+  var prob = c.semCredencial ? '<div class="fi-cx-msg bad">A credencial desta conexão não está guardada (veio da lixeira). Edite e cole a chave de novo.</div>' :
+    c.ultimoErro ? '<div class="fi-cx-msg bad">'+fnEsc(c.ultimoErro)+'</div>' :
+    (c.avisos && c.avisos.length ? '<div class="fi-cx-msg warn">Não leu '+c.avisos.map(fnEsc).join(' · ')+'</div>' : '');
+  return '<div class="fi-conn"><div class="lg" style="background:'+(cs ? '#0E9F6E' : '#3E1493')+'">'+(cs ? 'CS' : 'LR')+'</div><div class="t"><b>'+fnEsc(c.nome)+'</b><span>'+det+'</span>'+(res ? '<span class="fi-cx-res">'+res+'</span>' : '')+prob+'</div>'+
+    '<div class="fi-acoes">'+st+'<button class="fi-bt sm"'+(c.lendoDesde || c.semCredencial ? ' disabled' : '')+' onclick="fiLerAgora(\''+c.id+'\',this)">Ler agora</button>'+
+    '<button class="fi-bt sm" onclick="fiConectar(\''+c.provedor+'\',\''+c.id+'\')">Editar</button><button class="fi-bt sm" onclick="fiDesconectar(\''+c.id+'\')">Desconectar</button></div></div>';
+}
+function fiConectar(prov, id){
+  var c = id ? fiConexoes().filter(function(x){ return x.id === id; })[0] || {} : {};
+  var cs = prov === 'contasimples', ed = !!id, amb = c.ambiente || 'producao';
+  var manter = ed ? ' <i>em branco mantém a atual</i>' : '';
+  var h = '<div class="v2-cab"><div><h3>'+(ed ? 'Editar '+fnEsc(c.nome) : 'Conectar a '+(cs ? 'Conta Simples' : 'Lootrush'))+'</h3><div class="s">'+
+    (cs ? 'Só leitura: saldo, extrato da conta, cartões e faturas.' : 'Só leitura: saldo da conta e da carteira, cartões e gastos.')+
+    ' A credencial é testada antes de salvar, fica cifrada no servidor e nunca volta pra esta tela.</div></div></div>';
+  if(cs){
+    h += '<ol class="fi-passos"><li><b>Gere o par de chaves</b> aqui embaixo (ou no terminal).</li>'+
+      '<li>No <a href="https://ib.contasimples.com/integracoes/api/credenciais" target="_blank" rel="noopener">Internet Banking › Integrações › API › Credenciais</a>, crie a credencial só com <b>leitura</b> e cole a <b>chave pública</b>. Ela só entra na criação: não dá pra trocar depois.</li>'+
+      '<li>Cole aqui a API key e o API secret que a Conta Simples mostrar.</li></ol>'+
+      '<div class="fi-2"><div class="fi-campo"><label>Nome da conexão</label><input id="fi-cx-nome" value="'+fnEsc(c.nome || 'Conta Simples')+'"></div>'+
+      '<div class="fi-campo"><label>Ambiente</label><span class="fi-seg"><button type="button" class="'+(amb === 'producao' ? 'on' : '')+'" onclick="fiAmb(this,\'producao\')">Produção</button><button type="button" class="'+(amb === 'sandbox' ? 'on' : '')+'" onclick="fiAmb(this,\'sandbox\')">Sandbox</button></span></div></div>'+
+      '<div class="fi-campo"><label>API key'+manter+'</label><input id="fi-cx-key" autocomplete="off" spellcheck="false" placeholder="'+(ed ? fnEsc(c.preview) : '')+'"></div>'+
+      '<div class="fi-campo"><label>API secret'+manter+'</label><input id="fi-cx-sec" type="password" autocomplete="new-password" spellcheck="false"></div>'+
+      '<div class="fi-campo"><label>Chave privada (PEM)'+(ed && c.assina ? ' <i>em branco mantém a atual</i>' : ' <i>obrigatória se a credencial tem chave pública</i>')+'</label>'+
+        '<textarea id="fi-cx-pem" class="fi-mono" spellcheck="false" autocomplete="off" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>'+
+        '<div class="fi-barra" style="margin:8px 0 0"><button type="button" class="fi-bt sm" onclick="fiGerarPar(this)">Gerar par de chaves aqui</button><span class="fi-per">RSA 2048, gerado neste navegador: a privada vai pro campo acima, a pública você registra no Internet Banking.</span></div></div>'+
+      '<div id="fi-cx-pub" class="fi-pub" style="display:none"><b>Chave pública: registre no Internet Banking</b><textarea class="fi-mono" readonly></textarea>'+
+        '<div class="fi-barra" style="margin:8px 0 0"><button type="button" class="fi-bt sm p" onclick="fiCopiar(this.closest(\'.fi-pub\').querySelector(\'textarea\').value)">Copiar a chave pública</button><button type="button" class="fi-bt sm" onclick="fiBaixarPrivada()">Baixar a chave privada</button></div>'+
+        '<div class="fi-per" style="margin-top:6px">A chave privada fica só nesta aba até você salvar: fechar esta janela não perde, recarregar a página perde. Se for criar a credencial agora, baixe a privada antes e apague o arquivo depois de conectar.</div></div>'+
+      (ed && c.publica ? '<details class="fi-det"><summary>A chave pública desta conexão</summary><textarea class="fi-mono" readonly>'+fnEsc(c.publica)+'</textarea></details>' : '')+
+      '<details class="fi-det"><summary>Ou, no terminal</summary><pre class="fi-mono">openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out privada.pem\nopenssl pkey -in privada.pem -pubout -out publica.pem</pre><div class="fi-per">O conteúdo da publica.pem vai pro Internet Banking; o da privada.pem, no campo acima.</div></details>';
+  } else {
+    h += '<ol class="fi-passos"><li>Em <a href="https://lootrush.com/tokens/s/settings?tab=api-key" target="_blank" rel="noopener">Lootrush › Configurações › API Key</a>, crie uma chave só com o escopo <b>mcp</b> (leitura). Não marque saque, escrita nem revelar cartão.</li>'+
+      '<li>Se ela pedir lista de IPs, deixe sem: o servidor do TMX não tem IP fixo e a leitura seria recusada.</li><li>Cole a chave aqui.</li></ol>'+
+      '<div class="fi-campo"><label>Nome da conexão</label><input id="fi-cx-nome" value="'+fnEsc(c.nome || 'Lootrush')+'"></div>'+
+      '<div class="fi-campo"><label>API key'+manter+'</label><input id="fi-cx-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="'+(ed ? fnEsc(c.preview) : '')+'"></div>';
+  }
+  h += '<div class="fi-cx-erro"></div><div class="fi-rod"><button class="fi-bt" onclick="v2Fechar(this)">Cancelar</button><button class="fi-bt p" onclick="fiSalvarConexao(this,\''+prov+'\',\''+(id || '')+'\')">'+(ed ? 'Testar e salvar' : 'Testar e conectar')+'</button></div>';
+  var ov = v2Modal(h, 'p');
+  ov.onclick = null;   // clicar fora não fecha: a chave gerada não some por engano
+  ov.dataset.amb = amb;
+  if(cs && fiParCS && !(ed && c.assina)) fiMostrarPar(ov);
+}
+function fiAmb(bt, a){ var ov = bt.closest('.v2-ov'); ov.dataset.amb = a; bt.parentNode.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b === bt); }); }
+function fiPem(buf, rot){
+  var bytes = new Uint8Array(buf), bin = '';
+  for(var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return '-----BEGIN '+rot+'-----\n'+btoa(bin).match(/.{1,64}/g).join('\n')+'\n-----END '+rot+'-----\n';
+}
+// RSA 2048 no navegador (WebCrypto): a privada nunca sai daqui a não ser no "Testar e conectar"
+function fiGerarPar(bt){
+  var sc = window.crypto && window.crypto.subtle;
+  if(!sc){ toastFn('Este navegador não gera chaves aqui: use os comandos do terminal'); return; }
+  if(fiParCS && !confirm('Já tem um par gerado nesta aba. Gerar outro? O anterior some, e a chave pública dele deixa de servir.')) return;
+  var ov = bt.closest('.v2-ov'); bt.disabled = true;
+  sc.generateKey({ name:'RSASSA-PKCS1-v1_5', modulusLength:2048, publicExponent:new Uint8Array([1, 0, 1]), hash:'SHA-256' }, true, ['sign', 'verify'])
+    .then(function(k){ return Promise.all([sc.exportKey('pkcs8', k.privateKey), sc.exportKey('spki', k.publicKey)]); })
+    .then(function(x){ fiParCS = { privada:fiPem(x[0], 'PRIVATE KEY'), publica:fiPem(x[1], 'PUBLIC KEY') }; fiMostrarPar(ov); bt.disabled = false; })
+    .catch(function(e){ bt.disabled = false; toastFn('Não gerou: '+e.message); });
+}
+function fiMostrarPar(ov){
+  if(!fiParCS) return;
+  var pem = ov.querySelector('#fi-cx-pem'), box = ov.querySelector('#fi-cx-pub');
+  if(pem) pem.value = fiParCS.privada;
+  if(box){ box.style.display = ''; box.querySelector('textarea').value = fiParCS.publica; }
+}
+function fiBaixarPrivada(){
+  if(!fiParCS) return;
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([fiParCS.privada], { type:'application/x-pem-file' }));
+  a.download = 'contasimples-chave-privada.pem';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function fiCopiar(t){
+  var velho = function(){ var x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); try{ document.execCommand('copy'); }catch(e){} x.remove(); toastFn('Copiado'); };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ toastFn('Copiado'); }, velho);
+  else velho();
+}
+function fiSalvarConexao(bt, prov, id){
+  var ov = bt.closest('.v2-ov'), q = function(s){ var el = ov.querySelector(s); return el ? el.value : ''; };
+  var corpo = { id:id || undefined, provedor:prov, nome:q('#fi-cx-nome'), apiKey:q('#fi-cx-key') };
+  if(prov === 'contasimples'){ corpo.ambiente = ov.dataset.amb || 'producao'; corpo.apiSecret = q('#fi-cx-sec'); corpo.pem = q('#fi-cx-pem'); }
+  if(!id && !corpo.apiKey.trim()){ toastFn('Cole a API key'); return; }
+  if(!id && prov === 'contasimples' && !corpo.apiSecret.trim()){ toastFn('Cole o API secret'); return; }
+  var er = ov.querySelector('.fi-cx-erro'), rot = bt.textContent;
+  bt.disabled = true; bt.textContent = 'Testando…'; if(er) er.innerHTML = '';
+  v2Json('/api/fin/conexoes', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(corpo) })
+    .then(function(){
+      ov.querySelectorAll('input, textarea').forEach(function(el){ el.value = ''; });   // o segredo não fica na tela
+      corpo = null; fiParCS = null; v2Fechar(ov);
+      toastFn(id ? 'Conexão salva' : 'Conectada. Lendo os últimos 90 dias…');
+      fiCarregar(); fiAcompanhar();
+    })
+    .catch(function(e){
+      bt.disabled = false; bt.textContent = rot;
+      if(er) er.innerHTML = '<div class="v2-alerta bad" style="margin-top:12px"><div><b>Não conectou</b><span>'+fnEsc(e.message)+'</span></div></div>';
+    });
+}
+function fiLerAgora(id, bt){
+  if(bt) bt.disabled = true;
+  v2Json('/api/fin/conexoes/'+encodeURIComponent(id)+'/ler', { method:'POST' })
+    .then(function(){ toastFn('Lendo…'); fiAcompanhar(true); })
+    .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não deu: '+e.message); });
+}
+function fiDesconectar(id){
+  if(!confirm('Desconectar '+fiNomeConexao(id)+'? A credencial é apagada do servidor e os movimentos lidos saem do Financeiro. Pra voltar, é conectar de novo.')) return;
+  v2Json('/api/fin/conexoes/'+encodeURIComponent(id)+'/excluir', { method:'POST' })
+    .then(function(){ toastFn('Desconectada'); fiCarregar(); })
+    .catch(function(e){ toastFn('Não deu: '+e.message); });
+}
+// enquanto alguma conta está sendo lida, confere a cada 4s e recarrega quando terminar
+function fiAcompanhar(logo){
+  clearTimeout(fiTimerLeitura); fiAcompanhando = true;
+  var n = 0;
+  var passo = function(){
+    if(!document.getElementById('fi-main')){ fiAcompanhando = false; return; }
+    v2Json('/api/fin/conexoes').then(function(d){
+      var lendo = (d.conexoes || []).some(function(c){ return c.lendoDesde; });
+      if(fiCaixa) fiCaixa.conexoes = d.conexoes || [];
+      if(lendo && ++n < 90){ if(fiEst.aba === 'int') fiPintar(); fiTimerLeitura = setTimeout(passo, 4000); }
+      else { fiAcompanhando = false; fiCarregar(); }
+    }).catch(function(){ fiAcompanhando = false; });
+  };
+  fiTimerLeitura = setTimeout(passo, logo ? 1500 : 2500);
 }
 
 // ── CONFIGURAÇÕES ──

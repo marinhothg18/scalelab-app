@@ -6351,6 +6351,8 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   if (KEYS_DIRETORIA.has(key) && !_ehDiretoria(req)) {
     return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   }
+  // conexão bancária só muda pela tela de Integrações (testa e cifra a credencial)
+  if (key === 'fin_conexoes') return res.status(403).json({ error: 'Use Financeiro › Integrações.' });
 
   // ── MULTI-TENANCY PR 5: protege escritas ──
   // 1. Chaves da plataforma: só super-admin (Diretoria do tenant interno) escreve.
@@ -7306,7 +7308,7 @@ const KEYS_DIRETORIA = new Set([
   'sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps',
   'sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes',
   'sl_fin_nfs','sl_fin_ofx','sl_fin_impostos',
-  'fin_recorrentes','fin_compromissos','fin_contrapartes','fin_cfg',
+  'fin_recorrentes','fin_compromissos','fin_contrapartes','fin_cfg','fin_conexoes',
   'sl_candidatos',
   // guarda o API token da Utmify — não pode sincronizar pro browser do time
   'sl_integracoes_utmify','sl_integracoes_utmify_historico',
@@ -7330,6 +7332,7 @@ const KEYS_SERVIDOR = new Set([
   // pesados que a tela le pelas rotas, nunca pelo armazenamento do aparelho: mandar
   // pro celular estourava o espaco dele (uns 5 MB) e o resto nao sincronizava
   'fin_recorrentes','fin_compromissos','fin_contrapartes','fin_cfg', // Financeiro: a tela le por /api/fin/*
+  'fin_conexoes',           // credencial da Conta Simples e da Lootrush (cifrada); a tela le por /api/fin/conexoes
   'sl_metricas_ads',        // ~1 MB; a tela le por /api/metricas/*
   'sl_vendas',              // ~0,8 MB; a tela le por /api/funil/* e /api/integracoes/vendas
   'sl_funil_atencao',       // rolagem e cliques; a tela le por /api/funil/atencao
@@ -13128,10 +13131,11 @@ function _finLimpar(tipo, b) {
   return Object.assign(base, { vencimento:_finDia(b.vencimento) || _diaBR(Date.now()), status:b.status === 'pago' ? 'pago' : 'aberto',
     pagoEm:b.status === 'pago' ? (_finDia(b.pagoEm) || _diaBR(Date.now())) : null, parcela:_finTxt(b.parcela, 10) });
 }
-app.post('/api/fin/:tipo', authDiretoria, (req, res) => {
+// tipo que não é cadastro (ex.: /api/fin/conexoes) segue pras rotas de baixo
+app.post('/api/fin/:tipo', authDiretoria, (req, res, next) => {
   try {
     const key = FIN_TIPOS[req.params.tipo];
-    if (!key) return res.status(404).json({ error: 'Tipo desconhecido.' });
+    if (!key) return next();
     const b = req.body || {}, db = readDB(), arr = _finArr(db, key);
     const dados = _finLimpar(req.params.tipo, b);
     if (!(dados.nome || dados.descricao)) return res.status(400).json({ error: 'Dê um nome.' });
@@ -13157,10 +13161,10 @@ app.post('/api/fin/:tipo', authDiretoria, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // excluir vai pra lixeira (dá pra restaurar por 30 dias), igual ao resto do sistema
-app.post('/api/fin/:tipo/:id/excluir', authDiretoria, (req, res) => {
+app.post('/api/fin/:tipo/:id/excluir', authDiretoria, (req, res, next) => {
   try {
     const key = FIN_TIPOS[req.params.tipo];
-    if (!key) return res.status(404).json({ error: 'Tipo desconhecido.' });
+    if (!key) return next();
     const db = readDB(), arr = _finArr(db, key);
     const idx = arr.findIndex(x => x.id === req.params.id);
     if (idx < 0) return res.status(404).json({ error: 'Não encontrado.' });
@@ -13172,6 +13176,555 @@ app.post('/api/fin/:tipo/:id/excluir', authDiretoria, (req, res) => {
     audit(db, 'soft_delete', { sourceKey:key, itemId:item.id, tipo:req.params.tipo }, { itemNome:item.descricao || item.nome }, req.user);
     writeDB(db);
     res.json({ ok:true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── 🏦 CONTAS DA OPERAÇÃO (fase 2 do Financeiro) ──
+// Conta Simples (conta em real, cartões e faturas) e Lootrush (conta em dólar e
+// cartões em dólar), SÓ LEITURA. A credencial que o Thiago digita fica cifrada
+// (AES-256-GCM) em fin_conexoes; a chave da cifra mora no arquivo
+// .chave-financeiro do volume, fora do db.json — nem o backup do GitHub nem o
+// download do banco levam a credencial aberta. Pra tela volta no máximo o nome,
+// o ambiente e os últimos 4 caracteres da API key.
+// Escrita (bloquear ou emitir cartão, saque) não existe aqui de propósito: o
+// cliente da Conta Simples só faz GET e o da Lootrush só chama as ferramentas de
+// leitura. Os movimentos lidos ficam na base SQLite (fin_mov, fin_saldo,
+// fin_cartao, fin_fatura) e chegam na tela por /api/fin/caixa.
+// ══════════════════════════════════════════════════════
+const KEY_FIN_CONEX = 'fin_conexoes';
+const FIN_PROVEDORES = { contasimples:'Conta Simples', lootrush:'Lootrush' };
+const FIN_CHAVE_ARQ = path.join(DATA_DIR, '.chave-financeiro');
+let _finChaveBuf = null;
+function _finChave() {
+  if (_finChaveBuf) return _finChaveBuf;
+  let txt = null;
+  try { txt = fs.readFileSync(FIN_CHAVE_ARQ, 'utf8').trim(); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  if (txt === null) {
+    // a primeira conexão faz nascer a chave; 'wx' nunca sobrescreve uma que já exista
+    const nova = crypto.randomBytes(32).toString('hex');
+    try { fs.writeFileSync(FIN_CHAVE_ARQ, nova, { mode:0o600, flag:'wx' }); txt = nova; }
+    catch (e) { if (e.code !== 'EEXIST') throw e; txt = fs.readFileSync(FIN_CHAVE_ARQ, 'utf8').trim(); }
+  }
+  if (!/^[0-9a-f]{64}$/.test(txt)) throw new Error('O arquivo da chave do Financeiro está estragado; não mexi nele.');
+  return (_finChaveBuf = Buffer.from(txt, 'hex'));
+}
+// o id da conexão entra como dado autenticado: a cifra de uma não abre na outra
+function _finCifrar(id, obj) {
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', _finChave(), iv);
+  c.setAAD(Buffer.from(String(id)));
+  const data = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
+  return { v:1, iv:iv.toString('base64'), tag:c.getAuthTag().toString('base64'), data:data.toString('base64') };
+}
+function _finDecifrar(id, x) {
+  if (!x || !x.data) throw new Error('Esta conexão está sem credencial: conecte de novo.');
+  try {
+    const d = crypto.createDecipheriv('aes-256-gcm', _finChave(), Buffer.from(x.iv, 'base64'));
+    d.setAAD(Buffer.from(String(id))); d.setAuthTag(Buffer.from(x.tag, 'base64'));
+    return JSON.parse(Buffer.concat([d.update(Buffer.from(x.data, 'base64')), d.final()]).toString('utf8'));
+  } catch (e) { throw new Error('Não consegui abrir a credencial guardada (a chave do servidor mudou?): conecte de novo.'); }
+}
+function _finConexoes(db) { return _finArr(db, KEY_FIN_CONEX); }
+const _finLendo = {};   // id da conexão => desde quando está lendo
+function _finConexPub(c) {
+  return { id:c.id, provedor:c.provedor, nome:c.nome, ambiente:c.ambiente || 'producao', preview:c.preview || '', assina:!!c.assina,
+    publica:c.publica || '', semCredencial:!c.cred, status:c.status || 'novo', ultimoErro:c.ultimoErro || '', avisos:c.avisos || [],
+    ultimaLeitura:c.ultimaLeitura || null, ultimaLeituraOk:c.ultimaLeituraOk || null, lendoDesde:_finLendo[c.id] || null,
+    resumo:c.resumo || null, criadoEm:c.criadoEm || null, criadoPorNome:c.criadoPorNome || '' };
+}
+let _finTabOk = false;
+function _finTab() {
+  const p = _pessoas();
+  if (!p) throw new Error('A base SQLite não abriu neste servidor.');
+  if (_finTabOk) return p;
+  p.exec(`
+    CREATE TABLE IF NOT EXISTS fin_mov (id TEXT PRIMARY KEY, conexao TEXT, provedor TEXT, origem TEXT, conta TEXT, cartao TEXT,
+      dia TEXT, em INTEGER, dir TEXT, valor REAL, moeda TEXT, valor_brl REAL, descricao TEXT, contraparte TEXT,
+      tipo TEXT, status TEXT, categoria TEXT, bruto TEXT, lido INTEGER);
+    CREATE INDEX IF NOT EXISTS fmov_dia ON fin_mov(dia);
+    CREATE INDEX IF NOT EXISTS fmov_con ON fin_mov(conexao, dia);
+    CREATE TABLE IF NOT EXISTS fin_saldo (conexao TEXT, conta TEXT, dia TEXT, valor REAL, moeda TEXT, valor_brl REAL, em INTEGER,
+      PRIMARY KEY (conexao, conta, dia));
+    CREATE TABLE IF NOT EXISTS fin_cartao (conexao TEXT, id TEXT, final TEXT, nome TEXT, titular TEXT, status TEXT, tipo TEXT,
+      moeda TEXT, extra TEXT, em INTEGER, PRIMARY KEY (conexao, id));
+    CREATE TABLE IF NOT EXISTS fin_fatura (conexao TEXT, id TEXT, vencimento TEXT, corte TEXT, total REAL, a_pagar REAL,
+      status TEXT, pago INTEGER, em INTEGER, PRIMARY KEY (conexao, id));
+  `);
+  _finTabOk = true;
+  return p;
+}
+function _finApagarDados(id) {
+  if (!_pessoas()) return;
+  _finTab();
+  ['fin_mov', 'fin_saldo', 'fin_cartao', 'fin_fatura'].forEach(t => _q('DELETE FROM ' + t + ' WHERE conexao=?').run(id));
+}
+const _finDorme = ms => new Promise(r => setTimeout(r, ms));
+const _finN = v => (v === undefined || v === null || (typeof v === 'number' && !isFinite(v))) ? null : v;
+const _finMai = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+// data de um movimento => dia no horário de Brasília (sem fuso, a data já é a de Brasília)
+function _finQuando(s) {
+  const t = String(s || '').trim();
+  if (!t) return { dia:null, em:null };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return { dia:t, em:Date.parse(t + 'T12:00:00-03:00') };
+  const fuso = /(Z|[+-]\d{2}:?\d{2})$/i.test(t);
+  const ms = Date.parse(fuso ? t : t.replace(' ', 'T') + '-03:00');
+  return isFinite(ms) ? { dia:_diaBR(ms), em:ms } : { dia:t.slice(0, 10), em:null };
+}
+// janelas de até N dias cobrindo [de, ate]
+function _finJanelas(de, ate, n) {
+  const out = [], dia = ms => new Date(ms).toISOString().slice(0, 10);
+  let a = Date.parse(de + 'T12:00:00Z');
+  const fim = Date.parse(ate + 'T12:00:00Z');
+  while (a <= fim) { const b = Math.min(fim, a + (n - 1) * 86400000); out.push([dia(a), dia(b)]); a = b + 86400000; }
+  return out;
+}
+// a primeira classificação, por nome. As regras editáveis vêm depois, com o extrato de verdade na mão.
+function _finCategoria(m) {
+  if (m.dir === 'interna') return 'Movimentações internas';
+  const s = _finMai([m.descricao, m.contraparte, m.tipo].join(' '));
+  if (/FACEBK|FACEBOOK|META ?PLATFORMS|META ADS|GOOGLE ?\*? ?ADS|ADWORDS|TIKTOK/.test(s)) return 'Tráfego';
+  if (/ESTORN|REFUND|CHARGEBACK|DEVOLU/.test(s)) return 'Reembolsos e chargebacks';
+  if (/\bIOF\b|TARIFA|ANUIDADE|BILL_TARIFF|\bFEE\b/.test(s)) return 'Taxas, tarifas e impostos';
+  if (m.dir === 'entrada' && /PAYT|KIWIFY|HUBLA/.test(s)) return 'Recebimentos';
+  return '';
+}
+function _finGravarMov(m) {
+  m.categoria = _finCategoria(m);
+  _q(`INSERT INTO fin_mov(id, conexao, provedor, origem, conta, cartao, dia, em, dir, valor, moeda, valor_brl, descricao, contraparte, tipo, status, categoria, bruto, lido)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET conta=excluded.conta, cartao=excluded.cartao, dia=excluded.dia, em=excluded.em, dir=excluded.dir,
+        valor=excluded.valor, moeda=excluded.moeda, valor_brl=excluded.valor_brl, descricao=excluded.descricao, contraparte=excluded.contraparte,
+        tipo=excluded.tipo, status=excluded.status, categoria=excluded.categoria, bruto=excluded.bruto, lido=excluded.lido`)
+    .run(m.id, m.conexao, m.provedor, m.origem, _finN(m.conta), _finN(m.cartao), _finN(m.dia), _finN(m.em), m.dir, _finN(m.valor),
+      _finN(m.moeda), _finN(m.valor_brl), _finN(m.descricao), _finN(m.contraparte), _finN(m.tipo), _finN(m.status), m.categoria,
+      JSON.stringify(m.bruto || null).slice(0, 4000), Date.now());
+}
+function _finGravarSaldo(conexao, conta, valor, moeda, brl) {
+  if (!isFinite(valor)) return;
+  _q('INSERT INTO fin_saldo(conexao, conta, dia, valor, moeda, valor_brl, em) VALUES(?,?,?,?,?,?,?) ON CONFLICT(conexao, conta, dia) DO UPDATE SET valor=excluded.valor, moeda=excluded.moeda, valor_brl=excluded.valor_brl, em=excluded.em')
+    .run(conexao, conta, _diaBR(Date.now()), valor, moeda, _finN(brl), Date.now());
+}
+function _finGravarCartao(conexao, c) {
+  _q('INSERT INTO fin_cartao(conexao, id, final, nome, titular, status, tipo, moeda, extra, em) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(conexao, id) DO UPDATE SET final=excluded.final, nome=excluded.nome, titular=excluded.titular, status=excluded.status, tipo=excluded.tipo, moeda=excluded.moeda, extra=excluded.extra, em=excluded.em')
+    .run(conexao, String(c.id), _finN(c.final), _finN(c.nome), _finN(c.titular), _finN(c.status), _finN(c.tipo), c.moeda, JSON.stringify(c.extra || {}), Date.now());
+}
+
+// ── Conta Simples ──
+// Token: POST /oauth/v1/access-token com Basic (api key:secret), vale 30 min e não é assinado.
+// Toda outra chamada vai assinada (RFC 9421) quando a credencial tem chave pública registrada.
+const CS_BASE = { producao:'https://api.contasimples.com', sandbox:'https://api-sandbox.contasimples.com' };
+const CS_TIPO_CARTAO = { PURCHASE:'Compra', PURCHASE_INTERNATIONAL:'Compra internacional', IOF:'IOF', REFUND:'Estorno',
+  INVOICE_PAYMENT:'Pagamento da fatura', BILL_TARIFF:'Tarifa' };
+const _csTok = {};
+async function _csToken(cx, cred) {
+  const t = _csTok[cx.id], quem = crypto.createHash('sha256').update(cred.apiKey + ':' + cred.apiSecret).digest('hex');
+  if (t && t.ate > Date.now() + 60000 && t.quem === quem) return t.token;
+  const r = await fetch(CS_BASE[cx.ambiente === 'sandbox' ? 'sandbox' : 'producao'] + '/oauth/v1/access-token', {
+    method:'POST', signal:AbortSignal.timeout(20000),
+    headers:{ Authorization:'Basic ' + Buffer.from(cred.apiKey + ':' + cred.apiSecret).toString('base64'),
+      'Content-Type':'application/x-www-form-urlencoded', Accept:'application/json', 'User-Agent':'CentralTMX/1.0' },
+    body:'grant_type=client_credentials' });
+  const j = await r.json().catch(() => null);
+  if (!r.ok || !j || !j.access_token) {
+    if (r.status === 400 || r.status === 401 || r.status === 403) throw new Error('A Conta Simples recusou a API key e o API secret em ' + (cx.ambiente === 'sandbox' ? 'Sandbox' : 'Produção') + '. Confira os dois e o ambiente.');
+    throw new Error('A Conta Simples respondeu ' + r.status + ' ao pedir o acesso.');
+  }
+  _csTok[cx.id] = { token:j.access_token, ate:Date.now() + (Number(j.expires_in) || 1800) * 1000, quem };
+  return j.access_token;
+}
+function _csChave(pem) {
+  if (/BEGIN (RSA )?PUBLIC KEY/.test(pem)) throw new Error('Essa é a chave PÚBLICA. Aqui vai a chave privada (a que começa com BEGIN PRIVATE KEY); a pública é a que fica no Internet Banking.');
+  let k;
+  try { k = crypto.createPrivateKey(pem); } catch (e) { throw new Error('A chave privada não abriu. Cole o PEM inteiro, com as linhas BEGIN e END.'); }
+  const t = k.asymmetricKeyType, det = k.asymmetricKeyDetails || {};
+  if (t === 'rsa' || t === 'rsa-pss') { if ((det.modulusLength || 0) < 2048) throw new Error('A chave RSA precisa ter pelo menos 2048 bits.'); }
+  else if (t === 'ec') { if (det.namedCurve !== 'prime256v1') throw new Error('Chave EC só na curva P-256.'); }
+  else if (t !== 'ed25519') throw new Error('A Conta Simples não aceita chave do tipo ' + t + '.');
+  return k;
+}
+// assinatura RFC 9421 de um GET: "@method", "@path" e "@query" ("?" quando não tem query)
+function _csAssinar(metodo, caminho, query, pem) {
+  const k = _csChave(pem), t = k.asymmetricKeyType;
+  let alg, assina;
+  if (t === 'rsa') { alg = 'rsa-v1_5-sha256'; assina = b => crypto.sign('sha256', b, k); }
+  else if (t === 'rsa-pss') { alg = 'rsa-pss-sha512'; assina = b => crypto.sign('sha512', b, { key:k, padding:crypto.constants.RSA_PKCS1_PSS_PADDING, saltLength:64 }); }
+  else if (t === 'ec') { alg = 'ecdsa-p256-sha256'; assina = b => crypto.sign('sha256', b, { key:k, dsaEncoding:'ieee-p1363' }); }
+  else { alg = 'ed25519'; assina = b => crypto.sign(null, b, k); }
+  const params = '("@method" "@path" "@query");created=' + Math.floor(Date.now() / 1000) + ';alg="' + alg + '";nonce="' + crypto.randomUUID() + '"';
+  const base = '"@method": ' + metodo + '\n"@path": ' + caminho + '\n"@query": ' + query + '\n"@signature-params": ' + params;
+  return { 'Signature-Input':'sig=' + params, Signature:'sig=:' + assina(Buffer.from(base, 'utf8')).toString('base64') + ':' };
+}
+function _csMsgErro(st, txt, caminho) {
+  if (/SIGNATURE_REQUIRED/.test(txt)) return 'Esta credencial tem chave pública registrada, então toda chamada precisa ir assinada: cole a chave privada (PEM) que forma par com ela.';
+  if (/INVALID_SIGNATURE/.test(txt)) return 'A Conta Simples recusou a assinatura: a chave privada colada não é o par da chave pública registrada nesta credencial.';
+  let j = null; try { j = JSON.parse(txt); } catch (e) {}
+  const escopo = j && ((j.details && j.details.requiredScope) || j.requiredScope);
+  if (st === 403) return 'A credencial não tem permissão pra ler ' + caminho + (escopo ? ' (falta o escopo "' + escopo + '")' : '') + '.';
+  const m = j && (j.message || j.error_description || j.error || j.code);
+  return 'A Conta Simples respondeu ' + st + ' em ' + caminho + (m ? ': ' + (typeof m === 'string' ? m : JSON.stringify(m)).slice(0, 200) : '') + '.';
+}
+// só GET: este cliente não sabe escrever na conta
+async function _csGet(cx, cred, caminho, query) {
+  const qs = new URLSearchParams();
+  Object.keys(query || {}).forEach(k => {
+    const v = query[k];
+    if (v !== undefined && v !== null && v !== '') qs.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+  });
+  const q = qs.toString(), url = CS_BASE[cx.ambiente === 'sandbox' ? 'sandbox' : 'producao'] + caminho + (q ? '?' + q : '');
+  for (let tent = 0; tent < 4; tent++) {
+    const headers = { Authorization:'Bearer ' + await _csToken(cx, cred), Accept:'application/json', 'User-Agent':'CentralTMX/1.0' };
+    if (cred.pem) Object.assign(headers, _csAssinar('GET', caminho, '?' + q, cred.pem));
+    const r = await fetch(url, { headers, signal:AbortSignal.timeout(30000) });
+    if (r.status === 429) { await _finDorme(2500 * (tent + 1)); continue; }
+    const txt = await r.text();
+    if (r.ok) { try { return JSON.parse(txt); } catch (e) { throw new Error('A Conta Simples devolveu uma resposta que não é JSON em ' + caminho + '.'); } }
+    // token vencido antes da hora: pede outro uma vez
+    if (r.status === 401 && !/SIGNATURE/.test(txt) && tent === 0) { delete _csTok[cx.id]; continue; }
+    throw new Error(_csMsgErro(r.status, txt, caminho));
+  }
+  throw new Error('A Conta Simples pediu pra ir mais devagar. Tento de novo na próxima leitura.');
+}
+// percorre as páginas (nextPageStartKey) de uma lista
+async function _csPaginas(cx, cred, caminho, query, campo, cada) {
+  let chave = null, pg = 0;
+  do {
+    const j = await _csGet(cx, cred, caminho, Object.assign({}, query, { nextPageStartKey:chave }));
+    const lista = Array.isArray(j) ? j : (j && (j[campo] || j.items || j.data)) || [];
+    lista.forEach(cada);
+    chave = j && !Array.isArray(j) ? j.nextPageStartKey : null;
+  } while (chave && ++pg < 80);
+}
+// O extrato da conta não traz sinal nem campo de entrada/saída: o sentido sai do tipo
+// ("PIX ENVIADO" / PIX_OUT). O que não der pra dizer fica "?" e aparece na tela pra conferir.
+function _csSentidoBanco(t) {
+  const v = Number(t.totalTransactionAmount != null ? t.totalTransactionAmount : t.brlAmount) || 0;
+  const tt = t.transactionType || {}, s = _finMai([tt.subType, tt.description, t.description, t.sourceDestinationName].join(' '));
+  if (/FATURA|INVOICE|LOOT ?RUSH|ENTRE CONTAS|MESMA TITULARIDADE/.test(s)) return 'interna';
+  if (v < 0) return 'saida';
+  if (/(^|[_\s])IN($|[_\s])|RECEBID|DEPOSITO|DEPOSIT|ESTORN|REFUND|DEVOLU|CREDITO|CASH_IN|RENDIMENTO|ENTRADA|APORTE/.test(s)) return 'entrada';
+  if (/OUT($|[_\s])|ENVIAD|PAGAMENTO|PAGTO|PAYMENT|TARIFA|\bFEE\b|DEBITO|SAQUE|COMPRA|PURCHASE|CASH_OUT|SAIDA|BOLETO|\bTED\b|\bDOC\b|\bIOF\b|IMPOSTO|TRIBUTO/.test(s)) return 'saida';
+  return '?';
+}
+async function _csLer(cx, cred, de, ate, passo) {
+  const r = { contas:{}, movs:0, cartoes:0, faturas:0 };
+  await passo('saldo', async () => {
+    const s = await _csGet(cx, cred, '/accounts/v1/balance');
+    const v = Number(s && (s.amount != null ? s.amount : s.balance));
+    if (isFinite(v)) { _finGravarSaldo(cx.id, 'Conta Simples', v, 'BRL', v); r.contas['Conta Simples'] = { valor:v, moeda:'BRL' }; }
+  });
+  await passo('extrato da conta', async () => {
+    for (const [a, b] of _finJanelas(de, ate, 31)) {
+      await _csPaginas(cx, cred, '/statements/v1/banking', { startDate:a, endDate:b, limit:50 }, 'transactions', t => {
+        if (!t || t.id == null) return;
+        const q = _finQuando(t.transactionDate), tt = t.transactionType || {};
+        const v = Math.abs(Number(t.totalTransactionAmount != null ? t.totalTransactionAmount : t.brlAmount) || 0);
+        _finGravarMov({ id:cx.id + ':b:' + t.id, conexao:cx.id, provedor:'contasimples', origem:'conta', conta:'Conta Simples',
+          cartao:null, dia:q.dia, em:q.em, dir:_csSentidoBanco(t), valor:v, moeda:'BRL', valor_brl:v,
+          descricao:t.description || tt.description || '', contraparte:t.sourceDestinationName || t.placeEstablishment || '',
+          tipo:[tt.description, tt.subType].filter(Boolean).join(' · '), status:t.status === 1 ? 'cancelado' : t.status === 3 ? 'pendente' : 'ok', bruto:t });
+        r.movs++;
+      });
+    }
+  });
+  await passo('cartões', async () => {
+    await _csPaginas(cx, cred, '/credit-cards/v1/cards', { limit:50 }, 'items', c => {
+      if (!c || c.id == null) return;
+      _finGravarCartao(cx.id, { id:c.id, final:String(c.maskedNumber || '').replace(/\D/g, '').slice(-4), nome:c.name || '',
+        titular:(c.responsible && c.responsible.name) || c.cardHolderName || '', status:c.status || '', tipo:c.type || '', moeda:'BRL',
+        extra:{ centroDeCusto:c.costCenter || null, finalidade:c.purpose || null, validade:c.formattedExpirationDate || null } });
+      r.cartoes++;
+    });
+  });
+  await passo('faturas', async () => {
+    const j = await _csGet(cx, cred, '/credit-cards/v1/bills');
+    (Array.isArray(j) ? j : (j && (j.items || j.bills)) || []).forEach(f => {
+      if (!f || (f.id == null && !f.dueDate)) return;   // fatura futura vem sem id: fica pelo vencimento
+      _q('INSERT INTO fin_fatura(conexao, id, vencimento, corte, total, a_pagar, status, pago, em) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(conexao, id) DO UPDATE SET vencimento=excluded.vencimento, corte=excluded.corte, total=excluded.total, a_pagar=excluded.a_pagar, status=excluded.status, pago=excluded.pago, em=excluded.em')
+        .run(cx.id, f.id != null ? String(f.id) : 'venc:' + f.dueDate, _finN(_finQuando(f.dueDate).dia), _finN(_finQuando(f.cutDate).dia), _finN(Number(f.totalAmount)),
+          _finN(Number(f.amountToPay)), _finN(f.status), f.isFullyPaid ? 1 : 0, Date.now());
+      r.faturas++;
+    });
+  });
+  await passo('extrato dos cartões', async () => {
+    // a Conta Simples aceita janelas de até 62 dias aqui
+    for (const [a, b] of _finJanelas(de, ate, 60)) {
+      await _csPaginas(cx, cred, '/statements/v1/credit-card', { startDate:a, endDate:b, limit:100 }, 'transactions', t => {
+        if (!t || t.id == null) return;
+        const q = _finQuando(t.transactionDate), tipo = String(t.type || ''), card = t.card || {};
+        const dir = tipo === 'INVOICE_PAYMENT' ? 'interna' : t.operation === 'CASH_IN' ? 'entrada' : t.operation === 'CASH_OUT' ? 'saida' : /REFUND/.test(tipo) ? 'entrada' : 'saida';
+        const v = Math.abs(Number(t.amountBrl) || 0);
+        _finGravarMov({ id:cx.id + ':c:' + t.id, conexao:cx.id, provedor:'contasimples', origem:'cartao', conta:'Conta Simples · cartão',
+          cartao:card.id != null ? String(card.id) : null, dia:q.dia, em:q.em, dir, valor:v, moeda:'BRL', valor_brl:v,
+          descricao:t.merchant || CS_TIPO_CARTAO[tipo] || tipo, contraparte:t.merchant || '', tipo:tipo + (t.installment ? ' · ' + (typeof t.installment === 'object' ? JSON.stringify(t.installment) : t.installment) : ''),
+          status:(t.isCanceled || t.status === 'CANCELED') ? 'cancelado' : t.status === 'PENDING' ? 'pendente' : 'ok', bruto:t });
+        r.movs++;
+      });
+    }
+  });
+  return r;
+}
+
+// ── Lootrush ──
+// O MCP deles é um JSON-RPC simples (uma mensagem por POST) com a API key no Bearer.
+// Só as ferramentas de leitura passam; nada de revelar número de cartão.
+const LR_LEITURA = new Set(['getAccountBalance', 'getAccountHistory', 'getUserCards', 'getUserCardTransactions']);
+let _lrUltima = 0;
+async function _lrMcp(cred, nome, args) {
+  if (!LR_LEITURA.has(nome)) throw new Error('A integração com a Lootrush é só de leitura.');
+  for (let tent = 0; tent < 4; tent++) {
+    const espera = _lrUltima + 1100 - Date.now();   // uma chamada por segundo, folgado
+    if (espera > 0) await _finDorme(espera);
+    _lrUltima = Date.now();
+    const r = await fetch('https://mcp.lootrush.com/mcp', { method:'POST', signal:AbortSignal.timeout(30000),
+      headers:{ Authorization:'Bearer ' + cred.apiKey, 'Content-Type':'application/json', Accept:'application/json, text/event-stream', 'User-Agent':'CentralTMX/1.0' },
+      body:JSON.stringify({ jsonrpc:'2.0', id:Date.now(), method:'tools/call', params:{ name:nome, arguments:args || {} } }) });
+    const txt = await r.text();
+    let j = null;
+    try { j = JSON.parse(txt); } catch (e) { const m = txt.match(/^data:\s*(\{.*\})\s*$/m); if (m) { try { j = JSON.parse(m[1]); } catch (e2) {} } }
+    const cod = j && j.error && j.error.code;
+    if (r.status === 429 || cod === -32005) { await _finDorme(3000 * (tent + 1)); continue; }
+    if (cod === -32001 || r.status === 401) throw new Error('A Lootrush recusou a API key (inválida ou vencida).');
+    if (cod === -32003) throw new Error('A API key da Lootrush não tem o escopo "mcp". Crie uma com o escopo mcp (leitura).');
+    if (cod === -32004) throw new Error('A API key da Lootrush tem lista de IPs, e o servidor do TMX não está nela.');
+    if (j && j.error) throw new Error('A Lootrush respondeu: ' + String(j.error.message || JSON.stringify(j.error)).slice(0, 200));
+    if (!r.ok || !j) throw new Error('A Lootrush respondeu ' + r.status + '.');
+    const res = j.result || {}, t = res.content && res.content[0] && res.content[0].text;
+    let dados = t;
+    try { dados = JSON.parse(t); } catch (e) {}
+    if (res.isError) {
+      const msg = String(typeof dados === 'string' ? dados : (dados && (dados.error || dados.message)) || '');
+      if (/no transaction|not found|nenhum/i.test(msg)) return null;   // janela sem movimento
+      throw new Error('Lootrush (' + nome + '): ' + msg.slice(0, 200));
+    }
+    return dados;
+  }
+  throw new Error('A Lootrush pediu pra ir mais devagar. Tento de novo na próxima leitura.');
+}
+const LR_ESTAVEIS = /^(USDC|USDT|USD|DAI|PYUSD|USDS)$/i;
+async function _lrLer(cx, cred, de, ate, passo) {
+  const r = { contas:{}, movs:0, cartoes:0 }, hoje = _diaBR(Date.now());
+  let usd = null;
+  try { usd = await _cambioPeriodo('USD', de, hoje); } catch (e) { console.error('[FIN] câmbio:', e.message); }
+  const brl = (v, dia) => (usd && v != null && isFinite(v)) ? Math.round(v * (usd[dia] || usd[hoje]) * 100) / 100 : null;
+  await passo('saldo', async () => {
+    const b = await _lrMcp(cred, 'getAccountBalance', {}) || {};
+    const v = Number(b.totalUsdValue);
+    if (isFinite(v)) { _finGravarSaldo(cx.id, 'Lootrush · conta', v, 'USD', brl(v, hoje)); r.contas['Lootrush · conta'] = { valor:v, moeda:'USD' }; }
+    r.tokens = (b.byToken || []).map(x => ({ token:x.token, rede:x.network, qtd:Number(x.amount) || 0, usd:Number(x.balanceUsd) || 0 })).filter(x => x.usd);
+    const cb = b.cardBalance && Number(b.cardBalance.total);
+    if (isFinite(cb)) r._cartoesUsd = cb;
+  });
+  let cartoes = [];
+  await passo('cartões', async () => {
+    const c = await _lrMcp(cred, 'getUserCards', {}) || {};
+    cartoes = (c.cards || []).filter(x => x && x.id);
+    const tot = r._cartoesUsd != null ? r._cartoesUsd : Number(c.balances && c.balances.totalUsd);
+    if (isFinite(tot)) { _finGravarSaldo(cx.id, 'Lootrush · cartões', tot, 'USD', brl(tot, hoje)); r.contas['Lootrush · cartões'] = { valor:tot, moeda:'USD' }; }
+    cartoes.forEach(x => {
+      _finGravarCartao(cx.id, { id:x.id, final:x.lastFourDigits || '', nome:x.nickname || x.name || '', titular:x.holderName || x.cardholderName || '',
+        status:x.status || '', tipo:x.type || '', moeda:'USD', extra:{ cardIssuerUserId:x.cardIssuerUserId || null, grupo:x.groupId || null } });
+      r.cartoes++;
+    });
+  });
+  delete r._cartoesUsd;
+  await passo('gastos dos cartões', async () => {
+    for (const c of cartoes) {
+      for (let page = 1; page <= 30; page++) {
+        const d = await _lrMcp(cred, 'getUserCardTransactions', { cardId:c.id, cardIssuerUserId:c.cardIssuerUserId, page, pageSize:100,
+          startDate:de + 'T00:00:00.000Z', endDate:ate + 'T23:59:59.999Z' }) || {};
+        const lista = d.transactions || d.items || [];
+        lista.forEach(t => {
+          if (!t || t.id == null) return;
+          const q = _finQuando(t.createdAt || t.date), sx = _finMai([t.type, t.polarity, t.direction].join(' '));
+          const st = String(t.status || '').toLowerCase();
+          const v = Math.abs(Number(t.amount) || 0), moeda = String(t.currency || 'USD').toUpperCase();
+          _finGravarMov({ id:cx.id + ':c:' + t.id, conexao:cx.id, provedor:'lootrush', origem:'cartao', conta:'Lootrush · cartão', cartao:String(c.id),
+            dia:q.dia, em:q.em, dir:/REFUND|CREDIT|DEPOSIT|REVERS|CASH_IN|INCOMING|POSITIVE|TOP ?UP/.test(sx) ? 'entrada' : 'saida',
+            valor:v, moeda, valor_brl:moeda === 'BRL' ? v : brl(v, q.dia), descricao:t.merchantName || t.description || t.type || '',
+            contraparte:t.merchantName || '', tipo:t.type || '', status:/revers|declin|cancel/.test(st) ? 'cancelado' : /hold|pend/.test(st) ? 'pendente' : 'ok', bruto:t });
+          r.movs++;
+        });
+        if (lista.length < 100) break;
+      }
+    }
+  });
+  await passo('extrato da conta', async () => {
+    for (const [a, b] of _finJanelas(de, ate, 30)) {
+      const d = await _lrMcp(cred, 'getAccountHistory', { startDate:a + 'T00:00:00.000Z', endDate:b + 'T23:59:59.999Z', limit:500 }) || {};
+      if (d.truncated) r.truncado = true;
+      (d.transactions || d.nodes || []).forEach(t => {
+        if (!t) return;
+        const recebeu = Number(t.amountReceived) || 0, enviou = Number(t.amountSent) || 0, tipo = String(t.type || t.transactionType || '');
+        const dir = /swap|bridge/i.test(tipo) || (recebeu && enviou) ? 'interna' : recebeu ? 'entrada' : enviou ? 'saida' : '?';
+        const ativo = String((recebeu ? t.assetReceived : t.assetSent) || t.asset || 'USD').toUpperCase(), qtd = recebeu || enviou || Math.abs(Number(t.amount) || 0);
+        const emUsd = LR_ESTAVEIS.test(ativo) ? qtd : (Number(t.amountUsd || t.usdValue || t.valueUsd) || null);
+        const q = _finQuando(t.transactionDate || t.createdAt);
+        const chave = t.id || t.hash || t.txHash || t.transactionHash ||
+          crypto.createHash('sha1').update(JSON.stringify([t.transactionDate, tipo, t.amountReceived, t.amountSent, t.assetReceived, t.assetSent, t.description])).digest('hex').slice(0, 20);
+        _finGravarMov({ id:cx.id + ':a:' + chave, conexao:cx.id, provedor:'lootrush', origem:'conta', conta:'Lootrush · conta', cartao:null,
+          dia:q.dia, em:q.em, dir, valor:emUsd != null ? emUsd : qtd, moeda:emUsd != null ? 'USD' : ativo, valor_brl:emUsd != null ? brl(emUsd, q.dia) : null,
+          descricao:t.description || tipo, contraparte:'', tipo, status:/fail|cancel|revers/i.test(String(t.status || '')) ? 'cancelado' : /pend|process/i.test(String(t.status || '')) ? 'pendente' : 'ok', bruto:t });
+        r.movs++;
+      });
+    }
+  });
+  return r;
+}
+
+// Lê uma conexão: na primeira vez os últimos 90 dias, depois os últimos 10 (pra pegar o
+// pendente que virou processado). Cada parte falha sozinha: sem permissão pra cartões,
+// o saldo e o extrato da conta entram assim mesmo, e a tela mostra o que faltou.
+async function _finLerConexao(id, opts) {
+  opts = opts || {};
+  if (_finLendo[id]) return { ok:false, rodando:true };
+  _finLendo[id] = Date.now();
+  let res = null, erro = null;
+  const avisos = [];
+  try {
+    _finTab();
+    const cx = _finConexoes(readDB()).find(c => c.id === id);
+    if (!cx) throw new Error('Conexão não encontrada.');
+    const cred = _finDecifrar(cx.id, cx.cred);
+    const hoje = _diaBR(Date.now()), dias = opts.dias || (cx.ultimaLeituraOk ? 10 : 90);
+    const de = _diaBR(Date.now() - (dias - 1) * 86400000);
+    let deuCerto = 0, primeiroErro = null;
+    // o saldo é a parte essencial: se ele falha (chave recusada, sem acesso), a leitura inteira deu erro
+    const passo = async (nome, fn) => {
+      try { await fn(); deuCerto++; }
+      catch (e) { if (nome === 'saldo') throw e; primeiroErro = primeiroErro || e; avisos.push(nome + ': ' + e.message); }
+    };
+    res = cx.provedor === 'contasimples' ? await _csLer(cx, cred, de, hoje, passo) : await _lrLer(cx, cred, de, hoje, passo);
+    res.desde = de;
+    if (!deuCerto && primeiroErro) throw primeiroErro;
+  } catch (e) { erro = e.message || String(e); console.error('[FIN] leitura ' + id + ': ' + erro); }
+  finally { delete _finLendo[id]; }
+  const db = readDB(), c = _finConexoes(db).find(x => x.id === id);
+  if (!c) { _finApagarDados(id); return { ok:false, erro:'Conexão removida.' }; }   // desconectou enquanto lia
+  c.ultimaLeitura = Date.now();
+  c.status = erro ? 'erro' : avisos.length ? 'parcial' : 'ok';
+  c.ultimoErro = erro || '';
+  c.avisos = erro ? [] : avisos;
+  if (!erro) { c.ultimaLeituraOk = c.ultimaLeitura; c.resumo = res; }
+  c._updatedAt = Date.now();
+  db.timestamps[KEY_FIN_CONEX] = now();
+  writeDB(db);
+  return { ok:!erro, erro, avisos, resumo:res };
+}
+// Rotina nova (só leitura, não avisa ninguém): a cada 30 min confere e relê a conexão
+// cuja última leitura passou de 3 horas.
+setInterval(() => {
+  try {
+    _finConexoes(readDB()).forEach(c => {
+      if (c.cred && !_finLendo[c.id] && Date.now() - (c.ultimaLeitura || 0) > 3 * 3600000) _finLerConexao(c.id).catch(() => {});
+    });
+  } catch (e) { console.error('[FIN] rotina das contas:', e.message); }
+}, 30 * 60 * 1000);
+
+app.get('/api/fin/conexoes', authDiretoria, (req, res) => {
+  try { res.json({ ok:true, conexoes:_finConexoes(readDB()).map(_finConexPub) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Conectar ou editar. A credencial é testada antes de guardar; numa edição, o segredo
+// deixado em branco continua o que estava guardado.
+app.post('/api/fin/conexoes', authDiretoria, async (req, res) => {
+  const b = req.body || {};
+  const provedor = FIN_PROVEDORES[b.provedor] ? b.provedor : null;
+  const recusar = (st, msg) => {
+    try { const db = readDB(); audit(db, 'fin_conexao_recusada', { provedor, id:b.id || null }, { motivo:String(msg).slice(0, 200) }, req.user); writeDB(db); } catch (e) {}
+    res.status(st).json({ error: msg });
+  };
+  try {
+    if (!provedor) return res.status(400).json({ error: 'Escolha a Conta Simples ou a Lootrush.' });
+    const atual = b.id ? _finConexoes(readDB()).find(c => c.id === b.id) : null;
+    if (b.id && !atual) return res.status(404).json({ error: 'Conexão não encontrada.' });
+    if (atual && atual.provedor !== provedor) return res.status(400).json({ error: 'Essa conexão é de outro banco.' });
+    let antigo = {};
+    if (atual && atual.cred) { try { antigo = _finDecifrar(atual.id, atual.cred); } catch (e) {} }
+    const txt = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+    const cred = { apiKey:txt(b.apiKey, 500) || antigo.apiKey || '' };
+    if (provedor === 'contasimples') {
+      cred.apiSecret = txt(b.apiSecret, 500) || antigo.apiSecret || '';
+      cred.pem = b.removerPem ? '' : (txt(b.pem, 10000) || antigo.pem || '');
+    }
+    if (!cred.apiKey || (provedor === 'contasimples' && !cred.apiSecret)) return res.status(400).json({ error: provedor === 'contasimples' ? 'Preencha a API key e o API secret.' : 'Preencha a API key.' });
+    let publica = '';
+    if (cred.pem) {
+      let k;
+      try { k = _csChave(cred.pem); } catch (e) { return recusar(400, e.message); }
+      cred.pem = k.export({ type:'pkcs8', format:'pem' });
+      publica = crypto.createPublicKey(k).export({ type:'spki', format:'pem' });
+    }
+    const ambiente = provedor === 'contasimples' && b.ambiente === 'sandbox' ? 'sandbox' : 'producao';
+    const id = atual ? atual.id : 'fx' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const chaveHash = crypto.createHash('sha256').update(provedor + ':' + ambiente + ':' + cred.apiKey).digest('hex').slice(0, 24);
+    if (_finConexoes(readDB()).some(c => c.id !== id && c.chaveHash === chaveHash)) return res.status(409).json({ error: 'Essa chave já está conectada.' });
+    // testa antes de guardar: credencial errada não entra
+    let teste;
+    try {
+      if (provedor === 'contasimples') { delete _csTok[id]; const s = await _csGet({ id, ambiente }, cred, '/accounts/v1/balance'); teste = { saldo:Number(s && s.amount) }; }
+      else { const s = await _lrMcp(cred, 'getAccountBalance', {}) || {}; teste = { saldoUsd:Number(s.totalUsdValue) }; }
+    } catch (e) { return recusar(400, e.message); }
+    const db = readDB(), lista = _finConexoes(db);
+    let c = lista.find(x => x.id === id);
+    if (!c) { c = { id, provedor, criadoEm:Date.now(), criadoPor:req.user && req.user.id, criadoPorNome:req.user && req.user.nome }; lista.push(c); }
+    // outra chave ou outro ambiente: o que foi lido antes não é desta conta
+    const trocou = !!atual && (atual.chaveHash !== chaveHash);
+    if (trocou) { _finApagarDados(id); c.ultimaLeituraOk = null; c.resumo = null; }
+    Object.assign(c, { nome:txt(b.nome, 60) || FIN_PROVEDORES[provedor], ambiente, preview:'••••' + cred.apiKey.slice(-4), assina:!!cred.pem, publica,
+      chaveHash, cred:_finCifrar(id, cred), status:'ok', ultimoErro:'', avisos:[], _updatedAt:Date.now() });
+    db.timestamps[KEY_FIN_CONEX] = now();
+    audit(db, atual ? 'fin_conexao_editada' : 'fin_conexao_criada', { id, provedor }, { nome:c.nome, ambiente, chave:c.preview, assinada:c.assina, trocouChave:trocou }, req.user);
+    writeDB(db);
+    _finLerConexao(id).catch(() => {});   // primeira leitura em segundo plano
+    res.json({ ok:true, conexao:_finConexPub(c), teste });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/fin/conexoes/:id/ler', authDiretoria, (req, res) => {
+  try {
+    const c = _finConexoes(readDB()).find(x => x.id === req.params.id);
+    if (!c) return res.status(404).json({ error: 'Conexão não encontrada.' });
+    if (!_finLendo[c.id]) {
+      const dias = Math.min(180, Math.max(1, parseInt((req.body || {}).dias, 10) || 0)) || undefined;
+      _finLerConexao(c.id, { dias }).catch(() => {});
+    }
+    res.json({ ok:true, rodando:true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// desconectar: a credencial é apagada (nem a lixeira guarda) e os movimentos lidos saem junto;
+// conectar de novo relê os 90 dias
+app.post('/api/fin/conexoes/:id/excluir', authDiretoria, (req, res) => {
+  try {
+    const db = readDB(), arr = _finConexoes(db), idx = arr.findIndex(x => x.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: 'Conexão não encontrada.' });
+    const item = arr.splice(idx, 1)[0], copia = Object.assign({}, item);
+    delete copia.cred;
+    if (!Array.isArray(db.store.sl_lixeira)) db.store.sl_lixeira = [];
+    db.store.sl_lixeira.push({ id:Date.now() + '-' + Math.random().toString(36).slice(2, 8), sourceKey:KEY_FIN_CONEX, tipo:'Financeiro · conexão',
+      deletedAt:new Date().toISOString(), deletedBy:req.user && req.user.id, deletedByNome:req.user && req.user.nome, originalId:item.id, data:copia });
+    _finApagarDados(item.id);
+    delete _csTok[item.id];
+    db.timestamps[KEY_FIN_CONEX] = now(); db.timestamps.sl_lixeira = now();
+    audit(db, 'fin_conexao_removida', { id:item.id, provedor:item.provedor }, { nome:item.nome, chave:item.preview }, req.user);
+    writeDB(db);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// o que foi lido: saldos, cartões, faturas e os movimentos do período
+app.get('/api/fin/caixa', authDiretoria, (req, res) => {
+  try {
+    const conexoes = _finConexoes(readDB()).map(_finConexPub);
+    const vazio = { ok:true, conexoes, saldos:[], serie:[], cartoes:[], faturas:[], movs:[] };
+    if (!conexoes.length) return res.json(vazio);
+    _finTab();
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate) || de > ate) return res.status(400).json({ error: 'Informe o período.' });
+    const ids = new Set(conexoes.map(c => c.id)), daqui = x => ids.has(x.conexao);
+    const saldos = _q('SELECT s.conexao, s.conta, s.dia, s.valor, s.moeda, s.valor_brl, s.em FROM fin_saldo s JOIN (SELECT conexao, conta, MAX(dia) d FROM fin_saldo GROUP BY conexao, conta) u ON u.conexao=s.conexao AND u.conta=s.conta AND u.d=s.dia').all().filter(daqui);
+    const serie = _q('SELECT conexao, conta, dia, valor, moeda, valor_brl FROM fin_saldo WHERE dia>=? ORDER BY dia').all(_diaBR(Date.now() - 45 * 86400000)).filter(daqui);
+    const cartoes = _q('SELECT conexao, id, final, nome, titular, status, tipo, moeda FROM fin_cartao').all().filter(daqui);
+    const faturas = _q('SELECT conexao, id, vencimento, corte, total, a_pagar, status, pago FROM fin_fatura ORDER BY vencimento DESC').all().filter(daqui);
+    const movs = _q('SELECT id, conexao, provedor, origem, conta, cartao, dia, em, dir, valor, moeda, valor_brl, descricao, contraparte, tipo, status, categoria FROM fin_mov WHERE dia BETWEEN ? AND ? ORDER BY dia DESC, em DESC LIMIT 5000').all(de, ate).filter(daqui);
+    res.json(Object.assign(vazio, { saldos, serie, cartoes, faturas, movs, truncado:movs.length >= 5000 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
