@@ -12929,7 +12929,8 @@ const FIN_CONTRA_PADRAO = [
 ];
 function _finCfg(db) {
   const c = db.store[KEY_FIN_CFG];
-  return Object.assign({ rateio:'fat', avisoDias:3, saldoInicial:0, categoriasExtras:[] }, (c && typeof c === 'object') ? c : {});
+  // câmbio: 'dia' = PTAX do Banco Central de cada dia; 'fixo' = um valor só pro dólar
+  return Object.assign({ rateio:'fat', avisoDias:3, saldoInicial:0, categoriasExtras:[], cambio:{ modo:'dia' } }, (c && typeof c === 'object') ? c : {});
 }
 function _finArr(db, k) { if (!Array.isArray(db.store[k])) db.store[k] = []; return db.store[k]; }
 // compra de teste (plano "TESTE ANUAL", "MENSAL TESTE - R$ 5") não é venda
@@ -13075,8 +13076,13 @@ app.post('/api/fin/cfg', authDiretoria, (req, res) => {
     if (b.avisoDias != null) cfg.avisoDias = Math.min(30, Math.max(1, parseInt(b.avisoDias, 10) || 3));
     if (b.saldoInicial != null) cfg.saldoInicial = Number(b.saldoInicial) || 0;
     if (Array.isArray(b.categoriasExtras)) cfg.categoriasExtras = b.categoriasExtras.map(x => String(x || '').trim().slice(0, 60)).filter(Boolean).slice(0, 40);
+    if (b.cambio) {
+      const cb = _finCambioLimpar(b.cambio, false);
+      if (!cb) return res.status(400).json({ error: 'A cotação fixa precisa ser um valor entre R$ 0,50 e R$ 50.' });
+      cfg.cambio = cb;
+    }
     db.store[KEY_FIN_CFG] = cfg; db.timestamps[KEY_FIN_CFG] = now();
-    audit(db, 'fin_config', {}, { rateio:cfg.rateio, avisoDias:cfg.avisoDias }, req.user);
+    audit(db, 'fin_config', {}, { rateio:cfg.rateio, avisoDias:cfg.avisoDias, cambio:cfg.cambio }, req.user);
     writeDB(db);
     res.json({ ok:true, cfg });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -13225,10 +13231,54 @@ function _finDecifrar(id, x) {
   } catch (e) { throw new Error('Não consegui abrir a credencial guardada (a chave do servidor mudou?): conecte de novo.'); }
 }
 function _finConexoes(db) { return _finArr(db, KEY_FIN_CONEX); }
+// Câmbio de uma conexão: 'padrao' segue Financeiro › Configurações; ou 'dia' (PTAX do dia
+// do movimento) ou 'fixo' (um valor só). Vale pra tudo que a conexão trouxer em dólar.
+function _finCambioLimpar(x, daConexao) {
+  const modo = String((x && x.modo) || '');
+  if (modo === 'fixo') {
+    const v = Number(String(x.valor == null ? '' : x.valor).replace(',', '.'));
+    return v >= 0.5 && v <= 50 ? { modo:'fixo', valor:Math.round(v * 10000) / 10000 } : null;
+  }
+  if (modo === 'dia') return { modo:'dia' };
+  return daConexao ? { modo:'padrao' } : { modo:'dia' };
+}
+function _finCambioRegra(cfg, cx) {
+  const c = (cx && cx.cambio) || { modo:'padrao' }, padrao = (cfg && cfg.cambio) || { modo:'dia' };
+  const r = c.modo === 'padrao' ? padrao : c;
+  return r.modo === 'fixo' && Number(r.valor) > 0 ? { modo:'fixo', valor:Number(r.valor), origem:c.modo === 'padrao' ? 'padrao' : 'conexao' }
+    : { modo:'dia', origem:c.modo === 'padrao' ? 'padrao' : 'conexao' };
+}
+// (v, dia) => valor em real. Na cotação do dia usa a PTAX guardada na tabela cambio:
+// fim de semana e feriado ficam com o último dia útil antes.
+function _finConversor(regra) {
+  if (regra.modo === 'fixo') return v => (v == null || !isFinite(v)) ? null : Math.round(v * regra.valor * 100) / 100;
+  const linhas = _pessoas() ? _q("SELECT dia, valor FROM cambio WHERE moeda='USD' ORDER BY dia").all() : [];
+  return (v, dia) => {
+    if (v == null || !isFinite(v) || !linhas.length) return null;
+    let lo = 0, hi = linhas.length - 1, achou = linhas[0];
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (linhas[m].dia <= dia) { achou = linhas[m]; lo = m + 1; } else hi = m - 1; }
+    return Math.round(v * achou.valor * 100) / 100;
+  };
+}
+// PTAX guardada mais velha que hoje? busca a dos últimos dias (no máximo uma tentativa a cada 3h)
+let _finPtaxTentou = 0;
+async function _finPtaxFresca() {
+  if (!_pessoas() || Date.now() - _finPtaxTentou < 3 * 3600000) return;
+  const ult = _q("SELECT MAX(dia) d FROM cambio WHERE moeda='USD'").get(), hoje = _diaBR(Date.now());
+  if (ult && ult.d >= hoje) return;
+  _finPtaxTentou = Date.now();
+  try { await _cambioPeriodo('USD', _diaBR(Date.now() - 10 * 86400000), hoje); } catch (e) {}
+}
+// a cotação que vale hoje, pra tela dizer qual está sendo usada
+function _finCambioHoje(regra) {
+  if (regra.modo === 'fixo') return { modo:'fixo', origem:regra.origem, valor:regra.valor };
+  const r = _pessoas() ? _q("SELECT dia, valor FROM cambio WHERE moeda='USD' ORDER BY dia DESC LIMIT 1").get() : null;
+  return { modo:'dia', origem:regra.origem, valor:r ? r.valor : null, dia:r ? r.dia : null };
+}
 const _finLendo = {};   // id da conexão => desde quando está lendo
 function _finConexPub(c) {
   return { id:c.id, provedor:c.provedor, nome:c.nome, ambiente:c.ambiente || 'producao', preview:c.preview || '', assina:!!c.assina,
-    publica:c.publica || '', semCredencial:!c.cred, status:c.status || 'novo', ultimoErro:c.ultimoErro || '', avisos:c.avisos || [],
+    publica:c.publica || '', semCredencial:!c.cred, cambio:c.cambio || { modo:'padrao' }, status:c.status || 'novo', ultimoErro:c.ultimoErro || '', avisos:c.avisos || [],
     ultimaLeitura:c.ultimaLeitura || null, ultimaLeituraOk:c.ultimaLeituraOk || null, lendoDesde:_finLendo[c.id] || null,
     resumo:c.resumo || null, criadoEm:c.criadoEm || null, criadoPorNome:c.criadoPorNome || '' };
 }
@@ -13503,9 +13553,10 @@ async function _lrMcp(cred, nome, args) {
 const LR_ESTAVEIS = /^(USDC|USDT|USD|DAI|PYUSD|USDS)$/i;
 async function _lrLer(cx, cred, de, ate, passo) {
   const r = { contas:{}, movs:0, cartoes:0 }, hoje = _diaBR(Date.now());
-  let usd = null;
-  try { usd = await _cambioPeriodo('USD', de, hoje); } catch (e) { console.error('[FIN] câmbio:', e.message); }
-  const brl = (v, dia) => (usd && v != null && isFinite(v)) ? Math.round(v * (usd[dia] || usd[hoje]) * 100) / 100 : null;
+  const regra = _finCambioRegra(_finCfg(readDB()), cx);
+  // na cotação do dia, garante a PTAX do período guardada antes de converter
+  if (regra.modo === 'dia') { try { await _cambioPeriodo('USD', de, hoje); } catch (e) { console.error('[FIN] câmbio:', e.message); } }
+  const conv = _finConversor(regra), brl = (v, dia) => conv(v, dia || hoje);
   await passo('saldo', async () => {
     const b = await _lrMcp(cred, 'getAccountBalance', {}) || {};
     const v = Number(b.totalUsdValue);
@@ -13621,8 +13672,11 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 app.get('/api/fin/conexoes', authDiretoria, (req, res) => {
-  try { res.json({ ok:true, conexoes:_finConexoes(readDB()).map(_finConexPub) }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const db = readDB(), cfg = _finCfg(db);
+    res.json({ ok:true, cambio:cfg.cambio, ptaxHoje:_finCambioHoje({ modo:'dia' }),
+      conexoes:_finConexoes(db).map(c => Object.assign(_finConexPub(c), { cambioVale:_finCambioHoje(_finCambioRegra(cfg, c)) })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Conectar ou editar. A credencial é testada antes de guardar; numa edição, o segredo
 // deixado em branco continua o que estava guardado.
@@ -13655,25 +13709,39 @@ app.post('/api/fin/conexoes', authDiretoria, async (req, res) => {
       publica = crypto.createPublicKey(k).export({ type:'spki', format:'pem' });
     }
     const ambiente = provedor === 'contasimples' && b.ambiente === 'sandbox' ? 'sandbox' : 'producao';
+    const cambio = _finCambioLimpar(b.cambio || (atual && atual.cambio) || { modo:'padrao' }, true);
+    if (!cambio) return res.status(400).json({ error: 'A cotação fixa precisa ser um valor entre R$ 0,50 e R$ 50.' });
     const id = atual ? atual.id : 'fx' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
     const chaveHash = crypto.createHash('sha256').update(provedor + ':' + ambiente + ':' + cred.apiKey).digest('hex').slice(0, 24);
     if (_finConexoes(readDB()).some(c => c.id !== id && c.chaveHash === chaveHash)) return res.status(409).json({ error: 'Essa chave já está conectada.' });
-    // testa antes de guardar: credencial errada não entra
+    // testa antes de guardar: credencial errada não entra. Com soTestar, só testa
+    // (o botão "Testar conexão" do modal) e não guarda nada
     let teste;
     try {
       if (provedor === 'contasimples') { delete _csTok[id]; const s = await _csGet({ id, ambiente }, cred, '/accounts/v1/balance'); teste = { saldo:Number(s && s.amount) }; }
-      else { const s = await _lrMcp(cred, 'getAccountBalance', {}) || {}; teste = { saldoUsd:Number(s.totalUsdValue) }; }
-    } catch (e) { return recusar(400, e.message); }
+      else {
+        const s = await _lrMcp(cred, 'getAccountBalance', {}) || {}, regra = _finCambioRegra(_finCfg(readDB()), { cambio });
+        if (regra.modo === 'dia') { try { await _cambioPeriodo('USD', _diaBR(Date.now() - 7 * 86400000), _diaBR(Date.now())); } catch (e) {} }
+        teste = { saldoUsd:Number(s.totalUsdValue), emReal:_finConversor(regra)(Number(s.totalUsdValue), _diaBR(Date.now())), cotacao:_finCambioHoje(regra) };
+      }
+    } catch (e) { if (b.soTestar && !atual) delete _csTok[id]; return recusar(400, e.message); }
+    if (b.soTestar) {
+      if (!atual) delete _csTok[id];
+      const db = readDB();
+      audit(db, 'fin_conexao_testada', { id:atual ? id : null, provedor }, { ambiente }, req.user);
+      writeDB(db);
+      return res.json({ ok:true, testado:true, teste });
+    }
     const db = readDB(), lista = _finConexoes(db);
     let c = lista.find(x => x.id === id);
     if (!c) { c = { id, provedor, criadoEm:Date.now(), criadoPor:req.user && req.user.id, criadoPorNome:req.user && req.user.nome }; lista.push(c); }
     // outra chave ou outro ambiente: o que foi lido antes não é desta conta
     const trocou = !!atual && (atual.chaveHash !== chaveHash);
     if (trocou) { _finApagarDados(id); c.ultimaLeituraOk = null; c.resumo = null; }
-    Object.assign(c, { nome:txt(b.nome, 60) || FIN_PROVEDORES[provedor], ambiente, preview:'••••' + cred.apiKey.slice(-4), assina:!!cred.pem, publica,
+    Object.assign(c, { nome:txt(b.nome, 60) || FIN_PROVEDORES[provedor], ambiente, cambio, preview:'••••' + cred.apiKey.slice(-4), assina:!!cred.pem, publica,
       chaveHash, cred:_finCifrar(id, cred), status:'ok', ultimoErro:'', avisos:[], _updatedAt:Date.now() });
     db.timestamps[KEY_FIN_CONEX] = now();
-    audit(db, atual ? 'fin_conexao_editada' : 'fin_conexao_criada', { id, provedor }, { nome:c.nome, ambiente, chave:c.preview, assinada:c.assina, trocouChave:trocou }, req.user);
+    audit(db, atual ? 'fin_conexao_editada' : 'fin_conexao_criada', { id, provedor }, { nome:c.nome, ambiente, chave:c.preview, assinada:c.assina, trocouChave:trocou, cambio }, req.user);
     writeDB(db);
     _finLerConexao(id).catch(() => {});   // primeira leitura em segundo plano
     res.json({ ok:true, conexao:_finConexPub(c), teste });
@@ -13710,12 +13778,20 @@ app.post('/api/fin/conexoes/:id/excluir', authDiretoria, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // o que foi lido: saldos, cartões, faturas e os movimentos do período
-app.get('/api/fin/caixa', authDiretoria, (req, res) => {
+// O valor em real do que veio em dólar é calculado aqui, pela regra de câmbio de cada
+// conexão: trocar a cotação em Configurações ou na conexão vale na mesma hora, pra trás também.
+app.get('/api/fin/caixa', authDiretoria, async (req, res) => {
   try {
-    const conexoes = _finConexoes(readDB()).map(_finConexPub);
-    const vazio = { ok:true, conexoes, saldos:[], serie:[], cartoes:[], faturas:[], movs:[] };
+    await _finPtaxFresca();
+    const db = readDB(), cfg = _finCfg(db), brutas = _finConexoes(db);
+    const conexoes = brutas.map(_finConexPub);
+    const vazio = { ok:true, conexoes, saldos:[], serie:[], cartoes:[], faturas:[], movs:[], cambio:cfg.cambio, ptaxHoje:_finCambioHoje({ modo:'dia' }) };
     if (!conexoes.length) return res.json(vazio);
     _finTab();
+    const regras = {}; brutas.forEach(c => { regras[c.id] = _finCambioRegra(cfg, c); });
+    const convs = {}; Object.keys(regras).forEach(id => { convs[id] = _finConversor(regras[id]); });
+    conexoes.forEach(c => { c.cambioVale = _finCambioHoje(regras[c.id]); });
+    const emReal = (x, dia) => { if (x.moeda === 'USD' && convs[x.conexao]) x.valor_brl = convs[x.conexao](Number(x.valor), dia || x.dia || _diaBR(Date.now())); return x; };
     const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate) || de > ate) return res.status(400).json({ error: 'Informe o período.' });
     const ids = new Set(conexoes.map(c => c.id)), daqui = x => ids.has(x.conexao);
@@ -13724,6 +13800,7 @@ app.get('/api/fin/caixa', authDiretoria, (req, res) => {
     const cartoes = _q('SELECT conexao, id, final, nome, titular, status, tipo, moeda FROM fin_cartao').all().filter(daqui);
     const faturas = _q('SELECT conexao, id, vencimento, corte, total, a_pagar, status, pago FROM fin_fatura ORDER BY vencimento DESC').all().filter(daqui);
     const movs = _q('SELECT id, conexao, provedor, origem, conta, cartao, dia, em, dir, valor, moeda, valor_brl, descricao, contraparte, tipo, status, categoria FROM fin_mov WHERE dia BETWEEN ? AND ? ORDER BY dia DESC, em DESC LIMIT 5000').all(de, ate).filter(daqui);
+    saldos.forEach(x => emReal(x)); serie.forEach(x => emReal(x)); movs.forEach(x => emReal(x));
     res.json(Object.assign(vazio, { saldos, serie, cartoes, faturas, movs, truncado:movs.length >= 5000 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

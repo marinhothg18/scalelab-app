@@ -1934,6 +1934,12 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .fi-det pre{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:9px 11px;white-space:pre-wrap;word-break:break-all;color:var(--text);margin:8px 0 4px}
 .fi-busca{background:var(--bg3);border:1px solid var(--border);border-radius:9px;height:34px;padding:0 11px;color:var(--text);font:inherit;font-size:13px;min-width:220px;outline:none}
 .fi-busca:focus{border-color:var(--accent)}
+.fi-sec{display:flex;align-items:center;gap:9px;margin:18px 0 2px;font-size:13.5px;font-weight:800}
+.fi-sec i{font-style:normal;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--accent2);color:#fff;font-size:11.5px;flex:0 0 22px}
+.fi-teste{margin-top:10px;font-size:12.5px;line-height:1.5;padding:9px 12px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2)}
+.fi-teste.ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.35);color:var(--text)}
+.fi-teste.bad{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.4);color:var(--text)}
+.fi-bt:disabled{opacity:.45;cursor:not-allowed}
 .fi-rng{display:grid;grid-template-columns:1fr 84px;gap:12px;align-items:center}
 .fi-rng input[type=range]{width:100%;accent-color:var(--accent2);height:auto;padding:0;background:none;border:0}
 .fi-cat{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border);font-size:13px}
@@ -36895,7 +36901,7 @@ function fiTelaLanc(){
   var ent = soma('entrada'), sai = soma('saida'), conf = vale.filter(function(m){ return m.dir === '?'; }).length;
   var semCat = vale.filter(function(m){ return !m.categoria && m.dir !== '?'; }).length;
   var h = fiCab('Lançamentos', 'Tudo que entrou e saiu das contas e dos cartões, como a Conta Simples e a Lootrush mandaram.', '<button class="fi-bt" onclick="fiIr(\'int\')">Conexões</button>')+fiCaixaAviso();
-  h += '<div class="v2-cards">'+v2Card('Entrou'+fiTg('real'), fiDin(ent), 'nas contas e cartões', 'bom')+v2Card('Saiu'+fiTg('real'), fiDin(sai), 'dólar convertido pela PTAX do dia', 'ruim')+
+  h += '<div class="v2-cards">'+v2Card('Entrou'+fiTg('real'), fiDin(ent), 'nas contas e cartões', 'bom')+v2Card('Saiu'+fiTg('real'), fiDin(sai), 'dólar convertido pelo câmbio de cada conexão', 'ruim')+
     v2Card('Resultado de caixa', fiDin(ent - sai), 'sem contar as movimentações internas', ent - sai >= 0 ? 'bom' : 'ruim')+
     v2Card(conf ? 'Sentido a conferir' : 'Sem categoria', fnNum(conf || semCat), conf ? 'o banco não disse se entrou ou saiu' : 'movimentos sem categoria ainda', conf ? 'meio' : '')+'</div>';
   var sgC = function(id, t){ return '<button class="'+(fiEst.lancConta === id ? 'on' : '')+'" onclick="fiEst.lancConta=\''+id+'\';fiPintar()">'+t+'</button>'; };
@@ -36954,7 +36960,7 @@ function fiTelaCart(){
   var ativo = function(c){ return /^(ACTIVATED|ACTIVE)$/i.test(c.status || ''); };
   var r = fiCalc(fiRes, 'todos');
   var h = fiCab('Cartões', 'Os cartões da Conta Simples e da Lootrush, com o gasto do período.', '<button class="fi-bt" onclick="fiIr(\'int\')">Conexões</button>')+fiCaixaAviso();
-  h += '<div class="v2-cards">'+v2Card('Cartões ativos', fnNum(cards.filter(ativo).length), fnNum(cards.length)+' no total')+v2Card('Gasto nos cartões'+fiTg('real'), fiDin(tot), 'no período, dólar pela PTAX')+
+  h += '<div class="v2-cards">'+v2Card('Cartões ativos', fnNum(cards.filter(ativo).length), fnNum(cards.length)+' no total')+v2Card('Gasto nos cartões'+fiTg('real'), fiDin(tot), 'no período, dólar pelo câmbio da conexão')+
     v2Card('Tráfego no cartão'+fiTg('real'), fiDin(traf), 'Meta, Google e TikTok cobrados')+
     v2Card('Tráfego na Utmify', fiDin(r.trafego), !traf || !r.trafego ? 'o gasto que a DRE usa' : traf >= r.trafego ? 'o cartão cobrou '+fiDin(traf - r.trafego)+' a mais (câmbio, IOF)' : fiDin(r.trafego - traf)+' não passou nestes cartões')+'</div>';
   if(!cards.length) return h+'<div class="v2-cx"><div class="fx-vazio">'+(fiConexoes().some(function(c){ return c.lendoDesde; }) ? 'Lendo os cartões…' : 'Nenhum cartão lido ainda. Veja em Integrações se a leitura deu certo.')+'</div></div>';
@@ -36972,6 +36978,13 @@ function fiTelaCart(){
 }
 
 // ── CONTAS E SALDOS ──
+// qual cotação converteu o dólar: a de cada conexão que tem saldo em dólar
+function fiTxtCambioContas(usd){
+  var ids = []; usd.forEach(function(s){ if(ids.indexOf(s.conexao) < 0) ids.push(s.conexao); });
+  if(!ids.length) return 'nada em dólar';
+  var txt = ids.map(function(id){ var c = fiConexoes().filter(function(x){ return x.id === id; })[0]; return fiCambioTxt(fiCambioDaConexao(c)); });
+  return 'dólar pela '+txt.filter(function(t, i){ return txt.indexOf(t) === i; }).join(' e ').replace(/^a /, '').replace(/ e a /g, ' e ');
+}
 function fiTelaContas(){
   if(!fiTemConta()) return fiFase2('Contas e saldos', 'O saldo de cada conta agora e as faturas abertas.', 'contas', 'O saldo da conta em real da Conta Simples, da conta e dos cartões em dólar da Lootrush, e as faturas do cartão. O fluxo de caixa passa a partir do saldo de verdade. Conecte as contas em Integrações.');
   var sal = fiCaixa.saldos || [], fat = fiCaixa.faturas || [];
@@ -36981,7 +36994,7 @@ function fiTelaContas(){
   var h = fiCab('Contas e saldos', 'O saldo de cada conta agora e as faturas do cartão.', '<button class="fi-bt" onclick="fiIr(\'int\')">Conexões</button>', true)+fiCaixaAviso();
   h += '<div class="v2-cards">'+v2Card('Em real'+fiTg('real'), fiDin(some(brl, 'valor')), brl.length ? 'Conta Simples' : 'nenhuma conta em real')+
     v2Card('Em dólar'+fiTg('real'), fiUsd(some(usd, 'valor')), usd.length ? 'Lootrush, conta e cartões' : 'nenhuma conta em dólar')+
-    v2Card('Tudo em real', fiDin(some(sal, 'valor_brl')), 'dólar pela PTAX do dia')+
+    v2Card('Tudo em real', fiDin(some(sal, 'valor_brl')), fiTxtCambioContas(usd))+
     v2Card('Faturas a pagar', fiDin(abertas.reduce(function(a, f){ return a + (Number(f.a_pagar != null ? f.a_pagar : f.total) || 0); }, 0)), abertas.length ? abertas.length+' em aberto' : 'nenhuma em aberto', abertas.some(function(f){ return f.status === 'OVERDUE'; }) ? 'ruim' : '')+'</div>';
   if(!sal.length) return h+'<div class="v2-cx"><div class="fx-vazio">'+(fiConexoes().some(function(c){ return c.lendoDesde; }) ? 'Lendo os saldos…' : 'Nenhum saldo lido ainda. Veja em Integrações se a leitura deu certo.')+'</div></div>';
   h += '<div class="v2-cx" style="padding:8px 10px"><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Conta</th><th>Conexão</th><th class="n">Saldo</th><th class="n">Em real</th><th>Lido</th></tr></thead><tbody>'+
@@ -37081,7 +37094,7 @@ function fiLinhaConexao(c){
   var st = c.lendoDesde ? '<span class="v2-pill neu">lendo…</span>' : c.semCredencial ? '<span class="v2-pill bad">sem credencial</span>' :
     c.status === 'erro' ? '<span class="v2-pill bad">não leu</span>' : c.status === 'parcial' ? '<span class="v2-pill warn">leu em parte</span>' : '<span class="v2-pill ok">conectada</span>';
   var det = [cs ? (c.ambiente === 'sandbox' ? 'Sandbox' : 'Produção') : '', c.preview ? 'chave '+fnEsc(c.preview) : '', cs ? (c.assina ? 'chamadas assinadas' : 'sem assinatura') : '',
-    c.lendoDesde ? 'lendo desde '+fiHa(c.lendoDesde) : c.ultimaLeituraOk ? 'última leitura '+fiHa(c.ultimaLeituraOk) : 'ainda não leu'].filter(Boolean).join(' · ');
+    fiCambioCurto(c), c.lendoDesde ? 'lendo desde '+fiHa(c.lendoDesde) : c.ultimaLeituraOk ? 'última leitura '+fiHa(c.ultimaLeituraOk) : 'ainda não leu'].filter(Boolean).join(' · ');
   var contas = (c.resumo && c.resumo.contas) || {};
   var res = Object.keys(contas).map(function(k){ return fnEsc(k)+' '+fiMoeda(contas[k].valor, contas[k].moeda); }).join(' · ');
   if(c.resumo && c.resumo.movs != null) res += (res ? ' · ' : '')+fnNum(c.resumo.movs)+' movimentos desde '+fiBR(c.resumo.desde);
@@ -37092,19 +37105,45 @@ function fiLinhaConexao(c){
     '<div class="fi-acoes">'+st+'<button class="fi-bt sm"'+(c.lendoDesde || c.semCredencial ? ' disabled' : '')+' onclick="fiLerAgora(\''+c.id+'\',this)">Ler agora</button>'+
     '<button class="fi-bt sm" onclick="fiConectar(\''+c.provedor+'\',\''+c.id+'\')">Editar</button><button class="fi-bt sm" onclick="fiDesconectar(\''+c.id+'\')">Desconectar</button></div></div>';
 }
+// câmbio: como o dólar vira real (padrão do Financeiro, cotação do dia ou fixa)
+function fiCot(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{ minimumFractionDigits:2, maximumFractionDigits:4 }); }
+function fiNumCot(v){ v = String(v == null ? '' : v).trim(); return v.indexOf(',') >= 0 ? fiNum(v) : Number(v) || 0; }
+function fiPtax(){ return (fiCaixa && fiCaixa.ptaxHoje) || null; }
+function fiCambioPadrao(){ return ((fiCad && fiCad.cfg) || {}).cambio || { modo:'dia' }; }
+// "a cotação do dia (hoje R$ 5,04)" ou "a cotação fixa de R$ 5,10"
+function fiCambioTxt(cb){
+  if(cb && cb.modo === 'fixo') return 'a cotação fixa de '+fiCot(cb.valor);
+  var p = fiPtax();
+  return 'a cotação do dia'+(p && p.valor ? ' (hoje '+fiCot(p.valor)+(p.dia && p.dia !== fiDiaBR(Date.now()) ? ', a PTAX de '+fiBR(p.dia) : '')+')' : ', a PTAX do Banco Central');
+}
+// o que vale pra uma conexão: o que ela escolheu, ou o padrão
+function fiCambioDaConexao(c){
+  var cb = (c && c.cambio) || { modo:'padrao' };
+  return cb.modo === 'padrao' ? fiCambioPadrao() : cb;
+}
+function fiCambioCurto(c){
+  var cb = (c && c.cambio) || { modo:'padrao' }, vale = fiCambioDaConexao(c);
+  return 'câmbio: '+(cb.modo === 'padrao' ? 'o das configurações, ' : '')+(vale.modo === 'fixo' ? 'fixo '+fiCot(vale.valor) : 'cotação do dia'+(fiPtax() && fiPtax().valor ? ' '+fiCot(fiPtax().valor) : ''));
+}
 function fiConectar(prov, id){
   var c = id ? fiConexoes().filter(function(x){ return x.id === id; })[0] || {} : {};
-  var cs = prov === 'contasimples', ed = !!id, amb = c.ambiente || 'producao';
+  var cs = prov === 'contasimples', ed = !!id, amb = c.ambiente || 'producao', cb = c.cambio || { modo:'padrao' };
   var manter = ed ? ' <i>em branco mantém a atual</i>' : '';
+  var sec = function(n, t){ return '<div class="fi-sec"><i>'+n+'</i>'+t+'</div>'; };
   var h = '<div class="v2-cab"><div><h3>'+(ed ? 'Editar '+fnEsc(c.nome) : 'Conectar a '+(cs ? 'Conta Simples' : 'Lootrush'))+'</h3><div class="s">'+
     (cs ? 'Só leitura: saldo, extrato da conta, cartões e faturas.' : 'Só leitura: saldo da conta e da carteira, cartões e gastos.')+
     ' A credencial é testada antes de salvar, fica cifrada no servidor e nunca volta pra esta tela.</div></div></div>';
+  // 1 · conexão
+  h += sec(1, 'Conexão')+(cs ?
+    '<div class="fi-2"><div class="fi-campo"><label>Nome da conexão</label><input id="fi-cx-nome" value="'+fnEsc(c.nome || 'Conta Simples')+'"></div>'+
+    '<div class="fi-campo"><label>Ambiente</label><span class="fi-seg"><button type="button" class="'+(amb === 'producao' ? 'on' : '')+'" onclick="fiAmb(this,\'producao\')">Produção</button><button type="button" class="'+(amb === 'sandbox' ? 'on' : '')+'" onclick="fiAmb(this,\'sandbox\')">Sandbox</button></span></div></div>' :
+    '<div class="fi-campo"><label>Nome da conexão</label><input id="fi-cx-nome" value="'+fnEsc(c.nome || 'Lootrush')+'"></div>');
+  // 2 · credenciais
+  h += sec(2, 'Credenciais');
   if(cs){
     h += '<ol class="fi-passos"><li><b>Gere o par de chaves</b> aqui embaixo (ou no terminal).</li>'+
       '<li>No <a href="https://ib.contasimples.com/integracoes/api/credenciais" target="_blank" rel="noopener">Internet Banking › Integrações › API › Credenciais</a>, crie a credencial só com <b>leitura</b> e cole a <b>chave pública</b>. Ela só entra na criação: não dá pra trocar depois.</li>'+
       '<li>Cole aqui a API key e o API secret que a Conta Simples mostrar.</li></ol>'+
-      '<div class="fi-2"><div class="fi-campo"><label>Nome da conexão</label><input id="fi-cx-nome" value="'+fnEsc(c.nome || 'Conta Simples')+'"></div>'+
-      '<div class="fi-campo"><label>Ambiente</label><span class="fi-seg"><button type="button" class="'+(amb === 'producao' ? 'on' : '')+'" onclick="fiAmb(this,\'producao\')">Produção</button><button type="button" class="'+(amb === 'sandbox' ? 'on' : '')+'" onclick="fiAmb(this,\'sandbox\')">Sandbox</button></span></div></div>'+
       '<div class="fi-campo"><label>API key'+manter+'</label><input id="fi-cx-key" autocomplete="off" spellcheck="false" placeholder="'+(ed ? fnEsc(c.preview) : '')+'"></div>'+
       '<div class="fi-campo"><label>API secret'+manter+'</label><input id="fi-cx-sec" type="password" autocomplete="new-password" spellcheck="false"></div>'+
       '<div class="fi-campo"><label>Chave privada (PEM)'+(ed && c.assina ? ' <i>em branco mantém a atual</i>' : ' <i>obrigatória se a credencial tem chave pública</i>')+'</label>'+
@@ -37118,14 +37157,67 @@ function fiConectar(prov, id){
   } else {
     h += '<ol class="fi-passos"><li>Em <a href="https://lootrush.com/tokens/s/settings?tab=api-key" target="_blank" rel="noopener">Lootrush › Configurações › API Key</a>, crie uma chave só com o escopo <b>mcp</b> (leitura). Não marque saque, escrita nem revelar cartão.</li>'+
       '<li>Se ela pedir lista de IPs, deixe sem: o servidor do TMX não tem IP fixo e a leitura seria recusada.</li><li>Cole a chave aqui.</li></ol>'+
-      '<div class="fi-campo"><label>Nome da conexão</label><input id="fi-cx-nome" value="'+fnEsc(c.nome || 'Lootrush')+'"></div>'+
       '<div class="fi-campo"><label>API key'+manter+'</label><input id="fi-cx-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="'+(ed ? fnEsc(c.preview) : '')+'"></div>';
   }
-  h += '<div class="fi-cx-erro"></div><div class="fi-rod"><button class="fi-bt" onclick="v2Fechar(this)">Cancelar</button><button class="fi-bt p" onclick="fiSalvarConexao(this,\''+prov+'\',\''+(id || '')+'\')">'+(ed ? 'Testar e salvar' : 'Testar e conectar')+'</button></div>';
+  // 3 · câmbio
+  h += sec(3, 'Câmbio')+'<div class="fi-2"><div class="fi-campo"><label>Como converter</label><select id="fi-cx-cb" onchange="fiCambioModal(this)">'+
+      [['padrao', 'Como nas configurações do Financeiro'], ['dia', 'Cotação do dia'], ['fixo', 'Cotação fixa']].map(function(o){ return '<option value="'+o[0]+'"'+(cb.modo === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select></div>'+
+    '<div class="fi-campo" id="fi-cx-cbv-c"'+(cb.modo === 'fixo' ? '' : ' style="display:none"')+'><label>Dólar a (R$)</label><input id="fi-cx-cbv" inputmode="decimal" placeholder="5,10" value="'+(cb.modo === 'fixo' ? String(cb.valor).replace('.', ',') : '')+'" oninput="fiCambioModal(this)"></div></div>'+
+    '<div class="fi-per" id="fi-cx-cb-txt"></div>';
+  // 4 · testar
+  h += sec(4, 'Testar')+'<div class="fi-barra" style="margin:6px 0 0"><button type="button" class="fi-bt" id="fi-cx-testar" onclick="fiTestarConexao(this,\''+prov+'\',\''+(id || '')+'\')">Testar conexão</button><span class="fi-per">O Salvar acende depois de um teste que deu certo.</span></div><div class="fi-cx-erro"></div>';
+  h += '<div class="fi-rod"><button class="fi-bt" onclick="v2Fechar(this)">Cancelar</button><button class="fi-bt p" id="fi-cx-salvar" disabled onclick="fiSalvarConexao(this,\''+prov+'\',\''+(id || '')+'\')">Salvar</button></div>';
   var ov = v2Modal(h, 'p');
   ov.onclick = null;   // clicar fora não fecha: a chave gerada não some por engano
-  ov.dataset.amb = amb;
+  ov.dataset.amb = amb; ov.dataset.prov = prov;
+  // mexeu em qualquer campo depois do teste: precisa testar de novo
+  var mexeu = function(e){ if(e.target && e.target.id !== 'fi-cx-testar') fiDestestar(ov); };
+  ov.addEventListener('input', mexeu); ov.addEventListener('change', mexeu);
+  fiCambioModal(ov.querySelector('#fi-cx-cb'));
   if(cs && fiParCS && !(ed && c.assina)) fiMostrarPar(ov);
+}
+function fiCambioModal(el){
+  var ov = el.closest('.v2-ov'), modo = ov.querySelector('#fi-cx-cb').value, cs = ov.dataset.prov === 'contasimples';
+  ov.querySelector('#fi-cx-cbv-c').style.display = modo === 'fixo' ? '' : 'none';
+  var v = fiNumCot(ov.querySelector('#fi-cx-cbv').value);
+  var t = modo === 'padrao' ? 'Segue as Configurações do Financeiro: hoje, '+fiCambioTxt(fiCambioPadrao())+'.' :
+    modo === 'dia' ? 'Cada movimento em dólar vira real pela PTAX do dia dele (fim de semana e feriado usam o último dia útil)'+(fiPtax() && fiPtax().valor ? '. Hoje: '+fiCot(fiPtax().valor) : '')+'.' :
+    (v >= 0.5 && v <= 50 ? 'Todo movimento em dólar desta conexão vira real a '+fiCot(v)+', de qualquer dia.' : 'Digite a cotação, entre R$ 0,50 e R$ 50.');
+  if(cs) t += ' A Conta Simples já manda em real o que o cartão cobrou em dólar; isto vale pro que vier em outra moeda.';
+  ov.querySelector('#fi-cx-cb-txt').textContent = t;
+}
+function fiDestestar(ov){
+  if(ov.dataset.testado !== '1') return;
+  ov.dataset.testado = '';
+  var s = ov.querySelector('#fi-cx-salvar'); if(s) s.disabled = true;
+  var er = ov.querySelector('.fi-cx-erro'); if(er) er.innerHTML = '<div class="fi-teste">Você mudou algo depois do teste: teste de novo pra salvar.</div>';
+}
+function fiCorpoConexao(ov, prov, id){
+  var q = function(s){ var el = ov.querySelector(s); return el ? el.value : ''; };
+  var corpo = { id:id || undefined, provedor:prov, nome:q('#fi-cx-nome'), apiKey:q('#fi-cx-key') };
+  if(prov === 'contasimples'){ corpo.ambiente = ov.dataset.amb || 'producao'; corpo.apiSecret = q('#fi-cx-sec'); corpo.pem = q('#fi-cx-pem'); }
+  var modo = q('#fi-cx-cb') || 'padrao';
+  corpo.cambio = modo === 'fixo' ? { modo:'fixo', valor:fiNumCot(q('#fi-cx-cbv')) } : { modo:modo };
+  return corpo;
+}
+function fiTestarConexao(bt, prov, id){
+  var ov = bt.closest('.v2-ov'), corpo = fiCorpoConexao(ov, prov, id);
+  if(!id && !corpo.apiKey.trim()){ toastFn('Cole a API key'); return; }
+  if(!id && prov === 'contasimples' && !corpo.apiSecret.trim()){ toastFn('Cole o API secret'); return; }
+  if(corpo.cambio.modo === 'fixo' && !(corpo.cambio.valor >= 0.5 && corpo.cambio.valor <= 50)){ toastFn('Digite a cotação fixa'); return; }
+  corpo.soTestar = true;
+  var er = ov.querySelector('.fi-cx-erro'), sal = ov.querySelector('#fi-cx-salvar');
+  bt.disabled = true; bt.textContent = 'Testando…'; if(er) er.innerHTML = ''; ov.dataset.testado = ''; sal.disabled = true;
+  v2Json('/api/fin/conexoes', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(corpo) })
+    .then(function(d){
+      var t = d.teste || {}, msg;
+      if(prov === 'contasimples') msg = 'Conectou na Conta Simples ('+(corpo.ambiente === 'sandbox' ? 'Sandbox' : 'Produção')+'). Saldo agora: '+(isFinite(t.saldo) ? v2Din2(t.saldo) : '—')+'.';
+      else msg = 'Conectou na Lootrush. Saldo agora: '+(isFinite(t.saldoUsd) ? fiUsd(t.saldoUsd) : '—')+(t.emReal != null ? ', '+v2Din2(t.emReal)+' pela '+(t.cotacao && t.cotacao.modo === 'fixo' ? 'cotação fixa de '+fiCot(t.cotacao.valor) : 'cotação do dia'+(t.cotacao && t.cotacao.valor ? ' ('+fiCot(t.cotacao.valor)+')' : '')) : '')+'.';
+      if(er) er.innerHTML = '<div class="fi-teste ok"><b>Deu certo.</b> '+fnEsc(msg)+' Agora é só salvar.</div>';
+      ov.dataset.testado = '1'; sal.disabled = false;
+    })
+    .catch(function(e){ if(er) er.innerHTML = '<div class="fi-teste bad"><b>Não conectou.</b> '+fnEsc(e.message)+'</div>'; })
+    .then(function(){ bt.disabled = false; bt.textContent = 'Testar conexão'; });
 }
 function fiAmb(bt, a){ var ov = bt.closest('.v2-ov'); ov.dataset.amb = a; bt.parentNode.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b === bt); }); }
 function fiPem(buf, rot){
@@ -37164,13 +37256,10 @@ function fiCopiar(t){
   else velho();
 }
 function fiSalvarConexao(bt, prov, id){
-  var ov = bt.closest('.v2-ov'), q = function(s){ var el = ov.querySelector(s); return el ? el.value : ''; };
-  var corpo = { id:id || undefined, provedor:prov, nome:q('#fi-cx-nome'), apiKey:q('#fi-cx-key') };
-  if(prov === 'contasimples'){ corpo.ambiente = ov.dataset.amb || 'producao'; corpo.apiSecret = q('#fi-cx-sec'); corpo.pem = q('#fi-cx-pem'); }
-  if(!id && !corpo.apiKey.trim()){ toastFn('Cole a API key'); return; }
-  if(!id && prov === 'contasimples' && !corpo.apiSecret.trim()){ toastFn('Cole o API secret'); return; }
-  var er = ov.querySelector('.fi-cx-erro'), rot = bt.textContent;
-  bt.disabled = true; bt.textContent = 'Testando…'; if(er) er.innerHTML = '';
+  var ov = bt.closest('.v2-ov');
+  if(ov.dataset.testado !== '1'){ toastFn('Teste a conexão antes de salvar'); return; }
+  var corpo = fiCorpoConexao(ov, prov, id), er = ov.querySelector('.fi-cx-erro');
+  bt.disabled = true; bt.textContent = 'Salvando…';
   v2Json('/api/fin/conexoes', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(corpo) })
     .then(function(){
       ov.querySelectorAll('input, textarea').forEach(function(el){ el.value = ''; });   // o segredo não fica na tela
@@ -37179,8 +37268,8 @@ function fiSalvarConexao(bt, prov, id){
       fiCarregar(); fiAcompanhar();
     })
     .catch(function(e){
-      bt.disabled = false; bt.textContent = rot;
-      if(er) er.innerHTML = '<div class="v2-alerta bad" style="margin-top:12px"><div><b>Não conectou</b><span>'+fnEsc(e.message)+'</span></div></div>';
+      bt.disabled = false; bt.textContent = 'Salvar';
+      if(er) er.innerHTML = '<div class="fi-teste bad"><b>Não salvou.</b> '+fnEsc(e.message)+'</div>';
     });
 }
 function fiLerAgora(id, bt){
@@ -37225,7 +37314,21 @@ function fiTelaCfg(){
       '<div class="fi-rod" style="justify-content:flex-start"><button class="fi-bt p" onclick="fiSalvarCustos(this)">Salvar custos</button></div></div>'+
     '<div class="v2-col"><div class="v2-cx"><h3>Prévia do período</h3><div class="s">Muda na hora conforme você mexe.</div><div id="fi-previa" style="margin-top:12px">'+fiPreviaHtml()+'</div></div>'+
     '<div class="v2-cx"><h3>Custos fixos sem projeto</h3><div class="s">Como dividir entre os projetos que venderam no período.</div><div style="margin-top:10px"><span class="fi-seg">'+sg('fat', 'Pelo faturamento')+sg('igual', 'Em partes iguais')+'</span></div></div>'+
+    fiCfgCambioHtml()+
     '<div class="v2-cx"><h3>Avisos de vencimento</h3><div class="s">Quantos dias antes avisar no sino e no WhatsApp da Diretoria. Os avisos ligam depois do seu OK.</div><div class="fi-campo"><select onchange="fiSalvarCfg({avisoDias:+this.value})">'+[1,3,5,7].map(function(n){ return '<option value="'+n+'"'+(Number(cfg.avisoDias) === n ? ' selected' : '')+'>'+n+' dia'+(n === 1 ? '' : 's')+' antes</option>'; }).join('')+'</select></div></div></div></div>';
+}
+function fiCfgCambioHtml(){
+  var cb = fiCambioPadrao(), fixo = fiEst.cbFixo || cb.modo === 'fixo';
+  return '<div class="v2-cx"><h3>Câmbio</h3><div class="s">Como o que vem em dólar (a Lootrush) vira real. Cada conexão segue isto, a não ser que tenha o câmbio dela.</div>'+
+    '<div style="margin-top:10px"><span class="fi-seg"><button class="'+(!fixo ? 'on' : '')+'" onclick="fiEst.cbFixo=false;fiSalvarCambio({modo:\'dia\'})">Cotação do dia</button><button class="'+(fixo ? 'on' : '')+'" onclick="fiEst.cbFixo=true;fiPintar()">Cotação fixa</button></span></div>'+
+    (fixo ? '<div class="fi-barra" style="margin:10px 0 0"><input class="fi-busca" style="min-width:0;width:120px" id="fi-cfg-cot" inputmode="decimal" placeholder="5,10" value="'+(cb.modo === 'fixo' ? String(cb.valor).replace('.', ',') : '')+'"><button class="fi-bt sm p" onclick="fiSalvarCambio({modo:\'fixo\',valor:fiNumCot(document.getElementById(\'fi-cfg-cot\').value)})">Salvar a cotação</button></div>' : '')+
+    '<div class="s" style="color:var(--text2);font-size:12px;margin-top:8px">Valendo agora: '+fiCambioTxt(cb)+'.</div></div>';
+}
+function fiSalvarCambio(cb){
+  if(cb.modo === 'fixo' && !(cb.valor >= 0.5 && cb.valor <= 50)){ toastFn('Digite a cotação, entre R$ 0,50 e R$ 50'); return; }
+  v2Json('/api/fin/cfg', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ cambio:cb }) })
+    .then(function(d){ fiCad.cfg = d.cfg; fiEst.cbFixo = d.cfg.cambio && d.cfg.cambio.modo === 'fixo'; toastFn('Câmbio salvo'); fiCarregar(); })
+    .catch(function(e){ toastFn('Não salvou: '+e.message); });
 }
 function fiPreviaHtml(){ var r = fiCalc(fiRes, 'todos'); return '<div class="v2-cards" style="grid-template-columns:repeat(2,minmax(0,1fr))">'+v2Card('Margem de contribuição', fiDin(r.margem), fiPct(r.margem, r.bruto), r.margem >= 0 ? 'bom' : 'ruim')+v2Card('Lucro do período', fiDin(r.lucro), fiPct(r.lucro, r.bruto), r.lucro >= 0 ? 'bom' : 'ruim')+'</div><div class="s" style="color:var(--text2);font-size:12px">Taxa do gateway '+fiDin(r.gateway)+' · imposto '+fiDin(r.imposto)+' · custos fixos '+fiDin(r.totFixos)+'</div>'; }
 function fiPrevia(){ var el = document.getElementById('fi-previa'); if(el) el.innerHTML = fiPreviaHtml(); }
