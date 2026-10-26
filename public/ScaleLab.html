@@ -38057,6 +38057,19 @@ function pcPintarPrevia(){
 }
 function pcConta(conta, on){ var i = pcSel.contas.indexOf(conta); if(on && i < 0) pcSel.contas.push(conta); if(!on && i >= 0) pcSel.contas.splice(i, 1); pcPintarPrevia(); }
 function pcModo(m){ pcSel.modo = m; var t = document.getElementById('pc-teste'); if(t) t.style.display = m === 'teste' ? '' : 'none'; }
+function pcTestarEnvio(bt){
+  var o = document.getElementById('pc-teste-res'), rot = bt.textContent;
+  bt.disabled = true; bt.textContent = 'Mandando…';
+  fetch(API_BASE+'/api/projeto/capi/testar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projeto: fnProj }) })
+    .then(mcResposta).then(function(d){
+      bt.disabled = false; bt.textContent = rot;
+      if(o) o.innerHTML = (d.resultados || []).map(function(x){
+          return x.ok ? '<div style="color:var(--v2-verde,#22C55E)">✓ <b>'+fnEsc(x.nome)+'</b>: a Meta recebeu. Abra "Eventos de teste" no Gerenciador de Eventos (código '+fnEsc(x.codigo)+').</div>'
+                      : '<div style="color:var(--v2-laranja,#F59E0B)"><b>'+fnEsc(x.nome)+'</b>: '+fnEsc(x.erro)+'</div>'; }).join('')+
+        (d.venda ? '<div class="fx-sub">Compra usada: '+fnEsc(d.venda)+'</div>' : '');
+    })
+    .catch(function(e){ bt.disabled = false; bt.textContent = rot; if(o) o.innerHTML = '<span style="color:var(--v2-laranja,#F59E0B)">'+fnEsc(e.message)+'</span>'; });
+}
 function pcPintar(){
   var cx = document.getElementById('fn-p-config'), d = pcDados; if(!cx || !d) return;
   var dir = d.dir, dis = dir ? '' : ' disabled', cm = d.comparacao || {};
@@ -38094,7 +38107,13 @@ function pcPintar(){
       rad('teste', 'Teste', 'Envia com o código de teste do destino: aparece só em "Eventos de teste" da Meta, não conta pra campanha.', !dsl.length)+
       rad('enviando', 'Enviando', !dsl.length ? 'Cadastre um destino primeiro.' : !podeEnviar ? (libera ? 'Libera em '+v2Dia(_diaIso(libera))+', 7 dias depois de cadastrar o destino, comparando com a Utmify.' : 'Escolha um destino e salve.')+' Antes, desligar o envio da Utmify pra não contar duas vezes.' : 'De verdade: a Meta passa a usar estas compras pra otimizar. Desligue antes o envio da Utmify.', !podeEnviar)+
       rad('desligado', 'Desligado', 'Nem monta o evento.')+
-    '</div></div>'+
+    '</div>'+
+    // no modo Teste: manda a última compra pra "Eventos de teste" agora, sem esperar uma venda nova
+    (dir ? '<div id="pc-teste" style="margin-top:10px;'+(pcSel.modo === 'teste' ? '' : 'display:none')+'">'+
+      '<button class="fn-btn g sm" onclick="pcTestarEnvio(this)">Mandar a última venda como teste</button>'+
+      '<div class="fx-sub" style="margin-top:6px">Manda a compra mais recente deste projeto só pra "Eventos de teste" da Meta, com o código de teste do destino. Não conta pra campanha. Vale o que está salvo: salve antes de testar.</div>'+
+      '<div id="pc-teste-res" style="margin-top:6px;font-size:12.5px"></div></div>' : '')+
+    '</div>'+
     '<div class="capi-card"><div class="capi-cab"><div><b>Comparação com a Utmify</b><span>Últimos 7 dias</span></div></div>'+
       '<div class="pc-cmp"><span class="h">Número</span><span class="h n">TMX</span><span class="h n">Utmify</span>'+
         '<span>Gasto</span><span class="n">'+(cm.temMeta ? fnDin(cm.gastoMeta) : '—')+'</span><span class="n">'+(cm.temUtmify ? fnDin(cm.gastoUtmify) : '—')+'</span>'+

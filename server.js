@@ -18818,6 +18818,44 @@ app.post('/api/projeto/config', authDiretoria, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Teste na hora: manda a compra mais recente do projeto pra "Eventos de teste" de
+// cada destino dele, com o código de teste do destino. Sem esperar uma venda nova
+// e sem contar pra campanha. A compra continua como estava (não muda o status).
+// Destino sem código de teste fica de fora: sem o código, a compra contaria de verdade.
+app.post('/api/projeto/capi/testar', authDiretoria, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const projeto = String((req.body || {}).projeto || '').slice(0, 80);
+    if (!projeto) return res.status(400).json({ error: 'Diga o projeto.' });
+    const db = readDB(), cfg = _capiCfg(db), mc = _metaCfg(db);
+    const dests = _destinosDoProjeto(db, cfg, projeto);
+    if (!dests.length) return res.status(400).json({ error: 'Este projeto ainda não tem destino salvo. Marque o pixel e clique em Salvar antes de testar.' });
+    if (!dests.some(d => d.testCode)) return res.status(400).json({ error: 'Coloque o código de teste no destino (Gerenciador de Eventos → Eventos de teste) antes. Sem ele a compra contaria de verdade.' });
+    const ev = _q('SELECT id, payload, criado FROM capi_eventos WHERE projeto=? AND payload IS NOT NULL ORDER BY criado DESC LIMIT 1').get(projeto);
+    if (!ev) return res.status(400).json({ error: 'Nenhuma compra deste projeto foi montada ainda.' });
+    const payload = JSON.parse(ev.payload), resultados = [];
+    for (const d of dests) {
+      const nome = d.nome || d.pixel;
+      if (!d.testCode) { resultados.push({ nome, erro: 'sem código de teste: ficou de fora pra não contar de verdade' }); continue; }
+      const tk = _destinoToken(d, mc);
+      if (!tk) { resultados.push({ nome, erro: 'sem token: cole o token do pixel no destino' }); continue; }
+      try {
+        const r = await fetch(META_API_BASE + '/' + encodeURIComponent(d.pixel) + '/events', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: [payload], access_token: tk, test_event_code: d.testCode }), signal: AbortSignal.timeout(20000) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.error) resultados.push({ nome, erro: (j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + r.status) });
+        else resultados.push({ nome, ok: true, recebidos: j.events_received || 0, codigo: d.testCode });
+      } catch (e) { resultados.push({ nome, erro: e.message }); }
+    }
+    const cd = payload.custom_data || {};
+    audit(db, 'capi_teste_enviado', projeto, { evento: ev.id, destinos: resultados.map(x => x.nome + (x.ok ? ' ok' : ' erro')) }, req.user);
+    writeDB(db);
+    res.json({ ok: true, venda: (cd.content_name || 'Compra') + ' · R$ ' + String(cd.value || 0).replace('.', ',') + ' · ' +
+      new Date((payload.event_time || 0) * 1000 - 3 * 3600000).toISOString().slice(0, 16).replace('T', ' ').split(' ').map((x, i) => i ? x : x.split('-').reverse().join('/')).join(' '),
+      resultados });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 function _pedidoDoProjetoFn(db, projeto) {
   const np = _nrm(projeto), funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean);
   const funisProj = new Set(funis.filter(f => _nrm(f.projeto) === np).map(f => f.id));
