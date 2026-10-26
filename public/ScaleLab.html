@@ -38124,7 +38124,9 @@ function pcPintar(){
     '<div class="pc-rads">'+
       rad('comparacao', 'Comparação', 'Monta o evento e não envia. Dá pra ver em cada venda.')+
       rad('teste', 'Teste', 'Envia com o código de teste do destino: aparece só em "Eventos de teste" da Meta, não conta pra campanha.', !dsl.length)+
-      rad('enviando', 'Enviando', !dsl.length ? 'Cadastre um destino primeiro.' : !podeEnviar ? (libera ? 'Libera em '+v2Dia(_diaIso(libera))+', 7 dias depois de cadastrar o destino, comparando com a Utmify.' : 'Escolha um destino e salve.')+' Antes, desligar o envio da Utmify pra não contar duas vezes.' : 'De verdade: a Meta passa a usar estas compras pra otimizar. Desligue antes o envio da Utmify.', !podeEnviar)+
+      // já ligado (inclusive pelo "Liberar agora"): mostra como ligado, não como "libera em"
+      rad('enviando', 'Enviando', d.modo === 'enviando' ? 'Ligado: cada venda nova vai pra Meta de verdade e conta pra otimizar as campanhas. A Utmify não pode mandar pro mesmo pixel.'
+        : !dsl.length ? 'Cadastre um destino primeiro.' : !podeEnviar ? (libera ? 'Libera em '+v2Dia(_diaIso(libera))+', 7 dias depois de cadastrar o destino, comparando com a Utmify.' : 'Escolha um destino e salve.')+' Antes, desligar o envio da Utmify pra não contar duas vezes.' : 'De verdade: a Meta passa a usar estas compras pra otimizar. Desligue antes o envio da Utmify.', !podeEnviar && d.modo !== 'enviando')+
       // antes dos 7 dias: a Diretoria pode liberar na hora, confirmando que a Utmify já não manda pra este pixel
       (dir && dsl.length && !podeEnviar && d.modo !== 'enviando' ? '<div style="margin:-2px 0 8px 30px"><button class="fn-btn g sm" onclick="pcAntecipar(this)">Liberar o envio agora</button></div>' : '')+
       rad('desligado', 'Desligado', 'Nem monta o evento.')+
