@@ -38069,7 +38069,10 @@ function pcPintar(){
   var dsl = d.destinos || [];
   var pxSel = (dsl.length ? dsl.map(function(x){ var on = pcSel.destinos.indexOf(x.id) >= 0;
       return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+dis+' onchange="pcDestino(\''+fnEsc(x.id)+'\', this.checked)">'+
-        '<span><b>'+fnEsc(x.nome)+'</b><small>'+fnEsc(x.pixel)+' · '+(x.temToken ? 'token próprio' : 'usa a BM')+(x.testCode ? ' · código de teste '+fnEsc(x.testCode) : '')+(x.naPagina ? ' · carrega na página' : '')+'</small></span></label>'; }).join('')
+        '<span><b>'+fnEsc(x.nome)+'</b><small>'+fnEsc(x.pixel)+' · '+(x.temToken ? 'token próprio' : 'usa a BM')+(x.testCode ? ' · código de teste '+fnEsc(x.testCode) : '')+(x.naPagina ? ' · carrega na página' : '')+'</small></span>'+
+        // lápis: edita o destino (token do pixel, código de teste) sem sair do projeto; não marca nem desmarca a caixa
+        (dir ? '<button type="button" class="fn-btn g sm" style="margin-left:auto;align-self:center" title="Editar este destino: token do pixel, código de teste" aria-label="Editar o destino '+fnEsc(x.nome)+'" onclick="event.preventDefault();event.stopPropagation();dsAbrir(\''+fnEsc(x.id)+'\', pcCarregar)">✎</button>' : '')+
+        '</label>'; }).join('')
       : '<div class="fx-sub" style="margin-bottom:6px">Nenhum destino ainda. É o pixel da Meta que recebe as compras.</div>')+
     (d.pixelAntigo ? '<div class="fx-sub" style="margin:4px 0 6px">Pixel digitado antes: '+fnEsc(d.pixelAntigo)+'. Vale até você escolher um destino.</div>' : '')+
     (dir ? '<button class="fn-btn g sm" style="margin-top:2px" onclick="dsAbrir(null, pcCarregar)">+ Adicionar destino</button>' : '');
