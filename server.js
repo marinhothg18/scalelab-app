@@ -2847,6 +2847,8 @@ function _metaConexaoPublica(cfg) {
 function _metaErroTxt(e) {
   const c = e && e.metaCode;
   // a Meta suspende o app (não o token) até alguém fazer a verificação anual de uso de dados
+  // código 200 com "API access blocked": o app inteiro foi bloqueado (até /me falha), não é falta de permissão
+  if (/api access blocked/i.test(String(e && e.message || ''))) return 'A Meta bloqueou o app que gerou este token ("API access blocked"). O token e as permissões estão certos: o bloqueio é do app. Abra o Depurador de tokens pra ver qual app é, entre no painel dele em developers.facebook.com e resolva o aviso da Meta (verificação da empresa, do uso de dados ou de política). Ou gere um token novo no usuário do sistema com outro app.';
   if (/data use checkup/i.test(String(e && e.message || ''))) return 'O app do Facebook que gerou o token está com o acesso suspenso até alguém fazer a "Verificação do uso de dados" (Data Use Checkup). Entre em developers.facebook.com → Meus apps → o app do token → painel, complete a verificação e cole o mesmo token de novo. Ou gere o token com outro app.';
   if (c === 190) return 'A Meta recusou o token (vencido, apagado ou copiado pela metade). Gere outro no usuário do sistema.';
   if (c === 10 || c === 200 || c === 294) return 'O token não tem a permissão que precisa' + (e.etapa ? ' pra ' + e.etapa : '') + '. A Meta disse: "' + String(e.message || '').slice(0, 200) + '". Confira no Depurador de tokens da Meta se ads_read e business_management estão no token, e se as contas foram atribuídas ao usuário do sistema.';

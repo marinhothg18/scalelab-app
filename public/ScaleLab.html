@@ -37840,13 +37840,23 @@ function _cardMeta(con, cp){
         : '<div class="fx-sub">Só a Diretoria conecta a Meta.</div>');
   } else {
     var q = con.quem || {}, sy = con.sync || null;
-    h += '<div class="capi-cab"><div><b>Meta</b><span>Usuário do sistema <b>'+fnEsc(q.nome || q.id || '')+'</b> · token '+fnEsc(con.tokenFim || '')+' · listas '+mcHa(Date.parse(con.atualizadoEm || ''))+'</span></div><span class="v2-pill ok">Conectado</span></div>'+
+    // token salvo não é conexão funcionando: se a última puxada não leu conta nenhuma, o selo diz isso
+    var mcFalhou = !!(sy && sy.erros && sy.erros.length && !sy.contas);
+    var mcBloq = mcFalhou && sy.erros.some(function(e){ return /bloqueou o app|api access blocked/i.test(e); });
+    // a mesma mensagem pra várias contas vira uma linha só, com as contas na frente
+    var mcMsgs = [];
+    ((sy && sy.erros) || []).concat(con.ultimoErro ? [con.ultimoErro] : []).forEach(function(e){
+      var i = String(e).indexOf(': '), conta = i > 0 && i < 40 ? e.slice(0, i) : '', m = conta ? e.slice(i + 2) : e;
+      var x = mcMsgs.filter(function(y){ return y.m === m; })[0];
+      if(x){ if(conta && x.contas.indexOf(conta) < 0) x.contas.push(conta); } else mcMsgs.push({ m: m, contas: conta ? [conta] : [] });
+    });
+    h += '<div class="capi-cab"><div><b>Meta</b><span>Usuário do sistema <b>'+fnEsc(q.nome || q.id || '')+'</b> · token '+fnEsc(con.tokenFim || '')+' · listas '+mcHa(Date.parse(con.atualizadoEm || ''))+'</span></div>'+
+      (mcFalhou ? '<span class="v2-pill warn" title="O token está salvo, mas a última puxada não conseguiu ler nenhuma conta">'+(mcBloq ? 'Bloqueado pela Meta' : 'Sem acesso')+'</span>' : '<span class="v2-pill ok">Conectado</span>')+'</div>'+
       '<div class="capi-chips" style="margin-bottom:10px">'+MC_PERMS.map(function(p){ var ok = (con.permissoes || []).indexOf(p[0]) >= 0;
         return '<span class="capi-chip'+(ok ? ' on' : '')+'" title="'+fnEsc(p[1])+'">'+(ok ? '✓ ' : '✕ ')+p[0]+'</span>'; }).join('')+'</div>'+
       '<div class="capi-aviso">Puxa da Meta a cada hora: gasto por campanha (hoje hora a hora), cliques, vídeo de 3 s a 100%, orçamento, lance e o histórico de mudanças. '+
         'Na primeira semana roda ao lado da Utmify, pra comparar. '+(sy ? '<b>Última puxada '+mcHa(sy.em)+'</b>: '+sy.contas+' conta(s), '+sy.campanhas+' campanha(s), '+sy.mudancas+' mudança(s) nova(s).' : '<b>Primeira puxada em andamento.</b>')+
-        (sy && sy.erros && sy.erros.length ? '<br><span style="color:var(--v2-laranja,#F59E0B)">'+fnEsc(sy.erros.slice(0, 2).join(' · '))+'</span>' : '')+
-        (con.ultimoErro ? '<br><span style="color:var(--v2-laranja,#F59E0B)">'+fnEsc(con.ultimoErro)+'</span>' : '')+'</div>'+
+        mcMsgs.slice(0, 3).map(function(x){ return '<br><span style="color:var(--v2-laranja,#F59E0B)">'+(x.contas.length ? fnEsc(x.contas.join(', '))+': ' : '')+fnEsc(x.m)+'</span>'; }).join('')+'</div>'+
       (dir ? '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button><button class="fn-btn g sm" onclick="mcAtualizar(this)">Atualizar listas</button>'+
         '<button class="fn-btn g sm" onclick="mcTrocar()">Trocar token</button><button class="fn-btn g sm" onclick="mcDesconectar(this)">Desconectar</button></div>'+
         '<div id="mc-troca" style="display:none" class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="Token novo (EAAG…)" autocomplete="off" aria-label="Token novo"><button class="fn-btn" onclick="mcConectar(this)">Trocar</button></div><div id="mc-res" class="mc-res"></div>' : '');
