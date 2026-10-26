@@ -38057,6 +38057,25 @@ function pcPintarPrevia(){
 }
 function pcConta(conta, on){ var i = pcSel.contas.indexOf(conta); if(on && i < 0) pcSel.contas.push(conta); if(!on && i >= 0) pcSel.contas.splice(i, 1); pcPintarPrevia(); }
 function pcModo(m){ pcSel.modo = m; var t = document.getElementById('pc-teste'); if(t) t.style.display = m === 'teste' ? '' : 'none'; }
+// Liga o envio de verdade antes da semana de comparação. Sem código de teste no
+// destino e com a confirmação de que a Utmify parou de mandar pro mesmo pixel.
+function pcAntecipar(bt){
+  var dsl = (pcDados && pcDados.destinos) || [];
+  var sel = dsl.filter(function(x){ return pcSel.destinos.indexOf(x.id) >= 0; });
+  if(!sel.length){ toastFn('Marque o destino e salve antes.'); return; }
+  var comCod = sel.filter(function(x){ return x.testCode; });
+  if(comCod.length){ alert('Antes, tire o código de teste do destino '+comCod[0].nome+': clique no ✎, apague o código e salve. Com o código, nada conta pras campanhas.'); return; }
+  var nomes = sel.map(function(x){ return x.nome; }).join(', ');
+  if(!confirm('Ligar AGORA o envio de verdade das compras de '+fnProj+' pra Meta (pixel '+nomes+')?\n\n'+
+    '• Desligue ANTES o envio de compras da Utmify pra esse pixel. Se os dois mandarem, a Meta conta cada venda duas vezes.\n'+
+    '• A partir de agora, cada venda nova vai pra Meta e ela usa pra otimizar as campanhas.\n\n'+
+    'OK = já desliguei a Utmify e quero ligar agora.')) return;
+  bt.disabled = true;
+  fetch(API_BASE+'/api/projeto/config', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ projeto: fnProj, contas: pcSel.contas, regra: pcSel.regra, destinos: pcSel.destinos, modo: 'enviando', confirmar: 'SIM_ENVIAR_PRA_META', antecipar: true }) })
+    .then(mcResposta).then(function(){ toastFn('Envio de verdade ligado'); pcCarregar(); })
+    .catch(function(e){ bt.disabled = false; var o = document.getElementById('pc-res'); if(o) o.innerHTML = '<span style="color:var(--v2-laranja,#F59E0B)">Não ligou: '+fnEsc(e.message)+'</span>'; else toastFn('Não ligou: '+e.message); });
+}
 function pcTestarEnvio(bt){
   var o = document.getElementById('pc-teste-res'), rot = bt.textContent;
   bt.disabled = true; bt.textContent = 'Mandando…';
@@ -38106,6 +38125,8 @@ function pcPintar(){
       rad('comparacao', 'Comparação', 'Monta o evento e não envia. Dá pra ver em cada venda.')+
       rad('teste', 'Teste', 'Envia com o código de teste do destino: aparece só em "Eventos de teste" da Meta, não conta pra campanha.', !dsl.length)+
       rad('enviando', 'Enviando', !dsl.length ? 'Cadastre um destino primeiro.' : !podeEnviar ? (libera ? 'Libera em '+v2Dia(_diaIso(libera))+', 7 dias depois de cadastrar o destino, comparando com a Utmify.' : 'Escolha um destino e salve.')+' Antes, desligar o envio da Utmify pra não contar duas vezes.' : 'De verdade: a Meta passa a usar estas compras pra otimizar. Desligue antes o envio da Utmify.', !podeEnviar)+
+      // antes dos 7 dias: a Diretoria pode liberar na hora, confirmando que a Utmify já não manda pra este pixel
+      (dir && dsl.length && !podeEnviar && d.modo !== 'enviando' ? '<div style="margin:-2px 0 8px 30px"><button class="fn-btn g sm" onclick="pcAntecipar(this)">Liberar o envio agora</button></div>' : '')+
       rad('desligado', 'Desligado', 'Nem monta o evento.')+
     '</div>'+
     // no modo Teste: manda a última compra pra "Eventos de teste" agora, sem esperar uma venda nova

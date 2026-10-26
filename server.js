@@ -18802,7 +18802,10 @@ app.post('/api/projeto/config', authDiretoria, (req, res) => {
       if (b.modo === 'teste') { const semCod = dests.filter(d => !d.testCode); if (semCod.length) return res.status(400).json({ error: 'Coloque o código de teste no destino ' + (semCod[0].nome || semCod[0].pixel) + ' (Integrações → Destinos).' }); }
       if (b.modo === 'enviando') {
         const libera = _liberaEnvio(dests, mc);
-        if (!libera || Date.now() < libera) return res.status(400).json({ error: 'O envio de verdade libera ' + (libera ? 'em ' + new Date(libera).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'depois de cadastrar o destino') + ', depois de 7 dias comparando com a Utmify.' });
+        // antes dos 7 dias, só com o "Liberar agora" (a Diretoria confirma que desligou o envio da Utmify)
+        const antes = !libera || Date.now() < libera;
+        if (antes && b.antecipar !== true) return res.status(400).json({ error: 'O envio de verdade libera ' + (libera ? 'em ' + new Date(libera).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'depois de cadastrar o destino') + ', depois de 7 dias comparando com a Utmify.' });
+        if (antes) b._antecipado = true;
         const comCod = dests.filter(d => d.testCode);
         if (comCod.length) return res.status(400).json({ error: 'O destino ' + (comCod[0].nome || comCod[0].pixel) + ' ainda tem código de teste: com ele nada conta. Apague o código em Integrações → Destinos antes de enviar de verdade.' });
       }
@@ -18811,7 +18814,7 @@ app.post('/api/projeto/config', authDiretoria, (req, res) => {
     db.store[KEY_PROJ_META] = cfg; db.store[KEY_META_CAPI] = capi;
     if (!db.timestamps) db.timestamps = {};
     db.timestamps[KEY_PROJ_META] = now(); db.timestamps[KEY_META_CAPI] = now();
-    audit(db, 'projeto_configurado', projeto, { contas: contas.length, regra, destinos: (capi.destinos || {})[projeto] || [], modo: _capiModo(capi, projeto) }, req.user);
+    audit(db, 'projeto_configurado', projeto, { contas: contas.length, regra, destinos: (capi.destinos || {})[projeto] || [], modo: _capiModo(capi, projeto), antecipado: !!b._antecipado }, req.user);
     _pxMetaCache.em = 0;
     writeDB(db);
     res.json({ ok: true });
