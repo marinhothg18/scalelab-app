@@ -3062,6 +3062,28 @@ async function _metaSincronizar(opts) {
           r.linhasHora++;
         });
 
+        // 3b) gasto por posicionamento (Instagram Stories, Facebook Feed...), por dia.
+        // A UTM da venda traz o posicionamento ({{placement}}); a Meta traz o gasto dele.
+        const pp = await _metaTudo(c.id + '/insights', { level: 'campaign', fields: 'campaign_id,spend,impressions,inline_link_clicks',
+          breakdowns: 'publisher_platform,platform_position', time_range: JSON.stringify({ since: desde, until: hoje }), time_increment: '1', limit: '500' }, cfg, 60);
+        const somaPos = {};
+        pp.forEach(d => {
+          const dia = String(d.date_start).slice(0, 10), pos = _posCanon(String(d.publisher_platform || '') + '_' + String(d.platform_position || '')) || 'outros';
+          const k = dia + '|' + d.campaign_id + '|' + pos;
+          const x = somaPos[k] || (somaPos[k] = { dia, camp: String(d.campaign_id), pos, gasto: 0, imp: 0, cl: 0 });
+          x.gasto += emReal(Number(d.spend) || 0, dia); x.imp += Number(d.impressions) || 0; x.cl += Number(d.inline_link_clicks) || 0;
+        });
+        _pessoas().exec('BEGIN');
+        try {
+          Object.values(somaPos).forEach(x => {
+            _q(`INSERT INTO meta_pos_dia(dia, conta, camp, pos, gasto, imp, cliques, em) VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(dia, camp, pos) DO UPDATE SET gasto=excluded.gasto, imp=excluded.imp, cliques=excluded.cliques, em=excluded.em`)
+              .run(x.dia, c.conta, x.camp, x.pos, Math.round(x.gasto * 100) / 100, x.imp, x.cl, agora);
+            r.linhasPos = (r.linhasPos || 0) + 1;
+          });
+          _pessoas().exec('COMMIT');
+        } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+
         // 4) histórico de mudanças: orçamento, lance e status, com a hora exata
         const desdeAtv = Math.floor(Math.max(t0 - dias * 86400000, (cfg.sync && cfg.sync.atividadesAte && !opts.dias ? cfg.sync.atividadesAte - 3600000 : 0)) / 1000);
         const atvs = await _metaTudo(c.id + '/activities', { fields: 'event_type,event_time,object_id,object_name,extra_data,actor_name',
@@ -3107,6 +3129,14 @@ async function _metaSincronizar(opts) {
 // já convertidos. Repete a cada hora até a cotação do Banco Central responder.
 async function _metaRodar() {
   const chave = 'meta:em-real-20261022', cfg = _metaCfg();
+  // Uma vez: o gasto por posicionamento entrou em 26/10. Puxa os 14 dias quando a
+  // Meta responder (com o app bloqueado, tenta de novo a cada hora).
+  const chavePos = 'meta:posicao-20261026';
+  if (_pessoas() && _pCfg(chave) && !_pCfg(chavePos) && cfg && cfg.accessToken && !_metaSyncRodando) {
+    const r = await _metaSincronizar({ dias: 14 });
+    if (r && r.contas > 0) { _pCfg(chavePos, Date.now()); console.log('[META] gasto por posicionamento dos últimos 14 dias puxado'); }
+    return r;
+  }
   if (!_pessoas() || _pCfg(chave) || !cfg || !cfg.accessToken || _metaSyncRodando) return _metaSincronizar();
   const fora = (cfg.contas || []).filter(c => c.moeda && String(c.moeda).toUpperCase() !== 'BRL').map(c => String(c.conta));
   if (fora.length) _q(`DELETE FROM camp_mudancas WHERE fonte='meta' AND campo IN ('orc','lance') AND camp IN
@@ -10471,6 +10501,8 @@ function _pessoas() {
         PRIMARY KEY (dia, hora, id));
       CREATE TABLE IF NOT EXISTS meta_contas_nome (conta TEXT PRIMARY KEY, nome TEXT, em INTEGER);
       CREATE TABLE IF NOT EXISTS cambio (moeda TEXT, dia TEXT, valor REAL, fechamento INTEGER, em INTEGER, PRIMARY KEY (moeda, dia));
+      CREATE TABLE IF NOT EXISTS meta_pos_dia (dia TEXT, conta TEXT, camp TEXT, pos TEXT, gasto REAL, imp INTEGER, cliques INTEGER, em INTEGER,
+        PRIMARY KEY (dia, camp, pos));
       CREATE TABLE IF NOT EXISTS camp_estado (id TEXT PRIMARY KEY, nome TEXT, dashboard TEXT, orc REAL, bid REAL, status TEXT, em INTEGER);
       CREATE TABLE IF NOT EXISTS camp_mudancas (n INTEGER PRIMARY KEY AUTOINCREMENT, camp TEXT, nome TEXT, dashboard TEXT,
         campo TEXT, de TEXT, para TEXT, em INTEGER, desde INTEGER, fonte TEXT);
@@ -11098,6 +11130,7 @@ function _pessoasManter() {
     _q('DELETE FROM capi_visita WHERE em < ?').run(agora - CAPI_VISITA_DIAS * 86400000);
     _q('DELETE FROM meta_camp_hora WHERE dia < ?').run(_diaBR(agora - 30 * 86400000));
     _q('DELETE FROM meta_camp_dia WHERE dia < ?').run(_diaBR(agora - 120 * 86400000));
+    _q('DELETE FROM meta_pos_dia WHERE dia < ?').run(_diaBR(agora - 120 * 86400000));
     if (r1.changes || r2.changes) console.log('[PESSOAS] retenção: ' + r1.changes + ' eventos e ' + r2.changes + ' sessões antigas saíram.');
     db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   } catch (e) { console.error('[PESSOAS] manutenção falhou:', e.message); }
@@ -12609,8 +12642,10 @@ function _vendasPorCanal(pagas, liq, gastoMeta) {
     if (o.cred_canal) {
       const c = canais.find(x => x.id === o.cred_canal);
       k = o.cred_canal; nome = c ? c.nome : (o.cred_canal === 'direto' ? 'Direto' : (o.cred_fonte || 'Outro'));
+      // utm_source=FB vale pra todo anúncio da Meta, inclusive os que rodam no
+      // Instagram: chamar de "Facebook" enganava. O lugar exato fica no posicionamento.
       if (k === 'meta' && /^ig|insta/i.test(o.cred_fonte || '')) { k = 'meta_ig'; nome = 'Instagram'; }
-      else if (k === 'meta') nome = 'Facebook';
+      else if (k === 'meta') nome = 'Anúncios da Meta';
     } else if (o.apoio) { k = 'apoio'; nome = o.apoio; apoio = true; }
     else { k = 'sem'; nome = 'Sem origem'; }
     const x = porCanal[k] || (porCanal[k] = { k, nome, vendas: 0, fat: 0, apoio });
@@ -12618,6 +12653,74 @@ function _vendasPorCanal(pagas, liq, gastoMeta) {
   });
   return Object.values(porCanal).sort((a, b) => b.fat - a.fat).map(x => Object.assign(x, {
     roas: (x.k === 'meta' || x.k === 'meta_ig') && gastoMeta ? x.fat / gastoMeta : null }));
+}
+
+// ── POSICIONAMENTO ──
+// A UTM traz o {{placement}} da Meta ("Instagram_Feed", "Facebook_Mobile_Reels",
+// às vezes cortado: "Facebook_Ri"); a Meta, o gasto por publisher_platform +
+// platform_position ("instagram" + "instagram_stories"). Os dois viram a mesma
+// chave: instagram_feed, facebook_reels, facebook_right_column...
+const _POS_PLATS = /^(facebook|instagram|messenger|threads|whatsapp)$/;
+function _posCanon(s) {
+  const t = String(s || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!t || t === '_') return '';
+  if (t === 'an' || /^an_|^audience_network/.test(t)) return 'audience_network';
+  const partes = t.split('_').filter(x => x && x !== 'mobile' && x !== 'desktop');
+  const plat = partes[0];
+  if (!_POS_PLATS.test(plat || '')) return 'outros';
+  let pos = partes.slice(1).join('_');
+  if (pos.indexOf(plat + '_') === 0) pos = pos.slice(plat.length + 1);
+  if (plat === 'facebook' && pos && pos[0] === 'r' && ('right_hand_column'.indexOf(pos) === 0 || 'right_column'.indexOf(pos) === 0)) pos = 'right_column';
+  return pos ? plat + '_' + pos : plat + '_outros';
+}
+const _POS_NOMES = { instagram_feed: 'Instagram Feed', instagram_reels: 'Instagram Reels', instagram_stories: 'Instagram Stories',
+  instagram_explore: 'Instagram Explorar', instagram_explore_grid_home: 'Instagram Explorar', instagram_search: 'Instagram Busca',
+  instagram_profile_feed: 'Instagram perfil', facebook_feed: 'Facebook Feed', facebook_reels: 'Facebook Reels', facebook_stories: 'Facebook Stories',
+  facebook_right_column: 'Facebook coluna da direita', facebook_instream_video: 'Facebook vídeo in-stream', facebook_marketplace: 'Facebook Marketplace',
+  facebook_profile_feed: 'Facebook perfil', facebook_video_feeds: 'Facebook vídeos', facebook_search: 'Facebook Busca', facebook_outros: 'Facebook (outros)',
+  threads_feed: 'Threads', whatsapp_status: 'WhatsApp Status', messenger_inbox: 'Messenger', audience_network: 'Audience Network', outros: 'Outros' };
+function _posNome(k) {
+  if (_POS_NOMES[k]) return _POS_NOMES[k];
+  return String(k || '').split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+}
+// O posicionamento da venda: o da sessão do anúncio que levou o crédito (a
+// mesma pessoa, ou o outro aparelho dela); sem ela, o termo que veio no checkout.
+function _posDaVenda(o) {
+  if (o.cont && o.cred_cont && o.cont === o.cred_cont && o.termo) return _posCanon(o.termo);
+  const vis = [o.visitante, o.cred_vis].filter(Boolean);
+  if (vis.length && o.cred_cont) {
+    const s = _q('SELECT termo FROM sessoes WHERE visitante IN (' + _ph(vis.length) + ") AND cont=? AND termo IS NOT NULL AND termo<>'' AND inicio<=? ORDER BY inicio DESC LIMIT 1")
+      .get(...vis, o.cred_cont, (o.em || Date.now()) + 600000);
+    if (s && s.termo) return _posCanon(s.termo);
+  }
+  return o.termo ? _posCanon(o.termo) : '';
+}
+// Anúncios da Meta por posicionamento: o investido (da Meta) e o que trouxe (vendas do TMX).
+// gastoPos: { chave: { gasto, imp, cliques } }. Venda sem posicionamento na UTM fica numa linha própria.
+function _vendasPorPosicao(pagas, liq, gastoPos) {
+  const daMeta = o => o.cred_canal === 'meta';
+  const linhas = {};
+  const linha = k => linhas[k] || (linhas[k] = { k, nome: k ? _posNome(k) : 'Sem posicionamento na UTM', gasto: 0, imp: 0, cliques: 0, vendas: 0, fat: 0, apoio: 0 });
+  Object.keys(gastoPos || {}).forEach(k => { const g = gastoPos[k], x = linha(k); x.gasto += g.gasto || 0; x.imp += g.imp || 0; x.cliques += g.cliques || 0; });
+  pagas.filter(daMeta).forEach(o => { const x = linha(_posDaVenda(o)); x.vendas++; x.fat += liq(o); if (o.apoio) x.apoio++; });
+  return Object.values(linhas).filter(x => x.vendas || x.gasto >= 0.5)
+    .map(x => Object.assign(x, { gasto: Math.round(x.gasto * 100) / 100, roas: x.gasto ? x.fat / x.gasto : null }))
+    .sort((a, b) => (b.gasto - a.gasto) || (b.fat - a.fat));
+}
+// Gasto por posicionamento no período. campIds: só essas campanhas (null = todas).
+// Devolve também se a Meta mandou algum dado de posicionamento no período.
+function _gastoPorPosicao(de, ate, campIds) {
+  const out = {};
+  if (!_pessoas()) return { porPos: out, tem: false };
+  const tem = !!_q('SELECT 1 FROM meta_pos_dia WHERE dia BETWEEN ? AND ? LIMIT 1').get(de, ate);
+  if (!tem) return { porPos: out, tem };
+  const ids = campIds ? new Set(campIds.map(String)) : null;
+  _q('SELECT camp, pos, SUM(gasto) g, SUM(imp) i, SUM(cliques) c FROM meta_pos_dia WHERE dia BETWEEN ? AND ? GROUP BY camp, pos').all(de, ate).forEach(x => {
+    if (ids && !ids.has(String(x.camp))) return;
+    const y = out[x.pos] || (out[x.pos] = { gasto: 0, imp: 0, cliques: 0 });
+    y.gasto += x.g || 0; y.imp += x.i || 0; y.cliques += x.c || 0;
+  });
+  return { porPos: out, tem };
 }
 
 // faturamento e margem: mesma regra de sl_vendas (Diretoria)
@@ -12634,11 +12737,12 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     const projetoId = await _projetoIdDoFunil(f);
     const camp = await _campanhasPeriodo(per.de, per.ate, projetoId, Number(req.query.buscar) === 0 ? 0 : 8);
     const regra = _regraCampanhas(f);
-    const nomeCampanha = {}, contas = new Set(), porDiaGasto = {};
+    const nomeCampanha = {}, contas = new Set(), porDiaGasto = {}, campIds = new Set();
     let gasto = 0, imp = 0, cliques = 0, campanhas = {};
     Object.keys(camp.porDia).forEach(d => camp.porDia[d].forEach(c => {
       nomeCampanha[c.id] = c.nome;
       if (regra && !regra(c.nome)) return;
+      if (c.id) campIds.add(String(c.id));
       gasto += c.gasto; imp += c.imp; cliques += c.cliques;
       porDiaGasto[d] = (porDiaGasto[d] || 0) + c.gasto;
       if (c.conta && c.gasto > 0) contas.add(c.conta);
@@ -12740,8 +12844,10 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     const motivos = {};
     semOrigemTodas.forEach(o => { const m = motivos[o.sem_origem] || (motivos[o.sem_origem] = { motivo: o.sem_origem, vendas: 0, valor: 0 }); m.vendas++; m.valor += Number(o.valor) || 0; });
 
-    // ── por onde a venda chegou ──
+    // ── por onde a venda chegou, e os anúncios da Meta por posicionamento ──
     const fontes = _vendasPorCanal(pagas, liq, gasto);
+    const gp = _gastoPorPosicao(per.de, per.ate, [...campIds]);
+    const posicoes = _vendasPorPosicao(pagas, liq, gp.porPos);
 
     res.json({ ok: true, funil: { id: f.id, nome: f.nome }, de: per.de, ate: per.ate,
       regra: _descRegra(f), semRegra: !regra, contas: contas.size, faltamDias: camp.faltam, erros: camp.erros,
@@ -12760,7 +12866,7 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
       topo: { investido: gasto, cliques, chegaram, checkout, compraram },
       etapas, queda, dias, notas,
       semOrigem: { total: semOrigemTodas.length, motivos: Object.values(motivos).sort((a, b) => b.vendas - a.vendas) },
-      fontes, campanhas: Object.values(campanhas).sort((a, b) => b.gasto - a.gasto).slice(0, 30) });
+      fontes, posicoes, posGasto: gp.tem, campanhas: Object.values(campanhas).sort((a, b) => b.gasto - a.gasto).slice(0, 30) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -18770,20 +18876,23 @@ app.get('/api/vendas/por-canal', authUsuario, async (req, res) => {
     const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
     let pagas = _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(de, ate);
     if (projeto) pagas = pagas.filter(_pedidoDoProjetoFn(db, projeto));
-    let gasto = 0;
+    let gasto = 0; const campIds = new Set();
     try {
       const projId = projeto ? await _projetoIdDoFunil({ projeto }) : '';
       if (!projeto || projId) {   // projeto sem dashboard na Utmify: sem gasto (não soma o de todos)
         const camp = await _campanhasPeriodo(de, ate, projId, 0);
-        Object.values(camp.porDia).forEach(l => (l || []).forEach(c => { gasto += Number(c.gasto) || 0; }));
+        Object.values(camp.porDia).forEach(l => (l || []).forEach(c => { gasto += Number(c.gasto) || 0; if (c.id) campIds.add(String(c.id)); }));
         _campAtualizarDepois(de, ate, projId);
       }
     } catch (e) {}
     const fontes = _vendasPorCanal(pagas, liq, gasto);
-    if (!dir) fontes.forEach(x => { x.fat = null; x.roas = null; });
+    // posicionamento: o gasto vem da Meta, só das campanhas do projeto (todas, sem projeto)
+    const gp = _gastoPorPosicao(de, ate, projeto ? [...campIds] : null);
+    const posicoes = _vendasPorPosicao(pagas, liq, gp.porPos);
+    if (!dir) { fontes.forEach(x => { x.fat = null; x.roas = null; }); posicoes.forEach(x => { x.fat = null; x.roas = null; x.gasto = null; }); }
     // ROAS de empate (imposto da venda e do anúncio), o mesmo alvo do Resultado do funil sem alvo próprio
     const roasAlvo = Math.round((1 + (custos.impostoAds || 0) / 100) / Math.max(0.05, 1 - (custos.imposto || 0) / 100) * 100) / 100;
-    res.json({ ok: true, projeto, de, ate, vendas: pagas.length, gasto: dir ? gasto : null, roasAlvo, fontes });
+    res.json({ ok: true, projeto, de, ate, vendas: pagas.length, gasto: dir ? gasto : null, roasAlvo, fontes, posicoes, posGasto: gp.tem });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

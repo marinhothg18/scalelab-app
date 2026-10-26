@@ -37422,7 +37422,7 @@ function rsPintar(){
         sem.motivos.map(function(m){ return '<tr class="clica" onclick="rsVendas(\'sem\',\''+fnEsc(m.motivo).replace(/'/g,"\\'")+'\')"><td>'+fnEsc(m.motivo)+'</td><td class="n">'+m.vendas+'</td><td class="n">'+v2Din(m.valor)+'</td></tr>'; }).join('')+
       '</tbody></table></div><button class="fn-btn g sm" style="margin-top:10px" onclick="rsVendas(\'sem\')">Ver as '+sem.total+' venda'+s(sem.total)+'</button>'
     : '<div class="fx-vazio">Nenhuma venda sem origem no período.</div>';
-  var fontes = vdPorCanalTab(d.fontes, c.roasAlvo, 'Nenhuma venda do funil no período.');
+  var fontes = vdPorCanalTab(d, c.roasAlvo, 'Nenhuma venda do funil no período.');
 
   el.innerHTML = avisos + cards +
     '<div class="v2-2col">'+
@@ -37449,14 +37449,33 @@ function rsPintar(){
 // ── Por onde a venda chegou ──
 // A mesma tabela no Resultado do funil, na Análise de tráfego › Resumo e em
 // Projeto › Vendas. Faturou e ROAS só pra Diretoria (o servidor manda vazio pros outros).
-function vdPorCanalTab(fs, roasAlvo, vazio){
+// d: { fontes, posicoes, posGasto } do servidor
+function vdPorCanalTab(d, roasAlvo, vazio){
   var ICF = { meta:'👥', meta_ig:'📸', organico:'🌱', recuperacao:'☎', google:'🔎', apoio:'☎', sem:'?', direto:'↗' };
-  if(!fs || !fs.length) return '<div class="fx-vazio">'+(vazio || 'Nenhuma venda no período.')+'</div>';
-  return '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
+  var fs = (d && d.fontes) || [], ps = (d && d.posicoes) || [];
+  if(!fs.length && !ps.length) return '<div class="fx-vazio">'+(vazio || 'Nenhuma venda no período.')+'</div>';
+  var roas = function(r){ return r != null ? '<span class="'+(r >= roasAlvo ? 'v2-bom' : 'v2-ruim')+'">'+v2X(r)+'</span>' : '-'; };
+  var din = function(v){ return v == null ? '<i>—</i>' : v2Din(v); };
+  var h = '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
     fs.map(function(x){
-      return '<tr><td>'+(ICF[x.k]||'•')+' '+fnEsc(x.nome)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+(x.fat == null ? '<i>—</i>' : v2Din(x.fat))+'</td><td class="n">'+
-        (x.apoio ? '<span class="v2-pill roxo">apoio</span>' : x.roas != null ? '<span class="'+(x.roas >= roasAlvo ? 'v2-bom' : 'v2-ruim')+'">'+v2X(x.roas)+'</span>' : '-')+'</td></tr>';
+      return '<tr><td>'+(ICF[x.k]||'•')+' '+fnEsc(x.nome)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+din(x.fat)+'</td><td class="n">'+
+        (x.apoio ? '<span class="v2-pill roxo">apoio</span>' : roas(x.roas))+'</td></tr>';
     }).join('')+'</tbody></table></div>';
+  if(ps.length){
+    var semGasto = !d.posGasto, dir = ps.some(function(x){ return x.fat != null; });
+    h += '<div class="v2-rot" style="margin:16px 0 6px">Anúncios da Meta por posicionamento</div>'+
+      '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Posicionamento</th><th class="n">Investido</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
+      ps.map(function(x){
+        return '<tr><td>'+fnEsc(x.nome)+(x.apoio ? ' <small class="fx-sub">· '+x.apoio+' com recuperação</small>' : '')+'</td>'+
+          '<td class="n">'+(semGasto || x.gasto == null ? '<i>—</i>' : v2Din(x.gasto))+'</td><td class="n">'+x.vendas+'</td><td class="n">'+din(x.fat)+'</td>'+
+          '<td class="n">'+(semGasto ? '-' : roas(x.roas))+'</td></tr>';
+      }).join('')+'</tbody></table></div>'+
+      '<div class="fx-sub" style="margin-top:6px">'+(semGasto
+        ? 'As vendas vêm do posicionamento na UTM de cada venda. O investido por posicionamento vem direto da Meta e aparece quando a conexão com a Meta voltar a funcionar (Integrações → Meta).'
+        : 'Investido: direto da Meta, por posicionamento. Vendas: pelo posicionamento na UTM do anúncio que levou o crédito.')+
+        (dir ? '' : ' Valores só pra Diretoria.')+'</div>';
+  }
+  return h;
 }
 // Busca e pinta o quadro num elemento. alvo: { projeto: 'CONCURSO' } ou { dash: id do
 // dashboard da Utmify }; vazio = todos os projetos. A tela que redesenha tudo (os
@@ -37474,8 +37493,9 @@ function vdPorCanalCarregar(elId, alvo, de, ate){
   vdPcCache[chave] = { html: c && c.html, em: 0, buscando: true };
   var pinta = function(html){ var e = document.getElementById(elId); if(e && e.dataset.chave === chave) e.innerHTML = html; };
   v2Json('/api/vendas/por-canal?'+qs+'&de='+de+'&ate='+ate).then(function(d){
-    var html = cab(d.projeto ? ' · '+fnEsc(d.projeto) : ' · todos os projetos')+vdPorCanalTab(d.fontes, d.roasAlvo)+
-      (d.gasto != null && d.gasto > 0 ? '<div class="fx-sub" style="margin-top:6px">ROAS do Facebook e do Instagram contra o gasto das campanhas no período ('+v2Din(d.gasto)+').</div>' : '');
+    var html = cab(d.projeto ? ' · '+fnEsc(d.projeto) : ' · todos os projetos')+
+      (d.gasto != null && d.gasto > 0 ? '<div class="fx-sub" style="margin:-4px 0 8px">ROAS dos anúncios contra o gasto das campanhas no período ('+v2Din(d.gasto)+').</div>' : '')+
+      vdPorCanalTab(d, d.roasAlvo);
     vdPcCache[chave] = { html: html, em: Date.now() };
     pinta(html);
   }).catch(function(e){ delete vdPcCache[chave]; pinta(cab('')+'<div class="fx-vazio">Não carregou: '+fnEsc(e.message)+'</div>'); });
