@@ -12598,6 +12598,28 @@ function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
   return out;
 }
 
+// Por onde a venda chegou: o canal que levou o crédito (Facebook, Instagram,
+// orgânico, direto...), a recuperação à parte e o que ficou sem origem. A mesma
+// conta no Resultado do funil, na Análise de tráfego e nas Vendas do projeto.
+function _vendasPorCanal(pagas, liq, gastoMeta) {
+  const canais = _canaisCache() || [];
+  const porCanal = {};
+  pagas.forEach(o => {
+    let k, nome, apoio = false;
+    if (o.cred_canal) {
+      const c = canais.find(x => x.id === o.cred_canal);
+      k = o.cred_canal; nome = c ? c.nome : (o.cred_canal === 'direto' ? 'Direto' : (o.cred_fonte || 'Outro'));
+      if (k === 'meta' && /^ig|insta/i.test(o.cred_fonte || '')) { k = 'meta_ig'; nome = 'Instagram'; }
+      else if (k === 'meta') nome = 'Facebook';
+    } else if (o.apoio) { k = 'apoio'; nome = o.apoio; apoio = true; }
+    else { k = 'sem'; nome = 'Sem origem'; }
+    const x = porCanal[k] || (porCanal[k] = { k, nome, vendas: 0, fat: 0, apoio });
+    x.vendas++; x.fat += liq(o);
+  });
+  return Object.values(porCanal).sort((a, b) => b.fat - a.fat).map(x => Object.assign(x, {
+    roas: (x.k === 'meta' || x.k === 'meta_ig') && gastoMeta ? x.fat / gastoMeta : null }));
+}
+
 // faturamento e margem: mesma regra de sl_vendas (Diretoria)
 app.get('/api/funil/resultado', authNegocio, async (req, res) => {
   try {
@@ -12719,23 +12741,7 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     semOrigemTodas.forEach(o => { const m = motivos[o.sem_origem] || (motivos[o.sem_origem] = { motivo: o.sem_origem, vendas: 0, valor: 0 }); m.vendas++; m.valor += Number(o.valor) || 0; });
 
     // ── por onde a venda chegou ──
-    const canais = _canaisCache();
-    const porCanal = {};
-    pagas.forEach(o => {
-      let k, nome, apoio = false;
-      if (o.cred_canal) {
-        const c = canais.find(x => x.id === o.cred_canal);
-        k = o.cred_canal; nome = c ? c.nome : (o.cred_canal === 'direto' ? 'Direto' : (o.cred_fonte || 'Outro'));
-        if (k === 'meta' && /^ig|insta/i.test(o.cred_fonte || '')) { k = 'meta_ig'; nome = 'Instagram'; }
-        else if (k === 'meta') nome = 'Facebook';
-      } else if (o.apoio) { k = 'apoio'; nome = o.apoio; apoio = true; }
-      else { k = 'sem'; nome = 'Sem origem'; }
-      const x = porCanal[k] || (porCanal[k] = { k, nome, vendas: 0, fat: 0, apoio });
-      x.vendas++; x.fat += liq(o);
-    });
-    const gastoMeta = gasto;
-    const fontes = Object.values(porCanal).sort((a, b) => b.fat - a.fat).map(x => Object.assign(x, {
-      roas: (x.k === 'meta' || x.k === 'meta_ig') && gastoMeta ? x.fat / gastoMeta : null }));
+    const fontes = _vendasPorCanal(pagas, liq, gasto);
 
     res.json({ ok: true, funil: { id: f.id, nome: f.nome }, de: per.de, ate: per.ate,
       regra: _descRegra(f), semRegra: !regra, contas: contas.size, faltamDias: camp.faltam, erros: camp.erros,
@@ -18743,6 +18749,41 @@ app.get('/api/projeto/vendas', authUsuario, (req, res) => {
       anuncio: vendas.filter(v => v.origem === 'anuncio').length, outroAparelho: vendas.filter(v => v.cred.outroAparelho).length,
       sem: vendas.filter(v => v.origem === 'sem').length, meta: vendas.filter(v => v.meta).length, metaCompleta: vendas.filter(v => v.meta && v.meta.n >= 8).length };
     res.json({ ok: true, projeto, de, ate, total: tot, vendas });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Por onde a venda chegou, de um projeto (ou de todos, sem projeto): pra
+// Análise de tráfego › Resumo e Projeto › Vendas. O ROAS é contra o gasto das
+// campanhas do projeto no período (o arquivo da Utmify, sem esperar ela responder).
+app.get('/api/vendas/por-canal', authUsuario, async (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    let projeto = String(req.query.projeto || '').slice(0, 80);
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe o período.' });
+    // a Análise de tráfego escolhe o projeto pelo id do dashboard da Utmify; o nome é o mesmo do projeto
+    const dash = String(req.query.dash || '').slice(0, 60);
+    if (dash && !projeto) {
+      try { const { lista } = await _utmifyDashboardsAtivos(); const d = lista.find(x => String(x.id) === dash); if (d) projeto = String(d.nome || '').trim(); } catch (e) {}
+      if (!projeto) return res.status(400).json({ error: 'Não achei esse projeto na Utmify.' });
+    }
+    const db = readDB(), dir = _ehDir(req), custos = _custosCfg(db);
+    const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
+    let pagas = _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(de, ate);
+    if (projeto) pagas = pagas.filter(_pedidoDoProjetoFn(db, projeto));
+    let gasto = 0;
+    try {
+      const projId = projeto ? await _projetoIdDoFunil({ projeto }) : '';
+      if (!projeto || projId) {   // projeto sem dashboard na Utmify: sem gasto (não soma o de todos)
+        const camp = await _campanhasPeriodo(de, ate, projId, 0);
+        Object.values(camp.porDia).forEach(l => (l || []).forEach(c => { gasto += Number(c.gasto) || 0; }));
+        _campAtualizarDepois(de, ate, projId);
+      }
+    } catch (e) {}
+    const fontes = _vendasPorCanal(pagas, liq, gasto);
+    if (!dir) fontes.forEach(x => { x.fat = null; x.roas = null; });
+    // ROAS de empate (imposto da venda e do anúncio), o mesmo alvo do Resultado do funil sem alvo próprio
+    const roasAlvo = Math.round((1 + (custos.impostoAds || 0) / 100) / Math.max(0.05, 1 - (custos.imposto || 0) / 100) * 100) / 100;
+    res.json({ ok: true, projeto, de, ate, vendas: pagas.length, gasto: dir ? gasto : null, roasAlvo, fontes });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

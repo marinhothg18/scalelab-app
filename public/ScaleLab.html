@@ -5293,6 +5293,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <div id="ads-funil-labels" style="display:flex;margin-top:12px;"></div>
           </div>
 
+          <!-- POR ONDE A VENDA CHEGOU (vendas do TMX, por canal) -->
+          <div id="ads-por-canal" class="v2-cx" style="margin-bottom:20px"></div>
+
           <!-- POR CONTA DE ANUNCIO (fonte Utmify) -->
           <!-- MARGEM DE CONTRIBUICAO — o que sobra depois de imposto, taxa e custo -->
           <div id="ads-margem-box" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;">
@@ -37419,14 +37422,7 @@ function rsPintar(){
         sem.motivos.map(function(m){ return '<tr class="clica" onclick="rsVendas(\'sem\',\''+fnEsc(m.motivo).replace(/'/g,"\\'")+'\')"><td>'+fnEsc(m.motivo)+'</td><td class="n">'+m.vendas+'</td><td class="n">'+v2Din(m.valor)+'</td></tr>'; }).join('')+
       '</tbody></table></div><button class="fn-btn g sm" style="margin-top:10px" onclick="rsVendas(\'sem\')">Ver as '+sem.total+' venda'+s(sem.total)+'</button>'
     : '<div class="fx-vazio">Nenhuma venda sem origem no período.</div>';
-  var ICF = { meta:'👥', meta_ig:'📸', organico:'🌱', recuperacao:'☎', google:'🔎', apoio:'☎', sem:'?', direto:'↗' };
-  var fontes = d.fontes.length
-    ? '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
-        d.fontes.map(function(x){
-          return '<tr><td>'+(ICF[x.k]||'•')+' '+fnEsc(x.nome)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+v2Din(x.fat)+'</td><td class="n">'+
-            (x.apoio ? '<span class="v2-pill roxo">apoio</span>' : x.roas != null ? '<span class="'+(x.roas >= c.roasAlvo ? 'v2-bom' : 'v2-ruim')+'">'+v2X(x.roas)+'</span>' : '-')+'</td></tr>';
-        }).join('')+'</tbody></table></div>'
-    : '<div class="fx-vazio">Nenhuma venda do funil no período.</div>';
+  var fontes = vdPorCanalTab(d.fontes, c.roasAlvo, 'Nenhuma venda do funil no período.');
 
   el.innerHTML = avisos + cards +
     '<div class="v2-2col">'+
@@ -37449,6 +37445,40 @@ function rsPintar(){
           '<div class="fx-sub">Vendas deste funil: '+c.porJornada+' pela jornada'+(c.porCampanha ? ', '+c.porCampanha+' pela campanha' : '')+(c.porProduto ? ', '+c.porProduto+' pelo produto' : '')+'.</div></div>'+
       '</div>'+
     '</div>';
+}
+// ── Por onde a venda chegou ──
+// A mesma tabela no Resultado do funil, na Análise de tráfego › Resumo e em
+// Projeto › Vendas. Faturou e ROAS só pra Diretoria (o servidor manda vazio pros outros).
+function vdPorCanalTab(fs, roasAlvo, vazio){
+  var ICF = { meta:'👥', meta_ig:'📸', organico:'🌱', recuperacao:'☎', google:'🔎', apoio:'☎', sem:'?', direto:'↗' };
+  if(!fs || !fs.length) return '<div class="fx-vazio">'+(vazio || 'Nenhuma venda no período.')+'</div>';
+  return '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
+    fs.map(function(x){
+      return '<tr><td>'+(ICF[x.k]||'•')+' '+fnEsc(x.nome)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+(x.fat == null ? '<i>—</i>' : v2Din(x.fat))+'</td><td class="n">'+
+        (x.apoio ? '<span class="v2-pill roxo">apoio</span>' : x.roas != null ? '<span class="'+(x.roas >= roasAlvo ? 'v2-bom' : 'v2-ruim')+'">'+v2X(x.roas)+'</span>' : '-')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+// Busca e pinta o quadro num elemento. alvo: { projeto: 'CONCURSO' } ou { dash: id do
+// dashboard da Utmify }; vazio = todos os projetos. A tela que redesenha tudo (os
+// filtros das Vendas) reaproveita o resultado: o mesmo recorte só busca de novo depois de 1 min.
+var vdPcCache = {};
+function vdPorCanalCarregar(elId, alvo, de, ate){
+  var el = document.getElementById(elId); if(!el) return;
+  alvo = alvo || {};
+  var qs = alvo.projeto ? 'projeto='+encodeURIComponent(alvo.projeto) : (alvo.dash ? 'dash='+encodeURIComponent(alvo.dash) : 'projeto=');
+  var chave = qs+'|'+de+'|'+ate, c = vdPcCache[chave];
+  var cab = function(sub){ return '<div class="v2-cab"><div><h3>Por onde a venda chegou</h3><div class="s">Recuperação ajuda, mas não leva o crédito do anúncio'+(sub || '')+'</div></div></div>'; };
+  el.dataset.chave = chave;
+  el.innerHTML = c && c.html ? c.html : cab('')+'<div class="fx-vazio">Carregando…</div>';
+  if(c && (c.buscando || Date.now() - c.em < 60000)) return;
+  vdPcCache[chave] = { html: c && c.html, em: 0, buscando: true };
+  var pinta = function(html){ var e = document.getElementById(elId); if(e && e.dataset.chave === chave) e.innerHTML = html; };
+  v2Json('/api/vendas/por-canal?'+qs+'&de='+de+'&ate='+ate).then(function(d){
+    var html = cab(d.projeto ? ' · '+fnEsc(d.projeto) : ' · todos os projetos')+vdPorCanalTab(d.fontes, d.roasAlvo)+
+      (d.gasto != null && d.gasto > 0 ? '<div class="fx-sub" style="margin-top:6px">ROAS do Facebook e do Instagram contra o gasto das campanhas no período ('+v2Din(d.gasto)+').</div>' : '');
+    vdPcCache[chave] = { html: html, em: Date.now() };
+    pinta(html);
+  }).catch(function(e){ delete vdPcCache[chave]; pinta(cab('')+'<div class="fx-vazio">Não carregou: '+fnEsc(e.message)+'</div>'); });
 }
 function rsQuedaAcao(){
   var a = rsDados && rsDados.queda && rsDados.queda.acao; if(!a) return;
@@ -38089,8 +38119,10 @@ function pvPintar(){
       kpi('Com anúncio', fnNum(t.anuncio || 0), (t.vendas ? Math.round((t.anuncio || 0) * 100 / t.vendas) : 0)+'%'+(t.outroAparelho ? ' · '+t.outroAparelho+' de outro aparelho' : ''))+
       kpi('Prontas pra Meta', fnNum(t.meta || 0), fnNum(t.metaCompleta || 0)+' com os 8 dados')+
       kpi('Sem rastreio', fnNum(t.sem || 0), 'só e-mail e telefone')+'</div>'+
+    '<div id="pv-por-canal" class="v2-cx" style="margin:12px 0"></div>'+
     '<div class="pv-filtros">'+PV_FILTROS.map(function(f){ return '<button class="'+(pvFiltro === f[0] ? 'on' : '')+'" onclick="pvFiltro=\''+f[0]+'\';pvPintar()">'+f[1]+'</button>'; }).join('')+'</div>';
-  if(!lst.length) return cx.innerHTML = h + '<div class="fx-vazio">'+(vs.length ? 'Nenhuma venda nesse filtro.' : 'Nenhuma venda aprovada deste projeto no período.')+'</div>';
+  var porCanal = function(){ vdPorCanalCarregar('pv-por-canal', { projeto: d.projeto || fnProj }, d.de, d.ate); };
+  if(!lst.length){ cx.innerHTML = h + '<div class="fx-vazio">'+(vs.length ? 'Nenhuma venda nesse filtro.' : 'Nenhuma venda aprovada deste projeto no período.')+'</div>'; porCanal(); return; }
   h += '<div style="overflow-x:auto"><table class="sv-tab pv-tab" style="min-width:680px"><tr><th>'+(multi ? 'Quando' : 'Hora')+'</th><th>Produto</th><th class="n">Valor</th><th>De onde veio</th><th>Meta</th></tr>'+
     lst.map(function(v){
       var c = v.cred || {}, orig;
@@ -38106,6 +38138,7 @@ function pvPintar(){
     }).join('')+'</table></div>'+
     '<div class="fx-sub" style="margin-top:8px">Clique numa venda pra abrir. As barrinhas verdes são os 8 dados que vão pra Meta: e-mail, telefone, clique do anúncio, IP, navegador, cookie da Meta, id da pessoa e nome.</div>';
   cx.innerHTML = h;
+  porCanal();
 }
 
 function vdAbrir(id){
@@ -41579,6 +41612,8 @@ function _kpisUtmify(k){
   set('kpi-conv',    vendas.toLocaleString('pt-BR'));
   set('kpi-cpa',     (Number(k.cpa)||0)>0?fmtAds(k.cpa):'—');
   set('kpi-clicks',  (Number(k.cliques)||0).toLocaleString('pt-BR'));
+  // por onde a venda chegou: o mesmo período e projeto do topo
+  var pd = getAdsDates(); vdPorCanalCarregar('ads-por-canal', { dash: _adsProjeto() }, pd.from, pd.to);
 }
 
 // ── Margem de contribuição ──────────────────────────────────────────────────
