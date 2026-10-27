@@ -41453,14 +41453,21 @@ async function loadAdsMetricsUtmify(forcar){
     const d = await r.json();
     if(mySeq !== adsLoadSeq) return;   // outra atualizacao veio depois: descarta
 
-    adsCampanhasData = (d.porCampanha||[]).map(c=>({
+    // o servidor manda uma linha por campanha (id); a tabela antiga e o painel
+    // Utmify × TMX comparam pelo nome, então as cópias de mesmo nome somam aqui
+    const _porNome = {};
+    (d.porCampanha||[]).forEach(c=>{
+      const k = String(c.nome||''), x = _porNome[k] || (_porNome[k] = { nome:k, cliques:0, investimento:0, faturamento:0, lucro:0, vendas:0 });
+      ['cliques','investimento','faturamento','lucro','vendas'].forEach(f=>{ x[f] += Number(c[f])||0; });
+    });
+    adsCampanhasData = Object.values(_porNome).map(c=>({
       _id: String(c.nome||''), _name: String(c.nome||'—'),
       clicks: c.cliques||0, lp_views: 0,
       cost: c.investimento||0, total_revenue: c.faturamento||0,
       profit: c.lucro||0, approved: c.vendas||0,
       cpa: c.vendas>0 ? c.investimento/c.vendas : 0,
       cr:  c.cliques>0 ? (c.vendas/c.cliques)*100 : 0,
-      roas: c.roas||0
+      roas: c.investimento>0 ? c.faturamento/c.investimento : 0
     }));
     adsTrueApproved = (d.kpis&&d.kpis.vendas)||0;
     _adsPeriodoCarregado = periodo;
@@ -42186,7 +42193,13 @@ function cpPct(v, casas){ return v == null || isNaN(v) ? '<i>—</i>' : (v*100).
 function cpTmxDe(c){
   var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return null;
   if(!d._porId){ d._porId = {}; Object.keys(d.porCampanha).forEach(function(k){ var x = d.porCampanha[k]; if(x.campanhaId) d._porId[String(x.campanhaId)] = x; }); }
-  return (c.campanhaId && d._porId[String(c.campanhaId)]) || d.porCampanha[adsCampNorm(c.nome)] || null;
+  if(c.campanhaId && d._porId[String(c.campanhaId)]) return d._porId[String(c.campanhaId)];
+  // pelo nome fica só a venda que veio sem o id, e só na primeira linha com esse
+  // nome: senão cada cópia da campanha (mesmo nome) contava a mesma venda
+  var n = adsCampNorm(c.nome), x = d.porCampanha[n];
+  if(!x) return null;
+  var primeira = (cpDados||[]).find(function(o){ return adsCampNorm(o.nome) === n; });
+  return primeira === c ? x : null;
 }
 function cpVendasTmx(c){ var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return null; var x = cpTmxDe(c); return x ? x.vendas : 0; }
 // Vendas do TMX que não têm linha na tabela da Utmify: campanha que vendeu sem
@@ -42302,11 +42315,14 @@ function cpTabela(l){
   l = l.slice().sort(function(a, b){ var x = val(a, cpEst.ord), y = val(b, cpEst.ord); return cpEst.desc ? y - x : x - y; });
   var th = function(c){ return '<th class="ord'+(cpEst.ord === c.k ? ' on' : '')+'" onclick="cpOrdenar(\''+c.k+'\')"'+(c.tit ? ' title="'+fnEsc(c.tit)+'"' : '')+'>'+c.t+(cpEst.ord === c.k ? (cpEst.desc ? ' ↓' : ' ↑') : '')+'</th>'; };
   var hm = function(ms){ var d = new Date(ms); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+  // campanha duplicada na Meta tem o mesmo nome: o fim do id diferencia as cópias
+  var rep = {}; (cpDados||[]).forEach(function(c){ var n = adsCampNorm(c.nome); rep[n] = (rep[n] || 0) + 1; });
   var linhas = l.map(function(c, i){
-    var st = cpStatus(c.status), mu = c.mudanca;
+    var st = cpStatus(c.status), mu = c.mudanca, nr = rep[adsCampNorm(c.nome)] || 0;
     return '<tr onclick="cpAbrir('+cpDados.indexOf(c)+')">'+
       '<td class="f1">'+cpChave(c, st)+'<span class="cp-st '+st[1]+'">'+st[0]+'</span></td>'+
       '<td class="f2"><b title="'+fnEsc(c.nome)+'">'+fnEsc(cpNomeCurto(c.nome))+'</b><div class="cp-chips">'+(c.conta ? '<span>'+fnEsc(c.conta)+'</span>' : '')+
+        (nr > 1 && c.campanhaId ? '<span title="'+nr+' campanhas com este mesmo nome na Meta. Esta é a de id '+fnEsc(c.campanhaId)+'.">id …'+fnEsc(String(c.campanhaId).slice(-5))+'</span>' : '')+
         (mu ? '<span class="mu" title="'+fnEsc((mu.campo === 'orc' ? 'Orçamento' : mu.campo === 'bid' ? 'Bid cap' : 'Status')+(mu.de ? ': '+mu.de+' → '+mu.para : ': '+mu.para))+'">'+(mu.campo === 'status' ? 'status' : mu.campo === 'bid' ? 'bid' : 'orçamento')+' mudou '+hm(mu.em)+'</span>' : '')+'</div></td>'+
       cs.map(function(col){ return '<td'+(col.cls ? ' class="'+col.cls(c)+'"' : '')+'>'+col.v(c, mx)+'</td>'; }).join('')+
       '<td class="f3"><button onclick="event.stopPropagation();cpAbrir('+cpDados.indexOf(c)+')">Análise ›</button></td></tr>';
@@ -42515,10 +42531,21 @@ function adsTmxCarregar(de, ate){
     .then(function(d){ if(!adsTmx || adsTmx.chave !== chave) return; adsTmx.carregando = false; adsTmx.dados = d; adsTmxPintar(); })
     .catch(function(e){ if(!adsTmx || adsTmx.chave !== chave) return; adsTmx.carregando = false; adsTmx.erro = e.message; adsTmxPintar(); });
 }
+// as vendas do TMX somadas por nome de campanha: o servidor separa pelo id,
+// a tabela antiga e o painel Utmify × TMX comparam pelo nome
+function adsTmxPorNome(d){
+  if(d._porNome) return d._porNome;
+  var m = {};
+  Object.keys(d.porCampanha).forEach(function(k){
+    var x = d.porCampanha[k], n = adsCampNorm(x.nome), y = m[n] || (m[n] = { nome: x.nome, vendas: 0, pedidos: [] });
+    y.vendas += x.vendas; y.pedidos = y.pedidos.concat(x.pedidos || []);
+  });
+  return (d._porNome = m);
+}
 function adsTmxCelula(r){
   var d = adsTmx && adsTmx.dados;
   if(!d) return '<td style="text-align:right;padding:9px 10px;color:var(--text2)">'+(adsTmx && adsTmx.carregando ? '…' : '—')+'</td>';
-  var c = d.porCampanha[adsCampNorm(r._name)], n = c ? c.vendas : 0, u = Number(r.approved)||0, dif = n - u;
+  var c = adsTmxPorNome(d)[adsCampNorm(r._name)], n = c ? c.vendas : 0, u = Number(r.approved)||0, dif = n - u;
   var selo = dif ? ' <span style="font-size:10.5px;font-weight:800;color:'+(dif > 0 ? 'var(--green)' : '#f59e0b')+'" title="'+
     (dif > 0 ? dif+' venda(s) que o TMX ligou a esta campanha e a Utmify não contou' : (-dif)+' venda(s) que a Utmify contou e o TMX não ligou a esta campanha')+'">'+
     (dif > 0 ? '+' : '−')+Math.abs(dif)+'</span>' : '';
@@ -42535,13 +42562,14 @@ function adsTmxPintar(){
   var porNome = {}; (adsCampanhasData||[]).forEach(function(r){ porNome[adsCampNorm(r._name)] = r; });
   var utTotal = (adsCampanhasData||[]).reduce(function(a, r){ return a + (Number(r.approved)||0); }, 0);
   var emCamp = 0; Object.keys(d.porCampanha).forEach(function(k){ emCamp += d.porCampanha[k].vendas; });
+  var tn = adsTmxPorNome(d);
   // campanhas que só o TMX tem: linha extra no fim da tabela
   var tb = document.getElementById('ads-body-campanhas');
   if(tb){
-    var so = Object.keys(d.porCampanha).filter(function(k){ return !porNome[k]; });
+    var so = Object.keys(tn).filter(function(k){ return !porNome[k]; });
     if(so.length && !adsCampanhasData.length) tb.innerHTML = '';
     tb.insertAdjacentHTML('beforeend', so.map(function(k){
-      var c = d.porCampanha[k];
+      var c = tn[k];
       return '<tr style="border-bottom:1px solid rgba(255,255,255,.05);"><td style="padding:9px 10px;font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(c.nome)+'">'+esc(c.nome)+
         ' <span style="font-size:10px;font-weight:800;color:var(--accent)">só no TMX</span></td>'+
         '<td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td><td style="text-align:right;padding:9px 10px;color:var(--text2)">—</td>'+
@@ -42551,9 +42579,9 @@ function adsTmxPintar(){
     }).join(''));
   }
   // onde não bate: campanha a campanha, com as vendas do TMX
-  var chaves = {}; Object.keys(d.porCampanha).forEach(function(k){ chaves[k] = 1; }); Object.keys(porNome).forEach(function(k){ chaves[k] = 1; });
+  var chaves = {}; Object.keys(tn).forEach(function(k){ chaves[k] = 1; }); Object.keys(porNome).forEach(function(k){ chaves[k] = 1; });
   var difs = Object.keys(chaves).map(function(k){
-    var c = d.porCampanha[k], r = porNome[k];
+    var c = tn[k], r = porNome[k];
     return { nome: c ? c.nome : r._name, u: r ? (Number(r.approved)||0) : 0, t: c ? c.vendas : 0, pedidos: c ? c.pedidos : [] };
   }).filter(function(x){ return x.u !== x.t; }).sort(function(a, b){ return Math.abs(b.t - b.u) - Math.abs(a.t - a.u); });
   var quando = function(em){ var x = new Date(em); return String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0')+' '+String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'); };

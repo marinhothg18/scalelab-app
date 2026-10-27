@@ -4806,11 +4806,11 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
     const aprov = baseKpi.reduce((s, l) => s + (Number(
       l.vendasAprovadas !== undefined ? l.vendasAprovadas : l.vendas) || 0), 0);
     const inv = soma('investimento'), fat = soma('faturamento');
-    const agrupar = (campo, fonte) => {
+    const agrupar = (campo, fonte, chave) => {
       const m = {};
       (fonte || deCampanha).forEach(l => {
-        const k = l[campo] || '—';
-        if (!m[k]) m[k] = { nome:k, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0, aprovadas:0, vv:0, v3:0, v75:0, ic:0, lpv:0, _fi:0, _video:false, _data:'' };
+        const nome = l[campo] || '—', k = chave ? chave(l) : nome;
+        if (!m[k]) m[k] = { nome, investimento:0, faturamento:0, lucro:0, vendas:0, cliques:0, impressoes:0, aprovadas:0, vv:0, v3:0, v75:0, ic:0, lpv:0, _fi:0, _video:false, _data:'' };
         if (l.lpv !== undefined) m[k].lpv += Number(l.lpv) || 0;
         // frequência não soma: média ponderada pelas impressões de cada dia
         if (l.freq) m[k]._fi += (Number(l.freq) || 0) * (Number(l.impressoes) || 0);
@@ -4818,7 +4818,7 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
         if (l.v3 !== undefined) { m[k]._video = true; m[k].vv += Number(l.vv)||0; m[k].v3 += Number(l.v3)||0; m[k].v75 += Number(l.v75)||0; m[k].ic += Number(l.ic)||0; }
         // o estado (conta, status, orçamento) é o do dia mais recente do período
         if (String(l.data || '') >= m[k]._data) {
-          m[k]._data = String(l.data || '');
+          m[k]._data = String(l.data || ''); m[k].nome = nome;
           if (l.campanhaId) m[k].campanhaId = l.campanhaId; if (l.conta) m[k].conta = l.conta; if (l.status) m[k].status = l.status;
           if (l.orc !== undefined) { m[k].orc = l.orc; m[k].orcVida = !!l.orcVida; } if (l.bid !== undefined) m[k].bid = l.bid; if (l.criada) m[k].criada = l.criada;
           if (l.dashboard) m[k].dashboard = l.dashboard;
@@ -4850,7 +4850,9 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
         cpa: aprov > 0 ? inv / aprov : 0
       },
       atualizadoEm: (_utmifyMcpCfg(db) || {}).ultimaSync || null,
-      porCampanha:  _comMudancas(agrupar('campanha'), de, ate),
+      // pelo id: campanha duplicada na Meta fica com o mesmo nome, e agrupar pelo
+      // nome somava o gasto de 6 cópias numa linha com o status de uma só
+      porCampanha:  _comMudancas(agrupar('campanha', null, l => l.campanhaId ? 'id:' + l.campanhaId : (l.campanha || '—')), de, ate),
       porAnuncio:   agrupar('anuncio'),
       porDia:       agrupar('data', baseKpi).sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
       porDashboard: agrupar('dashboard', baseKpi),
@@ -5119,12 +5121,12 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
         return;
       }
       const id = idDe(p);
-      const k = id ? _campNorm(nomePorId[id]) : _campNorm(p.cred_camp);
+      // com o id, uma entrada por campanha: as cópias com o mesmo nome não se misturam
+      const k = id ? 'id:' + id : _campNorm(p.cred_camp);
       const c = porCampanha[k] || (porCampanha[k] = { nome: id ? _semId(nomePorId[id]) : _semId(p.cred_camp), campanhaId: id,
                                                       vendas: 0, faturamento: dir ? 0 : null, pedidos: [] });
-      if (id && !c.campanhaId) c.campanhaId = id;
       // o nome que a venda trouxe, quando a campanha mudou de nome depois do clique
-      if (id && _campNorm(p.cred_camp) !== k) c.nomeNaVenda = _semId(p.cred_camp);
+      if (id && _campNorm(p.cred_camp) !== _campNorm(nomePorId[id])) c.nomeNaVenda = _semId(p.cred_camp);
       c.vendas++; if (dir) c.faturamento += Number(p.valor) || 0;
       c.pedidos.push(linha(p));
     });
