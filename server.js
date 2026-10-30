@@ -14768,16 +14768,19 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const dir = _ehDir(req), custos = _custosCfg(dbj), canais = _canaisCache();
     const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
     const esq = _escopoSql(esc, 'p');
-    const linhas = _q(`SELECT p.visitante, p.pg, p.etapa, p.pitch ppitch, s.checkout, s.pitch, s.fonte, s.midia, s.camp, s.cont, s.teste
+    const linhas = _q(`SELECT p.visitante, p.pg, p.etapa, p.dia, p.pitch ppitch, s.checkout, s.pitch, s.fonte, s.midia, s.camp, s.cont, s.teste
                        FROM paginas p JOIN sessoes s ON s.id = p.sessao
                        WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ` + esq.where).all(per.de, per.ate, ...esq.args);
     const porEtapa = {}, todos = new Set(), ck = new Set(), pit = new Set(), toques = {}, testes = {};
     const pitEtapa = {};      // quem passou do pitch NESTA página
+    const diaEtapa = {};      // etapa -> dia -> { p, pit }: o "por dia" do painel do bloco
     linhas.forEach(l => {
       const et = _etapaDaLinha(esc, l.pg, l.etapa);
       if (!et) return;
       (porEtapa[et] = porEtapa[et] || new Set()).add(l.visitante);
       if (l.ppitch) (pitEtapa[et] = pitEtapa[et] || new Set()).add(l.visitante);
+      const de = diaEtapa[et] || (diaEtapa[et] = {}), dd = de[l.dia] || (de[l.dia] = { p: new Set(), pit: new Set() });
+      dd.p.add(l.visitante); if (l.ppitch) dd.pit.add(l.visitante);
       todos.add(l.visitante);
       if (l.checkout) ck.add(l.visitante);
       if (l.pitch) pit.add(l.visitante);
@@ -14806,10 +14809,12 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const ckEtapaPlat = {};  // o mesmo, por plataforma do checkout (payt, hubla...)
     const ckPlat = {};       // visitante -> plataformas pra onde clicou em comprar
     const evDe = {};         // visitante -> [{em, et, ck}]
+    const ckDia = {};        // etapa -> dia -> quem clicou em comprar nela naquele dia
     const alvoEv = [...compradores];
     _q(`SELECT visitante, pg, etapa, em, extra FROM eventos WHERE tipo='checkout' AND em BETWEEN ? AND ?`).all(per.ini, per.fim).forEach(x => {
       const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (!et || !todos.has(x.visitante)) return;
       (ckEtapa[et] = ckEtapa[et] || new Set()).add(x.visitante);
+      const cd = ckDia[et] || (ckDia[et] = {}); (cd[_diaBR(x.em)] = cd[_diaBR(x.em)] || new Set()).add(x.visitante);
       let dest = '', path = ''; try { const ex = JSON.parse(x.extra || '{}') || {}; dest = ex.destino || ''; path = ex.dest || (String(dest).indexOf('/') > 0 ? _normPg(dest) : ''); } catch (er) {}
       const pl = _platDoHost(dest);
       const cl = { v: x.visitante, plat: pl, path, et, em: x.em };
@@ -14838,6 +14843,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     // Back redirect é a exceção: ele SALVA a venda da página que trouxe a pessoa,
     // que continua com ela.
     const vendaDaEtapa = {}, vendaEntrada = {}, salvasDaEtapa = {}, levouDaEtapa = {};
+    const donaDe = new Map();   // venda -> página dona (o Obrigado diz de qual página veio cada compra)
     vendas.forEach(o => {
       if (!o.visitante) return;
       const lim = (o.em || 0) + 10 * 60000, desde = (o.em || 0) - 7 * 86400000;
@@ -14852,7 +14858,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       const viaBack = !!clique && esc.tipoEtapa[clique] === 'backredirect';
       const dona = clique && !viaBack ? clique : entrada;
       if (entrada) (vendaEntrada[entrada] = vendaEntrada[entrada] || []).push(o);
-      if (dona) (vendaDaEtapa[dona] = vendaDaEtapa[dona] || []).push(o);
+      if (dona) { (vendaDaEtapa[dona] = vendaDaEtapa[dona] || []).push(o); donaDe.set(o, dona); }
       if (clique && entrada && clique !== entrada) {
         const x = salvasDaEtapa[clique] || (salvasDaEtapa[clique] = { n: 0, de: {} });
         x.n++; x.de[entrada] = (x.de[entrada] || 0) + 1;
@@ -14865,11 +14871,19 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       const vf = (vendaDaEtapa[id] || []).filter(o => casaProd(o, lst));
       const sv = salvasDaEtapa[id], lv = levouDaEtapa[id];
       const lista = m => Object.entries(m).sort((a, b) => b[1] - a[1]).map(([et, n]) => ({ nome: esc.nomeEtapa[et] || et, n }));
+      // o painel do bloco: dia a dia (quem esteve em dois dias conta nos dois) e
+      // a campanha que levou o crédito de cada venda daqui
+      const dias = diaEtapa[id] || {}, ckd = ckDia[id] || {}, vd = {};
+      vf.forEach(o => { const d = o.dia || _diaBR(o.em); vd[d] = (vd[d] || 0) + 1; });
+      const porDia = [...new Set(Object.keys(dias).concat(Object.keys(ckd), Object.keys(vd)))].sort().map(d => ({
+        dia: d, pessoas: dias[d] ? dias[d].p.size : 0, pitch: dias[d] ? dias[d].pit.size : 0,
+        checkout: ckd[d] ? ckd[d].size : 0, vendas: vd[d] || 0 }));
       return { pessoas: s.size, checkout: (ckEtapa[id] || new Set()).size, pitch: (pitEtapa[id] || new Set()).size,
                vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
                conversao: s.size ? vf.length / s.size : 0, produtos: topProd(vf),
                // salvas: compraram aqui tendo entrado por outra página; levou: entraram aqui e compraram em outra
-               salvas: sv ? sv.n : 0, salvasDe: sv ? lista(sv.de) : [], levou: lv ? lv.n : 0, levouPara: lv ? lista(lv.para) : [] };
+               salvas: sv ? sv.n : 0, salvasDe: sv ? lista(sv.de) : [], levou: lv ? lv.n : 0, levouPara: lv ? lista(lv.para) : [],
+               porDia, porCampanha: _ckSoma(vf, o => nomeCamp(o.cred_camp || o.camp) || 'Sem campanha') };
     };
     // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
@@ -14985,6 +14999,12 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     });
     const abst = (Array.isArray(dbj.store[KEY_ABSTATS]) ? dbj.store[KEY_ABSTATS] : []).concat(Object.values(_abBuffer));
     const redirs = Array.isArray(dbj.store[KEY_REDIRS]) ? dbj.store[KEY_REDIRS] : [];
+    // A taxa do upsell é sobre quem comprou o produto PRINCIPAL: o Obrigado soma
+    // o upsell junto, e com ele na base (74 em vez de 70) o upsell entrava na
+    // própria conta. Principal = venda que não é do produto de nenhum upsell/downsell.
+    const ofertas = (f.etapas || []).filter(x => x.tipo === 'upsell' || x.tipo === 'downsell').map(prodLista).filter(l => l.length);
+    const ehOferta = o => ofertas.some(l => casaProd(o, l));
+    const principais = vendas.filter(o => !ehOferta(o));
     (f.etapas || []).forEach(e => {
       const temPagina = porEtapa[e.id] && porEtapa[e.id].size;
       if (e.tipo === 'split') {
@@ -15066,9 +15086,22 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         const vf = (e.tipo === 'obrigado' || lst.length) ? vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat)) : [];
         const quem = new Set(vf.map(o => o.visitante).filter(Boolean));
         conj[e.id] = quem;
+        const porProd = {};
+        vf.forEach(o => {
+          const k = String(o.produto || '(sem nome)').trim();
+          const x = porProd[k] || (porProd[k] = { nome: k, n: 0, fat: 0, oferta: ehOferta(o) });
+          x.n++; x.fat += liq(o);
+        });
         nos[e.id] = { tipo: e.tipo, viaVenda: true, produto: e.produto || '', integracao: e.integracao || '',
                       pessoas: quem.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
-                      semPessoa: vf.filter(o => !o.visitante).length, produtos: topProd(vf), semProduto: e.tipo !== 'obrigado' && !lst.length };
+                      semPessoa: vf.filter(o => !o.visitante).length, produtos: topProd(vf), semProduto: e.tipo !== 'obrigado' && !lst.length,
+                      // painel: o principal do funil (base da taxa do upsell), o que é upsell
+                      // dentro deste bloco, cada produto e a página onde a venda saiu
+                      oferta: vf.filter(ehOferta).length, principal: principais.length,
+                      fatPrincipal: dir ? principais.reduce((a, o) => a + liq(o), 0) : null,
+                      porProduto: Object.values(porProd).sort((a, b) => b.n - a.n).map(x => Object.assign(x, dir ? {} : { fat: null })),
+                      porPagina: _ckSoma(vf, o => !o.visitante ? 'sem pessoa ligada'
+                        : donaDe.has(o) ? (esc.nomeEtapa[donaDe.get(o)] || 'página do funil') : 'página fora do desenho') };
       } else if (e.tipo === 'recuperacao') {
         const vr = vendas.filter(o => o.apoio);
         const s = new Set(vr.map(o => o.visitante).filter(Boolean));

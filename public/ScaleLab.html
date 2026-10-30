@@ -1754,6 +1754,27 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .fx-g{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
 .fx-m-r{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700}
 .fx-m-v{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:1px}
+.fx-m-t{font-size:10.5px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;margin-top:1px}
+/* taxa do upsell no bloco e as peças do painel do bloco */
+.fn-taxa{margin-top:9px;padding:8px 9px;border-radius:8px;background:rgba(197,44,88,.08)}
+.fn-taxa .fx-c-pe{margin:0 0 5px;color:var(--text)}
+.fn-taxa small{display:block;font-size:10.5px;color:var(--text2);margin-top:5px;line-height:1.4}
+.gv-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.gv-kpis.d2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.gv-kpi{background:var(--bg3);border-radius:10px;padding:9px 10px;min-width:0}
+.gv-kpi .fx-m-v{font-size:15px}
+.gv-kpi small{display:block;font-size:10.5px;color:var(--text2);margin-top:2px;line-height:1.35}
+.gv-passo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;margin-bottom:11px;font-size:12.5px}
+.gv-passo small{display:block;color:var(--text2);font-size:11px;margin-top:1px}
+.gv-passo .n{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.gv-passo .n small{color:var(--accent);font-weight:700}
+.gv-passo .v2-trilho{grid-column:1 / -1;height:7px}
+.gv-dia{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+.gv-dia th{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);font-weight:700;text-align:right;padding:3px 3px 6px}
+.gv-dia td{padding:5px 3px;border-top:1px solid var(--border);text-align:right}
+.gv-dia th:first-child,.gv-dia td:first-child{text-align:left}
+.gv-rola{overflow-x:auto}
+.gv-aviso{background:rgba(255,89,38,.10);border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.5;margin-top:12px}
 .fx-c-pe{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin:10px 0 4px}
 .fx-c-pe b{color:var(--text)}
 .cr-vsl{position:relative;width:min(340px,70vw)}
@@ -33638,7 +33659,7 @@ function mpAgoraTotal(){
 }
 function mpAgoraPintar(){
   var f = fnAtual(); if(!f) return;
-  document.querySelectorAll('#fn-palco .fn-agora[data-agora]').forEach(function(el){
+  document.querySelectorAll('#fn-palco .fn-agora[data-agora], #gv-ver .fn-agora[data-agora]').forEach(function(el){
     var id = el.getAttribute('data-agora'), n = fnAcha(f, id);
     var x = fnAgoraInfo(n, fnBlocos && fnBlocos.nos ? fnBlocos.nos[id] : null);
     if(!x || !x.pronto){ el.style.display = 'none'; return; }
@@ -34102,9 +34123,28 @@ function fnNoSoma(rot, lista){
   return '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal"><b style="color:var(--text)">'+rot+':</b> '+
     lista.map(function(x){ return fnEsc(x.nome)+' <b style="color:var(--text)">'+fnNum(x.n)+'</b>'; }).join(' · ')+'</div>';
 }
+// As taxas de cada passo da página: pitch sobre quem entrou, checkout sobre
+// quem passou do pitch e venda sobre quem foi pro checkout. Checkout com mais
+// gente que o pitch (pitch sem registro) fica sobre quem entrou; venda com mais
+// gente que o checkout (comprou sem o clique visto) fica sem taxa.
+function fnTaxasPagina(b, comPitch){
+  var t = { pitch:null, ck:null, ckDoPitch:false, venda:null };
+  if(!b || !b.pessoas) return t;
+  var pit = comPitch ? (b.pitch || 0) : 0;
+  if(pit) t.pitch = pit / b.pessoas;
+  if(b.checkout){ t.ckDoPitch = !!pit && b.checkout <= pit; t.ck = b.checkout / (t.ckDoPitch ? pit : b.pessoas); }
+  if(b.checkout && b.vendas <= b.checkout) t.venda = b.vendas / b.checkout;
+  return t;
+}
+function fnPctTaxa(x){ return x == null ? '—' : v2Pct(x, x > 0 && x < .01 ? 2 : 1); }
+// Upsell/downsell: sobre quem comprou o produto principal (o servidor manda a base)
+function fnTaxaOferta(n, b){
+  if(!b || !b.viaVenda || b.semProduto || !b.principal || (n.tipo !== 'upsell' && n.tipo !== 'downsell')) return null;
+  return { taxa: b.vendas / b.principal, rot: n.tipo };
+}
 function fnNoCorpo(n, b, vt){
   var cor = FN_CORES[n.tipo] || '#1B9CFA';
-  var m = function(r, v, c){ return '<div><div class="fx-m-r">'+r+'</div><div class="fx-m-v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div></div>'; };
+  var m = function(r, v, c, t){ return '<div><div class="fx-m-r">'+r+'</div><div class="fx-m-v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div>'+(t?'<div class="fx-m-t">'+t+'</div>':'')+'</div>'; };
   var pc = function(x){ return x == null ? '—' : v2Pct(x, x > 0 && x < .1 ? 2 : 1); };
   var din = function(x){ return x == null ? (b.vendas ? '•••' : '-') : v2Din(x); };
   var rot = n.tipo === 'fonte' ? (b.canal === 'meta' ? 'ADS' : b.canal === 'instagram' ? 'BIO' : b.canal === 'organico' ? 'ORGÂNICO' : 'UTM') : (FN_ROT[n.tipo] || 'PÁGINA');
@@ -34151,14 +34191,23 @@ function fnNoCorpo(n, b, vt){
     grade = m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
     pe = b.semProduto ? '<div style="font-size:10px;color:var(--v2-laranja,#F59E0B);margin-top:6px;font-weight:700">Escolha o produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+' no painel: é por ele que a venda fica separada da principal.</div>'
                       : fnNoProdutos(b) + (b.semPessoa ? '<div class="fx-c-url" style="margin-top:4px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>' : '');
+    var ofx = fnTaxaOferta(n, b);
+    if(ofx) pe += '<div class="fn-taxa"><div class="fx-c-pe"><span>Taxa do '+ofx.rot+'</span><b>'+fnPctTaxa(ofx.taxa)+'</b></div>'+
+      '<div class="v2-trilho" style="height:5px;background:var(--bg2)"><i style="width:'+Math.min(100, ofx.taxa*100).toFixed(1)+'%;background:#C52C58"></i></div>'+
+      '<small>'+fnNum(b.vendas)+' de '+fnNum(b.principal)+' que compraram o produto principal</small></div>';
+    // o Obrigado soma o upsell junto: separado, dá pra ver a base da taxa
+    if(n.tipo === 'obrigado' && b.oferta) pe += '<div class="fx-m-t" style="margin-top:6px">'+fnNum(b.vendas - b.oferta)+' do produto principal + '+fnNum(b.oferta)+' de upsell</div>';
   } else if(n.tipo === 'recuperacao'){
     sub = 'ligação, WhatsApp, e-mail';
     grade = m('Pessoas', fnNum(b.pessoas)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
   } else {
     sub = (n.url ? fnLinkCurto(n.url) : '') + (n.produto ? ' · '+n.produto : '');
-    grade = m('Pessoas', fnNum(b.pessoas)) + m('Checkouts', fnNum(b.checkout)) +
-      ((n.tipo === 'vsl' || n.tipo === 'backredirect') ? m('Passaram do pitch', b.pitch ? fnNum(b.pitch) : '-') : '') +
-      m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
+    // na ordem do funil, cada número com a taxa sobre o passo anterior
+    var comPitch = n.tipo === 'vsl' || n.tipo === 'backredirect', tx = fnTaxasPagina(b, comPitch);
+    grade = m('Pessoas', fnNum(b.pessoas)) +
+      (comPitch ? m('Passaram do pitch', b.pitch ? fnNum(b.pitch) : '-', '', tx.pitch != null ? fnPctTaxa(tx.pitch)+' das pessoas' : '') : '') +
+      m('Checkouts', fnNum(b.checkout), '', tx.ck != null ? fnPctTaxa(tx.ck)+(tx.ckDoPitch ? ' do pitch' : ' das pessoas') : '') +
+      m('Vendas', fnNum(b.vendas), b.vendas ? verde : '', tx.venda != null ? fnPctTaxa(tx.venda)+' do checkout' : '') + m('Faturamento', din(b.faturamento));
     pe = '<div class="fx-c-pe"><span>Taxa de conversão</span><b>'+v2Pct(b.conversao, 2)+'</b></div>'+
          '<div class="v2-trilho" style="height:5px"><i style="width:'+Math.min(100, (b.conversao||0)*800).toFixed(1)+'%;background:#22C55E"></i></div>'+
          // a venda é da página do clique em comprar; o back redirect só "salva" a da página que trouxe a pessoa
@@ -35090,6 +35139,11 @@ function mpLeitura(n){
       '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>';
     return h;
   }
+  // upsell, obrigado e página têm o painel completo; origem, teste A/B,
+  // checkout e recuperação ficam com a leitura curta abaixo
+  if(b.viaVenda && (n.tipo === 'upsell' || n.tipo === 'downsell')) return mpLeituraOferta(n, b);
+  if(b.viaVenda && n.tipo === 'obrigado') return mpLeituraObrigado(n, b);
+  if(!b.viaVenda && !b.viaClique && ['fonte', 'split', 'recuperacao'].indexOf(n.tipo) < 0) return mpLeituraPagina(n, b);
   if(n.url) h += '<div class="fx-sub" style="margin-bottom:10px;word-break:break-all">🔗 <a href="'+fnEsc(/^https?:/i.test(n.url)?n.url:'https://'+n.url)+'" target="_blank" rel="noopener">'+fnEsc(n.url)+'</a></div>';
   if(n.integracao) h += linha('Integração', fnEsc(n.integracao));
   if(b.cliques != null) h += linha(n.tipo === 'split' ? 'Cliques no link' : b.viaClique ? 'Clicaram em comprar' : 'Cliques no anúncio', fnNum(b.cliques));
@@ -35103,13 +35157,134 @@ function mpLeitura(n){
   if(b.faturamento != null) h += linha('Faturamento', v2Din(b.faturamento));
   if(b.conversao != null && b.pessoas) h += linha('Conversão', v2Pct(b.conversao, 2));
   if(b.divisao) h += '<div class="gv-grp">Divisão real</div>'+b.divisao.map(function(d){ return linha(fnEsc(d.nome), d.pct == null ? '—' : v2Pct(d.pct, 0)); }).join('');
-  var f = fnAtual();
-  var entra = (f.ligacoes||[]).filter(function(l){ return l[1] === n.id; }), sai = (f.ligacoes||[]).filter(function(l){ return l[0] === n.id; });
-  var fio = function(l, ida){ var o = fnAcha(f, ida ? l[1] : l[0]); var x = fnBlocos.fios[l[0]+'|'+l[1]]; return o ? linha((ida ? '→ ' : '← ')+fnEsc(o.nome), x ? fnNum(x.n)+' · '+v2Pct(x.pct, 0) : '—') : ''; };
-  if(entra.length || sai.length) h += '<div class="gv-grp">Caminhos</div>'+entra.map(function(l){ return fio(l, false); }).join('')+sai.map(function(l){ return fio(l, true); }).join('');
+  h += mpCaminhos(n);
   if(b.pessoas && n.tipo !== 'obrigado') h += '<button class="fn-btn g sm" style="width:100%;margin-top:12px" onclick="ldIrPara('+(n.tipo === 'fonte' || n.tipo === 'split' ? '{}' : '{etapa:\''+n.id+'\'}')+')">👥 Ver essas pessoas nos Leads</button>';
   h += '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>';
   return h;
+}
+// ── Peças do painel do bloco ──
+function mpLinha(r, v){ return '<div class="fn-l"><span>'+r+'</span><span>'+v+'</span></div>'; }
+function mpKpi(r, v, s, cor){
+  return '<div class="gv-kpi"><div class="fx-m-r">'+r+'</div><div class="fx-m-v"'+(cor ? ' style="color:'+cor+'"' : '')+'>'+v+'</div>'+(s ? '<small>'+s+'</small>' : '')+'</div>';
+}
+// um passo do funil: nome, número, a taxa sobre o passo anterior e a barra dela
+function mpPasso(nome, sub, num, pct, larg, cor){
+  return '<div class="gv-passo"><div>'+nome+(sub ? '<small>'+sub+'</small>' : '')+'</div>'+
+    '<div class="n">'+num+(pct ? '<small>'+pct+'</small>' : '')+'</div>'+
+    '<div class="v2-trilho"><i style="width:'+Math.max(1.2, Math.min(100, larg || 0)).toFixed(1)+'%;background:'+cor+'"></i></div></div>';
+}
+function mpCaminhos(n){
+  var f = fnAtual(); if(!f || !fnBlocos) return '';
+  var entra = (f.ligacoes||[]).filter(function(l){ return l[1] === n.id; }), sai = (f.ligacoes||[]).filter(function(l){ return l[0] === n.id; });
+  var fio = function(l, ida){ var o = fnAcha(f, ida ? l[1] : l[0]); var x = (fnBlocos.fios || {})[l[0]+'|'+l[1]]; return o ? mpLinha((ida ? '→ ' : '← ')+fnEsc(o.nome), x ? fnNum(x.n)+' · '+v2Pct(x.pct, 0) : '—') : ''; };
+  return (entra.length || sai.length) ? '<div class="gv-grp">Caminhos</div>'+entra.map(function(l){ return fio(l, false); }).join('')+sai.map(function(l){ return fio(l, true); }).join('') : '';
+}
+function mpBotaoEditar(){ return '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>'; }
+
+// Página (VSL, pré-venda, back redirect...): resumo, passo a passo com as
+// taxas, onde a pessoa sai, o dia a dia e de qual campanha veio quem comprou
+function mpLeituraPagina(n, b){
+  var verde = 'var(--v2-verde,#22C55E)', din = b.faturamento != null;
+  var comPitch = n.tipo === 'vsl' || n.tipo === 'backredirect', tx = fnTaxasPagina(b, comPitch);
+  var h = '';
+  if(n.url) h += '<div class="fx-sub" style="margin-bottom:6px;word-break:break-all">🔗 <a href="'+fnEsc(/^https?:/i.test(n.url)?n.url:'https://'+n.url)+'" target="_blank" rel="noopener">'+fnEsc(n.url)+'</a></div>';
+  h += fnAgoraChip(n, b);
+  h += '<div class="gv-grp">Resumo</div><div class="gv-kpis">'+
+      mpKpi('Vendas', fnNum(b.vendas), b.pessoas ? fnPctTaxa(b.vendas / b.pessoas)+' de quem entrou' : '', verde)+
+      mpKpi('Faturamento', din ? v2Din(b.faturamento) : '•••', 'líquido')+
+      mpKpi('Ticket médio', !din ? '•••' : b.vendas ? v2Din(b.faturamento / b.vendas) : '-', 'por venda')+'</div>'+
+    '<div class="gv-kpis d2" style="margin-top:7px">'+
+      mpKpi('Cada visita vale', !din ? '•••' : b.pessoas ? v2Din2(b.faturamento / b.pessoas) : '-', 'faturamento ÷ pessoas')+
+      mpKpi('Foram pro checkout', b.pessoas ? fnPctTaxa(b.checkout / b.pessoas) : '-', fnNum(b.checkout)+' de '+fnNum(b.pessoas)+' pessoas')+'</div>';
+  h += '<div class="gv-grp">Passo a passo da página</div>'+
+    mpPasso('Entraram na página', '', fnNum(b.pessoas), '', 100, '#1B9CFA')+
+    (comPitch ? mpPasso('Passaram do pitch', tx.pitch != null ? 'de quem entrou' : '', fnNum(b.pitch), tx.pitch != null ? fnPctTaxa(tx.pitch) : '', (tx.pitch || 0)*100, '#3E1493') : '')+
+    mpPasso('Clicaram em comprar', tx.ck == null ? '' : tx.ckDoPitch ? 'de quem passou do pitch' : 'de quem entrou', fnNum(b.checkout), tx.ck != null ? fnPctTaxa(tx.ck) : '', (tx.ck || 0)*100, '#FF5926')+
+    mpPasso('Compraram', tx.venda != null ? 'de quem clicou em comprar' : '', fnNum(b.vendas), tx.venda != null ? fnPctTaxa(tx.venda) : '', (tx.venda || 0)*100, '#22C55E');
+  // onde a pessoa sai: só os passos em que a conta fecha (o de baixo cabe no de cima)
+  var sai = [];
+  if(comPitch && b.pitch && b.pitch <= b.pessoas) sai.push(['Saíram antes do pitch', b.pessoas - b.pitch, (b.pessoas - b.pitch) / b.pessoas]);
+  if(tx.ckDoPitch) sai.push(['Viram o pitch e não clicaram em comprar', b.pitch - b.checkout, (b.pitch - b.checkout) / b.pitch]);
+  else if(!comPitch && b.pessoas && b.checkout <= b.pessoas) sai.push(['Saíram sem clicar em comprar', b.pessoas - b.checkout, (b.pessoas - b.checkout) / b.pessoas]);
+  if(tx.venda != null) sai.push(['Clicaram em comprar e não compraram', b.checkout - b.vendas, (b.checkout - b.vendas) / b.checkout]);
+  if(sai.length) h += '<div class="gv-grp">Onde a pessoa sai</div>'+sai.map(function(s){ return mpLinha(s[0], fnNum(s[1])+' · '+fnPctTaxa(s[2])); }).join('')+
+    (b.checkout > b.vendas ? '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="ldIrPara({etapa:\''+n.id+'\',status:\'checkout\'})">Ver quem foi pro checkout e não comprou ›</button>' : '');
+  var dias = b.porDia || [];
+  if(dias.length > 1) h += '<div class="gv-grp">Por dia</div><div class="gv-rola"><table class="gv-dia"><thead><tr><th>Dia</th><th>Pessoas</th>'+(comPitch ? '<th>Pitch</th>' : '')+
+    '<th>Checkout</th><th>Vendas</th><th>Conv.</th></tr></thead><tbody>'+
+    dias.slice().reverse().map(function(d){
+      return '<tr><td>'+v2Dia(d.dia)+'</td><td>'+fnNum(d.pessoas)+'</td>'+(comPitch ? '<td>'+fnNum(d.pitch)+'</td>' : '')+'<td>'+fnNum(d.checkout)+'</td>'+
+        '<td>'+(d.vendas ? '<b style="color:'+verde+'">'+fnNum(d.vendas)+'</b>' : '0')+'</td><td>'+(d.pessoas ? fnPctTaxa(d.vendas / d.pessoas) : '-')+'</td></tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<div class="fx-sub" style="margin-top:5px">Quem voltou em dois dias conta nos dois.</div>';
+  var cps = b.porCampanha || [];
+  if(cps.length) h += '<div class="gv-grp">De qual campanha veio quem comprou aqui</div>'+
+    cps.slice(0, 8).map(function(c){ return mpLinha(fnEsc(c.nome), fnNum(c.n)+(c.n === 1 ? ' venda' : ' vendas')); }).join('')+
+    (cps.length > 8 ? '<div class="fx-sub" style="margin-top:6px">e mais '+(cps.length - 8)+' campanha(s)</div>' : '');
+  if((b.produtos || []).length) h += '<div class="gv-grp">O que vendeu</div>'+b.produtos.map(function(p){ return mpLinha(fnEsc(p.nome), fnNum(p.n)); }).join('');
+  if(b.salvas || b.levou){
+    h += '<div class="gv-grp">Vendas que cruzaram páginas</div>';
+    (b.salvasDe || []).forEach(function(x){ h += mpLinha(n.tipo === 'backredirect' ? 'Salvou venda de '+fnEsc(x.nome) : 'Entraram antes por '+fnEsc(x.nome)+' e compraram aqui', fnNum(x.n)); });
+    (b.levouPara || []).forEach(function(x){ h += mpLinha('Entraram aqui e compraram em '+fnEsc(x.nome), fnNum(x.n)); });
+  }
+  h += mpCaminhos(n);
+  if(n.tipo === 'vsl') h += '<button class="fn-btn sm" style="width:100%;margin-top:12px" onclick="fnAba(\'vsl\')">🎥 Abrir a Análise de VSL</button>';
+  if(b.pessoas) h += '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="ldIrPara({etapa:\''+n.id+'\'})">👥 Ver essas pessoas nos Leads</button>';
+  return h + mpBotaoEditar();
+}
+
+// Obrigado: o que vendeu, o principal separado do upsell e de qual página saiu cada compra
+function mpLeituraObrigado(n, b){
+  var din = b.faturamento != null, h = '';
+  var f = fnAtual(), temDown = !!(f && (f.etapas || []).some(function(e){ return e.tipo === 'downsell'; }));
+  var rotOf = temDown ? 'Upsell e downsell' : 'Upsell';
+  if(n.integracao) h += mpLinha('Integração', fnEsc(n.integracao));
+  h += '<div class="gv-grp">Resumo</div><div class="gv-kpis">'+
+    mpKpi('Compraram', fnNum(b.vendas), 'vendas aprovadas', 'var(--v2-verde,#22C55E)')+
+    mpKpi('Faturamento', din ? v2Din(b.faturamento) : '•••', 'líquido')+
+    mpKpi('Ticket médio', !din ? '•••' : b.vendas ? v2Din(b.faturamento / b.vendas) : '-', 'por venda')+'</div>';
+  var pp = b.porProduto || [];
+  if(b.oferta){
+    var pr = b.vendas - b.oferta;
+    var nomes = function(of){ return pp.filter(function(p){ return !!p.oferta === of; }).map(function(p){ return fnEsc(p.nome)+' '+fnNum(p.n); }).join(' + '); };
+    h += '<div class="gv-grp">Principal × '+rotOf.toLowerCase()+'</div>'+
+      mpPasso('Produto principal', nomes(false), fnNum(pr), '', 100, '#22C55E')+
+      mpPasso(rotOf, nomes(true), fnNum(b.oferta), pr ? fnPctTaxa(b.oferta / pr) : '', pr ? b.oferta / pr * 100 : 0, '#C52C58');
+  }
+  if(pp.length) h += '<div class="gv-grp">Por produto</div>'+pp.map(function(p){
+    return mpLinha(fnEsc(p.nome)+(p.oferta ? ' <small>('+(temDown ? 'oferta' : 'upsell')+')</small>' : ''), fnNum(p.n)+(p.fat != null ? ' · '+v2Din(p.fat) : ''));
+  }).join('');
+  var pg = b.porPagina || [];
+  if(pg.length) h += '<div class="gv-grp">De qual página saiu a compra</div>'+pg.map(function(x){ return mpLinha(fnEsc(x.nome), fnNum(x.n)); }).join('')+
+    '<div class="fx-sub" style="margin-top:5px;line-height:1.5">A página do último clique em comprar. Sem o clique, a página por onde a pessoa entrou.</div>';
+  h += mpCaminhos(n);
+  if(b.vendas) h += '<button class="fn-btn g sm" style="width:100%;margin-top:12px" onclick="ldIrPara({status:\'comprador\'})">👥 Ver quem comprou</button>';
+  return h + mpBotaoEditar();
+}
+
+// Upsell/downsell: a taxa sobre quem comprou o produto principal e quanto rende
+function mpLeituraOferta(n, b){
+  var rot = n.tipo === 'downsell' ? 'downsell' : 'upsell', h = '';
+  if(n.integracao) h += mpLinha('Integração', fnEsc(n.integracao));
+  if(b.semProduto) return h + '<div class="fx-vazio">Escolha o produto deste '+rot+' (✏️ Editar o desenho): é por ele que a venda fica separada da principal.</div>' + mpBotaoEditar();
+  var pr = b.principal || 0, taxa = pr ? b.vendas / pr : null, rosa = '#C52C58';
+  h += '<div class="gv-grp">Taxa do '+rot+'</div><div class="gv-kpis d2">'+
+    mpKpi('Taxa do '+rot, taxa != null ? fnPctTaxa(taxa) : '-', fnNum(b.vendas)+' de '+fnNum(pr)+' que compraram o principal', rosa)+
+    mpKpi('Não levaram', pr >= b.vendas ? fnNum(pr - b.vendas) : '-', 'compraram o principal e não levaram')+'</div>';
+  h += '<div class="gv-grp">Passo a passo</div>'+
+    mpPasso('Compraram o produto principal', '', fnNum(pr), '', 100, '#22C55E')+
+    mpPasso('Levaram o '+rot, 'de quem comprou o principal', fnNum(b.vendas), taxa != null ? fnPctTaxa(taxa) : '', (taxa || 0)*100, rosa);
+  if(b.faturamento != null){
+    h += '<div class="gv-grp">Quanto o '+rot+' rende</div>'+
+      mpLinha('Faturamento do '+rot, v2Din(b.faturamento))+
+      (b.vendas ? mpLinha('Ticket do '+rot, v2Din2(b.faturamento / b.vendas)) : '')+
+      (pr ? mpLinha('A mais por comprador do principal', '+ '+v2Din2(b.faturamento / pr)) : '')+
+      (pr && b.fatPrincipal != null ? mpLinha('Ticket médio sem → com o '+rot, v2Din(b.fatPrincipal / pr)+' → '+v2Din((b.fatPrincipal + b.faturamento) / pr)) : '');
+  }
+  if((b.porProduto || []).length) h += '<div class="gv-grp">Produto</div>'+b.porProduto.map(function(p){ return mpLinha(fnEsc(p.nome), fnNum(p.n)); }).join('');
+  if(pr) h += '<div class="gv-aviso">A taxa usa só quem comprou o <b>produto principal</b> ('+fnNum(pr)+'). O bloco Obrigado soma o '+rot+' junto, por isso lá o número é maior.</div>';
+  h += mpCaminhos(n);
+  return h + mpBotaoEditar();
 }
 // Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
 // a plataforma pelo link colado no bloco, quando a integração não foi escolhida
