@@ -4975,6 +4975,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <div class="fx-nav-g">Pessoas</div>
             <button class="fx-nav-i" data-aba="leads" onclick="fnAba('leads',this)"><span>👥</span>Leads<i class="fx-nav-novo">NOVO</i></button>
             <button class="fx-nav-i" data-aba="vendas" onclick="fnAba('vendas',this)"><span>🧾</span>Vendas<i class="fx-nav-novo">NOVO</i></button>
+            <button class="fx-nav-i" data-aba="reembolsos" onclick="fnAba('reembolsos',this)"><span>↩️</span>Reembolsos<i class="fx-nav-novo">NOVO</i></button>
             <button class="fx-nav-i" data-aba="jornada" onclick="fnAba('jornada',this)"><span>👣</span>Jornada ao vivo</button>
             <div class="fx-nav-g">Instrumentação</div>
             <button class="fx-nav-i" data-aba="pixel" onclick="fnAba('pixel',this)"><span>📡</span>Pixel e saúde<i class="fx-nav-n" id="fx-n-saude"></i></button>
@@ -4987,6 +4988,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 
         <div class="fn-painel on" id="fn-p-resultado"><div id="rs-corpo"></div></div>
         <div class="fn-painel" id="fn-p-vendas"></div>
+        <div class="fn-painel" id="fn-p-reembolsos"></div>
         <div class="fn-painel" id="fn-p-config"></div>
         <div class="fn-painel" id="fn-p-quiz"></div>
         <div class="fn-painel" id="fn-p-paginas"></div>
@@ -29190,6 +29192,7 @@ function fnAtualizar(bt){
   if(id==='leads')   { ldF.pag = 1; ldCarregar(); }
   if(id==='pixel')   psCarregar(!!bt);
   if(id==='vendas')  pvCarregar();
+  if(id==='reembolsos') rbCarregar();
 }
 function fnQsPeriodo(){ var p = fnPeriodo(); return 'de='+p.de+'&ate='+p.ate; }
 
@@ -31006,13 +31009,14 @@ function fnRecarregarAba(){
   if(fnAbaAtual==='pixel') psCarregar(false);
   if(fnAbaAtual==='jornada') jvCarregar();
   if(fnAbaAtual==='vendas') pvCarregar();
+  if(fnAbaAtual==='reembolsos') rbCarregar();
   if(fnAbaAtual==='config') pcCarregar();
 }
 // As abas que aparecem na coluna e as que só se abrem por dentro de outra
 // (Produtos pelos Ajustes do Resultado, Recuperação pelos Leads, Regras pela
 // Jornada ao vivo, Links pelo Pixel e saúde). O destaque vai pro botão "pai".
 var FN_ABAS = ['resultado','geral','mapa','criativos','leads','jornada','pixel','redir','atencao',
-               'links','produtos','recup','assin','regras','saude','quiz','vsl','paginas','vendas','config'];
+               'links','produtos','recup','assin','regras','saude','quiz','vsl','paginas','vendas','reembolsos','config'];
 var FN_ABA_PAI = { geral:'resultado', links:'pixel', produtos:'resultado', recup:'leads', assin:'resultado', regras:'jornada', saude:'pixel' };
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
@@ -31036,6 +31040,7 @@ var FN_ABA_INFO = {
   vsl:     ['Análise de VSL', 'Retenção, pitch e conversão das VSLs deste projeto, direto da VTurb.'],
   paginas: ['Páginas', 'Todas as páginas do projeto, com data, versões, números e velocidade. As que o Claude Code sobe entram sozinhas.'],
   vendas:  ['Vendas', 'Cada venda aprovada do período: de onde veio e o que vai pra Meta. Clique numa pra abrir.'],
+  reembolsos:['Reembolsos', 'Quem pediu o dinheiro de volta no período: o cliente, a compra, quanto tempo depois e de que anúncio ela tinha vindo.'],
   config:  ['Configurar', 'Quais contas de anúncio e campanhas são deste projeto, e o pixel que recebe as compras.']
 };
 var fnAbaAtual = 'resultado';
@@ -31060,6 +31065,7 @@ function fnAba(qual, bt){
   if(qual==='vsl')     fnAbrirVsl();
   if(qual==='paginas') pgCarregar();
   if(qual==='vendas')  pvCarregar();
+  if(qual==='reembolsos') rbCarregar();
   if(qual==='config')  pcCarregar();
   if(qual==='resultado') rsCarregar();
   if(qual==='leads')   ldCarregar();
@@ -38391,6 +38397,74 @@ function pvPintar(){
     '<div class="fx-sub" style="margin-top:8px">Clique numa venda pra abrir. As barrinhas verdes são os 8 dados que vão pra Meta: e-mail, telefone, clique do anúncio, IP, navegador, cookie da Meta, id da pessoa e nome.</div>';
   cx.innerHTML = h;
   porCanal();
+}
+// ── REEMBOLSOS (aba própria, embaixo de Vendas): quem pediu o dinheiro de volta, quanto
+// tempo depois da compra, de que anúncio a venda tinha vindo e o contato. Só Diretoria e Sócio.
+var rbDados = null, rbPedido = 0;
+function rbCarregar(){
+  var cx = document.getElementById('fn-p-reembolsos'); if(!cx) return;
+  if(!lcEhDir()){ cx.innerHTML = '<div class="v2-alerta info"><div><b>Os reembolsos ficam com a Diretoria</b><span>A lista tem o nome, o e-mail e o telefone de cada cliente.</span></div></div>'; return; }
+  var p = fnPeriodo(), meu = ++rbPedido;
+  cx.innerHTML = '<div class="fx-vazio">Buscando os reembolsos…</div>';
+  v2Json('/api/projeto/reembolsos?projeto='+encodeURIComponent(fnProj || '')+'&de='+p.de+'&ate='+p.ate)
+    .then(function(r){ if(meu !== rbPedido) return; rbDados = r; rbPintar(); })
+    .catch(function(e){ if(meu === rbPedido) cx.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
+}
+// "40 min", "19 h", "3 dias e 4 h"
+function rbTempo(ms){
+  if(ms == null) return '—';
+  var h = ms / 3600000;
+  if(h < 1) return Math.max(1, Math.round(ms / 60000))+' min';
+  if(h < 48) return Math.round(h)+' h';
+  var d = Math.floor(h / 24), r = Math.round(h - d * 24);
+  return d+' dias'+(r ? ' e '+r+' h' : '');
+}
+function rbZap(t){ var n = String(t || '').replace(/\D/g, ''); if(!n) return ''; if(n.length <= 11) n = '55'+n; return 'https://wa.me/'+n; }
+function rbPintar(){
+  var cx = document.getElementById('fn-p-reembolsos'), r = rbDados; if(!cx || !r) return;
+  var t = r.total || {}, l = r.reembolsos || [], multi = r.de !== r.ate;
+  var pct = function(a, b){ return b ? (a / b * 100).toLocaleString('pt-BR', { maximumFractionDigits:1 })+'%' : '—'; };
+  var kpi = function(k, v, sub){ return '<div class="pv-kpi"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+sub+'</div></div>'; };
+  var h = '<div class="pv-kpis">'+kpi('Reembolsadas', fnNum(t.n || 0), t.chargebacks ? fnNum(t.chargebacks)+' '+(t.chargebacks === 1 ? 'é chargeback' : 'são chargeback') : 'nenhum chargeback')+
+      kpi('Valor devolvido', v2Din(t.valor || 0), pct(t.valor || 0, t.valorVendas)+' do faturamento do período')+
+      kpi('Taxa de reembolso', pct(t.n || 0, t.vendas), fnNum(t.vendas || 0)+' vendas aprovadas no período')+
+      kpi('Tempo até reembolsar', rbTempo(t.tempoMediano), 'metade pede antes disso')+'</div>';
+  if(!l.length){ cx.innerHTML = h+'<div class="fx-vazio">Nenhum reembolso deste projeto no período.</div>'; return; }
+  var pare = ' onclick="event.stopPropagation()"';
+  h += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="fn-btn g sm" onclick="rbCsv()">Baixar a lista</button></div>'+
+    '<div style="overflow-x:auto"><table class="sv-tab pv-tab" style="min-width:860px"><tr><th>Reembolso</th><th>Cliente</th><th>Produto</th><th class="n">Valor</th><th>Tempo</th><th>De onde veio</th></tr>'+
+    l.map(function(x){
+      var c = x.cred || {}, orig;
+      if(x.origem === 'anuncio') orig = '<b>'+fnEsc(v2Anuncio(c.cont) || c.cont || 'Anúncio')+'</b><span class="sub">'+fnEsc(String(c.camp || '').split('|')[0].trim())+'</span>';
+      else if(x.origem === 'organico') orig = '<b>'+fnEsc(v2Fonte(c.fonte) || c.fonte)+'</b><span class="sub">'+(c.canal === 'organico' ? 'orgânico' : fnEsc(c.canal || ''))+'</span>';
+      else if(x.origem === 'renovacao') orig = '<b>Renovação</b><span class="sub">cobrança da assinatura</span>';
+      else orig = '<span class="v2-pill warn">sem rastreio</span>';
+      var zap = rbZap(x.telefone);
+      var cli = '<b>'+fnEsc(x.nome || '—')+'</b>'+
+        (x.email ? '<span class="sub"><a href="mailto:'+fnEsc(x.email)+'"'+pare+' style="color:inherit">'+fnEsc(x.email)+'</a></span>' : '')+
+        (x.telefone ? '<span class="sub">'+(zap ? '<a href="'+zap+'" target="_blank" rel="noopener"'+pare+' style="color:inherit">'+fnEsc(x.telefone)+' · WhatsApp</a>' : fnEsc(x.telefone))+'</span>' : '');
+      return '<tr class="clica" title="Abrir a venda" onclick="vdAbrir(\''+fnEsc(x.id).replace(/'/g, "\\'")+'\')">'+
+        '<td>'+(multi ? v2DiaHora(x.reembolsoEm) : v2Hora(x.reembolsoEm))+'<span class="sub"><span class="v2-pill '+(x.tipo === 'chargeback' ? 'bad' : 'warn')+'">'+x.tipo+'</span></span></td>'+
+        '<td>'+cli+'</td>'+
+        '<td>'+fnEsc(x.produto || x.plano || 'Pedido')+'<span class="sub">'+fnEsc([x.plano && x.plano !== x.produto ? x.plano : '', FN_PLAT_NOME[x.plataforma] || x.plataforma || '', x.metodo ? (x.metodo === 'credit_card' ? 'cartão' : x.metodo) : ''].filter(Boolean).join(' · '))+'</span></td>'+
+        '<td class="n">'+v2Din2(x.valor)+'</td>'+
+        '<td><b>'+rbTempo(x.tempoMs)+'</b><span class="sub">'+(x.compraEm ? 'comprou '+v2DiaHora(x.compraEm) : 'não achei a compra')+'</span></td>'+
+        '<td>'+orig+'</td></tr>';
+    }).join('')+'</table></div>'+
+    '<div class="fx-sub" style="margin-top:8px">Clique pra abrir a venda. O tempo é da compra até o reembolso chegar.</div>';
+  cx.innerHTML = h;
+}
+function rbCsv(){
+  var r = rbDados; if(!r || !(r.reembolsos || []).length) return;
+  var q = function(v){ v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"'+v.replace(/"/g, '""')+'"' : v; };
+  var dt = function(ms){ if(!ms) return ''; var d = new Date(ms); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); };
+  var linhas = [['Tipo','Reembolso em','Comprou em','Tempo','Nome','E-mail','Telefone','Produto','Plano','Plataforma','Método','Valor','Campanha','Anúncio','Pedido']].concat(
+    r.reembolsos.map(function(x){ var c = x.cred || {}; return [x.tipo, dt(x.reembolsoEm), dt(x.compraEm), rbTempo(x.tempoMs), x.nome, x.email, x.telefone, x.produto, x.plano, x.plataforma, x.metodo,
+      String((Number(x.valor) || 0).toFixed(2)).replace('.', ','), c.camp, c.cont, x.pedido]; }));
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff'+linhas.map(function(l){ return l.map(q).join(';'); }).join('\n')], { type:'text/csv;charset=utf-8' }));
+  a.download = 'reembolsos-'+(r.projeto || 'projeto').replace(/[^\w-]+/g, '-')+'-'+r.de+'_'+r.ate+'.csv';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 
 function vdAbrir(id){

@@ -3367,11 +3367,18 @@ function _normalizarVenda(p) {
   // Gateways que mandam em centavos: ou dizem no nome do campo, ou são estes
   if (valor !== null && /cents|transaction\.total_price|^product\.price$/i.test(achado.caminho)) valor = valor / 100;
   const doLink = _doLink(p);
+  // Payt: reembolso e chargeback não vêm no status do pedido (que fica "canceled",
+  // com o valor zerado), e sim no status do pagamento. Sem isto, todo reembolso da
+  // Payt entrava como cancelamento e a venda seguia contando como paga.
+  let status = String(_pega(p, ['status','order_status','payment_status','situacao']) || '').toLowerCase();
+  const stPag = String((p && p.transaction && p.transaction.payment_status) || '').toLowerCase();
+  if (/refunded/.test(stPag)) status = 'refunded';
+  else if (/^chargeback/.test(stPag)) status = 'chargeback';
   return {
     codigos: _codigosDaVenda(p, doLink),
     id: 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     pedidoId: String(_pega(p, ['orderId','order_id','id','transaction_id','codigo','code']) || ''),
-    status: String(_pega(p, ['status','order_status','payment_status','situacao']) || '').toLowerCase(),
+    status: status,
     valor: valor,
     moeda: String(_pega(p, ['currency','moeda']) || 'BRL'),
     produto: String(_pega(p, ['products.0.name','product.name','produto','product_name','plan_name']) || ''),
@@ -3700,6 +3707,11 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
     if (plataforma === 'hubla' && venda.assinatura && _vendaPaga(venda) &&
         vendas.some(v => v.assinatura === venda.assinatura && v.pedidoId !== venda.pedidoId && _vendaPaga(v))) {
       venda.renovacao = true; venda.casadaPor = _comoCasou(venda);
+    }
+    // reembolso que chega com o valor zerado (a Payt zera): vale o que a pessoa tinha pago
+    if (_ESTORNO.test(venda.status) && !(Number(venda.valor) > 0) && venda.pedidoId) {
+      const pg = vendas.find(v => v.pedidoId === venda.pedidoId && _vendaPaga(v) && Number(v.valor) > 0);
+      if (pg) venda.valor = pg.valor;
     }
     // dedupe por pedidoId (gateways reenviam o mesmo evento)
     const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
@@ -10881,6 +10893,11 @@ function _pedidoRegistrar(venda, p, opts) {
   const stV = String(venda.status || '').trim();
   const pago = stV ? _PAGO.test(stV) : Number(venda.valor) > 0;
   const estorno = _ESTORNO.test(String(venda.status || '')) ? 1 : 0;
+  let valorPed = Number(venda.valor) || 0;
+  if (estorno && !(valorPed > 0) && venda.pedidoId) {
+    const pg = _q('SELECT valor FROM pedidos WHERE pedido=? AND pago=1 AND valor>0 ORDER BY em LIMIT 1').get(String(venda.pedidoId).trim().slice(0, 60));
+    if (pg) valorPed = pg.valor;
+  }
   const payload = p || {};
   const txt = (v, n) => { const s = String(v == null ? '' : v).trim(); return s ? s.slice(0, n || 120) : null; };
 
@@ -11003,7 +11020,7 @@ function _pedidoRegistrar(venda, p, opts) {
         funil, teste, variante, renovacao, em, dia, ck_teste, ck_var, plataforma, codigos)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       idPed, txt(venda.pedidoId, 60), txt(venda.status, 30), pago ? 1 : 0, estorno,
-      Number(venda.valor) || 0, liquido, txt(venda.produto, 120), txt(venda.plano, 80), txt(venda.metodo, 30),
+      valorPed, liquido, txt(venda.produto, 120), txt(venda.plano, 80), txt(venda.metodo, 30),
       pago ? null : txt(_motivoFalha(venda), 60),
       vis || null, leadId, casou || null, semOrigem, txt(venda.vid, 40),
       txt(venda.utmSource, 80), txt(venda.utmCampaign, 120), txt(venda.utmContent, 160), txt(venda.utmTerm, 80),
@@ -11117,6 +11134,51 @@ function _pessoasImportar() {
   } catch (e) { console.error('[PESSOAS] importação falhou:', e.message); }
 }
 setTimeout(_pessoasImportar, 20 * 1000);
+
+// Uma vez só (30/10/2026): até hoje o reembolso da Payt entrava como "canceled" com o
+// valor zerado (ver _normalizarVenda). O padrão é inconfundível: o mesmo pedido pago
+// antes e depois "canceled" valendo zero. Esses viram reembolso, com o valor da compra,
+// na base e no registro de vendas. Faz a cópia das duas antes e guarda o que mudou.
+async function _migrarReembolsosPayt() {
+  const pdb = _pessoas(); if (!pdb || _pCfg('mig_reemb_payt_v1')) return;
+  try {
+    const l = _q(`SELECT c.id, c.pedido, (SELECT p.valor FROM pedidos p WHERE p.pedido=c.pedido AND p.pago=1 AND p.em < c.em ORDER BY p.em LIMIT 1) pv
+                  FROM pedidos c WHERE c.status='canceled' AND COALESCE(c.plataforma,'payt')='payt' AND COALESCE(c.valor,0)=0 AND c.pago=0 AND c.estorno=0
+                  AND EXISTS (SELECT 1 FROM pedidos p WHERE p.pedido=c.pedido AND p.pago=1 AND p.em < c.em)
+                  AND NOT EXISTS (SELECT 1 FROM pedidos r WHERE r.pedido=c.pedido AND r.estorno=1)`).all();
+    if (!l.length) { _pCfg('mig_reemb_payt_v1', JSON.stringify({ em:new Date().toISOString(), n:0 })); return; }
+    await _pessoasCopia();
+    const snap = criarSnapshotBackup('pre-reembolsos');
+    if (!snap || snap.ok === false) { console.error('[REEMBOLSO] sem o backup do banco; não reclassifiquei.'); return; }
+    const mudou = [];
+    pdb.exec('BEGIN');
+    try {
+      l.forEach(x => {
+        const novo = String(x.pedido).slice(0, 60) + '|refunded';
+        const id = _q('SELECT 1 FROM pedidos WHERE id=?').get(novo) ? x.id : novo;
+        _q("UPDATE pedidos SET status='refunded', estorno=1, valor=?, motivo=NULL, id=? WHERE id=?").run(Number(x.pv) || 0, id, x.id);
+        mudou.push([x.id, id]);
+      });
+      pdb.exec('COMMIT');
+    } catch (e) { pdb.exec('ROLLBACK'); throw e; }
+    const peds = new Set(l.map(x => String(x.pedido)));
+    const db = readDB(), vs = Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [];
+    let nv = 0;
+    vs.forEach(v => {
+      if (v.status !== 'canceled' || Number(v.valor) > 0 || !peds.has(String(v.pedidoId || '').trim().slice(0, 60))) return;
+      const pg = vs.find(y => y.pedidoId === v.pedidoId && _vendaPaga(y) && (Date.parse(y.recebidoEm) || 0) < (Date.parse(v.recebidoEm) || 0));
+      if (!pg) return;
+      v.status = 'refunded'; v.valor = pg.valor; v.reclassificado = 'reembolso da Payt que tinha entrado como cancelamento (corrigido em 30/10/2026)';
+      nv++;
+    });
+    if (nv) db.timestamps[KEY_VENDAS] = now();
+    audit(db, 'reembolsos_payt_reclassificados', {}, { pedidos:l.length, registros:nv }, { id:'sistema', nome:'Sistema' });
+    writeDB(db);
+    _pCfg('mig_reemb_payt_v1', JSON.stringify({ em:new Date().toISOString(), n:l.length, registros:nv, ids:mudou }));
+    console.log('[REEMBOLSO] ' + l.length + ' reembolsos da Payt que tinham entrado como cancelamento agora contam como reembolso (' + nv + ' no registro de vendas).');
+  } catch (e) { console.error('[REEMBOLSO] reclassificação falhou:', e.message); }
+}
+setTimeout(() => { _migrarReembolsosPayt().catch(() => {}); }, 60 * 1000);
 
 // ── Retenção e cópia ────────────────────────────────────────────────────────
 // Evento vive 90 dias e sessão 12 meses; visitante, lead e pedido ficam. Se o
@@ -18933,6 +18995,49 @@ app.get('/api/projeto/vendas', authUsuario, (req, res) => {
       anuncio: vendas.filter(v => v.origem === 'anuncio').length, outroAparelho: vendas.filter(v => v.cred.outroAparelho).length,
       sem: vendas.filter(v => v.origem === 'sem').length, meta: vendas.filter(v => v.meta).length, metaCompleta: vendas.filter(v => v.meta && v.meta.n >= 8).length };
     res.json({ ok: true, projeto, de, ate, total: tot, vendas });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Reembolsos do projeto (Projeto › Reembolsos, logo abaixo de Vendas): o reembolso ou chargeback
+// que chegou no período, a compra que ele desfez, quanto tempo depois veio, de que anúncio
+// a venda tinha vindo e o contato do cliente. Contato é dado pessoal: só Diretoria e Sócio.
+app.get('/api/projeto/reembolsos', authNegocio, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const projeto = String(req.query.projeto || '').slice(0, 80);
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    if (!projeto || !/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe o projeto e o período.' });
+    const db = readDB(), doProjeto = _pedidoDoProjetoFn(db, projeto);
+    // contato: o registro de vendas guarda nome, e-mail e telefone do checkout (a base de pessoas não)
+    const contato = {};
+    (Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : []).forEach(v => {
+      const k = String(v.pedidoId || '').trim().slice(0, 60); if (!k) return;
+      const c = contato[k] || (contato[k] = {});
+      if (!c.nome && v.cliente) c.nome = v.cliente;
+      if (!c.email && v.email) c.email = v.email;
+      if (!c.telefone && v.telefone) c.telefone = v.telefone;
+    });
+    const estornos = _q('SELECT * FROM pedidos WHERE estorno=1 AND dia>=? AND dia<=? ORDER BY em DESC LIMIT 1000').all(de, ate);
+    const lista = [];
+    estornos.forEach(r => {
+      const pg = r.pedido ? _q('SELECT * FROM pedidos WHERE pedido=? AND pago=1 ORDER BY em LIMIT 1').get(r.pedido) : null;
+      const base = pg || r;
+      if (!doProjeto(base)) return;
+      const c = contato[String(r.pedido || '').trim()] || {};
+      lista.push({ id: base.id, pedido: r.pedido, tipo: /chargeback/i.test(r.status || '') ? 'chargeback' : 'reembolso', status: r.status,
+        produto: base.produto, plano: base.plano, metodo: base.metodo, plataforma: base.plataforma || r.plataforma || 'payt',
+        valor: Number(r.valor) || Number(pg && pg.valor) || 0, compraEm: pg ? pg.em : null, reembolsoEm: r.em,
+        tempoMs: pg ? Math.max(0, r.em - pg.em) : null, renovacao: !!base.renovacao,
+        origem: base.renovacao ? 'renovacao' : (base.cred_cont || base.cred_camp) ? 'anuncio' : base.cred_fonte ? 'organico' : 'sem',
+        cred: { fonte: base.cred_fonte, camp: base.cred_camp, cont: base.cred_cont, canal: base.cred_canal },
+        nome: c.nome || '', email: c.email || '', telefone: c.telefone || '' });
+    });
+    // a taxa: reembolsos contra as vendas aprovadas do mesmo período
+    const vendas = _q('SELECT * FROM pedidos WHERE pago=1 AND renovacao=0 AND dia>=? AND dia<=?').all(de, ate).filter(doProjeto);
+    const tempos = lista.filter(x => x.tempoMs != null).map(x => x.tempoMs).sort((a, b) => a - b);
+    res.json({ ok: true, projeto, de, ate, reembolsos: lista,
+      total: { n: lista.length, valor: lista.reduce((s, x) => s + x.valor, 0), chargebacks: lista.filter(x => x.tipo === 'chargeback').length,
+        vendas: vendas.length, valorVendas: vendas.reduce((s, x) => s + (Number(x.valor) || 0), 0),
+        tempoMediano: tempos.length ? tempos[Math.floor(tempos.length / 2)] : null } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Por onde a venda chegou, de um projeto (ou de todos, sem projeto): pra
