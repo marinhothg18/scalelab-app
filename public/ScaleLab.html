@@ -24542,17 +24542,22 @@ async function pushCarregar(){
     pushPintar();
   }catch(e){ console.warn('[push]', e.message); }
 }
+// Desiste com um recado: um passo que não responde não pode deixar o botão preso em "Ligando…"
+function _pushComTeto(promessa, ms, recado){
+  return Promise.race([promessa, new Promise(function(_, nao){ setTimeout(function(){ nao(new Error(recado)); }, ms); })]);
+}
 async function pushLigar(){
   if(pushOcupado) return;
   pushOcupado = true; pushPintar();
   try{
     // a permissão vem primeiro: o iPhone só aceita o pedido logo depois do toque
-    var p = await Notification.requestPermission();
+    var p = await _pushComTeto(Notification.requestPermission(), 60000, 'o aparelho não respondeu ao pedido de permissão.');
     if(p !== 'granted') throw new Error(p === 'denied' ? 'as notificações foram bloqueadas neste aparelho.' : 'você não permitiu as notificações.');
     if(!pushEst || !pushEst.chave) await pushCarregar();
     if(!pushEst || !pushEst.chave) throw new Error('não consegui falar com o servidor.');
-    var reg = await navigator.serviceWorker.ready;
-    var sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:_pushChaveBytes(pushEst.chave) }));
+    if(!(await navigator.serviceWorker.getRegistration())) await navigator.serviceWorker.register('/sw.js', { scope:'/' });
+    var reg = await _pushComTeto(navigator.serviceWorker.ready, 15000, 'o app não terminou de se preparar. Feche, abra de novo e tente outra vez.');
+    var sub = (await reg.pushManager.getSubscription()) || (await _pushComTeto(reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:_pushChaveBytes(pushEst.chave) }), 20000, 'o serviço de notificações do aparelho não respondeu. Tente de novo.'));
     var r = await fetch('/api/push/inscrever', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(sub.toJSON()) });
     var d = await r.json().catch(function(){ return {}; });
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
@@ -43909,12 +43914,13 @@ window.onload=()=>{
 // ══════════════════════════════════════════════
 function _pwaInit(){
   // 1. Registra service worker
+  // Direto, sem esperar o evento 'load': esta função já roda dentro do window.onload,
+  // e um ouvinte de 'load' criado aqui nunca dispara. O service worker nunca era
+  // registrado, e o aviso de venda ficava preso em "Ligando…" esperando por ele.
   if('serviceWorker' in navigator){
-    window.addEventListener('load', function(){
-      navigator.serviceWorker.register('/sw.js', { scope: '/' })
-        .then(function(reg){ console.log('[PWA] SW registrado:', reg.scope); })
-        .catch(function(err){ console.warn('[PWA] SW falhou:', err); });
-    });
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(function(reg){ console.log('[PWA] SW registrado:', reg.scope); })
+      .catch(function(err){ console.warn('[PWA] SW falhou:', err); });
   }
 
   // 2. Detecta se já está rodando como PWA instalado
