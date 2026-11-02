@@ -3990,7 +3990,7 @@ function _vivoGet(chave, ms) {
 }
 function _vivoSet(chave, dados) {
   _utmifyCacheVivo.set(chave, { quando: Date.now(), dados });
-  if (_utmifyCacheVivo.size > 40) _utmifyCacheVivo.delete(_utmifyCacheVivo.keys().next().value);
+  if (_utmifyCacheVivo.size > 120) _utmifyCacheVivo.delete(_utmifyCacheVivo.keys().next().value);
 }
 
 async function _utmifyDashboardsAtivos() {
@@ -4465,17 +4465,31 @@ setTimeout(_tickEventosUtmify, 40 * 1000);   // no boot ja monta a base de compa
 
 // Panorama de hoje, somando os dashboards (funil, pedidos, lucro por hora)
 // Panorama de um periodo (sem data = hoje). Serve o Resumo e o Tempo Real.
-async function _utmifyPanorama(deQuery, ateQuery, projeto) {
+// filtros (opcional): { conta, plataforma, produto }. Um projeto que não tem aquela
+// conta, plataforma ou produto fica de fora da soma.
+async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
   {
     const achado = await _utmifyDashboardsAtivos();
-    const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
+    const cfg = achado.cfg;
+    let lista = _filtrarProjeto(achado.lista, projeto);
+    const fil = filtros || {}, comFiltro = !!(fil.conta || fil.plataforma || fil.produto);
+    if (comFiltro) {
+      const opc = await _utmifyFiltrosDash(cfg);
+      lista = lista.filter(d => { const o = opc[String(d.id)]; if (!o) return false;
+        return (!fil.conta || o.contas.some(c => c.id === fil.conta)) && (!fil.plataforma || o.plataformas.indexOf(fil.plataforma) >= 0) && (!fil.produto || o.produtos.indexOf(fil.produto) >= 0); });
+    }
     const cent = v => (Number(v) || 0) / 100;
     const tot = {
       investimento: 0, receita: 0, lucro: 0,
       cliques: 0, visitas: 0, ics: 0,
+      reembolsoValor: 0, pendenteValor: 0,
       pedidos: { total: 0, aprovadas: 0, pendentes: 0, reembolsadas: 0, recusadas: 0 }
     };
     const porHora = Array.from({ length: 24 }, (_, h) => ({ hora: h, lucro: 0 }));
+    // os gráficos do Resumo: o acumulado ao longo do dia e as vendas de cada hora
+    const acum = { fat: Array(24).fill(0), inv: Array(24).fill(0), luc: Array(24).fill(0), tem: false };
+    const vendasHora = Array(24).fill(0);
+    const aprovacao = { cartao: { a: 0, t: 0 }, pix: { a: 0, t: 0 }, boleto: { a: 0, t: 0 } };
     const porUtm = {}, porDash = [], porProduto = {};
     const erros = [];
     for (const d of lista) {
@@ -4484,15 +4498,31 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
       const hoje = new Date(Date.now() + tz * 3600000).toISOString().slice(0, 10);
       const ini = deQuery || hoje, fim = ateQuery || hoje;
       try {
-        const s = await _utmifyChamarTool(cfg.token, 'get_dashboard_summary', {
-          dashboardId: d.id,
-          dateRange: { from: ini + 'T00:00:00' + off, to: fim + 'T23:59:59' + off }
-        });
+        const args = { dashboardId: d.id, dateRange: { from: ini + 'T00:00:00' + off, to: fim + 'T23:59:59' + off } };
+        if (fil.conta) args.metaAdAccountIds = [fil.conta];
+        if (fil.plataforma) args.platforms = [fil.plataforma];
+        if (fil.produto) args.productNames = [fil.produto];
+        const s = await _utmifyChamarTool(cfg.token, 'get_dashboard_summary', args);
         const ads = s.ads || {}, an = s.analytics || {}, oc = s.ordersCount || {};
         const inv = cent(ads.spent), luc = cent(an.profit);
         // receita pelo ROAS e exata; gasto+lucro erra quando ha taxa ou custo de produto
         const rec = Number(an.roas) > 0 ? inv * Number(an.roas) : (inv + luc);
         tot.investimento += inv; tot.lucro += luc; tot.receita += rec;
+        const com = s.comissions || {}, est = s.statistics || {}, hc = s.hourlyCumulative || {};
+        tot.reembolsoValor += cent(com.refundedGrossRevenue);
+        tot.pendenteValor += cent(com.pendingGrossRevenue);
+        aprovacao.cartao.a += Number(oc.approvedCreditCard) || 0; aprovacao.cartao.t += Number(oc.totalCreditCard) || 0;
+        [['pix', est.pix], ['boleto', est.boleto]].forEach(([k, m]) => {
+          const a = Number(m && m.approved && m.approved.ordersCount) || 0, p = Number(m && m.pending && m.pending.ordersCount) || 0;
+          aprovacao[k].a += a; aprovacao[k].t += a + p;
+        });
+        (oc.byHour || []).forEach(h => { const i = Number(h.hour); if (i >= 0 && i < 24) vendasHora[i] += Number(h.count) || 0; });
+        // o acumulado só vem pra períodos de até 30 dias. Bruto ou líquido: o que fecha com o faturamento de cima
+        const ult = a => (Array.isArray(a) && a.length ? cent(a[a.length - 1].cents) : 0);
+        const fatH = Math.abs(ult(hc.revenueByHourNetCumulative) - rec) <= Math.abs(ult(hc.revenueByHourGrossCumulative) - rec) ? hc.revenueByHourNetCumulative : hc.revenueByHourGrossCumulative;
+        [[fatH, 'fat'], [hc.investmentByHourCumulative, 'inv'], [hc.profitByHourNetCumulative, 'luc']].forEach(([l, k]) => {
+          (l || []).forEach(h => { const i = Number(h.hour); if (i >= 0 && i < 24) { acum[k][i] += cent(h.cents); acum.tem = true; } });
+        });
         tot.cliques += Number(ads.clicks) || 0;
         tot.visitas += Number(ads.pageViews) || 0;
         tot.ics     += Number(ads.initiateCheckouts) || 0;
@@ -4610,7 +4640,7 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto) {
       }),
       margem: _margem(tot.receita, tot.investimento, tot.pedidos.aprovadas, _custosCfg(dbPl)),
       custos: _custosCfg(dbPl),
-      porHora,
+      porHora, acum, vendasHora, aprovacao,
       planos,
       // a tela precisa saber DE ONDE veio a classificacao pra nao mentir
       planosFonte: porValor ? 'valor' : 'nome',
@@ -4659,13 +4689,208 @@ app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
     return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
   }
   const projeto = String(req.query.projeto || '').slice(0, 40);
-  const chave = 'panorama|' + de + '|' + ate + '|' + projeto;
+  const filtros = { conta: String(req.query.conta || '').slice(0, 40), plataforma: String(req.query.plataforma || '').slice(0, 60), produto: String(req.query.produto || '').slice(0, 160) };
+  const chave = 'panorama|' + de + '|' + ate + '|' + projeto + '|' + filtros.conta + '|' + filtros.plataforma + '|' + filtros.produto;
   const pronto = _vivoGet(chave, 60 * 1000);
   if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
   try {
-    const saida = await _utmifyPanorama(de, ate, projeto);
+    const saida = await _utmifyPanorama(de, ate, projeto, filtros);
     _vivoSet(chave, saida);
     res.json(saida);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// O que dá pra filtrar no Resumo: contas habilitadas, plataformas e produtos de cada projeto
+let _utmifyFiltrosCache = null;
+async function _utmifyFiltrosDash(cfg) {
+  if (_utmifyFiltrosCache && Date.now() - _utmifyFiltrosCache.em < 10 * 60 * 1000) return _utmifyFiltrosCache.porDash;
+  const d = await _utmifyChamarTool(cfg.token, 'get_dashboards', {});
+  const porDash = {};
+  (Array.isArray(d) ? d : []).forEach(x => {
+    const contas = [];
+    (x.metaProfiles || []).forEach(p => (p.adAccounts || []).forEach(a => { if (a.enabled && !contas.some(c => c.id === String(a.id))) contas.push({ id: String(a.id), nome: a.name }); }));
+    porDash[String(x.id)] = { contas, plataformas: x.platforms || [], produtos: x.products || [] };
+  });
+  _utmifyFiltrosCache = { em: Date.now(), porDash };
+  return porDash;
+}
+app.get('/api/metricas/utmify/filtros', authUsuario, async (req, res) => {
+  try {
+    const achado = await _utmifyDashboardsAtivos();
+    const opc = await _utmifyFiltrosDash(achado.cfg);
+    const contas = [], plataformas = new Set(), produtos = new Set();
+    _filtrarProjeto(achado.lista, String(req.query.projeto || '').slice(0, 40)).forEach(d => {
+      const o = opc[String(d.id)]; if (!o) return;
+      o.contas.forEach(c => { if (!contas.some(x => x.id === c.id)) contas.push(c); });
+      o.plataformas.forEach(p => plataformas.add(p)); o.produtos.forEach(p => produtos.add(p));
+    });
+    res.json({ ok: true, contas: contas.sort((a, b) => String(a.nome).localeCompare(String(b.nome))), plataformas: [...plataformas].sort(), produtos: [...produtos].sort() });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── Marca de cor e fixar no topo, na tabela de campanhas ──
+// Fica aqui no servidor, pra todo o time ver a mesma marca. Grava uma campanha por
+// vez: mandar a lista inteira deixaria um navegador velho apagar a marca de outro.
+const KEY_CAMP_MARCAS = 'sl_camp_marcas';
+app.get('/api/metricas/campanhas/marcas', authUsuario, (req, res) => {
+  const m = readDB().store[KEY_CAMP_MARCAS];
+  res.json({ ok: true, marcas: m && typeof m === 'object' && !Array.isArray(m) ? m : {} });
+});
+app.post('/api/metricas/campanhas/marca', authUsuario, (req, res) => {
+  try {
+    const b = req.body || {}, id = String(b.id || '').slice(0, 200);
+    if (!id) return res.status(400).json({ error: 'Diga a campanha.' });
+    const cor = ['amarelo', 'vermelho', 'verde'].indexOf(b.cor) >= 0 ? b.cor : '';
+    const db = readDB();
+    const m = db.store[KEY_CAMP_MARCAS] && typeof db.store[KEY_CAMP_MARCAS] === 'object' && !Array.isArray(db.store[KEY_CAMP_MARCAS]) ? db.store[KEY_CAMP_MARCAS] : {};
+    if (!cor && !b.fixa) delete m[id];
+    else m[id] = { cor, fixa: !!b.fixa, por: String((req.user && (req.user.nome || req.user.email)) || '').slice(0, 80), em: Date.now() };
+    db.store[KEY_CAMP_MARCAS] = m;
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps[KEY_CAMP_MARCAS] = now();
+    writeDB(db);
+    res.json({ ok: true, marcas: m });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Um anúncio aberto: o período da tela, os últimos 3 e 7 dias, e a VSL ──
+// O card agrupa as veiculações pela nomenclatura; aqui é a mesma conta, só que nos
+// três períodos. O pixel do TMX responde na hora; a VTurb vem numa rota separada,
+// porque precisa perguntar uma VSL de cada vez.
+const _anuncioChave = s => String(s || '').toLowerCase().replace(/[^a-z0-9.]/g, '');
+function _contSemId(c) {
+  let s = String(c || '');
+  try { s = decodeURIComponent(s.replace(/\+/g, ' ')); } catch (e) { s = s.replace(/\+/g, ' '); }
+  return s.replace(/\|\s*\d{6,}\s*$/, '');
+}
+async function _anuncioLinhas(cfg, d, nome, de, ate) {
+  const chave = 'anuncio1|' + d.id + '|' + _anuncioChave(nome) + '|' + de + '|' + ate;
+  const pronto = _vivoGet(chave, 60 * 1000);
+  if (pronto) return pronto;
+  const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+  const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+  const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: d.id, level: 'ad', nameContains: nome, dateRange: { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off } });
+  // "contém" também traz AD255.10 quando se pede AD255.1: aqui só o nome exato
+  const alvo = _anuncioChave(nome), cent = v => (Number(v) || 0) / 100;
+  const s = { veic: 0, ativos: 0, inv: 0, rec: 0, v: 0, ic: 0, cl: 0, imp: 0, lpv: 0, vv: 0, v3: 0, v75: 0, ids: [] };
+  ((r && r.results) || []).forEach(a => {
+    if (_anuncioChave(a.name) !== alvo) return;
+    const inv = cent(a.spend), rec = cent(a.grossRevenue);
+    if (!inv && !rec) return;
+    s.veic++; if (a.effectiveStatus === 'ACTIVE') s.ativos++;
+    s.inv += inv; s.rec += rec; s.v += Number(a.approvedOrdersCount) || 0; s.ic += Number(a.initiateCheckout) || 0;
+    s.cl += Number(a.inlineLinkClicks) || 0; s.imp += Number(a.impressions) || 0; s.lpv += Number(a.landingPageViews) || 0;
+    s.vv += Number(a.videoViews) || 0; s.v3 += Number(a.videoViews3Seconds) || 0; s.v75 += Number(a.video75Watched) || 0;
+    const aid = String(a.id || a.adId || ''); if (aid && s.ids.indexOf(aid) < 0) s.ids.push(aid);
+  });
+  _vivoSet(chave, s);
+  return s;
+}
+// do clique em diante, pelo pixel: quem veio deste anúncio deu play, passou do pitch, foi pro checkout?
+function _anuncioPixel(nome, ids, faixas) {
+  const alvo = _anuncioChave(nome), idsSet = new Set(ids || []);
+  const eDele = c => { const id = _idDaCampUtm(c); return (id && idsSet.has(id)) || _anuncioChave(_contSemId(c)) === alvo; };
+  const inis = Object.values(faixas).map(f => f.ini), fim = Math.max(...Object.values(faixas).map(f => f.fim));
+  const ini = Math.min(...inis), saida = {};
+  Object.keys(faixas).forEach(k => { saida[k] = { vis: new Set(), vid: new Set(), pit: new Set(), ck: new Set(), ent: {}, vendas: 0 }; });
+  _q('SELECT visitante, cont, inicio, video, pitch, checkout, entrada FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0').all(ini, fim).forEach(x => {
+    if (!x.cont || !eDele(x.cont)) return;
+    Object.keys(faixas).forEach(k => {
+      const f = faixas[k], y = saida[k];
+      if (x.inicio < f.ini || x.inicio > f.fim) return;
+      y.vis.add(x.visitante); if (x.video) y.vid.add(x.visitante); if (x.pitch) y.pit.add(x.visitante); if (x.checkout) y.ck.add(x.visitante);
+      const e = String(x.entrada || '').split('?')[0]; if (e) y.ent[e] = (y.ent[e] || 0) + 1;
+    });
+  });
+  _q('SELECT em, cred_camp, cred_cont, cont FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(ini, fim).forEach(p => {
+    const c = p.cred_camp ? p.cred_cont : p.cont; if (!c || !eDele(c)) return;
+    Object.keys(faixas).forEach(k => { const f = faixas[k]; if (p.em >= f.ini && p.em <= f.fim) saida[k].vendas++; });
+  });
+  Object.keys(saida).forEach(k => { const y = saida[k];
+    saida[k] = { visitas: y.vis.size, play: y.vid.size, pitch: y.pit.size, checkout: y.ck.size, vendas: y.vendas,
+      paginas: Object.keys(y.ent).sort((a, b) => y.ent[b] - y.ent[a]).slice(0, 4).map(p => ({ pagina: p, n: y.ent[p] })) }; });
+  return saida;
+}
+function _anuncioFaixas(de, ate) {
+  const hoje = _diaBR(Date.now()), voltar = n => _diaBR(Date.now() - n * 86400000);
+  const f = {};
+  if (de && ate) f.tela = { de, ate };
+  f.d3 = { de: voltar(2), ate: hoje };
+  f.d7 = { de: voltar(6), ate: hoje };
+  Object.values(f).forEach(x => { x.ini = Date.parse(x.de + 'T00:00:00-03:00'); x.fim = Date.parse(x.ate + 'T23:59:59-03:00'); });
+  return f;
+}
+async function _anuncioDash(dashboard) {
+  const achado = await _utmifyDashboardsAtivos();
+  const d = achado.lista.find(x => String(x.nome || '').trim() === String(dashboard || '').trim() || String(x.id) === String(dashboard || ''));
+  if (!d) throw new Error('Não achei o projeto deste anúncio na Utmify.');
+  return { cfg: achado.cfg, d };
+}
+app.get('/api/metricas/utmify/anuncio', authUsuario, async (req, res) => {
+  try {
+    const nome = String(req.query.nome || '').trim().slice(0, 200);
+    if (!nome) return res.status(400).json({ error: 'Diga o anúncio.' });
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    const ok = /^\d{4}-\d{2}-\d{2}$/.test(de) && /^\d{4}-\d{2}-\d{2}$/.test(ate);
+    const faixas = _anuncioFaixas(ok ? de : '', ok ? ate : '');
+    const { cfg, d } = await _anuncioDash(req.query.dashboard);
+    const periodos = {};
+    for (const k of Object.keys(faixas)) periodos[k] = Object.assign({ de: faixas[k].de, ate: faixas[k].ate }, await _anuncioLinhas(cfg, d, nome, faixas[k].de, faixas[k].ate));
+    const ids = [...new Set(Object.values(periodos).flatMap(p => p.ids))];
+    const pxFaixas = { d3: faixas.d3, d7: faixas.d7 };
+    const pixel = _pessoas() ? _anuncioPixel(nome, ids, pxFaixas) : null;
+    Object.values(periodos).forEach(p => { delete p.ids; });
+    res.json({ ok: true, nome, dashboard: d.nome || d.id, periodos, pixel, ids: ids.slice(0, 60) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+// Quais VSLs tiveram play nos últimos 7 dias, com a média delas. Uma pergunta por
+// vídeo, então fica guardado por 30 min: abrir outro anúncio não repete tudo.
+let _vtAtivas = null;
+async function _vturbAtivas7d(cfg) {
+  if (_vtAtivas && Date.now() - _vtAtivas.em < 30 * 60 * 1000) return _vtAtivas.lista;
+  const per = _vturbPeriodo({ query: { de: _diaBR(Date.now() - 6 * 86400000), ate: _diaBR(Date.now()) } });
+  const lst = await _vturbListaFresca(cfg), saida = [];
+  const buscar = async p => {
+    if (!p.duracao) return;
+    try {
+      const st = await _vturbApiData(cfg.token, '/sessions/stats', { player_id: p.id, start_date: per.ini, end_date: per.fim, video_duration: p.duracao, pitch_time: p.pitch || 0, timezone: 'America/Sao_Paulo' }, per);
+      const plays = Number(st.total_started_device_uniq || st.total_started) || 0;
+      if (plays >= 10) saida.push({ id: String(p.id), nome: p.nome, pitch: p.pitch || 0, plays,
+        media: { playRate: (Number(st.play_rate) || 0) / 100, engajamento: (Number(st.engagement_rate) || 0) / 100, retPitch: (Number(st.over_pitch_rate) || 0) / 100 } });
+    } catch (e) {}
+  };
+  const todos = lst.lista || [];
+  if (todos.length) await buscar(todos[0]);   // a primeira descobre o formato de data que a VTurb aceita
+  for (let i = 1; i < todos.length; i += 10) await Promise.all(todos.slice(i, i + 10).map(buscar));
+  saida.sort((a, b) => b.plays - a.plays);
+  _vtAtivas = { em: Date.now(), lista: saida };
+  return saida;
+}
+app.get('/api/metricas/utmify/anuncio-vsl', authUsuario, async (req, res) => {
+  try {
+    const nome = String(req.query.nome || '').trim().slice(0, 200);
+    if (!nome) return res.status(400).json({ error: 'Diga o anúncio.' });
+    const cfg = _vturbExige();
+    const alvo = _anuncioChave(nome), ids = new Set(String(req.query.ids || '').split(',').map(x => x.trim()).filter(Boolean));
+    const faixas = _anuncioFaixas('', '');
+    const ativas = await _vturbAtivas7d(cfg), vsls = [];
+    const buscar = async p => {
+      const o = { id: p.id, nome: p.nome, pitch: p.pitch, media: p.media };
+      await Promise.all(['d3', 'd7'].map(async k => {
+        const s = await _vtOrigemStats(cfg, p.id, 'utm_content', _vturbPeriodo({ query: { de: faixas[k].de, ate: faixas[k].ate } }));
+        const ls = s.linhas.filter(l => _anuncioChave(l.nome) === alvo || (/^\d{6,}$/.test(l.nome) && ids.has(l.nome)));
+        if (!ls.length) return;
+        const vu = ls.reduce((a, l) => a + l.visUnicas, 0), pu = ls.reduce((a, l) => a + l.playsUnicos, 0);
+        o[k] = { views: vu, plays: pu, cliques: ls.reduce((a, l) => a + l.cliques, 0), playRate: vu ? pu / vu : 0,
+          engajamento: pu ? ls.reduce((a, l) => a + l.engajamento * l.playsUnicos, 0) / pu : 0,
+          retPitch: pu ? ls.reduce((a, l) => a + l.audPitch, 0) / pu : 0 };
+      }));
+      if (o.d3 || o.d7) vsls.push(o);
+    };
+    const erros = [];
+    for (let i = 0; i < ativas.length; i += 4) await Promise.all(ativas.slice(i, i + 4).map(p => buscar(p).catch(e => { if (erros.indexOf(e.message) < 0) erros.push(e.message); })));
+    vsls.sort((a, b) => ((b.d7 || {}).plays || 0) - ((a.d7 || {}).plays || 0));
+    res.json({ ok: true, vsls, erros, consultadas: ativas.length });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
