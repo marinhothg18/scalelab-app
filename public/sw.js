@@ -1,6 +1,6 @@
-// Service Worker da TMX Digital — Fase 1 (PWA instalável, sem push ainda)
+// Service Worker da TMX Digital — PWA instalável + aviso de venda (push)
 // v2 (novo design 2026): bumpou cache pra invalidar versões antigas
-const CACHE_NAME = 'tmx-v3';
+const CACHE_NAME = 'tmx-v4';
 const SHELL = [
   '/manifest.json',
   '/icon-192.png',
@@ -22,6 +22,25 @@ self.addEventListener('activate', (event) => {
     ))
   );
   self.clients.claim();
+});
+
+// Aviso de venda: chega mesmo com o app fechado. O iPhone exige mostrar uma
+// notificação a cada push, então isso nunca sai sem mostrar.
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) {}
+  event.waitUntil(self.registration.showNotification(d.titulo || 'TMX Digital', {
+    body: d.corpo || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: d.tag
+  }));
+});
+
+// Tocou no aviso: traz o app pra frente, ou abre se estiver fechado
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((abertas) => {
+    for (const c of abertas) { if ('focus' in c) return c.focus(); }
+    return self.clients.openWindow('/ScaleLab.html');
+  }));
 });
 
 self.addEventListener('fetch', (event) => {

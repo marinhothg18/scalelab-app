@@ -3715,6 +3715,9 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
     }
     // dedupe por pedidoId (gateways reenviam o mesmo evento)
     const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
+    // o aviso sai uma vez por pedido: o gateway pode mandar "approved" e depois "completed"
+    const avisar = !jaTem && _vendaPaga(venda) && Number(venda.valor) > 0 &&
+      !(venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && _vendaPaga(v)));
     if (!jaTem) {
       // liga a venda à pessoa (sck, e-mail, telefone, documento) e guarda na
       // base que não esquece; uma falha aqui nunca pode derrubar o webhook
@@ -3727,6 +3730,7 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
     if (!db.timestamps) db.timestamps = {};
     db.timestamps[KEY_VENDAS] = now();
     writeDB(db);
+    if (avisar) _avisarVenda(venda, db);
     res.json({ ok: true, duplicada: !!jaTem });
   } catch (err) {
     // nunca devolve 500 pro gateway sem contexto — muitos desativam o webhook após erros
@@ -3734,6 +3738,102 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
   }
 }
 app.post('/api/webhook/vendas/:token/:plataforma?', _receberVenda);
+
+// ══════════════════════════════════════════════
+// ── AVISO DE VENDA NO CELULAR (notificação push) ──
+// ══════════════════════════════════════════════
+// Cada aparelho liga o seu, na tela de Notificações. No iPhone só funciona com o
+// TMX aberto pelo ícone da Tela de Início. Só Diretoria e sócios: mostra valor de venda.
+const webpush = require('web-push');
+const KEY_PUSH_CFG = 'sl_push_cfg';               // server-only: o par de chaves que assina os avisos
+const KEY_PUSH_APARELHOS = 'sl_push_aparelhos';   // server-only: os aparelhos ligados
+// o servidor faz POST no endereço que o aparelho manda: só serviço de push conhecido
+const PUSH_HOSTS = /^(web\.push\.apple\.com|[a-z0-9-]+\.push\.apple\.com|fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.notify\.windows\.com)$/i;
+
+function _pushAparelhos(db) { const l = (db || readDB()).store[KEY_PUSH_APARELHOS]; return Array.isArray(l) ? l : []; }
+function _pushChaves(db) {
+  const d = db || readDB();
+  let c = d.store[KEY_PUSH_CFG];
+  if (!c || !c.publica || !c.privada) {
+    const k = webpush.generateVAPIDKeys();
+    c = { publica: k.publicKey, privada: k.privateKey, criadaEm: new Date().toISOString() };
+    d.store[KEY_PUSH_CFG] = c;
+    writeDB(d);
+  }
+  return c;
+}
+async function _pushEnviar(aparelhos, aviso) {
+  const c = _pushChaves();
+  const opcoes = { TTL: 24 * 3600, urgency: 'high', vapidDetails: { subject: 'https://app.centraltmx.com', publicKey: c.publica, privateKey: c.privada } };
+  const sumiram = [], erros = [];
+  let enviados = 0;
+  await Promise.all(aparelhos.map(a => webpush.sendNotification({ endpoint: a.endpoint, keys: a.keys }, JSON.stringify(aviso), opcoes)
+    .then(() => { enviados++; })
+    .catch(e => {
+      // 404/410: o aparelho desligou ou reinstalou o app, essa inscrição não volta mais
+      if (e.statusCode === 404 || e.statusCode === 410) sumiram.push(a.endpoint);
+      else { erros.push(String(e.statusCode || e.message)); console.warn('[PUSH] não enviou:', e.statusCode || e.message); }
+    })));
+  if (sumiram.length) {
+    const db = readDB();
+    db.store[KEY_PUSH_APARELHOS] = _pushAparelhos(db).filter(a => !sumiram.includes(a.endpoint));
+    writeDB(db);
+  }
+  return { enviados, sumiram: sumiram.length, erros };
+}
+// Nunca segura nem derruba o webhook: falha aqui só vira log.
+function _avisarVenda(venda, db) {
+  try {
+    const usuarios = Array.isArray(db.store.sl_usuarios) ? db.store.sl_usuarios : [];
+    const aparelhos = _pushAparelhos(db).filter(a => { const u = usuarios.find(x => x.id === a.userId); return u && CARGOS_NEGOCIO.has(u.cargo); });
+    if (!aparelhos.length) return;
+    const valor = Number(venda.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    _pushEnviar(aparelhos, { titulo: 'Venda aprovada!', corpo: 'Valor: ' + valor, tag: 'venda-' + (venda.pedidoId || Date.now()) })
+      .catch(e => console.warn('[PUSH] aviso de venda falhou:', e.message));
+  } catch (e) { console.warn('[PUSH] aviso de venda falhou:', e.message); }
+}
+app.get('/api/push/estado', authNegocio, (req, res) => {
+  try {
+    const db = readDB();
+    res.json({ chave: _pushChaves(db).publica, meus: _pushAparelhos(db).filter(a => a.userId === req.user.id).map(a => a.endpoint) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/push/inscrever', authNegocio, (req, res) => {
+  try {
+    const b = req.body || {}, endpoint = String(b.endpoint || ''), k = b.keys || {};
+    let host = '';
+    try { const u = new URL(endpoint); if (u.protocol === 'https:') host = u.hostname; } catch (e) {}
+    if (!PUSH_HOSTS.test(host) || !k.p256dh || !k.auth) return res.status(400).json({ error: 'Este aparelho mandou uma inscrição que não reconheço.' });
+    const db = readDB();
+    const lista = _pushAparelhos(db).filter(a => a.endpoint !== endpoint);
+    lista.push({ endpoint, keys: { p256dh: String(k.p256dh).slice(0, 200), auth: String(k.auth).slice(0, 100) }, userId: req.user.id,
+      aparelho: String(req.get('user-agent') || '').slice(0, 160), em: new Date().toISOString() });
+    db.store[KEY_PUSH_APARELHOS] = lista;
+    audit(db, 'push_ligado', { servico: host }, null, { id: req.user.id, nome: req.user.nome });
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/push/sair', authNegocio, (req, res) => {
+  try {
+    const endpoint = String((req.body && req.body.endpoint) || '');
+    const db = readDB();
+    db.store[KEY_PUSH_APARELHOS] = _pushAparelhos(db).filter(a => !(a.endpoint === endpoint && a.userId === req.user.id));
+    audit(db, 'push_desligado', null, null, { id: req.user.id, nome: req.user.nome });
+    writeDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/push/testar', authNegocio, async (req, res) => {
+  try {
+    const endpoint = String((req.body && req.body.endpoint) || '');
+    const a = _pushAparelhos().find(x => x.endpoint === endpoint && x.userId === req.user.id);
+    if (!a) return res.status(404).json({ error: 'Este aparelho não está ligado. Ligue de novo.' });
+    const r = await _pushEnviar([a], { titulo: 'Venda aprovada!', corpo: 'Valor: R$ 697,00 (teste)', tag: 'teste-' + Date.now() });
+    if (!r.enviados) return res.status(502).json({ error: r.sumiram ? 'O aparelho não aceita mais avisos. Ligue de novo.' : 'O serviço de notificações recusou (' + r.erros.join(', ') + ').' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── CLIENTE MCP DA UTMIFY (servidor -> servidor) ──
 // A API publica da Utmify so RECEBE pedidos (POST /orders). Mas o servidor MCP
@@ -3992,6 +4092,15 @@ function _vivoSet(chave, dados) {
   _utmifyCacheVivo.set(chave, { quando: Date.now(), dados });
   if (_utmifyCacheVivo.size > 120) _utmifyCacheVivo.delete(_utmifyCacheVivo.keys().next().value);
 }
+// Duas telas pedindo a mesma coisa ao mesmo tempo esperam a mesma resposta, em vez
+// de consultar a Utmify duas vezes. Com a tela se atualizando sozinha isso é comum.
+const _vivoEmCurso = new Map();
+function _vivoUmaVez(chave, buscar) {
+  if (_vivoEmCurso.has(chave)) return _vivoEmCurso.get(chave);
+  const p = Promise.resolve().then(buscar).finally(() => _vivoEmCurso.delete(chave));
+  _vivoEmCurso.set(chave, p);
+  return p;
+}
 
 async function _utmifyDashboardsAtivos() {
   const cfg = _utmifyMcpCfg();
@@ -4032,7 +4141,8 @@ async function _rotaAnuncios(req, res) {
   }
   const projeto = String(req.query.projeto || '').slice(0, 40);
   const chave = 'anuncios|' + de + '|' + ate + '|' + projeto;
-  const pronto = _vivoGet(chave, 60 * 1000);
+  // o botão Atualizar pede o número de agora; o piso de 10s segura clique repetido
+  const pronto = _vivoGet(chave, req.query.forcar === '1' ? 10 * 1000 : 45 * 1000);
   if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
   try {
     const achado = await _utmifyDashboardsAtivos();
@@ -4691,11 +4801,16 @@ app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
   const projeto = String(req.query.projeto || '').slice(0, 40);
   const filtros = { conta: String(req.query.conta || '').slice(0, 40), plataforma: String(req.query.plataforma || '').slice(0, 60), produto: String(req.query.produto || '').slice(0, 160) };
   const chave = 'panorama|' + de + '|' + ate + '|' + projeto + '|' + filtros.conta + '|' + filtros.plataforma + '|' + filtros.produto;
-  const pronto = _vivoGet(chave, 60 * 1000);
+  // o botão Atualizar pede o número de agora; o piso de 10s segura clique repetido
+  const pronto = _vivoGet(chave, req.query.forcar === '1' ? 10 * 1000 : 45 * 1000);
   if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
   try {
-    const saida = await _utmifyPanorama(de, ate, projeto, filtros);
-    _vivoSet(chave, saida);
+    const saida = await _vivoUmaVez(chave, async () => {
+      const s = await _utmifyPanorama(de, ate, projeto, filtros);
+      // resposta com projeto faltando não fica guardada: a próxima leitura tenta de novo
+      if (!(s.erros || []).length) _vivoSet(chave, s);
+      return s;
+    });
     res.json(saida);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -5019,6 +5134,7 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
   try {
     const de  = String(req.query.de  || '').slice(0,10);
     const ate = String(req.query.ate || '').slice(0,10);
+    if (req.query.olhando === '1' && ate >= _diaBR(Date.now())) _utmifyOlhandoEm = Date.now();
     const db = readDB();
     let linhas = Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [];
     if (de)  linhas = linhas.filter(l => l.data >= de);
@@ -5512,6 +5628,8 @@ function _diasEntre(de, ate) {
 async function _utmifySincronizar(de, ate, dashboardsPedidos) {
   const cfg = _utmifyMcpCfg();
   if (!cfg || !cfg.token) throw new Error('Utmify não configurada.');
+  const hojeBusca = _diaBR(Date.now());
+  if (de <= hojeBusca && ate >= hojeBusca) _utmifyHojeEm = Date.now();   // quem cobre hoje conta pro ritmo de _tickUtmifyHoje
   if (!cfg.modo) cfg.modo = String(cfg.token).startsWith('ey') ? 'api' : 'mcp';
   let dashboards = (dashboardsPedidos && dashboardsPedidos.length)
     ? dashboardsPedidos : (cfg.dashboards || []).map(d => d.id);
@@ -5746,6 +5864,26 @@ async function _tickUtmifyAuto() {
 // Agora confere logo depois de subir e com mais frequencia.
 setTimeout(_tickUtmifyAuto, 45 * 1000);        // pouco depois do boot
 setInterval(_tickUtmifyAuto, 2 * 60 * 1000);   // confere a cada 2min; só roda quando dá a hora
+
+// Com alguém olhando a Análise de tráfego num período que inclui hoje, as campanhas
+// de hoje são relidas de 3 em 3 min (6 consultas, uns 5s). Sem ninguém olhando não
+// gasta nada e vale só a rotina acima, de 15 min, que também cobre ontem.
+let _utmifyOlhandoEm = 0, _utmifyHojeEm = 0;
+async function _tickUtmifyHoje() {
+  if (_utmifyRodando) return;
+  if (Date.now() - _utmifyOlhandoEm > 2 * 60 * 1000) return;     // a tela pede a cada minuto: 2 min sem pedir, fechou
+  if (Date.now() - _utmifyHojeEm < 3 * 60 * 1000) return;
+  let cfg;
+  try { cfg = _utmifyMcpCfg(); } catch (e) { return; }
+  if (!cfg || !cfg.token || !cfg.autoSync) return;
+  _utmifyRodando = true;
+  try {
+    const hoje = _diaBR(Date.now());
+    await _utmifySincronizar(hoje, hoje, null);
+  } catch (e) { console.error('[UTMIFY] leitura de hoje falhou:', e.message); }
+  finally { _utmifyRodando = false; }
+}
+setInterval(_tickUtmifyHoje, 20 * 1000);
 
 
 // ══════════════════════════════════════════════
@@ -6624,6 +6762,8 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   }
   // conexão bancária só muda pela tela de Integrações (testa e cifra a credencial)
   if (key === 'fin_conexoes') return res.status(403).json({ error: 'Use Financeiro › Integrações.' });
+  // as chaves que assinam o aviso de venda e a lista de aparelhos só mudam pelas rotas /api/push
+  if (key === KEY_PUSH_CFG || key === KEY_PUSH_APARELHOS) return res.status(403).json({ error: 'Use a tela de Notificações.' });
 
   // ── MULTI-TENANCY PR 5: protege escritas ──
   // 1. Chaves da plataforma: só super-admin (Diretoria do tenant interno) escreve.
@@ -7339,6 +7479,9 @@ app.post('/api/auth/logout', (req, res) => {
     const u = _userInfoFromReq(req, db);
     invalidarSessao(db, token);
     audit(db, 'logout', { userId: u.id }, null, u);
+    // saiu da conta: este aparelho para de receber o aviso de venda
+    const pushEnd = String((req.body && req.body.pushEndpoint) || '');
+    if (pushEnd) db.store[KEY_PUSH_APARELHOS] = _pushAparelhos(db).filter(a => !(a.endpoint === pushEnd && a.userId === u.id));
     writeDB(db);
   }
   res.json({ ok: true });
@@ -7620,7 +7763,9 @@ const KEYS_SERVIDOR = new Set([
   'sl_meta_capi',           // modo de envio e código de teste de cada projeto
   'sl_projetos_meta',       // contas de anúncio de cada projeto; a tela le por /api/projeto/config
   'sl_links_rastreados',    // links /l/; a tela le por /api/links/rastreados
-  'sl_paginas_reg'          // páginas registradas; a tela le por /api/paginas
+  'sl_paginas_reg',         // páginas registradas; a tela le por /api/paginas
+  'sl_push_cfg',            // chave privada que assina o aviso de venda
+  'sl_push_aparelhos'       // aparelhos que recebem o aviso de venda
 ]);
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
