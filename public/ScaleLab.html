@@ -41094,7 +41094,6 @@ function switchAdsTab(tab, btn){
   document.querySelectorAll('.ads-tab-panel').forEach(p=>p.style.display='none');
   if(btn) btn.classList.add('active');
   if(btn && innerWidth <= 768){ try{ btn.scrollIntoView({ inline:'center', block:'nearest' }); }catch(e){} }
-  if(_adsFonte()==='utmify') _seloUtmifyPintar();
   document.getElementById('ads-tab-'+tab).style.display='block';
   const sortBar = document.getElementById('relatorio-sort-bar');
   if(sortBar) sortBar.style.display = tab==='relatorio' ? 'flex' : 'none';
@@ -42164,7 +42163,7 @@ async function loadAdsMetricsUtmify(forcar, silencioso){
       const dias = Math.round((new Date(to) - new Date(from))/86400000) + 1;
       if(dias >= 1 && dias <= 3) await puxarUtmifyPeriodo(true);
     }
-    const r = await fetch('/api/metricas/consolidado?de='+from+'&ate='+to+_qsProjeto()+'&olhando=1');
+    const r = await fetch('/api/metricas/consolidado?de='+from+'&ate='+to+_qsProjeto()+'&olhando=1&receita=tmx');
     if(r.status===401) throw new Error('sua sessão expirou — entre novamente.');
     if(!r.ok) throw new Error('o servidor respondeu '+r.status);
     const d = await r.json();
@@ -42176,12 +42175,13 @@ async function loadAdsMetricsUtmify(forcar, silencioso){
     (d.porCampanha||[]).forEach(c=>{
       const k = String(c.nome||''), x = _porNome[k] || (_porNome[k] = { nome:k, cliques:0, investimento:0, faturamento:0, lucro:0, vendas:0 });
       ['cliques','investimento','faturamento','lucro','vendas'].forEach(f=>{ x[f] += Number(c[f])||0; });
+      if(c.vendasUtmify != null) x.vendasUtmify = (x.vendasUtmify||0) + Number(c.vendasUtmify);
     });
     adsCampanhasData = Object.values(_porNome).map(c=>({
       _id: String(c.nome||''), _name: String(c.nome||'—'),
       clicks: c.cliques||0, lp_views: 0,
       cost: c.investimento||0, total_revenue: c.faturamento||0,
-      profit: c.lucro||0, approved: c.vendas||0,
+      profit: c.lucro||0, approved: c.vendas||0, approvedU: c.vendasUtmify,
       cpa: c.vendas>0 ? c.investimento/c.vendas : 0,
       cr:  c.cliques>0 ? (c.vendas/c.cliques)*100 : 0,
       roas: c.investimento>0 ? c.faturamento/c.investimento : 0
@@ -42616,8 +42616,7 @@ function _seloUtmifyPintar(){
   const el = document.getElementById('ads-selo-utmify');
   if(!el) return;
   const hora = t => new Date(t).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-  const aba = (document.querySelector('.ads-tab.active') || {}).textContent || '';
-  const partes = _adsReceitaTmx && /Resumo|Tempo Real/.test(aba) ? ['Faturamento e vendas do TMX', 'investimento da Utmify'] : ['Fonte: Utmify'];
+  const partes = _adsReceitaTmx ? ['Faturamento e vendas do TMX', 'gasto e métricas da Utmify'] : ['Fonte: Utmify'];
   if(_adsPainelEm) partes.push('números das '+hora(_adsPainelEm));
   // O gasto sobe o dia inteiro: dado velho aparece menor que o painel da Utmify.
   const min = _adsCampanhasEm ? Math.max(0, Math.round((Date.now()-new Date(_adsCampanhasEm).getTime())/60000)) : 0;
@@ -43268,14 +43267,11 @@ var cpDados = [], cpEst = { nivel:'campanhas', conta:'', status:'', busca:'', ma
 var CP_COLS = [
   { k:'orc',   t:'Orçamento',      g:'Dinheiro', on:1, v:function(c){ return c.orc != null ? fmtAds(c.orc).replace(/,\d\d$/,'')+'<small>'+(c.orcVida ? ' total' : '/dia')+'</small>' : '<i>—</i>'; } },
   { k:'investimento', t:'Gasto',   g:'Dinheiro', on:1, v:function(c, mx){ return fmtAds(c.investimento)+'<div class="cp-barra"><i style="width:'+Math.round((c.investimento||0)/mx*100)+'%"></i></div>'; } },
-  { k:'faturamento', t:'Faturamento', g:'Dinheiro', on:1, v:function(c){ return c.faturamento ? fmtAds(c.faturamento) : '<i>—</i>'; } },
+  { k:'faturamento', t:'Faturamento', g:'Dinheiro', on:1, tit:'Soma das vendas que o TMX deu a esta campanha', v:function(c){ return c.faturamento ? fmtAds(c.faturamento) : '<i>—</i>'; } },
   { k:'lucro', t:'Lucro',          g:'Dinheiro', on:1, cls:function(c){ return c.lucro >= 0 ? 'pos' : 'neg'; }, v:function(c){ return fmtAds(c.lucro); } },
   { k:'roas',  t:'ROAS',           g:'Dinheiro', on:1, v:function(c){ return c.roas ? c.roas.toFixed(2).replace('.',',')+'x' : '<i>—</i>'; } },
   { k:'cpa',   t:'CPA',            g:'Dinheiro', on:1, v:function(c){ return c.cpa != null ? fmtAds(c.cpa) : '<i>—</i>'; } },
-  { k:'aprovadas', t:'Vendas',     g:'Vendas',   on:1, tit:'Vendas aprovadas pela Utmify', v:function(c){ return c.aprovadas || 0; } },
-  { k:'vtmx',  t:'Vendas TMX',     g:'Vendas',   on:1, tit:'Vendas que o TMX deu a esta campanha (último anúncio clicado)', v:function(c){
-      var t = cpVendasTmx(c); if(t == null) return '<i>…</i>'; var d = t - (c.aprovadas||0);
-      return '<b class="cp-tmx">'+t+'</b>'+(d ? '<small class="'+(d > 0 ? 'pos' : 'neg')+'"> '+(d > 0 ? '+' : '')+d+'</small>' : ''); } },
+  { k:'aprovadas', t:'Vendas',     g:'Vendas',   on:1, tit:'Vendas que o TMX deu a esta campanha (último anúncio clicado)', v:function(c){ return c.aprovadas || 0; } },
   { k:'impressoes', t:'Impressões', g:'Anúncio', on:1, v:function(c){ return fnNum(c.impressoes||0); } },
   { k:'cliques', t:'Cliques',      g:'Anúncio',  on:1, v:function(c){ return fnNum(c.cliques||0); } },
   { k:'ctr',   t:'CTR',            g:'Anúncio',  on:1, v:function(c){ return cpPct(c.ctr, 2); } },
@@ -43288,9 +43284,6 @@ var CP_COLS = [
   { k:'ticket',t:'Ticket médio',   g:'Dinheiro', on:0, tit:'Faturamento ÷ vendas aprovadas', s:function(c){ return c.aprovadas ? c.faturamento / c.aprovadas : null; }, v:function(c){ return c.aprovadas ? fmtAds(c.faturamento / c.aprovadas) : '<i>—</i>'; } },
   { k:'margem',t:'Margem',         g:'Dinheiro', on:0, tit:'Lucro ÷ faturamento', s:function(c){ return c.faturamento ? c.lucro / c.faturamento : null; }, v:function(c){ return c.faturamento ? cpPct(c.lucro / c.faturamento, 0) : '<i>—</i>'; } },
   { k:'pendentes', t:'Pendentes',  g:'Vendas',   on:0, soma:1, tit:'Pix ou boleto gerado e ainda não pago', v:function(c){ return c.pendentes || 0; } },
-  { k:'ftmx',  t:'Faturamento TMX',g:'Vendas',   on:0, tit:'Faturamento das vendas que o TMX deu a esta campanha', s:function(c){ var x = cpTmxDe(c); return x ? x.faturamento : null; }, v:function(c){ var x = cpTmxDe(c); return x && x.faturamento != null ? fmtAds(x.faturamento) : '<i>—</i>'; } },
-  { k:'roastmx',t:'ROAS TMX',      g:'Vendas',   on:0, tit:'Faturamento TMX ÷ gasto', s:function(c){ var x = cpTmxDe(c); return x && x.faturamento != null && c.investimento ? x.faturamento / c.investimento : null; }, v:function(c){ var x = cpTmxDe(c); return x && x.faturamento != null && c.investimento ? (x.faturamento / c.investimento).toFixed(2).replace('.',',')+'x' : '<i>—</i>'; } },
-  { k:'cpatmx',t:'CPA TMX',        g:'Vendas',   on:0, tit:'Gasto ÷ vendas TMX', s:function(c){ var n = cpVendasTmx(c); return n ? c.investimento / n : null; }, v:function(c){ var n = cpVendasTmx(c); return n ? fmtAds(c.investimento / n) : '<i>—</i>'; } },
   { k:'lpv',   t:'Visualizações da página', g:'Funil', on:0, soma:1, tit:'Quantos carregaram a página depois do clique (a Meta chama de LPV)', v:function(c){ return fnNum(c.lpv||0); } },
   { k:'conexao',t:'Taxa de conexão', g:'Funil',  on:0, tit:'Visualizações da página ÷ cliques: quantos cliques viram a página abrir', s:function(c){ return c.cliques ? c.lpv / c.cliques : null; }, v:function(c){ return c.cliques ? cpPct(c.lpv / c.cliques, 0) : '<i>—</i>'; } },
   { k:'cplpv', t:'Custo por visualização', g:'Funil', on:0, s:function(c){ return c.lpv ? c.investimento / c.lpv : null; }, v:function(c){ return c.lpv ? fmtAds(c.investimento / c.lpv) : '<i>—</i>'; } },
@@ -43322,7 +43315,6 @@ function cpTmxDe(c){
   var primeira = (cpDados||[]).find(function(o){ return adsCampNorm(o.nome) === n; });
   return primeira === c ? x : null;
 }
-function cpVendasTmx(c){ var d = typeof adsTmx !== 'undefined' && adsTmx && adsTmx.dados; if(!d) return null; var x = cpTmxDe(c); return x ? x.vendas : 0; }
 // Vendas do TMX que não têm linha na tabela da Utmify: campanha que vendeu sem
 // gastar no período (a pessoa clicou num anúncio de outro dia) e as vendas sem
 // campanha. Sem elas, a coluna "Vendas TMX" somava 3 num dia de 11 vendas.
@@ -43342,9 +43334,9 @@ function cpColsOn(){ return CP_COLS.filter(function(c){ return c.on; }); }
 function cpGuardarCols(){ try{ localStorage.setItem('ads_cp_cols', JSON.stringify(cpColsOn().map(function(c){ return c.k; }))); }catch(e){} }
 function cpAlternarCol(k){ CP_COLS.forEach(function(c){ if(c.k === k) c.on = c.on ? 0 : 1; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar(); }
 function cpPredef(q){
-  var sets = { enxuta:['investimento','lucro','roas','aprovadas','vtmx','cpa'], dinheiro:['orc','investimento','faturamento','lucro','roas','cpa','aprovadas','vtmx'],
-               anuncio:['investimento','aprovadas','vtmx','impressoes','cliques','ctr','cpc','cpm','hook','hold','freq'],
-               funil:['investimento','aprovadas','vtmx','cliques','lpv','conexao','ic','convpag','convck','cpa'],
+  var sets = { enxuta:['investimento','lucro','roas','aprovadas','cpa'], dinheiro:['orc','investimento','faturamento','lucro','roas','cpa','aprovadas'],
+               anuncio:['investimento','aprovadas','impressoes','cliques','ctr','cpc','cpm','hook','hold','freq'],
+               funil:['investimento','aprovadas','cliques','lpv','conexao','ic','convpag','convck','cpa'],
                video:['investimento','aprovadas','impressoes','vv','v3','hook','v75','hold','ret','retbody','cta','ctr'], tudo:CP_COLS.map(function(c){ return c.k; }) };
   CP_COLS.forEach(function(c){ c.on = sets[q].indexOf(c.k) >= 0 ? 1 : 0; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar();
 }
@@ -43437,7 +43429,7 @@ function cpBarra(){
 function cpFixa(c){ return (cpMarcas[cpIdMarca(c)] || {}).fixa ? 1 : 0; }
 function cpOrdenadas(l){
   var porK = {}; CP_COLS.forEach(function(x){ porK[x.k] = x; });
-  var val = function(c, k){ if(k === 'vtmx') return cpVendasTmx(c) || 0; var col = porK[k];
+  var val = function(c, k){ if(k === 'vtmx') k = 'aprovadas'; var col = porK[k];
     var v = col && col.s ? col.s(c) : c[k]; return v == null || isNaN(v) ? -Infinity : v; };
   // as fixadas ficam no topo, em qualquer ordenação
   return l.slice().sort(function(a, b){ if(cpFixa(a) !== cpFixa(b)) return cpFixa(b) - cpFixa(a); var x = val(a, cpEst.ord), y = val(b, cpEst.ord); return cpEst.desc ? y - x : x - y; });
@@ -43478,13 +43470,14 @@ function cpCards(lista){
   }).join('');
   // as vendas do TMX que a Utmify não tem como campanha, iguais às linhas extras da tabela
   var so = cpSoTmx(), semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
+  var fatExtra = so.extras.reduce(function(a, x){ return a + (Number(x.faturamento) || 0); }, 0) + semFat;
   var extra = function(nome, chip, n, fat, clique){ return '<article class="cpc-card"><div class="cpc-top sem-mrc"><div class="cpc-nome"><b>'+fnEsc(cpNomeCurto(nome))+'</b><div class="cp-chips"><span class="mu">'+chip+'</span></div></div></div>'+
-    '<div class="cpc-nums"><div><span>Vendas TMX</span><b>'+n+'</b></div><div><span>Faturamento</span><b>'+fmtAds(fat)+'</b></div></div>'+(clique ? '<div class="cpc-acoes"><span></span><button class="cpc-ana" onclick="'+clique+'">Ver as vendas ›</button></div>' : '')+'</article>'; };
+    '<div class="cpc-nums"><div><span>Vendas</span><b>'+n+'</b></div><div><span>Faturamento</span><b>'+fmtAds(fat)+'</b></div></div>'+(clique ? '<div class="cpc-acoes"><span></span><button class="cpc-ana" onclick="'+clique+'">Ver as vendas ›</button></div>' : '')+'</article>'; };
   cards += so.extras.map(function(x){ return extra(x.nome, 'sem gasto no período', x.vendas, x.faturamento, ''); }).join('');
   if(so.sem.length) cards += extra('Sem campanha', 'orgânico, bio, sem rastreio', so.sem.length, semFat, 'cpAbrirSemCampanha()');
   return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()">'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
     '<div class="cpc-fixos"><div class="cpc-chips">'+est('on','Ativas')+est('off','Pausadas')+cpFiltrosMarca()+'</div></div>'+
-    '<div class="cpc-soma"><div><span>Gasto</span><b>'+fmtAds(g)+'</b></div><div><span>Lucro</span><b class="'+(lu >= 0 ? 'pos' : 'neg')+'">'+fmtAds(lu)+'</b></div><div><span>ROAS</span><b>'+(g ? (f/g).toFixed(2).replace('.',',')+'x' : '—')+'</b></div></div>'+
+    '<div class="cpc-soma"><div><span>Gasto</span><b>'+fmtAds(g)+'</b></div><div><span>Lucro</span><b class="'+(lu + fatExtra >= 0 ? 'pos' : 'neg')+'">'+fmtAds(lu + fatExtra)+'</b></div><div><span>ROAS</span><b>'+(g ? ((f + fatExtra)/g).toFixed(2).replace('.',',')+'x' : '—')+'</b></div></div>'+
     (cards ? '<div class="cpc-lista">'+cards+'</div>' : '<div class="cp-vazio">Nenhuma campanha neste filtro.</div>');
 }
 function cpcMetricas(){
@@ -43525,10 +43518,10 @@ function cpTabela(l){
       '<td class="f1"><span class="cp-st off">—</span></td>'+
       '<td class="f2"><b title="'+fnEsc(nome)+'">'+fnEsc(cpNomeCurto(nome))+'</b><div class="cp-chips"><span class="mu" title="'+fnEsc(dica)+'">'+chip+'</span></div><i class="cp-alca" data-cp-alca="1"></i></td>'+
       cs.map(function(col){
-        var v = col.k === 'vtmx' ? '<b class="cp-tmx">'+n+'</b><small class="pos"> +'+n+'</small>'
-              : col.k === 'aprovadas' ? '0'
+        var v = col.k === 'aprovadas' ? n
               : col.k === 'investimento' ? fmtAds(0)
-              : (col.k === 'faturamento' && fat) ? '<span title="Faturamento das vendas do TMX">'+fmtAds(fat)+'</span>'
+              : (col.k === 'faturamento' && fat) ? fmtAds(fat)
+              : (col.k === 'lucro' && fat) ? '<span class="pos">'+fmtAds(fat)+'</span>'
               : '<i>—</i>';
         return '<td>'+v+'</td>'; }).join('')+
       '<td class="f3"></td></tr>';
@@ -43544,14 +43537,15 @@ function cpTabela(l){
     so.sem.length, semFat, 'cpAbrirSemCampanha()');
   var nExtra = so.extras.reduce(function(a, x){ return a + x.vendas; }, 0) + so.sem.length;
   var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); };
-  var tot = { investimento: fmtAds(soma('investimento')), faturamento: fmtAds(soma('faturamento')), lucro: fmtAds(soma('lucro')), aprovadas: soma('aprovadas'),
-              vtmx: l.reduce(function(a, c){ return a + (cpVendasTmx(c) || 0); }, 0) + nExtra, impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
-              roas: soma('investimento') ? (soma('faturamento')/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
+  var fatExtra = so.extras.reduce(function(a, x){ return a + (Number(x.faturamento) || 0); }, 0) + semFat, lucroTot = soma('lucro') + fatExtra;
+  var tot = { investimento: fmtAds(soma('investimento')), faturamento: fmtAds(soma('faturamento') + fatExtra), lucro: fmtAds(lucroTot), aprovadas: soma('aprovadas') + nExtra,
+              impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
+              roas: soma('investimento') ? ((soma('faturamento') + fatExtra)/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
   CP_COLS.forEach(function(x){ if(x.soma && tot[x.k] == null) tot[x.k] = fnNum(soma(x.k)); });
   var nCamp = l.length + so.extras.length;
   return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f1">Status</th><th class="f2">Campanha<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna Campanha" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
     (linhas || '<tr><td colspan="'+(cs.length + 3)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+
-    '<tfoot><tr><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(soma('lucro') >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
+    '<tfoot><tr><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(lucroTot >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
 }
 function cpContas(contas){
   if(!contas.length) return '<div class="cp-vazio">A conta de cada campanha passa a vir na próxima sincronização com a Utmify (a cada 15 a 30 minutos).</div>';
@@ -43638,10 +43632,8 @@ function cpPintarAnalise(){
   var desde = d.registroDesde ? ' O TMX anota as mudanças desde '+dm(d.registroDesde)+' '+hm(d.registroDesde)+'.' : '';
   var adsSel = cpAdsDias ? cpAdsCache[cpAdsDias] || {} : d;
   var ads = (adsSel.anuncios || []).map(function(a){
-    var vt = a.vendasTmx || 0, dv = vt - (a.vendas || 0);
-    return '<tr'+(a.soTmx ? ' class="cp-so-tmx" title="Vendeu pelo TMX sem gasto neste período (a pessoa clicou neste anúncio em outro dia)"' : '')+'><td>'+fnEsc(a.nome)+(a.soTmx ? ' <small class="cp-tmx">sem gasto no período</small>' : '')+'</td><td>'+fmtAds(a.gasto)+'</td><td>'+(a.soTmx ? '<i>—</i>' : a.vendas)+'</td>'+
-      '<td><b class="cp-tmx">'+vt+'</b>'+(dv && !a.soTmx ? '<small class="'+(dv > 0 ? 'pos' : 'neg')+'"> '+(dv > 0 ? '+' : '')+dv+'</small>' : '')+'</td>'+
-      '<td class="'+(a.lucro == null ? '' : a.lucro >= 0 ? 'pos' : 'neg')+'">'+(a.soTmx ? '<i>—</i>' : din(a.lucro))+'</td>'+
+    var vt = a.vendasTmx || 0;
+    return '<tr'+(a.soTmx ? ' class="cp-so-tmx" title="Vendeu pelo TMX sem gasto neste período (a pessoa clicou neste anúncio em outro dia)"' : '')+'><td>'+fnEsc(a.nome)+(a.soTmx ? ' <small class="cp-tmx">sem gasto no período</small>' : '')+'</td><td>'+fmtAds(a.gasto)+'</td><td>'+vt+'</td>'+
       '<td class="'+(a.lucroTmx == null ? '' : a.lucroTmx >= 0 ? 'pos' : 'neg')+'">'+din(a.lucroTmx)+'</td>'+
       '<td>'+pct(a.ctr, 2)+'</td><td>'+pct(a.hook, 0)+'</td><td>'+pct(a.cta, 0)+'</td></tr>'; }).join('');
   ov.querySelector('.v2-mod').innerHTML =
@@ -43651,13 +43643,13 @@ function cpPintarAnalise(){
         (lcEhDir() ? '<button class="fn-btn g sm" onclick="cpPausarDaAnalise(this)" title="'+(cpMeta && cpMeta.pode ? (st[1] === 'on' ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta') : 'Pra pausar daqui, conecte a Meta com ads_management (Integrações → Meta)')+'"'+(cpMeta && cpMeta.pode ? '' : ' style="opacity:.55"')+'>'+(st[1] === 'on' ? '⏸ Pausar' : '▶ Ativar')+'</button>' : '')+
         '<button class="fn-btn g sm" disabled title="Em breve: mudar o orçamento pelo TMX">✎ Orçamento</button><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
     (d.erroAoVivo ? '<div class="v2-alerta warn"><div><b>A Utmify não respondeu agora</b><span>Mostrando o que o TMX já tinha guardado. '+fnEsc(d.erroAoVivo)+'</span></div></div>' : '')+
-    '<div class="cp-ks">'+k('Gasto', fmtAds(m.gasto))+k('Faturamento', din(m.faturamento), 'Utmify')+k('Lucro', m.lucro == null ? din(null) : '<span class="'+(m.lucro >= 0 ? 'pos' : 'neg')+'">'+fmtAds(m.lucro)+'</span>')+
-      k('ROAS', m.gasto && m.faturamento != null ? (m.faturamento/m.gasto).toFixed(2).replace('.',',')+'x' : '—')+k('Vendas', m.vendas+' <small>Utmify</small> · '+t.vendas+' <small>TMX</small>')+'</div>'+
+    '<div class="cp-ks">'+k('Gasto', fmtAds(m.gasto))+k('Faturamento', din(t.faturamento), 'TMX')+k('Lucro', t.faturamento == null ? din(null) : '<span class="'+(t.faturamento - m.gasto >= 0 ? 'pos' : 'neg')+'">'+fmtAds(t.faturamento - m.gasto)+'</span>')+
+      k('ROAS', m.gasto && t.faturamento != null ? (t.faturamento/m.gasto).toFixed(2).replace('.',',')+'x' : '—')+k('Vendas', t.vendas, 'TMX')+'</div>'+
     (vid ? '<div class="v2-rot cp-s">Vídeo do anúncio</div><div class="cp-vbs">'+vid+'</div>' : '<div class="cp-nota" style="margin-top:12px">Os números do vídeo (hook, hold, CTA) chegam na próxima sincronização com a Utmify.</div>')+
     '<div class="v2-rot cp-s">Do anúncio à venda <i class="cp-info" title="Impressões e cliques vêm da Meta (Utmify); visitas, pitch, clique em comprar e vendas vêm do pixel do TMX">ⓘ</i></div><div class="cp-funil">'+funil+'</div>'+
     '<div class="cp-mets">'+mets+'</div>'+
     '<div class="v2-rot cp-s" style="display:flex;align-items:center;gap:8px">Resultado por dia <span class="cp-seg" style="margin-left:auto"><button class="'+(cpDiaVista === 'graf' ? 'on' : '')+'" onclick="cpDiaVista=\'graf\';cpPintarAnalise()">Gráfico</button><button class="'+(cpDiaVista === 'tab' ? 'on' : '')+'" onclick="cpDiaVista=\'tab\';cpPintarAnalise()">Tabela</button></span></div>'+
-      '<div class="cp-nota">Os 7 dias até '+dm(Date.parse(d.ate+'T12:00:00'))+'. Gasto da Utmify; faturamento da Utmify (ou do TMX, nos dias que a Utmify não guardou).</div>'+(cpDiaVista === 'graf' ? cpGraficoDias(d) : cpTabelaDias(d))+
+      '<div class="cp-nota">Os 7 dias até '+dm(Date.parse(d.ate+'T12:00:00'))+'. Gasto da Utmify; faturamento do TMX.</div>'+(cpDiaVista === 'graf' ? cpGraficoDias(d) : cpTabelaDias(d))+
     '<div class="v2-rot cp-s">Vendas por hora · '+dm(Date.parse(d.ate+'T12:00:00'))+'</div>'+cpGraficoHoras(d)+
     '<div class="v2-rot cp-s">Orçamento e mudanças</div>'+(mud || '<div class="cp-nota">Nenhuma mudança de orçamento, bid cap ou status vista no período.'+desde+'</div>')+
     (mud ? '<div class="cp-nota" style="margin-top:6px">'+desde.trim()+'</div>' : '')+
@@ -43666,15 +43658,15 @@ function cpPintarAnalise(){
         return '<button class="'+(cpAdsDias === x[0] ? 'on' : '')+'" onclick="cpAdsPeriodo('+x[0]+')">'+x[1]+'</button>'; }).join('')+'</span></div>'+
     (function(){
       var f = cpAdsDias ? cpAdsFaixa(cpAdsDias) : { de: d.de, ate: d.ate }, dd = function(s){ return s.slice(8)+'/'+s.slice(5,7); };
-      return '<div class="cp-nota">'+(f.de === f.ate ? 'Só '+dd(f.ate) : 'De '+dd(f.de)+' a '+dd(f.ate))+'. Gasto e vendas Utmify vêm da Utmify; vendas TMX, do pixel do TMX.</div>';
+      return '<div class="cp-nota">'+(f.de === f.ate ? 'Só '+dd(f.ate) : 'De '+dd(f.de)+' a '+dd(f.ate))+'. Gasto da Utmify; vendas e lucro do TMX.</div>';
     })()+
     (adsSel.carregando ? '<div class="cp-nota">Buscando os anúncios na Utmify…</div>'
       : adsSel.erro ? '<div class="v2-alerta warn"><div><b>Não buscou os anúncios</b><span>'+fnEsc(adsSel.erro)+'</span></div></div>'
-      : ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th title="Vendas que a Utmify deu a este anúncio">Vendas Utmify</th><th title="Vendas que o TMX deu a este anúncio (último anúncio que a pessoa clicou)">Vendas TMX</th><th>Lucro Utmify</th><th title="Faturamento das vendas do TMX menos o gasto">Lucro TMX</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>'
+      : ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th title="Vendas que o TMX deu a este anúncio (último anúncio que a pessoa clicou)">Vendas</th><th title="Faturamento das vendas do TMX menos o gasto">Lucro</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>'
       : '<div class="cp-nota">Nenhum anúncio com gasto nesses dias'+(adsSel.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
   var cA = cpDados[cpAnaliseIdx]; if(cA) cpVivoLigar(cA.campanhaId, cA.nome);
 }
-function cpSerie(d){ return d.porDia.map(function(x){ var f = x.fatUtmify != null ? x.fatUtmify : (x.fatTmx != null ? x.fatTmx : null); var l = x.lucroUtmify != null ? x.lucroUtmify : (f != null ? f - x.gasto : null); return { dia:x.dia, g:x.gasto||0, f:f, l:l, v:x.vendasTmx||0 }; }); }
+function cpSerie(d){ return d.porDia.map(function(x){ var f = x.fatTmx != null ? x.fatTmx : null; var l = f != null ? f - x.gasto : null; return { dia:x.dia, g:x.gasto||0, f:f, l:l, v:x.vendasTmx||0 }; }); }
 function cpGraficoDias(d){
   var ds = cpSerie(d), W = 900, H = 220, L = 70, R = 10, T = 14, B = 26, vals = [];
   ds.forEach(function(x){ vals.push(x.g); if(x.f != null) vals.push(x.f); if(x.l != null) vals.push(x.l); });
@@ -43754,7 +43746,8 @@ function adsTmxPintar(){
   var d = adsTmx && adsTmx.dados; if(!d){ cx.innerHTML = ''; return; }
   var esc = typeof fnEsc === 'function' ? fnEsc : function(x){ return String(x); };
   var porNome = {}; (adsCampanhasData||[]).forEach(function(r){ porNome[adsCampNorm(r._name)] = r; });
-  var utTotal = (adsCampanhasData||[]).reduce(function(a, r){ return a + (Number(r.approved)||0); }, 0);
+  var vendasU = function(r){ return Number(r.approvedU != null ? r.approvedU : r.approved)||0; };
+  var utTotal = (adsCampanhasData||[]).reduce(function(a, r){ return a + vendasU(r); }, 0);
   var emCamp = 0; Object.keys(d.porCampanha).forEach(function(k){ emCamp += d.porCampanha[k].vendas; });
   var tn = adsTmxPorNome(d);
   // campanhas que só o TMX tem: linha extra no fim da tabela
@@ -43776,7 +43769,7 @@ function adsTmxPintar(){
   var chaves = {}; Object.keys(tn).forEach(function(k){ chaves[k] = 1; }); Object.keys(porNome).forEach(function(k){ chaves[k] = 1; });
   var difs = Object.keys(chaves).map(function(k){
     var c = tn[k], r = porNome[k];
-    return { nome: c ? c.nome : r._name, u: r ? (Number(r.approved)||0) : 0, t: c ? c.vendas : 0, pedidos: c ? c.pedidos : [] };
+    return { nome: c ? c.nome : r._name, u: r ? vendasU(r) : 0, t: c ? c.vendas : 0, pedidos: c ? c.pedidos : [] };
   }).filter(function(x){ return x.u !== x.t; }).sort(function(a, b){ return Math.abs(b.t - b.u) - Math.abs(a.t - a.u); });
   var quando = function(em){ var x = new Date(em); return String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0')+' '+String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'); };
   var venda = function(p){

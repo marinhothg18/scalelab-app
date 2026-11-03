@@ -4143,7 +4143,7 @@ async function _rotaAnuncios(req, res) {
   const chave = 'anuncios|' + de + '|' + ate + '|' + projeto;
   // o botão Atualizar pede o número de agora; o piso de 10s segura clique repetido
   const pronto = _vivoGet(chave, req.query.forcar === '1' ? 10 * 1000 : 45 * 1000);
-  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  if (pronto) return res.json(Object.assign({ doCache: true }, _anunciosComTmx(pronto, de, ate, projeto)));
   try {
     const achado = await _utmifyDashboardsAtivos();
     const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
@@ -4235,20 +4235,20 @@ async function _rotaAnuncios(req, res) {
     // nada, mesmo depois de o dia ter sido guardado.
     if (!anuncios.length) {
       const salvo = _adsLer(de, ate, projeto);
-      if (salvo && salvo.anuncios.length) return res.json(Object.assign({}, salvo, {
+      if (salvo && salvo.anuncios.length) return res.json(Object.assign({}, _anunciosComTmx(salvo, de, ate, projeto), {
         doArquivo: true,
         avisoArquivo: 'A Utmify não tem mais este período na janela dela. ' +
-                      'Estes números são os que ficaram guardados aqui.' }));
+                      'O gasto é o que ficou guardado aqui.' }));
     }
-    res.json(saida);
+    res.json(_anunciosComTmx(saida, de, ate, projeto));
   } catch (e) {
     // ── A Utmify falhou: entrega o que ficou guardado ────────────────────────
     // Dado de ads e historico: uma vez lido, tem de continuar existindo. Antes,
     // qualquer tropeço da API apagava o dia inteiro da tela.
     const salvo = _adsLer(de, ate, projeto);
-    if (salvo) return res.json(Object.assign({}, salvo, {
+    if (salvo) return res.json(Object.assign({}, _anunciosComTmx(salvo, de, ate, projeto), {
       doArquivo: true, avisoArquivo: 'A Utmify não respondeu agora (' + e.message +
-        '). Estes números são a última leitura guardada aqui.' }));
+        '). O gasto é da última leitura guardada aqui.' }));
     res.status(400).json({ error: e.message });
   }
 }
@@ -4778,6 +4778,83 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
 // vezes no dia seguinte, e a venda já está na linha "paid". Em 20/10 vieram 355 de uma vez.
 const _PED_PENDENTE = /(waiting|pending|aguard|process)/i;
 const _PED_RECUSADO = /(cancel|refus|recus|denied|negad|fail|expir)/i;
+// A conta de anúncio de cada venda: pela campanha que levou o crédito.
+function _contaDoPedidoFn() {
+  const contaPorId = {}, contaPorNome = {};
+  _q("SELECT id, nome, conta FROM camp_dia WHERE conta IS NOT NULL AND conta<>'' GROUP BY id, conta").all().forEach(c => {
+    contaPorId[String(c.id)] = c.conta;
+    const n = _campNorm(c.nome); if (n) contaPorNome[n] = contaPorNome[n] === undefined || contaPorNome[n] === c.conta ? c.conta : null;
+  });
+  const idDe = _campIdDoPedidoFn(contaPorId);
+  return p => { const id = idDe(p); return id ? contaPorId[id] : (contaPorNome[_campNorm(p.cred_camp)] || ''); };
+}
+// Por Anúncio: receita e vendas de cada anúncio saem do TMX, pelo crédito da venda (id ou nome
+// do anúncio na UTM). Da Utmify ficam o gasto e as métricas. Anúncio que vendeu sem gasto no
+// período entra também. A conciliação compara com o total do TMX, igual ao Resumo.
+function _anunciosComTmx(saida, de, ate, projetoId) {
+  if (!saida || !Array.isArray(saida.anuncios) || !_pessoas()) return saida;
+  try {
+    const db = readDB(), cfg = _utmifyMcpCfg(db) || {};
+    const nomeDash = (cfg.dashboards || []).find(x => String(x.id) === String(projetoId));
+    if (projetoId && !nomeDash) return saida;
+    const doProjeto = nomeDash ? _pedidoDoProjetoFn(db, String(nomeDash.nome || '').trim()) : null;
+    const contaDe = _contaDoPedidoFn(), nomesConta = _contaNomes();
+    const anuncios = saida.anuncios.map(a => {
+      const pc = {};
+      Object.keys(a.porConta || {}).forEach(k => { const x = a.porConta[k]; pc[k] = Object.assign({}, x, { receita: 0, vendas: 0, lucro: -(Number(x.investimento) || 0) }); });
+      return Object.assign({}, a, { receita: 0, vendas: 0, porConta: pc });
+    });
+    const porId = {}, porNome = {};
+    anuncios.forEach(a => {
+      (a.ids || []).forEach(id => { if (!porId[id]) porId[id] = a; });
+      const k = _anuncioChave(a.nome); if (!porNome[k]) porNome[k] = a;
+    });
+    let vendasConta = 0, receitaConta = 0, vendasAnuncios = 0, receitaAnuncios = 0;
+    _q('SELECT id, pedido, valor, produto, funil, renovacao, cred_camp, cred_cont, camp, cont FROM pedidos WHERE pago=1 AND estorno=0 AND dia BETWEEN ? AND ?').all(de, ate).forEach(p => {
+      if (doProjeto && !doProjeto(p)) return;
+      const v = Number(p.valor) || 0;
+      vendasConta++; receitaConta += v;
+      if (p.renovacao) return;
+      const c = p.cred_camp ? p.cred_cont : p.cont; if (!c) return;
+      const id = _idDaCampUtm(c), nome = _semId(_contSemId(c)), k = _anuncioChave(nome);
+      let a = (id && porId[id]) || porNome[k];
+      if (!a) {
+        // só venda com crédito de campanha vira anúncio novo: "link_in_bio" é a bio, não anúncio
+        if (!p.cred_camp || !nome || /^\d+$/.test(nome)) return;
+        a = porNome[k] = { nome, dashboard: nomeDash ? nomeDash.nome : '', veiculacoes: 0, investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0, porConta: {}, soTmx: true };
+        anuncios.push(a);
+      }
+      a.vendas++; a.receita += v; vendasAnuncios++; receitaAnuncios += v;
+      const ct = contaDe(p), nc = ct ? (nomesConta[ct] || ct) : '';
+      if (nc && a.porConta[nc]) { a.porConta[nc].vendas++; a.porConta[nc].receita += v; a.porConta[nc].lucro += v; }
+    });
+    anuncios.forEach(a => {
+      const g = Number(a.investimento) || 0;
+      a.lucro = a.receita - g; a.roas = g > 0 ? a.receita / g : 0; a.cpa = a.vendas > 0 ? g / a.vendas : 0;
+    });
+    return Object.assign({}, saida, { anuncios, fonteReceita: 'tmx', conciliacao: {
+      vendasAnuncios, vendasConta, receitaAnuncios, receitaConta,
+      vendasSemAnuncio: Math.max(0, vendasConta - vendasAnuncios), receitaSemAnuncio: Math.max(0, receitaConta - receitaAnuncios) } });
+  } catch (e) {
+    console.error('[TMX] faturamento dos anúncios falhou, ficou o da Utmify:', e.message);
+    return saida;
+  }
+}
+// Por Campanha e Relatório: faturamento, vendas, lucro, ROAS e CPA de cada campanha saem das
+// vendas do TMX. Da Utmify ficam o gasto e as métricas. Cada venda entra numa linha só: pelo id
+// da campanha, e pelo nome só na primeira cópia com esse nome (a mesma regra de cpTmxDe na tela).
+function _campanhasComTmx(lista, tmx) {
+  const porId = {}, usados = new Set();
+  Object.values(tmx.porCampanha).forEach(x => { if (x.campanhaId) porId[String(x.campanhaId)] = x; });
+  lista.forEach(c => {
+    let t = c.campanhaId ? porId[String(c.campanhaId)] : null;
+    if (!t) { const n = _campNorm(c.nome); if (tmx.porCampanha[n] && !usados.has(n)) { t = tmx.porCampanha[n]; usados.add(n); } }
+    const fat = t ? (Number(t.faturamento) || 0) : 0, n = t ? t.vendas : 0, g = Number(c.investimento) || 0;
+    c.fatUtmify = c.faturamento; c.vendasUtmify = c.aprovadas;
+    Object.assign(c, { faturamento: fat, aprovadas: n, vendas: n, lucro: fat - g, roas: g > 0 ? fat / g : 0, cpa: n > 0 ? g / n : null });
+  });
+  return lista;
+}
 function _panoramaComTmx(pano, de, ate, projetoId, filtros) {
   if (!pano || !pano.kpis || !_pessoas()) return pano;
   try {
@@ -4786,14 +4863,7 @@ function _panoramaComTmx(pano, de, ate, projetoId, filtros) {
     const nomeDash = (cfg.dashboards || []).find(x => String(x.id) === String(projetoId));
     if (projetoId && !nomeDash) return pano;
     const doProjeto = nomeDash ? _pedidoDoProjetoFn(db, String(nomeDash.nome || '').trim()) : null;
-    // a conta de anúncio de cada venda: pela campanha que levou o crédito
-    const contaPorId = {}, contaPorNome = {};
-    _q("SELECT id, nome, conta FROM camp_dia WHERE conta IS NOT NULL AND conta<>'' GROUP BY id, conta").all().forEach(c => {
-      contaPorId[String(c.id)] = c.conta;
-      const n = _campNorm(c.nome); if (n) contaPorNome[n] = contaPorNome[n] === undefined || contaPorNome[n] === c.conta ? c.conta : null;
-    });
-    const idDe = _campIdDoPedidoFn(contaPorId);
-    const contaDe = p => { const id = idDe(p); return id ? contaPorId[id] : (contaPorNome[_campNorm(p.cred_camp)] || ''); };
+    const contaDe = _contaDoPedidoFn();
     const nomesConta = _contaNomes();
     const linhas = _q('SELECT id, pedido, status, pago, estorno, valor, produto, metodo, plataforma, funil, cred_camp, camp, em FROM pedidos WHERE dia BETWEEN ? AND ? ORDER BY em').all(ini, fim);
     const passaFiltros = p => (!fil.plataforma || _nrm(p.plataforma || 'payt') === _nrm(fil.plataforma)) &&
@@ -5024,6 +5094,17 @@ function _anuncioPixel(nome, ids, faixas) {
       paginas: Object.keys(y.ent).sort((a, b) => y.ent[b] - y.ent[a]).slice(0, 4).map(p => ({ pagina: p, n: y.ent[p] })) }; });
   return saida;
 }
+function _anuncioVendasTmx(nome, ids, faixas) {
+  const alvo = _anuncioChave(nome), idsSet = new Set(ids || []), saida = {};
+  const eDele = c => { const id = _idDaCampUtm(c); return (id && idsSet.has(id)) || _anuncioChave(_contSemId(c)) === alvo; };
+  Object.keys(faixas).forEach(k => { saida[k] = { rec: 0, v: 0 }; });
+  const ini = Math.min(...Object.values(faixas).map(f => f.ini)), fim = Math.max(...Object.values(faixas).map(f => f.fim));
+  _q('SELECT em, valor, cred_camp, cred_cont, cont FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(ini, fim).forEach(p => {
+    const c = p.cred_camp ? p.cred_cont : p.cont; if (!c || !eDele(c)) return;
+    Object.keys(faixas).forEach(k => { const f = faixas[k]; if (p.em >= f.ini && p.em <= f.fim) { saida[k].v++; saida[k].rec += Number(p.valor) || 0; } });
+  });
+  return saida;
+}
 function _anuncioFaixas(de, ate) {
   const hoje = _diaBR(Date.now()), voltar = n => _diaBR(Date.now() - n * 86400000);
   const f = {};
@@ -5052,6 +5133,10 @@ app.get('/api/metricas/utmify/anuncio', authUsuario, async (req, res) => {
     const ids = [...new Set(Object.values(periodos).flatMap(p => p.ids))];
     const pxFaixas = { d3: faixas.d3, d7: faixas.d7 };
     const pixel = _pessoas() ? _anuncioPixel(nome, ids, pxFaixas) : null;
+    if (_pessoas()) {
+      const tmx = _anuncioVendasTmx(nome, ids, faixas);
+      Object.keys(periodos).forEach(k => { periodos[k].rec = tmx[k].rec; periodos[k].v = tmx[k].v; });
+    }
     Object.values(periodos).forEach(p => { delete p.ids; });
     res.json({ ok: true, nome, dashboard: d.nome || d.id, periodos, pixel, ids: ids.slice(0, 60) });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -5303,7 +5388,10 @@ app.get('/api/metricas/consolidado', authUsuario, (req, res) => {
       atualizadoEm: (_utmifyMcpCfg(db) || {}).ultimaSync || null,
       // pelo id: campanha duplicada na Meta fica com o mesmo nome, e agrupar pelo
       // nome somava o gasto de 6 cópias numa linha com o status de uma só
-      porCampanha:  _comMudancas(agrupar('campanha', null, l => l.campanhaId ? 'id:' + l.campanhaId : (l.campanha || '—')), de, ate),
+      porCampanha:  (() => {
+        const lista = _comMudancas(agrupar('campanha', null, l => l.campanhaId ? 'id:' + l.campanhaId : (l.campanha || '—')), de, ate);
+        return req.query.receita === 'tmx' && _pessoas() ? _campanhasComTmx(lista, _tmxPorCampanha(db, de, ate, projeto, false)) : lista;
+      })(),
       porAnuncio:   agrupar('anuncio'),
       porDia:       agrupar('data', baseKpi).sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
       porDashboard: agrupar('dashboard', baseKpi),
@@ -5440,7 +5528,7 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       const ini7 = Date.parse(dias7[0] + 'T00:00:00-03:00'), diaHora = per.ate;
       _q('SELECT valor, liquido, cred_camp, camp, cred_cont, cont, em, dia FROM pedidos WHERE em BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0').all(Math.min(ini7, per.ini), per.fim).forEach(p => {
         if ((_idDaCampUtm(p.cred_camp) || _idDaCampUtm(p.camp)) !== m.id) return;
-        const v = p.liquido != null ? p.liquido : (Number(p.valor) || 0);
+        const v = Number(p.valor) || 0;
         const d = porDiaTmx[p.dia] || (porDiaTmx[p.dia] = { vendas: 0, faturamento: 0 }); d.vendas++; d.faturamento += v;
         if (p.em >= per.ini) {
           tmx.vendas++; tmx.faturamento += v;
@@ -5533,9 +5621,14 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe o período.' });
-    const db = readDB(), dir = _ehDir(req);
+    const t = _tmxPorCampanha(readDB(), de, ate, String(req.query.projeto || '').slice(0, 40), _ehDir(req));
+    res.json({ ok: true, de, ate, projeto: t.projeto, total: t.total, porCampanha: t.porCampanha, semCampanha: t.semCampanha });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// A soma de cada campanha aparece pra todos, como o faturamento dela sempre apareceu.
+// O valor de cada venda só vai pra Diretoria e sócios (`dir`).
+function _tmxPorCampanha(db, de, ate, projeto, dir) {
     // projeto da tela = dashboard da Utmify; no TMX, os funis com o mesmo nome de projeto
-    const projeto = String(req.query.projeto || '').slice(0, 40);
     let nomeProj = '';
     if (projeto) {
       const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto);
@@ -5579,15 +5672,14 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
       // com o id, uma entrada por campanha: as cópias com o mesmo nome não se misturam
       const k = id ? 'id:' + id : _campNorm(p.cred_camp);
       const c = porCampanha[k] || (porCampanha[k] = { nome: id ? _semId(nomePorId[id]) : _semId(p.cred_camp), campanhaId: id,
-                                                      vendas: 0, faturamento: dir ? 0 : null, pedidos: [] });
+                                                      vendas: 0, faturamento: 0, pedidos: [] });
       // o nome que a venda trouxe, quando a campanha mudou de nome depois do clique
       if (id && _campNorm(p.cred_camp) !== _campNorm(nomePorId[id])) c.nomeNaVenda = _semId(p.cred_camp);
-      c.vendas++; if (dir) c.faturamento += Number(p.valor) || 0;
+      c.vendas++; c.faturamento += Number(p.valor) || 0;
       c.pedidos.push(linha(p));
     });
-    res.json({ ok: true, de, ate, projeto: nomeProj, total: peds.length, porCampanha, semCampanha });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+    return { projeto: nomeProj, total: peds.length, porCampanha, semCampanha };
+}
 
 // ── API INTERNA DA UTMIFY (a mesma que o painel deles usa) ──
 // Descoberta inspecionando o painel: POST server.utmify.com.br/orders/search-objects
