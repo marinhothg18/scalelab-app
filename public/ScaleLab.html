@@ -5613,10 +5613,10 @@ a.fn-btn{text-decoration:none;display:inline-block}
               <button class="trs-limpar" id="trs-limpar" style="display:none" onclick="trsLimparFiltros()">Limpar</button>
             </div>
             <div class="trs-grade">
-              <div class="trs-k trs-s4"><div class="r"><span>Faturamento</span><i class="trs-i" data-trs="Tudo o que entrou de vendas aprovadas no período.">i</i></div><div class="v" id="trs-k-fat">—</div></div>
-              <div class="trs-k trs-s4"><div class="r"><span>Gastos com anúncios</span><i class="trs-i" data-trs="O que as contas gastaram na Meta no período.">i</i></div><div class="v" id="trs-k-gas">—</div></div>
+              <div class="trs-k trs-s4"><div class="r"><span>Faturamento</span><i class="trs-i" data-trs="A soma das vendas aprovadas que o TMX recebeu no período, igual a Projeto › Vendas.">i</i></div><div class="v" id="trs-k-fat">—</div></div>
+              <div class="trs-k trs-s4"><div class="r"><span>Gastos com anúncios</span><i class="trs-i" data-trs="O que as contas gastaram na Meta no período, pela Utmify.">i</i></div><div class="v" id="trs-k-gas">—</div></div>
               <div class="trs-k trs-s2"><div class="r"><span>ROAS</span><i class="trs-i" data-trs="Faturamento ÷ gastos com anúncios.">i</i></div><div class="v" id="trs-k-roas">—</div></div>
-              <div class="trs-k trs-s2"><div class="r"><span>Lucro</span><i class="trs-i" data-trs="Faturamento menos gastos, impostos e taxas.">i</i></div><div class="v" id="trs-k-luc">—</div></div>
+              <div class="trs-k trs-s2"><div class="r"><span>Lucro</span><i class="trs-i" data-trs="Faturamento do TMX menos o gasto com anúncios da Utmify.">i</i></div><div class="v" id="trs-k-luc">—</div></div>
 
               <div class="trs-cx trs-s8 trs-funil-cx">
                 <div class="trs-cab"><div><h3>Funil de conversão</h3><div class="trs-sub">O % de dentro é sobre os cliques. O de baixo diz quanto passou de uma etapa pra outra.</div></div></div>
@@ -5626,8 +5626,8 @@ a.fn-btn{text-decoration:none;display:inline-block}
                 <div class="trs-k p"><div class="r"><span>Vendas</span></div><div class="v" id="trs-k-ven">—</div><div class="m" id="trs-k-ven-m"></div></div>
                 <div class="trs-k p"><div class="r"><span>CPA</span><i class="trs-i" data-trs="Gastos ÷ vendas aprovadas.">i</i></div><div class="v" id="trs-k-cpa">—</div></div>
                 <div class="trs-k p"><div class="r"><span>Margem</span><i class="trs-i" data-trs="Lucro ÷ faturamento.">i</i></div><div class="v" id="trs-k-mar">—</div></div>
-                <div class="trs-k p"><div class="r"><span>Ticket médio</span><i class="trs-i" data-trs="Faturamento ÷ vendas aprovadas. A Utmify chama de ARPU.">i</i></div><div class="v" id="trs-k-tic">—</div></div>
-                <div class="trs-k p"><div class="r"><span>Reembolsos</span><i class="trs-i" data-trs="O que a Utmify marcou como reembolso. A lista completa fica em Projeto › Reembolsos.">i</i></div><div class="v" id="trs-k-ree">—</div></div>
+                <div class="trs-k p"><div class="r"><span>Ticket médio</span><i class="trs-i" data-trs="Faturamento ÷ vendas aprovadas.">i</i></div><div class="v" id="trs-k-tic">—</div></div>
+                <div class="trs-k p"><div class="r"><span>Reembolsos</span><i class="trs-i" data-trs="Reembolsos e chargebacks que o TMX recebeu no período. Não descontam do faturamento. A lista completa fica em Projeto › Reembolsos.">i</i></div><div class="v" id="trs-k-ree">—</div></div>
                 <div class="trs-k p"><div class="r"><span>Pendentes</span><i class="trs-i" data-trs="Pix ou boleto gerado e ainda não pago.">i</i></div><div class="v" id="trs-k-pen">—</div><div class="m" id="trs-k-pen-m"></div></div>
                 <div class="trs-cx">
                   <div class="trs-cab" style="margin-bottom:4px"><h3>Taxa de aprovação</h3></div>
@@ -9494,7 +9494,7 @@ async function _homeCalcKPIsDaUtmify(){
       lucro:        { atual: Number(ka.lucro) || 0,        var: kb ? variacao(ka.lucro, kb.lucro) : null },
       roas:         { atual: Number(ka.roas) || 0,         var: kb ? variacao(ka.roas, kb.roas) : null },
       vendas: vendas,
-      fonte: 'utmify'
+      fonte: a.fonteReceita === 'tmx' ? 'tmx' : 'utmify'
     };
     // dia ainda zerado (madrugada, ou Utmify fora do ar) não vale sobrescrever
     if(!resultado.investimento.atual && !resultado.faturamento.atual && !vendas) return null;
@@ -9677,7 +9677,7 @@ function renderHome(){
     }).then(function(rtK){
       var rodapeVazio = document.getElementById('home-kpi-fonte');
       if(!rtK && rodapeVazio){
-        rodapeVazio.textContent = 'Ainda sem número de hoje: aparece assim que a Utmify registrar o primeiro gasto ou a primeira venda do dia.';
+        rodapeVazio.textContent = 'Ainda sem número de hoje: aparece assim que entrar o primeiro gasto ou a primeira venda do dia.';
       }
       if(rtK) {
         try {
@@ -9698,8 +9698,9 @@ function renderHome(){
                            dRoas.txt, null, dRoas.bg, dRoas.fg, 'rgba(62,20,147,.25)');
           var rodape = document.getElementById('home-kpi-fonte');
           if(rodape){
-            rodape.textContent = (rtK.fonte === 'utmify'
-              ? 'Hoje, pela Utmify' + (rtK.vendas ? ' · ' + rtK.vendas + ' venda' + (rtK.vendas > 1 ? 's' : '') + ' aprovada' + (rtK.vendas > 1 ? 's' : '') : '')
+            var nVendas = rtK.vendas ? ' · ' + rtK.vendas + ' venda' + (rtK.vendas > 1 ? 's' : '') + ' aprovada' + (rtK.vendas > 1 ? 's' : '') : '';
+            rodape.textContent = (rtK.fonte === 'tmx' ? 'Hoje: faturamento do TMX, investimento da Utmify' + nVendas
+              : rtK.fonte === 'utmify' ? 'Hoje, pela Utmify' + nVendas
               : 'Hoje, pelo RedTrack') + ' · a variação compara com ontem';
           }
         } catch(e){ console.warn('[HOME] RedTrack update erro:', e); }
@@ -41093,6 +41094,7 @@ function switchAdsTab(tab, btn){
   document.querySelectorAll('.ads-tab-panel').forEach(p=>p.style.display='none');
   if(btn) btn.classList.add('active');
   if(btn && innerWidth <= 768){ try{ btn.scrollIntoView({ inline:'center', block:'nearest' }); }catch(e){} }
+  if(_adsFonte()==='utmify') _seloUtmifyPintar();
   document.getElementById('ads-tab-'+tab).style.display='block';
   const sortBar = document.getElementById('relatorio-sort-bar');
   if(sortBar) sortBar.style.display = tab==='relatorio' ? 'flex' : 'none';
@@ -41286,7 +41288,14 @@ function _contasDeAnuncio(lista){
   if(!caixa || !corpo) return;
   trsContasLista = lista || [];
   const nomeF = trsFiltro.conta ? trsContasNomes[trsFiltro.conta] : '';
-  const l = nomeF ? trsContasLista.filter(function(c){ return c.nome === nomeF; }) : trsContasLista;
+  // o gasto de cada conta é da Utmify; faturamento e vendas, do TMX
+  const tmx = trsContasTmx, comTmx = !tmx ? trsContasLista : trsContasLista.map(function(c){
+    const t = tmx[c.nome] || { vendas:0, receita:0 }, g = Number(c.investimento)||0;
+    return Object.assign({}, c, { faturamento:t.receita, lucro:t.receita-g, roas:g > 0 ? t.receita/g : 0, aprovadas:t.vendas, vendas:t.vendas });
+  }).concat(Object.keys(tmx).filter(function(n){ return !trsContasLista.some(function(c){ return c.nome === n; }); }).map(function(n){
+    return { nome:n, investimento:0, faturamento:tmx[n].receita, lucro:tmx[n].receita, roas:0, aprovadas:tmx[n].vendas, vendas:tmx[n].vendas };
+  }));
+  const l = nomeF ? comTmx.filter(function(c){ return c.nome === nomeF; }) : comTmx;
   if(!l.length){ caixa.style.display='none'; return; }
   caixa.style.display='block';
   const mx = Math.max.apply(null, l.map(function(c){ return Math.max(Number(c.investimento)||0, Number(c.faturamento)||0); }).concat([1]));
@@ -41318,6 +41327,8 @@ async function _painelResumoUtmify(forcar, silencioso){
     if(silencioso && falhas.length) return;
     if(falhas.length) showAdsError('Alguns projetos não responderam: '+falhas.join(' | '));
     _adsPainelEm = d.momento || null;
+    _adsReceitaTmx = d.fonteReceita === 'tmx';
+    trsContasTmx = _adsReceitaTmx ? (d.tmxPorConta || {}) : null;
     _seloUtmifyPintar();
     const k = d.kpis||{}, p = k.pedidos||{};
     // Os números de topo passam a vir DAQUI, não do consolidado. O consolidado
@@ -41335,8 +41346,9 @@ async function _painelResumoUtmify(forcar, silencioso){
     // Não é erro: é venda que entrou sem passar por anúncio rastreado.
     const cx = document.getElementById('ads-nao-atribuido');
     if(cx){
-      const dVendas = (p.aprovadas||0) - (_adsAtribuido.vendas||0);
-      const dReceita = (k.receita||0) - (_adsAtribuido.receita||0);
+      const semCamp = _adsReceitaTmx ? (d.tmxSemCampanha || {}) : null;
+      const dVendas = semCamp ? (semCamp.vendas||0) : (p.aprovadas||0) - (_adsAtribuido.vendas||0);
+      const dReceita = semCamp ? (semCamp.receita||0) : (k.receita||0) - (_adsAtribuido.receita||0);
       cx.innerHTML = (!trsTemFiltro() && (dVendas>0 || dReceita>1))
         ? '<div class="trs-aviso"><span class="trs-i" style="margin-top:2px">i</span><span><b>'+dVendas+' venda'+(dVendas===1?'':'s')+' · '+fmtAds(dReceita)+'</b> entraram sem estar '+
           'ligadas a um anúncio: tráfego direto, orgânico ou link sem UTM. '+
@@ -41345,6 +41357,7 @@ async function _painelResumoUtmify(forcar, silencioso){
         : '';
     }
     trsPintar(d, from, to);
+    _contasDeAnuncio(trsContasLista);
     _pintarPlanos(d.planos||[], d);
   }catch(e){
     if(meu === trsPedido && alvo && !silencioso) alvo.innerHTML = '<div class="trs-vazio">Não consegui carregar o funil: '+_esc(e.message)+'</div>';
@@ -42134,7 +42147,7 @@ async function loadAdsMetricsUtmify(forcar, silencioso){
   const jaTem  = periodo === _adsPeriodoCarregado && (silencioso || adsCampanhasData.length > 0);
   // Mantem os numeros na tela enquanto atualiza: zerar tudo antes de ter o novo
   // era o que fazia a pagina "sumir" e voltar.
-  if(!jaTem){ resetAdsKpis(); if(loading){ loading.textContent='⏳ Carregando dados da Utmify...'; loading.style.display='block'; } }
+  if(!jaTem){ trsContasTmx = {}; resetAdsKpis(); if(loading){ loading.textContent='⏳ Carregando os números...'; loading.style.display='block'; } }
   if(errEl && !silencioso) errEl.style.display='none';
   const selo = document.getElementById('ads-selo-utmify');
   if(selo && forcar) selo.textContent='⏳ Buscando na Utmify...';
@@ -42432,7 +42445,6 @@ function _kpisUtmify(k){
   set('kpi-conv',    vendas.toLocaleString('pt-BR'));
   set('kpi-cpa',     (Number(k.cpa)||0)>0?fmtAds(k.cpa):'—');
   set('kpi-clicks',  (Number(k.cliques)||0).toLocaleString('pt-BR'));
-  if(!trsTemFiltro()) trsKpis(k);
   // por onde a venda chegou: o mesmo período e projeto do topo
   var pd = getAdsDates(); vdPorCanalCarregar('ads-por-canal', { dash: _adsProjeto() }, pd.from, pd.to);
 }
@@ -42599,12 +42611,13 @@ function _selosUtmify(d){
 }
 // Dois relógios: os cards e gráficos são consulta direta; a tabela de campanhas vem
 // do que foi gravado. Um só "atualizado há 14 min" fazia a tela inteira parecer velha.
-let _adsPainelEm = null, _adsCampanhasEm = null;
+let _adsPainelEm = null, _adsCampanhasEm = null, _adsReceitaTmx = false, trsContasTmx = null;
 function _seloUtmifyPintar(){
   const el = document.getElementById('ads-selo-utmify');
   if(!el) return;
   const hora = t => new Date(t).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-  const partes = ['Fonte: Utmify'];
+  const aba = (document.querySelector('.ads-tab.active') || {}).textContent || '';
+  const partes = _adsReceitaTmx && /Resumo|Tempo Real/.test(aba) ? ['Faturamento e vendas do TMX', 'investimento da Utmify'] : ['Fonte: Utmify'];
   if(_adsPainelEm) partes.push('números das '+hora(_adsPainelEm));
   // O gasto sobe o dia inteiro: dado velho aparece menor que o painel da Utmify.
   const min = _adsCampanhasEm ? Math.max(0, Math.round((Date.now()-new Date(_adsCampanhasEm).getTime())/60000)) : 0;

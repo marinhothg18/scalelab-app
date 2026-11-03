@@ -4767,6 +4767,104 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
   }
 }
 
+// ── FATURAMENTO PELO TMX ──
+// Dashboard, Resumo e Tempo Real: faturamento e vendas vêm do que o TMX recebeu. Da
+// Utmify fica o gasto e o que é do anúncio (cliques, visitas e checkouts). Em 03/11 às
+// 08:39 ela mostrava 3 vendas e o TMX 7. A conta é a de Projeto › Vendas: toda venda
+// paga, com renovação; em 01/11, com a Utmify completa, as duas deram R$ 6.967.
+// Reembolso fica no card dele, sem descontar do faturamento.
+// Roda a cada pedido, fora do cache da Utmify: venda nova aparece na hora.
+// "billed" não conta como venda nem como pendente: é a Payt avisando depois do pagamento, às
+// vezes no dia seguinte, e a venda já está na linha "paid". Em 20/10 vieram 355 de uma vez.
+const _PED_PENDENTE = /(waiting|pending|aguard|process)/i;
+const _PED_RECUSADO = /(cancel|refus|recus|denied|negad|fail|expir)/i;
+function _panoramaComTmx(pano, de, ate, projetoId, filtros) {
+  if (!pano || !pano.kpis || !_pessoas()) return pano;
+  try {
+    const db = readDB(), fil = filtros || {}, cfg = _utmifyMcpCfg(db) || {};
+    const hoje = _diaBR(Date.now()), ini = de || hoje, fim = ate || hoje;
+    const nomeDash = (cfg.dashboards || []).find(x => String(x.id) === String(projetoId));
+    if (projetoId && !nomeDash) return pano;
+    const doProjeto = nomeDash ? _pedidoDoProjetoFn(db, String(nomeDash.nome || '').trim()) : null;
+    // a conta de anúncio de cada venda: pela campanha que levou o crédito
+    const contaPorId = {}, contaPorNome = {};
+    _q("SELECT id, nome, conta FROM camp_dia WHERE conta IS NOT NULL AND conta<>'' GROUP BY id, conta").all().forEach(c => {
+      contaPorId[String(c.id)] = c.conta;
+      const n = _campNorm(c.nome); if (n) contaPorNome[n] = contaPorNome[n] === undefined || contaPorNome[n] === c.conta ? c.conta : null;
+    });
+    const idDe = _campIdDoPedidoFn(contaPorId);
+    const contaDe = p => { const id = idDe(p); return id ? contaPorId[id] : (contaPorNome[_campNorm(p.cred_camp)] || ''); };
+    const nomesConta = _contaNomes();
+    const linhas = _q('SELECT id, pedido, status, pago, estorno, valor, produto, metodo, plataforma, funil, cred_camp, camp, em FROM pedidos WHERE dia BETWEEN ? AND ? ORDER BY em').all(ini, fim);
+    const passaFiltros = p => (!fil.plataforma || _nrm(p.plataforma || 'payt') === _nrm(fil.plataforma)) &&
+      (!fil.produto || _nrm(p.produto) === _nrm(fil.produto)) && (!fil.conta || contaDe(p) === String(fil.conta));
+    const ehPaga = p => !!p.pago && !p.estorno;
+    const dentro = linhas.filter(p => passaFiltros(p) && (!doProjeto || doProjeto(p)));
+
+    // um pedido tem uma linha por status: vale a paga, senão a última que chegou
+    const porPedido = {};
+    dentro.forEach(p => {
+      if (p.estorno) return;
+      const k = p.pedido || p.id, o = porPedido[k];
+      if (!o || !ehPaga(o)) porPedido[k] = p;
+    });
+    // carrinho abandonado não é pedido
+    const pedidos = Object.values(porPedido).filter(p => ehPaga(p) || _PED_PENDENTE.test(p.status || '') || _PED_RECUSADO.test(p.status || ''));
+    const pagas = pedidos.filter(ehPaga), pend = pedidos.filter(p => !ehPaga(p) && _PED_PENDENTE.test(p.status || ''));
+    const estornos = {}; dentro.filter(p => p.estorno).forEach(p => { estornos[p.pedido || p.id] = Number(p.valor) || 0; });
+    const somaV = l => l.reduce((a, p) => a + (Number(p.valor) || 0), 0);
+    const receita = somaV(pagas), inv = Number(pano.kpis.investimento) || 0, n = pagas.length;
+
+    const horaDe = em => new Date(Number(em) - 3 * 3600000).getUTCHours();
+    const fatHora = Array(24).fill(0), vendasHora = Array(24).fill(0), porProduto = {}, tmxPorConta = {}, tmxSemCampanha = { vendas: 0, receita: 0 };
+    pagas.forEach(p => {
+      const h = horaDe(p.em), v = Number(p.valor) || 0;
+      fatHora[h] += v; vendasHora[h]++;
+      const nome = String(p.produto || '(sem nome)').trim() || '(sem nome)';
+      const pr = porProduto[nome] || (porProduto[nome] = { produto: nome, vendas: 0, receita: 0 });
+      pr.vendas++; pr.receita += v;
+      const ct = contaDe(p);
+      if (ct) { const nc = nomesConta[ct] || ct, c = tmxPorConta[nc] || (tmxPorConta[nc] = { vendas: 0, receita: 0 }); c.vendas++; c.receita += v; }
+      if (!_campNorm(p.cred_camp)) { tmxSemCampanha.vendas++; tmxSemCampanha.receita += v; }
+    });
+    const aprovacao = { cartao: { a: 0, t: 0 }, pix: { a: 0, t: 0 }, boleto: { a: 0, t: 0 } };
+    pedidos.forEach(p => {
+      const m = String(p.metodo || ''), k = /pix/i.test(m) ? 'pix' : /(bolet|billet)/i.test(m) ? 'boleto' : /(card|cart|credit|credito)/i.test(m) ? 'cartao' : '';
+      if (k) { aprovacao[k].t++; if (ehPaga(p)) aprovacao[k].a++; }
+    });
+    // acumulado e lucro de cada hora: o gasto da Utmify contra o faturamento do TMX
+    let acum = pano.acum, porHora = pano.porHora;
+    if (pano.acum && pano.acum.tem) {
+      const invA = [], fatA = [], lucA = [];
+      let f = 0, g = 0;
+      for (let h = 0; h < 24; h++) { g = Math.max(g, Number(pano.acum.inv[h]) || 0); f += fatHora[h]; invA.push(g); fatA.push(f); lucA.push(f - g); }
+      acum = { fat: fatA, inv: invA, luc: lucA, tem: true };
+      porHora = fatHora.map((v, h) => ({ hora: h, lucro: v - (invA[h] - (h ? invA[h - 1] : 0)) }));
+    }
+    // sem filtro de projeto, a quebra por projeto também sai do TMX
+    const porDashboard = (pano.porDashboard || []).map(d => {
+      const fn = _pedidoDoProjetoFn(db, String(d.nome || '').trim());
+      const dele = Object.values(linhas.filter(p => ehPaga(p) && passaFiltros(p) && fn(p)).reduce((m, p) => { m[p.pedido || p.id] = p; return m; }, {}));
+      const r = somaV(dele), g = Number(d.investimento) || 0;
+      return Object.assign({}, d, { receita: r, lucro: r - g, vendas: dele.length, roas: g > 0 ? r / g : 0 });
+    }).sort((a, b) => b.investimento - a.investimento);
+    return Object.assign({}, pano, {
+      fonteReceita: 'tmx',
+      kpis: Object.assign({}, pano.kpis, {
+        receita, lucro: receita - inv, roas: inv > 0 ? receita / inv : 0, ticket: n > 0 ? receita / n : 0, cpa: n > 0 ? inv / n : 0,
+        reembolsoValor: Object.values(estornos).reduce((a, v) => a + v, 0), pendenteValor: somaV(pend),
+        pedidos: { total: pedidos.length, aprovadas: n, pendentes: pend.length, reembolsadas: Object.keys(estornos).length, recusadas: pedidos.length - n - pend.length }
+      }),
+      margem: _margem(receita, inv, n, _custosCfg(db)),
+      porHora, acum, vendasHora, aprovacao, porDashboard, tmxPorConta, tmxSemCampanha,
+      produtos: Object.values(porProduto).sort((a, b) => b.receita - a.receita)
+    });
+  } catch (e) {
+    console.error('[TMX] faturamento do panorama falhou, ficou o da Utmify:', e.message);
+    return pano;
+  }
+}
+
 app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
   _evUltimoInteresse = Date.now();     // liga a coleta de eventos em segundo plano
   const projeto = String(req.query.projeto || '').slice(0, 40);
@@ -4782,12 +4880,12 @@ app.get('/api/metricas/utmify/tempo-real', authUsuario, async (req, res) => {
     : _evFeed).slice(0, 60);
   const chave = 'tempo-real|' + projeto;
   const pronto = _vivoGet(chave, 25 * 1000);
-  if (pronto) return res.json(Object.assign({ doCache: true, eventos }, pronto));
+  if (pronto) return res.json(Object.assign({ doCache: true, eventos }, _panoramaComTmx(pronto, null, null, projeto)));
   try {
     const saida = await _utmifyPanorama(null, null, projeto);
     _vivoSet(chave, saida);
     if (!_evFoto) _tickEventosUtmify();          // primeira leitura: comeca a base de comparacao
-    res.json(Object.assign({ eventos }, saida));
+    res.json(Object.assign({ eventos }, _panoramaComTmx(saida, null, null, projeto)));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -4803,7 +4901,7 @@ app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
   const chave = 'panorama|' + de + '|' + ate + '|' + projeto + '|' + filtros.conta + '|' + filtros.plataforma + '|' + filtros.produto;
   // o botão Atualizar pede o número de agora; o piso de 10s segura clique repetido
   const pronto = _vivoGet(chave, req.query.forcar === '1' ? 10 * 1000 : 45 * 1000);
-  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  if (pronto) return res.json(Object.assign({ doCache: true }, _panoramaComTmx(pronto, de, ate, projeto, filtros)));
   try {
     const saida = await _vivoUmaVez(chave, async () => {
       const s = await _utmifyPanorama(de, ate, projeto, filtros);
@@ -4811,7 +4909,7 @@ app.get('/api/metricas/utmify/panorama', authUsuario, async (req, res) => {
       if (!(s.erros || []).length) _vivoSet(chave, s);
       return s;
     });
-    res.json(saida);
+    res.json(_panoramaComTmx(saida, de, ate, projeto, filtros));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -5416,6 +5514,20 @@ function _campNorm(s) {
     .replace(/\s*\|\s*/g, ' | ').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 const _semId = s => String(s || '').replace(/\+/g, ' ').replace(/\|\s*\d{6,}\s*$/, '').replace(/\s+/g, ' ').trim();
+// De que campanha é a venda, pelo id que veio no fim do crédito. `conhecidas` tem os ids da Meta como chave.
+function _campIdDoPedidoFn(conhecidas) {
+  const ids = Object.keys(conhecidas);
+  const idNoFim = s => { const m = String(s || '').match(/\|\s*(\d{6,})\s*$/); return m ? m[1] : ''; };
+  return p => {
+    const id = idNoFim(p.cred_camp);
+    if (id && conhecidas[id]) return id;
+    // o crédito às vezes vem com o id cortado no fim: completa pelo começo
+    if (id.length >= 10) { const c = ids.filter(x => x.indexOf(id) === 0); if (c.length === 1) return c[0]; }
+    // mesma campanha da UTM da venda: lá o id vem inteiro
+    if (_campNorm(p.cred_camp) === _campNorm(p.camp)) { const id2 = idNoFim(p.camp); if (id2 && conhecidas[id2]) return id2; }
+    return '';
+  };
+}
 app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
@@ -5453,17 +5565,7 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
     // a venda não batia com a linha da campanha. O nome que vale é o atual.
     const nomePorId = {};
     _q('SELECT id, nome FROM camp_dia ORDER BY dia').all().forEach(c => { if (c.id && c.nome) nomePorId[String(c.id)] = c.nome; });
-    const idsConhecidos = Object.keys(nomePorId);
-    const idNoFim = s => { const m = String(s || '').match(/\|\s*(\d{6,})\s*$/); return m ? m[1] : ''; };
-    const idDe = p => {
-      const id = idNoFim(p.cred_camp);
-      if (id && nomePorId[id]) return id;
-      // o crédito às vezes vem com o id cortado no fim: completa pelo começo
-      if (id.length >= 10) { const c = idsConhecidos.filter(x => x.indexOf(id) === 0); if (c.length === 1) return c[0]; }
-      // mesma campanha da UTM da venda: lá o id vem inteiro
-      if (_campNorm(p.cred_camp) === _campNorm(p.camp)) { const id2 = idNoFim(p.camp); if (id2 && nomePorId[id2]) return id2; }
-      return '';
-    };
+    const idDe = _campIdDoPedidoFn(nomePorId);
     const porCampanha = {}, semCampanha = [];
     peds.forEach(p => {
       if (!_campNorm(p.cred_camp)) {
