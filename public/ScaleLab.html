@@ -34634,10 +34634,12 @@ function fnNoCorpo(n, b, vt){
     sub = b.slug ? 'link /r/'+b.slug+(b.nomeTeste ? ' · '+b.nomeTeste : '') : 'escolha o teste no painel ao lado';
     grade = m('Cliques no link', fnNum(b.cliques)) + m('Chegaram', fnNum(b.pessoas)) +
       m('Checkouts', fnNum(b.checkout)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '');
-    if(b.divisao && b.divisao.length) pe = '<div class="fn-div">'+b.divisao.map(function(d){ return '<span>'+fnEsc(d.nome)+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'; }).join('')+'</div>';
-    if(b.vendasDeAnuncio || b.pessoasDeAnuncio) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">Fora daqui: '+
-      fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link mas também vieram de anúncio'+
-      (b.vendasDeAnuncio ? ' ('+b.vendasDeAnuncio+' venda'+(b.vendasDeAnuncio===1?'':'s')+')' : '')+'. Contam no Tráfego pago.</div>';
+    if(b.divisao && b.divisao.length) pe = '<div class="fn-div" style="flex-direction:column;align-items:stretch;gap:3px">'+b.divisao.map(function(d){
+      return '<span style="display:flex;justify-content:space-between;gap:8px"><span>'+fnEsc(fnNomeVariante(d))+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'+
+        (d.temBloco ? '<span title="Esta página tem bloco próprio: as vendas dela contam lá">no bloco dela</span>' : '<b>'+fnNum(d.vendas||0)+' venda'+(d.vendas===1?'':'s')+'</b>')+'</span>'; }).join('')+'</div>';
+    if(b.vendasDeAnuncio || b.pessoasDeAnuncio) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">'+
+      fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link também vieram de anúncio'+
+      (b.vendasDeAnuncio ? ' ('+b.vendasDeAnuncio+' venda'+(b.vendasDeAnuncio===1?'':'s')+')' : '')+'. Na origem, contam no Tráfego pago.</div>';
   } else if(n.tipo === 'cktest'){
     if(b.achou) cab += '<div class="fn-ckt-agora" data-agora-ck="'+fnEsc(n.id)+'">'+fnCkAgoraHtml(n.id, b)+'</div>';
     sub = !b.achou ? 'escolha o teste no painel ao lado'
@@ -34660,7 +34662,8 @@ function fnNoCorpo(n, b, vt){
                                 : [n.integracao || (n.pagamento ? 'pagamento' : ''), n.produto || ''].filter(Boolean).join(' · ');
     grade = m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
     pe = b.semProduto ? '<div style="font-size:10px;color:var(--v2-laranja,#F59E0B);margin-top:6px;font-weight:700">Escolha o produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+' no painel: é por ele que a venda fica separada da principal.</div>'
-                      : fnNoProdutos(b) + (b.semPessoa ? '<div class="fx-c-url" style="margin-top:4px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>' : '');
+                      : fnNoProdutos(b) + (b.semPessoa ? '<div class="fx-c-url" style="margin-top:4px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>' : '') +
+                        (b.fora && b.fora.n ? '<div class="fx-c-url" style="margin-top:4px;line-height:1.45;white-space:normal;color:var(--v2-laranja,#F59E0B);font-weight:700" title="'+fnEsc(b.fora.lista.map(function(x){ return x.motivo; }).join(' · '))+'">+'+b.fora.n+' venda'+(b.fora.n===1?'':'s')+' do projeto fora deste funil</div>' : '');
     var ofx = fnTaxaOferta(n, b);
     if(ofx) pe += '<div class="fn-taxa"><div class="fx-c-pe"><span>Taxa do '+ofx.rot+'</span><b>'+fnPctTaxa(ofx.taxa)+'</b></div>'+
       '<div class="v2-trilho" style="height:5px;background:var(--bg2)"><i style="width:'+Math.min(100, ofx.taxa*100).toFixed(1)+'%;background:#C52C58"></i></div>'+
@@ -35626,7 +35629,7 @@ function mpLeitura(n){
   if(b.vendas != null) h += linha('Vendas', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendas)+'</b>');
   if(b.faturamento != null) h += linha('Faturamento', v2Din(b.faturamento));
   if(b.conversao != null && b.pessoas) h += linha('Conversão', v2Pct(b.conversao, 2));
-  if(b.divisao) h += '<div class="gv-grp">Divisão real</div>'+b.divisao.map(function(d){ return linha(fnEsc(d.nome), d.pct == null ? '—' : v2Pct(d.pct, 0)); }).join('');
+  if(b.divisao) h += '<div class="gv-grp">Divisão real e vendas</div>'+b.divisao.map(function(d){ return linha(fnEsc(fnNomeVariante(d)), (d.pct == null ? '—' : v2Pct(d.pct, 0))+(d.temBloco ? ' · no bloco dela' : ' · '+fnNum(d.vendas||0)+' venda'+(d.vendas===1?'':'s')+(d.faturamento != null ? ' · '+v2Din(d.faturamento) : ''))); }).join('');
   h += mpCaminhos(n);
   if(b.pessoas && n.tipo !== 'obrigado') h += '<button class="fn-btn g sm" style="width:100%;margin-top:12px" onclick="ldIrPara('+(n.tipo === 'fonte' || n.tipo === 'split' ? '{}' : '{etapa:\''+n.id+'\'}')+')">👥 Ver essas pessoas nos Leads</button>';
   h += '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>';
@@ -35704,6 +35707,12 @@ function mpLeituraPagina(n, b){
 }
 
 // Obrigado: o que vendeu, o principal separado do upsell e de qual página saiu cada compra
+// "Variante 1" não diz qual é a página: mostra o endereço dela
+function fnNomeVariante(d){
+  if(!/^variante\s*\d+$/i.test(String(d.nome||''))) return d.nome || '';
+  var c = String(d.url||'').replace(/^https?:\/\//i,'').split('?')[0].split('/').filter(Boolean);
+  return c.length > 1 ? c[c.length-1] : (d.nome || '');
+}
 function mpLeituraObrigado(n, b){
   var din = b.faturamento != null, h = '';
   var f = fnAtual(), temDown = !!(f && (f.etapas || []).some(function(e){ return e.tipo === 'downsell'; }));
@@ -35727,6 +35736,9 @@ function mpLeituraObrigado(n, b){
   var pg = b.porPagina || [];
   if(pg.length) h += '<div class="gv-grp">De qual página saiu a compra</div>'+pg.map(function(x){ return mpLinha(fnEsc(x.nome), fnNum(x.n)); }).join('')+
     '<div class="fx-sub" style="margin-top:5px;line-height:1.5">A página do último clique em comprar. Sem o clique, a página por onde a pessoa entrou.</div>';
+  if(b.fora && b.fora.n) h += '<div class="gv-grp">Fora deste funil: '+fnNum(b.fora.n)+(b.fora.valor != null ? ' · '+v2Din(b.fora.valor) : '')+'</div>'+
+    b.fora.lista.map(function(x){ var q = new Date(x.em); return mpLinha(String(q.getHours()).padStart(2,'0')+':'+String(q.getMinutes()).padStart(2,'0')+' · '+fnEsc(x.produto)+(x.valor != null ? ' · '+v2Din(x.valor) : ''), fnEsc(x.motivo)); }).join('')+
+    '<div class="fx-sub" style="margin-top:5px;line-height:1.5">Vendas do projeto que não contam neste Mapa. Todas aparecem em Projeto › Vendas.</div>';
   h += mpCaminhos(n);
   if(b.vendas) h += '<button class="fn-btn g sm" style="width:100%;margin-top:12px" onclick="ldIrPara({status:\'comprador\'})">👥 Ver quem comprou</button>';
   return h + mpBotaoEditar();

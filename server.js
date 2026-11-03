@@ -11834,6 +11834,28 @@ function _escopoFunil(dbj, funilId) {
   const ignoradas = new Set((Array.isArray(f.paginasIgnoradas) ? f.paginasIgnoradas : []).map(_normPg).filter(Boolean));
   return { f, ids: [...ids], etapaDeUrl, etapaDeData, ignoradas, tipoEtapa, nomeEtapa };
 }
+// Uma vez só (03/11, pedido do Thiago): a página de assinatura entra no desenho do funil KALEBE.
+// Vendia pelo funil sem estar nele. A marca evita pôr de novo se ele tirar o bloco depois.
+(function _migrarAssinaturaNoFunil() {
+  try {
+    const db = readDB();
+    if (db._mig_assinatura_funil) return;
+    const f = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).find(x => x && x.id === 'fn1787010070995w0e');
+    if (!f) return;
+    db._mig_assinatura_funil = new Date().toISOString();
+    if (!(f.etapas || []).some(e => _normPg(e.url) === 'apostilai.ai/assinatura')) {
+      const id = 'e1793750400000';
+      f.etapas.push({ id, nome: 'Página de assinatura', tipo: 'pagina', url: 'https://apostilai.ai/assinatura/', x: 888, y: 620 });
+      (f.ligacoes = f.ligacoes || []).push([id, 'e1792433630572']);   // → Checkout 3 (Payt · Elite), o produto que ela vende
+      f._updatedAt = Date.now();
+      if (!db.timestamps) db.timestamps = {};
+      db.timestamps[KEY_FUNIS] = now();
+      audit(db, 'funil_bloco_adicionado', { funil: f.id }, { bloco: 'Página de assinatura' }, { nome: 'Pedido do Thiago' });
+      console.log('[FUNIL] página de assinatura colocada no desenho do KALEBE');
+    }
+    writeDB(db);
+  } catch (e) { console.error('[FUNIL] não pus a assinatura no desenho:', e.message); }
+})();
 const _ph = n => new Array(n).fill('?').join(',');
 // pedaço de WHERE que diz "esta linha de páginas é do mapa deste funil"
 function _escopoSql(esc, a) {
@@ -13215,6 +13237,23 @@ function _vendasSemPessoaDoProjeto(dbj, esc, per, jaNoMapa) {
       const pr = _produtoDe(o.produto, produtos);
       return pr ? pr.projeto === projeto : doProduto(o.produto).has(projeto);
     });
+}
+// Vendas pagas do projeto que não entram neste funil, com o motivo de cada uma. Sem isso
+// o Mapa mostrava 15 e Projeto › Vendas 18, sem dizer por quê.
+function _vendasForaDoFunil(dbj, esc, per, noFunil, dir) {
+  const ja = new Set(noFunil.map(o => o.id)), doProjeto = _pedidoDoProjetoFn(dbj, esc.f.projeto || '');
+  const lista = _q('SELECT id, visitante, valor, produto, funil, fonte, renovacao, em FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 ORDER BY em').all(per.de, per.ate)
+    .filter(o => !ja.has(o.id) && doProjeto(o)).map(o => {
+      let motivo;
+      if (o.renovacao) motivo = 'renovação';
+      else if (!o.visitante) motivo = 'sem pessoa ligada' + (o.fonte ? ' (UTM ' + String(o.fonte).slice(0, 30) + ')' : '');
+      else {
+        const u = _q('SELECT pg FROM paginas WHERE visitante=? ORDER BY em DESC LIMIT 1').get(o.visitante);
+        motivo = u ? 'comprou por ' + u.pg + ', fora do desenho' : 'sem visita registrada';
+      }
+      return { em: o.em, produto: o.produto || '', valor: dir ? (Number(o.valor) || 0) : null, motivo };
+    });
+  return { n: lista.length, valor: dir ? lista.reduce((a, o) => a + o.valor, 0) : null, lista };
 }
 function _platDoPedido(o) { const id = String((o && o.id) || ''); return id.indexOf(':') > 0 ? id.split(':')[0] : 'payt'; }
 function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
@@ -15454,12 +15493,12 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     for (let i = 0; i < alvoEv.length; i += 400) {
       const lote = alvoEv.slice(i, i + 400);
       _q(`SELECT visitante, pg, etapa, em, extra FROM eventos WHERE tipo='checkout' AND em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
-        const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 1 });
+        const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 1, pg: _normPg(x.pg) });
         let path = ''; try { const ex = JSON.parse(x.extra || '{}') || {}; path = ex.dest || (String(ex.destino || '').indexOf('/') > 0 ? _normPg(ex.destino) : ''); } catch (er) {}
         (ckCompra[x.visitante] = ckCompra[x.visitante] || []).push({ em: x.em, path });
       });
       _q(`SELECT visitante, pg, etapa, em FROM paginas WHERE em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
-        const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0 });
+        const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0, pg: x.pg });
       });
     }
     // A venda é da página onde a pessoa clicou em comprar: quem passou pela 697
@@ -15470,6 +15509,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     // que continua com ela.
     const vendaDaEtapa = {}, vendaEntrada = {}, salvasDaEtapa = {}, levouDaEtapa = {};
     const donaDe = new Map();   // venda -> página dona (o Obrigado diz de qual página veio cada compra)
+    const paginaDe = new Map(); // venda -> a página exata (o bloco do teste separa as variantes dele)
     vendas.forEach(o => {
       if (!o.visitante) return;
       const lim = (o.em || 0) + 10 * 60000, desde = (o.em || 0) - 7 * 86400000;
@@ -15484,7 +15524,11 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       const viaBack = !!clique && esc.tipoEtapa[clique] === 'backredirect';
       const dona = clique && !viaBack ? clique : entrada;
       if (entrada) (vendaEntrada[entrada] = vendaEntrada[entrada] || []).push(o);
-      if (dona) { (vendaDaEtapa[dona] = vendaDaEtapa[dona] || []).push(o); donaDe.set(o, dona); }
+      if (dona) {
+        (vendaDaEtapa[dona] = vendaDaEtapa[dona] || []).push(o); donaDe.set(o, dona);
+        const evDona = (clique && !viaBack ? cliques : pags).find(x => x.et === dona);
+        if (evDona) paginaDe.set(o, evDona.pg);
+      }
       if (clique && entrada && clique !== entrada) {
         const x = salvasDaEtapa[clique] || (salvasDaEtapa[clique] = { n: 0, de: {} });
         x.n++; x.de[entrada] = (x.de[entrada] || 0) + 1;
@@ -15649,9 +15693,17 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         // a mesma regra da tela do teste (_veioDeAnuncio), pra os dois números baterem
         if (!doAnuncio) { const vda = _veioDeAnuncio([...s], per.ini, per.fim); vda.forEach(v => { if (s.has(v)) { deAnuncio += (vendaPor[v] || []).length; pessoasAnuncio++; s.delete(v); } }); }
         conj[e.id] = s;
+        // As variantes sem bloco próprio são deste bloco, e a venda feita nelas também. Antes ele
+        // só contava quem veio pelo link e não por anúncio: 03/11 mostrava 1 de 5 vendas, e as
+        // páginas do Mapa somavam 10 de 15. A conta de origem continua em vendasOrigem.
+        const vendasAqui = vendaDaEtapa[e.id] || [], pessoasAqui = (porEtapa[e.id] || new Set()).size, mOrigem = medir(s);
+        const somaLiq = l => l.reduce((a, o) => a + liq(o), 0);
         nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio, pessoasDeAnuncio: pessoasAnuncio,
           vendasEntrada: (vendaEntrada[e.id] || []).length,
-          divisao: ((r && r.destinos) || []).map((d, i) => { const id = String(d.id || ('v' + i)); return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null }; }) }, medir(s));
+          divisao: ((r && r.destinos) || []).map((d, i) => {
+            const id = String(d.id || ('v' + i)), u = _normPg(d.url), dela = vendasAqui.filter(o => paginaDe.get(o) === u);
+            return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null, temBloco: !!(esc.etapaDeUrl[u] && esc.etapaDeUrl[u] !== e.id), vendas: dela.length, faturamento: dir ? somaLiq(dela) : null };
+          }) }, mOrigem, { vendasOrigem: mOrigem.vendas, vendas: vendasAqui.length, faturamento: dir ? somaLiq(vendasAqui) : null, conversao: pessoasAqui ? vendasAqui.length / pessoasAqui : 0, produtos: topProd(vendasAqui) });
       } else if (e.tipo === 'cktest') {
         // Teste de checkout: a página é a mesma, o que muda é o checkout do
         // botão. O bloco põe as versões lado a lado com a MESMA conta da tela
@@ -15727,7 +15779,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                       fatPrincipal: dir ? principais.reduce((a, o) => a + liq(o), 0) : null,
                       porProduto: Object.values(porProd).sort((a, b) => b.n - a.n).map(x => Object.assign(x, dir ? {} : { fat: null })),
                       porPagina: _ckSoma(vf, o => !o.visitante ? 'sem pessoa ligada'
-                        : donaDe.has(o) ? (esc.nomeEtapa[donaDe.get(o)] || 'página do funil') : 'página fora do desenho') };
+                        : donaDe.has(o) ? (esc.nomeEtapa[donaDe.get(o)] || 'página do funil') : 'página fora do desenho'),
+                      fora: e.tipo === 'obrigado' && !lst.length ? _vendasForaDoFunil(dbj, esc, per, vendas, dir) : null };
       } else if (e.tipo === 'recuperacao') {
         const vr = vendas.filter(o => o.apoio);
         const s = new Set(vr.map(o => o.visitante).filter(Boolean));
