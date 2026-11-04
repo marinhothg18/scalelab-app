@@ -2993,6 +2993,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .vs-tile .r{font-size:9.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px}
 .vs-tile .v{font-size:29px;font-weight:800;letter-spacing:-1.2px;line-height:1}
 .vs-tile .s{font-size:11px;color:var(--text2);margin-top:5px;line-height:1.45}
+.vs-lead{width:58px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 6px;color:var(--text);font:inherit;font-weight:700;text-align:center}
 /* barra da meta: mostra de relance o quanto falta, sem precisar ler o numero */
 .vs-alvo{height:4px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:9px}
 .vs-alvo i{display:block;height:100%;border-radius:3px;transition:width .35s}
@@ -3205,6 +3206,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-rolar{display:flex;gap:4px}
 .cp-rolar button,.cp-cols summary{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}
 .cp-rolar button{width:34px;padding:5px 0;font-size:15px}
+.cp-pdf{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;padding:6px 11px}
+.cp-pdf:hover{border-color:var(--accent);color:var(--accent)}
+.cp-pdf:disabled{opacity:.6;cursor:default}
 .cp-cols{position:relative}
 .cp-cols summary{list-style:none;padding:6px 11px}
 .cp-cols summary::-webkit-details-marker{display:none}
@@ -3396,7 +3400,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cpc-ver{background:none;border:0;padding:8px 0;font:inherit;font-size:12.5px;font-weight:600;color:var(--accent);cursor:pointer}
 .cpc-ana{min-height:36px;padding:0 13px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 .cpc-lista{display:flex;flex-direction:column;gap:10px}
-.cpc-barra{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:6px}
+.cpc-barra{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;margin-bottom:6px}
 .cpc-barra select{min-width:0;width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:6px 10px;color:var(--text);font:inherit;font-weight:600}
 .cpc-fixos{position:sticky;top:52px;z-index:30;background:var(--bg);margin:0 -14px 8px;padding:6px 14px;border-bottom:1px solid var(--border)}
 .cpc-chips{display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:none}
@@ -6953,7 +6957,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
-const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas','sl_vsl_grupos','sl_quizzes','sl_vsl_projetos','sl_projetos_ocultos'];   // sl_vturb fica só no servidor: guarda token
+const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas','sl_vsl_grupos','sl_vsl_lead','sl_quizzes','sl_vsl_projetos','sl_projetos_ocultos'];   // sl_vturb fica só no servidor: guarda token
 // ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
 // As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
 // pontos de fetch espalhados pelo arquivo (fácil esquecer um e quebrar o sync sem
@@ -29678,7 +29682,7 @@ function fnEsc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</
 // ══════════════════════════════════════════════
 var VS_PADRAO={ ret1min:55, playRate:65, pctPitch:12, ticket:900 };
 var VS_SENT={ ret1min:'min', playRate:'min', pctPitch:'min', ticket:'min' };
-var VS_ROT={ ret1min:'Retenção 1º min', playRate:'Play rate', pctPitch:'Chega no pitch',
+var VS_ROT={ ret1min:'Retenção 1 Min', playRate:'Play rate', pctPitch:'Chega no pitch',
   ticket:'Ticket médio' };
 var VS_UN={ ret1min:'%', playRate:'%', pctPitch:'%', ticket:'R$' };
 
@@ -29976,9 +29980,10 @@ function vsCurvasDoPainel(){
 
 function vsTabelaPainel(){
   var el=document.getElementById('vs-tpainel'); if(!el) return;
-  var cols=[['nome','VSL',0],['ret1min','Retenção 1º min',1],['playRate','Play rate',1],
-    ['pctPitch','Chega no pitch',1],['engajamento','Engajamento',1],['gargaloTxt','Maior gargalo',0],
-    ['receita','Faturamento',1],['vendas','Vendas',1],['ticket','Ticket',1]];
+  var cols=[['nome','VSL',0],['ret1min','Retenção 1 Min',1],['ret2min','Retenção 2 Min',1],['retLead','Retenção Lead',1],['playRate','Play rate',1],
+    ['pctPitch','Chega no pitch',1],['txCliques','Tx de Cliques',1],['engajamento','Engajamento',1],['gargaloTxt','Maior gargalo',0],
+    ['receita','Faturamento',1],['vendas','Vendas',1],['txCheckout','Tx Checkout',1],['ticket','Ticket',1]];
+  vsRodando().forEach(function(v){ v.ret1min = vsRet1min(v) || 0; vsMetricasDe(v); });
   var lista=vsRodando().slice().sort(function(a,b){
     var x=a[vsOrd.col],y=b[vsOrd.col];
     if(typeof x==='string') return vsOrd.asc?x.localeCompare(y):y.localeCompare(x);
@@ -30003,7 +30008,11 @@ function vsTabelaPainel(){
       if(k==='ret1min'){
         var r=vsRet1min(v);
         return r===null ? '<td class="num" style="color:var(--text2)">…</td>'
-                        : '<td class="num" style="'+vsCor('ret1min',r)+';font-weight:700">'+r.toFixed(1)+'%</td>'; }
+                        : '<td class="num" style="'+vsCor('ret1min',r)+';font-weight:700">'+r.toFixed(2)+'%</td>'; }
+      if(k==='ret2min' || k==='retLead' || k==='txCliques' || k==='txCheckout'){
+        var dep = k !== 'txCheckout' && !vsCurvas[v.id];
+        return '<td class="num"'+(k==='retLead' && !vsLeadSeg(v.id) ? ' title="Marque o fim do lead na análise desta VSL"' : '')+(dep ? ' style="color:var(--text2)"' : '')+'>'+
+               (dep ? '…' : (v[k]==null ? '—' : v[k].toFixed(2)+'%'))+'</td>'; }
       var est = VS_ROT[k] ? vsCor(k,v[k])+';font-weight:700' : '';
       return '<td class="num" style="'+est+'">'+(f[k]?f[k](v[k]):v[k])+'</td>';
     }).join('')+'</tr>';
@@ -30022,10 +30031,19 @@ function vsOrdenar(col){
 function vsTilesHtml(v){
   var gg = vsGargalo(v);
   var r1 = vsRet1min(v), temCurva = r1 !== null;
+  var m = vsMetricasDe(v), aud = m.audPitch, busca = 'buscando a curva na VTurb';
+  var pc = function(x){ return x == null ? '—' : x.toFixed(2)+'%'; };
+  var lead = vsLeadSeg(v.id);
   return (temCurva
-      ? vsTileM('Retenção 1º minuto','ret1min',r1,r1.toFixed(1)+'%',
+      ? vsTileM('Retenção 1 Min','ret1min',r1,r1.toFixed(2)+'%',
                 vsNum(Math.round(v.play*r1/100))+' de '+vsNum(v.play)+' ainda assistindo')
-      : vsTile('Retenção 1º minuto','…','buscando a curva na VTurb'))+
+      : vsTile('Retenção 1 Min','…',busca))+
+    vsTile('Retenção 2 Min', temCurva ? pc(m.ret2min) : '…',
+           temCurva ? vsNum(Math.round(v.play*(m.ret2min||0)/100))+' de '+vsNum(v.play)+' ainda assistindo' : busca)+
+    vsTile('Retenção Lead', !temCurva ? '…' : pc(m.retLead),
+           (lead ? 'até o fim do lead, aos ' : 'Marque em que ponto o lead acaba: ')+
+           '<input class="vs-lead" inputmode="numeric" placeholder="mm:ss" aria-label="Fim do lead desta VSL" value="'+(lead ? vsLeadTxt(lead) : '')+'" '+
+           'onchange="vsLeadSalvar(\''+v.id+'\',this)" onkeydown="if(event.key===\'Enter\')this.blur()">')+
     vsTile('Maior gargalo', temCurva ? (gg?vsMmss(gg.t0):'—') : '…',
            !temCurva ? 'buscando a curva na VTurb'
              : (gg?('perde <b style="color:var(--red)">'+gg.rel.toFixed(0)+'%</b> de quem estava ali · '+
@@ -30033,8 +30051,11 @@ function vsTilesHtml(v){
                   :'nenhuma queda fora do padrão'),
            gg?'nao':'')+
     vsTileM('Deram play','playRate',v.playRate,(v.playRate||0).toFixed(1)+'%',vsNum(v.play)+' pessoas')+
-    vsTileM('Chegam no pitch','pctPitch',v.pctPitch,(v.pctPitch||0).toFixed(1)+'%',vsNum(v.noPitch)+' pessoas')+
+    vsTileM('Chegam no pitch','pctPitch',v.pctPitch,(v.pctPitch||0).toFixed(1)+'%',vsNum(aud != null ? aud : v.noPitch)+' pessoas')+
+    vsTile('Tx de Cliques', !temCurva ? '…' : pc(m.txCliques),
+           temCurva ? vsNum(v.clicaram)+' cliques de '+vsNum(aud||0)+' no pitch' : busca)+
     vsTile('Vendas',vsNum(v.vendas),vsBrl(v.receita)+' de faturamento')+
+    vsTile('Tx Checkout', pc(m.txCheckout), vsNum(v.vendas)+' vendas de '+vsNum(v.clicaram)+' cliques')+
     vsTileM('Ticket médio','ticket',v.ticket,v.ticket?vsBrl(v.ticket):'—',v.vendas+' venda(s)');
 }
 function vsRepintarTiles(){
@@ -30110,14 +30131,14 @@ function vsCurvaDe(bruto){
   }
   if(ehSobrevivencia){
     var topo=pts[0].n||1;
-    return pts.map(function(p){ return { t:p.t, y:Math.min(100,p.n/topo*100) }; });
+    return pts.map(function(p){ return { t:p.t, y:Math.min(100,p.n/topo*100), n:p.n }; });
   }
 
   // histograma: soma de trás pra frente
   var acum=0, saida=[];
   for(var j=pts.length-1;j>=0;j--){ acum+=pts[j].n; saida.unshift({ t:pts[j].t, n:acum }); }
   var total=saida[0].n||1;
-  return saida.map(function(p){ return { t:p.t, y:p.n/total*100 }; });
+  return saida.map(function(p){ return { t:p.t, y:p.n/total*100, n:p.n }; });
 }
 
 function vsDesenhar(){
@@ -30278,7 +30299,7 @@ function vsFunil(v){
   var el=document.getElementById('vs-funil'); if(!el) return;
   var um=Math.round(v.play*(v.ret1min||0)/100);
   var et=[['Viram a página',v.viram,'VTurb'],['Deram play',v.play,'VTurb'],
-    ['Passaram do 1º min',um,'VTurb'],['Chegaram no pitch',v.noPitch,'VTurb'],
+    ['Passaram do 1º min',um,'VTurb'],['Chegaram no pitch',vsMetricasDe(v).audPitch != null ? v.audPitch : v.noPitch,'VTurb'],
     ['Clicaram no botão',v.clicaram,'VTurb'],['Venda aprovada',v.vendas,'Utmify']];
   var topo=et[0][1]||1;
   var tons=['#86b6ef','#6da7ec','#5598e7','#3987e5','#2a78d6','#1c5cab'];
@@ -30640,6 +30661,43 @@ function vsRet1min(v){
   if(!c.length) return null;
   var um = c.filter(function(x){ return x.t<=60; }).pop();
   return um ? um.y : 0;
+}
+
+// O ponto da curva em que um segundo do vídeo cai: y é a %, n é a quantidade de pessoas.
+function vsNoSegundo(v, seg){
+  var c = vsCurvas[v && v.id] || [];
+  if(!c.length) return null;
+  return c.filter(function(x){ return x.t<=seg; }).pop() || { t:0, y:0, n:0 };
+}
+// Onde o lead acaba muda de vídeo pra vídeo e a VTurb não informa: fica marcado por VSL.
+function vsLeads(){ var m = g('sl_vsl_lead', null); return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {}; }
+function vsLeadSeg(id){ return Number(vsLeads()[id]) || 0; }
+function vsLeadTxt(seg){ return Math.floor(seg/60)+':'+String(seg%60).padStart(2,'0'); }
+// aceita 3:20 ou só o minuto (3)
+function vsLeadSalvar(id, el){
+  var t = String(el.value||'').trim(), m = vsLeads(), seg = 0;
+  if(t){
+    var a = t.match(/^(\d{1,3})(?::(\d{1,2}))?$/);
+    if(!a || Number(a[2]||0) > 59){ toastFn('Use minutos e segundos, ex.: 3:20'); el.value = vsLeadSeg(id) ? vsLeadTxt(vsLeadSeg(id)) : ''; return; }
+    seg = Number(a[1])*60 + Number(a[2]||0);
+    var v = (vsDados && vsDados.vsls || []).find(function(x){ return x.id === id; });
+    if(v && v.duracao && seg > v.duracao){ toastFn('Esse ponto passa do fim do vídeo ('+vsLeadTxt(v.duracao)+')'); el.value = vsLeadSeg(id) ? vsLeadTxt(vsLeadSeg(id)) : ''; return; }
+  }
+  if(seg) m[id] = seg; else delete m[id];
+  s('sl_vsl_lead', m);
+  vsRepintarTiles();
+}
+// As métricas da VTurb que ficam na tela: Tx de Cliques e Tx Checkout são as fórmulas
+// da própria VTurb. A "Audiência do pitch" dela é quem está na curva no segundo do
+// pitch; o total_over_pitch da API conta outra coisa (139 onde a VTurb mostra 36).
+function vsMetricasDe(v){
+  var r2 = vsNoSegundo(v, 120), lead = vsLeadSeg(v.id), rl = lead ? vsNoSegundo(v, lead) : null, rp = v.pitch ? vsNoSegundo(v, v.pitch) : null;
+  v.ret2min = r2 ? r2.y : null;
+  v.retLead = rl ? rl.y : null;
+  v.audPitch = rp ? rp.n : null;
+  v.txCliques = v.audPitch ? v.clicaram/v.audPitch*100 : null;
+  v.txCheckout = v.clicaram ? v.vendas/v.clicaram*100 : null;
+  return v;
 }
 
 function vsQuedas(v){
@@ -43428,6 +43486,7 @@ function cpPintar(){
   novo.innerHTML = h + (cpEst.nivel === 'contas' ? cpContas(contas) : ('<div class="so-pc">'+cpBarra()+cpTabela(cpFiltradas())+'</div><div class="so-cel">'+cpCards(cpFiltradas())+'</div>'));
   cpLigarRolagem(novo);
   rl = novo.querySelector('.cp-rolo'); if(rl){ rl.scrollLeft = sx; rl.scrollTop = sy; }
+  if(!cpPdfLibs) setTimeout(function(){ cpPdfCarregar().catch(function(){}); }, 1500);
 }
 function cpBarra(){
   var grupos = {}; CP_COLS.forEach(function(c){ (grupos[c.g] = grupos[c.g] || []).push(c); });
@@ -43435,6 +43494,7 @@ function cpBarra(){
       '<div class="cp-pop"><div class="cp-pre"><span>Rápido:</span><button onclick="cpPredef(\'enxuta\')">Enxuta</button><button onclick="cpPredef(\'dinheiro\')">Dinheiro</button><button onclick="cpPredef(\'anuncio\')">Anúncio</button><button onclick="cpPredef(\'funil\')">Funil</button><button onclick="cpPredef(\'video\')">Vídeo</button><button onclick="cpPredef(\'tudo\')">Tudo</button></div>'+
       Object.keys(grupos).map(function(g){ return '<div class="cp-gr"><b>'+g+'</b>'+grupos[g].map(function(c){ return '<label><input type="checkbox"'+(c.on ? ' checked' : '')+' onchange="cpAlternarCol(\''+c.k+'\')"> '+c.t+'</label>'; }).join('')+'</div>'; }).join('')+
       '<div class="cp-nota">O TMX lembra a sua escolha neste aparelho.</div></div></details>'+
+    '<button class="cp-pdf" onclick="cpExportarPdf(this)" title="Baixa um PDF com as colunas, os filtros e a ordem desta tabela">⬇ Exportar PDF</button>'+
     '<span class="cp-dica">Shift + rodinha do mouse também anda pro lado</span>'+
     '<span class="cp-rolar"><button onclick="cpRolar(-1)" aria-label="Rolar pra esquerda">‹</button><button onclick="cpRolar(1)" aria-label="Rolar pra direita">›</button></span></div>';
 }
@@ -43487,7 +43547,7 @@ function cpCards(lista){
     '<div class="cpc-nums"><div><span>Vendas</span><b>'+n+'</b></div><div><span>Faturamento</span><b>'+fmtAds(fat)+'</b></div></div>'+(clique ? '<div class="cpc-acoes"><span></span><button class="cpc-ana" onclick="'+clique+'">Ver as vendas ›</button></div>' : '')+'</article>'; };
   cards += so.extras.map(function(x){ return extra(x.nome, 'sem gasto no período', x.vendas, x.faturamento, ''); }).join('');
   if(so.sem.length) cards += extra('Sem campanha', 'orgânico, bio, sem rastreio', so.sem.length, semFat, 'cpAbrirSemCampanha()');
-  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()">'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
+  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()">'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpExportarPdf(this)" aria-label="Exportar PDF">PDF</button><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
     '<div class="cpc-fixos"><div class="cpc-chips">'+est('on','Ativas')+est('off','Pausadas')+cpFiltrosMarca()+'</div></div>'+
     '<div class="cpc-soma"><div><span>Gasto</span><b>'+fmtAds(g)+'</b></div><div><span>Lucro</span><b class="'+(lu + fatExtra >= 0 ? 'pos' : 'neg')+'">'+fmtAds(lu + fatExtra)+'</b></div><div><span>ROAS</span><b>'+(g ? ((f + fatExtra)/g).toFixed(2).replace('.',',')+'x' : '—')+'</b></div></div>'+
     (cards ? '<div class="cpc-lista">'+cards+'</div>' : '<div class="cp-vazio">Nenhuma campanha neste filtro.</div>');
@@ -43509,6 +43569,154 @@ function cpcAlternarCol(k, inp){
   cpPintar();
 }
 
+// a linha de totais: somam as campanhas e também as vendas do TMX que não têm linha na Utmify
+function cpTotais(l){
+  var so = cpSoTmx(), semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
+  var nExtra = so.extras.reduce(function(a, x){ return a + x.vendas; }, 0) + so.sem.length;
+  var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); };
+  var fatExtra = so.extras.reduce(function(a, x){ return a + (Number(x.faturamento) || 0); }, 0) + semFat, lucroTot = soma('lucro') + fatExtra;
+  var tot = { investimento: fmtAds(soma('investimento')), faturamento: fmtAds(soma('faturamento') + fatExtra), lucro: fmtAds(lucroTot), aprovadas: soma('aprovadas') + nExtra,
+              impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
+              roas: soma('investimento') ? ((soma('faturamento') + fatExtra)/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
+  CP_COLS.forEach(function(x){ if(x.soma && tot[x.k] == null) tot[x.k] = fnNum(soma(x.k)); });
+  return { so:so, semFat:semFat, tot:tot, lucroTot:lucroTot, nCamp:l.length + so.extras.length,
+           cpa: tot.aprovadas ? fmtAds(soma('investimento')/tot.aprovadas) : '—' };
+}
+
+// ── Por Campanha em PDF ──
+// Vai como texto e tabela de verdade (não foto da tela): a linha não corta na virada
+// da página, o cabeçalho repete e o arquivo fica leve. Sai com as colunas, os filtros
+// e a ordem que estão na tela. As bibliotecas só baixam quando a tabela aparece.
+var CP_PDF_LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+                   'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'];
+var cpPdfLibs = null;
+function cpPdfCarregar(){
+  if(cpPdfLibs) return cpPdfLibs;
+  cpPdfLibs = CP_PDF_LIBS.reduce(function(fila, url){
+    return fila.then(function(){ return new Promise(function(ok, nao){
+      var sc = document.createElement('script'); sc.src = url; sc.crossOrigin = 'anonymous';
+      sc.onload = ok; sc.onerror = function(){ nao(new Error('não baixou a biblioteca de PDF')); };
+      document.head.appendChild(sc);
+    }); });
+  }, Promise.resolve());
+  cpPdfLibs.catch(function(){ cpPdfLibs = null; });
+  return cpPdfLibs;
+}
+function cpPdfTxt(html){
+  var d = document.createElement('div'); d.innerHTML = html == null ? '' : String(html);
+  // a fonte do PDF só tem o alfabeto latino: emoji e seta viravam lixo no meio do nome
+  return (d.textContent || '').replace(/[^\x20-\x7E -ÿ–—•…]/g, '').replace(/\s+/g, ' ').trim();
+}
+function cpPdfData(iso){ return String(iso||'').split('-').reverse().join('/'); }
+function cpPdfEntregar(doc, nome){
+  var blob = doc.output('blob');
+  var baixar = function(){
+    var u = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = u; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(u); }, 60000);
+  };
+  // no celular abre o compartilhar (salvar em Arquivos, mandar no WhatsApp): no iPhone,
+  // com o TMX aberto pelo ícone, abrir o PDF na própria janela deixa a pessoa sem saída
+  try{
+    var arq = new File([blob], nome, { type:'application/pdf' });
+    if(window.matchMedia && matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files:[arq] })){
+      navigator.share({ files:[arq], title:nome }).catch(function(e){ if(!e || e.name !== 'AbortError') baixar(); });
+      return;
+    }
+  }catch(e){}
+  baixar();
+}
+function cpPdfMontar(){
+  var l = cpOrdenadas(cpFiltradas()), cs = cpColsOn(), so = cpTotais(l), rep = cpRepetidos();
+  var JS = window.jspdf.jsPDF, doc = new JS({ orientation:'landscape', unit:'mm', format:'a4', compress:true });
+  var LARG = doc.internal.pageSize.getWidth(), ALT = doc.internal.pageSize.getHeight(), MG = 10;
+  var ROXO = [62,20,147], AZUL = [27,156,250], TINTA = [30,27,46], CINZA = [107,104,122], FINA = [226,224,234], VERDE = [15,138,84], VERM = [197,44,88];
+  var p = getAdsDates(), sel = document.getElementById('ads-projeto'), proj = sel && sel.options[sel.selectedIndex] ? cpPdfTxt(sel.options[sel.selectedIndex].text) : 'Todos os projetos';
+  var periodo = p.from === p.to ? cpPdfData(p.from) : cpPdfData(p.from)+' a '+cpPdfData(p.to);
+  var agora = new Date(), quando = agora.toLocaleDateString('pt-BR')+' às '+agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  var selo = document.getElementById('ads-selo-utmify'), fonte = (selo ? cpPdfTxt(selo.textContent) : '').replace(/\s*·?\s*atualiza.*$/i,'') || 'Faturamento e vendas do TMX · gasto e métricas da Utmify';
+  var filtros = [];
+  if(cpEst.conta) filtros.push('conta '+cpEst.conta);
+  if(cpEst.status) filtros.push(cpEst.status === 'on' ? 'só ativas' : 'só pausadas');
+  if(cpEst.busca) filtros.push('nome com "'+cpEst.busca+'"');
+  if(cpEst.marca) filtros.push(cpEst.marca === 'fixa' ? 'só fixadas' : 'só com a marca escolhida');
+
+  doc.setFillColor(ROXO[0],ROXO[1],ROXO[2]); doc.rect(0,0,LARG,2.2,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(ROXO[0],ROXO[1],ROXO[2]); doc.text('TMX DIGITAL', MG, 10);
+  doc.setFontSize(17); doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]); doc.text('Relatório por campanha', MG, 17.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]);
+  doc.text(cpPdfTxt(proj)+'  ·  '+periodo+(filtros.length ? '  ·  '+cpPdfTxt(filtros.join(', ')) : ''), MG, 23);
+  doc.setFontSize(8); doc.text('Gerado em '+quando, LARG-MG, 10, { align:'right' });
+
+  // os números do período, na mesma conta da linha de totais da tabela
+  var luNum = so.lucroTot, kpis = [['Gasto',so.tot.investimento],['Faturamento',so.tot.faturamento],['Lucro',so.tot.lucro,luNum >= 0 ? VERDE : VERM],['ROAS',so.tot.roas],['CPA',so.cpa],['Vendas',String(so.tot.aprovadas)]];
+  var kL = (LARG-2*MG-5*3)/6;
+  kpis.forEach(function(k, i){
+    var x = MG+i*(kL+3), cor = k[2] || TINTA;
+    doc.setDrawColor(FINA[0],FINA[1],FINA[2]); doc.setFillColor(248,247,252); doc.roundedRect(x,27,kL,14,1.6,1.6,'FD');
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]); doc.text(k[0].toUpperCase(), x+3, 31.6);
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(cor[0],cor[1],cor[2]); doc.text(cpPdfTxt(k[1]), x+3, 38);
+  });
+
+  var campos = ['Campanha','Status'].concat(cs.map(function(c){ return c.t; }));
+  var cor = {}, linhas = l.map(function(c, i){
+    var nr = rep[adsCampNorm(c.nome)] || 0;
+    cs.forEach(function(col, j){ if(col.cls) cor[i+'|'+(j+2)] = col.cls(c); });
+    return [cpPdfTxt(cpNomeCurto(c.nome))+(c.conta ? ' · '+cpPdfTxt(c.conta) : '')+(nr > 1 && c.campanhaId ? ' · id …'+String(c.campanhaId).slice(-5) : ''), cpStatus(c.status)[0]]
+      .concat(cs.map(function(col){ return cpPdfTxt(col.v(c, 1)); }));
+  });
+  var soTmx = function(nome, chip, n, fat){
+    return [cpPdfTxt(cpNomeCurto(nome))+' · '+chip, '—'].concat(cs.map(function(col){
+      return col.k === 'aprovadas' ? String(n) : col.k === 'investimento' ? cpPdfTxt(fmtAds(0))
+           : ((col.k === 'faturamento' || col.k === 'lucro') && fat) ? cpPdfTxt(fmtAds(fat)) : '—'; }));
+  };
+  so.so.extras.forEach(function(x){ linhas.push(soTmx(x.nome, 'sem gasto no período', x.vendas, x.faturamento)); });
+  if(so.so.sem.length) linhas.push(soTmx('Sem campanha', 'orgânico, bio, sem rastreio', so.so.sem.length, so.semFat));
+  var pe = [so.nCamp+' campanha'+(so.nCamp === 1 ? '' : 's'), ''].concat(cs.map(function(c){ return so.tot[c.k] != null ? cpPdfTxt(so.tot[c.k]) : ''; }));
+
+  // com poucas colunas o nome tem folga; com "Tudo" marcado o que não couber segue na página seguinte
+  var nc = campos.length, corpo = nc <= 10 ? 8.5 : nc <= 14 ? 7.5 : 6.6;
+  var estCols = { 0:{ cellWidth:nc <= 10 ? 'auto' : Math.max(44, 94-(nc-10)*5), halign:'left', overflow:'linebreak' }, 1:{ cellWidth:'wrap', halign:'left' } };
+  campos.forEach(function(c, i){ if(i > 1) estCols[i] = { cellWidth:'wrap', halign:'right' }; });
+  doc.autoTable({
+    startY:45, head:[campos], body:linhas, foot:[pe], showFoot:'lastPage', showHead:'everyPage',
+    margin:{ left:MG, right:MG, top:12, bottom:13 }, theme:'plain', rowPageBreak:'avoid',
+    horizontalPageBreak:true, horizontalPageBreakRepeat:0,
+    styles:{ font:'helvetica', fontSize:corpo, textColor:TINTA, cellPadding:{ top:1.5, bottom:1.5, left:1.5, right:1.5 }, lineColor:FINA, lineWidth:{ bottom:.15 }, valign:'middle' },
+    headStyles:{ fillColor:ROXO, textColor:[255,255,255], fontStyle:'bold', fontSize:corpo-.4, halign:'right', lineWidth:0 },
+    footStyles:{ fillColor:[240,238,248], textColor:TINTA, fontStyle:'bold', halign:'right', lineWidth:0 },
+    alternateRowStyles:{ fillColor:[250,250,253] },
+    columnStyles:estCols,
+    didParseCell:function(d){
+      if(d.column.index < 2) d.cell.styles.halign = 'left';
+      if(d.section === 'body' && cor[d.row.index+'|'+d.column.index]){ var c = cor[d.row.index+'|'+d.column.index] === 'pos' ? VERDE : VERM; d.cell.styles.textColor = c; d.cell.styles.fontStyle = 'bold'; }
+      if(d.section === 'foot' && campos[d.column.index] === 'Lucro') d.cell.styles.textColor = luNum >= 0 ? VERDE : VERM;
+    }
+  });
+  var tot = doc.internal.getNumberOfPages();
+  for(var i = 1; i <= tot; i++){
+    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]);
+    doc.text(cpPdfTxt(fonte), MG, ALT-6);
+    doc.text('Página '+i+' de '+tot, LARG-MG, ALT-6, { align:'right' });
+  }
+  var nome = 'campanhas-'+cpPdfTxt(proj).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+(p.from === p.to ? p.from : p.from+'-a-'+p.to)+'.pdf';
+  return { doc:doc, nome:nome, paginas:tot };
+}
+function cpExportarPdf(bt){
+  if(!cpFiltradas().length && !cpTotais([]).nCamp && !cpSoTmx().sem.length){ toastFn('Nenhuma campanha neste filtro'); return; }
+  var rot = bt ? bt.textContent : '';
+  var fim = function(){ if(bt){ bt.disabled = false; bt.textContent = rot; } };
+  var gerar = function(){
+    try{ var r = cpPdfMontar(); cpPdfEntregar(r.doc, r.nome); toastFn('PDF pronto: '+r.paginas+' página'+(r.paginas === 1 ? '' : 's')); }
+    catch(e){ toastFn('Não gerou o PDF: '+e.message); }
+    fim();
+  };
+  // já baixadas, gera na hora: o compartilhar do iPhone só abre colado no toque
+  if(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable){ gerar(); return; }
+  if(bt){ bt.disabled = true; bt.textContent = 'Gerando…'; }
+  cpPdfCarregar().then(gerar).catch(function(e){ toastFn('Não gerou o PDF: '+e.message); fim(); });
+}
+
 function cpTabela(l){
   var cs = cpColsOn(), mx = Math.max.apply(null, l.map(function(c){ return c.investimento || 0; }).concat([1]));
   var fixa = cpFixa;
@@ -43524,7 +43732,7 @@ function cpTabela(l){
       '<td class="f3"><button onclick="event.stopPropagation();cpAbrir('+cpDados.indexOf(c)+')">Análise ›</button></td></tr>';
   }).join('');
   // as vendas do TMX que a Utmify não tem como linha (vendeu sem gastar no período, ou sem campanha)
-  var so = cpSoTmx();
+  var somas = cpTotais(l), so = somas.so, semFat = somas.semFat, tot = somas.tot, lucroTot = somas.lucroTot, nCamp = somas.nCamp;
   var linhaTmx = function(nome, chip, dica, n, fat, clique){
     return '<tr class="cp-so-tmx"'+(clique ? ' onclick="'+clique+'"' : ' style="cursor:default"')+'>'+
       '<td class="f1"><span class="cp-st off">—</span></td>'+
@@ -43543,18 +43751,9 @@ function cpTabela(l){
       'A pessoa clicou num anúncio desta campanha em outro dia e comprou agora. A Utmify não lista a campanha porque ela não gastou no período.'+
       (x.nomeNaVenda ? ' A venda veio com o nome antigo: '+x.nomeNaVenda+'.' : ''), x.vendas, x.faturamento, '');
   }).join('');
-  var semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
   if(so.sem.length) linhas += linhaTmx('Sem campanha', 'orgânico, bio, sem rastreio',
     'Vendas pagas que não vieram de anúncio: link da bio, visita direta, renovação e as que chegaram sem o código do TMX. Clique pra ver cada uma.',
     so.sem.length, semFat, 'cpAbrirSemCampanha()');
-  var nExtra = so.extras.reduce(function(a, x){ return a + x.vendas; }, 0) + so.sem.length;
-  var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); };
-  var fatExtra = so.extras.reduce(function(a, x){ return a + (Number(x.faturamento) || 0); }, 0) + semFat, lucroTot = soma('lucro') + fatExtra;
-  var tot = { investimento: fmtAds(soma('investimento')), faturamento: fmtAds(soma('faturamento') + fatExtra), lucro: fmtAds(lucroTot), aprovadas: soma('aprovadas') + nExtra,
-              impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
-              roas: soma('investimento') ? ((soma('faturamento') + fatExtra)/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
-  CP_COLS.forEach(function(x){ if(x.soma && tot[x.k] == null) tot[x.k] = fnNum(soma(x.k)); });
-  var nCamp = l.length + so.extras.length;
   return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f1">Status</th><th class="f2">Campanha<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna Campanha" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
     (linhas || '<tr><td colspan="'+(cs.length + 3)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+
     '<tfoot><tr><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(lucroTot >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
