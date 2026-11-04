@@ -4183,9 +4183,9 @@ async function _rotaAnuncios(req, res) {
           m.impressoes += Number(a.impressions) || 0;
           // a mesma nomenclatura roda em contas diferentes: guarda o pedaço de cada uma
           const ct = String(a.ca || '—');
-          const pc = m.porConta[ct] || (m.porConta[ct] = { investimento: 0, receita: 0, lucro: 0, vendas: 0, cliques: 0, impressoes: 0 });
+          const pc = m.porConta[ct] || (m.porConta[ct] = { investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0 });
           pc.investimento += inv; pc.receita += rec; pc.lucro += cent(a.profit); pc.vendas += Number(a.approvedOrdersCount) || 0;
-          pc.cliques += Number(a.inlineLinkClicks) || 0; pc.impressoes += Number(a.impressions) || 0;
+          pc.ics += Number(a.initiateCheckout) || 0; pc.cliques += Number(a.inlineLinkClicks) || 0; pc.impressoes += Number(a.impressions) || 0;
           // o id do anúncio é o que chega no utm_content quando a UTM segue o padrão por id
           const aid = String(a.id || a.adId || a.ad_id || '').trim();
           if (aid) { m.ids = m.ids || []; if (m.ids.indexOf(aid) < 0 && m.ids.length < 30) m.ids.push(aid); }

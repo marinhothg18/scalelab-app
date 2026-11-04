@@ -5825,6 +5825,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <input id="anuncio-search" type="search" placeholder="🔍  Buscar anúncio pelo nome (ex.: AD210)" aria-label="Buscar anúncio pelo nome" oninput="_adsFonte()==='utmify' ? pintarAnunciosUtmify() : renderAnuncios()" style="flex:1;min-width:220px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
             <select id="anuncio-conta" onchange="pintarAnunciosUtmify()" aria-label="Conta de anúncio" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12.5px"><option value="">Todas as contas</option></select>
             <span id="anuncio-qtd" style="font-size:12px;color:var(--text2);white-space:nowrap"></span>
+            <button class="cp-pdf" onclick="anExportarPdf(this)" title="Baixa um PDF com os anúncios, o filtro e a ordem desta tela" style="white-space:nowrap">⬇ Exportar PDF</button>
           </div>
           <div id="ads-anuncio-arquivo"></div>
           <div id="ads-anuncio-cards" style="display:none;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:14px;"></div>
@@ -42433,7 +42434,9 @@ function pintarAnunciosUtmify(){
   const conta = selC && selC.style.display !== 'none' ? selC.value : '';
   const base = conta ? _anunciosUtmify.map(a => { const p = (a.porConta || {})[conta]; if (!p || !(p.investimento > 0 || p.vendas > 0)) return null;
       return Object.assign({}, a, { investimento: p.investimento, receita: p.receita, lucro: p.lucro, vendas: p.vendas, cliques: p.cliques, impressoes: p.impressoes,
-        roas: p.investimento > 0 ? p.receita / p.investimento : 0, cpa: p.vendas > 0 ? p.investimento / p.vendas : 0, ctr: p.impressoes > 0 ? p.cliques / p.impressoes * 100 : 0 }); })
+        roas: p.investimento > 0 ? p.receita / p.investimento : 0, cpa: p.vendas > 0 ? p.investimento / p.vendas : 0, ctr: p.impressoes > 0 ? p.cliques / p.impressoes * 100 : 0,
+        cpc: p.cliques > 0 ? p.investimento / p.cliques : 0, cpm: p.impressoes > 0 ? p.investimento / p.impressoes * 1000 : 0,
+        ics: p.ics != null ? p.ics : null, custoPorIc: p.ics > 0 ? p.investimento / p.ics : 0 }); })
       .filter(Boolean).sort((x, y) => (y.receita - y.investimento) - (x.receita - x.investimento)) : _anunciosUtmify;
   const lista = termo
     ? base.filter(a => String(a.nome).toLowerCase().includes(termo) || String(a.dashboard).toLowerCase().includes(termo))
@@ -42442,6 +42445,8 @@ function pintarAnunciosUtmify(){
   if (qtd) qtd.textContent = termo ? lista.length + ' de ' + base.length + ' anúncio' + (base.length === 1 ? '' : 's') : (base.length ? base.length + ' anúncio' + (base.length === 1 ? '' : 's') : '');
   if (typeof cpEst !== 'undefined' && cpEst.nivel === 'contas' && typeof cpPintar === 'function') setTimeout(cpPintar, 0);
   const grade0 = document.getElementById('ads-anuncio-cards');
+  _anunciosVisiveis = lista;
+  if(!cpPdfLibs) setTimeout(function(){ cpPdfCarregar().catch(function(){}); }, 1500);
   if(!lista.length){
     _tabelaAnuncio(false);
     var conc=document.getElementById('ads-anuncio-conc'); if(conc) conc.innerHTML='';
@@ -42466,7 +42471,6 @@ function pintarAnunciosUtmify(){
       : '';
   }
 
-  _anunciosVisiveis = lista;
   grade.innerHTML = lista.map((a, iA)=>{
     const roas = Number(a.roas)||0;
     const inv  = Number(a.investimento)||0;
@@ -42491,7 +42495,7 @@ function pintarAnunciosUtmify(){
       linha('Lucro', fmtAds(lucro), lucro>=0?'var(--green)':'var(--red)') +
       linha('Vendas', String(a.vendas||0)) +
       linha('CPA', (a.cpa>0?fmtAds(a.cpa):'—')) +
-      linha('Checkouts iniciados', String(a.ics||0), (a.ics>0)?'#f97316':'') +
+      linha('Checkouts iniciados', a.ics == null ? '—' : String(a.ics), (a.ics>0)?'#f97316':'') +
       linha('Custo por IC', (a.custoPorIc>0?fmtAds(a.custoPorIc):'—')) +
       '<div class="anp-div" style="height:1px;background:var(--border);margin:7px 0"></div>' +
       linha('CPC', (a.cpc>0?fmtAds(a.cpc):'—')) +
@@ -43626,37 +43630,74 @@ function cpPdfEntregar(doc, nome){
   }catch(e){}
   baixar();
 }
-function cpPdfMontar(){
-  var l = cpOrdenadas(cpFiltradas()), cs = cpColsOn(), so = cpTotais(l), rep = cpRepetidos();
-  var JS = window.jspdf.jsPDF, doc = new JS({ orientation:'landscape', unit:'mm', format:'a4', compress:true });
+var PDF_COR = { ROXO:[62,20,147], TINTA:[30,27,46], CINZA:[107,104,122], FINA:[226,224,234], VERDE:[15,138,84], VERM:[197,44,88], LARANJA:[194,84,10] };
+// Topo igual nos dois relatórios: título, projeto, período, filtros e as caixas de número.
+function pdfInicio(titulo, filtros, kpis){
+  var C = PDF_COR, JS = window.jspdf.jsPDF, doc = new JS({ orientation:'landscape', unit:'mm', format:'a4', compress:true });
   var LARG = doc.internal.pageSize.getWidth(), ALT = doc.internal.pageSize.getHeight(), MG = 10;
-  var ROXO = [62,20,147], AZUL = [27,156,250], TINTA = [30,27,46], CINZA = [107,104,122], FINA = [226,224,234], VERDE = [15,138,84], VERM = [197,44,88];
   var p = getAdsDates(), sel = document.getElementById('ads-projeto'), proj = sel && sel.options[sel.selectedIndex] ? cpPdfTxt(sel.options[sel.selectedIndex].text) : 'Todos os projetos';
   var periodo = p.from === p.to ? cpPdfData(p.from) : cpPdfData(p.from)+' a '+cpPdfData(p.to);
   var agora = new Date(), quando = agora.toLocaleDateString('pt-BR')+' às '+agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   var selo = document.getElementById('ads-selo-utmify'), fonte = (selo ? cpPdfTxt(selo.textContent) : '').replace(/\s*·?\s*atualiza.*$/i,'') || 'Faturamento e vendas do TMX · gasto e métricas da Utmify';
+
+  doc.setFillColor(C.ROXO[0],C.ROXO[1],C.ROXO[2]); doc.rect(0,0,LARG,2.2,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(C.ROXO[0],C.ROXO[1],C.ROXO[2]); doc.text('TMX DIGITAL', MG, 10);
+  doc.setFontSize(17); doc.setTextColor(C.TINTA[0],C.TINTA[1],C.TINTA[2]); doc.text(titulo, MG, 17.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(C.CINZA[0],C.CINZA[1],C.CINZA[2]);
+  doc.text(cpPdfTxt(proj)+'  ·  '+periodo+(filtros.length ? '  ·  '+cpPdfTxt(filtros.join(', ')) : ''), MG, 23);
+  doc.setFontSize(8); doc.text('Gerado em '+quando, LARG-MG, 10, { align:'right' });
+
+  var kL = (LARG-2*MG-5*3)/6;
+  kpis.forEach(function(k, i){
+    var x = MG+i*(kL+3), cor = k[2] || C.TINTA;
+    doc.setDrawColor(C.FINA[0],C.FINA[1],C.FINA[2]); doc.setFillColor(248,247,252); doc.roundedRect(x,27,kL,14,1.6,1.6,'FD');
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(C.CINZA[0],C.CINZA[1],C.CINZA[2]); doc.text(k[0].toUpperCase(), x+3, 31.6);
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(cor[0],cor[1],cor[2]); doc.text(cpPdfTxt(k[1]), x+3, 38);
+  });
+  return { doc:doc, LARG:LARG, ALT:ALT, MG:MG, proj:proj, p:p, fonte:fonte };
+}
+function pdfEstiloTabela(r, corpo){
+  var C = PDF_COR;
+  return { showFoot:'lastPage', showHead:'everyPage', margin:{ left:r.MG, right:r.MG, top:12, bottom:13 }, theme:'plain', rowPageBreak:'avoid',
+    styles:{ font:'helvetica', fontSize:corpo, textColor:C.TINTA, cellPadding:{ top:1.5, bottom:1.5, left:1.5, right:1.5 }, lineColor:C.FINA, lineWidth:{ bottom:.15 }, valign:'middle' },
+    headStyles:{ fillColor:C.ROXO, textColor:[255,255,255], fontStyle:'bold', fontSize:corpo-.4, halign:'right', lineWidth:0 },
+    footStyles:{ fillColor:[240,238,248], textColor:C.TINTA, fontStyle:'bold', halign:'right', lineWidth:0, cellWidth:'wrap' },
+    alternateRowStyles:{ fillColor:[250,250,253] } };
+}
+function pdfFim(r, prefixo){
+  var doc = r.doc, tot = doc.internal.getNumberOfPages(), C = PDF_COR;
+  for(var i = 1; i <= tot; i++){
+    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(C.CINZA[0],C.CINZA[1],C.CINZA[2]);
+    doc.text(cpPdfTxt(r.fonte), r.MG, r.ALT-6);
+    doc.text('Página '+i+' de '+tot, r.LARG-r.MG, r.ALT-6, { align:'right' });
+  }
+  var nome = prefixo+'-'+cpPdfTxt(r.proj).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+(r.p.from === r.p.to ? r.p.from : r.p.from+'-a-'+r.p.to)+'.pdf';
+  return { doc:doc, nome:nome, paginas:tot };
+}
+function pdfExportar(bt, montar){
+  var rot = bt ? bt.textContent : '';
+  var fim = function(){ if(bt){ bt.disabled = false; bt.textContent = rot; } };
+  var gerar = function(){
+    try{ var r = montar(); cpPdfEntregar(r.doc, r.nome); toastFn('PDF pronto: '+r.paginas+' página'+(r.paginas === 1 ? '' : 's')); }
+    catch(e){ toastFn('Não gerou o PDF: '+e.message); }
+    fim();
+  };
+  // já baixadas, gera na hora: o compartilhar do iPhone só abre colado no toque
+  if(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable){ gerar(); return; }
+  if(bt){ bt.disabled = true; bt.textContent = 'Gerando…'; }
+  cpPdfCarregar().then(gerar).catch(function(e){ toastFn('Não gerou o PDF: '+e.message); fim(); });
+}
+function cpPdfMontar(){
+  var C = PDF_COR, l = cpOrdenadas(cpFiltradas()), cs = cpColsOn(), so = cpTotais(l), rep = cpRepetidos();
   var filtros = [];
   if(cpEst.conta) filtros.push('conta '+cpEst.conta);
   if(cpEst.status) filtros.push(cpEst.status === 'on' ? 'só ativas' : 'só pausadas');
   if(cpEst.busca) filtros.push('nome com "'+cpEst.busca+'"');
   if(cpEst.marca) filtros.push(cpEst.marca === 'fixa' ? 'só fixadas' : 'só com a marca escolhida');
 
-  doc.setFillColor(ROXO[0],ROXO[1],ROXO[2]); doc.rect(0,0,LARG,2.2,'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(ROXO[0],ROXO[1],ROXO[2]); doc.text('TMX DIGITAL', MG, 10);
-  doc.setFontSize(17); doc.setTextColor(TINTA[0],TINTA[1],TINTA[2]); doc.text('Relatório por campanha', MG, 17.5);
-  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]);
-  doc.text(cpPdfTxt(proj)+'  ·  '+periodo+(filtros.length ? '  ·  '+cpPdfTxt(filtros.join(', ')) : ''), MG, 23);
-  doc.setFontSize(8); doc.text('Gerado em '+quando, LARG-MG, 10, { align:'right' });
-
   // os números do período, na mesma conta da linha de totais da tabela
-  var luNum = so.lucroTot, kpis = [['Gasto',so.tot.investimento],['Faturamento',so.tot.faturamento],['Lucro',so.tot.lucro,luNum >= 0 ? VERDE : VERM],['ROAS',so.tot.roas],['CPA',so.cpa],['Vendas',String(so.tot.aprovadas)]];
-  var kL = (LARG-2*MG-5*3)/6;
-  kpis.forEach(function(k, i){
-    var x = MG+i*(kL+3), cor = k[2] || TINTA;
-    doc.setDrawColor(FINA[0],FINA[1],FINA[2]); doc.setFillColor(248,247,252); doc.roundedRect(x,27,kL,14,1.6,1.6,'FD');
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]); doc.text(k[0].toUpperCase(), x+3, 31.6);
-    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(cor[0],cor[1],cor[2]); doc.text(cpPdfTxt(k[1]), x+3, 38);
-  });
+  var luNum = so.lucroTot;
+  var r = pdfInicio('Relatório por campanha', filtros, [['Gasto',so.tot.investimento],['Faturamento',so.tot.faturamento],['Lucro',so.tot.lucro,luNum >= 0 ? C.VERDE : C.VERM],['ROAS',so.tot.roas],['CPA',so.cpa],['Vendas',String(so.tot.aprovadas)]]);
 
   var campos = ['Campanha','Status'].concat(cs.map(function(c){ return c.t; }));
   var cor = {}, linhas = l.map(function(c, i){
@@ -43678,43 +43719,92 @@ function cpPdfMontar(){
   var nc = campos.length, corpo = nc <= 10 ? 8.5 : nc <= 14 ? 7.5 : 6.6;
   var estCols = { 0:{ cellWidth:nc <= 10 ? 'auto' : Math.max(44, 94-(nc-10)*5), halign:'left', overflow:'linebreak' }, 1:{ cellWidth:'wrap', halign:'left' } };
   campos.forEach(function(c, i){ if(i > 1) estCols[i] = { cellWidth:'wrap', halign:'right' }; });
-  doc.autoTable({
-    startY:45, head:[campos], body:linhas, foot:[pe], showFoot:'lastPage', showHead:'everyPage',
-    margin:{ left:MG, right:MG, top:12, bottom:13 }, theme:'plain', rowPageBreak:'avoid',
+  r.doc.autoTable(Object.assign(pdfEstiloTabela(r, corpo), {
+    startY:45, head:[campos], body:linhas, foot:[pe],
     horizontalPageBreak:true, horizontalPageBreakRepeat:0,
-    styles:{ font:'helvetica', fontSize:corpo, textColor:TINTA, cellPadding:{ top:1.5, bottom:1.5, left:1.5, right:1.5 }, lineColor:FINA, lineWidth:{ bottom:.15 }, valign:'middle' },
-    headStyles:{ fillColor:ROXO, textColor:[255,255,255], fontStyle:'bold', fontSize:corpo-.4, halign:'right', lineWidth:0 },
-    footStyles:{ fillColor:[240,238,248], textColor:TINTA, fontStyle:'bold', halign:'right', lineWidth:0 },
-    alternateRowStyles:{ fillColor:[250,250,253] },
     columnStyles:estCols,
     didParseCell:function(d){
       if(d.column.index < 2) d.cell.styles.halign = 'left';
-      if(d.section === 'body' && cor[d.row.index+'|'+d.column.index]){ var c = cor[d.row.index+'|'+d.column.index] === 'pos' ? VERDE : VERM; d.cell.styles.textColor = c; d.cell.styles.fontStyle = 'bold'; }
-      if(d.section === 'foot' && campos[d.column.index] === 'Lucro') d.cell.styles.textColor = luNum >= 0 ? VERDE : VERM;
+      if(d.section === 'body' && cor[d.row.index+'|'+d.column.index]){ var c = cor[d.row.index+'|'+d.column.index] === 'pos' ? C.VERDE : C.VERM; d.cell.styles.textColor = c; d.cell.styles.fontStyle = 'bold'; }
+      if(d.section === 'foot' && campos[d.column.index] === 'Lucro') d.cell.styles.textColor = luNum >= 0 ? C.VERDE : C.VERM;
     }
-  });
-  var tot = doc.internal.getNumberOfPages();
-  for(var i = 1; i <= tot; i++){
-    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(CINZA[0],CINZA[1],CINZA[2]);
-    doc.text(cpPdfTxt(fonte), MG, ALT-6);
-    doc.text('Página '+i+' de '+tot, LARG-MG, ALT-6, { align:'right' });
-  }
-  var nome = 'campanhas-'+cpPdfTxt(proj).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+(p.from === p.to ? p.from : p.from+'-a-'+p.to)+'.pdf';
-  return { doc:doc, nome:nome, paginas:tot };
+  }));
+  return pdfFim(r, 'campanhas');
 }
 function cpExportarPdf(bt){
   if(!cpFiltradas().length && !cpTotais([]).nCamp && !cpSoTmx().sem.length){ toastFn('Nenhuma campanha neste filtro'); return; }
-  var rot = bt ? bt.textContent : '';
-  var fim = function(){ if(bt){ bt.disabled = false; bt.textContent = rot; } };
-  var gerar = function(){
-    try{ var r = cpPdfMontar(); cpPdfEntregar(r.doc, r.nome); toastFn('PDF pronto: '+r.paginas+' página'+(r.paginas === 1 ? '' : 's')); }
-    catch(e){ toastFn('Não gerou o PDF: '+e.message); }
-    fim();
-  };
-  // já baixadas, gera na hora: o compartilhar do iPhone só abre colado no toque
-  if(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable){ gerar(); return; }
-  if(bt){ bt.disabled = true; bt.textContent = 'Gerando…'; }
-  cpPdfCarregar().then(gerar).catch(function(e){ toastFn('Não gerou o PDF: '+e.message); fim(); });
+  pdfExportar(bt, cpPdfMontar);
+}
+
+// ── Por Anúncio em PDF ──
+// Sai a lista que está na tela (busca, conta e ordem), com os mesmos números dos cards.
+function anPdfMontar(){
+  var C = PDF_COR, l = _anunciosVisiveis;
+  var busca = ((document.getElementById('anuncio-search')||{}).value || '').trim();
+  var selC = document.getElementById('anuncio-conta'), conta = selC && selC.style.display !== 'none' ? selC.value : '';
+  var filtros = [];
+  if(conta) filtros.push('conta '+conta);
+  if(busca) filtros.push('nome com "'+busca+'"');
+
+  var num = function(a, k){ return Number(a[k]) || 0; };
+  var soma = function(k){ return l.reduce(function(t, a){ return t+num(a, k); }, 0); };
+  var inv = soma('investimento'), rec = soma('receita'), lucro = rec-inv, vendas = soma('vendas'), cliques = soma('cliques'), imp = soma('impressoes');
+  var temIcs = l.some(function(a){ return a.ics != null; }), ics = soma('ics');
+  var din = function(v){ return v > 0 ? cpPdfTxt(fmtAds(v)) : '—'; };
+  var pct = function(v){ return v > 0 ? v.toFixed(2).replace('.',',')+'%' : '—'; };
+  var vezes = function(v){ return v > 0 ? v.toFixed(2).replace('.',',')+'x' : '—'; };
+  var r = pdfInicio('Relatório por anúncio', filtros, [['Investido',cpPdfTxt(fmtAds(inv))],['Receita',cpPdfTxt(fmtAds(rec))],['Lucro',cpPdfTxt(fmtAds(lucro)),lucro >= 0 ? C.VERDE : C.VERM],['ROAS',vezes(inv > 0 ? rec/inv : 0)],['CPA',din(vendas > 0 ? inv/vendas : 0)],['Vendas',String(vendas)]]);
+
+  // a soma dos anúncios nunca fecha com o total da conta: sem esta linha o PDF parece estar perdendo venda.
+  // O total é do período inteiro, então só faz sentido sem filtro.
+  var startY = 45, c = _anunciosConc;
+  if(!filtros.length && c && c.vendasConta !== null && c.vendasConta !== undefined){
+    var pc = c.vendasConta ? (c.vendasAnuncios/c.vendasConta)*100 : 0;
+    r.doc.setFont('helvetica','normal'); r.doc.setFontSize(8.5); r.doc.setTextColor(C.CINZA[0],C.CINZA[1],C.CINZA[2]);
+    r.doc.text('Vendas da conta: '+c.vendasConta+' = '+c.vendasAnuncios+' ligadas a um anúncio ('+pc.toFixed(0)+'%) + '+(c.vendasSemAnuncio || 0)+' sem anúncio (tráfego direto, orgânico ou link sem UTM)', r.MG, 45.5);
+    startY = 48.5;
+  }
+
+  var projetos = {}; l.forEach(function(a){ projetos[a.dashboard || ''] = 1; });
+  var variosProj = Object.keys(projetos).length > 1;
+  var campos = ['Anúncio','Veic.','Investido','Receita','Lucro','ROAS','Vendas','CPA','Checkouts','Custo por IC','CPC','CPM','CTR'];
+  var linhas = l.map(function(a){
+    var g = num(a, 'investimento'), v = num(a, 'receita');
+    return [cpPdfTxt(a.nome)+(variosProj && a.dashboard ? ' · '+cpPdfTxt(a.dashboard) : '')+(a.soTmx ? ' · sem gasto no período' : ''), String(num(a, 'veiculacoes')),
+      cpPdfTxt(fmtAds(g)), cpPdfTxt(fmtAds(v)), cpPdfTxt(fmtAds(v-g)), vezes(num(a, 'roas')), String(num(a, 'vendas')), din(num(a, 'cpa')),
+      a.ics == null ? '—' : String(a.ics), din(num(a, 'custoPorIc')), din(num(a, 'cpc')), din(num(a, 'cpm')), pct(num(a, 'ctr'))];
+  });
+  var pe = [l.length+' anúncio'+(l.length === 1 ? '' : 's'), String(soma('veiculacoes')), cpPdfTxt(fmtAds(inv)), cpPdfTxt(fmtAds(rec)), cpPdfTxt(fmtAds(lucro)), vezes(inv > 0 ? rec/inv : 0), String(vendas), din(vendas > 0 ? inv/vendas : 0),
+    temIcs ? String(ics) : '—', din(temIcs && ics > 0 ? inv/ics : 0), din(cliques > 0 ? inv/cliques : 0), din(imp > 0 ? inv/imp*1000 : 0), pct(imp > 0 ? cliques/imp*100 : 0)];
+
+  var estCols = { 0:{ cellWidth:'auto', halign:'left', overflow:'linebreak' } };
+  campos.forEach(function(x, i){ if(i > 0) estCols[i] = { cellWidth:'wrap', halign:'right' }; });
+  // mesmas faixas de cor do card
+  var corRoas = function(a){ var x = num(a, 'roas'); return x >= 1.5 ? C.VERDE : x >= 1 ? C.LARANJA : (x > 0 || num(a, 'investimento') > 0) ? C.VERM : null; };
+  var est = pdfEstiloTabela(r, 8); est.headStyles.cellWidth = 'wrap';
+  r.doc.autoTable(Object.assign(est, {
+    startY:startY, head:[campos], body:linhas, foot:[pe], columnStyles:estCols,
+    didParseCell:function(d){
+      if(d.column.index === 0) d.cell.styles.halign = 'left';
+      var nomeCol = campos[d.column.index];
+      if(d.section === 'body'){
+        var a = l[d.row.index], cor = null;
+        if(nomeCol === 'Lucro') cor = num(a, 'receita')-num(a, 'investimento') >= 0 ? C.VERDE : C.VERM;
+        if(nomeCol === 'ROAS') cor = corRoas(a);
+        if(nomeCol === 'Receita' && num(a, 'receita') > 0) cor = C.VERDE;
+        if(cor){ d.cell.styles.textColor = cor; d.cell.styles.fontStyle = 'bold'; }
+      }
+      if(d.section === 'foot' && nomeCol === 'Lucro') d.cell.styles.textColor = lucro >= 0 ? C.VERDE : C.VERM;
+    }
+  }));
+  return pdfFim(r, 'anuncios');
+}
+function anExportarPdf(bt){
+  var p = getAdsDates();
+  // trocou o período e os anúncios não chegaram: o PDF sairia com a lista antiga e a data nova
+  if(_anunciosPeriodo !== p.from+'|'+p.to+'|'+_adsProjeto()){ toastFn('Os anúncios deste período ainda não chegaram'); return; }
+  if(!_anunciosVisiveis.length){ toastFn('Nenhum anúncio neste filtro'); return; }
+  pdfExportar(bt, anPdfMontar);
 }
 
 function cpTabela(l){
