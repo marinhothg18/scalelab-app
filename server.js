@@ -20384,6 +20384,67 @@ const _mcpBrl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency
 const _mcpNum = n => Math.round(Number(n) || 0).toLocaleString('pt-BR');
 const _mcpPct = (x, c) => ((Number(x) || 0) * 100).toFixed(c == null ? 1 : c).replace('.', ',') + '%';
 
+// ── Números da VSL no chat ──
+// As contas abaixo são as da tela Análise de VSL (vsCurvaDe, vsAchaQuedas,
+// vsMetricasDe e vsTilesHtml em ScaleLab.html), que rodam no navegador. Mudou uma
+// fórmula lá, muda aqui: chat e tela não podem dar números diferentes.
+const KEY_VSL_LEAD = 'sl_vsl_lead';          // id do player -> segundo em que o lead acaba
+const VSL_METAS_PADRAO = { ret1min: 55, playRate: 65, pctPitch: 12, ticket: 900 };
+
+function _vslCurvaDe(bruto) {
+  const pts = (bruto || []).map(x => ({ t: Number(x.timed) || 0, n: Number(x.total_users) || 0 })).sort((a, b) => a.t - b.t);
+  if (!pts.length) return [];
+  // Curva de sobrevivência NUNCA sobe. Se subir, o que veio é histograma de
+  // abandono e precisa ser somado de trás pra frente.
+  let ehSobrevivencia = true;
+  for (let i = 1; i < pts.length; i++) if (pts[i].n > pts[i - 1].n * 1.02 + 1) { ehSobrevivencia = false; break; }
+  if (ehSobrevivencia) {
+    const topo = pts[0].n || 1;
+    return pts.map(p => ({ t: p.t, y: Math.min(100, p.n / topo * 100), n: p.n }));
+  }
+  let acum = 0; const saida = [];
+  for (let j = pts.length - 1; j >= 0; j--) { acum += pts[j].n; saida.unshift({ t: pts[j].t, n: acum }); }
+  const total = saida[0].n || 1;
+  return saida.map(p => ({ t: p.t, y: p.n / total * 100, n: p.n }));
+}
+
+// Toda VSL perde gente: gargalo é onde ela perde MUITO mais que o normal dela,
+// por isso compara com a vizinhança e ignora os primeiros 25 segundos.
+function _vslGargalo(pts) {
+  if (pts.length < 6) return null;
+  const achados = [];
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].t < 25) continue;
+    const perda = pts[i - 1].y - pts[i].y;
+    if (perda <= 0) continue;
+    const rel = perda / Math.max(pts[i - 1].y, .01);
+    const de = Math.max(1, i - 6), ate = Math.min(pts.length - 1, i + 6);
+    let soma = 0, n = 0;
+    for (let j = de; j <= ate; j++) {
+      if (j === i) continue;
+      soma += Math.max(0, (pts[j - 1].y - pts[j].y) / Math.max(pts[j - 1].y, .01));
+      n++;
+    }
+    const tip = n ? soma / n : 0;
+    if (tip > .0005 && rel > tip * 2.6 && rel > .035) achados.push({ t0: pts[i - 1].t, rel: rel * 100, sev: rel / tip });
+  }
+  achados.sort((a, b) => b.rel - a.rel);
+  return achados[0] || null;
+}
+
+// A mesma lista da tela: fresca, com as ligadas em "VSLs rodando" na frente e
+// depois as mais novas. Sem essa ordem, a VSL do momento ficava fora das 60 listadas.
+async function _mcpVsls(cfg) {
+  const lst = await _vturbListaFresca(cfg);
+  const at = readDB().store.sl_vsl_ativas;
+  const lig = Array.isArray(at) ? at.map(String) : [];
+  const lista = (lst.lista || []).map(p => Object.assign({}, p, { rodando: lig.indexOf(String(p.id)) >= 0 }))
+    .sort((a, b) => (Number(b.rodando) - Number(a.rodando)) || String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+  return { lista, fresca: !!lst.fresca };
+}
+const _mcpSemAcento = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const _mcpLinhaVsl = p => '· ' + (p.nome || '(sem nome)') + (p.rodando ? ' [rodando]' : '') + ' — id: ' + p.id;
+
 const MCP_FERRAMENTAS = [
   { name: 'listar_projetos',
     description: 'Lista os projetos (dashboards), funis, quizzes e VSLs disponíveis, com os ids. Use antes das outras ferramentas quando precisar de um id.',
@@ -20416,9 +20477,9 @@ const MCP_FERRAMENTAS = [
       periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
       de: { type: 'string' }, ate: { type: 'string' } }, required: ['quiz'] } },
   { name: 'retencao_da_vsl',
-    description: 'Números de uma VSL na VTurb: views, views únicas, plays, plays únicos, play rate, quem chegou no pitch, cliques e vendas — mais a curva de retenção minuto a minuto e a maior queda. Sem o id do player, lista as VSLs disponíveis.',
+    description: 'Métricas de uma VSL, as mesmas da tela Análise de VSL: Retenção 1 Min, Retenção 2 Min, Retenção Lead, maior gargalo, % que deu play, % que chega no pitch, Tx de Cliques, vendas e faturamento, Tx Checkout (quantos dos cliques compraram) e ticket médio, comparados às metas. Traz também views, plays, engajamento e a retenção aos 5, 10 e 20 minutos. Sem player, lista as VSLs com as que estão rodando primeiro. Sem período, responde o dia de hoje.',
     inputSchema: { type: 'object', properties: {
-      player: { type: 'string', description: 'Id do player na VTurb' },
+      player: { type: 'string', description: 'Id do player na VTurb ou parte do nome da VSL' },
       duracao: { type: 'number', description: 'Duração do vídeo em segundos. Só precisa se a VTurb não informar.' },
       periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
       de: { type: 'string' }, ate: { type: 'string' } } } },
@@ -20439,12 +20500,13 @@ async function _mcpExecutar(nome, a) {
     try { dashboards = (await _utmifyDashboardsAtivos()).lista || []; } catch (e) {}
     const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []);
     const quizzes = (Array.isArray(db.store[KEY_QUIZZES]) ? db.store[KEY_QUIZZES] : []);
-    const vturb = (_vturbCfg() || {}).players || [];
+    let vturb = [];
+    try { vturb = (await _mcpVsls(_vturbExige())).lista; } catch (e) {}
     let t = 'PROJETOS (use o id em projeto:)\n';
     t += dashboards.length ? dashboards.map(d => '· ' + d.nome + '  —  id: ' + d.id).join('\n') : '· nenhum projeto conectado na Utmify';
     t += '\n\nFUNIS (use em funil:)\n' + (funis.length ? funis.map(f => '· ' + f.nome + (f.projeto ? ' [' + f.projeto + ']' : '') + '  —  id: ' + f.id + '  ·  ' + (f.etapas || []).length + ' etapas').join('\n') : '· nenhum funil');
     t += '\n\nQUIZZES (use em quiz:)\n' + (quizzes.length ? quizzes.map(q => '· ' + q.nome + '  —  id: ' + q.id + '  ·  ' + (q.ativo ? 'no ar em /q/' + q.slug : 'rascunho')).join('\n') : '· nenhum quiz');
-    t += '\n\nVSLs NA VTURB (use em player:)\n' + (vturb.length ? vturb.slice(0, 40).map(p => '· ' + (p.nome || p.name || p.id) + '  —  id: ' + p.id).join('\n') : '· nenhuma VSL salva (use retencao_da_vsl sem player pra buscar na VTurb)');
+    t += '\n\nVSLs NA VTURB (use em player:)\n' + (vturb.length ? vturb.slice(0, 40).map(_mcpLinhaVsl).join('\n') : '· nenhuma VSL salva (use retencao_da_vsl sem player pra buscar na VTurb)');
     return t;
   }
 
@@ -20579,87 +20641,107 @@ async function _mcpExecutar(nome, a) {
 
   if (nome === 'retencao_da_vsl') {
     const cfg = _vturbExige();
-    if (!a.player) {
-      const ps = await _vturbPlayers(cfg.token).catch(() => (cfg.players || []));
-      return 'VSLs NA VTURB (use o id em player:)\n' + (ps.length ? ps.slice(0, 60).map(p => '· ' + (p.nome || p.name || '(sem nome)') + ' — id: ' + p.id).join('\n') : '· nenhuma VSL encontrada');
+    const lst = await _mcpVsls(cfg);
+    const alvo = String(a.player || '').trim();
+    if (!alvo) {
+      const rodando = lst.lista.filter(p => p.rodando).length;
+      return 'VSLs NA VTURB (use o id ou parte do nome em player:)\n' +
+        (rodando ? 'As ' + rodando + ' primeiras estão ligadas em "VSLs rodando"; depois vêm as mais novas.\n' : '') +
+        (lst.lista.length ? lst.lista.slice(0, 60).map(_mcpLinhaVsl).join('\n') : '· nenhuma VSL encontrada') +
+        (lst.lista.length > 60 ? '\n\nMostrando 60 de ' + lst.lista.length + '. Pra achar outra, use parte do nome em player:.' : '') +
+        (lst.fresca ? '' : '\n\nA VTurb não respondeu agora: esta é a última lista guardada.');
     }
+    let meta = lst.lista.find(p => String(p.id) === alvo);
+    if (!meta) {
+      const achadas = lst.lista.filter(p => _mcpSemAcento(p.nome).indexOf(_mcpSemAcento(alvo)) >= 0);
+      if (achadas.length > 1) {
+        return 'Mais de uma VSL tem "' + alvo + '" no nome. Qual delas?\n' + achadas.slice(0, 30).map(_mcpLinhaVsl).join('\n');
+      }
+      meta = achadas[0];
+      // Com a VTurb fora do ar a lista pode estar velha: um id de verdade ainda vale.
+      if (!meta && !/^[0-9a-f]{24}$/i.test(alvo)) return 'Não achei VSL com "' + alvo + '" no nome. Chame sem player pra ver a lista.';
+    }
+    meta = meta || {};
+    const player = String(meta.id || alvo);
     const pr = _vturbPeriodo({ query: { de: per.de, ate: per.ate } });
-    // A VTurb EXIGE a duracao do video e recusa zero. Ela pode vir da pergunta,
-    // do cadastro local ou da lista da propria VTurb — e se nao vier de lugar
-    // nenhum, o erro precisa dizer o que fazer, nao repassar o texto deles.
-    let meta = (cfg.players || []).find(p => String(p.id) === String(a.player)) || {};
-    let dur = Number(a.duracao) || Number(meta.duracao) || 0;
-    if (dur <= 0) {
-      const daApi = (await _vturbPlayers(cfg.token).catch(() => [])).find(p => String(p.id) === String(a.player));
-      if (daApi) { meta = Object.assign({}, daApi, meta); dur = Number(daApi.duracao) || 0; }
-    }
+    // A VTurb EXIGE a duração do vídeo e recusa zero. Se ela não informar, o erro
+    // precisa dizer o que fazer, não repassar o texto deles.
+    const dur = Number(a.duracao) || Number(meta.duracao) || 0;
     if (dur <= 0) {
       return 'A VTurb não informou a duração dessa VSL, e ela é obrigatória pra montar a curva.\n' +
              'Pergunte de novo dizendo a duração em segundos (ex.: "retenção dessa VSL, duração 2280"), ' +
              'ou cadastre a duração da VSL em Criativos & VSL.';
     }
-    // A curva sozinha nao responde "quantas pessoas". views, plays e play rate
-    // vem de /sessions/stats — a MESMA chamada que a tela de VSL ja usa — entao
-    // quem pergunta pela retencao recebe o tamanho da amostra junto.
+    const pitchSeg = Number(meta.pitch) || 0;
     const [bruto, stats] = await Promise.all([
       _vturbApiData(cfg.token, '/times/user_engagement',
-        { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur }, pr),
+        { player_id: player, start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur }, pr),
       _vturbApiData(cfg.token, '/sessions/stats',
-        { player_id: String(a.player), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo',
-          video_duration: dur, pitch_time: Number(meta.pitch) || 0 }, pr).catch(e => ({ _erro: e.message }))
+        { player_id: player, start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo',
+          video_duration: dur, pitch_time: pitchSeg }, pr).catch(e => ({ _erro: e.message }))
     ]);
-    // A lista vem em 'grouped_timed' — e o mesmo campo que a tela de VSL usa.
-    // Eu tinha chutado 'data' e a resposta voltava sempre vazia.
-    const lista = Array.isArray(bruto) ? bruto
-      : ((bruto && (bruto.grouped_timed || bruto.timed || bruto.data || bruto.results)) || []);
-    const pts = lista.map(x => ({ t: Number(x.timed) || 0, n: Number(x.total_users) || 0 })).sort((x, y) => x.t - y.t);
-    if (!pts.length) return 'Sem dados de retenção pra essa VSL ' + per.rotulo + '.';
-    // Mesma regra da tela: curva de sobrevivência NUNCA sobe. Se subir, o que
-    // veio é histograma de abandono e precisa ser somado de trás pra frente.
-    let ehSobrevivencia = true;
-    for (let i = 1; i < pts.length; i++) if (pts[i].n > pts[i - 1].n * 1.02 + 1) { ehSobrevivencia = false; break; }
-    let curva;
-    if (ehSobrevivencia) {
-      const topo = pts[0].n || 1;
-      curva = pts.map(p => ({ t: p.t, y: Math.min(100, p.n / topo * 100) }));
-    } else {
-      let acum = 0; const saida = [];
-      for (let j = pts.length - 1; j >= 0; j--) { acum += pts[j].n; saida.unshift({ t: pts[j].t, n: acum }); }
-      const total = saida[0].n || 1;
-      curva = saida.map(p => ({ t: p.t, y: p.n / total * 100 }));
-    }
-    const em = seg => { let melhor = null; curva.forEach(p => { if (p.t <= seg && (!melhor || p.t > melhor.t)) melhor = p; }); return melhor; };
-    let queda = null;
-    for (let i = 1; i < curva.length; i++) {
-      const perdeu = curva[i - 1].y > 0 ? (curva[i - 1].y - curva[i].y) / curva[i - 1].y : 0;
-      if (!queda || perdeu > queda.perdeu) queda = { perdeu, de: curva[i - 1], para: curva[i] };
-    }
+    // A lista vem em 'grouped_timed' — é o mesmo campo que a tela de VSL usa.
+    const curva = _vslCurvaDe(Array.isArray(bruto) ? bruto
+      : ((bruto && (bruto.grouped_timed || bruto.timed || bruto.data || bruto.results)) || []));
+    if (!curva.length) return 'Sem dados de retenção pra essa VSL ' + per.rotulo + '.';
+
+    const db = readDB();
+    const metas = Object.assign({}, VSL_METAS_PADRAO, (db.store.sl_vsl_metas && typeof db.store.sl_vsl_metas === 'object') ? db.store.sl_vsl_metas : {});
+    const selo = (k, v) => {
+      const m = Number(metas[k]);
+      const txt = k === 'ticket' ? _mcpBrl(m) : String(m).replace('.', ',') + '%';
+      return ' · ' + ((v || 0) >= m ? 'bateu a meta de ' : 'abaixo da meta de ') + txt;
+    };
+    const noSeg = seg => curva.filter(x => x.t <= seg).pop() || { t: 0, y: 0, n: 0 };
     const mmss = s => Math.floor(s / 60) + 'min' + String(Math.round(s % 60)).padStart(2, '0');
-    const nomeVsl = String(meta.nome || a.player);
+    const pc = x => x == null ? '—' : x.toFixed(2).replace('.', ',') + '%';
+    const pc1 = x => (Number(x) || 0).toFixed(1).replace('.', ',') + '%';
+
+    const st = (stats && !stats._erro) ? stats : null;
+    const play = st ? Number(st.total_started_device_uniq || st.total_started) || 0 : 0;
+    const assistindo = y => st ? ' · ' + _mcpNum(play * y / 100) + ' de ' + _mcpNum(play) + ' ainda assistindo' : '';
+    const r1 = noSeg(60).y, r2 = noSeg(120).y;
+    const leadMapa = db.store[KEY_VSL_LEAD];
+    const leadSeg = (leadMapa && typeof leadMapa === 'object') ? (Number(leadMapa[player]) || 0) : 0;
+    const gg = _vslGargalo(curva);
+
+    const nomeVsl = String(meta.nome || player);
     let t = (/^vsl\b/i.test(nomeVsl) ? '' : 'VSL ') + nomeVsl + ' · ' + per.rotulo + '\n\n';
-    // taxas da VTurb ja vem em 0-100; multiplicar de novo daria 5.510%
-    const taxa = (v, c) => (Number(v) || 0).toFixed(c == null ? 1 : c).replace('.', ',') + '%';
-    if (stats && !stats._erro) {
-      const views  = Number(stats.total_viewed) || 0,  viewsU = Number(stats.total_viewed_device_uniq) || 0;
-      const plays  = Number(stats.total_started) || 0, playsU = Number(stats.total_started_device_uniq) || 0;
-      const pitch  = Number(stats.total_over_pitch) || 0;
-      const cliq   = Number(stats.total_clicked_device_uniq || stats.total_clicked) || 0;
-      const vendas = Number(stats.total_conversions) || 0;
-      t += 'NÚMEROS DO PERÍODO\n';
-      t += 'views ' + _mcpNum(views) + ' · views únicas ' + _mcpNum(viewsU) + '\n';
-      t += 'plays ' + _mcpNum(plays) + ' · plays únicos ' + _mcpNum(playsU) + ' · play rate ' + taxa(stats.play_rate) + '\n';
-      t += 'chegaram no pitch ' + _mcpNum(pitch) + (Number(stats.over_pitch_rate) ? ' (' + taxa(stats.over_pitch_rate) + ' de quem deu play)' : '') +
-           ' · terminaram ' + _mcpNum(stats.total_finished_device_uniq || stats.total_finished) +
-           ' · engajamento ' + taxa(stats.engagement_rate) + '\n';
-      t += 'cliques ' + _mcpNum(cliq) + ' · vendas ' + _mcpNum(vendas) +
-           (Number(stats.overall_conversion_rate) ? ' (' + taxa(stats.overall_conversion_rate, 2) + ' de conversão)' : '') + '\n\n';
-    } else if (stats && stats._erro) {
-      t += '(não consegui buscar views e plays agora: ' + stats._erro + ')\n\n';
+    t += 'Retenção 1 Min: ' + pc(r1) + assistindo(r1) + selo('ret1min', r1) + '\n';
+    t += 'Retenção 2 Min: ' + pc(r2) + assistindo(r2) + '\n';
+    t += 'Retenção Lead: ' + (leadSeg
+      ? pc(noSeg(leadSeg).y) + ' · até o fim do lead, aos ' + Math.floor(leadSeg / 60) + ':' + String(leadSeg % 60).padStart(2, '0')
+      : '— · falta marcar em que ponto o lead acaba, na Análise de VSL do Central TMX') + '\n';
+    t += 'Maior gargalo: ' + (gg
+      ? mmss(gg.t0) + ' · perde ' + gg.rel.toFixed(0) + '% de quem estava ali · ' + Math.round(gg.sev) + 'x a saída normal'
+      : 'nenhuma queda fora do padrão') + '\n';
+
+    if (st) {
+      const aud = pitchSeg ? noSeg(pitchSeg).n : null;     // a "Audiência do Pitch" da VTurb é quem está na curva nesse segundo
+      const noPitch = aud != null ? aud : Number(st.total_over_pitch) || 0;
+      const cliques = Number(st.total_clicked_device_uniq || st.total_clicked) || 0;
+      const vendas = Number(st.total_conversions) || 0;
+      const receita = (Number(st.total_amount_brl) || 0) / 100;
+      const ticket = vendas ? receita / vendas : 0;
+      t += 'Deram play: ' + pc1(st.play_rate) + ' · ' + _mcpNum(play) + ' pessoas' + selo('playRate', Number(st.play_rate)) + '\n';
+      t += 'Chegam no pitch: ' + pc1(st.over_pitch_rate) + ' · ' + _mcpNum(noPitch) + ' pessoas' + selo('pctPitch', Number(st.over_pitch_rate)) + '\n';
+      t += 'Tx de Cliques: ' + pc(aud ? cliques / aud * 100 : null) + ' · ' + _mcpNum(cliques) + ' cliques de ' + _mcpNum(aud || 0) + ' no pitch' + (pitchSeg ? '' : ' (pitch não marcado na VTurb)') + '\n';
+      t += 'Vendas: ' + _mcpNum(vendas) + ' · ' + _mcpBrl(receita) + ' de faturamento\n';
+      t += 'Tx Checkout: ' + pc(cliques ? vendas / cliques * 100 : null) + ' · ' + _mcpNum(vendas) + ' vendas de ' + _mcpNum(cliques) + ' cliques\n';
+      t += 'Ticket médio: ' + (ticket ? _mcpBrl(ticket) : '—') + ' · ' + _mcpNum(vendas) + ' venda(s)' + selo('ticket', ticket) + '\n';
+
+      t += '\nOUTROS NÚMEROS DO PERÍODO\n';
+      t += 'views ' + _mcpNum(st.total_viewed) + ' · views únicas ' + _mcpNum(st.total_viewed_device_uniq) + '\n';
+      t += 'plays ' + _mcpNum(st.total_started) + ' · plays únicos ' + _mcpNum(st.total_started_device_uniq) + '\n';
+      t += 'terminaram ' + _mcpNum(st.total_finished_device_uniq || st.total_finished) + ' · engajamento ' + pc1(st.engagement_rate) +
+           (Number(st.overall_conversion_rate) ? ' · conversão ' + pc(Number(st.overall_conversion_rate)) : '') + '\n';
+    } else {
+      t += '\nNão consegui buscar play, pitch, cliques e vendas agora: ' + ((stats && stats._erro) || 'sem resposta da VTurb') + '\n';
     }
-    t += 'RETENÇÃO\n';
-    [60, 300, 600, 1200].forEach(s => { const p = em(s); if (p) t += 'aos ' + mmss(s) + ': ' + _mcpPct(p.y / 100, 0) + ' ainda assistindo\n'; });
-    if (queda && queda.perdeu > 0) t += '\nMaior queda: entre ' + mmss(queda.de.t) + ' e ' + mmss(queda.para.t) + ', perde ' + _mcpPct(queda.perdeu) + ' de quem estava assistindo.';
-    if (meta.pitch) t += '\nO pitch está marcado em ' + mmss(Number(meta.pitch)) + '.';
+    t += '\nRETENÇÃO AO LONGO DO VÍDEO\n';
+    [300, 600, 1200].filter(s => s <= dur).forEach(s => { t += 'aos ' + mmss(s) + ': ' + pc1(noSeg(s).y) + ' ainda assistindo\n'; });
+    if (pitchSeg) t += 'o pitch está marcado em ' + mmss(pitchSeg) + '\n';
+    t += '\nRetenção e play vêm da VTurb. Vendas e faturamento vêm da conversão do próprio player na VTurb e podem chegar horas depois da venda.';
     return t;
   }
 
