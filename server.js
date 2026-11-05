@@ -20569,6 +20569,22 @@ function _arqPreencherFaixas() {
 }
 setTimeout(_arqPreencherFaixas, 70 * 1000);
 
+// Derruba todas as sessões, uma vez só (05/11/2026): um funcionário viu mais do que devia,
+// e o Thiago pediu pra todo mundo entrar de novo com e-mail e senha. A marca no SQLite
+// impede de repetir a cada reinício.
+function _derrubarSessoesUmaVez() {
+  try {
+    if (!_pessoas() || _pCfg('sessoes_derrubadas_20261105')) return;
+    const db = readDB(), n = (db.sessions || []).length;
+    db.sessions = [];
+    audit(db, 'sessoes_derrubadas', { total: n }, { motivo: 'pedido do Thiago depois de acesso indevido de funcionário' }, null);
+    writeDB(db);
+    _pCfg('sessoes_derrubadas_20261105', JSON.stringify({ em: Date.now(), total: n }));
+    console.log('[SEGURANÇA] ' + n + ' sessões derrubadas: todo mundo entra de novo.');
+  } catch (e) { console.error('[SEGURANÇA] derrubar sessões:', e.message); }
+}
+setTimeout(_derrubarSessoesUmaVez, 20 * 1000);
+
 const MCP_FERRAMENTAS = [
   { name: 'listar_projetos',
     description: 'Lista os projetos (dashboards), funis, quizzes e VSLs disponíveis, com os ids. Use antes das outras ferramentas quando precisar de um id.',
