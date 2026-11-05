@@ -20445,6 +20445,117 @@ async function _mcpVsls(cfg) {
 const _mcpSemAcento = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const _mcpLinhaVsl = p => '· ' + (p.nome || '(sem nome)') + (p.rodando ? ' [rodando]' : '') + ' — id: ' + p.id;
 
+// ── Central de Arquivos no MCP ──
+// Os arquivos ficam em sl_arq_projetos[].items, na chave "setor" (ou "setor|subpasta"
+// nos antigos). A árvore repete o que a tela mostra (arqSetoresDe, arqNichoDoProjeto,
+// arqItensDaArea em ScaleLab.html): pasta oculta na tela fica fora daqui também.
+const ArqFaixa = require('./public/arq-faixa.js');
+const KEY_ARQ_PROJETOS = 'sl_arq_projetos';
+const ARQ_SETORES_PADRAO = [
+  { id: 'copywriting', label: '01 - Copywriting' }, { id: 'audiovisual', label: '02 - Audiovisual' },
+  { id: 'design', label: '03 - Design' }, { id: 'infra', label: '04 - Infraestrutura' }, { id: 'trafego', label: '05 - Tráfego Pago' }
+];
+
+// O campo gravado vale; sem ele, lê do título. Sem isso, um arquivo salvo por uma aba
+// antiga, ainda sem o campo, ficaria de fora da busca até alguém editar.
+function _arqFaixaDe(it) {
+  const a = Number(it.ad_inicio), b = Number(it.ad_fim);
+  if (a > 0 && b >= a) return { inicio: a, fim: b };
+  return ArqFaixa.extrairFaixa(it.nome);
+}
+function _arqQuando(it) {
+  const m = String(it.data || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]);
+  const d = Date.parse(it.data);
+  if (!isNaN(d)) return d;
+  const id = Number(it.id);
+  return id > 1e12 ? id : 0;
+}
+function _arqLer() {
+  const db = readDB();
+  const so = k => _filtrarPorTenant(Array.isArray(db.store[k]) ? db.store[k] : [], TENANT_INTERNO_ID);
+  const nichos = so('sl_nichos'), ofertas = so('sl_ofertas_v2');
+  const est = db.store.sl_arq_estrutura;
+  const nichoDe = p => {
+    let id = p.nichoId;
+    if (!id && p.ofertaId) { const o = ofertas.find(x => x.id === p.ofertaId); id = o && o.nichoId; }
+    if (!id) return 'Sem nicho';
+    const n = nichos.find(x => x.id === id);
+    return (n && n.nome) || 'Nicho';
+  };
+  const setoresDe = p => {
+    const ex = p.extras || {};
+    const base = ((est && Array.isArray(est.setores) && est.setores.length) ? est.setores : ARQ_SETORES_PADRAO).slice();
+    (Array.isArray(ex.setores) ? ex.setores : []).forEach(x => { if (!base.some(b => b.id === x.id)) base.push(x); });
+    const oc = Array.isArray(ex.ocultasSetores) ? ex.ocultasSetores : [];
+    return base.filter(x => oc.indexOf(x.id) < 0);
+  };
+  const projetos = [], arquivos = [];
+  let fora = 0;
+  so(KEY_ARQ_PROJETOS).forEach(p => {
+    const nicho = nichoDe(p), setores = setoresDe(p);
+    const pastas = setores.map(x => ({ id: x.id, nome: x.label, n: 0 }));
+    Object.keys(p.items || {}).forEach(chave => {
+      const corte = chave.indexOf('|');
+      const setorId = corte < 0 ? chave : chave.slice(0, corte), sub = corte < 0 ? '' : chave.slice(corte + 1);
+      const pasta = pastas.find(x => x.id === setorId);
+      (p.items[chave] || []).forEach(it => {
+        if (!it || typeof it !== 'object') return;
+        if (!pasta) { fora++; return; }
+        pasta.n++;
+        const f = _arqFaixaDe(it);
+        arquivos.push({ id: it.id, nicho, projeto: p.nome || '(sem nome)', pasta: pasta.nome + (sub ? ' › ' + sub : ''),
+          titulo: it.nome || '(sem título)', url: it.url || '', anexo: (it.arquivo && it.arquivo.nome) || '',
+          status: it.status || '', data: it.data || '', observacao: it.desc || '',
+          ad_inicio: f ? f.inicio : null, ad_fim: f ? f.fim : null, quando: _arqQuando(it) });
+      });
+    });
+    projetos.push({ nicho, nome: p.nome || '(sem nome)', pastas });
+  });
+  arquivos.sort((a, b) => (b.quando - a.quando) || (Number(b.id) - Number(a.id)));
+  projetos.sort((a, b) => a.nicho.localeCompare(b.nicho, 'pt-BR') || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return { projetos, arquivos, fora };
+}
+// Anexo não tem link: volta só o nome. O conteúdo em base64 nunca sai daqui.
+const _arqTexto = a => '· ' + a.titulo + '\n' +
+  '  id: ' + a.id + ' | nicho: ' + a.nicho + ' | projeto: ' + a.projeto + ' | pasta: ' + a.pasta + '\n' +
+  '  url: ' + (a.url || (a.anexo ? '(sem link; arquivo anexado: ' + a.anexo + ')' : '(sem link)')) + '\n' +
+  '  status: ' + (a.status || 'sem status') + ' | data: ' + (a.data || '—') +
+  ' | ad_inicio: ' + (a.ad_inicio == null ? '—' : a.ad_inicio) + ' | ad_fim: ' + (a.ad_fim == null ? '—' : a.ad_fim) +
+  (a.observacao ? '\n  observacao: ' + a.observacao : '');
+
+// Uma vez só (05/11/2026): grava a faixa nos arquivos que já existiam, com a mesma regra
+// do formulário. Não mexe em _updatedAt de propósito: o merge de /api/store é por projeto,
+// e um carimbo novo faria o servidor recusar a próxima gravação de uma aba desatualizada,
+// perdendo o arquivo que ela acabou de salvar. Se o campo se perder assim, _arqFaixaDe lê do título.
+function _arqPreencherFaixas() {
+  if (!_pessoas() || _pCfg('mig_arq_faixas_v1')) return;
+  try {
+    const snap = criarSnapshotBackup('pre-faixas-ads');
+    if (!snap || snap.ok === false) { console.error('[ARQUIVOS] sem o backup do banco; não preenchi as faixas.'); return; }
+    const db = readDB();
+    let preenchidos = 0, semFaixa = 0;
+    _filtrarPorTenant(Array.isArray(db.store[KEY_ARQ_PROJETOS]) ? db.store[KEY_ARQ_PROJETOS] : [], TENANT_INTERNO_ID).forEach(p => {
+      Object.keys((p && p.items) || {}).forEach(chave => {
+        (p.items[chave] || []).forEach(it => {
+          if (!it || typeof it !== 'object' || Number(it.ad_inicio) > 0) return;
+          const f = ArqFaixa.extrairFaixa(it.nome);
+          if (f) { it.ad_inicio = f.inicio; it.ad_fim = f.fim; preenchidos++; } else semFaixa++;
+        });
+      });
+    });
+    if (preenchidos) {
+      if (!db.timestamps) db.timestamps = {};
+      db.timestamps[KEY_ARQ_PROJETOS] = now();
+      audit(db, 'arquivos_faixa_ads_preenchida', {}, { preenchidos, semFaixa }, { id: 'sistema', nome: 'Sistema' });
+      writeDB(db);
+    }
+    _pCfg('mig_arq_faixas_v1', JSON.stringify({ em: new Date().toISOString(), preenchidos, semFaixa }));
+    console.log('[ARQUIVOS] faixa de ADs: ' + preenchidos + ' preenchidos, ' + semFaixa + ' sem faixa no título.');
+  } catch (e) { console.error('[ARQUIVOS] preenchimento das faixas falhou:', e.message); }
+}
+setTimeout(_arqPreencherFaixas, 70 * 1000);
+
 const MCP_FERRAMENTAS = [
   { name: 'listar_projetos',
     description: 'Lista os projetos (dashboards), funis, quizzes e VSLs disponíveis, com os ids. Use antes das outras ferramentas quando precisar de um id.',
@@ -20483,6 +20594,23 @@ const MCP_FERRAMENTAS = [
       duracao: { type: 'number', description: 'Duração do vídeo em segundos. Só precisa se a VTurb não informar.' },
       periodo: { type: 'string', enum: ['hoje', 'ontem', '7d', '30d'] },
       de: { type: 'string' }, ate: { type: 'string' } } } },
+  { name: 'listar_estrutura',
+    description: 'Mostra a árvore da Central de Arquivos (Nicho > Projeto > Pasta) com a quantidade de arquivos em cada pasta. Use primeiro para se orientar e saber os nomes antes de filtrar em listar_arquivos.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'listar_arquivos',
+    description: 'Lista os arquivos da Central de Arquivos, do mais recente para o mais antigo: id, nicho, projeto, pasta, título, link, status, data, observação e faixa de ADs. Use para ver o que existe numa pasta ou num status. Para achar o roteiro de um anúncio específico, use buscar_copy_por_ad.',
+    inputSchema: { type: 'object', properties: {
+      nicho: { type: 'string', description: 'Parte do nome do nicho (ex.: CONCURSO)' },
+      projeto: { type: 'string', description: 'Parte do nome do projeto (ex.: KALEBE)' },
+      pasta: { type: 'string', description: 'Parte do nome da pasta (ex.: Copywriting)' },
+      status: { type: 'string', description: 'Status do arquivo (ex.: Falta gravar, Gravado, Testado) ou "sem status"' },
+      sem_faixa: { type: 'boolean', description: 'true traz só os arquivos sem faixa de ADs' },
+      limite: { type: 'number', description: 'Quantos arquivos mostrar. Padrão 200' } } } },
+  { name: 'buscar_copy_por_ad',
+    description: 'Acha o doc com o roteiro de um anúncio pelo nome ou número, e diz o que procurar dentro dele. Use quando tiver o número de um anúncio, como um campeão, e precisar da copy. Entende AD216, 216, AD216.2 (Hook 2 do AD216), AD245.1 - AD216.2 + C153 (anúncio novo feito com o Hook 2 do AD216 e o corpo do AD153), AD248.2 - AD179.1 + AD212.1 + C212 (dois hooks e um corpo) e AD94-H153 (corpo do AD94 com o hook do AD153). Em remontagem, responde hook e corpo separadamente. Depois, abra o link no Google Drive e vá ao bloco indicado. Se nenhum arquivo cobrir o número, avisa "faixa não cadastrada".',
+    inputSchema: { type: 'object', properties: {
+      numero: { type: 'string', description: 'Nome ou número do anúncio' },
+      projeto: { type: 'string', description: 'Parte do nome do projeto ou do nicho, para o caso de o mesmo número existir em mais de um (opcional)' } }, required: ['numero'] } },
   { name: 'vendas_recentes',
     description: 'As últimas vendas e checkouts registrados, com anúncio e horário. É o mesmo feed "Acontecendo agora" do painel.',
     inputSchema: { type: 'object', properties: {
@@ -20745,6 +20873,61 @@ async function _mcpExecutar(nome, a) {
     return t;
   }
 
+  if (nome === 'listar_estrutura') {
+    const { projetos, arquivos, fora } = _arqLer();
+    if (!projetos.length) return 'A Central de Arquivos ainda não tem projetos.';
+    let t = 'CENTRAL DE ARQUIVOS · ' + _mcpNum(arquivos.length) + ' arquivos em ' + _mcpNum(projetos.length) + ' projetos\n';
+    let nichoAtual = null;
+    projetos.forEach(p => {
+      if (p.nicho !== nichoAtual) { nichoAtual = p.nicho; t += '\n' + p.nicho + '\n'; }
+      const total = p.pastas.reduce((s, x) => s + x.n, 0);
+      t += '  ' + p.nome + ' (' + _mcpNum(total) + (total === 1 ? ' arquivo' : ' arquivos') + ')\n';
+      p.pastas.forEach(x => { t += '    ' + x.nome + ': ' + _mcpNum(x.n) + '\n'; });
+    });
+    if (fora) t += '\n' + _mcpNum(fora) + ' arquivo(s) em pastas ocultas não aparecem aqui nem na tela.';
+    return t;
+  }
+
+  if (nome === 'listar_arquivos') {
+    const tem = (valor, filtro) => _mcpSemAcento(valor).indexOf(_mcpSemAcento(filtro)) >= 0;
+    const { arquivos } = _arqLer();
+    const st = _mcpSemAcento(String(a.status || '').trim());
+    const lista = arquivos.filter(x =>
+      (!a.nicho || tem(x.nicho, a.nicho)) && (!a.projeto || tem(x.projeto, a.projeto)) && (!a.pasta || tem(x.pasta, a.pasta)) &&
+      (!st || (st === 'sem status' ? !x.status : _mcpSemAcento(x.status) === st)) &&
+      (!a.sem_faixa || x.ad_inicio == null));
+    if (!lista.length) return 'Nenhum arquivo com esse filtro.';
+    const lim = Math.min(500, Math.max(1, Number(a.limite) || 200));
+    return 'ARQUIVOS · ' + _mcpNum(lista.length) + ', do mais recente para o mais antigo' +
+      (lista.length > lim ? ' · mostrando ' + _mcpNum(lim) + '. Use os filtros ou limite: para ver os outros.' : '') + '\n\n' +
+      lista.slice(0, lim).map(_arqTexto).join('\n\n');
+  }
+
+  if (nome === 'buscar_copy_por_ad') {
+    const texto = String(a.numero == null ? '' : a.numero).trim();
+    const partes = ArqFaixa.lerAnuncio(texto);
+    if (!partes.length) return 'Não achei número de AD em "' + texto + '". Nomes sem número, como ADTOP, não dá pra ligar a um doc: procure em listar_arquivos.';
+    const remontagem = partes.some(x => x.papel === 'hook' || x.papel === 'corpo');
+    const { arquivos } = _arqLer();
+    const filtro = _mcpSemAcento(a.projeto || '');
+    const base = arquivos.filter(x => x.ad_inicio != null && (!filtro || _mcpSemAcento(x.nicho + ' ' + x.projeto).indexOf(filtro) >= 0));
+    const secao = x => {
+      const ad = 'AD' + x.ad, hook = x.hook ? 'Hook ' + x.hook : '';
+      if (x.papel === 'semRoteiro') return texto + '\nO Kalebe gravou esse anúncio por conta própria, sem roteiro encomendado. Não tem copy na Central.';
+      const titulo = x.papel === 'hook' ? 'HOOK: ' + (hook ? hook + ' do ' + ad : 'hook do ' + ad)
+        : x.papel === 'corpo' ? 'CORPO: corpo do ' + ad
+        : (remontagem ? 'ANÚNCIO NOVO: ' : 'ANÚNCIO: ') + ad + (hook ? ', ' + hook : '');
+      const achados = base.filter(f => f.ad_inicio <= x.ad && x.ad <= f.ad_fim);
+      if (!achados.length) {
+        return titulo + '\nNenhum arquivo: faixa não cadastrada.' +
+          (x.papel === 'anuncio' && remontagem ? ' Em remontagem isso é comum: o roteiro está nas partes abaixo.' : '');
+      }
+      const leia = x.papel === 'corpo' ? 'e leia "Corpo do Anúncio"' : hook ? 'e leia "' + hook + '"' : x.papel === 'hook' ? 'e leia os hooks' : '';
+      return titulo + '\nNo doc, procure o bloco "' + ad + '"' + (leia ? ' ' + leia : '') + '.\n' + achados.map(_arqTexto).join('\n');
+    };
+    return 'BUSCA: ' + texto + '\n\n' + partes.map(secao).join('\n\n');
+  }
+
   if (nome === 'vendas_recentes') {
     const proj = String(a.projeto || '').trim().toLowerCase();
     const lim = Math.min(60, Math.max(5, Number(a.limite) || 20));
@@ -20778,7 +20961,7 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
       return res.json({ jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOLO,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'Central TMX', version: '1.0.0' },
-        instructions: 'Dados da operação do Central TMX: vendas, anúncios, funis, quizzes e VSLs. Somente leitura. Todos os valores em reais e as datas no fuso de Brasília.' } });
+        instructions: 'Dados da operação do Central TMX: vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. Somente leitura. Todos os valores em reais e as datas no fuso de Brasília.' } });
     }
     if (metodo.indexOf('notifications/') === 0) return res.status(202).end();
     if (metodo === 'ping') return res.json({ jsonrpc: '2.0', id, result: {} });

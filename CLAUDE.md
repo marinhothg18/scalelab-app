@@ -43,7 +43,7 @@ npm install
 npm run dev     # = node server.js (PORT defaults to 3001)
 ```
 
-Open `http://localhost:3001/` to load the app. There's no build step, no test suite, and no linter — it's a two-file project.
+Open `http://localhost:3001/` to load the app. There's no build step and no linter. The only tests cover the AD range rules in `public/arq-faixa.js` (`npm test`); that file is shared by the SPA and `server.js`.
 
 Production runs on Railway. Code/comments/UI are in pt-BR; keep new work in pt-BR unless asked otherwise.
 

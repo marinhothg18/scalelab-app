@@ -20,6 +20,7 @@
 <meta name="apple-mobile-web-app-title" content="TMX Digital">
 <meta name="mobile-web-app-capable" content="yes">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="/arq-faixa.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -20068,6 +20069,7 @@ function arqAddItem(){
     + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Nome *</label><input id="arq-add-nome" placeholder="Ex: Roteiro Hook Variação 2" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
     + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Link (URL)</label><input id="arq-add-url" placeholder="https://drive.google.com/..." style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
     + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Ou subir arquivo (PDF, Vídeo, Imagem...)</label><label style="display:inline-flex;align-items:center;gap:8px;background:#F9FAFB;border:1px dashed #E5E7EB;border-radius:10px;padding:10px 16px;cursor:pointer;font-size:13px;color:#6B7280;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Escolher arquivo<input type="file" id="arq-add-file" accept="application/pdf,video/*,image/*,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none;" onchange="arqFileSelected(this)"></label><span id="arq-add-file-name" style="font-size:11px;color:#6B7280;margin-left:8px;"></span></div>'
+    + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Faixa de ADs</label><input id="arq-add-faixa" placeholder="Ex.: 197 a 206. Vazio: tenta ler do nome" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;"></div>'
     + '<div style="margin-bottom:14px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Descrição</label><textarea id="arq-add-desc" placeholder="Descrição curta do arquivo..." rows="3" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;outline:none;resize:vertical;"></textarea></div>'
     + '<div style="margin-bottom:20px;"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Tipo</label><select id="arq-add-tipo" style="width:100%;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 14px;font-size:13px;color:#1F2937;cursor:pointer;"><option value="Link">🔗 Link</option><option value="PDF">📄 PDF</option><option value="Documento">📝 Documento</option><option value="Imagem">🖼 Imagem</option><option value="Video">🎬 Vídeo</option><option value="Planilha">📊 Planilha</option><option value="Outro">📎 Outro</option></select></div>'
     + '<div style="display:flex;gap:10px;justify-content:flex-end;"><button onclick="document.getElementById(\'arq-add-modal\').remove()" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:10px 24px;font-size:14px;color:#1F2937;cursor:pointer;font-weight:500;">Cancelar</button><button onclick="arqSaveItem()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;cursor:pointer;font-weight:700;">Salvar</button></div>';
@@ -20126,6 +20128,21 @@ function _arqAcharItem(proj, setorId, itemId){
   }
   return null;
 }
+// Faixa de ADs do arquivo: o que a pessoa digitou ou, se ficou vazio, o que o nome disser.
+// Devolve false quando não dá pra entender o que foi digitado.
+function _arqAplicarFaixa(item, txt){
+  if(!window.ArqFaixa) return true;
+  var c = ArqFaixa.lerCampoFaixa(txt);
+  if(c.erro) return false;
+  var f = c.vazio ? ArqFaixa.extrairFaixa(item.nome) : c;
+  if(f){ item.ad_inicio = f.inicio; item.ad_fim = f.fim; }
+  else { delete item.ad_inicio; delete item.ad_fim; }
+  return true;
+}
+function _arqFaixaTxt(item){
+  if(!item.ad_inicio) return '';
+  return item.ad_fim && item.ad_fim !== item.ad_inicio ? item.ad_inicio+' a '+item.ad_fim : String(item.ad_inicio);
+}
 function arqSaveItem(){
   var nome = document.getElementById('arq-add-nome').value.trim();
   var url = document.getElementById('arq-add-url').value.trim();
@@ -20141,6 +20158,7 @@ function arqSaveItem(){
   var key = _arqNav.setor;   // sem subpasta: fica direto na área
   if(!p.items[key]) p.items[key] = [];
   var item = {id:Date.now(), nome:nome, url:url||'', desc:desc, tipo:tipo, data:new Date().toLocaleDateString('pt-BR')};
+  if(!_arqAplicarFaixa(item, document.getElementById('arq-add-faixa').value)){ alert('Faixa de ADs: use o formato 197 a 206, ou deixe vazio.'); return; }
   if(fileData){ item.arquivo = {nome:_arqFileName, base64:fileData}; }
   p.items[key].push(item);
   saveArqProjetos(proj);
@@ -20183,6 +20201,7 @@ function arqEditItem(itemId){
   cdModal('✏️ Editar', [
     { key:'nome', label:'Nome',           value:item.nome||'' },
     { key:'url',  label:'Link (URL)',     value:item.url||'',  req:false, placeholder:'https://…' },
+    { key:'faixa', label:'Faixa de ADs',  value:_arqFaixaTxt(item), req:false, placeholder:'Ex.: 197 a 206. Vazio: tenta ler do nome' },
     { key:'desc', label:'Descrição',      value:item.desc||'', req:false }
   ], function(v){
     var nome=(v.nome||'').trim(); if(!nome) return;
@@ -20194,9 +20213,11 @@ function arqEditItem(itemId){
     it.nome = nome;
     it.url  = (v.url||'').trim();
     it.desc = (v.desc||'').trim();
+    var faixaOk = _arqAplicarFaixa(it, v.faixa);
     pr._updatedAt = Date.now();
     saveArqProjetos(arr);
     renderArquivos();
+    if(!faixaOk) arqAviso('O resto foi salvo, mas a faixa de ADs ficou como estava. Use o formato 197 a 206.');
   }, 'Salvar');
 }
 
