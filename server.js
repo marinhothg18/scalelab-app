@@ -13531,7 +13531,31 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     const gp = _gastoPorPosicao(per.de, per.ate, [...campIds]);
     const posicoes = _vendasPorPosicao(pagas, liq, gp.porPos);
 
-    res.json({ ok: true, funil: { id: f.id, nome: f.nome }, de: per.de, ate: per.ate,
+    // ── conferência: do total do TMX até o faturamento líquido deste funil ──
+    // O total do TMX (Resumo, Dashboard) soma toda venda paga; o card daqui só as deste
+    // funil e sem a taxa do gateway. Cada pedaço que fica no caminho aparece com o motivo.
+    const pagasTodas = _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0').all(per.de, per.ate);
+    const doFunilIds = new Set(pagas.map(o => o.id));
+    const foraGrupos = {};
+    const somarFora = (k, nome, o) => { const g = foraGrupos[k] || (foraGrupos[k] = { k, nome, vendas: 0, valor: 0 }); g.vendas++; g.valor += Number(o.valor) || 0; };
+    pagasTodas.forEach(o => {
+      if (doFunilIds.has(o.id)) return;
+      if (o.renovacao) return somarFora('renovacao', 'Renovações de assinatura', o);
+      const prod = String(o.produto || 'Sem produto').slice(0, 60), pr = _produtoDe(o.produto, produtos);
+      if (pr && pr.projeto !== f.projeto && pr.projeto !== projetoId) somarFora('outro:' + prod, prod + ' · outro projeto', o);
+      else somarFora('solta:' + prod, prod + ' · não ligada a este funil', o);
+    });
+    const brutoFunil = pagas.reduce((a, o) => a + (Number(o.valor) || 0), 0);
+    const estornosTodos = _q('SELECT COUNT(*) n, COALESCE(SUM(valor),0) v FROM pedidos WHERE dia BETWEEN ? AND ? AND estorno=1').get(per.de, per.ate);
+    const conferencia = {
+      total: { vendas: pagasTodas.length, valor: pagasTodas.reduce((a, o) => a + (Number(o.valor) || 0), 0) },
+      fora: Object.values(foraGrupos).sort((a, b) => b.valor - a.valor),
+      funil: { vendas: pagas.length, valor: brutoFunil },
+      taxa: brutoFunil - fat, liquido: fat,
+      reembolsos: { vendas: Number(estornosTodos.n) || 0, valor: Number(estornosTodos.v) || 0 }
+    };
+
+    res.json({ ok: true, funil: { id: f.id, nome: f.nome }, de: per.de, ate: per.ate, conferencia,
       regra: _descRegra(f), semRegra: !regra, contas: contas.size, faltamDias: camp.faltam, erros: camp.erros,
       cards: {
         investimento: gasto, faturamento: fat, vendas: pagas.length, roas: gasto ? fat / gasto : 0, roasAlvo, roasEmpate,

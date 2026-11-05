@@ -1808,6 +1808,10 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-tab{width:100%;border-collapse:collapse;font-size:12.5px}
 .v2-tab th{text-align:left;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);font-weight:800;padding:0 10px 8px;border-bottom:1px solid var(--v2-linha);white-space:nowrap}
 .v2-tab td{padding:10px;border-bottom:1px solid var(--v2-linha);vertical-align:middle}
+.rs-cf td{padding:7px 10px}
+.rs-cf .rs-cf-s{display:inline-block;width:14px;color:var(--text2);font-weight:700}
+.rs-cf tr.rs-cf-tot td{background:var(--bg3,rgba(127,127,127,.06))}
+.rs-cf tr.rs-cf-fim td{font-weight:700;border-bottom:0}
 .v2-tab tr:last-child td{border-bottom:none}
 .v2-tab .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .v2-tab tbody tr.clica{cursor:pointer} .v2-tab tbody tr.clica:hover td{background:var(--bg3)}
@@ -38162,6 +38166,7 @@ function rsPintar(){
       '</tbody></table></div><button class="fn-btn g sm" style="margin-top:10px" onclick="rsVendas(\'sem\')">Ver as '+sem.total+' venda'+s(sem.total)+'</button>'
     : '<div class="fx-vazio">Nenhuma venda sem origem no período.</div>';
   var fontes = vdPorCanalTab(d, c.roasAlvo, 'Nenhuma venda do funil no período.');
+  var conf = rsConferencia(d.conferencia);
 
   el.innerHTML = avisos + cards +
     '<div class="v2-2col">'+
@@ -38177,6 +38182,7 @@ function rsPintar(){
         '<div class="fx-sub" style="margin-top:6px">Clique num dia para abrir as vendas daquele dia. Anotações da equipe aparecem como marcador (ex.: "trocou a VSL").</div>'+
       '</div>'+
       '<div class="v2-col">'+
+        conf+
         '<div class="v2-cx"><div class="v2-cab"><div><h3>Vendas sem origem</h3><div class="s">Contam no faturamento mas não em anúncio nenhum</div></div></div>'+semHtml+'</div>'+
         '<div class="v2-cx"><div class="v2-cab"><div><h3>Por onde a venda chegou</h3><div class="s">Recuperação ajuda, mas não leva o crédito do anúncio</div></div></div>'+fontes+'</div>'+
         '<div class="v2-cx"><div class="v2-cab"><div><h3>Ajustes</h3><div class="s">'+(d.regra ? 'Regra: '+fnEsc(d.regra) : 'Sem regra de campanha')+' · ROAS alvo '+v2X(c.roasAlvo)+'</div></div>'+
@@ -38189,6 +38195,27 @@ function rsPintar(){
 // A mesma tabela no Resultado do funil, na Análise de tráfego › Resumo e em
 // Projeto › Vendas. Faturou e ROAS só pra Diretoria (o servidor manda vazio pros outros).
 // d: { fontes, posicoes, posGasto } do servidor
+// Do total do TMX até o faturamento líquido do funil: o total do Resumo e do Dashboard
+// soma toda venda paga; o card daqui só as deste funil e sem a taxa do gateway.
+function rsConferencia(cf){
+  if(!cf || !cf.total || !cf.total.vendas) return '';
+  var s = function(n){ return n === 1 ? '' : 's'; };
+  var lin = function(sinal, nome, n, v, cls){
+    return '<tr'+(cls ? ' class="'+cls+'"' : '')+'><td>'+(sinal ? '<span class="rs-cf-s">'+sinal+'</span>' : '')+nome+'</td>'+
+      '<td class="n">'+(n == null ? '' : n)+'</td><td class="n">'+v2Din(v)+'</td></tr>';
+  };
+  var h = lin('', '<b>Total do TMX no período</b>', cf.total.vendas, cf.total.valor, 'rs-cf-tot');
+  (cf.fora || []).forEach(function(x){ h += lin('−', fnEsc(x.nome), x.vendas, x.valor); });
+  h += lin('=', '<b>Vendas deste funil</b> <small class="fx-sub">valor cheio</small>', cf.funil.vendas, cf.funil.valor, 'rs-cf-tot');
+  if(cf.taxa > 0.5) h += lin('−', 'Taxa do gateway', null, cf.taxa);
+  h += lin('=', '<b>Faturamento líquido</b>', cf.funil.vendas, cf.liquido, 'rs-cf-fim');
+  var pct = cf.total.valor ? cf.funil.valor / cf.total.valor : 0;
+  return '<div class="v2-cx"><div class="v2-cab"><div><h3>De onde vem a diferença</h3>'+
+    '<div class="s">Este funil ficou com '+v2Pct(pct)+' do faturamento do TMX no período</div></div></div>'+
+    '<div class="v2-tab-w"><table class="v2-tab rs-cf"><thead><tr><th></th><th class="n">Vendas</th><th class="n">Valor</th></tr></thead><tbody>'+h+'</tbody></table></div>'+
+    (cf.reembolsos && cf.reembolsos.vendas ? '<div class="fx-sub" style="margin-top:8px">Fora da conta: '+cf.reembolsos.vendas+' reembolso'+s(cf.reembolsos.vendas)+' no período ('+v2Din(cf.reembolsos.valor)+'), em todos os projetos.</div>' : '')+
+    '</div>';
+}
 function vdPorCanalTab(d, roasAlvo, vazio){
   var fs = (d && d.fontes) || [], ps = (d && d.posicoes) || [];
   if(!fs.length && !ps.length) return '<div class="fx-vazio">'+(vazio || 'Nenhuma venda no período.')+'</div>';
@@ -38197,18 +38224,28 @@ function vdPorCanalTab(d, roasAlvo, vazio){
   // a barra acompanha o faturamento; quem não vê valor vê pela quantidade de vendas
   var bar = function(x, l){ var chave = l.some(function(o){ return o.fat != null; }) ? 'fat' : 'vendas', mx = Math.max.apply(null, l.map(function(o){ return Number(o[chave])||0; }).concat([1]));
     return '<div class="pc-barra"><i style="width:'+((Number(x[chave])||0)/mx*100)+'%"></i></div>'; };
-  var h = '<div class="pc-duas"><div><div class="pc-rot">Todas as vendas</div><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
+  // a parte de cada fonte nas vendas; a recuperação aparece somada (sozinha ou junto do anúncio)
+  var totV = fs.reduce(function(a, x){ return a + (Number(x.vendas) || 0); }, 0);
+  var pc = function(n, t){ return t ? '<small class="fx-sub">'+Math.round(n / t * 100)+'%</small>' : ''; };
+  var recSo = fs.filter(function(x){ return x.apoio; }).reduce(function(a, x){ return a + (Number(x.vendas) || 0); }, 0);
+  var recJunto = ps.reduce(function(a, x){ return a + (Number(x.apoio) || 0); }, 0), rec = recSo + recJunto;
+  var recTxt = totV ? '<div class="fx-sub" style="margin:0 0 10px">'+(rec
+      ? '<b>Recuperação participou de '+rec+' de '+totV+' venda'+(totV === 1 ? '' : 's')+' ('+Math.round(rec / totV * 100)+'%)</b>: '+
+        (recSo ? recSo+' sem anúncio' : '')+(recSo && recJunto ? ' e ' : '')+(recJunto ? recJunto+' junto com o anúncio' : '')+'.'
+      : 'Nenhuma venda do período passou pela recuperação.')+'</div>' : '';
+  var h = recTxt+'<div class="pc-duas"><div><div class="pc-rot">Todas as vendas</div><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">%</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
     fs.map(function(x){
-      return '<tr><td><b style="font-weight:600">'+fnEsc(x.nome)+'</b>'+bar(x, fs)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+din(x.fat)+'</td><td class="n">'+
+      return '<tr><td><b style="font-weight:600">'+fnEsc(x.nome)+'</b>'+bar(x, fs)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+pc(Number(x.vendas) || 0, totV)+'</td><td class="n">'+din(x.fat)+'</td><td class="n">'+
         (x.apoio ? '<span class="v2-pill roxo">apoio</span>' : roas(x.roas))+'</td></tr>';
     }).join('')+'</tbody></table></div></div>';
   var semGasto = !d.posGasto, dir = ps.some(function(x){ return x.fat != null; });
+  var totMeta = ps.reduce(function(a, x){ return a + (Number(x.vendas) || 0); }, 0);
   if(ps.length){
     h += '<div><div class="pc-rot">Anúncios da Meta, por posicionamento</div>'+
-      '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Posicionamento</th><th class="n">Investido</th><th class="n">Vendas</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
+      '<div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Posicionamento</th><th class="n">Investido</th><th class="n">Vendas</th><th class="n">%</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
       ps.map(function(x){
         return '<tr><td><b style="font-weight:600">'+fnEsc(x.nome)+'</b>'+(x.apoio ? ' <small class="fx-sub">· '+x.apoio+' com recuperação</small>' : '')+bar(x, ps)+'</td>'+
-          '<td class="n">'+(semGasto || x.gasto == null ? '<i>—</i>' : v2Din(x.gasto))+'</td><td class="n">'+x.vendas+'</td><td class="n">'+din(x.fat)+'</td>'+
+          '<td class="n">'+(semGasto || x.gasto == null ? '<i>—</i>' : v2Din(x.gasto))+'</td><td class="n">'+x.vendas+'</td><td class="n">'+pc(Number(x.vendas) || 0, totMeta)+'</td><td class="n">'+din(x.fat)+'</td>'+
           '<td class="n">'+(semGasto ? '<span class="fx-sub">—</span>' : roas(x.roas))+'</td></tr>';
       }).join('')+'</tbody></table></div></div>';
   }
