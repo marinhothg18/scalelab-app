@@ -172,7 +172,7 @@ function _isSuperAdmin(req) {
   if (!token) return false;
   try {
     const db = readDB();
-    const sess = validarSessao(db, token);
+    const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (!sess) return false;
     const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
     if (!user || user.cargo !== 'Diretoria') return false;
@@ -334,36 +334,6 @@ app.use(express.json({ limit: '20mb' }));
 // Multi-tenancy PR 1: injeta req.tenantId em toda request.
 // Por enquanto sempre 'axcend-interno' — não afeta nada.
 app.use(_injetarTenant);
-// ── SESSÃO PRESA NA EMPRESA (05/11/2026) ──
-// A empresa do pedido sai do endereço, e a checagem de login olhava só o cargo. Uma
-// conta criada no cadastro público (que nasce Diretoria da empresa nova) entrava em
-// app.centraltmx.com e via os dados da TMX como Diretoria. Agora a sessão só vale na
-// empresa da própria pessoa; em outra, o pedido é recusado antes de chegar em qualquer rota.
-let _sessEmpresaCache = { mtime: -1, mapa: null };
-function _empresaDaSessao(tokenHash) {
-  let mt = 0;
-  try { mt = fs.statSync(DB_FILE).mtimeMs; } catch (e) { return undefined; }
-  if (mt !== _sessEmpresaCache.mtime || !_sessEmpresaCache.mapa) {
-    const db = readDB();
-    const empresa = new Map((db.store.sl_usuarios || []).filter(u => u && u.id).map(u => [u.id, getItemTenant(u)]));
-    const mapa = new Map();
-    (db.sessions || []).forEach(s => { if (s && s.tokenHash) mapa.set(s.tokenHash, empresa.get(s.userId) || null); });
-    _sessEmpresaCache = { mtime: mt, mapa };
-  }
-  return _sessEmpresaCache.mapa.get(tokenHash);
-}
-app.use((req, res, next) => {
-  const h = req.headers.authorization || '';
-  // o aviso ao vivo manda a sessão na URL (EventSource não aceita cabeçalho)
-  const token = h.startsWith('Bearer ') ? h.slice(7).trim() : (req.path === '/api/sync/stream' ? String(req.query.token || '') : '');
-  if (!token) return next();
-  let emp;
-  try { emp = _empresaDaSessao(crypto.createHash('sha256').update(token).digest('hex')); }
-  catch (e) { return res.status(503).json({ error: 'Servidor ocupado, tente de novo.' }); }
-  // undefined = não é sessão (token da API v1/MCP, ou sessão que não existe): a rota decide
-  if (emp === undefined || emp === req.tenantId) return next();
-  return res.status(401).json({ error: 'Sessão de outra empresa. Faça login de novo.' });
-});
 app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
@@ -405,7 +375,7 @@ app.get('/api/cd/nota-publica/:id', (req, res) => {
   if (nota.share === 'interno') {
     const authHeader = req.headers.authorization || '';
     let ok = false;
-    if (authHeader.startsWith('Bearer ')) { try { if (validarSessao(db, authHeader.split(' ')[1])) ok = true; } catch {} }
+    if (authHeader.startsWith('Bearer ')) { try { if (validarSessao(db, authHeader.split(' ')[1], req.tenantId || TENANT_DEFAULT_ID)) ok = true; } catch {} }
     if (!ok) return res.status(403).json({ error: 'interno', msg: 'Essa nota é interna — faça login na Central pra abrir.' });
   }
   const filhas = shares.filter(x => x.parentId === nota.id).map(x => ({ id: x.id, titulo: x.titulo }));
@@ -876,11 +846,19 @@ function criarSessao(db, userId) {
   });
   return token;
 }
-function validarSessao(db, token) {
+// SESSÃO PRESA NA EMPRESA (05/11/2026): com tenantId, a sessão só vale se a conta for
+// dessa empresa. Uma conta do cadastro público (Diretoria da empresa nova) entrava em
+// app.centraltmx.com e via os dados da TMX como Diretoria. Quem recebe a requisição passa
+// req.tenantId; authUsuario e authDiretoria fazem a mesma checagem por conta própria.
+function validarSessao(db, token, tenantId) {
   if (!token) return null;
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const sess = _getSessions(db).find(s => s.tokenHash === tokenHash);
   if (!sess) return null;
+  if (tenantId) {
+    const u = (db.store['sl_usuarios'] || []).find(x => x.id === sess.userId);
+    if (!u || getItemTenant(u) !== tenantId) return null;
+  }
   // Verifica TTL
   if ((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS < Date.now()) return null;
   // Atualiza lastActivity
@@ -947,7 +925,7 @@ function _userInfoFromReq(req, db) {
   const authHeader = req.headers.authorization || '';
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    const sess = validarSessao(db, token);
+    const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (sess) {
       const u = (db.store['sl_usuarios'] || []).find(x => x.id === sess.userId);
       if (u) return { id: u.id, nome: u.nome, cargo: u.cargo };
@@ -1741,7 +1719,7 @@ function _authUser(req, db) {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
   if (!token) return null;
-  const sess = validarSessao(db, token);
+  const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
   if (!sess) return null;
   const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
   return user || null;
@@ -6863,7 +6841,7 @@ app.put('/api/tenant/branding', (req, res) => {
     const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
     if (!token) return res.status(401).json({ error: 'Não autenticado' });
     const db = readDB();
-    const sess = validarSessao(db, token);
+    const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (!sess) return res.status(401).json({ error: 'Sessão expirada' });
     const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
     if (!user || user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Só Diretoria pode editar branding' });
@@ -7740,7 +7718,7 @@ app.get('/api/auth/me', (req, res) => {
   const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
   const db = readDB();
-  const sess = validarSessao(db, token);
+  const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
   if (!sess) return res.status(401).json({ error: 'Sessão inválida ou expirada' });
   writeDB(db); // salvar lastActivity atualizado
   const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
@@ -7868,7 +7846,7 @@ app.post('/api/ia/analisar-demanda', async (req, res) => {
     const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
     if (!token) return res.status(401).json({ error: 'Não autenticado' });
     const db = readDB();
-    const sess = validarSessao(db, token);
+    const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (!sess) return res.status(401).json({ error: 'Sessão inválida' });
     const texto = (req.body && req.body.texto) || '';
     if (!texto.trim()) return res.status(400).json({ error: 'Texto vazio' });
@@ -7902,7 +7880,7 @@ app.get('/api/sync/stream', (req, res) => {
   const token = req.query.token;
   if (!token) return res.status(401).end();
   const db = readDB();
-  const sess = validarSessao(db, String(token));
+  const sess = validarSessao(db, String(token), req.tenantId || TENANT_DEFAULT_ID);
   if (!sess) return res.status(401).end();
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -8083,7 +8061,7 @@ function authDiretoria(req, res, next) {
   const authHeader = req.headers.authorization || '';
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    const sess = validarSessao(db, token);
+    const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (sess) {
       const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
       if (user && getItemTenant(user) !== (req.tenantId || TENANT_DEFAULT_ID)) return res.status(401).json({ error: 'Sessão de outra empresa. Faça login de novo.' });
