@@ -43604,6 +43604,29 @@ function cpTotais(l){
               impressoes: fnNum(soma('impressoes')), cliques: fnNum(soma('cliques')),
               roas: soma('investimento') ? ((soma('faturamento') + fatExtra)/soma('investimento')).toFixed(2).replace('.',',')+'x' : '—' };
   CP_COLS.forEach(function(x){ if(x.soma && tot[x.k] == null) tot[x.k] = fnNum(soma(x.k)); });
+  // Custos e taxas gerais saem das somas, nunca da média das linhas: a campanha de R$ 5
+  // pesaria igual à de R$ 5 mil. Quem formata é a própria coluna, pra nunca divergir das linhas.
+  var inv = soma('investimento'), imp = soma('impressoes'), cli = soma('cliques');
+  // hook, hold e CTA só contam campanha com vídeo: a de imagem puxaria o hook geral pra baixo
+  var vid = l.filter(function(c){ return c.hook != null && Number(c.v3) > 0; });
+  var somaDe = function(lista, k){ return lista.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); };
+  var impVid = somaDe(vid, 'impressoes'), v75Vid = somaDe(vid, 'v75');
+  // frequência não soma: média ponderada pelas impressões, a mesma conta do servidor
+  var comFreq = l.filter(function(c){ return Number(c.freq) > 0; }), impFreq = somaDe(comFreq, 'impressoes');
+  var fi = comFreq.reduce(function(a, c){ return a + Number(c.freq) * (Number(c.impressoes) || 0); }, 0);
+  var geral = {
+    investimento:inv, impressoes:imp, cliques:cli, lpv:soma('lpv'), ic:soma('ic'), vv:soma('vv'), v3:soma('v3'), v75:soma('v75'),
+    // com as vendas sem linha na Utmify, como o Vendas, o Faturamento e o ROAS do total
+    aprovadas:tot.aprovadas, faturamento:soma('faturamento') + fatExtra, lucro:lucroTot,
+    ctr:imp ? cli/imp : null, cpc:cli ? inv/cli : null, cpm:imp ? inv/imp*1000 : null, cpa:tot.aprovadas ? inv/tot.aprovadas : null,
+    hook:impVid ? somaDe(vid, 'v3')/impVid : null, hold:impVid ? v75Vid/impVid : null, freq:impFreq ? fi/impFreq : null
+  };
+  // a venda sem campanha não passou pelo checkout da campanha nem veio do clique dela
+  var ajuste = { convck:{ aprovadas:soma('aprovadas') }, cta:{ cliques:somaDe(vid, 'cliques'), v75:v75Vid } };
+  CP_COLS.forEach(function(x){
+    if(tot[x.k] != null || ['orc','bid','criada','dias'].indexOf(x.k) >= 0) return;   // esses não têm total
+    tot[x.k] = x.v(ajuste[x.k] ? Object.assign({}, geral, ajuste[x.k]) : geral, 1);
+  });
   return { so:so, semFat:semFat, tot:tot, lucroTot:lucroTot, nCamp:l.length + so.extras.length,
            cpa: tot.aprovadas ? fmtAds(soma('investimento')/tot.aprovadas) : '—' };
 }
