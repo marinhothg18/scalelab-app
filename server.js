@@ -334,6 +334,36 @@ app.use(express.json({ limit: '20mb' }));
 // Multi-tenancy PR 1: injeta req.tenantId em toda request.
 // Por enquanto sempre 'axcend-interno' — não afeta nada.
 app.use(_injetarTenant);
+// ── SESSÃO PRESA NA EMPRESA (05/11/2026) ──
+// A empresa do pedido sai do endereço, e a checagem de login olhava só o cargo. Uma
+// conta criada no cadastro público (que nasce Diretoria da empresa nova) entrava em
+// app.centraltmx.com e via os dados da TMX como Diretoria. Agora a sessão só vale na
+// empresa da própria pessoa; em outra, o pedido é recusado antes de chegar em qualquer rota.
+let _sessEmpresaCache = { mtime: -1, mapa: null };
+function _empresaDaSessao(tokenHash) {
+  let mt = 0;
+  try { mt = fs.statSync(DB_FILE).mtimeMs; } catch (e) { return undefined; }
+  if (mt !== _sessEmpresaCache.mtime || !_sessEmpresaCache.mapa) {
+    const db = readDB();
+    const empresa = new Map((db.store.sl_usuarios || []).filter(u => u && u.id).map(u => [u.id, getItemTenant(u)]));
+    const mapa = new Map();
+    (db.sessions || []).forEach(s => { if (s && s.tokenHash) mapa.set(s.tokenHash, empresa.get(s.userId) || null); });
+    _sessEmpresaCache = { mtime: mt, mapa };
+  }
+  return _sessEmpresaCache.mapa.get(tokenHash);
+}
+app.use((req, res, next) => {
+  const h = req.headers.authorization || '';
+  // o aviso ao vivo manda a sessão na URL (EventSource não aceita cabeçalho)
+  const token = h.startsWith('Bearer ') ? h.slice(7).trim() : (req.path === '/api/sync/stream' ? String(req.query.token || '') : '');
+  if (!token) return next();
+  let emp;
+  try { emp = _empresaDaSessao(crypto.createHash('sha256').update(token).digest('hex')); }
+  catch (e) { return res.status(503).json({ error: 'Servidor ocupado, tente de novo.' }); }
+  // undefined = não é sessão (token da API v1/MCP, ou sessão que não existe): a rota decide
+  if (emp === undefined || emp === req.tenantId) return next();
+  return res.status(401).json({ error: 'Sessão de outra empresa. Faça login de novo.' });
+});
 app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
@@ -1046,7 +1076,7 @@ function _logAPI(db, tokenPreview, method, path) {
 // faturamento). Fechada pra Diretoria, como as outras rotas sensiveis. A tela ja
 // manda o login em toda chamada /api/, entao nada muda pra quem usa o painel.
 // Os tokens ja criados continuam valendo.
-app.post('/api/tokens/generate', authDiretoria, (req, res) => {
+app.post('/api/tokens/generate', authDiretoriaInterna, (req, res) => {
   const { nome, userId, master, descricao } = req.body || {};
   if (!nome) return res.status(400).json({ error: 'Nome do token obrigatório.' });
 
@@ -1079,7 +1109,7 @@ app.post('/api/tokens/generate', authDiretoria, (req, res) => {
 });
 
 // GET /api/tokens/list — lista tokens (sem mostrar o token real)
-app.get('/api/tokens/list', (req, res) => {
+app.get('/api/tokens/list', authDiretoriaInterna, (req, res) => {
   const db = readDB();
   const tokens = (db.api_tokens || []).map(t => ({
     id: t.id,
@@ -1095,7 +1125,7 @@ app.get('/api/tokens/list', (req, res) => {
 });
 
 // POST /api/tokens/revoke/:id — revoga um token
-app.post('/api/tokens/revoke/:id', (req, res) => {
+app.post('/api/tokens/revoke/:id', authDiretoriaInterna, (req, res) => {
   const id = parseInt(req.params.id);
   const db = readDB();
   const token = (db.api_tokens || []).find(t => t.id === id);
@@ -1107,7 +1137,7 @@ app.post('/api/tokens/revoke/:id', (req, res) => {
 });
 
 // GET /api/tokens/logs — logs de acesso
-app.get('/api/tokens/logs', (req, res) => {
+app.get('/api/tokens/logs', authDiretoriaInterna, (req, res) => {
   const db = readDB();
   res.json((db.api_logs || []).slice(0, 100));
 });
@@ -1657,9 +1687,9 @@ app.post('/api/auth/forgot', loginLimiter, async (req, res) => {
     res.json({
       ok: true,
       mensagem: 'Se o email existir, você vai receber um link de reset em alguns segundos.',
-      emailEnviado: emailResult.ok,
-      // Em modo dev (sem RESEND_API_KEY), retorna o link pra debug:
-      _dev: !RESEND_API_KEY ? { linkReset, motivo: 'RESEND_API_KEY não configurada' } : undefined
+      // o link NUNCA volta na resposta: sem e-mail configurado, ele ia pra quem pedisse,
+      // e bastava saber o e-mail de alguém pra trocar a senha dele (fechado em 05/11/2026)
+      emailEnviado: emailResult.ok
     });
   } catch (err) {
     console.error('[auth/forgot]', err);
@@ -1687,6 +1717,8 @@ app.post('/api/auth/reset', loginLimiter, (req, res) => {
     delete user.resetSenha;
     user._updatedAt = Date.now();
     db.timestamps['sl_usuarios'] = now();
+    // senha nova derruba as sessões abertas com a antiga
+    db.sessions = (db.sessions || []).filter(s => s.userId !== user.id);
     audit(db, 'reset_senha_concluido', { userId: user.id, email: user.email }, { ip: req.ip }, { id: user.id, nome: user.nome, cargo: user.cargo });
     writeDB(db);
 
@@ -1742,6 +1774,9 @@ app.post('/api/me/trocar-senha', (req, res) => {
     delete user.senha;
     user._updatedAt = Date.now();
     db.timestamps['sl_usuarios'] = now();
+    // trocou a senha: só a sessão de quem trocou continua; as outras caem
+    const atualHash = crypto.createHash('sha256').update((req.headers.authorization || '').split(' ')[1] || '').digest('hex');
+    db.sessions = (db.sessions || []).filter(s => s.userId !== user.id || s.tokenHash === atualHash);
     audit(db, 'me_trocar_senha', { userId: user.id }, null, { id: user.id, nome: user.nome, cargo: user.cargo });
     writeDB(db);
     res.json({ ok: true, mensagem: 'Senha alterada com sucesso!' });
@@ -1840,7 +1875,7 @@ NUNCA faça:
 SEMPRE responda em formato JSON quando solicitado, sem markdown extra.`;
 
 // POST /api/ia/copy/headlines — gera 10 headlines pra um produto
-app.post('/api/ia/copy/headlines', async (req, res) => {
+app.post('/api/ia/copy/headlines', authUsuario, async (req, res) => {
   try {
     const { nicho, produto, dor, promessa, prova, angulo } = req.body || {};
     if (!produto && !nicho) return res.status(400).json({ error: 'Informe ao menos produto ou nicho' });
@@ -1876,7 +1911,7 @@ Responda APENAS com JSON neste formato exato (sem markdown):
 });
 
 // POST /api/ia/copy/anuncio — gera anúncio completo pronto pra Meta
-app.post('/api/ia/copy/anuncio', async (req, res) => {
+app.post('/api/ia/copy/anuncio', authUsuario, async (req, res) => {
   try {
     const { nicho, produto, dor, promessa, prova, formato, plataforma } = req.body || {};
     if (!produto) return res.status(400).json({ error: 'Produto obrigatório' });
@@ -1914,7 +1949,7 @@ Responda APENAS com JSON neste formato (sem markdown):
 });
 
 // POST /api/ia/copy/variacoes — varia uma copy existente em N versões
-app.post('/api/ia/copy/variacoes', async (req, res) => {
+app.post('/api/ia/copy/variacoes', authUsuario, async (req, res) => {
   try {
     const { copyOriginal, quantidade, tipoVariacao } = req.body || {};
     if (!copyOriginal) return res.status(400).json({ error: 'copyOriginal obrigatório' });
@@ -1955,7 +1990,7 @@ Mantenha a essência da promessa mas varie a abordagem. Responda APENAS com JSON
 });
 
 // POST /api/ia/copy/analise — analisa copy existente (forças, fraquezas, sugestões)
-app.post('/api/ia/copy/analise', async (req, res) => {
+app.post('/api/ia/copy/analise', authUsuario, async (req, res) => {
   try {
     const { copy, contexto } = req.body || {};
     if (!copy) return res.status(400).json({ error: 'copy obrigatório' });
@@ -1998,7 +2033,7 @@ Dê uma análise estruturada como expert em DR. Responda APENAS com JSON:
 });
 
 // POST /api/ia/analise-ads — análise preditiva de criativo (escalar/pausar/manter)
-app.post('/api/ia/analise-ads', async (req, res) => {
+app.post('/api/ia/analise-ads', authUsuario, async (req, res) => {
   try {
     const { nome, formato, ctr, cpm, cpc, roas, hookRate, holdRate, convCheckout, diasRodando, investido, faturado, tendenciaCpm, tendenciaCtr, comentarios } = req.body || {};
     if (!nome) return res.status(400).json({ error: 'Nome do anúncio obrigatório' });
@@ -2059,7 +2094,7 @@ Responda APENAS com JSON:
 
 // POST /api/ia/analise-ads-lote — analisa VÁRIOS anúncios de uma vez (do RedTrack)
 // e retorna ranking: quais escalar, manter, pausar
-app.post('/api/ia/analise-ads-lote', async (req, res) => {
+app.post('/api/ia/analise-ads-lote', authUsuario, async (req, res) => {
   try {
     const { ads } = req.body || {};
     if (!Array.isArray(ads) || !ads.length) return res.status(400).json({ error: 'Envie array de ads' });
@@ -2113,7 +2148,7 @@ Ordene o array: ESCALAR primeiro, depois MANTER, depois PAUSAR.`;
 });
 
 // POST /api/ia/copy/advertorial — gera advertorial completo
-app.post('/api/ia/copy/advertorial', async (req, res) => {
+app.post('/api/ia/copy/advertorial', authUsuario, async (req, res) => {
   try {
     const { nicho, produto, persona, dor, promessa, prova } = req.body || {};
     if (!produto) return res.status(400).json({ error: 'Produto obrigatório' });
@@ -2293,7 +2328,7 @@ const MODULOS_PERMISSAO = [
 ];
 
 // GET /api/permissoes/roles — lista roles do tenant atual
-app.get('/api/permissoes/roles', (req, res) => {
+app.get('/api/permissoes/roles', authUsuario, (req, res) => {
   try {
     const db = readDB();
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
@@ -6454,7 +6489,7 @@ app.post('/api/billing/webhook', async (req, res) => {
 });
 
 // GET /api/billing/me — info da assinatura do tenant
-app.get('/api/billing/me', (req, res) => {
+app.get('/api/billing/me', authUsuario, (req, res) => {
   try {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const db = readDB();
@@ -6474,7 +6509,7 @@ app.get('/api/billing/me', (req, res) => {
 });
 
 // GET /api/saas/meu-plano — retorna plano atual + uso vs limite
-app.get('/api/saas/meu-plano', (req, res) => {
+app.get('/api/saas/meu-plano', authUsuario, (req, res) => {
   try {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const db = readDB();
@@ -6538,6 +6573,9 @@ app.get('/api/saas/signup/check-slug', (req, res) => {
 // POST /api/saas/signup — cria novo cliente (tenant + admin + trial)
 // Body: { empresa, slug, nomeAdmin, email, senha, telefone?, aceitouTermos: true }
 app.post('/api/saas/signup', async (req, res) => {
+  // Fechado em 05/11/2026: a conta criada aqui entrava nos dados da TMX. Só reabre com
+  // CADASTRO_PUBLICO=1 no Railway, e só depois de revisar o isolamento entre empresas.
+  if (process.env.CADASTRO_PUBLICO !== '1') return res.status(403).json({ error: 'O cadastro de novas empresas está fechado.' });
   try {
     const { empresa, slug: slugRaw, nomeAdmin, email, senha, telefone, aceitouTermos } = req.body || {};
 
@@ -6750,7 +6788,7 @@ app.get('/lgpd', (req, res) => res.redirect('/termos#privacidade'));
 
 // GET /api/spy/master — bibliotecas mestre (qualquer usuário autenticado pode ler)
 // Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência TMX Digital"
-app.get('/api/spy/master', (req, res) => {
+app.get('/api/spy/master', authUsuario, (req, res) => {
   try {
     const db = readDB();
     const masterBibs = db.store['sl_spy_master'] || [];
@@ -6998,6 +7036,21 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
     }
   }
 
+  // Quem decide as permissões é a Diretoria; o resto do time só lê.
+  if (key === 'sl_permissoes_roles' && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  // Fora da Diretoria, a pessoa só muda a própria conta, e nunca cargo, senha, e-mail,
+  // ativo ou empresa. Antes, qualquer login virava Diretoria ou trocava a senha de
+  // outra pessoa por aqui (05/11/2026). Contas novas, só a Diretoria cria.
+  if (key === 'sl_usuarios' && !_ehDiretoria(req)) {
+    if (!Array.isArray(incoming)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+    const meu = String(req.user && req.user.id), atual = (Array.isArray(existing) ? existing : []).find(u => u && String(u.id) === meu);
+    incoming = !atual ? [] : incoming.filter(u => u && String(u.id) === meu).map(u => {
+      const c = Object.assign({}, u);
+      ['cargo', 'senha', 'senhaHash', 'email', 'ativo', 'tenant_id'].forEach(k => { if (k in atual) c[k] = atual[k]; else delete c[k]; });
+      return c;
+    });
+  }
+
   // Tratamento especial para sl_usuarios: preserva senhaHash existente + hash qualquer senha nova
   if (key === 'sl_usuarios' && Array.isArray(incoming)) {
     const existingMap = new Map();
@@ -7163,7 +7216,7 @@ const aplicarLimiter = rateLimit({
 // IA · RANKEAR CANDIDATO (Claude)
 // Lê briefing da vaga + portfolio + respostas + teste e dá score 0-100.
 // ══════════════════════════════════════════════
-app.post('/api/ia/rankear-candidato', async (req, res) => {
+app.post('/api/ia/rankear-candidato', authUsuario, async (req, res) => {
   try {
     const { candidatoId } = req.body || {};
     if (!candidatoId) return res.status(400).json({ error: 'candidatoId obrigatório' });
@@ -7920,7 +7973,9 @@ const KEYS_DIRETORIA = new Set([
   'sl_candidatos',
   // guarda o API token da Utmify — não pode sincronizar pro browser do time
   'sl_integracoes_utmify','sl_integracoes_utmify_historico',
-  'sl_vendas'
+  'sl_vendas',
+  // token da Z-API e chave da IA: iam pro navegador de qualquer pessoa logada (05/11/2026)
+  'sl_whatsapp_config','rt_api_key'
 ]);
 // Chaves que guardam SEGREDO (tokens de API) e nunca devem sair pro navegador —
 // nem pra Diretoria. Ficam só no servidor; a tela conversa com elas por rotas
@@ -7992,7 +8047,7 @@ function authUsuario(req, res, next) {
     const sess = _getSessions(db).find(s => s.tokenHash === tokenHash);
     if (sess && (sess.lastActivity || sess.createdAt) + SESSION_TTL_MS >= Date.now()) {
       const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
-      if (user && user.ativo !== false) {
+      if (user && user.ativo !== false && getItemTenant(user) === (req.tenantId || TENANT_DEFAULT_ID)) {
         // ⚠️ NUNCA gravar o banco aqui.
         // writeDB grava o arquivo INTEIRO a partir do snapshot lido no começo desta
         // requisição. Como isto roda em toda sincronização, qualquer dado salvo por
@@ -8005,20 +8060,8 @@ function authUsuario(req, res, next) {
     }
   }
 
-  // 2) Legado: email+senha nos headers (mesma transição aceita por authDiretoria)
-  const email = req.headers['x-user-email'];
-  const senha = req.headers['x-user-senha'];
-  if (email && senha) {
-    const user = (db.store['sl_usuarios'] || []).find(u =>
-      u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
-    if (user) {
-      let match = false;
-      if (user.senhaHash) { try { match = bcrypt.compareSync(String(senha), user.senhaHash); } catch {} }
-      else if (user.senha) { match = (user.senha === senha); }
-      if (match) { req.user = user; return next(); }
-    }
-  }
-
+  // O legado de e-mail+senha no cabeçalho saiu em 05/11/2026: testava senha sem o
+  // limite de tentativas do login e sem olhar a empresa. Só sessão entra.
   return res.status(401).json({ error: 'Não autenticado. Faça login novamente.' });
 }
 
@@ -8043,6 +8086,7 @@ function authDiretoria(req, res, next) {
     const sess = validarSessao(db, token);
     if (sess) {
       const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+      if (user && getItemTenant(user) !== (req.tenantId || TENANT_DEFAULT_ID)) return res.status(401).json({ error: 'Sessão de outra empresa. Faça login de novo.' });
       if (user && user.ativo !== false && user.cargo === 'Diretoria') {
         // Mesmo motivo do authUsuario: gravar o banco inteiro aqui, a partir de um
         // snapshot já lido, apagaria o que outra pessoa salvou nesse meio-tempo.
@@ -8054,25 +8098,16 @@ function authDiretoria(req, res, next) {
     }
   }
 
-  // 2) Legado: email+senha (ainda aceito durante transição — migra hash on-the-fly)
-  const email = req.headers['x-user-email'] || (req.body && req.body.email);
-  const senha = req.headers['x-user-senha'] || (req.body && req.body.senha);
-  if (email && senha) {
-    const user = (db.store['sl_usuarios'] || []).find(u =>
-      u.email && u.email.toLowerCase() === String(email).toLowerCase() && u.ativo !== false);
-    if (user) {
-      let match = false;
-      if (user.senhaHash) { try { match = bcrypt.compareSync(String(senha), user.senhaHash); } catch {} }
-      else if (user.senha) { match = (user.senha === senha); if (match) { user.senhaHash = bcrypt.hashSync(String(senha), BCRYPT_ROUNDS); delete user.senha; writeDB(db); } }
-      if (match) {
-        if (user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
-        req.user = user;
-        return next();
-      }
-    }
-  }
-
+  // legado de e-mail+senha no cabeçalho ou no corpo: saiu em 05/11/2026 (ver authUsuario)
   return res.status(401).json({ error: 'Não autenticado. Use Authorization: Bearer <token>.' });
+}
+// Diretoria da própria TMX. Tokens da API leem os dados da TMX pelo MCP e pela API v1,
+// então a Diretoria de uma empresa de fora não pode criar, listar nem revogar.
+function authDiretoriaInterna(req, res, next) {
+  authDiretoria(req, res, () => {
+    if (getItemTenant(req.user) !== TENANT_INTERNO_ID) return res.status(403).json({ error: 'Acesso restrito à Diretoria da TMX.' });
+    next();
+  });
 }
 
 // ── Helpers de data ──
@@ -9732,7 +9767,7 @@ async function _notificarViaWhatsApp(destId, titulo, texto) {
 }
 
 // Endpoint: dispara notificação manual pra WhatsApp (usado internamente quando cria notif)
-app.post('/api/whatsapp/notificar', async (req, res) => {
+app.post('/api/whatsapp/notificar', authUsuario, async (req, res) => {
   const { destId, titulo, texto } = req.body || {};
   if (!destId || !texto) return res.status(400).json({ error: 'destId + texto obrigatórios' });
   await _notificarViaWhatsApp(destId, titulo || 'Notificação TMX Digital', texto);
