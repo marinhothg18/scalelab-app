@@ -14835,18 +14835,27 @@ app.post('/api/fin/importar', authDiretoria, (req, res) => {
         nome:String(b.nome || '').trim().slice(0, 60) || 'Nubank', criadoEm:Date.now(), criadoPor:req.user && req.user.id, criadoPorNome:req.user && req.user.nome };
       lista.push(c);
     }
-    const conta = c.nome + (lido.tipo === 'cartao' ? ' · cartão' : ' · conta'), vistos = {};
-    const existe = _q('SELECT 1 FROM fin_mov WHERE id=?');
-    let novos = 0, de = null, ate = null;
+    const conta = c.nome + (lido.tipo === 'cartao' ? ' · cartão' : ' · conta'), vistos = {}, pre = c.id + ':' + (lido.tipo === 'cartao' ? 'c' : 'a') + ':';
+    // o Nubank põe a compra internacional e o IOF dela com o mesmo FITID: id repetido no
+    // arquivo ganha o conteúdo na chave (e o registro antigo, que juntava os dois, sai)
+    const limpa = x => String(x || '').replace(/[^\w.-]/g, '').slice(0, 80), repete = {};
+    lido.linhas.forEach(l => { if (l.id) repete[limpa(l.id)] = (repete[limpa(l.id)] || 0) + 1; });
+    const contar = _q('SELECT COUNT(*) n FROM fin_mov WHERE conexao=?'), apagar = _q('DELETE FROM fin_mov WHERE id=?');
+    const antes = contar.get(c.id).n;
+    let de = null, ate = null;
     if (lido.tipo === 'cartao') _finGravarCartao(c.id, { id:'cartao', final:'', nome:'Cartão de crédito ' + c.nome, titular:'', status:'ACTIVE', tipo:'crédito', moeda:'BRL', extra:{ arquivo:true } });
     _pessoas().exec('BEGIN');
     try {
       lido.linhas.forEach(l => {
         const base = [l.dia, _finMai(l.desc), l.valor.toFixed(2)].join('|');
         vistos[base] = (vistos[base] || 0) + 1;   // duas compras iguais no mesmo dia continuam duas
-        const chave = l.id ? l.id.replace(/[^\w.-]/g, '').slice(0, 80) : crypto.createHash('sha1').update(base + '|' + vistos[base]).digest('hex').slice(0, 20);
-        const id = c.id + ':' + (lido.tipo === 'cartao' ? 'c' : 'a') + ':' + chave;
-        if (!existe.get(id)) novos++;
+        const fit = limpa(l.id);
+        let chave = fit || crypto.createHash('sha1').update(base + '|' + vistos[base]).digest('hex').slice(0, 20);
+        if (fit && repete[fit] > 1) {
+          apagar.run(pre + fit);
+          chave = fit + '-' + crypto.createHash('sha1').update(base + '|' + vistos[base]).digest('hex').slice(0, 10);
+        }
+        const id = pre + chave;
         const dir = _nbSentido(lido.tipo, l), v = Math.round(Math.abs(l.valor) * 100) / 100;
         const partes = l.desc.split(' - ');
         _finGravarMov({ id, conexao:c.id, provedor:'nubank', origem:lido.tipo === 'cartao' ? 'cartao' : 'conta', conta, cartao:lido.tipo === 'cartao' ? 'cartao' : null,
@@ -14857,6 +14866,7 @@ app.post('/api/fin/importar', authDiretoria, (req, res) => {
       });
       _pessoas().exec('COMMIT');
     } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+    const novos = Math.max(0, contar.get(c.id).n - antes);
     const contas = Object.assign({}, (c.resumo && c.resumo.contas) || {});
     if (lido.saldo && lido.tipo === 'conta') {
       _finGravarSaldo(c.id, conta, lido.saldo.valor, 'BRL', lido.saldo.valor, lido.saldo.dia && lido.saldo.dia <= _diaBR(Date.now()) ? lido.saldo.dia : null);
