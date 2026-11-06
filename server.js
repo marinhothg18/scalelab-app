@@ -14205,7 +14205,7 @@ function _finCambioHoje(regra) {
 const _finLendo = {};   // id da conexão => desde quando está lendo
 function _finConexPub(c) {
   return { id:c.id, provedor:c.provedor, nome:c.nome, ambiente:c.ambiente || 'producao', preview:c.preview || '', assina:!!c.assina,
-    publica:c.publica || '', semCredencial:!c.cred, cambio:c.cambio || { modo:'padrao' }, status:c.status || 'novo', ultimoErro:c.ultimoErro || '', avisos:c.avisos || [],
+    publica:c.publica || '', semCredencial:!c.cred && !c.importacao, importacao:!!c.importacao, importacoes:(c.importacoes || []).slice(-5), cambio:c.cambio || { modo:'padrao' }, status:c.status || 'novo', ultimoErro:c.ultimoErro || '', avisos:c.avisos || [],
     ultimaLeitura:c.ultimaLeitura || null, ultimaLeituraOk:c.ultimaLeituraOk || null, lendoDesde:_finLendo[c.id] || null,
     resumo:c.resumo || null, criadoEm:c.criadoEm || null, criadoPorNome:c.criadoPorNome || '' };
 }
@@ -14276,10 +14276,10 @@ function _finGravarMov(m) {
       _finN(m.moeda), _finN(m.valor_brl), _finN(m.descricao), _finN(m.contraparte), _finN(m.tipo), _finN(m.status), m.categoria,
       JSON.stringify(m.bruto || null).slice(0, 4000), Date.now());
 }
-function _finGravarSaldo(conexao, conta, valor, moeda, brl) {
+function _finGravarSaldo(conexao, conta, valor, moeda, brl, dia) {
   if (!isFinite(valor)) return;
   _q('INSERT INTO fin_saldo(conexao, conta, dia, valor, moeda, valor_brl, em) VALUES(?,?,?,?,?,?,?) ON CONFLICT(conexao, conta, dia) DO UPDATE SET valor=excluded.valor, moeda=excluded.moeda, valor_brl=excluded.valor_brl, em=excluded.em')
-    .run(conexao, conta, _diaBR(Date.now()), valor, moeda, _finN(brl), Date.now());
+    .run(conexao, conta, dia || _diaBR(Date.now()), valor, moeda, _finN(brl), Date.now());
 }
 function _finGravarCartao(conexao, c) {
   _q('INSERT INTO fin_cartao(conexao, id, final, nome, titular, status, tipo, moeda, extra, em) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(conexao, id) DO UPDATE SET final=excluded.final, nome=excluded.nome, titular=excluded.titular, status=excluded.status, tipo=excluded.tipo, moeda=excluded.moeda, extra=excluded.extra, em=excluded.em')
@@ -14592,6 +14592,7 @@ async function _finLerConexao(id, opts) {
     _finTab();
     const cx = _finConexoes(readDB()).find(c => c.id === id);
     if (!cx) throw new Error('Conexão não encontrada.');
+    if (cx.importacao) throw new Error('Esta conexão é por arquivo: importe o extrato.');
     const cred = _finDecifrar(cx.id, cx.cred);
     const hoje = _diaBR(Date.now());
     dias = opts.dias || (cx.ultimaLeituraOk && cx.leituraCheia ? 10 : 90);
@@ -14709,6 +14710,7 @@ app.post('/api/fin/conexoes/:id/ler', authDiretoria, (req, res) => {
   try {
     const c = _finConexoes(readDB()).find(x => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: 'Conexão não encontrada.' });
+    if (c.importacao) return res.status(400).json({ error: 'Esta conexão é por arquivo: importe o extrato.' });
     if (!_finLendo[c.id]) {
       // sem "dias" no pedido, a leitura escolhe sozinha (90 até a primeira completa, depois 10)
       const n = parseInt((req.body || {}).dias, 10), dias = n > 0 ? Math.min(180, n) : undefined;
@@ -14734,6 +14736,140 @@ app.post('/api/fin/conexoes/:id/excluir', authDiretoria, (req, res) => {
     audit(db, 'fin_conexao_removida', { id:item.id, provedor:item.provedor }, { nome:item.nome, chave:item.preview }, req.user);
     writeDB(db);
     res.json({ ok:true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// ── Nubank (e outro banco sem API): o extrato que a pessoa exporta do app ──
+// OFX (conta ou cartão) ou CSV (o da conta: Data,Valor,Identificador,Descrição; o da fatura:
+// date,title,amount). Cada linha vira um movimento com id fixo: importar de novo não duplica.
+function _nbNum(s) {
+  let t = String(s == null ? '' : s).trim().replace(/R\$\s?/i, '').replace(/\s/g, '');
+  if (!t) return NaN;
+  const neg = /^\(.*\)$/.test(t); t = t.replace(/[()]/g, '');
+  if (t.indexOf(',') >= 0 && t.indexOf('.') >= 0) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+  else if (t.indexOf(',') >= 0) t = t.replace(',', '.');
+  const v = Number(t);
+  return neg ? -v : v;
+}
+function _nbDia(s) {
+  const t = String(s || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = t.match(/^(\d{4})(\d{2})(\d{2})/); if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  return null;
+}
+function _nbOfx(txt) {
+  const ent = x => x.replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&apos;|&#39;/gi, "'");
+  const val = (b, t) => { const m = b.match(new RegExp('<' + t + '>([^<\\r\\n]*)', 'i')); return m ? ent(m[1].trim()) : ''; };
+  const linhas = txt.split(/<STMTTRN>/i).slice(1).map(p => {
+    const b = p.split(/<\/STMTTRN>|<\/BANKTRANLIST>/i)[0];
+    const nome = val(b, 'NAME'), memo = val(b, 'MEMO');
+    return { dia:_nbDia(val(b, 'DTPOSTED')), valor:_nbNum(val(b, 'TRNAMT')), id:val(b, 'FITID'), tipo:val(b, 'TRNTYPE'),
+      desc:nome && memo && nome !== memo && memo.indexOf(nome) < 0 ? nome + ' · ' + memo : (memo || nome) };
+  });
+  const bal = txt.match(/<LEDGERBAL>([\s\S]*?)(<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>|<\/CCSTMTRS>)/i);
+  const saldo = bal ? { valor:_nbNum(val(bal[1], 'BALAMT')), dia:_nbDia(val(bal[1], 'DTASOF')) } : null;
+  return { formato:'OFX', tipo:/<CCSTMTRS>/i.test(txt) ? 'cartao' : 'conta', linhas, saldo:saldo && isFinite(saldo.valor) ? saldo : null };
+}
+function _nbCsv(txt) {
+  const l1 = txt.split(/\r?\n/)[0] || '';
+  const sep = (l1.match(/;/g) || []).length > (l1.match(/,/g) || []).length ? ';' : ',';
+  const rows = []; let row = [], campo = '', q = false;
+  for (let i = 0; i < txt.length; i++) {
+    const ch = txt[i];
+    if (q) { if (ch === '"') { if (txt[i + 1] === '"') { campo += '"'; i++; } else q = false; } else campo += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === sep) { row.push(campo); campo = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; row.push(campo); rows.push(row); row = []; campo = ''; }
+    else campo += ch;
+  }
+  if (campo || row.length) { row.push(campo); rows.push(row); }
+  const cab = (rows.shift() || []).map(h => _finMai(h).trim());
+  const col = nomes => cab.findIndex(h => nomes.indexOf(h) >= 0);
+  const cDia = col(['DATA', 'DATE', 'DATA LANCAMENTO', 'DATA DO LANCAMENTO']), cVal = col(['VALOR', 'AMOUNT', 'VALOR (R$)']);
+  const cDesc = col(['DESCRICAO', 'TITLE', 'DESCRIPTION', 'HISTORICO', 'LANCAMENTO']), cId = col(['IDENTIFICADOR', 'ID']);
+  if (cDia < 0 || cVal < 0) throw new Error('Não achei as colunas de data e valor no CSV. Exporte de novo pelo app (o CSV do extrato ou da fatura).');
+  const linhas = rows.filter(r => r.some(x => String(x).trim())).map(r => ({ dia:_nbDia(r[cDia]), valor:_nbNum(r[cVal]),
+    id:cId >= 0 ? String(r[cId] || '').trim() : '', tipo:'', desc:cDesc >= 0 ? String(r[cDesc] || '').trim() : '' }));
+  // a fatura do cartão vem em inglês (date,title,amount); o extrato da conta, em português
+  return { formato:'CSV', tipo:cab.indexOf('TITLE') >= 0 && cab.indexOf('AMOUNT') >= 0 ? 'cartao' : 'conta', linhas, saldo:null };
+}
+function _nbLerArquivo(txt) {
+  txt = String(txt || '').replace(/^﻿/, '');
+  const r = /<OFX>|<STMTTRN>|OFXHEADER/i.test(txt) ? _nbOfx(txt) : _nbCsv(txt);
+  r.linhas = r.linhas.filter(l => l.dia && isFinite(l.valor) && l.valor !== 0);
+  if (!r.linhas.length) throw new Error('Não achei nenhum movimento no arquivo. Ele é o extrato em OFX ou CSV (o PDF não serve)?');
+  if (r.tipo === 'cartao') {
+    // na fatura, o sinal da compra muda de banco pra banco: o pagamento da fatura diz qual é;
+    // sem pagamento no arquivo, a compra é o sinal que mais aparece
+    const pag = r.linhas.filter(l => /PAGAMENTO/.test(_finMai(l.desc)));
+    const compraNeg = pag.length ? pag.reduce((a, l) => a + l.valor, 0) > 0
+      : r.linhas.filter(l => l.valor < 0).length >= r.linhas.filter(l => l.valor > 0).length;
+    r.linhas.forEach(l => { l.sinal = compraNeg ? l.valor : -l.valor; });
+  } else r.linhas.forEach(l => { l.sinal = l.valor; });
+  return r;
+}
+function _nbSentido(tipo, l) {
+  const s = _finMai(l.desc);
+  if (tipo === 'cartao') return l.sinal < 0 ? 'saida' : /PAGAMENTO/.test(s) ? 'interna' : 'entrada';
+  // pagar a fatura, guardar na caixinha e resgatar dela é dinheiro mudando de lugar, não gasto
+  if (/FATURA|\bRDB\b|CAIXINHA|APLICACAO|RESGATE|MESMA TITULARIDADE/.test(s)) return 'interna';
+  return l.sinal < 0 ? 'saida' : 'entrada';
+}
+app.post('/api/fin/importar', authDiretoria, (req, res) => {
+  try {
+    const b = req.body || {}, txt = String(b.arquivo || '');
+    if (!txt.trim()) return res.status(400).json({ error: 'Escolha o arquivo do extrato.' });
+    if (txt.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'Arquivo grande demais: exporte um período menor.' });
+    const arq = String(b.nomeArquivo || '').replace(/[^\w .()-]/g, '').slice(0, 80) || 'extrato';
+    let lido;
+    try { lido = _nbLerArquivo(txt); } catch (e) { return res.status(400).json({ error: e.message }); }
+    if (lido.linhas.length > 20000) return res.status(413).json({ error: 'Mais de 20 mil movimentos num arquivo: exporte um período menor.' });
+    _finTab();
+    const db = readDB(), lista = _finConexoes(db);
+    let c = b.conexao ? lista.find(x => x.id === b.conexao) : null;
+    if (b.conexao && !c) return res.status(404).json({ error: 'Conexão não encontrada.' });
+    if (c && !c.importacao) return res.status(400).json({ error: 'Essa conexão lê sozinha, não por arquivo.' });
+    if (!c) {
+      c = { id:'nu' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex'), provedor:'nubank', importacao:true,
+        nome:String(b.nome || '').trim().slice(0, 60) || 'Nubank', criadoEm:Date.now(), criadoPor:req.user && req.user.id, criadoPorNome:req.user && req.user.nome };
+      lista.push(c);
+    }
+    const conta = c.nome + (lido.tipo === 'cartao' ? ' · cartão' : ' · conta'), vistos = {};
+    const existe = _q('SELECT 1 FROM fin_mov WHERE id=?');
+    let novos = 0, de = null, ate = null;
+    if (lido.tipo === 'cartao') _finGravarCartao(c.id, { id:'cartao', final:'', nome:'Cartão de crédito ' + c.nome, titular:'', status:'ACTIVE', tipo:'crédito', moeda:'BRL', extra:{ arquivo:true } });
+    _pessoas().exec('BEGIN');
+    try {
+      lido.linhas.forEach(l => {
+        const base = [l.dia, _finMai(l.desc), l.valor.toFixed(2)].join('|');
+        vistos[base] = (vistos[base] || 0) + 1;   // duas compras iguais no mesmo dia continuam duas
+        const chave = l.id ? l.id.replace(/[^\w.-]/g, '').slice(0, 80) : crypto.createHash('sha1').update(base + '|' + vistos[base]).digest('hex').slice(0, 20);
+        const id = c.id + ':' + (lido.tipo === 'cartao' ? 'c' : 'a') + ':' + chave;
+        if (!existe.get(id)) novos++;
+        const dir = _nbSentido(lido.tipo, l), v = Math.round(Math.abs(l.valor) * 100) / 100;
+        const partes = l.desc.split(' - ');
+        _finGravarMov({ id, conexao:c.id, provedor:'nubank', origem:lido.tipo === 'cartao' ? 'cartao' : 'conta', conta, cartao:lido.tipo === 'cartao' ? 'cartao' : null,
+          dia:l.dia, em:Date.parse(l.dia + 'T12:00:00-03:00'), dir, valor:v, moeda:'BRL', valor_brl:v, descricao:l.desc || l.tipo || '',
+          contraparte:partes.length > 1 ? partes[1].trim().slice(0, 120) : '', tipo:l.tipo || '', status:'ok', bruto:Object.assign({ arquivo:arq }, l) });
+        if (!de || l.dia < de) de = l.dia;
+        if (!ate || l.dia > ate) ate = l.dia;
+      });
+      _pessoas().exec('COMMIT');
+    } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+    const contas = Object.assign({}, (c.resumo && c.resumo.contas) || {});
+    if (lido.saldo && lido.tipo === 'conta') {
+      _finGravarSaldo(c.id, conta, lido.saldo.valor, 'BRL', lido.saldo.valor, lido.saldo.dia && lido.saldo.dia <= _diaBR(Date.now()) ? lido.saldo.dia : null);
+      contas[conta] = { valor:lido.saldo.valor, moeda:'BRL' };
+    }
+    const imp = { em:Date.now(), arquivo:arq, formato:lido.formato, tipo:lido.tipo, movs:lido.linhas.length, novos, de, ate, porNome:req.user && req.user.nome };
+    c.importacoes = (c.importacoes || []).concat([imp]).slice(-20);
+    Object.assign(c, { ultimaLeitura:imp.em, ultimaLeituraOk:imp.em, status:'ok', ultimoErro:'', avisos:[], _updatedAt:Date.now(),
+      resumo:{ contas, movs:imp.movs, novos, desde:de, ate, arquivo:arq } });
+    db.timestamps[KEY_FIN_CONEX] = now();
+    audit(db, 'fin_extrato_importado', { id:c.id, provedor:'nubank' }, { nome:c.nome, arquivo:arq, formato:lido.formato, tipo:lido.tipo, movs:imp.movs, novos, de, ate }, req.user);
+    writeDB(db);
+    res.json({ ok:true, conexao:_finConexPub(c), importacao:imp });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // o que foi lido: saldos, cartões, faturas e os movimentos do período

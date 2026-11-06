@@ -37853,7 +37853,8 @@ function fiTelaInt(){
   var contas = cxs.map(fiLinhaConexao).join('')+
     (tem('contasimples') ? '' : con('#0E9F6E', 'CS', 'Conta Simples', 'Conta em real, cartões corporativos e faturas', '<button class="fi-bt sm p" onclick="fiConectar(\'contasimples\')">Conectar</button>'))+
     (tem('lootrush') ? '' : con('#3E1493', 'LR', 'Lootrush', 'Conta em dólar, carteira em USDT e cartões em dólar', '<button class="fi-bt sm p" onclick="fiConectar(\'lootrush\')">Conectar</button>'))+
-    (cxs.length ? '<div class="fi-cx-mais">Outra empresa? <a onclick="fiConectar(\'contasimples\')">Conectar outra Conta Simples</a> · <a onclick="fiConectar(\'lootrush\')">outra Lootrush</a></div>' : '');
+    (tem('nubank') ? '' : con('#820AD1', 'NU', 'Nubank', 'Por arquivo: o extrato da conta (OFX ou CSV) que você exporta do app', '<button class="fi-bt sm p" onclick="fiImportar()">Importar extrato</button>'))+
+    (cxs.length ? '<div class="fi-cx-mais">Outra empresa? <a onclick="fiConectar(\'contasimples\')">Conectar outra Conta Simples</a> · <a onclick="fiConectar(\'lootrush\')">outra Lootrush</a> · <a onclick="fiImportar(\'\',true)">outro Nubank</a></div>' : '');
   return fiCab('Integrações', 'O que entra sozinho no Financeiro.', '', true)+fiCaixaAviso()+
     '<div class="v2-cx"><h3>Contas da operação</h3><div class="s">Só leitura: saldo, extrato, cartões e faturas, relidos sozinhos a cada 3 horas (a primeira leitura traz os últimos 90 dias). A credencial é testada antes de salvar, fica cifrada no servidor e nunca volta pra esta tela. Bloquear ou emitir cartão não passa por aqui.</div>'+contas+'</div><div style="height:14px"></div>'+
     '<div class="v2-cx"><h3>Já está no TMX'+fiTg('real')+'</h3><div class="s">Não precisa conectar nada: o Financeiro lê o que o TMX já recebe.</div>'+
@@ -37864,6 +37865,7 @@ function fiTelaInt(){
       con('#5b5ef4', 'RH', 'RH do TMX', 'Equipe por cargo · '+((fiRes.rh || {}).pessoas || 0)+' pessoas, '+((fiRes.rh || {}).comSalario || 0)+' com salário preenchido', (fiRes.rh && fiRes.rh.comSalario) ? lig : '<span class="v2-pill warn">falta o salário</span>')+'</div>';
 }
 function fiLinhaConexao(c){
+  if(c.importacao) return fiLinhaImportacao(c);
   var cs = c.provedor === 'contasimples';
   var st = c.lendoDesde ? '<span class="v2-pill neu">lendo…</span>' : c.semCredencial ? '<span class="v2-pill bad">sem credencial</span>' :
     c.status === 'erro' ? '<span class="v2-pill bad">não leu</span>' : c.status === 'parcial' ? '<span class="v2-pill warn">leu em parte</span>' : '<span class="v2-pill ok">conectada</span>';
@@ -37878,6 +37880,62 @@ function fiLinhaConexao(c){
   return '<div class="fi-conn"><div class="lg" style="background:'+(cs ? '#0E9F6E' : '#3E1493')+'">'+(cs ? 'CS' : 'LR')+'</div><div class="t"><b>'+fnEsc(c.nome)+'</b><span>'+det+'</span>'+(res ? '<span class="fi-cx-res">'+res+'</span>' : '')+prob+'</div>'+
     '<div class="fi-acoes">'+st+'<button class="fi-bt sm"'+(c.lendoDesde || c.semCredencial ? ' disabled' : '')+' onclick="fiLerAgora(\''+c.id+'\',this)">Ler agora</button>'+
     '<button class="fi-bt sm" onclick="fiConectar(\''+c.provedor+'\',\''+c.id+'\')">Editar</button><button class="fi-bt sm" onclick="fiDesconectar(\''+c.id+'\')">Desconectar</button></div></div>';
+}
+// conexão por arquivo (Nubank): não lê sozinha, recebe o extrato exportado do app
+function fiLinhaImportacao(c){
+  var r = c.resumo || {}, contas = r.contas || {}, ult = (c.importacoes || []).slice(-1)[0];
+  var det = ['por arquivo (OFX ou CSV)', ult ? 'último arquivo '+fiHa(ult.em)+(ult.porNome ? ' por '+fnEsc(ult.porNome) : '') : 'nenhum arquivo ainda'].join(' · ');
+  var res = Object.keys(contas).map(function(k){ return fnEsc(k)+' '+fiMoeda(contas[k].valor, contas[k].moeda); }).join(' · ');
+  if(ult) res += (res ? ' · ' : '')+fnEsc(ult.arquivo)+': '+fnNum(ult.movs)+' movimentos de '+fiBR(ult.de)+' a '+fiBR(ult.ate)+' ('+fnNum(ult.novos)+' novos)';
+  var velho = ult && Date.now() - ult.em > 7 * 86400000;
+  return '<div class="fi-conn"><div class="lg" style="background:#820AD1">NU</div><div class="t"><b>'+fnEsc(c.nome)+'</b><span>'+det+'</span>'+(res ? '<span class="fi-cx-res">'+res+'</span>' : '')+
+    (velho ? '<div class="fi-cx-msg warn">O último extrato tem mais de uma semana. Exporte de novo pra o caixa ficar em dia.</div>' : '')+'</div>'+
+    '<div class="fi-acoes">'+(ult ? '<span class="v2-pill ok">importado</span>' : '<span class="v2-pill neu">sem arquivo</span>')+'<button class="fi-bt sm p" onclick="fiImportar(\''+c.id+'\')">Importar extrato</button>'+
+    '<button class="fi-bt sm" onclick="fiDesconectar(\''+c.id+'\')">Desconectar</button></div></div>';
+}
+function fiImportar(id, outro){
+  var c = id ? fiConexoes().filter(function(x){ return x.id === id; })[0] : null;
+  var h = '<div class="v2-cab"><div><h3>Importar extrato'+(c ? ' · '+fnEsc(c.nome) : ' do Nubank')+'</h3><div class="s">O arquivo entra no caixa, nos lançamentos e nos cartões. Importar o mesmo período de novo não duplica nada.</div></div></div>'+
+    (c ? '' : '<div class="fi-campo"><label>Nome da conexão</label><input id="fi-imp-nome" maxlength="60" value="'+(outro ? '' : 'Nubank')+'" placeholder="Nubank PJ"></div>')+
+    '<ol class="fi-passos"><li>No app do Nubank, abra a <b>Conta</b> e deslize os atalhos até <b>Pedir extrato</b>.</li>'+
+      '<li>Escolha o período (na primeira vez, os últimos 3 meses) e toque em <b>Exportar extrato</b>.</li>'+
+      '<li>Escolha <b>OFX</b> (o CSV também serve; o PDF não). O arquivo chega no seu e-mail.</li>'+
+      '<li>Escolha o arquivo aqui embaixo. Da fatura do cartão, se o app deixar exportar em CSV ou OFX, também entra.</li></ol>'+
+    '<div class="fi-campo"><label>Arquivo do extrato</label><input id="fi-imp-arq" type="file" accept=".ofx,.qfx,.csv,.txt" multiple style="padding:8px"></div>'+
+    '<div id="fi-imp-res" class="s" style="margin-top:8px"></div>'+
+    '<div class="fi-rod"><button class="fi-bt" onclick="v2Fechar(this)">Fechar</button><button class="fi-bt p" id="fi-imp-bt" onclick="fiImportarEnviar(\''+(c ? c.id : '')+'\',this)">Importar</button></div>';
+  v2Modal(h);
+}
+// OFX do banco às vezes vem em windows-1252: tenta UTF-8 e cai pro 1252 se não for
+function fiLerTexto(f){
+  return f.arrayBuffer().then(function(buf){
+    try { return new TextDecoder('utf-8', { fatal:true }).decode(buf); } catch(e) { return new TextDecoder('windows-1252').decode(buf); }
+  });
+}
+function fiImportarEnviar(id, bt){
+  var inp = document.getElementById('fi-imp-arq'), out = document.getElementById('fi-imp-res'), fs = inp && inp.files ? [].slice.call(inp.files) : [];
+  if(!fs.length){ toastFn('Escolha o arquivo do extrato'); return; }
+  var nomeEl = document.getElementById('fi-imp-nome'), nome = nomeEl ? nomeEl.value.trim() : '';
+  if(nomeEl && !nome){ toastFn('Dê um nome à conexão (ex.: Nubank PJ)'); return; }
+  bt.disabled = true; out.innerHTML = 'Importando…';
+  var conexao = id, linhas = [], erros = 0;
+  var proximo = function(i){
+    if(i >= fs.length){
+      bt.disabled = false; out.innerHTML = linhas.join('<br>');
+      if(!erros){ toastFn('Extrato importado'); fiCarregar(); setTimeout(function(){ var ov = document.querySelector('.v2-ov'); if(ov && ov.querySelector('#fi-imp-arq')) v2Fechar(ov); }, 1800); }
+      else if(linhas.length > erros) fiCarregar();
+      return;
+    }
+    var f = fs[i];
+    fiLerTexto(f).then(function(txt){
+      return v2Json('/api/fin/importar', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ conexao:conexao, nome:nome, arquivo:txt, nomeArquivo:f.name }) });
+    }).then(function(d){
+      var im = d.importacao; conexao = d.conexao.id;   // o segundo arquivo cai na mesma conexão
+      linhas.push('<b>'+fnEsc(f.name)+'</b>: '+(im.tipo === 'cartao' ? 'fatura do cartão' : 'extrato da conta')+' · '+fnNum(im.movs)+' movimentos de '+fiBR(im.de)+' a '+fiBR(im.ate)+' · <span class="v2-bom">'+fnNum(im.novos)+' novos</span>');
+    }).catch(function(e){ erros++; linhas.push('<b>'+fnEsc(f.name)+'</b>: <span class="v2-ruim">'+fnEsc(e.message)+'</span>'); })
+      .then(function(){ out.innerHTML = linhas.join('<br>')+(i + 1 < fs.length ? '<br>Importando…' : ''); proximo(i + 1); });
+  };
+  proximo(0);
 }
 // câmbio: como o dólar vira real (padrão do Financeiro, cotação do dia ou fixa)
 function fiCot(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{ minimumFractionDigits:2, maximumFractionDigits:4 }); }
@@ -38053,7 +38111,9 @@ function fiLerAgora(id, bt){
     .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não deu: '+e.message); });
 }
 function fiDesconectar(id){
-  if(!confirm('Desconectar '+fiNomeConexao(id)+'? A credencial é apagada do servidor e os movimentos lidos saem do Financeiro. Pra voltar, é conectar de novo.')) return;
+  var cx = fiConexoes().filter(function(x){ return x.id === id; })[0] || {};
+  if(!confirm(cx.importacao ? 'Tirar '+fiNomeConexao(id)+'? Os movimentos importados saem do Financeiro. Pra voltar, é importar os arquivos de novo.'
+    : 'Desconectar '+fiNomeConexao(id)+'? A credencial é apagada do servidor e os movimentos lidos saem do Financeiro. Pra voltar, é conectar de novo.')) return;
   v2Json('/api/fin/conexoes/'+encodeURIComponent(id)+'/excluir', { method:'POST' })
     .then(function(){ toastFn('Desconectada'); fiCarregar(); })
     .catch(function(e){ toastFn('Não deu: '+e.message); });
