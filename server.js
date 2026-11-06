@@ -11203,7 +11203,10 @@ function _funisCache() {
       (f.etapas || []).forEach(e => {
         novo.etapaTipo[e.id] = e.tipo || 'pagina';
         if (Number(e.pitch) > 0) novo.etapaPitch[e.id] = Number(e.pitch);
-        if (e.url) novo.urlEtapa[_normPg(e.url)] = { funil: f.id, etapa: e.id, tipo: e.tipo || 'pagina', pitch: Number(e.pitch) || 0 };
+        // o link do bloco e os outros que ele tem (upsell que trocou de página)
+        [e.url].concat(Array.isArray(e.urls) ? e.urls : []).forEach(u => {
+          if (u) novo.urlEtapa[_normPg(u)] = { funil: f.id, etapa: e.id, tipo: e.tipo || 'pagina', pitch: Number(e.pitch) || 0 };
+        });
       });
     });
     const vt = _vturbCfg(db);
@@ -11217,7 +11220,9 @@ function _funisCache() {
 }
 
 // ── Gravação de cada evento do pixel ────────────────────────────────────────
-const _EV_GUARDA = new Set(['entrou', 'saiu', 'checkout', 'clique', 'friccao', 'video', 'pitch', 'ckteste']);
+// dia em que o pixel passou a registrar o clique no botão de 1 clique do upsell
+const _UMCLIQUE_DESDE = '2026-11-06';
+const _EV_GUARDA = new Set(['entrou', 'saiu', 'checkout', 'clique', 'friccao', 'video', 'pitch', 'ckteste', 'umclique']);
 // 'quando' só vem na importação do histórico (evento com a hora dele)
 function _pxRegistrar(c, req, interno, quando) {
   const db = _pessoas(); if (!db) return;
@@ -11370,9 +11375,16 @@ function _pxRegistrar(c, req, interno, quando) {
       extra.ckt = String(c.ckt).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60);
       extra.ckv = String(c.ckv || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 40);
     }
+    // clique no botão de compra de 1 clique do upsell (Payt: payt_action="oneclick_buy")
+    if (tipo === 'umclique') {
+      if (c.plat) extra.plat = String(c.plat).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+      if (c.obj) extra.obj = String(c.obj).replace(/[^\w-]/g, '').slice(0, 40);
+    }
     if (tipo === 'entrou') { if (c.variante) extra.variante = String(c.variante).slice(0, 40); if (c.teste) extra.teste = String(c.teste).slice(0, 60); if (c.retorno) extra.retorno = 1; }
     const rot = txt(c.rotulo, 80);
-    if (_EV_GUARDA.has(tipo) && s.eventos < EVENTOS_POR_SESSAO && !(tipo === 'friccao' && _ehPlayer(c.rotulo))) {
+    // o clique do upsell entra mesmo com a visita cheia: ele vem depois da VSL e
+    // da compra, na mesma visita, quando o teto de eventos já pode ter chegado
+    if (_EV_GUARDA.has(tipo) && (s.eventos < EVENTOS_POR_SESSAO || tipo === 'umclique') && !(tipo === 'friccao' && _ehPlayer(c.rotulo))) {
       // vídeo guarda só os marcos (play, 1 min, 10 min); o pulso de cada minuto
       // fica na memória, pra tela ao vivo
       const segV = Number(c.seg) || 0;
@@ -11872,6 +11884,30 @@ function _escopoFunil(dbj, funilId) {
     }
     writeDB(db);
   } catch (e) { console.error('[FUNIL] não pus a assinatura no desenho:', e.message); }
+})();
+// Uma vez só (06/11, pedido do Thiago): o bloco Upsell do KALEBE ganha as
+// páginas do upsell (Acompanhamento Elite 10, com o 1 clique da Payt), pra
+// mostrar quem chegou, quem viu a oferta e quem clicou. /espere foi a primeira,
+// /espera veio em 31/10 e /espera1 em 05/11. Bloco que já tem link fica como está.
+(function _migrarPaginasDoUpsell() {
+  try {
+    const db = readDB();
+    if (db._mig_upsell_paginas) return;
+    const f = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).find(x => x && x.id === 'fn1787010070995w0e');
+    if (!f) return;
+    db._mig_upsell_paginas = new Date().toISOString();
+    const e = (f.etapas || []).find(x => x && x.id === 'e1791026258662' && x.tipo === 'upsell');
+    if (e && !e.url && !(Array.isArray(e.urls) && e.urls.length)) {
+      e.url = 'https://apostilai.ai/espera1/';
+      e.urls = ['https://apostilai.ai/espera/', 'https://apostilai.ai/espere/'];
+      f._updatedAt = Date.now();
+      if (!db.timestamps) db.timestamps = {};
+      db.timestamps[KEY_FUNIS] = now();
+      audit(db, 'funil_bloco_alterado', { funil: f.id }, { bloco: e.nome || 'Upsell', paginas: [e.url].concat(e.urls) }, { nome: 'Pedido do Thiago' });
+      console.log('[FUNIL] páginas do upsell ligadas ao bloco Upsell do KALEBE');
+    }
+    writeDB(db);
+  } catch (e) { console.error('[FUNIL] não liguei as páginas do upsell:', e.message); }
 })();
 const _ph = n => new Array(n).fill('?').join(',');
 // pedaço de WHERE que diz "esta linha de páginas é do mapa deste funil"
@@ -16017,6 +16053,14 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const ofertas = (f.etapas || []).filter(x => x.tipo === 'upsell' || x.tipo === 'downsell').map(prodLista).filter(l => l.length);
     const ehOferta = o => ofertas.some(l => casaProd(o, l));
     const principais = vendas.filter(o => !ehOferta(o));
+    // Página do upsell/downsell (o link do bloco): quem clicou no botão de compra
+    // de 1 clique nela. É um evento à parte do "abriu o checkout" (umclique).
+    const ucEtapa = {};
+    if ((f.etapas || []).some(x => (x.tipo === 'upsell' || x.tipo === 'downsell') && porEtapa[x.id] && porEtapa[x.id].size))
+      _q(`SELECT visitante, pg, etapa FROM eventos WHERE tipo='umclique' AND em BETWEEN ? AND ?`).all(per.ini, per.fim).forEach(x => {
+        const et = _etapaDaLinha(esc, _normPg(x.pg), x.etapa); if (!et || !todos.has(x.visitante)) return;
+        (ucEtapa[et] = ucEtapa[et] || new Set()).add(x.visitante);
+      });
     (f.etapas || []).forEach(e => {
       const temPagina = porEtapa[e.id] && porEtapa[e.id].size;
       if (e.tipo === 'split') {
@@ -16100,19 +16144,31 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                         const et = Object.keys(vendaEntrada).find(k => vendaEntrada[k].indexOf(o) >= 0);
                         return et ? (esc.nomeEtapa[et] || et) + (esc.tipoEtapa[et] === 'split' ? ' (variantes)' : '') : 'página fora do desenho';
                       }) };
-      } else if ((e.tipo === 'obrigado' || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) && !temPagina) {
-        // sem página com pixel: o bloco é a venda em si (do produto dele, se escolhido)
+      } else if ((e.tipo === 'obrigado' && !temPagina) || ((e.tipo === 'upsell' || e.tipo === 'downsell') && (e.pagamento || prodLista(e).length))) {
+        // o bloco é a venda em si (do produto dele, se escolhido). Upsell com a
+        // página no link continua aqui: a venda vem do produto, e a página só
+        // diz quem chegou, quem viu a oferta e quem clicou no botão de 1 clique.
         const lst = prodLista(e), plat = _platDoBloco(e);
         const vf = (e.tipo === 'obrigado' || lst.length) ? vendas.filter(o => casaProd(o, lst) && _vendaDaPlat(o, plat)) : [];
         const quem = new Set(vf.map(o => o.visitante).filter(Boolean));
-        conj[e.id] = quem;
+        const ehOf = e.tipo === 'upsell' || e.tipo === 'downsell';
+        const naPg = ehOf ? (porEtapa[e.id] || new Set()) : new Set();
+        // a seta que chega no upsell conta quem chegou na página (ou comprou)
+        conj[e.id] = naPg.size ? new Set([...naPg, ...quem]) : quem;
+        const pgInfo = !ehOf ? {} : {
+          pagina: !![e.url].concat(Array.isArray(e.urls) ? e.urls : []).some(Boolean),
+          chegaram: naPg.size, viramOferta: (pitEtapa[e.id] || new Set()).size, cliques: (ucEtapa[e.id] || new Set()).size,
+          // compraram sem o clique no botão registrado (o pixel só passou a ver esse clique em 06/11)
+          semClique: [...quem].filter(v => !(ucEtapa[e.id] && ucEtapa[e.id].has(v))).length,
+          cliqueDesde: per.de < _UMCLIQUE_DESDE ? _UMCLIQUE_DESDE : ''
+        };
         const porProd = {};
         vf.forEach(o => {
           const k = String(o.produto || '(sem nome)').trim();
           const x = porProd[k] || (porProd[k] = { nome: k, n: 0, fat: 0, oferta: ehOferta(o) });
           x.n++; x.fat += liq(o);
         });
-        nos[e.id] = { tipo: e.tipo, viaVenda: true, produto: e.produto || '', integracao: e.integracao || '',
+        nos[e.id] = Object.assign({ tipo: e.tipo, viaVenda: true, produto: e.produto || '', integracao: e.integracao || '',
                       pessoas: quem.size, vendas: vf.length, faturamento: dir ? vf.reduce((a, o) => a + liq(o), 0) : null,
                       semPessoa: vf.filter(o => !o.visitante).length, produtos: topProd(vf), semProduto: e.tipo !== 'obrigado' && !lst.length,
                       // painel: o principal do funil (base da taxa do upsell), o que é upsell
@@ -16122,7 +16178,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
                       porProduto: Object.values(porProd).sort((a, b) => b.n - a.n).map(x => Object.assign(x, dir ? {} : { fat: null })),
                       porPagina: _ckSoma(vf, o => !o.visitante ? 'sem pessoa ligada'
                         : donaDe.has(o) ? (esc.nomeEtapa[donaDe.get(o)] || 'página do funil') : 'página fora do desenho'),
-                      fora: e.tipo === 'obrigado' && !lst.length ? _vendasForaDoFunil(dbj, esc, per, vendas, dir) : null };
+                      fora: e.tipo === 'obrigado' && !lst.length ? _vendasForaDoFunil(dbj, esc, per, vendas, dir) : null }, pgInfo);
       } else if (e.tipo === 'recuperacao') {
         const vr = vendas.filter(o => o.apoio);
         const s = new Set(vr.map(o => o.visitante).filter(Boolean));
@@ -19489,7 +19545,21 @@ const PIXEL_JS = `(function(w,d){
                           mev: metaEv('InitiateCheckout') || undefined, fbp: bisc('_fbp') || undefined, fbc: bisc('_fbc') || undefined });
     }catch(e){}
   }
+  // Upsell de 1 clique: o botao da Payt e um link "#" (payt_action="oneclick_buy")
+  // e a compra sai por tras, sem abrir checkout. O clique nao aparecia em lugar
+  // nenhum: o bloco Upsell sabia quem comprou, mas nao quem clicou. Vai como
+  // evento proprio (nao e "abriu o checkout": a pessoa ja comprou o principal).
+  // Botao de outra plataforma: data-tmx-umclique nele.
+  var foiUmClique = false;
+  function marcaUmClique(el){
+    if(foiUmClique) return;
+    foiUmClique = true;
+    manda('umclique', { rotulo: rotuloDe(el), plat: el.hasAttribute('payt_action') ? 'payt' : (el.getAttribute('data-tmx-umclique') || ''),
+                        obj: el.getAttribute('data-object') || undefined });
+  }
   d.addEventListener('click', function(ev){
+    var uc = ev.target && ev.target.closest ? ev.target.closest('[payt_action],[data-tmx-umclique]') : null;
+    if(uc && (uc.hasAttribute('data-tmx-umclique') || /buy/i.test(uc.getAttribute('payt_action') || ''))) marcaUmClique(uc);
     var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
     if(!a) return;
     var novo = enriquecer(a.getAttribute('href') || a.href);

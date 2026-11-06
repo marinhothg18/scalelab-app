@@ -2651,8 +2651,8 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .fn-l span:last-child{font-weight:700;text-align:right}
 .fn-campo{margin-bottom:11px}
 .fn-campo label{display:block;font-size:10.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
-.fn-campo input,.fn-campo select{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
-.fn-campo input:focus,.fn-campo select:focus{border-color:var(--accent)}
+.fn-campo input,.fn-campo select,.fn-campo textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
+.fn-campo input:focus,.fn-campo select:focus,.fn-campo textarea:focus{border-color:var(--accent)}
 .fn-pre{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:13px;font-size:11.5px;overflow-x:auto;line-height:1.6;font-family:ui-monospace,Menlo,monospace;color:var(--text);white-space:pre;max-height:340px}
 .fn-tb{width:100%;border-collapse:collapse;font-size:13px}
 .fn-tb th{text-align:left;padding:9px 10px;font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
@@ -34706,6 +34706,20 @@ function fnTaxaOferta(n, b){
   if(!b || !b.viaVenda || b.semProduto || !b.principal || (n.tipo !== 'upsell' && n.tipo !== 'downsell')) return null;
   return { taxa: b.vendas / b.principal, rot: n.tipo };
 }
+// Upsell/downsell com a página: chegaram → viram a oferta → clicaram no botão
+// de 1 clique → compraram. A base de "chegaram" é quem comprou o principal.
+// O clique no botão só é registrado desde 06/11: antes disso fica "—".
+function fnGradeOferta(b, m, din, verde, laranja){
+  var pr = b.principal || 0, ch = b.chegaram || 0, vo = b.viramOferta || 0, cl = b.cliques || 0;
+  var semCl = !!b.cliqueDesde && !cl;
+  var baseCl = vo && cl <= vo ? vo : ch;
+  return m('Chegaram', fnNum(ch), '', pr && ch <= pr ? fnPctTaxa(ch / pr)+' de quem comprou' : '') +
+    (vo ? m('Passaram do pitch', fnNum(vo), '', ch && vo <= ch ? fnPctTaxa(vo / ch)+' de quem chegou' : '') : '') +
+    m('Clicaram', semCl ? '—' : fnNum(cl), cl ? laranja : '',
+      semCl ? 'conta desde '+v2Dia(b.cliqueDesde) : baseCl && cl <= baseCl ? fnPctTaxa(cl / baseCl)+(baseCl === vo ? ' do pitch' : ' de quem chegou') : '') +
+    m('Compraram', fnNum(b.vendas), b.vendas ? verde : '', cl && b.vendas <= cl ? fnPctTaxa(b.vendas / cl)+' de quem clicou' : '') +
+    m('Faturamento', din(b.faturamento));
+}
 function fnNoCorpo(n, b, vt){
   var cor = FN_CORES[n.tipo] || '#1B9CFA';
   var m = function(r, v, c, t){ return '<div><div class="fx-m-r">'+r+'</div><div class="fx-m-v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div>'+(t?'<div class="fx-m-t">'+t+'</div>':'')+'</div>'; };
@@ -34754,10 +34768,15 @@ function fnNoCorpo(n, b, vt){
   } else if(b.viaVenda){
     sub = n.tipo === 'obrigado' ? ('venda aprovada' + (n.produto ? ' · '+n.produto : ' · todos os produtos'))
                                 : [n.integracao || (n.pagamento ? 'pagamento' : ''), n.produto || ''].filter(Boolean).join(' · ');
-    grade = m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
+    var ehOf = n.tipo === 'upsell' || n.tipo === 'downsell';
+    // upsell com a página no link: o caminho inteiro da oferta, cada número
+    // com a taxa sobre o passo de cima
+    grade = (ehOf && b.pagina) ? fnGradeOferta(b, m, din, verde, laranja)
+          : m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') + m('Faturamento', din(b.faturamento));
     pe = b.semProduto ? '<div style="font-size:10px;color:var(--v2-laranja,#F59E0B);margin-top:6px;font-weight:700">Escolha o produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+' no painel: é por ele que a venda fica separada da principal.</div>'
                       : fnNoProdutos(b) + (b.semPessoa ? '<div class="fx-c-url" style="margin-top:4px">'+b.semPessoa+' sem pessoa ligada (pela campanha ou produto)</div>' : '') +
                         (b.fora && b.fora.n ? '<div class="fx-c-url" style="margin-top:4px;line-height:1.45;white-space:normal;color:var(--v2-laranja,#F59E0B);font-weight:700" title="'+fnEsc(b.fora.lista.map(function(x){ return x.motivo; }).join(' · '))+'">+'+b.fora.n+' venda'+(b.fora.n===1?'':'s')+' do projeto fora deste funil</div>' : '');
+    if(ehOf && !b.semProduto && !b.pagina) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">Cole o link da página do '+n.tipo+' (✏️ Editar) e o bloco mostra quem chegou, quem viu a oferta e quem clicou.</div>';
     var ofx = fnTaxaOferta(n, b);
     if(ofx) pe += '<div class="fn-taxa"><div class="fx-c-pe"><span>Taxa do '+ofx.rot+'</span><b>'+fnPctTaxa(ofx.taxa)+'</b></div>'+
       '<div class="v2-trilho" style="height:5px;background:var(--bg2)"><i style="width:'+Math.min(100, ofx.taxa*100).toFixed(1)+'%;background:#C52C58"></i></div>'+
@@ -35334,7 +35353,17 @@ function fnDetalhe(){
   var ehPagamento = n.tipo === 'checkout' || n.pagamento;
   // checkout de gateway não recebe o pixel: o link é só referência
   var faltaUrl = !n.url && !ehPagamento;
-  var campoUrl = ehPagamento
+  // upsell/downsell: a venda vem do produto, mas a página dele recebe o pixel
+  // e diz quem chegou, quem viu a oferta e quem clicou no botão de 1 clique
+  var ehOfertaPg = n.tipo === 'upsell' || n.tipo === 'downsell';
+  var rotOf = n.tipo === 'downsell' ? 'downsell' : 'upsell';
+  var campoUrl = ehOfertaPg
+    ? '<div class="fn-campo"><label>Página do '+rotOf+'</label>'+
+      '<textarea id="fn-url-'+n.id+'" rows="2" placeholder="https://seusite.com/espera" style="resize:vertical" onchange="fnSalvarUrlsOferta(\''+n.id+'\',this.value)">'+
+        fnEsc([n.url].concat(n.urls || []).filter(Boolean).join('\n'))+'</textarea>'+
+      '<div style="font-size:10.5px;color:'+(n.url ? 'var(--text2)' : 'var(--accent)')+';margin-top:5px">A página pra onde a '+(n.integracao || 'plataforma')+' manda depois da compra, com o pixel do TMX. '+
+        'Com ela, o bloco mostra quem chegou, quem viu a oferta e quem clicou no botão de compra. Trocou de página? Uma por linha: as antigas continuam contando nos dias delas.</div></div>'
+    : ehPagamento
     ? '<div class="fn-campo"><label>Link do checkout (opcional)</label>'+
       '<input id="fn-url-'+n.id+'" value="'+fnEsc(n.url||'')+'" placeholder="https://checkout.payt.com.br/..." onchange="fnSalvarUrl(\''+n.id+'\',this.value)">'+
       '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">O checkout do gateway não recebe o pixel: quem clica em comprar na sua página já é contado aqui.</div></div>'
@@ -35348,7 +35377,7 @@ function fnDetalhe(){
   cx.innerHTML = '<h3>'+fnEsc(n.nome)+'</h3>'+
     '<div class="fn-campo"><label>Nome do bloco</label><input value="'+fnEsc(n.nome)+'" onchange="fnRenomear(\''+n.id+'\',this.value)"></div>'+
     fnCampoIntegracao(n)+fnCampoProduto(n)+
-    (faltaUrl ? campoUrl : '')+
+    ((faltaUrl || ehOfertaPg) ? campoUrl : '')+
     '<div class="fn-l"><span>Pessoas</span><span>'+fnNum(v)+'</span></div>'+
     (v && n.tipo !== 'obrigado' ? '<button class="fn-btn g sm" style="width:100%;margin:6px 0 8px" onclick="ldIrPara({etapa:\''+n.id+'\'})">👥 Ver quem está nesta etapa</button>' : '')+
     ((n.tipo === 'vsl' || n.tipo === 'backredirect') ? '<div class="fn-campo" style="margin-top:6px"><label>Minuto do pitch (mm:ss)</label>'+
@@ -35368,7 +35397,7 @@ function fnDetalhe(){
       'onchange="fnSalvarPitch(\''+n.id+'\',this.value)">'+
     '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Em minuto:segundo. '+
       'Deixe vazio se a página não tem um momento de oferta.</div></div>'+
-    (faltaUrl ? '' : campoUrl)+
+    ((faltaUrl || ehOfertaPg) ? '' : campoUrl)+
     htmlLig+
     '<div style="display:flex;gap:7px;margin-top:9px"><button class="fn-btn g sm" onclick="fnIrPixel(\''+n.id+'\')">Ver pixel</button>'+
     '<button class="fn-btn g sm" onclick="fnRemoverEtapa(\''+n.id+'\')" style="color:var(--red)">Remover</button></div>';
@@ -35838,6 +35867,33 @@ function mpLeituraObrigado(n, b){
   return h + mpBotaoEditar();
 }
 
+// O caminho dentro da página do upsell: de quem comprou o principal até quem
+// levou a oferta, e onde a pessoa sai. Cada taxa é sobre o passo de cima, e só
+// aparece quando o de baixo cabe no de cima.
+function mpOfertaPagina(n, b, rot, pr, taxa, rosa){
+  var ch = b.chegaram || 0, vo = b.viramOferta || 0, cl = b.cliques || 0, semCl = !!b.cliqueDesde && !cl;
+  var pct = function(x, base){ return base && x <= base ? fnPctTaxa(x / base) : ''; };
+  var larg = function(x, base){ return base ? Math.min(100, x / base * 100) : 0; };
+  var baseCl = vo && cl <= vo ? vo : ch, vendaDoClique = cl && b.vendas <= cl;
+  var h = '<div class="gv-grp">Passo a passo</div>'+
+    mpPasso('Compraram o produto principal', '', fnNum(pr), '', 100, '#22C55E')+
+    mpPasso('Chegaram na página do '+rot, 'de quem comprou o principal', fnNum(ch), pct(ch, pr), larg(ch, pr), '#1B9CFA')+
+    (vo ? mpPasso('Passaram do pitch', 'a oferta apareceu · de quem chegou', fnNum(vo), pct(vo, ch), larg(vo, ch), '#3E1493') : '')+
+    mpPasso('Clicaram no botão de compra', semCl ? 'o clique conta desde '+v2Dia(b.cliqueDesde) : (baseCl === vo && vo ? 'de quem passou do pitch' : 'de quem chegou'),
+      semCl ? '—' : fnNum(cl), semCl ? '' : pct(cl, baseCl), semCl ? 0 : larg(cl, baseCl), '#FF5926')+
+    mpPasso('Levaram o '+rot, vendaDoClique ? 'de quem clicou' : 'de quem comprou o principal', fnNum(b.vendas),
+      vendaDoClique ? fnPctTaxa(b.vendas / cl) : (taxa != null ? fnPctTaxa(taxa) : ''), vendaDoClique ? larg(b.vendas, cl) : (taxa || 0)*100, rosa);
+  var sai = [];
+  if(pr && ch <= pr) sai.push(['Compraram o principal e não chegaram na página', pr - ch, (pr - ch) / pr]);
+  if(vo && vo <= ch) sai.push(['Chegaram e saíram antes da oferta', ch - vo, (ch - vo) / ch]);
+  if(!semCl && baseCl && cl <= baseCl) sai.push([baseCl === vo && vo ? 'Viram a oferta e não clicaram' : 'Chegaram e não clicaram', baseCl - cl, (baseCl - cl) / baseCl]);
+  if(!semCl && vendaDoClique) sai.push(['Clicaram e não compraram', cl - b.vendas, (cl - b.vendas) / cl]);
+  if(sai.length) h += '<div class="gv-grp">Onde a pessoa sai</div>'+sai.map(function(x){ return mpLinha(x[0], fnNum(x[1])+' · '+fnPctTaxa(x[2])); }).join('');
+  if(b.cliqueDesde) h += '<div class="gv-aviso">O clique no botão de 1 clique da Payt só é registrado desde '+v2Dia(b.cliqueDesde)+'. Antes disso, quem chegou e quem comprou estão certos; o clique fica de fora.</div>';
+  else if(b.semClique) h += '<div class="fx-sub" style="margin-top:6px">'+fnNum(b.semClique)+' comprador'+(b.semClique === 1 ? '' : 'es')+' sem o clique no botão registrado.</div>';
+  if(ch) h += '<button class="fn-btn g sm" style="width:100%;margin-top:10px" onclick="ldIrPara({etapa:\''+n.id+'\'})">👥 Ver quem chegou na página</button>';
+  return h;
+}
 // Upsell/downsell: a taxa sobre quem comprou o produto principal e quanto rende
 function mpLeituraOferta(n, b){
   var rot = n.tipo === 'downsell' ? 'downsell' : 'upsell', h = '';
@@ -35847,9 +35903,11 @@ function mpLeituraOferta(n, b){
   h += '<div class="gv-grp">Taxa do '+rot+'</div><div class="gv-kpis d2">'+
     mpKpi('Taxa do '+rot, taxa != null ? fnPctTaxa(taxa) : '-', fnNum(b.vendas)+' de '+fnNum(pr)+' que compraram o principal', rosa)+
     mpKpi('Não levaram', pr >= b.vendas ? fnNum(pr - b.vendas) : '-', 'compraram o principal e não levaram')+'</div>';
-  h += '<div class="gv-grp">Passo a passo</div>'+
+  if(b.pagina) h += mpOfertaPagina(n, b, rot, pr, taxa, rosa);
+  else h += '<div class="gv-grp">Passo a passo</div>'+
     mpPasso('Compraram o produto principal', '', fnNum(pr), '', 100, '#22C55E')+
-    mpPasso('Levaram o '+rot, 'de quem comprou o principal', fnNum(b.vendas), taxa != null ? fnPctTaxa(taxa) : '', (taxa || 0)*100, rosa);
+    mpPasso('Levaram o '+rot, 'de quem comprou o principal', fnNum(b.vendas), taxa != null ? fnPctTaxa(taxa) : '', (taxa || 0)*100, rosa)+
+    '<div class="gv-aviso">Cole o link da página do '+rot+' (✏️ Editar o desenho) e aqui aparece quem chegou nela, quem viu a oferta e quem clicou no botão de compra.</div>';
   if(b.faturamento != null){
     h += '<div class="gv-grp">Quanto o '+rot+' rende</div>'+
       mpLinha('Faturamento do '+rot, v2Din(b.faturamento))+
@@ -36100,6 +36158,21 @@ function fnSalvarUrl(id, valor){
   n.url = (valor||'').trim();
   fnGravar(f); fnNos(); fnFaixa(); fnDetalhe(); fnPixel();
   toastFn(n.url ? 'Link salvo' : 'Link removido');
+}
+// páginas do upsell/downsell: a primeira vai no link do bloco, as outras em
+// urls (o servidor junta as duas em _escopoFunil e no cache do pixel)
+function fnSalvarUrlsOferta(id, valor){
+  var f = fnAtual(); if(!f) return;
+  var n = fnAcha(f,id); if(!n) return;
+  var visto = {}, l = String(valor||'').split(/[\s,]+/).map(function(x){ return x.trim(); }).filter(function(u){
+    var k = u.replace(/^https?:\/\//i,'').replace(/^www\./i,'').split(/[?#]/)[0].replace(/\/+$/,'').toLowerCase();
+    if(!k || visto[k]) return false; visto[k] = 1; return true;
+  }).slice(0, 10);
+  n.url = l[0] || '';
+  if(l.length > 1) n.urls = l.slice(1); else delete n.urls;
+  fnGravar(f); fnNos(); fnFaixa(); fnDetalhe(); fnPixel();
+  toastFn(!l.length ? 'Página tirada' : l.length === 1 ? 'Página salva' : l.length+' páginas salvas');
+  setTimeout(fnCarregarStats, 1200);
 }
 function fnRemoverEtapa(id){
   if(!confirm('Remover esta etapa do funil?')) return;
@@ -38644,7 +38717,7 @@ function ldTirarAtalho(nome){ var l = ldSalvos(); delete l[nome]; try{ localStor
 function ldExportar(){ window.open('/api/funil/pessoas.csv?'+ldQs(), '_blank'); }
 function ldUltimo(u){
   var pg = v2Pg(u.pg);
-  var t = { entrou:'Chegou em '+pg, saiu:'Saiu da '+pg, checkout:'Abriu o checkout', pitch:'Passou do pitch', compra:'Comprou',
+  var t = { entrou:'Chegou em '+pg, saiu:'Saiu da '+pg, checkout:'Abriu o checkout', umclique:'Clicou no 1 clique do upsell', pitch:'Passou do pitch', compra:'Comprou',
             tentativa: u.rot || 'Tentou pagar', clique:'Clicou em "'+String(u.rot||'').slice(0,24)+'"', friccao:'Clique morto', video:'Vendo a VSL' }[u.tipo] || (u.tipo || '—');
   return fnEsc(t)+(u.em ? ' · '+(v2Ha(u.em) === 'agora' ? 'agora' : 'há '+v2Ha(u.em)) : '');
 }
@@ -39336,6 +39409,7 @@ var LD_EV = {
   clique:   function(e){ return ['☝','', 'Clicou em "'+(e.rot||'?')+'"', e.extra.player ? 'no player' : '']; },
   friccao:  function(e){ return e.extra.motivo === 'raiva' ? ['⚠','warn','Clique de raiva em "'+(e.rot||'?')+'"','vários cliques seguidos no mesmo lugar'] : ['⚠','warn','Clique morto em "'+(e.rot||'?')+'"','parece clicável e não é']; },
   checkout: function(e){ return ['🛒','warn', 'Clicou em '+(e.rot ? '"'+e.rot+'"' : 'comprar'), 'foi pro checkout'+(e.extra.destino?' '+e.extra.destino:'')]; },
+  umclique: function(e){ return ['🛒','warn', 'Clicou em '+(e.rot ? '"'+e.rot+'"' : 'comprar o upsell'), 'compra de 1 clique'+(e.extra.plat === 'payt' ? ' da Payt' : '')]; },
   tentativa:function(e){ return ['✕','bad', e.rot || 'Tentou pagar', (e.extra.motivo||'')+(e.extra.casou?' · ligado pelo '+(e.extra.casou==='sck'?'id (sck)':e.extra.casou):'')]; },
   compra:   function(e){ return ['✓','ok', 'Compra aprovada · '+(e.rot||''), 'webhook · '+(e.extra.casou==='sck' ? 'ligado pela jornada (sck)' : e.extra.casou ? 'ligado pelo '+e.extra.casou : 'sem casamento')]; },
   estorno:  function(e){ return ['↩','bad', 'Estorno · '+(e.rot||''), e.extra.status||'']; },
