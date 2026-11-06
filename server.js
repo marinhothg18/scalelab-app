@@ -5640,6 +5640,24 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
 });
 // A soma de cada campanha aparece pra todos, como o faturamento dela sempre apareceu.
 // O valor de cada venda só vai pra Diretoria e sócios (`dir`).
+// A venda é deste projeto? É a régua do Resumo (Análise de tráfego) e do Resultado do
+// projeto: as duas telas têm que contar as mesmas vendas. Vale o funil do projeto, o nome
+// do projeto na campanha, o produto cadastrado nele ou, sem cadastro, o produto citado
+// nos blocos dos funis dele (o Apostilai Elite ficava fora do CONCURSO e sumia).
+function _pedidoDoProjetoResumoFn(db, nomeProj) {
+  const np = _nrm(nomeProj);
+  if (!np) return () => true;
+  const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean);
+  const funisProj = new Set(funis.filter(f => _nrm(f.projeto) === np).map(f => f.id));
+  const prods = _produtosCfg(db), projDoProduto = _projetosDoProdutoFn(funis);
+  return p => {
+    if (p.funil && funisProj.has(p.funil)) return true;
+    if (_campNorm(p.cred_camp || p.camp).indexOf(np) >= 0) return true;
+    const pr = _produtoDe(p.produto, prods);
+    if (pr) return _nrm(pr.projeto) === np;
+    return [...projDoProduto(p.produto)].some(x => _nrm(x) === np);
+  };
+}
 function _tmxPorCampanha(db, de, ate, projeto, dir) {
     // projeto da tela = dashboard da Utmify; no TMX, os funis com o mesmo nome de projeto
     let nomeProj = '';
@@ -5647,21 +5665,7 @@ function _tmxPorCampanha(db, de, ate, projeto, dir) {
       const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto);
       nomeProj = dP ? String(dP.nome || '').trim() : '';
     }
-    const np = _nrm(nomeProj);
-    const funisProj = new Set((Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : [])
-      .filter(f => f && np && _nrm(f.projeto) === np).map(f => f.id));
-    const prods = _produtosCfg(db);
-    // produto sem cadastro: vale o projeto dos funis cujos blocos citam o produto
-    // (o Apostilai Elite ficava fora do CONCURSO e as vendas dele sumiam daqui)
-    const projDoProduto = _projetosDoProdutoFn((Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(Boolean));
-    const doProjeto = p => {
-      if (!np) return true;
-      if (p.funil && funisProj.has(p.funil)) return true;
-      if (_campNorm(p.cred_camp || p.camp).indexOf(np) >= 0) return true;
-      const pr = _produtoDe(p.produto, prods);
-      if (pr) return _nrm(pr.projeto) === np;
-      return [...projDoProduto(p.produto)].some(x => _nrm(x) === np);
-    };
+    const doProjeto = _pedidoDoProjetoResumoFn(db, nomeProj);
     const peds = _q(`SELECT pedido, valor, liquido, produto, cred_canal, cred_camp, cred_cont, camp, casou, visitante, funil, sem_origem, em
                      FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND dia BETWEEN ? AND ? ORDER BY em`).all(de, ate).filter(doProjeto);
     const linha = p => ({ pedido: p.pedido, em: p.em, valor: dir ? (Number(p.valor) || 0) : null, produto: p.produto || '',
@@ -13460,6 +13464,14 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
 
     // ── vendas ──
     const vendas = _vendasDoFunil(dbj, esc, per, nomeCampanha, regra);
+    // Sem regra de campanha o investimento é do projeto todo, então as vendas também:
+    // as mesmas do Resumo (Análise de tráfego). Antes o Resultado mostrava 26 vendas num
+    // dia em que o projeto teve 32: o Elite e o Acervo sem jornada ficavam de fora.
+    if (!regra) {
+      const doProj = _pedidoDoProjetoResumoFn(dbj, f.projeto), ja = new Set(vendas.map(o => o.id));
+      _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND renovacao=0').all(per.de, per.ate)
+        .forEach(o => { if (!ja.has(o.id) && doProj(o)) vendas.push(Object.assign({ por: 'projeto' }, o)); });
+    }
     const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
     const pagas = vendas.filter(o => o.pago && !o.estorno);
     const estornos = vendas.filter(o => o.estorno);
@@ -13616,7 +13628,8 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
         porJornada: vendas.filter(o => o.por === 'jornada' && o.pago).length,
         porCampanha: vendas.filter(o => o.por === 'campanha' && o.pago).length,
         porProduto: vendas.filter(o => o.por === 'produto' && o.pago).length,
-        porComprador: vendas.filter(o => o.por === 'comprador' && o.pago).length
+        porComprador: vendas.filter(o => o.por === 'comprador' && o.pago).length,
+        porProjeto: vendas.filter(o => o.por === 'projeto' && o.pago).length
       },
       topo: { investido: gasto, cliques, chegaram, checkout, compraram },
       etapas, queda, dias, notas,
