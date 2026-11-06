@@ -37886,7 +37886,7 @@ function fiLinhaImportacao(c){
   var r = c.resumo || {}, contas = r.contas || {}, ult = (c.importacoes || []).slice(-1)[0];
   var det = ['por arquivo (OFX ou CSV)', ult ? 'último arquivo '+fiHa(ult.em)+(ult.porNome ? ' por '+fnEsc(ult.porNome) : '') : 'nenhum arquivo ainda'].join(' · ');
   var res = Object.keys(contas).map(function(k){ return fnEsc(k)+' '+fiMoeda(contas[k].valor, contas[k].moeda); }).join(' · ');
-  if(ult) res += (res ? ' · ' : '')+fnEsc(ult.arquivo)+': '+fnNum(ult.movs)+' movimentos de '+fiBR(ult.de)+' a '+fiBR(ult.ate)+' ('+fnNum(ult.novos)+' novos)';
+  if(ult) res += (res ? ' · ' : '')+fnEsc(ult.arquivo)+': '+fnNum(ult.movs)+(ult.movs === 1 ? ' movimento' : ' movimentos')+' de '+fiBR(ult.de)+' a '+fiBR(ult.ate)+' ('+fnNum(ult.novos)+(ult.novos === 1 ? ' novo)' : ' novos)');
   var velho = ult && Date.now() - ult.em > 7 * 86400000;
   return '<div class="fi-conn"><div class="lg" style="background:#820AD1">NU</div><div class="t"><b>'+fnEsc(c.nome)+'</b><span>'+det+'</span>'+(res ? '<span class="fi-cx-res">'+res+'</span>' : '')+
     (velho ? '<div class="fi-cx-msg warn">O último extrato tem mais de uma semana. Exporte de novo pra o caixa ficar em dia.</div>' : '')+'</div>'+
@@ -37931,7 +37931,7 @@ function fiImportarEnviar(id, bt){
       return v2Json('/api/fin/importar', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ conexao:conexao, nome:nome, arquivo:txt, nomeArquivo:f.name }) });
     }).then(function(d){
       var im = d.importacao; conexao = d.conexao.id;   // o segundo arquivo cai na mesma conexão
-      linhas.push('<b>'+fnEsc(f.name)+'</b>: '+(im.tipo === 'cartao' ? 'fatura do cartão' : 'extrato da conta')+' · '+fnNum(im.movs)+' movimentos de '+fiBR(im.de)+' a '+fiBR(im.ate)+' · <span class="v2-bom">'+fnNum(im.novos)+' novos</span>');
+      linhas.push('<b>'+fnEsc(f.name)+'</b>: '+(im.tipo === 'cartao' ? 'fatura do cartão' : 'extrato da conta')+' · '+fnNum(im.movs)+(im.movs === 1 ? ' movimento' : ' movimentos')+' de '+fiBR(im.de)+' a '+fiBR(im.ate)+' · <span class="v2-bom">'+fnNum(im.novos)+(im.novos === 1 ? ' novo' : ' novos')+'</span>');
     }).catch(function(e){ erros++; linhas.push('<b>'+fnEsc(f.name)+'</b>: <span class="v2-ruim">'+fnEsc(e.message)+'</span>'); })
       .then(function(){ out.innerHTML = linhas.join('<br>')+(i + 1 < fs.length ? '<br>Importando…' : ''); proximo(i + 1); });
   };
