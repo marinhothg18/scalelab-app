@@ -38169,7 +38169,8 @@ function rsPintar(){
       return p + rsEtapaLinha(e);
     }
       var base = nDe[paiDe[e.k]] || 0, cor = e.k === 'recuperacao' ? '#8B5CF6' : '#EF4444';
-      var cl = (e.k === 'pix' || e.k === 'cartao') && e.n ? ' style="cursor:pointer" onclick="ldIrPara({status:\'checkout\'})" title="Abrir quem abriu o checkout e não comprou"' : '';
+      var cl = (e.k === 'pix' || e.k === 'cartao') && e.n ? ' style="cursor:pointer" onclick="ldIrPara({status:\'checkout\'})" title="Abrir quem abriu o checkout e não comprou"'
+             : e.k === 'recuperacao' && e.n ? ' style="cursor:pointer" onclick="rsVendas(\'rec\')" title="Ver as vendas com recuperação"' : '';
       return '<div class="v2-barl rs-sub"'+cl+'><div class="t"><span style="color:'+cor+'">↳</span> '+fnEsc(e.nome)+'<small>'+fnEsc(e.fonte || '')+'</small></div>'+
         '<div class="v2-trilho"><i style="width:'+(base ? Math.max(1.5, e.n / base * 100) : 0).toFixed(1)+'%;background:'+cor+';opacity:.75"></i></div>'+
         '<div class="n">'+fnNum(e.n)+(base ? ' <small>· '+Math.round(e.n / base * 100)+'%</small>' : '')+'</div></div>';
@@ -38269,7 +38270,7 @@ function vdPorCanalTab(d, roasAlvo, vazio){
       : 'Nenhuma venda do período passou pela recuperação.')+'</div>' : '';
   var h = recTxt+'<div class="pc-duas"><div><div class="pc-rot">Todas as vendas</div><div class="v2-tab-w"><table class="v2-tab"><thead><tr><th>Fonte</th><th class="n">Vendas</th><th class="n">%</th><th class="n">Faturou</th><th class="n">ROAS</th></tr></thead><tbody>'+
     fs.map(function(x){
-      return '<tr><td><b style="font-weight:600">'+fnEsc(x.nome)+'</b>'+bar(x, fs)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+pc(Number(x.vendas) || 0, totV)+'</td><td class="n">'+din(x.fat)+'</td><td class="n">'+
+      return '<tr><td><b style="font-weight:600">'+fnEsc(x.nome)+'</b>'+(x.apoio ? ' <small class="fx-sub">· só as sem anúncio'+(recJunto ? '; '+recJunto+' com anúncio estão em Anúncios da Meta' : '')+'</small>' : '')+bar(x, fs)+'</td><td class="n">'+x.vendas+'</td><td class="n">'+pc(Number(x.vendas) || 0, totV)+'</td><td class="n">'+din(x.fat)+'</td><td class="n">'+
         (x.apoio ? '<span class="v2-pill roxo">apoio</span>' : roas(x.roas))+'</td></tr>';
     }).join('')+'</tbody></table></div></div>';
   var semGasto = !d.posGasto, dir = ps.some(function(x){ return x.fat != null; });
@@ -38363,8 +38364,9 @@ function rsVendas(tipo, valor){
   var f = fnAtual(); if(!f) return;
   var p = fnPeriodo();
   var url = '/api/funil/vendas-lista?funil='+encodeURIComponent(f.id)+'&de='+(tipo==='dia'?valor:p.de)+'&ate='+(tipo==='dia'?valor:p.ate)+
-            (tipo==='sem' ? '&tipo=sem'+(valor?'&motivo='+encodeURIComponent(valor):'') : '');
-  var ov = v2Modal('<div class="v2-cab"><h2>'+(tipo==='dia' ? 'Vendas de '+v2Dia(valor) : 'Vendas sem origem'+(valor?' · '+fnEsc(valor):''))+'</h2>'+
+            (tipo==='sem' ? '&tipo=sem'+(valor?'&motivo='+encodeURIComponent(valor):'') : tipo==='rec' ? '&tipo=recuperacao' : '');
+  var tit = tipo==='dia' ? 'Vendas de '+v2Dia(valor) : tipo==='rec' ? 'Vendas com recuperação · '+fnEsc(fnPeriodoRotulo()) : 'Vendas sem origem'+(valor?' · '+fnEsc(valor):'');
+  var ov = v2Modal('<div class="v2-cab"><h2>'+tit+'</h2>'+
     '<button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div><div class="rs-vl fx-vazio">Buscando…</div>', 'p');
   v2Json(url).then(function(d){
     var cx = ov.querySelector('.rs-vl');
@@ -38372,8 +38374,8 @@ function rsVendas(tipo, valor){
     cx.className = 'rs-vl v2-tab-w';
     cx.innerHTML = '<table class="v2-tab"><thead><tr><th>Quando</th><th>Produto</th><th class="n">Valor</th><th>Origem</th></tr></thead><tbody>'+
       d.vendas.map(function(v){
-        var orig = v.semOrigem ? '<span class="v2-pill warn">'+fnEsc(v.semOrigem)+'</span>' :
-                   (v2Fonte(v.fonte)+(v.anuncio ? ' · '+fnEsc(v2Anuncio(v.anuncio)) : '')+(v.casou ? ' <span class="v2-pill neu">'+fnEsc(v.casou)+'</span>' : ''));
+        var orig = (v.recuperacao ? '<span class="v2-pill roxo">'+fnEsc(v.recuperacao)+'</span> ' : '')+(v.semOrigem ? '<span class="v2-pill warn">'+fnEsc(v.semOrigem)+'</span>' :
+                   (v2Fonte(v.fonte)+(v.anuncio ? ' · '+fnEsc(v2Anuncio(v.anuncio)) : '')+(v.casou ? ' <span class="v2-pill neu">'+fnEsc(v.casou)+'</span>' : '')));
         return '<tr class="clica" title="Ver o marketing desta venda" onclick="vdAbrir(\''+fnEsc(v.id)+'\')"><td>'+v2Data(v.em)+'</td><td>'+fnEsc(v.produto||'—')+
           '<span class="sub">'+fnEsc(v.metodo||'')+(v.utm ? ' · '+fnEsc(v.utm.slice(0,60)) : '')+'</span></td><td class="n">'+v2Din2(v.valor)+'</td><td>'+orig+'</td></tr>';
       }).join('')+'</tbody></table>';

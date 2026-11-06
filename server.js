@@ -13224,6 +13224,29 @@ async function _projetoIdDoFunil(f) {
 //   produto  — sem pessoa nem campanha, funil único do projeto e produto do projeto
 // De que projetos é um produto: o do cadastro de Produtos ou, sem cadastro, o
 // dos funis cujos blocos citam o produto ("Apostilai Elite" casa com "Apostilai Elite 10").
+// As vendas que o Resultado conta. Sem regra de campanha o investimento é do projeto
+// todo, então as vendas também: as mesmas do Resumo (Análise de tráfego). Antes o
+// Resultado mostrava 26 vendas num dia em que o projeto teve 32 (o Elite e o Acervo
+// sem jornada ficavam de fora). A lista que abre ao clicar usa esta mesma conta.
+function _vendasDoResultado(dbj, esc, per, nomeCampanha, regra) {
+  const vendas = _vendasDoFunil(dbj, esc, per, nomeCampanha, regra);
+  if (!regra) {
+    const doProj = _pedidoDoProjetoResumoFn(dbj, esc.f.projeto), ja = new Set(vendas.map(o => o.id));
+    _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND renovacao=0').all(per.de, per.ate)
+      .forEach(o => { if (!ja.has(o.id) && doProj(o)) vendas.push(Object.assign({ por: 'projeto' }, o)); });
+  }
+  return vendas;
+}
+// O canal da recuperação pela origem que veio na venda (utm_source)
+function _nomeRecuperacao(fonte) {
+  const f = String(fonte || '').toLowerCase();
+  if (/payt.?call/.test(f)) return 'Payt Call';
+  if (/ligac|call/.test(f)) return 'Ligação';
+  if (/whats|wpp|zap/.test(f)) return 'WhatsApp';
+  if (/mail/.test(f)) return 'E-mail';
+  if (/sms/.test(f)) return 'SMS';
+  return f ? f : 'Recuperação';
+}
 function _projetosDoProdutoFn(todosFunis) {
   const projPorProduto = {};
   todosFunis.forEach(f => (f.etapas || []).forEach(e => String(e.produto || '').split(/[,;\n]+/).map(_nrm).filter(Boolean)
@@ -13463,15 +13486,7 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
       .all(per.de, per.ate, ...esq.args).forEach(r => { porDiaPessoas[r.dia] = r.n; });
 
     // ── vendas ──
-    const vendas = _vendasDoFunil(dbj, esc, per, nomeCampanha, regra);
-    // Sem regra de campanha o investimento é do projeto todo, então as vendas também:
-    // as mesmas do Resumo (Análise de tráfego). Antes o Resultado mostrava 26 vendas num
-    // dia em que o projeto teve 32: o Elite e o Acervo sem jornada ficavam de fora.
-    if (!regra) {
-      const doProj = _pedidoDoProjetoResumoFn(dbj, f.projeto), ja = new Set(vendas.map(o => o.id));
-      _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND renovacao=0').all(per.de, per.ate)
-        .forEach(o => { if (!ja.has(o.id) && doProj(o)) vendas.push(Object.assign({ por: 'projeto' }, o)); });
-    }
+    const vendas = _vendasDoResultado(dbj, esc, per, nomeCampanha, regra);
     const liq = o => (o.liquido != null ? o.liquido : (Number(o.valor) || 0) * (1 - (custos.gateway || 0) / 100));
     const pagas = vendas.filter(o => o.pago && !o.estorno);
     const estornos = vendas.filter(o => o.estorno);
@@ -13511,7 +13526,11 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
       if (/^pix/i.test(m)) pixSem.add(pessoaDe(o));
       else if (/cart[aã]o recusado/i.test(m)) cartaoRec.add(pessoaDe(o));
     });
-    const recuperou = pagas.filter(o => o.apoio).length;
+    const recupL = pagas.filter(o => o.apoio), recupPor = {};
+    recupL.forEach(o => { const n = _nomeRecuperacao(o.fonte); recupPor[n] = (recupPor[n] || 0) + 1; });
+    const recuperou = recupL.length;
+    const recupTxt = Object.keys(recupPor).sort((a, b) => recupPor[b] - recupPor[a]).map(n => n + ' ' + recupPor[n]).join(' · ');
+    const recupSoRec = recupL.filter(o => !(o.cred_canal === 'meta' || o.cred_canal === 'google')).length;
     const etapas = [
       { k: 'impressoes', nome: 'Impressões', fonte: 'Meta', n: imp, custo: imp ? gasto / imp * 1000 : 0, rotCusto: 'CPM' },
       { k: 'cliques', nome: 'Cliques', fonte: 'Meta', n: cliques, custo: cliques ? gasto / cliques : 0, rotCusto: 'CPC' },
@@ -13523,7 +13542,8 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
       { k: 'pix', nome: 'Pix gerado, não pago', fonte: 'não compraram', n: pixSem.size, sub: true },
       { k: 'cartao', nome: 'Cartão recusado', fonte: 'não compraram', n: cartaoRec.size, sub: true },
       { k: 'compraram', nome: 'Compraram', fonte: 'webhook Payt', n: compraram, custo: compraram ? gasto / compraram : 0, rotCusto: 'CPA' },
-      { k: 'recuperacao', nome: 'Pela recuperação', fonte: 'das compras, a recuperação ajudou', n: recuperou, sub: true }
+      { k: 'recuperacao', nome: 'Pela recuperação', n: recuperou, sub: true,
+        fonte: recuperou ? recupTxt + ' · ' + (recuperou - recupSoRec) + ' com anúncio, ' + recupSoRec + ' sem' : 'nenhuma compra passou pela recuperação' }
     ];
     // a maior queda entre etapas seguidas; sem Vturb no funil, play e pitch ficam fora,
     // e de impressão pra clique não conta (é o CTR, sempre baixo)
@@ -13674,12 +13694,14 @@ app.get('/api/funil/vendas-lista', authNegocio, async (req, res) => {
       l = _q("SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0 AND renovacao=0 AND sem_origem IS NOT NULL ORDER BY em DESC LIMIT 300").all(per.de, per.ate);
       if (req.query.motivo) l = l.filter(o => o.sem_origem === req.query.motivo);
     } else {
-      l = _vendasDoFunil(dbj, esc, per, {}, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).sort((a, b) => b.em - a.em).slice(0, 300);
+      l = _vendasDoResultado(dbj, esc, per, {}, _regraCampanhas(esc.f)).filter(o => o.pago && !o.estorno).sort((a, b) => b.em - a.em);
+      if (req.query.tipo === 'recuperacao') l = l.filter(o => o.apoio);
       if (req.query.dia) l = l.filter(o => o.dia === req.query.dia);
+      l = l.slice(0, 300);
     }
     res.json({ ok: true, vendas: l.map(o => ({ id: o.id, pedido: o.pedido, em: o.em, produto: o.produto, valor: o.valor, metodo: o.metodo, plataforma: _platDoPedido(o),
       visitante: o.visitante, casou: o.casou, semOrigem: o.sem_origem, fonte: o.cred_fonte || o.fonte, anuncio: o.cred_cont || o.cont,
-      utm: [o.fonte, o.camp, o.cont].filter(Boolean).join(' · '), por: o.por || '' })) });
+      utm: [o.fonte, o.camp, o.cont].filter(Boolean).join(' · '), por: o.por || '', recuperacao: o.apoio ? _nomeRecuperacao(o.fonte) : '' })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -16132,7 +16154,7 @@ function _pessoaDaVenda(v) {
 }
 function _canalRecuperacao(v) {
   const f = String(v.utmSource || '').toLowerCase();
-  if (/paytcall|ligac|call/.test(f)) return 'Ligação Payt';
+  if (/paytcall|ligac|call/.test(f)) return 'Payt Call';
   if (/whats|wpp|zap/.test(f)) return 'WhatsApp';
   if (/mail/.test(f)) return 'E-mail';
   if (/sms/.test(f)) return 'SMS';
