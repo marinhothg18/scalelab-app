@@ -20063,7 +20063,27 @@ app.get('/api/projeto/reembolsos', authNegocio, (req, res) => {
     // a taxa: reembolsos contra as vendas aprovadas do mesmo período
     const vendas = _q('SELECT * FROM pedidos WHERE pago=1 AND renovacao=0 AND dia>=? AND dia<=?').all(de, ate).filter(doProjeto);
     const tempos = lista.filter(x => x.tempoMs != null).map(x => x.tempoMs).sort((a, b) => a - b);
-    res.json({ ok: true, projeto, de, ate, reembolsos: lista,
+    // Por produto: quantos compraram e quantos pediram de volta, pra ver que
+    // produto devolve mais. A lista é a união dos dois lados — produto que
+    // vendeu no período e produto que só aparece no reembolso (a compra pode
+    // ser de antes) entram os dois, senão some justamente o que está doendo.
+    const porProduto = {};
+    const nomeProd = o => String(o.produto || o.plano || '').trim() || 'Sem produto';
+    const cel = k => porProduto[k] || (porProduto[k] = { produto: k, vendas: 0, valorVendas: 0, reembolsos: 0, valor: 0, chargebacks: 0, _t: [] });
+    vendas.forEach(v => { const c = cel(nomeProd(v)); c.vendas++; c.valorVendas += Number(v.valor) || 0; });
+    lista.forEach(x => {
+      const c = cel(nomeProd(x));
+      c.reembolsos++; c.valor += x.valor;
+      if (x.tipo === 'chargeback') c.chargebacks++;
+      if (x.tempoMs != null) c._t.push(x.tempoMs);
+    });
+    const produtos = Object.keys(porProduto).map(k => {
+      const c = porProduto[k], t = c._t.sort((a, b) => a - b);
+      return { produto: c.produto, vendas: c.vendas, valorVendas: c.valorVendas, reembolsos: c.reembolsos,
+               valor: c.valor, chargebacks: c.chargebacks,
+               tempoMediano: t.length ? t[Math.floor(t.length / 2)] : null };
+    }).sort((a, b) => b.valor - a.valor || b.reembolsos - a.reembolsos || b.vendas - a.vendas);
+    res.json({ ok: true, projeto, de, ate, reembolsos: lista, produtos,
       total: { n: lista.length, valor: lista.reduce((s, x) => s + x.valor, 0), chargebacks: lista.filter(x => x.tipo === 'chargeback').length,
         vendas: vendas.length, valorVendas: vendas.reduce((s, x) => s + (Number(x.valor) || 0), 0),
         tempoMediano: tempos.length ? tempos[Math.floor(tempos.length / 2)] : null } });

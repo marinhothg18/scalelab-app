@@ -2131,6 +2131,9 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .pv-8{display:inline-flex;gap:2px;vertical-align:middle;margin-right:6px}
 .pv-8 i{width:6px;height:14px;border-radius:2px;background:var(--bg3)}
 .pv-8 i.on{background:var(--v2-verde,#22C55E)}
+/* Reembolsos › por produto: a linha escolhida filtra a lista de baixo */
+.rb-prod tr.clica{cursor:pointer} .rb-prod tr.clica:hover td{background:var(--bg3)}
+.rb-prod tr.on td{background:var(--bg3)} .rb-prod tr.on td:first-child{box-shadow:inset 3px 0 0 var(--v2-azul,#1B9CFA)}
 @media (max-width:900px){.pc-grade{grid-template-columns:1fr}.pv-kpis{grid-template-columns:1fr 1fr}}
 /* Meta · API de Conversões */
 .capi-chips{display:flex;flex-wrap:wrap;gap:5px}
@@ -39272,11 +39275,12 @@ function pvPintar(){
 }
 // ── REEMBOLSOS (aba própria, embaixo de Vendas): quem pediu o dinheiro de volta, quanto
 // tempo depois da compra, de que anúncio a venda tinha vindo e o contato. Só Diretoria e Sócio.
-var rbDados = null, rbPedido = 0;
+var rbDados = null, rbPedido = 0, rbProd = '';
 function rbCarregar(){
   var cx = document.getElementById('fn-p-reembolsos'); if(!cx) return;
   if(!lcEhDir()){ cx.innerHTML = '<div class="v2-alerta info"><div><b>Os reembolsos ficam com a Diretoria</b><span>A lista tem o nome, o e-mail e o telefone de cada cliente.</span></div></div>'; return; }
   var p = fnPeriodo(), meu = ++rbPedido;
+  rbProd = '';   // período novo, produto escolhido some
   cx.innerHTML = '<div class="fx-vazio">Buscando os reembolsos…</div>';
   v2Json('/api/projeto/reembolsos?projeto='+encodeURIComponent(fnProj || '')+'&de='+p.de+'&ate='+p.ate)
     .then(function(r){ if(meu !== rbPedido) return; rbDados = r; rbPintar(); })
@@ -39292,6 +39296,38 @@ function rbTempo(ms){
   return d+' dias'+(r ? ' e '+r+' h' : '');
 }
 function rbZap(t){ var n = String(t || '').replace(/\D/g, ''); if(!n) return ''; if(n.length <= 11) n = '55'+n; return 'https://wa.me/'+n; }
+// o mesmo nome que o servidor usa pra agrupar, pra linha e tabela baterem
+function rbNomeProd(x){ return String(x.produto || x.plano || '').trim() || 'Sem produto'; }
+function rbVerProduto(i){
+  var p = (rbDados && rbDados.produtos || [])[i];
+  rbProd = (p && rbProd === p.produto) ? '' : (p ? p.produto : '');
+  rbPintar();
+}
+// a tabela por produto: quantos compraram, quantos devolveram e a taxa de cada um
+function rbTabProdutos(){
+  var ps = (rbDados && rbDados.produtos) || []; if(!ps.length) return '';
+  var pct = function(a, b){ return b ? (a / b * 100).toLocaleString('pt-BR', { maximumFractionDigits:1 })+'%' : null; };
+  var foraDoPeriodo = false;
+  var linhas = ps.map(function(p, i){
+    var tx = pct(p.reembolsos, p.vendas), cor = 'neu';
+    if(tx != null){ var v = p.reembolsos / p.vendas * 100; cor = v >= 20 ? 'bad' : v >= 10 ? 'warn' : 'ok'; }
+    else if(p.reembolsos) foraDoPeriodo = true;
+    return '<tr class="clica'+(rbProd === p.produto ? ' on' : '')+'" title="Ver só os reembolsos deste produto" onclick="rbVerProduto('+i+')">'+
+      '<td><b>'+fnEsc(p.produto)+'</b>'+(p.chargebacks ? '<span class="sub">'+fnNum(p.chargebacks)+' '+(p.chargebacks === 1 ? 'chargeback' : 'chargebacks')+'</span>' : '')+'</td>'+
+      '<td class="n">'+fnNum(p.vendas)+'<span class="sub">'+(p.vendas ? v2Din(p.valorVendas) : 'nada no período')+'</span></td>'+
+      '<td class="n">'+fnNum(p.reembolsos)+'</td>'+
+      '<td class="n">'+(tx != null ? '<span class="v2-pill '+cor+'">'+tx+'</span>'
+        : '<span class="v2-pill neu">—</span><span class="sub">compra de antes</span>')+'</td>'+
+      '<td class="n">'+(p.valor ? v2Din(p.valor) : '—')+'</td></tr>';
+  }).join('');
+  return '<div class="fx-sub" style="margin:16px 0 6px"><b>Por produto</b> · clique num produto pra ver só os reembolsos dele</div>'+
+    '<div style="overflow-x:auto" class="rb-prod"><table class="sv-tab pv-tab" style="min-width:560px">'+
+    '<tr><th>Produto</th><th class="n">Compraram</th><th class="n">Reembolsaram</th><th class="n">Taxa</th><th class="n">Devolvido</th></tr>'+
+    linhas+'</table></div>'+
+    '<div class="fx-sub" style="margin:6px 0 14px">A taxa é o reembolso que chegou no período contra as vendas aprovadas no período. '+
+    'Quem comprou antes e devolveu agora conta no reembolso e não na venda'+(foraDoPeriodo ? ' — é o caso dos produtos sem taxa acima' : '')+
+    ', então num período curto a taxa de um produto pode passar de 100%.</div>';
+}
 function rbPintar(){
   var cx = document.getElementById('fn-p-reembolsos'), r = rbDados; if(!cx || !r) return;
   var t = r.total || {}, l = r.reembolsos || [], multi = r.de !== r.ate;
@@ -39300,10 +39336,17 @@ function rbPintar(){
   var h = '<div class="pv-kpis">'+kpi('Reembolsadas', fnNum(t.n || 0), t.chargebacks ? fnNum(t.chargebacks)+' '+(t.chargebacks === 1 ? 'é chargeback' : 'são chargeback') : 'nenhum chargeback')+
       kpi('Valor devolvido', v2Din(t.valor || 0), pct(t.valor || 0, t.valorVendas)+' do faturamento do período')+
       kpi('Taxa de reembolso', pct(t.n || 0, t.vendas), fnNum(t.vendas || 0)+' vendas aprovadas no período')+
-      kpi('Tempo até reembolsar', rbTempo(t.tempoMediano), 'metade pede antes disso')+'</div>';
+      kpi('Tempo até reembolsar', rbTempo(t.tempoMediano), 'metade pede antes disso')+'</div>'+rbTabProdutos();
   if(!l.length){ cx.innerHTML = h+'<div class="fx-vazio">Nenhum reembolso deste projeto no período.</div>'; return; }
+  if(rbProd) l = l.filter(function(x){ return rbNomeProd(x) === rbProd; });
+  // produto que vendeu e não devolveu nada também é clicável — e é boa notícia
+  if(!l.length){ cx.innerHTML = h+'<div class="fx-vazio">Nenhum reembolso de <b>'+fnEsc(rbProd)+'</b> no período. '+
+    '<a href="#" onclick="rbProd=\'\';rbPintar();return false">Ver todos</a></div>'; return; }
   var pare = ' onclick="event.stopPropagation()"';
-  h += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="fn-btn g sm" onclick="rbCsv()">Baixar a lista</button></div>'+
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">'+
+    '<div class="fx-sub">'+(rbProd ? 'Mostrando só <b>'+fnEsc(rbProd)+'</b> · '+fnNum(l.length)+' '+(l.length === 1 ? 'reembolso' : 'reembolsos')+
+      ' · <a href="#" onclick="rbProd=\'\';rbPintar();return false">ver todos</a>' : fnNum(l.length)+' '+(l.length === 1 ? 'reembolso' : 'reembolsos'))+'</div>'+
+    '<button class="fn-btn g sm" onclick="rbCsv()">Baixar a lista</button></div>'+
     '<div style="overflow-x:auto"><table class="sv-tab pv-tab" style="min-width:860px"><tr><th>Reembolso</th><th>Cliente</th><th>Produto</th><th class="n">Valor</th><th>Tempo</th><th>De onde veio</th></tr>'+
     l.map(function(x){
       var c = x.cred || {}, orig;
@@ -39328,14 +39371,18 @@ function rbPintar(){
 }
 function rbCsv(){
   var r = rbDados; if(!r || !(r.reembolsos || []).length) return;
+  // baixa o que está na tela: com produto escolhido, só os dele
+  var dados = rbProd ? r.reembolsos.filter(function(x){ return rbNomeProd(x) === rbProd; }) : r.reembolsos;
+  if(!dados.length) return;
   var q = function(v){ v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"'+v.replace(/"/g, '""')+'"' : v; };
   var dt = function(ms){ if(!ms) return ''; var d = new Date(ms); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); };
   var linhas = [['Tipo','Reembolso em','Comprou em','Tempo','Nome','E-mail','Telefone','Produto','Plano','Plataforma','Método','Valor','Campanha','Anúncio','Pedido']].concat(
-    r.reembolsos.map(function(x){ var c = x.cred || {}; return [x.tipo, dt(x.reembolsoEm), dt(x.compraEm), rbTempo(x.tempoMs), x.nome, x.email, x.telefone, x.produto, x.plano, x.plataforma, x.metodo,
+    dados.map(function(x){ var c = x.cred || {}; return [x.tipo, dt(x.reembolsoEm), dt(x.compraEm), rbTempo(x.tempoMs), x.nome, x.email, x.telefone, x.produto, x.plano, x.plataforma, x.metodo,
       String((Number(x.valor) || 0).toFixed(2)).replace('.', ','), c.camp, c.cont, x.pedido]; }));
   var a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['\ufeff'+linhas.map(function(l){ return l.map(q).join(';'); }).join('\n')], { type:'text/csv;charset=utf-8' }));
-  a.download = 'reembolsos-'+(r.projeto || 'projeto').replace(/[^\w-]+/g, '-')+'-'+r.de+'_'+r.ate+'.csv';
+  a.download = 'reembolsos-'+(r.projeto || 'projeto').replace(/[^\w-]+/g, '-')+
+    (rbProd ? '-'+rbProd.replace(/[^\w-]+/g, '-').toLowerCase() : '')+'-'+r.de+'_'+r.ate+'.csv';
   document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 
