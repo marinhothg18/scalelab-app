@@ -14578,21 +14578,23 @@ async function _lrLer(cx, cred, de, ate, passo) {
   return r;
 }
 
-// Lê uma conexão: na primeira vez os últimos 90 dias, depois os últimos 10 (pra pegar o
+// Lê uma conexão: os últimos 90 dias até uma leitura completa dar certo (se os cartões
+// falharam na primeira, a próxima volta 90 dias de novo), depois os últimos 10 (pra pegar o
 // pendente que virou processado). Cada parte falha sozinha: sem permissão pra cartões,
 // o saldo e o extrato da conta entram assim mesmo, e a tela mostra o que faltou.
 async function _finLerConexao(id, opts) {
   opts = opts || {};
   if (_finLendo[id]) return { ok:false, rodando:true };
   _finLendo[id] = Date.now();
-  let res = null, erro = null;
+  let res = null, erro = null, dias = 0;
   const avisos = [];
   try {
     _finTab();
     const cx = _finConexoes(readDB()).find(c => c.id === id);
     if (!cx) throw new Error('Conexão não encontrada.');
     const cred = _finDecifrar(cx.id, cx.cred);
-    const hoje = _diaBR(Date.now()), dias = opts.dias || (cx.ultimaLeituraOk ? 10 : 90);
+    const hoje = _diaBR(Date.now());
+    dias = opts.dias || (cx.ultimaLeituraOk && cx.leituraCheia ? 10 : 90);
     const de = _diaBR(Date.now() - (dias - 1) * 86400000);
     let deuCerto = 0, primeiroErro = null;
     // o saldo é a parte essencial: se ele falha (chave recusada, sem acesso), a leitura inteira deu erro
@@ -14611,7 +14613,7 @@ async function _finLerConexao(id, opts) {
   c.status = erro ? 'erro' : avisos.length ? 'parcial' : 'ok';
   c.ultimoErro = erro || '';
   c.avisos = erro ? [] : avisos;
-  if (!erro) { c.ultimaLeituraOk = c.ultimaLeitura; c.resumo = res; }
+  if (!erro) { c.ultimaLeituraOk = c.ultimaLeitura; c.resumo = res; if (dias >= 90 && !avisos.length) c.leituraCheia = true; }
   c._updatedAt = Date.now();
   db.timestamps[KEY_FIN_CONEX] = now();
   writeDB(db);
@@ -14693,7 +14695,7 @@ app.post('/api/fin/conexoes', authDiretoria, async (req, res) => {
     if (!c) { c = { id, provedor, criadoEm:Date.now(), criadoPor:req.user && req.user.id, criadoPorNome:req.user && req.user.nome }; lista.push(c); }
     // outra chave ou outro ambiente: o que foi lido antes não é desta conta
     const trocou = !!atual && (atual.chaveHash !== chaveHash);
-    if (trocou) { _finApagarDados(id); c.ultimaLeituraOk = null; c.resumo = null; }
+    if (trocou) { _finApagarDados(id); c.ultimaLeituraOk = null; c.resumo = null; c.leituraCheia = false; }
     Object.assign(c, { nome:txt(b.nome, 60) || FIN_PROVEDORES[provedor], ambiente, cambio, preview:'••••' + cred.apiKey.slice(-4), assina:!!cred.pem, publica,
       chaveHash, cred:_finCifrar(id, cred), status:'ok', ultimoErro:'', avisos:[], _updatedAt:Date.now() });
     db.timestamps[KEY_FIN_CONEX] = now();
@@ -14708,7 +14710,8 @@ app.post('/api/fin/conexoes/:id/ler', authDiretoria, (req, res) => {
     const c = _finConexoes(readDB()).find(x => x.id === req.params.id);
     if (!c) return res.status(404).json({ error: 'Conexão não encontrada.' });
     if (!_finLendo[c.id]) {
-      const dias = Math.min(180, Math.max(1, parseInt((req.body || {}).dias, 10) || 0)) || undefined;
+      // sem "dias" no pedido, a leitura escolhe sozinha (90 até a primeira completa, depois 10)
+      const n = parseInt((req.body || {}).dias, 10), dias = n > 0 ? Math.min(180, n) : undefined;
       _finLerConexao(c.id, { dias }).catch(() => {});
     }
     res.json({ ok:true, rodando:true });
