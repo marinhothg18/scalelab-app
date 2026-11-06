@@ -13310,6 +13310,20 @@ function _vendasDoFunil(dbj, esc, per, nomeCampanha, regra) {
     }
     if (por) out.push(Object.assign({ por }, o));
   });
+  // Mesmo comprador: upsell, downsell e order bump (Apostilai Elite, Acervo) chegam
+  // sem passar pelas páginas do funil, mas a pessoa (e-mail, telefone ou documento)
+  // já tem outro pedido ligado a ele no período, pago ou não. É venda do funil, a não
+  // ser que o produto seja de outro projeto. Antes ficavam de fora e o Resultado
+  // mostrava 26 vendas num dia em que o projeto teve 32 (05/11/2026).
+  const dentro = new Set(out.map(o => o.id)), quem = new Set();
+  out.forEach(o => { if (o.lead) quem.add('l:' + o.lead); if (o.visitante) quem.add('v:' + o.visitante); });
+  todos.forEach(o => {
+    if (dentro.has(o.id) || !((o.lead && quem.has('l:' + o.lead)) || (o.visitante && quem.has('v:' + o.visitante)))) return;
+    const pr = _produtoDe(o.produto, produtos);
+    if (pr && pr.projeto && pr.projeto !== esc.f.projeto) return;
+    if (!pr) { const ps = projetosDoProduto(o.produto); if (ps.size && !ps.has(esc.f.projeto)) return; }
+    out.push(Object.assign({ por: 'comprador' }, o));
+  });
   return out;
 }
 
@@ -13566,13 +13580,17 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     // funil e sem a taxa do gateway. Cada pedaço que fica no caminho aparece com o motivo.
     const pagasTodas = _q('SELECT * FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=1 AND estorno=0').all(per.de, per.ate);
     const doFunilIds = new Set(pagas.map(o => o.id));
+    const projetoDoProd = _projetosDoProdutoFn((Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : []).filter(Boolean));
     const foraGrupos = {};
     const somarFora = (k, nome, o) => { const g = foraGrupos[k] || (foraGrupos[k] = { k, nome, vendas: 0, valor: 0 }); g.vendas++; g.valor += Number(o.valor) || 0; };
     pagasTodas.forEach(o => {
       if (doFunilIds.has(o.id)) return;
       if (o.renovacao) return somarFora('renovacao', 'Renovações de assinatura', o);
       const prod = String(o.produto || 'Sem produto').slice(0, 60), pr = _produtoDe(o.produto, produtos);
-      if (pr && pr.projeto !== f.projeto && pr.projeto !== projetoId) somarFora('outro:' + prod, prod + ' · outro projeto', o);
+      // sem cadastro, o projeto do produto sai dos blocos de checkout dos funis
+      const deOutro = pr ? (pr.projeto !== f.projeto && pr.projeto !== projetoId)
+        : (() => { const ps = projetoDoProd(o.produto); return ps.size > 0 && !ps.has(f.projeto); })();
+      if (deOutro) somarFora('outro:' + prod, prod + ' · outro projeto', o);
       else somarFora('solta:' + prod, prod + ' · não ligada a este funil', o);
     });
     const brutoFunil = pagas.reduce((a, o) => a + (Number(o.valor) || 0), 0);
@@ -13597,7 +13615,8 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
         chargebacks: estornos.filter(o => /chargeback/i.test(o.status || '')).length,
         porJornada: vendas.filter(o => o.por === 'jornada' && o.pago).length,
         porCampanha: vendas.filter(o => o.por === 'campanha' && o.pago).length,
-        porProduto: vendas.filter(o => o.por === 'produto' && o.pago).length
+        porProduto: vendas.filter(o => o.por === 'produto' && o.pago).length,
+        porComprador: vendas.filter(o => o.por === 'comprador' && o.pago).length
       },
       topo: { investido: gasto, cliques, chegaram, checkout, compraram },
       etapas, queda, dias, notas,
