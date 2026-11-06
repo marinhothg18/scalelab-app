@@ -14478,6 +14478,30 @@ async function _lrMcp(cred, nome, args) {
   throw new Error('A Lootrush pediu pra ir mais devagar. Tento de novo na próxima leitura.');
 }
 const LR_ESTAVEIS = /^(USDC|USDT|USD|DAI|PYUSD|USDS)$/i;
+// A lista pode vir direta, embrulhada (items, nodes, edges com node, data…) ou como mapa por id.
+// Volta null quando não acha lista nenhuma: aí o aviso mostra o formato que chegou.
+function _lrLista(d, chaves) {
+  const nos = l => l.map(x => (x && x.node && typeof x.node === 'object') ? x.node : x);
+  const busca = (v, fundo) => {
+    if (Array.isArray(v)) return nos(v);
+    if (!v || typeof v !== 'object' || fundo > 3) return null;
+    for (const k of chaves.concat(['items', 'nodes', 'edges', 'data', 'results', 'list', 'records'])) {
+      if (v[k] != null) { const l = busca(v[k], fundo + 1); if (l) return l; }
+    }
+    const vals = Object.values(v);
+    if (fundo > 0 && vals.length && vals.every(x => x && typeof x === 'object' && !Array.isArray(x) && (x.id != null || x.cardId != null))) return vals;
+    return null;
+  };
+  // nada, texto ("sem movimento no período") ou {} = lista vazia, como antes
+  if (!d || typeof d !== 'object' || (!Array.isArray(d) && !Object.keys(d).length)) return [];
+  return busca(d, 0);
+}
+// só os nomes e os tipos dos campos, nenhum valor (pode ter cartão e saldo ali dentro)
+function _lrForma(d) {
+  const t = v => Array.isArray(v) ? 'lista(' + v.length + ')' : v && typeof v === 'object' ? '{' + Object.keys(v).slice(0, 8).join(',') + '}' : typeof v;
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return t(d);
+  return '{' + Object.keys(d).slice(0, 12).map(k => k + ':' + t(d[k])).join(', ') + '}';
+}
 async function _lrLer(cx, cred, de, ate, passo) {
   const r = { contas:{}, movs:0, cartoes:0 }, hoje = _diaBR(Date.now());
   const regra = _finCambioRegra(_finCfg(readDB()), cx);
@@ -14495,7 +14519,9 @@ async function _lrLer(cx, cred, de, ate, passo) {
   let cartoes = [];
   await passo('cartões', async () => {
     const c = await _lrMcp(cred, 'getUserCards', {}) || {};
-    cartoes = (c.cards || []).filter(x => x && x.id);
+    const lc = _lrLista(c, ['cards', 'userCards']);
+    if (!lc) throw new Error('a lista de cartões veio num formato que eu não conheço: ' + _lrForma(c));
+    cartoes = lc.filter(x => x && (x.id || x.cardId)).map(x => x.id ? x : Object.assign({ id: x.cardId }, x));
     const tot = r._cartoesUsd != null ? r._cartoesUsd : Number(c.balances && c.balances.totalUsd);
     if (isFinite(tot)) { _finGravarSaldo(cx.id, 'Lootrush · cartões', tot, 'USD', brl(tot, hoje)); r.contas['Lootrush · cartões'] = { valor:tot, moeda:'USD' }; }
     cartoes.forEach(x => {
@@ -14510,7 +14536,8 @@ async function _lrLer(cx, cred, de, ate, passo) {
       for (let page = 1; page <= 30; page++) {
         const d = await _lrMcp(cred, 'getUserCardTransactions', { cardId:c.id, cardIssuerUserId:c.cardIssuerUserId, page, pageSize:100,
           startDate:de + 'T00:00:00.000Z', endDate:ate + 'T23:59:59.999Z' }) || {};
-        const lista = d.transactions || d.items || [];
+        const lista = _lrLista(d, ['transactions', 'cardTransactions']);
+        if (!lista) throw new Error('os gastos do cartão vieram num formato que eu não conheço: ' + _lrForma(d));
         lista.forEach(t => {
           if (!t || t.id == null) return;
           const q = _finQuando(t.createdAt || t.date), sx = _finMai([t.type, t.polarity, t.direction].join(' '));
@@ -14530,7 +14557,9 @@ async function _lrLer(cx, cred, de, ate, passo) {
     for (const [a, b] of _finJanelas(de, ate, 30)) {
       const d = await _lrMcp(cred, 'getAccountHistory', { startDate:a + 'T00:00:00.000Z', endDate:b + 'T23:59:59.999Z', limit:500 }) || {};
       if (d.truncated) r.truncado = true;
-      (d.transactions || d.nodes || []).forEach(t => {
+      const lh = _lrLista(d, ['transactions', 'history']);
+      if (!lh) throw new Error('o extrato veio num formato que eu não conheço: ' + _lrForma(d));
+      lh.forEach(t => {
         if (!t) return;
         const recebeu = Number(t.amountReceived) || 0, enviou = Number(t.amountSent) || 0, tipo = String(t.type || t.transactionType || '');
         const dir = /swap|bridge/i.test(tipo) || (recebeu && enviou) ? 'interna' : recebeu ? 'entrada' : enviou ? 'saida' : '?';
