@@ -1808,6 +1808,13 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-tab{width:100%;border-collapse:collapse;font-size:12.5px}
 .v2-tab th{text-align:left;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);font-weight:800;padding:0 10px 8px;border-bottom:1px solid var(--v2-linha);white-space:nowrap}
 .v2-tab td{padding:10px;border-bottom:1px solid var(--v2-linha);vertical-align:middle}
+.v2-barl.rs-sub{margin-top:-4px}
+.rs-passa{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--text2);padding:0 0 0 2px;margin:-3px 0 -2px}
+.rs-passa b{color:var(--text);font-weight:700}
+.rs-passa .perdeu{color:var(--text2);white-space:nowrap}
+.rs-passa.pior b,.rs-passa.pior .perdeu{color:#F59E0B}
+.v2-barl.rs-sub .t{padding-left:14px;font-size:12.5px}
+.v2-barl.rs-sub .v2-trilho{height:6px}
 .rs-cf td{padding:7px 10px}
 .rs-cf .rs-cf-s{display:inline-block;width:14px;color:var(--text2);font-weight:700}
 .rs-cf tr.rs-cf-tot td{background:var(--bg3,rgba(127,127,127,.06))}
@@ -38110,6 +38117,8 @@ function rsCarregar(){
     })
     .catch(function(e){ if(meu === rsPedido) v2Erro(el, e.message); });
 }
+// como a etapa anterior aparece na frase da passagem ("57% de quem chegou na página")
+var RS_VERBO = { cliques:'clicou no anúncio', chegaram:'chegou na página', play:'deu play', pitch:'passou do pitch', checkout:'clicou no botão', abriram:'abriu o checkout' };
 function rsPintar(){
   var el = document.getElementById('rs-corpo'), d = rsDados; if(!el || !d) return;
   var c = d.cards, s = function(n){ return n === 1 ? '' : 's'; };
@@ -38139,8 +38148,33 @@ function rsPintar(){
 
   // ── etapas com custo ──
   var max = Math.max.apply(null, d.etapas.map(function(e){ return e.n || 0; }).concat([1]));
-  var cores = { impressoes:'#5B5BF6', cliques:'#5B5BF6', chegaram:'#5B5BF6', pitch:'#1B9CFA', checkout:'#F59E0B', compraram:'#22C55E' };
+  var cores = { impressoes:'#5B5BF6', cliques:'#5B5BF6', chegaram:'#5B5BF6', play:'#1B9CFA', pitch:'#1B9CFA', checkout:'#F59E0B', abriram:'#F59E0B', compraram:'#22C55E' };
+  // linha de detalhe embaixo da etapa: quem tentou e não comprou, e as compras com recuperação
+  var paiDe = { pix:'abriram', cartao:'abriram', recuperacao:'compraram' };
+  var nDe = {}; d.etapas.forEach(function(e){ nDe[e.k] = e.n || 0; });
+  // entre uma etapa e a seguinte: quantos % passaram e quantos se perderam. Sem Vturb
+  // no funil, play e pitch ficam zerados e a conta pula pra etapa anterior que tem gente.
+  var ant = null, qd = d.queda || {};
+  var passagem = function(e){
+    if(!ant || !ant.n || ((e.k === 'play' || e.k === 'pitch') && !e.n)) return '';
+    var t = e.n / ant.n, perdeu = ant.n - e.n, pior = qd.de === ant.k && qd.para === e.k;
+    var de = ant.k === 'impressoes' ? 'das impressões clicaram (CTR)' : 'de quem '+(RS_VERBO[ant.k] || ant.nome.toLowerCase());
+    return '<div class="rs-passa'+(pior ? ' pior' : '')+'"><span>↓ <b>'+(t >= 0.1 ? Math.round(t * 100) : (t * 100).toFixed(t >= 0.01 ? 1 : 2).replace('.', ','))+'%</b> '+de+'</span>'+
+      (perdeu > 0 && ant.k !== 'impressoes' ? '<span class="perdeu">perdeu '+fnNum(perdeu)+'</span>' : '')+'</div>';
+  };
   var etapas = d.etapas.map(function(e){
+    if(!e.sub){
+      var p = passagem(e);
+      if(!((e.k === 'play' || e.k === 'pitch') && !e.n)) ant = e;
+      return p + rsEtapaLinha(e);
+    }
+      var base = nDe[paiDe[e.k]] || 0, cor = e.k === 'recuperacao' ? '#8B5CF6' : '#EF4444';
+      var cl = (e.k === 'pix' || e.k === 'cartao') && e.n ? ' style="cursor:pointer" onclick="ldIrPara({status:\'checkout\'})" title="Abrir quem abriu o checkout e não comprou"' : '';
+      return '<div class="v2-barl rs-sub"'+cl+'><div class="t"><span style="color:'+cor+'">↳</span> '+fnEsc(e.nome)+'<small>'+fnEsc(e.fonte || '')+'</small></div>'+
+        '<div class="v2-trilho"><i style="width:'+(base ? Math.max(1.5, e.n / base * 100) : 0).toFixed(1)+'%;background:'+cor+';opacity:.75"></i></div>'+
+        '<div class="n">'+fnNum(e.n)+(base ? ' <small>· '+Math.round(e.n / base * 100)+'%</small>' : '')+'</div></div>';
+  }).join('');
+  function rsEtapaLinha(e){
     // escala log: impressões e compras cabem na mesma régua sem a compra virar um ponto
     var w = e.n ? Math.max(1.5, Math.log10(e.n+1) / Math.log10(max+1) * 100) : 0;
     var custo = !e.custo ? '' : e.rotCusto === 'CPM' ? 'CPM R$ '+e.custo.toFixed(1).replace('.', ',')
@@ -38152,7 +38186,7 @@ function rsPintar(){
       '<div class="t">'+e.nome+'<small>'+fnEsc(fonteTxt)+'</small></div>'+
       '<div class="v2-trilho"><i style="width:'+w.toFixed(1)+'%;background:'+cores[e.k]+'"></i></div>'+
       '<div class="n">'+fnNum(e.n)+(custo ? ' <small>· '+custo+'</small>' : '')+'</div></div>';
-  }).join('');
+  }
   var q = d.queda;
   var queda = q ? '<div class="v2-alerta warn" style="margin:12px 0 0"><div><b>Maior queda: '+fnEsc(q.deNome.toLowerCase())+' → '+fnEsc(q.paraNome.toLowerCase())+' ('+v2Pct(q.taxa)+')</b>'+
     '<span>'+fnEsc(q.frase||'')+'</span></div>'+

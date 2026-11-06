@@ -13437,7 +13437,7 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     const esq = _escopoSql(esc, 'p');
     const conta = extra => _q('SELECT COUNT(DISTINCT p.visitante) n FROM paginas p JOIN sessoes s ON s.id = p.sessao WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND ' +
                               esq.where + (extra || '')).get(per.de, per.ate, ...esq.args).n || 0;
-    const chegaram = conta(), pitch = conta(' AND s.pitch=1');
+    const chegaram = conta(), pitch = conta(' AND s.pitch=1'), play = conta(' AND s.video>0');
     const ckSet = new Set(_q('SELECT DISTINCT p.visitante FROM paginas p JOIN sessoes s ON s.id = p.sessao WHERE p.dia BETWEEN ? AND ? AND p.interno=0 AND s.checkout=1 AND ' +
                              esq.where).all(per.de, per.ate, ...esq.args).map(r => r.visitante));
     const porDiaPessoas = {};
@@ -13471,22 +13471,46 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
 
     // ── etapas com custo e a maior queda ──
     const compraram = pagas.length;
+    // Do checkout em diante, pelos avisos do gateway: quem abriu o checkout é quem tem
+    // qualquer evento lá (carrinho abandonado, Pix, cartão ou compra). Pix sem pagar e
+    // cartão recusado contam a PESSOA que tentou e não comprou no período (quem tentou
+    // o cartão, levou recusa e pagou no Pix depois está em Compraram, não aqui).
+    const pessoaDe = o => o.lead || o.visitante || o.pedido || o.id;
+    const pagou = new Set(pagas.map(pessoaDe));
+    const abriram = new Set(vendas.filter(o => !o.estorno).map(pessoaDe));
+    const pixSem = new Set(), cartaoRec = new Set();
+    vendas.forEach(o => {
+      if (o.pago || o.estorno || pagou.has(pessoaDe(o))) return;
+      const m = String(o.motivo || _motivoFalha(o) || '');
+      if (/^pix/i.test(m)) pixSem.add(pessoaDe(o));
+      else if (/cart[aã]o recusado/i.test(m)) cartaoRec.add(pessoaDe(o));
+    });
+    const recuperou = pagas.filter(o => o.apoio).length;
     const etapas = [
       { k: 'impressoes', nome: 'Impressões', fonte: 'Meta', n: imp, custo: imp ? gasto / imp * 1000 : 0, rotCusto: 'CPM' },
       { k: 'cliques', nome: 'Cliques', fonte: 'Meta', n: cliques, custo: cliques ? gasto / cliques : 0, rotCusto: 'CPC' },
       { k: 'chegaram', nome: 'Chegaram na página', fonte: 'pixel TMX', n: chegaram, custo: chegaram ? gasto / chegaram : 0 },
+      { k: 'play', nome: 'Deram play', fonte: 'Vturb', n: play, custo: play ? gasto / play : 0 },
       { k: 'pitch', nome: 'Passaram do pitch', fonte: 'Vturb', n: pitch, custo: pitch ? gasto / pitch : 0 },
-      { k: 'checkout', nome: 'Abriram checkout', fonte: 'clique no botão', n: checkout, custo: checkout ? gasto / checkout : 0 },
-      { k: 'compraram', nome: 'Compraram', fonte: 'webhook Payt', n: compraram, custo: compraram ? gasto / compraram : 0, rotCusto: 'CPA' }
+      { k: 'checkout', nome: 'Clicaram no botão', fonte: 'pixel TMX', n: checkout, custo: checkout ? gasto / checkout : 0 },
+      { k: 'abriram', nome: 'Abriram o checkout', fonte: 'eventos do checkout · Payt', n: abriram.size, custo: abriram.size ? gasto / abriram.size : 0 },
+      { k: 'pix', nome: 'Pix gerado, não pago', fonte: 'não compraram', n: pixSem.size, sub: true },
+      { k: 'cartao', nome: 'Cartão recusado', fonte: 'não compraram', n: cartaoRec.size, sub: true },
+      { k: 'compraram', nome: 'Compraram', fonte: 'webhook Payt', n: compraram, custo: compraram ? gasto / compraram : 0, rotCusto: 'CPA' },
+      { k: 'recuperacao', nome: 'Pela recuperação', fonte: 'das compras, a recuperação ajudou', n: recuperou, sub: true }
     ];
-    let queda = null;
-    for (let i = 1; i < etapas.length; i++) {
-      const a = etapas[i - 1], b = etapas[i];
-      if (a.k === 'impressoes' || !a.n || (b.k === 'pitch' && !b.n)) continue;   // sem Vturb no funil, o pitch fica fora
-      const de = (b.k === 'checkout' && !pitch) ? etapas[2] : a;
-      const taxa = b.n / (de.n || 1);
-      if (!queda || taxa < queda.taxa) queda = { de: de.k, para: b.k, deNome: de.nome, paraNome: b.nome, taxa };
-    }
+    // a maior queda entre etapas seguidas; sem Vturb no funil, play e pitch ficam fora,
+    // e de impressão pra clique não conta (é o CTR, sempre baixo)
+    let queda = null, ant = null;
+    etapas.forEach(b => {
+      if (b.sub || b.k === 'impressoes') return;
+      if ((b.k === 'play' || b.k === 'pitch') && !b.n) return;
+      if (ant && ant.n) {
+        const taxa = b.n / ant.n;
+        if (!queda || taxa < queda.taxa) queda = { de: ant.k, para: b.k, deNome: ant.nome, paraNome: b.nome, taxa };
+      }
+      ant = b;
+    });
     if (queda) {
       const tent = _q('SELECT motivo, COUNT(*) n FROM pedidos WHERE dia BETWEEN ? AND ? AND pago=0 AND motivo IS NOT NULL GROUP BY motivo ORDER BY n DESC')
         .all(per.de, per.ate);
@@ -13505,6 +13529,12 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
       } else if (queda.para === 'checkout') {
         queda.frase = 'Viram a oferta e não clicaram em comprar. Confira cliques mortos no botão e no card do plano.';
         queda.acao = { rotulo: 'Ver cliques', aba: 'atencao' };
+      } else if (queda.para === 'play') {
+        queda.frase = 'Chegam na página e não dão play. Confira a capa do vídeo, o autoplay e o tempo de carregamento.';
+        queda.acao = { rotulo: 'Ver onde saem', aba: 'atencao' };
+      } else if (queda.para === 'abriram') {
+        queda.frase = 'Clicam no botão e o checkout não registra. Pode ser checkout lento ou o link do botão sem o código do TMX.';
+        queda.acao = { rotulo: 'Abrir Pixel e saúde', aba: 'pixel' };
       } else {
         queda.frase = 'Esta é a passagem que mais perde gente no período.';
       }
