@@ -37204,9 +37204,18 @@ function fiCalc(res, proj){
   res = res || fiRes; proj = proj || 'todos';
   var c = fiCustos || res.custos || {};
   var lista = proj === 'todos' ? Object.keys(res.projetos) : [proj];
-  var r = { bruto:0, n:0, renov:0, estornos:0, nEstornos:0, trafego:0, liq:0, brutoComLiq:0, nComLiq:0, produtos:{}, fixos:{}, fixosItens:[], extras:0 };
+  var r = { bruto:0, n:0, renov:0, estornos:0, nEstornos:0, trafego:0, liq:0, brutoComLiq:0, nComLiq:0, produtos:{}, fixos:{}, fixosItens:[], extras:0, custosProj:{}, custoProj:0 };
+  var cps = fiCustosProj();
   lista.forEach(function(p){
     var x = res.projetos[p]; if(!x) return;
+    // custo por venda só deste projeto (ex.: curso de IA): renovação não conta, o bônus vai na compra
+    cps.forEach(function(cp){
+      if(fiNomeProj(cp.projeto) !== fiNomeProj(p)) return;
+      var n = 0;
+      if(cp.produtos && cp.produtos.length) cp.produtos.forEach(function(pr){ var q = (x.produtos || {})[pr]; if(q) n += q.n - (q.renov || 0); });
+      else n = (Number(x.n) || 0) - (Number(x.renov) || 0);
+      var a = r.custosProj[cp.id] || (r.custosProj[cp.id] = { n:0, v:0 }); a.n += n; a.v += n * cp.valor; r.custoProj += n * cp.valor;
+    });
     ['bruto','n','renov','estornos','nEstornos','trafego','liq','brutoComLiq','nComLiq'].forEach(function(k){ r[k] += Number(x[k]) || 0; });
     Object.keys(x.produtos || {}).forEach(function(k){ var a = r.produtos[k] || (r.produtos[k] = { n:0, v:0 }); a.n += x.produtos[k].n; a.v += x.produtos[k].v; });
   });
@@ -37220,12 +37229,17 @@ function fiCalc(res, proj){
   r.iof = r.trafego * (Number(c.impostoAds) || 0) / 100;
   r.custoVenda = r.n * (Number(c.custoVenda) || 0);
   r.liquida = r.bruto - r.estornos - r.gateway;
-  r.margem = r.liquida - r.imposto - r.custoVenda - r.trafego - r.iof;
+  r.margem = r.liquida - r.imposto - r.custoVenda - r.custoProj - r.trafego - r.iof;
   r.totFixos = Object.keys(r.fixos).reduce(function(a, k){ return a + r.fixos[k]; }, 0);
   r.lucro = r.margem - r.totFixos + r.extras;
   r.roas = r.trafego ? r.bruto / r.trafego : 0;
   return r;
 }
+function fiNomeProj(s){ return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
+// valor por venda com centavos quando tem (R$ 3,50, não R$ 4)
+function fiDinC(v){ v = Number(v) || 0; return 'R$ '+v.toLocaleString('pt-BR', { minimumFractionDigits:v % 1 ? 2 : 0, maximumFractionDigits:2 }); }
+function fiCustosProj(){ return ((fiCad && fiCad.cfg) || {}).custosProjeto || []; }
+function fiCpRot(cp){ return fnEsc(cp.nome)+' · '+fiDinC(cp.valor)+' por venda'+(cp.produtos && cp.produtos.length ? ' de '+cp.produtos.map(fnEsc).join(', ') : ''); }
 // vencimentos: as contas avulsas e as datas que cada recorrente gera (60 dias pra trás, 90 pra frente)
 function fiDatasRec(r, ini, fim){
   var out = [], inicio = r.inicio ? new Date(r.inicio+'T12:00:00Z') : ini, limite = r.fim ? new Date(r.fim+'T12:00:00Z') : fim;
@@ -37318,6 +37332,7 @@ function fiGraficoDias(){
 function fiParaOnde(r){
   var l = [{ k:'Tráfego', v:r.trafego + r.iof, c:'#5b5ef4' }, { k:'Impostos sobre a venda', v:r.imposto, c:'#FF5926' }, { k:'Taxa do gateway', v:r.gateway, c:'#C52C58' },
            { k:'Custo por venda', v:r.custoVenda, c:'#F59E0B' }, { k:'Reembolsos e chargebacks', v:r.estornos, c:'#EF4444' }];
+  fiCustosProj().forEach(function(cp){ var x = r.custosProj[cp.id]; if(x) l.push({ k:fnEsc(cp.nome), v:x.v, c:'#F59E0B' }); });
   var cores = ['#1B9CFA','#3E1493','#2509E4','#8b93ab','#22C55E'];
   Object.keys(r.fixos).forEach(function(g, i){ l.push({ k:g, v:r.fixos[g], c:cores[i % cores.length] }); });
   l = l.filter(function(x){ return x.v > 0.5; }).sort(function(a, b){ return b.v - a.v; });
@@ -37384,6 +37399,10 @@ function fiTelaDRE(){
   t += linha('= Receita líquida', function(r){ return r.liquida; }, 'tot', '', null, true);
   t += linha('(−) Impostos sobre a venda'+(Number(c.imposto) ? ' · '+c.imposto+'%' : ''), function(r){ return -r.imposto; }, '', Number(c.imposto) ? 'calc' : 'ex');
   if(Number(c.custoVenda)) t += linha('(−) Custo por venda · '+fiDin(c.custoVenda), function(r){ return -r.custoVenda; }, '', 'calc');
+  fiCustosProj().forEach(function(cp){
+    if(!rs.some(function(r){ return r.custosProj[cp.id]; })) return;
+    t += '<tr><td>(−) '+fiCpRot(cp)+fiTg('calc')+'</td>'+rs.map(function(r){ var x = r.custosProj[cp.id]; return '<td class="n"'+(x ? ' title="'+fnNum(x.n)+' vendas × '+fiDinC(cp.valor)+'"' : '')+'>'+fiDin(-(x ? x.v : 0))+'</td>'; }).join('')+'</tr>';
+  });
   t += linha('(−) Tráfego', function(r){ return -r.trafego; }, '', 'real');
   if(Number(c.impostoAds)) t += linha('(−) Impostos do anúncio · '+c.impostoAds+'%', function(r){ return -r.iof; }, '', 'calc');
   t += linha('= Margem de contribuição', function(r){ return r.margem; }, 'tot', '', null, true);
@@ -37397,7 +37416,8 @@ function fiTelaDRE(){
   t += linha('= Lucro operacional', function(r){ return r.lucro; }, 'fim', '', null, true);
   t += '</tbody></table></div></div>';
   var semFixos = !Object.keys(grupos).length;
-  t += '<div class="s" style="margin:-4px 2px 14px;color:var(--text2);font-size:12px">'+(semFixos ? 'Sem custo fixo cadastrado: o lucro aqui é igual à margem. <a href="#" onclick="fiNovoRecorrente();return false">Cadastrar um recorrente ›</a>' : 'Custo fixo sem projeto é dividido '+((fiCad.cfg || {}).rateio === 'igual' ? 'em partes iguais' : 'pelo faturamento')+' entre os projetos que venderam (muda em Configurações).')+'</div>';
+  t += '<div class="s" style="margin:-4px 2px 14px;color:var(--text2);font-size:12px">'+(semFixos ? 'Sem custo fixo cadastrado: o lucro aqui é igual à margem. <a href="#" onclick="fiNovoRecorrente();return false">Cadastrar um recorrente ›</a>' : 'Custo fixo sem projeto é dividido '+((fiCad.cfg || {}).rateio === 'igual' ? 'em partes iguais' : 'pelo faturamento')+' entre os projetos que venderam (muda em Configurações).')+
+    ' · <a href="#" onclick="fiIr(\'cfg\');return false">'+(fiCustosProj().length ? 'Custos por venda de cada projeto ›' : 'Cadastrar um custo por venda de um projeto (curso, bônus, comissão) ›')+'</a></div>';
   return h + t;
 }
 function fiCarregarMeses(){
@@ -37410,8 +37430,8 @@ function fiCarregarMeses(){
     .catch(function(e){ toastFn('Não consegui buscar os meses: '+e.message); });
 }
 function fiExportarDRE(){
-  var ps = fiProjs().concat(['todos']), lin = [['Projeto','Receita bruta','Reembolsos','Taxa do gateway','Receita líquida','Impostos','Tráfego','Margem de contribuição','Custos fixos','Lucro']];
-  ps.forEach(function(p){ var r = fiCalc(fiRes, p); lin.push([p === 'todos' ? 'Total' : p, r.bruto, r.estornos, r.gateway, r.liquida, r.imposto, r.trafego, r.margem, r.totFixos, r.lucro].map(function(v){ return typeof v === 'number' ? v.toFixed(2).replace('.', ',') : v; })); });
+  var ps = fiProjs().concat(['todos']), lin = [['Projeto','Receita bruta','Reembolsos','Taxa do gateway','Receita líquida','Impostos','Custo por venda','Tráfego','Margem de contribuição','Custos fixos','Lucro']];
+  ps.forEach(function(p){ var r = fiCalc(fiRes, p); lin.push([p === 'todos' ? 'Total' : p, r.bruto, r.estornos, r.gateway, r.liquida, r.imposto, r.custoVenda + r.custoProj, r.trafego, r.margem, r.totFixos, r.lucro].map(function(v){ return typeof v === 'number' ? v.toFixed(2).replace('.', ',') : v; })); });
   var per = fiPeriodo(fiEst.per), blob = new Blob(['\ufeff'+lin.map(function(l){ return l.join(';'); }).join('\n')], { type:'text/csv' });
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'dre-'+per.de+'-a-'+per.ate+'.csv'; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 500);
 }
@@ -37422,8 +37442,9 @@ function fiExplica(){
     e('Reembolsos e chargebacks', 'real', 'Vendas devolvidas no período. Entram no dia em que voltaram, não no dia da venda.')+
     e('Taxa do gateway', 'calc', 'Quando a venda trouxe o valor líquido, vale o líquido de verdade. Nas outras, o % de Configurações.')+
     e('Impostos sobre a venda', 'calc', '% sobre a receita bruta, de Configurações.')+
+    e('Custo por venda do projeto', 'calc', 'O que sai a cada venda de um projeto só, como o curso de IA entregue junto. É o valor cadastrado em Configurações × as vendas do projeto no período (ou só as dos produtos escolhidos). Renovação de assinatura não conta.')+
     e('Tráfego', 'real', 'O gasto das campanhas de cada projeto no dia em que rodaram (Utmify). Na fase 2 dá pra conferir com o que os cartões da Lootrush e da Conta Simples cobraram de verdade.')+
-    e('Margem de contribuição', '', 'Receita líquida − impostos − tráfego: quanto cada projeto deixa pra pagar a estrutura. Negativa, o projeto queima dinheiro antes mesmo da equipe.')+
+    e('Margem de contribuição', '', 'Receita líquida − impostos − custos por venda − tráfego: quanto cada projeto deixa pra pagar a estrutura. Negativa, o projeto queima dinheiro antes mesmo da equipe.')+
     e('Custos fixos', '', 'Os recorrentes, a equipe do RH (quando o salário está preenchido) e as contas avulsas que vencem no período. Num período menor que o mês, entra a parte proporcional aos dias. O que não tem projeto é dividido entre os projetos que venderam.')+
     e('Lucro operacional', '', 'Margem de contribuição − custos fixos + outras entradas. Não é lucro contábil: imposto de renda e distribuição ficam fora.')+
     e('Competência × caixa', '', 'Esta DRE é de competência (o que vendeu e gastou no período). A de caixa (fase 2) soma o que entrou e saiu da Conta Simples e da Lootrush.'), 'p');
@@ -38059,16 +38080,74 @@ function fiTelaCfg(){
   var rng = function(k, rot, max, det){ return '<div class="fi-campo"><label>'+rot+'</label><div class="fi-rng"><input type="range" min="0" max="'+max+'" step="0.1" value="'+(Number(c[k]) || 0)+'" oninput="fiCustos[\''+k+'\']=+this.value;this.parentNode.querySelector(\'b\').textContent=String(this.value).replace(\'.\',\',\')+\'%\';fiPrevia()"><b>'+String(Number(c[k]) || 0).replace('.', ',')+'%</b></div><div class="s" style="color:var(--text2);font-size:12px;margin-top:3px">'+det+'</div></div>'; };
   var sg = function(id, t){ return '<button class="'+(cfg.rateio === id ? 'on' : '')+'" onclick="fiSalvarCfg({rateio:\''+id+'\'})">'+t+'</button>'; };
   return fiCab('Configurações', 'Custos que a DRE desconta, divisão entre projetos e avisos.', '', true)+
-    '<div class="v2-2col"><div class="v2-cx"><h3>Custos sobre a venda</h3><div class="s">Os mesmos da margem nas telas de Funil e Tráfego: mudar aqui muda lá.</div>'+
+    '<div class="v2-2col"><div class="v2-col"><div class="v2-cx"><h3>Custos sobre a venda</h3><div class="s">Os mesmos da margem nas telas de Funil e Tráfego: mudar aqui muda lá.</div>'+
       rng('gateway', 'Taxa do gateway', 15, 'Quando a venda trouxer o valor líquido, vale o líquido de verdade.')+
       rng('imposto', 'Imposto sobre a venda', 25, 'Simples, presumido… o % sobre o faturamento.')+
       rng('impostoAds', 'Impostos do anúncio', 20, 'Se a fatura da Meta vem com imposto ou IOF por cima do gasto.')+
       '<div class="fi-campo"><label>Custo por venda (R$)</label><input id="fi-cfg-cv" inputmode="decimal" value="'+String(Number(c.custoVenda) || 0).replace('.', ',')+'" oninput="fiCustos.custoVenda=fiNum(this.value);fiPrevia()"><div class="s" style="color:var(--text2);font-size:12px;margin-top:3px">Suporte, plataforma, comissão fixa por venda entregue.</div></div>'+
       '<div class="fi-rod" style="justify-content:flex-start"><button class="fi-bt p" onclick="fiSalvarCustos(this)">Salvar custos</button></div></div>'+
+    fiCfgCustosProjHtml()+'</div>'+
     '<div class="v2-col"><div class="v2-cx"><h3>Prévia do período</h3><div class="s">Muda na hora conforme você mexe.</div><div id="fi-previa" style="margin-top:12px">'+fiPreviaHtml()+'</div></div>'+
     '<div class="v2-cx"><h3>Custos fixos sem projeto</h3><div class="s">Como dividir entre os projetos que venderam no período.</div><div style="margin-top:10px"><span class="fi-seg">'+sg('fat', 'Pelo faturamento')+sg('igual', 'Em partes iguais')+'</span></div></div>'+
     fiCfgCambioHtml()+
     '<div class="v2-cx"><h3>Avisos de vencimento</h3><div class="s">Quantos dias antes avisar no sino e no WhatsApp da Diretoria. Os avisos ligam depois do seu OK.</div><div class="fi-campo"><select onchange="fiSalvarCfg({avisoDias:+this.value})">'+[1,3,5,7].map(function(n){ return '<option value="'+n+'"'+(Number(cfg.avisoDias) === n ? ' selected' : '')+'>'+n+' dia'+(n === 1 ? '' : 's')+' antes</option>'; }).join('')+'</select></div></div></div></div>';
+}
+// custo por venda de um projeto só: um curso que vai de bônus, uma comissão de um parceiro…
+function fiCfgCustosProjHtml(){
+  var l = fiCustosProj(), fm = fiEst.cpForm || (fiEst.cpForm = { id:'', proj:'', nome:'', valor:'', prods:[] });
+  var ps = fiProjs().filter(function(p){ return p !== 'Sem projeto'; });
+  if(!fm.proj) fm.proj = ps[0] || '';
+  var x = (fiRes && fiRes.projetos && fiRes.projetos[fm.proj]) || { produtos:{} }, prods = fiCpProdsLista();
+  var lista = l.length ? '<div class="v2-tab-w" style="margin-top:10px"><table class="v2-tab"><tbody>'+l.map(function(cp){
+      return '<tr><td><b>'+fnEsc(cp.nome)+'</b><div class="s" style="color:var(--text2);font-size:12px">'+fnEsc(cp.projeto)+' · '+(cp.produtos && cp.produtos.length ? 'só '+cp.produtos.map(fnEsc).join(', ') : 'toda venda do projeto')+'</div></td>'+
+        '<td class="n">'+fiDinC(cp.valor)+'<div class="s" style="color:var(--text2);font-size:12px">por venda</div></td>'+
+        '<td class="n" style="white-space:nowrap"><button class="fi-bt sm" onclick="fiCpEditar(\''+cp.id+'\')">Editar</button> <button class="fi-bt sm" onclick="fiCpExcluir(\''+cp.id+'\')">Tirar</button></td></tr>';
+    }).join('')+'</tbody></table></div>' : '';
+  return '<div class="v2-cx" id="fi-cp"><h3>Custo por venda de um projeto</h3><div class="s">O que sai a cada venda de um projeto só, como o curso de IA que vai junto. Entra no DRE e na margem do Resultado.</div>'+lista+
+    '<div style="margin-top:12px;display:grid;gap:10px">'+
+      '<div class="fi-campo" style="margin:0"><label>Projeto</label><select onchange="fiEst.cpForm.proj=this.value;fiEst.cpForm.prods=[];fiPintar()">'+ps.concat(fm.proj && ps.indexOf(fm.proj) < 0 ? [fm.proj] : []).map(function(p){ return '<option value="'+fnEsc(p)+'"'+(p === fm.proj ? ' selected' : '')+'>'+fnEsc(p)+'</option>'; }).join('')+'</select></div>'+
+      '<div style="display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:10px">'+
+        '<div class="fi-campo" style="margin:0"><label>O que é</label><input id="fi-cp-nome" maxlength="60" placeholder="Curso de IA (ferramentas)" value="'+fnEsc(fm.nome)+'" oninput="fiEst.cpForm.nome=this.value"></div>'+
+        '<div class="fi-campo" style="margin:0"><label>R$ por venda</label><input id="fi-cp-valor" inputmode="decimal" placeholder="5,00" value="'+fnEsc(fm.valor)+'" oninput="fiEst.cpForm.valor=this.value"></div></div>'+
+      '<div class="fi-campo" style="margin:0"><label>Em quais vendas</label>'+
+        (prods.length ? '<div class="s" style="color:var(--text2);font-size:12px;margin-bottom:4px">Nenhum marcado = toda venda do projeto. Marque se o custo for só de alguns produtos.</div>'+
+          '<div style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow:auto">'+prods.map(function(p){ return '<label class="fi-chk" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer"><input type="checkbox" style="width:auto;flex:none;margin:0;padding:0" data-p="'+fnEsc(p)+'"'+(fm.prods.indexOf(p) >= 0 ? ' checked' : '')+' onchange="fiCpProd(this.dataset.p,this.checked)"> '+fnEsc(p)+(x.produtos[p] ? ' <span style="color:var(--text2)">· '+fnNum(x.produtos[p].n)+' no período</span>' : '')+'</label>'; }).join('')+'</div>'
+        : '<div class="s" style="color:var(--text2);font-size:12px">Toda venda do projeto.</div>')+'</div>'+
+      '<div class="fi-rod" style="justify-content:flex-start;margin:0"><button class="fi-bt p" onclick="fiCpSalvar(this)">'+(fm.id ? 'Salvar a mudança' : 'Adicionar')+'</button>'+(fm.id ? ' <button class="fi-bt" onclick="fiEst.cpForm=null;fiPintar()">Cancelar</button>' : '')+'</div>'+
+    '</div></div>';
+}
+function fiCpProdsLista(){
+  var fm = fiEst.cpForm, x = (fiRes && fiRes.projetos && fiRes.projetos[fm.proj]) || { produtos:{} };
+  var prods = Object.keys(x.produtos || {}).sort(function(a, b){ return x.produtos[b].n - x.produtos[a].n; });
+  fm.prods.forEach(function(p){ if(prods.indexOf(p) < 0) prods.push(p); });
+  return prods;
+}
+function fiCpProd(p, on){ var fm = fiEst.cpForm; if(!p) return; fm.prods = fm.prods.filter(function(x){ return x !== p; }); if(on) fm.prods.push(p); }
+function fiCpEditar(id){
+  var cp = fiCustosProj().filter(function(c){ return c.id === id; })[0]; if(!cp) return;
+  fiEst.cpForm = { id:cp.id, proj:cp.projeto, nome:cp.nome, valor:String(cp.valor).replace('.', ','), prods:(cp.produtos || []).slice() };
+  fiPintar(); setTimeout(function(){ var el = document.getElementById('fi-cp'); if(el) el.scrollIntoView({ block:'center' }); }, 50);
+}
+function fiCpGravar(l, ok, bt){
+  if(bt) bt.disabled = true;
+  v2Json('/api/fin/cfg', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ custosProjeto:l }) })
+    .then(function(d){ fiCad.cfg = d.cfg; fiEst.cpForm = null; toastFn(ok); fiPintar(); })
+    .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não salvou: '+e.message); });
+}
+function fiCpSalvar(bt){
+  // "5,00" ou "5.50": aqui o ponto é decimal, custo por venda não chega a mil
+  var fm = fiEst.cpForm, v = /,/.test(fm.valor) ? fiNum(fm.valor) : Number(String(fm.valor || '').trim()) || 0, nome = String(fm.nome || '').trim();
+  if(!fm.proj){ toastFn('Escolha o projeto'); return; }
+  if(!nome){ toastFn('Diga o que é esse custo (ex.: Curso de IA)'); return; }
+  if(!(v > 0)){ toastFn('Digite quanto sai por venda'); return; }
+  var item = { id:fm.id || ('cp'+Date.now().toString(36)), projeto:fm.proj, nome:nome, valor:v, produtos:fm.prods.slice() };
+  var l = fiCustosProj().filter(function(c){ return c.id !== item.id; }).concat([item]);
+  fiCpGravar(l, fm.id ? 'Custo atualizado — já vale no DRE' : nome+' entrou no DRE do '+fm.proj, bt);
+}
+function fiCpExcluir(id){
+  var cp = fiCustosProj().filter(function(c){ return c.id === id; })[0]; if(!cp) return;
+  if(!confirm('Tirar "'+cp.nome+'" do '+cp.projeto+'? O DRE e a margem deixam de descontar esse custo.')) return;
+  fiCpGravar(fiCustosProj().filter(function(c){ return c.id !== id; }), cp.nome+' saiu do DRE');
 }
 function fiCfgCambioHtml(){
   var cb = fiCambioPadrao(), fixo = fiEst.cbFixo || cb.modo === 'fixo';

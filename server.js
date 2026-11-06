@@ -13502,7 +13502,8 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     const saldo = fat - reembolso;
     const imposto = saldo * (custos.imposto || 0) / 100;
     const impostoFb = gasto * (custos.impostoAds || 0) / 100;
-    const custoProduto = pagas.length * (custos.custoVenda || 0);
+    const custosProj = _finCustosProjCalc(dbj, f.projeto, pagas);
+    const custoProduto = pagas.length * (custos.custoVenda || 0) + custosProj.total;
     const margem = saldo - imposto - gasto - impostoFb - custoProduto;
     const aliquota = (custos.imposto || 0) / 100;
     const roasEmpate = (1 + (custos.impostoAds || 0) / 100) / Math.max(0.05, 1 - aliquota);
@@ -13641,7 +13642,8 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
         investimento: gasto, faturamento: fat, vendas: pagas.length, roas: gasto ? fat / gasto : 0, roasAlvo, roasEmpate,
         margem, imposto, impostoFb, custoProduto, aliquota: custos.imposto || 0, aliquotaFb: custos.impostoAds || 0,
         cpa: doPrincipal.length ? gasto / doPrincipal.length : 0, vendasPrincipal: doPrincipal.length,
-        principal: principal ? principal.nome : '', cpaMax: ticketPrincipal * (1 - aliquota) - (custos.custoVenda || 0),
+        principal: principal ? principal.nome : '', cpaMax: ticketPrincipal * (1 - aliquota) - (custos.custoVenda || 0) - custosProj.porVenda,
+        custosProjeto: custosProj.itens.map(x => ({ nome: x.nome, valor: x.valor, n: x.n, total: x.total })),
         ticket: clientes ? fat / clientes : 0, clientes, cac: clientes ? gasto / clientes : 0,
         reembolso, reembolsoPct: (fat + reembolso) ? reembolso / (fat + reembolso) * 100 : 0, estornos: estornos.length,
         chargebacks: estornos.filter(o => /chargeback/i.test(o.status || '')).length,
@@ -13835,6 +13837,27 @@ function _finCfg(db) {
   return Object.assign({ rateio:'fat', avisoDias:3, saldoInicial:0, categoriasExtras:[], cambio:{ modo:'dia' } }, (c && typeof c === 'object') ? c : {});
 }
 function _finArr(db, k) { if (!Array.isArray(db.store[k])) db.store[k] = []; return db.store[k]; }
+// custo por venda de um projeto só (ex.: o curso de IA que vai junto em cada venda do CONCURSO)
+function _finNomeProj(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
+function _finCustosProjLimpar(l) {
+  return (Array.isArray(l) ? l : []).slice(0, 50).map((x, i) => ({
+    id: String((x && x.id) || '').replace(/[^\w-]/g, '').slice(0, 40) || ('cp' + Date.now().toString(36) + i),
+    projeto: String((x && x.projeto) || '').trim().slice(0, 80),
+    nome: String((x && x.nome) || '').trim().slice(0, 60),
+    valor: Math.min(100000, Math.max(0, Math.round((Number(x && x.valor) || 0) * 100) / 100)),
+    produtos: Array.isArray(x && x.produtos) ? x.produtos.map(p => String(p || '').trim().slice(0, 160)).filter(Boolean).slice(0, 30) : []
+  })).filter(x => x.projeto && x.nome && x.valor > 0);
+}
+// quanto esses custos somam nas vendas pagas de um projeto (renovação não conta: o bônus vai na compra)
+function _finCustosProjCalc(db, nomeProj, pagas) {
+  const alvo = _finNomeProj(nomeProj), itens = [];
+  if (!alvo) return { total: 0, porVenda: 0, itens };
+  _finCustosProjLimpar(_finCfg(db).custosProjeto).filter(cp => _finNomeProj(cp.projeto) === alvo).forEach(cp => {
+    const n = pagas.filter(o => !o.renovacao && (!cp.produtos.length || cp.produtos.indexOf(String(o.produto || '')) >= 0)).length;
+    itens.push({ nome: cp.nome, valor: cp.valor, n, total: n * cp.valor, produtos: cp.produtos });
+  });
+  return { total: itens.reduce((a, x) => a + x.total, 0), porVenda: itens.filter(x => !x.produtos.length).reduce((a, x) => a + x.valor, 0), itens };
+}
 // compra de teste (plano "TESTE ANUAL", "MENSAL TESTE - R$ 5") não é venda
 function _finTeste(p) { return /\bteste\b/i.test(String(p.plano || '')) || /\bteste\b/i.test(String(p.produto || '')); }
 // De que projeto é cada venda: o funil por onde a pessoa passou (com as adoções),
@@ -13978,13 +14001,15 @@ app.post('/api/fin/cfg', authDiretoria, (req, res) => {
     if (b.avisoDias != null) cfg.avisoDias = Math.min(30, Math.max(1, parseInt(b.avisoDias, 10) || 3));
     if (b.saldoInicial != null) cfg.saldoInicial = Number(b.saldoInicial) || 0;
     if (Array.isArray(b.categoriasExtras)) cfg.categoriasExtras = b.categoriasExtras.map(x => String(x || '').trim().slice(0, 60)).filter(Boolean).slice(0, 40);
+    if (Array.isArray(b.custosProjeto)) cfg.custosProjeto = _finCustosProjLimpar(b.custosProjeto);
     if (b.cambio) {
       const cb = _finCambioLimpar(b.cambio, false);
       if (!cb) return res.status(400).json({ error: 'A cotação fixa precisa ser um valor entre R$ 0,50 e R$ 50.' });
       cfg.cambio = cb;
     }
     db.store[KEY_FIN_CFG] = cfg; db.timestamps[KEY_FIN_CFG] = now();
-    audit(db, 'fin_config', {}, { rateio:cfg.rateio, avisoDias:cfg.avisoDias, cambio:cfg.cambio }, req.user);
+    audit(db, 'fin_config', {}, { rateio:cfg.rateio, avisoDias:cfg.avisoDias, cambio:cfg.cambio,
+      custosProjeto:(cfg.custosProjeto || []).map(x => x.projeto + ': ' + x.nome + ' R$' + x.valor).join(' · ') }, req.user);
     writeDB(db);
     res.json({ ok:true, cfg });
   } catch (e) { res.status(500).json({ error: e.message }); }
