@@ -3204,7 +3204,7 @@ app.get('/api/meta/comparar', authDiretoria, (req, res) => {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const dias = Math.min(Math.max(Number(req.query.dias) || 7, 1), 30), desde = _diaBR(Date.now() - (dias - 1) * 86400000);
     const meta = _q('SELECT conta, dia, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c, SUM(compras) v FROM meta_camp_dia WHERE dia>=? GROUP BY conta, dia').all(desde);
-    const utm = _q('SELECT conta, dia, SUM(gasto) g, SUM(imp) i, SUM(cliques) c FROM camp_dia WHERE dia>=? GROUP BY conta, dia').all(desde);
+    const utm = _q('SELECT conta, dia, SUM(gasto) g, SUM(imp) i, SUM(cliques) c FROM ' + _campDiaUnica('c.dia>=?') + ' GROUP BY conta, dia').all(desde);
     const nomes = {}; ((_metaCfg() || {}).contas || []).forEach(c => { nomes[c.conta] = c.nome; });
     const porConta = {};
     const add = (l, k) => l.forEach(x => { const o = porConta[x.conta] || (porConta[x.conta] = { conta: x.conta, nome: nomes[x.conta] || '', meta: { g: 0, i: 0, c: 0, v: 0 }, utmify: { g: 0, i: 0, c: 0 } });
@@ -5580,7 +5580,7 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
     }
     // resultado por dia: os 7 dias até o fim do período (gasto da Utmify, venda pela Utmify e pelo TMX)
     const campDia = {};
-    if (_pessoas() && m.id) _q('SELECT dia, SUM(gasto) g FROM camp_dia WHERE id=? AND dia BETWEEN ? AND ? GROUP BY dia').all(m.id, dias7[0], dias7[6]).forEach(x => { campDia[x.dia] = x.g; });
+    if (_pessoas() && m.id) _q('SELECT dia, SUM(gasto) g FROM ' + _campDiaUnica('c.id=? AND c.dia BETWEEN ? AND ?') + ' GROUP BY dia').all(m.id, dias7[0], dias7[6]).forEach(x => { campDia[x.dia] = x.g; });
     const porDia = dias7.map(d => {
       const ls = todas.filter(l => l.data === d);
       const g = ls.length ? ls.reduce((a, l) => a + (Number(l.investimento) || 0), 0) : (campDia[d] || 0);
@@ -13170,6 +13170,22 @@ function _campAtualizarDepois(de, ate, proj) {
   _campNaFila.add(k);
   _campanhasPeriodo(de, ate, proj, 3).catch(() => {}).then(() => _campNaFila.delete(k));
 }
+// camp_dia guarda o gasto de cada dashboard da Utmify E o de todos somados (projeto '',
+// da tela com "Todos os projetos"). Quem soma sem filtrar o projeto conta tudo duas vezes:
+// esta tabela traz cada campanha uma vez por dia, a do dashboard quando existe.
+function _campDiaUnica(where) {
+  return `(SELECT * FROM (SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.dia, c.id ORDER BY (c.projeto = ''), c.projeto) rn
+    FROM camp_dia c WHERE ${where}) WHERE rn = 1)`;
+}
+// conta de anúncio => dashboard, pelo que já veio de cada dashboard (só quando a conta é de um só)
+function _campContaDash() {
+  const m = {}, dois = new Set();
+  _q("SELECT DISTINCT conta, projeto FROM camp_dia WHERE projeto<>'' AND conta IS NOT NULL AND conta<>''").all().forEach(x => {
+    if (m[x.conta] && m[x.conta] !== x.projeto) dois.add(x.conta); else m[x.conta] = x.projeto;
+  });
+  dois.forEach(c => { delete m[c]; });
+  return m;
+}
 async function _campanhasPeriodo(de, ate, projetoId, maxBuscas) {
   const dias = [];
   for (let t = Date.parse(ate + 'T12:00:00Z'); dias.length < 400; t -= 86400000) {
@@ -13930,8 +13946,10 @@ app.get('/api/fin/resultado', authDiretoria, (req, res) => {
       });
     _q('SELECT valor, produto, plano, funil, camp, cred_camp FROM pedidos WHERE estorno=1 AND dia BETWEEN ? AND ?')
       .all(de, ate).forEach(p => { if (_finTeste(p)) return; const x = P(ctx.projetoDe(p)); x.estornos += Number(p.valor) || 0; x.nEstornos++; });
-    _q('SELECT dia, projeto, SUM(gasto) g FROM camp_dia WHERE dia BETWEEN ? AND ? GROUP BY dia, projeto').all(de, ate).forEach(r => {
-      const nome = ctx.canon(ctx.projDoDash[r.projeto] || 'Sem projeto');
+    const contaDash = _campContaDash();
+    _q('SELECT dia, projeto, conta, SUM(gasto) g FROM ' + _campDiaUnica('c.dia BETWEEN ? AND ?') + ' GROUP BY dia, projeto, conta').all(de, ate).forEach(r => {
+      const dash = r.projeto || contaDash[r.conta] || '';
+      const nome = ctx.canon(ctx.projDoDash[dash] || 'Sem projeto');
       P(nome).trafego += Number(r.g) || 0;
       const dd = D(r.dia); dd.t[nome] = (dd.t[nome] || 0) + (Number(r.g) || 0);
     });
@@ -19790,7 +19808,7 @@ app.get('/api/projeto/config', authUsuario, (req, res) => {
     const temMeta = !!_q('SELECT 1 FROM meta_camp_dia WHERE dia>=? LIMIT 1').get(desde);
     const camps = temMeta
       ? _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM meta_camp_dia WHERE dia>=? GROUP BY conta, id').all(desde)
-      : _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM camp_dia WHERE dia>=? GROUP BY conta, id').all(desde);
+      : _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM ' + _campDiaUnica('c.dia>=?') + ' GROUP BY conta, id').all(desde);
     // de que dashboard da Utmify veio cada conta: ajuda a marcar a primeira vez
     const dashDe = {}; const dashs = ((_utmifyMcpCfg(db) || {}).dashboards || []);
     _q('SELECT conta, projeto, SUM(gasto) g FROM camp_dia WHERE dia>=? GROUP BY conta, projeto').all(desde).forEach(x => {
