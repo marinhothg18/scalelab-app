@@ -1896,6 +1896,9 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .fi-sub{margin:3px 0 0;color:var(--text2);font-size:13.5px}
 .fi-acoes{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 .fi-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 16px}
+.fi-datas{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)}
+.fi-datas input{background:var(--bg3);border:1px solid var(--border);border-radius:9px;height:36px;padding:0 9px;color:var(--text);font:inherit;font-size:13px;outline:none;color-scheme:light dark}
+.fi-datas input:focus{border-color:var(--accent)}
 .fi-ctl select,.fi-campo input,.fi-campo select,.fi-campo textarea{background:var(--bg3);border:1px solid var(--border);border-radius:9px;height:36px;padding:0 11px;color:var(--text);font:inherit;font-size:13px;outline:none}
 .fi-ctl select:focus,.fi-campo input:focus,.fi-campo select:focus,.fi-campo textarea:focus{border-color:var(--accent)}
 .fi-chk{display:inline-flex;align-items:center;gap:7px;color:var(--text2);font-size:13px;cursor:pointer}
@@ -37125,8 +37128,29 @@ function fiPeriodo(p){
     var a = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()-1, 1)), b = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0));
     return { de:a.toISOString().slice(0,10), ate:b.toISOString().slice(0,10) };
   }
-  if(p === '7' || p === '30') return { de:fiDiaBR(Date.now() - (Number(p)-1)*86400000), ate:hoje };
+  if(p === 'hoje') return { de:hoje, ate:hoje };
+  if(p === 'ontem'){ var on = fiDiaBR(Date.now() - 86400000); return { de:on, ate:on }; }
+  if(p === '3' || p === '5' || p === '7' || p === '30') return { de:fiDiaBR(Date.now() - (Number(p)-1)*86400000), ate:hoje };
+  if(p === 'custom'){
+    var ok = function(x){ return /^\d{4}-\d{2}-\d{2}$/.test(x || ''); };
+    var de = ok(fiEst.perDe) ? fiEst.perDe : fiDiaBR(Date.now() - 4*86400000), ate = ok(fiEst.perAte) ? fiEst.perAte : hoje;
+    if(ate > hoje) ate = hoje;
+    if(de > ate){ var t = de; de = ate; ate = t; }
+    return { de:de, ate:ate };
+  }
   return { de:hoje.slice(0,8)+'01', ate:hoje };
+}
+// trocar o período: "Personalizado" começa com o que estava na tela
+function fiTrocarPer(v){
+  if(v === 'custom' && fiEst.per !== 'custom'){ var at = fiPeriodo(fiEst.per); fiEst.perDe = at.de; fiEst.perAte = at.ate; }
+  fiEst.per = v; fiMeses = null; fiCarregar();
+}
+function fiDatasPer(qual, v){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return;
+  if(qual === 'de') fiEst.perDe = v; else fiEst.perAte = v;
+  var p = fiPeriodo('custom');
+  if(Math.round((new Date(p.ate+'T12:00:00Z') - new Date(p.de+'T12:00:00Z'))/86400000) > 366){ toastFn('Escolha no máximo um ano'); return; }
+  fiCarregar();
 }
 // o período de comparação: o mesmo pedaço do mês anterior, ou os N dias de antes
 function fiAnterior(per){
@@ -37185,8 +37209,10 @@ function fiProjs(res){
 function fiCab(t, s, acoes, semPeriodo){
   var per = fiPeriodo(fiEst.per);
   var ctl = semPeriodo ? '' : '<div class="fi-ctl">'+
-    '<select onchange="fiEst.per=this.value;fiCarregar()">'+[['mes','Este mês'],['passado','Mês passado'],['7','Últimos 7 dias'],['30','Últimos 30 dias']].map(function(o){ return '<option value="'+o[0]+'"'+(fiEst.per === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
-    '<span class="fi-per">'+fiBR(per.de)+' – '+fiBR(per.ate)+'</span>'+
+    '<select onchange="fiTrocarPer(this.value)">'+[['hoje','Hoje'],['ontem','Ontem'],['3','Últimos 3 dias'],['5','Últimos 5 dias'],['7','Últimos 7 dias'],['mes','Este mês'],['passado','Mês passado'],['30','Últimos 30 dias'],['custom','Personalizado…']].map(function(o){ return '<option value="'+o[0]+'"'+(fiEst.per === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
+    (fiEst.per === 'custom'
+      ? '<span class="fi-datas"><input type="date" aria-label="De" value="'+per.de+'" max="'+fiDiaBR(Date.now())+'" onchange="fiDatasPer(\'de\',this.value)"><span>até</span><input type="date" aria-label="Até" value="'+per.ate+'" max="'+fiDiaBR(Date.now())+'" onchange="fiDatasPer(\'ate\',this.value)"></span>'
+      : '<span class="fi-per">'+(per.de === per.ate ? fiBR(per.de) : fiBR(per.de)+' – '+fiBR(per.ate))+'</span>')+
     '<select onchange="fiEst.proj=this.value;fiPintar()">'+['todos'].concat(fiProjs()).map(function(p){ return '<option value="'+fnEsc(p)+'"'+(fiEst.proj === p ? ' selected' : '')+'>'+(p === 'todos' ? 'Todos os projetos' : fnEsc(p))+'</option>'; }).join('')+'</select>'+
     '<label class="fi-chk"><input type="checkbox"'+(fiEst.comparar ? ' checked' : '')+' onchange="fiEst.comparar=this.checked;fiCarregar()"> Comparar com o anterior</label></div>';
   return '<div class="fi-cab"><div><h2 class="fi-h1">'+t+'</h2><p class="fi-sub">'+s+'</p></div>'+(acoes ? '<div class="fi-acoes">'+acoes+'</div>' : '')+'</div>'+(ctl || '<div style="height:16px"></div>');
