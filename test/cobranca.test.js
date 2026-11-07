@@ -88,7 +88,7 @@ test('cobrança pela Pagar.me', async (t) => {
     assert.strictEqual(p.status, 200);
     assert.match(p.dados, /Você paga pela faixa de investimento/);
     assert.strictEqual((await chamar('GET', '/planos/obrigado?r=as_x')).status, 200);
-    const l = await chamar('GET', '/api/planos');
+    const l = await chamar('GET', '/api/planos-tmx');
     assert.strictEqual(l.status, 200);
     assert.strictEqual(l.dados.cobranca, true);
     assert.deepStrictEqual(l.dados.planos.map(x => x.id), ['iniciante', 'starter', 'escala', 'agencia']);
@@ -265,5 +265,13 @@ test('cobrança pela Pagar.me', async (t) => {
       assert.strictEqual(x.headers.get('location'), '/planos#planos', caminho);
     }
     assert.strictEqual(pg.links.length, antes + 1, 'prévia, grátis e plano inventado não criam link');
+  });
+
+  await t.test('o /api/planos continua sendo o do mapa do funil (preço de cada plano das ofertas)', async () => {
+    assert.strictEqual((await chamar('GET', '/api/planos')).status, 401, 'pede login, como antes');
+    const r = await chamar('GET', '/api/planos', { token: ctx.tmx });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.dados.ok, true);
+    assert.ok('tolerancia' in r.dados, 'é a rota do mapa, não a da página de venda');
   });
 });
