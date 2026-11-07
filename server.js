@@ -732,7 +732,7 @@ if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
   // plataforma (cadastro, cobrança, painel SaaS, criar empresas) fica só na TMX.
   // O MCP e a API v1 existem em cada empresa, com os tokens e os dados dela (07/11/2026).
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/assinar', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos-tmx', '/api/assinar', '/planos', '/assinar', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 // Sessões de suporte abertas neste motor: hash do token -> { modo, expira }. Fica na memória
@@ -9001,7 +9001,8 @@ app.get(['/planos', '/planos/obrigado'], (req, res) => {
   if (!SOU_TMX) return res.status(404).end();
   res.sendFile(path.join(__dirname, 'public', 'planos.html'));
 });
-app.get('/api/planos', (req, res) => {
+// /api/planos-tmx: o nome /api/planos já era do mapa do funil (preço de cada plano das ofertas), autenticado
+app.get('/api/planos-tmx', (req, res) => {
   res.json({
     cobranca: !!PAGARME_API_KEY,
     planos: PLANOS_TMX.filter(p => p.venda).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, anual: p.gratis ? 0 : p.mensal * 10,
