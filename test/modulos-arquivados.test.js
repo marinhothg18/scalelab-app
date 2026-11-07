@@ -69,8 +69,10 @@ test('a página arquivada não abre fora da TMX nem pra Diretoria, e o Tour não
   assert.match(goTo, /if\(_mArq && \(!_ehDir \|\| !tmxEhTmx\(\)\)\) id = 'dashboard';/);
   const tour = trecho('function iniciarOnboarding(forcar){', '\n}\n');
   assert.match(tour, /if\(!tmxEhTmx\(\)\) return;/);
-  // Configurações: a seção Módulos arquivados e o Acesso por API só aparecem na TMX (soTmx)
+  // Configurações: a seção Módulos arquivados só aparece na TMX (soTmx). O Acesso por API
+  // vale pra empresa também (07/11/2026): cada uma gera os tokens dela, pro MCP e a API dela.
   const secoes = trecho('modulos:     {', '\n');
   assert.match(secoes, /soTmx:true/);
+  assert.doesNotMatch(trecho("{ id:'api',", '\n'), /soTmx/);
   assert.match(trecho('function _cfgEhTmx(){', '\n'), /tmxEhTmx\(\)/);
 });

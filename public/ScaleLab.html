@@ -4903,7 +4903,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
       <div id="cfg-panel-api-tokens" style="display:none;max-width:700px;">
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
           <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🔑 API Tokens</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:16px;">Gere tokens pra conectar ferramentas externas, agentes e automações com o ScaleLab.</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:16px;">Gere tokens pra conectar o Claude, agentes e automações com o TMX. Cada token lê só os dados desta empresa.</div>
           <div style="display:flex;gap:10px;margin-bottom:16px;">
             <input id="api-token-nome" placeholder="Nome do token (ex: Agente Claude)" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--text);outline:none;">
             <button onclick="gerarApiToken()" class="btn btn-primary" style="font-size:13px;white-space:nowrap;">+ Gerar Token</button>
@@ -4912,14 +4912,30 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:6px;">⚠️ COPIE E GUARDE ESTE TOKEN AGORA — ele não será exibido novamente!</div>
             <code id="api-token-value" style="font-size:13px;word-break:break-all;color:#1F2937;background:#FEF3C7;padding:6px 10px;border-radius:6px;display:block;margin-bottom:8px;"></code>
             <button onclick="copiarApiToken()" style="background:#F59E0B;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar Token</button>
+            <div style="font-size:12px;font-weight:700;color:#92400E;margin:14px 0 6px;">Endereço do conector do Claude (já com este token):</div>
+            <code id="api-token-mcp" style="font-size:12px;word-break:break-all;color:#1F2937;background:#FEF3C7;padding:6px 10px;border-radius:6px;display:block;margin-bottom:8px;"></code>
+            <button onclick="copiarApiTexto('api-token-mcp','✅ Endereço copiado! Cole no Claude, em Conectores.')" style="background:#F59E0B;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;">📋 Copiar endereço do conector</button>
           </div>
           <div id="api-tokens-list"></div>
         </div>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🤖 Conectar no Claude (MCP)</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">O Claude passa a responder com os números da empresa: vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. Só leitura: pelo conector ninguém muda nada no TMX.</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">Endereço do conector:</div>
+          <code class="tmx-url-publica" data-caminho="/mcp?token=SEU_TOKEN" style="font-size:12px;background:var(--bg3);padding:6px 10px;border-radius:6px;display:block;word-break:break-all;"></code>
+          <ol style="font-size:12px;color:var(--text);margin:12px 0 0 18px;padding:0;line-height:1.7;">
+            <li>Gere um token aqui em cima (ex.: "Claude"). O endereço já aparece pronto, com o token no lugar de SEU_TOKEN: copie.</li>
+            <li>No Claude (claude.ai ou o app do computador), abra <b>Configurações › Conectores</b> e clique em <b>Adicionar conector personalizado</b>. No plano Team ou Enterprise, quem adiciona é o dono da conta.</li>
+            <li>Em nome, escreva <b>TMX</b>. Em URL, cole o endereço. Clique em <b>Adicionar</b>.</li>
+            <li>Numa conversa, ligue o TMX no botão de ferramentas e pergunte, por exemplo: "como está hoje?" ou "quais criativos venderam nos últimos 7 dias?". No celular, o conector aparece sozinho depois de adicionado no computador.</li>
+          </ol>
+          <div style="font-size:11px;color:var(--text2);margin-top:10px;">Quem tiver esse endereço lê os números da empresa. Não mande em grupo; se vazar, revogue o token aqui e gere outro.</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
           <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📖 Documentação da API</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Base URL: <code style="background:var(--bg3);padding:2px 8px;border-radius:4px;">https://app.centralaxcend.com/api/v1</code></div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Base URL: <code class="tmx-url-publica" data-caminho="/api/v1" style="background:var(--bg3);padding:2px 8px;border-radius:4px;word-break:break-all;"></code></div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Header: <code style="background:var(--bg3);padding:2px 8px;border-radius:4px;">Authorization: Bearer sk_live_xxx...</code></div>
-          <a href="/api/v1/docs" target="_blank" class="btn btn-ghost" style="font-size:12px;">📖 Ver documentação completa</a>
+          <a id="api-docs-link" href="/api/v1/docs" target="_blank" class="btn btn-ghost" style="font-size:12px;">📖 Ver documentação completa</a>
         </div>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:22px;">
           <div style="font-size:14px;font-weight:700;margin-bottom:6px;">📊 Logs de Acesso</div>
@@ -9252,7 +9268,8 @@ async function spyAutoGerarTokenWebhook(){
   // Detecta se é Diretoria pra oferecer flag master
   var ehDiretoria = currentUser && currentUser.cargo === 'Diretoria';
   var ehMaster = false;
-  if(ehDiretoria){
+  // o banco master é da TMX: numa empresa cliente o token é sempre só dos dados dela
+  if(ehDiretoria && tmxEhTmx()){
     ehMaster = confirm('🌐 Gerar token MASTER?\n\nToken master pode usar broadcast:true e popular o banco MASTER (visível pra todos os tenants/clientes do TMX Digital).\n\nClique OK pra master (recomendado se você é o admin TMX Digital) ou Cancelar pra token normal (só seus dados).');
   }
   try {
@@ -22326,7 +22343,7 @@ var CFG_CONEX = [
   { id:'ia',       ic:'🤖', nome:'Agente de IA',   desc:'Claude ou OpenAI, pra responder pelo WhatsApp e no chat das páginas.', paineis:['whatsapp'], ver:'ia' },
   { id:'email',    ic:'📧', nome:'E-mail',         desc:'Resend: boas-vindas e troca de senha.', paineis:['integracoes'], ver:'email' },
   { id:'redtrack', ic:'📡', nome:'RedTrack',       desc:'Segunda fonte de métricas na Análise de tráfego.', paineis:['apis'] },
-  { id:'api',      ic:'🔑', nome:'Acesso por API', desc:'Chaves pro Claude e outras ferramentas consultarem o TMX (MCP).', paineis:['api-tokens'], soTmx:true },
+  { id:'api',      ic:'🔑', nome:'Acesso por API', desc:'Chaves pro Claude e outras ferramentas consultarem o TMX (MCP).', paineis:['api-tokens'] },
   { id:'bancos',   ic:'🏦', nome:'Bancos',         desc:'Conta Simples, Lootrush e Nubank ficam em Financeiro › Integrações.', fora:true }
 ];
 var cfgSecao = 'equipe', cfgConexao = '';
@@ -29926,6 +29943,9 @@ function gerarApiToken(){
     if(data.token){
       document.getElementById('api-token-result').style.display = 'block';
       document.getElementById('api-token-value').textContent = data.token;
+      // o endereço do MCP já com /e/<código> quando é uma empresa cliente
+      var mcp = document.getElementById('api-token-mcp');
+      if(mcp) mcp.textContent = urlPublica('/mcp?token=' + encodeURIComponent(data.token));
       document.getElementById('api-token-nome').value = '';
       renderApiTokens();
     } else {
@@ -29934,10 +29954,12 @@ function gerarApiToken(){
   }).catch(()=> alert('Erro de conexão.'));
 }
 
-function copiarApiToken(){
-  var token = document.getElementById('api-token-value').textContent;
-  if(navigator.clipboard) navigator.clipboard.writeText(token).then(()=>notif('✅ Token copiado!'));
-  else { var t=document.createElement('textarea'); t.value=token; t.style.cssText='position:fixed;opacity:0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); notif('✅ Token copiado!'); }
+function copiarApiToken(){ copiarApiTexto('api-token-value', '✅ Token copiado!'); }
+function copiarApiTexto(id, aviso){
+  var el = document.getElementById(id); if(!el) return;
+  var token = el.textContent;
+  if(navigator.clipboard) navigator.clipboard.writeText(token).then(()=>notif(aviso));
+  else { var t=document.createElement('textarea'); t.value=token; t.style.cssText='position:fixed;opacity:0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); notif(aviso); }
 }
 
 function revogarApiToken(id){
@@ -29949,11 +29971,16 @@ function revogarApiToken(id){
 }
 
 function renderApiTokens(){
+  // Endereços desta empresa (na TMX, sem /e/<código>)
+  _preencherUrlsPublicas();
+  var dl = document.getElementById('api-docs-link'); if(dl) dl.href = urlPublica('/api/v1/docs');
   // Lista de tokens
   fetch(API_BASE+'/api/tokens/list').then(r=>r.json()).then(tokens=>{
     var el = document.getElementById('api-tokens-list');
     if(!el) return;
-    if(!tokens.length){
+    if(!Array.isArray(tokens)){
+      el.innerHTML = '<div style="color:var(--text2);font-size:13px;text-align:center;padding:20px;">'+_cfgEsc((tokens && tokens.error) || 'Não consegui carregar os tokens.')+'</div>';
+    } else if(!tokens.length){
       el.innerHTML = '<div style="color:var(--text2);font-size:13px;text-align:center;padding:20px;">Nenhum token criado.</div>';
     } else {
       var h = '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
@@ -29961,8 +29988,8 @@ function renderApiTokens(){
       tokens.forEach(function(t){
         var statusBadge = t.ativo ? '<span style="color:#22C55E;font-weight:700;">● Ativo</span>' : '<span style="color:#EF4444;font-weight:700;">● Revogado</span>';
         h += '<tr style="border-bottom:1px solid var(--border);">';
-        h += '<td style="padding:8px;font-weight:600;">'+t.nome+' '+statusBadge+'</td>';
-        h += '<td style="padding:8px;"><code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:11px;">'+t.preview+'</code></td>';
+        h += '<td style="padding:8px;font-weight:600;">'+_cfgEsc(t.nome)+' '+statusBadge+'</td>';
+        h += '<td style="padding:8px;"><code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:11px;">'+_cfgEsc(t.preview)+'</code></td>';
         h += '<td style="padding:8px;color:var(--text2);">'+new Date(t.criado).toLocaleDateString('pt-BR')+'</td>';
         h += '<td style="padding:8px;color:var(--text2);">'+(t.ultimoUso ? new Date(t.ultimoUso).toLocaleString('pt-BR') : '—')+'</td>';
         h += '<td style="padding:8px;text-align:right;font-weight:600;">'+t.totalReqs+'</td>';
@@ -29978,15 +30005,15 @@ function renderApiTokens(){
   fetch(API_BASE+'/api/tokens/logs').then(r=>r.json()).then(logs=>{
     var el = document.getElementById('api-logs-list');
     if(!el) return;
-    if(!logs.length){
+    if(!Array.isArray(logs) || !logs.length){
       el.innerHTML = '<div style="color:var(--text2);font-size:12px;text-align:center;padding:20px;">Nenhum log.</div>';
     } else {
       var h = '';
       logs.slice(0,50).forEach(function(l){
         h += '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;">';
-        h += '<code style="color:var(--text2);">'+l.token+'</code>';
-        h += '<span style="font-weight:600;color:var(--accent);">'+l.method+'</span>';
-        h += '<span style="flex:1;color:var(--text);">'+l.path+'</span>';
+        h += '<code style="color:var(--text2);">'+_cfgEsc(l.token)+'</code>';
+        h += '<span style="font-weight:600;color:var(--accent);">'+_cfgEsc(l.method)+'</span>';
+        h += '<span style="flex:1;color:var(--text);">'+_cfgEsc(l.path)+'</span>';
         h += '<span style="color:var(--text2);">'+new Date(l.timestamp).toLocaleString('pt-BR')+'</span>';
         h += '</div>';
       });

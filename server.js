@@ -506,6 +506,7 @@ function _respBloqueada(res, emp) {
   res.end(JSON.stringify({ error: 'A conta da sua empresa está suspensa. Fale com a TMX pra liberar.', codigo: 'EMPRESA_BLOQUEADA' }));
 }
 const _ROTAS_POR_EMAIL = new Set(['/api/auth/login', '/api/auth/forgot', '/api/auth/reset']);
+const _RE_API_EMPRESA = /^\/(mcp(?=[/?]|$)|api\/v1\/|api\/spy\/)/;
 // Quem é de quem:
 // 1. endereço /e/<código>/... (pixel, webhook de vendas, WhatsApp, quiz, links);
 // 2. sessão com a marca da empresa (ses_<código>.…); a sessão da TMX não tem marca;
@@ -533,7 +534,8 @@ function _portaria(req, res, next) {
     if (!emp) return _respErro(res, mt ? 401 : 404, mt ? 'Sessão inválida. Faça login de novo.' : 'Empresa não encontrada.');
     if (emp.status !== 'ativa') {
       const suporte = mt && tok.startsWith('ses_' + id + '.sup');
-      if (porEmail || (mt && !suporte)) return _respBloqueada(res, emp);
+      // MCP e API v1 são o app por fora (a equipe lendo os dados): fecham junto com o app
+      if (porEmail || (mt && !suporte) || _RE_API_EMPRESA.test(caminho)) return _respBloqueada(res, emp);
     }
     _motorPronto(id).then(m => _encaminhar(req, res, m, caminho, corpo))
       .catch(() => _respErro(res, 503, 'A empresa está ligando. Tente de novo em instantes.'));
@@ -692,8 +694,9 @@ app.use(express.json({ limit: '20mb' }));
 app.use(_injetarTenant);
 if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
-  // plataforma (cadastro, cobrança, painel SaaS, MCP, criar empresas) fica só na TMX.
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
+  // plataforma (cadastro, cobrança, painel SaaS, criar empresas) fica só na TMX.
+  // O MCP e a API v1 existem em cada empresa, com os tokens e os dados dela (07/11/2026).
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 // Sessões de suporte abertas neste motor: hash do token -> { modo, expira }. Fica na memória
@@ -1466,7 +1469,26 @@ function _logAPI(db, tokenPreview, method, path) {
 // faturamento). Fechada pra Diretoria, como as outras rotas sensiveis. A tela ja
 // manda o login em toda chamada /api/, entao nada muda pra quem usa o painel.
 // Os tokens ja criados continuam valendo.
-app.post('/api/tokens/generate', authDiretoriaInterna, (req, res) => {
+//
+// Cada empresa tem os tokens dela (07/11/2026). Na TMX, só a Diretoria da TMX, como
+// sempre. No motor de uma empresa, a Diretoria daquela empresa: o token mora no banco
+// dela e só abre o MCP e a API v1 dela (endereço /e/<código>/...). A sessão de suporte
+// da TMX olha a lista, mas não gera nem revoga: um token continuaria valendo depois
+// que o tempo do suporte acaba, e a TMX ficaria com uma chave dos dados do cliente.
+function authTokensApi(req, res, next) {
+  if (SOU_TMX) return authDiretoriaInterna(req, res, next);
+  authDiretoria(req, res, () => {
+    if (req.user && req.user.suporte && req.method !== 'GET') {
+      return res.status(403).json({ error: 'Só a Diretoria da empresa gera ou revoga token da API. O suporte da TMX não mexe nisso.', codigo: 'SUPORTE_SEM_TOKEN' });
+    }
+    next();
+  });
+}
+// Onde o token é usado: na TMX, /mcp e /api/v1; numa empresa, com /e/<código> na frente
+function _enderecosApi() {
+  return { mcp: BASE_PUBLICA + '/mcp', api: BASE_PUBLICA + '/api/v1', docs: BASE_PUBLICA + '/api/v1/docs' };
+}
+app.post('/api/tokens/generate', authTokensApi, (req, res) => {
   const { nome, userId, master, descricao } = req.body || {};
   if (!nome) return res.status(400).json({ error: 'Nome do token obrigatório.' });
 
@@ -1481,9 +1503,11 @@ app.post('/api/tokens/generate', authDiretoriaInterna, (req, res) => {
     hash: tokenHash,
     preview: token.substring(0, 16) + '...',
     criado: new Date().toISOString(),
-    criadoPor: userId || 'sistema',
+    criadoPor: (req.user && req.user.id) || userId || 'sistema',
     ativo: true,
-    master: master === true,  // flag pra habilitar broadcast no /api/spy/import
+    // flag pra habilitar broadcast no /api/spy/import. O banco "de todos" é da TMX:
+    // numa empresa não existe token master.
+    master: SOU_TMX && master === true,
     ultimoUso: null,
     totalReqs: 0
   };
@@ -1494,12 +1518,13 @@ app.post('/api/tokens/generate', authDiretoriaInterna, (req, res) => {
   // Retorna o token APENAS NESTE MOMENTO (nunca mais será visível)
   res.json({
     token,
+    enderecos: _enderecosApi(),
     aviso: 'ATENÇÃO: Copie e guarde este token agora. Ele não será exibido novamente.'
   });
 });
 
 // GET /api/tokens/list — lista tokens (sem mostrar o token real)
-app.get('/api/tokens/list', authDiretoriaInterna, (req, res) => {
+app.get('/api/tokens/list', authTokensApi, (req, res) => {
   const db = readDB();
   const tokens = (db.api_tokens || []).map(t => ({
     id: t.id,
@@ -1515,7 +1540,7 @@ app.get('/api/tokens/list', authDiretoriaInterna, (req, res) => {
 });
 
 // POST /api/tokens/revoke/:id — revoga um token
-app.post('/api/tokens/revoke/:id', authDiretoriaInterna, (req, res) => {
+app.post('/api/tokens/revoke/:id', authTokensApi, (req, res) => {
   const id = parseInt(req.params.id);
   const db = readDB();
   const token = (db.api_tokens || []).find(t => t.id === id);
@@ -1527,7 +1552,7 @@ app.post('/api/tokens/revoke/:id', authDiretoriaInterna, (req, res) => {
 });
 
 // GET /api/tokens/logs — logs de acesso
-app.get('/api/tokens/logs', authDiretoriaInterna, (req, res) => {
+app.get('/api/tokens/logs', authTokensApi, (req, res) => {
   const db = readDB();
   res.json((db.api_logs || []).slice(0, 100));
 });
@@ -1682,11 +1707,25 @@ app.post('/api/v1/chat/enviar', authAPI, (req, res) => {
 });
 
 // ── DADOS GENÉRICOS (pra agente acessar qualquer coisa) ──
+// O que é só da TMX e não existe pro cliente (07/11/2026): Meu Protocolo, os módulos
+// arquivados que guardam dado (IA = sl_ia_copy, Educacional = edu, Infra = Controle de
+// Testes) e o que é da plataforma. Numa empresa, a API v1 não devolve essas chaves.
+const CHAVES_SO_TMX = new Set(['sl_protocolo', 'sl_ia_copy', 'edu', 'sl_ct_nichos', 'sl_ct_testes',
+  'sl_modulos_arquivados', 'sl_saas_tenants', 'sl_saas_config', 'sl_saas_faturas']);
+// Numa empresa o token lê o mesmo que a Diretoria dela vê no app: segredo (KEYS_SERVIDOR:
+// token da Meta, da VTurb, do webhook, dados crus de cliente) nunca sai. Na TMX continua
+// como sempre foi; só a senha deixa de sair, aqui e em qualquer lugar.
+function _v1ChaveFechada(chave) {
+  if (SOU_TMX) return false;
+  return CHAVES_SO_TMX.has(chave) || KEYS_SERVIDOR.has(chave);
+}
 app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
+  const chave = String(req.params.chave || '');
   const db = readDB();
-  const val = db.store[req.params.chave];
-  if (val === undefined) return res.status(404).json({ error: 'Chave não encontrada: ' + req.params.chave });
-  res.json(val);
+  const tem = Object.prototype.hasOwnProperty.call(db.store || {}, chave);
+  if (!tem || _v1ChaveFechada(chave)) return res.status(404).json({ error: 'Chave não encontrada: ' + chave });
+  const val = db.store[chave];
+  res.json(chave === 'sl_usuarios' ? _stripSenhas(val) : val);
 });
 
 // ══════════════════════════════════════════════
@@ -1760,7 +1799,8 @@ app.post('/api/spy/import', authAPI, (req, res) => {
     const db = readDB();
     // Master mode: salva em sl_spy_master (global, lido por todos os tenants)
     // Modo normal: salva em sl_spy_auto (privado do tenant que fez o request)
-    const isMaster = broadcast === true && req.apiToken && req.apiToken.master === true;
+    // o banco "de todos" (sl_spy_master) é da TMX: numa empresa, broadcast não existe
+    const isMaster = SOU_TMX && broadcast === true && req.apiToken && req.apiToken.master === true;
     const storeKey = isMaster ? 'sl_spy_master' : 'sl_spy_auto';
     const bibs = db.store[storeKey] || [];
     const nichos = db.store['sl_spy_auto_nichos'] || [];
@@ -8135,11 +8175,16 @@ app.get('/api/sync/stream', (req, res) => {
 });
 
 // ── DOCUMENTAÇÃO DA API ──
+// Numa empresa os caminhos já vêm com /e/<código> na frente: é o endereço que chega nela.
 app.get('/api/v1/docs', (req, res) => {
+  const end = _enderecosApi();
   res.json({
-    nome: 'ScaleLab API v1',
+    nome: SOU_TMX ? 'ScaleLab API v1' : 'TMX API v1',
     versao: '1.0.0',
+    empresa: SOU_TMX ? undefined : _empresaInfo().nome || EMPRESA_MOTOR,
     autenticacao: 'Bearer Token no header Authorization',
+    base: end.api,
+    mcp: end.mcp + '?token=SEU_TOKEN',
     endpoints: [
       { method: 'GET',   path: '/api/v1/demandas',           desc: 'Listar demandas (query: status, responsavel, atrasadas, limit)' },
       { method: 'GET',   path: '/api/v1/demandas/:id',       desc: 'Detalhe de uma demanda' },
@@ -8156,8 +8201,8 @@ app.get('/api/v1/docs', (req, res) => {
       { method: 'POST',  path: '/api/v1/chat/enviar',        desc: 'Enviar mensagem (body: nome, texto)' },
       { method: 'GET',   path: '/api/v1/dados/:chave',       desc: 'Ler qualquer chave do banco' },
       { method: 'GET',   path: '/api/v1/docs',               desc: 'Esta documentação' }
-    ],
-    limites: { global: '200 req/min', api_v1: '60 req/min' }
+    ].map(e => BASE_PUBLICA ? Object.assign({}, e, { path: BASE_PUBLICA + e.path }) : e),
+    limites: { global: '200 req/min', api_v1: '60 req/min', mcp: '90 req/min' }
   });
 });
 
@@ -22016,6 +22061,31 @@ const MCP_FERRAMENTAS = [
       limite: { type: 'number', description: 'Quantos eventos. Padrão 20' } } } }
 ];
 
+// ── MCP de cada empresa (07/11/2026) ──
+// Cada empresa cliente tem o MCP dela em /e/<código>/mcp, com o token gerado pela Diretoria
+// dela (fica no db.api_tokens do motor). As ferramentas são as mesmas, mas rodam dentro do
+// motor da empresa: banco, base de pessoas, integrações (Utmify, VTurb) e memória são os
+// dela, e nada lê a pasta ou o cache da TMX. Ferramenta marcada soTmx fica só na TMX;
+// hoje nenhuma lê Meu Protocolo nem módulo arquivado, então todas valem pra empresa.
+// Nas descrições, os exemplos com nome de projeto da TMX trocam por texto neutro.
+const MCP_TEXTOS_EMPRESA = {
+  listar_arquivos: { props: { nicho: 'Parte do nome do nicho', projeto: 'Parte do nome do projeto' } },
+  buscar_copy_por_ad: { description: 'Acha o doc com o roteiro de um anúncio pelo nome ou número, pela faixa de ADs cadastrada nos arquivos da Central de Arquivos, e diz o que procurar dentro dele. Entende AD216, 216, AD216.2 (Hook 2 do AD216) e remontagens como AD245.1 - AD216.2 + C153 (anúncio novo feito com o Hook 2 do AD216 e o corpo do AD153), respondendo hook e corpo separadamente. Depois, abra o link e vá ao bloco indicado. Se nenhum arquivo cobrir o número, avisa "faixa não cadastrada".' }
+};
+function _mcpFerramentas() {
+  return MCP_FERRAMENTAS.filter(f => SOU_TMX || !f.soTmx).map(f => {
+    const t = SOU_TMX ? null : MCP_TEXTOS_EMPRESA[f.name];
+    const schema = JSON.parse(JSON.stringify(f.inputSchema));
+    if (t && t.props) {
+      for (const [k, d] of Object.entries(t.props)) if (schema.properties && schema.properties[k]) schema.properties[k].description = d;
+    }
+    return { name: f.name, description: (t && t.description) || f.description, inputSchema: schema };
+  });
+}
+function _mcpNomeServidor() {
+  return SOU_TMX ? 'Central TMX' : 'TMX · ' + (_empresaInfo().nome || EMPRESA_MOTOR);
+}
+
 async function _mcpExecutar(nome, a) {
   a = a || {};
   const per = _mcpPeriodo(a);
@@ -22311,7 +22381,8 @@ async function _mcpExecutar(nome, a) {
     const base = arquivos.filter(x => x.ad_inicio != null && (!filtro || _mcpSemAcento(x.nicho + ' ' + x.projeto).indexOf(filtro) >= 0));
     const secao = x => {
       const ad = 'AD' + x.ad, hook = x.hook ? 'Hook ' + x.hook : '';
-      if (x.papel === 'semRoteiro') return texto + '\nO Kalebe gravou esse anúncio por conta própria, sem roteiro encomendado. Não tem copy na Central.';
+      if (x.papel === 'semRoteiro') return texto + (SOU_TMX ? '\nO Kalebe gravou esse anúncio por conta própria, sem roteiro encomendado. Não tem copy na Central.'
+        : '\nEsse anúncio está marcado como gravado sem roteiro (RM). Não tem copy na Central.');
       const titulo = x.papel === 'hook' ? 'HOOK: ' + (hook ? hook + ' do ' + ad : 'hook do ' + ad)
         : x.papel === 'corpo' ? 'CORPO: corpo do ' + ad
         : (remontagem ? 'ANÚNCIO NOVO: ' : 'ANÚNCIO: ') + ad + (hook ? ', ' + hook : '');
@@ -22354,19 +22425,21 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
       error: { code: -32001, message: 'Token inválido ou não informado. Gere um token da API no Central TMX e use ?token= no fim da URL.' } });
   }
   const metodo = String(corpo.method || '');
+  const ferramentas = _mcpFerramentas();
   try {
     if (metodo === 'initialize') {
+      const quem = SOU_TMX ? 'do Central TMX' : 'da ' + (_empresaInfo().nome || 'empresa') + ' no TMX';
       return res.json({ jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOLO,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'Central TMX', version: '1.0.0' },
-        instructions: 'Dados da operação do Central TMX: vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. Somente leitura. Todos os valores em reais e as datas no fuso de Brasília.' } });
+        serverInfo: { name: _mcpNomeServidor(), version: '1.0.0' },
+        instructions: 'Dados da operação ' + quem + ': vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. Somente leitura. Todos os valores em reais e as datas no fuso de Brasília.' } });
     }
     if (metodo.indexOf('notifications/') === 0) return res.status(202).end();
     if (metodo === 'ping') return res.json({ jsonrpc: '2.0', id, result: {} });
-    if (metodo === 'tools/list') return res.json({ jsonrpc: '2.0', id, result: { tools: MCP_FERRAMENTAS } });
+    if (metodo === 'tools/list') return res.json({ jsonrpc: '2.0', id, result: { tools: ferramentas } });
     if (metodo === 'tools/call') {
       const nome = String((corpo.params || {}).name || '');
-      if (!MCP_FERRAMENTAS.some(f => f.name === nome)) return erro(-32602, 'Ferramenta desconhecida: ' + nome);
+      if (!ferramentas.some(f => f.name === nome)) return erro(-32602, 'Ferramenta desconhecida: ' + nome);
       try {
         const texto = await _mcpExecutar(nome, (corpo.params || {}).arguments || {});
         return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(texto) }] } });
@@ -22383,9 +22456,9 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
   }
 });
 app.get('/mcp', (req, res) => {
-  res.json({ ok: true, servidor: 'Central TMX', protocolo: MCP_PROTOCOLO, somenteLeitura: true,
-    ferramentas: MCP_FERRAMENTAS.map(f => f.name),
-    comoConectar: 'Use esta mesma URL com ?token=SEU_TOKEN no seu assistente. O token sai em Configurações → API.' });
+  res.json({ ok: true, servidor: _mcpNomeServidor(), protocolo: MCP_PROTOCOLO, somenteLeitura: true,
+    ferramentas: _mcpFerramentas().map(f => f.name),
+    comoConectar: 'Use esta mesma URL com ?token=SEU_TOKEN no seu assistente. O token sai em Configurações › Conexões › Acesso por API.' });
 });
 
 // Páginas (modelos, versões, conferências e publicação na hospedagem): mora em paginas.js.

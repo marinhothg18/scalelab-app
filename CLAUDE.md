@@ -86,7 +86,16 @@ Regras:
 - O app (`_empresaDoLogin`) apaga a cópia local quando o aparelho troca de empresa.
 - Fora da TMX, Meu Protocolo e os 5 módulos de `MODULOS_ARQUIVAVEIS` (IA, Educacional, Infra,
   Ajuda, Tour) não existem: `_modulosArquivados()` devolve todos, e em Configurações as seções com
-  `soTmx` (Módulos arquivados, Acesso por API) somem. Páginas também fica só na TMX.
+  `soTmx` (Módulos arquivados, Hospedagem) somem. Páginas também fica só na TMX.
+- **MCP e API v1 por empresa** (07/11): `/e/<código>/mcp?token=…` e `/e/<código>/api/v1/...` chegam ao
+  motor da empresa. A Diretoria dela gera, lista e revoga os tokens (`authTokensApi`: na TMX continua
+  `authDiretoriaInterna`); o token fica no `db.api_tokens` do motor, só o sha256, e não abre outra empresa
+  nem a TMX. A sessão de suporte da TMX não gera nem revoga token. Ferramenta do MCP com `soTmx` fica só na
+  TMX (hoje nenhuma); `MCP_TEXTOS_EMPRESA` troca os exemplos com nome de projeto da TMX. Na API v1 da
+  empresa, `/dados/:chave` não devolve `CHAVES_SO_TMX` nem `KEYS_SERVIDOR`; senha não sai em lugar nenhum.
+  Empresa bloqueada perde MCP e API junto com o app (`_RE_API_EMPRESA` na portaria). Configurações ›
+  Conexões › Acesso por API mostra o endereço com `urlPublica('/mcp')` e o passo a passo do Claude.
+  `test/mcp-empresa.test.js`.
 - `test/multiempresa.test.js` sobe TMX + 2 empresas numa pasta temporária e prova o isolamento.
 - **Cadastro do cliente por convite** (`/cadastro?c=cv_…`, `public/cadastro.html`): a Diretoria da TMX gera o
   link em `POST /api/plataforma/convites` (vale uma vez, vence em 7 dias, só o hash fica em `convites` no
@@ -149,7 +158,7 @@ The SPA writes to `localStorage` first, then pushes to the server. Sync endpoint
 
 Two layers with different audiences:
 
-1. **User sessions** (for the SPA) — `POST /api/auth/login` with email+password returns a Bearer token. Sessions are stored as `sha256(token)` in `db.sessions`, TTL = 30 days of inactivity (`lastActivity` bumped on every `authDiretoria` / `/api/auth/me` hit). `authDiretoria` middleware protects Diretoria-only endpoints (backup, audit log, forcing lembretes/relatórios). The legacy `x-user-email`/`x-user-senha` headers were removed on 05/11/2026: only sessions authenticate. A session only works on the tenant of its own user: `validarSessao(db, token, req.tenantId)` and `authUsuario`/`authDiretoria` check it (a global middleware that re-read db.json per request made production crawl; never add one). Public signup (`/api/saas/signup`) is closed unless `CADASTRO_PUBLICO=1`. API tokens (`/api/tokens/*`) are `authDiretoriaInterna` only, since they read TMX data through MCP and `/api/v1`. Outside Diretoria, `PUT /api/store/sl_usuarios` only changes the caller's own record and never `cargo`/`senha`/`email`/`ativo`/`tenant_id`.
+1. **User sessions** (for the SPA) — `POST /api/auth/login` with email+password returns a Bearer token. Sessions are stored as `sha256(token)` in `db.sessions`, TTL = 30 days of inactivity (`lastActivity` bumped on every `authDiretoria` / `/api/auth/me` hit). `authDiretoria` middleware protects Diretoria-only endpoints (backup, audit log, forcing lembretes/relatórios). The legacy `x-user-email`/`x-user-senha` headers were removed on 05/11/2026: only sessions authenticate. A session only works on the tenant of its own user: `validarSessao(db, token, req.tenantId)` and `authUsuario`/`authDiretoria` check it (a global middleware that re-read db.json per request made production crawl; never add one). Public signup (`/api/saas/signup`) is closed unless `CADASTRO_PUBLICO=1`. API tokens (`/api/tokens/*`) use `authTokensApi`: on the TMX it is `authDiretoriaInterna`; in a company motor it is that company's Diretoria, and the token only reads that company's MCP and `/api/v1` (see "MCP e API v1 por empresa"). Outside Diretoria, `PUT /api/store/sl_usuarios` only changes the caller's own record and never `cargo`/`senha`/`email`/`ativo`/`tenant_id`.
 
 2. **External API tokens** (for agents / integrations) — issued via `POST /api/tokens/generate` (returned **once**, then only the `sha256` hash is kept). Used by `/api/v1/*` routes via `authAPI` middleware. Rate-limited at 60 req/min.
 
