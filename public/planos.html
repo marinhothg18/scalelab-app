@@ -201,8 +201,8 @@ button,input{font-family:inherit}
   <section class="sec" id="como-funciona" aria-labelledby="t-como">
     <div class="topo"><div><span class="rot">Como funciona</span><h2 id="t-como">Do pagamento à primeira venda</h2></div></div>
     <div class="passos">
-      <div><b>Escolha o plano e pague</b><p>Com cartão de crédito, na página de pagamento segura da Pagar.me.</p></div>
-      <div><b>Crie a sua conta</b><p>O link chega na hora, nesta tela, no e-mail e no WhatsApp. Você cria o acesso e dá o nome da empresa e dos projetos.</p></div>
+      <div><b>Escolha o plano e pague</b><p>O botão leva direto pra página de pagamento segura da Pagar.me: você põe e-mail, dados e cartão lá.</p></div>
+      <div><b>Crie a sua conta</b><p>Pago, você volta pra cá e cria a conta na hora. O mesmo link vai pro e-mail e o WhatsApp da compra.</p></div>
       <div><b>Ligue os seus projetos</b><p>Meta, pixel e checkout, na aba Integrações de cada projeto. Aí as vendas começam a aparecer.</p></div>
     </div>
   </section>
@@ -216,6 +216,7 @@ button,input{font-family:inherit}
       </div>
     </div>
     <div class="grade" id="grade"><div class="carregando">Carregando os planos…</div></div>
+    <div class="erro-msg" id="grade-erro" role="alert"></div>
     <p class="todos">Todas as ferramentas em todos os planos: Demandas, Criativos, Rituais, Arquivos, Tráfego, Análise de tráfego, Projetos e Financeiro.</p>
   </section>
 
@@ -287,7 +288,28 @@ button,input{font-family:inherit}
         '<button class="btn lg'+(p.gratis ? ' sec' : '')+'" type="button" data-assinar="'+esc(p.id)+'">'+(p.gratis ? 'Pedir o teste grátis' : 'Assinar o '+esc(p.nome))+'</button>'+
         '<ul>'+(p.itens || []).map(function(i){ return '<li>'+esc(i)+'</li>'; }).join('')+'</ul></article>';
     }).join('');
-    document.querySelectorAll('[data-assinar]').forEach(function(b){ b.addEventListener('click', function(){ abrir(b.getAttribute('data-assinar')); }); });
+    document.querySelectorAll('[data-assinar]').forEach(function(b){ b.addEventListener('click', function(){
+      var p = E.planos.filter(function(x){ return x.id === b.getAttribute('data-assinar'); })[0];
+      if(p && !p.gratis) irPagar(p, b); else abrir(b.getAttribute('data-assinar'));
+    }); });
+  }
+  // plano pago: direto pro checkout da Pagar.me (e-mail, dados e cartão são pedidos lá)
+  function irPagar(p, botao){
+    if(E.enviando) return;
+    E.enviando = true;
+    var antes = botao.textContent;
+    botao.disabled = true; botao.textContent = 'Abrindo o pagamento…';
+    $('grade-erro').textContent = '';
+    fetch('/api/assinar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plano: p.id, ciclo: E.ciclo }) })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(x){
+        if(!x.ok || !x.j.url) throw new Error(x.j.error || 'Não consegui abrir o pagamento agora. Tente de novo em instantes.');
+        location.href = x.j.url;
+      })
+      .catch(function(err){
+        $('grade-erro').textContent = err.message;
+        E.enviando = false; botao.disabled = false; botao.textContent = antes;
+      });
   }
   document.querySelectorAll('[data-ciclo]').forEach(function(b){ b.addEventListener('click', function(){ E.ciclo = b.getAttribute('data-ciclo'); pintarPlanos(); }); });
 
@@ -374,7 +396,7 @@ button,input{font-family:inherit}
             '<div class="sub">Agora crie a sua conta. Leva uns 2 minutos: acesso, nome da empresa e projetos.</div>'+
             '<div class="resumo"><span>' + linha + '</b></div>'+
             '<a class="btn lg" href="' + esc(j.convite) + '">Criar minha conta →</a>'+
-            '<p class="aviso">Mandamos o mesmo link para o seu e-mail e o seu WhatsApp. Ele vale para um cadastro e vence em 30 dias.</p>';
+            '<p class="aviso">' + (j.avisado ? 'Mandamos o mesmo link para o seu e-mail e o seu WhatsApp. ' : 'Crie agora: o mesmo link também vai para o e-mail da compra. ') + 'Ele vale para um cadastro e vence em 30 dias.</p>';
           return;
         }
         if(j.status === 'aguardando' && tentativas < 60){ setTimeout(perguntar, 3000); return; }

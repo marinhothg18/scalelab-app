@@ -213,4 +213,41 @@ test('cobrança pela Pagar.me', async (t) => {
     await aviso('subscription.canceled', { id: 'sub_123', status: 'canceled' });
     await ate(async () => (await estado()) === 'cancelada', 4000, 'cancelada');
   });
+
+  await t.test('compra direto pela Pagar.me, sem dados antes: o aviso traz o contato e manda o acesso', async () => {
+    const antes = pg.links.length;
+    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'escala', ciclo: 'mensal' } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+    const link = pg.links[antes];
+    assert.ok(!link.customer_settings, 'sem dados da pessoa no link: a Pagar.me pede no checkout');
+    const plano = link.cart_settings.recurrences[0].plan_id;
+    pg.pagos.add(link.id);
+    await aviso('subscription.created', { id: 'sub_777', status: 'active', plan: { id: plano },
+      customer: { id: 'cus_7', name: 'Duda Lima', email: 'Duda@Loja.com', phones: { mobile_phone: { country_code: '55', area_code: '31', number: '977776666' } } } });
+    await ate(async () => (await chamar('GET', '/api/assinar/situacao?r=' + r.dados.ref)).dados.status === 'paga', 5000, 'liberar pelo plano');
+    const s = await chamar('GET', '/api/assinar/situacao?r=' + r.dados.ref);
+    assert.strictEqual(s.dados.avisado, true, 'o link foi pro e-mail e o WhatsApp da compra');
+    const c = await chamar('GET', '/api/cadastro/convite?c=' + new URL(s.dados.convite).searchParams.get('c'));
+    assert.strictEqual(c.dados.email, 'duda@loja.com');
+    assert.strictEqual(c.dados.plano, 'escala');
+    const d = (await chamar('GET', '/api/plataforma/assinaturas', { token: ctx.tmx })).dados.assinaturas.find(x => x.email === 'duda@loja.com');
+    assert.strictEqual(d.whatsapp, '5531977776666');
+    assert.strictEqual(d.nome, 'Duda Lima');
+  });
+
+  await t.test('liberado pela tela antes do aviso: o aviso depois manda o acesso pro e-mail da compra', async () => {
+    const antes = pg.links.length;
+    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'agencia', ciclo: 'anual' } });
+    assert.strictEqual(r.status, 200);
+    const link = pg.links[antes];
+    pg.pagos.add(link.id);
+    await ate(async () => (await chamar('GET', '/api/assinar/situacao?r=' + r.dados.ref)).dados.status === 'paga', 15000, 'tela libera');
+    const s1 = await chamar('GET', '/api/assinar/situacao?r=' + r.dados.ref);
+    assert.strictEqual(s1.dados.avisado, false);
+    assert.match(s1.dados.convite, /\/cadastro\?c=cv_/, 'o botão aparece mesmo sem saber o e-mail');
+    await aviso('charge.paid', { id: 'ch_9', plan: { id: link.cart_settings.recurrences[0].plan_id }, customer: { id: 'cus_8', name: 'Edu', email: 'edu@agencia.com' } });
+    await ate(async () => (await chamar('GET', '/api/assinar/situacao?r=' + r.dados.ref)).dados.avisado === true, 5000, 'acesso mandado depois');
+    const c = await chamar('GET', '/api/cadastro/convite?c=' + new URL(s1.dados.convite).searchParams.get('c'));
+    assert.strictEqual(c.dados.email, 'edu@agencia.com', 'o convite ganhou o e-mail da compra');
+  });
 });
