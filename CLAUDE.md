@@ -85,7 +85,8 @@ Regras:
   continua fechado.
 - O app (`_empresaDoLogin`) apaga a cópia local quando o aparelho troca de empresa.
 - Fora da TMX, Meu Protocolo e os 5 módulos de `MODULOS_ARQUIVAVEIS` (IA, Educacional, Infra,
-  Ajuda, Tour) não existem: `_modulosArquivados()` devolve todos e Configurações › Avançado some.
+  Ajuda, Tour) não existem: `_modulosArquivados()` devolve todos, e em Configurações as seções com
+  `soTmx` (Módulos arquivados, Acesso por API) somem. Páginas também fica só na TMX.
 - `test/multiempresa.test.js` sobe TMX + 2 empresas numa pasta temporária e prova o isolamento.
 
 ### Data model
