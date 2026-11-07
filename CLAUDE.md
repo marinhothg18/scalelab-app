@@ -60,6 +60,32 @@ Only two source files matter:
 - **`server.js`** (~2,250 lines) — single Express app. Everything is here: auth, sync endpoints, public API v1, cron jobs, WhatsApp bot, backups.
 - **`public/ScaleLab.html`** (~15,000 lines) — single-file SPA (HTML + inline CSS + inline JS). Uses `localStorage` as its primary store and Chart.js from CDN. No framework, no bundler.
 
+### Multiempresa: portaria e um motor por empresa (ramo claude/multiempresa, 07/11/2026)
+
+`server.js` roda de dois jeitos:
+
+- **Sem `TMX_EMPRESA`**: é a TMX (empresa nº 1, dados em `/data`, código `tmx`) e também a
+  **portaria**. Ela liga um processo filho (motor) por empresa e entrega a cada um os pedidos dele.
+- **Com `TMX_EMPRESA=<código>`**: é o **motor** daquela empresa, com banco, SQLite, rotinas e
+  memória próprios em `TMX_DATA_DIR` (`/data/empresas/<código>/`). Ouve só em 127.0.0.1.
+
+Como a portaria (`_portaria`, registrada antes de tudo) decide de quem é o pedido: prefixo
+`/e/<código>/...` (pixel, webhook, WhatsApp, quiz, links, páginas públicas) → sessão
+`ses_<código>.…` → e-mail no login/esqueci (índice `contas` em `/data/plataforma.sqlite`) → senão
+TMX, como antes. Sem nenhuma empresa cadastrada a portaria não faz nada. Código de empresa
+inexistente é recusado, nunca cai na TMX.
+
+Regras:
+- **Nunca** ler `db.json` na portaria a cada pedido; a lista de empresas fica em memória.
+- Rotina, migração ou importação que é só da TMX leva `if (!SOU_TMX) return;`.
+- Link público montado no servidor usa `BASE_PUBLICA` (`''` na TMX, `/e/<código>` num motor);
+  no app, `urlPublica(caminho)`.
+- O motor nasce sem as chaves da TMX no Railway (`_envMotor` é uma lista branca).
+- Empresa de teste: `POST /api/plataforma/empresas` (só Diretoria da TMX). Cadastro público
+  continua fechado.
+- O app (`_empresaDoLogin`) apaga a cópia local quando o aparelho troca de empresa.
+- `test/multiempresa.test.js` sobe TMX + 2 empresas numa pasta temporária e prova o isolamento.
+
 ### Data model
 
 `db.json` is the database. Schema:
