@@ -141,6 +141,23 @@ test('primeiros passos da empresa cliente', async (t) => {
     assert.strictEqual((await chamar('GET', '/api/primeiros-passos', { token: ctx.tmx })).dados.mostrar, false);
   });
 
+  await t.test('a Central TMX Admin recomeça: a tela volta a abrir no próximo login, sem desligar nada', async () => {
+    await chamar('POST', '/api/primeiros-passos', { token: ctx.tokA, corpo: { pular: 'utmify' } });
+    const antes = (await chamar('GET', '/api/primeiros-passos', { token: ctx.tokA })).dados;
+    assert.ok(antes.vistoEm);
+    assert.strictEqual(antes.passos.utmify.pulado, true);
+    // o cliente não chama a rota da Central
+    assert.notStrictEqual((await chamar('POST', '/api/plataforma/empresas/' + ctx.idA + '/primeiros-passos', { token: ctx.tokA })).status, 200);
+    const r = await chamar('POST', '/api/plataforma/empresas/' + ctx.idA + '/primeiros-passos', { token: ctx.tmx });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+    const depois = (await chamar('GET', '/api/primeiros-passos', { token: ctx.tokA })).dados;
+    assert.strictEqual(depois.vistoEm, null);
+    assert.strictEqual(depois.passos.utmify.pulado, false);
+    assert.strictEqual(depois.passos.checkout.ok, true, 'o que já estava ligado continua');
+    assert.strictEqual(depois.passos.produtos.ok, true);
+    assert.strictEqual((await chamar('POST', '/api/plataforma/empresas/nao-existe/primeiros-passos', { token: ctx.tmx })).status, 404);
+  });
+
   await t.test('só a Diretoria da empresa', async () => {
     const us = (await chamar('GET', '/api/store', { token: ctx.tokA })).dados.sl_usuarios;
     us.push({ id: 'u-copy-a', nome: 'Copy A', email: 'copy@empresa-a.com', senha: 'senha-copy-a-123', cargo: 'Copy', ativo: true, _updatedAt: Date.now() });

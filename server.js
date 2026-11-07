@@ -9366,6 +9366,13 @@ app.get('/api/plataforma/assinaturas', authDiretoriaInterna, (req, res) => {
   res.json({ cobranca: !!PAGARME_API_KEY, ambiente: /^sk_test_/.test(PAGARME_API_KEY) ? 'teste' : (PAGARME_API_KEY ? 'producao' : null), assinaturas: lista });
 });
 
+app.post('/api/plataforma/empresas/:id/primeiros-passos', authDiretoriaInterna, async (req, res) => {
+  const e = _empresaDaRota(req, res); if (!e) return;
+  const r = await _pedirAoMotor(e.id, 'primeiros-reiniciar', {}, 15000).catch(err => ({ ok: false, erro: err.message }));
+  if (!r || !r.ok) return res.status(502).json({ error: (r && r.erro) || 'O motor da empresa não respondeu.' });
+  const db = readDB(); audit(db, 'primeiros_passos_reiniciados', { empresa: e.id, nome: e.nome }, null, req.user); writeDB(db);
+  res.json({ ok: true });
+});
 app.post('/api/plataforma/empresas/:id/desbloquear', authDiretoriaInterna, (req, res) => {
   const e = _empresaDaRota(req, res); if (!e) return;
   _platPrep("UPDATE empresas SET status='ativa', bloqueio_motivo=NULL, bloqueado_em=NULL, bloqueado_por=NULL WHERE id=?").run(e.id);
@@ -16834,6 +16841,16 @@ function _primeirosPassos(db) {
   const feitos = Object.keys(passos).filter(k => passos[k].ok || passos[k].pulado).length;
   return { mostrar: !SOU_TMX, vistoEm: cfg.vistoEm || null, passos, feitos, total: Object.keys(passos).length };
 }
+// Central TMX Admin › cliente › "Recomeçar os Primeiros passos": no próximo login da Diretoria a
+// tela abre de novo, como na primeira vez. Não desliga nada que esteja conectado.
+function _primeirosReiniciar() {
+  if (SOU_TMX) return { ok: false, erro: 'Na TMX não existe.' };
+  const db = readDB();
+  delete db.store[KEY_PRIMEIROS];
+  audit(db, 'primeiros_passos_reiniciados', KEY_PRIMEIROS, null, { nome: 'Central TMX Admin' });
+  writeDB(db);
+  return { ok: true };
+}
 app.get('/api/primeiros-passos', authDiretoria, (req, res) => {
   if (SOU_TMX) return res.json({ ok: true, mostrar: false });
   try { res.json(Object.assign({ ok: true }, _primeirosPassos(readDB()))); }
@@ -23097,6 +23114,7 @@ if (!SOU_TMX) {
       if (msg.cmd === 'sessao-suporte') return responder(_abrirSessaoSuporte(msg.dados || {}));
       if (msg.cmd === 'notificar') return responder(_notificarNoMotor(msg.dados || {}));
       if (msg.cmd === 'resumo') return responder(_resumoDaEmpresa());
+      if (msg.cmd === 'primeiros-reiniciar') return responder(_primeirosReiniciar());
       if (msg.cmd === 'auditar') {
         const db = readDB(); audit(db, String((msg.dados || {}).acao || 'plataforma'), null, (msg.dados || {}).meta || null, { nome: 'Central TMX Admin' }); writeDB(db);
         return responder({ ok: true });

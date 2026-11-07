@@ -444,6 +444,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     var chs = CHAMADOS.filter(function(c){ return c.empresa === e.id; }).slice(0, 5);
     var a = e.assinatura;
     var acoes = e.tmx ? '' : '<div class="acoes"><button class="btn pri" data-suporte="'+esc(e.id)+'">Entrar como suporte</button>' +
+      '<button class="btn" data-recomecar="'+esc(e.id)+'" title="No próximo login da Diretoria a tela abre de novo, como na primeira vez. Não desliga nada.">Recomeçar Primeiros passos</button>' +
       '<label class="mini" style="display:flex;gap:6px;align-items:center">Plano <select class="sel" data-plano="'+esc(e.id)+'" aria-label="Plano da '+esc(e.nome)+'">' +
         (PLANOS.length ? PLANOS : [{ id: e.plano, nome: e.planoNome }]).map(function(p){ return '<option value="'+esc(p.id)+'"'+(e.plano === p.id ? ' selected' : '')+'>'+esc(p.nome)+(p.mensal ? ' · R$ ' + p.mensal : '')+'</option>'; }).join('') + '</select></label>' +
       (e.status === 'ativa' ? '<button class="btn perigo" data-bloquear="'+esc(e.id)+'">Bloquear</button>' : '<button class="btn verde" data-desbloquear="'+esc(e.id)+'">Desbloquear</button>') + '</div>';
@@ -838,7 +839,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   });
   document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && (aberto || modal)){ if(modal) modal = ''; else aberto = null; pintar(); } });
   raiz.addEventListener('click', function(ev){
-    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fechar],[data-fped],[data-fcli],[data-liberar],[data-copiar],[data-c],[data-gw]'); if(!a) return;
+    var a = ev.target.closest('[data-recomecar],[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fechar],[data-fped],[data-fcli],[data-liberar],[data-copiar],[data-c],[data-gw]'); if(!a) return;
     if(a.dataset.gw){ gwEscolhido = a.dataset.gw; return pintar(); }
     if(a.dataset.fundo){ if(ev.target === a){ modal = ''; pintar(); } return; }
     if(a.dataset.fechar){ if(ev.target === a || a.classList.contains('x')){ aberto = null; pintar(); } return; }
@@ -846,6 +847,13 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     if(a.dataset.copiar) return copiar(a.dataset.copiar, 'Copiado.');
     if(a.dataset.suporte){ ev.stopPropagation(); modal = modalSuporte(empDe(a.dataset.suporte) || { id: a.dataset.suporte, nome: a.dataset.suporte }); pintar(); var mo = document.getElementById('sp-motivo'); if(mo){ if(chamado) mo.value = 'Chamado #' + chamado.id + ' · ' + chamado.assunto; mo.focus(); } return; }
     if(a.dataset.bloquear){ modal = modalBloquear(empDe(a.dataset.bloquear)); return pintar(); }
+    if(a.dataset.recomecar){
+      a.disabled = true;
+      return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.recomecar) + '/primeiros-passos').then(function(r){
+        a.disabled = false;
+        aviso(r.ok ? 'Pronto: no próximo login da Diretoria, os Primeiros passos abrem de novo.' : (r.j.error || 'Não consegui recomeçar.'));
+      });
+    }
     if(a.dataset.desbloquear){
       a.disabled = true;
       return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.desbloquear) + '/desbloquear').then(function(r){ aviso(r.ok ? 'Desbloqueada: a equipe já pode entrar.' : (r.j.error || 'Não consegui desbloquear.')); return carregar(true); });
