@@ -386,9 +386,10 @@ function _ligarMotor(emp) {
       try { _indexarContas(emp.id, msg.emails); } catch (e) { console.error('[PLATAFORMA] índice de', emp.id, e.message); }
     } else if (msg.tipo === 'pedido-portaria') {
       // o motor pede algo à plataforma; a empresa é sempre a do motor, nunca a que veio do cliente
-      let r;
-      try { r = _atenderMotor(emp.id, msg.cmd, msg.dados || {}); } catch (e) { r = { ok: false, erro: e.message }; }
-      try { proc.send({ tipo: 'resposta-portaria', n: msg.n, r }); } catch (e) {}
+      // a resposta pode demorar (o Meu plano busca as faturas na Pagar.me): espera a promessa, se vier uma
+      Promise.resolve().then(() => _atenderMotor(emp.id, msg.cmd, msg.dados || {}))
+        .catch(e => ({ ok: false, erro: e.message }))
+        .then(r => { try { proc.send({ tipo: 'resposta-portaria', n: msg.n, r }); } catch (e) {} });
     } else if (msg.tipo === 'resposta' && m.pedidos.has(msg.n)) {
       const p = m.pedidos.get(msg.n); m.pedidos.delete(msg.n); p(msg);
     }
@@ -8586,7 +8587,7 @@ app.get('/api/meu-plano', authDiretoria, async (req, res) => {
       status: reg.status, desde: reg.criada || null,
       uso: _ROTULOS_USO.map(([id, rotulo, tipo]) => ({ id, rotulo, tipo: tipo || '', usado: uso[id], limite: plano.limites[id] == null ? null : plano.limites[id] })),
       planos: PLANOS_TMX.filter(p => p.venda).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, gratis: !!p.gratis, faixa: p.faixa, itens: p.itens })),
-      cobranca: { ligada: false }
+      cobranca: reg.cobranca || { ligada: false }
     });
   } catch (e) { res.status(500).json({ error: 'Não consegui montar o plano: ' + e.message }); }
 });
@@ -8628,7 +8629,7 @@ const _precoPlano = (p, ciclo) => (ciclo === 'anual' ? p.mensal * 10 : p.mensal)
 const _reais = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const _assinatura = ref => _platPrep('SELECT * FROM assinaturas WHERE ref=?').get(ref);
 
-async function _pagarme(metodo, caminho, corpo) {
+async function _pagarme(metodo, caminho, corpo, espera) {
   if (!PAGARME_API_KEY) return { ok: false, status: 0, erro: 'cobrança desligada' };
   try {
     const r = await fetch(PAGARME_BASE + caminho, {
@@ -8636,7 +8637,7 @@ async function _pagarme(metodo, caminho, corpo) {
       headers: { Authorization: 'Basic ' + Buffer.from(PAGARME_API_KEY + ':').toString('base64'),
                  'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'tmx-digital/1.0' },
       body: corpo ? JSON.stringify(corpo) : undefined,
-      signal: AbortSignal.timeout(20000)
+      signal: AbortSignal.timeout(espera || 20000)
     });
     let dados = null;
     try { dados = await r.json(); } catch (e) {}
@@ -8872,6 +8873,30 @@ async function _tratarAvisoPagarme(ev) {
   }
 }
 
+// Meu plano do cliente: a assinatura da empresa e as últimas faturas (formato combinado com a tela:
+// { ligada, status, ciclo, valor, desde, faturas:[{ data, valor, status }] })
+const _faturasCache = new Map();
+async function _cobrancaDaEmpresa(empresa) {
+  const out = { ligada: !!PAGARME_API_KEY };
+  const a = _platPrep("SELECT * FROM assinaturas WHERE empresa=? AND status IN ('paga','atrasada','cancelada') ORDER BY criado DESC LIMIT 1").get(empresa);
+  if (!a) return out;
+  const p = _planoDe(a.plano);
+  Object.assign(out, { status: a.status, ciclo: a.ciclo, valor: _precoPlano(p, a.ciclo), desde: a.pago_em || a.criado, faturas: [] });
+  if (a.pagarme_sub && PAGARME_API_KEY) out.faturas = await _faturasDaAssinatura(a.pagarme_sub);
+  return out;
+}
+async function _faturasDaAssinatura(sub) {
+  const c = _faturasCache.get(sub);
+  if (c && c.em > Date.now() - 10 * 60000) return c.lista;
+  const r = await _pagarme('GET', '/invoices?subscription_id=' + encodeURIComponent(sub) + '&size=12', null, 6000);
+  const dados = r.ok && r.dados ? (Array.isArray(r.dados.data) ? r.dados.data : (Array.isArray(r.dados) ? r.dados : null)) : null;
+  if (!dados) return c ? c.lista : [];
+  const nomes = { paid: 'paga', pending: 'em aberto', failed: 'recusada', canceled: 'cancelada', scheduled: 'agendada' };
+  const lista = dados.map(f => ({ data: f.due_at || f.created_at || null, valor: Number(f.amount != null ? f.amount : (f.total || 0)) / 100, status: nomes[f.status] || f.status || '' }));
+  _faturasCache.set(sub, { em: Date.now(), lista });
+  return lista;
+}
+
 // A Central TMX Admin vê os pedidos: compras, testes grátis pedidos e o estado de cada cobrança
 app.get('/api/plataforma/assinaturas', authDiretoriaInterna, (req, res) => {
   const lista = _platPrep('SELECT ref, plano, ciclo, nome, email, whatsapp, criado, status, pago_em, empresa, ultimo_evento, convite_codigo FROM assinaturas ORDER BY criado DESC LIMIT 300').all()
@@ -8942,7 +8967,8 @@ function _atenderMotor(empresa, cmd, d) {
   }
   if (cmd === 'meu-plano') {
     const e = _platPrep('SELECT plano, status, criada, origem FROM empresas WHERE id=?').get(empresa) || {};
-    return { ok: true, plano: e.plano || 'teste', status: e.status || 'ativa', criada: e.criada || null, origem: e.origem || '' };
+    return _cobrancaDaEmpresa(empresa).catch(() => ({ ligada: !!PAGARME_API_KEY }))
+      .then(cobranca => ({ ok: true, plano: e.plano || 'teste', status: e.status || 'ativa', criada: e.criada || null, origem: e.origem || '', cobranca }));
   }
   if (cmd === 'chamado-listar') {
     return { ok: true, chamados: _platPrep('SELECT id, assunto, tipo, projeto, status, criado, atualizado, aberto_por_nome FROM chamados WHERE empresa=? ORDER BY atualizado DESC LIMIT 200').all(empresa) };
