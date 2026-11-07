@@ -21462,6 +21462,13 @@ function _gravarTudoESair(sinal) {
 }
 ['SIGTERM', 'SIGINT'].forEach(s => process.on(s, () => _gravarTudoESair(s)));
 
+// Páginas (modelos, versões, conferências e publicação na hospedagem): mora em paginas.js.
+// Só a Diretoria da TMX: as páginas e as senhas de hospedagem ficam no banco da TMX.
+try {
+  require('./paginas')({ app, express, readDB, writeDB, audit, auth: authDiretoriaInterna, _pessoas, _q, _finCifrar, _finDecifrar,
+    vturbPlayers: () => { try { const c = readDB().store[KEY_VTURB]; return (c && c.players) || []; } catch (e) { return []; } } });
+} catch (e) { console.error('[PAGINAS] não subiu:', e.message); }
+
 app.listen(PORT, () => {
   console.log('');
   console.log('  ✅  ScaleLab Backend v2.0 rodando!');

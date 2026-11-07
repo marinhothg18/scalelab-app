@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Páginas · TMX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Mesmas cores do TMX: escuro por padrão, claro quando o painel está no tema claro */
+:root {
+  --bg: #080a12; --bg2: #111524; --bg3: #171b2e; --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
+  --tx: #ffffff; --tx2: #8b93ab; --tx3: #5f6884; --azul: #1B9CFA; --violeta: #5b5ef4;
+  --ok: #7FBF3A; --alerta: #FF9F43; --erro: #E24B4A;
+  --azul-s: rgba(27,156,250,.12); --ok-s: rgba(127,191,58,.14); --alerta-s: rgba(255,159,67,.14); --erro-s: rgba(226,75,74,.14);
+  --f: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+html.claro {
+  --bg: #F4F6FA; --bg2: #FFFFFF; --bg3: #F8FAFC; --line: #E2E8F0; --line2: #CBD5E1;
+  --tx: #0F172A; --tx2: #475569; --tx3: #94A3B8; --azul: #0284C7; --violeta: #6366F1;
+  --ok: #059669; --alerta: #D97706; --erro: #DC2626;
+  --azul-s: rgba(2,132,199,.09); --ok-s: rgba(5,150,105,.10); --alerta-s: rgba(217,119,6,.10); --erro-s: rgba(220,38,38,.09);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--tx); font: 14px/1.5 var(--f); padding: 20px; }
+@media (max-width: 600px) { body { padding: 12px; } }
+h1, h2, h3 { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+.sub { color: var(--tx2); font-size: 13px; }
+.cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.cab h1 { font-size: 20px; }
+.abas { display: inline-flex; border: 1px solid var(--line2); border-radius: 9px; padding: 2px; background: var(--bg3); }
+.abas button { border: 0; background: transparent; padding: 6px 14px; border-radius: 7px; color: var(--tx2); font-weight: 500; }
+.abas button[aria-pressed="true"] { background: var(--bg2); color: var(--tx); box-shadow: 0 0 0 1px var(--line2); }
+.cartao { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; min-width: 0; }
+.cartao h3 { font-size: 15px; }
+.linha { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 700px) { .grade { grid-template-columns: minmax(0, 1fr); } }
+label.rot { display: block; font-size: 12px; font-weight: 600; color: var(--tx2); margin-bottom: 4px; }
+.campo { width: 100%; background: var(--bg3); border: 1px solid var(--line2); border-radius: 8px; padding: 9px 12px; }
+textarea.campo { min-height: 70px; resize: vertical; font-family: var(--mono); font-size: 12px; }
+.ajuda { font-size: 12px; color: var(--tx3); margin-top: 3px; }
+.btn { border: 1px solid var(--line2); background: var(--bg3); padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 13px; }
+.btn:hover:not(:disabled) { border-color: var(--azul); }
+.btn.pri { background: var(--azul); border-color: var(--azul); color: #fff; }
+.btn.mini { padding: 4px 10px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--bg3); color: var(--tx2); border: 1px solid var(--line); white-space: nowrap; }
+.chip.ok { background: var(--ok-s); color: var(--ok); border-color: transparent; }
+.chip.alerta { background: var(--alerta-s); color: var(--alerta); border-color: transparent; }
+.chip.erro { background: var(--erro-s); color: var(--erro); border-color: transparent; }
+.chip.azul { background: var(--azul-s); color: var(--azul); border-color: transparent; }
+.tab-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--tx2); font-weight: 600; font-size: 12px; background: var(--bg3); }
+tr:last-child td { border-bottom: 0; }
+.vazio { color: var(--tx3); font-size: 13px; padding: 6px 0; }
+.passos { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.passos div { display: flex; gap: 8px; align-items: flex-start; }
+.opcoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 700px) { .opcoes { grid-template-columns: minmax(0, 1fr); } }
+.opcao { text-align: left; border: 1px solid var(--line); background: var(--bg3); border-radius: 10px; padding: 12px; }
+.opcao[aria-pressed="true"] { border-color: var(--azul); box-shadow: 0 0 0 1px var(--azul) inset; }
+.opcao b { display: block; }
+.opcao span { color: var(--tx2); font-size: 12.5px; }
+.editor { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 960px) { .editor { grid-template-columns: minmax(0, 1fr); } }
+.campos { display: flex; flex-direction: column; gap: 12px; }
+.dir { min-width: 0; }
+.previa-area { background: var(--bg3); border: 1px solid var(--line); border-radius: 10px; display: flex; justify-content: center; padding: 12px; }
+iframe.previa { width: 390px; max-width: 100%; height: 720px; border: 0; border-radius: 8px; background: #fff; transition: width .2s; }
+iframe.previa.pc { width: 100%; }
+.conf { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.conf:last-child { border-bottom: 0; }
+.conf .chip { flex: none; margin-top: 1px; }
+.conf small { display: block; color: var(--tx2); font-size: 12.5px; }
+.msg { font-size: 13px; padding: 10px 12px; border-radius: 9px; background: var(--bg3); border: 1px solid var(--line); }
+.msg.ok { border-color: transparent; background: var(--ok-s); }
+.msg.erro { border-color: transparent; background: var(--erro-s); }
+.msg.alerta { border-color: transparent; background: var(--alerta-s); }
+.veu { position: fixed; inset: 0; background: rgba(4,6,12,.6); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.janela { background: var(--bg2); border: 1px solid var(--line2); border-radius: 14px; width: min(620px, 100%); max-height: 90vh; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.acoes { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+a { color: var(--azul); }
+</style>
+</head>
+<body>
+
+<div class="cab">
+  <div><h1 id="titulo-tela">Páginas</h1><p class="sub" id="sub-tela">Monte a página a partir de um modelo e publique na sua hospedagem.</p></div>
+  <div class="abas" role="group" aria-label="Seção" id="abas">
+    <button data-v="paginas" aria-pressed="true">Páginas</button>
+    <button data-v="dominios" aria-pressed="false">Domínios</button>
+  </div>
+</div>
+<div id="aviso-login" class="msg erro" hidden></div>
+
+<!-- ═════ PÁGINAS ═════ -->
+<section id="v-paginas">
+  <div class="cartao">
+    <div class="linha"><h3>Suas páginas</h3><button class="btn pri" id="bt-nova">Nova página</button></div>
+    <div id="lista-paginas"></div>
+  </div>
+  <div class="cartao" id="c-nova" hidden>
+    <h3>Nova página</h3>
+    <div class="grade">
+      <div><label class="rot" for="n-titulo">Título</label><input class="campo" id="n-titulo" placeholder="Ex.: Foco anual · teste"><div class="ajuda">Só pra você se achar no painel.</div></div>
+      <div><label class="rot" for="n-dom">Domínio</label><select class="campo" id="n-dom"></select></div>
+      <div><label class="rot" for="n-slug">Endereço</label><input class="campo mono" id="n-slug" placeholder="foco-anual"><div class="ajuda mono" id="n-url"></div></div>
+    </div>
+    <div><label class="rot">Modelo</label><div class="opcoes" id="n-modelos"></div></div>
+    <div id="n-msg"></div>
+    <div class="acoes"><button class="btn" id="bt-cancela-nova">Cancelar</button><button class="btn pri" id="bt-criar">Criar página</button></div>
+  </div>
+</section>
+
+<!-- ═════ DOMÍNIOS ═════ -->
+<section id="v-dominios" hidden>
+  <div class="cartao">
+    <h3>Domínios conectados</h3>
+    <div id="lista-dominios"></div>
+  </div>
+  <div class="cartao">
+    <div class="linha"><h3>Conectar hospedagem</h3><span class="chip">FTP</span></div>
+    <p class="sub">O domínio continua na sua hospedagem. O TMX monta a página e envia os arquivos pra lá quando você publica. Apontar o domínio pro TMX vem depois.</p>
+    <div class="grade">
+      <div><label class="rot" for="h-dominio">Domínio</label><input class="campo mono" id="h-dominio" placeholder="apostilai.ai" autocomplete="off"></div>
+      <div><label class="rot" for="h-endereco">Endereço público</label><input class="campo mono" id="h-endereco" placeholder="https://apostilai.ai/" autocomplete="off"><div class="ajuda">Onde a pasta abaixo aparece no navegador.</div></div>
+      <div><label class="rot" for="h-host">Servidor FTP</label><input class="campo mono" id="h-host" placeholder="ftp.apostilai.ai ou o IP" autocomplete="off"></div>
+      <div><label class="rot" for="h-porta">Porta</label><input class="campo mono" id="h-porta" value="21" inputmode="numeric" autocomplete="off"></div>
+      <div><label class="rot" for="h-usuario">Usuário</label><input class="campo mono" id="h-usuario" autocomplete="off"></div>
+      <div><label class="rot" for="h-senha">Senha</label><input class="campo mono" id="h-senha" type="password" autocomplete="new-password"></div>
+      <div><label class="rot" for="h-pasta">Pasta das páginas</label><input class="campo mono" id="h-pasta" value="/" autocomplete="off"><div class="ajuda">A pasta do site, a mesma do endereço público.</div></div>
+      <div><label class="rot" for="h-tls">Segurança</label>
+        <select class="campo" id="h-tls">
+          <option value="tls">Com TLS (recomendado)</option>
+          <option value="tls-sem-cert">Com TLS, sem conferir o certificado</option>
+          <option value="sem-tls">Sem TLS (a senha vai aberta)</option>
+        </select></div>
+    </div>
+    <div id="h-passos" class="passos"></div>
+    <div class="acoes"><button class="btn" id="bt-testar">Testar conexão</button><button class="btn pri" id="bt-salvar" disabled>Salvar</button></div>
+    <p class="ajuda">O teste cria um arquivo pequeno na pasta, confere que ele abre no endereço público e apaga. A senha fica cifrada no servidor e nunca volta pra esta tela. Só a Diretoria conecta.</p>
+  </div>
+</section>
+
+<!-- ═════ EDITOR ═════ -->
+<section id="v-editor" hidden>
+  <div class="cartao">
+    <div class="linha">
+      <div style="min-width:0">
+        <button class="btn mini" id="bt-voltar">← Páginas</button>
+        <h3 id="e-titulo" style="margin-top:8px"></h3>
+        <div class="sub"><a id="e-url" class="mono" target="_blank" rel="noopener"></a> · <span id="e-modelo"></span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="chip" id="e-situacao"></span><button class="btn pri" id="bt-publicar">Publicar</button></div>
+    </div>
+  </div>
+  <div class="editor">
+    <div class="cartao">
+      <h3>Campos</h3>
+      <div class="campos" id="e-campos"></div>
+      <div id="e-msg"></div>
+      <div class="acoes"><button class="btn pri" id="bt-salvar-versao">Salvar versão</button></div>
+    </div>
+    <div class="dir">
+      <div class="cartao">
+        <div class="linha">
+          <div class="abas" role="group" aria-label="O que mostrar" id="e-abas">
+            <button data-a="previa" aria-pressed="true">Prévia</button>
+            <button data-a="conf" aria-pressed="false">Conferências <span id="e-conf-n"></span></button>
+            <button data-a="versoes" aria-pressed="false">Versões</button>
+          </div>
+          <div class="abas" role="group" aria-label="Aparelho" id="e-aparelho">
+            <button data-ap="cel" aria-pressed="true">Celular</button><button data-ap="pc" aria-pressed="false">Computador</button>
+          </div>
+        </div>
+        <div id="a-previa"><div class="previa-area"><iframe class="previa" id="e-previa" sandbox="allow-same-origin" title="Prévia da página"></iframe></div>
+          <p class="ajuda">A prévia não roda scripts: não conta visita no TMX nem view na VTurb, e mostra a oferta sem esperar o atraso.</p></div>
+        <div id="a-conf" hidden><div id="e-conf"></div><div class="acoes"><button class="btn mini" id="bt-reconferir">Conferir de novo</button></div></div>
+        <div id="a-versoes" hidden><div id="e-versoes"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="veu" id="veu" hidden>
+  <div class="janela" role="dialog" aria-modal="true" aria-labelledby="j-titulo">
+    <h3 id="j-titulo">Publicar</h3>
+    <div id="j-corpo"></div>
+    <div class="acoes" id="j-acoes"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // tema: segue o painel do TMX quando a tela abre dentro dele
+  try { if (parent && parent !== window && parent.document.body.classList.contains('light-mode')) document.documentElement.classList.add('claro'); } catch (e) {}
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var mmss = function (s) { if (s == null || !isFinite(s)) return ''; var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+  var data = function (t) { return t ? new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'; };
+  var CHIP = { ok: ['ok', 'ok'], alerta: ['erro', 'alerta'], falta: ['alerta', 'falta'], conferir: ['alerta', 'conferir'] };
+
+  function api(metodo, caminho, corpo, texto) {
+    var t = ''; try { t = localStorage.getItem('sl_session_token') || ''; } catch (e) {}
+    return fetch(caminho, { method: metodo, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: corpo ? JSON.stringify(corpo) : undefined })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) { var a = $('aviso-login'); a.hidden = false; a.textContent = 'Entre no TMX com um usuário da Diretoria pra usar Páginas.'; }
+        return (texto && r.ok ? r.text() : r.json().catch(function () { return { error: 'Resposta inesperada do servidor (' + r.status + ').' }; }))
+          .then(function (j) { return { s: r.status, j: j }; });
+      })
+      .catch(function () { return { s: 0, j: { error: 'Sem conexão com o servidor.' } }; });
+  }
+  function msg(el, tipo, txt) { el.innerHTML = txt ? '<div class="msg ' + tipo + '">' + txt + '</div>' : ''; }
+  function umSo(grupo, fn) {
+    grupo.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b || b.parentNode !== grupo) return;
+      [].forEach.call(grupo.children, function (x) { if (x.tagName === 'BUTTON') x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      fn(b);
+    });
+  }
+
+  var estado = { modelos: [], dominios: [], paginas: [] }, modeloNovo = null;
+  function carregar() {
+    return api('GET', '/api/pg/estado').then(function (r) {
+      if (r.s !== 200) return;
+      estado = r.j; pintarPaginas(); pintarDominios();
+    });
+  }
+  function mostrar(v) {
+    ['paginas', 'dominios', 'editor'].forEach(function (k) { $('v-' + k).hidden = k !== v; });
+    $('abas').hidden = v === 'editor';
+    $('titulo-tela').textContent = v === 'dominios' ? 'Domínios' : 'Páginas';
+  }
+  umSo($('abas'), function (b) { mostrar(b.getAttribute('data-v')); });
+
+  // ── lista de páginas e nova página
+  function domDe(id) { return estado.dominios.filter(function (d) { return d.id === id; })[0]; }
+  function modeloDe(id) { return estado.modelos.filter(function (m) { return m.id === id; })[0]; }
+  function urlDe(p) { var d = domDe(p.dominio_id); return d ? new URL(p.slug + '/', d.endereco).href : ''; }
+  function situacao(p) {
+    if (!p.publicada) return '<span class="chip">Rascunho</span>';
+    return '<span class="chip ok">No ar · versão ' + p.publicada + '</span>' + (p.versao !== p.publicada ? ' <span class="chip alerta">rascunho diferente</span>' : '');
+  }
+  function pintarPaginas() {
+    var l = estado.paginas;
+    $('lista-paginas').innerHTML = !l.length
+      ? '<p class="vazio">' + (estado.dominios.length ? 'Nenhuma página ainda. Crie a primeira a partir de um modelo.' : 'Conecte uma hospedagem em Domínios pra criar a primeira página.') + '</p>'
+      : '<div class="tab-wrap"><table><thead><tr><th>Página</th><th>Modelo</th><th>Situação</th><th></th></tr></thead><tbody>' + l.map(function (p) {
+          var m = modeloDe(p.modelo);
+          return '<tr><td><b>' + esc(p.titulo) + '</b><br><span class="mono sub">' + esc(urlDe(p)) + '</span></td><td>' + esc(m ? m.nome : p.modelo) + '</td><td>' + situacao(p) + '</td>' +
+            '<td style="text-align:right"><button class="btn mini" data-abrir="' + esc(p.id) + '">Abrir</button></td></tr>';
+        }).join('') + '</tbody></table></div>';
+  }
+  $('lista-paginas').addEventListener('click', function (e) { var b = e.target.closest('[data-abrir]'); if (b) abrir(b.getAttribute('data-abrir')); });
+  function urlNova() { var d = domDe($('n-dom').value); $('n-url').textContent = d ? new URL(($('n-slug').value.trim() || '…') + '/', d.endereco).href : ''; }
+  $('bt-nova').addEventListener('click', function () {
+    if (!estado.dominios.length) { mostrar('dominios'); $('abas').children[1].click(); return; }
+    $('n-dom').innerHTML = estado.dominios.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + '</option>'; }).join('');
+    $('n-modelos').innerHTML = estado.modelos.map(function (m, i) {
+      return '<button class="opcao" data-m="' + esc(m.id) + '" aria-pressed="' + (i === 0) + '"><b>' + esc(m.nome) + '</b><span class="mono">' + esc(m.base) + '</span></button>';
+    }).join('');
+    modeloNovo = estado.modelos.length ? estado.modelos[0].id : null;
+    $('c-nova').hidden = false; msg($('n-msg')); urlNova(); $('n-titulo').focus();
+  });
+  umSo($('n-modelos'), function (b) { modeloNovo = b.getAttribute('data-m'); });
+  $('n-slug').addEventListener('input', urlNova); $('n-dom').addEventListener('change', urlNova);
+  $('bt-cancela-nova').addEventListener('click', function () { $('c-nova').hidden = true; });
+  $('bt-criar').addEventListener('click', function () {
+    var b = this; b.disabled = true;
+    api('POST', '/api/pg/paginas', { titulo: $('n-titulo').value.trim(), dominio_id: $('n-dom').value, slug: $('n-slug').value.trim(), modelo: modeloNovo }).then(function (r) {
+      b.disabled = false;
+      if (r.s !== 200) return msg($('n-msg'), 'erro', esc(r.j.error));
+      $('c-nova').hidden = true; carregar().then(function () { abrir(r.j.id); });
+    });
+  });
+
+  // ── domínios
+  function pintarDominios() {
+    var l = estado.dominios;
+    $('lista-dominios').innerHTML = !l.length ? '<p class="vazio">Nenhuma hospedagem conectada.</p>'
+      : '<div class="tab-wrap"><table><thead><tr><th>Domínio</th><th>Hospedagem</th><th>Testado</th><th></th></tr></thead><tbody>' + l.map(function (d) {
+          return '<tr><td><b>' + esc(d.dominio) + '</b><br><span class="mono sub">' + esc(d.endereco) + '</span></td>' +
+            '<td class="mono">FTP · ' + esc(d.host) + ':' + esc(d.porta) + ' · ' + esc(d.usuario) + ' · ' + esc(d.pasta) + (d.tls === 'sem-tls' ? ' <span class="chip alerta">sem TLS</span>' : '') + '</td>' +
+            '<td>' + data(d.testado_em) + '</td><td style="text-align:right;white-space:nowrap"><button class="btn mini" data-testar="' + esc(d.id) + '">Testar</button> <button class="btn mini" data-excluir="' + esc(d.id) + '">Excluir</button></td></tr>';
+        }).join('') + '</tbody></table></div><div id="d-msg"></div>';
+  }
+  $('lista-dominios').addEventListener('click', function (e) {
+    var t = e.target.closest('[data-testar]'), x = e.target.closest('[data-excluir]');
+    if (t) { t.disabled = true; api('POST', '/api/pg/dominios/' + t.getAttribute('data-testar') + '/testar').then(function (r) { t.disabled = false; msg($('d-msg'), r.j.ok ? 'ok' : 'erro', passosHtml(r.j)); carregar(); }); }
+    if (x) confirmar('Excluir esta hospedagem do TMX?', 'A senha guardada é apagada. Nada na hospedagem muda.', 'Excluir', function () {
+      api('POST', '/api/pg/dominios/' + x.getAttribute('data-excluir') + '/excluir').then(function (r) { if (r.s !== 200) msg($('d-msg'), 'erro', esc(r.j.error)); carregar(); });
+    });
+  });
+  function hospedagem() {
+    return { dominio: $('h-dominio').value.trim(), endereco: $('h-endereco').value.trim(), host: $('h-host').value.trim(), porta: $('h-porta').value.trim(),
+             usuario: $('h-usuario').value.trim(), senha: $('h-senha').value, pasta: $('h-pasta').value.trim(), tls: $('h-tls').value };
+  }
+  function passosHtml(j) {
+    if (j.error && !j.passos) return esc(j.error);
+    return (j.error ? '<b>' + esc(j.error) + '</b><br>' : '') + (j.passos || []).map(function (p) { return (p.ok ? '✓ ' : '✗ ') + esc(p.t); }).join('<br>');
+  }
+  var testado = '';
+  $('h-dominio').addEventListener('input', function () { var d = this.value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''); if (d) $('h-endereco').placeholder = 'https://' + d + '/'; });
+  ['h-dominio', 'h-endereco', 'h-host', 'h-porta', 'h-usuario', 'h-senha', 'h-pasta', 'h-tls'].forEach(function (id) {
+    $(id).addEventListener('input', function () { if (JSON.stringify(hospedagem()) !== testado) $('bt-salvar').disabled = true; });
+  });
+  $('bt-testar').addEventListener('click', function () {
+    var b = this, h = hospedagem(); if (!h.endereco && h.dominio) { h.endereco = 'https://' + h.dominio + '/'; $('h-endereco').value = h.endereco; }
+    b.disabled = true; $('h-passos').innerHTML = '<div class="sub">Testando…</div>';
+    api('POST', '/api/pg/dominios/testar', h).then(function (r) {
+      b.disabled = false;
+      $('h-passos').innerHTML = '<div class="msg ' + (r.j.ok ? 'ok' : 'erro') + '">' + passosHtml(r.j) + '</div>';
+      testado = r.j.ok ? JSON.stringify(h) : ''; $('bt-salvar').disabled = !r.j.ok;
+    });
+  });
+  $('bt-salvar').addEventListener('click', function () {
+    var b = this; b.disabled = true;
+    api('POST', '/api/pg/dominios', hospedagem()).then(function (r) {
+      $('h-passos').innerHTML = '<div class="msg ' + (r.s === 200 ? 'ok' : 'erro') + '">' + (r.s === 200 ? 'Hospedagem conectada. Já dá pra criar páginas nela.' : passosHtml(r.j)) + '</div>';
+      if (r.s === 200) { $('h-senha').value = ''; testado = ''; carregar(); } else b.disabled = false;
+    });
+  });
+
+  // ── editor
+  var atual = null;
+  function abrir(id) {
+    mostrar('editor'); $('e-campos').innerHTML = '<p class="vazio">Abrindo…</p>'; msg($('e-msg'));
+    return api('GET', '/api/pg/paginas/' + id).then(function (r) {
+      if (r.s !== 200) { $('e-campos').innerHTML = '<div class="msg erro">' + esc(r.j.error) + '</div>'; return; }
+      atual = r.j; pintarEditor(); previa(); conferir();
+    });
+  }
+  function valorCampo(f, c) {
+    var v = c[f.k];
+    if (f.tipo === 'vsl') return v ? 'https://scripts.converteai.net/' + v.conta + '/' + v.tipo + '/' + v.id + (v.tipo === 'players' ? '/v4/player.js' : '/player.js') : '';
+    if (f.tipo === 'tempo') return mmss(v);
+    return v == null ? '' : v;
+  }
+  function pintarEditor() {
+    var p = atual.pagina, c = atual.campos;
+    $('e-titulo').textContent = p.titulo; $('e-url').textContent = atual.endereco; $('e-url').href = atual.endereco;
+    $('e-modelo').textContent = 'modelo ' + (atual.modelo ? atual.modelo.nome : p.modelo) + ' · versão ' + p.versao;
+    $('e-situacao').outerHTML = '<span id="e-situacao">' + situacao(p) + '</span>';
+    $('e-campos').innerHTML = atual.modelo.campos.map(function (f) {
+      var id = 'c-' + f.k, v = esc(valorCampo(f, c)), ctl;
+      if (f.tipo === 'vsl') ctl = '<textarea class="campo" id="' + id + '" placeholder="Cole o código do player da VTurb">' + v + '</textarea>';
+      else if (f.tipo === 'plano') ctl = '<select class="campo" id="' + id + '"><option value="">—</option><option' + (c.plano === 'ANUAL' ? ' selected' : '') + '>ANUAL</option><option' + (c.plano === 'MENSAL' ? ' selected' : '') + '>MENSAL</option></select>';
+      else ctl = '<input class="campo' + (f.tipo === 'url' || f.tipo === 'tempo' ? ' mono' : '') + '" id="' + id + '" value="' + v + '"' + (f.tipo === 'tempo' ? ' placeholder="12:40"' : '') + '>';
+      return '<div><label class="rot" for="' + id + '">' + esc(f.rot) + '</label>' + ctl + (f.ajuda ? '<div class="ajuda">' + esc(f.ajuda) + '</div>' : '') + '</div>';
+    }).join('');
+    $('e-versoes').innerHTML = atual.versoes.map(function (v) {
+      return '<div class="conf"><span class="chip' + (v.n === p.publicada ? ' ok' : '') + '">v' + v.n + '</span><div style="flex:1"><b>' + esc(v.resumo) + '</b>' +
+        (v.n === p.publicada ? ' <span class="chip ok">No ar</span>' : '') + '<small>' + esc(v.por) + ' · ' + data(v.em) + '</small></div>' +
+        (v.n === p.versao ? '<span class="chip">atual</span>' : '<button class="btn mini" data-volta="' + v.n + '">Voltar pra esta</button>') + '</div>';
+    }).join('');
+  }
+  function previa() {
+    api('GET', '/api/pg/paginas/' + atual.pagina.id + '/previa', null, true).then(function (r) {
+      $('e-previa').srcdoc = r.s === 200 && typeof r.j === 'string' ? r.j : '<p style="font:14px sans-serif;padding:20px">A prévia não abriu.</p>';
+    });
+  }
+  function confHtml(l) {
+    return l.map(function (c) { var k = CHIP[c.st] || CHIP.conferir; return '<div class="conf"><span class="chip ' + k[0] + '">' + k[1] + '</span><div><b>' + esc(c.r) + '</b><small>' + esc(c.d) + '</small></div></div>'; }).join('');
+  }
+  var ultimasConf = [];
+  function conferir() {
+    $('e-conf').innerHTML = '<p class="vazio">Conferindo (abre a VTurb e o checkout)…</p>'; $('e-conf-n').textContent = '';
+    return api('GET', '/api/pg/paginas/' + atual.pagina.id + '/conferencias').then(function (r) {
+      ultimasConf = r.j.conferencias || [];
+      $('e-conf').innerHTML = r.s === 200 ? confHtml(ultimasConf) : '<div class="msg erro">' + esc(r.j.error) + '</div>';
+      var n = ultimasConf.filter(function (c) { return c.st === 'alerta' || c.st === 'falta'; }).length;
+      $('e-conf-n').textContent = n ? '(' + n + ')' : '✓';
+    });
+  }
+  umSo($('e-abas'), function (b) { var a = b.getAttribute('data-a'); ['previa', 'conf', 'versoes'].forEach(function (k) { $('a-' + k).hidden = k !== a; }); });
+  umSo($('e-aparelho'), function (b) { $('e-previa').classList.toggle('pc', b.getAttribute('data-ap') === 'pc'); });
+  $('bt-reconferir').addEventListener('click', conferir);
+  $('bt-voltar').addEventListener('click', function () { mostrar('paginas'); carregar(); });
+  $('bt-salvar-versao').addEventListener('click', function () {
+    var b = this, campos = {};
+    atual.modelo.campos.forEach(function (f) { var el = $('c-' + f.k); if (el) campos[f.k] = el.value; });
+    b.disabled = true;
+    api('POST', '/api/pg/paginas/' + atual.pagina.id + '/versao', { campos: campos }).then(function (r) {
+      b.disabled = false;
+      if (r.s !== 200) return msg($('e-msg'), 'erro', esc(r.j.error));
+      abrir(atual.pagina.id).then(function () { msg($('e-msg'), 'ok', r.j.igual ? 'Nada mudou.' : 'Versão ' + r.j.n + ' salva: ' + esc(r.j.resumo) + '. Nada foi ao ar.'); });
+    });
+  });
+  $('e-versoes').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-volta]'); if (!b) return;
+    api('POST', '/api/pg/paginas/' + atual.pagina.id + '/voltar/' + b.getAttribute('data-volta')).then(function (r) {
+      var n0 = b.getAttribute('data-volta');
+      if (r.s === 200) abrir(atual.pagina.id).then(function () { msg($('e-msg'), 'ok', 'Voltou pro que era a versão ' + n0 + '. Virou a versão ' + r.j.n + '.'); });
+    });
+  });
+
+  // ── publicar
+  function janela(titulo, corpo, acoes) {
+    $('j-titulo').textContent = titulo; $('j-corpo').innerHTML = corpo; $('j-acoes').innerHTML = '';
+    acoes.forEach(function (a) { var b = document.createElement('button'); b.className = 'btn' + (a.pri ? ' pri' : ''); b.textContent = a.t; b.disabled = !!a.desligado; b.addEventListener('click', a.f); $('j-acoes').appendChild(b); });
+    $('veu').hidden = false;
+  }
+  function fechar() { $('veu').hidden = true; }
+  $('veu').addEventListener('click', function (e) { if (e.target === this) fechar(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fechar(); });
+  function confirmar(titulo, txt, botao, fn) { janela(titulo, '<p class="sub">' + esc(txt) + '</p>', [{ t: 'Cancelar', f: fechar }, { t: botao, pri: true, f: function () { fechar(); fn(); } }]); }
+  $('bt-publicar').addEventListener('click', function () {
+    conferir().then(function () {
+      var p = atual.pagina, d = atual.dominio, trava = ultimasConf.some(function (c) { return c.st === 'alerta' || c.st === 'falta'; });
+      var corpo = '<p class="sub">A versão <b>' + p.versao + '</b> vai ao ar em <span class="mono">' + esc(atual.endereco) + '</span>. O TMX envia por FTP pra <span class="mono">' + esc(d.host) + ' · ' + esc(String(d.pasta || '/').replace(/\/?$/, '/')) + esc(p.slug) + '/index.html</span> e confere que a página abriu.</p>' +
+        confHtml(ultimasConf) + (trava ? '<div class="msg erro">Tem conferência com alerta ou faltando. Resolva nos campos antes de publicar.</div>' : '');
+      janela('Publicar "' + p.titulo + '"?', corpo, [{ t: 'Cancelar', f: fechar }, { t: 'Publicar agora', pri: true, desligado: trava, f: function () { publicar(false); } }]);
+    });
+  });
+  function publicar(substituir) {
+    janela('Publicando…', '<p class="sub">Enviando pra hospedagem e conferindo o endereço.</p>', []);
+    api('POST', '/api/pg/paginas/' + atual.pagina.id + '/publicar', { n: atual.pagina.versao, substituir: substituir }).then(function (r) {
+      if (r.s === 200) {
+        janela('No ar', '<div class="msg ok">Versão ' + r.j.n + ' publicada em <a href="' + esc(r.j.url) + '" target="_blank" rel="noopener">' + esc(r.j.url) + '</a>.' +
+          (r.j.noAr ? ' Abri o endereço e é a versão nova.' : ' Ainda não consegui confirmar no endereço: a hospedagem pode estar com cache. Abra pra conferir.') +
+          (r.j.substituiu ? ' O arquivo que estava lá ficou guardado no TMX.' : '') + '</div>', [{ t: 'Fechar', pri: true, f: fechar }]);
+        abrir(atual.pagina.id); return;
+      }
+      if (r.j.codigo === 'existe') return janela('Já tem uma página nesse endereço', '<div class="msg alerta">' + esc(r.j.error) + '</div>',
+        [{ t: 'Cancelar', f: fechar }, { t: 'Publicar mesmo assim', pri: true, f: function () { publicar(true); } }]);
+      janela('Não publiquei', '<div class="msg erro">' + esc(r.j.error) + '</div>' + (r.j.conferencias ? confHtml(r.j.conferencias) : ''), [{ t: 'Fechar', pri: true, f: fechar }]);
+    });
+  }
+
+  carregar();
+})();
+</script>
+</body>
+</html>
