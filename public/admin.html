@@ -115,6 +115,7 @@ tr.clica{cursor:pointer} tr.clica:hover{background:rgba(255,255,255,.025)}
 .dica b{display:block;font-size:13px}
 .filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 6px 12px}
 .chip{border:1px solid var(--line2);background:none;color:var(--tx2);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.ciclo-gw{display:inline-flex;gap:6px;flex-wrap:wrap}
 .chip.on{background:rgba(27,156,250,.14);border-color:rgba(27,156,250,.45);color:#9FD3FF}
 .busca{margin-left:auto;background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--tx);border-radius:10px;padding:8px 12px;font-size:12.5px;width:280px;max-width:100%}
 .fundo{position:fixed;inset:0;background:rgba(3,4,10,.62);z-index:30;display:flex;justify-content:flex-end}
@@ -225,6 +226,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   var busca = '', filtroCli = 'todos', aberto = null, incluirTmx = null, modal = '';
   var filtroPed = 'liberar', liberado = null, ultimoLink = null, erroConvite = '';
   var filtroCh = 'abertos', chamado = null, gavetaVista = null;
+  var VENDA = null, gwEscolhido = null, rascunhoLinks = {}, confirmaToken = false;   // venda do TMX (Payt ou Pagar.me)
   // ── utilidades ──
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function data(ms, comHora){ if(!ms) return '—'; var d = new Date(ms); var t = d.toLocaleDateString('pt-BR'); return comHora ? t + ' ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : t; }
@@ -503,7 +505,13 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   }
   // ── Cobrança e checkout ──
   function telaCobranca(){
-    var C = P.cobranca;
+    var C = P.cobranca, V = VENDA;
+    var gw = gwEscolhido || (V && V.gateway) || 'pagarme', payt = gw === 'payt', nomeGw = payt ? 'Payt' : 'Pagar.me';
+    var pagos = C.planos.filter(function(p){ return p.venda && !p.gratis; });
+    var chaves = []; pagos.forEach(function(p){ ['mensal', 'anual'].forEach(function(c){ chaves.push(p.id + ':' + c); }); });
+    var linksV = (V && V.links) || {};
+    var valor = function(k){ return rascunhoLinks[k] != null ? rascunhoLinks[k] : (linksV[k] || ''); };
+    var preenchidos = chaves.filter(function(k){ return linksV[k]; }).length;
     var amb = C.ambiente === 'teste' ? '<span class="st av">Teste</span>' : C.ambiente === 'producao' ? '<span class="st ok">De verdade</span>' : '—';
     var temLink = !!C.linkCompra;
     var linhas = C.planos.map(function(p){
@@ -512,35 +520,70 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
         '<td>'+(p.venda ? '<span class="st ok">na página</span>' : '<span class="st ne">fora da página</span>')+'</td><td class="num">'+p.empresas+'</td>'+(temLink ? '<td>'+link+'</td>' : '')+'</tr>';
     }).join('');
     var avisos = PEDIDOS.filter(function(p){ return p.ultimo_evento; }).slice(0, 6).map(function(p){
-      return '<li><span class="ic" style="background:var(--bg3)">'+(/fail|recus/.test(p.ultimo_evento) ? '⚠️' : /cancel|expir/.test(p.ultimo_evento) ? '🚫' : '✅')+'</span><span class="t">'+esc(p.ultimo_evento)+'<small>'+esc((p.nome || p.email || '') + ' · ' + (p.plano_nome || p.plano))+'</small></span></li>';
+      return '<li><span class="ic" style="background:var(--bg3)">'+(/fail|recus|charge/.test(p.ultimo_evento) ? '⚠️' : /cancel|expir|reemb|refund/.test(p.ultimo_evento) ? '🚫' : '✅')+'</span><span class="t">'+esc(p.ultimo_evento)+'<small>'+esc((p.nome || p.email || 'cliente sem contato ainda') + ' · ' + (p.plano_nome || p.plano))+'</small></span></li>';
     }).join('');
-    return topo('Cobrança e checkout', 'Como os clientes pagam o TMX: a Pagar.me, os planos e preços, a página de planos e o que chegou dela.', BTN_ATUALIZAR) +
-      '<div class="grade g4">' +
-        '<div class="card kpi"><small>Pagar.me</small><div class="v menor">'+(C.ligada ? '<span class="st ok">Ligada</span>' : '<span class="st ne">Desligada</span>')+'</div><div class="d">'+(C.ligada ? 'a chave está no Railway' : 'falta a chave no Railway')+'</div></div>' +
-        '<div class="card kpi"><small>Ambiente</small><div class="v menor">'+amb+'</div><div class="d">chave sk_test_ = teste · sk_live_ = de verdade</div></div>' +
-        '<div class="card kpi"><small>Último aviso da Pagar.me</small><div class="v menor">'+(C.ultimoAviso ? esc(ha(C.ultimoAviso.em)) : 'nenhum ainda')+'</div><div class="d">'+(C.ultimoAviso ? esc(C.ultimoAviso.evento) : 'aparece aqui assim que ela mandar o 1º')+'</div></div>' +
-        '<div class="card kpi destaque"><small>Receita mensal</small><div class="v">'+brl(P.receita.mensal)+'</div><div class="d">'+P.receita.novasMes+' nova(s) neste mês · '+P.receita.atrasadas+' atrasada(s)</div></div>' +
-      '</div>' +
-      '<div class="grade g2">' +
-        '<div class="card"><h2>Ligar a cobrança</h2><div class="sub" style="margin-bottom:12px">Uma vez só. A chave você mesmo põe no Railway: a Central nunca pede nem mostra a chave.</div><ol class="passos">' +
+    var ultimo = payt ? (V && V.ultimoAviso) : C.ultimoAviso;
+    // escolher por onde vende
+    var escolha = V ? '<div class="card solto"><div class="card-cab"><div><h2>Por onde o TMX vende</h2><div class="sub">O botão Assinar da página de planos e os links /assinar/&lt;plano&gt; levam pro checkout escolhido aqui.</div></div>' +
+        '<div class="ciclo-gw" role="group" aria-label="Por onde vende">' + [['payt', 'Payt'], ['pagarme', 'Pagar.me']].map(function(g){ return '<button class="chip'+(gw === g[0] ? ' on' : '')+'" data-gw="'+g[0]+'" aria-pressed="'+(gw === g[0])+'">'+g[1]+'</button>'; }).join('') + '</div></div>' +
+        (V.gateway !== gw ? '<div class="nota av">Você escolheu '+esc(nomeGw)+', mas ainda não salvou. Até salvar, o TMX continua vendendo pela '+(V.gateway === 'payt' ? 'Payt' : 'Pagar.me')+'.</div>' : '') + '</div>' : '';
+    // Payt: links por plano e ciclo + aviso
+    var cardPayt = '';
+    if(V && payt){
+      var campos = pagos.map(function(p){
+        return '<tr><td><b>'+esc(p.nome)+'</b><div class="mini">'+brl(p.mensal)+'/mês · '+brl(p.mensal * 10)+'/ano</div></td>' + ['mensal', 'anual'].map(function(c){
+          var k = p.id + ':' + c;
+          return '<td><input class="busca" style="margin:0;width:100%;min-width:220px" id="vt-'+p.id+'-'+c+'" data-link="'+k+'" data-rot="'+esc(p.nome + ' ' + c)+'" type="url" inputmode="url" placeholder="https://… (link do checkout '+c+')" value="'+esc(valor(k))+'"></td>';
+        }).join('') + '</tr>';
+      }).join('');
+      var hook = V.webhook || '';
+      cardPayt = '<div class="card solto"><div class="card-cab"><div><h2>Links de checkout da Payt</h2><div class="sub">Um link por plano e por ciclo. Copie da Payt e cole aqui.</div></div><span class="st '+(preenchidos === chaves.length ? 'ok' : preenchidos ? 'av' : 'ne')+'">'+preenchidos+' de '+chaves.length+'</span></div>' +
+          '<div style="overflow-x:auto"><table style="min-width:640px"><thead><tr><th>Plano</th><th>Mensal</th><th>Anual</th></tr></thead><tbody>'+campos+'</tbody></table></div>' +
+          '<div class="acoes" style="margin-top:12px"><button class="btn pri" data-acao="salvar-venda">Salvar</button><span class="mini">Plano sem link: o botão dele leva pra página de planos.</span></div></div>' +
+        '<div class="grade g2">' +
+          '<div class="card"><h2>Aviso da Payt (webhook)</h2><div class="sub" style="margin-bottom:10px">É por ele que o TMX sabe que alguém pagou, pediu reembolso ou cancelou.</div>' +
+            '<div class="copia"><code>'+esc(hook || 'o endereço aparece aqui')+'</code>'+(hook ? '<button class="btn peq" data-copiar="'+esc(hook)+'">Copiar</button>' : '')+'</div>' +
+            '<div class="acoes" style="margin-top:10px">'+(confirmaToken ? '<span class="mini">O endereço antigo para de funcionar e você precisa trocar na Payt.</span><button class="btn peq perigo" data-acao="novo-token-ok">Gerar outro mesmo assim</button><button class="btn peq" data-acao="novo-token-nao">Cancelar</button>' : '<button class="btn peq" data-acao="novo-token">Gerar endereço novo</button>')+'</div></div>' +
+          '<div class="card"><h2>Passo a passo na Payt</h2><ol class="passos" style="margin-top:10px">' +
+            '<li><b>Crie as ofertas do TMX na Payt.</b> <span>Uma pra cada plano e ciclo: Starter, Escala e Agência, mensal e anual, com o mesmo preço da tabela.</span></li>' +
+            '<li><b>Copie o link de checkout de cada uma</b> <span>e cole no campo certo aqui ao lado. Depois clique em Salvar.</span></li>' +
+            '<li><b>Cadastre o aviso.</b> <span>Na parte de postback (webhook) da Payt, cole o endereço acima e marque venda aprovada, reembolso, chargeback e cancelamento.</span></li>' +
+            '<li><b>Faça uma compra de teste.</b> <span>Ela aparece em Pedidos, e o convite chega no e-mail e no WhatsApp de quem comprou.</span></li>' +
+          '</ol></div>' +
+        '</div>';
+    }
+    // Pagar.me: o jeito antigo (aberto quando é o escolhido; fechado quando vende pela Payt)
+    var passosPagarme = '<ol class="passos">' +
           '<li><b>Pegue a chave secreta na Pagar.me.</b> <span>No painel dela, na parte de chaves de API. Comece pela de teste (sk_test_…) e troque pela de produção (sk_live_…) quando der certo.</span></li>' +
           '<li><b>Ponha no Railway.</b> <span>Serviço scalelab-web › Variables › nova variável PAGARME_API_KEY com a chave. O Railway reinicia sozinho.</span></li>' +
           '<li><b>Cadastre o aviso na Pagar.me.</b> <span>No painel dela, na parte de Webhooks, cole este endereço e marque os eventos de assinatura, cobrança e fatura:</span><div class="copia"><code>'+esc(C.webhook)+'</code><button class="btn peq" data-copiar="'+esc(C.webhook)+'">Copiar</button></div></li>' +
           '<li><b>Senha do aviso (opcional).</b> <span>'+(C.senhaAviso ? 'Ligada: a Pagar.me precisa mandar a senha que está em PAGARME_WEBHOOK_SENHA.' : 'Desligada. Pra ligar, crie PAGARME_WEBHOOK_SENHA no Railway e ponha a mesma senha no aviso, na Pagar.me.')+'</span></li>' +
-        '</ol>'+(C.ligada ? '<div class="nota az" style="margin-top:12px">Ligada'+(C.ambiente === 'teste' ? ' em modo de teste: os pagamentos daqui não são de verdade.' : '.')+'</div>' : '')+'</div>' +
-        '<div class="card"><h2>Como o cliente compra</h2><div class="sub" style="margin-bottom:12px">O caminho de quem assina, do começo ao fim</div><ol class="passos">' +
+        '</ol>'+(C.ligada ? '<div class="nota az" style="margin-top:12px">Ligada'+(C.ambiente === 'teste' ? ' em modo de teste: os pagamentos daqui não são de verdade.' : '.')+'</div>' : '');
+    var cardPagarme = payt ? '<details class="card solto"><summary style="cursor:pointer;font:700 14.5px var(--f-tit)">Vender pela Pagar.me (desligado enquanto a venda é pela Payt)</summary><div style="margin-top:12px">'+passosPagarme+'</div></details>'
+      : '<div class="card"><h2>Ligar a cobrança pela Pagar.me</h2><div class="sub" style="margin-bottom:12px">Uma vez só. A chave você mesmo põe no Railway: a Central nunca pede nem mostra a chave.</div>'+passosPagarme+'</div>';
+    var comoCompra = '<div class="card"><h2>Como o cliente compra</h2><div class="sub" style="margin-bottom:12px">O caminho de quem assina, do começo ao fim</div><ol class="passos">' +
           '<li><b>Escolhe o plano</b> <span>na página de planos (mensal ou anual) e clica em Assinar. Não preenche nada ali.</span><div class="copia"><code>'+esc(C.paginaPlanos)+'</code><button class="btn peq" data-copiar="'+esc(C.paginaPlanos)+'">Copiar</button><a class="btn peq" href="'+esc(C.paginaPlanos)+'" target="_blank" rel="noopener">Abrir</a></div></li>' +
-          '<li><b>Cai direto no checkout da Pagar.me</b> <span>e põe ali nome, e-mail, telefone e cartão.</span></li>' +
-          '<li><b>Comprou, recebe as instruções</b> <span>o TMX confere o pagamento com a Pagar.me e manda o link “Criar minha conta” pro e-mail e o WhatsApp que ele pôs no checkout.</span></li>' +
+          '<li><b>Cai direto no checkout da '+nomeGw+'</b> <span>e põe ali nome, e-mail, telefone e '+(payt ? 'a forma de pagamento' : 'cartão')+'.</span></li>' +
+          '<li><b>Comprou, recebe as instruções</b> <span>a '+nomeGw+' avisa o TMX, que manda o link “Criar minha conta” pro e-mail e o WhatsApp da compra.</span></li>' +
           '<li><b>Iniciante (grátis)</b> <span>não tem checkout: preenche um formulário e vira um pedido que você libera em Pedidos.</span></li>' +
-        '</ol>'+(temLink ? '<div class="nota az" style="margin-top:12px">Pra vender por uma page sua, anúncio ou WhatsApp: cada plano tem o link de compra pronto na tabela abaixo (mensal e anual). Põe no botão e ele cai direto no checkout.'+(C.ligada ? '' : ' Enquanto a cobrança estiver desligada, o link leva pra página de planos.')+'</div>' : '')+'</div>' +
-      '</div>' +
-      '<div class="card solto"><div class="card-cab"><div><h2>Planos e preços</h2><div class="sub">O que aparece na página de planos e o que a Pagar.me cobra. O anual é 10 vezes o mensal.</div></div></div>' +
+        '</ol>'+(temLink ? '<div class="nota az" style="margin-top:12px">Pra vender por uma page sua, anúncio ou WhatsApp: cada plano tem o link de compra pronto na tabela de planos (mensal e anual). Ele leva direto pro checkout da '+nomeGw+'.</div>' : '')+'</div>';
+    var kpiVende = payt
+      ? '<div class="card kpi"><small>Vende pela</small><div class="v menor"><span class="st '+(preenchidos ? 'ok' : 'av')+'">Payt</span></div><div class="d">'+preenchidos+' de '+chaves.length+' links preenchidos</div></div>'
+      : '<div class="card kpi"><small>Vende pela</small><div class="v menor">'+(C.ligada ? '<span class="st ok">Pagar.me</span>' : '<span class="st ne">Pagar.me desligada</span>')+'</div><div class="d">'+(C.ligada ? 'a chave está no Railway' : 'falta a chave no Railway')+'</div></div>';
+    var kpi2 = payt ? '<div class="card kpi"><small>Aviso da Payt</small><div class="v menor">'+(V && V.webhook ? '<span class="st ok">endereço pronto</span>' : '<span class="st ne">sem endereço</span>')+'</div><div class="d">cadastre na Payt (passo 3)</div></div>'
+      : '<div class="card kpi"><small>Ambiente</small><div class="v menor">'+amb+'</div><div class="d">chave sk_test_ = teste · sk_live_ = de verdade</div></div>';
+    return topo('Cobrança e checkout', 'Como os clientes pagam o TMX: por onde vende, os links de checkout, os planos e preços, a página de planos e os avisos que chegaram.', BTN_ATUALIZAR) +
+      '<div class="grade g4">' + kpiVende + kpi2 +
+        '<div class="card kpi"><small>Último aviso da '+nomeGw+'</small><div class="v menor">'+(ultimo && ultimo.em ? esc(ha(ultimo.em)) : 'nenhum ainda')+'</div><div class="d">'+(ultimo && ultimo.evento ? esc(ultimo.evento) : 'aparece aqui assim que chegar o 1º')+'</div></div>' +
+        '<div class="card kpi destaque"><small>Receita mensal</small><div class="v">'+brl(P.receita.mensal)+'</div><div class="d">'+P.receita.novasMes+' nova(s) neste mês · '+P.receita.atrasadas+' atrasada(s)</div></div>' +
+      '</div>' + escolha + cardPayt +
+      (payt ? '<div class="grade g2" style="grid-template-columns:minmax(0,1fr)">' + comoCompra + '</div>' + cardPagarme : '<div class="grade g2">' + cardPagarme + comoCompra + '</div>') +
+      '<div class="card solto"><div class="card-cab"><div><h2>Planos e preços</h2><div class="sub">O que aparece na página de planos. O anual é 10 vezes o mensal.</div></div></div>' +
         '<div style="overflow-x:auto"><table style="min-width:'+(temLink ? 820 : 640)+'px"><thead><tr><th>Plano</th><th>Mensal</th><th>Anual</th><th>Página</th><th>Clientes</th>'+(temLink ? '<th>Link de compra</th>' : '')+'</tr></thead><tbody>'+linhas+'</tbody></table></div>' +
         '<div class="nota az" style="margin-top:12px">Mudar preço e limites por aqui chega na próxima parte. Por enquanto eles ficam no servidor (PLANOS_TMX).</div></div>' +
       '<div class="grade g21">' +
         '<div class="card"><div class="card-cab"><div><h2>Página de planos</h2><div class="sub">Como o cliente vê agora</div></div><a class="btn peq" href="/planos" target="_blank" rel="noopener">Abrir</a></div><div class="previa"><iframe src="/planos" title="Prévia da página de planos" loading="lazy" tabindex="-1"></iframe></div></div>' +
-        '<div class="card"><h2>Últimos avisos da Pagar.me</h2><div class="sub" style="margin-bottom:4px">Pagou, assinou, recusou, cancelou</div>'+(avisos ? '<ul class="lista">'+avisos+'</ul>' : '<div class="vazio-g">Nenhum aviso ainda.</div>')+'</div>' +
+        '<div class="card"><h2>Últimos avisos</h2><div class="sub" style="margin-bottom:4px">Pagou, reembolsou, cancelou</div>'+(avisos ? '<ul class="lista">'+avisos+'</ul>' : '<div class="vazio-g">Nenhum aviso ainda.</div>')+'</div>' +
       '</div>';
   }
   // ── Convites ──
@@ -757,7 +800,8 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     if(ct) ct.onchange = function(){ incluirTmx = ct.checked; pintar(); };
   }
   function carregar(novo){
-    return Promise.all([api('GET', '/api/plataforma/painel' + (novo ? '?novo=1' : '')), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos'), api('GET', '/api/plataforma/assinaturas')]).then(function(r){
+    return Promise.all([api('GET', '/api/plataforma/painel' + (novo ? '?novo=1' : '')), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos'), api('GET', '/api/plataforma/assinaturas'), api('GET', '/api/plataforma/venda-tmx')]).then(function(r){
+      VENDA = r[5] && r[5].ok ? r[5].j : null;
       if(r[0].ok) P = r[0].j; else if(!P) aviso(r[0].j.error || 'Não consegui ler o painel.');
       if(r[1].ok) CONVITES = r[1].j.convites || [];
       if(r[2].ok) CHAMADOS = r[2].j.chamados || [];
@@ -785,13 +829,15 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       aviso(r.ok ? 'Plano trocado. O cliente já vê em Configurações › Meu plano.' : (r.j.error || 'Não consegui trocar o plano.')); return carregar(true);
     });
   });
+  raiz.addEventListener('input', function(ev){ var i = ev.target.closest && ev.target.closest('[data-link]'); if(i) rascunhoLinks[i.dataset.link] = i.value; });
   raiz.addEventListener('keydown', function(ev){
     var tr = ev.target.closest && ev.target.closest('tr[data-c],tr[data-ch]');
     if(tr && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); tr.click(); }
   });
   document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && (aberto || modal)){ if(modal) modal = ''; else aberto = null; pintar(); } });
   raiz.addEventListener('click', function(ev){
-    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fechar],[data-fped],[data-fcli],[data-liberar],[data-copiar],[data-c]'); if(!a) return;
+    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fechar],[data-fped],[data-fcli],[data-liberar],[data-copiar],[data-c],[data-gw]'); if(!a) return;
+    if(a.dataset.gw){ gwEscolhido = a.dataset.gw; return pintar(); }
     if(a.dataset.fundo){ if(ev.target === a){ modal = ''; pintar(); } return; }
     if(a.dataset.fechar){ if(ev.target === a || a.classList.contains('x')){ aberto = null; pintar(); } return; }
     if(a.dataset.tela) return irPara(a.dataset.tela);
@@ -826,6 +872,24 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     if(ac === 'atualizar'){ a.disabled = true; document.querySelector('.main') && document.querySelector('.main').classList.add('carregando'); return carregar(true).then(function(){ aviso('Atualizado.'); }); }
     if(ac === 'atualizar-aud'){ AUD = null; pintar(); return carregarAuditoria().then(pintar); }
     if(ac === 'fechar-modal'){ modal = ''; return pintar(); }
+    if(ac === 'salvar-venda'){
+      var links = {}, erroL = '';
+      document.querySelectorAll('[data-link]').forEach(function(i){ var v = i.value.trim(); if(v && !/^https:\/\/\S+$/i.test(v)) erroL = 'O link do ' + i.dataset.rot + ' precisa começar com https://'; links[i.dataset.link] = v; });
+      if(erroL) return aviso(erroL);
+      a.disabled = true; a.textContent = 'Salvando…';
+      return api('POST', '/api/plataforma/venda-tmx', { gateway: gwEscolhido || (VENDA && VENDA.gateway) || 'payt', links: links }).then(function(r){
+        if(!r.ok){ a.disabled = false; a.textContent = 'Salvar'; return aviso(r.j.error || 'Não consegui salvar os links.'); }
+        rascunhoLinks = {}; gwEscolhido = null; aviso('Salvo. A página de planos já usa esses links.'); return carregar(true);
+      });
+    }
+    if(ac === 'novo-token'){ confirmaToken = true; return pintar(); }
+    if(ac === 'novo-token-nao'){ confirmaToken = false; return pintar(); }
+    if(ac === 'novo-token-ok'){
+      a.disabled = true;
+      return api('POST', '/api/plataforma/venda-tmx/novo-token').then(function(r){
+        confirmaToken = false; aviso(r.ok ? 'Endereço novo pronto. Troque também na Payt.' : (r.j.error || 'Não consegui gerar o endereço.')); return carregar(true);
+      });
+    }
     if(ac === 'tema'){
       var vaiClaro = document.documentElement.getAttribute('data-tema') !== 'claro';
       if(vaiClaro) document.documentElement.setAttribute('data-tema', 'claro'); else document.documentElement.removeAttribute('data-tema');
