@@ -8696,9 +8696,10 @@ app.post('/api/plataforma/empresas/:id/bloquear', authDiretoriaInterna, (req, re
 });
 // ══════════════════════════════════════════════
 // ── PLANOS E MEU PLANO (07/11/2026) ──
-// RASCUNHO: preços e limites são os do esboço (iguais aos da Malva, decisão 1 do Thiago ainda
-// em aberto). Ficam só aqui: mudar um número aqui muda a tela inteira. Nada trava por limite
-// ainda (decisão 4): a tela só mostra o uso e avisa quando chega perto.
+// Preços e limites da Malva, decididos pelo Thiago em 07/11 ("pode usar os preços da Malva"),
+// com o anual valendo 10× o mensal (2 meses grátis). Esta é a lista única de planos: a tela,
+// a Central e a cobrança leem daqui. Nada trava por limite ainda (decisão 4): a tela só mostra
+// o uso e avisa quando chega perto.
 // ══════════════════════════════════════════════
 const PLANOS_TMX = [
   { id: 'interno', nome: 'Interno', interno: true, desc: 'A TMX é a casa: sem plano, sem cobrança e sem limite.', limites: {} },

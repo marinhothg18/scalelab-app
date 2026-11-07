@@ -111,8 +111,8 @@ Regras:
   cliente recebe no sininho. `test/admin-suporte.test.js`.
 - **Meu plano** (Configurações › Meu plano, só Diretoria): `GET /api/meu-plano` mostra o plano da empresa (do
   registro, via `_pedirAPortaria('meu-plano')`; a TMX é `interno`) e o uso de cada limite (`_usoDoPlano`, com os
-  dados da própria empresa). Os planos e limites ficam só em `PLANOS_TMX` no server.js (RASCUNHO, preços do
-  esboço). Nada trava por limite ainda. Trocar de plano: a Central muda em Clientes
+  dados da própria empresa). Os planos e limites ficam só em `PLANOS_TMX` no server.js, a lista única (preços
+  da Malva, decididos em 07/11; anual = 10× o mensal). Nada trava por limite ainda. Trocar de plano: a Central muda em Clientes
   (`POST /api/plataforma/empresas/:id/plano`); o cliente pede pelo Suporte. `test/meu-plano.test.js`.
 
 ### Data model
