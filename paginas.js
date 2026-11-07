@@ -73,6 +73,9 @@ const MODELOS = {
                       plano: 'ANUAL', valor: '697', produto: 'APOSTILAI ACERVO' }
 };
 
+// o tipo que a lista de páginas do projeto mostra
+const TIPO_DO_MODELO = { 'vendas-vsl': 'vsl', 'upsell-vsl': 'upsell', 'vendas-sem-vsl': 'outra', 'ponte': 'ponte' };
+
 // O que dá pra trocar em cada modelo sai do próprio HTML: o player da VTurb, o
 // DELAY_SEG, os links de checkout da Payt e o pixel do TMX.
 function _extrair(html) {
@@ -445,8 +448,15 @@ module.exports = function montarPaginas(ctx) {
         PRIMARY KEY (pagina_id, n));
       CREATE TABLE IF NOT EXISTS pg_substituidas (pagina_id TEXT, em INTEGER, html TEXT);
     `);
+    // a página mora num projeto e num funil (Projetos › projeto › Páginas)
+    const cols = db.prepare('PRAGMA table_info(pg_paginas)').all().map(c => c.name);
+    if (cols.indexOf('projeto') < 0) db.exec('ALTER TABLE pg_paginas ADD COLUMN projeto TEXT');
+    if (cols.indexOf('funil') < 0) db.exec('ALTER TABLE pg_paginas ADD COLUMN funil TEXT');
     return (pronto = true);
   }
+  const _funis = projeto => { try { return (ctx.funisDoProjeto && projeto) ? ctx.funisDoProjeto(projeto) : []; } catch (e) { return []; } };
+  // o mesmo jeito de escrever o endereço da lista de páginas do projeto: sem https, sem barra no fim
+  const _urlCurta = u => String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
   const semBanco = res => res.status(503).json({ error: 'O banco de páginas não abriu neste servidor.' });
   const quem = req => (req.user && (req.user.nome || req.user.email)) || 'Diretoria';
   function _auditar(req, acao, alvo, meta) {
@@ -483,8 +493,12 @@ module.exports = function montarPaginas(ctx) {
     const modelos = Object.values(_modelos()).map(m => ({ id: m.id, nome: m.nome, base: m.base, campos: _defs(m), padrao: _camposPadrao(m),
       tem: { vsl: !!m.ext.vsl, atraso: m.ext.atraso != null, checkout: m.ext.checkouts.length > 0, umClique: m.ext.umClique } }));
     const dominios = _q('SELECT * FROM pg_dominios ORDER BY criado_em').all().map(_domPublico);
-    const paginas = _q('SELECT * FROM pg_paginas ORDER BY criado_em DESC').all().map(p => Object.assign({}, p, { hash_ar: undefined }));
-    res.json({ modelos, dominios, paginas });
+    const projeto = String(req.query.projeto || '').slice(0, 60);
+    const doms = {}; dominios.forEach(d => { doms[d.id] = d; });
+    const paginas = _q('SELECT * FROM pg_paginas ORDER BY criado_em DESC').all()
+      .filter(p => !projeto || p.projeto === projeto)
+      .map(p => Object.assign({}, p, { hash_ar: undefined, url: doms[p.dominio_id] ? _urlCurta(_endereco(doms[p.dominio_id], p.slug)) : '' }));
+    res.json({ modelos, dominios, paginas, funis: _funis(projeto) });
   });
 
   app.post('/api/pg/dominios/testar', auth, express.json({ limit: '20kb' }), async (req, res) => {
@@ -542,10 +556,12 @@ module.exports = function montarPaginas(ctx) {
     const slug = String(b.slug || '').trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(slug)) throw falha(400, 'Endereço inválido: use letras minúsculas, números e hífen, como foco-anual.');
     if (_q('SELECT id FROM pg_paginas WHERE dominio_id=? AND slug=?').get(d.id, slug)) throw falha(409, 'Já existe uma página do TMX nesse endereço.');
+    const projeto = String(b.projeto || '').trim().slice(0, 60), funil = String(b.funil || '').slice(0, 80);
+    if (funil && !_funis(projeto).some(f => f.id === funil)) throw falha(400, 'Esse funil não é do projeto ' + projeto + '.');
     let campos; try { campos = _validar(m, _camposPadrao(m), { titulo: b.titulo || m.ext.titulo }); } catch (e) { throw falha(400, e.message); }
     const id = 'pg_' + crypto.randomBytes(6).toString('hex'), agora = Date.now();
-    _q(`INSERT INTO pg_paginas (id, dominio_id, slug, titulo, modelo, versao, publicada, criado_em, criado_por) VALUES (?,?,?,?,?,1,0,?,?)`)
-      .run(id, d.id, slug, String(b.titulo || m.nome).slice(0, 120), m.id, agora, quem(req));
+    _q(`INSERT INTO pg_paginas (id, dominio_id, slug, titulo, modelo, versao, publicada, criado_em, criado_por, projeto, funil) VALUES (?,?,?,?,?,1,0,?,?,?,?)`)
+      .run(id, d.id, slug, String(b.titulo || m.nome).slice(0, 120), m.id, agora, quem(req), projeto, funil);
     _q('INSERT INTO pg_versoes (pagina_id, n, campos, resumo, por, em) VALUES (?,?,?,?,?,?)')
       .run(id, 1, JSON.stringify(campos), 'Criada a partir do modelo ' + m.nome, quem(req), agora);
     _auditar(req, 'pg_pagina_criar', id, { dominio: d.dominio, slug, modelo: m.id });
@@ -609,6 +625,13 @@ module.exports = function montarPaginas(ctx) {
     let noAr = false;
     try { noAr = (await _baixar(url + '?tmxv=' + n + '-' + agora, 3e6)).includes('<meta name="tmx-pagina" content="' + p.id + ':' + n + '">'); } catch (e) { noAr = false; }
     _auditar(req, 'pg_pagina_publicar', p.id, { dominio: d.dominio, slug: p.slug, versao: n, conferido_no_ar: noAr, substituiu: antigo !== null });
+    // entra na lista de páginas do projeto como as do Claude Code: cada publicação vira uma versão lá
+    if (p.projeto && ctx.registrarPagina) {
+      try {
+        ctx.registrarPagina({ url, projeto: p.projeto, titulo: p.titulo, tipo: TIPO_DO_MODELO[p.modelo] || 'outra', funil: p.funil || '',
+          origem: 'tmx', por: quem(req), versao: 'versão ' + n + ' publicada pelo TMX', pgId: p.id });
+      } catch (e) { console.error('[PAGINAS] registrar no projeto:', e.message); }
+    }
     return { ok: true, n, url, noAr, substituiu: antigo !== null };
   }
 

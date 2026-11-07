@@ -21832,6 +21832,9 @@ app.get('/mcp', (req, res) => {
 try {
   require('./paginas')({ app, express, readDB, writeDB, audit, auth: authDiretoriaInterna, _pessoas, _q, _finCifrar, _finDecifrar,
     basePublica: (typeof BASE_PUBLICA === 'string' ? BASE_PUBLICA : ''), chaveIA: _getAIKey,
+    // a página nasce num funil do projeto e, publicada, entra em Projetos › projeto › Páginas
+    funisDoProjeto: projeto => (Array.isArray(readDB().store[KEY_FUNIS]) ? readDB().store[KEY_FUNIS] : []).filter(f => f && f.projeto === projeto).map(f => ({ id: f.id, nome: f.nome })),
+    registrarPagina: d => { const db = readDB(), p = _paginaRegistrar(db, d); if (d.pgId) p.pgId = d.pgId; writeDB(db); _paginaMedir(p.url).catch(() => {}); return p; },
     vturbPlayers: () => { try { const c = readDB().store[KEY_VTURB]; return (c && c.players) || []; } catch (e) { return []; } } });
 } catch (e) { console.error('[PAGINAS] não subiu:', e.message); }
 

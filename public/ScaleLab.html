@@ -2062,6 +2062,7 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .cp-tab.pg-tab .f2{left:0;width:300px;min-width:300px;max-width:300px}
 .pg-tab .f2 a{display:block;font-size:11px;color:var(--text2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pg-o{font-weight:800!important}
+.pg-o.tmx{background:rgba(255,89,38,.14)!important;color:#FF8A5C!important}
 .pg-o.cc{background:rgba(168,85,247,.16)!important;color:#c084fc!important} .pg-o.px{background:rgba(59,130,246,.15)!important;color:#60a5fa!important}
 .pg-fora{background:rgba(245,158,11,.15)!important;color:#f59e0b!important}
 .pg-vel{display:inline-flex;gap:4px}
@@ -3734,10 +3735,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
           Projetos
         </div>
-        <div class="nav-item" id="nav-paginas" onclick="goTo('paginas')" style="display:none;">
-          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
-          Páginas
-        </div>
         <!-- Quiz e Criativos & VSL moram dentro de cada projeto (Projetos › projeto › Conteúdo) -->
         <div class="nav-item" id="nav-adlibrary" onclick="goTo('adlibrary')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -4133,11 +4130,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
     <!-- MEU PROTOCOLO -->
     <div class="page" id="page-protocolo">
       <div id="protocolo-mount" style="width:100%;max-width:100%;height:calc(100dvh - 120px);min-height:70vh;border-radius:14px;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);"></div>
-    </div>
-
-    <!-- PÁGINAS: a tela mora em /paginas.html (paginas.js no servidor) -->
-    <div class="page" id="page-paginas">
-      <iframe id="paginas-frame" title="Páginas" style="display:block;width:100%;height:calc(100dvh - 120px);min-height:70vh;border:1px solid var(--border);border-radius:14px;background:var(--bg);"></iframe>
     </div>
 
     <!-- TRÁFEGO -->
@@ -4893,6 +4885,11 @@ a.fn-btn{text-decoration:none;display:inline-block}
           </div>
 
         </div>
+      </div>
+
+      <!-- CONEXÃO: HOSPEDAGEM (a tela mora em /paginas.html; paginas.js no servidor) -->
+      <div id="cfg-panel-hospedagem" style="display:none;max-width:1100px;">
+        <iframe id="cfg-hosp-frame" title="Hospedagem" style="display:block;width:100%;height:calc(100dvh - 220px);min-height:620px;border:0;border-radius:12px;background:var(--bg);"></iframe>
       </div>
 
       <!-- TAB: API TOKENS -->
@@ -8125,7 +8122,6 @@ function notif(t){
 const titles={
   dashboard:{t:'Dashboard',s:'Visão geral do projeto'},
   protocolo:{t:'Meu Protocolo',s:'Seu painel pessoal'},
-  paginas:{t:'Páginas',s:'Modelos, conferências e publicação na hospedagem'},
   task:{t:'Task',s:''},
   metricas:{t:'Tráfego',s:'Gestão e controle de tráfego pago.'},
   criativos:{t:'Criativos',s:'Gerencie seus materiais criativos.'},
@@ -8175,7 +8171,7 @@ function goTo(id){
     // Páginas restritas à Diretoria: esconder do menu não basta — sem esse guard
     // qualquer um abre por link antigo, aba velha, busca interna ou console.
     if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
-    if((id === 'protocolo' || id === 'paginas') && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existem
+    if(id === 'protocolo' && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existe
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
     // fora da TMX nem a Diretoria abre: pro cliente o módulo não existe
     if(_mArq && (!_ehDir || !tmxEhTmx())) id = 'dashboard';
@@ -8244,7 +8240,6 @@ function goTo(id){
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
   if(id==='financeiro' && typeof fiRender==='function')fiRender();
   if(id==='protocolo')renderProtocolo();
-  if(id==='paginas'){ const f=document.getElementById('paginas-frame'); if(f && !f.getAttribute('src')) f.src='/paginas.html'; }
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
   // Mobile: atualiza título e bottom nav
@@ -22180,7 +22175,7 @@ async function rodarLembretesAgora(){
 // Branding e Meu Plano; Backup, que aparecia duas vezes, ficou um só; as 10
 // telas de Integrações viraram a grade de Conexões, e cada conexão abre a dela.
 // ══════════════════════════════════════════════════════
-const _CFG_TODAS_TABS = ['geral','usuarios','equiperh','projetos','nichos','ofertas-cfg','checklists','apis','api-tokens','criativos-cfg','lembretes','relatorio','whatsapp','integracoes','conexoes','branding','meuplano','dados','arquivados','backup','ferramentas'];
+const _CFG_TODAS_TABS = ['geral','usuarios','equiperh','projetos','nichos','ofertas-cfg','checklists','apis','api-tokens','hospedagem','criativos-cfg','lembretes','relatorio','whatsapp','integracoes','conexoes','branding','meuplano','dados','arquivados','backup','ferramentas'];
 var CFG_SECOES = {
   empresa:     { t:'Empresa', p:'O nome que aparece no topo do TMX e nos relatórios.', paineis:['geral'] },
   equipe:      { t:'Equipe', p:'Quem entra no TMX, com cargo e WhatsApp. Cada pessoa daqui também está em Gestão › RH: cadastrou aqui, já aparece lá.', paineis:['usuarios','equiperh'] },
@@ -22203,8 +22198,9 @@ var CFG_CONEX = [
   { id:'utmify',   ic:'📈', nome:'Utmify',         desc:'Gasto e métricas de campanha.', paineis:['integracoes'], ver:'utmify' },
   { id:'vturb',    ic:'🎬', nome:'VTurb',          desc:'Retenção, pitch e conversão dentro das VSLs.', paineis:['integracoes'], ver:'vturb' },
   { id:'checkout', ic:'💰', nome:'Checkouts',      desc:'Payt, Kiwify, Hubla e AppMax mandam as vendas pra cá.', paineis:['integracoes'], ver:'checkout' },
+  { id:'hospedagem', ic:'🌐', nome:'Hospedagem',   desc:'FTP da hospedagem onde as páginas ficam no ar (HospedaInfo, Hostinger, qualquer cPanel). O TMX publica nela.', paineis:['hospedagem'], soTmx:true },
   { id:'whatsapp', ic:'💬', nome:'WhatsApp',       desc:'Z-API. Manda lembretes e relatórios e recebe as mensagens pro agente.', paineis:['whatsapp'], ver:'whatsapp' },
-  { id:'ia',       ic:'🤖', nome:'Agente de IA',   desc:'Claude ou OpenAI, pra responder pelo WhatsApp.', paineis:['whatsapp'], ver:'ia' },
+  { id:'ia',       ic:'🤖', nome:'Agente de IA',   desc:'Claude ou OpenAI, pra responder pelo WhatsApp e no chat das páginas.', paineis:['whatsapp'], ver:'ia' },
   { id:'email',    ic:'📧', nome:'E-mail',         desc:'Resend: boas-vindas e troca de senha.', paineis:['integracoes'], ver:'email' },
   { id:'redtrack', ic:'📡', nome:'RedTrack',       desc:'Segunda fonte de métricas na Análise de tráfego.', paineis:['apis'] },
   { id:'api',      ic:'🔑', nome:'Acesso por API', desc:'Chaves pro Claude e outras ferramentas consultarem o TMX (MCP).', paineis:['api-tokens'], soTmx:true },
@@ -22245,6 +22241,7 @@ function _cfgRenderPainel(t, isDir){
   else if (t === 'checklists') renderChecklistsCfg();
   else if (t === 'criativos-cfg') renderCriStatusList();
   else if (t === 'api-tokens') renderApiTokens();
+  else if (t === 'hospedagem') { const f = document.getElementById('cfg-hosp-frame'); if (f) f.src = '/paginas.html?embutido=hospedagem'; }
   else if (t === 'lembretes') renderLembretes();
   else if (t === 'relatorio') { try{ renderRelatorioConfig(); renderRelatorioDiarioConfig(); }catch(e){} }
   else if (t === 'whatsapp') { try{ renderWhatsAppConfig(); }catch(e){} }
@@ -22307,6 +22304,8 @@ function _cfgPintarConexoes(){
   var rk = (typeof getRtApiKey === 'function') ? getRtApiKey() : '';
   pinta('redtrack', rk ? 'Conectado' : 'Não conectado', rk ? 'ok' : 'neu');
   pinta('bancos', 'No Financeiro', 'neu');
+  pega('/api/pg/estado').then(function(e){ if(!e || !e.dominios) return; var n = e.dominios.length;
+    pinta('hospedagem', n ? 'Conectada · '+e.dominios.map(function(d){ return d.dominio; }).join(', ') : 'Não conectada', n ? 'ok' : 'neu'); });
 }
 // Nichos e projetos numa árvore só (antes eram as telas Nichos e Ofertas). Nicho fica mesmo vazio.
 function _cfgPintarArvore(){
@@ -28800,9 +28799,6 @@ function _applyNavPermissions(cargo){
   setDisp('nav-financeiro', isDir);
   // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
   setDisp('nav-protocolo', isDir && tmxEhTmx());   // Meu Protocolo é só da TMX, fica fora do produto
-  // Páginas — apenas Diretoria (guarda a senha da hospedagem); no servidor é só da
-  // Diretoria da TMX (authDiretoriaInterna), então fora da TMX nem aparece
-  setDisp('nav-paginas', isDir && tmxEhTmx());
 
   // Infra — Diretoria, Sócio e Infra
   setDisp('nav-infra', isDir || isSocio || isInfra);
@@ -31364,9 +31360,9 @@ function fnProjId(){
 // registradas à mão e as que o pixel já viu nos funis dele. Cada uma com os
 // números do período, a velocidade (PageSpeed do Google) e o histórico.
 // ══════════════════════════════════════════════════════
-var pgEst = { per:'hoje', filtro:'todas', dados:null, proj:'' };
+var pgEst = { per:'hoje', filtro:'todas', dados:null, proj:'', tmx:null };
 var PG_TIPO = { vsl:'VSL', presell:'Pré-sell', quiz:'Quiz', checkout:'Checkout próprio', obrigado:'Obrigado', upsell:'Upsell', downsell:'Downsell', backredirect:'Back redirect', bio:'Bio', conteudo:'Conteúdo', ponte:'Ponte pro checkout', planos:'Planos', outra:'Página' };
-var PG_ORIGEM = { claude:['CLAUDE CODE','cc'], manual:['MANUAL','man'], pixel:['VISTA PELO PIXEL','px'], mapa:['NO MAPA','man'] };
+var PG_ORIGEM = { claude:['CLAUDE CODE','cc'], manual:['MANUAL','man'], pixel:['VISTA PELO PIXEL','px'], mapa:['NO MAPA','man'], tmx:['FEITA NO TMX','tmx'] };
 function pgPeriodo(){ var p = pgEst.per; return p === 'ontem' ? { de:hojeBR(1), ate:hojeBR(1) } : p === '7d' ? { de:hojeBR(6), ate:hojeBR(0) } : p === '30d' ? { de:hojeBR(29), ate:hojeBR(0) } : { de:hojeBR(0), ate:hojeBR(0) }; }
 function pgCarregar(){
   var cx = document.getElementById('fn-p-paginas'); if(!cx) return;
@@ -31376,7 +31372,24 @@ function pgCarregar(){
   v2Json('/api/paginas?projeto='+encodeURIComponent(fnProj)+'&de='+p.de+'&ate='+p.ate)
     .then(function(d){ if(pgEst.pedido !== pedido) return; pgEst.dados = d; pgPintar(); })
     .catch(function(e){ cx.innerHTML = '<div class="v2-alerta bad"><div><b>Não carregou</b><span>'+fnEsc(e.message)+'</span></div></div>'; });
+  // as páginas feitas no TMX (com os rascunhos) e as hospedagens: só a Diretoria da TMX cria e publica
+  pgEst.tmx = null;
+  if(pgPodeCriar()) v2Json('/api/pg/estado?projeto='+encodeURIComponent(fnProj))
+    .then(function(t){ if(pgEst.pedido !== pedido) return; pgEst.tmx = t; pgPintar(); }).catch(function(){});
 }
+function pgPodeCriar(){ return !!(currentUser && currentUser.cargo === 'Diretoria' && (typeof tmxEhTmx !== 'function' || tmxEhTmx())); }
+// o editor (paginas.html) abre aqui dentro; "‹ Voltar para Páginas" de lá volta pra esta lista
+function pgEditor(alvo){
+  var cx = document.getElementById('fn-p-paginas'); if(!cx) return;
+  cx.innerHTML = '<iframe id="pg-editor-frame" title="Editor de página" src="/paginas.html?embutido=editor&projeto='+encodeURIComponent(fnProj)+'#'+encodeURIComponent(alvo)+'" '+
+    'style="display:block;width:100%;height:calc(100dvh - 170px);min-height:680px;border:0;border-radius:12px;background:var(--bg)"></iframe>';
+}
+function pgIrHospedagem(){ goTo('configuracoes'); setTimeout(function(){ try{ cfgIr('conexoes','hospedagem'); }catch(e){} }, 300); }
+window.addEventListener('message', function(e){
+  if(e.origin !== location.origin || !e.data || !e.data.tmx) return;
+  if(e.data.tmx === 'paginas-voltar'){ pgEst.dados = null; pgCarregar(); }
+  else if(e.data.tmx === 'paginas-hospedagem') pgIrHospedagem();
+});
 function pgNota(n){ return n == null ? 'sem' : n >= 90 ? 'bom' : n >= 50 ? 'med' : 'ruim'; }
 function pgVel(v){
   if(!v || !v.cel) return '<span class="pg-vel"><span class="sem">não medida</span></span>';
@@ -31387,10 +31400,18 @@ function pgDiaHora(iso){ if(!iso) return '—'; var d = new Date(iso); return St
 function pgMinSeg(s){ if(s == null) return '<i>—</i>'; s = Math.round(s); return s >= 60 ? Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s' : s+'s'; }
 function pgPintar(){
   var cx = document.getElementById('fn-p-paginas'), d = pgEst.dados; if(!cx || !d) return;
-  var l = d.paginas || [];
+  // as feitas no TMX entram na mesma lista: as publicadas já vêm registradas; os rascunhos entram sem números
+  var t = pgEst.tmx, porUrl = {}, l = (d.paginas || []).slice();
+  l.forEach(function(x){ porUrl[x.url] = x; });
+  ((t && t.paginas) || []).forEach(function(p){
+    var x = porUrl[p.url];
+    if(!x){ x = { url:p.url, titulo:p.titulo, tipo:'', noMapa:'', criadoEm:new Date(p.criado_em).toISOString(), numeros:{}, versoes:[] }; l.push(x); }
+    x.origem = 'tmx'; x.pgId = p.id; x.pgVer = p.versao; x.pgAr = p.publicada;
+  });
   var vis = l.filter(function(x){ var f = pgEst.filtro, v = x.ultimaVelocidade;
-    return f === 'todas' || (f === 'claude' && x.origem === 'claude') || (f === 'pixel' && x.origem === 'pixel') || (f === 'fora' && !x.noMapa) || (f === 'lenta' && v && v.cel && v.cel.nota != null && v.cel.nota < 80); });
+    return f === 'todas' || (f === 'claude' && x.origem === 'claude') || (f === 'tmx' && x.origem === 'tmx') || (f === 'pixel' && x.origem === 'pixel') || (f === 'fora' && !x.noMapa) || (f === 'lenta' && v && v.cel && v.cel.nota != null && v.cel.nota < 80); });
   var cc = l.filter(function(x){ return x.origem === 'claude'; }).length, fora = l.filter(function(x){ return !x.noMapa; }).length;
+  var feitas = l.filter(function(x){ return x.origem === 'tmx'; }).length;
   var med = l.filter(function(x){ return x.ultimaVelocidade && x.ultimaVelocidade.cel && x.ultimaVelocidade.cel.nota != null; });
   var media = med.length ? Math.round(med.reduce(function(a, x){ return a + x.ultimaVelocidade.cel.nota; }, 0) / med.length) : null;
   var lentas = med.filter(function(x){ return x.ultimaVelocidade.cel.nota < 80; }).length;
@@ -31398,19 +31419,23 @@ function pgPintar(){
   var per = function(id, t){ return '<option value="'+id+'"'+(pgEst.per === id ? ' selected' : '')+'>'+t+'</option>'; };
   var linhas = vis.map(function(x){
     var n = x.numeros || {}, conv = n.pessoas ? (n.vendas / n.pessoas * 100).toFixed(2).replace('.', ',')+'%' : '<i>—</i>', o = PG_ORIGEM[x.origem] || PG_ORIGEM.manual;
-    return '<tr onclick="pgFicha(\''+fnEsc(x.url)+'\')"><td class="f2"><b title="'+fnEsc(x.titulo || x.url)+'">'+fnEsc(x.titulo || x.url.split('/').slice(1).join('/') || x.url)+'</b><a>'+fnEsc(x.url)+'</a><div class="cp-chips">'+
-        (x.agora ? '<span class="pg-vivo-tag" title="Com a página aberta agora">'+fnNum(x.agora)+' ao vivo</span>' : '')+'<span class="pg-o '+o[1]+'">'+o[0]+'</span>'+(x.noMapa ? '<span>funil '+fnEsc(x.noMapa)+'</span>' : '<span class="pg-fora">FORA DO MAPA</span>')+'<span>'+fnEsc(PG_TIPO[x.tipo] || 'Página')+'</span></div></td>'+
+    var rasc = x.pgId && (!x.pgAr || x.pgVer !== x.pgAr) ? '<span class="pg-fora">'+(x.pgAr ? 'RASCUNHO v'+x.pgVer+' · NO AR v'+x.pgAr : 'RASCUNHO v'+x.pgVer)+'</span>' : '';
+    return '<tr onclick="'+(x.pgId ? 'pgEditor(\''+fnEsc(x.pgId)+'\')' : 'pgFicha(\''+fnEsc(x.url)+'\')')+'"><td class="f2"><b title="'+fnEsc(x.titulo || x.url)+'">'+fnEsc(x.titulo || x.url.split('/').slice(1).join('/') || x.url)+'</b><a>'+fnEsc(x.url)+'</a><div class="cp-chips">'+
+        (x.agora ? '<span class="pg-vivo-tag" title="Com a página aberta agora">'+fnNum(x.agora)+' ao vivo</span>' : '')+'<span class="pg-o '+o[1]+'">'+o[0]+'</span>'+rasc+(x.noMapa ? '<span>funil '+fnEsc(x.noMapa)+'</span>' : '<span class="pg-fora">FORA DO MAPA</span>')+'<span>'+fnEsc(PG_TIPO[x.tipo] || 'Página')+'</span></div></td>'+
       '<td>'+(x.origem === 'pixel' ? '<small>vista '+pgDiaHora(x.vistaDesde || x.criadoEm).slice(0,5)+'</small>' : pgDiaHora(x.criadoEm))+'</td>'+
       '<td>'+fnNum(n.pessoas || 0)+'</td><td>'+(n.pitch ? fnNum(n.pitch) : '<i>—</i>')+'</td><td>'+fnNum(n.checkout || 0)+'</td><td>'+(n.vendas || 0)+'</td>'+
       '<td>'+(n.faturamento == null ? '<i>—</i>' : fmtAds(n.faturamento))+'</td><td>'+conv+'</td><td>'+pgMinSeg(n.tempo)+'</td><td>'+(n.rolou50 == null ? '<i>—</i>' : Math.round(n.rolou50*100)+'%')+'</td>'+
       '<td>'+pgVel(x.ultimaVelocidade)+'</td><td>'+((x.versoes || []).length || '<i>—</i>')+'</td></tr>';
   }).join('');
   cx.innerHTML =
-    '<div class="pg-topo"><div class="cp-seg">'+f('todas','Todas')+f('claude','Do Claude Code')+f('pixel','Vistas pelo pixel')+f('fora','Fora do mapa')+f('lenta','Lentas')+'</div>'+
+    (t && !(t.dominios || []).length ? '<div class="v2-alerta warn" style="margin-bottom:10px"><div><b>Pra criar e publicar página aqui, conecte a hospedagem</b><span>Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem.</span></div>'+
+      '<button class="fn-btn g sm" onclick="pgIrHospedagem()">Conectar a hospedagem</button></div>' : '')+
+    '<div class="pg-topo"><div class="cp-seg">'+f('todas','Todas')+f('claude','Do Claude Code')+(t ? f('tmx','Feitas no TMX') : '')+f('pixel','Vistas pelo pixel')+f('fora','Fora do mapa')+f('lenta','Lentas')+'</div>'+
       '<select onchange="pgEst.per=this.value;pgCarregar()">'+per('hoje','Hoje')+per('ontem','Ontem')+per('7d','7 dias')+per('30d','30 dias')+'</select>'+
-      '<button class="fn-btn g sm" id="pg-medir-todas" onclick="pgMedirTodas(this)">⚡ Medir as não medidas</button><button class="fn-btn sm" onclick="pgRegistrar()">+ Registrar página</button></div>'+
+      '<button class="fn-btn g sm" id="pg-medir-todas" onclick="pgMedirTodas(this)">⚡ Medir as não medidas</button><button class="fn-btn sm" onclick="pgRegistrar()">+ Registrar página</button>'+
+      (t ? '<button class="fn-btn sm" style="background:var(--accent);border-color:var(--accent);color:#fff" onclick="pgEditor(\'nova\')">+ Nova página</button>' : '')+'</div>'+
     (d.temChave ? '' : '<div class="v2-alerta warn" style="margin-bottom:10px"><div><b>Falta a chave do Google pra medir velocidade</b><span>O PageSpeed só mede com uma chave (é grátis). Depois de criada, ela vai na variável PAGESPEED_KEY do Railway. O resto da aba funciona sem ela.</span></div></div>')+
-    '<div class="pg-resumo"><span><b>'+l.length+'</b> página'+(l.length === 1 ? '' : 's')+'</span><span><b>'+cc+'</b> do Claude Code</span>'+(fora ? '<span><b>'+fora+'</b> fora do mapa do funil</span>' : '')+
+    '<div class="pg-resumo"><span><b>'+l.length+'</b> página'+(l.length === 1 ? '' : 's')+'</span><span><b>'+cc+'</b> do Claude Code</span>'+(feitas ? '<span><b>'+feitas+'</b> feita'+(feitas === 1 ? '' : 's')+' no TMX</span>' : '')+(fora ?'<span><b>'+fora+'</b> fora do mapa do funil</span>' : '')+
       (media != null ? '<span>velocidade média no celular <b>'+media+'</b></span>' : '')+(lentas ? '<span><b>'+lentas+'</b> lenta'+(lentas === 1 ? '' : 's')+' no celular</span>' : '')+'</div>'+
     (l.length ? '<div class="cp-rolo"><table class="cp-tab pg-tab"><thead><tr><th class="f2">Página</th><th>Subiu em</th><th>Pessoas</th><th>Pitch</th><th title="Pessoas que clicaram em comprar nesta página">Checkout</th><th title="Compras pagas no período de quem passou pela página">Vendas</th><th>Faturamento</th><th>Conversão</th><th title="Tempo na página (mediana)">Tempo</th><th>Rolou 50%</th><th>Velocidade</th><th>Versões</th></tr></thead><tbody>'+
         (linhas || '<tr><td colspan="12" class="cp-vazio">Nenhuma página neste filtro.</td></tr>')+'</tbody></table></div>'
