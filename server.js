@@ -275,6 +275,16 @@ function _plataforma() {
     try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}   // já existe
   }
   try { db.exec('ALTER TABLE convites ADD COLUMN cancelado INTEGER'); } catch (e) {}
+  // Cobrança pela Pagar.me: um pedido por clique em "Assinar" (ref = código nosso, vai como código do
+  // cliente na Pagar.me) e os planos já criados lá (um por plano, ciclo e preço)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assinaturas (ref TEXT PRIMARY KEY, plano TEXT NOT NULL, ciclo TEXT NOT NULL, nome TEXT, email TEXT, whatsapp TEXT,
+      criado INTEGER, status TEXT NOT NULL, link_id TEXT, link_url TEXT, pagarme_sub TEXT, pagarme_cliente TEXT, pago_em INTEGER,
+      convite_hash TEXT, convite_codigo TEXT, empresa TEXT, ultimo_evento TEXT, atualizado INTEGER);
+    CREATE INDEX IF NOT EXISTS assinaturas_email ON assinaturas(email);
+    CREATE INDEX IF NOT EXISTS assinaturas_sub ON assinaturas(pagarme_sub);
+    CREATE TABLE IF NOT EXISTS pagarme_planos (chave TEXT PRIMARY KEY, plan_id TEXT NOT NULL, criado INTEGER);
+  `);
   for (const col of ['bloqueio_motivo TEXT', 'bloqueado_em INTEGER', 'bloqueado_por TEXT']) {
     try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}
   }
@@ -682,7 +692,7 @@ app.use(_injetarTenant);
 if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
   // plataforma (cadastro, cobrança, painel SaaS, MCP, criar empresas) fica só na TMX.
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 // Sessões de suporte abertas neste motor: hash do token -> { modo, expira }. Fica na memória
@@ -6678,198 +6688,9 @@ app.get('/api/saas/planos', (req, res) => {
 // ══════════════════════════════════════════════
 
 const PAGARME_API_KEY = process.env.PAGARME_API_KEY || '';
-const PAGARME_API_BASE = 'https://api.pagar.me/core/v5';
 
-// POST /api/billing/checkout — cria checkout de assinatura pro tenant logado
-// Body: { planoId: 'basic'|'pro'|'enterprise' }
-app.post('/api/billing/checkout', async (req, res) => {
-  try {
-    const { planoId } = req.body || {};
-    if (!planoId || !['basic','pro','enterprise'].includes(planoId)) {
-      return res.status(400).json({ error: 'planoId inválido' });
-    }
-    if (!PAGARME_API_KEY) {
-      // Modo de desenvolvimento — retorna link mock
-      return res.json({
-        ok: false,
-        modo: 'mock',
-        message: 'Billing não está configurado. Defina PAGARME_API_KEY no Railway. Por enquanto, contate suporte@axcend.com pra fazer upgrade.',
-        suporteUrl: 'mailto:suporte@axcend.com?subject=Upgrade%20pra%20'+planoId
-      });
-    }
-
-    const tenantId = req.tenantId || TENANT_DEFAULT_ID;
-    const db = readDB();
-    const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
-    if (!tenant) return res.status(404).json({ error: 'Tenant não encontrado' });
-
-    const plano = SAAS_PLANOS[planoId];
-
-    // Cria/recupera customer no Pagar.me
-    let customerId = tenant.pagarmeCustomerId;
-    if (!customerId) {
-      const cust = await fetch(PAGARME_API_BASE + '/customers', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(PAGARME_API_KEY + ':').toString('base64'),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: tenant.contato?.nomeAdmin || tenant.nome,
-          email: tenant.contato?.email || '',
-          type: 'individual',
-          country: 'BR',
-          metadata: { tenantId: tenant.id, slug: tenant.slug }
-        })
-      });
-      if (!cust.ok) {
-        const err = await cust.text();
-        return res.status(500).json({ error: 'Erro Pagar.me: ' + err.slice(0,200) });
-      }
-      const custData = await cust.json();
-      customerId = custData.id;
-      tenant.pagarmeCustomerId = customerId;
-      tenant._updatedAt = Date.now();
-      db.timestamps['sl_saas_tenants'] = now();
-      writeDB(db);
-    }
-
-    // Cria checkout link
-    const cents = Math.round(plano.precoBRL * 100);
-    const orderRes = await fetch(PAGARME_API_BASE + '/orders', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + Buffer.from(PAGARME_API_KEY + ':').toString('base64'),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        customer_id: customerId,
-        items: [{
-          amount: cents,
-          description: 'TMX Digital ' + plano.nome + ' — Assinatura mensal',
-          quantity: 1
-        }],
-        payments: [{
-          payment_method: 'checkout',
-          checkout: {
-            expires_in: 120, // minutos
-            accepted_payment_methods: ['credit_card', 'pix', 'boleto'],
-            success_url: `https://${tenant.slug}.${SAAS_ROOT_DOMAIN}/?billing=success&plano=${planoId}`,
-            billing_address_editable: true,
-            customer_editable: true
-          }
-        }],
-        metadata: { tenantId: tenant.id, slug: tenant.slug, planoId }
-      })
-    });
-    if (!orderRes.ok) {
-      const err = await orderRes.text();
-      return res.status(500).json({ error: 'Erro ao criar order Pagar.me: ' + err.slice(0,200) });
-    }
-    const orderData = await orderRes.json();
-    const checkoutUrl = orderData.checkouts?.[0]?.payment_url || orderData.checkout_url;
-
-    res.json({
-      ok: true,
-      checkoutUrl,
-      orderId: orderData.id,
-      plano: plano.nome,
-      valor: plano.precoBRL
-    });
-  } catch (err) {
-    console.error('[billing/checkout]', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/billing/webhook — Pagar.me chama quando pagamento muda de status
-// Configurar URL no painel Pagar.me: https://app.centralaxcend.com/api/billing/webhook
-app.post('/api/billing/webhook', async (req, res) => {
-  try {
-    const evento = req.body || {};
-    console.log('[Pagar.me webhook]', evento.type, evento.id);
-
-    // Tipos relevantes: order.paid, subscription.canceled, charge.paid, charge.refused
-    if (evento.type === 'order.paid' || evento.type === 'charge.paid') {
-      const meta = evento.data?.metadata || evento.data?.order?.metadata || {};
-      const tenantId = meta.tenantId;
-      const planoId = meta.planoId;
-      if (tenantId && planoId) {
-        const db = readDB();
-        const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
-        if (tenant) {
-          // 📧 Hook email: confirma pagamento
-          _enviarEmail({
-            to: tenant.contato?.email,
-            subject: '✅ Pagamento confirmado · TMX Digital',
-            html: _emailTemplatePagamentoConfirmado(tenant.contato?.nomeAdmin || tenant.nome, SAAS_PLANOS[planoId]?.nome, SAAS_PLANOS[planoId]?.precoBRL || 0)
-          }).catch(()=>{});
-
-          // 🚀 Hook Utmify: cliente PAGOU → evento 'conversion' (venda fechada!)
-          // Envia pra Diretoria TMX Digital (você é o owner do funil) + pro próprio tenant (auto-conversão)
-          const valorPago = SAAS_PLANOS[planoId]?.precoBRL || 0;
-          _enviarEventoUtmify(TENANT_INTERNO_ID, 'conversion', {
-            orderId: 'pay-' + tenantId + '-' + Date.now(),
-            customerName: tenant.contato?.nomeAdmin || tenant.nome,
-            customerEmail: tenant.contato?.email || '',
-            customerPhone: tenant.contato?.telefone || '',
-            productName: 'Plano TMX Digital ' + SAAS_PLANOS[planoId]?.nome,
-            planId: planoId,
-            planName: SAAS_PLANOS[planoId]?.nome,
-            value: valorPago,
-            paymentMethod: 'credit_card'
-          }).catch(()=>{});
-
-          tenant.plano = planoId;
-          tenant.status = 'ativo';
-          tenant.assinatura = {
-            ativa: true,
-            ativadaEm: new Date().toISOString(),
-            ultimoPagamento: new Date().toISOString(),
-            proximoPagamento: new Date(Date.now() + 30*24*60*60*1000).toISOString(),
-            valorMensal: SAAS_PLANOS[planoId].precoBRL,
-            tentativasFalhadas: 0
-          };
-          tenant._updatedAt = Date.now();
-          db.timestamps['sl_saas_tenants'] = now();
-          audit(db, 'billing_pagamento_aprovado', { tenantId, planoId, eventoId: evento.id }, null, { id: 'sistema', nome: 'Sistema', cargo: 'sistema' });
-          writeDB(db);
-          // Invalida cache
-          _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
-        }
-      }
-    } else if (evento.type === 'charge.refused' || evento.type === 'charge.payment_failed') {
-      const meta = evento.data?.metadata || {};
-      const tenantId = meta.tenantId;
-      if (tenantId) {
-        const db = readDB();
-        const tenant = (db.store['sl_saas_tenants'] || []).find(t => t.id === tenantId);
-        if (tenant) {
-          tenant.assinatura = tenant.assinatura || {};
-          tenant.assinatura.tentativasFalhadas = (tenant.assinatura.tentativasFalhadas || 0) + 1;
-          // 📧 Hook email: avisa cliente que cobrança falhou
-          _enviarEmail({
-            to: tenant.contato?.email,
-            subject: '⚠️ Pagamento falhou · TMX Digital',
-            html: _emailTemplatePagamentoFalhado(tenant.contato?.nomeAdmin || tenant.nome, SAAS_PLANOS[tenant.plano]?.nome || tenant.plano, tenant.assinatura.tentativasFalhadas, 3)
-          }).catch(()=>{});
-          if (tenant.assinatura.tentativasFalhadas >= 3) {
-            tenant.status = 'suspenso';
-            audit(db, 'billing_tenant_suspenso', { tenantId, tentativas: 3 }, null, { id: 'sistema', nome: 'Sistema', cargo: 'sistema' });
-          }
-          tenant._updatedAt = Date.now();
-          db.timestamps['sl_saas_tenants'] = now();
-          writeDB(db);
-        }
-      }
-    }
-
-    res.json({ ok: true, received: true });
-  } catch (err) {
-    console.error('[billing/webhook]', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// O checkout e o aviso da Pagar.me antigos (modelo sl_saas_tenants, pedido avulso) saíram em 07/11/2026:
+// a cobrança de verdade fica em "COBRANÇA PELA PAGAR.ME", depois de PLANOS E MEU PLANO.
 
 // GET /api/billing/me — info da assinatura do tenant
 app.get('/api/billing/me', authUsuario, (req, res) => {
@@ -7163,9 +6984,8 @@ app.get('/landing', (req, res) => {
 app.get(['/site', '/vendas'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'site.html'));
 });
-// /pricing e /planos viram alias pra /landing#pricing
-app.get('/pricing', (req, res) => res.redirect('/landing#pricing'));
-app.get('/planos', (req, res) => res.redirect('/landing#pricing'));
+// /planos é a página de planos de verdade (COBRANÇA PELA PAGAR.ME); /pricing leva pra ela
+app.get('/pricing', (req, res) => res.redirect('/planos'));
 app.get('/privacidade', (req, res) => res.redirect('/termos#privacidade'));
 app.get('/lgpd', (req, res) => res.redirect('/termos#privacidade'));
 
@@ -8644,6 +8464,7 @@ app.post('/api/cadastro', cadastroLimiter, async (req, res) => {
   try {
     id = _registrarEmpresa({ nome: empresa, criadaPor: 'cadastro', plano: conv.plano || 'teste', origem: 'convite', donoEmail: email });
     _platPrep('UPDATE convites SET empresa=? WHERE hash=?').run(id, hash);
+    _assinaturaNaEmpresa(hash, id);
     const r = await _pedirAoMotor(id, 'cadastro-inicial', {
       usuario: { nome, email, whatsapp: zap, senhaHash: bcrypt.hashSync(senha, BCRYPT_ROUNDS) }, empresa, projetos
     }, 20000);
@@ -8782,6 +8603,280 @@ app.post('/api/plataforma/empresas/:id/plano', authDiretoriaInterna, (req, res) 
 });
 app.get('/api/plataforma/planos', authDiretoriaInterna, (req, res) => {
   res.json({ planos: PLANOS_TMX.filter(p => !p.interno).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal == null ? null : p.mensal })) });
+});
+
+// ══════════════════════════════════════════════
+// ── COBRANÇA PELA PAGAR.ME (07/11/2026) ──
+// Decisão do Thiago: preços da Malva (PLANOS_TMX) e cobrança pela Pagar.me. O caminho:
+// /planos → POST /api/assinar → link de pagamento de ASSINATURA da Pagar.me (só cartão: a
+// Pagar.me não aceita Pix nem boleto em link de recorrência) → pago → o TMX gera o convite
+// (o mesmo do Admin, vale 30 dias) → /planos/obrigado mostra "Criar minha conta" e o mesmo
+// link vai por e-mail e WhatsApp → /cadastro. O Iniciante (grátis) não passa pela Pagar.me:
+// vira um pedido que a TMX libera pela Central (o cadastro aberto continua fechado).
+// Nunca se acredita no corpo do aviso da Pagar.me: só libera quando a API dela, chamada com
+// a nossa chave, diz que o link foi pago (ou que a cobrança está paga).
+// PAGARME_API_KEY: sk_test_… usa o ambiente de teste da Pagar.me (sdx-api), sk_live_… o de verdade.
+// PAGARME_WEBHOOK_SENHA (opcional): a senha do Basic Auth que se cadastra no aviso, no painel da Pagar.me.
+// ══════════════════════════════════════════════
+const PAGARME_BASE = process.env.PAGARME_API_BASE   // os testes automáticos apontam pra uma Pagar.me de mentira
+  || (/^sk_test_/.test(PAGARME_API_KEY) ? 'https://sdx-api.pagar.me/core/v5' : 'https://api.pagar.me/core/v5');
+const PAGARME_WEBHOOK_SENHA = process.env.PAGARME_WEBHOOK_SENHA || '';
+const URL_TMX = (process.env.URL_TMX || 'https://app.centraltmx.com').replace(/\/+$/, '');
+const COBRANCA_DIAS_CONVITE = 30;
+const _precoPlano = (p, ciclo) => (ciclo === 'anual' ? p.mensal * 10 : p.mensal);
+const _reais = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const _assinatura = ref => _platPrep('SELECT * FROM assinaturas WHERE ref=?').get(ref);
+
+async function _pagarme(metodo, caminho, corpo) {
+  if (!PAGARME_API_KEY) return { ok: false, status: 0, erro: 'cobrança desligada' };
+  try {
+    const r = await fetch(PAGARME_BASE + caminho, {
+      method: metodo,
+      headers: { Authorization: 'Basic ' + Buffer.from(PAGARME_API_KEY + ':').toString('base64'),
+                 'Content-Type': 'application/json', Accept: 'application/json', 'User-Agent': 'tmx-digital/1.0' },
+      body: corpo ? JSON.stringify(corpo) : undefined,
+      signal: AbortSignal.timeout(20000)
+    });
+    let dados = null;
+    try { dados = await r.json(); } catch (e) {}
+    if (!r.ok) {
+      const msg = (dados && (dados.message || (dados.errors && JSON.stringify(dados.errors)))) || ('HTTP ' + r.status);
+      return { ok: false, status: r.status, erro: String(msg).slice(0, 400), dados };
+    }
+    return { ok: true, status: r.status, dados };
+  } catch (e) { return { ok: false, status: 0, erro: e.message }; }
+}
+
+// O plano da Pagar.me de cada plano nosso (um por ciclo e preço): cria na primeira venda e guarda o id.
+// Mudar o preço em PLANOS_TMX cria um plano novo lá; quem já assina continua no antigo.
+async function _planoPagarme(p, ciclo) {
+  const centavos = Math.round(_precoPlano(p, ciclo) * 100);
+  const chave = p.id + ':' + ciclo + ':' + centavos;
+  const ja = _platPrep('SELECT plan_id FROM pagarme_planos WHERE chave=?').get(chave);
+  if (ja) return { ok: true, id: ja.plan_id };
+  const r = await _pagarme('POST', '/plans', {
+    name: ('TMX ' + p.nome + (ciclo === 'anual' ? ' anual' : ' mensal')).slice(0, 64),
+    description: p.faixa || '', currency: 'BRL',
+    interval: ciclo === 'anual' ? 'year' : 'month', interval_count: 1,
+    billing_type: 'prepaid', payment_methods: ['credit_card'], installments: [1],
+    statement_descriptor: 'TMX DIGITAL',
+    items: [{ name: 'TMX ' + p.nome, quantity: 1, pricing_scheme: { scheme_type: 'unit', price: centavos } }],
+    metadata: { plano: p.id, ciclo }
+  });
+  if (!r.ok || !r.dados || !r.dados.id) return { ok: false, erro: r.erro || 'a Pagar.me não devolveu o plano' };
+  _platPrep('INSERT OR REPLACE INTO pagarme_planos(chave, plan_id, criado) VALUES(?,?,?)').run(chave, r.dados.id, Date.now());
+  return { ok: true, id: r.dados.id };
+}
+
+// Pago → convite (uma vez só, mesmo com o aviso e a conferência da tela chegando juntos)
+async function _liberarAssinatura(ref, motivo, extra = {}) {
+  const agora = Date.now();
+  if (extra.sub || extra.cliente) {
+    _platPrep('UPDATE assinaturas SET pagarme_sub=COALESCE(pagarme_sub, ?), pagarme_cliente=COALESCE(pagarme_cliente, ?) WHERE ref=?')
+      .run(extra.sub || null, extra.cliente || null, ref);
+  }
+  const mudou = _platPrep("UPDATE assinaturas SET status='paga', pago_em=?, atualizado=? WHERE ref=? AND status='aguardando'").run(agora, agora, ref);
+  if (!mudou.changes) return false;
+  const a = _assinatura(ref);
+  const p = _planoDe(a.plano);
+  const codigo = 'cv_' + crypto.randomBytes(24).toString('base64url');
+  const hash = _hashConvite(codigo);
+  _platPrep('INSERT INTO convites(hash, email, plano, obs, criado, criado_por, expira) VALUES(?,?,?,?,?,?,?)')
+    .run(hash, a.email, p.id, ('Compra pelo site: ' + p.nome + ' ' + a.ciclo).slice(0, 200), agora, 'cobranca', agora + COBRANCA_DIAS_CONVITE * 86400000);
+  // o código fica guardado até o cadastro acontecer, pra tela de "pagamento aprovado" poder mostrar o botão
+  _platPrep('UPDATE assinaturas SET convite_hash=?, convite_codigo=? WHERE ref=?').run(hash, codigo, ref);
+  const link = URL_TMX + '/cadastro?c=' + codigo;
+  const valor = _reais(_precoPlano(p, a.ciclo)) + (a.ciclo === 'anual' ? ' por ano' : ' por mês');
+  const primeiro = String(a.nome || '').split(' ')[0] || '';
+  // avisos: nenhum deles trava a liberação
+  _enviarEmail({
+    to: a.email, subject: 'Seu acesso ao TMX está pronto',
+    html: '<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0F172A">' +
+      '<h2 style="margin:0 0 8px">Pagamento aprovado' + (primeiro ? ', ' + _escHtml(primeiro) : '') + '</h2>' +
+      '<p>O plano <b>' + _escHtml(p.nome) + '</b> (' + _escHtml(valor) + ') está ativo. Agora crie a sua conta: acesso, nome da empresa e projetos. Leva uns 2 minutos.</p>' +
+      '<p style="margin:24px 0"><a href="' + link + '" style="background:#1B9CFA;color:#fff;padding:12px 20px;border-radius:9px;text-decoration:none;font-weight:700">Criar minha conta</a></p>' +
+      '<p style="color:#475569;font-size:13px">O link vale para um cadastro e vence em ' + COBRANCA_DIAS_CONVITE + ' dias.</p></div>',
+    text: 'Pagamento aprovado. Crie a sua conta no TMX por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias): ' + link
+  }).catch(() => {});
+  if (a.whatsapp) {
+    sendWhatsAppMessage(a.whatsapp, 'Pagamento aprovado' + (primeiro ? ', ' + primeiro : '') + '! Bem-vindo ao TMX. 🎉\n\n' +
+      'Plano ' + p.nome + ' (' + valor + ').\nCrie a sua conta por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias):\n' + link).catch(() => {});
+  }
+  _avisarDiretoriaTmx('💳 Nova assinatura · ' + p.nome, (a.nome || a.email) + ' assinou o ' + p.nome + ' ' + a.ciclo + ' (' + valor + '). O convite foi sozinho pro e-mail e o WhatsApp da pessoa.');
+  try {
+    const db = readDB();
+    audit(db, 'assinatura_paga', { email: a.email }, { plano: p.id, ciclo: a.ciclo, motivo }, { id: 'sistema', nome: 'Cobrança', cargo: 'sistema' });
+    writeDB(db);
+  } catch (e) {}
+  console.log('[COBRANÇA] paga:', p.id, a.ciclo, '(' + motivo + ')');
+  return true;
+}
+function _escHtml(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+// A tela de "pagamento aprovado" pergunta à Pagar.me se o link foi pago (o aviso pode atrasar ou nem estar cadastrado)
+const _ultimaConferencia = new Map();
+async function _conferirPagamento(a) {
+  if (!a || a.status !== 'aguardando' || !a.link_id) return false;
+  const agora = Date.now();
+  if ((_ultimaConferencia.get(a.ref) || 0) > agora - 5000) return false;
+  _ultimaConferencia.set(a.ref, agora);
+  const r = await _pagarme('GET', '/paymentlinks/' + encodeURIComponent(a.link_id));
+  if (r.ok && r.dados && Number(r.dados.total_paid_sessions || 0) >= 1) return _liberarAssinatura(a.ref, 'link pago (conferido pela tela)');
+  return false;
+}
+
+// Cadastro feito com um convite de compra: a empresa nova fica ligada ao pedido (e o código sai daqui)
+function _assinaturaNaEmpresa(conviteHash, empresaId) {
+  try {
+    const r = _platPrep('UPDATE assinaturas SET empresa=?, convite_codigo=NULL, atualizado=? WHERE convite_hash=?').run(empresaId, Date.now(), conviteHash);
+    if (r.changes) _platPrep("UPDATE empresas SET origem='compra' WHERE id=?").run(empresaId);
+  } catch (e) { console.error('[COBRANÇA] ligar empresa:', e.message); }
+}
+
+const assinarLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20, standardHeaders: false, legacyHeaders: false,
+  message: { error: 'Muitas tentativas. Espere um pouco e tente de novo.' } });
+const situacaoLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 600, standardHeaders: false, legacyHeaders: false,
+  message: { error: 'Muitas consultas. Espere um pouco.' } });
+const _ehRef = r => /^as_[A-Za-z0-9_-]{20,40}$/.test(String(r || ''));
+
+app.get(['/planos', '/planos/obrigado'], (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  res.sendFile(path.join(__dirname, 'public', 'planos.html'));
+});
+app.get('/api/planos', (req, res) => {
+  res.json({
+    cobranca: !!PAGARME_API_KEY,
+    planos: PLANOS_TMX.filter(p => p.venda).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, anual: p.gratis ? 0 : p.mensal * 10,
+      gratis: !!p.gratis, faixa: p.faixa, itens: p.itens }))
+  });
+});
+
+app.post('/api/assinar', assinarLimiter, async (req, res) => {
+  const b = req.body || {};
+  const p = PLANOS_TMX.find(x => x.venda && x.id === String(b.plano || ''));
+  if (!p) return res.status(400).json({ error: 'Escolha um plano.' });
+  const ciclo = b.ciclo === 'anual' && !p.gratis ? 'anual' : 'mensal';
+  const nome = String(b.nome || '').trim().slice(0, 80);
+  const email = String(b.email || '').trim().toLowerCase().slice(0, 120);
+  let zap = String(b.whatsapp || '').replace(/\D/g, '');
+  if (zap.length >= 10 && zap.length <= 11) zap = '55' + zap;   // número do Brasil sem o 55
+  if (!nome) return res.status(400).json({ error: 'Diga o seu nome.', campo: 'nome' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Esse e-mail não parece certo.', campo: 'email' });
+  if (zap.length < 12 || zap.length > 13) return res.status(400).json({ error: 'O WhatsApp precisa ter DDD e número.', campo: 'whatsapp' });
+  if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+  const ref = 'as_' + crypto.randomBytes(18).toString('base64url');
+  const agora = Date.now();
+
+  if (p.gratis) {
+    // o teste grátis é liberado pela TMX: vira um pedido (um por e-mail por dia)
+    const ja = _platPrep("SELECT ref FROM assinaturas WHERE email=? AND status='pedido' AND criado>?").get(email, agora - 86400000);
+    if (!ja) {
+      _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, atualizado) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(ref, p.id, 'mensal', nome, email, zap, agora, 'pedido', agora);
+      _avisarDiretoriaTmx('🆓 Pedido de teste grátis · ' + nome, email + ' · WhatsApp ' + zap + '. Pra liberar, gere um convite do plano Iniciante na Central TMX Admin › Convites.');
+      try { const db = readDB(); audit(db, 'teste_gratis_pedido', { email }, null, { id: 'site', nome: 'Página de planos', cargo: 'público' }); writeDB(db); } catch (e) {}
+    }
+    return res.json({ ok: true, gratis: true });
+  }
+
+  if (!PAGARME_API_KEY) return res.status(503).json({ error: 'A compra pelo site ainda não está ligada. Fale com a TMX pelo WhatsApp.' });
+  const pl = await _planoPagarme(p, ciclo);
+  if (!pl.ok) { console.error('[COBRANÇA] plano', p.id, ciclo, ':', pl.erro); return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' }); }
+  const corpo = {
+    name: ('TMX ' + p.nome + ' ' + ciclo).slice(0, 64), type: 'subscription', max_paid_sessions: 1, expires_in: 3 * 24 * 60,
+    payment_settings: { accepted_payment_methods: ['credit_card'], credit_card_settings: { operation_type: 'auth_and_capture' } },
+    cart_settings: { recurrences: [{ plan_id: pl.id, start_in: 1 }] },
+    flow_settings: { success_url: URL_TMX + '/planos/obrigado?r=' + ref },
+    order_code: ref
+  };
+  // com os dados da pessoa (o código do cliente é o nosso pedido); se a Pagar.me recusar esse pedaço, vai sem
+  let r = await _pagarme('POST', '/paymentlinks', Object.assign({}, corpo, { customer_settings: { customer: { name: nome, email, type: 'individual', code: ref } } }));
+  if (!r.ok && r.status >= 400 && r.status < 500) {
+    console.warn('[COBRANÇA] link com cliente recusado (' + r.status + '): ' + r.erro);
+    r = await _pagarme('POST', '/paymentlinks', corpo);
+  }
+  if (!r.ok || !r.dados || !r.dados.url) {
+    console.error('[COBRANÇA] link de pagamento:', r.status, r.erro);
+    return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' });
+  }
+  _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, link_id, link_url, atualizado) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
+    .run(ref, p.id, ciclo, nome, email, zap, agora, 'aguardando', String(r.dados.id || ''), r.dados.url, agora);
+  res.json({ ok: true, url: r.dados.url, ref });
+});
+
+// A tela de volta da Pagar.me (/planos/obrigado?r=…) pergunta aqui até o pagamento cair
+app.get('/api/assinar/situacao', situacaoLimiter, async (req, res) => {
+  const ref = String(req.query.r || '');
+  if (!_ehRef(ref)) return res.status(404).json({ error: 'Não achei esse pedido.' });
+  let a = _assinatura(ref);
+  if (!a || a.status === 'pedido') return res.status(404).json({ error: 'Não achei esse pedido.' });
+  if (a.status === 'aguardando') { try { await _conferirPagamento(a); } catch (e) {} a = _assinatura(ref); }
+  const p = _planoDe(a.plano);
+  const out = { status: a.status, plano: p.nome, ciclo: a.ciclo, valor: _precoPlano(p, a.ciclo) };
+  if (a.empresa) out.cadastrado = true;
+  else if (a.status === 'paga' && a.convite_codigo) out.convite = URL_TMX + '/cadastro?c=' + a.convite_codigo;
+  res.json(out);
+});
+
+// Aviso da Pagar.me (cadastrar no painel dela: https://app.centraltmx.com/api/billing/webhook)
+function _senhaDoAvisoConfere(req) {
+  if (!PAGARME_WEBHOOK_SENHA) return true;
+  const h = String(req.get('authorization') || '');
+  const dec = h.startsWith('Basic ') ? Buffer.from(h.slice(6), 'base64').toString() : '';
+  const senha = Buffer.from(dec.slice(dec.indexOf(':') + 1));
+  const certa = Buffer.from(PAGARME_WEBHOOK_SENHA);
+  return dec.includes(':') && senha.length === certa.length && crypto.timingSafeEqual(senha, certa);
+}
+app.post('/api/billing/webhook', async (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  if (!_senhaDoAvisoConfere(req)) return res.status(401).json({ error: 'Senha do aviso não confere.' });
+  res.json({ ok: true });   // responde logo; a Pagar.me não precisa esperar a conferência
+  try { await _tratarAvisoPagarme(req.body || {}); } catch (e) { console.error('[COBRANÇA] aviso:', e.message); }
+});
+async function _tratarAvisoPagarme(ev) {
+  const tipo = String(ev.type || '');
+  const d = ev.data || {};
+  const subId = [String(d.id || '').startsWith('sub_') ? d.id : null, d.subscription && d.subscription.id, d.subscription_id,
+    d.invoice && (d.invoice.subscription_id || d.invoice.subscriptionId || (d.invoice.subscription && d.invoice.subscription.id))].find(Boolean) || null;
+  const cli = d.customer || (d.subscription && d.subscription.customer) || {};
+  const codigo = [cli.code, d.code, d.order && d.order.code].find(c => _ehRef(c));
+  // de quem é: pela assinatura já ligada, pelo código do cliente (= nosso pedido), ou pelo e-mail
+  let a = (subId && _platPrep('SELECT * FROM assinaturas WHERE pagarme_sub=?').get(subId)) || (codigo && _assinatura(codigo)) || null;
+  if (!a && cli.email) a = _platPrep("SELECT * FROM assinaturas WHERE email=? AND status IN ('aguardando','paga','atrasada') ORDER BY criado DESC LIMIT 1").get(String(cli.email).toLowerCase());
+  console.log('[COBRANÇA] aviso', tipo, a ? 'do pedido ' + a.ref.slice(0, 8) : 'sem pedido nosso');
+  if (!a) return;
+  _platPrep('UPDATE assinaturas SET pagarme_sub=COALESCE(pagarme_sub, ?), pagarme_cliente=COALESCE(pagarme_cliente, ?), ultimo_evento=?, atualizado=? WHERE ref=?')
+    .run(subId, cli.id || null, tipo, Date.now(), a.ref);
+  const p = _planoDe(a.plano);
+  const quem = a.nome || a.email;
+  if (['subscription.created', 'charge.paid', 'order.paid', 'invoice.paid'].includes(tipo)) {
+    if (a.status === 'aguardando') {
+      // confere com a Pagar.me antes de liberar
+      let pago = false;
+      if (a.link_id) { const r = await _pagarme('GET', '/paymentlinks/' + encodeURIComponent(a.link_id)); pago = !!(r.ok && r.dados && Number(r.dados.total_paid_sessions || 0) >= 1); }
+      if (!pago && tipo === 'charge.paid' && String(d.id || '').startsWith('ch_')) { const r = await _pagarme('GET', '/charges/' + encodeURIComponent(d.id)); pago = !!(r.ok && r.dados && r.dados.status === 'paid'); }
+      if (pago) await _liberarAssinatura(a.ref, 'aviso ' + tipo, { sub: subId, cliente: cli.id });
+    } else if (a.status === 'atrasada' && tipo === 'charge.paid') {
+      _platPrep("UPDATE assinaturas SET status='paga', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
+      _avisarDiretoriaTmx('✅ Mensalidade em dia · ' + p.nome, quem + ' pagou a cobrança que estava atrasada.');
+    }
+  } else if (tipo === 'charge.payment_failed') {
+    if (a.status === 'paga') _platPrep("UPDATE assinaturas SET status='atrasada', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
+    _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p.nome, 'O cartão de ' + quem + ' recusou a cobrança do ' + p.nome + '. A Pagar.me tenta de novo; o acesso continua até você decidir.');
+  } else if (tipo === 'subscription.canceled' || tipo === 'subscription.expired') {
+    _platPrep("UPDATE assinaturas SET status='cancelada', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
+    _avisarDiretoriaTmx('🚫 Assinatura ' + (tipo === 'subscription.expired' ? 'expirada' : 'cancelada') + ' · ' + p.nome, quem + ' saiu do ' + p.nome + '. O acesso continua até você bloquear na Central.');
+  } else if (tipo === 'charge.refunded' || tipo === 'charge.chargedback') {
+    _avisarDiretoriaTmx('↩️ ' + (tipo === 'charge.refunded' ? 'Reembolso' : 'Chargeback') + ' · ' + p.nome, 'Cobrança de ' + quem + ' ' + (tipo === 'charge.refunded' ? 'reembolsada' : 'contestada no cartão') + '.');
+  }
+}
+
+// A Central TMX Admin vê os pedidos: compras, testes grátis pedidos e o estado de cada cobrança
+app.get('/api/plataforma/assinaturas', authDiretoriaInterna, (req, res) => {
+  const lista = _platPrep('SELECT ref, plano, ciclo, nome, email, whatsapp, criado, status, pago_em, empresa, ultimo_evento, convite_codigo FROM assinaturas ORDER BY criado DESC LIMIT 300').all()
+    .map(({ ref, convite_codigo, ...a }) => Object.assign(a, { id: ref.slice(3, 15), plano_nome: _planoDe(a.plano).nome,
+      convite: convite_codigo ? URL_TMX + '/cadastro?c=' + convite_codigo : null }));
+  res.json({ cobranca: !!PAGARME_API_KEY, ambiente: /^sk_test_/.test(PAGARME_API_KEY) ? 'teste' : (PAGARME_API_KEY ? 'producao' : null), assinaturas: lista });
 });
 
 app.post('/api/plataforma/empresas/:id/desbloquear', authDiretoriaInterna, (req, res) => {

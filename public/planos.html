@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Planos · TMX</title>
+<meta name="description" content="O time, os anúncios e as vendas de cada projeto no mesmo painel. Escolha o plano pela faixa de investimento em anúncios.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Página de planos e volta do pagamento (07/11/2026). Mesmo visual da tela de login e do /cadastro.
+   Desenho aprovado no esboço "Caminho de compra do TMX"; preços e limites vêm de /api/planos (PLANOS_TMX). */
+:root{
+  --fundo:#07060F; --cartao:rgba(14,12,26,.85); --cartao2:rgba(255,255,255,.035); --borda:#2D2850;
+  --texto:#FFFFFF; --texto2:#8B93AB; --texto3:#5F6884;
+  --azul:#1B9CFA; --azul2:#38BDF8; --rosa:#C52C58; --ok:#34D399; --erro:#F87171;
+  --grad:linear-gradient(135deg,#3E1493,#1B9CFA);
+  --fonte:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--fonte);color:var(--texto);background:var(--fundo);line-height:1.5;color-scheme:dark;-webkit-font-smoothing:antialiased}
+#raiz{min-height:100vh;min-height:100dvh;background:radial-gradient(ellipse at 60% 0%,#1A1040 0%,var(--fundo) 62%) var(--fundo)}
+.larg{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3,p{margin:0}
+h1,h2{text-wrap:balance;letter-spacing:-.02em}
+button,input{font-family:inherit}
+:focus-visible{outline:2px solid var(--azul2);outline-offset:2px}
+[hidden]{display:none !important}
+
+.cab{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:18px}
+.logo{display:flex;align-items:baseline;gap:8px;text-decoration:none}
+.logo b{font-size:26px;font-weight:800;letter-spacing:-.5px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo span{font-size:11px;font-weight:700;letter-spacing:4px;color:var(--texto2)}
+.cab nav{display:flex;gap:6px;align-items:center}
+.lnk{background:none;border:0;color:var(--texto2);font:600 13px var(--fonte);padding:8px 10px;border-radius:8px;cursor:pointer;text-decoration:none}
+.lnk:hover{color:var(--texto)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--grad);color:#FFFFFF;border:0;border-radius:9px;padding:12px 18px;font:700 14px var(--fonte);cursor:pointer;box-shadow:0 4px 18px rgba(27,156,250,.35);text-decoration:none}
+.btn:hover{opacity:.92}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.sec{background:transparent;border:1px solid var(--borda);box-shadow:none;color:var(--texto)}
+.btn.sec:hover{border-color:var(--azul)}
+.btn.lg{width:100%}
+.rot{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--azul2)}
+.sec{padding-block:40px 8px}
+.sec > .topo{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.sec h2{font-size:26px;font-weight:800;margin-top:4px}
+.sec .topo p{color:var(--texto2);font-size:14px;max-width:60ch;margin-top:6px}
+
+.hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:36px;align-items:center;padding-block:28px 8px}
+.hero h1{font-size:42px;line-height:1.08;font-weight:800;margin-top:10px}
+.hero h1 em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .sub{color:var(--texto2);font-size:16px;max-width:52ch;margin-top:14px}
+.hero .acoes{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+.hero .miudo{color:var(--texto3);font-size:12.5px;margin-top:12px}
+.mini{background:var(--cartao);border:1px solid var(--borda);border-radius:18px;padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 60px rgba(27,156,250,.06)}
+.mini .t{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--texto2);margin-bottom:12px}
+.mini .t b{color:var(--texto);font-size:13px}
+.mini .nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.mini .nums div{background:var(--cartao2);border:1px solid var(--borda);border-radius:11px;padding:10px}
+.mini .nums small{display:block;font-size:10.5px;color:var(--texto2);text-transform:uppercase;letter-spacing:.06em}
+.mini .nums b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.mini .ad{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:12.5px;padding:7px 0;border-top:1px solid var(--borda)}
+.mini .ad code{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--texto)}
+.mini .ad .tr{height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
+.mini .ad .tr i{display:block;height:100%;border-radius:6px;background:var(--grad)}
+.mini .ad .tr i.ruim{background:var(--rosa)}
+.mini .ad span{color:var(--texto2);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.faz{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.faz div{background:var(--cartao2);border:1px solid var(--borda);border-radius:14px;padding:16px}
+.faz b{display:block;font-size:14.5px;margin-bottom:4px}
+.faz p{font-size:13px;color:var(--texto2)}
+
+.passos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;counter-reset:p}
+.passos div{position:relative;padding:18px 18px 18px 62px;background:var(--cartao2);border:1px solid var(--borda);border-radius:14px}
+.passos div::before{counter-increment:p;content:counter(p);position:absolute;left:18px;top:18px;width:30px;height:30px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-weight:800;font-size:14px}
+.passos b{display:block;font-size:15px;margin-bottom:4px}
+.passos p{font-size:13px;color:var(--texto2)}
+
+.ciclo{display:inline-flex;gap:3px;background:var(--cartao2);border:1px solid var(--borda);border-radius:11px;padding:3px}
+.ciclo button{border:0;background:transparent;color:var(--texto2);font:700 13px var(--fonte);padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+.ciclo button[aria-pressed="true"]{background:#FFFFFF;color:#0F172A}
+.ciclo small{font-size:10.5px;font-weight:800;color:var(--ok);background:rgba(52,211,153,.12);padding:2px 7px;border-radius:99px}
+.ciclo button[aria-pressed="true"] small{color:#047857;background:#D1FAE5}
+.grade{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:stretch}
+.plano{display:flex;flex-direction:column;gap:12px;background:var(--cartao);border:1px solid var(--borda);border-radius:16px;padding:20px}
+.plano h3{font-size:17px;font-weight:800}
+.plano .faixa{font-size:12.5px;color:var(--texto2);min-height:38px}
+.plano .preco{display:flex;align-items:baseline;gap:4px}
+.plano .preco b{font-size:32px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.plano .preco span{color:var(--texto2);font-size:13px}
+.plano .cond{font-size:12px;color:var(--texto3);margin-top:-8px;min-height:18px}
+.plano ul{list-style:none;margin:0;padding:12px 0 0;border-top:1px solid var(--borda);display:flex;flex-direction:column;gap:7px}
+.plano li{font-size:13px;color:#CBD5E1;padding-left:20px;position:relative}
+.plano li::before{content:"✓";position:absolute;left:0;color:var(--azul2);font-weight:800}
+.todos{margin-top:14px;font-size:13px;color:var(--texto2);text-align:center}
+.carregando{color:var(--texto2);font-size:14px;padding:30px 0;text-align:center;grid-column:1/-1}
+
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.faq details{background:var(--cartao2);border:1px solid var(--borda);border-radius:12px;padding:0 16px}
+.faq summary{cursor:pointer;list-style:none;padding:14px 0;font-weight:700;font-size:14px;display:flex;justify-content:space-between;gap:10px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--texto2);font-weight:600}
+.faq details[open] summary::after{content:"–"}
+.faq details p{font-size:13.5px;color:var(--texto2);padding-bottom:14px}
+.rod{border-top:1px solid var(--borda);margin-top:44px;padding-block:20px 32px;color:var(--texto3);font-size:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+
+/* janela de assinar */
+.fundo-jan{position:fixed;inset:0;z-index:50;background:rgba(3,2,10,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}
+.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:20px;padding:30px 32px;width:100%;max-width:440px;box-shadow:0 24px 80px rgba(0,0,0,.8),0 0 60px rgba(27,156,250,.06);backdrop-filter:blur(12px);max-height:calc(100dvh - 32px);overflow:auto}
+.cartao .tit{font-size:17px;font-weight:700;text-align:center;margin-bottom:4px}
+.cartao .sub{font-size:12.5px;color:var(--texto2);text-align:center;margin-bottom:18px;line-height:1.5}
+.resumo{display:flex;justify-content:space-between;gap:10px;font-size:13px;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;margin-bottom:16px;background:rgba(7,6,15,.6)}
+.resumo b{font-variant-numeric:tabular-nums;text-align:right}
+.lbl{font-size:11px;font-weight:600;color:var(--texto2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:block}
+.in{width:100%;background:rgba(7,6,15,.8);border:1px solid var(--borda);border-radius:9px;padding:12px 14px;color:#F1F5F9;font-size:14px;margin-bottom:14px;outline:none}
+.in:focus{border-color:var(--azul);box-shadow:0 0 0 3px rgba(27,156,250,.12)}
+.in.erro{border-color:var(--erro)}
+.dica{font-size:12px;color:#94A3B8;margin:-8px 0 12px;line-height:1.5}
+.erro-msg{color:var(--erro);font-size:12.5px;text-align:center;margin-top:12px;min-height:18px;line-height:1.4}
+.aviso{font-size:12px;color:var(--texto2);text-align:center;margin-top:12px;line-height:1.5}
+.fechar{display:block;margin:10px auto 0}
+.logo-g{display:flex;align-items:center;gap:12px;margin-bottom:18px;justify-content:center}
+.logo-g b{font-size:40px;letter-spacing:-1px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo-g span{font-size:14px;font-weight:700;letter-spacing:4px;color:var(--texto2);padding-top:8px}
+.selo-ok{width:52px;height:52px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4);color:var(--ok);font-size:24px;font-weight:800}
+.giro{width:40px;height:40px;border-radius:50%;margin:4px auto 16px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--azul2);animation:giro .9s linear infinite}
+@keyframes giro{to{transform:rotate(360deg)}}
+#volta{display:flex;justify-content:center;padding-top:8vh}
+
+@media (max-width:1000px){
+  .grade{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .faz{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hero{grid-template-columns:1fr}
+}
+@media (max-width:700px){
+  .hero h1{font-size:32px}
+  .passos,.faq{grid-template-columns:1fr}
+  .cartao{padding:26px 20px}
+  .cab nav .some{display:none}
+}
+@media (max-width:520px){ .grade,.faz{grid-template-columns:1fr} }
+@media (prefers-reduced-motion:reduce){ .giro{animation:none} }
+</style>
+</head>
+<body>
+<div id="raiz">
+
+<!-- PÁGINA DE PLANOS -->
+<main id="pagina" class="larg" hidden>
+  <header class="cab">
+    <a class="logo" href="/planos" aria-label="TMX Digital"><b>TMX</b><span>DIGITAL</span></a>
+    <nav aria-label="Topo da página">
+      <a class="lnk some" href="#o-que-faz">O que faz</a>
+      <a class="lnk some" href="#planos">Planos</a>
+      <a class="lnk" href="/">Entrar</a>
+      <a class="btn" href="#planos" style="padding:9px 14px;font-size:13px">Ver os planos</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <span class="rot">Para quem vende com tráfego pago</span>
+      <h1>O time, os anúncios e as vendas de cada projeto <em>no mesmo painel</em>.</h1>
+      <p class="sub">Demandas com prazo, criativos do roteiro à subida, gasto e vendas do dia por conta de anúncio, e um pixel próprio que manda as compras pra Meta. Sem planilha e sem cinco abas abertas.</p>
+      <div class="acoes">
+        <a class="btn" href="#planos">Escolher um plano</a>
+        <a class="btn sec" href="#como-funciona">Como funciona</a>
+      </div>
+      <p class="miudo">Todas as ferramentas em todos os planos. Nenhum plano cobra por venda.</p>
+    </div>
+    <div class="mini" aria-label="Exemplo da tela de tráfego">
+      <div class="t"><b>Hoje · projeto de exemplo</b><span>atualizado às 14:32</span></div>
+      <div class="nums">
+        <div><small>Gasto</small><b>R$ 5.912</b></div>
+        <div><small>Vendas</small><b>21</b></div>
+        <div><small>ROAS</small><b>2,48</b></div>
+      </div>
+      <div class="ad"><code>AD216.2</code><div class="tr"><i style="width:90%"></i></div><span>9 vendas</span></div>
+      <div class="ad"><code>AD245.1</code><div class="tr"><i style="width:60%"></i></div><span>6 vendas</span></div>
+      <div class="ad"><code>AD153</code><div class="tr"><i class="ruim" style="width:42%"></i></div><span>R$ 640 sem venda</span></div>
+    </div>
+  </div>
+
+  <section class="sec" id="o-que-faz" aria-labelledby="t-oque">
+    <div class="topo"><div><span class="rot">O que o TMX faz</span><h2 id="t-oque">Tudo o que a operação usa no dia</h2></div></div>
+    <div class="faz">
+      <div><b>Demandas</b><p>Quem faz o quê e até quando, com aviso no WhatsApp antes de vencer.</p></div>
+      <div><b>Criativos</b><p>Cada AD do roteiro à subida, com hook, corpo e a etapa em que está.</p></div>
+      <div><b>Tráfego</b><p>Gasto, vendas e ROAS do dia por conta e por campanha, puxados da Meta.</p></div>
+      <div><b>Análise de tráfego</b><p>Qual criativo vende e qual só gasta, em 1, 3 e 7 dias.</p></div>
+      <div><b>Projetos</b><p>Cada oferta com o funil, o checkout, o pixel e as contas de anúncio dela.</p></div>
+      <div><b>Rituais e Arquivos</b><p>As reuniões do time com pauta, e os arquivos de cada projeto num lugar só.</p></div>
+      <div><b>Financeiro</b><p>Resultado por projeto: faturamento, gasto, taxas e lucro.</p></div>
+      <div><b>Pixel próprio</b><p>As compras vão pra Meta pelo servidor. A Utmify vira opcional.</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="como-funciona" aria-labelledby="t-como">
+    <div class="topo"><div><span class="rot">Como funciona</span><h2 id="t-como">Do pagamento à primeira venda</h2></div></div>
+    <div class="passos">
+      <div><b>Escolha o plano e pague</b><p>Com cartão de crédito, na página de pagamento segura da Pagar.me.</p></div>
+      <div><b>Crie a sua conta</b><p>O link chega na hora, nesta tela, no e-mail e no WhatsApp. Você cria o acesso e dá o nome da empresa e dos projetos.</p></div>
+      <div><b>Ligue os seus projetos</b><p>Meta, pixel e checkout, na aba Integrações de cada projeto. Aí as vendas começam a aparecer.</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="planos" aria-labelledby="t-planos">
+    <div class="topo">
+      <div><span class="rot">Planos</span><h2 id="t-planos">Você paga pela faixa de investimento</h2><p>O preço sobe com o quanto você investe em anúncios por mês, somando as contas ligadas nos últimos 30 dias. Nenhum plano cobra por venda.</p></div>
+      <div class="ciclo" role="group" aria-label="Forma de cobrança">
+        <button type="button" data-ciclo="mensal" aria-pressed="true">Mensal</button>
+        <button type="button" data-ciclo="anual" aria-pressed="false">Anual <small>2 meses grátis</small></button>
+      </div>
+    </div>
+    <div class="grade" id="grade"><div class="carregando">Carregando os planos…</div></div>
+    <p class="todos">Todas as ferramentas em todos os planos: Demandas, Criativos, Rituais, Arquivos, Tráfego, Análise de tráfego, Projetos e Financeiro.</p>
+  </section>
+
+  <section class="sec" aria-labelledby="t-faq">
+    <div class="topo"><div><span class="rot">Dúvidas</span><h2 id="t-faq">Perguntas frequentes</h2></div></div>
+    <div class="faq">
+      <details><summary>Cobra alguma coisa por venda?</summary><p>Não. O preço é só pela faixa de investimento em anúncios por mês. Vender mais não muda o valor.</p></details>
+      <details><summary>Como o TMX sabe quanto eu invisto?</summary><p>Pelas contas de anúncio que você liga. Ele soma o gasto dos últimos 30 dias e mostra em Configurações › Meu plano.</p></details>
+      <details><summary>E se eu passar da minha faixa?</summary><p>O TMX avisa e sugere o plano de cima. O pixel e as vendas continuam chegando normalmente.</p></details>
+      <details><summary>Quais formas de pagamento?</summary><p>Cartão de crédito, cobrado todo mês (ou uma vez por ano, no anual) na página segura da Pagar.me.</p></details>
+      <details><summary>Preciso ter a Utmify?</summary><p>Não. O TMX tem pixel próprio. Se você já usa a Utmify, dá pra ligar e ver o gasto por ela também.</p></details>
+      <details><summary>O meu time entra junto?</summary><p>Sim. Cada pessoa tem login e cargo próprios e recebe as demandas dela no WhatsApp. O limite de pessoas depende do plano.</p></details>
+      <details><summary>Como funciona o teste grátis?</summary><p>No Iniciante você manda o pedido, a TMX libera o acesso pelo WhatsApp e você usa 30 dias sem pagar. Depois escolhe um plano.</p></details>
+      <details><summary>Como eu cancelo?</summary><p>Pelo Suporte, dentro do TMX. Não tem fidelidade: o acesso fica até o fim do período já pago.</p></details>
+    </div>
+  </section>
+
+  <footer class="rod"><span>TMX Digital</span><span>Pagamento processado pela Pagar.me</span></footer>
+</main>
+
+<!-- VOLTA DO PAGAMENTO -->
+<main id="volta" class="larg" hidden>
+  <div class="cartao" id="volta-cartao" aria-live="polite"></div>
+</main>
+
+<!-- JANELA DE ASSINAR -->
+<div class="fundo-jan" id="jan" hidden role="dialog" aria-modal="true" aria-labelledby="jan-tit">
+  <form class="cartao" id="jan-form" novalidate>
+    <div class="tit" id="jan-tit">Assinar</div>
+    <div class="sub" id="jan-sub"></div>
+    <div class="resumo"><span id="jan-plano"></span><b id="jan-valor"></b></div>
+    <label class="lbl" for="f-nome">Seu nome</label>
+    <input class="in" id="f-nome" autocomplete="name" placeholder="Seu nome">
+    <label class="lbl" for="f-email">E-mail</label>
+    <input class="in" id="f-email" type="email" autocomplete="email" placeholder="voce@suaempresa.com">
+    <div class="dica">Vai ser o seu login no TMX.</div>
+    <label class="lbl" for="f-zap">WhatsApp</label>
+    <input class="in" id="f-zap" type="tel" autocomplete="tel" placeholder="(11) 9 0000-0000">
+    <div class="dica" id="dica-zap">O link para criar a conta chega aqui também.</div>
+    <button class="btn lg" type="submit" id="jan-ir">Ir para o pagamento</button>
+    <div class="erro-msg" id="jan-erro" role="alert"></div>
+    <div class="aviso" id="jan-aviso">O pagamento é feito na página segura da Pagar.me, com cartão de crédito.</div>
+    <button class="lnk fechar" type="button" id="jan-fechar">Voltar aos planos</button>
+  </form>
+</div>
+
+</div>
+<script>
+(function(){
+  var esc = function(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var brl = function(v){ return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
+  var brl2 = function(v){ return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var $ = function(id){ return document.getElementById(id); };
+  var E = { ciclo: 'mensal', planos: [], plano: null, enviando: false };
+
+  function precoDe(p, ciclo){
+    if(p.gratis) return { grande: 'Grátis', por: 'por 30 dias', cond: 'Depois, você escolhe um plano', linha: 'Grátis por 30 dias' };
+    if(ciclo === 'anual') return { grande: brl(Math.round(p.anual / 12)), por: '/mês', cond: brl(p.anual) + ' cobrados uma vez por ano', linha: brl2(p.anual) + ' por ano' };
+    return { grande: brl(p.mensal), por: '/mês', cond: 'No mensal, sem fidelidade', linha: brl2(p.mensal) + ' por mês' };
+  }
+
+  // ── planos ──
+  function pintarPlanos(){
+    document.querySelectorAll('[data-ciclo]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-ciclo') === E.ciclo ? 'true' : 'false'); });
+    $('grade').innerHTML = E.planos.map(function(p){
+      var pr = precoDe(p, E.ciclo);
+      return '<article class="plano"><h3>'+esc(p.nome)+'</h3><p class="faixa">'+esc(p.faixa)+'</p>'+
+        '<div class="preco"><b>'+esc(pr.grande)+'</b><span>'+esc(pr.por)+'</span></div><p class="cond">'+esc(pr.cond)+'</p>'+
+        '<button class="btn lg'+(p.gratis ? ' sec' : '')+'" type="button" data-assinar="'+esc(p.id)+'">'+(p.gratis ? 'Pedir o teste grátis' : 'Assinar o '+esc(p.nome))+'</button>'+
+        '<ul>'+(p.itens || []).map(function(i){ return '<li>'+esc(i)+'</li>'; }).join('')+'</ul></article>';
+    }).join('');
+    document.querySelectorAll('[data-assinar]').forEach(function(b){ b.addEventListener('click', function(){ abrir(b.getAttribute('data-assinar')); }); });
+  }
+  document.querySelectorAll('[data-ciclo]').forEach(function(b){ b.addEventListener('click', function(){ E.ciclo = b.getAttribute('data-ciclo'); pintarPlanos(); }); });
+
+  // ── janela de assinar ──
+  var ultimoFoco = null;
+  function abrir(id){
+    var p = E.planos.filter(function(x){ return x.id === id; })[0]; if(!p) return;
+    E.plano = p; ultimoFoco = document.activeElement;
+    var pr = precoDe(p, E.ciclo);
+    $('jan-tit').textContent = p.gratis ? 'Teste grátis do Iniciante' : 'Assinar o ' + p.nome;
+    $('jan-sub').textContent = p.gratis ? 'Mande o pedido e a TMX libera o seu acesso pelo WhatsApp.' : 'Seus dados para a assinatura. Depois você paga na Pagar.me.';
+    $('jan-plano').textContent = 'Plano ' + p.nome + (p.gratis ? '' : (E.ciclo === 'anual' ? ' (anual)' : ' (mensal)'));
+    $('jan-valor').textContent = pr.linha;
+    $('jan-ir').textContent = p.gratis ? 'Pedir o teste grátis' : 'Ir para o pagamento';
+    $('jan-aviso').textContent = p.gratis ? 'Sem cartão. A liberação é feita por uma pessoa da TMX, em horário comercial.' : 'O pagamento é feito na página segura da Pagar.me, com cartão de crédito.';
+    $('dica-zap').textContent = p.gratis ? 'É por aqui que a TMX te manda o acesso.' : 'O link para criar a conta chega aqui também.';
+    $('jan-erro').textContent = '';
+    ['f-nome','f-email','f-zap'].forEach(function(i){ $(i).classList.remove('erro'); });
+    $('jan-form').hidden = false;
+    $('jan').hidden = false;
+    setTimeout(function(){ $('f-nome').focus(); }, 30);
+  }
+  function fechar(){ $('jan').hidden = true; if(ultimoFoco && ultimoFoco.focus) ultimoFoco.focus(); }
+  $('jan-fechar').addEventListener('click', fechar);
+  $('jan').addEventListener('click', function(e){ if(e.target === $('jan')) fechar(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && !$('jan').hidden) fechar(); });
+
+  $('jan-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    if(E.enviando || !E.plano) return;
+    var dados = { plano: E.plano.id, ciclo: E.ciclo, nome: $('f-nome').value.trim(), email: $('f-email').value.trim(), whatsapp: $('f-zap').value.trim() };
+    var falta = !dados.nome ? 'f-nome' : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dados.email) ? 'f-email' : dados.whatsapp.replace(/\D/g, '').length < 10 ? 'f-zap' : '';
+    ['f-nome','f-email','f-zap'].forEach(function(i){ $(i).classList.toggle('erro', i === falta); });
+    if(falta){
+      $('jan-erro').textContent = falta === 'f-nome' ? 'Diga o seu nome.' : falta === 'f-email' ? 'Esse e-mail não parece certo.' : 'O WhatsApp precisa ter DDD e número.';
+      $(falta).focus(); return;
+    }
+    E.enviando = true; $('jan-ir').disabled = true; $('jan-erro').textContent = '';
+    $('jan-ir').textContent = E.plano.gratis ? 'Mandando…' : 'Abrindo o pagamento…';
+    fetch('/api/assinar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(x){
+        if(!x.ok){
+          var campo = { nome: 'f-nome', email: 'f-email', whatsapp: 'f-zap' }[x.j.campo];
+          if(campo){ $(campo).classList.add('erro'); $(campo).focus(); }
+          throw new Error(x.j.error || 'Não deu certo agora. Tente de novo em instantes.');
+        }
+        if(x.j.gratis){
+          $('jan-form').innerHTML = '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Pedido recebido</div>'+
+            '<div class="sub">A TMX vai te chamar no WhatsApp com o link para criar a conta. Os 30 dias começam quando você entrar.</div>'+
+            '<button class="btn lg" type="button" id="jan-ok">Fechar</button>';
+          $('jan-ok').addEventListener('click', function(){ location.reload(); });
+          return;
+        }
+        location.href = x.j.url;
+      })
+      .catch(function(err){ $('jan-erro').textContent = err.message || 'Não deu certo agora. Tente de novo em instantes.'; })
+      .then(function(){ E.enviando = false; var b = $('jan-ir'); if(b){ b.disabled = false; b.textContent = E.plano.gratis ? 'Pedir o teste grátis' : 'Ir para o pagamento'; } });
+  });
+
+  function carregarPlanos(){
+    fetch('/api/planos').then(function(r){ return r.json(); }).then(function(j){
+      E.planos = j.planos || []; pintarPlanos();
+    }).catch(function(){ $('grade').innerHTML = '<div class="carregando">Não consegui carregar os planos agora. Recarregue a página.</div>'; });
+  }
+
+  // ── volta do pagamento (/planos/obrigado?r=…) ──
+  var LOGO = '<div class="logo-g"><b>TMX</b><span>DIGITAL</span></div>';
+  function volta(ref){
+    var tentativas = 0, cartao = $('volta-cartao');
+    cartao.innerHTML = LOGO + '<div class="giro" aria-hidden="true"></div><div class="tit">Confirmando o pagamento…</div><div class="sub">Isso leva alguns segundos. Não feche esta página.</div>';
+    function perguntar(){
+      tentativas++;
+      fetch('/api/assinar/situacao?r=' + encodeURIComponent(ref)).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); }).then(function(x){
+        var j = x.j || {};
+        if(!x.ok){ cartao.innerHTML = LOGO + '<div class="tit">Não achei esse pedido</div><div class="sub">Se você pagou, o link para criar a conta chega no seu e-mail e no seu WhatsApp.</div><a class="btn lg" href="/planos">Ver os planos</a>'; return; }
+        var linha = 'Plano ' + esc(j.plano) + '</span><b>' + esc(j.ciclo === 'anual' ? brl2(j.valor) + ' por ano' : brl2(j.valor) + ' por mês');
+        if(j.cadastrado){
+          cartao.innerHTML = LOGO + '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Sua conta já está criada</div><div class="sub">Entre com o e-mail e a senha que você cadastrou.</div><a class="btn lg" href="/">Entrar no TMX</a>';
+          return;
+        }
+        if(j.status === 'paga' && j.convite){
+          cartao.innerHTML = LOGO + '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Pagamento aprovado</div>'+
+            '<div class="sub">Agora crie a sua conta. Leva uns 2 minutos: acesso, nome da empresa e projetos.</div>'+
+            '<div class="resumo"><span>' + linha + '</b></div>'+
+            '<a class="btn lg" href="' + esc(j.convite) + '">Criar minha conta →</a>'+
+            '<p class="aviso">Mandamos o mesmo link para o seu e-mail e o seu WhatsApp. Ele vale para um cadastro e vence em 30 dias.</p>';
+          return;
+        }
+        if(j.status === 'aguardando' && tentativas < 60){ setTimeout(perguntar, 3000); return; }
+        if(j.status === 'aguardando'){
+          cartao.innerHTML = LOGO + '<div class="tit">Ainda esperando a confirmação</div><div class="sub">A Pagar.me ainda não confirmou o pagamento. Assim que confirmar, o link para criar a conta chega no seu e-mail e no seu WhatsApp.</div><button class="btn lg" type="button" id="de-novo">Conferir de novo</button>';
+          $('de-novo').addEventListener('click', function(){ volta(ref); });
+          return;
+        }
+        cartao.innerHTML = LOGO + '<div class="tit">Esse pedido não está ativo</div><div class="sub">Se precisar de ajuda, fale com a TMX pelo WhatsApp.</div><a class="btn lg" href="/planos">Ver os planos</a>';
+      }).catch(function(){ if(tentativas < 60) setTimeout(perguntar, 4000); });
+    }
+    perguntar();
+  }
+
+  var ref = new URLSearchParams(location.search).get('r');
+  if(/\/planos\/obrigado\/?$/.test(location.pathname) && ref){ $('volta').hidden = false; document.title = 'Pagamento · TMX'; volta(ref); }
+  else { $('pagina').hidden = false; carregarPlanos(); }
+})();
+</script>
+</body>
+</html>
