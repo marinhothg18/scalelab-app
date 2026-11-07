@@ -27,6 +27,36 @@ if (!SOU_TMX && (!_RE_EMPRESA_ID.test(EMPRESA_MOTOR) || !process.env.TMX_DATA_DI
   process.exit(1);
 }
 
+// ── Erros recentes, pra Saúde da Central TMX Admin ──
+// Cada console.error vira uma linha agrupada (mesma mensagem sem os números = mesmo erro).
+// Na portaria fica na memória; o motor manda o dele pra portaria pelo canal interno.
+// Só desde que o servidor subiu: não grava nada em disco.
+const _errosRecentes = new Map();
+function _anotarErro(onde, texto) {
+  try {
+    const msg = String(texto || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!msg) return;
+    const chave = onde + '|' + msg.replace(/[0-9a-f]{8,}/gi, '#').replace(/\d+/g, '#').slice(0, 160);
+    const agora = Date.now(), e = _errosRecentes.get(chave);
+    if (e) { e.vezes++; e.ultimo = agora; e.msg = msg; return; }
+    if (_errosRecentes.size >= 150) {   // tira o que faz mais tempo que não acontece
+      let velho = null; for (const [k, v] of _errosRecentes) if (!velho || v.ultimo < velho[1].ultimo) velho = [k, v];
+      if (velho) _errosRecentes.delete(velho[0]);
+    }
+    _errosRecentes.set(chave, { onde, msg, vezes: 1, primeiro: agora, ultimo: agora });
+  } catch (e) {}
+}
+{
+  const _errOriginal = console.error.bind(console);
+  console.error = (...a) => {
+    _errOriginal(...a);
+    const texto = a.map(x => x instanceof Error ? x.message : typeof x === 'string' ? x : (() => { try { return JSON.stringify(x); } catch (e) { return String(x); } })()).join(' ');
+    // a queda de motor já é anotada com a empresa certa, no _ligarMotor
+    if (SOU_TMX) { if (!/^\[PORTARIA\] motor da empresa /.test(texto)) _anotarErro(EMPRESA_TMX, texto); }
+    else if (process.send && process.connected) { try { process.send({ tipo: 'erro-log', msg: texto.slice(0, 300) }); } catch (e) {} }
+  };
+}
+
 // Quem é este motor, pro app: código, nome e o endereço público (pixel, webhook, quiz)
 function _empresaInfo() {
   return SOU_TMX ? { id: EMPRESA_TMX, nome: 'TMX', base: '' }
@@ -382,6 +412,8 @@ function _ligarMotor(emp) {
       m.porta = msg.porta; m.subiuEm = Date.now();
       m.esperando.splice(0).forEach(f => { try { f(); } catch (e) {} });
       console.log(`[PORTARIA] motor da empresa ${emp.id} pronto.`);
+    } else if (msg.tipo === 'erro-log') {
+      _anotarErro(emp.id, msg.msg);
     } else if (msg.tipo === 'contas') {
       try { _indexarContas(emp.id, msg.emails); } catch (e) { console.error('[PLATAFORMA] índice de', emp.id, e.message); }
     } else if (msg.tipo === 'pedido-portaria') {
@@ -402,6 +434,9 @@ function _ligarMotor(emp) {
     // ficou de pé mais de 1 min: conta como queda nova, não como o mesmo defeito
     if (m.subiuEm && Date.now() - m.subiuEm > 60000) m.falhas = 0;
     m.falhas++;
+    // pra Saúde da Central: quando caiu (guarda as últimas 50)
+    (m.quedasEm = m.quedasEm || []).push(Date.now()); if (m.quedasEm.length > 50) m.quedasEm.shift();
+    _anotarErro(emp.id, 'O motor parou (' + (sinal || code) + ') e vai religar sozinho.');
     const espera = Math.min(60000, 1000 * Math.pow(2, Math.min(m.falhas, 6)));
     // até lá, pedido nenhum religa o motor (senão um defeito na subida viraria um laço)
     m.proximaTentativa = Date.now() + espera;
@@ -8587,8 +8622,8 @@ const PLANOS_TMX = [
 ];
 const _planoDe = id => PLANOS_TMX.find(p => p.id === id) || PLANOS_TMX.find(p => p.id === 'teste');
 // O que a empresa usa agora de cada limite (dados dela: banco e base de pessoas do motor)
-function _usoDoPlano() {
-  const db = readDB();
+function _usoDoPlano(dbLido) {
+  const db = dbLido || readDB();
   const hoje = Date.now() - 3 * 3600000;
   const desde = new Date(hoje - 30 * 86400000).toISOString().slice(0, 10);
   const mes = new Date(hoje).toISOString().slice(0, 7) + '-01';
@@ -8613,6 +8648,50 @@ function _usoDoPlano() {
     pessoas: (db.store['sl_usuarios'] || []).filter(u => u && u.ativo !== false).length,
     arquivosGB: Math.round(bytes / 1073741824 * 100) / 100
   };
+}
+// ── Resumo da empresa pra Central TMX Admin ──
+// Roda no processo da própria empresa (o motor, ou a TMX), com os dados dela. Só contagens:
+// nada do conteúdo sai daqui. "Mexidos em 30 dias" = itens criados ou alterados no período.
+const _MODULOS_USO = [['Demandas', 'tasks'], ['Criativos', 'criativos'], ['Projetos', 'sl_ofertas_v2'], ['Rituais', 'rituais'],
+  ['Arquivos', 'arquivos'], ['Funis', 'sl_funis'], ['Quizzes', 'sl_quizzes'], ['Financeiro', 'sl_fin_lancamentos'], ['Equipe e RH', 'sl_rh_colaboradores']];
+function _quandoMexeu(it) {
+  let t = 0;
+  for (const k of ['_updatedAt', 'updatedAt', 'atualizadoEm', 'criadoEm', 'createdAt', 'criado', 'created_at', 'ts']) {
+    const v = it[k], n = typeof v === 'number' ? v : (typeof v === 'string' ? Date.parse(v) : NaN);
+    if (n > t) t = n;
+  }
+  return t;
+}
+function _resumoDaEmpresa() {
+  const db = readDB();
+  const desde = Date.now() - 30 * 86400000;
+  const modulos = {};
+  for (const [nome, chave] of _MODULOS_USO) {
+    const arr = db.store[chave];
+    modulos[nome] = Array.isArray(arr) ? arr.filter(x => x && typeof x === 'object' && _quandoMexeu(x) >= desde).length : 0;
+  }
+  try { modulos['Páginas'] = Number((_q('SELECT COUNT(*) n FROM pg_paginas WHERE COALESCE(publicada_em, criado_em) >= ?').get(desde) || {}).n) || 0; } catch (e) { modulos['Páginas'] = 0; }
+  // último acesso de alguém da equipe (sessão de suporte não conta)
+  let ultimoAcesso = 0;
+  for (const se of (db.sessions || [])) if (se && !se.suporte && se.userId !== ID_SUPORTE && Number(se.lastActivity) > ultimoAcesso) ultimoAcesso = Number(se.lastActivity);
+  // vendas aprovadas por semana, 12 semanas (a última é a semana que termina hoje)
+  const hojeBR = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+  const vendasSemanas = new Array(12).fill(0);
+  try {
+    const inicio = new Date(Date.parse(hojeBR) - 83 * 86400000).toISOString().slice(0, 10);
+    for (const r of _q('SELECT dia, COUNT(DISTINCT pedido) n FROM pedidos WHERE pago=1 AND estorno=0 AND dia >= ? GROUP BY dia').all(inicio)) {
+      const w = 11 - Math.floor((Date.parse(hojeBR) - Date.parse(r.dia)) / (7 * 86400000));
+      if (w >= 0 && w < 12) vendasSemanas[w] += Number(r.n) || 0;
+    }
+  } catch (e) {}
+  let bancoBytes = 0;
+  try { for (const f of fs.readdirSync(DATA_DIR)) if (/\.(json|sqlite|sqlite-wal)$/.test(f)) { try { bancoBytes += fs.statSync(path.join(DATA_DIR, f)).size; } catch (e) {} } } catch (e) {}
+  let ultimoBackup = 0;
+  try { for (const f of fs.readdirSync(BACKUP_DIR)) if (/^db-.*\.json$/.test(f)) { try { const t = fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs; if (t > ultimoBackup) ultimoBackup = t; } catch (e) {} } } catch (e) {}
+  const projetos = (Array.isArray(db.store['sl_ofertas_v2']) ? db.store['sl_ofertas_v2'] : []).filter(o => o && o.nome).map(o => String(o.nome).slice(0, 60)).slice(0, 30);
+  return { ok: true, uso: _usoDoPlano(db), modulos, ultimoAcesso: ultimoAcesso || null, vendasSemanas, projetos,
+    bancoMB: Math.round(bancoBytes / 104857.6) / 10, ultimoBackup: ultimoBackup || null,
+    memMB: Math.round(process.memoryUsage().rss / 1048576), noArSeg: Math.round(process.uptime()) };
 }
 const _ROTULOS_USO = [['invest', 'Investimento em anúncios (30 dias)', 'brl'], ['vendas', 'Vendas aprovadas no mês'], ['projetos', 'Projetos'],
   ['dominios', 'Domínios próprios'], ['contas', 'Contas de anúncio ativas'], ['pixels', 'Pixels da Meta'], ['pessoas', 'Pessoas na equipe'], ['arquivosGB', 'Arquivos', 'gb']];
@@ -9067,6 +9146,113 @@ app.post('/api/plataforma/chamados/:id/responder', authDiretoriaInterna, (req, r
   }
   const db = readDB(); audit(db, nota ? 'chamado_nota' : 'chamado_respondido', { chamado: id, empresa: c.empresa }, { status }, req.user); writeDB(db);
   res.json({ ok: true });
+});
+
+// ── Painel da Central TMX Admin (07/11/2026) ──
+// Um pedido junta tudo: cada motor manda o resumo dele (só contagens, nada do conteúdo), a TMX
+// calcula o dela, e aqui entram receita, chamados e saúde do servidor. Guarda 60 s pra não
+// fazer cada motor ler o banco a cada clique ("Atualizar" pede de novo com ?novo=1).
+let _painelCache = null;
+function _memoriaDoServidor() {
+  const os = require('os');
+  for (const f of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    try { const n = Number(fs.readFileSync(f, 'utf8').trim()); if (n > 0 && n < 1e15) return { limiteMB: Math.round(n / 1048576), fonte: 'limite do serviço' }; } catch (e) {}
+  }
+  // sem limite à vista: no Railway o plano Hobby dá 8 GB por serviço
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_PROJECT_ID) return { limiteMB: 8192, fonte: 'plano Hobby do Railway' };
+  return { limiteMB: Math.round(os.totalmem() / 1048576), fonte: 'memória desta máquina' };
+}
+async function _montarPainel() {
+  const agora = Date.now(), d30 = agora - 30 * 86400000, d7 = agora - 7 * 86400000, d1 = agora - 86400000;
+  const regs = _platPrep('SELECT id, nome, status, criada, plano, origem, dono_email, bloqueio_motivo, bloqueado_em, bloqueado_por FROM empresas ORDER BY criada').all();
+  const resumos = await Promise.all(regs.map(e => _pedirAoMotor(e.id, 'resumo', {}, 8000).catch(err => ({ ok: false, erro: err.message }))));
+  let tmx; try { tmx = _resumoDaEmpresa(); } catch (e) { tmx = { ok: false, erro: e.message }; }
+  const assin = _platPrep('SELECT * FROM assinaturas').all();
+  const valorMes = a => { const v = Number(_planoDe(a.plano).mensal) || 0; return a.ciclo === 'anual' ? Math.round(v * 10 / 12) : v; };
+  const limitesDe = (plano, uso) => { const p = _planoDe(plano); return _ROTULOS_USO.map(([id, rotulo, tipo]) => ({ id, rotulo, tipo: tipo || '', usado: uso ? uso[id] : null, limite: p.limites[id] == null ? null : p.limites[id] })); };
+  const limpa = r => { if (!r || !r.ok) return null; const o = Object.assign({}, r); delete o.ok; return o; };
+  const empresas = regs.map((e, i) => {
+    const m = _motores.get(e.id), r = resumos[i];
+    const p = _planoDe(e.plano);
+    const a = assin.filter(x => x.empresa === e.id).sort((x, y) => (y.atualizado || 0) - (x.atualizado || 0))[0] || null;
+    const quedas = (m && m.quedasEm) || [];
+    return Object.assign({}, e, { plano: p.id, planoNome: p.nome, mensal: p.mensal == null ? null : p.mensal,
+      contas: _platPrep('SELECT COUNT(*) n FROM contas WHERE empresa=?').get(e.id).n,
+      motor: { estado: m && m.porta ? 'ligado' : (m && m.proc ? 'ligando' : 'desligado'), pid: m && m.proc ? m.proc.pid : null,
+        quedasHoje: quedas.filter(t => t >= d1).length, ultimaQueda: quedas.length ? quedas[quedas.length - 1] : null, subiuEm: (m && m.subiuEm) || null },
+      resumo: limpa(r), erroResumo: r && r.ok ? null : ((r && r.erro) || 'sem resposta'),
+      limites: limitesDe(e.plano, r && r.ok ? r.uso : null),
+      assinatura: a ? { status: a.status, ciclo: a.ciclo, valorMes: valorMes(a), pago_em: a.pago_em || null, atualizado: a.atualizado || null } : null });
+  });
+  // receita (o que a Pagar.me cobra todo mês; o anual entra dividido por 12)
+  const inicioMes = new Date(); inicioMes.setUTCDate(1); inicioMes.setUTCHours(3, 0, 0, 0);
+  const meses = [];
+  for (let k = 5; k >= 0; k--) {
+    const ini = new Date(Date.UTC(inicioMes.getUTCFullYear(), inicioMes.getUTCMonth() - k, 1, 3));
+    const fimM = k === 0 ? agora : Date.UTC(ini.getUTCFullYear(), ini.getUTCMonth() + 1, 1, 3) - 1;
+    const valor = assin.filter(a => a.pago_em && a.pago_em <= fimM && !(a.status === 'cancelada' && (a.atualizado || 0) <= fimM)).reduce((t, a) => t + valorMes(a), 0);
+    meses.push({ mes: ini.toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', ''), valor });
+  }
+  const pagas = assin.filter(a => a.status === 'paga'), atrasadas = assin.filter(a => a.status === 'atrasada');
+  const pagos30 = assin.filter(a => a.pago_em && a.pago_em >= d30);
+  const ultimo = assin.filter(a => a.ultimo_evento).sort((x, y) => (y.atualizado || 0) - (x.atualizado || 0))[0] || null;
+  const receita = {
+    mensal: pagas.reduce((t, a) => t + valorMes(a), 0), pagantes: pagas.length,
+    emRisco: atrasadas.reduce((t, a) => t + valorMes(a), 0), atrasadas: atrasadas.length,
+    novasMes: assin.filter(a => a.pago_em && a.pago_em >= inicioMes.getTime()).length,
+    canceladasMes: assin.filter(a => a.status === 'cancelada' && (a.atualizado || 0) >= inicioMes.getTime()).length,
+    meses,
+    funil30: { pediram: assin.filter(a => (a.criado || 0) >= d30).length, pagaram: pagos30.length,
+      cadastraram: pagos30.filter(a => a.empresa).length, ativos: pagos30.filter(a => a.empresa && (regs.find(e => e.id === a.empresa) || {}).status === 'ativa').length },
+    pedidosGratis: assin.filter(a => a.status === 'pedido').length
+  };
+  const cobranca = { ligada: !!PAGARME_API_KEY, ambiente: /^sk_test_/.test(PAGARME_API_KEY) ? 'teste' : (PAGARME_API_KEY ? 'producao' : null),
+    senhaAviso: !!PAGARME_WEBHOOK_SENHA, webhook: URL_TMX + '/api/billing/webhook', paginaPlanos: URL_TMX + '/planos',
+    linkCompra: null,   // o checkout direto (clicar no plano e cair na Pagar.me) põe aqui o endereço por plano
+    ultimoAviso: ultimo ? { evento: ultimo.ultimo_evento, em: ultimo.atualizado || null } : null,
+    planos: PLANOS_TMX.filter(p => !p.interno).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal == null ? null : p.mensal, gratis: !!p.gratis,
+      faixa: p.faixa || p.desc || '', venda: !!p.venda, limites: p.limites, empresas: regs.filter(e => (e.plano || 'teste') === p.id).length })) };
+  // chamados
+  const chs = _platPrep("SELECT c.id, c.empresa, c.assunto, c.tipo, c.status, c.criado, c.atualizado, c.responsavel, (SELECT MIN(m.criado) FROM chamado_msgs m WHERE m.chamado=c.id AND m.de='tmx') resp FROM chamados c WHERE c.status != 'resolvido' OR c.atualizado >= ?").all(d30);
+  const nomeDe = id => id === EMPRESA_TMX ? 'TMX' : ((regs.find(e => e.id === id) || {}).nome || id);
+  const resp30 = chs.filter(c => c.criado >= d30 && c.resp);
+  const porTipo = {}; chs.filter(c => c.criado >= d30).forEach(c => { const t = c.tipo || 'Outro'; porTipo[t] = (porTipo[t] || 0) + 1; });
+  const chamados = {
+    abertos: chs.filter(c => c.status !== 'resolvido').length, esperandoTmx: chs.filter(c => c.status === 'aberto').length,
+    semResposta: chs.filter(c => c.status !== 'resolvido' && !c.resp).length, resolvidos7d: chs.filter(c => c.status === 'resolvido' && c.atualizado >= d7).length,
+    primeiraRespostaMin: resp30.length ? Math.round(resp30.reduce((t, c) => t + (c.resp - c.criado), 0) / resp30.length / 60000) : null,
+    porTipo, esperando: chs.filter(c => c.status === 'aberto').sort((x, y) => (x.atualizado || 0) - (y.atualizado || 0)).slice(0, 10)
+      .map(c => ({ id: c.id, empresa: c.empresa, empresaNome: nomeDe(c.empresa), assunto: c.assunto, tipo: c.tipo, desde: c.atualizado || c.criado }))
+  };
+  // saúde do servidor
+  const mem = _memoriaDoServidor();
+  const memTmx = Math.round(process.memoryUsage().rss / 1048576);
+  const memMotores = empresas.reduce((t, e) => t + ((e.resumo && e.resumo.memMB) || 0), 0);
+  const motoresComMem = empresas.filter(e => e.resumo && e.resumo.memMB);
+  const mediaMotor = motoresComMem.length ? Math.round(memMotores / motoresComMem.length) : 60;
+  let disco = null;
+  try { const st = fs.statfsSync(DATA_DIR); disco = { totalGB: Math.round(st.bsize * st.blocks / 107374182.4) / 10, livreGB: Math.round(st.bsize * st.bavail / 107374182.4) / 10 }; } catch (e) {}
+  let remoto = { ligado: !!(process.env.GITHUB_BACKUP_TOKEN && process.env.GITHUB_BACKUP_REPO), ultimo: null };
+  try { remoto.ultimo = JSON.parse(fs.readFileSync(REMOTE_BACKUP_MARKER, 'utf8')).ts || null; } catch (e) {}
+  const usadoMB = memTmx + memMotores;
+  const saude = {
+    noArSeg: Math.round(process.uptime()), versao: (process.env.RAILWAY_DEPLOYMENT_ID || '').slice(0, 8) || null, node: process.version,
+    memoria: { tmxMB: memTmx, motoresMB: memMotores, usadoMB, limiteMB: mem.limiteMB, fonte: mem.fonte, mediaMotorMB: mediaMotor },
+    cabem: Math.max(0, Math.floor((mem.limiteMB * 0.8 - usadoMB) / Math.max(mediaMotor, 30))),
+    disco,
+    erros: [..._errosRecentes.values()].sort((x, y) => y.ultimo - x.ultimo).slice(0, 40).map(e => Object.assign({}, e, { ondeNome: nomeDe(e.onde) })),
+    backups: { remoto, tmxLocal: tmx && tmx.ok ? tmx.ultimoBackup : null }
+  };
+  return { geradoEm: agora, tmx: limpa(tmx), empresas, receita, cobranca, chamados, saude };
+}
+app.get('/api/plataforma/painel', authDiretoriaInterna, async (req, res) => {
+  try {
+    if (!_painelCache || Date.now() - _painelCache.em > 60000 || req.query.novo === '1') _painelCache = { em: Date.now(), dados: await _montarPainel() };
+    res.json(_painelCache.dados);
+  } catch (e) {
+    console.error('[CENTRAL] painel:', e.message);
+    res.status(500).json({ error: 'Não consegui montar o painel: ' + e.message });
+  }
 });
 
 // ── Helpers de data ──
@@ -22515,6 +22701,7 @@ if (!SOU_TMX) {
       if (msg.cmd === 'cadastro-inicial') return responder(_cadastroInicial(msg.dados || {}));
       if (msg.cmd === 'sessao-suporte') return responder(_abrirSessaoSuporte(msg.dados || {}));
       if (msg.cmd === 'notificar') return responder(_notificarNoMotor(msg.dados || {}));
+      if (msg.cmd === 'resumo') return responder(_resumoDaEmpresa());
       if (msg.cmd === 'auditar') {
         const db = readDB(); audit(db, String((msg.dados || {}).acao || 'plataforma'), null, (msg.dados || {}).meta || null, { nome: 'Central TMX Admin' }); writeDB(db);
         return responder({ ok: true });

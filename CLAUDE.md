@@ -114,6 +114,13 @@ Regras:
   recusa toda escrita (403 + `X-TMX-So-Olhar`); suporte nunca mexe em `/api/me`. A Central guarda a conta da
   TMX do aparelho (`sl_tmx_token_guardado`) e "Sair do suporte" devolve. Uma aba que vê a empresa do
   aparelho mudar (outra aba) recarrega antes de mandar qualquer coisa (`_empresaDaAba`).
+- **Painel da Central (v3, 07/11)**: `GET /api/plataforma/painel` (só Diretoria da TMX) junta tudo num pedido: cada motor
+  manda `_resumoDaEmpresa()` pelo comando `resumo` (só contagens: uso do plano, itens mexidos em 30 dias por módulo, vendas
+  por semana, nomes dos projetos, memória, tamanho do banco, última cópia), mais receita (tabela `assinaturas`), chamados e
+  saúde (memória, disco, quedas por motor em `m.quedasEm`, erros de `console.error` agrupados em `_errosRecentes`, só na
+  memória e só desde que o servidor subiu). Guarda 60 s (`?novo=1` refaz). `public/admin.html` tem Painel, Clientes (com
+  ficha), Uso e oportunidades, Receita, Cobrança e checkout, Pedidos, Convites, Suporte, Saúde e Auditoria.
+  `test/central-painel.test.js`.
 - **Chamados**: moram no `plataforma.sqlite` (`chamados`, `chamado_msgs`). O cliente abre pelo item Suporte do
   TMX dele (`/api/suporte/chamados*` no motor, que repassa com `_pedirAPortaria`; a empresa é sempre a do
   motor). A TMX responde em `/api/plataforma/chamados/:id/responder` (nota interna não vai pro cliente) e o
