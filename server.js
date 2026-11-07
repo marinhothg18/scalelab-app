@@ -9241,7 +9241,9 @@ function _tokenPaytTmx() {
 app.get('/api/plataforma/venda-tmx', authDiretoriaInterna, (req, res) => {
   const token = _tokenPaytTmx();
   const v = _vendaTmx();
-  res.json({ gateway: v.gateway, links: v.links, atualizado: v.atualizado,
+  let ultimoAviso = null;
+  try { ultimoAviso = JSON.parse((_platPrep("SELECT v FROM plataforma_cfg WHERE k='venda_tmx_ultimo'").get() || {}).v || 'null'); } catch (e) {}
+  res.json({ gateway: v.gateway, links: v.links, atualizado: v.atualizado, ultimoAviso,
     webhook: URL_TMX + '/api/billing/payt/' + token,
     planos: PLANOS_TMX.filter(p => p.venda && !p.gratis).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, anual: p.mensal * 10 })) });
 });
@@ -9295,6 +9297,12 @@ app.post('/api/billing/payt/:token', (req, res) => {
   const v = _vendaTmx();
   if (!_senhaUrlConfere(req.params.token, v.token)) return res.status(404).json({ error: 'Endereço de aviso desconhecido.' });
   res.json({ ok: true });   // a Payt não precisa esperar
+  // a Central mostra quando chegou o último aviso (pra saber se a Payt está ligada certo)
+  try {
+    const b = req.body || {};
+    const evento = String(b.status || (b.transaction && b.transaction.payment_status) || b.event || b.type || '').slice(0, 40);
+    _platPrep("INSERT OR REPLACE INTO plataforma_cfg(k, v) VALUES('venda_tmx_ultimo', ?)").run(JSON.stringify({ evento, em: Date.now() }));
+  } catch (e) {}
   try { _tratarVendaPaytTmx(req.body || {}); } catch (e) { console.error('[COBRANÇA] aviso da Payt:', e.message); }
 });
 function _tratarVendaPaytTmx(p) {
