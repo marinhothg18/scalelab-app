@@ -1713,20 +1713,23 @@ app.post('/api/v1/chat/enviar', authAPI, (req, res) => {
 // Testes) e o que é da plataforma. Numa empresa, a API v1 não devolve essas chaves.
 const CHAVES_SO_TMX = new Set(['sl_protocolo', 'sl_ia_copy', 'edu', 'sl_ct_nichos', 'sl_ct_testes',
   'sl_modulos_arquivados', 'sl_saas_tenants', 'sl_saas_config', 'sl_saas_faturas']);
-// Numa empresa o token lê o mesmo que a Diretoria dela vê no app: segredo (KEYS_SERVIDOR:
-// token da Meta, da VTurb, do webhook, dados crus de cliente) nunca sai. Na TMX continua
-// como sempre foi; só a senha deixa de sair, aqui e em qualquer lugar.
+// O token lê o mesmo que a Diretoria vê no app, menos segredo: o que fica só no servidor
+// (KEYS_SERVIDOR: token da Meta, da VTurb, do webhook, dados crus de cliente), as credenciais
+// (Z-API, chave da IA, token da Utmify) e senha de qualquer tipo. Vale pra TMX também desde
+// 07/11/2026: pelos backups, ninguém usava essa rota pra ler essas chaves (o agente da TMX
+// usa o MCP).
 function _v1ChaveFechada(chave) {
-  if (SOU_TMX) return false;
-  return CHAVES_SO_TMX.has(chave) || KEYS_SERVIDOR.has(chave);
+  if (KEYS_SERVIDOR.has(chave) || CHAVES_CREDENCIAL.has(chave)) return true;
+  return !SOU_TMX && CHAVES_SO_TMX.has(chave);
 }
 app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
   const chave = String(req.params.chave || '');
   const db = readDB();
   const tem = Object.prototype.hasOwnProperty.call(db.store || {}, chave);
   if (!tem || _v1ChaveFechada(chave)) return res.status(404).json({ error: 'Chave não encontrada: ' + chave });
-  const val = db.store[chave];
-  res.json(chave === 'sl_usuarios' ? _stripSenhas(val) : val);
+  let val = db.store[chave];
+  if (chave === 'sl_lixeira') val = _lixeiraParaQuemPede(val, true);
+  res.json(Array.isArray(val) ? val.map(_semSenhaNoItem) : _semSenhaNoItem(val));
 });
 
 // ══════════════════════════════════════════════
@@ -7155,6 +7158,7 @@ app.get('/api/store', authUsuario, (req, res) => {
   const baseStore = bypass ? db.store : _aplicarFiltroTenant(db.store, req.tenantId);
   const safe = _filtrarKeysPorCargo(Object.assign({}, baseStore), req);
   if (safe['sl_usuarios']) safe['sl_usuarios'] = _stripSenhas(safe['sl_usuarios']);
+  if (safe['sl_lixeira']) safe['sl_lixeira'] = _lixeiraParaQuemPede(safe['sl_lixeira'], _ehDiretoria(req));
   res.json(safe);
 });
 
@@ -7182,7 +7186,8 @@ app.get('/api/updates/:since', authUsuario, (req, res) => {
         }
       }
       if (valor === undefined) return;
-      data[k] = (k === 'sl_usuarios') ? _stripSenhas(valor) : valor;
+      data[k] = (k === 'sl_usuarios') ? _stripSenhas(valor)
+        : (k === 'sl_lixeira') ? _lixeiraParaQuemPede(valor, soDiretoria) : valor;
     }
   });
   res.json({ data, timestamp: now() });
@@ -7239,6 +7244,9 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   }
   // conexão bancária só muda pela tela de Integrações (testa e cifra a credencial)
   if (key === 'fin_conexoes') return res.status(403).json({ error: 'Use Financeiro › Integrações.' });
+  // a lixeira é do servidor: entra só por /api/lixeira/soft-delete e sai por restore/apagar.
+  // Aqui alguém da equipe punha um item inventado (uma conta de Diretoria) e restaurava (07/11/2026)
+  if (key === 'sl_lixeira') return res.status(403).json({ error: 'A lixeira só muda pelas rotas da lixeira.' });
   // as chaves que assinam o aviso de venda e a lista de aparelhos só mudam pelas rotas /api/push
   if (key === KEY_PUSH_CFG || key === KEY_PUSH_APARELHOS) return res.status(403).json({ error: 'Use a tela de Notificações.' });
 
@@ -7369,6 +7377,7 @@ const LIXEIRA_MAX_DIAS = 30;
 app.post('/api/lixeira/soft-delete', authUsuario, (req, res) => {
   const { key, itemId, tipo, deletedBy, deletedByNome } = req.body || {};
   if (!key || itemId === undefined) return res.status(400).json({ error: 'key e itemId obrigatórios' });
+  if (_chaveSoDiretoria(key) && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
 
   const db = readDB();
   const arr = db.store[key];
@@ -7411,6 +7420,7 @@ app.post('/api/lixeira/restore/:lixeiraId', authUsuario, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Item da lixeira não encontrado' });
 
   const entry = lix[idx];
+  if (_chaveSoDiretoria(entry.sourceKey) && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   if (!db.store[entry.sourceKey]) db.store[entry.sourceKey] = [];
   // Evita duplicar caso já exista
   const sourceArr = db.store[entry.sourceKey];
@@ -7434,8 +7444,9 @@ app.delete('/api/lixeira/:lixeiraId', authUsuario, (req, res) => {
   const db = readDB();
   const lix = db.store['sl_lixeira'] || [];
   const entry = lix.find(x => String(x.id) === String(req.params.lixeiraId));
-  db.store['sl_lixeira'] = lix.filter(x => String(x.id) !== String(req.params.lixeiraId));
   if (!entry) return res.status(404).json({ error: 'Não encontrado' });
+  if (_chaveSoDiretoria(entry.sourceKey) && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  db.store['sl_lixeira'] = lix.filter(x => String(x.id) !== String(req.params.lixeiraId));
 
   if (!db.timestamps) db.timestamps = {};
   db.timestamps['sl_lixeira'] = now();
@@ -8200,7 +8211,7 @@ app.get('/api/v1/docs', (req, res) => {
       { method: 'GET',   path: '/api/v1/notificacoes',       desc: 'Notificações (query: userId)' },
       { method: 'GET',   path: '/api/v1/chat/mensagens',     desc: 'Mensagens do chat (query: limit)' },
       { method: 'POST',  path: '/api/v1/chat/enviar',        desc: 'Enviar mensagem (body: nome, texto)' },
-      { method: 'GET',   path: '/api/v1/dados/:chave',       desc: 'Ler qualquer chave do banco' },
+      { method: 'GET',   path: '/api/v1/dados/:chave',       desc: 'Ler uma chave do banco (sem senha nem token de integração)' },
       { method: 'GET',   path: '/api/v1/docs',               desc: 'Esta documentação' }
     ].map(e => BASE_PUBLICA ? Object.assign({}, e, { path: BASE_PUBLICA + e.path }) : e),
     limites: { global: '200 req/min', api_v1: '60 req/min', mcp: '90 req/min' }
@@ -8227,7 +8238,11 @@ const KEYS_DIRETORIA = new Set([
   'sl_integracoes_utmify','sl_integracoes_utmify_historico',
   'sl_vendas',
   // token da Z-API e chave da IA: iam pro navegador de qualquer pessoa logada (05/11/2026)
-  'sl_whatsapp_config','rt_api_key'
+  'sl_whatsapp_config','rt_api_key',
+  // a Central da Diretoria (notas, pastas com as senhas guardadas, rotina, agenda). A tela
+  // lê por /api/cd/data, que já era só da Diretoria; o /api/store mandava tudo pra equipe
+  // inteira (07/11/2026)
+  'cd_notas','cd_pastas','cd_rotina','cd_del','cd_gcal','cd_shares'
 ]);
 // Chaves que guardam SEGREDO (tokens de API) e nunca devem sair pro navegador —
 // nem pra Diretoria. Ficam só no servidor; a tela conversa com elas por rotas
@@ -8270,6 +8285,32 @@ const KEYS_SERVIDOR = new Set([
 ]);
 // Meu Protocolo fica fora do produto: no motor de uma empresa, a chave nunca sai do servidor
 if (!SOU_TMX) KEYS_SERVIDOR.add('sl_protocolo');
+// Credenciais que a Diretoria vê no app, mas que um token da API v1 nunca lê
+const CHAVES_CREDENCIAL = new Set(['sl_whatsapp_config', 'rt_api_key', 'sl_integracoes_utmify']);
+// Campos de senha: não saem do servidor por nenhuma porta
+const CAMPOS_SENHA = ['senha', 'senhaHash', 'resetSenha'];
+function _semSenhaNoItem(it) {
+  if (!it || typeof it !== 'object' || Array.isArray(it) || !CAMPOS_SENHA.some(c => c in it)) return it;
+  const copia = Object.assign({}, it);
+  CAMPOS_SENHA.forEach(c => delete copia[c]);
+  return copia;
+}
+// O que só a Diretoria manda pra lixeira, restaura ou apaga de vez: contas, permissões, o que
+// é dela, da plataforma e o que guarda segredo. A restauração devolve o item direto pra chave,
+// sem passar pelas travas do /api/store; sem isso, quem é da equipe apagava a conta da
+// Diretoria ou restaurava uma conta de Diretoria inventada (07/11/2026).
+function _chaveSoDiretoria(k) {
+  return k === 'sl_usuarios' || k === 'sl_permissoes_roles' ||
+    KEYS_DIRETORIA.has(k) || KEYS_SERVIDOR.has(k) || KEYS_PLATAFORMA.has(k);
+}
+// A lixeira como cada um pode ver: segredo nunca sai; o que é só da Diretoria, só pra ela; e
+// a conta que foi pra lixeira vai sem a senha (o servidor guarda e devolve na restauração).
+function _lixeiraParaQuemPede(lista, ehDiretoria) {
+  if (!Array.isArray(lista)) return lista;
+  return lista
+    .filter(e => !(e && (KEYS_SERVIDOR.has(e.sourceKey) || (!ehDiretoria && _chaveSoDiretoria(e.sourceKey)))))
+    .map(e => (e && e.data && _semSenhaNoItem(e.data) !== e.data) ? Object.assign({}, e, { data: _semSenhaNoItem(e.data) }) : e);
+}
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
 function _filtrarKeysPorCargo(obj, req) {

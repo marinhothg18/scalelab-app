@@ -154,13 +154,15 @@ The SPA writes to `localStorage` first, then pushes to the server. Sync endpoint
 
 **Deletes do not go through `/api/store`.** They go through `POST /api/lixeira/soft-delete` which removes the item and puts a copy into `sl_lixeira` (the trash, 30-day TTL, cleaned by a cron). `/api/lixeira/restore/:id` and `DELETE /api/lixeira/:id` complete the cycle. When adding a delete flow, always use this path — editing `_mergeArrayById` to infer deletes will silently corrupt data for any offline/slow client.
 
+The trash belongs to the server (07/11/2026): `PUT /api/store/sl_lixeira` is refused with 403. Restore writes the item straight back into its key and skips the `/api/store` guards, so soft-delete, restore and purge of items from `sl_usuarios`, `sl_permissoes_roles`, `KEYS_DIRETORIA`, `KEYS_SERVIDOR` or `KEYS_PLATAFORMA` are Diretoria-only (`_chaveSoDiretoria`). Before this, anyone on the team could plant a Diretoria account in the trash and restore it. `sl_lixeira` reaches each client through `_lixeiraParaQuemPede`: secret keys never, Diretoria-only items only for Diretoria, and a trashed account never with its password.
+
 ### Auth
 
 Two layers with different audiences:
 
 1. **User sessions** (for the SPA) — `POST /api/auth/login` with email+password returns a Bearer token. Sessions are stored as `sha256(token)` in `db.sessions`, TTL = 30 days of inactivity (`lastActivity` bumped on every `authDiretoria` / `/api/auth/me` hit). `authDiretoria` middleware protects Diretoria-only endpoints (backup, audit log, forcing lembretes/relatórios). The legacy `x-user-email`/`x-user-senha` headers were removed on 05/11/2026: only sessions authenticate. A session only works on the tenant of its own user: `validarSessao(db, token, req.tenantId)` and `authUsuario`/`authDiretoria` check it (a global middleware that re-read db.json per request made production crawl; never add one). Public signup (`/api/saas/signup`) is closed unless `CADASTRO_PUBLICO=1`. API tokens (`/api/tokens/*`) use `authTokensApi`: on the TMX it is `authDiretoriaInterna`; in a company motor it is that company's Diretoria, and the token only reads that company's MCP and `/api/v1` (see "MCP e API v1 por empresa"). Outside Diretoria, `PUT /api/store/sl_usuarios` only changes the caller's own record and never `cargo`/`senha`/`email`/`ativo`/`tenant_id`.
 
-2. **External API tokens** (for agents / integrations) — issued via `POST /api/tokens/generate` (returned **once**, then only the `sha256` hash is kept). Used by `/api/v1/*` routes via `authAPI` middleware. Rate-limited at 60 req/min.
+2. **External API tokens** (for agents / integrations) — issued via `POST /api/tokens/generate` (returned **once**, then only the `sha256` hash is kept). Used by `/api/v1/*` routes via `authAPI` middleware. Rate-limited at 60 req/min. `/api/v1/dados/:chave` never returns `KEYS_SERVIDOR`, `CHAVES_CREDENCIAL` (Z-API/IA key, Utmify token) or any password field (`CAMPOS_SENHA`), on the TMX too since 07/11/2026. The Central's `cd_*` keys are in `KEYS_DIRETORIA`.
 
 Passwords: bcrypt at rest. Legacy `senha` (plaintext) is migrated on first login or on server boot via `_migrarSenhasParaHash`. `_stripSenhas` strips both `senha` and `senhaHash` from every user response. Keep this — never send either field to clients.
 
