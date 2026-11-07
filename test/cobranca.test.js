@@ -193,6 +193,15 @@ test('cobrança pela Pagar.me', async (t) => {
     const s = await chamar('GET', '/api/assinar/situacao?r=' + ctx.ref);
     assert.strictEqual(s.dados.cadastrado, true);
     assert.ok(!s.dados.convite, 'depois do cadastro o link some');
+    // o Meu plano do cliente mostra a assinatura dele
+    const mp = await chamar('GET', '/api/meu-plano', { token: r.dados.token });
+    assert.strictEqual(mp.status, 200, JSON.stringify(mp.dados));
+    assert.strictEqual(mp.dados.plano.id, 'starter');
+    assert.strictEqual(mp.dados.cobranca.ligada, true);
+    assert.strictEqual(mp.dados.cobranca.status, 'paga');
+    assert.strictEqual(mp.dados.cobranca.ciclo, 'anual');
+    assert.strictEqual(mp.dados.cobranca.valor, 1970);
+    assert.ok(Array.isArray(mp.dados.cobranca.faturas));
   });
 
   await t.test('cobrança recusada, paga de novo e cancelada mudam o estado', async () => {
