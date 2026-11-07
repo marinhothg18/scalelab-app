@@ -8107,7 +8107,8 @@ function goTo(id){
     if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
     if(id === 'protocolo' && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existe
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
-    if(_mArq && !_ehDir) id = 'dashboard';
+    // fora da TMX nem a Diretoria abre: pro cliente o módulo não existe
+    if(_mArq && (!_ehDir || !tmxEhTmx())) id = 'dashboard';
   }catch(e){}
   // Antes de trocar de página, garante que o page-roi não fique órfão dentro de outras páginas
   // (evita bug da tela branca em Tráfego > Controle de ROI)
@@ -22145,6 +22146,7 @@ function _injectCfgSectionHeader(panelId, headerCfg, grad){
 }
 
 function switchCfgGrupo(grupo, btn){
+  if(grupo === 'avancado' && !tmxEhTmx()) return;   // Módulos arquivados: só na TMX
   // 1) Marca grupo ativo
   ['conta','operacao','automacao','integracoes','branding','dados','avancado'].forEach(g => {
     const el = document.getElementById('cfg-grupo-' + g);
@@ -28599,6 +28601,9 @@ var MODULOS_ARQUIVAVEIS = [
   { id:'tour',        nav:'nav-tour',        page:null,          label:'Tour',        desc:'Tour guiado de onboarding' }
 ];
 function _modulosArquivados(){
+  // Fora da TMX os arquivados não existem pro cliente: ficam todos fora, sempre
+  // (decisão do Thiago, 07/11: "tá arquivado geral"). A lista da TMX não muda.
+  if(typeof tmxEhTmx === 'function' && !tmxEhTmx()) return MODULOS_ARQUIVAVEIS.map(function(m){ return m.id; });
   try{ var a = g('sl_modulos_arquivados', []); return Array.isArray(a) ? a : []; }catch(e){ return []; }
 }
 function _moduloArquivado(id){ return _modulosArquivados().indexOf(id) >= 0; }
@@ -28618,6 +28623,9 @@ function _aplicarModulosArquivados(){
     if(arq.indexOf(m.id)>=0) el.style.display = 'none';
     else if(!m.porCargo) el.style.display = '';  // desarquivou → volta pro menu
   });
+  // fora da TMX nem a tela de arquivar aparece (Configurações › Avançado)
+  var av = document.getElementById('cfg-grupo-avancado');
+  if(av) av.style.display = (typeof tmxEhTmx === 'function' && !tmxEhTmx()) ? 'none' : '';
 }
 // Configurações > Avançado > Módulos arquivados
 function renderArquivadosCfg(){
@@ -28641,6 +28649,7 @@ function renderArquivadosCfg(){
   }).join('');
 }
 function toggleModuloArquivado(id){
+  if(typeof tmxEhTmx === 'function' && !tmxEhTmx()) return;   // fora da TMX não se reativa
   var m = MODULOS_ARQUIVAVEIS.find(function(x){ return x.id===id; });
   if(!m) return;
   var arq = _modulosArquivados();
@@ -29425,6 +29434,7 @@ var _onbAtivo = false;
 
 function iniciarOnboarding(forcar){
   if(!currentUser) return;
+  if(!tmxEhTmx()) return;   // o Tour é módulo arquivado: fora da TMX não aparece
   // Só roda 1x por usuário (ou se forçado)
   if(!forcar){
     var feito = localStorage.getItem('sl_onb_'+currentUser.id);

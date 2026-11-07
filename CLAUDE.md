@@ -84,6 +84,8 @@ Regras:
 - Empresa de teste: `POST /api/plataforma/empresas` (só Diretoria da TMX). Cadastro público
   continua fechado.
 - O app (`_empresaDoLogin`) apaga a cópia local quando o aparelho troca de empresa.
+- Fora da TMX, Meu Protocolo e os 5 módulos de `MODULOS_ARQUIVAVEIS` (IA, Educacional, Infra,
+  Ajuda, Tour) não existem: `_modulosArquivados()` devolve todos e Configurações › Avançado some.
 - `test/multiempresa.test.js` sobe TMX + 2 empresas numa pasta temporária e prova o isolamento.
 
 ### Data model
