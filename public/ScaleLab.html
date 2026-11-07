@@ -1502,10 +1502,7 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-projs{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:14px}
 /* Projetos separados por nicho */
 .fn-proj-cab2{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
-.fn-nicho-cab{display:flex;align-items:baseline;gap:10px;margin:22px 0 10px}
-.fn-proj-cab2 + .fn-nicho-cab{margin-top:4px}
-.fn-nicho-cab b{font-size:15px;font-weight:800;color:var(--text)}
-.fn-nicho-cab span{font-size:12.5px;color:var(--text2)}
+.fn-proj-nicho{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);margin-bottom:4px}
 .np-grade{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
 .np-grade label{display:flex;flex-direction:column;gap:6px}
 .np-grade .fi{width:100%}
@@ -23921,9 +23918,9 @@ function tkPopularProjeto(){
   let h = '<option value="">Selecionar projeto</option>';
   nichos.forEach(function(n){
     const os = ofertas.filter(function(o){ return o.nichoId === n.id; });
+    if(!os.length) return;   // nicho sem projeto não aparece; demanda antiga só com nicho ganha a opção dela em tkSincProjeto
     h += '<optgroup label="'+_tkEsc(n.nome)+'" data-nicho="'+_tkEsc(n.id)+'">'+
-      (os.length ? os.map(function(o){ return '<option value="o:'+_tkEsc(o.id)+'">'+_tkEsc(o.nome)+'</option>'; }).join('')
-                 : '<option value="n:'+_tkEsc(n.id)+'">'+_tkEsc(n.nome)+' · sem projeto ainda</option>')+'</optgroup>';
+      os.map(function(o){ return '<option value="o:'+_tkEsc(o.id)+'">'+_tkEsc(o.nome)+'</option>'; }).join('')+'</optgroup>';
   });
   const soltas = ofertas.filter(function(o){ return !nichos.some(function(n){ return n.id === o.nichoId; }); });
   if(soltas.length) h += '<optgroup label="Sem nicho">'+soltas.map(function(o){ return '<option value="o:'+_tkEsc(o.id)+'">'+_tkEsc(o.nome)+'</option>'; }).join('')+'</optgroup>';
@@ -31630,6 +31627,7 @@ function fnPintarProjetos(){
       return a + (f.etapas||[]).filter(function(e){ return !e.url; }).length; }, 0);
     var mostra = fnProjNome(nome);
     return '<div class="fn-proj" onclick="fnEntrarProjeto(\''+aspas(nome)+'\')"'+(mostra !== nome ? ' title="Na Utmify: '+fnEsc(nome)+'"' : '')+'>'+
+      '<div class="fn-proj-nicho">'+fnEsc(fnProjNicho(nome))+'</div>'+
       '<div class="fn-proj-t">'+fnEsc(mostra)+'</div>'+
       '<div class="fn-proj-n">'+
         '<span><b>'+fs.length+'</b> funil(is)</span>'+
@@ -31646,14 +31644,12 @@ function fnPintarProjetos(){
         (gest && daUtmify[nome] ? '<button class="fn-proj-esc" title="Escolher qual projeto de Demandas é este" onclick="event.stopPropagation();fnLigarProjeto(\''+aspas(nome)+'\')">nome</button>' : '')+
         '<button class="fn-proj-esc" title="Esconder este projeto da lista" onclick="event.stopPropagation();fnEsconderProjeto(\''+aspas(nome)+'\')">esconder</button></div></div>';
   };
-  // separados por nicho; os nichos dos projetos com dashboard vêm primeiro
+  // uma grade só, em ordem de nicho (o nicho vai escrito em cima do nome);
+  // os nichos dos projetos com dashboard vêm primeiro
   var grupos = {}, ordem = [];
   fnProjetos.forEach(function(nome){ var n = fnProjNicho(nome); if(!grupos[n]){ grupos[n] = []; ordem.push(n); } grupos[n].push(nome); });
   ordem.sort(function(a, b){ return (a === 'Sem nicho') - (b === 'Sem nicho'); });
-  var lista = ordem.map(function(n){
-    return '<div class="fn-nicho-cab"><b>'+fnEsc(n)+'</b><span>'+grupos[n].length+' projeto'+(grupos[n].length === 1 ? '' : 's')+'</span></div>'+
-      '<div class="fn-projs">'+grupos[n].map(card).join('')+'</div>';
-  }).join('');
+  var lista = ordem.length ? '<div class="fn-projs">'+ordem.map(function(n){ return grupos[n].map(card).join(''); }).join('')+'</div>' : '';
   el.innerHTML =
     // Desenhar funil fica ACIMA da escolha do projeto: rascunho nao depende de
     // ter funil montado nem pixel instalado — e o passo antes disso tudo.
@@ -31664,7 +31660,7 @@ function fnPintarProjetos(){
         'notas e o caminho entre elas. Um quadro por ideia.</div></div>'+
       '<div class="dz-entrada-ir">Abrir ›</div></div>'+
     '<div class="fn-proj-cab fn-proj-cab2"><div><h2>Escolha o projeto</h2>'+
-      '<p>Os projetos da empresa, separados por nicho, com o mesmo nome de Demandas. Tudo que aparecer depois — mapa, quiz, páginas, análise de VSL, pixel, testes e jornada — é só do projeto escolhido.</p></div>'+
+      '<p>Tudo que aparecer depois — mapa, quiz, páginas, análise de VSL, pixel, testes e jornada — é só do projeto escolhido.</p></div>'+
       (gest ? '<button class="fn-btn sm" onclick="fnNovoProjeto()">+ Novo projeto</button>' : '')+'</div>'+
     (lista || '<div class="fn-projs"><div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify e dos projetos de Demandas.</div></div>')+
     (fnProjetosEscondidos.length ? '<div class="fn-nota" style="margin-top:14px">'+fnProjetosEscondidos.length+' projeto'+(fnProjetosEscondidos.length===1?'':'s')+' escondido'+(fnProjetosEscondidos.length===1?'':'s')+': '+fnEsc(fnProjetosEscondidos.map(fnProjNome).join(', '))+' · <a href="#" onclick="fnMostrarOcultos();return false" style="color:var(--accent)">mostrar</a></div>' : '');
