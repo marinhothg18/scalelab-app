@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Cadastro · TMX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Cadastro do cliente (07/11/2026): o mesmo visual da tela de login do TMX (ScaleLab.html, #login-screen).
+   Fluxo aprovado: acesso → empresa → projetos → entra no sistema. */
+:root {
+  --bg: #080a12; --accent: #1B9CFA; --text: #ffffff; --text2: #8b93ab;
+  --accent-grad: linear-gradient(135deg,#3E1493,#1B9CFA);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: var(--text); background: #07060F; }
+#tela {
+  min-height: 100vh; min-height: 100dvh;
+  background: radial-gradient(ellipse at 60% 0%, #1a1040 0%, #07060F 60%);
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  padding: max(20px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(20px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.login-card {
+  background: rgba(14,12,26,.85); border: 1px solid #2D2850; border-radius: 20px;
+  padding: 36px 40px; width: 100%; max-width: 440px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.8), 0 0 60px rgba(27,156,250,.06); backdrop-filter: blur(12px);
+}
+.login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; justify-content: center; }
+.login-logo-text { font-size: 40px; letter-spacing: -1px; font-weight: 800; background: var(--accent-grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.login-logo-sub { font-size: 14px; font-weight: 700; letter-spacing: 4px; color: var(--text2); align-self: center; padding-top: 8px; }
+.login-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; text-align: center; }
+.login-sub { font-size: 12px; color: var(--text2); text-align: center; margin-bottom: 24px; line-height: 1.5; }
+.login-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: block; }
+.login-input {
+  width: 100%; background: rgba(7,6,15,.8); border: 1px solid #2D2850; border-radius: 9px; padding: 12px 14px;
+  color: #f1f5f9; font-size: 14px; font-family: inherit; margin-bottom: 14px; outline: none; transition: border-color .15s;
+}
+select.login-input { appearance: auto; }
+.login-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(27,156,250,.12); }
+.login-input.erro { border-color: #ef4444; }
+.login-btn {
+  width: 100%; background: var(--accent-grad); color: #fff; border: none; border-radius: 9px; padding: 13px;
+  font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; margin-top: 4px;
+  transition: opacity .15s, box-shadow .15s; box-shadow: 0 4px 18px rgba(27,156,250,.4);
+}
+.login-btn:hover { opacity: .9; box-shadow: 0 6px 24px rgba(27,156,250,.45); }
+.login-btn:disabled { opacity: .55; cursor: default; }
+.login-btn:focus-visible, .link:focus-visible, .cad-x:focus-visible, .cad-mais:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.login-error { color: #ef4444; font-size: 12px; text-align: center; margin-top: 12px; min-height: 18px; line-height: 1.4; }
+.login-footer { margin-top: 28px; font-size: 11px; color: #3D3960; text-align: center; }
+.cad-passos { display: flex; gap: 6px; justify-content: center; margin: 0 0 16px; }
+.cad-passos i { width: 26px; height: 4px; border-radius: 2px; background: rgba(148,163,184,.35); display: block; }
+.cad-passos i.on { background: #38BDF8; }
+.cad-ok { font-size: 12.5px; color: #34D399; text-align: center; margin-bottom: 10px; font-weight: 600; }
+.cad-dica { font-size: 12px; color: #94A3B8; margin: -8px 0 12px; line-height: 1.5; }
+.cad-proj { display: grid; grid-template-columns: 150px minmax(0,1fr) 28px; gap: 8px; align-items: start; }
+.cad-proj .login-input { margin-bottom: 8px; }
+.cad-proj select { grid-row: 1; grid-column: 1; }
+.cad-proj input[data-pp] { grid-row: 1; grid-column: 2; }
+.cad-proj .cad-x { grid-row: 1; grid-column: 3; }
+.cad-outro { grid-row: 2; grid-column: 1; }
+.cad-x { background: none; border: 0; color: #94A3B8; cursor: pointer; font-size: 18px; padding: 10px 0; line-height: 1; }
+.cad-mais { background: none; border: 0; color: #38BDF8; cursor: pointer; font: 600 13px Inter, sans-serif; padding: 4px 0; margin: 2px 0 14px; }
+.link { color: #38BDF8; font-size: 12px; cursor: pointer; background: none; border: 0; font-family: inherit; padding: 4px; }
+.centro { text-align: center; margin-top: 10px; }
+@media (max-width: 480px) {
+  .login-card { padding: 28px 20px; }
+  /* no celular: nicho, "qual nicho?" logo embaixo, depois o nome; o × fica ao lado do nicho */
+  .cad-proj { grid-template-columns: minmax(0,1fr) 28px; }
+  .cad-proj select, .cad-outro, .cad-proj input[data-pp] { grid-row: auto; grid-column: 1; }
+  .cad-proj .cad-x { grid-row: 1; grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<div id="tela">
+  <div class="login-card" id="cad" aria-live="polite">
+    <div class="login-logo"><div class="login-logo-text">TMX</div><div class="login-logo-sub">DIGITAL</div></div>
+    <div class="login-sub">Conferindo o seu convite…</div>
+  </div>
+  <div class="login-footer">TMX · cadastro</div>
+</div>
+<script>
+(function(){
+  var OUTRO = 'Outro (escreva)';
+  var codigo = new URLSearchParams(location.search).get('c') || '';
+  var el = document.getElementById('cad');
+  var passo = 1, NICHOS = [], plano = '';
+  var D = { nome:'', email:'', whatsapp:'', senha:'', empresa:'', projetos:[{ nicho:'', outro:'', nome:'' }] };
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var LOGO = '<div class="login-logo"><div class="login-logo-text">TMX</div><div class="login-logo-sub">DIGITAL</div></div>';
+  function passos(){ return '<div class="cad-passos" aria-label="Passo '+passo+' de 3">'+[1,2,3].map(function(i){ return '<i class="'+(i <= passo ? 'on' : '')+'"></i>'; }).join('')+'</div>'; }
+  function nomePlano(p){ return !p || p === 'teste' ? 'Período de teste' : 'Plano ' + p; }
+
+  function semConvite(msg){
+    el.innerHTML = LOGO + '<div class="login-title">Link de cadastro</div><div class="login-sub">'+esc(msg)+'</div>' +
+      '<button class="login-btn" type="button" id="ir-login">Ir pra tela de login</button>';
+    document.getElementById('ir-login').onclick = function(){ location.href = '/'; };
+  }
+
+  function pintar(erro, campo){
+    var h = LOGO + passos();
+    if(passo === 1){
+      h += '<div class="cad-ok">✓ Convite da TMX · '+esc(nomePlano(plano))+'</div>' +
+        '<div class="login-title">Crie seu acesso</div><div class="login-sub">É com esse e-mail e senha que você entra no sistema.</div>' +
+        '<label class="login-label" for="c-nome">Seu nome</label><input class="login-input" id="c-nome" autocomplete="name" value="'+esc(D.nome)+'">' +
+        '<label class="login-label" for="c-email">E-mail</label><input class="login-input" id="c-email" type="email" autocomplete="email" value="'+esc(D.email)+'"><div class="cad-dica">O mesmo da compra. Pode trocar.</div>' +
+        '<label class="login-label" for="c-zap">WhatsApp</label><input class="login-input" id="c-zap" type="tel" autocomplete="tel" placeholder="(11) 9 0000-0000" value="'+esc(D.whatsapp)+'"><div class="cad-dica">Para os avisos de venda e os relatórios.</div>' +
+        '<label class="login-label" for="c-senha">Senha</label><input class="login-input" id="c-senha" type="password" autocomplete="new-password" placeholder="mínimo 8 caracteres" value="'+esc(D.senha)+'">' +
+        '<button class="login-btn" type="button" id="c-ir">Continuar →</button>';
+    } else if(passo === 2){
+      h += '<div class="login-title">Sua empresa</div><div class="login-sub">O nome aparece no topo do sistema e nos relatórios do time.</div>' +
+        '<label class="login-label" for="c-emp">Nome da empresa</label><input class="login-input" id="c-emp" autocomplete="organization" value="'+esc(D.empresa)+'">' +
+        '<button class="login-btn" type="button" id="c-ir">Continuar →</button><div class="centro"><button class="link" type="button" id="c-volta">‹ voltar</button></div>';
+    } else {
+      var opcoes = NICHOS.concat([OUTRO]);
+      h += '<div class="login-title">Seus projetos</div><div class="login-sub">Um projeto é cada oferta que você roda. Escolha o nicho e dê o nome.</div>' +
+        D.projetos.map(function(p, i){
+          return '<div class="cad-proj"><select class="login-input" data-pn="'+i+'" aria-label="Nicho do projeto '+(i+1)+'"><option value="">Nicho…</option>' +
+            opcoes.map(function(n){ return '<option'+(n === p.nicho ? ' selected' : '')+'>'+esc(n)+'</option>'; }).join('') + '</select>' +
+            (p.nicho === OUTRO ? '<input class="login-input cad-outro" data-po="'+i+'" value="'+esc(p.outro)+'" placeholder="Qual nicho?" aria-label="Nome do nicho do projeto '+(i+1)+'">' : '') +
+            '<input class="login-input" data-pp=""'+i+'" value="'+esc(p.nome)+'" placeholder="Nome do projeto" aria-label="Nome do projeto '+(i+1)+'">' +
+            '<button class="cad-x" type="button" data-px="'+i+'" title="Tirar" aria-label="Tirar o projeto '+(i+1)+'"'+(D.projetos.length === 1 ? ' hidden' : '')+'>×</button></div>';
+        }).join('') +
+        '<button class="cad-mais" type="button" id="c-mais">+ Adicionar outro projeto</button>' +
+        '<div class="cad-dica" style="margin-top:0">Tráfego, checkout e pixel você liga depois, dentro de cada projeto, na aba Integrações.</div>' +
+        '<button class="login-btn" type="button" id="c-ir">Entrar no sistema →</button><div class="centro"><button class="link" type="button" id="c-volta">‹ voltar</button></div>';
+    }
+    h += '<div class="login-error" id="c-erro" role="alert">'+esc(erro || '')+'</div>';
+    if(passo === 1) h += '<div class="centro"><button class="link" type="button" id="c-login">Já tenho conta · entrar</button></div>';
+    el.innerHTML = h;
+    ligar();
+    var foco = campo ? document.getElementById({ nome:'c-nome', email:'c-email', whatsapp:'c-zap', senha:'c-senha', empresa:'c-emp' }[campo] || '') : null;
+    if(foco){ foco.classList.add('erro'); foco.focus(); }
+    else { var primeiro = el.querySelector('input,select'); if(primeiro && !erro) primeiro.focus(); }
+  }
+  function val(id){ var x = document.getElementById(id); return x ? x.value.trim() : ''; }
+  function guardar(){
+    if(passo === 1){ D.nome = val('c-nome'); D.email = val('c-email').toLowerCase(); D.whatsapp = val('c-zap'); var s = document.getElementById('c-senha'); D.senha = s ? s.value : ''; }
+    if(passo === 2) D.empresa = val('c-emp');
+    if(passo === 3) el.querySelectorAll('[data-pp]').forEach(function(x){
+      var i = +x.getAttribute('data-pp'), o = el.querySelector('[data-po="'+i+'"]');
+      D.projetos[i].nome = x.value.trim(); D.projetos[i].nicho = el.querySelector('[data-pn="'+i+'"]').value; D.projetos[i].outro = o ? o.value.trim() : D.projetos[i].outro;
+    });
+  }
+  // confere o passo antes de seguir (o servidor confere tudo de novo)
+  function conferir(){
+    if(passo === 1){
+      if(!D.nome) return ['Diga o seu nome.', 'nome'];
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(D.email)) return ['Esse e-mail não parece certo.', 'email'];
+      var z = D.whatsapp.replace(/\D/g, ''); if(z && (z.length < 10 || z.length > 13)) return ['O WhatsApp precisa ter DDD e número.', 'whatsapp'];
+      if(D.senha.length < 8) return ['A senha precisa de pelo menos 8 caracteres.', 'senha'];
+    }
+    if(passo === 2 && !D.empresa) return ['Diga o nome da empresa.', 'empresa'];
+    if(passo === 3){
+      var cheios = D.projetos.filter(function(p){ return p.nome; });
+      if(!cheios.length) return ['Dê o nome de pelo menos um projeto.'];
+      if(cheios.some(function(p){ return !p.nicho || (p.nicho === OUTRO && !p.outro); })) return ['Escolha o nicho de cada projeto.'];
+    }
+    return null;
+  }
+  function ligar(){
+    var ir = document.getElementById('c-ir');
+    el.querySelectorAll('input').forEach(function(i){ i.addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); ir.click(); } }); i.addEventListener('input', function(){ i.classList.remove('erro'); }); });
+    var v = document.getElementById('c-volta'); if(v) v.onclick = function(){ guardar(); passo--; pintar(); };
+    var lg = document.getElementById('c-login'); if(lg) lg.onclick = function(){ location.href = '/'; };
+    var m = document.getElementById('c-mais'); if(m) m.onclick = function(){ guardar(); D.projetos.push({ nicho:'', outro:'', nome:'' }); pintar(); var u = el.querySelectorAll('[data-pn]'); if(u.length) u[u.length - 1].focus(); };
+    el.querySelectorAll('[data-pn]').forEach(function(s){ s.onchange = function(){ guardar(); pintar(); }; });
+    el.querySelectorAll('[data-px]').forEach(function(b){ b.onclick = function(){ guardar(); D.projetos.splice(+b.getAttribute('data-px'), 1); pintar(); }; });
+    ir.onclick = function(){
+      guardar();
+      var e = conferir(); if(e) return pintar(e[0], e[1]);
+      if(passo < 3){ passo++; return pintar(); }
+      enviar(ir);
+    };
+  }
+  function enviar(botao){
+    botao.disabled = true; botao.textContent = 'Criando a sua conta…';
+    var projetos = D.projetos.filter(function(p){ return p.nome; }).map(function(p){ return { nicho: p.nicho === OUTRO ? p.outro : p.nicho, nome: p.nome }; });
+    fetch('/api/cadastro', { method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ c: codigo, nome: D.nome, email: D.email, whatsapp: D.whatsapp, senha: D.senha, empresa: D.empresa, projetos: projetos }) })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j || {} }; }, function(){ return { ok: false, j: {} }; }); })
+      .then(function(x){
+        if(!x.ok || !x.j.token){
+          var campo = x.j.campo || '';
+          passo = ({ nome:1, email:1, whatsapp:1, senha:1, empresa:2 })[campo] || 3;
+          return pintar(x.j.error || 'Não consegui criar a conta agora. Tente de novo.', campo);
+        }
+        entrar(x.j);
+      })
+      .catch(function(){ pintar('Sem conexão com o servidor. Confira a internet e tente de novo.'); });
+  }
+  // Entra no TMX já logado: limpa a cópia de outra empresa que esteja neste aparelho
+  // (mesma regra do app, _empresaDoLogin) e grava a sessão nova.
+  function entrar(j){
+    var PREFS = ['sl_theme','sl_sidebar_collapsed','sl_pwa_ios_dismissed','sl_notif_desktop','sl_nav_grupos','cp_cel_cols','ads_cp_larg','ads_cp_cols'];
+    try{
+      var guarda = {}; PREFS.forEach(function(k){ var v = localStorage.getItem(k); if(v !== null) guarda[k] = v; });
+      localStorage.clear();
+      try{ sessionStorage.removeItem('sl_tela'); }catch(e){}   // a última tela era da outra empresa
+      Object.keys(guarda).forEach(function(k){ localStorage.setItem(k, guarda[k]); });
+      localStorage.setItem('_seeded_v4', '1');
+      localStorage.setItem('sl_session_token', j.token);
+      localStorage.setItem('sl_auth', '1');
+      localStorage.setItem('sl_user_id', j.user.id);
+      localStorage.setItem('sl_usuarios', JSON.stringify([j.user]));
+      localStorage.setItem('sl_empresa_id', j.empresa.id);
+      localStorage.setItem('sl_empresa_base', j.empresa.base || '');
+      localStorage.setItem('sl_empresa_nome', j.empresa.nome || '');
+    }catch(e){}
+    el.innerHTML = LOGO + '<div class="cad-ok">✓ Conta criada</div><div class="login-title">Tudo pronto, '+esc(D.nome.split(' ')[0])+'!</div><div class="login-sub">Abrindo o seu TMX…</div>';
+    setTimeout(function(){ location.replace('/'); }, 700);
+  }
+
+  if(!codigo){ semConvite('Pra criar a conta você precisa do link que recebeu depois da compra.'); return; }
+  fetch('/api/cadastro/convite?c=' + encodeURIComponent(codigo))
+    .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j || {} }; }); })
+    .then(function(x){
+      if(!x.ok){ return semConvite(x.j.error || 'Esse link de cadastro não vale mais.'); }
+      NICHOS = Array.isArray(x.j.nichos) ? x.j.nichos : []; plano = x.j.plano || ''; D.email = x.j.email || '';
+      pintar();
+    })
+    .catch(function(){ semConvite('Sem conexão com o servidor. Confira a internet e abra o link de novo.'); });
+})();
+</script>
+</body>
+</html>

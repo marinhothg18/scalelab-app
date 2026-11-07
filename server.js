@@ -267,7 +267,13 @@ function _plataforma() {
       criada INTEGER, criada_por TEXT);
     CREATE TABLE IF NOT EXISTS contas (email TEXT PRIMARY KEY, empresa TEXT NOT NULL, em INTEGER);
     CREATE INDEX IF NOT EXISTS contas_emp ON contas(empresa);
+    -- convite de cadastro: o link vale uma vez e vence; só o hash do código fica guardado
+    CREATE TABLE IF NOT EXISTS convites (hash TEXT PRIMARY KEY, email TEXT, plano TEXT, obs TEXT,
+      criado INTEGER, criado_por TEXT, expira INTEGER, usado_em INTEGER, empresa TEXT);
   `);
+  for (const col of ['plano TEXT', 'origem TEXT', 'dono_email TEXT']) {
+    try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}   // já existe
+  }
   _platDb = db;
   return db;
 }
@@ -644,7 +650,7 @@ app.use(_injetarTenant);
 if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
   // plataforma (cadastro, cobrança, painel SaaS, MCP, criar empresas) fica só na TMX.
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 app.use(express.static(path.join(__dirname, 'public')));
@@ -8425,6 +8431,15 @@ function authDiretoriaInterna(req, res, next) {
 // ── EMPRESAS DA PLATAFORMA (só a Diretoria da TMX) ──
 // Nesta etapa só cria empresa de teste: o cadastro público continua fechado.
 // ══════════════════════════════════════════════
+// Põe a empresa no registro e na memória da portaria; o motor liga no primeiro pedido.
+function _registrarEmpresa({ nome, criadaPor, plano, origem, donoEmail }) {
+  let id;
+  do { id = 'e' + crypto.randomBytes(5).toString('hex').slice(0, 7); } while (_empresas.has(id) || id === EMPRESA_TMX);
+  _platPrep('INSERT INTO empresas(id, nome, status, criada, criada_por, plano, origem, dono_email) VALUES(?,?,?,?,?,?,?,?)')
+    .run(id, nome, 'ativa', Date.now(), String(criadaPor || ''), plano || null, origem || null, donoEmail || null);
+  _empresas.set(id, { id, nome, status: 'ativa' });
+  return id;
+}
 app.get('/api/plataforma/empresas', authDiretoriaInterna, (req, res) => {
   const lista = _platPrep('SELECT id, nome, status, criada FROM empresas ORDER BY criada').all().map(e => {
     const m = _motores.get(e.id);
@@ -8446,10 +8461,7 @@ app.post('/api/plataforma/empresas', authDiretoriaInterna, async (req, res) => {
     if (senha.length < 8) return res.status(400).json({ error: 'A senha precisa de pelo menos 8 caracteres.' });
     const dono = _empresaDoEmail(email);
     if (dono) return res.status(409).json({ error: 'Esse e-mail já é de uma conta ' + (dono === EMPRESA_TMX ? 'da TMX' : 'de outra empresa') + '.' });
-    let id;
-    do { id = 'e' + crypto.randomBytes(5).toString('hex').slice(0, 7); } while (_empresas.has(id) || id === EMPRESA_TMX);
-    _platPrep('INSERT INTO empresas(id, nome, status, criada, criada_por) VALUES(?,?,?,?,?)').run(id, nome, 'ativa', Date.now(), req.user.id);
-    _empresas.set(id, { id, nome, status: 'ativa' });
+    const id = _registrarEmpresa({ nome, criadaPor: req.user.id, plano: 'teste', origem: 'teste', donoEmail: email });
     const r = await _pedirAoMotor(id, 'criar-diretoria', { nome: String(u.nome || '').trim() || 'Diretoria', email, senhaHash: bcrypt.hashSync(senha, BCRYPT_ROUNDS) }, 20000);
     const db = readDB();
     audit(db, 'empresa_criada', { empresa: id, nome }, { email, motor: r && r.ok ? 'ok' : (r && r.erro) }, req.user);
@@ -8459,6 +8471,115 @@ app.post('/api/plataforma/empresas', authDiretoriaInterna, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'Não consegui criar a empresa: ' + e.message });
   }
+});
+
+// ══════════════════════════════════════════════
+// ── CADASTRO DO CLIENTE (por convite) ──
+// Fluxo aprovado em 07/11: acesso (nome, e-mail, WhatsApp, senha) → nome da empresa →
+// projetos (nicho da lista + nome) → entra no sistema. Meta, Utmify, checkout e pixel
+// ficam pra aba Integrações de cada projeto, não aqui.
+// Entrada por enquanto: um link de convite que a Diretoria da TMX gera (vale uma vez,
+// vence em dias). Quando a cobrança ligar, a venda aprovada gera o convite sozinha.
+// O cadastro aberto (/api/saas/signup) continua fechado.
+// ══════════════════════════════════════════════
+const NICHOS_CADASTRO = ['Emagrecimento', 'Diabetes', 'Memória', 'Saúde masculina', 'Próstata', 'Neuropatia e dores', 'Articulações',
+  'Visão', 'Zumbido e audição', 'Pressão e coração', 'Intestino', 'Pele e rejuvenescimento', 'Cabelo', 'Sono e ansiedade', 'Fitness',
+  'Renda extra', 'Finanças e investimentos', 'Concursos', 'Educação e idiomas', 'Relacionamento', 'Espiritualidade', 'Jogos e apostas'];
+const CONVITE_DIAS_PADRAO = 7;
+const _hashConvite = c => crypto.createHash('sha256').update(String(c || '')).digest('hex');
+function _conviteValido(codigo) {
+  if (!/^cv_[A-Za-z0-9_-]{20,80}$/.test(String(codigo || ''))) return null;
+  const c = _platPrep('SELECT * FROM convites WHERE hash=?').get(_hashConvite(codigo));
+  if (!c || c.usado_em || (c.expira && c.expira < Date.now())) return null;
+  return c;
+}
+const cadastroLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: false, legacyHeaders: false,
+  message: { error: 'Muitas tentativas. Espere um pouco e tente de novo.' } });
+
+app.post('/api/plataforma/convites', authDiretoriaInterna, (req, res) => {
+  const b = req.body || {};
+  const email = String(b.email || '').trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'E-mail inválido.' });
+  if (email && _empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX.' });
+  const dias = Math.min(30, Math.max(1, parseInt(b.dias, 10) || CONVITE_DIAS_PADRAO));
+  const codigo = 'cv_' + crypto.randomBytes(24).toString('base64url');
+  const expira = Date.now() + dias * 86400000;
+  _platPrep('INSERT INTO convites(hash, email, plano, obs, criado, criado_por, expira) VALUES(?,?,?,?,?,?,?)')
+    .run(_hashConvite(codigo), email || null, String(b.plano || 'teste').slice(0, 40), String(b.obs || '').slice(0, 200), Date.now(), req.user.id, expira);
+  const db = readDB();
+  audit(db, 'convite_criado', { email: email || null }, { dias, plano: b.plano || 'teste' }, req.user);
+  writeDB(db);
+  // o código só aparece agora: depois disso só o hash fica guardado
+  res.json({ ok: true, link: req.protocol + '://' + req.get('host') + '/cadastro?c=' + codigo, expira: new Date(expira).toISOString() });
+});
+app.get('/api/plataforma/convites', authDiretoriaInterna, (req, res) => {
+  const agora = Date.now();
+  const lista = _platPrep('SELECT email, plano, obs, criado, expira, usado_em, empresa FROM convites ORDER BY criado DESC LIMIT 200').all()
+    .map(c => Object.assign({}, c, { situacao: c.usado_em ? 'usado' : (c.expira < agora ? 'vencido' : 'esperando') }));
+  res.json({ convites: lista });
+});
+
+// A página de cadastro pergunta se o convite vale (e de qual e-mail é) antes de mostrar o formulário
+app.get('/api/cadastro/convite', cadastroLimiter, (req, res) => {
+  const c = _conviteValido(req.query.c);
+  if (!c) return res.status(404).json({ error: 'Esse link de cadastro não vale mais. Peça um novo pra quem te mandou.' });
+  res.json({ ok: true, email: c.email || '', plano: c.plano || 'teste', nichos: NICHOS_CADASTRO });
+});
+
+app.post('/api/cadastro', cadastroLimiter, async (req, res) => {
+  const b = req.body || {};
+  const nome = String(b.nome || '').trim().slice(0, 80);
+  const email = String(b.email || '').trim().toLowerCase();
+  const senha = String(b.senha || '');
+  let zap = String(b.whatsapp || '').replace(/\D/g, '');
+  if (zap && zap.length >= 10 && zap.length <= 11) zap = '55' + zap;   // número do Brasil sem o 55
+  const empresa = String(b.empresa || '').trim().slice(0, 80);
+  const projetos = (Array.isArray(b.projetos) ? b.projetos : []).slice(0, 20).map(p => ({
+    nicho: String((p && p.nicho) || '').trim().slice(0, 40), nome: String((p && p.nome) || '').trim().slice(0, 60)
+  })).filter(p => p.nome);
+  // tudo conferido antes de gastar o convite
+  if (!_conviteValido(b.c)) return res.status(404).json({ error: 'Esse link de cadastro não vale mais. Peça um novo pra quem te mandou.' });
+  if (!nome) return res.status(400).json({ error: 'Diga o seu nome.', campo: 'nome' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Esse e-mail não parece certo.', campo: 'email' });
+  if (zap && (zap.length < 12 || zap.length > 13)) return res.status(400).json({ error: 'O WhatsApp precisa ter DDD e número.', campo: 'whatsapp' });
+  if (senha.length < 8) return res.status(400).json({ error: 'A senha precisa de pelo menos 8 caracteres.', campo: 'senha' });
+  if (!empresa) return res.status(400).json({ error: 'Diga o nome da empresa.', campo: 'empresa' });
+  if (!projetos.length) return res.status(400).json({ error: 'Dê o nome de pelo menos um projeto.', campo: 'projetos' });
+  if (projetos.some(p => !p.nicho)) return res.status(400).json({ error: 'Escolha o nicho de cada projeto.', campo: 'projetos' });
+  const nomes = projetos.map(p => p.nome.toLowerCase());
+  if (new Set(nomes).size !== nomes.length) return res.status(400).json({ error: 'Dois projetos com o mesmo nome.', campo: 'projetos' });
+  if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+  // gasta o convite de uma vez só: dois envios ao mesmo tempo não criam duas empresas
+  const hash = _hashConvite(b.c);
+  const gastou = _platPrep('UPDATE convites SET usado_em=? WHERE hash=? AND usado_em IS NULL AND (expira IS NULL OR expira>=?)').run(Date.now(), hash, Date.now());
+  if (!gastou.changes) return res.status(404).json({ error: 'Esse link de cadastro não vale mais. Peça um novo pra quem te mandou.' });
+  const conv = _platPrep('SELECT plano FROM convites WHERE hash=?').get(hash) || {};
+  let id = null;
+  try {
+    id = _registrarEmpresa({ nome: empresa, criadaPor: 'cadastro', plano: conv.plano || 'teste', origem: 'convite', donoEmail: email });
+    _platPrep('UPDATE convites SET empresa=? WHERE hash=?').run(id, hash);
+    const r = await _pedirAoMotor(id, 'cadastro-inicial', {
+      usuario: { nome, email, whatsapp: zap, senhaHash: bcrypt.hashSync(senha, BCRYPT_ROUNDS) }, empresa, projetos
+    }, 20000);
+    const db = readDB();
+    audit(db, 'empresa_cadastrada', { empresa: id, nome: empresa }, { email, projetos: projetos.length, motor: r && r.ok ? 'ok' : (r && r.erro) }, { nome: 'Cadastro' });
+    writeDB(db);
+    if (!r || !r.ok) {
+      console.error('[CADASTRO] empresa', id, 'criada sem a conta:', r && r.erro);
+      return res.status(500).json({ error: 'Não consegui terminar o cadastro. A TMX já foi avisada e vai te chamar.' });
+    }
+    console.log('[CADASTRO] empresa nova', id, '(' + empresa + ') com', projetos.length, 'projeto(s)');
+    res.json({ ok: true, token: r.token, user: r.user, empresa: { id, nome: empresa, base: '/e/' + id } });
+  } catch (e) {
+    console.error('[CADASTRO] falhou:', e.message);
+    // nada da empresa foi criado: o convite volta a valer
+    if (!id) { try { _platPrep('UPDATE convites SET usado_em=NULL WHERE hash=?').run(hash); } catch (e2) {} }
+    res.status(500).json({ error: 'Não consegui terminar o cadastro. Tente de novo em instantes.' });
+  }
+});
+app.get('/cadastro', (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  res.sendFile(path.join(__dirname, 'public', 'cadastro.html'));
 });
 
 // ── Helpers de data ──
@@ -21873,6 +21994,7 @@ if (!SOU_TMX) {
     const responder = r => { try { process.send(Object.assign({ tipo: 'resposta', n: msg.n }, r)); } catch (e) {} };
     try {
       if (msg.cmd === 'criar-diretoria') return responder(_criarPrimeiraDiretoria(msg.dados || {}));
+      if (msg.cmd === 'cadastro-inicial') return responder(_cadastroInicial(msg.dados || {}));
       responder({ ok: false, erro: 'pedido desconhecido' });
     } catch (e) { responder({ ok: false, erro: e.message }); }
   });
@@ -21892,6 +22014,44 @@ function _criarPrimeiraDiretoria(d) {
   audit(db, 'empresa_primeira_diretoria', { userId: u.id, email }, null, { nome: 'Portaria' });
   writeDB(db);
   return { ok: true, userId: u.id };
+}
+
+// Cadastro do cliente: a conta (Diretoria), o nome da empresa e os projetos, numa
+// gravação só, e já devolve a sessão pra pessoa entrar sem digitar a senha de novo.
+// Os projetos nascem como o "+ Novo projeto" de Projetos: nicho em sl_nichos e
+// projeto em sl_ofertas_v2 (a Central de Arquivos cria as áreas quando o app abrir).
+function _cadastroInicial(d) {
+  const u = d.usuario || {};
+  const email = String(u.email || '').trim().toLowerCase();
+  if (!email || !u.senhaHash) return { ok: false, erro: 'faltou e-mail ou senha' };
+  const db = readDB();
+  const usuarios = db.store['sl_usuarios'] = db.store['sl_usuarios'] || [];
+  if (usuarios.some(x => String(x.email || '').toLowerCase() === email)) return { ok: false, erro: 'esse e-mail já está nesta empresa' };
+  const agora = Date.now();
+  const user = { id: 'u' + agora.toString(36) + crypto.randomBytes(3).toString('hex'), nome: String(u.nome || 'Diretoria').slice(0, 80), email,
+                 senhaHash: u.senhaHash, cargo: 'Diretoria', ativo: true, criadoEm: new Date(agora).toISOString(), _updatedAt: agora };
+  if (u.whatsapp) user.whatsapp = String(u.whatsapp);
+  usuarios.push(user);
+  const nichos = db.store['sl_nichos'] = Array.isArray(db.store['sl_nichos']) ? db.store['sl_nichos'] : [];
+  const ofertas = db.store['sl_ofertas_v2'] = Array.isArray(db.store['sl_ofertas_v2']) ? db.store['sl_ofertas_v2'] : [];
+  const nrm = s => String(s || '').trim().toLowerCase();
+  (Array.isArray(d.projetos) ? d.projetos : []).forEach((p, i) => {
+    if (!p || !p.nome) return;
+    let n = nichos.find(x => x && nrm(x.nome) === nrm(p.nicho));
+    if (!n) { n = { id: 'n' + agora + i, nome: String(p.nicho).slice(0, 40), _updatedAt: agora }; nichos.push(n); }
+    if (ofertas.some(o => o && nrm(o.nome) === nrm(p.nome))) return;
+    ofertas.push({ id: 'o' + agora + i, nome: String(p.nome).slice(0, 60), nichoId: n.id, _updatedAt: agora });
+  });
+  // o nome da empresa é o de Configurações › Nome da empresa
+  db.store['cfg'] = Object.assign({}, db.store['cfg'] || {}, { projeto: String(d.empresa || '').slice(0, 80), nome: user.nome });
+  if (!db.timestamps) db.timestamps = {};
+  ['sl_usuarios', 'sl_nichos', 'sl_ofertas_v2', 'cfg'].forEach(k => { db.timestamps[k] = now(); });
+  if (!db.sessions) db.sessions = [];
+  const token = criarSessao(db, user.id);
+  audit(db, 'cadastro_inicial', { userId: user.id, email }, { projetos: ofertas.length }, { id: user.id, nome: user.nome, cargo: 'Diretoria' });
+  writeDB(db);
+  const { senhaHash: _h, ...seguro } = user;
+  return { ok: true, token, user: seguro };
 }
 
 // O motor de uma empresa ouve só por dentro do servidor (127.0.0.1, porta livre) e

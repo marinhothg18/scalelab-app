@@ -88,6 +88,11 @@ Regras:
   Ajuda, Tour) não existem: `_modulosArquivados()` devolve todos, e em Configurações as seções com
   `soTmx` (Módulos arquivados, Acesso por API) somem. Páginas também fica só na TMX.
 - `test/multiempresa.test.js` sobe TMX + 2 empresas numa pasta temporária e prova o isolamento.
+- **Cadastro do cliente por convite** (`/cadastro?c=cv_…`, `public/cadastro.html`): a Diretoria da TMX gera o
+  link em `POST /api/plataforma/convites` (vale uma vez, vence em 7 dias, só o hash fica em `convites` no
+  `plataforma.sqlite`). `POST /api/cadastro` cria a empresa e manda o motor fazer `_cadastroInicial`: conta
+  Diretoria com WhatsApp, `cfg.projeto` = nome da empresa, nichos em `sl_nichos` e projetos em `sl_ofertas_v2`,
+  e já devolve a sessão. Meta, checkout e pixel ficam pra aba Integrações de cada projeto. `test/cadastro.test.js`.
 
 ### Data model
 
