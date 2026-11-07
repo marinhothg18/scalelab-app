@@ -13624,13 +13624,13 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
         queda.acao = { rotulo: 'Abrir Pixel e saúde', aba: 'pixel' };
       } else if (queda.para === 'pitch') {
         queda.frase = 'A VSL perde a maioria antes da oferta. Veja em que minuto eles saem.';
-        queda.acao = { rotulo: 'Ver onde saem', aba: 'atencao' };
+        queda.acao = { rotulo: 'Ver a retenção da VSL', aba: 'vsl' };
       } else if (queda.para === 'checkout') {
-        queda.frase = 'Viram a oferta e não clicaram em comprar. Confira cliques mortos no botão e no card do plano.';
-        queda.acao = { rotulo: 'Ver cliques', aba: 'atencao' };
+        queda.frase = 'Viram a oferta e não clicaram em comprar. Confira o botão e o card do plano, e veja quem viu a oferta.';
+        queda.acao = { rotulo: 'Ver quem viu a oferta', aba: 'leads', filtro: { pitch: 'sim' } };
       } else if (queda.para === 'play') {
         queda.frase = 'Chegam na página e não dão play. Confira a capa do vídeo, o autoplay e o tempo de carregamento.';
-        queda.acao = { rotulo: 'Ver onde saem', aba: 'atencao' };
+        queda.acao = { rotulo: 'Ver a retenção da VSL', aba: 'vsl' };
       } else if (queda.para === 'abriram') {
         queda.frase = 'Clicam no botão e o checkout não registra. Pode ser checkout lento ou o link do botão sem o código do TMX.';
         queda.acao = { rotulo: 'Abrir Pixel e saúde', aba: 'pixel' };
