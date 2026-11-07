@@ -91,6 +91,18 @@ iframe.previa.pc { width: 100%; }
 .janela { background: var(--bg2); border: 1px solid var(--line2); border-radius: 14px; width: min(620px, 100%); max-height: 90vh; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .acoes { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 a { color: var(--azul); }
+.chat { display: flex; flex-direction: column; gap: 10px; }
+.chat-msgs { display: flex; flex-direction: column; gap: 8px; max-height: 460px; min-height: 160px; overflow-y: auto; padding: 4px 2px; }
+.bolha { max-width: 92%; padding: 9px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bolha.eu { align-self: flex-end; background: var(--azul); color: #fff; border-bottom-right-radius: 4px; }
+.bolha.claude { align-self: flex-start; background: var(--bg3); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.bolha.acao { align-self: flex-start; color: var(--tx3); font-size: 12px; padding: 2px 4px; }
+.bolha.erro { align-self: flex-start; background: var(--erro-s); }
+.chat-sugs { display: flex; gap: 6px; flex-wrap: wrap; }
+.sug { border: 1px solid var(--line); background: var(--bg3); border-radius: 99px; padding: 5px 11px; font-size: 12px; }
+.sug:hover { border-color: var(--azul); }
+.chat-in { display: flex; gap: 8px; align-items: flex-end; }
+.chat-in textarea { font-family: var(--f); font-size: 13px; min-height: 44px; }
 </style>
 </head>
 <body>
@@ -167,10 +179,29 @@ a { color: var(--azul); }
   </div>
   <div class="editor">
     <div class="cartao">
-      <h3>Campos</h3>
-      <div class="campos" id="e-campos"></div>
-      <div id="e-msg"></div>
-      <div class="acoes"><button class="btn pri" id="bt-salvar-versao">Salvar versão</button></div>
+      <div class="abas" role="group" aria-label="Como editar" id="e-modo" style="align-self:flex-start">
+        <button data-m="claude" aria-pressed="true">Pedir pro Claude</button>
+        <button data-m="campos" aria-pressed="false">Campos</button>
+      </div>
+      <div id="m-claude" class="chat">
+        <div id="chat-msgs" class="chat-msgs" aria-live="polite"></div>
+        <div class="chat-sugs" id="chat-sugs">
+          <button class="sug" data-texto="Troca a VSL pela ">Trocar a VSL…</button>
+          <button class="sug" data-texto="Troca o checkout por ">Trocar o checkout…</button>
+          <button class="sug" data-envia="Confere a página e me diz o que falta pra publicar.">Conferir a página</button>
+        </div>
+        <form id="chat-form" class="chat-in">
+          <textarea class="campo" id="chat-in" rows="2" placeholder="Ex.: troca a VSL pela 697 v3 e o checkout por https://checkout.payt.com.br/…"></textarea>
+          <button class="btn pri" type="submit" id="chat-enviar">Enviar</button>
+        </form>
+        <div class="linha"><span class="ajuda" id="chat-custo"></span><button class="btn mini" id="chat-nova" type="button">Nova conversa</button></div>
+        <p class="ajuda">O Claude muda os campos e cria versões, mas não publica: publicar é o botão, com as conferências. Usa a chave da Anthropic do TMX.</p>
+      </div>
+      <div id="m-campos" hidden>
+        <div class="campos" id="e-campos"></div>
+        <div id="e-msg"></div>
+        <div class="acoes"><button class="btn pri" id="bt-salvar-versao">Salvar versão</button></div>
+      </div>
     </div>
     <div class="dir">
       <div class="cartao">
@@ -340,6 +371,7 @@ a { color: var(--azul); }
     return api('GET', '/api/pg/paginas/' + id).then(function (r) {
       if (r.s !== 200) { $('e-campos').innerHTML = '<div class="msg erro">' + esc(r.j.error) + '</div>'; return; }
       atual = r.j; pintarEditor(); previa(); conferir();
+      if (chatDe !== id) carregarChat(id);
     });
   }
   function valorCampo(f, c) {
@@ -439,7 +471,61 @@ a { color: var(--azul); }
     });
   }
 
-  carregar();
+  // ── chat com o Claude
+  var chatDe = null, trabalhando = false;
+  var dinheiro = function (v) { return 'US$ ' + (v || 0).toFixed(v < 0.1 ? 3 : 2).replace('.', ','); };
+  function pintarChat(l, extra) {
+    var html = l.map(function (m) { return '<div class="bolha ' + esc(m.de) + '">' + esc(m.texto) + '</div>'; }).join('');
+    if (!l.length) html = '<div class="bolha claude">Me diga o que mudar nesta página: trocar a VSL, o checkout, o preço, a parcela ou o título. Eu mudo os campos, crio a versão e confiro. Publicar fica com você.</div>';
+    $('chat-msgs').innerHTML = html + (extra || '');
+    $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
+  }
+  function custo(uso, pedido) {
+    $('chat-custo').textContent = (pedido != null ? 'Este pedido: ' + dinheiro(pedido) + ' · ' : '') + 'Chat desta página: ' + dinheiro(uso && uso.custoUS);
+  }
+  function carregarChat(id) {
+    chatDe = id; pintarChat([]); $('chat-custo').textContent = '';
+    api('GET', '/api/pg/paginas/' + id + '/chat').then(function (r) {
+      if (r.s !== 200 || chatDe !== id) return;
+      pintarChat(r.j.mensagens); custo(r.j.uso);
+      $('chat-in').disabled = $('chat-enviar').disabled = !r.j.temChave;
+      if (!r.j.temChave) pintarChat(r.j.mensagens, '<div class="bolha erro">O TMX está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.</div>');
+    });
+  }
+  function enviar(texto) {
+    texto = String(texto || '').trim(); if (!texto || trabalhando || !atual) return;
+    var id = atual.pagina.id, antes = [].slice.call($('chat-msgs').querySelectorAll('.bolha')).map(function (b) { return b.outerHTML; }).join('');
+    trabalhando = true; $('chat-enviar').disabled = true; $('chat-in').value = '';
+    $('chat-msgs').innerHTML = antes + '<div class="bolha eu">' + esc(texto) + '</div><div class="bolha acao">O Claude está trabalhando…</div>';
+    $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
+    api('POST', '/api/pg/paginas/' + id + '/chat', { mensagem: texto }).then(function (r) {
+      trabalhando = false; $('chat-enviar').disabled = false;
+      if (chatDe !== id) return;
+      if (r.s !== 200) { $('chat-msgs').innerHTML = antes + '<div class="bolha eu">' + esc(texto) + '</div><div class="bolha erro">' + esc(r.j.error || 'Não deu certo.') + '</div>'; $('chat-in').value = texto; return; }
+      pintarChat(r.j.mensagens); custo(r.j.uso, r.j.custoPedidoUS);
+      if (r.j.mudou) abrir(id);
+    });
+  }
+  $('chat-form').addEventListener('submit', function (e) { e.preventDefault(); enviar($('chat-in').value); });
+  $('chat-in').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(this.value); } });
+  $('chat-sugs').addEventListener('click', function (e) {
+    var b = e.target.closest('.sug'); if (!b) return;
+    if (b.getAttribute('data-envia')) return enviar(b.getAttribute('data-envia'));
+    $('chat-in').value = b.getAttribute('data-texto'); $('chat-in').focus();
+  });
+  $('chat-nova').addEventListener('click', function () {
+    if (!atual || trabalhando) return;
+    confirmar('Começar uma conversa nova?', 'O Claude esquece o que foi dito nesta conversa. As versões da página continuam.', 'Começar', function () {
+      api('POST', '/api/pg/paginas/' + atual.pagina.id + '/chat/nova').then(function () { chatDe = null; carregarChat(atual.pagina.id); });
+    });
+  });
+  umSo($('e-modo'), function (b) { var m = b.getAttribute('data-m'); $('m-claude').hidden = m !== 'claude'; $('m-campos').hidden = m !== 'campos'; });
+
+  carregar().then(function () {
+    // #pg_… no endereço abre direto o editor da página
+    var h = (location.hash || '').slice(1);
+    if (/^pg_[a-f0-9]{12}$/.test(h)) abrir(h);
+  });
 })();
 </script>
 </body>
