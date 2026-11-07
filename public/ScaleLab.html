@@ -45583,8 +45583,8 @@ function adsTmxPintar(){
 // ═════════════════════════════════════════════════════════════════════
 // AUDITORIA IA · análise densa do projeto (todas as campanhas + criativos
 // + retenção VSL + Utmify × TMX + histórico das análises anteriores).
-// A chave da Anthropic é por cliente: a primeira vez pede e salva em
-// sl_ia_config. Reusa a mesma infra do agente WhatsApp (ai_key/ai_provider).
+// A chave da Anthropic é a mesma do agente do WhatsApp e do editor de páginas,
+// guardada no servidor (/api/ia/chave-status só diz se ela existe).
 // ═════════════════════════════════════════════════════════════════════
 window.abrirAuditoriaIA = function(opts){
   opts = opts || {};
@@ -45594,18 +45594,15 @@ window.abrirAuditoriaIA = function(opts){
   }
   var mod = document.getElementById('iaAudModal');
   mod.classList.add('aberto');
-  // Tem chave da IA configurada pra este cliente?
-  var cfg = {};
-  try { cfg = JSON.parse(localStorage.getItem('sl_ia_config')||'{}'); } catch(e){}
-  if(!cfg.ai_key){
-    _iaAudPintarConfig(mod);
-    return;
-  }
-  // Tem chave: mostra o loader e dispara o render do relatório
+  // A chave é a mesma do agente do WhatsApp e do editor de páginas, guardada no servidor
+  // (decisão do Thiago em 07/11: "pode usar a mesma chave das outras"). A tela só pergunta se ela existe.
   _iaAudPintarLoader(mod);
-  // Aqui futuramente vai chamar o endpoint /api/ia/auditoria-projeto.
-  // Por enquanto pinta o relatório com dados mockados pra validação visual.
-  setTimeout(function(){ _iaAudPintarRelatorio(mod, opts); }, 900);
+  fetch('/api/ia/chave-status').then(function(r){ return r.ok ? r.json() : {}; }).catch(function(){ return {}; }).then(function(st){
+    if(!st.ligada){ _iaAudPintarConfig(mod); return; }
+    // Aqui futuramente vai chamar o endpoint /api/ia/auditoria-projeto.
+    // Por enquanto pinta o relatório com dados mockados pra validação visual.
+    setTimeout(function(){ _iaAudPintarRelatorio(mod, opts); }, 900);
+  });
 };
 
 window.fecharAuditoriaIA = function(){
@@ -45614,33 +45611,24 @@ window.fecharAuditoriaIA = function(){
 
 function _iaAudPintarConfig(mod){
   var card = mod.querySelector('.ia-card');
+  var dono = !!(currentUser && currentUser.cargo === 'Diretoria');
   card.innerHTML = ''+
     '<div class="ia-head">'+
       '<div class="ia-head-ic">🔑</div>'+
-      '<div><div class="ia-head-tit">Configurar IA · Primeira vez</div>'+
-      '<div class="ia-head-sub">Cole sua chave Anthropic pra habilitar as análises</div></div>'+
+      '<div><div class="ia-head-tit">Falta a chave da IA</div>'+
+      '<div class="ia-head-sub">A Auditoria usa a mesma chave do agente do WhatsApp e do editor de páginas</div></div>'+
       '<div class="ia-head-ac"><button class="ia-mh-btn" onclick="fecharAuditoriaIA()">✕</button></div>'+
     '</div>'+
     '<div class="ia-cfg">'+
-      '<h3>Chave da API Claude (Anthropic)</h3>'+
-      '<p>Cada cliente usa a própria chave. O custo médio por auditoria completa fica entre <b>R$ 0,10 e R$ 0,20</b>. A chave é salva só neste navegador.</p>'+
-      '<input id="iaAudInput" type="password" placeholder="sk-ant-api03-..." autocomplete="off">'+
-      '<div class="ia-cfg-info">ℹ️ Você pode trocar essa chave depois em Configurações. Mesma infra que o agente WhatsApp já usa.</div>'+
+      '<h3>A chave da Anthropic ainda não está cadastrada</h3>'+
+      '<p>'+(dono ? 'Cadastre uma vez em Configurações › Conexões › WhatsApp e IA. Ela fica guardada no servidor e vale pra Auditoria, pro agente do WhatsApp e pro editor de páginas.'
+                  : 'Peça pra Diretoria cadastrar a chave da Anthropic em Configurações. Ela vale pra Auditoria, pro agente do WhatsApp e pro editor de páginas.')+'</p>'+
       '<div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end;">'+
-        '<button onclick="fecharAuditoriaIA()" style="background:transparent;border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Cancelar</button>'+
-        '<button onclick="_iaAudSalvarChave()" style="background:linear-gradient(135deg,#3E1493,#1B9CFA);color:#fff;border:none;padding:10px 20px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Salvar e analisar</button>'+
+        '<button onclick="fecharAuditoriaIA()" style="background:transparent;border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Fechar</button>'+
+        (dono ? '<button onclick="fecharAuditoriaIA();try{goTo(\'configuracoes\');setTimeout(function(){cfgIr(\'conexoes\')},150)}catch(e){}" style="background:linear-gradient(135deg,#3E1493,#1B9CFA);color:#fff;border:none;padding:10px 20px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Abrir Conexões</button>' : '')+
       '</div>'+
     '</div>';
-  setTimeout(function(){ var i = document.getElementById('iaAudInput'); if(i) i.focus(); }, 50);
 }
-
-window._iaAudSalvarChave = function(){
-  var i = document.getElementById('iaAudInput');
-  var v = (i && i.value || '').trim();
-  if(!v.startsWith('sk-ant-')){ alert('A chave da Anthropic começa com "sk-ant-". Confere se colou certo.'); return; }
-  try { localStorage.setItem('sl_ia_config', JSON.stringify({ ai_key: v, ai_provider: 'claude', salvo_em: Date.now() })); } catch(e){}
-  abrirAuditoriaIA();
-};
 
 function _iaAudPintarLoader(mod){
   var card = mod.querySelector('.ia-card');
@@ -45686,6 +45674,9 @@ function _iaAudPintarRelatorio(mod, opts){
       '</div>'+
     '</div>'+
     '<div class="ia-body">'+
+      // enquanto a análise de verdade não está ligada, o relatório é uma prévia: deixa isso claro
+      '<div style="background:rgba(202,138,4,.10);border:1px solid rgba(202,138,4,.45);color:var(--text);border-radius:10px;padding:10px 14px;font-size:12.5px;line-height:1.5;margin-bottom:12px">'+
+        '<b>Prévia do relatório.</b> Fora o bloco Utmify × TMX, os números e as ações abaixo são de exemplo: a análise com os seus dados ainda está sendo ligada. Não pause nem escale nada por eles.</div>'+
 
       // RESUMO EXECUTIVO
       '<div class="ia-res">'+

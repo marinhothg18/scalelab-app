@@ -118,6 +118,11 @@ test('o servidor guarda RH, Financeiro e Meu Protocolo pelo cargo', async () => 
 
   const t = (await chamar('GET', '/api/store', { token: tmx })).dados;
   assert.ok(t.sl_protocolo && Array.isArray(t.sl_fin_contas), 'o Thiago vê tudo, inclusive o Meu Protocolo');
+  // a Auditoria IA só pergunta se a chave da IA existe; a chave nunca vai pro navegador
+  assert.strictEqual((await chamar('GET', '/api/ia/chave-status')).status, 401);
+  const st = await chamar('GET', '/api/ia/chave-status', { token: copy });
+  assert.strictEqual(st.status, 200);
+  assert.deepStrictEqual(Object.keys(st.dados), ['ligada']);
   const up = (await chamar('GET', '/api/updates/0', { token: socio })).dados;
   assert.ok(up.data && !('sl_fin_contas' in up.data) && 'sl_rh_colaboradores' in up.data, 'a sincronização segue a mesma regra');
 });

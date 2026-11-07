@@ -8106,6 +8106,12 @@ function _getAIKey() {
   return process.env.ANTHROPIC_API_KEY || process.env.AI_KEY || cfg.ai_key || '';
 }
 
+// A Auditoria IA (Análise de tráfego) usa a mesma chave do agente do WhatsApp e do editor de
+// páginas, guardada no servidor: a tela só pergunta se ela existe, a chave nunca vai pro navegador.
+app.get('/api/ia/chave-status', authUsuario, (req, res) => {
+  res.json({ ligada: !!_getAIKey() });
+});
+
 async function _iaAnalisarDemanda(texto, db) {
   const cfg = (db.store['sl_whatsapp_config']) || {};
   const aiKey = _getAIKey();
