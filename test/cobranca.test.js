@@ -250,4 +250,20 @@ test('cobrança pela Pagar.me', async (t) => {
     const c = await chamar('GET', '/api/cadastro/convite?c=' + new URL(s1.dados.convite).searchParams.get('c'));
     assert.strictEqual(c.dados.email, 'edu@agencia.com', 'o convite ganhou o e-mail da compra');
   });
+
+  await t.test('link de compra direto /assinar/<plano> leva pro checkout; robô de prévia não abre pedido', async () => {
+    const ir = (caminho, ua) => fetch(base + caminho, { redirect: 'manual', headers: ua ? { 'User-Agent': ua } : {} });
+    const antes = pg.links.length;
+    const r = await ir('/assinar/escala?ciclo=anual');
+    assert.strictEqual(r.status, 302);
+    assert.match(r.headers.get('location'), /^https:\/\/payment-link\.pagar\.me\/pl_/);
+    assert.strictEqual(pg.links.length, antes + 1);
+    assert.strictEqual(pg.planos.find(x => x.id === pg.links[antes].cart_settings.recurrences[0].plan_id).interval, 'year');
+    for (const [caminho, ua] of [['/assinar/escala', 'WhatsApp/2.23.20 A'], ['/assinar/iniciante'], ['/assinar/nada']]) {
+      const x = await ir(caminho, ua);
+      assert.strictEqual(x.status, 302);
+      assert.strictEqual(x.headers.get('location'), '/planos#planos', caminho);
+    }
+    assert.strictEqual(pg.links.length, antes + 1, 'prévia, grátis e plano inventado não criam link');
+  });
 });

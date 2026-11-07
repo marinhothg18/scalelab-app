@@ -697,7 +697,7 @@ if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
   // plataforma (cadastro, cobrança, painel SaaS, criar empresas) fica só na TMX.
   // O MCP e a API v1 existem em cada empresa, com os tokens e os dados dela (07/11/2026).
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/assinar', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 // Sessões de suporte abertas neste motor: hash do token -> { modo, expira }. Fica na memória
@@ -8856,8 +8856,17 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
   }
 
   if (!PAGARME_API_KEY) return res.status(503).json({ error: 'A compra pelo site ainda não está ligada. Fale com a TMX pelo WhatsApp.' });
+  const r = await _abrirCheckout(p, ciclo, { nome, email, whatsapp: zap, ref });
+  if (!r.ok) return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' });
+  res.json({ ok: true, url: r.url, ref: r.ref });
+});
+
+// Cria o link de assinatura na Pagar.me e o pedido nosso. Os dados da pessoa são opcionais (a Pagar.me pede no checkout).
+async function _abrirCheckout(p, ciclo, c = {}) {
+  const ref = c.ref || ('as_' + crypto.randomBytes(18).toString('base64url'));
+  const agora = Date.now();
   const pl = await _planoPagarme(p, ciclo);
-  if (!pl.ok) { console.error('[COBRANÇA] plano', p.id, ciclo, ':', pl.erro); return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' }); }
+  if (!pl.ok) { console.error('[COBRANÇA] plano', p.id, ciclo, ':', pl.erro); return { ok: false }; }
   const corpo = {
     name: ('TMX ' + p.nome + ' ' + ciclo).slice(0, 64), type: 'subscription', max_paid_sessions: 1, expires_in: 3 * 24 * 60,
     payment_settings: { accepted_payment_methods: ['credit_card'], credit_card_settings: { operation_type: 'auth_and_capture' } },
@@ -8866,18 +8875,28 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
     order_code: ref
   };
   // com os dados da pessoa (o código do cliente é o nosso pedido); se a Pagar.me recusar esse pedaço, vai sem
-  let r = email ? await _pagarme('POST', '/paymentlinks', Object.assign({}, corpo, { customer_settings: { customer: { name: nome, email, type: 'individual', code: ref } } })) : null;
+  let r = c.email ? await _pagarme('POST', '/paymentlinks', Object.assign({}, corpo, { customer_settings: { customer: { name: c.nome, email: c.email, type: 'individual', code: ref } } })) : null;
   if (!r || (!r.ok && r.status >= 400 && r.status < 500)) {
     if (r) console.warn('[COBRANÇA] link com cliente recusado (' + r.status + '): ' + r.erro);
     r = await _pagarme('POST', '/paymentlinks', corpo);
   }
-  if (!r.ok || !r.dados || !r.dados.url) {
-    console.error('[COBRANÇA] link de pagamento:', r.status, r.erro);
-    return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' });
-  }
+  if (!r.ok || !r.dados || !r.dados.url) { console.error('[COBRANÇA] link de pagamento:', r.status, r.erro); return { ok: false }; }
   _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, link_id, link_url, atualizado) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
-    .run(ref, p.id, ciclo, nome || null, email || null, zap || null, agora, 'aguardando', String(r.dados.id || ''), r.dados.url, agora);
-  res.json({ ok: true, url: r.dados.url, ref });
+    .run(ref, p.id, ciclo, c.nome || null, c.email || null, c.whatsapp || null, agora, 'aguardando', String(r.dados.id || ''), r.dados.url, agora);
+  return { ok: true, url: r.dados.url, ref };
+}
+
+// Link de compra direto, pra anúncio ou WhatsApp: /assinar/<plano> e /assinar/<plano>?ciclo=anual levam
+// direto pro checkout da Pagar.me. O plano grátis e qualquer falha caem na página de planos.
+// Robôs de prévia de link (WhatsApp, Facebook, Telegram…) veem a página de planos e não abrem pedido.
+const _ROBO_PREVIA = /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|googlebot|bingbot|skypeuripreview|embedly|pinterest|preview/i;
+app.get('/assinar/:plano', assinarLimiter, async (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  const p = PLANOS_TMX.find(x => x.venda && x.id === String(req.params.plano || '').toLowerCase());
+  if (!p) return res.redirect(302, '/planos#planos');
+  if (p.gratis || !PAGARME_API_KEY || _ROBO_PREVIA.test(String(req.get('user-agent') || ''))) return res.redirect(302, '/planos#planos');
+  const r = await _abrirCheckout(p, req.query.ciclo === 'anual' ? 'anual' : 'mensal');
+  res.redirect(302, r.ok ? r.url : '/planos#planos');
 });
 
 // A tela de volta da Pagar.me (/planos/obrigado?r=…) pergunta aqui até o pagamento cair
