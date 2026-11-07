@@ -108,7 +108,7 @@
       if(v.area) meta.push('<span class="chip area">'+esc(v.area)+'</span>');
       if(v.modelo) meta.push('<span class="chip">'+esc(v.modelo)+'</span>');
       if(v.salario) meta.push('<span class="chip">💰 '+esc(v.salario)+'</span>');
-      return '<a href="/vaga/'+encodeURIComponent(v.slug)+'" class="card-vaga">'+
+      return '<a href="'+(location.pathname.match(/^\/e\/[a-z][a-z0-9]{5,15}(?=\/)/) || [''])[0]+'/vaga/'+encodeURIComponent(v.slug)+'" class="card-vaga">'+
         '<div class="meta-top">'+meta.join('')+'</div>'+
         '<h2>'+esc(v.titulo)+'</h2>'+
         (v.descricao ? '<div class="descricao">'+esc(v.descricao)+(v.descricao.length>=280?'…':'')+'</div>' : '')+
@@ -118,7 +118,8 @@
     root.innerHTML = html;
   }
 
-  fetch('/api/vagas/publicas')
+  var BASE = (location.pathname.match(/^\/e\/[a-z][a-z0-9]{5,15}(?=\/)/) || [''])[0];   // página de uma empresa: /e/<código>/...
+  fetch(BASE + '/api/vagas/publicas')
     .then(function(r){ return r.json(); })
     .then(render)
     .catch(function(){

@@ -210,6 +210,7 @@
   }
 
   var SLUG = getSlug();
+  var BASE = (location.pathname.match(/^\/e\/[a-z][a-z0-9]{5,15}(?=\/)/) || [''])[0];   // página de uma empresa: /e/<código>/...
   var VAGA = null;
 
   function esc(s){
@@ -234,7 +235,7 @@
   // Carrega dados da vaga
   function carregar(){
     if(!SLUG){ erroEstado('URL inválida', 'Não foi possível identificar a vaga.'); return; }
-    fetch('/api/vagas/publica/' + encodeURIComponent(SLUG))
+    fetch(BASE + '/api/vagas/publica/' + encodeURIComponent(SLUG))
       .then(function(r){
         if(!r.ok) return r.json().then(function(j){ throw new Error(j.error || 'Vaga não encontrada'); });
         return r.json();
@@ -449,7 +450,7 @@
     btn.disabled = true;
     btn.textContent = 'Enviando...';
 
-    fetch('/api/vagas/publica/' + encodeURIComponent(SLUG) + '/aplicar', {
+    fetch(BASE + '/api/vagas/publica/' + encodeURIComponent(SLUG) + '/aplicar', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ nome:nome, email:email, instagram:instagram, whatsapp:whatsapp, portfolio:portfolio, respostasCustom: respostas })

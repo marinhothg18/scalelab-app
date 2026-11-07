@@ -103,6 +103,7 @@ function getSlug(){
 }
 
 var SLUG = getSlug();
+var BASE = (location.pathname.match(/^\/e\/[a-z][a-z0-9]{5,15}(?=\/)/) || [''])[0];   // página de uma empresa: /e/<código>/...
 var TESTE = null;
 var startTime = Date.now();
 var tipoEntregaAtivo = 'texto';
@@ -111,7 +112,7 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 
 function carregar(){
   if(!SLUG){ erro('URL inválida'); return; }
-  fetch('/api/teste/publica/' + encodeURIComponent(SLUG))
+  fetch(BASE + '/api/teste/publica/' + encodeURIComponent(SLUG))
     .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||'Não encontrado'); }); return r.json(); })
     .then(function(t){
       TESTE = t;
@@ -248,7 +249,7 @@ function enviarEntrega(){
 
   var tempoSeg = Math.round((Date.now() - startTime) / 1000);
 
-  fetch('/api/teste/publica/' + encodeURIComponent(SLUG) + '/enviar', {
+  fetch(BASE + '/api/teste/publica/' + encodeURIComponent(SLUG) + '/enviar', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ nome:nome, email:email, entregaTexto:entTexto, entregaLink:entLink, tempoGastoSegundos:tempoSeg })

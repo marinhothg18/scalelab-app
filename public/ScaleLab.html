@@ -5021,7 +5021,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <div id="wa-test-status" style="margin-top:10px;font-size:12px;"></div>
           <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--text2);">
             <b>📌 Webhook para receber mensagens:</b><br>
-            <code style="background:var(--bg);padding:2px 6px;border-radius:4px;word-break:break-all;">https://app.centralaxcend.com/api/whatsapp/webhook</code><br>
+            <code style="background:var(--bg);padding:2px 6px;border-radius:4px;word-break:break-all;"><span class="tmx-url-publica" data-caminho="/api/whatsapp/webhook">https://app.centraltmx.com/api/whatsapp/webhook</span></code><br>
             <span style="font-size:11px;">Cole essa URL no campo "Webhook" da sua instância Z-API (eventos de recebimento de mensagem).</span>
           </div>
         </div>
@@ -6990,6 +6990,46 @@ a.fn-btn{text-decoration:none;display:inline-block}
 <script>
 // ── BACKEND SYNC ──
 const API_BASE = window.location.protocol === 'file:' ? 'https://app.centralaxcend.com' : '';
+// ── MULTIEMPRESA (07/11/2026) ──
+// O login diz de qual empresa é a conta. Aparelho sem marca é da TMX: quem já usava
+// continua igual. Endereço público (pixel, quiz, links, vagas) de outra empresa leva
+// /e/<código> na frente, que é como a portaria do servidor sabe pra quem entregar.
+function tmxEmpresa(){ try{ return localStorage.getItem('sl_empresa_id') || 'tmx'; }catch(e){ return 'tmx'; } }
+function tmxBase(){ try{ return localStorage.getItem('sl_empresa_base') || ''; }catch(e){ return ''; } }
+function tmxEhTmx(){ return tmxEmpresa() === 'tmx'; }
+function urlPublica(caminho){ return location.origin + tmxBase() + caminho; }
+// Textos fixos da tela que mostram um endereço público (ex.: webhook do WhatsApp)
+function _preencherUrlsPublicas(){
+  try{ document.querySelectorAll('.tmx-url-publica').forEach(function(el){ el.textContent = urlPublica(el.getAttribute('data-caminho') || ''); }); }catch(e){}
+}
+// Preferências do aparelho que sobrevivem à troca de empresa (tema, menu, colunas)
+var _PREFS_APARELHO = ['sl_theme','sl_sidebar_collapsed','sl_pwa_ios_dismissed','sl_notif_desktop','sl_nav_grupos','cp_cel_cols','ads_cp_larg','ads_cp_cols'];
+// Trocou de empresa neste aparelho: apaga a cópia local da outra. Sem isso, o envio
+// depois do login (pushAllToServer) subiria os dados de uma empresa para a outra.
+function _limparCopiaLocal(){
+  var guarda = {};
+  try{ _PREFS_APARELHO.forEach(function(k){ var v = localStorage.getItem(k); if(v !== null) guarda[k] = v; }); }catch(e){}
+  try{ localStorage.clear(); }catch(e){}
+  // o aviso de venda deste aparelho era da outra empresa (assinado com a chave dela)
+  try{ if(navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(function(r){ return r && r.pushManager.getSubscription(); }).then(function(sub){ if(sub) sub.unsubscribe(); }).catch(function(){}); }catch(e){}
+  try{
+    Object.keys(guarda).forEach(function(k){ localStorage.setItem(k, guarda[k]); });
+    localStorage.setItem('_seeded_v4', '1');   // não recria os dados de exemplo
+  }catch(e){}
+}
+// Guarda de qual empresa é a conta. Devolve true quando o aparelho trocou de empresa
+// (a cópia local já foi apagada e a página precisa recarregar do zero).
+function _empresaDoLogin(emp){
+  var id = (emp && emp.id) || 'tmx', base = (emp && emp.base) || '';
+  var trocou = id !== tmxEmpresa();
+  if(trocou) _limparCopiaLocal();
+  try{
+    localStorage.setItem('sl_empresa_id', id);
+    localStorage.setItem('sl_empresa_base', base);
+    localStorage.setItem('sl_empresa_nome', (emp && emp.nome) || '');
+  }catch(e){}
+  return trocou;
+}
 const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checklists','msgs','sl_chats','cfg','criativos','swipes','metricas','roi_ofertas','equipe','pastas','flows','sl_notifs','sl_backlogs','sl_colaboradores','sl_contingencia','sl_ct_nichos','sl_ct_testes','tasks_lixeira','rituais','rt_api_key','ad_inv_manual','valores_cultura','adlib','arquivos','cri_status','edu','ofertas','remessas','roi_nichos','wpp','sl_arq_projetos','sl_arq_lixeira','sl_projetos_analise','sl_lixeira','sl_auditlog','sl_lembretes_config','sl_relatorio_config','sl_relatorios_semanais','sl_relatorio_diario_config','sl_whatsapp_config','sl_vagas','sl_candidatos','sl_saas_tenants','sl_saas_config','sl_saas_faturas','sl_rh_colaboradores','sl_rh_feedbacks','sl_rh_ferias','sl_rh_onboarding','sl_rh_offboarding','sl_rh_folha','sl_rh_treinamentos','sl_rh_enps','sl_teste_entregas','sl_fin_contas','sl_fin_categorias','sl_fin_lancamentos','sl_fin_recorrentes','sl_fin_nfs','sl_fin_ofx','sl_fin_impostos','sl_spy_auto','sl_spy_auto_nichos','sl_spy_master','sl_integracoes_utmify','sl_integracoes_utmify_historico','sl_permissoes_roles','sl_ia_copy','sl_protocolo','sl_modulos_arquivados','sl_funis','sl_redirecionadores','sl_vsl_metas','sl_vsl_ativas','sl_vsl_grupos','sl_vsl_lead','sl_quizzes','sl_vsl_projetos','sl_projetos_ocultos'];   // sl_vturb fica só no servidor: guarda token
 // ── AUTENTICAÇÃO EM TODAS AS CHAMADAS DA API ──
 // As rotas de sync passaram a exigir sessão no servidor. Em vez de editar os ~80
@@ -7908,14 +7948,16 @@ function sPurgeLixeira(lixeiraId, cb){
 })();
 
 // Seed nichos/ofertas/checklists independently (safe to run always - each has its own null-guard)
-if(!localStorage.getItem('sl_nichos')){
+// Nichos e ofertas de exemplo só na TMX: numa empresa nova virariam projetos falsos
+// ("Protocolo 21 Dias") criados sozinhos na Central de Arquivos.
+if(!localStorage.getItem('sl_nichos') && tmxEhTmx()){
   localStorage.setItem('sl_nichos', JSON.stringify([
     {id:'n1', nome:'Emagrecimento'},
     {id:'n2', nome:'Fitness'},
     {id:'n3', nome:'Saúde'}
   ]));
 }
-if(!localStorage.getItem('sl_ofertas_v2')){
+if(!localStorage.getItem('sl_ofertas_v2') && tmxEhTmx()){
   localStorage.setItem('sl_ofertas_v2', JSON.stringify([
     {id:'o1', nome:'Protocolo 21 Dias', nichoId:'n1'},
     {id:'o2', nome:'Detox Express', nichoId:'n1'},
@@ -8063,6 +8105,7 @@ function goTo(id){
     // Páginas restritas à Diretoria: esconder do menu não basta — sem esse guard
     // qualquer um abre por link antigo, aba velha, busca interna ou console.
     if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
+    if(id === 'protocolo' && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existe
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
     if(_mArq && !_ehDir) id = 'dashboard';
   }catch(e){}
@@ -10426,7 +10469,7 @@ function cdBlocoHTML(b,i){
   var t=b.texto||'';
   if(b.tipo==='pagina'){ var _ns=cdGet('cd_notas',[]); var _sub=_ns.filter(function(x){return x.id===b.ref;})[0]; var _tt=_sub?cdEsc(_sub.titulo||'Sem título'):'(subpágina removida)'; return '<div style="display:flex;gap:8px;align-items:center;margin:5px 0;">'+ctrl+'<div onclick="cdAbrir(\''+(b.ref||'')+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'" style="flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;border:1px solid var(--border);transition:background .12s;"><span style="font-size:17px;">📄</span><span style="font-size:15px;font-weight:600;color:var(--text);">'+_tt+'</span><span style="margin-left:auto;color:var(--text3);">›</span></div></div>'; }
   if(b.tipo==='arquivo'){ var _ai=/pdf/i.test(b.mime||'')?'📕':(/image|png|jpe?g|gif|webp/i.test(b.mime||'')?'🖼️':(/zip|rar|7z/i.test(b.mime||'')?'🗜️':(/sheet|excel|csv/i.test(b.mime||'')?'📊':(/word|document/i.test(b.mime||'')?'📄':'📎')))); return '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;">'+ctrl+'<div style="flex:1;display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--bg3);min-width:0;"><span style="font-size:22px;flex-shrink:0;">'+_ai+'</span><div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:var(--text);word-break:break-word;">'+cdEsc(b.nome||'arquivo')+'</div><div style="font-size:11px;color:var(--text3);">'+cdFmtTam(b.tamanho)+'</div></div><button data-aid="'+cdEsc(b.arqId||'')+'" data-nome="'+cdEsc(b.nome||'arquivo')+'" onclick="cdBaixarArquivo(this.getAttribute(\'data-aid\'),this.getAttribute(\'data-nome\'))" style="background:var(--accent-grad);border:none;color:#fff;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">⬇ Baixar</button></div></div>'; }
-  if(b.tipo==='imagem'){ var _isr=b.arqId?(API_BASE+'/api/cd/img/'+encodeURIComponent(b.arqId)):(b._imgData||''); return '<div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;">'+ctrl+'<img src="'+_isr+'" alt="'+cdEsc(b.nome||'')+'" loading="lazy" style="max-width:100%;border-radius:10px;border:1px solid var(--border);display:block;">'+'</div>'; }
+  if(b.tipo==='imagem'){ var _isr=b.arqId?(API_BASE+tmxBase()+'/api/cd/img/'+encodeURIComponent(b.arqId)):(b._imgData||''); return '<div style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;">'+ctrl+'<img src="'+_isr+'" alt="'+cdEsc(b.nome||'')+'" loading="lazy" style="max-width:100%;border-radius:10px;border:1px solid var(--border);display:block;">'+'</div>'; }
   if(b.tipo==='mapa'){ var _mh=Number(b.h)||340, _mw=Number(b.w)||0; return '<div style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;">'+ctrl+'<div style="flex:1;min-width:0;"><div class="mm-cx" data-mm="'+i+'" style="height:'+_mh+'px;'+(_mw?'width:'+_mw+'px;':'')+'"></div><div class="mm-pe"><span>Duplo clique escreve · arraste o bloco pra onde quiser · Tab abre um ramo</span><span class="mm-esp"></span><button onclick="cdMapaVirar('+i+')">'+((b.mapa&&b.mapa.layout==='arvore')?'⇵ Árvore':'⇄ Lateral')+'</button><button onclick="cdMapaArrumar('+i+')">✥ Arrumar</button><button onclick="cdMapaAltura('+i+')">'+(_mh>500?'▽ Diminuir':'△ Aumentar')+'</button></div></div></div>'; }
   if(b.tipo==='h1') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:16px 0 4px;">'+ctrl+'<div '+ce+' data-ph="Título 1" style="outline:none;flex:1;font-size:26px;font-weight:800;line-height:1.2;color:var(--text);">'+t+'</div></div>';
   if(b.tipo==='h2') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:14px 0 3px;">'+ctrl+'<div '+ce+' data-ph="Título 2" style="outline:none;flex:1;font-size:21px;font-weight:700;line-height:1.25;color:var(--text);">'+t+'</div></div>';
@@ -12160,7 +12203,7 @@ function _vagasSlugUnico(titulo, excetoId){
 
 function _vagasPublicUrl(slug){
   if(!slug) return '';
-  return location.origin + '/vaga/' + encodeURIComponent(slug);
+  return urlPublica('/vaga/') + encodeURIComponent(slug);
 }
 
 // ─── MARKDOWN LEVE → HTML (negrito, itálico, links, quebras) ───
@@ -12430,12 +12473,12 @@ function _vagasToggleTeste(){
   document.getElementById('vag-teste-config').style.display = ativo ? 'block' : 'none';
 }
 function vagasCopiarLinkTeste(slug){
-  var url = location.origin + '/teste/' + slug;
+  var url = urlPublica('/teste/') + slug;
   try{ navigator.clipboard.writeText(url); alert('Link do teste copiado:\n'+url); }
   catch(e){ prompt('Copie o link do teste:', url); }
 }
 function vagasAbrirLinkTeste(slug){
-  window.open(location.origin + '/teste/' + slug, '_blank');
+  window.open(urlPublica('/teste/') + slug, '_blank');
 }
 
 // ─── BUILDER DE PERGUNTAS (estilo Google Forms) ───
@@ -28507,7 +28550,17 @@ async function tentarLogin(){
     });
     if(res.ok){
       const data = await res.json();
+      // conta de outra empresa neste aparelho: limpa a cópia local e recarrega do zero
+      var trocouEmpresa = _empresaDoLogin(data.empresa);
       if(data.token) localStorage.setItem('sl_session_token', data.token);
+      if(trocouEmpresa && data.user){
+        localStorage.setItem('sl_auth', '1');
+        localStorage.setItem('sl_user_id', data.user.id);
+        // a cópia foi apagada: deixa só a própria conta pra sessão abrir no recarregar
+        localStorage.setItem('sl_usuarios', JSON.stringify([data.user]));
+        location.reload();
+        return;
+      }
       _loginOk(data.user);
     } else if(res.status === 429){
       // O bloqueio é POR CONTA, não do sistema — usa a mensagem do servidor pra
@@ -28640,7 +28693,7 @@ function _applyNavPermissions(cargo){
   setDisp('nav-gestao', isDir);
   setDisp('nav-financeiro', isDir);
   // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
-  setDisp('nav-protocolo', isDir);
+  setDisp('nav-protocolo', isDir && tmxEhTmx());   // Meu Protocolo é só da TMX, fica fora do produto
 
   // Infra — Diretoria, Sócio e Infra
   setDisp('nav-infra', isDir || isSocio || isInfra);
@@ -31904,7 +31957,7 @@ function lkCampo(k, v){
   var p = document.getElementById('lk-previa'); if(p) p.textContent = lkPrevia();
 }
 function lkSlug(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
-function lkPrevia(){ return 'https://'+(lkEd.dominio || location.host)+'/l/'+(lkEd.slug || '…'); }
+function lkPrevia(){ return 'https://'+(lkEd.dominio || (location.host + tmxBase()))+'/l/'+(lkEd.slug || '…'); }
 function lkModelo(i){ var m = LK_MODELOS[i]; if(!m || !lkEd) return; lkEd.utm = Object.assign({}, lkEd.utm, m[1]); lcPintar(); }
 function lkForm(){
   var e = lkEd, u = e.utm || {};
@@ -36456,7 +36509,7 @@ function fnPixel(){
   // Uma linha. O codigo de verdade mora em /px.js, no nosso servidor: assim da
   // pra corrigir o pixel sem ninguem recolar nada, e a pagina nao carrega um
   // comentario dizendo o nome do funil pra quem abrir o codigo fonte.
-  cx.textContent = '<script src="'+location.origin+'/px.js" data-f="'+f.id+'" data-e="'+e.id+'" async><\/script>';
+  cx.textContent = '<script src="'+urlPublica('/px.js')+'" data-f="'+f.id+'" data-e="'+e.id+'" async><\/script>';
 }
 
 // Botao de compra: o gateway nao aceita o nosso pixel, mas o clique acontece
@@ -37091,7 +37144,7 @@ function abAddVar(){
 function abUrlDoTeste(r){
   var d = String((r && r.dominio) || '').trim()
             .replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  return d ? ('https://' + d + '/r/' + r.slug) : (location.origin + '/r/' + r.slug);
+  return d ? ('https://' + d + '/r/' + r.slug) : urlPublica('/r/' + r.slug);
 }
 function abMudarDominio(v){
   var r = fnRedAtual(); if(!r) return;
@@ -39395,7 +39448,7 @@ function pcPintar(){
 }
 // Pixel: um código por funil, o mesmo em todas as páginas dele. O servidor
 // reconhece a página pelo endereço cadastrado no Mapa (a URL ganha do data-e).
-function pcCodigoFunil(f){ return '<script src="'+location.origin+'/px.js" data-f="'+f.id+'" async><\/script>'; }
+function pcCodigoFunil(f){ return '<script src="'+urlPublica('/px.js')+'" data-f="'+f.id+'" async><\/script>'; }
 function pcPixelCard(){
   var fs = fnDoProjeto();
   var corpo = fs.length ? fs.map(function(f, i){
@@ -39898,7 +39951,7 @@ function psCarregar(forcar){
 }
 function psCodigo(f, etapaId){
   var e = fnAcha(f, etapaId) || (f.etapas||[]).filter(function(x){ return x.tipo !== 'checkout' && x.tipo !== 'fonte'; })[0] || (f.etapas||[])[0];
-  return '<script src="'+location.origin+'/px.js" data-f="'+f.id+'"'+(e ? ' data-e="'+e.id+'"' : '')+' async><\/script>';
+  return '<script src="'+urlPublica('/px.js')+'" data-f="'+f.id+'"'+(e ? ' data-e="'+e.id+'"' : '')+' async><\/script>';
 }
 function psPintar(){
   var el = document.getElementById('ps-corpo'), d = psDados, f = fnAtual(); if(!el || !d || !f) return;
@@ -44800,6 +44853,7 @@ window.refreshGlobal = async function(silencioso){
 };
 
 window.onload=()=>{
+  _preencherUrlsPublicas();
   // ── AUTO-LOGIN VIA ?token= (vindo do signup público) ──
   try {
     var urlParams = new URLSearchParams(window.location.search);
@@ -44810,6 +44864,8 @@ window.onload=()=>{
         headers: {'Authorization': 'Bearer '+tokenUrl}
       }).then(function(r){ return r.json(); }).then(function(data){
         if(data && data.user){
+          // limpa a cópia local se for de outra empresa; a própria conta fica pra sessão abrir
+          if(_empresaDoLogin(data.empresa)) localStorage.setItem('sl_usuarios', JSON.stringify([data.user]));
           localStorage.setItem('sl_session_token', tokenUrl);
           localStorage.setItem('sl_auth', '1');
           localStorage.setItem('sl_user_id', data.user.id);
@@ -45666,7 +45722,7 @@ function rotuloPeriodo(p){
   }
   return { hoje:'hoje', ontem:'ontem', '7d':'nos últimos 7 dias', '30d':'nos últimos 30 dias' }[p] || '';
 }
-function hostLink(q){ var d = String((q && q.dominio) || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, ''); return d || location.host; }
+function hostLink(q){ var d = String((q && q.dominio) || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, ''); return d || (location.host + tmxBase()); }
 function linkDo(q){ return 'https://' + hostLink(q) + '/q/' + (q ? q.slug : ''); }
 function token(){ try { return localStorage.getItem('sl_session_token') || ''; } catch (e) { return ''; } }
 
