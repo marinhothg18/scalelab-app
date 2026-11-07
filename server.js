@@ -3959,6 +3959,7 @@ function _plataformaDoPayload(p) {
   if (typeof p.event === 'string' && p.data && typeof p.data === 'object' && 'event_type' in p) return 'appmax';
   if (p.webhook_event_type || (p.order_id && (p.Product || p.Customer || p.Commissions || p.TrackingParameters)) ||
       (p.checkout_link && /kiwify/i.test(String(p.checkout_link)))) return 'kiwify';
+  if (typeof p.event === 'string' && /^(PURCHASE_|SUBSCRIPTION_|SWITCH_PLAN)/.test(p.event) && p.data && typeof p.data === 'object') return 'hotmart';
   if (p.link || p.transaction) return 'payt';
   return 'outra';
 }
@@ -4139,11 +4140,59 @@ function _vendaKiwify(p) {
     created_at: p.created_at || '', paid_at: p.approved_date || ''
   };
 }
+// Hotmart (webhook versão 2.0.0): { event, data: { product, buyer, purchase, commissions, subscription } }.
+// Valores em reais (não em centavos). O rastreio volta em purchase.origin: só sck, src e xcod (a Hotmart
+// não devolve UTM), e o pixel do TMX põe o id da pessoa no sck do link do checkout. Abandono de carrinho
+// vem sem purchase. Cancelamento de assinatura e troca de plano não são venda.
+const _HOTMART_EVENTO = {
+  PURCHASE_APPROVED: 'paid', PURCHASE_COMPLETE: 'paid', PURCHASE_CANCELED: 'canceled', PURCHASE_REFUNDED: 'refunded',
+  PURCHASE_CHARGEBACK: 'chargeback', PURCHASE_BILLET_PRINTED: 'waiting_payment', PURCHASE_DELAYED: 'waiting_payment',
+  PURCHASE_EXPIRED: 'canceled', PURCHASE_OUT_OF_SHOPPING_CART: 'lost_cart'
+};
+const _HOTMART_STATUS = { APPROVED: 'paid', COMPLETE: 'paid', CANCELED: 'canceled', CANCELLED: 'canceled', REFUNDED: 'refunded',
+  CHARGEBACK: 'chargeback', BILLET_PRINTED: 'waiting_payment', WAITING_PAYMENT: 'waiting_payment', DELAYED: 'waiting_payment',
+  EXPIRED: 'canceled', OVERDUE: 'waiting_payment' };
+function _vendaHotmart(p) {
+  const ev = String(p.event || '').toUpperCase();
+  const d = p.data || {};
+  const b = d.buyer || {}, pr = d.product || {}, pu = d.purchase || {};
+  const iso = t => (t == null || t === '') ? '' : (isNaN(Number(t)) ? String(t) : new Date(Number(t)).toISOString());
+  const cliente = { name: b.name || '', email: b.email || '', phone: b.checkout_phone || b.phone || '', document: b.document || '' };
+  const o = _minusculas(pu.origin || {});
+  const rastreio = { utm_source: '', utm_medium: '', utm_campaign: '', utm_content: '', utm_term: '', sck: o.sck || '', src: o.src || '' };
+  if (ev === 'PURCHASE_OUT_OF_SHOPPING_CART') {
+    return { orderId: 'hotmart-carrinho:' + String(b.email || b.checkout_phone || p.id || Date.now()), status: 'lost_cart', valor: null,
+      products: [{ name: pr.name || '' }], customer: cliente, trackingParameters: rastreio, tmx_vid: o.tmx_vid || '',
+      created_at: iso(p.creation_date) };
+  }
+  if (!pu.transaction) return null;                            // teste de conexão, assinatura, troca de plano
+  const status = _HOTMART_EVENTO[ev] || _HOTMART_STATUS[String(pu.status || '').toUpperCase()] || '';
+  if (!status) return null;
+  const preco = (pu.price && pu.price.value != null) ? pu.price : ((pu.original_offer_price && pu.original_offer_price.value != null) ? pu.original_offer_price : (pu.full_price || {}));
+  const produtor = (Array.isArray(d.commissions) ? d.commissions : []).find(c => String(c.source || '').toUpperCase() === 'PRODUCER');
+  const tipo = String((pu.payment && pu.payment.type) || '').toUpperCase();
+  const sub = d.subscription || {}, plano = sub.plan || {};
+  return {
+    orderId: 'hotmart:' + String(pu.transaction), status,
+    valor: preco.value != null ? Number(preco.value) : null,
+    valor_liquido: produtor && produtor.value != null ? Number(produtor.value) : null,
+    currency: preco.currency_value || 'BRL',
+    products: [{ name: pr.name || '' }], plan_name: plano.name || '',
+    customer: cliente,
+    payment_method: /PIX/.test(tipo) ? 'pix' : (/BILLET|BOLETO/.test(tipo) ? 'boleto' : (/CREDIT|CARD/.test(tipo) ? 'credit_card' : tipo.toLowerCase())),
+    trackingParameters: rastreio, tmx_vid: o.tmx_vid || '',
+    subscription: (sub.subscriber && sub.subscriber.code) ? { id: sub.subscriber.code, status: sub.status || '', charges: Number(pu.recurrence_number || 0),
+                                                            plan_name: plano.name || '', periodicity: '', started_at: '' } : undefined,
+    subscription_id: (sub.subscriber && sub.subscriber.code) || '',
+    created_at: iso(pu.order_date || p.creation_date), paid_at: iso(pu.approved_date)
+  };
+}
 function _adaptarVenda(p, plataforma, req) {
   try {
     if (plataforma === 'hubla') return _vendaHubla(p || {}, req);
     if (plataforma === 'appmax') return _vendaAppmax(p || {});
     if (plataforma === 'kiwify') return _vendaKiwify(p || {});
+    if (plataforma === 'hotmart') return _vendaHotmart(p || {});
   } catch (e) { console.error('[VENDAS] ' + plataforma + ' não traduziu:', e.message); return null; }
   return p;
 }
@@ -4152,13 +4201,13 @@ function _adaptarVenda(p, plataforma, req) {
 // A URL sem plataforma (a que a Payt já usa) continua valendo e descobre a
 // plataforma pelo formato do que chegou. Cada plataforma é traduzida pro
 // formato comum antes de qualquer conta, então o resto do sistema não muda.
-const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax', 'kiwify'];
+const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax', 'kiwify', 'hotmart'];
 // Bloco de pagamento do mapa com "Integração" escolhida: conta só o que é
 // daquela plataforma — a venda pelo campo plataforma do pedido, o clique de
 // compra pelo host pra onde foi. Com Payt e Hubla no mesmo funil (teste de
 // checkout), cada bloco mostra o seu. Hotmart, Eduzz etc. não têm webhook
 // aqui: escolher um deles não filtra nada.
-const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i], ['kiwify', /kiwify/i]];
+const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i], ['kiwify', /kiwify/i], ['hotmart', /hotmart/i]];
 // Página (host/caminho) que é checkout: o nome da plataforma só vale no domínio
 // (pay.hub.la, checkout.payt...). No caminho não: /697hubla é página de venda,
 // e era tratada como checkout. As palavras genéricas valem no endereço todo.
@@ -7202,13 +7251,12 @@ app.get('/api/updates/:since', authUsuario, (req, res) => {
   const db = readDB();
   const bypass = req.query._super === '1' && _isSuperAdmin(req);
   const isInterno = req.tenantId === TENANT_INTERNO_ID;
-  const soDiretoria = _ehDiretoria(req);
   const data = {};
   Object.entries(db.timestamps || {}).forEach(([k, ts]) => {
     if (ts > since) {
       // Mesma regra do GET /api/store: segredo nunca sai; sensível só pra Diretoria.
       if (KEYS_SERVIDOR.has(k)) return;
-      if (KEYS_DIRETORIA.has(k) && !soDiretoria) return;
+      if (!_podeChave(req, k)) return;
       let valor = db.store[k];
       if (!bypass) {
         // Chaves da plataforma: só pro interno
@@ -7274,7 +7322,7 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   // Chave restrita: só Diretoria escreve. Bloquear a escrita é tão importante
   // quanto a leitura — sem isso um cliente com cópia velha em cache poderia
   // sobrescrever RH/financeiro/protocolo com dados desatualizados.
-  if (KEYS_DIRETORIA.has(key) && !_ehDiretoria(req)) {
+  if (!_podeChave(req, key)) {
     return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   }
   // conexão bancária só muda pela tela de Integrações (testa e cifra a credencial)
@@ -8347,13 +8395,27 @@ function _lixeiraParaQuemPede(lista, ehDiretoria) {
     .map(e => (e && e.data && _semSenhaNoItem(e.data) !== e.data) ? Object.assign({}, e, { data: _semSenhaNoItem(e.data) }) : e);
 }
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
-// Remove do payload as chaves restritas quando quem pede não é Diretoria.
+// Acessos por cargo (decisão do Thiago em 07/11/2026): o Sócio vê tudo menos o Financeiro, então o
+// RH e os candidatos valem pra ele também. Financeiro, chaves e configurações continuam só da Diretoria.
+const KEYS_SOCIO_TAMBEM = new Set(['sl_rh_colaboradores', 'sl_rh_feedbacks', 'sl_rh_ferias', 'sl_rh_onboarding',
+  'sl_rh_offboarding', 'sl_rh_folha', 'sl_rh_treinamentos', 'sl_rh_enps', 'sl_candidatos']);
+// Meu Protocolo é o painel pessoal do Thiago: só a conta dele, e só na TMX
+// a conta do Thiago na TMX é a u1 (a primeira, fixa); o e-mail fica de reserva
+const PROTOCOLO_DONO_ID = process.env.PROTOCOLO_DONO_ID || 'u1';
+const PROTOCOLO_DONO_EMAIL = String(process.env.PROTOCOLO_DONO_EMAIL || 'thiago@axcend.com').toLowerCase();
+function _podeChave(req, k) {
+  if (!KEYS_DIRETORIA.has(k)) return true;
+  const u = req.user || {};
+  if (k === 'sl_protocolo') return SOU_TMX && u.cargo === 'Diretoria' && (u.id === PROTOCOLO_DONO_ID || String(u.email || '').toLowerCase() === PROTOCOLO_DONO_EMAIL);
+  if (u.cargo === 'Diretoria') return true;
+  return u.cargo === 'Sócio' && KEYS_SOCIO_TAMBEM.has(k);
+}
+// Remove do payload o que é segredo e o que o cargo de quem pede não pode ver.
 function _filtrarKeysPorCargo(obj, req) {
-  const soDir = _ehDiretoria(req);
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
     if (KEYS_SERVIDOR.has(k)) continue;              // segredo: nunca sai, nem pra Diretoria
-    if (!soDir && KEYS_DIRETORIA.has(k)) continue;   // dado sensível: só Diretoria
+    if (!_podeChave(req, k)) continue;               // dado sensível: pelo cargo
     out[k] = v;
   }
   return out;
