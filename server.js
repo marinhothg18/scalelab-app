@@ -8921,6 +8921,33 @@ app.post('/api/lembretes/rodar', authDiretoria, (req, res) => {
 // ══════════════════════════════════════════════
 // RELATÓRIO SEMANAL AUTOMÁTICO
 // ══════════════════════════════════════════════
+// Números dos relatórios pela mesma regra do Financeiro (07/11/2026): faturamento =
+// vendas pagas do TMX (sem estorno e sem teste); gasto = o que a Utmify trouxe das
+// campanhas. Antes os relatórios somavam o Controle de ROI antigo (roi_ofertas),
+// que ninguém preenche mais: os 31 semanais saíram com ROAS 0 e lucro R$ 0.
+function _relNumeros(db, de, ate) {
+  let inv = 0, ret = 0, vendas = 0;
+  const porProj = {};
+  try {
+    if (!_pessoas()) return { inv, ret, vendas, porProj };
+    const fctx = _finCtx(db);
+    const P = n => porProj[n] || (porProj[n] = { nome: n, inv: 0, ret: 0, lucro: 0 });
+    _q('SELECT valor, produto, plano, plataforma, funil, camp, cred_camp FROM pedidos WHERE pago=1 AND estorno=0 AND dia BETWEEN ? AND ?').all(de, ate).forEach(p => {
+      if (_finTeste(p)) return;
+      const v = Number(p.valor) || 0; ret += v; vendas++;
+      P(fctx.projetoDe(p)).ret += v;
+    });
+    const contaDash = _campContaDash();
+    _q('SELECT projeto, conta, SUM(gasto) g FROM ' + _campDiaUnica('c.dia BETWEEN ? AND ?') + ' GROUP BY projeto, conta').all(de, ate).forEach(r => {
+      const g = Number(r.g) || 0; inv += g;
+      const dash = r.projeto || contaDash[r.conta] || '';
+      P(fctx.canon(fctx.projDoDash[dash] || 'Sem projeto')).inv += g;
+    });
+    Object.values(porProj).forEach(x => { x.lucro = x.ret - x.inv; });
+  } catch (e) { console.warn('[RELATORIO] números:', e.message); }
+  return { inv, ret, vendas, porProj };
+}
+
 function _gerarRelatorioSemanal(forcado) {
   try {
     const db = readDB();
@@ -8931,11 +8958,12 @@ function _gerarRelatorioSemanal(forcado) {
 
     if (!forcado) {
       if (!ativo) return { ok: false, motivo: 'desativado' };
-      const agora = new Date();
-      if (agora.getDay() !== diaSemana) return { ok: false, motivo: 'dia_errado' };
-      if (agora.getHours() !== hora) return { ok: false, motivo: 'hora_errada' };
+      // dia e hora de Brasília: o servidor roda em UTC e o das 18h saía às 15h
+      const br = new Date(Date.now() - 3 * 3600000);
+      if (br.getUTCDay() !== diaSemana) return { ok: false, motivo: 'dia_errado' };
+      if (br.getUTCHours() !== hora) return { ok: false, motivo: 'hora_errada' };
       // Evita duplicar: se já rodou hoje, pula
-      const hojeStr = agora.toISOString().slice(0,10);
+      const hojeStr = br.toISOString().slice(0,10);
       const existentes = db.store['sl_relatorios_semanais'] || [];
       if (existentes.some(r => r.geradoEm && r.geradoEm.slice(0,10) === hojeStr)) {
         return { ok: false, motivo: 'ja_rodou_hoje' };
@@ -8944,8 +8972,8 @@ function _gerarRelatorioSemanal(forcado) {
 
     const agora = new Date();
     const iniSem = new Date(agora.getTime() - 7*24*60*60*1000);
-    const fmt = d => d.toISOString().slice(0,10);
-    const periodo_ini = fmt(iniSem), periodo_fim = fmt(agora);
+    // os 7 dias de Brasília que terminam hoje
+    const periodo_ini = _diaBR(agora.getTime() - 6*24*60*60*1000), periodo_fim = _diaBR(agora.getTime());
 
     // Dados: tasks, criativos, rituais, roi, alertas
     const tasks = (db.store.tasks || []).filter(t => t && !t.arquivado);
@@ -8953,30 +8981,16 @@ function _gerarRelatorioSemanal(forcado) {
     const roiOfertas = db.store['roi_ofertas'] || [];
     const auditLog = db.store['sl_auditlog'] || [];
 
-    // KPIs ROI (soma dias na semana)
-    let inv = 0, ret = 0, leads = 0, vendas = 0;
-    const ofertasSemana = {};
-    roiOfertas.forEach(o => {
-      (o.dias || []).forEach(d => {
-        if (!d || !d.data) return;
-        if (d.data < periodo_ini || d.data > periodo_fim) return;
-        const dInv = Number(d.investido) || 0;
-        const dRet = Number(d.retorno) || 0;
-        inv += dInv; ret += dRet;
-        leads += Number(d.leads) || 0;
-        vendas += Number(d.vendas) || 0;
-        if (!ofertasSemana[o.id]) ofertasSemana[o.id] = { nome: o.nome, inv: 0, ret: 0, lucro: 0 };
-        ofertasSemana[o.id].inv += dInv;
-        ofertasSemana[o.id].ret += dRet;
-        ofertasSemana[o.id].lucro = ofertasSemana[o.id].ret - ofertasSemana[o.id].inv;
-      });
-    });
+    // KPIs da semana: vendas do TMX e gasto da Utmify (ver _relNumeros)
+    const num = _relNumeros(db, periodo_ini, periodo_fim);
+    const inv = num.inv, ret = num.ret, vendas = num.vendas, leads = 0;
     const lucro = ret - inv;
     const roas = inv > 0 ? ret / inv : 0;
-    const cpa = leads > 0 ? inv / leads : 0;
+    const cpa = vendas > 0 ? inv / vendas : 0;
 
-    // Top 5 ofertas por lucro
-    const topOfertas = Object.values(ofertasSemana)
+    // Top 5 projetos por lucro (o campo segue "ofertas_top" pra tela antiga ler)
+    const topOfertas = Object.values(num.porProj)
+      .filter(x => x.inv || x.ret)
       .sort((a, b) => b.lucro - a.lucro)
       .slice(0, 5);
 
@@ -9155,11 +9169,13 @@ function _gerarRelatorioDiario(forcado) {
     const hora = typeof cfg.hora === 'number' ? cfg.hora : 18;
 
     const agora = new Date();
-    const hojeStr = agora.toISOString().slice(0,10);
+    // dia e hora de Brasília: o servidor roda em UTC e o das 18h saía às 15h
+    const br = new Date(agora.getTime() - 3 * 3600000);
+    const hojeStr = br.toISOString().slice(0,10);
 
     if (!forcado) {
       if (!ativo) return { ok: false, motivo: 'desativado' };
-      if (agora.getHours() !== hora) return { ok: false, motivo: 'hora_errada' };
+      if (br.getUTCHours() !== hora) return { ok: false, motivo: 'hora_errada' };
       // Evita mandar 2x no mesmo dia
       const notifs = db.store['sl_notifs'] || [];
       if (notifs.some(n => n.dedupKey && n.dedupKey.startsWith(`rel-diario:${hojeStr}:`))) {
@@ -9187,7 +9203,7 @@ function _gerarRelatorioDiario(forcado) {
     };
 
     // Concluídas hoje (usando _updatedAt)
-    const inicioDoDia = new Date(hojeStr + 'T00:00:00').getTime();
+    const inicioDoDia = new Date(hojeStr + 'T00:00:00-03:00').getTime();
     const fimDoDia = inicioDoDia + 24*60*60*1000 - 1;
     const concluidasHoje = tasks.filter(t => {
       if (t.status !== 'CONCLUIDO' && t.status !== 'Concluída') return false;
@@ -9213,16 +9229,9 @@ function _gerarRelatorioDiario(forcado) {
       return !t.data || t.data > hojeStr;
     });
 
-    // ROI do dia (somando dias com data == hoje)
-    let invHoje = 0, retHoje = 0;
-    roiOfertas.forEach(o => {
-      (o.dias || []).forEach(d => {
-        if (d && d.data === hojeStr) {
-          invHoje += Number(d.investido) || 0;
-          retHoje += Number(d.retorno) || 0;
-        }
-      });
-    });
+    // ROI do dia: vendas do TMX e gasto da Utmify (ver _relNumeros)
+    const numHoje = _relNumeros(db, hojeStr, hojeStr);
+    const invHoje = numHoje.inv, retHoje = numHoje.ret;
     const lucroHoje = retHoje - invHoje;
     const roasHoje = invHoje > 0 ? retHoje / invHoje : 0;
 
