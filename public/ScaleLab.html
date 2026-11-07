@@ -508,6 +508,10 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .toggle::after { content:''; position:absolute; width:14px; height:14px; background:#fff; border-radius:50%; top:2px; left:2px; transition:left .2s; }
 .toggle.on::after { left:18px; }
 .modal-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:16px; }
+/* Nova Demanda: título e botões com respiro, sem encostar na borda da janela (07/11/2026) */
+#modal-task .modal-header { padding:18px 22px; margin:0; border-bottom:1px solid var(--border); }
+#modal-task .modal-title { font-size:17px; }
+#modal-task .modal-footer { padding:14px 22px; margin:0; border-top:1px solid var(--border); }
 
 /* EMPTY */
 .empty { text-align:center; padding:56px 24px; color:var(--text2); }
@@ -1932,7 +1936,7 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .v2-prob b{display:block;font-size:13.5px} .v2-prob span{font-size:12px;color:var(--text2);line-height:1.5}
 .v2-code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12.5px;line-height:1.6;background:var(--bg3);border:1px solid var(--v2-linha);border-radius:10px;padding:12px 14px;word-break:break-all;margin:10px 0}
 .v2-ov{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9990;display:flex;align-items:flex-start;justify-content:center;padding:28px 16px;overflow-y:auto}
-.v2-mod{background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.v2-mod{margin:auto;background:var(--bg);border:1px solid var(--v2-linha);border-radius:16px;width:100%;max-width:1180px;padding:20px 22px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
 .v2-mod.p{max-width:620px}
 /* ── Financeiro: "plataforma" com menu próprio, no layout do Malva e nas cores do TMX ── */
 .fi-wrap{display:grid;grid-template-columns:236px minmax(0,1fr);gap:22px;align-items:start}
@@ -2347,6 +2351,12 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .dz-campo input:focus,.dz-campo textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(27,156,250,.16)}
 .dz-campo i{display:block;font-style:normal;font-size:11px;color:var(--text3);margin-top:5px;line-height:1.45}
 .dz-caixa-pe{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+/* caixas no lugar do alert/confirm/prompt: por cima de qualquer outra janela */
+.dz-caixa.tmx-caixa{z-index:100500}
+.tmx-caixa .dz-caixa-corpo{max-width:440px;max-height:calc(100vh - 40px);overflow-y:auto}
+.tmx-caixa .dz-caixa-t,.tmx-caixa .dz-caixa-s{white-space:pre-wrap;overflow-wrap:anywhere}
+.tmx-caixa .dz-caixa-s{font-size:13px}
+.tmx-caixa .fn-btn{min-width:84px}
 .fn-btn.perigo{background:var(--red);border-color:var(--red);color:#fff}
 .fn-btn.perigo:hover{filter:brightness(1.08)}
 @media(max-width:520px){ .dz-caixa-corpo{max-width:100%} }
@@ -3819,7 +3829,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
          Clicar recarrega ignorando o cache. -->
     <div id="sel-versao" onclick="location.reload(true)"
          title="Versão carregada nesta aba. Clique para recarregar."></div>
-    <div class="nav-item nav-item-sair" onclick="if(confirm('Sair da conta?'))logout()">
+    <div class="nav-item nav-item-sair" onclick="tmxConfirmar('Sair da conta?').then(function(ok){ if(ok) logout(); })">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Sair
     </div>
@@ -6645,17 +6655,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
     <div class="modal-task-body-wrap" style="display:flex;flex:1;overflow:hidden;min-height:0;">
       <!-- FORMULÁRIO -->
       <div class="modal-body" style="flex:1;display:flex;flex-direction:column;gap:14px;overflow-y:auto;padding:20px;">
-        <!-- IA: Campo de descrição livre que preenche os campos automaticamente -->
-        <div id="t-ia-block" class="fg form-full" style="background:linear-gradient(135deg, rgba(62,20,147,.10), rgba(27,156,250,.06));border:1px solid rgba(62,20,147,.25);border-radius:12px;padding:14px;margin-bottom:4px;">
-          <label class="fl" style="display:flex;align-items:center;gap:8px;color:#3E1493;">✨ Preencher com IA <span style="font-size:10px;font-weight:600;background:rgba(62,20,147,.15);padding:2px 8px;border-radius:10px;">Opcional</span></label>
-          <textarea id="t-ia-prompt" class="ft" rows="2" placeholder="Descreva o que precisa em linguagem natural — ex: 'editar UGC nova da Maria pra TGLV10 com legenda e CTA forte no final'" style="width:100%;resize:vertical;min-height:50px;font-size:13px;"></textarea>
-          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-            <button type="button" id="t-ia-btn" onclick="iaAnalisarDemandaModal()" style="background:linear-gradient(135deg,#3E1493,#1B9CFA);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">🤖 <span id="t-ia-btn-label">Preencher com IA</span></button>
-            <span id="t-ia-status" style="font-size:11px;color:var(--text2);"></span>
-          </div>
-          <div id="t-ia-resultado" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;font-size:12px;color:var(--text);"></div>
-        </div>
-        <div style="text-align:center;font-size:11px;color:var(--text2);margin:-8px 0;">— ou preencha manualmente —</div>
         <!-- Título -->
         <div class="fg form-full">
           <label class="fl">Título *</label>
@@ -6711,7 +6710,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
           </select>
         </div>
         <!-- Datas + Horas (data e hora juntas, lado a lado) -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;">
           <div class="fg">
             <label class="fl">Início (data + hora)</label>
             <div style="display:flex;gap:6px;">
@@ -7094,6 +7093,74 @@ function _avisoTela(msg){
     document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 3200);
   }catch(e){}
 }
+// ── Caixas no meio da tela (07/11/2026) ──
+// O alert/confirm/prompt do navegador aparece grudado no topo, com "app.centraltmx.com diz".
+// Estas abrem no meio, no visual do app (o mesmo da caixa do Rascunho, .dz-caixa).
+// confirm() e prompt() viraram await tmxConfirmar(...) e await tmxPerguntar(...); o alert()
+// do app inteiro passa por tmxAviso. Uma de cada vez: a segunda espera a primeira fechar.
+var _tmxFila = Promise.resolve();
+function _tmxCaixa(tipo, msg, padrao){
+  var p = _tmxFila.then(function(){ return new Promise(function(ok){ _tmxAbrirCaixa(tipo, msg, padrao, ok); }); });
+  _tmxFila = p.catch(function(){});
+  return p;
+}
+function _tmxAbrirCaixa(tipo, msg, padrao, responder){
+  var texto = msg == null ? '' : String(msg);
+  // o primeiro parágrafo vira o título; o resto, o texto de baixo
+  var corte = texto.indexOf('\n\n');
+  var titulo = corte >= 0 ? texto.slice(0, corte) : texto;
+  var resto = corte >= 0 ? texto.slice(corte + 2) : '';
+  var perigo = tipo === 'confirmar' && /^[^A-Za-zÀ-ú]*(excluir|remover|apagar|limpar|deslogar|desconectar|revogar|tirar|zerar|arquivar|mandar pra lixeira|mover .*lixeira)/i.test(titulo);
+  // onde estava o cursor (ex.: o link no editor de texto) volta quando a caixa fecha
+  var foco = document.activeElement, sel = window.getSelection ? window.getSelection() : null;
+  var faixa = null; try{ if(sel && sel.rangeCount) faixa = sel.getRangeAt(0).cloneRange(); }catch(e){}
+  var d = document.createElement('div');
+  d.className = 'dz-caixa tmx-caixa';
+  d.innerHTML = '<div class="dz-caixa-fundo"></div>' +
+    '<div class="dz-caixa-corpo" role="dialog" aria-modal="true">' +
+      '<div class="dz-caixa-t"></div>' +
+      (resto ? '<div class="dz-caixa-s"></div>' : '') +
+      (tipo === 'perguntar' ? '<label class="dz-campo"><input type="text" autocomplete="off"></label>' : '') +
+      '<div class="dz-caixa-pe">' +
+        (tipo === 'avisar' ? '' : '<button class="fn-btn g" data-x="1">Cancelar</button>') +
+        '<button class="fn-btn' + (perigo ? ' perigo' : '') + '" data-ok="1">OK</button>' +
+      '</div></div>';
+  d.querySelector('.dz-caixa-t').textContent = titulo;
+  if(resto) d.querySelector('.dz-caixa-s').textContent = resto;
+  var campo = d.querySelector('input');
+  if(campo) campo.value = padrao == null ? '' : String(padrao);
+  document.body.appendChild(d);
+  var feito = false;
+  function fechar(sim){
+    if(feito) return; feito = true;
+    window.removeEventListener('keydown', tecla, true);
+    d.remove();
+    try{
+      if(foco && foco.focus && document.contains(foco)) foco.focus({ preventScroll:true });
+      if(faixa && sel){ sel.removeAllRanges(); sel.addRange(faixa); }
+    }catch(e){}
+    responder(tipo === 'avisar' ? undefined : tipo === 'confirmar' ? !!sim : (sim ? campo.value : null));
+  }
+  function tecla(e){
+    if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); fechar(tipo === 'avisar'); }
+    else if(e.key === 'Enter'){
+      e.preventDefault(); e.stopPropagation();
+      var a = document.activeElement;
+      fechar(!(a && a.getAttribute && a.getAttribute('data-x')));
+    }
+  }
+  d.querySelector('[data-ok]').onclick = function(){ fechar(true); };
+  var x = d.querySelector('[data-x]'); if(x) x.onclick = function(){ fechar(false); };
+  d.querySelector('.dz-caixa-fundo').onclick = function(){ fechar(tipo === 'avisar'); };
+  window.addEventListener('keydown', tecla, true);
+  setTimeout(function(){ if(campo){ campo.focus(); campo.select(); } else { var b = d.querySelector('[data-ok]'); if(b) b.focus(); } }, 30);
+}
+function tmxAviso(msg){ return _tmxCaixa('avisar', msg); }
+function tmxConfirmar(msg){ return _tmxCaixa('confirmar', msg); }
+function tmxPerguntar(msg, padrao){ return _tmxCaixa('perguntar', msg, padrao); }
+// alert() do app inteiro abre no meio. Não trava a tela como o do navegador: quem precisa
+// esperar o OK (ex.: avisar e depois sair) usa tmxAviso(...).then(...)
+window.alert = function(msg){ tmxAviso(msg); };
 // A empresa com que esta aba abriu. Se outra aba trocar de empresa (outro login, entrar como
 // suporte), esta aba recarrega antes de mandar qualquer coisa: senão o que está na memória dela
 // subiria pra outra empresa com a sessão nova.
@@ -7747,7 +7814,8 @@ function _bkAuthHeaders(){
     senha = full && full.senha;
   }
   if(senha) return { 'x-user-email': currentUser.email, 'x-user-senha': senha };
-  alert('Sessão expirada. Faça login novamente.'); logout(); throw new Error('sem sessao');
+  // espera o OK: o logout recarrega a página e levaria o aviso junto
+  tmxAviso('Sessão expirada. Faça login novamente.').then(function(){ logout(); }); throw new Error('sem sessao');
 }
 function _bkStatus(msg, cor){
   const el = document.getElementById('backup-status');
@@ -7833,7 +7901,7 @@ async function backupDownloadSnap(nome){
   }catch(e){ _bkStatus('❌ '+e.message, 'var(--red)'); }
 }
 async function backupRestaurarSnap(nome){
-  if(!confirm(`Restaurar o banco a partir de "${nome}"?\n\nTODOS os dados atuais serão substituídos.\nUm snapshot de segurança será criado automaticamente.`)) return;
+  if(!(await tmxConfirmar(`Restaurar o banco a partir de "${nome}"?\n\nTODOS os dados atuais serão substituídos.\nUm snapshot de segurança será criado automaticamente.`))) return;
   try{
     _bkStatus('⏳ Restaurando...');
     const res = await fetch(API_BASE+'/api/backup/restore/'+encodeURIComponent(nome), {
@@ -7900,7 +7968,7 @@ function backupRestaurarArquivo(inp){
     try{
       const dados = JSON.parse(e.target.result);
       if(!dados || !dados.store) throw new Error('JSON inválido — falta a chave "store".');
-      if(!confirm(`Restaurar o banco a partir de "${file.name}"?\n\nTODOS os dados atuais serão substituídos.\nUm snapshot de segurança será criado automaticamente.`)){ inp.value=''; return; }
+      if(!(await tmxConfirmar(`Restaurar o banco a partir de "${file.name}"?\n\nTODOS os dados atuais serão substituídos.\nUm snapshot de segurança será criado automaticamente.`))){ inp.value=''; return; }
       _bkStatus('⏳ Restaurando...');
       const res = await fetch(API_BASE+'/api/backup/restore', {
         method:'POST',
@@ -8722,8 +8790,8 @@ function subirCriativo(id){
   renderDash();
 }
 
-function delAdlib(id){
-  if(!confirm('Remover este anúncio? Ficará na Lixeira por 30 dias.'))return;
+async function delAdlib(id){
+  if(!(await tmxConfirmar('Remover este anúncio? Ficará na Lixeira por 30 dias.')))return;
   sDelete('adlib', id, 'Anúncio Ad Library');
   adlibAds = g('adlib', []);
   renderAdlib();
@@ -8751,10 +8819,10 @@ function editarAdlib(id){
   document.querySelector('#modal-adlib .modal-title').textContent = '✏️ Editar Anúncio';
   openModal('modal-adlib');
 }
-function editarAdlibAds(id, campo){
+async function editarAdlibAds(id, campo){
   const a = adlibAds.find(x=>x.id===id);
   if(!a) return;
-  const val = prompt('Novo valor para Ads (FB):', a[campo]||'');
+  const val = (await tmxPerguntar('Novo valor para Ads (FB):', a[campo]||''));
   if(val===null) return;
   a[campo] = val;
   s('adlib', adlibAds);
@@ -9100,7 +9168,7 @@ function spyAutoBuscar(){
 
   var html =
     '<div id="spy-modal-plano" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-plano\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:auto;">'+
         '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
           '<div><div style="font-size:17px;font-weight:700;">🐺 Plano de Spy · '+nicho.icone+' '+_esc(nicho.nome)+'</div>'+
           '<div style="font-size:12px;color:var(--text2);margin-top:2px;">'+keywords.length+' keywords prontas pra Meta Ad Library · país: US · ordem: total_impressions desc</div></div>'+
@@ -9166,11 +9234,11 @@ function spyAutoCopiarKeywords(nichoId){
   navigator.clipboard.writeText(txt).then(function(){ alert('✅ '+txt.split('\n').length+' keywords copiadas!\n\nCole numa skill Spy Wolf no Claude Cowork ou em outra ferramenta.'); });
 }
 
-function spyAutoAbrirTodasTabs(nichoId){
+async function spyAutoAbrirTodasTabs(nichoId){
   var nicho = _spyGetNichos().find(function(n){ return n.id===nichoId; });
   if(!nicho) return;
   var keywords = nicho.termos.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
-  if(keywords.length > 10 && !confirm('Vai abrir '+keywords.length+' abas no navegador. Tem certeza?')) return;
+  if(keywords.length > 10 && !(await tmxConfirmar('Vai abrir '+keywords.length+' abas no navegador. Tem certeza?'))) return;
   keywords.forEach(function(kw, i){
     var url = 'https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q='+encodeURIComponent(kw)+'&search_type=keyword_unordered&sort_data[mode]=total_impressions&sort_data[direction]=desc';
     setTimeout(function(){ window.open(url, '_blank'); }, i*150); // espaça pra não bloquear
@@ -9228,7 +9296,7 @@ async function spyAutoConectarSkill(){
 
   var html =
     '<div id="spy-modal-conectar" style="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-conectar\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:auto;">'+
         '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
           '<div><div style="font-size:17px;font-weight:700;">🔗 Conectar Spy Wolf · Webhook</div>'+
           '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Faça sua skill mandar os domínios diretamente pro TMX Digital quando terminar</div></div>'+
@@ -9304,7 +9372,7 @@ async function spyAutoGerarTokenWebhook(){
   var ehMaster = false;
   // o banco master é da TMX: numa empresa cliente o token é sempre só dos dados dela
   if(ehDiretoria && tmxEhTmx()){
-    ehMaster = confirm('🌐 Gerar token MASTER?\n\nToken master pode usar broadcast:true e popular o banco MASTER (visível pra todos os tenants/clientes do TMX Digital).\n\nClique OK pra master (recomendado se você é o admin TMX Digital) ou Cancelar pra token normal (só seus dados).');
+    ehMaster = (await tmxConfirmar('🌐 Gerar token MASTER?\n\nToken master pode usar broadcast:true e popular o banco MASTER (visível pra todos os tenants/clientes do TMX Digital).\n\nClique OK pra master (recomendado se você é o admin TMX Digital) ou Cancelar pra token normal (só seus dados).'));
   }
   try {
     const resp = await fetch('/api/tokens/generate', {
@@ -9341,7 +9409,7 @@ function spyAutoImportarSkill(){
   var nichoOpts = nichos.map(function(n){ return '<option value="'+n.id+'">'+n.icone+' '+_esc(n.nome)+'</option>'; }).join('');
   var html =
     '<div id="spy-modal-import" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-import\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:760px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:760px;width:100%;margin:auto;">'+
         '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
           '<div><div style="font-size:17px;font-weight:700;">🐺 Importar entrega da skill Spy Wolf</div>'+
           '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Cole o texto formatado da skill que ela entrega no chat. O TMX Digital extrai domínios, tiers e links automaticamente.</div></div>'+
@@ -9545,11 +9613,11 @@ function spyAutoSalvarBib(id){
   renderSpyAuto();
 }
 
-function spyAutoAtualizar(id){
+async function spyAutoAtualizar(id){
   var bibs = _spyGetBibliotecas();
   var b = bibs.find(function(x){ return x.id===id; });
   if(!b) return;
-  var novo = prompt('Nova contagem de ads ativos pra "'+b.nomePagina+'":\n\n(Valor atual: '+(b.adsAtivos||0)+' ads)', b.adsAtivos||0);
+  var novo = (await tmxPerguntar('Nova contagem de ads ativos pra "'+b.nomePagina+'":\n\n(Valor atual: '+(b.adsAtivos||0)+' ads)', b.adsAtivos||0));
   if(novo === null) return;
   var n = Math.max(0, parseInt(novo,10)||0);
   b.adsAnteriores = b.adsAtivos || 0;
@@ -9561,16 +9629,16 @@ function spyAutoAtualizar(id){
   renderSpyAuto();
 }
 
-function spyAutoAtualizarTodas(){
+async function spyAutoAtualizarTodas(){
   var bibs = _spyGetBibliotecas();
   if(!bibs.length){ alert('Nenhuma biblioteca cadastrada.'); return; }
-  if(!confirm('Abrir cada biblioteca no navegador pra você contar os ads ativos manualmente?\n\nVai abrir '+bibs.length+' aba(s) novas.\n\n⚠️ A atualização automática (sem ações manuais) requer integração com a API da Meta, que precisa de token + aprovação.')) return;
+  if(!(await tmxConfirmar('Abrir cada biblioteca no navegador pra você contar os ads ativos manualmente?\n\nVai abrir '+bibs.length+' aba(s) novas.\n\n⚠️ A atualização automática (sem ações manuais) requer integração com a API da Meta, que precisa de token + aprovação.'))) return;
   bibs.forEach(function(b){ if(b.linkBiblioteca) window.open(b.linkBiblioteca, '_blank'); });
   alert('Bibliotecas abertas! Conte os ads ativos e clique no 🔄 de cada linha pra atualizar.');
 }
 
-function spyAutoRemover(id){
-  if(!confirm('Remover essa biblioteca do monitoramento?')) return;
+async function spyAutoRemover(id){
+  if(!(await tmxConfirmar('Remover essa biblioteca do monitoramento?'))) return;
   s('sl_spy_auto', _spyGetBibliotecas().filter(function(b){ return b.id!==id; }));
   renderSpyAuto();
 }
@@ -9620,7 +9688,7 @@ function spyAutoConfigurarNichos(){
 
   var html =
     '<div id="spy-modal-nichos" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'spy-modal-nichos\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:780px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:780px;width:100%;margin:auto;">'+
         '<div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--card);">'+
           '<div><div style="font-size:16px;font-weight:700;">⚙️ Gerenciar nichos do Spy</div>'+
           '<div style="font-size:12px;color:var(--text2);margin-top:2px;">Cada nicho tem seus termos próprios e pode ser auto-buscado diariamente.</div></div>'+
@@ -9644,8 +9712,8 @@ function spyAutoAddNicho(){
   spyAutoConfigurarNichos();
 }
 
-function spyAutoRemoverNicho(id){
-  if(!confirm('Remover esse nicho? As bibliotecas associadas continuam, só perdem a referência.')) return;
+async function spyAutoRemoverNicho(id){
+  if(!(await tmxConfirmar('Remover esse nicho? As bibliotecas associadas continuam, só perdem a referência.'))) return;
   var nichos = _spyGetNichos().filter(function(n){ return n.id!==id; });
   s('sl_spy_auto_nichos', nichos);
   spyAutoConfigurarNichos();
@@ -9781,19 +9849,19 @@ function renderValoresCultura(){
       +valoresHtml
     +'</div>';
 }
-function editarValorCultura(campo){
+async function editarValorCultura(campo){
   const vc = g('valores_cultura',{missao:'',visao:'',valores:[]});
   const label = campo==='missao'?'Missão':'Visão';
-  const novo = prompt('Editar '+label+':', vc[campo]||'');
+  const novo = (await tmxPerguntar('Editar '+label+':', vc[campo]||''));
   if(novo===null) return;
   vc[campo] = novo;
   s('valores_cultura', vc);
   fetch(API_BASE+'/api/store/valores_cultura',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(vc)}).catch(()=>{});
   renderValoresCultura();
 }
-function editarValores(){
+async function editarValores(){
   const vc = g('valores_cultura',{missao:'',visao:'',valores:[]});
-  const novo = prompt('Editar Valores (um por linha):', (vc.valores||[]).join('\n'));
+  const novo = (await tmxPerguntar('Editar Valores (um por linha):', (vc.valores||[]).join('\n')));
   if(novo===null) return;
   vc.valores = novo.split('\n').map(function(v){return v.trim();}).filter(function(v){return v;});
   s('valores_cultura', vc);
@@ -10447,8 +10515,8 @@ function calcRoas(){
   const fat=+document.getElementById('m-fat').value||0;
   document.getElementById('m-roas-val').textContent=inv>0?(fat/inv).toFixed(2):'0.00';
 }
-function addOferta(){
-  const n=prompt('Nome da oferta:');
+async function addOferta(){
+  const n=(await tmxPerguntar('Nome da oferta:'));
   if(n){ofertas.push(n);s('ofertas',ofertas);populateOfertas();}
 }
 function populateOfertas(){
@@ -10848,10 +10916,10 @@ function cdBaixarArquivo(arqId,nome){
     .catch(function(){ if(typeof notif==='function')notif('⚠️ Não consegui baixar (o arquivo pode não estar mais no servidor).'); });
 }
 function cdTipoBloco(i,tipo){ cdFlushBloco(); cdSalvaN(function(n){ if(n.blocks[i]) n.blocks[i].tipo=tipo; _cdFocusBloco=i; }); cdRenderAnot(); }
-function cdBlocoKey(e,i){
+async function cdBlocoKey(e,i){
   if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); cdSaveBloco(i,e.target.innerHTML); cdAddBloco('texto',i); return; }
   if((e.metaKey||e.ctrlKey)&&(e.key==='b'||e.key==='B')){ e.preventDefault(); document.execCommand('bold'); cdSaveBloco(i,e.target.innerHTML); return; }
-  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); var u=prompt('URL do link:'); if(u){document.execCommand('createLink',false,u); cdSaveBloco(i,e.target.innerHTML);} return; }
+  if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); var u=(await tmxPerguntar('URL do link:')); if(u){document.execCommand('createLink',false,u); cdSaveBloco(i,e.target.innerHTML);} return; }
   if(e.key==='Backspace'&&(e.target.textContent||'')===''&&i>0){ e.preventDefault(); cdDelBloco(i); return; }
 }
 function cdFocarBloco(){ if(_cdFocusBloco==null)return; var idx=_cdFocusBloco; _cdFocusBloco=null; setTimeout(function(){ var elb=document.querySelector('#cd-blocos [data-bi="'+idx+'"]'); if(elb){ elb.focus(); try{ var r=document.createRange(); r.selectNodeContents(elb); r.collapse(false); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} } },30); }
@@ -10998,7 +11066,7 @@ function cdImportarNotas(payload, onProg){
 }
 function cdSalvarTitulo(id,t){cdFlushBloco();var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.titulo=t;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
 function cdSalvarCorpo(id,c){var notas=cdGet('cd_notas',[]);var n=notas.filter(function(x){return x.id===id;})[0];if(n){n.corpo=c;n._updatedAt=Date.now();cdSet('cd_notas',notas);}}
-function cdDelNota(id){if(!confirm('Excluir esta nota e todas as subpáginas?'))return;var notas=cdGet('cd_notas',[]);var rem={};(function mk(i){rem[i]=1;notas.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);var n=notas.filter(function(x){return x.id===id;})[0];notas=notas.filter(function(x){return !rem[x.id];});var _del=cdGet('cd_del',[]);Object.keys(rem).forEach(function(rid){_del.push(rid);});cdSet('cd_del',cdUniq(_del));cdSet('cd_notas',notas);_cdNota=(n&&n.parentId)?n.parentId:null;cdRenderAnot();}
+async function cdDelNota(id){if(!(await tmxConfirmar('Excluir esta nota e todas as subpáginas?')))return;var notas=cdGet('cd_notas',[]);var rem={};(function mk(i){rem[i]=1;notas.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);var n=notas.filter(function(x){return x.id===id;})[0];notas=notas.filter(function(x){return !rem[x.id];});var _del=cdGet('cd_del',[]);Object.keys(rem).forEach(function(rid){_del.push(rid);});cdSet('cd_del',cdUniq(_del));cdSet('cd_notas',notas);_cdNota=(n&&n.parentId)?n.parentId:null;cdRenderAnot();}
 
 /* ---- ROTINA ---- */
 function cdRenderRot(){
@@ -11009,7 +11077,7 @@ function cdRenderRot(){
 function cdAddT(d){ cdModal('Tarefa de '+d,[{label:'Tarefa',key:'t',placeholder:'O que fazer…'},{label:'Horário (opcional)',key:'hora',placeholder:'Ex: 09:00',req:false}],function(v){ var rot=cdGet('cd_rotina',{}); if(!rot[d])rot[d]=[]; rot[d].push({t:v.t,hora:v.hora||'',d:false}); cdSet('cd_rotina',rot); cdRenderRot(); }); }
 function cdTog(d,i){var rot=cdGet('cd_rotina',{});if(rot[d]&&rot[d][i]){rot[d][i].d=!rot[d][i].d;cdSet('cd_rotina',rot);cdRenderRot();}}
 function cdDelT(d,i){var rot=cdGet('cd_rotina',{});if(rot[d]){rot[d].splice(i,1);cdSet('cd_rotina',rot);cdRenderRot();}}
-function cdLimpar(){if(!confirm('Limpar todas as tarefas da semana?'))return;cdSet('cd_rotina',{});cdRenderRot();}
+async function cdLimpar(){if(!(await tmxConfirmar('Limpar todas as tarefas da semana?')))return;cdSet('cd_rotina',{});cdRenderRot();}
 
 /* ---- PASTAS & LINKS ---- */
 function cdRenderPastas(){
@@ -11046,7 +11114,7 @@ function cdEditItem(id){
   if(tipo==='cred'){ campos.push({label:'Link do site (pra logar)',key:'url',value:f.url||'',placeholder:'https://...',req:false}); campos.push({label:'Login / e-mail',key:'login',value:f.login||'',req:false}); campos.push({label:'Senha',key:'senha',value:f.senha||'',req:false}); campos.push({label:'Descrição (opcional)',key:'desc',value:f.desc||'',req:false}); }
   cdModal('Editar '+(tipo==='pasta'?'pasta':tipo==='link'?'link':'credencial'),campos,function(v){ var its=cdGet('cd_pastas',[]); var it=its.filter(function(x){return x.id===id;})[0]; if(!it)return; it._updatedAt=Date.now(); it.nome=v.nome; if(tipo==='link')it.url=v.url||''; if(tipo==='cred'){it.url=v.url||'';it.login=v.login||'';it.senha=v.senha||'';it.desc=v.desc||'';} cdSet('cd_pastas',its); cdRenderPastas(); if(typeof notif==='function')notif('Atualizado'); },'Salvar');
 }
-function cdDelItem(id){if(!confirm('Excluir este item (e o que estiver dentro)?'))return;var itens=cdGet('cd_pastas',[]);var rem={};(function mk(i){rem[i]=1;itens.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);itens=itens.filter(function(x){return !rem[x.id];});var _del=cdGet('cd_del',[]);Object.keys(rem).forEach(function(rid){_del.push(rid);});cdSet('cd_del',cdUniq(_del));cdSet('cd_pastas',itens);cdRenderPastas();}
+async function cdDelItem(id){if(!(await tmxConfirmar('Excluir este item (e o que estiver dentro)?')))return;var itens=cdGet('cd_pastas',[]);var rem={};(function mk(i){rem[i]=1;itens.filter(function(x){return x.parentId===i;}).forEach(function(x){mk(x.id);});})(id);itens=itens.filter(function(x){return !rem[x.id];});var _del=cdGet('cd_del',[]);Object.keys(rem).forEach(function(rid){_del.push(rid);});cdSet('cd_del',cdUniq(_del));cdSet('cd_pastas',itens);cdRenderPastas();}
 function cdCopiar(txt){try{navigator.clipboard.writeText(txt);}catch(e){} if(typeof notif==='function')notif('📋 Copiado: '+txt);}
 function cdCopiarCred(id){
   var itens=cdGet('cd_pastas',[]); var f=itens.filter(function(x){return x.id===id;})[0]; if(!f)return;
@@ -11814,8 +11882,8 @@ var _pdMicroSetorAberto = null;
 function getBacklogs(){ return g('sl_backlogs',[]); }
 function saveBacklogs(arr){ s('sl_backlogs',arr); syncKey('sl_backlogs'); }
 
-function pdAddBacklog(){
-  var nome = prompt('Nome do backlog (ex: Abril | 2026):');
+async function pdAddBacklog(){
+  var nome = (await tmxPerguntar('Nome do backlog (ex: Abril | 2026):'));
   if(!nome) return;
   var bk = getBacklogs();
   bk.unshift({id:Date.now(), nome:nome, semanas:[]});
@@ -11823,8 +11891,8 @@ function pdAddBacklog(){
   renderProgDemanda();
 }
 
-function pdDelBacklog(id){
-  if(!confirm('Excluir este backlog?')) return;
+async function pdDelBacklog(id){
+  if(!(await tmxConfirmar('Excluir este backlog?'))) return;
   var bk = getBacklogs().filter(function(b){ return b.id!==id; });
   saveBacklogs(bk);
   if(_pdSelBacklog===id){_pdSelBacklog=null;_pdSelSemana=null;}
@@ -12060,8 +12128,8 @@ function pdSaveAll(){
   alert('Salvo com sucesso!');
 }
 
-function pdAddOferta(){
-  var nome = prompt('Nome da oferta:');
+async function pdAddOferta(){
+  var nome = (await tmxPerguntar('Nome da oferta:'));
   if(!nome) return;
   var sem = _pdGetSemana();
   if(!sem){ alert('Selecione um mês e semana primeiro.'); return; }
@@ -12276,15 +12344,15 @@ function renderPdMicro(){
   return h;
 }
 
-function pdAddPessoa(diaKey, setorId){
+async function pdAddPessoa(diaKey, setorId){
   var colabs = getColabs().filter(function(c){ return c.setor===setorId; });
   var opcoes = colabs.map(function(c){ return c.nome; });
   if(!opcoes.length){
-    var nome = prompt('Nome da pessoa (ou cadastre na Equipe):');
+    var nome = (await tmxPerguntar('Nome da pessoa (ou cadastre na Equipe):'));
     if(!nome) return;
     opcoes = [nome];
   } else {
-    var sel = prompt('Colaboradores do setor:\n'+opcoes.map(function(n,i){return (i+1)+'. '+n;}).join('\n')+'\n\nDigite o número ou um nome novo:');
+    var sel = (await tmxPerguntar('Colaboradores do setor:\n'+opcoes.map(function(n,i){return (i+1)+'. '+n;}).join('\n')+'\n\nDigite o número ou um nome novo:'));
     if(!sel) return;
     var num = parseInt(sel);
     if(num>0 && num<=opcoes.length) opcoes = [opcoes[num-1]];
@@ -12322,11 +12390,11 @@ function pdToggleDemanda(diaKey, setorId, pessoa, idx){
   if(dm){ dm.done = !dm.done; _pdSaveSemana(sem); }
 }
 
-function pdEditLink(diaKey, setorId, pessoa, idx){
+async function pdEditLink(diaKey, setorId, pessoa, idx){
   var sem = _pdGetSemana();
   if(!sem) return;
   var dm = sem.micro[diaKey][setorId][pessoa][idx];
-  var link = prompt('Cole o link:', dm.link||'');
+  var link = (await tmxPerguntar('Cole o link:', dm.link||''));
   if(link===null) return;
   dm.link = link.trim();
   _pdSaveSemana(sem);
@@ -12518,8 +12586,8 @@ function _vagasMdInsert(textareaId, prefixo, sufixo, placeholder){
   var novoIni = start + prefixo.length;
   el.setSelectionRange(novoIni, novoIni + sel.length);
 }
-function _vagasMdLink(textareaId){
-  var url = prompt('URL do link (https://...):', 'https://');
+async function _vagasMdLink(textareaId){
+  var url = (await tmxPerguntar('URL do link (https://...):', 'https://'));
   if(!url || !/^https?:\/\//i.test(url)) return;
   var el = document.getElementById(textareaId);
   if(!el) return;
@@ -12741,13 +12809,13 @@ function vagasAbrirDetalhe(id){ _vagasDetalheId=id; _vagasView='detalhe'; render
 function vagasAbrirTalentos(){ _vagasView='talentos'; renderVagas(); }
 function vagasVoltarLista(){ _vagasView='lista'; _vagasEditId=null; _vagasDetalheId=null; renderVagas(); }
 
-function vagasCopiarLink(slug){
+async function vagasCopiarLink(slug){
   var url = _vagasPublicUrl(slug);
   try{
     navigator.clipboard.writeText(url);
     alert('Link copiado:\n'+url);
   }catch(e){
-    prompt('Copie o link da vaga:', url);
+    (await tmxPerguntar('Copie o link da vaga:', url));
   }
 }
 
@@ -12756,10 +12824,10 @@ function _vagasToggleTeste(){
   var ativo = document.getElementById('vag-teste-ativo').checked;
   document.getElementById('vag-teste-config').style.display = ativo ? 'block' : 'none';
 }
-function vagasCopiarLinkTeste(slug){
+async function vagasCopiarLinkTeste(slug){
   var url = urlPublica('/teste/') + slug;
   try{ navigator.clipboard.writeText(url); alert('Link do teste copiado:\n'+url); }
-  catch(e){ prompt('Copie o link do teste:', url); }
+  catch(e){ (await tmxPerguntar('Copie o link do teste:', url)); }
 }
 function vagasAbrirLinkTeste(slug){
   window.open(urlPublica('/teste/') + slug, '_blank');
@@ -12864,9 +12932,9 @@ function _vagasEditorAddPergunta(tipo){
   });
   _vagasEditorRender();
 }
-function _vagasEditorRemover(idx){
+async function _vagasEditorRemover(idx){
   _vagasEditorSyncFromDom();
-  if(!confirm('Remover essa pergunta?')) return;
+  if(!(await tmxConfirmar('Remover essa pergunta?'))) return;
   _vagasEditorPerguntas.splice(idx, 1);
   _vagasEditorRender();
 }
@@ -13100,8 +13168,8 @@ function vagasSalvar(){
   renderVagas();
 }
 
-function vagasArquivar(id){
-  if(!confirm('Mover essa vaga e candidatos relacionados pra lixeira?')) return;
+async function vagasArquivar(id){
+  if(!(await tmxConfirmar('Mover essa vaga e candidatos relacionados pra lixeira?'))) return;
   // Move candidatos primeiro
   var cands = _vagasGetCandidatos().filter(function(c){ return String(c.vagaId)===String(id); });
   cands.forEach(function(c){ try{ sDelete('sl_candidatos', c.id, 'Candidato'); }catch(e){} });
@@ -13477,8 +13545,8 @@ function vagasSalvarCandidato(){
   else if(_vagasView==='talentos') _renderVagasTalentos(document.getElementById('gestao-content'));
 }
 
-function vagasRemoverCandidato(candId){
-  if(!confirm('Mover esse candidato pra lixeira?')) return;
+async function vagasRemoverCandidato(candId){
+  if(!(await tmxConfirmar('Mover esse candidato pra lixeira?'))) return;
   try{ sDelete('sl_candidatos', candId, 'Candidato'); }catch(e){
     var cands = _vagasGetCandidatos().filter(function(x){ return String(x.id)!==String(candId); });
     s('sl_candidatos', cands);
@@ -14207,8 +14275,8 @@ function rhSalvarColab(id){
   renderRh();
 }
 
-function rhExcluirColab(id){
-  if(!confirm('Excluir esse colaborador permanentemente? Os feedbacks e férias dele também serão removidos.')) return;
+async function rhExcluirColab(id){
+  if(!(await tmxConfirmar('Excluir esse colaborador permanentemente? Os feedbacks e férias dele também serão removidos.'))) return;
   s('sl_rh_colaboradores', _rhGetColabs().filter(function(x){ return x.id!==id; }));
   s('sl_rh_feedbacks', _rhGetFeedbacks().filter(function(f){ return f.colaboradorId!==id; }));
   s('sl_rh_ferias', _rhGetFerias().filter(function(f){ return f.colaboradorId!==id; }));
@@ -14508,8 +14576,8 @@ function rhSalvarFeedback(colabId){
   renderRh();
 }
 
-function rhExcluirFeedback(id){
-  if(!confirm('Excluir esse feedback?')) return;
+async function rhExcluirFeedback(id){
+  if(!(await tmxConfirmar('Excluir esse feedback?'))) return;
   s('sl_rh_feedbacks', _rhGetFeedbacks().filter(function(f){ return f.id!==id; }));
   renderRh();
 }
@@ -14641,8 +14709,8 @@ function rhRecusarFerias(id){
   renderRh();
 }
 
-function rhExcluirFerias(id){
-  if(!confirm('Excluir esse registro?')) return;
+async function rhExcluirFerias(id){
+  if(!(await tmxConfirmar('Excluir esse registro?'))) return;
   s('sl_rh_ferias', _rhGetFerias().filter(function(f){ return f.id!==id; }));
   renderRh();
 }
@@ -14723,8 +14791,8 @@ function _rhToggleOnboardingItem(onbId, idx){
   renderRh();
 }
 
-function _rhAdicionarItemOnboarding(onbId){
-  var texto = prompt('Texto do novo item do checklist:');
+async function _rhAdicionarItemOnboarding(onbId){
+  var texto = (await tmxPerguntar('Texto do novo item do checklist:'));
   if(!texto || !texto.trim()) return;
   var onbs = _rhGetOnboardings();
   var oi = onbs.findIndex(function(o){ return o.id===onbId; });
@@ -14970,7 +15038,7 @@ function rhIniciarOffboarding(offId){
 
   var html =
     '<div id="rh-modal-iniof" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'rh-modal-iniof\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:820px;width:100%;margin:auto;">'+
         // Header sticky
         '<div style="padding:18px 26px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:2;display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
           '<div>'+
@@ -15225,8 +15293,8 @@ function rhOffToggleItem(offId, catIdx, itemIdx, feito){
   rhAbrirOffboarding(offId);
 }
 
-function rhOffConcluir(offId){
-  if(!confirm('Marcar offboarding como concluído? O colaborador também será marcado como "desligado".')) return;
+async function rhOffConcluir(offId){
+  if(!(await tmxConfirmar('Marcar offboarding como concluído? O colaborador também será marcado como "desligado".'))) return;
   var offs = _rhGetOffboardings();
   var o = offs.find(function(x){ return x.id===offId; });
   if(!o) return;
@@ -15242,8 +15310,8 @@ function rhOffConcluir(offId){
   renderRh();
 }
 
-function rhOffExcluir(offId){
-  if(!confirm('Excluir esse registro de offboarding? Essa ação não pode ser desfeita.')) return;
+async function rhOffExcluir(offId){
+  if(!(await tmxConfirmar('Excluir esse registro de offboarding? Essa ação não pode ser desfeita.'))) return;
   s('sl_rh_offboarding', _rhGetOffboardings().filter(function(o){ return o.id!==offId; }));
   var m = document.getElementById('rh-modal-off'); if(m) m.remove();
   renderRh();
@@ -15354,8 +15422,8 @@ function rhFolhaAprovar(entradaId){
   renderRh();
 }
 
-function rhFolhaSetNFLink(entradaId){
-  var link = prompt('Link da Nota Fiscal (Google Drive, Dropbox, etc.):');
+async function rhFolhaSetNFLink(entradaId){
+  var link = (await tmxPerguntar('Link da Nota Fiscal (Google Drive, Dropbox, etc.):'));
   if(link === null) return;
   var folha = _rhGetFolha();
   var e = folha.find(function(f){ return f.id===entradaId; });
@@ -15784,12 +15852,12 @@ function rhEnpsVerCiclo(id){
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
-function rhEnpsAddResposta(cicloId){
-  var nota = prompt('Nota de 0 a 10:');
+async function rhEnpsAddResposta(cicloId){
+  var nota = (await tmxPerguntar('Nota de 0 a 10:'));
   if(nota===null) return;
   var n = parseInt(nota,10);
   if(isNaN(n)||n<0||n>10){ alert('Nota inválida.'); return; }
-  var coment = prompt('Comentário (opcional, anônimo):') || '';
+  var coment = (await tmxPerguntar('Comentário (opcional, anônimo):')) || '';
   var ciclos = _rhGetEnps();
   var c = ciclos.find(function(x){ return x.id===cicloId; });
   if(!c) return;
@@ -16552,8 +16620,8 @@ function finMarcarPago(id){
   renderFinanceiro();
 }
 
-function finExcluirLancamento(id){
-  if(!confirm('Excluir esse lançamento?')) return;
+async function finExcluirLancamento(id){
+  if(!(await tmxConfirmar('Excluir esse lançamento?'))) return;
   s('sl_fin_lancamentos', _finGetLancamentos().filter(function(l){ return l.id!==id; }));
   finFecharModalLanc();
   renderFinanceiro();
@@ -16679,8 +16747,8 @@ function finSalvarConta(id){
   renderFinanceiro();
 }
 
-function finExcluirConta(id){
-  if(!confirm('Excluir essa conta? Lançamentos vinculados não serão removidos, só desvinculados.')) return;
+async function finExcluirConta(id){
+  if(!(await tmxConfirmar('Excluir essa conta? Lançamentos vinculados não serão removidos, só desvinculados.'))) return;
   s('sl_fin_contas', _finGetContas().filter(function(c){ return c.id!==id; }));
   finFecharModalConta();
   renderFinanceiro();
@@ -16777,8 +16845,8 @@ function finSalvarCat(id){
   renderFinanceiro();
 }
 
-function finExcluirCategoria(id){
-  if(!confirm('Excluir essa categoria? Lançamentos vinculados ficarão sem categoria.')) return;
+async function finExcluirCategoria(id){
+  if(!(await tmxConfirmar('Excluir essa categoria? Lançamentos vinculados ficarão sem categoria.'))) return;
   s('sl_fin_categorias', _finGetCategorias().filter(function(c){ return c.id!==id; }));
   renderFinanceiro();
 }
@@ -16934,8 +17002,8 @@ function finSalvarRec(id){
   renderFinanceiro();
 }
 
-function finExcluirRecorrente(id){
-  if(!confirm('Excluir esse recorrente? Lançamentos já criados continuam.')) return;
+async function finExcluirRecorrente(id){
+  if(!(await tmxConfirmar('Excluir esse recorrente? Lançamentos já criados continuam.'))) return;
   s('sl_fin_recorrentes', _finGetRecorrentes().filter(function(r){ return r.id!==id; }));
   renderFinanceiro();
 }
@@ -17281,7 +17349,7 @@ function finNFEditar(id){
 
   var html =
     '<div id="fin-modal-nf" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'fin-modal-nf\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:680px;width:100%;margin:auto;">'+
         '<div style="padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0;">'+
           '<div style="font-size:16px;font-weight:700;">📄 '+(isNovo?'Nova Nota Fiscal':'Editar NF · '+_esc(n.numero||''))+'</div>'+
           '<button onclick="document.getElementById(\'fin-modal-nf\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
@@ -17320,7 +17388,7 @@ function finNFEditar(id){
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
-function finNFSalvar(id){
+async function finNFSalvar(id){
   var numero = (document.getElementById('nf-num').value||'').trim();
   var tomador = (document.getElementById('nf-tom').value||'').trim();
   var descricao = (document.getElementById('nf-desc').value||'').trim();
@@ -17345,7 +17413,7 @@ function finNFSalvar(id){
   s('sl_fin_nfs', nfs);
 
   // Opcional: lançar como receita se emitida
-  if(n.status==='emitida' && confirm('NF emitida! Quer criar um lançamento de receita pra essa NF no Financeiro?')){
+  if(n.status==='emitida' && (await tmxConfirmar('NF emitida! Quer criar um lançamento de receita pra essa NF no Financeiro?'))){
     var lancs = _finGetLancamentos();
     if(!lancs.find(function(l){ return l.nfId===n.id; })){
       lancs.push({
@@ -17362,8 +17430,8 @@ function finNFSalvar(id){
   renderFinanceiro();
 }
 
-function finNFExcluir(id){
-  if(!confirm('Excluir essa NF permanentemente?')) return;
+async function finNFExcluir(id){
+  if(!(await tmxConfirmar('Excluir essa NF permanentemente?'))) return;
   s('sl_fin_nfs', _finGetNFs().filter(function(n){ return n.id!==id; }));
   var m = document.getElementById('fin-modal-nf'); if(m) m.remove();
   renderFinanceiro();
@@ -17531,7 +17599,7 @@ function finOFXVerImport(impId){
   }).join('');
   var html =
     '<div id="fin-modal-ofxver" style="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'fin-modal-ofxver\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:780px;width:100%;margin:20px auto;">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;max-width:780px;width:100%;margin:auto;">'+
         '<div style="padding:16px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--card);border-radius:12px 12px 0 0;">'+
           '<div style="font-size:15px;font-weight:700;">📁 '+_esc(imp.nomeArquivo)+'</div>'+
           '<button onclick="document.getElementById(\'fin-modal-ofxver\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button>'+
@@ -17543,12 +17611,12 @@ function finOFXVerImport(impId){
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
-function finOFXConciliarManual(impId, transId){
+async function finOFXConciliarManual(impId, transId){
   var imp = _finGetOFX().find(function(x){ return x.id===impId; });
   if(!imp) return;
   var t = (imp.transacoes||[]).find(function(x){ return x.id===transId; });
   if(!t) return;
-  if(!confirm('Criar lançamento no Financeiro a partir dessa transação OFX?\n\n'+t.descricao+'\n'+_finFmtMoeda(t.valor)+' em '+_finFmtData(t.data))) return;
+  if(!(await tmxConfirmar('Criar lançamento no Financeiro a partir dessa transação OFX?\n\n'+t.descricao+'\n'+_finFmtMoeda(t.valor)+' em '+_finFmtData(t.data)))) return;
   var lancs = _finGetLancamentos();
   var novo = {
     id: _finNovoId('lanc'),
@@ -17577,8 +17645,8 @@ function finOFXConciliarManual(impId, transId){
   finOFXVerImport(impId);
 }
 
-function finOFXRemover(impId){
-  if(!confirm('Remover essa importação OFX? Os lançamentos já criados continuam.')) return;
+async function finOFXRemover(impId){
+  if(!(await tmxConfirmar('Remover essa importação OFX? Os lançamentos já criados continuam.'))) return;
   s('sl_fin_ofx', _finGetOFX().filter(function(i){ return i.id!==impId; }));
   renderFinanceiro();
 }
@@ -17642,11 +17710,11 @@ function finCobrancaEnviar(folhaId){
   renderFinanceiro();
 }
 
-function finCobrancaEnviarTodos(){
+async function finCobrancaEnviarTodos(){
   var folha = g('sl_rh_folha', []);
   var pendentes = folha.filter(function(f){ return f.nfStatus !== 'aprovada'; });
   if(!pendentes.length){ alert('Sem pendências.'); return; }
-  if(!confirm('Enviar lembrete via WhatsApp para os '+pendentes.length+' PJs com NF pendente?')) return;
+  if(!(await tmxConfirmar('Enviar lembrete via WhatsApp para os '+pendentes.length+' PJs com NF pendente?'))) return;
   pendentes.forEach(function(f){ f.nfStatus = 'enviada'; f._updatedAt = Date.now()/1000; });
   s('sl_rh_folha', folha);
   alert('✅ '+pendentes.length+' lembrete(s) registrado(s). Quando a Z-API estiver configurada, serão enviados automaticamente.');
@@ -17731,8 +17799,8 @@ function _renderFinImpostos(el){
     '</div>';
 }
 
-function finImpostoPagar(mes, valor){
-  var dataPag = prompt('Data do pagamento (AAAA-MM-DD):', new Date().toISOString().slice(0,10));
+async function finImpostoPagar(mes, valor){
+  var dataPag = (await tmxPerguntar('Data do pagamento (AAAA-MM-DD):', new Date().toISOString().slice(0,10)));
   if(!dataPag) return;
   var impostos = _finGetImpostos();
   impostos.push({
@@ -17746,7 +17814,7 @@ function finImpostoPagar(mes, valor){
   });
   s('sl_fin_impostos', impostos);
   // Cria lançamento de despesa
-  if(confirm('Criar lançamento de despesa "DAS '+mes+'" no valor de '+_finFmtMoeda(valor)+'?')){
+  if((await tmxConfirmar('Criar lançamento de despesa "DAS '+mes+'" no valor de '+_finFmtMoeda(valor)+'?'))){
     var lancs = _finGetLancamentos();
     lancs.push({
       id: _finNovoId('lanc'),
@@ -17901,8 +17969,8 @@ function saveCtNichos(arr){ s('sl_ct_nichos', arr); syncKey('sl_ct_nichos'); }
 function getCtTestes(){ return g('sl_ct_testes', []); }
 function saveCtTestes(arr){ s('sl_ct_testes', arr); syncKey('sl_ct_testes'); }
 
-function ctAddNicho(){
-  var nome = prompt('Nome do nicho:');
+async function ctAddNicho(){
+  var nome = (await tmxPerguntar('Nome do nicho:'));
   if(!nome) return;
   var n = getCtNichos();
   n.push({id:Date.now(), nome:nome.toUpperCase(), ofertas:[]});
@@ -17910,8 +17978,8 @@ function ctAddNicho(){
   renderControleTestes();
 }
 
-function ctAddOferta(nichoId){
-  var nome = prompt('Nome da oferta:');
+async function ctAddOferta(nichoId){
+  var nome = (await tmxPerguntar('Nome da oferta:'));
   if(!nome) return;
   var n = getCtNichos();
   var nicho = n.find(function(x){ return x.id==nichoId; });
@@ -17922,15 +17990,15 @@ function ctAddOferta(nichoId){
   }
 }
 
-function ctDelNicho(id){
-  if(!confirm('Excluir nicho e todas as ofertas?')) return;
+async function ctDelNicho(id){
+  if(!(await tmxConfirmar('Excluir nicho e todas as ofertas?'))) return;
   var n = getCtNichos().filter(function(x){ return x.id!=id; });
   saveCtNichos(n);
   renderControleTestes();
 }
 
-function ctDelOferta(nichoId, ofertaId){
-  if(!confirm('Excluir oferta?')) return;
+async function ctDelOferta(nichoId, ofertaId){
+  if(!(await tmxConfirmar('Excluir oferta?'))) return;
   var n = getCtNichos();
   var nicho = n.find(function(x){ return x.id==nichoId; });
   if(nicho){
@@ -18095,8 +18163,8 @@ function ctArquivarTeste(id){
   renderControleTestes();
 }
 
-function ctDelTeste(id){
-  if(!confirm('Excluir este teste?')) return;
+async function ctDelTeste(id){
+  if(!(await tmxConfirmar('Excluir este teste?'))) return;
   var testes = getCtTestes().filter(function(x){ return x.id!=id; });
   saveCtTestes(testes);
   renderControleTestes();
@@ -18349,8 +18417,8 @@ function addConta(){
   renderContingencia();
 }
 
-function delConta(id){
-  if(!confirm('Excluir esta conta? Ficará na Lixeira por 30 dias.')) return;
+async function delConta(id){
+  if(!(await tmxConfirmar('Excluir esta conta? Ficará na Lixeira por 30 dias.'))) return;
   sDelete('sl_contingencia', id, 'Conta Contingência');
   renderContingencia();
 }
@@ -18510,7 +18578,7 @@ function renderMetricas(){
     </div>
   </div>`).join('');
 }
-function delMetrica(id){if(!confirm('Remover? Ficará na Lixeira por 30 dias.'))return;sDelete('metricas',id,'Métrica');metricas=g('metricas',[]);renderMetricas();}
+async function delMetrica(id){if(!(await tmxConfirmar('Remover? Ficará na Lixeira por 30 dias.')))return;sDelete('metricas',id,'Métrica');metricas=g('metricas',[]);renderMetricas();}
 function fmtN(v){return (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 function fmtP(v){return (parseFloat(v)||0).toFixed(2)+'%';}
 
@@ -18629,7 +18697,7 @@ function addAnuncio(){
   c.appendChild(d);
   if(typeof _populateAdResponsaveis === 'function') _populateAdResponsaveis(d);
 }
-function addRemessa(){const n=prompt('Nome da remessa:');if(n){remessas.push(n);s('remessas',remessas);populateRemessas();}}
+async function addRemessa(){const n=(await tmxPerguntar('Nome da remessa:'));if(n){remessas.push(n);s('remessas',remessas);populateRemessas();}}
 function populateRemessas(){
   const sel=document.getElementById('c-remessa');
   sel.innerHTML='<option value="">Selecione uma remessa</option>'+remessas.map(r=>`<option>${r}</option>`).join('');
@@ -18655,7 +18723,7 @@ function populateRemessas(){
   // Popula status do criativo
   populateCriStatusSelects();
 }
-function openRemessas(){const n=prompt('Adicionar remessa:');if(n){remessas.push(n);s('remessas',remessas);notif('Remessa adicionada!');}}
+async function openRemessas(){const n=(await tmxPerguntar('Adicionar remessa:'));if(n){remessas.push(n);s('remessas',remessas);notif('Remessa adicionada!');}}
 function openFormatos(){alert('Gerencie os formatos dos criativos.');}
 function salvarCriativo(){
   const ads=[...document.querySelectorAll('#anuncios-container .ad-section')].map(sec=>({
@@ -19150,7 +19218,7 @@ function mudarStatusCri(id, novoStatus){
   notif('Status: '+novoStatus);
 }
 
-function delCriativo(id){if(!confirm('Remover criativo? Ficará na Lixeira por 30 dias.'))return;sDelete('criativos',id,'Criativo');criativos=g('criativos',[]);renderCriativos();}
+async function delCriativo(id){if(!(await tmxConfirmar('Remover criativo? Ficará na Lixeira por 30 dias.')))return;sDelete('criativos',id,'Criativo');criativos=g('criativos',[]);renderCriativos();}
 
 function copiarLinkRemessa(id){
   const base = window.location.protocol==='file:'
@@ -19553,9 +19621,9 @@ function renderChat(){
 }
 
 // ── DELETE MSG (Diretoria only) ──
-function deleteChatMsg(msgId){
+async function deleteChatMsg(msgId){
   if(!currentUser || currentUser.cargo !== 'Diretoria'){ alert('Apenas Diretoria pode excluir mensagens.'); return; }
-  if(!confirm('Excluir esta mensagem? A ação não pode ser desfeita.')) return;
+  if(!(await tmxConfirmar('Excluir esta mensagem? A ação não pode ser desfeita.'))) return;
   var data = getChatsData();
   var arr = data[_chatCanalAtual] || [];
   var idx = arr.findIndex(function(m){ return String(m.id) === String(msgId); });
@@ -19567,12 +19635,12 @@ function deleteChatMsg(msgId){
 }
 
 // Limpa TODAS as mensagens do canal atual (Diretoria only)
-function limparCanalAtual(){
+async function limparCanalAtual(){
   if(!currentUser || currentUser.cargo !== 'Diretoria'){ alert('Apenas Diretoria pode limpar o canal.'); return; }
   var canal = _chatCanalAtual;
   var info = _titleCanal(canal);
-  if(!confirm('LIMPAR TODAS as mensagens do canal "'+info.title+'"?\n\nEsta ação não pode ser desfeita e afeta TODOS os usuários.')) return;
-  if(!confirm('Tem certeza mesmo? Isso vai apagar tudo do canal pra todo mundo.')) return;
+  if(!(await tmxConfirmar('LIMPAR TODAS as mensagens do canal "'+info.title+'"?\n\nEsta ação não pode ser desfeita e afeta TODOS os usuários.'))) return;
+  if(!(await tmxConfirmar('Tem certeza mesmo? Isso vai apagar tudo do canal pra todo mundo.'))) return;
   var data = getChatsData();
   data[canal] = [];
   saveChatsData(data);
@@ -19940,7 +20008,7 @@ function renderSwipe(){
   }).join('')}</div>`;
 }
 
-function delSwipe(id){if(!confirm('Remover este swipe? Ficará na Lixeira por 30 dias.'))return;sDelete('swipes',id,'Swipe');swipes=g('swipes',[]);renderSwipe();}
+async function delSwipe(id){if(!(await tmxConfirmar('Remover este swipe? Ficará na Lixeira por 30 dias.')))return;sDelete('swipes',id,'Swipe');swipes=g('swipes',[]);renderSwipe();}
 
 // ══ CENTRAL DE ARQUIVOS (por Nichos → Projetos) ══
 var _arqNav = { nicho:null, projetoId:null, setor:null, subpasta:null };
@@ -20304,8 +20372,8 @@ function arqSaveProjeto(){
   renderArquivos();
 }
 
-function arqDelProjeto(id){
-  if(!confirm('Excluir este projeto e todos os arquivos dentro?')) return;
+async function arqDelProjeto(id){
+  if(!(await tmxConfirmar('Excluir este projeto e todos os arquivos dentro?'))) return;
   var proj = getArqProjetos().filter(function(p){ return p.id!=id; });
   saveArqProjetos(proj);
   _arqNav = {projetoId:null,setor:null,subpasta:null};
@@ -20381,8 +20449,8 @@ function arqStatusMenu(bt, itemId){
     document.addEventListener('mousedown', fora, true);
   }, 0);
 }
-function arqStatusOutro(itemId){
-  var t = prompt('Qual o status? (ex.: Aprovado pelo Kalebe)');
+async function arqStatusOutro(itemId){
+  var t = (await tmxPerguntar('Qual o status? (ex.: Aprovado pelo Kalebe)'));
   if(t === null) return;
   t = String(t).trim().slice(0, 40); if(!t) return;
   arqStatusSalvar(itemId, t);
@@ -20698,8 +20766,8 @@ function arqRestaurarItem(id){
   renderArquivos();
 }
 
-function arqExcluirPermanente(id){
-  if(!confirm('Excluir permanentemente?')) return;
+async function arqExcluirPermanente(id){
+  if(!(await tmxConfirmar('Excluir permanentemente?'))) return;
   var lixeira = g('sl_arq_lixeira',[]).filter(function(x){ return x.id!=id; });
   s('sl_arq_lixeira', lixeira); syncKey('sl_arq_lixeira');
   var modal = document.getElementById('arq-lixeira-modal');
@@ -20898,8 +20966,8 @@ function renderArquivos(){
   el.innerHTML = h;
 }
 
-function delArquivo(id){
-  if(!confirm('Remover arquivo?'))return;
+async function delArquivo(id){
+  if(!(await tmxConfirmar('Remover arquivo?')))return;
   arquivos=arquivos.filter(a=>a.id!==id);
   s('arquivos',arquivos);renderArquivos();
 }
@@ -22054,7 +22122,7 @@ async function testarMetaAds(){
   }
 }
 async function gerarTokenVendas(){
-  if(!confirm('Gerar uma URL nova?\n\nSe já existir uma configurada no checkout, ela para de funcionar e você precisa colar a nova lá.')) return;
+  if(!(await tmxConfirmar('Gerar uma URL nova?\n\nSe já existir uma configurada no checkout, ela para de funcionar e você precisa colar a nova lá.'))) return;
   try{
     var r = await fetch(API_BASE+'/api/integracoes/vendas/gerar-token', { method:'POST' });
     var j = await r.json();
@@ -22166,7 +22234,7 @@ async function testarEmail(){
 }
 
 async function iniciarUpgrade(planoId){
-  if(!confirm('Deseja fazer upgrade para o plano '+planoId.toUpperCase()+'?\n\nVocê será redirecionado pro checkout seguro do Pagar.me.')) return;
+  if(!(await tmxConfirmar('Deseja fazer upgrade para o plano '+planoId.toUpperCase()+'?\n\nVocê será redirecionado pro checkout seguro do Pagar.me.'))) return;
   try {
     var r = await fetch(API_BASE+'/api/billing/checkout', {
       method: 'POST',
@@ -23045,10 +23113,10 @@ function taskBulkUpdateBar(){
   var counter = document.getElementById('task-bulk-count');
   if(counter) counter.textContent = _taskBulkSel.size;
 }
-function taskAprovarLote(){
+async function taskAprovarLote(){
   if(!_ehGestor()){ notif('Só a Diretoria ou um sócio aprova.'); return; }
   if(!_taskBulkSel.size) return;
-  if(!confirm('Aprovar '+_taskBulkSel.size+' demanda(s)?')) return;
+  if(!(await tmxConfirmar('Aprovar '+_taskBulkSel.size+' demanda(s)?'))) return;
   var n = 0;
   var recorrentesGeradas = 0;
   var novasOcorrencias = [];
@@ -23504,8 +23572,8 @@ function salvarUsuario(){
   try{ _cfgPintarEquipeRh(); }catch(e){}
 }
 
-function removerUsuario(id){
-  if(!confirm('Remover este membro? Ficará na Lixeira por 30 dias (dá pra restaurar).')) return;
+async function removerUsuario(id){
+  if(!(await tmxConfirmar('Remover este membro? Ficará na Lixeira por 30 dias (dá pra restaurar).'))) return;
   sDelete('sl_usuarios', id, 'Usuário');
   renderUsuarios();
   notif('Membro removido.');
@@ -23553,8 +23621,8 @@ function salvarNicho(){
   else lista.push({id:'n'+Date.now(),nome});
   saveNichos(lista); closeModal('modal-nicho'); renderNichos(); notif('Nicho salvo!');
 }
-function removerNicho(id){
-  if(!confirm('Remover este nicho? Ficará na Lixeira por 30 dias.'))return;
+async function removerNicho(id){
+  if(!(await tmxConfirmar('Remover este nicho? Ficará na Lixeira por 30 dias.')))return;
   sDelete('sl_nichos', id, 'Nicho');
   renderNichos(); notif('Nicho removido.');
 }
@@ -23662,8 +23730,8 @@ function migrarOfertasParaProjetos(){
     }
   } catch(e){ console.warn('migracao ofertas->projetos:', e); }
 }
-function removerOfertaCfg(id){
-  if(!confirm('Remover este projeto? Fica na Lixeira por 30 dias.'))return;
+async function removerOfertaCfg(id){
+  if(!(await tmxConfirmar('Remover este projeto? Fica na Lixeira por 30 dias.')))return;
   sDelete('sl_ofertas_v2', id, 'Oferta');
   renderOfertasCfg(); notif('Projeto removido.');
 }
@@ -23712,8 +23780,8 @@ function salvarChecklist(){
   else lista.push({id:'cl'+Date.now(),nome,itens});
   saveChecklists(lista); closeModal('modal-checklist'); renderChecklistsCfg(); notif('Checklist salvo!');
 }
-function removerChecklist(id){
-  if(!confirm('Remover este checklist? Ficará na Lixeira por 30 dias.'))return;
+async function removerChecklist(id){
+  if(!(await tmxConfirmar('Remover este checklist? Ficará na Lixeira por 30 dias.')))return;
   sDelete('sl_checklists', id, 'Checklist');
   renderChecklistsCfg(); notif('Checklist removido.');
 }
@@ -23909,8 +23977,8 @@ function fmtDesc(cmd){
   document.execCommand(cmd, false, null);
   document.getElementById('t-desc').focus();
 }
-function fmtDescLink(){
-  var url = prompt('Cole o link:');
+async function fmtDescLink(){
+  var url = (await tmxPerguntar('Cole o link:'));
   if(url) document.execCommand('createLink', false, url);
   document.getElementById('t-desc').focus();
 }
@@ -24718,8 +24786,8 @@ function lixeiraRestaurar(id){
     else alert('Erro ao restaurar: '+(err||''));
   });
 }
-function lixeiraApagarDef(id, nome){
-  if(!confirm('Apagar permanentemente "'+nome+'"?\n\nEssa ação não pode ser desfeita.')) return;
+async function lixeiraApagarDef(id, nome){
+  if(!(await tmxConfirmar('Apagar permanentemente "'+nome+'"?\n\nEssa ação não pode ser desfeita.'))) return;
   sPurgeLixeira(id, function(ok, err){
     if(ok){ notif('🗑 Apagado permanentemente'); renderLixeira(); }
     else alert('Erro: '+(err||''));
@@ -25903,8 +25971,8 @@ function restaurarTask(id){
   abrirLixeiraTask();
 }
 
-function excluirPermanente(id){
-  if(!confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')) return;
+async function excluirPermanente(id){
+  if(!(await tmxConfirmar('Excluir permanentemente? Esta ação não pode ser desfeita.'))) return;
   var lixeira = g('tasks_lixeira',[]).filter(function(x){ return x.id!==id; });
   s('tasks_lixeira', lixeira);
   var modal = document.getElementById('lixeira-modal');
@@ -26077,16 +26145,16 @@ function setRitualTipo(t){
 // ── Projetos de Análise de dados ──
 function ritGetProjetos(){ return g('sl_projetos_analise', []); }
 function ritSaveProjetos(list){ s('sl_projetos_analise', list); syncKey('sl_projetos_analise'); }
-function ritAddProjeto(){
-  const nome = prompt('Nome do projeto:');
+async function ritAddProjeto(){
+  const nome = (await tmxPerguntar('Nome do projeto:'));
   if(!nome || !nome.trim()) return;
   const list = ritGetProjetos();
   list.push({ id: Date.now(), nome: nome.trim() });
   ritSaveProjetos(list);
   renderRituais();
 }
-function ritDelProjeto(id){
-  if(!confirm('Excluir este projeto? As análises associadas serão mantidas mas ficarão sem projeto.')) return;
+async function ritDelProjeto(id){
+  if(!(await tmxConfirmar('Excluir este projeto? As análises associadas serão mantidas mas ficarão sem projeto.'))) return;
   const list = ritGetProjetos().filter(p=>p.id!==id);
   ritSaveProjetos(list);
   renderRituais();
@@ -26394,14 +26462,14 @@ window.copiarLinkRitual = function(id){
     if(typeof notif === 'function') notif('❌ Não foi possível copiar.');
   }
 };
-function _fallbackCopy(text){
+async function _fallbackCopy(text){
   var ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position='fixed'; ta.style.opacity='0'; ta.style.top='0';
   document.body.appendChild(ta);
   ta.focus(); ta.select();
   try { document.execCommand('copy'); if(typeof notif==='function') notif('🔗 Link copiado!'); }
-  catch(e){ if(typeof notif==='function') notif('❌ Copie manualmente: '+text); prompt('Copie o link:', text); }
+  catch(e){ if(typeof notif==='function') notif('❌ Copie manualmente: '+text); (await tmxPerguntar('Copie o link:', text)); }
   document.body.removeChild(ta);
 }
 
@@ -26484,14 +26552,14 @@ function salvarRdKpi(campo, val){
   renderRitualDetalhe();
 }
 
-function editarRdKpi(campo, labelAtual){
-  const val = prompt('Novo valor para '+labelAtual+' (apenas número):', '');
+async function editarRdKpi(campo, labelAtual){
+  const val = (await tmxPerguntar('Novo valor para '+labelAtual+' (apenas número):', ''));
   if(val===null) return;
   salvarRdKpi(campo, val);
 }
 
-function editarRdFunil(campo, label){
-  const val = prompt('Novo valor para '+label+' (apenas número):', '');
+async function editarRdFunil(campo, label){
+  const val = (await tmxPerguntar('Novo valor para '+label+' (apenas número):', ''));
   if(val===null) return;
   salvarRdKpi(campo, val);
 }
@@ -26555,8 +26623,8 @@ function salvarEditorTextoRd(){
 }
 
 // ── COPY E OFERTA helpers ──
-function editarCopyKpi(campo, label){
-  const val = prompt('Novo valor para '+label+':', '');
+async function editarCopyKpi(campo, label){
+  const val = (await tmxPerguntar('Novo valor para '+label+':', ''));
   if(val===null) return;
   let rituais = g('rituais',[]);
   const idx = rituais.findIndex(x=>x.id===_rdRitualId);
@@ -26608,8 +26676,8 @@ function salvarTesteLead(){
   fecharModalTesteLead();
   renderCopyOferta();
 }
-function removerTesteLead(id){
-  if(!confirm('Remover este teste?')) return;
+async function removerTesteLead(id){
+  if(!(await tmxConfirmar('Remover este teste?'))) return;
   let rituais = g('rituais',[]);
   const idx = rituais.findIndex(x=>x.id===_rdRitualId);
   if(idx===-1) return;
@@ -27085,15 +27153,15 @@ function _weeklyMutate(fn){
 function adicionarSpyOferta(){
   _weeklyMutate(function(w){ if(!w.spy) w.spy=[{},{},{}]; w.spy.push({}); });
 }
-function removerSpyOferta(idx){
-  if(!confirm('Remover esta oferta?')) return;
+async function removerSpyOferta(idx){
+  if(!(await tmxConfirmar('Remover esta oferta?'))) return;
   _weeklyMutate(function(w){ if(w.spy) w.spy.splice(idx,1); });
 }
 function adicionarExtraWeekly(key, defaultLabel){
   _weeklyMutate(function(w){ if(!w[key]) w[key]=[]; w[key].push({label:defaultLabel, texto:''}); });
 }
-function removerExtraWeekly(key, idx){
-  if(!confirm('Remover este bloco?')) return;
+async function removerExtraWeekly(key, idx){
+  if(!(await tmxConfirmar('Remover este bloco?'))) return;
   _weeklyMutate(function(w){ if(w[key]) w[key].splice(idx,1); });
 }
 function renomearExtraWeekly(key, idx, novoLabel){
@@ -27831,8 +27899,8 @@ function salvarRitual(){
   window._editRitualId = null;
 }
 
-function deletarRitual(id){
-  if(!confirm('Remover ritual? Ficará na Lixeira por 30 dias.')) return;
+async function deletarRitual(id){
+  if(!(await tmxConfirmar('Remover ritual? Ficará na Lixeira por 30 dias.'))) return;
   sDelete('rituais', id, 'Ritual');
   rituais = g('rituais', []);
   renderRituais();
@@ -27843,10 +27911,10 @@ function openFlows(){
   renderFlows(); openModal('modal-flows');
 }
 
-function criarFlow(){
-  const nome=prompt('Nome do Flow (template de tarefas):');
+async function criarFlow(){
+  const nome=(await tmxPerguntar('Nome do Flow (template de tarefas):'));
   if(!nome)return;
-  const stepsStr=prompt('Etapas separadas por vírgula (ex: Fazer spy, Criar docs, Editar):');
+  const stepsStr=(await tmxPerguntar('Etapas separadas por vírgula (ex: Fazer spy, Criar docs, Editar):'));
   if(!stepsStr)return;
   const steps=stepsStr.split(',').map(s=>s.trim()).filter(Boolean);
   flows.push({id:Date.now(),nome,steps});
@@ -27878,8 +27946,8 @@ function aplicarFlow(id){
   s('tasks',tasks); closeModal('modal-flows'); notif('Flow aplicado! '+f.steps.length+' tarefas criadas.'); renderTasks();
 }
 
-function delFlow(id){
-  if(!confirm('Excluir flow?'))return;
+async function delFlow(id){
+  if(!(await tmxConfirmar('Excluir flow?')))return;
   flows=flows.filter(f=>f.id!==id); s('flows',flows); renderFlows();
 }
 
@@ -27958,11 +28026,11 @@ function setRoiView(view, el){
 function setRoiOfertaSel(id){roiOfertaSel=id;renderRoiSidebar();}
 
 // ── Excluir oferta ROI (só Diretoria) ──
-function excluirRoiOferta(id){
+async function excluirRoiOferta(id){
   if(!currentUser || currentUser.cargo!=='Diretoria'){ alert('Apenas Diretoria pode excluir.'); return; }
   var o = roiOfertas.find(function(x){ return x.id===id; });
   if(!o){ return; }
-  if(!confirm('Excluir oferta "'+o.nome+'"? Ficará na Lixeira por 30 dias.')) return;
+  if(!(await tmxConfirmar('Excluir oferta "'+o.nome+'"? Ficará na Lixeira por 30 dias.'))) return;
   sDelete('roi_ofertas', id, 'Oferta ROI');
   roiOfertas = g('roi_ofertas', []);
   if(roiOfertaSel===id){ roiOfertaSel=null; setRoiView('home'); }
@@ -28407,7 +28475,7 @@ function addRoiRow(){
   setTimeout(()=>{const t=document.getElementById('roi-det-table');if(t)t.scrollIntoView({block:'end',behavior:'smooth'});},50);
 }
 
-function roiDeleteRow(idx){
+async function roiDeleteRow(idx){
   const o=roiOfertas.find(x=>x.id===roiOfertaSel);
   if(!o)return;
   if(!o.dias) o.dias=[];
@@ -28439,7 +28507,7 @@ function roiDeleteRow(idx){
     renderRoiDetalhe();
     return;
   }
-  if(!confirm('Limpar os valores deste dia?'))return;
+  if(!(await tmxConfirmar('Limpar os valores deste dia?')))return;
   // Compara por (data + gestor) pra não deletar dias de outros gestores na mesma data
   o.dias = o.dias.filter(x=>!(x.data===d.data && (x.gestor||'')===(d.gestor||'')));
   s('roi_ofertas',roiOfertas); notif('Dia removido.'); renderRoiDetalhe();
@@ -28829,7 +28897,7 @@ async function enviarEsqueciSenha(){
       // Dev mode (sem RESEND_API_KEY)
       if(data._dev && data._dev.linkReset){
         msg += '\n\n⚠️ DEV MODE (sem email configurado):\n' + data._dev.linkReset;
-        if(confirm(msg + '\n\nAbrir o link de reset agora?')){
+        if((await tmxConfirmar(msg + '\n\nAbrir o link de reset agora?'))){
           window.location.href = data._dev.linkReset;
           return;
         }
@@ -28972,7 +29040,7 @@ function renderArquivadosCfg(){
     '</div>';
   }).join('');
 }
-function toggleModuloArquivado(id){
+async function toggleModuloArquivado(id){
   if(typeof tmxEhTmx === 'function' && !tmxEhTmx()) return;   // fora da TMX não se reativa
   var m = MODULOS_ARQUIVAVEIS.find(function(x){ return x.id===id; });
   if(!m) return;
@@ -28981,7 +29049,7 @@ function toggleModuloArquivado(id){
   if(i>=0){
     arq.splice(i,1);
   } else {
-    if(!confirm('Arquivar "'+m.label+'"?\n\nEle some do menu de todo mundo (inclusive do seu) e a página fica bloqueada.\nNenhum dado é apagado — dá pra reativar aqui quando quiser.')) return;
+    if(!(await tmxConfirmar('Arquivar "'+m.label+'"?\n\nEle some do menu de todo mundo (inclusive do seu) e a página fica bloqueada.\nNenhum dado é apagado — dá pra reativar aqui quando quiser.'))) return;
     arq.push(id);
   }
   s('sl_modulos_arquivados', arq);
@@ -29506,7 +29574,7 @@ function iaCopyAbrirFavoritos(){
   var favs = g('sl_ia_copy', []);
   var html =
     '<div id="ia-favs-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;" onclick="if(event.target===this)document.getElementById(\'ia-favs-modal\').remove();">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:760px;width:100%;margin:20px auto;padding:28px;color:var(--text);">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:760px;width:100%;margin:auto;padding:28px;color:var(--text);">'+
         '<div style="display:flex;justify-content:space-between;margin-bottom:18px;"><div style="font-size:18px;font-weight:700;">⭐ Copies favoritas ('+favs.length+')</div><button onclick="document.getElementById(\'ia-favs-modal\').remove();" style="background:transparent;border:none;color:var(--text2);font-size:22px;cursor:pointer;">✕</button></div>'+
         (favs.length === 0
           ? '<div style="text-align:center;padding:40px;color:var(--text2);">Nenhuma copy salva ainda. Use o botão ⭐ nos resultados pra salvar.</div>'
@@ -29538,7 +29606,7 @@ function abrirMinhaConta(){
   if(!currentUser) return;
   var html =
     '<div id="minha-conta-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto;" onclick="if(event.target===this)fecharMinhaConta()">'+
-      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:520px;width:100%;margin:20px auto;padding:28px;color:var(--text);">'+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:520px;width:100%;margin:auto;padding:28px;color:var(--text);">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">'+
           '<div>'+
             '<div style="font-size:20px;font-weight:700;">👤 Minha conta</div>'+
@@ -29657,14 +29725,13 @@ async function carregarSessoes(){
 }
 
 async function logoutAll(){
-  if(!confirm('Deslogar de TODOS os dispositivos? Você precisará fazer login de novo em todos.')) return;
+  if(!(await tmxConfirmar('Deslogar de TODOS os dispositivos? Você precisará fazer login de novo em todos.'))) return;
   try {
     await fetch(API_BASE+'/api/me/logout-all', {
       method:'POST',
       headers:{'Authorization':'Bearer '+(localStorage.getItem('sl_session_token')||'')}
     });
-    alert('✅ Logout em todos os dispositivos. Vai redirecionar pro login...');
-    setTimeout(function(){ logout(); }, 1500);
+    tmxAviso('✅ Logout em todos os dispositivos. Vai redirecionar pro login...').then(function(){ logout(); });
   } catch(e){ alert('❌ ' + e.message); }
 }
 
@@ -29961,8 +30028,8 @@ function copiarApiTexto(id, aviso){
   else { var t=document.createElement('textarea'); t.value=token; t.style.cssText='position:fixed;opacity:0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); notif(aviso); }
 }
 
-function revogarApiToken(id){
-  if(!confirm('Revogar este token? Ele deixará de funcionar imediatamente.')) return;
+async function revogarApiToken(id){
+  if(!(await tmxConfirmar('Revogar este token? Ele deixará de funcionar imediatamente.'))) return;
   fetch(API_BASE+'/api/tokens/revoke/'+id, {method:'POST'})
     .then(r=>r.json())
     .then(()=>{ notif('Token revogado!'); renderApiTokens(); })
@@ -31316,8 +31383,8 @@ function vsDefinirGrupo(id, nome){
   s('sl_vsl_grupos', salvos);
   vsAbrirVsls();
 }
-function vsReagrupar(){
-  if(!confirm('Refazer o agrupamento pelos nomes? Isso apaga os grupos que você ajustou à mão.')) return;
+async function vsReagrupar(){
+  if(!(await tmxConfirmar('Refazer o agrupamento pelos nomes? Isso apaga os grupos que você ajustou à mão.'))) return;
   s('sl_vsl_grupos', {});
   vsDados._auto = vsAutoGrupo(vsDados.vsls);
   vsAbrirVsls();
@@ -32481,7 +32548,7 @@ function prCampo(i, campo, v){
 }
 function prOferta(i, j, campo, v){ var o = (prLista[i].ofertas || [])[j]; if(o) o[campo] = v; }
 function prMaisOferta(i){ (prLista[i].ofertas = prLista[i].ofertas || []).push({ nome:'', preco:0, periodo:'mes' }); prPintar(); }
-function prTirar(i){ if(!confirm('Tirar "'+prLista[i].nome+'" do cadastro?')) return; prLista.splice(i, 1); prPintar(); }
+async function prTirar(i){ if(!(await tmxConfirmar('Tirar "'+prLista[i].nome+'" do cadastro?'))) return; prLista.splice(i, 1); prPintar(); }
 function prSalvar(){
   fetch('/api/produtos', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lista: prLista }) })
     .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
@@ -32850,8 +32917,8 @@ function rgAvaliar(bt){
     .then(function(d){ toastFn(d.novas ? d.novas+' ação(ões) nova(s)' : 'Nada novo — '+(d.avaliados||0)+' anúncio(s) avaliado(s)'); if(d.erroAds) toastFn('Utmify: '+d.erroAds); rgCarregar(); })
     .catch(function(e){ toastFn('Falhou: '+e.message); rgCarregar(); });
 }
-function rgDesfazer(id){
-  if(!confirm('Desfazer esta ação?\n\nEm modo simulação isso só registra que você discordou — a regra usa isso pra você calibrar os limites.')) return;
+async function rgDesfazer(id){
+  if(!(await tmxConfirmar('Desfazer esta ação?\n\nEm modo simulação isso só registra que você discordou — a regra usa isso pra você calibrar os limites.'))) return;
   fetch('/api/regras/desfazer', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: id }) })
     .then(function(){ rgCarregar(); });
 }
@@ -32930,18 +32997,18 @@ function mpVersaoPintar(){
   }
   el.innerHTML = h;
 }
-function mpPublicar(){
+async function mpPublicar(){
   var f = fnAtual(); if(!f) return;
-  var nota = prompt('Uma nota pra esta versão (opcional) — ex.: “split 50/50 e upsell do Acervo”', '');
+  var nota = (await tmxPerguntar('Uma nota pra esta versão (opcional) — ex.: “split 50/50 e upsell do Acervo”', ''));
   if(nota === null) return;
   fetch('/api/funis/versao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ funil: f, nota: nota }) })
     .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error||'falhou'); return d; }); })
     .then(function(d){ toastFn('Versão v'+d.versao.n+' publicada'); mpVersaoInfo(); })
     .catch(function(e){ toastFn('Não publicou: '+e.message); });
 }
-function mpRestaurar(id, n){
+async function mpRestaurar(id, n){
   var f = fnAtual(); if(!f) return;
-  if(!confirm('Voltar o funil "'+f.nome+'" pra v'+n+'?\n\nEtapas, links, origens e caminhos voltam como estavam. Os números medidos não mudam. O estado atual continua salvo como a última versão, se você publicou.')) return;
+  if(!(await tmxConfirmar('Voltar o funil "'+f.nome+'" pra v'+n+'?\n\nEtapas, links, origens e caminhos voltam como estavam. Os números medidos não mudam. O estado atual continua salvo como a última versão, se você publicou.'))) return;
   fetch('/api/funis/versao/'+encodeURIComponent(id)).then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.snapshot || d.snapshot.id !== f.id){ toastFn('Não achei essa versão'); return; }
     var l = fnFunis(), i = -1;
@@ -35685,8 +35752,8 @@ function fnFios(){
     alvo.setAttribute('fill','none'); alvo.setAttribute('stroke','transparent');
     alvo.setAttribute('stroke-width','16'); alvo.style.cursor='pointer';
     alvo.setAttribute('pointer-events','stroke');
-    alvo.addEventListener('click', function(){
-      if(confirm('Desfazer a ligação '+na.nome+' → '+nb.nome+'?')) fnDesligar(par[0], par[1]);
+    alvo.addEventListener('click', async function(){
+      if((await tmxConfirmar('Desfazer a ligação '+na.nome+' → '+nb.nome+'?'))) fnDesligar(par[0], par[1]);
     });
     var tt = document.createElementNS('http://www.w3.org/2000/svg','title');
     tt.textContent = na.nome+' → '+nb.nome+' (clique pra desfazer)';
@@ -36120,13 +36187,13 @@ function mpAddFonte(canal){
   setTimeout(fnCarregarStats, 1200);
 }
 // Bloco do redirect (link /r/ do teste A/B)
-function mpAddSplit(){
+async function mpAddSplit(){
   var f = fnAtual(); if(!f){ toastFn('Crie um funil primeiro'); return; }
   var ts = fnTestesDeLink();
   var slug = '';
   if(ts.length === 1) slug = ts[0].slug;
   else if(ts.length > 1){
-    var txt = prompt('Qual teste?\n\n'+ts.map(function(t, i){ return (i+1)+') '+(t.nome||t.slug)+'  /r/'+t.slug; }).join('\n'));
+    var txt = (await tmxPerguntar('Qual teste?\n\n'+ts.map(function(t, i){ return (i+1)+') '+(t.nome||t.slug)+'  /r/'+t.slug; }).join('\n')));
     if(txt === null) return;
     var t = ts[(parseInt(txt, 10) || 0) - 1]; slug = t ? t.slug : '';
   }
@@ -36226,8 +36293,8 @@ function mpModo(){
   document.body.classList.toggle('mp-gaveta-on', mpEditando);
   mpControles(); mpGaveta();
 }
-function mpEditar(){
-  if(!confirm('Quer editar o desenho deste funil?\n\nVocê vai poder arrastar blocos, ligar e trocar as páginas. Cada mudança é salva na hora.')) return;
+async function mpEditar(){
+  if(!(await tmxConfirmar('Quer editar o desenho deste funil?\n\nVocê vai poder arrastar blocos, ligar e trocar as páginas. Cada mudança é salva na hora.'))) return;
   mpEditando = true; fnSel = null; fnLigando = null;
   mpModo(); fnNos(); fnFios();
 }
@@ -36708,9 +36775,9 @@ function mpForaVer(){
     '</tbody></table></div>', 'p');
 }
 
-function fnRemoverFonte(id){
+async function fnRemoverFonte(id){
   var f=fnAtual(); if(!f) return;
-  if(!confirm('Remover esta origem de tráfego?')) return;
+  if(!(await tmxConfirmar('Remover esta origem de tráfego?'))) return;
   f.fontes=(f.fontes||[]).filter(function(x){ return x.id!==id; });
   f.ligacoes=(f.ligacoes||[]).filter(function(l){ return l[0]!==id && l[1]!==id; });
   fnSel=null; fnGravar(f); fnPintar(); toastFn('Origem removida');
@@ -36763,8 +36830,8 @@ function fnSalvarUrlsOferta(id, valor){
   toastFn(!l.length ? 'Página tirada' : l.length === 1 ? 'Página salva' : l.length+' páginas salvas');
   setTimeout(fnCarregarStats, 1200);
 }
-function fnRemoverEtapa(id){
-  if(!confirm('Remover esta etapa do funil?')) return;
+async function fnRemoverEtapa(id){
+  if(!(await tmxConfirmar('Remover esta etapa do funil?'))) return;
   var f = fnAtual(); if(!f) return;
   f.etapas = f.etapas.filter(function(e){ return e.id!==id; });
   f.ligacoes = (f.ligacoes||[]).filter(function(l){ return l[0]!==id && l[1]!==id; });
@@ -36797,7 +36864,7 @@ function fnGravar(f){
 // O que NAO e apagado: as estatisticas e as jornadas, que sao do servidor e
 // ficam com o historico. Se voce recriar o funil com as mesmas paginas, os
 // numeros voltam pra ele pela adocao de etapa.
-function fnExcluirFunil(){
+async function fnExcluirFunil(){
   var f = fnAtual();
   if(!f){ toastFn('Nenhum funil selecionado'); return; }
   var lista = fnDoProjeto();
@@ -36814,7 +36881,7 @@ function fnExcluirFunil(){
     '\nOs números medidos (pessoas, jornadas, atenção) NÃO são apagados — ficam no\n' +
     'servidor e voltam se você recriar o funil com as mesmas páginas.\n\n' +
     'Dá pra restaurar por 30 dias em Lixeira.';
-  if(!confirm(aviso)) return;
+  if(!(await tmxConfirmar(aviso))) return;
 
   if(typeof sDelete === 'function') sDelete('sl_funis', f.id, 'Funil');
   else { fnSalvarFunis(fnFunis().filter(function(x){ return x.id !== f.id; })); }
@@ -36827,10 +36894,10 @@ function fnExcluirFunil(){
   toastFn('Funil excluído — dá pra restaurar em Lixeira');
 }
 
-function fnNovoFunil(){
-  var nome = prompt('Nome do novo funil (dentro de '+fnProj+'):');
+async function fnNovoFunil(){
+  var nome = (await tmxPerguntar('Nome do novo funil (dentro de '+fnProj+'):'));
   if(!nome) return;
-  var modelo = prompt('Modelo: vsl · advo · quiz · zero','vsl') || 'vsl';
+  var modelo = (await tmxPerguntar('Modelo: vsl · advo · quiz · zero','vsl')) || 'vsl';
   var l = fnFunis(); l.push(fnMontar(nome.trim(), modelo.trim(), fnProj));
   fnSalvarFunis(l);
   fnIdx = fnDoProjeto().length-1; fnSel=null;
@@ -36972,12 +37039,12 @@ function abForaHtml(d){
     'Chegaram numa variante sem passar pelo link do split — anúncio antigo com link direto, ou link colado em outro lugar. '+
     'Não entram na comparação'+(f.vendas ? ', mas venderam <span style="font-weight:700;color:var(--text)">'+f.vendas+' ('+fnDin(f.receita)+')</span> — confira no Validador (Links e canais) quais anúncios ainda usam o link direto.' : '.')+'</div>';
 }
-function abDeclarar(variante){
+async function abDeclarar(variante){
   var r = fnRedAtual(); if(!r) return;
   var d = abDados2[r.slug] || {};
   var v = (d.variantes || []).filter(function(x){ return x.id === variante; })[0];
-  if(variante && !confirm('Declarar "'+(v ? v.nome : variante)+'" vencedora?\n\nTodo o tráfego do link do teste passa a ir pra ela. Dá pra desfazer depois.')) return;
-  if(!variante && !confirm('Desfazer a vencedora e voltar a dividir o tráfego?')) return;
+  if(variante && !(await tmxConfirmar('Declarar "'+(v ? v.nome : variante)+'" vencedora?\n\nTodo o tráfego do link do teste passa a ir pra ela. Dá pra desfazer depois.'))) return;
+  if(!variante && !(await tmxConfirmar('Desfazer a vencedora e voltar a dividir o tráfego?'))) return;
   fetch('/api/ab/vencedora', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ teste: r.slug, variante: variante }) })
     .then(function(x){ return x.json().then(function(j){ if(!x.ok) throw new Error(j.error||'falhou'); return j; }); })
     .then(function(){ toastFn(variante ? 'Vencedora declarada' : 'Divisão reativada'); delete abDados[r.slug]; delete abDados2[r.slug];
@@ -37464,14 +37531,14 @@ function abValorVar(i, v){
   r.destinos[i].valor = Math.max(0, parseFloat(String(v).replace(',','.')) || 0);
   delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
 }
-function abTirarVar(i){
+async function abTirarVar(i){
   var r=fnRedAtual(); if(!r) return;
   var d = (r.destinos||[])[i]; if(!d) return;
   var ultima = (r.destinos||[]).length <= 1;
   var aviso = ultima
     ? 'Remover a última variante? O link para de funcionar até você adicionar outra.'
     : 'Remover "'+(d.nome||d.url||'esta variante')+'"? Os números dela somem do teste.';
-  if(!confirm(aviso)) return;
+  if(!(await tmxConfirmar(aviso))) return;
   r.destinos.splice(i,1);
   delete abDados[r.slug]; fnGravarRed(r); fnPintarRed(); abCarregar(r.slug);
   toastFn(ultima ? 'Variante removida — o link está sem destino' : 'Variante removida');
@@ -37508,11 +37575,11 @@ function abMudarDominio(v){
   if(limpo) notif('Salvo. Só funciona depois que o DNS apontar pro Railway.');
 }
 
-function abMudarSlug(v){
+async function abMudarSlug(v){
   var r=fnRedAtual(); if(!r) return;
   var novo = (v||'').trim().replace(/[^a-z0-9-]/gi,'-').toLowerCase() || 'link';
   if(novo === r.slug) return;
-  if(!confirm('Trocar o atalho muda o link. O que já está no anúncio para de funcionar. Continuar?')) { fnPintarRed(); return; }
+  if(!(await tmxConfirmar('Trocar o atalho muda o link. O que já está no anúncio para de funcionar. Continuar?'))) { fnPintarRed(); return; }
   r.slug = novo; abSel = novo; fnGravarRed(r); fnPintarRed();
 }
 function abPausar(){
@@ -37521,9 +37588,9 @@ function abPausar(){
   fnGravarRed(r); fnPintarRed();
   toastFn(r.ativo ? 'Link reativado' : 'Link pausado — quem clicar vê erro');
 }
-function abRemover(){
+async function abRemover(){
   var r=fnRedAtual(); if(!r) return;
-  if(!confirm('Remover "'+(r.nome||r.slug)+'"? O link para de funcionar na hora.')) return;
+  if(!(await tmxConfirmar('Remover "'+(r.nome||r.slug)+'"? O link para de funcionar na hora.'))) return;
   fnSalvarReds(fnReds().filter(function(x){ return x.id!==r.id; }));
   abSel=null; fnPintarRed(); toastFn('Removido');
 }
@@ -37600,13 +37667,13 @@ function abCriarCheckout(bt){
   v2Modal('<div class="v2-cab"><h3>✅ Teste criado</h3><button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
     ckCaixaLink(r)+'<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="fn-btn" onclick="v2Fechar(this)">Entendi</button></div>', 'p');
 }
-function abNovoPagina(){
-  var nome = (prompt('Nome do teste (obrigatório, ex.: VSL 597 × 697):') || '').trim();
+async function abNovoPagina(){
+  var nome = ((await tmxPerguntar('Nome do teste (obrigatório, ex.: VSL 597 × 697):')) || '').trim();
   if(!nome){ toastFn('O teste precisa de um nome'); return; }
   var igual = fnReds().some(function(x){ return (x.projeto||'') === fnProj && String(x.nome||'').trim().toLowerCase() === nome.toLowerCase(); });
   if(igual){ toastFn('Já existe um teste com esse nome neste projeto'); return; }
   var sug = nome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  var slug = (prompt('Atalho do link (vai virar /r/atalho):', sug) || '').replace(/[^a-z0-9-]/gi,'-').toLowerCase();
+  var slug = ((await tmxPerguntar('Atalho do link (vai virar /r/atalho):', sug)) || '').replace(/[^a-z0-9-]/gi,'-').toLowerCase();
   if(!slug) return;
   if(fnReds().some(function(x){ return x.slug===slug; })){ toastFn('Já existe um link com esse atalho'); return; }
   var l = fnReds();
@@ -38222,8 +38289,8 @@ function fiSalvarCompromisso(bt, id){
     .then(function(){ v2Fechar(ov); toastFn(repete ? 'Recorrente salvo' : 'Conta salva'); fiRecarregarCad(); })
     .catch(function(e){ bt.disabled = false; toastFn('Não salvou: '+e.message); });
 }
-function fiExcluir(tipo, id, bt){
-  if(!confirm('Mandar pra lixeira? Dá pra restaurar por 30 dias.')) return;
+async function fiExcluir(tipo, id, bt){
+  if(!(await tmxConfirmar('Mandar pra lixeira? Dá pra restaurar por 30 dias.'))) return;
   v2Json('/api/fin/'+tipo+'/'+encodeURIComponent(id)+'/excluir', { method:'POST' })
     .then(function(){ if(bt) v2Fechar(bt); toastFn('Foi pra lixeira'); fiRecarregarCad(); })
     .catch(function(e){ toastFn('Não deu: '+e.message); });
@@ -38747,10 +38814,10 @@ function fiPem(buf, rot){
   return '-----BEGIN '+rot+'-----\n'+btoa(bin).match(/.{1,64}/g).join('\n')+'\n-----END '+rot+'-----\n';
 }
 // RSA 2048 no navegador (WebCrypto): a privada nunca sai daqui a não ser no "Testar e conectar"
-function fiGerarPar(bt){
+async function fiGerarPar(bt){
   var sc = window.crypto && window.crypto.subtle;
   if(!sc){ toastFn('Este navegador não gera chaves aqui: use os comandos do terminal'); return; }
-  if(fiParCS && !confirm('Já tem um par gerado nesta aba. Gerar outro? O anterior some, e a chave pública dele deixa de servir.')) return;
+  if(fiParCS && !(await tmxConfirmar('Já tem um par gerado nesta aba. Gerar outro? O anterior some, e a chave pública dele deixa de servir.'))) return;
   var ov = bt.closest('.v2-ov'); bt.disabled = true;
   sc.generateKey({ name:'RSASSA-PKCS1-v1_5', modulusLength:2048, publicExponent:new Uint8Array([1, 0, 1]), hash:'SHA-256' }, true, ['sign', 'verify'])
     .then(function(k){ return Promise.all([sc.exportKey('pkcs8', k.privateKey), sc.exportKey('spki', k.publicKey)]); })
@@ -38799,10 +38866,10 @@ function fiLerAgora(id, bt){
     .then(function(){ toastFn('Lendo…'); fiAcompanhar(true); })
     .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não deu: '+e.message); });
 }
-function fiDesconectar(id){
+async function fiDesconectar(id){
   var cx = fiConexoes().filter(function(x){ return x.id === id; })[0] || {};
-  if(!confirm(cx.importacao ? 'Tirar '+fiNomeConexao(id)+'? Os movimentos importados saem do Financeiro. Pra voltar, é importar os arquivos de novo.'
-    : 'Desconectar '+fiNomeConexao(id)+'? A credencial é apagada do servidor e os movimentos lidos saem do Financeiro. Pra voltar, é conectar de novo.')) return;
+  if(!(await tmxConfirmar(cx.importacao ? 'Tirar '+fiNomeConexao(id)+'? Os movimentos importados saem do Financeiro. Pra voltar, é importar os arquivos de novo.'
+    : 'Desconectar '+fiNomeConexao(id)+'? A credencial é apagada do servidor e os movimentos lidos saem do Financeiro. Pra voltar, é conectar de novo.'))) return;
   v2Json('/api/fin/conexoes/'+encodeURIComponent(id)+'/excluir', { method:'POST' })
     .then(function(){ toastFn('Desconectada'); fiCarregar(); })
     .catch(function(e){ toastFn('Não deu: '+e.message); });
@@ -38893,9 +38960,9 @@ function fiCpSalvar(bt){
   var l = fiCustosProj().filter(function(c){ return c.id !== item.id; }).concat([item]);
   fiCpGravar(l, fm.id ? 'Custo atualizado — já vale no DRE' : nome+' entrou no DRE do '+fm.proj, bt);
 }
-function fiCpExcluir(id){
+async function fiCpExcluir(id){
   var cp = fiCustosProj().filter(function(c){ return c.id === id; })[0]; if(!cp) return;
-  if(!confirm('Tirar "'+cp.nome+'" do '+cp.projeto+'? O DRE e a margem deixam de descontar esse custo.')) return;
+  if(!(await tmxConfirmar('Tirar "'+cp.nome+'" do '+cp.projeto+'? O DRE e a margem deixam de descontar esse custo.'))) return;
   fiCpGravar(fiCustosProj().filter(function(c){ return c.id !== id; }), cp.nome+' saiu do DRE');
 }
 function fiCfgCambioHtml(){
@@ -39179,10 +39246,10 @@ function rsGrafico(d){
   if(d.cards.roasAlvo) s += '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+yr(d.cards.roasAlvo)+'" y2="'+yr(d.cards.roasAlvo)+'" stroke="#a5a7ff" stroke-dasharray="4 4" stroke-opacity=".5"><title>ROAS alvo '+v2X(d.cards.roasAlvo)+'</title></line>';
   return s + '</svg>';
 }
-function rsNota(){
+async function rsNota(){
   var f = fnAtual(); if(!f) return;
-  var dia = prompt('Dia da anotação (AAAA-MM-DD):', hojeBR()); if(!dia) return;
-  var txt = prompt('O que mudou nesse dia? (ex.: trocou a VSL, subiu criativo novo)'); if(!txt) return;
+  var dia = (await tmxPerguntar('Dia da anotação (AAAA-MM-DD):', hojeBR())); if(!dia) return;
+  var txt = (await tmxPerguntar('O que mudou nesse dia? (ex.: trocou a VSL, subiu criativo novo)')); if(!txt) return;
   v2Json('/api/funil/notas', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ funil: f.id, dia: dia.trim(), texto: txt }) })
     .then(function(){ toastFn('Anotação salva'); rsCarregar(); })
     .catch(function(e){ toastFn('Não salvou: '+e.message); });
@@ -39295,8 +39362,8 @@ var LD_ATALHOS = {
 };
 // atalhos que a pessoa salva ficam neste navegador
 function ldSalvos(){ try{ return JSON.parse(localStorage.getItem('tmx_leads_atalhos') || '{}') || {}; }catch(e){ return {}; } }
-function ldSalvarAtalho(){
-  var nome = prompt('Nome do atalho (ex.: compradores do AD113):'); if(!nome) return;
+async function ldSalvarAtalho(){
+  var nome = (await tmxPerguntar('Nome do atalho (ex.: compradores do AD113):')); if(!nome) return;
   var f = {}; Object.keys(ldF).forEach(function(k){ if(ldF[k] !== ldBase()[k] && k !== 'pag') f[k] = ldF[k]; });
   if(!Object.keys(f).length){ toastFn('Escolha algum filtro antes de salvar'); return; }
   var l = ldSalvos(); l[nome.trim().slice(0,40)] = { f: f };
@@ -39401,8 +39468,8 @@ function ldPintar(){
         '<button class="fn-btn g sm" '+(d.pag>=paginas?'disabled':'')+' onclick="ldMudar(\'pag\','+(d.pag+1)+')">›</button></div>'+
     '</div>';
 }
-function ldInterno(id, marcar, depois){
-  var ip = marcar ? confirm('Marcar também quem usa a mesma internet (IP) desta pessoa?\n\nOK = pessoa e IP · Cancelar = só esta pessoa') : false;
+async function ldInterno(id, marcar, depois){
+  var ip = marcar ? (await tmxConfirmar('Marcar também quem usa a mesma internet (IP) desta pessoa?\n\nOK = pessoa e IP · Cancelar = só esta pessoa')) : false;
   v2Json('/api/pessoa/'+encodeURIComponent(id)+'/interno', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ interno: marcar, ip: ip }) })
     .then(function(r){ toastFn(marcar ? 'Marcado como interno ('+r.pessoas+' pessoa'+(r.pessoas===1?'':'s')+')' : 'Voltou pras métricas'); ldDados = null; ldCarregar(); fnCarregarStats(); if(depois) depois(); })
     .catch(function(e){ toastFn('Não deu: '+e.message); });
@@ -39565,8 +39632,8 @@ function mcPuxar(bt){
     .then(mcResposta).then(function(d){ var r = d.resultado || {}; toastFn('Puxado: '+r.campanhas+' campanha(s), '+r.mudancas+' mudança(s) nova(s)'); renderIntegracoesTab(); })
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Puxar agora'; mcMsg(e.message, 1); });
 }
-function mcDesconectar(bt){
-  if(!confirm('Desconectar a Meta? O TMX para de puxar os números e de mandar compras. Os números já puxados ficam.')) return;
+async function mcDesconectar(bt){
+  if(!(await tmxConfirmar('Desconectar a Meta? O TMX para de puxar os números e de mandar compras. Os números já puxados ficam.'))) return;
   bt.disabled = true;
   fetch(API_BASE+'/api/meta/conexao/desconectar', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' })
     .then(mcResposta).then(function(){ toastFn('Meta desconectada'); renderIntegracoesTab(); })
@@ -39647,8 +39714,8 @@ function dsSalvar(id, bt){
     })
     .catch(function(e){ bt.disabled = false; bt.textContent = rot; var o = document.getElementById('ds-res'); if(o) o.innerHTML = '<span>'+fnEsc(e.message)+'</span>'; });
 }
-function dsRemover(id, bt){
-  if(!confirm('Remover este destino? Os projetos que mandam as compras pra ele deixam de mandar.')) return;
+async function dsRemover(id, bt){
+  if(!(await tmxConfirmar('Remover este destino? Os projetos que mandam as compras pra ele deixam de mandar.'))) return;
   bt.disabled = true;
   fetch(API_BASE+'/api/destinos/remover', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: id }) })
     .then(mcResposta).then(function(){ dsLista = null; v2Fechar(bt); toastFn('Destino removido'); dsAtualizarTelas(); })
@@ -39706,17 +39773,17 @@ function pcConta(conta, on){ var i = pcSel.contas.indexOf(conta); if(on && i < 0
 function pcModo(m){ pcSel.modo = m; var t = document.getElementById('pc-teste'); if(t) t.style.display = m === 'teste' ? '' : 'none'; }
 // Liga o envio de verdade antes da semana de comparação. Sem código de teste no
 // destino e com a confirmação de que a Utmify parou de mandar pro mesmo pixel.
-function pcAntecipar(bt){
+async function pcAntecipar(bt){
   var dsl = (pcDados && pcDados.destinos) || [];
   var sel = dsl.filter(function(x){ return pcSel.destinos.indexOf(x.id) >= 0; });
   if(!sel.length){ toastFn('Marque o destino e salve antes.'); return; }
   var comCod = sel.filter(function(x){ return x.testCode; });
   if(comCod.length){ alert('Antes, tire o código de teste do destino '+comCod[0].nome+': clique no ✎, apague o código e salve. Com o código, nada conta pras campanhas.'); return; }
   var nomes = sel.map(function(x){ return x.nome; }).join(', ');
-  if(!confirm('Ligar AGORA o envio de verdade das compras de '+fnProj+' pra Meta (pixel '+nomes+')?\n\n'+
+  if(!(await tmxConfirmar('Ligar AGORA o envio de verdade das compras de '+fnProj+' pra Meta (pixel '+nomes+')?\n\n'+
     '• Desligue ANTES o envio de compras da Utmify pra esse pixel. Se os dois mandarem, a Meta conta cada venda duas vezes.\n'+
     '• A partir de agora, cada venda nova vai pra Meta e ela usa pra otimizar as campanhas.\n\n'+
-    'OK = já desliguei a Utmify e quero ligar agora.')) return;
+    'OK = já desliguei a Utmify e quero ligar agora.'))) return;
   bt.disabled = true;
   fetch(API_BASE+'/api/projeto/config', { method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ projeto: fnProj, contas: pcSel.contas, regra: pcSel.regra, destinos: pcSel.destinos, modo: 'enviando', confirmar: 'SIM_ENVIAR_PRA_META', antecipar: true }) })
@@ -39846,12 +39913,12 @@ function pcVendasCard(){
     '<div class="lc-bts" style="margin-top:10px"><button class="fn-btn g sm" onclick="fnAba(\'produtos\')">Cadastro de produtos ›</button></div></div>';
 }
 function _diaIso(ms){ var d = new Date(ms - 3 * 3600000); return d.toISOString().slice(0, 10); }
-function pcSalvar(bt){
+async function pcSalvar(bt){
   var s = pcSel, d = pcDados, corpo = { projeto: fnProj, contas: s.contas, regra: s.regra, destinos: s.destinos };
   if(s.modo !== d.modo){
     corpo.modo = s.modo;
     if(s.modo === 'enviando'){
-      if(!confirm('Ligar o envio de verdade das compras de '+fnProj+' pra Meta?\n\nA Meta passa a usar essas compras pra otimizar as campanhas. Confirme que o envio da Utmify pra este pixel já está desligado, senão cada venda conta duas vezes.')) return;
+      if(!(await tmxConfirmar('Ligar o envio de verdade das compras de '+fnProj+' pra Meta?\n\nA Meta passa a usar essas compras pra otimizar as campanhas. Confirme que o envio da Utmify pra este pixel já está desligado, senão cada venda conta duas vezes.'))) return;
       corpo.confirmar = 'SIM_ENVIAR_PRA_META';
     }
   }
@@ -40458,7 +40525,7 @@ function mpForaPintar(){
                       : '<div class="fx-vazio">Nenhuma. Toda página com o pixel deste funil é uma etapa do mapa.</div>')+
     sug+'</div>';
 }
-function mpForaAcao(i, acao){
+async function mpForaAcao(i, acao){
   var p = mpForaDados && mpForaDados.paginas[i]; if(!p || !acao) return;
   if(acao === 'ignorar'){
     v2SalvarFunil(function(f){ f.paginasIgnoradas = (f.paginasIgnoradas||[]).concat([p.pg]); });
@@ -40468,7 +40535,7 @@ function mpForaAcao(i, acao){
   var base = fnAcha(f, p.etapaDeclarada);
   if(acao === 'variante' && !base){
     var ops = (f.etapas||[]).filter(function(e){ return e.tipo !== 'fonte'; });
-    var txt = prompt('Variante de qual etapa?\n\n'+ops.map(function(e, k){ return (k+1)+') '+e.nome; }).join('\n'));
+    var txt = (await tmxPerguntar('Variante de qual etapa?\n\n'+ops.map(function(e, k){ return (k+1)+') '+e.nome; }).join('\n')));
     base = ops[(parseInt(txt, 10) || 0) - 1]; if(!base) return;
   }
   var nova = mpNovaEtapa(f, p.pg, base, acao === 'variante');
@@ -40719,12 +40786,12 @@ function abDivPrevia(v){
   var ds = r.destinos || []; v = +v;
   el.innerHTML = '<b>A · '+fnEsc((ds[0]||{}).nome || 'Variante 1')+' '+v+'%</b><b>B · '+fnEsc((ds[1]||{}).nome || 'Variante 2')+' '+(100-v)+'%</b>';
 }
-function abDividir(pa){
+async function abDividir(pa){
   var r = fnRedAtual(); if(!r || !r.destinos || r.destinos.length !== 2) return;
   pa = Math.max(5, Math.min(95, Math.round(+pa)));
   var p0 = Number(r.destinos[0].peso) || 1, p1 = Number(r.destinos[1].peso) || 1;
   if(Math.round(p0 / (p0 + p1) * 100) === pa){ return; }
-  if(!confirm('Mudar a divisão pra A '+pa+'% · B '+(100-pa)+'%?\n\nQuem já caiu numa variante continua nela. A nova divisão vale pra quem chegar a partir de agora.')){ fnPintarRed(); return; }
+  if(!(await tmxConfirmar('Mudar a divisão pra A '+pa+'% · B '+(100-pa)+'%?\n\nQuem já caiu numa variante continua nela. A nova divisão vale pra quem chegar a partir de agora.'))){ fnPintarRed(); return; }
   r.destinos[0].peso = pa; r.destinos[1].peso = 100 - pa;
   fnGravarRed(r); delete abDados[r.slug]; delete abDados2[r.slug]; fnPintarRed();
   toastFn('Divisão agora: A '+pa+'% · B '+(100-pa)+'%. Vale pra quem chegar a partir de agora.');
@@ -40976,13 +41043,13 @@ function jnOferta(){
   var f = fnAtual();
   return f ? (parseInt(localStorage.getItem('jn_oferta_'+f.id), 10) || 0) : 0;
 }
-function jnMarcarOferta(){
+async function jnMarcarOferta(){
   var f = fnAtual(); if(!f) return;
   var atual = jnOferta();
-  var txt = prompt('Em que minuto da VSL você mostra o preço?\n\n'+
+  var txt = (await tmxPerguntar('Em que minuto da VSL você mostra o preço?\n\n'+
     'Quem não chega até aí nunca viu a oferta — é o degrau que separa\n'+
     'problema de retenção do vídeo de problema de oferta.\n\n'+
-    'Deixe vazio para tirar o marco.', atual ? String(atual/60) : '');
+    'Deixe vazio para tirar o marco.', atual ? String(atual/60) : ''));
   if(txt === null) return;
   var min = parseFloat(String(txt).replace(',', '.'));
   var seg = (Number.isFinite(min) && min > 0) ? Math.round(min*60) : 0;
@@ -42616,9 +42683,9 @@ function salvarPlanos(){
 // aqui, pra eles pararem de depender dela. Dia já guardado é pulado.
 async function adsPreencherHistorico(){
   const bt = document.getElementById('ads-preencher');
-  const dias = prompt('Buscar quantos dias pra trás?\n\n'+
+  const dias = (await tmxPerguntar('Buscar quantos dias pra trás?\n\n'+
     'Vou pedir um dia por vez, com pausa entre eles pra não estourar a cota da Utmify.\n'+
-    'Dia que já está guardado é pulado.', '7');
+    'Dia que já está guardado é pulado.', '7'));
   if(dias === null) return;
   const n = Math.max(1, Math.min(60, parseInt(dias, 10) || 7));
   const txt = bt ? bt.textContent : '';
@@ -43061,15 +43128,15 @@ function renderAnuncios(){
   }).join('');
 }
 
-function editAdInvestimento(encKey){
+async function editAdInvestimento(encKey){
   const adName = decodeURIComponent(encKey);
   const manualInvMap = g('ad_inv_manual', {});
   const current = manualInvMap[adName];
-  const entrada = prompt(
+  const entrada = (await tmxPerguntar(
     'Investimento do anúncio:\n' + adName + '\n\n' +
     'Digite o valor investido em R$ (ex: 150.50)\nDeixe em branco para usar estimativa proporcional.',
     current !== undefined ? String(current) : ''
-  );
+  ));
   if(entrada === null) return; // cancelled
   const trimmed = entrada.trim();
   if(trimmed === ''){
@@ -44479,11 +44546,11 @@ function cpChave(c, st){
 function cpPausarDaAnalise(bt){
   cpAlternarStatus(cpAnaliseIdx, bt, function(st){ if(cpAnalise && cpAnalise.campanha){ cpAnalise.campanha.status = st; cpPintarAnalise(); } });
 }
-function cpAlternarStatus(i, bt, depois){
+async function cpAlternarStatus(i, bt, depois){
   var c = cpDados[i]; if(!c) return;
   if(!cpMeta || !cpMeta.pode){ toastFn(cpMeta && cpMeta.conectado ? 'O token da Meta não tem ads_management. Gere outro marcando essa permissão e troque em Integrações → Meta.' : 'Pra pausar e ativar daqui, conecte a Meta em Configurações → Integrações → Meta.'); return; }
   var ativo = cpStatus(c.status)[1] !== 'on';
-  if(!confirm((ativo ? 'Ativar' : 'Pausar')+' a campanha na Meta?\n\n'+cpNomeCurto(c.nome))) return;
+  if(!(await tmxConfirmar((ativo ? 'Ativar' : 'Pausar')+' a campanha na Meta?\n\n'+cpNomeCurto(c.nome)))) return;
   if(bt) bt.disabled = true;
   fetch(API_BASE+'/api/meta/campanha/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: c.campanhaId, ativo: ativo, nome: c.nome }) })
     .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
@@ -45480,8 +45547,8 @@ function _cmdkInit(){
   _cmdkRegister({ id:'go-lixeira', label:'Ir para Lixeira', icon:'🗑️', keywords:'trash deletados', action:function(){ _cmdkGo('lixeira'); } });
   // Ações
   _cmdkRegister({ id:'nova-demanda', label:'Nova demanda', icon:'➕', keywords:'criar tarefa task', shortcut:'⌘N', action:function(){ _cmdkGo('task'); setTimeout(function(){ if(typeof abrirNovaDemanda==='function') abrirNovaDemanda(); }, 150); } });
-  _cmdkRegister({ id:'nova-demanda-ia', label:'Nova demanda com IA ✨', icon:'✨', keywords:'criar tarefa rapido inteligente automatico', action:function(){
-    var texto = prompt('✨ Descreva o que precisa (a IA vai criar a demanda):');
+  _cmdkRegister({ id:'nova-demanda-ia', label:'Nova demanda com IA ✨', icon:'✨', keywords:'criar tarefa rapido inteligente automatico', action:async function(){
+    var texto = (await tmxPerguntar('✨ Descreva o que precisa (a IA vai criar a demanda):'));
     if(!texto || !texto.trim()) return;
     iaCriarDemandaRapida(texto.trim());
   } });
@@ -45505,7 +45572,7 @@ function _cmdkInit(){
     if(atual){ localStorage.setItem('sl_notif_desktop','off'); notif('🔕 Notificações desktop desativadas (use o comando pra reativar).'); }
     else { localStorage.removeItem('sl_notif_desktop'); notif('🔔 Notificações desktop reativadas!'); }
   } });
-  _cmdkRegister({ id:'logout', label:'Sair (Logout)', icon:'🚪', keywords:'sair desconectar', action:function(){ if(confirm('Sair da conta?')) logout(); } });
+  _cmdkRegister({ id:'logout', label:'Sair (Logout)', icon:'🚪', keywords:'sair desconectar', action:async function(){ if((await tmxConfirmar('Sair da conta?'))) logout(); } });
 
   // Listener global
   document.addEventListener('keydown', _cmdkGlobalKey, true);
@@ -45837,7 +45904,7 @@ function editMeta(i){_editMeta=i;renderMetas();}
 function metaEditCancel(){_editMeta=null;renderMetas();}
 function saveMetaEdit(i){var m=C.metas[i];if(!m)return;var g=function(id){var e=ROOT.getElementById(id);return e?e.value.trim():'';};var nn=g('mnome_'+i);if(nn)m.nome=nn;m.prazo=g('mprazo_'+i);m.q1=g('mq1_'+i);m.q2=g('mq2_'+i);m.q3=g('mq3_'+i);m.q4=g('mq4_'+i);_editMeta=null;save();renderMetas();renderDashboard();}
 function addMeta(){var n=val('nm-nome');if(!n)return;C.metas.push({nome:n,pct:0,prazo:val('nm-prazo'),q1:'',q2:'',q3:'',q4:''});save();renderMetas();renderDashboard();}
-function delMeta(i){if(!confirm('Remover essa meta?'))return;C.metas.splice(i,1);_editMeta=null;save();renderMetas();renderDashboard();}
+async function delMeta(i){if(!(await tmxConfirmar('Remover essa meta?')))return;C.metas.splice(i,1);_editMeta=null;save();renderMetas();renderDashboard();}
 function setMetaPct(i,v){C.metas[i].pct=+v;save();var d=ROOT.querySelectorAll('#metas .card')[i];if(d){d.querySelector('.bar>span').style.width=v+'%';d.querySelector('b[style*="width:38px"]').textContent=v+'%';}}
 
 /* --- 7b. PATRIMÔNIO --- */
@@ -45847,7 +45914,7 @@ function setPatr(){C.patrimonioAtual=+(ROOT.getElementById('patrIn').value||0);s
 /* --- 4. PESSOAS / RELAÇÕES --- */
 function renderPessoas(){var c=ROOT.getElementById('pessoas');if(!c)return;c.innerHTML=C.pessoas.map(function(p,i){var dd=diasDesde(p.ultima);var atras=dd!=null&&dd>p.cad;var cor=p.ultima?(atras?'var(--red,#f87171)':'var(--ok,#34d399)'):'var(--muted)';var txt=p.ultima?('última conversa real há '+dd+' dia(s)'+(atras?' — passou da cadência de '+p.cad+'d ⚠️':' · cadência '+p.cad+'d')):'sem registro ainda · cadência '+p.cad+'d';return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>'+esc(p.nome)+'</b><div style="color:var(--muted);font-size:13px">'+esc(p.rel)+'</div></div><span class="del-x" onclick="MP.delPessoa('+i+')">×</span></div><div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap"><span style="font-size:13px;color:'+cor+'">'+txt+'</span><button class="btn sm ghost" onclick="MP.convHoje('+i+')" style="margin-left:auto">Conversei hoje</button></div></div>';}).join('')+'<div class="card"><div class="flex"><input id="pes-n" placeholder="Nome"><input id="pes-c" type="number" placeholder="cadência (dias)" style="max-width:140px"></div><input id="pes-r" placeholder="Relação / observação" style="margin-top:8px"><div class="btn-row"><button class="btn sm" onclick="MP.addPessoa()">+ pessoa</button></div></div>';}
 function convHoje(i){C.pessoas[i].ultima=TK;save();renderPessoas();}
-function delPessoa(i){if(!confirm('Remover '+C.pessoas[i].nome+'?'))return;C.pessoas.splice(i,1);save();renderPessoas();}
+async function delPessoa(i){if(!(await tmxConfirmar('Remover '+C.pessoas[i].nome+'?')))return;C.pessoas.splice(i,1);save();renderPessoas();}
 function addPessoa(){var n=val('pes-n');if(!n)return;C.pessoas.push({nome:n,rel:val('pes-r'),cad:+(ROOT.getElementById('pes-c').value||7),ultima:''});save();renderPessoas();}
 
 /* --- 5. CORPO / ENERGIA --- */
@@ -45862,7 +45929,7 @@ function renderCorpo(){var host=ROOT.getElementById('corpo');if(!host)return;var
 function tgTreino(el){var d=dia();if(!d.corpo)d.corpo={};d.corpo.treino=!d.corpo.treino;save();renderCorpo();}
 function setCorpo(k,v){var d=dia();if(!d.corpo)d.corpo={};d.corpo[k]=v;save();}
 function agua(n){var d=dia();if(!d.corpo)d.corpo={agua:0};d.corpo.agua=Math.max(0,(d.corpo.agua||0)+n);save();var el=ROOT.getElementById('aguaN');if(el)el.textContent=d.corpo.agua;}
-function recai(){if(!confirm('Zerar o contador de dias limpos? (registra recaída hoje)'))return;C.limpoDesde=TK;save();renderCorpo();}
+async function recai(){if(!(await tmxConfirmar('Zerar o contador de dias limpos? (registra recaída hoje)')))return;C.limpoDesde=TK;save();renderCorpo();}
 
 /* --- 7a. MODELOS --- */
 function renderModelos(){var c=ROOT.getElementById('modelos');if(!c)return;c.innerHTML=C.modelos.map(function(m,i){return '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(m.nome)+'</b><span class="del-x" onclick="MP.delModelo('+i+')">×</span></div><div style="color:var(--muted);font-size:13px;margin:3px 0 8px">Foco: '+esc(m.foco)+'</div><label style="color:var(--muted);font-size:12px">O que apliquei dele (1 crença / 1 hábito / 1 fala):</label><input type="text" value="'+esc(m.aplicado||'')+'" oninput="MP.setModelo('+i+',this.value)" placeholder="o que copiei e testei"></div>';}).join('')+'<div class="card"><div class="flex"><input id="mod-n" placeholder="Novo modelo"><input id="mod-f" placeholder="Foco"></div><div class="btn-row"><button class="btn sm" onclick="MP.addModelo()">+ modelo</button></div></div>';}
@@ -45919,9 +45986,9 @@ function renderVicios(){var c=ROOT.getElementById('vicios');if(!c)return;
  c.innerHTML=head+counter+cards+form;}
 function vicioUrge(id){_urgeOpen=(_urgeOpen===id?null:id);renderVicios();}
 function vicioResisti(id){var d=dia();d.vencidas=(d.vencidas||0)+1;_urgeOpen=null;save();renderVicios();renderDashboard();}
-function vicioRecaida(id){if(!confirm('Registrar recaída e zerar o contador? Sem culpa — recaída faz parte da subida. Só volta pro jogo.'))return;var v=null;C.vicios.forEach(function(x){if(x.id===id)v=x;});if(v)v.limpoDesde=TK;_urgeOpen=null;save();renderVicios();}
+async function vicioRecaida(id){if(!(await tmxConfirmar('Registrar recaída e zerar o contador? Sem culpa — recaída faz parte da subida. Só volta pro jogo.')))return;var v=null;C.vicios.forEach(function(x){if(x.id===id)v=x;});if(v)v.limpoDesde=TK;_urgeOpen=null;save();renderVicios();}
 function addVicio(){var n=val('vic-n');if(!n)return;C.vicios.push({id:'vc'+Date.now().toString(36),nome:n,porque:val('vic-p'),gatilho:val('vic-g'),troca:val('vic-t'),limpoDesde:TK});save();renderVicios();}
-function delVicio(i){if(!confirm('Remover?'))return;C.vicios.splice(i,1);save();renderVicios();}
+async function delVicio(i){if(!(await tmxConfirmar('Remover?')))return;C.vicios.splice(i,1);save();renderVicios();}
 function pomS(){if(!window._pomState)window._pomState={sec:25*60,running:false,mode:'foco',focoMin:25};if(window._pomState.focoMin==null)window._pomState.focoMin=25;return window._pomState;}
 function pomWidget(){var p=pomS();var pomo=dia().pomo||0;return '<div class="pom-disp" style="font-size:44px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:1px">'+pomFmt(p.sec)+'</div><div class="muted pom-mode">'+(p.mode==='foco'?('foco · '+p.focoMin+' min'):'pausa · 5 min')+'</div><div class="btn-row" style="justify-content:center;margin-top:10px;gap:6px"><button class="btn sm ghost" onclick="MP.pomSet(25)">25</button><button class="btn sm ghost" onclick="MP.pomSet(30)">30</button><button class="btn sm ghost" onclick="MP.pomSet(50)">50</button></div><div class="btn-row" style="justify-content:center;margin-top:8px"><button class="btn sm pom-btn" onclick="MP.pomStart()">▶ Começar</button><button class="btn sm ghost" onclick="MP.pomReset()">↺ Zerar</button></div><div class="muted" style="margin-top:8px"><b class="pom-count" style="color:var(--txt)">'+pomo+'</b> sessões de foco hoje</div>';}
 function pomFmt(s){var m=Math.floor(s/60),ss=s%60;return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
@@ -47036,10 +47103,10 @@ function pintarConfigurar(){
     });
   }
 }
-function alternarAr(){
+async function alternarAr(){
   if (!QZ.ativo){
     var sem = semLink();
-    if (sem.length && !confirm(sem.length + ' botão(ões) ainda não têm link (' + sem.map(function(x){ return '“' + x.b.txt + '”'; }).join(', ') + ').\n\nNo ar, quem tocar neles não vai a lugar nenhum. Colocar no ar mesmo assim?')) return;
+    if (sem.length && !(await tmxConfirmar(sem.length + ' botão(ões) ainda não têm link (' + sem.map(function(x){ return '“' + x.b.txt + '”'; }).join(', ') + ').\n\nNo ar, quem tocar neles não vai a lugar nenhum. Colocar no ar mesmo assim?'))) return;
   }
   QZ.ativo = !QZ.ativo;
   salvar(true); atualizarCabecalho();
@@ -47192,7 +47259,7 @@ function ligarEventos(raiz){
     if (arquivos.length > 1) aviso('Usei só a primeira imagem.');
     escolherImagem(arquivos[0], b);
   });
-  raiz.addEventListener('click', function(e){
+  raiz.addEventListener('click', async function(e){
     var el = e.target.closest('[data-qp],[data-acao],[data-set],[data-tema]'); if (!el || !raiz.contains(el)) return;
     var qp = el.getAttribute('data-qp');
 
@@ -47279,7 +47346,7 @@ function ligarEventos(raiz){
       return;
     }
     if (qp === 'excluir'){
-      if (!confirm('Excluir o quiz “' + QZ.nome + '”?\n\nO link para de abrir na hora. Os números medidos ficam no servidor.\nDá pra restaurar por 30 dias em Lixeira.')) return;
+      if (!(await tmxConfirmar('Excluir o quiz “' + QZ.nome + '”?\n\nO link para de abrir na hora. Os números medidos ficam no servidor.\nDá pra restaurar por 30 dias em Lixeira.'))) return;
       var idEx = QZ.id;
       clearTimeout(salvarTimer);
       destruirMotor(); QZ = null; ui.tela = 'lista';
@@ -47325,7 +47392,7 @@ function ligarEventos(raiz){
     }
     if (acao === 'tela-tirar'){
       if (QZ.telas.length <= 1){ aviso('O quiz precisa de pelo menos uma tela'); return; }
-      if (!confirm('Excluir a tela “' + tela.nome + '”?')) return;
+      if (!(await tmxConfirmar('Excluir a tela “' + tela.nome + '”?'))) return;
       QZ.telas.splice(pos, 1);
       QZ.telas.forEach(function(t){ t.blocos.forEach(function(b){ (b.ops || []).forEach(function(o){ if (o.pular === tela.id) o.pular = ''; }); }); });
       ui.sel = (QZ.telas[pos] || QZ.telas[pos - 1]).id; ui.aberto = null;
@@ -47419,10 +47486,10 @@ function ligarEventos(raiz){
       if (!novo){ el.value = QZ.slug; return; }
       fetch('/api/quiz/slug-livre?slug=' + encodeURIComponent(novo) + '&quiz=' + encodeURIComponent(QZ.id))
         .then(function(r){ return r.json(); })
-        .then(function(j){
+        .then(async function(j){
           var localLivre = !lista().some(function(q){ return q.id !== QZ.id && q.slug === novo; });
           if (!j.livre || !localLivre){ aviso('Esse link já é de outro quiz. Escolha outro final.'); el.value = QZ.slug; return; }
-          if (QZ.ativo && novo !== QZ.slug && !confirm('O quiz está no ar. Trocar o link quebra os anúncios que usam o link atual.\n\nTrocar mesmo assim?')){ el.value = QZ.slug; return; }
+          if (QZ.ativo && novo !== QZ.slug && !(await tmxConfirmar('O quiz está no ar. Trocar o link quebra os anúncios que usam o link atual.\n\nTrocar mesmo assim?'))){ el.value = QZ.slug; return; }
           QZ.slug = novo; el.value = novo; salvar(true); atualizarCabecalho();
           var lk = document.getElementById('qp-cfg-link'); if (lk) lk.textContent = linkDo(QZ);
           aviso('Link atualizado');

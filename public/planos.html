@@ -7,247 +7,639 @@
 <meta name="description" content="O time, os anúncios e as vendas de cada projeto no mesmo painel. Escolha o plano pela faixa de investimento em anúncios.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
 <style>
-/* Página de planos e volta do pagamento (07/11/2026). Mesmo visual da tela de login e do /cadastro.
-   Desenho aprovado no esboço "Caminho de compra do TMX"; preços e limites vêm de /api/planos-tmx (PLANOS_TMX). */
+/* Página de planos (versão 2, aprovada pelo Thiago em 07/11/2026; desenho do esboço "Página de planos TMX").
+   Página: o fundo escuro da marca TMX, gradiente roxo→azul só nos destaques.
+   Telas: copiadas das telas reais do TMX no tema claro (o que o Thiago usa): menu branco, item ativo #4F46E5,
+   logo em gradiente roxo→rosa→azul, Inter. Números e nomes são de exemplo, pra não expor a operação de verdade. */
 :root{
-  --fundo:#07060F; --cartao:rgba(14,12,26,.85); --cartao2:rgba(255,255,255,.035); --borda:#2D2850;
-  --texto:#FFFFFF; --texto2:#8B93AB; --texto3:#5F6884;
-  --azul:#1B9CFA; --azul2:#38BDF8; --rosa:#C52C58; --ok:#34D399; --erro:#F87171;
-  --grad:linear-gradient(135deg,#3E1493,#1B9CFA);
-  --fonte:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --bg:#07060F; --bg2:#0C0B18; --painel:#11101F; --linha:rgba(255,255,255,.08); --linha2:rgba(255,255,255,.16);
+  --tx:#F5F6FB; --tx2:#A3A9C2; --tx3:#6B7290; --azul:#1B9CFA; --azul2:#5EB8FF; --ok:#3DD68C;
+  --grad:linear-gradient(135deg,#3E1493 0%,#2509E4 48%,#1B9CFA 100%);
+  --f-tit:'Plus Jakarta Sans','Inter',system-ui,sans-serif; --f:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; --f-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  /* tokens das telas do TMX (tema claro do app) */
+  --t-bg:#FFFFFF; --t-bg3:#F8FAFC; --t-tx:#0F172A; --t-tx2:#475569; --t-tx3:#94A3B8; --t-borda:#E2E8F0; --t-borda2:#E8ECF4;
+  --t-ativo:#4F46E5; --t-azul:#0284C7; --t-azul2:#1B9CFA; --t-verde:#059669; --t-verm:#DC2626; --t-lar:#D97706; --t-roxo:#6366F1; --t-rosa:#DB2777;
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
-html,body{margin:0}
-body{font-family:var(--fonte);color:var(--texto);background:var(--fundo);line-height:1.5;color-scheme:dark;-webkit-font-smoothing:antialiased}
-#raiz{min-height:100vh;min-height:100dvh;background:radial-gradient(ellipse at 60% 0%,#1A1040 0%,var(--fundo) 62%) var(--fundo)}
-.larg{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
+body{background:var(--bg);color:var(--tx);font:15px/1.6 var(--f);-webkit-font-smoothing:antialiased}
 h1,h2,h3,p{margin:0}
-h1,h2{text-wrap:balance;letter-spacing:-.02em}
-button,input{font-family:inherit}
+h1,h2,h3{font-family:var(--f-tit);text-wrap:balance;letter-spacing:-.02em}
+.larg{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.esboco{background:rgba(255,89,38,.1);border-bottom:1px solid rgba(255,89,38,.35);color:#FFC9B5;font-size:12.5px}
+.esboco .larg{padding-block:9px}
+.esboco b{color:#FFE1D6}
 :focus-visible{outline:2px solid var(--azul2);outline-offset:2px}
-[hidden]{display:none !important}
-
-.cab{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:18px}
+/* topo */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+.cab{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:rgba(7,6,15,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--linha)}
+.cab .larg{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:14px}
 .logo{display:flex;align-items:baseline;gap:8px;text-decoration:none}
-.logo b{font-size:26px;font-weight:800;letter-spacing:-.5px;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.logo span{font-size:11px;font-weight:700;letter-spacing:4px;color:var(--texto2)}
-.cab nav{display:flex;gap:6px;align-items:center}
-.lnk{background:none;border:0;color:var(--texto2);font:600 13px var(--fonte);padding:8px 10px;border-radius:8px;cursor:pointer;text-decoration:none}
-.lnk:hover{color:var(--texto)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--grad);color:#FFFFFF;border:0;border-radius:9px;padding:12px 18px;font:700 14px var(--fonte);cursor:pointer;box-shadow:0 4px 18px rgba(27,156,250,.35);text-decoration:none}
-.btn:hover{opacity:.92}
-.btn:disabled{opacity:.55;cursor:default}
-.btn.sec{background:transparent;border:1px solid var(--borda);box-shadow:none;color:var(--texto)}
-.btn.sec:hover{border-color:var(--azul)}
-.btn.lg{width:100%}
-.rot{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--azul2)}
-.sec{padding-block:40px 8px}
-.sec > .topo{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:18px}
-.sec h2{font-size:26px;font-weight:800;margin-top:4px}
-.sec .topo p{color:var(--texto2);font-size:14px;max-width:60ch;margin-top:6px}
+.logo b{font:800 24px var(--f);letter-spacing:-.5px;background:linear-gradient(135deg,#3E1493 0%,#C52C58 55%,#1B9CFA 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo span{font-size:10.5px;font-weight:700;letter-spacing:4px;color:var(--tx2)}
+.cab nav{display:flex;align-items:center;gap:4px}
+.lnk{color:var(--tx2);text-decoration:none;font-size:13.5px;font-weight:600;padding:8px 10px;border-radius:8px}
+.lnk:hover{color:var(--tx)}
+/* botões: altura fixa e texto sempre no meio */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 22px;border-radius:12px;border:1px solid transparent;background:var(--grad);color:#fff;font:700 15px/1 var(--f);text-decoration:none;cursor:pointer;white-space:nowrap;box-shadow:0 10px 30px rgba(37,9,228,.35);flex:none}
+.btn:hover{filter:brightness(1.08)}
+.btn.contorno{background:rgba(255,255,255,.06);border-color:var(--linha2);box-shadow:none;color:var(--tx)}
+.btn.contorno:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);filter:none}
+.btn.peq{height:38px;padding:0 15px;font-size:13.5px;border-radius:10px}
+.rot{font:700 11.5px var(--f);letter-spacing:.14em;text-transform:uppercase;color:var(--azul2)}
+/* hero */
+.hero{position:relative;overflow:hidden;background:radial-gradient(900px 500px at 80% 10%,rgba(37,9,228,.3),transparent 62%),radial-gradient(700px 420px at 5% 0%,rgba(62,20,147,.35),transparent 60%)}
+.hero .larg{padding-block:60px 44px;display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr);gap:48px;align-items:center}
+.hero h1{font-size:clamp(34px,4.4vw,54px);line-height:1.05;font-weight:800;margin-top:12px}
+.hero h1 em{font-style:normal;background:linear-gradient(135deg,#8B6CFF 0%,#5B7CFF 50%,#1B9CFA 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .sub{color:var(--tx2);font-size:17px;max-width:46ch;margin-top:16px}
+.hero .acoes{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:26px}
+.hero .miudo{display:flex;gap:8px 18px;flex-wrap:wrap;margin-top:20px;color:var(--tx2);font-size:13px}
+.hero .miudo span::before{content:"✓ ";color:var(--ok);font-weight:800}
+.vitrine{position:relative}
+.flut{position:absolute;z-index:3;background:#fff;color:var(--t-tx);border:1px solid var(--t-borda);border-radius:12px;padding:9px 12px;font-size:12px;box-shadow:0 18px 50px rgba(0,0,0,.45);display:flex;gap:9px;align-items:center;max-width:260px}
+.flut b{display:block;font-size:12.5px}
+.flut small{color:var(--t-tx2);font-size:11.5px}
+.flut .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;font-size:15px}
+.flut.f1{left:-34px;bottom:-26px} .flut.f2{right:-16px;top:-20px}
+.flut.zap{background:#E7FFDB;border-color:#B7E4A0}
+.modulos{border-block:1px solid var(--linha);background:var(--bg2)}
+.modulos .larg{display:flex;gap:8px;overflow-x:auto;padding-block:14px;scrollbar-width:none}
+.modulos .larg::-webkit-scrollbar{display:none}
+.modulos a{flex:none;text-decoration:none;font-size:13.5px;font-weight:600;color:var(--tx2);border:1px solid var(--linha2);border-radius:99px;padding:8px 14px}
+.modulos a:hover{color:var(--tx);border-color:var(--azul)}
+/* seções */
+.func{padding-block:80px 0}
+.func .larg{display:grid;grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr);gap:52px;align-items:center}
+.func.inv .larg{grid-template-columns:minmax(0,1.28fr) minmax(0,.72fr)}
+.func.inv .texto{order:2}
+.func h2{font-size:clamp(26px,2.8vw,36px);line-height:1.12;margin-top:10px}
+.func .texto > p{color:var(--tx2);margin-top:14px;max-width:46ch}
+.func ul{list-style:none;padding:0;margin:20px 0 0;display:flex;flex-direction:column;gap:12px}
+.func li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;font-size:14.5px}
+.func li::before{content:"";width:22px;height:22px;border-radius:7px;background:rgba(27,156,250,.14) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235EB8FF' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E") center/13px no-repeat}
+.func li b{font-weight:600}
+.legenda{color:var(--tx3);font-size:12px;margin-top:12px;text-align:center}
 
-.hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:36px;align-items:center;padding-block:28px 8px}
-.hero h1{font-size:42px;line-height:1.08;font-weight:800;margin-top:10px}
-.hero h1 em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero .sub{color:var(--texto2);font-size:16px;max-width:52ch;margin-top:14px}
-.hero .acoes{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
-.hero .miudo{color:var(--texto3);font-size:12.5px;margin-top:12px}
-.mini{background:var(--cartao);border:1px solid var(--borda);border-radius:18px;padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 60px rgba(27,156,250,.06)}
-.mini .t{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--texto2);margin-bottom:12px}
-.mini .t b{color:var(--texto);font-size:13px}
-.mini .nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
-.mini .nums div{background:var(--cartao2);border:1px solid var(--borda);border-radius:11px;padding:10px}
-.mini .nums small{display:block;font-size:10.5px;color:var(--texto2);text-transform:uppercase;letter-spacing:.06em}
-.mini .nums b{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
-.mini .ad{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:12.5px;padding:7px 0;border-top:1px solid var(--borda)}
-.mini .ad code{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--texto)}
-.mini .ad .tr{height:6px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
-.mini .ad .tr i{display:block;height:100%;border-radius:6px;background:var(--grad)}
-.mini .ad .tr i.ruim{background:var(--rosa)}
-.mini .ad span{color:var(--texto2);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* ── A janela com a tela do TMX (tema claro do app) ── */
+.jan{background:var(--t-bg);color:var(--t-tx);border-radius:14px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08),0 0 90px rgba(37,9,228,.18);font:11.5px/1.35 var(--f)}
+.jan-bar{display:flex;align-items:center;gap:6px;padding:9px 12px;background:#EEF1F6;border-bottom:1px solid var(--t-borda)}
+.jan-bar i{width:10px;height:10px;border-radius:50%;background:#D5DAE3}
+.jan-bar i:nth-child(1){background:#FF6159} .jan-bar i:nth-child(2){background:#FFBD2E} .jan-bar i:nth-child(3){background:#28C941}
+.jan-bar span{margin-left:10px;flex:1;max-width:300px;background:#fff;border:1px solid var(--t-borda);border-radius:7px;padding:3px 10px;color:var(--t-tx2);font:500 10.5px var(--f-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app{display:grid;grid-template-columns:132px minmax(0,1fr)}
+.sb{background:#fff;border-right:1px solid var(--t-borda2);padding:10px 8px;display:flex;flex-direction:column;gap:1px}
+.sb .lg{display:flex;align-items:baseline;gap:4px;padding:2px 6px 10px}
+.sb .lg b{font:800 17px var(--f);letter-spacing:-.5px;background:linear-gradient(135deg,#3E1493 0%,#C52C58 55%,#1B9CFA 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sb .lg span{font-size:6.5px;font-weight:700;letter-spacing:2.5px;color:var(--t-tx)}
+.sb s{text-decoration:none;font-size:7.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-tx3);padding:7px 6px 2px;font-weight:700}
+.sb a{display:flex;align-items:center;gap:6px;color:#374151;padding:4px 6px;border-radius:6px;font-size:9.5px;font-weight:500;white-space:nowrap}
+.sb a::before{content:"";width:8px;height:8px;border:1.3px solid #6B7280;border-radius:2px;opacity:.75;flex:none}
+.sb a.on{background:var(--t-ativo);color:#fff;box-shadow:0 2px 10px rgba(79,70,229,.25)}
+.sb a.on::before{border-color:#fff;opacity:1}
+.main{min-width:0;background:linear-gradient(180deg,#FFFFFF 0%,#FBFCFE 100%);display:flex;flex-direction:column}
+.tb{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--t-borda2)}
+.tb b{display:block;font-size:11.5px}
+.tb small{color:var(--t-tx2);font-size:9px}
+.bt{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--t-borda);background:#fff;color:var(--t-tx);border-radius:6px;padding:3px 8px;font-size:9px;font-weight:600;white-space:nowrap}
+.bt.pri{background:var(--t-azul2);border-color:var(--t-azul2);color:#fff}
+.bt.esc{background:#0B1530;border-color:#0B1530;color:#fff}
+.cont{padding:10px 12px 12px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.cd{background:#fff;border:1px solid var(--t-borda);border-radius:9px;padding:8px 10px;min-width:0}
+.cd h5{margin:0 0 6px;font-size:10px;font-weight:700}
+.cd .s{color:var(--t-tx2);font-size:8.5px;margin:-4px 0 6px}
+.k small{display:block;font-size:7.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--t-tx2);font-weight:600}
+.k b{display:block;font:800 15px var(--f);letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap;margin-top:2px}
+.k em{font-style:normal;display:block;color:var(--t-tx2);font-size:8px;margin-top:2px}
+.verde{color:var(--t-verde) !important} .verm{color:var(--t-verm) !important} .lar{color:var(--t-lar) !important} .azul{color:var(--t-azul) !important}
+.tag{display:inline-block;font-size:7px;font-weight:800;letter-spacing:.05em;border-radius:4px;padding:1px 4px;vertical-align:1px;margin-left:3px}
+.tag.real{background:#DCFCE7;color:#15803D} .tag.calc{background:#E0E7FF;color:#4338CA} .tag.vivo{background:#DCFCE7;color:#15803D;border-radius:99px;padding:1px 6px}
+.chips{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.ch{border:1px solid var(--t-borda);border-radius:6px;padding:2px 7px;font-size:8.5px;font-weight:600;color:var(--t-tx);background:#fff;white-space:nowrap}
+.ch.on{background:var(--t-azul2);border-color:var(--t-azul2);color:#fff}
+.abas{display:flex;gap:12px;border-bottom:1px solid var(--t-borda);font-size:9px;font-weight:600;color:var(--t-tx2);overflow:hidden}
+.abas span{padding:4px 0 5px;white-space:nowrap}
+.abas span.on{color:var(--t-tx);border-bottom:2px solid var(--t-azul2)}
+.tabela{width:100%;border-collapse:collapse;font-size:8.8px;color:var(--t-tx);font-family:var(--f)}
+.tabela th{font-size:7.2px;letter-spacing:.06em;text-transform:uppercase;color:var(--t-tx2);text-align:left;padding:5px 6px;border-bottom:1px solid var(--t-borda);font-weight:700;white-space:nowrap}
+.tabela td{padding:5px 6px;border-bottom:1px solid #EEF2F7;white-space:nowrap;vertical-align:middle}
+.tabela .n{text-align:right;font-variant-numeric:tabular-nums}
+.tabela small{display:block;color:var(--t-tx3);font-size:7.5px}
+.pl{display:inline-flex;align-items:center;gap:3px;font-size:7.5px;font-weight:700;border-radius:99px;padding:1px 6px;white-space:nowrap}
+.pl.az{background:#E0F2FE;color:#0369A1} .pl.rx{background:#EDE9FE;color:#6D28D9} .pl.vd{background:#DCFCE7;color:#15803D} .pl.vm{background:#FEE2E2;color:#B91C1C} .pl.lj{background:#FEF3C7;color:#B45309} .pl.cz{background:#F1F5F9;color:#475569}
+.sel{display:inline-flex;align-items:center;justify-content:space-between;gap:6px;border-radius:5px;padding:2px 6px;font-size:7.5px;font-weight:800;color:#fff;min-width:70px}
+.sel::after{content:"⌄";font-size:8px;opacity:.9}
+.inp{border:1px solid var(--t-borda);border-radius:5px;padding:2px 6px;font-size:8.5px;color:var(--t-tx);background:#fff;display:inline-block;min-width:50px}
+.tg{display:inline-block;width:20px;height:11px;border-radius:99px;background:#16A34A;position:relative;vertical-align:middle}
+.tg::after{content:"";position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;background:#fff}
+.bar{height:6px;border-radius:4px;background:#EEF2F7;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:4px}
+.av{width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;font-size:7.5px;font-weight:800;color:#fff;vertical-align:middle}
+code.px{display:block;background:#F8FAFC;border:1px solid var(--t-borda);border-radius:6px;padding:6px 7px;font:500 8px/1.5 var(--f-mono);color:#334155;white-space:normal;overflow-wrap:anywhere}
 
-.faz{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.faz div{background:var(--cartao2);border:1px solid var(--borda);border-radius:14px;padding:16px}
-.faz b{display:block;font-size:14.5px;margin-bottom:4px}
-.faz p{font-size:13px;color:var(--texto2)}
-
-.passos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;counter-reset:p}
-.passos div{position:relative;padding:18px 18px 18px 62px;background:var(--cartao2);border:1px solid var(--borda);border-radius:14px}
-.passos div::before{counter-increment:p;content:counter(p);position:absolute;left:18px;top:18px;width:30px;height:30px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-weight:800;font-size:14px}
-.passos b{display:block;font-size:15px;margin-bottom:4px}
-.passos p{font-size:13px;color:var(--texto2)}
-
-.ciclo{display:inline-flex;gap:3px;background:var(--cartao2);border:1px solid var(--borda);border-radius:11px;padding:3px}
-.ciclo button{border:0;background:transparent;color:var(--texto2);font:700 13px var(--fonte);padding:8px 14px;border-radius:8px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
-.ciclo button[aria-pressed="true"]{background:#FFFFFF;color:#0F172A}
-.ciclo small{font-size:10.5px;font-weight:800;color:var(--ok);background:rgba(52,211,153,.12);padding:2px 7px;border-radius:99px}
+/* faixa, como funciona, planos, dúvidas */
+.faixa{padding-block:84px 0}
+.vant{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.vant div{border-top:2px solid var(--azul);padding-top:14px}
+.vant b{display:block;font:700 16px var(--f-tit)}
+.vant p{color:var(--tx2);font-size:14px;margin-top:6px}
+.sec{padding-block:84px 0}
+.sec .topo{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.sec h2{font-size:clamp(26px,3vw,36px);margin-top:8px}
+.sec .topo p{color:var(--tx2);max-width:58ch;margin-top:8px}
+.passos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;counter-reset:p}
+.passos div{position:relative;padding:20px 20px 20px 66px;background:var(--painel);border:1px solid var(--linha);border-radius:14px}
+.passos div::before{counter-increment:p;content:counter(p);position:absolute;left:20px;top:20px;width:32px;height:32px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font:800 14px var(--f-tit)}
+.passos b{display:block;font:700 15.5px var(--f-tit);margin-bottom:4px}
+.passos p{font-size:14px;color:var(--tx2)}
+.ciclo{display:inline-flex;gap:3px;background:var(--painel);border:1px solid var(--linha2);border-radius:11px;padding:3px}
+.ciclo button{border:0;background:transparent;color:var(--tx2);font:700 13px var(--f);height:36px;padding:0 14px;border-radius:8px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+.ciclo button[aria-pressed="true"]{background:#fff;color:#0F172A}
+.ciclo small{font-size:10.5px;font-weight:800;color:var(--ok);background:rgba(61,214,140,.13);padding:2px 7px;border-radius:99px}
 .ciclo button[aria-pressed="true"] small{color:#047857;background:#D1FAE5}
-.grade{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:stretch}
-.plano{display:flex;flex-direction:column;gap:12px;background:var(--cartao);border:1px solid var(--borda);border-radius:16px;padding:20px}
-.plano h3{font-size:17px;font-weight:800}
-.plano .faixa{font-size:12.5px;color:var(--texto2);min-height:38px}
-.plano .preco{display:flex;align-items:baseline;gap:4px}
-.plano .preco b{font-size:32px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.plano .preco span{color:var(--texto2);font-size:13px}
-.plano .cond{font-size:12px;color:var(--texto3);margin-top:-8px;min-height:18px}
-.plano ul{list-style:none;margin:0;padding:12px 0 0;border-top:1px solid var(--borda);display:flex;flex-direction:column;gap:7px}
-.plano li{font-size:13px;color:#CBD5E1;padding-left:20px;position:relative}
+.grade{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.plano{display:flex;flex-direction:column;gap:12px;background:var(--painel);border:1px solid var(--linha2);border-radius:18px;padding:22px}
+.plano.dest{border-color:rgba(27,156,250,.55);background:linear-gradient(180deg,rgba(37,9,228,.2),var(--painel) 45%);box-shadow:0 20px 60px rgba(37,9,228,.22)}
+.plano h3{font-size:18px}
+.plano .fx{font-size:13px;color:var(--tx2);min-height:42px}
+.plano .pr{display:flex;align-items:baseline;gap:4px}
+.plano .pr b{font:800 34px var(--f-tit);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.plano .pr span{color:var(--tx2);font-size:13px}
+.plano .cdc{font-size:12px;color:var(--tx3);margin-top:-8px;min-height:18px}
+.plano .btn{width:100%}
+.plano ul{list-style:none;margin:0;padding:14px 0 0;border-top:1px solid var(--linha);display:flex;flex-direction:column;gap:8px}
+.plano li{font-size:13.5px;color:#CDD2E3;padding-left:22px;position:relative}
 .plano li::before{content:"✓";position:absolute;left:0;color:var(--azul2);font-weight:800}
-.todos{margin-top:14px;font-size:13px;color:var(--texto2);text-align:center}
-.carregando{color:var(--texto2);font-size:14px;padding:30px 0;text-align:center;grid-column:1/-1}
-
+.todos{margin-top:16px;font-size:13.5px;color:var(--tx2);text-align:center}
 .faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.faq details{background:var(--cartao2);border:1px solid var(--borda);border-radius:12px;padding:0 16px}
-.faq summary{cursor:pointer;list-style:none;padding:14px 0;font-weight:700;font-size:14px;display:flex;justify-content:space-between;gap:10px}
+.faq details{background:var(--painel);border:1px solid var(--linha);border-radius:12px;padding:0 18px}
+.faq summary{cursor:pointer;list-style:none;padding:15px 0;font-weight:700;font-size:14.5px;display:flex;justify-content:space-between;gap:10px}
 .faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:"+";color:var(--texto2);font-weight:600}
+.faq summary::after{content:"+";color:var(--tx2)}
 .faq details[open] summary::after{content:"–"}
-.faq details p{font-size:13.5px;color:var(--texto2);padding-bottom:14px}
-.rod{border-top:1px solid var(--borda);margin-top:44px;padding-block:20px 32px;color:var(--texto3);font-size:12px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
-
-/* janela de assinar */
-.fundo-jan{position:fixed;inset:0;z-index:50;background:rgba(3,2,10,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}
-.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:20px;padding:30px 32px;width:100%;max-width:440px;box-shadow:0 24px 80px rgba(0,0,0,.8),0 0 60px rgba(27,156,250,.06);backdrop-filter:blur(12px);max-height:calc(100dvh - 32px);overflow:auto}
-.cartao .tit{font-size:17px;font-weight:700;text-align:center;margin-bottom:4px}
-.cartao .sub{font-size:12.5px;color:var(--texto2);text-align:center;margin-bottom:18px;line-height:1.5}
-.resumo{display:flex;justify-content:space-between;gap:10px;font-size:13px;border:1px solid var(--borda);border-radius:10px;padding:10px 12px;margin-bottom:16px;background:rgba(7,6,15,.6)}
-.resumo b{font-variant-numeric:tabular-nums;text-align:right}
-.lbl{font-size:11px;font-weight:600;color:var(--texto2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:block}
-.in{width:100%;background:rgba(7,6,15,.8);border:1px solid var(--borda);border-radius:9px;padding:12px 14px;color:#F1F5F9;font-size:14px;margin-bottom:14px;outline:none}
-.in:focus{border-color:var(--azul);box-shadow:0 0 0 3px rgba(27,156,250,.12)}
-.in.erro{border-color:var(--erro)}
-.dica{font-size:12px;color:#94A3B8;margin:-8px 0 12px;line-height:1.5}
-.erro-msg{color:var(--erro);font-size:12.5px;text-align:center;margin-top:12px;min-height:18px;line-height:1.4}
-.aviso{font-size:12px;color:var(--texto2);text-align:center;margin-top:12px;line-height:1.5}
-.fechar{display:block;margin:10px auto 0}
-.logo-g{display:flex;align-items:center;gap:12px;margin-bottom:18px;justify-content:center}
-.logo-g b{font-size:40px;letter-spacing:-1px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.logo-g span{font-size:14px;font-weight:700;letter-spacing:4px;color:var(--texto2);padding-top:8px}
-.selo-ok{width:52px;height:52px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4);color:var(--ok);font-size:24px;font-weight:800}
-.giro{width:40px;height:40px;border-radius:50%;margin:4px auto 16px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--azul2);animation:giro .9s linear infinite}
-@keyframes giro{to{transform:rotate(360deg)}}
-#volta{display:flex;justify-content:center;padding-top:8vh}
-
-@media (max-width:1000px){
-  .grade{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .faz{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .hero{grid-template-columns:1fr}
+.faq details p{font-size:14px;color:var(--tx2);padding-bottom:15px}
+.final{margin-top:96px;background:radial-gradient(700px 300px at 50% 0%,rgba(37,9,228,.35),transparent 70%),var(--bg2);border-top:1px solid var(--linha)}
+.final .larg{padding-block:64px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px}
+.final h2{font-size:clamp(26px,3.4vw,40px);max-width:22ch}
+.final p{color:var(--tx2);max-width:50ch}
+.rod{border-top:1px solid var(--linha)}
+.rod .larg{padding-block:22px;color:var(--tx3);font-size:12.5px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:40;background:#0F2A1F;border:1px solid rgba(61,214,140,.4);color:#C9F5DC;padding:10px 16px;border-radius:10px;font-size:13px;max-width:calc(100% - 32px)}
+@media (max-width:1060px){
+  .hero .larg,.func .larg,.func.inv .larg{grid-template-columns:1fr;gap:32px}
+  .func.inv .texto{order:0}
+  .grade,.vant{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .flut.f1{left:10px} .flut.f2{right:10px}
 }
 @media (max-width:700px){
-  .hero h1{font-size:32px}
+  .app{grid-template-columns:1fr} .sb{display:none}
+  .so-larga{display:none !important}
   .passos,.faq{grid-template-columns:1fr}
-  .cartao{padding:26px 20px}
   .cab nav .some{display:none}
+  .flut{display:none}
+  .func{padding-block:60px 0}
+  .hero .acoes .btn{flex:1 1 auto}
 }
-@media (max-width:520px){ .grade,.faz{grid-template-columns:1fr} }
-@media (prefers-reduced-motion:reduce){ .giro{animation:none} }
+@media (max-width:520px){ .grade,.vant{grid-template-columns:1fr} }
+/* ── o que a página de verdade tem a mais que o esboço: carregar, janela do teste grátis e a volta do pagamento ── */
+[hidden]{display:none !important}
+.carregando{grid-column:1/-1;color:var(--tx2);font-size:14px;padding:30px 0;text-align:center}
+.erro-msg{color:#F87171;font-size:13px;text-align:center;margin-top:12px;min-height:18px;line-height:1.4}
+.btn:disabled{opacity:.6;cursor:default}
+.fundo-jan{position:fixed;inset:0;z-index:50;background:rgba(3,2,10,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}
+.cartao{background:var(--painel);border:1px solid var(--linha2);border-radius:20px;padding:30px 32px;width:100%;max-width:440px;box-shadow:0 24px 80px rgba(0,0,0,.8),0 0 60px rgba(37,9,228,.14);max-height:calc(100dvh - 32px);overflow:auto}
+.cartao .tit{font:700 18px var(--f-tit);text-align:center;margin-bottom:4px}
+.cartao .sub{font-size:13px;color:var(--tx2);text-align:center;margin-bottom:18px;line-height:1.5}
+.cartao .btn{width:100%}
+.resumo{display:flex;justify-content:space-between;gap:10px;font-size:13px;border:1px solid var(--linha2);border-radius:10px;padding:10px 12px;margin-bottom:16px;background:rgba(7,6,15,.6)}
+.resumo b{font-variant-numeric:tabular-nums;text-align:right}
+.lbl{font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:block}
+.in{width:100%;background:rgba(7,6,15,.8);border:1px solid var(--linha2);border-radius:10px;padding:12px 14px;color:#F1F5F9;font:14px var(--f);margin-bottom:14px;outline:none}
+.in:focus{border-color:var(--azul);box-shadow:0 0 0 3px rgba(27,156,250,.15)}
+.in.erro{border-color:#F87171}
+.dica{font-size:12px;color:var(--tx3);margin:-8px 0 12px;line-height:1.5}
+.aviso{font-size:12px;color:var(--tx2);text-align:center;margin-top:12px;line-height:1.5}
+.fechar{display:block;margin:10px auto 0;background:none;border:0;color:var(--tx2);font:600 13px var(--f);cursor:pointer;padding:8px}
+.fechar:hover{color:var(--tx)}
+.logo-g{display:flex;align-items:baseline;gap:10px;margin-bottom:18px;justify-content:center}
+.logo-g b{font:800 38px var(--f);letter-spacing:-1px;background:linear-gradient(135deg,#3E1493 0%,#C52C58 55%,#1B9CFA 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo-g span{font-size:13px;font-weight:700;letter-spacing:4px;color:var(--tx2)}
+.selo-ok{width:52px;height:52px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;background:rgba(61,214,140,.12);border:1px solid rgba(61,214,140,.4);color:var(--ok);font-size:24px;font-weight:800}
+.giro{width:40px;height:40px;border-radius:50%;margin:4px auto 16px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--azul2);animation:giro .9s linear infinite}
+@keyframes giro{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.giro{animation:none}}
+#volta{min-height:100vh;min-height:100dvh;display:flex;justify-content:center;align-items:flex-start;padding:10vh 16px 40px;background:radial-gradient(900px 500px at 70% 0%,rgba(37,9,228,.28),transparent 62%),var(--bg)}
+@media (max-width:700px){ .cartao{padding:26px 20px} }
 </style>
 </head>
 <body>
-<div id="raiz">
+<div id="pagina" hidden>
+<header class="cab"><div class="larg">
+  <a class="logo" href="#topo" aria-label="TMX Digital"><b>TMX</b><span>DIGITAL</span></a>
+  <nav aria-label="Topo da página">
+    <a class="lnk some" href="#funcionalidades">Funcionalidades</a>
+    <a class="lnk some" href="#planos">Planos</a>
+    <a class="lnk some" href="#duvidas">Dúvidas</a>
+    <a class="lnk" href="/">Entrar</a>
+    <a class="btn peq" href="#planos">Ver os planos</a>
+  </nav>
+</div></header>
 
-<!-- PÁGINA DE PLANOS -->
-<main id="pagina" class="larg" hidden>
-  <header class="cab">
-    <a class="logo" href="/planos" aria-label="TMX Digital"><b>TMX</b><span>DIGITAL</span></a>
-    <nav aria-label="Topo da página">
-      <a class="lnk some" href="#o-que-faz">O que faz</a>
-      <a class="lnk some" href="#planos">Planos</a>
-      <a class="lnk" href="/">Entrar</a>
-      <a class="btn" href="#planos" style="padding:9px 14px;font-size:13px">Ver os planos</a>
-    </nav>
-  </header>
-
-  <div class="hero">
-    <div>
-      <span class="rot">Para quem vende com tráfego pago</span>
-      <h1>O time, os anúncios e as vendas de cada projeto <em>no mesmo painel</em>.</h1>
-      <p class="sub">Demandas com prazo, criativos do roteiro à subida, gasto e vendas do dia por conta de anúncio, e um pixel próprio que manda as compras pra Meta. Sem planilha e sem cinco abas abertas.</p>
-      <div class="acoes">
-        <a class="btn" href="#planos">Escolher um plano</a>
-        <a class="btn sec" href="#como-funciona">Como funciona</a>
-      </div>
-      <p class="miudo">Todas as ferramentas em todos os planos. Nenhum plano cobra por venda.</p>
-    </div>
-    <div class="mini" aria-label="Exemplo da tela de tráfego">
-      <div class="t"><b>Hoje · projeto de exemplo</b><span>atualizado às 14:32</span></div>
-      <div class="nums">
-        <div><small>Gasto</small><b>R$ 5.912</b></div>
-        <div><small>Vendas</small><b>21</b></div>
-        <div><small>ROAS</small><b>2,48</b></div>
-      </div>
-      <div class="ad"><code>AD216.2</code><div class="tr"><i style="width:90%"></i></div><span>9 vendas</span></div>
-      <div class="ad"><code>AD245.1</code><div class="tr"><i style="width:60%"></i></div><span>6 vendas</span></div>
-      <div class="ad"><code>AD153</code><div class="tr"><i class="ruim" style="width:42%"></i></div><span>R$ 640 sem venda</span></div>
-    </div>
+<!-- HERO: Análise de tráfego › Resumo -->
+<section class="hero" id="topo"><div class="larg">
+  <div>
+    <span class="rot">Para quem vende com tráfego pago</span>
+    <h1>O time, os anúncios e as vendas de cada projeto <em>no mesmo painel</em>.</h1>
+    <p class="sub">Demandas, criativos, contas de anúncio, análise de tráfego, funil, financeiro e um pixel próprio que manda as compras pra Meta.</p>
+    <div class="acoes"><a class="btn" href="#planos">Escolher um plano</a><a class="btn contorno" href="#funcionalidades">Ver o que ele faz</a></div>
+    <div class="miudo"><span>Todas as ferramentas em todos os planos</span><span>Sem cobrança por venda</span><span>Sem fidelidade</span></div>
   </div>
-
-  <section class="sec" id="o-que-faz" aria-labelledby="t-oque">
-    <div class="topo"><div><span class="rot">O que o TMX faz</span><h2 id="t-oque">Tudo o que a operação usa no dia</h2></div></div>
-    <div class="faz">
-      <div><b>Demandas</b><p>Quem faz o quê e até quando, com aviso no WhatsApp antes de vencer.</p></div>
-      <div><b>Criativos</b><p>Cada AD do roteiro à subida, com hook, corpo e a etapa em que está.</p></div>
-      <div><b>Tráfego</b><p>Gasto, vendas e ROAS do dia por conta e por campanha, puxados da Meta.</p></div>
-      <div><b>Análise de tráfego</b><p>Qual criativo vende e qual só gasta, em 1, 3 e 7 dias.</p></div>
-      <div><b>Projetos</b><p>Cada oferta com o funil, o checkout, o pixel e as contas de anúncio dela.</p></div>
-      <div><b>Rituais e Arquivos</b><p>As reuniões do time com pauta, e os arquivos de cada projeto num lugar só.</p></div>
-      <div><b>Financeiro</b><p>Resultado por projeto: faturamento, gasto, taxas e lucro.</p></div>
-      <div><b>Pixel próprio</b><p>As compras vão pra Meta pelo servidor. A Utmify vira opcional.</p></div>
-    </div>
-  </section>
-
-  <section class="sec" id="como-funciona" aria-labelledby="t-como">
-    <div class="topo"><div><span class="rot">Como funciona</span><h2 id="t-como">Do pagamento à primeira venda</h2></div></div>
-    <div class="passos">
-      <div><b>Escolha o plano e pague</b><p>O botão leva direto pra página de pagamento segura da Pagar.me: você põe e-mail, dados e cartão lá.</p></div>
-      <div><b>Crie a sua conta</b><p>Pago, você volta pra cá e cria a conta na hora. O mesmo link vai pro e-mail e o WhatsApp da compra.</p></div>
-      <div><b>Ligue os seus projetos</b><p>Meta, pixel e checkout, na aba Integrações de cada projeto. Aí as vendas começam a aparecer.</p></div>
-    </div>
-  </section>
-
-  <section class="sec" id="planos" aria-labelledby="t-planos">
-    <div class="topo">
-      <div><span class="rot">Planos</span><h2 id="t-planos">Você paga pela faixa de investimento</h2><p>O preço sobe com o quanto você investe em anúncios por mês, somando as contas ligadas nos últimos 30 dias. Nenhum plano cobra por venda.</p></div>
-      <div class="ciclo" role="group" aria-label="Forma de cobrança">
-        <button type="button" data-ciclo="mensal" aria-pressed="true">Mensal</button>
-        <button type="button" data-ciclo="anual" aria-pressed="false">Anual <small>2 meses grátis</small></button>
+  <div class="vitrine">
+    <div class="flut f2"><span class="ic" style="background:#DCFCE7">💰</span><span><b>Venda aprovada · R$ 697</b><small>AD216.2 · conta 3 · agora</small></span></div>
+    <div class="jan" role="img" aria-label="Tela Análise de tráfego do TMX, aba Resumo">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><a>Rituais</a><s>Inteligência</s><a>Tráfego</a><a class="on">Análise de tráfego</a><a>Projetos</a><s>Gestão</s><a>Gestão</a><a>Financeiro</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Análise de tráfego</b><small>Gasto, cliques e vendas por campanha e por anúncio</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div class="chips"><span style="font-size:8px;font-weight:700;color:var(--t-tx2)">PERÍODO:</span><span class="ch on">Hoje</span><span class="ch">Ontem</span><span class="ch">7 dias</span><span class="ch">30 dias</span><span class="ch so-larga">Este mês</span></div>
+            <div class="abas"><span class="on">📦 Resumo</span><span>Por Campanha</span><span class="so-larga">Relatório de Campanhas</span><span>Por Anúncio</span><span class="so-larga">🟢 Tempo Real</span></div>
+            <div style="display:grid;grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);gap:8px">
+              <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="cd k"><small>Faturamento</small><b>R$ 18.940,00</b></div><div class="cd k"><small>Gastos com anúncios</small><b>R$ 7.320,40</b></div></div>
+                <div class="cd"><h5>Funil de conversão</h5><div class="s">O % de cada etapa é sobre a etapa anterior</div>
+                  <svg viewBox="0 0 300 118" width="100%" style="display:block" aria-hidden="true">
+                    <defs><linearGradient id="gf" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#1B9CFA"/><stop offset=".55" stop-color="#2509E4"/><stop offset="1" stop-color="#3E1493"/></linearGradient></defs>
+                    <path d="M0 4 L60 4 C 85 4 95 12 120 12 C 150 12 160 52 180 52 C 205 52 215 56 240 56 C 265 56 275 58 300 58 L300 62 C 275 62 265 64 240 64 C 215 64 205 68 180 68 C 160 68 150 108 120 108 C 95 108 85 116 60 116 L0 116 Z" fill="url(#gf)"/>
+                    <g fill="#fff" font-size="8" font-weight="700" font-family="Inter" text-anchor="middle"><text x="30" y="63">100,0%</text><text x="90" y="63">80,0%</text></g>
+                    <g fill="#0F172A" font-size="7.5" font-weight="700" font-family="Inter" text-anchor="middle"><text x="150" y="50">12,5%</text><text x="210" y="50">28,5%</text><text x="270" y="52">42,6%</text></g>
+                    <g stroke="#E2E8F0" stroke-width=".6"><line x1="60" y1="0" x2="60" y2="118"/><line x1="120" y1="0" x2="120" y2="118"/><line x1="180" y1="0" x2="180" y2="118"/><line x1="240" y1="0" x2="240" y2="118"/></g>
+                  </svg>
+                  <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));text-align:center;margin-top:4px"><div class="k"><b style="font-size:10.5px">2.140</b><small>Cliques</small></div><div class="k"><b style="font-size:10.5px">1.712</b><small>Visitas</small></div><div class="k"><b style="font-size:10.5px">214</b><small>Checkouts</small></div><div class="k"><b style="font-size:10.5px">61</b><small>Iniciadas</small></div><div class="k"><b style="font-size:10.5px">26</b><small>Aprovadas</small></div></div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start">
+                <div class="cd k"><small>ROAS</small><b class="verde">2,59x</b></div><div class="cd k"><small>Lucro</small><b class="verde">R$ 6.112</b></div>
+                <div class="cd k"><small>Vendas</small><b>26</b><em>de 34 pedidos</em></div><div class="cd k"><small>CPA</small><b>R$ 281</b></div>
+                <div class="cd k"><small>Margem</small><b class="verde">32,3%</b></div><div class="cd k"><small>Ticket médio</small><b>R$ 728</b></div>
+                <div class="cd" style="grid-column:1/-1"><h5 style="font-size:9px">Taxa de aprovação</h5>
+                  <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 6px;align-items:center;font-size:8.5px"><span>Cartão</span><span class="bar"><i style="width:72%;background:var(--t-azul2)"></i></span><b>72%</b><span>Pix</span><span class="bar"><i style="width:58%;background:var(--t-azul2)"></i></span><b>58%</b></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="grade" id="grade"><div class="carregando">Carregando os planos…</div></div>
-    <div class="erro-msg" id="grade-erro" role="alert"></div>
-    <p class="todos">Todas as ferramentas em todos os planos: Demandas, Criativos, Rituais, Arquivos, Tráfego, Análise de tráfego, Projetos e Financeiro.</p>
-  </section>
+    <div class="flut f1 zap"><span class="ic" style="background:#25D366;color:#fff">✓</span><span><b>Resumo do dia no WhatsApp</b><small>Investido R$ 7.320 · Lucro R$ 6.112</small></span></div>
+  </div>
+</div></section>
 
-  <section class="sec" aria-labelledby="t-faq">
-    <div class="topo"><div><span class="rot">Dúvidas</span><h2 id="t-faq">Perguntas frequentes</h2></div></div>
-    <div class="faq">
-      <details><summary>Cobra alguma coisa por venda?</summary><p>Não. O preço é só pela faixa de investimento em anúncios por mês. Vender mais não muda o valor.</p></details>
-      <details><summary>Como o TMX sabe quanto eu invisto?</summary><p>Pelas contas de anúncio que você liga. Ele soma o gasto dos últimos 30 dias e mostra em Configurações › Meu plano.</p></details>
-      <details><summary>E se eu passar da minha faixa?</summary><p>O TMX avisa e sugere o plano de cima. O pixel e as vendas continuam chegando normalmente.</p></details>
-      <details><summary>Quais formas de pagamento?</summary><p>Cartão de crédito, cobrado todo mês (ou uma vez por ano, no anual) na página segura da Pagar.me.</p></details>
-      <details><summary>Preciso ter a Utmify?</summary><p>Não. O TMX tem pixel próprio. Se você já usa a Utmify, dá pra ligar e ver o gasto por ela também.</p></details>
-      <details><summary>O meu time entra junto?</summary><p>Sim. Cada pessoa tem login e cargo próprios e recebe as demandas dela no WhatsApp. O limite de pessoas depende do plano.</p></details>
-      <details><summary>Como funciona o teste grátis?</summary><p>No Iniciante você manda o pedido, a TMX libera o acesso pelo WhatsApp e você usa 30 dias sem pagar. Depois escolhe um plano.</p></details>
-      <details><summary>Como eu cancelo?</summary><p>Pelo Suporte, dentro do TMX. Não tem fidelidade: o acesso fica até o fim do período já pago.</p></details>
+<nav class="modulos" id="funcionalidades" aria-label="Funcionalidades"><div class="larg">
+  <a href="#demandas">Demandas</a><a href="#criativos">Criativos</a><a href="#trafego">Tráfego</a><a href="#analise">Análise de tráfego</a><a href="#projetos">Projetos</a><a href="#financeiro">Financeiro</a><a href="#pixel">Pixel Pro</a>
+</div></nav>
+
+<!-- DEMANDAS -->
+<section class="func" id="demandas"><div class="larg">
+  <div class="texto">
+    <span class="rot">Demandas</span>
+    <h2>Cada tarefa com setor, dono e prazo. O lembrete chega no WhatsApp.</h2>
+    <p>Copy, edição, tráfego, infra e spy, cada um vê as dele. O que atrasa fica em vermelho, e o que precisa de aprovação espera a Diretoria.</p>
+    <ul><li><span><b>Filtro por setor</b>, por responsável e por projeto</span></li><li><span><b>Lembrete no WhatsApp</b> antes de vencer e quando atrasa</span></li><li><span><b>Aprovação, backlog e arquivo</b>, e o resumo do dia às 18 h</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Tela de Demandas do TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a class="on">Demandas</a><a>Criativos</a><a>Rituais</a><a>Arquivos por projeto</a><s>Inteligência</s><a>Tráfego</a><a>Análise de tráfego</a><a>Projetos</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Task</b></div><span class="bt">↻ Atualizar</span></div>
+          <div style="display:grid;grid-template-columns:118px minmax(0,1fr)">
+            <div class="so-larga" style="border-right:1px solid var(--t-borda2);padding:10px 8px;display:flex;flex-direction:column;gap:5px;font-size:9px">
+              <span style="font-size:7px;letter-spacing:.1em;font-weight:700;color:var(--t-tx2)">FILTRAR POR SETOR</span>
+              <span style="display:flex;justify-content:space-between"><span>🔵 Copy</span><b>3</b></span><span style="display:flex;justify-content:space-between"><span>🟣 Edição</span><b>2</b></span><span style="display:flex;justify-content:space-between"><span>🟡 Infra</span><b>1</b></span><span style="display:flex;justify-content:space-between"><span>🟢 Tráfego</span><b>4</b></span><span style="display:flex;justify-content:space-between"><span>🔴 Spy</span><b>1</b></span>
+              <span style="border-top:1px solid var(--t-borda2);margin-top:4px;padding-top:6px;display:flex;justify-content:space-between"><span>⚠️ Aguard. aprovação</span><b>2</b></span><span style="display:flex;justify-content:space-between"><span>📥 Backlog</span><b>5</b></span><span style="display:flex;justify-content:space-between"><span>✅ Aprovadas</span><b>187</b></span>
+            </div>
+            <div class="cont">
+              <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:6px;flex-wrap:wrap"><div><b style="font-size:12px">Demandas</b><div style="font-size:8px;color:var(--t-tx2)">11 demandas</div></div><div class="chips"><span class="inp">Todos os responsáveis ⌄</span><span class="inp so-larga">Todos os projetos ⌄</span><span class="bt">📊 Excel</span><span class="bt esc">+ Nova Demanda</span></div></div>
+              <div class="chips"><span class="ch">🔥 Atrasadas</span><span class="ch">👤 Minhas</span></div>
+              <table class="tabela"><thead><tr><th>Demanda</th><th>Responsável</th><th>Entrega</th><th>Status</th></tr></thead><tbody>
+                <tr><td><b>Subir AD245 na conta 3</b><small>PROJETO DEMO · Tráfego</small></td><td><span class="av" style="background:#1B9CFA">A</span> Ana</td><td>Hoje, 18:00</td><td><span class="pl lj">Pendente</span></td></tr>
+                <tr><td><b>Editar VSL v7, corte 2</b><small>PROJETO DEMO · Edição</small></td><td><span class="av" style="background:#FF5926">B</span> Bruno</td><td class="verm"><b>⚠ vence em 2 h</b></td><td><span class="pl az">Em andamento</span></td></tr>
+                <tr><td><b>Copy dos hooks da remessa 19</b><small>PROJETO B · Copy</small></td><td><span class="av" style="background:#C52C58">C</span> Carla</td><td>Amanhã</td><td><span class="pl lj">Pendente</span></td></tr>
+                <tr><td><b>Conferir pixel da página nova</b><small>PROJETO DEMO · Infra</small></td><td><span class="av" style="background:#3E1493">M</span> Marina</td><td>Hoje</td><td><span class="pl rx">Aguard. aprovação</span></td></tr>
+                <tr><td><b>Relatório da semana</b><small>Todos · Gestão</small></td><td><span class="av" style="background:#2509E4">M</span> Marina</td><td>Sex</td><td><span class="pl vd">Concluída</span></td></tr>
+              </tbody></table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </section>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
 
-  <footer class="rod"><span>TMX Digital</span><span>Pagamento processado pela Pagar.me</span></footer>
-</main>
+<!-- CRIATIVOS -->
+<section class="func inv" id="criativos"><div class="larg">
+  <div class="texto">
+    <span class="rot">Criativos</span>
+    <h2>Cada anúncio do gasto à venda.</h2>
+    <p>Se ele para o dedo, se leva a pessoa certa e se ela compra. Os criativos ficam organizados por nicho, oferta e remessa, e cada um mostra o resultado no funil.</p>
+    <ul><li><span><b>Remessas por nicho e oferta</b>, com formatos e documentos</span></li><li><span><b>Por anúncio</b>: gasto, play, pitch, checkout e venda</span></li><li><span><b>Hoje, 7 e 30 dias</b> pra ver o que segura e o que cai</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Aba Criativos de um projeto no TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><s>Inteligência</s><a>Tráfego</a><a>Análise de tráfego</a><a class="on">Projetos</a><a>Ad Library</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Projetos</b><small>Funil, quiz, VSL, pixel e testes de cada projeto</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div class="cd" style="display:flex;flex-direction:column;gap:7px">
+              <div class="chips"><span style="font-size:8.5px;color:var(--t-tx2)">‹ Projetos</span><b style="font-size:10px">PROJETO DEMO</b><span class="inp">funil principal ⌄</span><span class="bt pri">+ Novo funil</span><span class="tag vivo">● AO VIVO</span></div>
+              <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px" class="k"><div><small>Investido</small><b style="font-size:11.5px">R$ 7.320</b></div><div><small>Cliques</small><b style="font-size:11.5px">2.140</b></div><div><small>Chegaram</small><b style="font-size:11.5px">1.712</b></div><div><small>Checkout</small><b style="font-size:11.5px" class="lar">214</b></div><div><small>Compraram</small><b style="font-size:11.5px" class="verde">26</b></div><div><small>Testes</small><b style="font-size:11.5px" class="azul">3</b></div></div>
+            </div>
+            <div><b style="font-size:12px">Criativos</b> <span class="tag vivo">● AO VIVO</span><div style="font-size:8.5px;color:var(--t-tx2)">Cada anúncio do gasto à venda: se ele para o dedo, se leva a pessoa certa e se ela compra.</div></div>
+            <div class="chips"><span class="ch">Hoje</span><span class="ch on">7 dias</span><span class="ch">30 dias</span></div>
+            <table class="tabela"><thead><tr><th>Anúncio</th><th class="n">Gasto</th><th class="n">Chegaram</th><th class="n so-larga">Play</th><th class="n so-larga">Pitch</th><th class="n">Checkout</th><th class="n">Vendas</th><th class="n">ROAS</th></tr></thead><tbody>
+              <tr><td><b>AD216.2</b><small>conta 3</small></td><td class="n">R$ 3.120</td><td class="n">742</td><td class="n so-larga">51%</td><td class="n so-larga">22%</td><td class="n">96</td><td class="n verde"><b>14</b></td><td class="n verde"><b>3,10</b></td></tr>
+              <tr><td><b>AD245.1</b><small>conta 1</small></td><td class="n">R$ 2.480</td><td class="n">566</td><td class="n so-larga">48%</td><td class="n so-larga">19%</td><td class="n">71</td><td class="n verde"><b>9</b></td><td class="n verde"><b>2,51</b></td></tr>
+              <tr><td><b>AD245.2</b><small>conta 1</small></td><td class="n">R$ 1.960</td><td class="n">402</td><td class="n so-larga">41%</td><td class="n so-larga">15%</td><td class="n">47</td><td class="n"><b>6</b></td><td class="n"><b>2,12</b></td></tr>
+              <tr><td><b>AD153</b><small>conta 2</small></td><td class="n">R$ 640</td><td class="n">188</td><td class="n so-larga">22%</td><td class="n so-larga">4%</td><td class="n">5</td><td class="n verm"><b>0</b></td><td class="n verm"><b>—</b></td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
 
-<!-- VOLTA DO PAGAMENTO -->
-<main id="volta" class="larg" hidden>
+<!-- TRÁFEGO -->
+<section class="func" id="trafego"><div class="larg">
+  <div class="texto">
+    <span class="rot">Tráfego</span>
+    <h2>Todas as contas de anúncio num controle só.</h2>
+    <p>Qual conta está rodando, qual está aquecendo e qual caiu. Com o gestor, o perfil, a oferta e o cartão de cada uma.</p>
+    <ul><li><span><b>Controle de contingência</b>: zerada, aquecimento, rodando, escalada, desativada</span></li><li><span><b>Processo de aquecimento</b> de cada conta</span></li><li><span><b>Controle de ROI</b> por oferta</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Controle de contingência das contas de anúncio no TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><s>Inteligência</s><a class="on">Tráfego</a><a>Análise de tráfego</a><a>Projetos</a><a>Ad Library</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Tráfego</b><small>Gestão e controle de tráfego pago</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><b style="font-size:12px">🛡️ Controle de Contingência</b><span class="chips"><span class="inp so-larga">Todos Gestores ⌄</span><span class="bt pri">+ Adicionar Conta</span></span></div>
+            <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;text-align:center" class="k">
+              <div class="cd" style="padding:6px 4px"><small class="lar">Zerada</small><b>1</b></div><div class="cd" style="padding:6px 4px"><small class="lar">Aquecim.</small><b>2</b></div><div class="cd" style="padding:6px 4px"><small class="azul">Rodando</small><b>5</b></div><div class="cd" style="padding:6px 4px"><small class="verde">Escalada</small><b>1</b></div><div class="cd" style="padding:6px 4px"><small class="verm">Desativ.</small><b>3</b></div><div class="cd so-larga" style="padding:6px 4px"><small>Standby</small><b>1</b></div><div class="cd so-larga" style="padding:6px 4px"><small style="color:#7C3AED">Em caixa</small><b>2</b></div>
+            </div>
+            <table class="tabela"><thead><tr><th>Status da conta</th><th>Aquecimento</th><th class="so-larga">Gestor</th><th>Perfil</th><th>Conta</th><th class="so-larga">Cartão</th></tr></thead><tbody>
+              <tr><td><span class="sel" style="background:#0EA5E9">RODANDO</span></td><td><span class="sel" style="background:#DB2777">1 CAMP 1.50.1</span></td><td class="so-larga"><span class="inp">Ana ⌄</span></td><td><span class="inp">Perfil 04</span></td><td><span class="inp">CA 01</span></td><td class="so-larga"><span class="inp">Visa ••• 4821</span></td></tr>
+              <tr><td><span class="sel" style="background:#16A34A">ESCALADA</span></td><td><span class="sel" style="background:#DC2626">CBO</span></td><td class="so-larga"><span class="inp">Ana ⌄</span></td><td><span class="inp">Perfil 02</span></td><td><span class="inp">CA 02</span></td><td class="so-larga"><span class="inp">Master ••• 1190</span></td></tr>
+              <tr><td><span class="sel" style="background:#0EA5E9">RODANDO</span></td><td><span class="sel" style="background:#DB2777">1 CAMP 1.50.1</span></td><td class="so-larga"><span class="inp">Diego ⌄</span></td><td><span class="inp">Perfil 07</span></td><td><span class="inp">CA 03</span></td><td class="so-larga"><span class="inp">Visa ••• 3302</span></td></tr>
+              <tr><td><span class="sel" style="background:#F97316">AQUECIMENTO</span></td><td><span class="sel" style="background:#F97316">NÃO GASTOU</span></td><td class="so-larga"><span class="inp">Diego ⌄</span></td><td><span class="inp">Perfil 09</span></td><td><span class="inp">CA 04</span></td><td class="so-larga"><span class="inp">Master ••• 0627</span></td></tr>
+              <tr><td><span class="sel" style="background:#DC2626">DESATIVADA</span></td><td><span class="sel" style="background:#DC2626">CBO</span></td><td class="so-larga"><span class="inp">Ana ⌄</span></td><td><span class="inp">Perfil 01</span></td><td><span class="inp">CA 05</span></td><td class="so-larga"><span class="inp">Visa ••• 7714</span></td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
+
+<!-- ANÁLISE DE TRÁFEGO -->
+<section class="func inv" id="analise"><div class="larg">
+  <div class="texto">
+    <span class="rot">Análise de tráfego</span>
+    <h2>Gasto, faturamento e lucro de cada campanha, do dia.</h2>
+    <p>Puxa da Utmify ou do RedTrack, soma com as vendas do pixel e mostra o lucro de cada campanha. Dá pra ver por anúncio e em tempo real.</p>
+    <ul><li><span><b>Por campanha</b>: orçamento, gasto, faturamento, lucro, ROAS e CPA</span></li><li><span><b>Por anúncio</b> e <b>tempo real</b>, hora a hora</span></li><li><span><b>Resumo</b> com o funil de conversão e o lucro por horário</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Análise de tráfego por campanha no TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><s>Inteligência</s><a>Tráfego</a><a class="on">Análise de tráfego</a><a>Projetos</a><a>Ad Library</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Análise de tráfego</b><small>Gasto, cliques e vendas por campanha e por anúncio</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div class="chips"><span style="font-size:8px;font-weight:700;color:var(--t-tx2)">FONTE:</span><span class="ch">RedTrack</span><span class="ch on">Utmify</span><span class="bt so-larga">↓ Puxar período</span><span class="bt pri so-larga">↻ Atualizar</span><span class="ch">$ USD</span><span class="ch on">R$ BRL</span></div>
+            <div class="abas"><span>📦 Resumo</span><span class="on">Por Campanha</span><span class="so-larga">Relatório de Campanhas</span><span>Por Anúncio</span><span class="so-larga">🟢 Tempo Real</span></div>
+            <table class="tabela"><thead><tr><th>Status</th><th>Campanha</th><th class="n so-larga">Orçamento</th><th class="n">Gasto</th><th class="n so-larga">Faturamento</th><th class="n">Lucro</th><th class="n">ROAS</th><th class="n so-larga">Vendas</th></tr></thead><tbody>
+              <tr><td><span class="tg"></span></td><td><b>CBO 1.3.1 | DEMO | AD216.2 | 07/11</b><small>ca 3 · <span class="pl rx">orçamento mudou 07:15</span></small></td><td class="n so-larga">R$ 300/dia</td><td class="n">R$ 185,47</td><td class="n so-larga">R$ 1.394,00</td><td class="n verde"><b>R$ 1.208,53</b></td><td class="n"><b>7,52x</b></td><td class="n so-larga">2</td></tr>
+              <tr><td><span class="tg"></span></td><td><b>CBO 1.3.1 | DEMO | AD245.1 | 06/11</b><small>ca 1</small></td><td class="n so-larga">R$ 300/dia</td><td class="n">R$ 152,44</td><td class="n so-larga">R$ 697,00</td><td class="n verde"><b>R$ 544,56</b></td><td class="n"><b>4,57x</b></td><td class="n so-larga">1</td></tr>
+              <tr><td><span class="tg"></span></td><td><b>CBO 1.3.1 | DEMO | AD245.2 - C153 | 06/11</b><small>ca 1 · <span class="pl rx">orçamento mudou 09:02</span></small></td><td class="n so-larga">R$ 300/dia</td><td class="n">R$ 168,40</td><td class="n so-larga">R$ 697,00</td><td class="n verde"><b>R$ 528,60</b></td><td class="n"><b>4,14x</b></td><td class="n so-larga">1</td></tr>
+              <tr><td><span class="tg"></span></td><td><b>CBO 1.3.1 | DEMO | AD210.3 | 05/11</b><small>ca 2</small></td><td class="n so-larga">R$ 300/dia</td><td class="n">R$ 175,67</td><td class="n so-larga">R$ 697,00</td><td class="n verde"><b>R$ 521,33</b></td><td class="n"><b>3,97x</b></td><td class="n so-larga">1</td></tr>
+              <tr><td><span class="tg" style="background:#CBD5E1"></span></td><td><b>CBO 1.3.1 | DEMO | AD153 | 03/11</b><small>ca 2</small></td><td class="n so-larga">R$ 200/dia</td><td class="n">R$ 640,10</td><td class="n so-larga">R$ 0,00</td><td class="n verm"><b>−R$ 640,10</b></td><td class="n"><b>0,00x</b></td><td class="n so-larga">0</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
+
+<!-- PROJETOS -->
+<section class="func" id="projetos"><div class="larg">
+  <div class="texto">
+    <span class="rot">Projetos</span>
+    <h2>O funil de cada projeto, com o custo de cada etapa.</h2>
+    <p>Do anúncio à venda, quanto custou cada pessoa em cada passo: quem chegou na página, deu play, passou do pitch, abriu o checkout e comprou.</p>
+    <ul><li><span><b>Resultado</b> com etapas, custo e margem de contribuição</span></li><li><span><b>Mapa</b> do funil, quiz, páginas e análise de VSL</span></li><li><span><b>Leads, vendas, reembolsos</b> e a jornada ao vivo</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Resultado do funil de um projeto no TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><s>Inteligência</s><a>Tráfego</a><a>Análise de tráfego</a><a class="on">Projetos</a><a>Ad Library</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Projetos</b><small>Funil, quiz, VSL, pixel e testes de cada projeto</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+              <div class="cd k"><small>💲 Investimento</small><b>R$ 7.320</b><em>Meta Ads · projeto todo</em></div><div class="cd k"><small>📈 Faturamento líquido</small><b>R$ 17.430</b><em>26 vendas aprovadas</em></div><div class="cd k"><small>ROAS</small><b class="verde">2,38x</b></div><div class="cd k"><small>Margem de contribuição</small><b class="verde">R$ 5.870</b><em>depois de imposto e taxa</em></div>
+            </div>
+            <div class="cd"><h5>Etapas com custo</h5><div class="s">Do anúncio à venda, e o custo de cada pessoa</div>
+              <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:5px 8px;align-items:center;font-size:8.8px">
+                <span>Impressões</span><span class="bar" style="height:8px"><i style="width:100%;background:#6366F1"></i></span><b>98.420</b><span style="color:var(--t-tx3)">CPM R$ 74</span>
+                <span>Cliques</span><span class="bar" style="height:8px"><i style="width:70%;background:#6366F1"></i></span><b>2.140</b><span style="color:var(--t-tx3)">CPC R$ 3,42</span>
+                <span>Chegaram na página</span><span class="bar" style="height:8px"><i style="width:62%;background:#818CF8"></i></span><b>1.712</b><span style="color:var(--t-tx3)">R$ 4,28</span>
+                <span>Deram play</span><span class="bar" style="height:8px"><i style="width:45%;background:#38BDF8"></i></span><b>871</b><span style="color:var(--t-tx3)">R$ 8,40</span>
+                <span>Passaram do pitch</span><span class="bar" style="height:8px"><i style="width:22%;background:#38BDF8"></i></span><b>204</b><span style="color:var(--t-tx3)">R$ 35,88</span>
+                <span>Abriram o checkout</span><span class="bar" style="height:8px"><i style="width:14%;background:#F59E0B"></i></span><b>98</b><span style="color:var(--t-tx3)">R$ 74,69</span>
+                <span>Compraram</span><span class="bar" style="height:8px"><i style="width:6%;background:#16A34A"></i></span><b class="verde">26</b><span style="color:var(--t-tx3)">CPA R$ 281</span>
+              </div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
+
+<!-- FINANCEIRO -->
+<section class="func inv" id="financeiro"><div class="larg">
+  <div class="texto">
+    <span class="rot">Financeiro</span>
+    <h2>Quanto entrou, quanto saiu e pra onde foi o dinheiro.</h2>
+    <p>Faturamento e tráfego chegam sozinhos, de verdade. A margem e o lucro do período saem calculados, por projeto, sem planilha.</p>
+    <ul><li><span><b>Visão geral</b>, fluxo de caixa e DRE por projeto</span></li><li><span><b>A pagar e a receber</b>, recorrentes e próximos vencimentos</span></li><li><span><b>Recebido por gateway</b>, reembolsos e chargebacks</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Visão geral do Financeiro no TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><s>Inteligência</s><a>Tráfego</a><a>Análise de tráfego</a><a>Projetos</a><s>Gestão</s><a>Gestão</a><a class="on">Financeiro</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Financeiro</b><small>Quanto entrou, gastou e sobrou, por projeto</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div><b style="font-size:12.5px">Visão geral</b><div style="font-size:8.5px;color:var(--t-tx2)">Quanto entrou, quanto saiu e pra onde foi o dinheiro da operação.</div></div>
+            <div class="chips"><span class="inp">Este mês ⌄</span><span class="inp">Todos os projetos ⌄</span><span style="font-size:8.5px;color:var(--t-tx2)">☐ Comparar com o anterior</span></div>
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+              <div class="cd k"><small>Faturamento <span class="tag real">REAL</span></small><b>R$ 98.420</b><em>148 vendas</em></div>
+              <div class="cd k"><small>Tráfego <span class="tag real">REAL</span></small><b>R$ 41.380</b><em>ROAS 2,38</em></div>
+              <div class="cd k"><small>Margem <span class="tag calc">CALC.</span></small><b class="verde">R$ 29.870</b><em>30,3% depois de taxas</em></div>
+              <div class="cd k"><small>Lucro <span class="tag calc">CALC.</span></small><b class="verde">R$ 24.110</b><em>depois dos custos fixos</em></div>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:6px">
+              <div class="cd"><h5>Vendas x tráfego, dia a dia <span class="tag real">REAL</span></h5>
+                <div style="display:flex;align-items:flex-end;gap:3px;height:70px" aria-hidden="true">
+                  <i style="flex:1;height:38%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:22%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                  <i style="flex:1;height:55%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:28%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                  <i style="flex:1;height:72%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:31%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                  <i style="flex:1;height:60%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:29%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                  <i style="flex:1;height:88%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:36%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                  <i style="flex:1;height:66%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:33%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                  <i style="flex:1;height:94%;background:#22C55E;border-radius:2px 2px 0 0"></i><i style="flex:1;height:38%;background:#6366F1;border-radius:2px 2px 0 0"></i>
+                </div>
+                <div style="display:flex;gap:10px;font-size:7.5px;color:var(--t-tx2);margin-top:4px"><span>■ <span style="color:#22C55E">vendas</span></span><span>■ <span style="color:#6366F1">tráfego</span></span></div></div>
+              <div class="cd"><h5>Pra onde foi o dinheiro</h5>
+                <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:5px 6px;align-items:center;font-size:8.3px">
+                  <span>Tráfego</span><span class="bar"><i style="width:100%;background:#6366F1"></i></span><b>R$ 41.380</b>
+                  <span>Reembolsos</span><span class="bar"><i style="width:24%;background:#EF4444"></i></span><b>R$ 9.860</b>
+                  <span>Gateway</span><span class="bar"><i style="width:12%;background:#C52C58"></i></span><b>R$ 4.920</b>
+                  <span>Impostos</span><span class="bar"><i style="width:9%;background:#F97316"></i></span><b>R$ 3.690</b>
+                  <span>Equipe</span><span class="bar"><i style="width:7%;background:#0EA5E9"></i></span><b>R$ 2.900</b>
+                </div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
+
+<!-- PIXEL PRO -->
+<section class="func" id="pixel"><div class="larg">
+  <div class="texto">
+    <span class="rot">Pixel Pro</span>
+    <h2>Dá pra confiar nos números? O Pixel Pro mostra.</h2>
+    <p>O pixel do TMX roda nas suas páginas e no checkout, liga cada venda à jornada de quem comprou e manda a compra pra Meta. A nota de saúde diz o que está quebrado e quanto dinheiro está em jogo.</p>
+    <ul><li><span><b>Uma linha de código</b>, em todas as páginas do funil</span></li><li><span><b>Venda ligada ao anúncio</b> pelo sck e pela jornada</span></li><li><span><b>Saúde do rastreamento</b> com o que falta corrigir</span></li></ul>
+  </div>
+  <div>
+    <div class="jan" role="img" aria-label="Pixel e saúde de um projeto no TMX">
+      <div class="jan-bar"><i></i><i></i><i></i><span>app.centraltmx.com</span></div>
+      <div class="app">
+        <div class="sb"><div class="lg"><b>TMX</b><span>DIGITAL</span></div><a>Dashboard</a><s>Operação</s><a>Demandas</a><a>Criativos</a><s>Inteligência</s><a>Tráfego</a><a>Análise de tráfego</a><a class="on">Projetos</a><a>Ad Library</a></div>
+        <div class="main">
+          <div class="tb"><div><b>Projetos</b><small>Funil, quiz, VSL, pixel e testes de cada projeto</small></div><span class="bt">↻ Atualizar</span></div>
+          <div class="cont">
+            <div><b style="font-size:12.5px">Pixel e saúde</b> <span class="tag vivo">● AO VIVO</span><div style="font-size:8.5px;color:var(--t-tx2)">Dá pra confiar nos números? O que está quebrado, em ordem de dinheiro em jogo.</div></div>
+            <div style="display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:6px">
+              <div class="cd">
+                <div style="font-size:7.5px;letter-spacing:.06em;font-weight:700;color:var(--t-tx2)">SAÚDE DO RASTREAMENTO</div>
+                <div style="font:800 26px var(--f);margin:2px 0 4px" class="verde">91<span style="font-size:11px;color:var(--t-tx3)">/100</span></div>
+                <div style="height:6px;border-radius:4px;background:linear-gradient(90deg,#EF4444,#F59E0B,#22C55E)"></div>
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;font-size:8.5px;margin-top:8px">
+                  <span>Vendas ligadas à jornada</span><b class="verde">94%</b><span>Páginas com pixel</span><b class="verde">7 de 7</b><span>Páginas no mapa</span><b class="verde">12 de 12</b><span>UTM por ID</span><b class="verde">97%</b><span>Webhook com sck</span><b class="lar">88%</b>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div class="cd" style="background:#FFF7ED;border-color:#FED7AA;font-size:8.5px"><b>Página "Upsell 2" sem visita do pixel há 24 h</b><div style="color:var(--t-tx2)">Ou o pixel não está nela, ou ela não está no funil.</div></div>
+                <div class="cd" style="font-size:8.5px;display:flex;justify-content:space-between;align-items:center;gap:6px"><span>✅ Checkout e Obrigado com URL</span><span class="pl vd">corrigido</span></div>
+                <div class="cd" style="font-size:8.5px;display:flex;justify-content:space-between;align-items:center;gap:6px"><span>✅ Pixel recebendo em 7 páginas</span><span class="pl vd">ok</span></div>
+                <div class="cd"><h5 style="font-size:9px">Código do pixel</h5><code class="px">&lt;script src="https://app.centraltmx.com/px.js" data-f="demo" async&gt;&lt;/script&gt;</code></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="legenda">Tela do TMX com dados de exemplo</p>
+  </div>
+</div></section>
+
+<section class="faixa"><div class="larg">
+  <div class="vant">
+    <div><b>Sem cobrança por venda</b><p>O preço é só pela faixa de investimento em anúncios. Vender mais não muda o valor.</p></div>
+    <div><b>Todas as ferramentas</b><p>Demandas, Criativos, Tráfego, Análise, Projetos, Financeiro e Pixel Pro em todos os planos.</p></div>
+    <div><b>O time inteiro junto</b><p>Cada pessoa com login e cargo próprios, e as demandas dela no WhatsApp.</p></div>
+    <div><b>Seus dados separados</b><p>Cada empresa tem banco e endereço próprios. Ninguém vê os dados de outra.</p></div>
+  </div>
+</div></section>
+
+<section class="sec" id="como-funciona"><div class="larg">
+  <div class="topo"><div><span class="rot">Como funciona</span><h2>Do pagamento à primeira venda</h2></div></div>
+  <div class="passos">
+    <div><b>Escolha o plano e pague</b><p>O botão leva direto pra página de pagamento segura. Você põe e-mail, dados e forma de pagamento lá.</p></div>
+    <div><b>Crie a sua conta</b><p>Pago, o link pra criar a conta chega na hora no e-mail e no WhatsApp da compra. É só criar o acesso e dar o nome da empresa e dos projetos.</p></div>
+    <div><b>Ligue os seus projetos</b><p>Meta, pixel e checkout, na aba Integrações de cada projeto. Aí as vendas começam a aparecer.</p></div>
+  </div>
+</div></section>
+
+<section class="sec" id="planos"><div class="larg">
+  <div class="topo">
+    <div><span class="rot">Planos</span><h2>Você paga pela faixa de investimento</h2><p>O preço sobe com o quanto você investe em anúncios por mês, somando as contas ligadas nos últimos 30 dias. Nenhum plano cobra por venda.</p></div>
+    <div class="ciclo" role="group" aria-label="Forma de cobrança"><button type="button" data-ciclo="mensal" aria-pressed="true">Mensal</button><button type="button" data-ciclo="anual" aria-pressed="false">Anual <small>2 meses grátis</small></button></div>
+  </div>
+  <div class="grade" id="grade"><div class="carregando">Carregando os planos…</div></div>
+  <div class="erro-msg" id="grade-erro" role="alert"></div>
+  <p class="todos">Todas as ferramentas em todos os planos: Demandas, Criativos, Rituais, Arquivos, Tráfego, Análise de tráfego, Projetos, Financeiro e Pixel Pro.</p>
+</div></section>
+
+<section class="sec" id="duvidas"><div class="larg">
+  <div class="topo"><div><span class="rot">Dúvidas</span><h2>Perguntas frequentes</h2></div></div>
+  <div class="faq">
+    <details><summary>Cobra alguma coisa por venda?</summary><p>Não. O preço é só pela faixa de investimento em anúncios por mês. Vender mais não muda o valor.</p></details>
+    <details><summary>Como o TMX sabe quanto eu invisto?</summary><p>Pelas contas de anúncio que você liga. Ele soma o gasto dos últimos 30 dias e mostra em Configurações › Meu plano.</p></details>
+    <details><summary>E se eu passar da minha faixa?</summary><p>O TMX avisa e sugere o plano de cima. O pixel e as vendas continuam chegando normalmente.</p></details>
+    <details><summary>Quais formas de pagamento?</summary><p>As que a página de pagamento mostrar, cobradas todo mês (ou uma vez por ano, no anual). A assinatura renova sozinha e não tem fidelidade.</p></details>
+    <details><summary>Preciso ter a Utmify?</summary><p>Não. O TMX tem o Pixel Pro. Se você já usa a Utmify ou o RedTrack, dá pra ligar e ver o gasto por eles também.</p></details>
+    <details><summary>O meu time entra junto?</summary><p>Sim. Cada pessoa tem login e cargo próprios e recebe as demandas dela no WhatsApp. O limite de pessoas depende do plano.</p></details>
+    <details><summary>Como funciona o teste grátis?</summary><p>No Iniciante você manda o pedido, a TMX libera o acesso pelo WhatsApp e você usa 30 dias sem pagar. Depois escolhe um plano.</p></details>
+    <details><summary>Como eu cancelo?</summary><p>Pelo Suporte, dentro do TMX. Não tem fidelidade: o acesso fica até o fim do período já pago.</p></details>
+  </div>
+</div></section>
+
+<section class="final"><div class="larg">
+  <span class="rot">Comece hoje</span>
+  <h2>A sua operação inteira no mesmo painel, ainda esta semana.</h2>
+  <p>Escolha o plano pela faixa de investimento. Todas as ferramentas vêm em todos os planos.</p>
+  <a class="btn" href="#planos">Ver os planos</a>
+</div></section>
+<footer class="rod"><div class="larg"><span>TMX Digital</span><span id="rod-pag">Pagamento em página segura</span></div></footer>
+</div>
+
+<!-- VOLTA DO PAGAMENTO (/planos/obrigado?r=…) -->
+<main id="volta" hidden>
   <div class="cartao" id="volta-cartao" aria-live="polite"></div>
 </main>
 
-<!-- JANELA DE ASSINAR -->
+<!-- JANELA DO TESTE GRÁTIS -->
 <div class="fundo-jan" id="jan" hidden role="dialog" aria-modal="true" aria-labelledby="jan-tit">
   <form class="cartao" id="jan-form" novalidate>
-    <div class="tit" id="jan-tit">Assinar</div>
-    <div class="sub" id="jan-sub"></div>
-    <div class="resumo"><span id="jan-plano"></span><b id="jan-valor"></b></div>
+    <div class="tit" id="jan-tit">Teste grátis do Iniciante</div>
+    <div class="sub">Mande o pedido e a TMX libera o seu acesso pelo WhatsApp.</div>
+    <div class="resumo"><span>Plano Iniciante</span><b>Grátis por 30 dias</b></div>
     <label class="lbl" for="f-nome">Seu nome</label>
     <input class="in" id="f-nome" autocomplete="name" placeholder="Seu nome">
     <label class="lbl" for="f-email">E-mail</label>
@@ -255,47 +647,51 @@ button,input{font-family:inherit}
     <div class="dica">Vai ser o seu login no TMX.</div>
     <label class="lbl" for="f-zap">WhatsApp</label>
     <input class="in" id="f-zap" type="tel" autocomplete="tel" placeholder="(11) 9 0000-0000">
-    <div class="dica" id="dica-zap">O link para criar a conta chega aqui também.</div>
-    <button class="btn lg" type="submit" id="jan-ir">Ir para o pagamento</button>
+    <div class="dica">É por aqui que a TMX te manda o acesso.</div>
+    <button class="btn" type="submit" id="jan-ir">Pedir o teste grátis</button>
     <div class="erro-msg" id="jan-erro" role="alert"></div>
-    <div class="aviso" id="jan-aviso">O pagamento é feito na página segura da Pagar.me, com cartão de crédito.</div>
-    <button class="lnk fechar" type="button" id="jan-fechar">Voltar aos planos</button>
+    <div class="aviso">Sem cartão. A liberação é feita por uma pessoa da TMX, em horário comercial.</div>
+    <button class="fechar" type="button" id="jan-fechar">Voltar aos planos</button>
   </form>
 </div>
 
-</div>
 <script>
 (function(){
   var esc = function(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var brl = function(v){ return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); };
   var brl2 = function(v){ return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
   var $ = function(id){ return document.getElementById(id); };
-  var E = { ciclo: 'mensal', planos: [], plano: null, enviando: false };
+  var E = { ciclo: 'mensal', planos: [], gateway: '', enviando: false };
 
-  function precoDe(p, ciclo){
-    if(p.gratis) return { grande: 'Grátis', por: 'por 30 dias', cond: 'Depois, você escolhe um plano', linha: 'Grátis por 30 dias' };
-    if(ciclo === 'anual') return { grande: brl(Math.round(p.anual / 12)), por: '/mês', cond: brl(p.anual) + ' cobrados uma vez por ano', linha: brl2(p.anual) + ' por ano' };
-    return { grande: brl(p.mensal), por: '/mês', cond: 'No mensal, sem fidelidade', linha: brl2(p.mensal) + ' por mês' };
-  }
+  function aviso(t){ var d = document.createElement('div'); d.className = 'toast'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 3200); }
 
-  // ── planos ──
-  function pintarPlanos(){
+  // ── planos (os preços e limites vêm do servidor: PLANOS_TMX) ──
+  function pintar(){
     document.querySelectorAll('[data-ciclo]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-ciclo') === E.ciclo ? 'true' : 'false'); });
     $('grade').innerHTML = E.planos.map(function(p){
-      var pr = precoDe(p, E.ciclo);
-      return '<article class="plano"><h3>'+esc(p.nome)+'</h3><p class="faixa">'+esc(p.faixa)+'</p>'+
-        '<div class="preco"><b>'+esc(pr.grande)+'</b><span>'+esc(pr.por)+'</span></div><p class="cond">'+esc(pr.cond)+'</p>'+
-        '<button class="btn lg'+(p.gratis ? ' sec' : '')+'" type="button" data-assinar="'+esc(p.id)+'">'+(p.gratis ? 'Pedir o teste grátis' : 'Assinar o '+esc(p.nome))+'</button>'+
-        '<ul>'+(p.itens || []).map(function(i){ return '<li>'+esc(i)+'</li>'; }).join('')+'</ul></article>';
+      var anual = E.ciclo === 'anual';
+      var preco = p.gratis ? 'Grátis' : brl(anual ? p.anual : p.mensal);
+      var per = p.gratis ? 'por 30 dias' : (anual ? '/ano' : '/mês');
+      var cond = p.gratis ? 'Depois, você escolhe um plano' : (anual ? 'Equivale a ' + brl(Math.round(p.anual / 12)) + ' por mês' : 'No mensal, sem fidelidade');
+      return '<div class="plano'+(p.id === 'escala' ? ' dest' : '')+'"><h3>'+esc(p.nome)+'</h3><div class="fx">'+esc(p.faixa)+'</div>' +
+        '<div class="pr"><b>'+preco+'</b><span>'+per+'</span></div><div class="cdc">'+cond+'</div>' +
+        '<button class="btn'+(p.gratis ? ' contorno' : '')+'" type="button" data-plano="'+esc(p.id)+'">'+(p.gratis ? 'Pedir o teste grátis' : 'Assinar o ' + esc(p.nome))+'</button>' +
+        '<ul>'+(p.itens || []).map(function(i){ return '<li>'+esc(i)+'</li>'; }).join('')+'</ul></div>';
     }).join('');
-    document.querySelectorAll('[data-assinar]').forEach(function(b){ b.addEventListener('click', function(){
-      var p = E.planos.filter(function(x){ return x.id === b.getAttribute('data-assinar'); })[0];
-      if(p && !p.gratis) irPagar(p, b); else abrir(b.getAttribute('data-assinar'));
-    }); });
   }
-  // plano pago: direto pro checkout da Pagar.me (e-mail, dados e cartão são pedidos lá)
+  function carregar(){
+    fetch('/api/planos-tmx').then(function(r){ return r.json(); }).then(function(j){
+      E.planos = j.planos || []; E.gateway = j.gateway || '';
+      $('rod-pag').textContent = E.gateway === 'payt' ? 'Pagamento processado pela Payt' : 'Pagamento processado pela Pagar.me';
+      pintar();
+    }).catch(function(){ $('grade').innerHTML = '<div class="carregando">Não consegui carregar os planos agora. Recarregue a página.</div>'; });
+  }
+
+  // plano pago: direto pro checkout (o link da Payt, ou o que o servidor abrir na Pagar.me)
   function irPagar(p, botao){
     if(E.enviando) return;
+    var link = p.checkout && p.checkout[E.ciclo];
+    if(link){ location.href = link; return; }
     E.enviando = true;
     var antes = botao.textContent;
     botao.disabled = true; botao.textContent = 'Abrindo o pagamento…';
@@ -311,24 +707,13 @@ button,input{font-family:inherit}
         E.enviando = false; botao.disabled = false; botao.textContent = antes;
       });
   }
-  document.querySelectorAll('[data-ciclo]').forEach(function(b){ b.addEventListener('click', function(){ E.ciclo = b.getAttribute('data-ciclo'); pintarPlanos(); }); });
 
-  // ── janela de assinar ──
+  // ── janela do teste grátis ──
   var ultimoFoco = null;
-  function abrir(id){
-    var p = E.planos.filter(function(x){ return x.id === id; })[0]; if(!p) return;
-    E.plano = p; ultimoFoco = document.activeElement;
-    var pr = precoDe(p, E.ciclo);
-    $('jan-tit').textContent = p.gratis ? 'Teste grátis do Iniciante' : 'Assinar o ' + p.nome;
-    $('jan-sub').textContent = p.gratis ? 'Mande o pedido e a TMX libera o seu acesso pelo WhatsApp.' : 'Seus dados para a assinatura. Depois você paga na Pagar.me.';
-    $('jan-plano').textContent = 'Plano ' + p.nome + (p.gratis ? '' : (E.ciclo === 'anual' ? ' (anual)' : ' (mensal)'));
-    $('jan-valor').textContent = pr.linha;
-    $('jan-ir').textContent = p.gratis ? 'Pedir o teste grátis' : 'Ir para o pagamento';
-    $('jan-aviso').textContent = p.gratis ? 'Sem cartão. A liberação é feita por uma pessoa da TMX, em horário comercial.' : 'O pagamento é feito na página segura da Pagar.me, com cartão de crédito.';
-    $('dica-zap').textContent = p.gratis ? 'É por aqui que a TMX te manda o acesso.' : 'O link para criar a conta chega aqui também.';
+  function abrir(){
+    ultimoFoco = document.activeElement;
     $('jan-erro').textContent = '';
     ['f-nome','f-email','f-zap'].forEach(function(i){ $(i).classList.remove('erro'); });
-    $('jan-form').hidden = false;
     $('jan').hidden = false;
     setTimeout(function(){ $('f-nome').focus(); }, 30);
   }
@@ -336,19 +721,17 @@ button,input{font-family:inherit}
   $('jan-fechar').addEventListener('click', fechar);
   $('jan').addEventListener('click', function(e){ if(e.target === $('jan')) fechar(); });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && !$('jan').hidden) fechar(); });
-
   $('jan-form').addEventListener('submit', function(e){
     e.preventDefault();
-    if(E.enviando || !E.plano) return;
-    var dados = { plano: E.plano.id, ciclo: E.ciclo, nome: $('f-nome').value.trim(), email: $('f-email').value.trim(), whatsapp: $('f-zap').value.trim() };
+    if(E.enviando) return;
+    var dados = { plano: 'iniciante', ciclo: 'mensal', nome: $('f-nome').value.trim(), email: $('f-email').value.trim(), whatsapp: $('f-zap').value.trim() };
     var falta = !dados.nome ? 'f-nome' : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dados.email) ? 'f-email' : dados.whatsapp.replace(/\D/g, '').length < 10 ? 'f-zap' : '';
     ['f-nome','f-email','f-zap'].forEach(function(i){ $(i).classList.toggle('erro', i === falta); });
     if(falta){
       $('jan-erro').textContent = falta === 'f-nome' ? 'Diga o seu nome.' : falta === 'f-email' ? 'Esse e-mail não parece certo.' : 'O WhatsApp precisa ter DDD e número.';
       $(falta).focus(); return;
     }
-    E.enviando = true; $('jan-ir').disabled = true; $('jan-erro').textContent = '';
-    $('jan-ir').textContent = E.plano.gratis ? 'Mandando…' : 'Abrindo o pagamento…';
+    E.enviando = true; $('jan-ir').disabled = true; $('jan-ir').textContent = 'Mandando…'; $('jan-erro').textContent = '';
     fetch('/api/assinar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) })
       .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { ok: r.ok, j: j }; }); })
       .then(function(x){
@@ -357,24 +740,25 @@ button,input{font-family:inherit}
           if(campo){ $(campo).classList.add('erro'); $(campo).focus(); }
           throw new Error(x.j.error || 'Não deu certo agora. Tente de novo em instantes.');
         }
-        if(x.j.gratis){
-          $('jan-form').innerHTML = '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Pedido recebido</div>'+
-            '<div class="sub">A TMX vai te chamar no WhatsApp com o link para criar a conta. Os 30 dias começam quando você entrar.</div>'+
-            '<button class="btn lg" type="button" id="jan-ok">Fechar</button>';
-          $('jan-ok').addEventListener('click', function(){ location.reload(); });
-          return;
-        }
-        location.href = x.j.url;
+        $('jan-form').innerHTML = '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Pedido recebido</div>'+
+          '<div class="sub">A TMX vai te chamar no WhatsApp com o link para criar a conta. Os 30 dias começam quando você entrar.</div>'+
+          '<button class="btn" type="button" id="jan-ok">Fechar</button>';
+        $('jan-ok').addEventListener('click', function(){ location.reload(); });
       })
       .catch(function(err){ $('jan-erro').textContent = err.message || 'Não deu certo agora. Tente de novo em instantes.'; })
-      .then(function(){ E.enviando = false; var b = $('jan-ir'); if(b){ b.disabled = false; b.textContent = E.plano.gratis ? 'Pedir o teste grátis' : 'Ir para o pagamento'; } });
+      .then(function(){ E.enviando = false; var b = $('jan-ir'); if(b){ b.disabled = false; b.textContent = 'Pedir o teste grátis'; } });
   });
 
-  function carregarPlanos(){
-    fetch('/api/planos-tmx').then(function(r){ return r.json(); }).then(function(j){
-      E.planos = j.planos || []; pintarPlanos();
-    }).catch(function(){ $('grade').innerHTML = '<div class="carregando">Não consegui carregar os planos agora. Recarregue a página.</div>'; });
-  }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-ciclo]');
+    if(b){ E.ciclo = b.getAttribute('data-ciclo'); pintar(); return; }
+    var bt = ev.target.closest('[data-plano]');
+    if(bt){
+      var p = E.planos.filter(function(x){ return x.id === bt.getAttribute('data-plano'); })[0];
+      if(!p) return;
+      if(p.gratis) abrir(); else irPagar(p, bt);
+    }
+  });
 
   // ── volta do pagamento (/planos/obrigado?r=…) ──
   var LOGO = '<div class="logo-g"><b>TMX</b><span>DIGITAL</span></div>';
@@ -385,27 +769,27 @@ button,input{font-family:inherit}
       tentativas++;
       fetch('/api/assinar/situacao?r=' + encodeURIComponent(ref)).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); }).then(function(x){
         var j = x.j || {};
-        if(!x.ok){ cartao.innerHTML = LOGO + '<div class="tit">Não achei esse pedido</div><div class="sub">Se você pagou, o link para criar a conta chega no seu e-mail e no seu WhatsApp.</div><a class="btn lg" href="/planos">Ver os planos</a>'; return; }
+        if(!x.ok){ cartao.innerHTML = LOGO + '<div class="tit">Não achei esse pedido</div><div class="sub">Se você pagou, o link para criar a conta chega no seu e-mail e no seu WhatsApp.</div><a class="btn" href="/planos">Ver os planos</a>'; return; }
         var linha = 'Plano ' + esc(j.plano) + '</span><b>' + esc(j.ciclo === 'anual' ? brl2(j.valor) + ' por ano' : brl2(j.valor) + ' por mês');
         if(j.cadastrado){
-          cartao.innerHTML = LOGO + '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Sua conta já está criada</div><div class="sub">Entre com o e-mail e a senha que você cadastrou.</div><a class="btn lg" href="/">Entrar no TMX</a>';
+          cartao.innerHTML = LOGO + '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Sua conta já está criada</div><div class="sub">Entre com o e-mail e a senha que você cadastrou.</div><a class="btn" href="/">Entrar no TMX</a>';
           return;
         }
         if(j.status === 'paga' && j.convite){
           cartao.innerHTML = LOGO + '<div class="selo-ok" aria-hidden="true">✓</div><div class="tit">Pagamento aprovado</div>'+
             '<div class="sub">Agora crie a sua conta. Leva uns 2 minutos: acesso, nome da empresa e projetos.</div>'+
             '<div class="resumo"><span>' + linha + '</b></div>'+
-            '<a class="btn lg" href="' + esc(j.convite) + '">Criar minha conta →</a>'+
+            '<a class="btn" href="' + esc(j.convite) + '">Criar minha conta →</a>'+
             '<p class="aviso">' + (j.avisado ? 'Mandamos o mesmo link para o seu e-mail e o seu WhatsApp. ' : 'Crie agora: o mesmo link também vai para o e-mail da compra. ') + 'Ele vale para um cadastro e vence em 30 dias.</p>';
           return;
         }
         if(j.status === 'aguardando' && tentativas < 60){ setTimeout(perguntar, 3000); return; }
         if(j.status === 'aguardando'){
-          cartao.innerHTML = LOGO + '<div class="tit">Ainda esperando a confirmação</div><div class="sub">A Pagar.me ainda não confirmou o pagamento. Assim que confirmar, o link para criar a conta chega no seu e-mail e no seu WhatsApp.</div><button class="btn lg" type="button" id="de-novo">Conferir de novo</button>';
+          cartao.innerHTML = LOGO + '<div class="tit">Ainda esperando a confirmação</div><div class="sub">O pagamento ainda não foi confirmado. Assim que for, o link para criar a conta chega no seu e-mail e no seu WhatsApp.</div><button class="btn" type="button" id="de-novo">Conferir de novo</button>';
           $('de-novo').addEventListener('click', function(){ volta(ref); });
           return;
         }
-        cartao.innerHTML = LOGO + '<div class="tit">Esse pedido não está ativo</div><div class="sub">Se precisar de ajuda, fale com a TMX pelo WhatsApp.</div><a class="btn lg" href="/planos">Ver os planos</a>';
+        cartao.innerHTML = LOGO + '<div class="tit">Esse pedido não está ativo</div><div class="sub">Se precisar de ajuda, fale com a TMX pelo WhatsApp.</div><a class="btn" href="/planos">Ver os planos</a>';
       }).catch(function(){ if(tentativas < 60) setTimeout(perguntar, 4000); });
     }
     perguntar();
@@ -413,7 +797,7 @@ button,input{font-family:inherit}
 
   var ref = new URLSearchParams(location.search).get('r');
   if(/\/planos\/obrigado\/?$/.test(location.pathname) && ref){ $('volta').hidden = false; document.title = 'Pagamento · TMX'; volta(ref); }
-  else { $('pagina').hidden = false; carregarPlanos(); }
+  else { $('pagina').hidden = false; carregar(); }
 })();
 </script>
 </body>

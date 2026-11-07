@@ -227,6 +227,7 @@ Restore is destructive but always snapshots `pre-restore` first. Require body `c
 - **Never delete via `/api/store/:key` PUT.** Use the lixeira flow. See "Sync protocol" above.
 - **Audit sensitive actions** via `audit(db, action, target, meta, userInfo)` — `authDiretoria` routes, deletes, restores, logins, token ops all do this. Follow the pattern when adding new admin actions. Retention is 90 days; hard cap 10k entries.
 - **Rate limits are already wired** globally (`/api/` 200/min, `/api/v1/` 60/min, `/api/auth/login` 5 per 10min per IP). Don't bypass — if a legitimate use case needs more, adjust the limiter, don't work around it.
+- **No native `alert()`/`confirm()`/`prompt()` in the SPA.** They show up stuck at the top with "app.centraltmx.com diz". Use `await tmxConfirmar(msg)` / `await tmxPerguntar(msg, padrao)` (the function must be `async`) and `tmxAviso(msg)`; `window.alert` is routed to `tmxAviso` but doesn't block, so if something must wait for the OK (e.g. warn then log out), use `tmxAviso(msg).then(...)`. The first paragraph of the message becomes the title. Pop-ups open in the middle of the screen: an overlay that scrolls keeps `align-items:flex-start` and gives the card `margin:auto` (07/11/2026).
 - **`cur` global** in the SPA tracks current page. `goTo(id)` handles navigation + calls the right `render<Name>()`. When adding a new page, wire it into `goTo` and add a render function; also hook the real-time path in `syncFromServer` if the page should live-update.
 
 ## Nomenclatura & identidade
