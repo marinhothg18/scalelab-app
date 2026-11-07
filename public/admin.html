@@ -304,7 +304,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       var h = (Date.now() - c.desde) / 3600000;
       it.push([h >= 4 ? 0 : 2, h >= 4 ? 'cr' : 'av', '💬', 'Chamado #' + c.id + ' · ' + c.empresaNome, 'esperando a TMX ' + ha(c.desde) + ': ' + c.assunto, 'data-ch="'+c.id+'"']);
     });
-    PEDIDOS.filter(function(p){ return p.status === 'atrasada'; }).forEach(function(p){ it.push([1, 'cr', '💳', 'Pagamento atrasado · ' + (p.nome || p.email), (p.plano_nome || p.plano) + ' · o acesso continua até você decidir', 'data-tela="pedidos"']); });
+    PEDIDOS.filter(function(p){ return p.status === 'atrasada'; }).forEach(function(p){ it.push([1, 'cr', '💳', 'Pagamento atrasado · ' + (p.nome || p.email || 'cliente sem contato ainda'), (p.plano_nome || p.plano) + ' · o acesso continua até você decidir', 'data-tela="pedidos"']); });
     empresas().forEach(function(e){
       if(e.motor.estado === 'desligado') it.push([0, 'cr', '⚙️', 'Motor desligado · ' + e.nome, 'o TMX dela não abre; religa sozinho', 'data-tela="saude"']);
       else if(e.motor.quedasHoje >= 2) it.push([3, 'se', '⚙️', 'Motor instável · ' + e.nome, 'caiu ' + e.motor.quedasHoje + ' vezes hoje', 'data-tela="saude"']);
@@ -482,11 +482,11 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
           '<li><b>Senha do aviso (opcional).</b> <span>'+(C.senhaAviso ? 'Ligada: a Pagar.me precisa mandar a senha que está em PAGARME_WEBHOOK_SENHA.' : 'Desligada. Pra ligar, crie PAGARME_WEBHOOK_SENHA no Railway e ponha a mesma senha no aviso, na Pagar.me.')+'</span></li>' +
         '</ol>'+(C.ligada ? '<div class="nota az" style="margin-top:12px">Ligada'+(C.ambiente === 'teste' ? ' em modo de teste: os pagamentos daqui não são de verdade.' : '.')+'</div>' : '')+'</div>' +
         '<div class="card"><h2>Como o cliente compra</h2><div class="sub" style="margin-bottom:12px">O caminho de quem assina, do começo ao fim</div><ol class="passos">' +
-          '<li><b>Escolhe o plano</b> <span>na página de planos, mensal ou anual.</span><div class="copia"><code>'+esc(C.paginaPlanos)+'</code><button class="btn peq" data-copiar="'+esc(C.paginaPlanos)+'">Copiar</button><a class="btn peq" href="'+esc(C.paginaPlanos)+'" target="_blank" rel="noopener">Abrir</a></div></li>' +
-          '<li><b>Paga no checkout da Pagar.me</b> <span>no cartão de crédito.</span></li>' +
-          '<li><b>Comprou, recebe as instruções</b> <span>o TMX confere o pagamento com a Pagar.me e manda o link “Criar minha conta” por e-mail e WhatsApp.</span></li>' +
-          '<li><b>Iniciante (grátis)</b> <span>não tem checkout: vira um pedido que você libera em Pedidos.</span></li>' +
-        '</ol>'+(temLink ? '<div class="nota az" style="margin-top:12px">Pra vender por uma page sua: cada plano tem o link de compra pronto na tabela abaixo. Põe no botão da page e ele cai no mesmo checkout.</div>' : '')+'</div>' +
+          '<li><b>Escolhe o plano</b> <span>na página de planos (mensal ou anual) e clica em Assinar. Não preenche nada ali.</span><div class="copia"><code>'+esc(C.paginaPlanos)+'</code><button class="btn peq" data-copiar="'+esc(C.paginaPlanos)+'">Copiar</button><a class="btn peq" href="'+esc(C.paginaPlanos)+'" target="_blank" rel="noopener">Abrir</a></div></li>' +
+          '<li><b>Cai direto no checkout da Pagar.me</b> <span>e põe ali nome, e-mail, telefone e cartão.</span></li>' +
+          '<li><b>Comprou, recebe as instruções</b> <span>o TMX confere o pagamento com a Pagar.me e manda o link “Criar minha conta” pro e-mail e o WhatsApp que ele pôs no checkout.</span></li>' +
+          '<li><b>Iniciante (grátis)</b> <span>não tem checkout: preenche um formulário e vira um pedido que você libera em Pedidos.</span></li>' +
+        '</ol>'+(temLink ? '<div class="nota az" style="margin-top:12px">Pra vender por uma page sua, anúncio ou WhatsApp: cada plano tem o link de compra pronto na tabela abaixo (mensal e anual). Põe no botão e ele cai direto no checkout.'+(C.ligada ? '' : ' Enquanto a cobrança estiver desligada, o link leva pra página de planos.')+'</div>' : '')+'</div>' +
       '</div>' +
       '<div class="card solto"><div class="card-cab"><div><h2>Planos e preços</h2><div class="sub">O que aparece na página de planos e o que a Pagar.me cobra. O anual é 10 vezes o mensal.</div></div></div>' +
         '<div style="overflow-x:auto"><table style="min-width:'+(temLink ? 820 : 640)+'px"><thead><tr><th>Plano</th><th>Mensal</th><th>Anual</th><th>Página</th><th>Clientes</th>'+(temLink ? '<th>Link de compra</th>' : '')+'</tr></thead><tbody>'+linhas+'</tbody></table></div>' +
@@ -542,7 +542,8 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       var acao = '';
       if(p.status === 'pedido' && !cv) acao = '<button class="btn peq pri" data-liberar="'+esc(p.id)+'">Liberar teste grátis</button>';
       else if(p.convite && !p.empresa) acao = '<button class="btn peq" data-copiar="'+esc(p.convite)+'">Copiar link do cadastro</button>' + (p.whatsapp ? '<a class="btn peq" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(p.whatsapp).replace(/\D/g, ''))+'?text='+encodeURIComponent('Oi, ' + (p.nome || '') + '! Aqui está o seu link pra criar a conta no TMX: ' + p.convite)+'">WhatsApp</a>' : '');
-      return '<tr><td class="mini num">'+data(p.criado, true)+'</td><td><b>'+esc(p.nome || '—')+'</b><div class="mini">'+esc(p.email || '')+(p.whatsapp ? ' · ' + esc(p.whatsapp) : '')+'</div></td>' +
+      var contato = (p.email || '') + (p.whatsapp ? (p.email ? ' · ' : '') + p.whatsapp : '');
+      return '<tr><td class="mini num">'+data(p.criado, true)+'</td><td><b>'+esc(p.nome || '—')+'</b><div class="mini">'+(contato ? esc(contato) : (p.status === 'paga' || p.status === 'aguardando' ? 'o contato chega com o aviso da Pagar.me' : '—'))+'</div></td>' +
         '<td>'+esc(p.plano_nome || p.plano)+'<div class="mini">'+esc(p.ciclo === 'anual' ? 'anual' : 'mensal')+'</div></td><td>'+situacao+'</td><td>'+empresa+'</td>' +
         '<td><div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+acao+'</div></td></tr>';
     }).join('') || '<tr><td colspan="6" class="vazio">Nada aqui.</td></tr>';

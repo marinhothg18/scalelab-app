@@ -9277,7 +9277,7 @@ async function _montarPainel() {
   };
   const cobranca = { ligada: !!PAGARME_API_KEY, ambiente: /^sk_test_/.test(PAGARME_API_KEY) ? 'teste' : (PAGARME_API_KEY ? 'producao' : null),
     senhaAviso: !!PAGARME_WEBHOOK_SENHA, webhook: URL_TMX + '/api/billing/webhook', paginaPlanos: URL_TMX + '/planos',
-    linkCompra: null,   // o checkout direto (clicar no plano e cair na Pagar.me) põe aqui o endereço por plano
+    linkCompra: URL_TMX + '/assinar/{plano}',   // cai direto no checkout da Pagar.me (?ciclo=anual pro anual)
     ultimoAviso: ultimo ? { evento: ultimo.ultimo_evento, em: ultimo.atualizado || null } : null,
     planos: PLANOS_TMX.filter(p => !p.interno).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal == null ? null : p.mensal, gratis: !!p.gratis,
       faixa: p.faixa || p.desc || '', venda: !!p.venda, limites: p.limites, empresas: regs.filter(e => (e.plano || 'teste') === p.id).length })) };
