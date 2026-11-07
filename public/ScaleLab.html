@@ -13691,7 +13691,7 @@ function _rhImportarUsuarios(){
     var areaMap = { 'Diretoria':'Gestão', 'Copy':'Copy', 'Editor':'Edição', 'Gestor de Tráfego':'Tráfego', 'Infra':'Infra', 'Spy':'Spy', 'Designer':'Designer' };
     var area = areaMap[u.cargo] || 'Outros';
     colabs.push({
-      id: _rhNovoId('colab'),
+      id: 'colab-u-' + u.id,  // id fixo pela pessoa (ver _rhNovoDoUsuario)
       _usuarioId: u.id,  // link com sl_usuarios
       nome: u.nome || '',
       email: u.email,
@@ -13932,11 +13932,14 @@ function _renderRhDashboard(el){
 
 // ─── LISTA DE COLABORADORES ───
 function _renderRhColaboradores(el){
-  var colabs = _rhGetColabs();
+  // as cópias repetidas não aparecem nunca; Desligado só aparece no filtro "Desligados"
+  var colabs = _rhGetColabs().filter(function(c){ return c && !c._duplicadoDe; });
+  var nDesligados = colabs.filter(function(c){ return c.status === 'desligado'; }).length;
+  var naEmpresa = colabs.length - nDesligados;
   var filtrados = colabs.filter(function(c){
     if(_rhFiltros.area && c.area !== _rhFiltros.area) return false;
     if(_rhFiltros.regime && c.regime !== _rhFiltros.regime) return false;
-    if(_rhFiltros.status && c.status !== _rhFiltros.status) return false;
+    if(_rhFiltros.status ? c.status !== _rhFiltros.status : c.status === 'desligado') return false;
     if(_rhFiltros.busca){
       var q = _rhFiltros.busca.toLowerCase();
       return (c.nome||'').toLowerCase().indexOf(q)>=0 || (c.email||'').toLowerCase().indexOf(q)>=0 || (c.cargo||'').toLowerCase().indexOf(q)>=0;
@@ -13947,7 +13950,7 @@ function _renderRhColaboradores(el){
   var temFiltro = !!(_rhFiltros.busca || _rhFiltros.area || _rhFiltros.regime || _rhFiltros.status);
   var areaOpts = '<option value="">Todas áreas</option>' + RH_AREAS.map(function(a){ return '<option value="'+a+'"'+(_rhFiltros.area===a?' selected':'')+'>'+a+'</option>'; }).join('');
   var regimeOpts = '<option value="">Todos regimes</option>' + RH_REGIMES.map(function(r){ return '<option value="'+r+'"'+(_rhFiltros.regime===r?' selected':'')+'>'+r+'</option>'; }).join('');
-  var statusOpts = '<option value="">Todos status</option>' + RH_STATUS_COLAB.map(function(s){ return '<option value="'+s.id+'"'+(_rhFiltros.status===s.id?' selected':'')+'>'+s.label+'</option>'; }).join('');
+  var statusOpts = '<option value="">Na empresa</option>' + RH_STATUS_COLAB.map(function(s){ return '<option value="'+s.id+'"'+(_rhFiltros.status===s.id?' selected':'')+'>'+(s.id === 'desligado' ? 'Desligados' : s.label)+'</option>'; }).join('');
 
   // Detecta usuários do sistema que ainda não foram importados
   var usuariosSistema = (g('sl_usuarios', [])||[]).filter(function(u){ return u && u.ativo !== false && u.email; });
@@ -13958,7 +13961,10 @@ function _renderRhColaboradores(el){
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap;">'+
       '<div>'+
         '<div style="font-size:20px;font-weight:700;color:var(--text);">Colaboradores</div>'+
-        '<div style="font-size:13px;color:var(--text2);margin-top:2px;">'+filtrados.length+(temFiltro?' de '+colabs.length:'')+' colaborador'+(filtrados.length===1?'':'es')+'</div>'+
+        '<div style="font-size:13px;color:var(--text2);margin-top:2px;">'+(_rhFiltros.status === 'desligado'
+          ? filtrados.length+' desligado'+(filtrados.length===1?'':'s')+' · <a href="#" onclick="_rhSetFiltro(\'status\', \'\');return false;" style="color:var(--accent)">voltar aos colaboradores</a>'
+          : filtrados.length+(temFiltro?' de '+naEmpresa:'')+' colaborador'+(filtrados.length===1?'':'es')+
+            (nDesligados ? ' · <a href="#" onclick="_rhSetFiltro(\'status\', \'desligado\');return false;" style="color:var(--text2);text-decoration:underline">'+nDesligados+' desligado'+(nDesligados===1?'':'s')+'</a>' : ''))+'</div>'+
       '</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
         (importaveis.length ? '<button class="btn btn-ghost" onclick="rhImportarUsuarios()" title="Importa '+importaveis.length+' usuário(s) do sistema como colaborador(es) de RH">📥 Importar '+importaveis.length+' do sistema</button>' : '')+
@@ -13997,7 +14003,7 @@ function _renderRhColaboradores(el){
               '<td style="padding:10px 12px;">'+_esc(c.regime||'—')+'</td>'+
               '<td style="padding:10px 12px;"><b>'+_rhFmtMoeda(_rhCustoTotal(c))+'</b>'+(c.regime==='CLT'?'<br><span style="font-size:10px;color:var(--text2);">c/ encargos</span>':'')+'</td>'+
               '<td style="padding:10px 12px;">'+_rhStatusChip(c.status||'ativo')+'</td>'+
-              '<td style="padding:10px 12px;">'+(_usuarioDoRh(c, usuariosSistema) ? '<span class="v2-pill ok">tem acesso</span>' : (c.status === 'desligado' ? '<span class="v2-pill neu">—</span>' : '<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="rhDarAcesso(\''+c.id+'\')" title="Abre o cadastro da Equipe já com nome, e-mail e cargo">Dar acesso</button>'))+'</td>'+
+              '<td style="padding:10px 12px;">'+(_usuarioDoRh(c, usuariosSistema) ? '<span class="v2-pill ok">tem acesso</span>' : '<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="rhDarAcesso(\''+c.id+'\')" title="Abre o cadastro da Equipe já com nome, e-mail e cargo; ao salvar, a pessoa volta a Ativo no RH">Dar acesso</button>')+'</td>'+
               '<td style="padding:10px 12px;"><button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="rhAbrirColab(\''+c.id+'\')">Abrir</button></td>'+
             '</tr>';
           }).join('')+
@@ -14895,7 +14901,7 @@ function rhIniciarOffboarding(offId){
     confidencial: false
   };
 
-  var colabsList = _rhGetColabs().filter(function(c){ return isEdit ? true : c.status!=='desligado'; });
+  var colabsList = _rhGetColabs().filter(function(c){ return !c._duplicadoDe && (isEdit ? true : c.status!=='desligado'); });
   if(!colabsList.length){ alert('Nenhum colaborador disponível.'); return; }
   var colabOpts = colabsList.map(function(c){
     return '<option value="'+c.id+'"'+(o.colaboradorId===c.id?' selected':'')+'>'+_esc(c.nome)+(c.cargo?' · '+_esc(c.cargo):'')+'</option>';
@@ -22492,11 +22498,15 @@ function _cfgPintarArvore(){
     (soltas.length ? '<div class="ni"><b>Sem nicho</b></div>'+soltas.map(pj).join('') : '')+'</div>';
 }
 // Equipe e RH: uma pessoa, um cadastro. Liga pelo _usuarioId do RH ou pelo e-mail.
+// Regra do Thiago (07/11): colaborador no RH é quem tem acesso ao TMX. Quem não tem vira
+// Desligado sozinho (_desligadoAuto) e sai da lista; se ganhar acesso de novo, volta a Ativo.
 function _rhDoUsuario(u, colabs){
   if(!u) return null;
   colabs = colabs || _rhGetColabs();
   var e = String(u.email || '').trim().toLowerCase();
-  return colabs.filter(function(c){ return c && (c._usuarioId === u.id || (e && String(c.email || '').trim().toLowerCase() === e)); })[0] || null;
+  var achou = colabs.filter(function(c){ return c && (c._usuarioId === u.id || (e && String(c.email || '').trim().toLowerCase() === e)); });
+  // a cópia repetida (_duplicadoDe) só serve se não houver outra
+  return achou.filter(function(c){ return !c._duplicadoDe; })[0] || achou[0] || null;
 }
 function _usuarioDoRh(c, us){
   if(!c) return null;
@@ -22506,12 +22516,15 @@ function _usuarioDoRh(c, us){
 }
 var _RH_AREA_DO_CARGO = { 'Diretoria':'Gestão', 'Sócio':'Gestão', 'Copy':'Copy', 'Editor':'Edição', 'Gestor de Tráfego':'Tráfego', 'Infra':'Infra', 'Spy':'Spy', 'Designer':'Designer' };
 function _rhNovoDoUsuario(u){
-  return { id: _rhNovoId('colab'), _usuarioId: u.id, nome: u.nome || '', email: u.email || '', telefone: u.whatsapp || '', cargo: u.cargo || '',
+  // id fixo pela pessoa: dois aparelhos (ou duas telas abrindo juntas) criando ao mesmo tempo
+  // geram o mesmo id, e o servidor junta num só (foi assim que Pedro, Rodrigo e wanderson dobraram em 07/11)
+  return { id: 'colab-u-' + u.id, _usuarioId: u.id, nome: u.nome || '', email: u.email || '', telefone: u.whatsapp || '', cargo: u.cargo || '',
     area: _RH_AREA_DO_CARGO[u.cargo] || 'Outros', regime: 'PJ', status: 'ativo', salario: 0, salarioVariavel: 0, valeBeneficios: 0,
     admissao: new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10), _criadoEm: new Date().toISOString(), _updatedAt: Date.now(), _importadoDoSistema: true };
 }
+function _rhHojeBR(){ return new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10); }
 // Chamado ao salvar alguém na Equipe: cria no RH ou atualiza nome, cargo e WhatsApp lá.
-// Tirar da Equipe não mexe no RH (a pessoa continua até virar Desligado lá).
+// Com acesso, a pessoa fica Ativa no RH; desativada na Equipe, vira Desligado.
 function _rhSincUsuario(u){
   try {
     if(!u || !_cfgEhDir()) return;
@@ -22522,6 +22535,8 @@ function _rhSincUsuario(u){
       if(u.cargo && c.cargo !== u.cargo){ c.cargo = u.cargo; mudou = true; }
       if(u.whatsapp && c.telefone !== u.whatsapp){ c.telefone = u.whatsapp; mudou = true; }
       if(c._usuarioId !== u.id){ c._usuarioId = u.id; mudou = true; }
+      if(u.ativo !== false && c.status === 'desligado'){ c.status = 'ativo'; delete c._desligadoAuto; delete c._desligadoEm; delete c._duplicadoDe; mudou = true; }
+      if(u.ativo === false && c.status !== 'desligado'){ c.status = 'desligado'; c._desligadoAuto = true; c._desligadoEm = _rhHojeBR(); mudou = true; }
       if(mudou){ c._updatedAt = Date.now(); s('sl_rh_colaboradores', colabs); }
       return;
     }
@@ -22530,10 +22545,47 @@ function _rhSincUsuario(u){
     s('sl_rh_colaboradores', colabs);
   } catch(e){ console.warn('RH:', e); }
 }
+// Roda ao abrir a Equipe ou o RH (só a Diretoria). Deixa o RH igual à Equipe:
+// 1. quem ficou Desligado por falta de acesso e ganhou acesso volta a Ativo;
+// 2. cópias repetidas da mesma pessoa: fica a mais antiga, as outras viram Desligado com _duplicadoDe (não aparecem em tela nenhuma);
+// 3. quem está na Equipe e não está no RH entra;
+// 4. quem não tem acesso vira Desligado.
+// Nada é apagado: Desligado continua no RH e aparece no filtro "Desligados".
 function _rhSincTodos(){
   if(!_cfgEhDir() || typeof _rhGetColabs !== 'function') return 0;
-  var colabs = _rhGetColabs().slice(), n = 0;
-  getUsuarios().forEach(function(u){ if(u && u.ativo !== false && u.email && !_rhDoUsuario(u, colabs)){ colabs.push(_rhNovoDoUsuario(u)); n++; } });
+  // a Equipe de verdade (sem a lista padrão de getUsuarios) e com a própria pessoa logada nela;
+  // se a lista ainda não chegou neste aparelho, não decide nada
+  var us; try{ us = JSON.parse(localStorage.getItem('sl_usuarios') || 'null'); }catch(e){ us = null; }
+  if(!Array.isArray(us)) return 0;
+  var ativos = us.filter(function(u){ return u && u.ativo !== false; });
+  var euEmail = String((currentUser && currentUser.email) || '').trim().toLowerCase();
+  if(!ativos.some(function(u){ return u.id === currentUser.id || (euEmail && String(u.email || '').trim().toLowerCase() === euEmail); })) return 0;
+  var colabs = _rhGetColabs().slice(), n = 0, agora = Date.now(), hoje = _rhHojeBR();
+  var nrm = function(x){ return String(x || '').trim().toLowerCase(); };
+  // 1
+  colabs.forEach(function(c){
+    if(c && c.status === 'desligado' && c._desligadoAuto && !c._duplicadoDe && _usuarioDoRh(c, ativos)){
+      c.status = 'ativo'; delete c._desligadoAuto; delete c._desligadoEm; c._updatedAt = agora; n++;
+    }
+  });
+  // 2 (a mais antiga fica; empate, a de id menor: todo aparelho escolhe a mesma)
+  var porEmail = {}, porUid = {};
+  colabs.filter(function(c){ return c && c.status !== 'desligado' && !c._duplicadoDe; })
+    .sort(function(a, b){ var x = String(a._criadoEm || ''), y = String(b._criadoEm || ''); return x < y ? -1 : x > y ? 1 : (String(a.id) < String(b.id) ? -1 : 1); })
+    .forEach(function(c){
+      var e = nrm(c.email), k = (e && porEmail[e]) || (c._usuarioId && porUid[c._usuarioId]);
+      if(k){ c.status = 'desligado'; c._duplicadoDe = k.id; c._updatedAt = agora; n++; return; }
+      if(e) porEmail[e] = c;
+      if(c._usuarioId) porUid[c._usuarioId] = c;
+    });
+  // 3
+  ativos.forEach(function(u){ if(u.email && !_rhDoUsuario(u, colabs)){ colabs.push(_rhNovoDoUsuario(u)); n++; } });
+  // 4
+  colabs.forEach(function(c){
+    if(c && c.status !== 'desligado' && !_usuarioDoRh(c, ativos)){
+      c.status = 'desligado'; c._desligadoAuto = true; c._desligadoEm = hoje; c._updatedAt = agora; n++;
+    }
+  });
   if(n) s('sl_rh_colaboradores', colabs);
   return n;
 }
@@ -22557,7 +22609,7 @@ function _cfgPintarEquipeRh(){
   var falta = us.filter(function(u){ return !_rhDoUsuario(u, colabs); });
   var soRh = colabs.filter(function(c){ return c && c.status !== 'desligado' && !_usuarioDoRh(c, us); });
   var linha = function(t, sub, bt){ return '<div class="cfg-linha"><div><b>'+t+'</b><small>'+sub+'</small></div>'+bt+'</div>'; };
-  el.innerHTML = '<div class="cfg-card"><h3>Equipe e RH</h3><div class="fx-sub" style="margin-bottom:6px;line-height:1.5">Uma pessoa, um cadastro. Quem entra na Equipe entra sozinho no RH; nome, cargo e WhatsApp mudam nos dois. Tirar alguém da Equipe tira só o acesso ao TMX: no RH a pessoa continua até você marcar Desligado.</div>'+
+  el.innerHTML = '<div class="cfg-card"><h3>Equipe e RH</h3><div class="fx-sub" style="margin-bottom:6px;line-height:1.5">Uma pessoa, um cadastro. Quem entra na Equipe entra sozinho no RH; nome, cargo e WhatsApp mudam nos dois. Colaborador no RH é quem tem acesso ao TMX: quem sai da Equipe vira Desligado lá sozinho e volta se ganhar acesso de novo.</div>'+
     (falta.length
       ? linha('Na Equipe e ainda não no RH: '+falta.map(function(u){ return _cfgEsc(u.nome); }).join(', '), 'Entram no RH como PJ, com a área pelo cargo. Salário e admissão você completa lá.', '<button class="btn btn-primary" onclick="cfgPorNoRh()">Pôr no RH</button>')
       : linha('Toda a Equipe está no RH', 'Quem for cadastrado daqui pra frente entra sozinho.', '<span class="v2-pill ok">ok</span>'))+
