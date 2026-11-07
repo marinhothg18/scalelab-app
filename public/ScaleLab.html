@@ -21935,7 +21935,10 @@ var PLATAFORMAS_VENDA = [
     aviso:'A AppMax não documenta se devolve o sck (o id da pessoa). Faça uma compra de teste: se ela chegar sem o id, a venda é ligada pelo e-mail ou telefone quando a pessoa já é conhecida.' },
   { id:'kiwify', nome:'Kiwify', cor:'#16A34A',
     passo:'Na Kiwify: Apps › Webhooks › Criar webhook. Cole a URL, em Produtos escolha “Todos” (ou o produto do funil) e marque: Compra aprovada, Compra recusada, Compra reembolsada, Chargeback, Boleto gerado, Pix gerado, Carrinho abandonado e Assinatura renovada. O token que a Kiwify gera pode ficar como está.',
-    aviso:'A Kiwify devolve o sck e as UTMs da venda: o pixel já põe o id da pessoa no link do checkout da Kiwify. Faça uma compra de teste pra conferir que ela chega com o id.' }
+    aviso:'A Kiwify devolve o sck e as UTMs da venda: o pixel já põe o id da pessoa no link do checkout da Kiwify. Faça uma compra de teste pra conferir que ela chega com o id.' },
+  { id:'hotmart', nome:'Hotmart', cor:'#F04E23',
+    passo:'Na Hotmart: Ferramentas › Webhook (API e notificações) › Cadastrar webhook. Cole a URL, escolha a versão 2.0.0, o produto (ou todos) e marque: Compra aprovada, Compra completa, Compra cancelada, Compra reembolsada, Chargeback, Boleto impresso, Compra atrasada, Compra expirada e Abandono de carrinho.',
+    aviso:'A Hotmart não devolve UTM, só o sck e o src: o pixel do TMX põe o id da pessoa no sck do link do checkout da Hotmart. Faça uma compra de teste pra conferir que ela chega com o id.' }
 ];
 function _blocoPlataformasVenda(v, url){
   var pp = v.porPlataforma || {};
@@ -36508,8 +36511,8 @@ function mpLeituraOferta(n, b){
 // Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
 // a plataforma pelo link colado no bloco, quando a integração não foi escolhida
 // (o servidor faz a mesma conta em _platDoBloco)
-var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax', kiwify:'Kiwify' };
-function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : /kiwify/i.test(u) ? 'kiwify' : ''; }
+var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax', kiwify:'Kiwify', hotmart:'Hotmart' };
+function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : /kiwify/i.test(u) ? 'kiwify' : /hotmart/i.test(u) ? 'hotmart' : ''; }
 function fnCampoIntegracao(n){
   if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
   var pelo = (!n.integracao || n.integracao === 'Outra') ? fnPlatDoLink(n.url) : '';
@@ -38544,6 +38547,7 @@ function fiTelaInt(){
     '<div class="v2-cx"><h3>Já está no TMX'+fiTg('real')+'</h3><div class="s">Não precisa conectar nada: o Financeiro lê o que o TMX já recebe.</div>'+
       con('#1B9CFA', 'PT', 'Payt', 'Vendas, reembolsos e chargebacks pelo webhook · '+vendas('payt'), lig)+
       con('#22C55E', 'KW', 'Kiwify', 'Vendas pelo webhook · '+vendas('kiwify'), lig)+
+      con('#F04E23', 'HM', 'Hotmart', 'Vendas pelo webhook · '+vendas('hotmart'), lig)+
       con('#C52C58', 'HB', 'Hubla', 'Vendas pelo webhook · '+vendas('hubla'), lig)+
       con('#2509E4', 'M', 'Meta Ads (via Utmify)', 'Gasto por campanha e por projeto · '+fiDin(r.trafego)+' no período', lig)+
       con('#5b5ef4', 'RH', 'RH do TMX', 'Equipe por cargo · '+((fiRes.rh || {}).pessoas || 0)+' pessoas, '+((fiRes.rh || {}).comSalario || 0)+' com salário preenchido', (fiRes.rh && fiRes.rh.comSalario) ? lig : '<span class="v2-pill warn">falta o salário</span>')+'</div>';
