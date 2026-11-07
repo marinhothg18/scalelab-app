@@ -315,6 +315,7 @@ function _plataforma() {
     CREATE INDEX IF NOT EXISTS assinaturas_sub ON assinaturas(pagarme_sub);
     CREATE TABLE IF NOT EXISTS pagarme_planos (chave TEXT PRIMARY KEY, plan_id TEXT NOT NULL, criado INTEGER);
   `);
+  try { db.exec('ALTER TABLE assinaturas ADD COLUMN acesso_enviado INTEGER'); } catch (e) {}   // já existe
   for (const col of ['bloqueio_motivo TEXT', 'bloqueado_em INTEGER', 'bloqueado_por TEXT']) {
     try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}
   }
@@ -731,7 +732,7 @@ if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
   // plataforma (cadastro, cobrança, painel SaaS, criar empresas) fica só na TMX.
   // O MCP e a API v1 existem em cada empresa, com os tokens e os dados dela (07/11/2026).
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/api/planos', '/api/assinar', '/planos', '/assinar', '/painel-saas', '/signup', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 // Sessões de suporte abertas neste motor: hash do token -> { modo, expira }. Fica na memória
@@ -8801,6 +8802,7 @@ async function _liberarAssinatura(ref, motivo, extra = {}) {
     _platPrep('UPDATE assinaturas SET pagarme_sub=COALESCE(pagarme_sub, ?), pagarme_cliente=COALESCE(pagarme_cliente, ?) WHERE ref=?')
       .run(extra.sub || null, extra.cliente || null, ref);
   }
+  if (extra.contato) _contatoNoPedido(ref, extra.contato);
   const mudou = _platPrep("UPDATE assinaturas SET status='paga', pago_em=?, atualizado=? WHERE ref=? AND status='aguardando'").run(agora, agora, ref);
   if (!mudou.changes) return false;
   const a = _assinatura(ref);
@@ -8808,33 +8810,57 @@ async function _liberarAssinatura(ref, motivo, extra = {}) {
   const codigo = 'cv_' + crypto.randomBytes(24).toString('base64url');
   const hash = _hashConvite(codigo);
   _platPrep('INSERT INTO convites(hash, email, plano, obs, criado, criado_por, expira) VALUES(?,?,?,?,?,?,?)')
-    .run(hash, a.email, p.id, ('Compra pelo site: ' + p.nome + ' ' + a.ciclo).slice(0, 200), agora, 'cobranca', agora + COBRANCA_DIAS_CONVITE * 86400000);
+    .run(hash, a.email || null, p.id, ('Compra pelo site: ' + p.nome + ' ' + a.ciclo).slice(0, 200), agora, 'cobranca', agora + COBRANCA_DIAS_CONVITE * 86400000);
   // o código fica guardado até o cadastro acontecer, pra tela de "pagamento aprovado" poder mostrar o botão
   _platPrep('UPDATE assinaturas SET convite_hash=?, convite_codigo=? WHERE ref=?').run(hash, codigo, ref);
-  const link = URL_TMX + '/cadastro?c=' + codigo;
+  const valor = _reais(_precoPlano(p, a.ciclo)) + (a.ciclo === 'anual' ? ' por ano' : ' por mês');
+  const enviado = _mandarAcesso(ref);
+  _avisarDiretoriaTmx('💳 Nova assinatura · ' + p.nome, (a.nome || a.email || 'Uma pessoa') + ' assinou o ' + p.nome + ' ' + a.ciclo + ' (' + valor + '). ' +
+    (enviado ? 'O link de cadastro foi sozinho pro e-mail e o WhatsApp da compra.' : 'A pessoa recebeu o botão de criar a conta na tela de volta do pagamento.'));
+  try {
+    const db = readDB();
+    audit(db, 'assinatura_paga', { email: a.email || null }, { plano: p.id, ciclo: a.ciclo, motivo }, { id: 'sistema', nome: 'Cobrança', cargo: 'sistema' });
+    writeDB(db);
+  } catch (e) {}
+  console.log('[COBRANÇA] paga:', p.id, a.ciclo, '(' + motivo + ')');
+  return true;
+}
+// Os dados da pessoa que a Pagar.me pediu no checkout (só preenche o que o pedido ainda não tem)
+function _contatoNoPedido(ref, c) {
+  const email = String(c.email || '').trim().toLowerCase();
+  let zap = String(c.whatsapp || '').replace(/\D/g, '');
+  if (zap.length >= 10 && zap.length <= 11) zap = '55' + zap;
+  _platPrep('UPDATE assinaturas SET email=COALESCE(email, ?), nome=COALESCE(nome, ?), whatsapp=COALESCE(whatsapp, ?) WHERE ref=?')
+    .run(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null, String(c.nome || '').trim().slice(0, 80) || null, zap.length >= 12 ? zap : null, ref);
+  // o convite sem e-mail ganha o e-mail da compra (o cadastro já abre com ele preenchido)
+  const a = _assinatura(ref);
+  if (a && a.email && a.convite_hash) _platPrep('UPDATE convites SET email=COALESCE(email, ?) WHERE hash=?').run(a.email, a.convite_hash);
+}
+// Manda o link de cadastro pro e-mail e o WhatsApp da compra, uma vez só, se já souber pra onde
+function _mandarAcesso(ref) {
+  const a = _assinatura(ref);
+  if (!a || a.status !== 'paga' || !a.convite_codigo || a.empresa || a.acesso_enviado || (!a.email && !a.whatsapp)) return false;
+  const marcou = _platPrep('UPDATE assinaturas SET acesso_enviado=? WHERE ref=? AND acesso_enviado IS NULL').run(Date.now(), ref);
+  if (!marcou.changes) return false;
+  const p = _planoDe(a.plano);
+  const link = URL_TMX + '/cadastro?c=' + a.convite_codigo;
   const valor = _reais(_precoPlano(p, a.ciclo)) + (a.ciclo === 'anual' ? ' por ano' : ' por mês');
   const primeiro = String(a.nome || '').split(' ')[0] || '';
-  // avisos: nenhum deles trava a liberação
-  _enviarEmail({
-    to: a.email, subject: 'Seu acesso ao TMX está pronto',
-    html: '<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0F172A">' +
-      '<h2 style="margin:0 0 8px">Pagamento aprovado' + (primeiro ? ', ' + _escHtml(primeiro) : '') + '</h2>' +
-      '<p>O plano <b>' + _escHtml(p.nome) + '</b> (' + _escHtml(valor) + ') está ativo. Agora crie a sua conta: acesso, nome da empresa e projetos. Leva uns 2 minutos.</p>' +
-      '<p style="margin:24px 0"><a href="' + link + '" style="background:#1B9CFA;color:#fff;padding:12px 20px;border-radius:9px;text-decoration:none;font-weight:700">Criar minha conta</a></p>' +
-      '<p style="color:#475569;font-size:13px">O link vale para um cadastro e vence em ' + COBRANCA_DIAS_CONVITE + ' dias.</p></div>',
-    text: 'Pagamento aprovado. Crie a sua conta no TMX por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias): ' + link
-  }).catch(() => {});
+  if (a.email) {
+    _enviarEmail({
+      to: a.email, subject: 'Seu acesso ao TMX está pronto',
+      html: '<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0F172A">' +
+        '<h2 style="margin:0 0 8px">Pagamento aprovado' + (primeiro ? ', ' + _escHtml(primeiro) : '') + '</h2>' +
+        '<p>O plano <b>' + _escHtml(p.nome) + '</b> (' + _escHtml(valor) + ') está ativo. Agora crie a sua conta: acesso, nome da empresa e projetos. Leva uns 2 minutos.</p>' +
+        '<p style="margin:24px 0"><a href="' + link + '" style="background:#1B9CFA;color:#fff;padding:12px 20px;border-radius:9px;text-decoration:none;font-weight:700">Criar minha conta</a></p>' +
+        '<p style="color:#475569;font-size:13px">O link vale para um cadastro e vence em ' + COBRANCA_DIAS_CONVITE + ' dias.</p></div>',
+      text: 'Pagamento aprovado. Crie a sua conta no TMX por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias): ' + link
+    }).catch(() => {});
+  }
   if (a.whatsapp) {
     sendWhatsAppMessage(a.whatsapp, 'Pagamento aprovado' + (primeiro ? ', ' + primeiro : '') + '! Bem-vindo ao TMX. 🎉\n\n' +
       'Plano ' + p.nome + ' (' + valor + ').\nCrie a sua conta por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias):\n' + link).catch(() => {});
   }
-  _avisarDiretoriaTmx('💳 Nova assinatura · ' + p.nome, (a.nome || a.email) + ' assinou o ' + p.nome + ' ' + a.ciclo + ' (' + valor + '). O convite foi sozinho pro e-mail e o WhatsApp da pessoa.');
-  try {
-    const db = readDB();
-    audit(db, 'assinatura_paga', { email: a.email }, { plano: p.id, ciclo: a.ciclo, motivo }, { id: 'sistema', nome: 'Cobrança', cargo: 'sistema' });
-    writeDB(db);
-  } catch (e) {}
-  console.log('[COBRANÇA] paga:', p.id, a.ciclo, '(' + motivo + ')');
   return true;
 }
 function _escHtml(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -8886,10 +8912,13 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
   const email = String(b.email || '').trim().toLowerCase().slice(0, 120);
   let zap = String(b.whatsapp || '').replace(/\D/g, '');
   if (zap.length >= 10 && zap.length <= 11) zap = '55' + zap;   // número do Brasil sem o 55
-  if (!nome) return res.status(400).json({ error: 'Diga o seu nome.', campo: 'nome' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Esse e-mail não parece certo.', campo: 'email' });
-  if (zap.length < 12 || zap.length > 13) return res.status(400).json({ error: 'O WhatsApp precisa ter DDD e número.', campo: 'whatsapp' });
-  if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+  // no plano pago a pessoa vai direto pra Pagar.me, que pede os dados no checkout; no grátis eles vêm do formulário
+  if (p.gratis || nome || email || zap) {
+    if (!nome) return res.status(400).json({ error: 'Diga o seu nome.', campo: 'nome' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Esse e-mail não parece certo.', campo: 'email' });
+    if (zap.length < 12 || zap.length > 13) return res.status(400).json({ error: 'O WhatsApp precisa ter DDD e número.', campo: 'whatsapp' });
+    if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+  }
   const ref = 'as_' + crypto.randomBytes(18).toString('base64url');
   const agora = Date.now();
 
@@ -8906,8 +8935,17 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
   }
 
   if (!PAGARME_API_KEY) return res.status(503).json({ error: 'A compra pelo site ainda não está ligada. Fale com a TMX pelo WhatsApp.' });
+  const r = await _abrirCheckout(p, ciclo, { nome, email, whatsapp: zap, ref });
+  if (!r.ok) return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' });
+  res.json({ ok: true, url: r.url, ref: r.ref });
+});
+
+// Cria o link de assinatura na Pagar.me e o pedido nosso. Os dados da pessoa são opcionais (a Pagar.me pede no checkout).
+async function _abrirCheckout(p, ciclo, c = {}) {
+  const ref = c.ref || ('as_' + crypto.randomBytes(18).toString('base64url'));
+  const agora = Date.now();
   const pl = await _planoPagarme(p, ciclo);
-  if (!pl.ok) { console.error('[COBRANÇA] plano', p.id, ciclo, ':', pl.erro); return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' }); }
+  if (!pl.ok) { console.error('[COBRANÇA] plano', p.id, ciclo, ':', pl.erro); return { ok: false }; }
   const corpo = {
     name: ('TMX ' + p.nome + ' ' + ciclo).slice(0, 64), type: 'subscription', max_paid_sessions: 1, expires_in: 3 * 24 * 60,
     payment_settings: { accepted_payment_methods: ['credit_card'], credit_card_settings: { operation_type: 'auth_and_capture' } },
@@ -8916,18 +8954,28 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
     order_code: ref
   };
   // com os dados da pessoa (o código do cliente é o nosso pedido); se a Pagar.me recusar esse pedaço, vai sem
-  let r = await _pagarme('POST', '/paymentlinks', Object.assign({}, corpo, { customer_settings: { customer: { name: nome, email, type: 'individual', code: ref } } }));
-  if (!r.ok && r.status >= 400 && r.status < 500) {
-    console.warn('[COBRANÇA] link com cliente recusado (' + r.status + '): ' + r.erro);
+  let r = c.email ? await _pagarme('POST', '/paymentlinks', Object.assign({}, corpo, { customer_settings: { customer: { name: c.nome, email: c.email, type: 'individual', code: ref } } })) : null;
+  if (!r || (!r.ok && r.status >= 400 && r.status < 500)) {
+    if (r) console.warn('[COBRANÇA] link com cliente recusado (' + r.status + '): ' + r.erro);
     r = await _pagarme('POST', '/paymentlinks', corpo);
   }
-  if (!r.ok || !r.dados || !r.dados.url) {
-    console.error('[COBRANÇA] link de pagamento:', r.status, r.erro);
-    return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' });
-  }
+  if (!r.ok || !r.dados || !r.dados.url) { console.error('[COBRANÇA] link de pagamento:', r.status, r.erro); return { ok: false }; }
   _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, link_id, link_url, atualizado) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
-    .run(ref, p.id, ciclo, nome, email, zap, agora, 'aguardando', String(r.dados.id || ''), r.dados.url, agora);
-  res.json({ ok: true, url: r.dados.url, ref });
+    .run(ref, p.id, ciclo, c.nome || null, c.email || null, c.whatsapp || null, agora, 'aguardando', String(r.dados.id || ''), r.dados.url, agora);
+  return { ok: true, url: r.dados.url, ref };
+}
+
+// Link de compra direto, pra anúncio ou WhatsApp: /assinar/<plano> e /assinar/<plano>?ciclo=anual levam
+// direto pro checkout da Pagar.me. O plano grátis e qualquer falha caem na página de planos.
+// Robôs de prévia de link (WhatsApp, Facebook, Telegram…) veem a página de planos e não abrem pedido.
+const _ROBO_PREVIA = /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|googlebot|bingbot|skypeuripreview|embedly|pinterest|preview/i;
+app.get('/assinar/:plano', assinarLimiter, async (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  const p = PLANOS_TMX.find(x => x.venda && x.id === String(req.params.plano || '').toLowerCase());
+  if (!p) return res.redirect(302, '/planos#planos');
+  if (p.gratis || !PAGARME_API_KEY || _ROBO_PREVIA.test(String(req.get('user-agent') || ''))) return res.redirect(302, '/planos#planos');
+  const r = await _abrirCheckout(p, req.query.ciclo === 'anual' ? 'anual' : 'mensal');
+  res.redirect(302, r.ok ? r.url : '/planos#planos');
 });
 
 // A tela de volta da Pagar.me (/planos/obrigado?r=…) pergunta aqui até o pagamento cair
@@ -8940,7 +8988,7 @@ app.get('/api/assinar/situacao', situacaoLimiter, async (req, res) => {
   const p = _planoDe(a.plano);
   const out = { status: a.status, plano: p.nome, ciclo: a.ciclo, valor: _precoPlano(p, a.ciclo) };
   if (a.empresa) out.cadastrado = true;
-  else if (a.status === 'paga' && a.convite_codigo) out.convite = URL_TMX + '/cadastro?c=' + a.convite_codigo;
+  else if (a.status === 'paga' && a.convite_codigo) { out.convite = URL_TMX + '/cadastro?c=' + a.convite_codigo; out.avisado = !!a.acesso_enviado; }
   res.json(out);
 });
 
@@ -8959,6 +9007,20 @@ app.post('/api/billing/webhook', async (req, res) => {
   res.json({ ok: true });   // responde logo; a Pagar.me não precisa esperar a conferência
   try { await _tratarAvisoPagarme(req.body || {}); } catch (e) { console.error('[COBRANÇA] aviso:', e.message); }
 });
+// O pedido mais novo (últimos 3 dias) daquele plano da Pagar.me cujo link a Pagar.me diz que foi pago
+async function _pedidoPeloPlano(planId) {
+  const pl = _platPrep('SELECT chave FROM pagarme_planos WHERE plan_id=?').get(planId);
+  if (!pl) return null;
+  const [plano, ciclo] = String(pl.chave).split(':');
+  // 'paga' sem assinatura ligada = liberado pela tela de volta antes do aviso chegar
+  const candidatos = _platPrep("SELECT * FROM assinaturas WHERE plano=? AND ciclo=? AND status IN ('aguardando','paga') AND pagarme_sub IS NULL AND link_id IS NOT NULL AND criado>? ORDER BY criado DESC LIMIT 10")
+    .all(plano, ciclo, Date.now() - 3 * 86400000);
+  for (const c of candidatos) {
+    const r = await _pagarme('GET', '/paymentlinks/' + encodeURIComponent(c.link_id), null, 8000);
+    if (r.ok && r.dados && Number(r.dados.total_paid_sessions || 0) >= 1) return c;
+  }
+  return null;
+}
 async function _tratarAvisoPagarme(ev) {
   const tipo = String(ev.type || '');
   const d = ev.data || {};
@@ -8969,19 +9031,26 @@ async function _tratarAvisoPagarme(ev) {
   // de quem é: pela assinatura já ligada, pelo código do cliente (= nosso pedido), ou pelo e-mail
   let a = (subId && _platPrep('SELECT * FROM assinaturas WHERE pagarme_sub=?').get(subId)) || (codigo && _assinatura(codigo)) || null;
   if (!a && cli.email) a = _platPrep("SELECT * FROM assinaturas WHERE email=? AND status IN ('aguardando','paga','atrasada') ORDER BY criado DESC LIMIT 1").get(String(cli.email).toLowerCase());
+  // compra sem dados antes do checkout: pelo plano da Pagar.me, o pedido mais novo desse plano cujo link foi pago
+  const planoId = (d.plan && d.plan.id) || (d.subscription && d.subscription.plan && d.subscription.plan.id) || null;
+  if (!a && planoId && ['subscription.created', 'charge.paid', 'order.paid', 'invoice.paid'].includes(tipo)) a = await _pedidoPeloPlano(planoId);
+  const tel = cli.phones && (cli.phones.mobile_phone || cli.phones.home_phone);
+  const contato = { email: cli.email, nome: cli.name, whatsapp: tel ? String(tel.country_code || '55') + String(tel.area_code || '') + String(tel.number || '') : '' };
   console.log('[COBRANÇA] aviso', tipo, a ? 'do pedido ' + a.ref.slice(0, 8) : 'sem pedido nosso');
   if (!a) return;
   _platPrep('UPDATE assinaturas SET pagarme_sub=COALESCE(pagarme_sub, ?), pagarme_cliente=COALESCE(pagarme_cliente, ?), ultimo_evento=?, atualizado=? WHERE ref=?')
     .run(subId, cli.id || null, tipo, Date.now(), a.ref);
   const p = _planoDe(a.plano);
   const quem = a.nome || a.email;
+  if (cli.email || contato.whatsapp) _contatoNoPedido(a.ref, contato);
   if (['subscription.created', 'charge.paid', 'order.paid', 'invoice.paid'].includes(tipo)) {
+    if (a.status === 'paga') _mandarAcesso(a.ref);   // liberado pela tela, sem saber pra onde mandar: agora sabe
     if (a.status === 'aguardando') {
       // confere com a Pagar.me antes de liberar
       let pago = false;
       if (a.link_id) { const r = await _pagarme('GET', '/paymentlinks/' + encodeURIComponent(a.link_id)); pago = !!(r.ok && r.dados && Number(r.dados.total_paid_sessions || 0) >= 1); }
       if (!pago && tipo === 'charge.paid' && String(d.id || '').startsWith('ch_')) { const r = await _pagarme('GET', '/charges/' + encodeURIComponent(d.id)); pago = !!(r.ok && r.dados && r.dados.status === 'paid'); }
-      if (pago) await _liberarAssinatura(a.ref, 'aviso ' + tipo, { sub: subId, cliente: cli.id });
+      if (pago) await _liberarAssinatura(a.ref, 'aviso ' + tipo, { sub: subId, cliente: cli.id, contato });
     } else if (a.status === 'atrasada' && tipo === 'charge.paid') {
       _platPrep("UPDATE assinaturas SET status='paga', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
       _avisarDiretoriaTmx('✅ Mensalidade em dia · ' + p.nome, quem + ' pagou a cobrança que estava atrasada.');
