@@ -21620,8 +21620,20 @@ async function renderMeuPlanoTab(){
           '<div style="'+sub+'">'+_escS(x.faixa)+'</div><ul style="margin:4px 0 6px;padding-left:16px;'+sub+'">'+x.itens.map(function(i){ return '<li>'+_escS(i)+'</li>'; }).join('')+'</ul><div style="margin-top:auto">'+acao+'</div></div>';
       }).join('') + '</div><div style="'+sub+';margin-top:10px">Enquanto o pagamento pelo TMX não está ligado, a troca vira um pedido no Suporte e a TMX faz pra você.</div></div>' +
     '<div style="'+cartao+';display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><div style="font-size:15px;font-weight:800;margin-bottom:4px">Espaços adicionais</div><div style="'+sub+'">Outra empresa no mesmo login, com projetos, equipe e limites separados.</div></div><button class="btn btn-ghost" onclick="_mpPedirEspaco()">Pedir pelo Suporte</button></div>' +
-    '<div style="'+cartao+'"><div style="font-size:15px;font-weight:800;margin-bottom:4px">Cobranças</div><div style="'+sub+'">As cobranças aparecem aqui quando o pagamento pelo TMX estiver ligado.</div></div>';
+    _mpCobrancas(d.cobranca, cartao, sub, pill);
   el.innerHTML = h;
+}
+// Cobranças: { ligada, status:'paga'|'atrasada'|'cancelada'|null, ciclo, valor, desde, faturas:[] } (vem da cobrança)
+function _mpCobrancas(c, cartao, sub, pill){
+  var t = '<div style="'+cartao+'"><div style="font-size:15px;font-weight:800;margin-bottom:4px">Cobranças</div>';
+  if(!c || !c.status) return t + '<div style="'+sub+'">'+(c && c.ligada ? 'Esta empresa ainda não tem assinatura paga pelo TMX.' : 'As cobranças aparecem aqui quando o pagamento pelo TMX estiver ligado.')+'</div></div>';
+  var st = { paga:['em dia','#10B981'], atrasada:['atrasada','#FF5926'], cancelada:['cancelada','#8b93ab'] }[c.status] || [c.status, '#8b93ab'];
+  t += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+pill(st[0], st[1]) +
+    '<span style="'+sub+'">Assinatura '+(c.ciclo === 'anual' ? 'anual' : 'mensal')+(c.valor ? ' de '+_mpBRL(c.valor)+(c.ciclo === 'anual' ? ' por ano' : ' por mês') : '')+(c.desde ? ' desde '+new Date(c.desde).toLocaleDateString('pt-BR') : '')+'</span></div>';
+  var f = Array.isArray(c.faturas) ? c.faturas : [];
+  if(f.length) t += '<div style="overflow-x:auto;margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:420px"><thead><tr>' + ['Data','Valor','Situação'].map(function(h){ return '<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--text2)">'+h+'</th>'; }).join('') + '</tr></thead><tbody>' +
+    f.map(function(x){ return '<tr><td style="padding:9px 10px;border-bottom:1px solid var(--border)">'+(x.data ? new Date(x.data).toLocaleDateString('pt-BR') : '—')+'</td><td style="padding:9px 10px;border-bottom:1px solid var(--border)">'+(x.valor != null ? _mpBRL(x.valor) : '—')+'</td><td style="padding:9px 10px;border-bottom:1px solid var(--border)">'+_escS(x.status || '')+'</td></tr>'; }).join('') + '</tbody></table></div>';
+  return t + '</div>';
 }
 function _mpPedido(assunto, texto){
   return fetch(API_BASE + '/api/suporte/chamados', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ tipo:'Pedido', assunto: assunto, texto: texto }) })
