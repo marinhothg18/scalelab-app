@@ -137,7 +137,19 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 /* Lixeira e auditoria: sem o cabeçalho colorido e sem o backup repetido (fica em Backup) */
 #cfg-panel-dados > div:first-child{display:none}
 #card-backup-cfg{display:none !important}
-#usuarios-list td{white-space:nowrap}
+.eq-tab{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+.eq-tab th{text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);white-space:nowrap}
+.eq-tab td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.eq-tab tr:last-child td{border-bottom:0}
+.eq-pessoa{display:flex;align-items:center;gap:10px}
+.eq-pessoa b{display:block;font-size:13.5px}
+.eq-pessoa small{display:block;font-size:11.5px;color:var(--text2)}
+.eq-av{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex:none}
+.eq-cargo{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.eq-mini{background:none;border:1px solid var(--border);border-radius:6px;font-size:11px;padding:2px 8px;cursor:pointer;color:var(--text);font-family:inherit}
+.eq-bts{text-align:right}
+.eq-bts .btn{font-size:12px;padding:4px 10px;margin-left:6px}
+.eq-rem{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
 .cfg-section-header { display:flex; align-items:center; gap:10px; margin:4px 0 14px; padding:14px 18px; border-radius:12px; color:#fff; font-weight:700; }
 .cfg-section-header .ic { font-size:20px; }
 .cfg-section-header .ti { flex:1; }
@@ -13546,6 +13558,7 @@ function renderRh(){
   if(!el) return;
   var isDir = currentUser && currentUser.cargo === 'Diretoria';
   if(!isDir){ el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2);">Acesso restrito à Diretoria.</div>'; return; }
+  try{ _rhSincTodos(); }catch(e){}
   if(_rhView==='dashboard')          _renderRhDashboard(el);
   else if(_rhView==='colaboradores') _renderRhColaboradores(el);
   else if(_rhView==='detalhe')       _renderRhDetalhe(el);
@@ -22304,6 +22317,13 @@ function _rhSincUsuario(u){
     s('sl_rh_colaboradores', colabs);
   } catch(e){ console.warn('RH:', e); }
 }
+function _rhSincTodos(){
+  if(!_cfgEhDir() || typeof _rhGetColabs !== 'function') return 0;
+  var colabs = _rhGetColabs().slice(), n = 0;
+  getUsuarios().forEach(function(u){ if(u && u.ativo !== false && u.email && !_rhDoUsuario(u, colabs)){ colabs.push(_rhNovoDoUsuario(u)); n++; } });
+  if(n) s('sl_rh_colaboradores', colabs);
+  return n;
+}
 function cfgPorNoRh(){
   var colabs = _rhGetColabs().slice(), n = 0;
   getUsuarios().forEach(function(u){ if(u && u.ativo !== false && !_rhDoUsuario(u, colabs)){ colabs.push(_rhNovoDoUsuario(u)); n++; } });
@@ -23085,59 +23105,29 @@ function renderStatusFilters(){
 
 // ── GESTÃO DE USUÁRIOS ──
 function renderUsuarios(){
+  // quem está na Equipe entra sozinho no RH (Diretoria): sem botão de importar
+  try{ _rhSincTodos(); }catch(e){}
   const lista = getUsuarios();
   const rhColabs = (typeof _rhGetColabs === 'function') ? _rhGetColabs() : [];
   const el = document.getElementById('usuarios-list');
   if(!el) return;
-  const cargoBg = {
-    'Diretoria':'rgba(27,156,250,.12)','Sócio':'rgba(197,44,88,.14)','Copy':'rgba(59,130,246,.15)','Editor':'rgba(168,85,247,.15)',
-    'Gestor de Tráfego':'rgba(249,115,22,.15)','Infra':'rgba(99,102,241,.15)','Spy':'rgba(20,184,166,.15)'
-  };
-  const cargoColor = {
-    'Diretoria':'#a855f7','Sócio':'#C52C58','Copy':'#3b82f6','Editor':'#d946ef',
-    'Gestor de Tráfego':'#f97316','Infra':'#6366f1','Spy':'#14b8a6'
-  };
+  const cargoCor = { 'Diretoria':'#7C3AED', 'Sócio':'#C52C58', 'Copy':'#2563EB', 'Editor':'#C026D3', 'Gestor de Tráfego':'#EA580C', 'Infra':'#4F46E5', 'Spy':'#0D9488' };
+  const esc = (typeof _cfgEsc === 'function') ? _cfgEsc : function(t){ return String(t == null ? '' : t); };
   if(!lista.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text2);">Nenhum membro cadastrado.</div>'; return; }
-  el.innerHTML = `
-  <table style="width:100%;border-collapse:collapse;">
-    <thead>
-      <tr style="border-bottom:1px solid var(--border);">
-        <th style="text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Membro</th>
-        <th style="text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">E-mail</th>
-        <th style="text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Cargo</th>
-        <th style="text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">WhatsApp</th>
-        <th style="text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">RH</th>
-        <th style="text-align:left;padding:10px 12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">Status</th>
-        <th style="padding:10px 12px;"></th>
-      </tr>
-    </thead>
-    <tbody>
-    ${lista.map(u=>`
-      <tr style="border-bottom:1px solid var(--border);transition:background .1s;" onmouseenter="this.style.background='rgba(255,255,255,.03)'" onmouseleave="this.style.background=''">
-        <td style="padding:12px 12px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:32px;height:32px;border-radius:50%;background:${u.foto?'#000 url('+u.foto+') center/cover':cargoColor[u.cargo]||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;">${u.foto?'':(u.nome||'?')[0].toUpperCase()}</div>
-            <span style="font-size:13px;font-weight:600;">${u.nome}</span>
-          </div>
-        </td>
-        <td style="padding:12px 12px;font-size:13px;color:var(--text2);">${u.email}</td>
-        <td style="padding:12px 12px;">
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:${cargoBg[u.cargo]||'rgba(27,156,250,.12)'};color:${cargoColor[u.cargo]||'var(--accent)'};">${u.cargo}</span>
-        </td>
-        <td style="padding:12px 12px;white-space:nowrap;">${u.whatsapp ? '<span class="v2-pill ok">cadastrado</span> <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;" onclick="testarWhatsAppUsuario(\''+u.id+'\')" title="Mandar uma mensagem de teste">Testar</button>' : '<span class="v2-pill warn" title="Sem WhatsApp a pessoa não recebe lembrete nem relatório">falta</span>'}</td>
-        <td style="padding:12px 12px;">${u.ativo === false ? '<span class="v2-pill neu">—</span>' : (_rhDoUsuario(u, rhColabs) ? '<span class="v2-pill ok">no RH</span>' : '<span class="v2-pill warn">falta no RH</span>')}</td>
-        <td style="padding:12px 12px;">
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:${u.ativo!==false?'rgba(34,197,94,.12)':'rgba(239,68,68,.12)'};color:${u.ativo!==false?'var(--green)':'var(--red)'};">${u.ativo!==false?'● Ativo':'● Inativo'}</span>
-        </td>
-        <td style="padding:12px 12px;text-align:right;">
-          <div style="display:flex;gap:6px;justify-content:flex-end;">
-            <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;" onclick="editarUsuario('${u.id}')">Editar</button>
-            <button class="btn" style="font-size:12px;padding:4px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.2);" onclick="removerUsuario('${u.id}')">Remover</button>
-          </div>
-        </td>
-      </tr>`).join('')}
-    </tbody>
-  </table>`;
+  el.innerHTML = '<table class="eq-tab"><thead><tr><th>Pessoa</th><th>Cargo</th><th>WhatsApp</th><th>RH</th><th>Status</th><th></th></tr></thead><tbody>'+
+    lista.map(function(u){
+      const cor = cargoCor[u.cargo] || 'var(--accent)';
+      const av = '<span class="eq-av" style="background:'+(u.foto ? '#000 url('+esc(u.foto)+') center/cover' : cor)+'">'+(u.foto ? '' : esc(String(u.nome || '?').charAt(0).toUpperCase()))+'</span>';
+      const ativo = u.ativo !== false;
+      return '<tr>'+
+        '<td><div class="eq-pessoa">'+av+'<div><b>'+esc(u.nome)+'</b><small>'+esc(u.email)+'</small></div></div></td>'+
+        '<td><span class="eq-cargo" style="color:'+cor+';background:color-mix(in srgb, '+cor+' 12%, transparent)">'+esc(u.cargo || '—')+'</span></td>'+
+        '<td>'+(u.whatsapp ? '<span class="v2-pill ok">cadastrado</span> <button class="eq-mini" onclick="testarWhatsAppUsuario(\''+u.id+'\')" title="Mandar uma mensagem de teste">Testar</button>' : '<span class="v2-pill warn" title="Sem WhatsApp a pessoa não recebe lembrete nem relatório">falta</span>')+'</td>'+
+        '<td>'+(!ativo ? '<span class="v2-pill neu">—</span>' : (_rhDoUsuario(u, rhColabs) ? '<span class="v2-pill ok">no RH</span>' : '<span class="v2-pill warn">falta no RH</span>'))+'</td>'+
+        '<td>'+(ativo ? '<span class="v2-pill ok">Ativo</span>' : '<span class="v2-pill bad">Inativo</span>')+'</td>'+
+        '<td class="eq-bts"><button class="btn btn-ghost" onclick="editarUsuario(\''+u.id+'\')">Editar</button><button class="btn eq-rem" onclick="removerUsuario(\''+u.id+'\')">Remover</button></td>'+
+      '</tr>';
+    }).join('')+'</tbody></table>';
 }
 
 // ── MODAL: AVATAR + SENHA ──
