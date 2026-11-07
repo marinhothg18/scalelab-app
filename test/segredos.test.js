@@ -78,7 +78,14 @@ test('segredos da TMX ficam no servidor', async (t) => {
     // a Diretoria cria uma conta que depois vai pra lixeira
     const us = (await chamar('GET', '/api/store', { token: ctx.dir })).dados.sl_usuarios;
     us.push({ id: 'u-extra', nome: 'Extra', email: 'extra@axcend.com', senha: 'senha-do-extra-123', cargo: 'Copy', ativo: true, _updatedAt: Date.now() });
+    us.push({ id: 'u-socio', nome: 'Sócio', email: 'socio@axcend.com', senha: 'senha-do-socio-123', cargo: 'Sócio', ativo: true, _updatedAt: Date.now() });
     assert.strictEqual((await chamar('PUT', '/api/store/sl_usuarios', { token: ctx.dir, corpo: us })).status, 200);
+    const s = await login('socio@axcend.com', 'senha-do-socio-123');
+    assert.strictEqual(s.status, 200, JSON.stringify(s.dados));
+    ctx.socio = s.dados.token;
+    // um candidato do RH (o Sócio vê o RH; a equipe não)
+    assert.strictEqual((await chamar('PUT', '/api/store/sl_candidatos', { token: ctx.dir, corpo: [
+      { id: 'c-1', nome: 'Candidato', _updatedAt: Date.now() }] })).status, 200);
     // e guarda uma senha na Central (pastas › credencial)
     const cd = await chamar('PUT', '/api/cd/data', { token: ctx.dir, corpo: { cd_pastas: [
       { id: 'p-cred', nome: 'Login do banco', tipo: 'cred', login: 'tmx', senha: 'senha-guardada-999', _updatedAt: Date.now() }] } });
@@ -133,6 +140,24 @@ test('segredos da TMX ficam no servidor', async (t) => {
     // a Diretoria restaura e a senha volta junto (o servidor nunca perdeu)
     assert.strictEqual((await chamar('POST', '/api/lixeira/restore/' + ctx.lxExtra, { token: ctx.dir })).status, 200);
     assert.strictEqual((await login('extra@axcend.com', 'senha-do-extra-123')).status, 200);
+  });
+
+  await t.test('o Sócio mexe na lixeira do RH, como no app, mas não na das contas', async () => {
+    assert.strictEqual((await chamar('POST', '/api/lixeira/soft-delete', { token: ctx.dir, corpo: { key: 'sl_usuarios', itemId: 'u-extra', tipo: 'Usuário' } })).status, 200);
+    const sd = await chamar('POST', '/api/lixeira/soft-delete', { token: ctx.socio, corpo: { key: 'sl_candidatos', itemId: 'c-1', tipo: 'Candidato' } });
+    assert.strictEqual(sd.status, 200, JSON.stringify(sd.dados));
+    const lixS = (await chamar('GET', '/api/store', { token: ctx.socio })).dados.sl_lixeira;
+    const cand = lixS.find(x => x.sourceKey === 'sl_candidatos');
+    assert.ok(cand, 'o Sócio vê o candidato na lixeira');
+    assert.ok(!lixS.some(x => x.sourceKey === 'sl_usuarios'), 'conta apagada é só da Diretoria');
+    const lixE = (await chamar('GET', '/api/store', { token: ctx.equipe })).dados.sl_lixeira;
+    assert.ok(!lixE.some(x => x.sourceKey === 'sl_candidatos'), 'a equipe não vê o RH nem na lixeira');
+    assert.strictEqual((await chamar('POST', '/api/lixeira/restore/' + cand.id, { token: ctx.equipe })).status, 403);
+    assert.strictEqual((await chamar('POST', '/api/lixeira/restore/' + cand.id, { token: ctx.socio })).status, 200);
+    assert.strictEqual((await chamar('POST', '/api/lixeira/soft-delete', { token: ctx.socio, corpo: { key: 'sl_usuarios', itemId: 'u2', tipo: 'Usuário' } })).status, 403);
+    const conta = (await chamar('GET', '/api/store', { token: ctx.dir })).dados.sl_lixeira.find(x => x.sourceKey === 'sl_usuarios');
+    assert.strictEqual((await chamar('POST', '/api/lixeira/restore/' + conta.id, { token: ctx.socio })).status, 403);
+    assert.strictEqual((await chamar('POST', '/api/lixeira/restore/' + conta.id, { token: ctx.dir })).status, 200);
   });
 
   await t.test('a Central (com as senhas guardadas) não vai pro navegador da equipe', async () => {

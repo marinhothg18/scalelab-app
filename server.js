@@ -1763,7 +1763,7 @@ app.get('/api/v1/dados/:chave', authAPI, (req, res) => {
   const tem = Object.prototype.hasOwnProperty.call(db.store || {}, chave);
   if (!tem || _v1ChaveFechada(chave)) return res.status(404).json({ error: 'Chave não encontrada: ' + chave });
   let val = db.store[chave];
-  if (chave === 'sl_lixeira') val = _lixeiraParaQuemPede(val, true);
+  if (chave === 'sl_lixeira') val = _lixeiraParaQuemPede(val, null);
   res.json(Array.isArray(val) ? val.map(_semSenhaNoItem) : _semSenhaNoItem(val));
 });
 
@@ -7242,7 +7242,7 @@ app.get('/api/store', authUsuario, (req, res) => {
   const baseStore = bypass ? db.store : _aplicarFiltroTenant(db.store, req.tenantId);
   const safe = _filtrarKeysPorCargo(Object.assign({}, baseStore), req);
   if (safe['sl_usuarios']) safe['sl_usuarios'] = _stripSenhas(safe['sl_usuarios']);
-  if (safe['sl_lixeira']) safe['sl_lixeira'] = _lixeiraParaQuemPede(safe['sl_lixeira'], _ehDiretoria(req));
+  if (safe['sl_lixeira']) safe['sl_lixeira'] = _lixeiraParaQuemPede(safe['sl_lixeira'], req);
   res.json(safe);
 });
 
@@ -7270,7 +7270,7 @@ app.get('/api/updates/:since', authUsuario, (req, res) => {
       }
       if (valor === undefined) return;
       data[k] = (k === 'sl_usuarios') ? _stripSenhas(valor)
-        : (k === 'sl_lixeira') ? _lixeiraParaQuemPede(valor, soDiretoria) : valor;
+        : (k === 'sl_lixeira') ? _lixeiraParaQuemPede(valor, req) : valor;
     }
   });
   res.json({ data, timestamp: now() });
@@ -7460,7 +7460,7 @@ const LIXEIRA_MAX_DIAS = 30;
 app.post('/api/lixeira/soft-delete', authUsuario, (req, res) => {
   const { key, itemId, tipo, deletedBy, deletedByNome } = req.body || {};
   if (!key || itemId === undefined) return res.status(400).json({ error: 'key e itemId obrigatórios' });
-  if (_chaveSoDiretoria(key) && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  if (!_podeLixeira(req, key)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
 
   const db = readDB();
   const arr = db.store[key];
@@ -7503,7 +7503,7 @@ app.post('/api/lixeira/restore/:lixeiraId', authUsuario, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Item da lixeira não encontrado' });
 
   const entry = lix[idx];
-  if (_chaveSoDiretoria(entry.sourceKey) && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  if (!_podeLixeira(req, entry.sourceKey)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   if (!db.store[entry.sourceKey]) db.store[entry.sourceKey] = [];
   // Evita duplicar caso já exista
   const sourceArr = db.store[entry.sourceKey];
@@ -7528,7 +7528,7 @@ app.delete('/api/lixeira/:lixeiraId', authUsuario, (req, res) => {
   const lix = db.store['sl_lixeira'] || [];
   const entry = lix.find(x => String(x.id) === String(req.params.lixeiraId));
   if (!entry) return res.status(404).json({ error: 'Não encontrado' });
-  if (_chaveSoDiretoria(entry.sourceKey) && !_ehDiretoria(req)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  if (!_podeLixeira(req, entry.sourceKey)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   db.store['sl_lixeira'] = lix.filter(x => String(x.id) !== String(req.params.lixeiraId));
 
   if (!db.timestamps) db.timestamps = {};
@@ -8378,20 +8378,23 @@ function _semSenhaNoItem(it) {
   CAMPOS_SENHA.forEach(c => delete copia[c]);
   return copia;
 }
-// O que só a Diretoria manda pra lixeira, restaura ou apaga de vez: contas, permissões, o que
-// é dela, da plataforma e o que guarda segredo. A restauração devolve o item direto pra chave,
-// sem passar pelas travas do /api/store; sem isso, quem é da equipe apagava a conta da
-// Diretoria ou restaurava uma conta de Diretoria inventada (07/11/2026).
-function _chaveSoDiretoria(k) {
-  return k === 'sl_usuarios' || k === 'sl_permissoes_roles' ||
-    KEYS_DIRETORIA.has(k) || KEYS_SERVIDOR.has(k) || KEYS_PLATAFORMA.has(k);
+// Quem manda um item pra lixeira, restaura ou apaga de vez (e o vê lá). A restauração devolve o
+// item direto pra chave, sem passar pelas travas do /api/store; sem esta regra, quem é da equipe
+// apagava a conta da Diretoria ou restaurava uma conta de Diretoria inventada (07/11/2026).
+// Contas, permissões, plataforma e o que guarda segredo: só a Diretoria. O resto segue o cargo
+// (_podeChave): o Sócio mexe no RH e nos candidatos, como no app.
+function _podeLixeira(req, k) {
+  if (k === 'sl_usuarios' || k === 'sl_permissoes_roles' || KEYS_SERVIDOR.has(k) || KEYS_PLATAFORMA.has(k)) return _ehDiretoria(req);
+  return _podeChave(req, k);
 }
-// A lixeira como cada um pode ver: segredo nunca sai; o que é só da Diretoria, só pra ela; e
-// a conta que foi pra lixeira vai sem a senha (o servidor guarda e devolve na restauração).
-function _lixeiraParaQuemPede(lista, ehDiretoria) {
+// A lixeira como cada um pode ver: segredo nunca sai, cada item segue o cargo de quem pede, e a
+// conta que foi pra lixeira vai sem a senha (o servidor guarda e devolve na restauração).
+// Sem req (token da API v1), vê como a Diretoria.
+function _lixeiraParaQuemPede(lista, req) {
   if (!Array.isArray(lista)) return lista;
+  const quem = req || { user: { cargo: 'Diretoria' } };
   return lista
-    .filter(e => !(e && (KEYS_SERVIDOR.has(e.sourceKey) || (!ehDiretoria && _chaveSoDiretoria(e.sourceKey)))))
+    .filter(e => !(e && (KEYS_SERVIDOR.has(e.sourceKey) || !_podeLixeira(quem, e.sourceKey))))
     .map(e => (e && e.data && _semSenhaNoItem(e.data) !== e.data) ? Object.assign({}, e, { data: _semSenhaNoItem(e.data) }) : e);
 }
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
