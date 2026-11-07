@@ -168,6 +168,16 @@ Passwords: bcrypt at rest. Legacy `senha` (plaintext) is migrated on first login
 
 Stored on `sl_usuarios[].cargo`. Known values: `Diretoria`, `Gestor de Tráfego`, `Copy`, `Editor`, `Infra`, `Spy`. Only `Diretoria` passes `authDiretoria`.
 
+**O que cada cargo vê (decisão do Thiago, 07/11/2026)** — regra única em `_podeVerPagina` (ScaleLab.html), usada pelo menu e pelo `goTo`; o servidor confere as chaves restritas em `_podeChave` (server.js):
+- `Diretoria` aparece como **Dono** na tela (`_nomeCargo`; por dentro continua `Diretoria`): vê tudo.
+- `Sócio`: tudo menos Financeiro e Configurações; vê Gestão e RH (lê e grava as chaves `sl_rh_*` e `sl_candidatos`).
+- `Gestor de Tráfego`: Demandas, Criativos, Rituais, Arquivos por projeto, Tráfego, Análise de tráfego e Projetos.
+- `Copy`: Demandas, Criativos, Rituais, Arquivos por projeto e Projetos.
+- `Editor`: Demandas, Criativos, Arquivos por projeto, e Rituais só se estiver em algum ritual.
+- Todos: Dashboard, Chat, Ad Library e Notificações. Rituais de quem não é gestor mostram só aqueles em que a pessoa participa.
+- Meu Protocolo: só a conta do Thiago (`PROTOCOLO_DONO_EMAIL`), só na TMX.
+- Ainda não travado no servidor: as rotas de Tráfego/Análise (`/api/metricas/*` etc.) respondem a qualquer pessoa logada; o menu e a navegação é que escondem.
+
 ### In-process cron jobs (all `setInterval` in `server.js`)
 
 Everything runs inside the single Node process — no external scheduler. If you add a long-running task, respect this model:

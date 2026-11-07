@@ -7163,13 +7163,12 @@ app.get('/api/updates/:since', authUsuario, (req, res) => {
   const db = readDB();
   const bypass = req.query._super === '1' && _isSuperAdmin(req);
   const isInterno = req.tenantId === TENANT_INTERNO_ID;
-  const soDiretoria = _ehDiretoria(req);
   const data = {};
   Object.entries(db.timestamps || {}).forEach(([k, ts]) => {
     if (ts > since) {
       // Mesma regra do GET /api/store: segredo nunca sai; sensível só pra Diretoria.
       if (KEYS_SERVIDOR.has(k)) return;
-      if (KEYS_DIRETORIA.has(k) && !soDiretoria) return;
+      if (!_podeChave(req, k)) return;
       let valor = db.store[k];
       if (!bypass) {
         // Chaves da plataforma: só pro interno
@@ -7234,7 +7233,7 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   // Chave restrita: só Diretoria escreve. Bloquear a escrita é tão importante
   // quanto a leitura — sem isso um cliente com cópia velha em cache poderia
   // sobrescrever RH/financeiro/protocolo com dados desatualizados.
-  if (KEYS_DIRETORIA.has(key) && !_ehDiretoria(req)) {
+  if (!_podeChave(req, key)) {
     return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   }
   // conexão bancária só muda pela tela de Integrações (testa e cifra a credencial)
@@ -8271,13 +8270,25 @@ const KEYS_SERVIDOR = new Set([
 // Meu Protocolo fica fora do produto: no motor de uma empresa, a chave nunca sai do servidor
 if (!SOU_TMX) KEYS_SERVIDOR.add('sl_protocolo');
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
-// Remove do payload as chaves restritas quando quem pede não é Diretoria.
+// Acessos por cargo (decisão do Thiago em 07/11/2026): o Sócio vê tudo menos o Financeiro, então o
+// RH e os candidatos valem pra ele também. Financeiro, chaves e configurações continuam só da Diretoria.
+const KEYS_SOCIO_TAMBEM = new Set(['sl_rh_colaboradores', 'sl_rh_feedbacks', 'sl_rh_ferias', 'sl_rh_onboarding',
+  'sl_rh_offboarding', 'sl_rh_folha', 'sl_rh_treinamentos', 'sl_rh_enps', 'sl_candidatos']);
+// Meu Protocolo é o painel pessoal do Thiago: só a conta dele, e só na TMX
+const PROTOCOLO_DONO_EMAIL = String(process.env.PROTOCOLO_DONO_EMAIL || 'thiago@axcend.com').toLowerCase();
+function _podeChave(req, k) {
+  if (!KEYS_DIRETORIA.has(k)) return true;
+  const u = req.user || {};
+  if (k === 'sl_protocolo') return SOU_TMX && u.cargo === 'Diretoria' && String(u.email || '').toLowerCase() === PROTOCOLO_DONO_EMAIL;
+  if (u.cargo === 'Diretoria') return true;
+  return u.cargo === 'Sócio' && KEYS_SOCIO_TAMBEM.has(k);
+}
+// Remove do payload o que é segredo e o que o cargo de quem pede não pode ver.
 function _filtrarKeysPorCargo(obj, req) {
-  const soDir = _ehDiretoria(req);
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
     if (KEYS_SERVIDOR.has(k)) continue;              // segredo: nunca sai, nem pra Diretoria
-    if (!soDir && KEYS_DIRETORIA.has(k)) continue;   // dado sensível: só Diretoria
+    if (!_podeChave(req, k)) continue;               // dado sensível: pelo cargo
     out[k] = v;
   }
   return out;

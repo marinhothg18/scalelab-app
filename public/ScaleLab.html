@@ -6971,11 +6971,11 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <label class="fl">Cargo *</label>
           <select class="fs" id="u-cargo" style="width:100%;">
             <option value="">Selecionar cargo</option>
-            <option>Diretoria</option>
-            <option value="Sócio">Sócio (vê o negócio com valores; sem Gestão, Protocolo e Configurações)</option>
-            <option>Copy</option>
-            <option>Editor</option>
-            <option>Gestor de Tráfego</option>
+            <option value="Diretoria">Dono (vê tudo)</option>
+            <option value="Sócio">Sócio (vê tudo menos o Financeiro e as Configurações)</option>
+            <option value="Gestor de Tráfego">Gestor de Tráfego (Demandas, Criativos, Rituais, Arquivos, Tráfego, Análise e Projetos)</option>
+            <option value="Copy">Copy (Demandas, Criativos, Rituais, Arquivos e Projetos)</option>
+            <option value="Editor">Editor (Demandas, Criativos, Arquivos e os Rituais em que estiver)</option>
             <option>Infra</option>
             <option>Spy</option>
           </select>
@@ -7423,6 +7423,10 @@ async function syncFromServer(){
       _gravarDoServidor(data);
       tasks = g('tasks',[]);
       criativos = g('criativos',[]);
+      // o Editor só vê Rituais se estiver em algum: ritual novo (ou cargo trocado) refaz o menu
+      if((data.rituais || data.sl_usuarios) && currentUser && currentUser.cargo !== 'Diretoria'){
+        try { _applyNavPermissions(currentUser.cargo); } catch(e){}
+      }
       // Re-render a página atual em tempo real — cobre TODAS as páginas do app
       try { _rerenderCurrentPage(Object.keys(data)); } catch(e){ console.warn('rerender erro:', e); }
       // Re-render task detail modal if open
@@ -8340,6 +8344,36 @@ let cur='dashboard';
 // mas esconder não bloqueia — o guard de verdade é o do goTo() logo abaixo.
 // Declarado aqui (antes do goTo) pra não depender da ordem de execução do script.
 var PAGINAS_DIRETORIA = ['gestao','protocolo','configuracoes','financeiro'];
+// Acessos por cargo (decisão do Thiago em 07/11/2026). Diretoria aparece como "Dono" na tela.
+// - Dono: tudo. Sócio: tudo menos Financeiro e Configurações (vê Gestão e RH).
+// - Gestor de Tráfego: Demandas, Criativos, Rituais, Arquivos por projeto, Tráfego, Análise de tráfego e Projetos.
+// - Copy: Demandas, Criativos, Rituais, Arquivos por projeto e Projetos.
+// - Editor: Demandas, Criativos, Arquivos por projeto e Rituais só se estiver em algum ritual.
+// - Todos: Dashboard, Chat, Ad Library e Notificações. Meu Protocolo: só a conta do Thiago, só na TMX.
+// O servidor confere o mesmo nas chaves restritas (_podeChave no server.js).
+var PROTOCOLO_DONO_EMAIL = 'thiago@axcend.com';
+function _nomeCargo(c){ return c === 'Diretoria' ? 'Dono' : (c || ''); }
+function _ehDonoDoProtocolo(u){ return !!(u && u.cargo === 'Diretoria' && String(u.email || '').trim().toLowerCase() === PROTOCOLO_DONO_EMAIL); }
+function _estaEmAlgumRitual(u){
+  var nome = (u && u.nome) || '';
+  try{ return (g('rituais', []) || []).some(function(r){ return r && Array.isArray(r.participantes) && r.participantes.indexOf(nome) >= 0; }); }catch(e){ return false; }
+}
+function _podeVerPagina(id, u){
+  u = u || currentUser;
+  if(!u) return false;
+  var c = u.cargo;
+  if(id === 'protocolo') return tmxEhTmx() && _ehDonoDoProtocolo(u);
+  if(c === 'Diretoria') return true;
+  if(id === 'configuracoes' || id === 'financeiro') return false;
+  if(c === 'Sócio') return true;
+  if(id === 'gestao') return false;
+  var trafego = id === 'metricas' || id === 'adsmetrics';
+  if(c === 'Gestor de Tráfego') return true;
+  if(c === 'Copy') return !trafego;
+  if(c === 'Editor') return !trafego && id !== 'funis' && (id !== 'rituais' || _estaEmAlgumRitual(u));
+  if(c === 'Infra') return ['criativos','rituais','metricas','adsmetrics','adlibrary'].indexOf(id) < 0;
+  return true;   // Spy e cargos antigos: como antes, sem Gestão, Financeiro e Configurações
+}
 
 function goTo(id){
   // saiu do Funis com o mapa em edição: fecha a aba lateral (ela fica no body)
@@ -8350,8 +8384,7 @@ function goTo(id){
     var _ehDir = !!(currentUser && currentUser.cargo==='Diretoria');
     // Páginas restritas à Diretoria: esconder do menu não basta — sem esse guard
     // qualquer um abre por link antigo, aba velha, busca interna ou console.
-    if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
-    if(id === 'protocolo' && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existe
+    if(!_podeVerPagina(id)) id = 'dashboard';   // pelo cargo (e Meu Protocolo só do Thiago, só na TMX)
     if(id === 'suporte' && tmxEhTmx()) id = 'dashboard';      // a TMX atende pela Central Admin
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
     // fora da TMX nem a Diretoria abre: pro cliente o módulo não existe
@@ -14012,7 +14045,7 @@ function _renderRhColaboradores(el){
           filtrados.map(function(c){
             return '<tr style="border-top:1px solid var(--border);">'+
               '<td style="padding:10px 12px;"><div style="display:flex;align-items:center;gap:10px;">'+_rhAvatar(c)+'<div><b>'+_esc(c.nome||'(sem nome)')+'</b><br><span style="font-size:11px;color:var(--text2);">'+_esc(c.email||'')+'</span></div></div></td>'+
-              '<td style="padding:10px 12px;">'+_esc(c.cargo||'—')+'<br><span style="font-size:11px;color:var(--text2);">'+_esc(c.area||'')+'</span></td>'+
+              '<td style="padding:10px 12px;">'+_esc(_nomeCargo(c.cargo)||'—')+'<br><span style="font-size:11px;color:var(--text2);">'+_esc(c.area||'')+'</span></td>'+
               '<td style="padding:10px 12px;">'+_esc(c.regime||'—')+'</td>'+
               '<td style="padding:10px 12px;"><b>'+_rhFmtMoeda(_rhCustoTotal(c))+'</b>'+(c.regime==='CLT'?'<br><span style="font-size:10px;color:var(--text2);">c/ encargos</span>':'')+'</td>'+
               '<td style="padding:10px 12px;">'+_rhStatusChip(c.status||'ativo')+'</td>'+
@@ -19665,7 +19698,7 @@ function chatKeyup(e,inp){
       sug.innerHTML=matches.map(u=>`<div onclick="insertMencao('${(u.nome||'').replace(/'/g,'\\\'').replace(/ /g,'_')}',document.getElementById('chat-input'))" style="padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
         <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">${(u.nome||'U')[0].toUpperCase()}</div>
         <span>${u.nome||'—'}</span>
-        <span style="color:var(--text2);font-size:11px;margin-left:auto;">${u.cargo||''}</span>
+        <span style="color:var(--text2);font-size:11px;margin-left:auto;">${_nomeCargo(u.cargo)}</span>
       </div>`).join('');
       sug.style.display='block';
       return;
@@ -22199,7 +22232,7 @@ function renderWhatsAppConfig(){
           var phone = u.whatsapp || '';
           return '<tr style="border-bottom:1px solid var(--border);">'
             + '<td style="padding:8px 4px;font-weight:600;">'+(u.nome||'').replace(/</g,'&lt;')+'</td>'
-            + '<td style="padding:8px 4px;color:var(--text2);">'+(u.cargo||'—')+'</td>'
+            + '<td style="padding:8px 4px;color:var(--text2);">'+(_nomeCargo(u.cargo)||'—')+'</td>'
             + '<td style="padding:8px 4px;"><input id="wa-phone-'+u.id+'" placeholder="(11) 98765-4321" value="'+phone.replace(/"/g,'&quot;')+'" style="width:180px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;"></td>'
             + '<td style="padding:8px 4px;white-space:nowrap;">'
               + '<button onclick="salvarTelefoneUsuario(\''+u.id+'\')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" title="Salvar">💾</button> '
@@ -23351,7 +23384,7 @@ function renderUsuarios(){
       const ativo = u.ativo !== false;
       return '<tr>'+
         '<td><div class="eq-pessoa">'+av+'<div><b>'+esc(u.nome)+'</b><small>'+esc(u.email)+'</small></div></div></td>'+
-        '<td><span class="eq-cargo" style="color:'+cor+';background:color-mix(in srgb, '+cor+' 12%, transparent)">'+esc(u.cargo || '—')+'</span></td>'+
+        '<td><span class="eq-cargo" style="color:'+cor+';background:color-mix(in srgb, '+cor+' 12%, transparent)">'+esc(_nomeCargo(u.cargo) || '—')+'</span></td>'+
         '<td>'+(u.whatsapp ? '<span class="v2-pill ok">cadastrado</span> <button class="eq-mini" onclick="testarWhatsAppUsuario(\''+u.id+'\')" title="Mandar uma mensagem de teste">Testar</button>' : '<span class="v2-pill warn" title="Sem WhatsApp a pessoa não recebe lembrete nem relatório">falta</span>')+'</td>'+
         '<td>'+(!ativo ? '<span class="v2-pill neu">—</span>' : (_rhDoUsuario(u, rhColabs) ? '<span class="v2-pill ok">no RH</span>' : '<span class="v2-pill warn">falta no RH</span>'))+'</td>'+
         '<td>'+(ativo ? '<span class="v2-pill ok">Ativo</span>' : '<span class="v2-pill bad">Inativo</span>')+'</td>'+
@@ -24552,7 +24585,7 @@ function _renderMentionDropdown(){
       '<span style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">'+initial+'</span>' +
       '<div style="flex:1;min-width:0;">' +
         '<div style="font-size:12.5px;font-weight:600;color:var(--text);">'+u.nome+'</div>' +
-        '<div style="font-size:10px;color:var(--text2);">'+(u.cargo||'')+'</div>' +
+        '<div style="font-size:10px;color:var(--text2);">'+_nomeCargo(u.cargo)+'</div>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -28956,64 +28989,26 @@ function toggleModuloArquivado(id){
 
 function _applyNavPermissions(cargo){
   var isDir = cargo==='Diretoria';
-  // Sócio: o menu inteiro menos Gestão, Meu Protocolo e Configurações
   var isSocio = cargo==='Sócio';
   var isInfra = cargo==='Infra';
-  var isCopy = cargo==='Copy';
-  var isEditor = cargo==='Editor';
-  var isSpy = cargo==='Spy';
-  var isTrafego = cargo==='Gestor de Tráfego';
-
-  // Helper pra ocultar/mostrar
+  var u = currentUser ? Object.assign({}, currentUser, { cargo: cargo }) : { cargo: cargo };
   function setDisp(id, show){ var e = document.getElementById(id); if(e) e.style.display = show ? '' : 'none'; }
-
-  // Dashboard (sem id, todos veem)
-  // Demandas (sem id, todos veem)
-
-  // Criativos — bloqueado só pra Infra
-  setDisp('nav-criativos', !isInfra);
-
-  // Arquivos (sem id, todos veem)
-  // Chat (sem id, todos veem)
-
-  // Rituais — bloqueado pra Infra (eles só veem via marcação, mas se permissão só é infra não precisa)
-  setDisp('nav-rituais', !isInfra);
-
-  // Tráfego (nav-metricas) — bloqueado pra Editor, Copy, Infra
-  setDisp('nav-metricas', !(isEditor || isCopy || isInfra));
-
-  // Métricas de Ads — bloqueado pra Editor, Infra
-  setDisp('nav-adsmetrics', !(isEditor || isInfra));
-
-  // Gestão e Financeiro — apenas Diretoria
-  setDisp('nav-gestao', isDir);
-  setDisp('nav-financeiro', isDir);
-  // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
-  setDisp('nav-protocolo', isDir && tmxEhTmx());   // Meu Protocolo é só da TMX, fica fora do produto
+  // Dashboard, Demandas, Arquivos por projeto e Chat (sem id): todos veem
+  [['nav-criativos','criativos'], ['nav-rituais','rituais'], ['nav-metricas','metricas'], ['nav-adsmetrics','adsmetrics'],
+   ['nav-funis','funis'], ['nav-adlibrary','adlibrary'], ['nav-gestao','gestao'], ['nav-financeiro','financeiro'],
+   ['nav-protocolo','protocolo']].forEach(function(x){ setDisp(x[0], _podeVerPagina(x[1], u)); });
   setDisp('nav-suporte', !tmxEhTmx() && !_ehSuporte());   // o cliente fala com a TMX por aqui
-
-  // Infra — Diretoria, Sócio e Infra
   setDisp('nav-infra', isDir || isSocio || isInfra);
-
-  // Ad Library — bloqueado pra Infra
-  setDisp('nav-adlibrary', !isInfra);
-
-  // Educacional (sem id, todos veem)
-
-  // Configurações: apenas Diretoria
   const configNav = document.querySelector('[onclick="goTo(\'configuracoes\')"]');
-  if(configNav) configNav.style.display = isDir ? '' : 'none';
+  if(configNav) configNav.style.display = _podeVerPagina('configuracoes', u) ? '' : 'none';
   // Auditoria: removida da sidebar (acesso pelo card em Configurações > Dados)
   const audNav = document.getElementById('nav-auditoria');
   if(audNav) audNav.style.display = 'none';
-
   // Demandas: Arquivados sidebar e botão Lixeira — apenas Diretoria
   setDisp('arquivados-section', isDir);
   setDisp('btn-lixeira-tasks', isDir);
-
   // Novo Ritual: Diretoria e Sócio
   setDisp('btn-novo-ritual', isDir || isSocio);
-
   // Arquivados por último: o que está arquivado some pra todo mundo, mesmo Diretoria
   try{ _aplicarModulosArquivados(); }catch(e){}
 }
