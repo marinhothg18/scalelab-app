@@ -109,6 +109,9 @@ test('venda do TMX pela Payt', async (t) => {
     assert.strictEqual(c.dados.email, 'caio@loja.com');
     assert.strictEqual(c.dados.plano, 'starter');
     ctx.convite = pedido.convite;
+    const cfg = (await chamar('GET', '/api/plataforma/venda-tmx', { token: ctx.tmx })).dados;
+    assert.strictEqual(cfg.ultimoAviso.evento, 'paid', 'a Central vê quando chegou o último aviso');
+    assert.ok(cfg.ultimoAviso.em > Date.now() - 60000);
   });
 
   await t.test('renovação não gera outro convite; reembolso muda o estado', async () => {
