@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<script src="https://app.centraltmx.com/px.js" data-f="fn1787010070995w0e" data-e="e3_p8n7" async></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer-when-downgrade">
+<title>Apostilai Acervo</title>
+<link rel="preconnect" href="https://checkout.payt.com.br">
+<noscript><meta http-equiv="refresh" content="0;url=https://checkout.payt.com.br/eb96522e504cc14fe8264030bf67ccd2"></noscript>
+<style>
+  :root{--fundo:#ffffff;--texto:#1f2937;--suave:#6b7280;--marca:#16a34a}
+  @media (prefers-color-scheme:dark){:root{--fundo:#0b0f14;--texto:#e5e7eb;--suave:#9ca3af}}
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{background:var(--fundo);color:var(--texto);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+       display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+  .marca{font-weight:800;font-size:22px;letter-spacing:-.3px}
+  .roda{width:34px;height:34px;margin:22px auto 16px;border:3px solid rgba(22,163,74,.22);border-top-color:var(--marca);
+        border-radius:50%;animation:gira .8s linear infinite}
+  @keyframes gira{to{transform:rotate(360deg)}}
+  p{color:var(--suave);font-size:15px}
+  #manual{display:none;margin-top:14px;font-size:14px}
+  #manual a{color:var(--marca);font-weight:700}
+</style>
+</head>
+<body>
+<main>
+  <div class="marca">Apostilai</div>
+  <div class="roda" aria-hidden="true"></div>
+  <p>Preparando seu acesso&hellip;</p>
+  <p id="manual">N&atilde;o foi redirecionado? <a id="link" href="https://checkout.payt.com.br/eb96522e504cc14fe8264030bf67ccd2">Clique aqui</a></p>
+</main>
+<script>
+/* Pagina ponte: redireciona sozinha pro checkout.
+   O pixel da Central TMX completa o link com a origem da pessoa (utm_*, src,
+   sck, tmx_vid) e registra o checkout no CLIQUE de um link de checkout; o
+   navegador nao deixa ninguem interceptar o location.replace. Por isso a ponte
+   espera o pixel (no maximo 1,5 s), "clica" no link escondido, deixa a TMX
+   arrumar o endereco e so entao segue com location.replace (a ponte nao fica
+   no historico). Sem pixel, leva a query da propria ponte pro checkout. */
+(function(){
+  var DESTINO="https://checkout.payt.com.br/eb96522e504cc14fe8264030bf67ccd2";
+  var ESPERA_MAX=1500;
+  var foi=false;
+  function ir(){
+    if(foi) return; foi=true;
+    var u=DESTINO;
+    if(location.search) u+=(u.indexOf("?")>-1?"&":"?")+location.search.slice(1);
+    var a=document.getElementById("link"); a.href=u;
+    if(window.TMXOrigem){
+      a.addEventListener("click",function(ev){ ev.preventDefault(); location.replace(a.href) },{once:true});
+      a.click();
+    }else location.replace(u);
+  }
+  var px=document.querySelector('script[src*="centraltmx.com/px.js"]');
+  if(!px || !px.getAttribute("data-f")) return ir();
+  var inicio=Date.now();
+  (function espera(){
+    if(window.TMXOrigem || Date.now()-inicio>ESPERA_MAX) return ir();
+    setTimeout(espera,40);
+  })();
+  setTimeout(function(){ document.getElementById("manual").style.display="block" },3000);
+})();
+</script>
+</body>
+</html>

@@ -3682,6 +3682,10 @@ a.fn-btn{text-decoration:none;display:inline-block}
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
           Projetos
         </div>
+        <div class="nav-item" id="nav-paginas" onclick="goTo('paginas')" style="display:none;">
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+          Páginas
+        </div>
         <!-- Quiz e Criativos & VSL moram dentro de cada projeto (Projetos › projeto › Conteúdo) -->
         <div class="nav-item" id="nav-adlibrary" onclick="goTo('adlibrary')">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -4077,6 +4081,11 @@ a.fn-btn{text-decoration:none;display:inline-block}
     <!-- MEU PROTOCOLO -->
     <div class="page" id="page-protocolo">
       <div id="protocolo-mount" style="width:100%;max-width:100%;height:calc(100dvh - 120px);min-height:70vh;border-radius:14px;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);"></div>
+    </div>
+
+    <!-- PÁGINAS: a tela mora em /paginas.html (paginas.js no servidor) -->
+    <div class="page" id="page-paginas">
+      <iframe id="paginas-frame" title="Páginas" style="display:block;width:100%;height:calc(100dvh - 120px);min-height:70vh;border:1px solid var(--border);border-radius:14px;background:var(--bg);"></iframe>
     </div>
 
     <!-- TRÁFEGO -->
@@ -8056,6 +8065,7 @@ function notif(t){
 const titles={
   dashboard:{t:'Dashboard',s:'Visão geral do projeto'},
   protocolo:{t:'Meu Protocolo',s:'Seu painel pessoal'},
+  paginas:{t:'Páginas',s:'Modelos, conferências e publicação na hospedagem'},
   task:{t:'Task',s:''},
   metricas:{t:'Tráfego',s:'Gestão e controle de tráfego pago.'},
   criativos:{t:'Criativos',s:'Gerencie seus materiais criativos.'},
@@ -8105,7 +8115,7 @@ function goTo(id){
     // Páginas restritas à Diretoria: esconder do menu não basta — sem esse guard
     // qualquer um abre por link antigo, aba velha, busca interna ou console.
     if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
-    if(id === 'protocolo' && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existe
+    if((id === 'protocolo' || id === 'paginas') && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existem
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
     // fora da TMX nem a Diretoria abre: pro cliente o módulo não existe
     if(_mArq && (!_ehDir || !tmxEhTmx())) id = 'dashboard';
@@ -8174,6 +8184,7 @@ function goTo(id){
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
   if(id==='financeiro' && typeof fiRender==='function')fiRender();
   if(id==='protocolo')renderProtocolo();
+  if(id==='paginas'){ const f=document.getElementById('paginas-frame'); if(f && !f.getAttribute('src')) f.src='/paginas.html'; }
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
   // Mobile: atualiza título e bottom nav
@@ -28703,6 +28714,9 @@ function _applyNavPermissions(cargo){
   setDisp('nav-financeiro', isDir);
   // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
   setDisp('nav-protocolo', isDir && tmxEhTmx());   // Meu Protocolo é só da TMX, fica fora do produto
+  // Páginas — apenas Diretoria (guarda a senha da hospedagem); no servidor é só da
+  // Diretoria da TMX (authDiretoriaInterna), então fora da TMX nem aparece
+  setDisp('nav-paginas', isDir && tmxEhTmx());
 
   // Infra — Diretoria, Sócio e Infra
   setDisp('nav-infra', isDir || isSocio || isInfra);

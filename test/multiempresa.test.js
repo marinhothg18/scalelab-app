@@ -142,6 +142,9 @@ test('duas empresas e a TMX não enxergam nada uma da outra', async (t) => {
     assert.strictEqual((await chamar('GET', '/api/plataforma/empresas', { token: ctx.tokA })).status, 404);
     assert.strictEqual((await chamar('PUT', '/api/store/sl_protocolo', { token: ctx.tokA, corpo: { x: 1 } })).status, 404);
     assert.strictEqual((await chamar('POST', '/api/tokens/generate', { token: ctx.tokA, corpo: { nome: 'x' } })).status, 403);
+    // Páginas (senhas de hospedagem) é só da Diretoria da TMX
+    assert.strictEqual((await chamar('GET', '/api/pg/estado', { token: ctx.tokA })).status, 403);
+    assert.strictEqual((await chamar('GET', '/api/pg/estado', { token: ctx.tmx })).status, 200);
   });
 
   await t.test('tempo real (SSE) da empresa abre no motor dela', async () => {
