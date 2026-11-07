@@ -5373,6 +5373,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <button class="fx-nav-i" data-aba="criativos" onclick="fnAba('criativos',this)"><span>🎬</span>Criativos</button>
             <div class="fx-nav-g">Conteúdo</div>
             <button class="fx-nav-i" data-aba="quiz" onclick="fnAba('quiz',this)"><span>📝</span>Quiz</button>
+            <button class="fx-nav-i" data-aba="criar" onclick="fnAba('criar',this)"><span>✨</span>Criar páginas<i class="fx-nav-novo">NOVO</i></button>
             <button class="fx-nav-i" data-aba="paginas" onclick="fnAba('paginas',this)"><span>📄</span>Páginas<i class="fx-nav-novo">NOVO</i></button>
             <button class="fx-nav-i" data-aba="vsl" onclick="fnAba('vsl',this)"><span>🎥</span>Análise de VSL</button>
             <div class="fx-nav-g">Pessoas</div>
@@ -5393,6 +5394,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
         <div class="fn-painel" id="fn-p-config"></div>
         <div class="fn-painel" id="fn-p-quiz"></div>
         <div class="fn-painel" id="fn-p-paginas"></div>
+        <div class="fn-painel" id="fn-p-criar"></div>
         <div class="fn-painel" id="fn-p-vsl"></div>
         <div class="fn-painel" id="fn-p-leads"><div id="ld-corpo"></div></div>
 
@@ -31379,16 +31381,27 @@ function pgCarregar(){
     .then(function(t){ if(pgEst.pedido !== pedido) return; pgEst.tmx = t; pgPintar(); }).catch(function(){});
 }
 function pgPodeCriar(){ return !!(currentUser && currentUser.cargo === 'Diretoria' && (typeof tmxEhTmx !== 'function' || tmxEhTmx())); }
-// o editor (paginas.html) abre aqui dentro; "‹ Voltar para Páginas" de lá volta pra esta lista
+// Criar páginas: o construtor (paginas.html, com o chat do Claude) abre nesta aba do projeto.
+// Volta pro que estava aberto ao trocar de aba; muda de projeto, recarrega.
+var pgCriarProj = '';
+function pgCriarAbrir(alvo){
+  var cx = document.getElementById('fn-p-criar'); if(!cx) return;
+  if(!pgPodeCriar()){ cx.innerHTML = '<div class="fx-vazio">Só a Diretoria cria e publica páginas.</div>'; pgCriarProj = ''; return; }
+  if(!alvo && pgCriarProj === fnProj && document.getElementById('pg-criar-frame')) return;
+  pgCriarProj = fnProj;
+  cx.innerHTML = '<iframe id="pg-criar-frame" title="Criar páginas" src="/paginas.html?embutido=criar&projeto='+encodeURIComponent(fnProj)+(alvo ? '#'+encodeURIComponent(alvo) : '')+'" '+
+    'style="display:block;width:100%;height:calc(100dvh - 170px);min-height:700px;border:0;border-radius:12px;background:var(--bg)"></iframe>';
+}
+// da lista de Páginas: "+ Nova página" e as feitas no TMX abrem na aba Criar páginas
 function pgEditor(alvo){
-  var cx = document.getElementById('fn-p-paginas'); if(!cx) return;
-  cx.innerHTML = '<iframe id="pg-editor-frame" title="Editor de página" src="/paginas.html?embutido=editor&projeto='+encodeURIComponent(fnProj)+'#'+encodeURIComponent(alvo)+'" '+
-    'style="display:block;width:100%;height:calc(100dvh - 170px);min-height:680px;border:0;border-radius:12px;background:var(--bg)"></iframe>';
+  var bt = document.querySelector('.fx-nav-i[data-aba="criar"]');
+  fnAba('criar', bt); pgCriarAbrir(alvo);
 }
 function pgIrHospedagem(){ goTo('configuracoes'); setTimeout(function(){ try{ cfgIr('conexoes','hospedagem'); }catch(e){} }, 300); }
 window.addEventListener('message', function(e){
   if(e.origin !== location.origin || !e.data || !e.data.tmx) return;
   if(e.data.tmx === 'paginas-voltar'){ pgEst.dados = null; pgCarregar(); }
+  else if(e.data.tmx === 'paginas-mudou') pgEst.dados = null;   // a lista de Páginas busca de novo quando abrir
   else if(e.data.tmx === 'paginas-hospedagem') pgIrHospedagem();
 });
 function pgNota(n){ return n == null ? 'sem' : n >= 90 ? 'bom' : n >= 50 ? 'med' : 'ruim'; }
@@ -31429,7 +31442,7 @@ function pgPintar(){
       '<td>'+pgVel(x.ultimaVelocidade)+'</td><td>'+((x.versoes || []).length || '<i>—</i>')+'</td></tr>';
   }).join('');
   cx.innerHTML =
-    (t && !(t.dominios || []).length ? '<div class="v2-alerta warn" style="margin-bottom:10px"><div><b>Pra criar e publicar página aqui, conecte a hospedagem</b><span>Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem.</span></div>'+
+    (t && !(t.dominios || []).length ? '<div class="v2-alerta warn" style="margin-bottom:10px"><div><b>Pra publicar página daqui, conecte a hospedagem</b><span>Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem. Criar a página e conversar com o Claude já funciona, em Criar páginas.</span></div>'+
       '<button class="fn-btn g sm" onclick="pgIrHospedagem()">Conectar a hospedagem</button></div>' : '')+
     '<div class="pg-topo"><div class="cp-seg">'+f('todas','Todas')+f('claude','Do Claude Code')+(t ? f('tmx','Feitas no TMX') : '')+f('pixel','Vistas pelo pixel')+f('fora','Fora do mapa')+f('lenta','Lentas')+'</div>'+
       '<select onchange="pgEst.per=this.value;pgCarregar()">'+per('hoje','Hoje')+per('ontem','Ontem')+per('7d','7 dias')+per('30d','30 dias')+'</select>'+
@@ -31606,7 +31619,7 @@ function pgRegistrarSalvar(bt){
 // ROI faz dentro do Tráfego. Link antigo pra Quiz ou VSL cai aqui.
 // ══════════════════════════════════════════════════════
 var fnAbaPendente = '', _fnEmb = {};
-var FN_SO_PROJETO = { quiz:1, vsl:1, paginas:1, config:1 };
+var FN_SO_PROJETO = { quiz:1, vsl:1, paginas:1, criar:1, config:1 };
 function fnEmbutir(qual){
   var pg = document.getElementById('page-'+qual), painel = document.getElementById('fn-p-'+qual);
   if(!pg || !painel) return;
@@ -31941,7 +31954,7 @@ function fnRecarregarAba(){
 // (Produtos pelos Ajustes do Resultado, Recuperação pelos Leads, Regras pela
 // Jornada ao vivo, Links pelo Pixel e saúde). O destaque vai pro botão "pai".
 var FN_ABAS = ['resultado','geral','mapa','criativos','leads','jornada','pixel','redir',
-               'links','produtos','recup','assin','regras','saude','quiz','vsl','paginas','vendas','reembolsos','config'];
+               'links','produtos','recup','assin','regras','saude','quiz','vsl','paginas','criar','vendas','reembolsos','config'];
 var FN_ABA_PAI = { geral:'resultado', links:'pixel', produtos:'resultado', recup:'leads', assin:'resultado', regras:'jornada', saude:'pixel' };
 // Titulo e explicacao de cada tela, no cabecalho — a aba deixa de ser so um
 // rotulo e passa a dizer o que aquela tela responde.
@@ -31964,6 +31977,7 @@ var FN_ABA_INFO = {
   quiz:    ['Quiz',        'Os quizzes deste projeto: montar, publicar e ver onde abandonam.'],
   vsl:     ['Análise de VSL', 'Retenção, pitch e conversão das VSLs deste projeto, direto da VTurb.'],
   paginas: ['Páginas', 'Todas as páginas do projeto, com data, versões, números e velocidade. As que o Claude Code sobe entram sozinhas.'],
+  criar:   ['Criar páginas', 'Monte a página a partir de um modelo e peça as mudanças pro Claude no chat. Publicar leva pra sua hospedagem.'],
   vendas:  ['Vendas', 'Cada venda aprovada do período: de onde veio e o que vai pra Meta. Clique numa pra abrir.'],
   reembolsos:['Reembolsos', 'Quem pediu o dinheiro de volta no período: o cliente, a compra, quanto tempo depois e de que anúncio ela tinha vindo.'],
   config:  ['Integrações', 'O que este projeto usa: tráfego, pixel, produtos e as compras que vão pra Meta. A conexão com a Meta, a Utmify e os checkouts é da empresa, em Configurações › Integrações, e acontece uma vez só.']
@@ -31996,6 +32010,7 @@ function fnAba(qual, bt){
   if(qual==='quiz')    fnAbrirQuiz();
   if(qual==='vsl')     fnAbrirVsl();
   if(qual==='paginas') pgCarregar();
+  if(qual==='criar')   pgCriarAbrir();
   if(qual==='vendas')  pvCarregar();
   if(qual==='reembolsos') rbCarregar();
   if(qual==='config')  pcCarregar();

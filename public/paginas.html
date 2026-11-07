@@ -287,36 +287,43 @@ body.embutido .cab { display: none; }
   // ── lista de páginas e nova página
   function domDe(id) { return estado.dominios.filter(function (d) { return d.id === id; })[0]; }
   function modeloDe(id) { return estado.modelos.filter(function (m) { return m.id === id; })[0]; }
-  function urlDe(p) { var d = domDe(p.dominio_id); return d ? new URL(p.slug + '/', d.endereco).href : ''; }
+  function urlDe(p) { var d = domDe(p.dominio_id); return d ? new URL(p.slug + '/', d.endereco).href : 'sem domínio ainda · /' + p.slug; }
   function situacao(p) {
     if (!p.publicada) return '<span class="chip">Rascunho</span>';
     return '<span class="chip ok">No ar · versão ' + p.publicada + '</span>' + (p.versao !== p.publicada ? ' <span class="chip alerta">rascunho diferente</span>' : '');
   }
   function pintarPaginas() {
     var l = estado.paginas;
-    $('lista-paginas').innerHTML = !l.length
-      ? '<p class="vazio">' + (estado.dominios.length ? 'Nenhuma página ainda. Crie a primeira a partir de um modelo.' : 'Conecte uma hospedagem em Domínios pra criar a primeira página.') + '</p>'
+    // sem hospedagem dá pra criar e conversar com o Claude; só publicar precisa dela
+    var semHosp = !estado.dominios.length && EMB === 'criar'
+      ? '<div class="msg alerta" style="margin-bottom:10px">Pra <b>publicar</b>, conecte a hospedagem em Configurações › Conexões › Hospedagem. Criar a página e conversar com o Claude já funciona. <button class="btn mini" type="button" data-ir-hosp="1">Conectar a hospedagem</button></div>' : '';
+    $('lista-paginas').innerHTML = semHosp + (!l.length
+      ? '<p class="vazio">' + (PROJ ? 'Nenhuma página feita no TMX neste projeto ainda. Clique em Nova página, escolha um modelo e peça as mudanças pro Claude.' :
+          estado.dominios.length ? 'Nenhuma página ainda. Crie a primeira a partir de um modelo.' : 'Conecte uma hospedagem em Domínios pra criar a primeira página.') + '</p>'
       : '<div class="tab-wrap"><table><thead><tr><th>Página</th><th>Modelo</th><th>Situação</th><th></th></tr></thead><tbody>' + l.map(function (p) {
           var m = modeloDe(p.modelo);
           return '<tr><td><b>' + esc(p.titulo) + '</b><br><span class="mono sub">' + esc(urlDe(p)) + '</span></td><td>' + esc(m ? m.nome : p.modelo) + '</td><td>' + situacao(p) + '</td>' +
             '<td style="text-align:right"><button class="btn mini" data-abrir="' + esc(p.id) + '">Abrir</button></td></tr>';
-        }).join('') + '</tbody></table></div>';
+        }).join('') + '</tbody></table></div>');
   }
-  $('lista-paginas').addEventListener('click', function (e) { var b = e.target.closest('[data-abrir]'); if (b) abrir(b.getAttribute('data-abrir')); });
-  function urlNova() { var d = domDe($('n-dom').value); $('n-url').textContent = d ? new URL(($('n-slug').value.trim() || '…') + '/', d.endereco).href : ''; }
+  $('lista-paginas').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-abrir]'); if (b) abrir(b.getAttribute('data-abrir'));
+    if (e.target.closest('[data-ir-hosp]')) avisarPai('paginas-hospedagem');
+  });
+  function urlNova() {
+    var d = domDe($('n-dom').value), s = $('n-slug').value.trim() || '…';
+    $('n-url').textContent = d ? new URL(s + '/', d.endereco).href : 'O domínio fica pra depois: você escolhe na hora de publicar.';
+  }
   function abrirNova() {
-    if (!estado.dominios.length) {
-      if (EMB) { mostrar('paginas'); $('lista-paginas').parentNode.hidden = true; $('c-nova').hidden = false;
-        msg($('n-msg'), 'alerta', 'Pra criar página, conecte antes a hospedagem. Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem. <button class="btn mini" type="button" id="bt-ir-hosp">Conectar a hospedagem</button>');
-        $('bt-ir-hosp').addEventListener('click', function () { avisarPai('paginas-hospedagem'); }); return; }
-      mostrar('dominios'); $('abas').children[1].click(); return;
-    }
-    if (EMB) { mostrar('paginas'); $('lista-paginas').parentNode.hidden = true; }
+    if (!estado.dominios.length && !EMB) { mostrar('dominios'); $('abas').children[1].click(); return; }
+    mostrar('paginas');
+    if (EMB === 'editor') $('lista-paginas').parentNode.hidden = true;
     var fs = estado.funis || [];
     $('n-funil-caixa').hidden = !PROJ;
     $('n-funil').innerHTML = '<option value="">Sem funil</option>' + fs.map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.nome) + '</option>'; }).join('');
     if (fs.length) $('n-funil').value = fs[0].id;
-    $('n-dom').innerHTML = estado.dominios.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + '</option>'; }).join('');
+    $('n-dom').innerHTML = estado.dominios.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + '</option>'; }).join('') +
+      (EMB ? '<option value="">Escolher depois</option>' : '');
     $('n-modelos').innerHTML = estado.modelos.map(function (m, i) {
       return '<button class="opcao" data-m="' + esc(m.id) + '" aria-pressed="' + (i === 0) + '"><b>' + esc(m.nome) + '</b><span class="mono">' + esc(m.base) + '</span></button>';
     }).join('');
@@ -326,14 +333,14 @@ body.embutido .cab { display: none; }
   $('bt-nova').addEventListener('click', abrirNova);
   umSo($('n-modelos'), function (b) { modeloNovo = b.getAttribute('data-m'); });
   $('n-slug').addEventListener('input', urlNova); $('n-dom').addEventListener('change', urlNova);
-  $('bt-cancela-nova').addEventListener('click', function () { if (EMB) return avisarPai('paginas-voltar'); $('c-nova').hidden = true; });
+  $('bt-cancela-nova').addEventListener('click', function () { if (EMB === 'editor') return avisarPai('paginas-voltar'); $('c-nova').hidden = true; });
   $('bt-criar').addEventListener('click', function () {
     var b = this; b.disabled = true;
     api('POST', '/api/pg/paginas', { titulo: $('n-titulo').value.trim(), dominio_id: $('n-dom').value, slug: $('n-slug').value.trim(), modelo: modeloNovo,
       projeto: PROJ, funil: PROJ ? $('n-funil').value : '' }).then(function (r) {
       b.disabled = false;
       if (r.s !== 200) return msg($('n-msg'), 'erro', esc(r.j.error));
-      $('c-nova').hidden = true; carregar().then(function () { abrir(r.j.id); });
+      $('c-nova').hidden = true; avisarPai('paginas-mudou'); carregar().then(function () { abrir(r.j.id); });
     });
   });
 
@@ -402,7 +409,8 @@ body.embutido .cab { display: none; }
   }
   function pintarEditor() {
     var p = atual.pagina, c = atual.campos;
-    $('e-titulo').textContent = p.titulo; $('e-url').textContent = atual.endereco; $('e-url').href = atual.endereco;
+    $('e-titulo').textContent = p.titulo; $('e-url').textContent = atual.endereco || 'sem domínio ainda: você escolhe ao publicar';
+    if (atual.endereco) $('e-url').href = atual.endereco; else $('e-url').removeAttribute('href');
     $('e-modelo').textContent = 'modelo ' + (atual.modelo ? atual.modelo.nome : p.modelo) + ' · versão ' + p.versao;
     $('e-situacao').outerHTML = '<span id="e-situacao">' + situacao(p) + '</span>';
     $('e-campos').innerHTML = atual.modelo.campos.map(function (f) {
@@ -439,8 +447,11 @@ body.embutido .cab { display: none; }
   umSo($('e-abas'), function (b) { var a = b.getAttribute('data-a'); ['previa', 'conf', 'versoes'].forEach(function (k) { $('a-' + k).hidden = k !== a; }); });
   umSo($('e-aparelho'), function (b) { $('e-previa').classList.toggle('pc', b.getAttribute('data-ap') === 'pc'); });
   $('bt-reconferir').addEventListener('click', conferir);
-  if (EMB) $('bt-voltar').textContent = '‹ Voltar para Páginas';
-  $('bt-voltar').addEventListener('click', function () { if (EMB) return avisarPai('paginas-voltar'); mostrar('paginas'); carregar(); });
+  if (EMB) $('bt-voltar').textContent = EMB === 'criar' ? '‹ Voltar pras páginas' : '‹ Voltar para Páginas';
+  $('bt-voltar').addEventListener('click', function () {
+    if (EMB === 'editor') return avisarPai('paginas-voltar');
+    $('lista-paginas').parentNode.hidden = false; mostrar('paginas'); carregar();
+  });
   $('bt-salvar-versao').addEventListener('click', function () {
     var b = this, campos = {};
     atual.modelo.campos.forEach(function (f) { var el = $('c-' + f.k); if (el) campos[f.k] = el.value; });
@@ -469,7 +480,23 @@ body.embutido .cab { display: none; }
   $('veu').addEventListener('click', function (e) { if (e.target === this) fechar(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fechar(); });
   function confirmar(titulo, txt, botao, fn) { janela(titulo, '<p class="sub">' + esc(txt) + '</p>', [{ t: 'Cancelar', f: fechar }, { t: botao, pri: true, f: function () { fechar(); fn(); } }]); }
+  // página criada sem domínio: escolhe agora; sem hospedagem conectada, leva até ela
+  function escolherDominio() {
+    var ds = estado.dominios || [];
+    if (!ds.length) return janela('Falta a hospedagem', '<p class="sub">Pra publicar, conecte a hospedagem onde as páginas ficam no ar. Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem. A página continua aqui como rascunho.</p>',
+      [{ t: 'Agora não', f: fechar }, { t: 'Conectar a hospedagem', pri: true, f: function () { fechar(); if (EMB) avisarPai('paginas-hospedagem'); else { mostrar('dominios'); $('abas').children[1].click(); } } }]);
+    janela('Onde a página vai ficar', '<div class="grade"><div><label class="rot" for="j-dom">Domínio</label><select class="campo" id="j-dom">' +
+      ds.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label class="rot" for="j-slug">Endereço</label><input class="campo mono" id="j-slug" value="' + esc(atual.pagina.slug) + '"></div></div><div id="j-msg"></div>',
+      [{ t: 'Cancelar', f: fechar }, { t: 'Continuar', pri: true, f: function () {
+        api('POST', '/api/pg/paginas/' + atual.pagina.id + '/dominio', { dominio_id: $('j-dom').value, slug: $('j-slug').value.trim() }).then(function (r) {
+          if (r.s !== 200) return msg($('j-msg'), 'erro', esc(r.j.error));
+          fechar(); abrir(atual.pagina.id).then(function () { $('bt-publicar').click(); });
+        });
+      } }]);
+  }
   $('bt-publicar').addEventListener('click', function () {
+    if (!atual.dominio) return escolherDominio();
     conferir().then(function () {
       var p = atual.pagina, d = atual.dominio, trava = ultimasConf.some(function (c) { return c.st === 'alerta' || c.st === 'falta'; });
       var corpo = '<p class="sub">A versão <b>' + p.versao + '</b> vai ao ar em <span class="mono">' + esc(atual.endereco) + '</span>. O TMX envia por FTP pra <span class="mono">' + esc(d.host) + ' · ' + esc(String(d.pasta || '/').replace(/\/?$/, '/')) + esc(p.slug) + '/index.html</span> e confere que a página abriu.</p>' +
@@ -484,7 +511,7 @@ body.embutido .cab { display: none; }
         janela('No ar', '<div class="msg ok">Versão ' + r.j.n + ' publicada em <a href="' + esc(r.j.url) + '" target="_blank" rel="noopener">' + esc(r.j.url) + '</a>.' +
           (r.j.noAr ? ' Abri o endereço e é a versão nova.' : ' Ainda não consegui confirmar no endereço: a hospedagem pode estar com cache. Abra pra conferir.') +
           (r.j.substituiu ? ' O arquivo que estava lá ficou guardado no TMX.' : '') + '</div>', [{ t: 'Fechar', pri: true, f: fechar }]);
-        abrir(atual.pagina.id); return;
+        avisarPai('paginas-mudou'); abrir(atual.pagina.id); return;
       }
       if (r.j.codigo === 'existe') return janela('Já tem uma página nesse endereço', '<div class="msg alerta">' + esc(r.j.error) + '</div>',
         [{ t: 'Cancelar', f: fechar }, { t: 'Publicar mesmo assim', pri: true, f: function () { publicar(true); } }]);

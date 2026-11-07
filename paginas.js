@@ -549,23 +549,39 @@ module.exports = function montarPaginas(ctx) {
   const responder = (res, e) => res.status(e.status || 500).json(Object.assign({ error: e.message },
     e.codigo ? { codigo: e.codigo } : {}, e.conferencias ? { conferencias: e.conferencias } : {}));
 
+  // o domínio pode ficar pra depois: a página nasce rascunho e o domínio só é exigido pra publicar
+  function _slugValido(slug) { if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(slug)) throw falha(400, 'Endereço inválido: use letras minúsculas, números e hífen, como foco-anual.'); }
   function opCriar(b, req) {
-    const m = _modelo(b.modelo), d = _dom(b.dominio_id);
+    const m = _modelo(b.modelo), d = b.dominio_id ? _dom(b.dominio_id) : null;
     if (!m) throw falha(400, 'Modelo não encontrado.');
-    if (!d) throw falha(400, 'Escolha um domínio conectado.');
+    if (b.dominio_id && !d) throw falha(400, 'Esse domínio não está conectado.');
     const slug = String(b.slug || '').trim().toLowerCase();
-    if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(slug)) throw falha(400, 'Endereço inválido: use letras minúsculas, números e hífen, como foco-anual.');
-    if (_q('SELECT id FROM pg_paginas WHERE dominio_id=? AND slug=?').get(d.id, slug)) throw falha(409, 'Já existe uma página do TMX nesse endereço.');
+    _slugValido(slug);
     const projeto = String(b.projeto || '').trim().slice(0, 60), funil = String(b.funil || '').slice(0, 80);
+    if (d ? _q('SELECT id FROM pg_paginas WHERE dominio_id=? AND slug=?').get(d.id, slug)
+          : _q("SELECT id FROM pg_paginas WHERE (dominio_id IS NULL OR dominio_id='') AND slug=? AND COALESCE(projeto,'')=?").get(slug, projeto))
+      throw falha(409, 'Já existe uma página do TMX nesse endereço.');
     if (funil && !_funis(projeto).some(f => f.id === funil)) throw falha(400, 'Esse funil não é do projeto ' + projeto + '.');
     let campos; try { campos = _validar(m, _camposPadrao(m), { titulo: b.titulo || m.ext.titulo }); } catch (e) { throw falha(400, e.message); }
     const id = 'pg_' + crypto.randomBytes(6).toString('hex'), agora = Date.now();
     _q(`INSERT INTO pg_paginas (id, dominio_id, slug, titulo, modelo, versao, publicada, criado_em, criado_por, projeto, funil) VALUES (?,?,?,?,?,1,0,?,?,?,?)`)
-      .run(id, d.id, slug, String(b.titulo || m.nome).slice(0, 120), m.id, agora, quem(req), projeto, funil);
+      .run(id, d ? d.id : null, slug, String(b.titulo || m.nome).slice(0, 120), m.id, agora, quem(req), projeto, funil);
     _q('INSERT INTO pg_versoes (pagina_id, n, campos, resumo, por, em) VALUES (?,?,?,?,?,?)')
       .run(id, 1, JSON.stringify(campos), 'Criada a partir do modelo ' + m.nome, quem(req), agora);
-    _auditar(req, 'pg_pagina_criar', id, { dominio: d.dominio, slug, modelo: m.id });
+    _auditar(req, 'pg_pagina_criar', id, { dominio: d ? d.dominio : null, slug, modelo: m.id, projeto });
     return { id };
+  }
+  // escolher (ou trocar, antes de ir ao ar) o domínio e o endereço da página
+  function opDominio(p, b, req) {
+    const d = _dom(b.dominio_id); if (!d) throw falha(400, 'Escolha um domínio conectado.');
+    if (p.publicada && p.dominio_id !== d.id) throw falha(409, 'Essa página já está no ar. Pra mudar de domínio, crie uma página nova no outro.');
+    const slug = String(b.slug || p.slug || '').trim().toLowerCase();
+    _slugValido(slug);
+    const outra = _q('SELECT id FROM pg_paginas WHERE dominio_id=? AND slug=? AND id<>?').get(d.id, slug, p.id);
+    if (outra) throw falha(409, 'Já existe uma página do TMX em ' + d.dominio + '/' + slug + '.');
+    _q('UPDATE pg_paginas SET dominio_id=?, slug=? WHERE id=?').run(d.id, slug, p.id);
+    _auditar(req, 'pg_pagina_dominio', p.id, { dominio: d.dominio, slug });
+    return { endereco: _endereco(d, slug) };
   }
   function opMudar(p, novos, req) {
     const m = _modelo(p.modelo), atual = _versao(p.id, p.versao);
@@ -591,8 +607,9 @@ module.exports = function montarPaginas(ctx) {
     return _conferir(ctx, m, v.campos, _montar(m, p, v.campos, v.n));
   }
   async function opPublicar(p, n, substituir, req) {
-    const v = _versao(p.id, n), d = _dom(p.dominio_id), m = _modelo(p.modelo);
-    if (!v || !d || !m) throw falha(404, 'Versão não encontrada.');
+    const v = _versao(p.id, n), d = p.dominio_id ? _dom(p.dominio_id) : null, m = _modelo(p.modelo);
+    if (!v || !m) throw falha(404, 'Versão não encontrada.');
+    if (!d) throw falha(400, 'Escolha em que domínio a página vai ficar antes de publicar.', { codigo: 'sem_dominio' });
     const html = _montar(m, p, v.campos, n);
     const conf = await _conferir(ctx, m, v.campos, html);
     if (conf.some(c => c.st === 'alerta' || c.st === 'falta'))
@@ -666,9 +683,17 @@ module.exports = function montarPaginas(ctx) {
   app.get('/api/pg/paginas/:id/previa', auth, (req, res) => {
     if (!_tabelas()) return semBanco(res);
     const p = _pag(req.params.id); if (!p) return res.status(404).json({ error: 'Página não encontrada.' });
-    const n = Number(req.query.n) || p.versao, v = _versao(p.id, n), d = _dom(p.dominio_id), m = _modelo(p.modelo);
-    if (!v || !d || !m) return res.status(404).json({ error: 'Versão não encontrada.' });
-    res.set('Cache-Control', 'no-store').type('text/plain; charset=utf-8').send(_previa(_montar(m, p, v.campos, n), d.endereco, p.slug));
+    const n = Number(req.query.n) || p.versao, v = _versao(p.id, n), d = p.dominio_id ? _dom(p.dominio_id) : null, m = _modelo(p.modelo);
+    if (!v || !m) return res.status(404).json({ error: 'Versão não encontrada.' });
+    // sem domínio ainda, as imagens e arquivos vêm do domínio do próprio modelo
+    const base = d ? d.endereco : 'https://' + m.base.split('/')[0] + '/';
+    res.set('Cache-Control', 'no-store').type('text/plain; charset=utf-8').send(_previa(_montar(m, p, v.campos, n), base, p.slug));
+  });
+
+  app.post('/api/pg/paginas/:id/dominio', auth, express.json({ limit: '10kb' }), (req, res) => {
+    if (!_tabelas()) return semBanco(res);
+    const p = _pag(req.params.id); if (!p) return res.status(404).json({ error: 'Página não encontrada.' });
+    try { res.json(Object.assign({ ok: true }, opDominio(p, req.body || {}, req))); } catch (e) { responder(res, e); }
   });
 
   app.get('/api/pg/paginas/:id/conferencias', auth, async (req, res) => {
