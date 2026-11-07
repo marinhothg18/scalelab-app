@@ -1500,6 +1500,16 @@ body { background:radial-gradient(900px 500px at 12% -8%,rgba(62,20,147,.20),tra
 .fn-proj-cab h2{font-size:20px;font-weight:800;letter-spacing:-.02em;margin:0 0 4px}
 .fn-proj-cab p{font-size:13px;color:var(--text2);margin:0;max-width:62ch}
 .fn-projs{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:14px}
+/* Projetos separados por nicho */
+.fn-proj-cab2{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.fn-nicho-cab{display:flex;align-items:baseline;gap:10px;margin:22px 0 10px}
+.fn-proj-cab2 + .fn-nicho-cab{margin-top:4px}
+.fn-nicho-cab b{font-size:15px;font-weight:800;color:var(--text)}
+.fn-nicho-cab span{font-size:12.5px;color:var(--text2)}
+.np-grade{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
+.np-grade label{display:flex;flex-direction:column;gap:6px}
+.np-grade .fi{width:100%}
+@media (max-width:560px){.np-grade{grid-template-columns:1fr}}
 .fn-proj{position:relative;background:var(--bg2);border:1px solid var(--border);border-radius:14px;
   padding:18px 20px 16px;cursor:pointer;transition:border-color .14s,transform .14s;overflow:hidden}
 .fn-proj::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:0;transition:opacity .14s}
@@ -2105,6 +2115,13 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .mc-res{font-size:12.5px;margin-top:8px;min-height:1em}
 .capi-card .mono{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace}
 .pc-grade{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+.capi-cab b .v2-pill{margin-left:8px;vertical-align:middle}
+.pc-px{padding:12px 0;border-top:1px solid var(--border)}
+.capi-cab + .pc-px{border-top:0;padding-top:0}
+.pc-px-t{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px}
+.pc-px-t span{font-size:11.5px;color:var(--text2)}
+.pc-cod{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:nowrap;margin:8px 0;color:var(--text)}
+.pc-prod{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:13px}
 .pc-chk{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;font-size:13px}
 .pc-chk input{margin-top:3px}
 .pc-chk small{display:block;color:var(--text2);font-size:11.5px;margin-top:1px}
@@ -3856,7 +3873,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
               </select>
               <!-- Filtro Oferta -->
               <select id="task-oferta-filter" onchange="renderTasks()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);outline:none;cursor:pointer;">
-                <option value="">Todas as ofertas</option>
+                <option value="">Todos os projetos</option>
               </select>
               <!-- Botão Lixeira -->
               <button id="btn-lixeira-tasks" onclick="abrirLixeiraTask()" title="Ver lixeira" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:15px;color:var(--text);outline:none;cursor:pointer;display:flex;align-items:center;gap:4px;">🗑️</button>
@@ -5302,7 +5319,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <div class="fx-nav-g">Instrumentação</div>
             <button class="fx-nav-i" data-aba="pixel" onclick="fnAba('pixel',this)"><span>📡</span>Pixel e saúde<i class="fx-nav-n" id="fx-n-saude"></i></button>
             <button class="fx-nav-i" data-aba="redir" onclick="fnAba('redir',this)"><span>🔀</span>Testes A/B<i class="fx-nav-n" id="fx-n-ab"></i></button>
-            <button class="fx-nav-i" data-aba="config" onclick="fnAba('config',this)"><span>⚙️</span>Configurar<i class="fx-nav-novo">NOVO</i></button>
+            <button class="fx-nav-i" data-aba="config" onclick="fnAba('config',this)"><span>🔌</span>Integrações<i class="fx-nav-novo">NOVO</i></button>
           </nav>
           <div class="fx-conteudo">
 
@@ -6592,20 +6609,21 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
         <!-- Status legado escondido — preserva compat com código antigo -->
         <input type="hidden" id="t-status" value="BACKLOG">
-        <!-- Nicho + Oferta -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="fg">
-            <label class="fl">Nicho *</label>
-            <select class="fs" id="t-nicho" style="width:100%;" onchange="onModalNichoChange()">
-              <option value="">Selecionar nicho</option>
-            </select>
-          </div>
-          <div class="fg">
-            <label class="fl">Oferta *</label>
-            <select class="fs" id="t-oferta-v2" style="width:100%;">
-              <option value="">Selecionar oferta</option>
-            </select>
-          </div>
+        <!-- Projeto: um campo só, separado por nicho. Nicho e Oferta continuam
+             escondidos embaixo: a demanda segue gravando nichoId e ofertaId. -->
+        <div class="fg">
+          <label class="fl">Projeto *</label>
+          <select class="fs" id="t-projeto" style="width:100%;" onchange="tkProjetoEscolhido()">
+            <option value="">Selecionar projeto</option>
+          </select>
+        </div>
+        <div style="display:none;">
+          <select id="t-nicho" onchange="onModalNichoChange()">
+            <option value="">Selecionar nicho</option>
+          </select>
+          <select id="t-oferta-v2">
+            <option value="">Selecionar oferta</option>
+          </select>
         </div>
         <!-- Datas + Horas (data e hora juntas, lado a lado) -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -23395,6 +23413,7 @@ function abrirNovaDemanda(){
   const selNicho=document.getElementById('t-nicho');
   selNicho.innerHTML='<option value="">Selecionar nicho</option>'+getNichos().map(n=>`<option value="${n.id}">${n.nome}</option>`).join('');
   document.getElementById('t-oferta-v2').innerHTML='<option value="">Selecionar oferta</option>';
+  tkPopularProjeto();
   // Populate checklists
   const selCl=document.getElementById('t-checklist-modelo');
   selCl.innerHTML='<option value="">Selecionar modelo de checklist</option>'+getChecklists().map(cl=>`<option value="${cl.id}">${cl.nome}</option>`).join('');
@@ -23628,15 +23647,9 @@ function abrirEditarDemanda(id){
   if(document.getElementById('t-hora-inicio')) document.getElementById('t-hora-inicio').value = t.horaInicio || '';
   if(document.getElementById('t-prazo-hora')) document.getElementById('t-prazo-hora').value = t.prazoHora || '';
 
-  // Set nicho and cascade oferta
-  if(t.nichoId){
-    selNicho.value = t.nichoId;
-    onModalNichoChange();
-    setTimeout(()=>{
-      const selOferta=document.getElementById('t-oferta-v2');
-      if(selOferta && t.ofertaId) selOferta.value = t.ofertaId;
-    }, 50);
-  }
+  // Projeto da demanda (preenche nicho e oferta por baixo)
+  tkPopularProjeto();
+  tkSincProjeto(t.nichoId || '', t.ofertaId || '');
 
   // Checklist toggle
   if(t.checklist && t.checklist.nome){
@@ -23897,6 +23910,58 @@ function onModalNichoChange(){
   sel.innerHTML='<option value="">Selecionar oferta</option>'+ofertas.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
 }
 
+// ── Projeto da demanda: um campo só, agrupado por nicho ──
+// Valor "o:<ofertaId>" (projeto) ou "n:<nichoId>" (nicho ainda sem projeto).
+// Por baixo continua preenchendo t-nicho e t-oferta-v2, que é o que se grava.
+function _tkEsc(t){ return String(t == null ? '' : t).replace(/[&<>"]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+function tkPopularProjeto(){
+  const sel = document.getElementById('t-projeto'); if(!sel) return;
+  const nichos = getNichos(), ofertas = getOfertasV2();
+  let h = '<option value="">Selecionar projeto</option>';
+  nichos.forEach(function(n){
+    const os = ofertas.filter(function(o){ return o.nichoId === n.id; });
+    h += '<optgroup label="'+_tkEsc(n.nome)+'" data-nicho="'+_tkEsc(n.id)+'">'+
+      (os.length ? os.map(function(o){ return '<option value="o:'+_tkEsc(o.id)+'">'+_tkEsc(o.nome)+'</option>'; }).join('')
+                 : '<option value="n:'+_tkEsc(n.id)+'">'+_tkEsc(n.nome)+' · sem projeto ainda</option>')+'</optgroup>';
+  });
+  const soltas = ofertas.filter(function(o){ return !nichos.some(function(n){ return n.id === o.nichoId; }); });
+  if(soltas.length) h += '<optgroup label="Sem nicho">'+soltas.map(function(o){ return '<option value="o:'+_tkEsc(o.id)+'">'+_tkEsc(o.nome)+'</option>'; }).join('')+'</optgroup>';
+  sel.innerHTML = h;
+}
+function _tkPorEmbaixo(nichoId, ofertaId){
+  const n = document.getElementById('t-nicho'); if(!n) return;
+  n.value = nichoId || '';
+  onModalNichoChange();
+  const o = document.getElementById('t-oferta-v2'); if(o) o.value = ofertaId || '';
+}
+function tkProjetoEscolhido(){
+  const v = (document.getElementById('t-projeto') || {}).value || '';
+  if(v.indexOf('o:') === 0){
+    const of = getOfertasV2().find(function(o){ return o.id === v.slice(2); });
+    _tkPorEmbaixo(of ? of.nichoId : '', of ? of.id : '');
+  } else if(v.indexOf('n:') === 0) _tkPorEmbaixo(v.slice(2), '');
+  else _tkPorEmbaixo('', '');
+}
+// Demanda aberta pra editar, duplicada ou preenchida pela IA: mostra o projeto dela
+function tkSincProjeto(nichoId, ofertaId){
+  const sel = document.getElementById('t-projeto'); if(!sel) return;
+  if(!sel.options.length || sel.options.length < 2) tkPopularProjeto();
+  const of = ofertaId ? getOfertasV2().find(function(o){ return o.id === ofertaId; }) : null;
+  if(of && !nichoId) nichoId = of.nichoId;
+  let v = of ? 'o:'+of.id : (nichoId ? 'n:'+nichoId : '');
+  // demanda antiga só com nicho: a opção "sem projeto" aparece pra ela não perder o nicho
+  if(v && !Array.prototype.some.call(sel.options, function(x){ return x.value === v; }) && !of){
+    const ni = getNichos().find(function(n){ return n.id === nichoId; });
+    if(ni){
+      let gr = Array.prototype.find.call(sel.querySelectorAll('optgroup'), function(g){ return g.getAttribute('data-nicho') === nichoId; });
+      const op = document.createElement('option'); op.value = v; op.textContent = ni.nome+' · sem projeto';
+      if(gr) gr.appendChild(op); else sel.appendChild(op);
+    } else v = '';
+  }
+  sel.value = v;
+  _tkPorEmbaixo(nichoId || '', of ? of.id : '');
+}
+
 function toggleChecklistField(){
   const tog=document.getElementById('toggle-checklist');
   tog.classList.toggle('on');
@@ -23923,7 +23988,7 @@ function populateTaskFilters(){
   if(selOferta){
     const ofertaAtual=selOferta.value;
     const ofs=nichoAtual ? getOfertasV2().filter(o=>o.nichoId===nichoAtual) : getOfertasV2();
-    selOferta.innerHTML='<option value="">Todas as ofertas</option>'+ofs.map(o=>`<option value="${o.id}" ${ofertaAtual===o.id?'selected':''}>${o.nome}</option>`).join('');
+    selOferta.innerHTML='<option value="">Todos os projetos</option>'+ofs.map(o=>`<option value="${o.id}" ${ofertaAtual===o.id?'selected':''}>${o.nome}</option>`).join('');
   }
 }
 
@@ -23933,7 +23998,7 @@ function onNichoFilterChange(){
   const selOferta=document.getElementById('task-oferta-filter');
   if(!selOferta)return;
   const ofs2 = nichoId ? getOfertasV2().filter(o=>o.nichoId===nichoId) : getOfertasV2();
-  selOferta.innerHTML='<option value="">Todas as ofertas</option>'+ofs2.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
+  selOferta.innerHTML='<option value="">Todos os projetos</option>'+ofs2.map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
   if(!nichoId) taskOfertaV2Filter='';
   renderTasks();
 }
@@ -25286,6 +25351,7 @@ async function iaAnalisarDemandaModal(){
     if(nichoEl && typeof onNichoChange === 'function'){ try{ onNichoChange(); }catch(e){} }
     setTimeout(function(){
       setIf('t-oferta-v2', s.ofertaId);
+      if(s.nichoId || s.ofertaId) tkSincProjeto(s.nichoId || '', s.ofertaId || '');
       setIf('t-data', s.prazoData);
       // Responsável: adiciona via _taskResps
       if(s.respId){
@@ -25356,6 +25422,7 @@ function duplicarDemanda(id){
     if(typeof onNichoChange === 'function') try{ onNichoChange(); }catch(e){}
     setTimeout(function(){
       setEl('t-oferta-v2', orig.ofertaId);
+      tkSincProjeto(orig.nichoId || '', orig.ofertaId || '');
       setEl('t-link', orig.link || '');
       setEl('t-data', orig.data || '');
       setEl('t-inicio', orig.inicio || '');
@@ -31061,6 +31128,7 @@ function fnCarregarProjetos(){
     fnProjetosFull = (d && d.projetos) || [];
     fnProjetos = fnProjetosFull.map(function(p){ return p.nome; });
     fnJuntarProjetosDosFunis();
+    fnJuntarProjetosDasDemandas();
     fnFiltrarOcultos();
     if(!fnProjetos.length) fnProjetos = ['Geral'];
     if(!fnProj || fnProjetos.indexOf(fnProj)<0) fnProj = fnProjetos[0];
@@ -31074,6 +31142,7 @@ function fnCarregarProjetos(){
     // esta salvo, senao a tela abre vazia e parece que o trabalho se perdeu.
     fnProjetos = [];
     fnJuntarProjetosDosFunis();
+    fnJuntarProjetosDasDemandas();
     fnFiltrarOcultos();
     if(!fnProjetos.length) fnProjetos = ['Geral'];
     if(!fnProj || fnProjetos.indexOf(fnProj) < 0) fnProj = fnProjetos[0];
@@ -31086,6 +31155,43 @@ function fnJuntarProjetosDosFunis(){
   fnFunis().forEach(function(f){
     if(f.projeto && fnProjetos.indexOf(f.projeto) < 0) fnProjetos.push(f.projeto);
   });
+}
+
+// ── Um nome só por projeto ──
+// O projeto daqui vem do dashboard da Utmify (CONCURSO); o de Demandas é a
+// oferta (PROJETO KALEBE, do nicho CONCURSO). Ligados, a tela mostra o nome de
+// Demandas e agrupa pelo nicho dele; por dentro a chave continua a da Utmify,
+// então funis, contas, vendas e pixel não mudam. A ligação fica na oferta
+// (projetoFunil); sem ela, o dashboard com o nome de um nicho que tem um
+// projeto só fica com esse projeto.
+function _fnNrm(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+function fnProjOferta(chave){
+  if(!chave) return null;
+  var ofs = getOfertasV2(), ns = getNichos();
+  var fixa = ofs.filter(function(o){ return o && o.projetoFunil === chave; })[0];
+  if(fixa) return fixa;
+  var n = ns.filter(function(x){ return x && _fnNrm(x.nome) === _fnNrm(chave); })[0];
+  if(n){ var dele = ofs.filter(function(o){ return o && o.nichoId === n.id && !o.projetoFunil; }); if(dele.length === 1) return dele[0]; }
+  // projeto que nasceu em Demandas: a chave é o próprio nome
+  return ofs.filter(function(o){ return o && !o.projetoFunil && o.nome === chave; })[0] || null;
+}
+function fnProjNome(chave){ var o = fnProjOferta(chave); return o ? o.nome : (chave || ''); }
+function fnProjNicho(chave){
+  var o = fnProjOferta(chave), ns = getNichos();
+  var n = o ? ns.filter(function(x){ return x && x.id === o.nichoId; })[0] : ns.filter(function(x){ return x && _fnNrm(x.nome) === _fnNrm(chave); })[0];
+  return n ? n.nome : 'Sem nicho';
+}
+// Os projetos de Demandas que ainda não têm dashboard aqui também entram,
+// com o próprio nome: é uma lista só de projetos da empresa.
+function fnJuntarProjetosDasDemandas(){
+  try {
+    var ligadas = {};
+    fnProjetos.forEach(function(k){ var o = fnProjOferta(k); if(o) ligadas[o.id] = k; });
+    getOfertasV2().forEach(function(o){
+      if(!o || !o.nome || ligadas[o.id] || fnProjetos.indexOf(o.nome) >= 0) return;
+      fnProjetos.push(o.nome);
+    });
+  } catch(e){ console.warn('projetos de Demandas:', e); }
 }
 function fnProjId(){
   var p = fnProjetosFull.filter(function(x){ return x.nome===fnProj; })[0];
@@ -31510,28 +31616,42 @@ function fnDin0(v){ return 'R$ '+Math.round(Number(v)||0).toLocaleString('pt-BR'
 
 function fnPintarProjetos(){
   var el = document.getElementById('fn-projetos'); if(!el) return;
-  var todosFunis = fnFunis(), todosTestes = fnReds();
-  var cards = fnProjetos.map(function(nome){
+  var todosFunis = fnFunis(), todosTestes = fnReds(), quizzes = g('sl_quizzes',[]) || [];
+  var daUtmify = {}; (fnProjetosFull || []).forEach(function(p){ daUtmify[p.nome] = 1; });
+  var gest = _ehGestor();
+  var aspas = function(t){ return fnEsc(t).replace(/'/g,"\\'"); };
+  var card = function(nome){
     var fs = todosFunis.filter(function(f){ return f.projeto===nome; });
     var ts = todosTestes.filter(function(t){ return (t.projeto||'')===nome; });
     var testando = ts.filter(function(t){ return t.meta && t.ativo!==false; }).length;
     var etapas = fs.reduce(function(a,f){ return a + ((f.etapas||[]).length); }, 0);
     var semLink = fs.reduce(function(a,f){
       return a + (f.etapas||[]).filter(function(e){ return !e.url; }).length; }, 0);
-    return '<div class="fn-proj" onclick="fnEntrarProjeto(\''+fnEsc(nome).replace(/'/g,"\\'")+'\')">'+
-      '<div class="fn-proj-t">'+fnEsc(nome)+'</div>'+
+    var mostra = fnProjNome(nome);
+    return '<div class="fn-proj" onclick="fnEntrarProjeto(\''+aspas(nome)+'\')"'+(mostra !== nome ? ' title="Na Utmify: '+fnEsc(nome)+'"' : '')+'>'+
+      '<div class="fn-proj-t">'+fnEsc(mostra)+'</div>'+
       '<div class="fn-proj-n">'+
         '<span><b>'+fs.length+'</b> funil(is)</span>'+
         '<span><b>'+etapas+'</b> etapa(s)</span>'+
         '<span><b>'+ts.length+'</b> link(s)</span>'+
-        '<span><b>'+(g('sl_quizzes',[])||[]).filter(function(q){ return q && q.projeto===nome; }).length+'</b> quiz(zes)</span>'+
+        '<span><b>'+quizzes.filter(function(q){ return q && q.projeto===nome; }).length+'</b> quiz(zes)</span>'+
       '</div>'+
       '<div class="fn-proj-r">'+
         (testando ? '<span class="fn-selo ok">'+testando+' teste(s) rodando</span>' : '')+
         (semLink  ? '<span class="fn-selo alerta">'+semLink+' etapa(s) sem link</span>' : '')+
-        (!fs.length ? '<span class="fn-selo neutro">nenhum funil ainda</span>' : '')+
+        (!fs.length ? (daUtmify[nome] ? '<span class="fn-selo neutro">nenhum funil ainda</span>' : '<span class="fn-selo alerta">falta ligar: abra Integrações</span>') : '')+
       '</div>'+
-      '<div class="fn-proj-ir">Abrir ›<button class="fn-proj-esc" title="Esconder este projeto da lista" onclick="event.stopPropagation();fnEsconderProjeto(\''+fnEsc(nome).replace(/'/g,"\\'")+'\')">esconder</button></div></div>';
+      '<div class="fn-proj-ir">Abrir ›'+
+        (gest && daUtmify[nome] ? '<button class="fn-proj-esc" title="Escolher qual projeto de Demandas é este" onclick="event.stopPropagation();fnLigarProjeto(\''+aspas(nome)+'\')">nome</button>' : '')+
+        '<button class="fn-proj-esc" title="Esconder este projeto da lista" onclick="event.stopPropagation();fnEsconderProjeto(\''+aspas(nome)+'\')">esconder</button></div></div>';
+  };
+  // separados por nicho; os nichos dos projetos com dashboard vêm primeiro
+  var grupos = {}, ordem = [];
+  fnProjetos.forEach(function(nome){ var n = fnProjNicho(nome); if(!grupos[n]){ grupos[n] = []; ordem.push(n); } grupos[n].push(nome); });
+  ordem.sort(function(a, b){ return (a === 'Sem nicho') - (b === 'Sem nicho'); });
+  var lista = ordem.map(function(n){
+    return '<div class="fn-nicho-cab"><b>'+fnEsc(n)+'</b><span>'+grupos[n].length+' projeto'+(grupos[n].length === 1 ? '' : 's')+'</span></div>'+
+      '<div class="fn-projs">'+grupos[n].map(card).join('')+'</div>';
   }).join('');
   el.innerHTML =
     // Desenhar funil fica ACIMA da escolha do projeto: rascunho nao depende de
@@ -31542,10 +31662,78 @@ function fnPintarProjetos(){
         '<div class="dz-entrada-s">Rascunhe a estrutura antes de montar: páginas, decisões, '+
         'notas e o caminho entre elas. Um quadro por ideia.</div></div>'+
       '<div class="dz-entrada-ir">Abrir ›</div></div>'+
-    '<div class="fn-proj-cab"><h2>Escolha o projeto</h2>'+
-      '<p>Tudo que aparecer depois — mapa, quiz, páginas, análise de VSL, pixel, testes, jornada e atenção — é só deste projeto.</p></div>'+
-    '<div class="fn-projs">'+(cards || '<div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify.</div>')+'</div>'+
-    (fnProjetosEscondidos.length ? '<div class="fn-nota" style="margin-top:14px">'+fnProjetosEscondidos.length+' projeto'+(fnProjetosEscondidos.length===1?'':'s')+' escondido'+(fnProjetosEscondidos.length===1?'':'s')+': '+fnEsc(fnProjetosEscondidos.join(', '))+' · <a href="#" onclick="fnMostrarOcultos();return false" style="color:var(--accent)">mostrar</a></div>' : '');
+    '<div class="fn-proj-cab fn-proj-cab2"><div><h2>Escolha o projeto</h2>'+
+      '<p>Os projetos da empresa, separados por nicho, com o mesmo nome de Demandas. Tudo que aparecer depois — mapa, quiz, páginas, análise de VSL, pixel, testes e jornada — é só do projeto escolhido.</p></div>'+
+      (gest ? '<button class="fn-btn sm" onclick="fnNovoProjeto()">+ Novo projeto</button>' : '')+'</div>'+
+    (lista || '<div class="fn-projs"><div class="fn-nota">Nenhum projeto encontrado. Eles vêm dos dashboards da Utmify e dos projetos de Demandas.</div></div>')+
+    (fnProjetosEscondidos.length ? '<div class="fn-nota" style="margin-top:14px">'+fnProjetosEscondidos.length+' projeto'+(fnProjetosEscondidos.length===1?'':'s')+' escondido'+(fnProjetosEscondidos.length===1?'':'s')+': '+fnEsc(fnProjetosEscondidos.map(fnProjNome).join(', '))+' · <a href="#" onclick="fnMostrarOcultos();return false" style="color:var(--accent)">mostrar</a></div>' : '');
+}
+// opções de projeto (oferta) agrupadas por nicho, pros modais desta tela
+function _fnOpcoesProjeto(selId){
+  var ns = getNichos(), ofs = getOfertasV2();
+  var h = ns.map(function(n){
+    var os = ofs.filter(function(o){ return o && o.nichoId === n.id; }); if(!os.length) return '';
+    return '<optgroup label="'+fnEsc(n.nome)+'">'+os.map(function(o){ return '<option value="'+fnEsc(o.id)+'"'+(o.id === selId ? ' selected' : '')+'>'+fnEsc(o.nome)+'</option>'; }).join('')+'</optgroup>';
+  }).join('');
+  var soltas = ofs.filter(function(o){ return o && !ns.some(function(n){ return n.id === o.nichoId; }); });
+  if(soltas.length) h += '<optgroup label="Sem nicho">'+soltas.map(function(o){ return '<option value="'+fnEsc(o.id)+'"'+(o.id === selId ? ' selected' : '')+'>'+fnEsc(o.nome)+'</option>'; }).join('')+'</optgroup>';
+  return h;
+}
+// Dashboard da Utmify ↔ projeto de Demandas: escolhe o nome que aparece
+function fnLigarProjeto(chave){
+  var atual = fnProjOferta(chave);
+  v2Modal('<div class="v2-cab"><div><h2>Nome do projeto</h2><div class="fx-sub">Dashboard da Utmify: '+fnEsc(chave)+'</div></div><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div>'+
+    '<div class="fx-sub" style="margin:4px 0 10px">Escolha qual projeto de Demandas é este. A tela passa a mostrar esse nome e o nicho dele. Funis, contas, vendas e pixel continuam como estão.</div>'+
+    '<select class="fi" id="fl-oferta" style="width:100%"><option value="">Selecionar projeto</option>'+_fnOpcoesProjeto(atual ? atual.id : '')+'</select>'+
+    '<div class="lc-bts" style="margin-top:14px"><button class="fn-btn sm" onclick="fnLigarSalvar(\''+fnEsc(chave).replace(/'/g,"\\'")+'\', this)">Salvar</button><button class="fn-btn g sm" onclick="v2Fechar(this)">Cancelar</button></div>', 'p');
+}
+function fnLigarSalvar(chave, bt){
+  var id = (document.getElementById('fl-oferta') || {}).value || '';
+  if(!id){ toastFn('Escolha o projeto'); return; }
+  var agora = Date.now();
+  var ofs = getOfertasV2().map(function(o){
+    if(!o) return o;
+    if(o.id === id){ var n = Object.assign({}, o); n.projetoFunil = chave; n._updatedAt = agora; return n; }
+    if(o.projetoFunil === chave){ var v = Object.assign({}, o); v.projetoFunil = ''; v._updatedAt = agora; return v; }
+    return o;
+  });
+  saveOfertasV2(ofs);
+  v2Fechar(bt); toastFn('Nome do projeto salvo');
+  fnCarregarProjetos();
+}
+// Projeto novo: nicho + nome. Nasce como projeto de Demandas (o mesmo cadastro
+// de Configurações › Ofertas) e já abre na aba Integrações pra ligar o resto.
+function fnNovoProjeto(){
+  var ns = getNichos();
+  v2Modal('<div class="v2-cab"><div><h2>Novo projeto</h2><div class="fx-sub">Escolha o nicho e dê o nome. Depois ligue tráfego, vendas e pixel na aba Integrações do projeto.</div></div><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div>'+
+    '<div class="np-grade"><label><span class="v2-rot">Nicho</span><select class="fi" id="np-nicho" onchange="var x=document.getElementById(\'np-nicho-novo\');x.style.display=this.value===\'__novo\'?\'\':\'none\';if(this.value===\'__novo\')x.focus()">'+
+      '<option value="">Selecionar nicho</option>'+ns.map(function(n){ return '<option value="'+fnEsc(n.id)+'">'+fnEsc(n.nome)+'</option>'; }).join('')+'<option value="__novo">+ Novo nicho…</option></select>'+
+      '<input class="fi" id="np-nicho-novo" placeholder="Nome do nicho" style="display:none;margin-top:6px"></label>'+
+      '<label><span class="v2-rot">Nome do projeto</span><input class="fi" id="np-nome" placeholder="ex.: PROJETO KALEBE"></label></div>'+
+    '<div class="lc-bts" style="margin-top:14px"><button class="fn-btn sm" onclick="fnNovoProjetoSalvar(this)">Criar projeto</button><button class="fn-btn g sm" onclick="v2Fechar(this)">Cancelar</button></div>', 'p');
+}
+function fnNovoProjetoSalvar(bt){
+  var ni = (document.getElementById('np-nicho') || {}).value || '';
+  var nn = String((document.getElementById('np-nicho-novo') || {}).value || '').trim();
+  var nome = String((document.getElementById('np-nome') || {}).value || '').trim();
+  if(!nome){ toastFn('Dê um nome ao projeto'); return; }
+  var ofs = getOfertasV2();
+  if(fnProjetos.some(function(p){ return _fnNrm(fnProjNome(p)) === _fnNrm(nome) || _fnNrm(p) === _fnNrm(nome); }) || ofs.some(function(o){ return o && _fnNrm(o.nome) === _fnNrm(nome); })){ toastFn('Já existe um projeto com esse nome'); return; }
+  if(ni === '__novo'){
+    if(!nn){ toastFn('Dê um nome ao nicho'); return; }
+    var nichos = getNichos(), ja = nichos.filter(function(x){ return x && _fnNrm(x.nome) === _fnNrm(nn); })[0];
+    if(ja) ni = ja.id; else { ni = 'n'+Date.now(); nichos.push({ id: ni, nome: nn }); saveNichos(nichos); }
+  }
+  if(!ni){ toastFn('Escolha o nicho'); return; }
+  var id = 'o'+Date.now();
+  ofs.push({ id: id, nome: nome, nichoId: ni, _updatedAt: Date.now() });
+  saveOfertasV2(ofs);
+  try { _autoCriarProjetoParaOferta(id, nome); } catch(e){ console.warn('auto-projeto:', e); }
+  v2Fechar(bt);
+  if(fnProjetos.indexOf(nome) < 0) fnProjetos.push(nome);
+  fnAbaPendente = 'config';
+  fnEntrarProjeto(nome);
+  toastFn('Projeto criado. Agora ligue o tráfego, as vendas e o pixel.');
 }
 
 function fnTrocarProjeto(v){ fnProj=v; fnIdx=0; fnSel=null; fnPintar(); fnCarregarStats(); }
@@ -31592,7 +31780,7 @@ var FN_ABA_INFO = {
   paginas: ['Páginas', 'Todas as páginas do projeto, com data, versões, números e velocidade. As que o Claude Code sobe entram sozinhas.'],
   vendas:  ['Vendas', 'Cada venda aprovada do período: de onde veio e o que vai pra Meta. Clique numa pra abrir.'],
   reembolsos:['Reembolsos', 'Quem pediu o dinheiro de volta no período: o cliente, a compra, quanto tempo depois e de que anúncio ela tinha vindo.'],
-  config:  ['Configurar', 'Quais contas de anúncio e campanhas são deste projeto, e o pixel que recebe as compras.']
+  config:  ['Integrações', 'O que este projeto usa: tráfego, pixel, produtos e as compras que vão pra Meta. A conexão com a Meta, a Utmify e os checkouts é da empresa, em Configurações › Integrações, e acontece uma vez só.']
 };
 var fnAbaAtual = 'resultado';
 
@@ -31652,7 +31840,7 @@ function fnCabecalho(){
   var f = fnAtual();
   el.innerHTML = '<h2>'+fnEsc(info[0])+'</h2>'+
     '<span class="fx-vivo"'+(fnAbaAtual === 'mapa' ? ' id="mp-agora-tot"' : '')+'><i></i>'+(fnAbaAtual === 'mapa' ? mpAgoraTotal() : 'AO VIVO')+'</span>'+
-    '<p>'+fnEsc(info[1])+(FN_SO_PROJETO[fnAbaAtual] ? ' · projeto <b>'+fnEsc(fnProj)+'</b>' : (f ? ' · funil <b>'+fnEsc(f.nome)+'</b>' : ''))+'</p>';
+    '<p>'+fnEsc(info[1])+(FN_SO_PROJETO[fnAbaAtual] ? ' · projeto <b>'+fnEsc(fnProjNome(fnProj))+'</b>' : (f ? ' · funil <b>'+fnEsc(f.nome)+'</b>' : ''))+'</p>';
 }
 
 // ══════════════════════════════════════════════════════
@@ -34591,7 +34779,7 @@ function fnPintar(){
   if(dentro) dentro.style.display='';
   fnPintarFora();
   var nome = document.getElementById('fn-proj-nome');
-  if(nome) nome.textContent = fnProj;
+  if(nome) nome.textContent = fnProjNome(fnProj);
   fnPintarCtx();
 
   var f = fnAtual();
@@ -38869,7 +39057,7 @@ function vdCapiHtml(d){
 // ══════════════════════════════════════════════════════
 // ── META: CONEXÃO (Integrações) ──
 // Um token do usuário do sistema da BM. O TMX lista sozinho as contas e os
-// pixels; o projeto de cada um é escolhido dentro do projeto (Configurar).
+// pixels; o projeto de cada um é escolhido dentro do projeto (Integrações).
 // ══════════════════════════════════════════════════════
 var MC_PERMS = [['ads_read', 'ler campanhas e gastos'], ['business_management', 'listar contas e pixels da BM'], ['ads_management', 'pausar e mudar orçamento pelo TMX (opcional)']];
 var CAPI_STATUS = { comparacao:['neu','comparação'], pendente:['neu','na fila'], teste:['ok','teste'], enviado:['ok','enviado'], erro:['warn','erro, tentando de novo'], falhou:['bad','falhou'] };
@@ -38924,7 +39112,7 @@ function _cardMeta(con, cp){
           '<td>'+((c.projetos || []).length ? c.projetos.map(function(p){ return '<span class="v2-pill neu">'+fnEsc(p)+'</span>'; }).join(' ')+((c.projetos || []).length > 1 ? ' <span class="v2-pill warn" title="Cada projeto pega as campanhas pelo nome">pelo nome</span>' : '')
             : '<span class="fx-sub">nenhum ainda</span>')+'</td></tr>';
       }).join('')+'</table></div>'+
-      '<div class="fx-sub" style="margin-top:6px">O projeto de cada conta se escolhe dentro do projeto: Projetos → abre o projeto → <b>Configurar</b>.'+
+      '<div class="fx-sub" style="margin-top:6px">O projeto de cada conta se escolhe dentro do projeto: Projetos → abre o projeto → <b>Integrações</b>.'+
         Object.keys(con.cambio || {}).map(function(m){ var x = con.cambio[m];
           return ' Contas em '+fnEsc(m)+' viram real pela cotação do Banco Central de cada dia (última: R$ '+Number(x.valor).toFixed(4).replace('.', ',')+' em '+fnEsc(x.dia.split('-').reverse().slice(0, 2).join('/'))+').'; }).join('')+'</div>';
     var px = con.pixels || [];
@@ -38949,7 +39137,7 @@ function capiResumoHtml(r){
         return '<div><b>'+((r.porProjeto || {})[p] || 0)+'</b><span>'+fnEsc(p)+' · '+fnEsc(CAPI_MODO_TXT[m] || m)+((r.destinosPorProjeto || {})[p] ? '' : ' · sem destino')+'</span></div>'; }).join('')+'</div>'+
     '<div class="capi-barras" style="margin-top:10px">'+CAPI_SINAIS.filter(function(x){ return x[0] !== 'nome'; }).map(function(x){ var n = (r.sinais || {})[x[0]] || 0, p = tot ? Math.round(n * 100 / tot) : 0;
       return '<div class="capi-b" title="'+fnEsc(x[2])+'"><span>'+x[1]+'</span><i><em style="width:'+p+'%"></em></i><b>'+pct(n)+'</b></div>'; }).join('')+'</div>'+
-    '<div class="fx-sub" style="margin-top:8px">Em <b>comparação</b> nada é enviado: cada venda mostra o que iria (aba Marketing). O pixel e o envio de cada projeto ficam em Projetos → <b>Configurar</b>.'+
+    '<div class="fx-sub" style="margin-top:8px">Em <b>comparação</b> nada é enviado: cada venda mostra o que iria (aba Marketing). O pixel e o envio de cada projeto ficam em Projetos → <b>Integrações</b>.'+
       (r.ipDesde ? ' IP e navegador guardados desde '+v2Data(r.ipDesde)+', no clique pra comprar.' : '')+'</div>';
 }
 function mcResposta(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); }
@@ -38987,7 +39175,7 @@ function mcDesconectar(bt){
 // ── DESTINOS: OS PIXELS QUE RECEBEM AS COMPRAS ──
 // Cadastro igual ao das ferramentas de rastreio: nome, id do pixel, token da
 // API de Conversões (opcional: sem ele usa a BM), código de teste (opcional)
-// e "carregar também na página". Cada projeto escolhe os dele em Configurar.
+// e "carregar também na página". Cada projeto escolhe os dele em Integrações.
 // ══════════════════════════════════════════════════════
 var dsLista = null, dsDepois = null;
 function dsCarregar(){ return v2Json('/api/destinos').then(function(d){ dsLista = d; return d; }); }
@@ -38996,7 +39184,7 @@ function _cardDestinos(d){
   if(d.erroCarga || d.error) return '';
   var dir = lcEhDir(), ls = d.destinos || [];
   dsLista = d;
-  return '<div class="capi-card" id="ds-card"><div class="capi-cab"><div><b>Destinos</b><span>Os pixels que recebem as compras. Cada projeto escolhe os dele em Projetos → Configurar.</span></div>'+
+  return '<div class="capi-card" id="ds-card"><div class="capi-cab"><div><b>Destinos</b><span>Os pixels que recebem as compras. Cada projeto escolhe os dele em Projetos → Integrações.</span></div>'+
     (dir ? '<button class="fn-btn sm" onclick="dsAbrir()">+ Adicionar destino</button>' : '')+'</div>'+
     (ls.length ? ls.map(dsLinha).join('') : '<div class="fx-vazio">Nenhum destino ainda. Adicione o pixel da Meta que deve receber as compras.</div>')+'</div>';
 }
@@ -39076,9 +39264,13 @@ function pcDestino(id, on){ var i = pcSel.destinos.indexOf(id); if(on && i < 0) 
 // Quais contas de anúncio são do projeto, a palavra que separa as campanhas
 // nas contas divididas, o pixel e o modo de envio das compras.
 // ══════════════════════════════════════════════════════
-var pcDados = null, pcSel = null;
+var pcDados = null, pcSel = null, pcProdutos = null;
 function pcCarregar(){
   var cx = document.getElementById('fn-p-config'); if(!cx) return;
+  // os produtos do cadastro (o mesmo da aba Produtos): quais contam como venda deste projeto
+  fetch('/api/produtos').then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ pcProdutos = d || { erro: true }; if(pcDados) pcPintar(); })
+    .catch(function(){ pcProdutos = { erro: true }; if(pcDados) pcPintar(); });
   if(!pcDados || pcDados.projeto !== fnProj) cx.innerHTML = '<div class="fx-vazio">Buscando as contas e campanhas…</div>';
   v2Json('/api/projeto/config?projeto='+encodeURIComponent(fnProj || '')).then(function(d){
     pcDados = d; pcSel = { contas: (d.sel || []).slice(), regra: d.regra || '', destinos: (d.destinosSel || []).slice(), modo: d.modo || 'comparacao' };
@@ -39146,7 +39338,9 @@ function pcPintar(){
   var cx = document.getElementById('fn-p-config'), d = pcDados; if(!cx || !d) return;
   var dir = d.dir, dis = dir ? '' : ' disabled', cm = d.comparacao || {};
   var libera = d.liberaEnvioEm, podeEnviar = !!(libera && Date.now() >= libera);
-  var esq = '<div class="capi-card"><div class="capi-cab"><div><b>Campanhas deste projeto</b><span>'+(d.configurado ? 'Decidido aqui: contas e, nas contas divididas, a palavra no nome.' : 'Hoje vem do dashboard da Utmify. Passa a ser decidido aqui.')+'</span></div></div>'+
+  var esq = '<div class="capi-card"><div class="capi-cab"><div><b>Tráfego deste projeto'+(d.configurado ? '<span class="v2-pill ok">ligado</span>' : '<span class="v2-pill warn">falta ligar</span>')+'</b>'+
+      '<span>'+(d.configurado ? 'Decidido aqui: contas e, nas contas divididas, a palavra no nome.' : 'Hoje vem do dashboard da Utmify. Passa a ser decidido aqui.')+
+      ' Gasto '+(d.fonte === 'meta' ? 'direto da Meta.' : 'pela Utmify, até a Meta conectar.')+'</span></div></div>'+
     '<div class="v2-rot" style="margin-bottom:6px">Contas de anúncio</div>'+
     ((d.contas || []).length ? (d.contas || []).map(function(c){
       var on = pcSel.contas.indexOf(c.conta) >= 0;
@@ -39156,7 +39350,7 @@ function pcPintar(){
       if(c.status === 2 || c.status === 101) sub.push('desativada');
       return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+dis+' onchange="pcConta(\''+fnEsc(c.conta)+'\', this.checked)">'+
         '<span><b>'+fnEsc(c.nome || c.conta)+'</b><small>'+(c.nome ? fnEsc(c.conta)+' · ' : '')+fnEsc(sub.join(' · '))+'</small></span></label>';
-    }).join('') : '<div class="fx-vazio">Nenhuma conta ainda. Conecte a Meta em Integrações (ou espere a Utmify sincronizar).</div>')+
+    }).join('') : '<div class="fx-vazio">Nenhuma conta ainda. Conecte a Meta em Configurações › Integrações (ou espere a Utmify sincronizar).</div>')+
     '<div class="v2-rot" style="margin:14px 0 6px">Nas contas divididas, entra a campanha que tem no nome</div>'+
     '<input class="fi" id="pc-regra" value="'+fnEsc(pcSel.regra)+'" placeholder="ex.: '+fnEsc(String(fnProj || 'CONCURSO').toUpperCase())+'"'+dis+' oninput="pcSel.regra=this.value;pcPintarPrevia()">'+
     (Object.keys(d.outrasRegras || {}).length ? '<div class="fx-sub" style="margin-top:4px">Outros projetos: '+Object.keys(d.outrasRegras).map(function(p){ return fnEsc(p)+' pega "'+fnEsc(d.outrasRegras[p])+'"'; }).join(' · ')+'</div>' : '')+
@@ -39198,9 +39392,46 @@ function pcPintar(){
         '<span>Anúncio visto em outro aparelho</span><span class="n">'+fnNum(cm.outroAparelho || 0)+'</span><span class="n">—</span>'+
         '<span>Sem pessoa ligada</span><span class="n">'+fnNum(cm.semPessoa || 0)+'</span><span class="n">—</span></div>'+
       '<div class="fx-sub" style="margin-top:8px">'+(cm.temMeta ? 'Gasto do TMX: direto da Meta, pelas contas e pela palavra deste projeto.' : 'O gasto do TMX aparece quando a Meta estiver conectada.')+' As vendas da Utmify entram na comparação na próxima etapa.</div></div>';
-  cx.innerHTML = '<div class="pc-grade"><div>'+esq+'</div><div>'+dir2+'</div></div>'+
+  cx.innerHTML = '<div class="pc-grade"><div>'+esq+pcPixelCard()+'</div><div>'+pcVendasCard()+dir2+'</div></div>'+
     (dir ? '<div class="lc-bts" style="margin-top:4px"><button class="fn-btn" onclick="pcSalvar(this)">Salvar</button><span id="pc-res" class="fx-sub"></span></div>' : '<div class="fx-sub">Só a Diretoria muda a configuração do projeto.</div>');
   pcPintarPrevia();
+}
+// Pixel: um código por funil, o mesmo em todas as páginas dele. O servidor
+// reconhece a página pelo endereço cadastrado no Mapa (a URL ganha do data-e).
+function pcCodigoFunil(f){ return '<script src="'+location.origin+'/px.js" data-f="'+f.id+'" async><\/script>'; }
+function pcPixelCard(){
+  var fs = fnDoProjeto();
+  var corpo = fs.length ? fs.map(function(f, i){
+      var comUrl = (f.etapas || []).filter(function(e){ return e.url && e.tipo !== 'fonte'; }).length;
+      return '<div class="pc-px"><div class="pc-px-t"><b>'+fnEsc(f.nome)+'</b><span>'+comUrl+' página(s) com endereço no Mapa</span></div>'+
+        '<div class="pc-cod" id="pc-cod-'+i+'">'+fnEsc(pcCodigoFunil(f))+'</div>'+
+        '<button class="fn-btn g sm" onclick="pcCopiar('+i+', this)">Copiar código</button></div>';
+    }).join('')
+    : '<div class="fx-sub">Este projeto ainda não tem funil. Crie em “+ Novo funil”, no topo, e o código aparece aqui.</div>';
+  return '<div class="capi-card"><div class="capi-cab"><div><b>Pixel deste projeto</b><span>Um código por funil, o mesmo em todas as páginas dele.</span></div></div>'+corpo+
+    '<div class="fx-sub" style="margin-top:10px">Cole antes do &lt;/head&gt; de cada página. O TMX reconhece a página pelo endereço cadastrado no Mapa; página que não está no Mapa aparece lá pra você encaixar.</div>'+
+    '<div class="lc-bts" style="margin-top:10px"><button class="fn-btn g sm" onclick="fnAba(\'pixel\')">Ver se está recebendo ›</button></div></div>';
+}
+function pcCopiar(i, bt){
+  var el = document.getElementById('pc-cod-'+i); if(!el) return;
+  var t = el.textContent, rot = 'Copiar código';
+  var ok = function(){ bt.textContent = 'Copiado ✓'; setTimeout(function(){ bt.textContent = rot; }, 1800); };
+  var manual = function(){ var r = document.createRange(); r.selectNodeContents(el); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r); bt.textContent = 'Selecionado: aperte ⌘C'; };
+  try { navigator.clipboard.writeText(t).then(ok, manual); } catch(e){ manual(); }
+}
+// Vendas: os produtos do cadastro que contam como venda deste projeto
+function pcVendasCard(){
+  var pd = pcProdutos, PAPEL = { principal:'Principal', bump:'Order bump', upsell:'Upsell', downsell:'Downsell' };
+  var meus = (pd && !pd.erro) ? (pd.lista || []).filter(function(x){ return x && x.projeto === fnProj; }) : null;
+  var soltos = (pd && !pd.erro) ? (pd.vistos || []).filter(function(x){ return !x.cadastrado; }).length : 0;
+  var corpo = !pd ? '<div class="fx-sub">Buscando os produtos…</div>'
+    : pd.erro ? '<div class="fx-sub">Não consegui ler o cadastro de produtos agora.</div>'
+    : meus.length ? meus.map(function(x){ return '<div class="pc-prod"><b>'+fnEsc(x.nome)+'</b><span class="v2-pill neu">'+fnEsc(PAPEL[x.papel] || x.papel || 'Principal')+'</span></div>'; }).join('')
+    : '<div class="fx-sub">Nenhum produto ligado a este projeto ainda. Sem isso, a venda não entra na conta dele.</div>';
+  return '<div class="capi-card"><div class="capi-cab"><div><b>Vendas deste projeto'+(meus ? (meus.length ? '<span class="v2-pill ok">ligado</span>' : '<span class="v2-pill warn">falta ligar</span>') : '')+'</b>'+
+      '<span>Os produtos que contam como venda deste projeto e o papel de cada um. As vendas chegam pelo webhook da empresa.</span></div></div>'+corpo+
+    (soltos ? '<div class="fx-sub" style="margin-top:8px">'+soltos+' produto(s) venderam nos últimos 30 dias e estão fora do cadastro.</div>' : '')+
+    '<div class="lc-bts" style="margin-top:10px"><button class="fn-btn g sm" onclick="fnAba(\'produtos\')">Escolher os produtos ›</button></div></div>';
 }
 function _diaIso(ms){ var d = new Date(ms - 3 * 3600000); return d.toISOString().slice(0, 10); }
 function pcSalvar(bt){
@@ -42477,7 +42708,8 @@ async function _carregarProjetosUtmify(){
     const d = await r.json().catch(()=>({}));
     if(!r.ok || !d.projetos) return;
     sel.innerHTML = '<option value="">Todos os projetos</option>' +
-      d.projetos.map(function(p){ return '<option value="'+_esc(p.id)+'">'+_esc(p.nome)+'</option>'; }).join('');
+      // o mesmo nome de Demandas e de Projetos (PROJETO KALEBE, não CONCURSO); o valor continua o id do dashboard
+      d.projetos.map(function(p){ return '<option value="'+_esc(p.id)+'">'+_esc(typeof fnProjNome === 'function' ? fnProjNome(p.nome) : p.nome)+'</option>'; }).join('');
     sel.value = _adsProjeto();
     sel.dataset.pronto = '1';
   }catch(e){}
