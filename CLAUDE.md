@@ -93,6 +93,9 @@ Regras:
   `plataforma.sqlite`). `POST /api/cadastro` cria a empresa e manda o motor fazer `_cadastroInicial`: conta
   Diretoria com WhatsApp, `cfg.projeto` = nome da empresa, nichos em `sl_nichos` e projetos em `sl_ofertas_v2`,
   e já devolve a sessão. Meta, checkout e pixel ficam pra aba Integrações de cada projeto. `test/cadastro.test.js`.
+- **Central TMX Admin** (`/admin`, `public/admin.html`): sistema à parte, só pra Diretoria da TMX, com o mesmo
+  login do TMX. Primeira parte: Clientes (registro da plataforma) e Convites (gerar, copiar, mandar no WhatsApp,
+  cancelar). Bloquear, entrar como suporte, suporte e solicitações vêm depois (esboço com decisões pendentes).
 
 ### Data model
 

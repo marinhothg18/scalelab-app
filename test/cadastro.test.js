@@ -124,6 +124,28 @@ test('cadastro do cliente por convite', async (t) => {
     assert.strictEqual(emp.contas, 1);
   });
 
+  await t.test('convite cancelado não abre o cadastro, e a Central Admin abre', async () => {
+    const c = await chamar('POST', '/api/plataforma/convites', { token: ctx.tmx, corpo: { obs: 'pra cancelar' } });
+    const codigo = codigoDo(c.dados.link);
+    const lista = (await chamar('GET', '/api/plataforma/convites', { token: ctx.tmx })).dados.convites;
+    const meu = lista.find(x => x.obs === 'pra cancelar');
+    assert.strictEqual(meu.situacao, 'esperando');
+    assert.ok(!('hash' in meu), 'o hash do convite não sai do servidor');
+    assert.strictEqual((await chamar('POST', '/api/plataforma/convites/' + meu.id + '/cancelar', { token: ctx.tmx })).status, 200);
+    assert.strictEqual((await chamar('GET', '/api/cadastro/convite?c=' + codigo)).status, 404);
+    const tentativa = await chamar('POST', '/api/cadastro', { corpo: { c: codigo, nome: 'X', email: 'x@y.com', senha: 'senha-qualquer-1', empresa: 'X', projetos: [{ nicho: 'Fitness', nome: 'X' }] } });
+    assert.strictEqual(tentativa.status, 404);
+    assert.strictEqual((await chamar('POST', '/api/plataforma/convites/' + meu.id + '/cancelar', { token: ctx.tmx })).status, 404, 'não cancela duas vezes');
+    const lista2 = (await chamar('GET', '/api/plataforma/convites', { token: ctx.tmx })).dados.convites;
+    assert.strictEqual(lista2.find(x => x.id === meu.id).situacao, 'cancelado');
+    const adm = await chamar('GET', '/admin');
+    assert.strictEqual(adm.status, 200);
+    assert.match(adm.dados, /Central TMX Admin/);
+    const emp = (await chamar('GET', '/api/plataforma/empresas', { token: ctx.tmx })).dados.empresas.find(e => e.id === ctx.id);
+    assert.strictEqual(emp.origem, 'convite');
+    assert.strictEqual(emp.dono_email, 'ana@clinica.com');
+  });
+
   await t.test('depois ela entra pelo login normal, e o e-mail não serve pra outro cadastro', async () => {
     const l = await chamar('POST', '/api/auth/login', { corpo: { email: 'ana@clinica.com', senha: 'senha-da-ana-1' } });
     assert.strictEqual(l.status, 200, JSON.stringify(l.dados));
@@ -132,8 +154,9 @@ test('cadastro do cliente por convite', async (t) => {
     const repetido = await chamar('POST', '/api/cadastro', { corpo: { c: codigoDo(c2.dados.link), nome: 'Ana', email: 'ana@clinica.com', senha: 'senha-da-ana-2', empresa: 'Segunda', projetos: [{ nicho: 'Fitness', nome: 'Y' }] } });
     assert.strictEqual(repetido.status, 409);
     assert.strictEqual(repetido.dados.campo, 'email');
-    // dentro do motor da empresa, cadastro e convites não existem
+    // dentro do motor da empresa, cadastro, convites e Admin não existem
     assert.strictEqual((await chamar('GET', '/e/' + ctx.id + '/cadastro')).status, 404);
+    assert.strictEqual((await chamar('GET', '/e/' + ctx.id + '/admin')).status, 404);
     assert.strictEqual((await chamar('POST', '/api/plataforma/convites', { token: l.dados.token, corpo: {} })).status, 404);
   });
 });

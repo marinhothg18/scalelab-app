@@ -274,6 +274,7 @@ function _plataforma() {
   for (const col of ['plano TEXT', 'origem TEXT', 'dono_email TEXT']) {
     try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}   // já existe
   }
+  try { db.exec('ALTER TABLE convites ADD COLUMN cancelado INTEGER'); } catch (e) {}
   _platDb = db;
   return db;
 }
@@ -650,7 +651,7 @@ app.use(_injetarTenant);
 if (!SOU_TMX) {
   // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
   // plataforma (cadastro, cobrança, painel SaaS, MCP, criar empresas) fica só na TMX.
-  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
 }
 app.use(express.static(path.join(__dirname, 'public')));
@@ -8441,7 +8442,7 @@ function _registrarEmpresa({ nome, criadaPor, plano, origem, donoEmail }) {
   return id;
 }
 app.get('/api/plataforma/empresas', authDiretoriaInterna, (req, res) => {
-  const lista = _platPrep('SELECT id, nome, status, criada FROM empresas ORDER BY criada').all().map(e => {
+  const lista = _platPrep('SELECT id, nome, status, criada, plano, origem, dono_email FROM empresas ORDER BY criada').all().map(e => {
     const m = _motores.get(e.id);
     const n = _platPrep('SELECT COUNT(*) n FROM contas WHERE empresa=?').get(e.id).n;
     return Object.assign({}, e, { motor: m && m.porta ? 'ligado' : (m && m.proc ? 'ligando' : 'desligado'),
@@ -8490,7 +8491,7 @@ const _hashConvite = c => crypto.createHash('sha256').update(String(c || '')).di
 function _conviteValido(codigo) {
   if (!/^cv_[A-Za-z0-9_-]{20,80}$/.test(String(codigo || ''))) return null;
   const c = _platPrep('SELECT * FROM convites WHERE hash=?').get(_hashConvite(codigo));
-  if (!c || c.usado_em || (c.expira && c.expira < Date.now())) return null;
+  if (!c || c.usado_em || c.cancelado || (c.expira && c.expira < Date.now())) return null;
   return c;
 }
 const cadastroLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, standardHeaders: false, legacyHeaders: false,
@@ -8514,9 +8515,24 @@ app.post('/api/plataforma/convites', authDiretoriaInterna, (req, res) => {
 });
 app.get('/api/plataforma/convites', authDiretoriaInterna, (req, res) => {
   const agora = Date.now();
-  const lista = _platPrep('SELECT email, plano, obs, criado, expira, usado_em, empresa FROM convites ORDER BY criado DESC LIMIT 200').all()
-    .map(c => Object.assign({}, c, { situacao: c.usado_em ? 'usado' : (c.expira < agora ? 'vencido' : 'esperando') }));
+  const lista = _platPrep('SELECT hash, email, plano, obs, criado, expira, usado_em, empresa, cancelado FROM convites ORDER BY criado DESC LIMIT 200').all()
+    .map(c => {
+      const { hash, ...resto } = c;
+      // o id é um pedaço do hash: serve pra cancelar, não abre o cadastro
+      return Object.assign(resto, { id: hash.slice(0, 16),
+        situacao: c.usado_em ? 'usado' : c.cancelado ? 'cancelado' : (c.expira < agora ? 'vencido' : 'esperando') });
+    });
   res.json({ convites: lista });
+});
+app.post('/api/plataforma/convites/:id/cancelar', authDiretoriaInterna, (req, res) => {
+  const id = String(req.params.id || '');
+  if (!/^[0-9a-f]{16}$/.test(id)) return res.status(400).json({ error: 'Convite inválido.' });
+  const r = _platPrep("UPDATE convites SET cancelado=? WHERE substr(hash, 1, 16)=? AND usado_em IS NULL AND cancelado IS NULL").run(Date.now(), id);
+  if (!r.changes) return res.status(404).json({ error: 'Esse convite já foi usado, cancelado ou não existe.' });
+  const db = readDB();
+  audit(db, 'convite_cancelado', { convite: id }, null, req.user);
+  writeDB(db);
+  res.json({ ok: true });
 });
 
 // A página de cadastro pergunta se o convite vale (e de qual e-mail é) antes de mostrar o formulário
@@ -8551,7 +8567,7 @@ app.post('/api/cadastro', cadastroLimiter, async (req, res) => {
   if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
   // gasta o convite de uma vez só: dois envios ao mesmo tempo não criam duas empresas
   const hash = _hashConvite(b.c);
-  const gastou = _platPrep('UPDATE convites SET usado_em=? WHERE hash=? AND usado_em IS NULL AND (expira IS NULL OR expira>=?)').run(Date.now(), hash, Date.now());
+  const gastou = _platPrep('UPDATE convites SET usado_em=? WHERE hash=? AND usado_em IS NULL AND cancelado IS NULL AND (expira IS NULL OR expira>=?)').run(Date.now(), hash, Date.now());
   if (!gastou.changes) return res.status(404).json({ error: 'Esse link de cadastro não vale mais. Peça um novo pra quem te mandou.' });
   const conv = _platPrep('SELECT plano FROM convites WHERE hash=?').get(hash) || {};
   let id = null;
@@ -8580,6 +8596,12 @@ app.post('/api/cadastro', cadastroLimiter, async (req, res) => {
 app.get('/cadastro', (req, res) => {
   if (!SOU_TMX) return res.status(404).end();
   res.sendFile(path.join(__dirname, 'public', 'cadastro.html'));
+});
+// Central TMX Admin: sistema à parte, só pra Diretoria da TMX (a página pede o login do TMX;
+// quem protege os dados são as rotas /api/plataforma/*, todas com authDiretoriaInterna)
+app.get(['/admin', '/admin/'], (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // ── Helpers de data ──

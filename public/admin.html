@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Central TMX Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Central TMX Admin (07/11/2026): sistema à parte, só pra Diretoria da TMX, no visual escuro do TMX.
+   Primeira parte: Clientes e Convites. Os dados vêm de /api/plataforma/*. */
+:root{
+  --bg:#080a12; --bg2:#111524; --bg3:#171b2e; --card:#111524; --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.16);
+  --accent:#1B9CFA; --accent2:#5b5ef4; --text:#ffffff; --text2:#8b93ab;
+  --green:#7fe0ad; --green-bg:rgba(63,191,127,.14); --red:#ff9a99; --red-bg:rgba(226,75,74,.14);
+  --yellow:#ffd28a; --yellow-bg:rgba(245,181,68,.14); --blue:#9fd3ff; --blue-bg:rgba(27,156,250,.15); --gray-bg:rgba(148,163,184,.16);
+  --laranja:#FF5926; --roxo:#3E1493;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px}
+button,input,select{font-family:inherit}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+.side{border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:2px;padding-left:max(12px,env(safe-area-inset-left,0px))}
+.marca{padding:4px 10px 16px;line-height:1.15}
+.marca b{font-size:17px;font-weight:800;background:linear-gradient(90deg,#C52C58,#FF5926);-webkit-background-clip:text;background-clip:text;color:transparent}
+.marca span{display:block;font-size:11px;letter-spacing:.22em;color:var(--text2);font-weight:700;margin-top:3px}
+.marca i{font-style:normal;font-size:9.5px;letter-spacing:.08em;font-weight:800;background:var(--laranja);color:#fff;border-radius:4px;padding:2px 6px;margin-left:6px;vertical-align:2px}
+.nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#d6dae6;font-size:13.5px;background:none;border:0;text-align:left;cursor:pointer;width:100%}
+.nav:hover{background:rgba(255,255,255,.04)}
+.nav.on{background:var(--accent2);color:#fff}
+.nav svg{width:16px;height:16px;flex:none;opacity:.85}
+.nav .cont{margin-left:auto;font-size:11px;font-weight:800;background:var(--laranja);color:#fff;border-radius:20px;padding:1px 7px}
+.side-pe{margin-top:auto;border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text2)}
+.side-pe a{color:var(--blue);text-decoration:none}
+.main{min-width:0;padding-block:18px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.topo{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:4px 8px 16px}
+.topo h1{margin:0;font-size:20px;font-weight:700}
+.topo p{margin:3px 0 0;color:var(--text2);font-size:12.5px}
+.btn{border:1px solid var(--border);background:var(--bg3);color:var(--text);border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--border2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#04121f}
+.btn.perigo{color:var(--red);border-color:rgba(226,75,74,.35)}
+.btn.peq{padding:5px 10px;font-size:11.5px}
+.btn:disabled{opacity:.55;cursor:default}
+.btn:focus-visible,.nav:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:0 8px 16px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;min-width:0}
+.kpi small{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700}
+.kpi b{display:block;font-size:24px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11.5px;color:var(--text2)}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 8px 12px}
+.busca{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 11px;font-size:12.5px;width:280px;max-width:100%}
+.tab-wrap{margin:0 8px;border:1px solid var(--border);border-radius:12px;background:var(--card);overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:820px}
+th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);font-weight:700}
+td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+.nome b{display:block;font-weight:700}
+.sub{color:var(--text2);font-size:12px}
+.num{font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 9px;white-space:nowrap}
+.p-ok{background:var(--green-bg);color:var(--green)} .p-azul{background:var(--blue-bg);color:var(--blue)}
+.p-amar{background:var(--yellow-bg);color:var(--yellow)} .p-verm{background:var(--red-bg);color:var(--red)} .p-cinza{background:var(--gray-bg);color:#c3c9d8}
+.direita{text-align:right}
+.vazio{color:var(--text2);font-size:13px;text-align:center;padding:28px 14px}
+.cartao{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin:0 8px 16px}
+.cartao h2{margin:0 0 4px;font-size:15px}
+.cartao p{margin:0 0 14px;color:var(--text2);font-size:12.5px;line-height:1.5}
+.form{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 160px auto;gap:10px;align-items:end}
+.campo{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.campo input,.campo select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13.5px;text-transform:none;letter-spacing:0;font-weight:400}
+.resultado{margin-top:14px;border:1px solid rgba(63,191,127,.35);background:rgba(63,191,127,.07);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.resultado code{display:block;font:12.5px/1.5 ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-wrap:anywhere;user-select:all;color:#e7ecf7}
+.resultado .acoes{display:flex;gap:8px;flex-wrap:wrap}
+.erro{color:var(--red);font-size:12.5px;margin-top:10px}
+.porta{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.porta .caixa{max-width:420px;width:100%;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:center}
+.porta h1{margin:10px 0 6px;font-size:18px}
+.porta p{margin:0 0 18px;color:var(--text2);font-size:13px;line-height:1.55}
+.toast{position:fixed;bottom:max(18px,env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:#0f2a1f;border:1px solid rgba(63,191,127,.4);color:#bff0d6;padding:10px 16px;border-radius:10px;font-size:13px;z-index:40;max-width:calc(100% - 32px)}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .side{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border);padding:10px max(12px,env(safe-area-inset-left,0px))}
+  .marca{width:100%;padding-bottom:6px}
+  .nav{width:auto}
+  .side-pe{display:none}
+  .form{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="raiz"><div class="porta"><div class="caixa"><div class="sub">Abrindo a Central TMX Admin…</div></div></div></div>
+<script>
+(function(){
+  var raiz = document.getElementById('raiz');
+  var token = ''; try{ token = localStorage.getItem('sl_session_token') || ''; }catch(e){}
+  var eu = null, tela = 'clientes', EMPRESAS = [], CONVITES = [], busca = '', ultimoLink = null, erroConvite = '';
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function data(ms, comHora){ if(!ms) return '—'; var d = new Date(ms); var t = d.toLocaleDateString('pt-BR'); return comHora ? t + ' ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : t; }
+  function api(metodo, caminho, corpo){
+    return fetch(caminho, { method: metodo, headers: Object.assign({ Authorization: 'Bearer ' + token }, corpo ? { 'Content-Type': 'application/json' } : {}), body: corpo ? JSON.stringify(corpo) : undefined })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status: r.status, ok: r.ok, j: j }; }); });
+  }
+  function aviso(t){ var d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 2600); }
+  function porta(titulo, texto){
+    raiz.innerHTML = '<div class="porta"><div class="caixa"><div class="marca" style="padding:0"><b>Central TMX</b><span>ADMIN</span></div><h1>'+esc(titulo)+'</h1><p>'+esc(texto)+'</p>' +
+      '<a class="btn pri" href="/">Ir pro login do TMX</a></div></div>';
+  }
+  var ICON = {
+    clientes:'<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4zM8 13c-.3 0-.7 0-1.1.1A4.7 4.7 0 0 1 9 17v3H0v-3c0-2.2 4.4-4 8-4z"/>',
+    convites:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>'
+  };
+  function esperando(){ return CONVITES.filter(function(c){ return c.situacao === 'esperando'; }).length; }
+  function lateral(){
+    var n = function(id, txt, cont){ return '<button class="nav'+(tela===id?' on':'')+'" data-tela="'+id+'"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+ICON[id]+'</svg>'+txt+(cont?'<span class="cont">'+cont+'</span>':'')+'</button>'; };
+    return '<aside class="side"><div class="marca"><b>Central TMX</b><span>ADMIN<i>SÓ A TMX</i></span></div>' +
+      n('clientes','Clientes') + n('convites','Convites', esperando()) +
+      '<div class="side-pe"><span>'+esc(eu.nome)+' · Diretoria da TMX</span><a href="/">← Voltar pro TMX</a></div></aside>';
+  }
+  function motorPill(e){
+    if(e.motor === 'ligado') return '<span class="pill p-ok">ligado</span>' + (e.quedas ? ' <span class="sub">'+e.quedas+' queda(s)</span>' : '');
+    if(e.motor === 'ligando') return '<span class="pill p-amar">ligando</span>';
+    return '<span class="pill p-cinza">desligado</span>';
+  }
+  function telaClientes(){
+    var q = busca.toLowerCase();
+    var lista = EMPRESAS.filter(function(e){ return !q || (e.nome + ' ' + e.id + ' ' + (e.dono_email || '')).toLowerCase().indexOf(q) >= 0; });
+    var ativos = EMPRESAS.filter(function(e){ return e.status === 'ativa'; }).length, ligados = EMPRESAS.filter(function(e){ return e.motor === 'ligado'; }).length;
+    var linhas = '<tr><td class="nome"><b>TMX Digital</b><span class="sub">tmx · empresa nº 1</span></td><td class="sub">—</td><td>Interno</td><td class="sub">—</td><td class="sub">—</td><td class="sub">—</td><td><span class="pill p-ok">no processo principal</span></td><td><span class="pill p-ok">Ativa</span></td></tr>' +
+      lista.map(function(e){
+        return '<tr><td class="nome"><b>'+esc(e.nome)+'</b><span class="sub" title="Endereço público: app.centraltmx.com/e/'+esc(e.id)+'">'+esc(e.id)+'</span></td>' +
+          '<td>'+esc(e.dono_email || '—')+'</td><td>'+esc(e.plano === 'teste' || !e.plano ? 'Teste' : e.plano)+'</td>' +
+          '<td>'+(e.origem === 'convite' ? '<span class="pill p-azul">Convite</span>' : '<span class="pill p-cinza">'+esc(e.origem === 'teste' ? 'Empresa de teste' : (e.origem || '—'))+'</span>')+'</td>' +
+          '<td class="sub num">'+data(e.criada)+'</td><td class="num">'+(e.contas || 0)+'</td><td>'+motorPill(e)+'</td>' +
+          '<td>'+(e.status === 'ativa' ? '<span class="pill p-ok">Ativa</span>' : '<span class="pill p-verm">'+esc(e.status)+'</span>')+'</td></tr>';
+      }).join('');
+    if(!lista.length && q) linhas += '<tr><td colspan="8" class="vazio">Nenhum cliente com “'+esc(busca)+'”.</td></tr>';
+    return '<div class="topo"><div><h1>Clientes</h1><p>Cada empresa tem banco, rotinas e endereço próprios. Bloquear e entrar como suporte vêm na próxima parte.</p></div>' +
+      '<div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button><button class="btn pri" data-tela="convites">+ Gerar convite</button></div></div>' +
+      '<div class="kpis"><div class="kpi"><small>Clientes</small><b>'+EMPRESAS.length+'</b><span>sem contar a TMX</span></div>' +
+      '<div class="kpi"><small>Ativos</small><b>'+ativos+'</b><span>podem entrar</span></div>' +
+      '<div class="kpi"><small>Motores ligados</small><b>'+ligados+'</b><span>de '+EMPRESAS.length+'</span></div>' +
+      '<div class="kpi"><small>Convites esperando</small><b>'+esperando()+'</b><span>ainda não usados</span></div></div>' +
+      '<div class="filtros"><input class="busca" id="busca" placeholder="Buscar empresa, código ou e-mail" value="'+esc(busca)+'"></div>' +
+      '<div class="tab-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Plano</th><th>Entrou por</th><th>Criada</th><th>Contas</th><th>Motor</th><th>Situação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>' +
+      (EMPRESAS.length ? '' : '<p class="sub" style="padding:12px 8px">Ainda não tem nenhum cliente. Gere um convite e mande pro primeiro.</p>');
+  }
+  function situacaoPill(c){
+    return c.situacao === 'usado' ? '<span class="pill p-ok">Usado</span>' : c.situacao === 'esperando' ? '<span class="pill p-amar">Esperando</span>' :
+           c.situacao === 'cancelado' ? '<span class="pill p-cinza">Cancelado</span>' : '<span class="pill p-cinza">Vencido</span>';
+  }
+  function telaConvites(){
+    var nomes = {}; EMPRESAS.forEach(function(e){ nomes[e.id] = e.nome; });
+    var res = '';
+    if(ultimoLink){
+      var msg = 'Oi! Aqui está o seu link pra criar a conta no TMX: ' + ultimoLink.link;
+      res = '<div class="resultado" role="status"><b>Convite pronto. Vale uma vez e vence em '+esc(data(Date.parse(ultimoLink.expira), true))+'.</b>' +
+        '<code id="link">'+esc(ultimoLink.link)+'</code><div class="acoes"><button class="btn pri" data-acao="copiar">Copiar link</button>' +
+        '<a class="btn" href="https://wa.me/?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">Mandar no WhatsApp</a></div>' +
+        '<span class="sub">O link só aparece agora. Se perder, cancele este e gere outro.</span></div>';
+    }
+    var linhas = CONVITES.map(function(c){
+      return '<tr><td>'+situacaoPill(c)+'</td><td>'+esc(c.email || '—')+'</td><td class="sub">'+esc(c.obs || '')+'</td><td class="sub num">'+data(c.criado, true)+'</td>' +
+        '<td class="sub num">'+(c.situacao === 'usado' ? 'usado em ' + data(c.usado_em, true) : data(c.expira, true))+'</td>' +
+        '<td>'+(c.empresa ? esc(nomes[c.empresa] || c.empresa) : '<span class="sub">—</span>')+'</td>' +
+        '<td class="direita">'+(c.situacao === 'esperando' ? '<button class="btn peq perigo" data-cancelar="'+esc(c.id)+'">Cancelar</button>' : '')+'</td></tr>';
+    }).join('') || '<tr><td colspan="7" class="vazio">Nenhum convite ainda.</td></tr>';
+    return '<div class="topo"><div><h1>Convites</h1><p>O cliente abre o link, cria o acesso, dá o nome da empresa e dos projetos e já entra no TMX dele.</p></div></div>' +
+      '<section class="cartao"><h2>Gerar convite</h2><p>Se souber o e-mail do cliente, ele já vem preenchido no cadastro (e ele pode trocar).</p>' +
+      '<div class="form"><label class="campo">E-mail do cliente (opcional)<input id="cv-email" type="email" placeholder="cliente@empresa.com" autocomplete="off"></label>' +
+      '<label class="campo">Anotação (opcional)<input id="cv-obs" placeholder="Ex.: Márcia, Clínica Bem Estar" maxlength="200"></label>' +
+      '<label class="campo">Vale por<select id="cv-dias"><option value="3">3 dias</option><option value="7" selected>7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option></select></label>' +
+      '<button class="btn pri" data-acao="gerar" id="cv-gerar">Gerar convite</button></div>' +
+      (erroConvite ? '<div class="erro" role="alert">'+esc(erroConvite)+'</div>' : '') + res + '</section>' +
+      '<div class="tab-wrap"><table><thead><tr><th>Situação</th><th>E-mail</th><th>Anotação</th><th>Criado</th><th>Vence</th><th>Empresa criada</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+  }
+  function pintar(){
+    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + (tela === 'convites' ? telaConvites() : telaClientes()) + '</main></div>';
+    var b = document.getElementById('busca');
+    if(b) b.oninput = function(){ busca = b.value; var pos = b.selectionStart; pintar(); var nb = document.getElementById('busca'); nb.focus(); try{ nb.setSelectionRange(pos, pos); }catch(e){} };
+  }
+  function carregar(){
+    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites')]).then(function(r){
+      if(r[0].ok) EMPRESAS = r[0].j.empresas || [];
+      if(r[1].ok) CONVITES = r[1].j.convites || [];
+      pintar();
+    });
+  }
+  raiz.addEventListener('click', function(ev){
+    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar]'); if(!a) return;
+    if(a.dataset.tela){ tela = a.dataset.tela; ultimoLink = tela === 'convites' ? ultimoLink : null; erroConvite = ''; pintar(); return window.scrollTo(0, 0); }
+    if(a.dataset.cancelar){
+      a.disabled = true; ultimoLink = null;   // o link mostrado pode ser justamente o que saiu
+      return api('POST', '/api/plataforma/convites/' + encodeURIComponent(a.dataset.cancelar) + '/cancelar').then(function(r){
+        aviso(r.ok ? 'Convite cancelado: o link não abre mais.' : (r.j.error || 'Não consegui cancelar.')); return carregar();
+      });
+    }
+    var ac = a.dataset.acao;
+    if(ac === 'atualizar'){ a.disabled = true; return carregar().then(function(){ aviso('Atualizado.'); }); }
+    if(ac === 'copiar'){
+      var t = ultimoLink ? ultimoLink.link : '';
+      try{ navigator.clipboard.writeText(t).then(function(){ aviso('Link copiado.'); }, function(){ aviso('Selecione o link e copie.'); }); }catch(e){ aviso('Selecione o link e copie.'); }
+      return;
+    }
+    if(ac === 'gerar'){
+      var email = (document.getElementById('cv-email').value || '').trim(), obs = (document.getElementById('cv-obs').value || '').trim(), dias = document.getElementById('cv-dias').value;
+      a.disabled = true; a.textContent = 'Gerando…'; erroConvite = '';
+      api('POST', '/api/plataforma/convites', { email: email, obs: obs, dias: dias }).then(function(r){
+        if(!r.ok){ erroConvite = r.j.error || 'Não consegui gerar o convite.'; ultimoLink = null; return carregar(); }
+        ultimoLink = { link: r.j.link, expira: r.j.expira };
+        return carregar();
+      });
+    }
+  });
+  // Entrada: só a Diretoria da TMX, com a mesma conta do TMX
+  if(!token){ porta('Entre com a sua conta da TMX', 'A Central TMX Admin usa o mesmo login do TMX. Entre lá com a conta da Diretoria e abra esta página de novo.'); return; }
+  api('GET', '/api/auth/me').then(function(r){
+    if(!r.ok || !r.j.user){ return porta('Entre com a sua conta da TMX', 'A sua sessão expirou. Entre no TMX com a conta da Diretoria e abra esta página de novo.'); }
+    var emp = r.j.empresa || {};
+    if(emp.id && emp.id !== 'tmx'){ return porta('Esta área é só da TMX', 'Você está logado numa conta de cliente. Saia dela no TMX e entre com a conta da Diretoria da TMX.'); }
+    if(r.j.user.cargo !== 'Diretoria'){ return porta('Esta área é só da Diretoria', 'A Central TMX Admin abre só pra Diretoria da TMX.'); }
+    eu = r.j.user;
+    return carregar();
+  }).catch(function(){ porta('Sem conexão', 'Não consegui falar com o servidor. Confira a internet e recarregue.'); });
+})();
+</script>
+</body>
+</html>
