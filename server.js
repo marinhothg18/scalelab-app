@@ -8359,11 +8359,13 @@ function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria
 const KEYS_SOCIO_TAMBEM = new Set(['sl_rh_colaboradores', 'sl_rh_feedbacks', 'sl_rh_ferias', 'sl_rh_onboarding',
   'sl_rh_offboarding', 'sl_rh_folha', 'sl_rh_treinamentos', 'sl_rh_enps', 'sl_candidatos']);
 // Meu Protocolo é o painel pessoal do Thiago: só a conta dele, e só na TMX
+// a conta do Thiago na TMX é a u1 (a primeira, fixa); o e-mail fica de reserva
+const PROTOCOLO_DONO_ID = process.env.PROTOCOLO_DONO_ID || 'u1';
 const PROTOCOLO_DONO_EMAIL = String(process.env.PROTOCOLO_DONO_EMAIL || 'thiago@axcend.com').toLowerCase();
 function _podeChave(req, k) {
   if (!KEYS_DIRETORIA.has(k)) return true;
   const u = req.user || {};
-  if (k === 'sl_protocolo') return SOU_TMX && u.cargo === 'Diretoria' && String(u.email || '').toLowerCase() === PROTOCOLO_DONO_EMAIL;
+  if (k === 'sl_protocolo') return SOU_TMX && u.cargo === 'Diretoria' && (u.id === PROTOCOLO_DONO_ID || String(u.email || '').toLowerCase() === PROTOCOLO_DONO_EMAIL);
   if (u.cargo === 'Diretoria') return true;
   return u.cargo === 'Sócio' && KEYS_SOCIO_TAMBEM.has(k);
 }

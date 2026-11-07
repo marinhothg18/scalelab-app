@@ -14,7 +14,7 @@ const RAIZ = path.join(__dirname, '..');
 // ── 1. regra da tela ──
 function regraDaTela(rituais) {
   const html = fs.readFileSync(path.join(RAIZ, 'public', 'ScaleLab.html'), 'utf8');
-  const ini = html.indexOf('var PROTOCOLO_DONO_EMAIL');
+  const ini = html.indexOf('var PROTOCOLO_DONO_ID');
   const fim = html.indexOf('function goTo(', ini);
   assert.ok(ini > 0 && fim > ini, 'achei a regra no ScaleLab.html');
   const ctx = { g: (k, d) => (k === 'rituais' ? rituais : d), tmxEhTmx: () => true, currentUser: null };
@@ -31,6 +31,7 @@ test('menu e navegação seguem o cargo', () => {
   const todos = ['dashboard', 'task', 'criativos', 'rituais', 'arquivos', 'adlibrary', 'chat'];
   assert.deepStrictEqual(ve(r, { cargo: 'Diretoria', email: 'thiago@axcend.com' }), PAGINAS, 'o Thiago vê tudo');
   assert.deepStrictEqual(ve(r, { cargo: 'Diretoria', email: 'outro@tmx.com' }), PAGINAS.filter(p => p !== 'protocolo'), 'outro Dono não vê o Meu Protocolo');
+  assert.deepStrictEqual(ve(r, { id: 'u1', cargo: 'Diretoria', email: 'thiago@outro-dominio.com' }), PAGINAS, 'a conta u1 é a do Thiago, com qualquer e-mail');
   assert.deepStrictEqual(ve(r, { cargo: 'Sócio' }), PAGINAS.filter(p => !['financeiro', 'configuracoes', 'protocolo'].includes(p)), 'Sócio: tudo menos Financeiro, Configurações e Protocolo');
   assert.deepStrictEqual(ve(r, { cargo: 'Gestor de Tráfego' }), [...todos, 'metricas', 'adsmetrics', 'funis'].sort((a, b) => PAGINAS.indexOf(a) - PAGINAS.indexOf(b)));
   assert.deepStrictEqual(ve(r, { cargo: 'Copy' }), [...todos, 'funis'].sort((a, b) => PAGINAS.indexOf(a) - PAGINAS.indexOf(b)), 'Copy: sem Tráfego e Análise, com Projetos');

@@ -8351,9 +8351,10 @@ var PAGINAS_DIRETORIA = ['gestao','protocolo','configuracoes','financeiro'];
 // - Editor: Demandas, Criativos, Arquivos por projeto e Rituais só se estiver em algum ritual.
 // - Todos: Dashboard, Chat, Ad Library e Notificações. Meu Protocolo: só a conta do Thiago, só na TMX.
 // O servidor confere o mesmo nas chaves restritas (_podeChave no server.js).
-var PROTOCOLO_DONO_EMAIL = 'thiago@axcend.com';
+// a conta do Thiago na TMX é a u1 (a primeira, fixa); o e-mail fica de reserva
+var PROTOCOLO_DONO_ID = 'u1', PROTOCOLO_DONO_EMAIL = 'thiago@axcend.com';
 function _nomeCargo(c){ return c === 'Diretoria' ? 'Dono' : (c || ''); }
-function _ehDonoDoProtocolo(u){ return !!(u && u.cargo === 'Diretoria' && String(u.email || '').trim().toLowerCase() === PROTOCOLO_DONO_EMAIL); }
+function _ehDonoDoProtocolo(u){ return !!(u && u.cargo === 'Diretoria' && (u.id === PROTOCOLO_DONO_ID || String(u.email || '').trim().toLowerCase() === PROTOCOLO_DONO_EMAIL)); }
 function _estaEmAlgumRitual(u){
   var nome = (u && u.nome) || '';
   try{ return (g('rituais', []) || []).some(function(r){ return r && Array.isArray(r.participantes) && r.participantes.indexOf(nome) >= 0; }); }catch(e){ return false; }
