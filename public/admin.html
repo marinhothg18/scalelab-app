@@ -97,7 +97,8 @@ tbody tr:last-child td{border-bottom:0}
 (function(){
   var raiz = document.getElementById('raiz');
   var token = ''; try{ token = localStorage.getItem('sl_session_token') || ''; }catch(e){}
-  var eu = null, tela = 'clientes', EMPRESAS = [], CONVITES = [], busca = '', ultimoLink = null, erroConvite = '';
+  var eu = null, tela = 'clientes', EMPRESAS = [], CONVITES = [], CHAMADOS = [], busca = '', ultimoLink = null, erroConvite = '';
+  var filtroCh = 'abertos', chamado = null, modal = '';
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function data(ms, comHora){ if(!ms) return '—'; var d = new Date(ms); var t = d.toLocaleDateString('pt-BR'); return comHora ? t + ' ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : t; }
   function api(metodo, caminho, corpo){
@@ -111,13 +112,15 @@ tbody tr:last-child td{border-bottom:0}
   }
   var ICON = {
     clientes:'<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4zM8 13c-.3 0-.7 0-1.1.1A4.7 4.7 0 0 1 9 17v3H0v-3c0-2.2 4.4-4 8-4z"/>',
-    convites:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>'
+    convites:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>',
+    suporte:'<path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>'
   };
+  function chAbertos(){ return CHAMADOS.filter(function(c){ return c.status === 'aberto'; }).length; }
   function esperando(){ return CONVITES.filter(function(c){ return c.situacao === 'esperando'; }).length; }
   function lateral(){
     var n = function(id, txt, cont){ return '<button class="nav'+(tela===id?' on':'')+'" data-tela="'+id+'"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+ICON[id]+'</svg>'+txt+(cont?'<span class="cont">'+cont+'</span>':'')+'</button>'; };
     return '<aside class="side"><div class="marca"><b>Central TMX</b><span>ADMIN<i>SÓ A TMX</i></span></div>' +
-      n('clientes','Clientes') + n('convites','Convites', esperando()) +
+      n('clientes','Clientes') + n('suporte','Suporte', chAbertos()) + n('convites','Convites', esperando()) +
       '<div class="side-pe"><span>'+esc(eu.nome)+' · Diretoria da TMX</span><a href="/">← Voltar pro TMX</a></div></aside>';
   }
   function motorPill(e){
@@ -129,23 +132,25 @@ tbody tr:last-child td{border-bottom:0}
     var q = busca.toLowerCase();
     var lista = EMPRESAS.filter(function(e){ return !q || (e.nome + ' ' + e.id + ' ' + (e.dono_email || '')).toLowerCase().indexOf(q) >= 0; });
     var ativos = EMPRESAS.filter(function(e){ return e.status === 'ativa'; }).length, ligados = EMPRESAS.filter(function(e){ return e.motor === 'ligado'; }).length;
-    var linhas = '<tr><td class="nome"><b>TMX Digital</b><span class="sub">tmx · empresa nº 1</span></td><td class="sub">—</td><td>Interno</td><td class="sub">—</td><td class="sub">—</td><td class="sub">—</td><td><span class="pill p-ok">no processo principal</span></td><td><span class="pill p-ok">Ativa</span></td></tr>' +
+    var linhas = '<tr><td class="nome"><b>TMX Digital</b><span class="sub">tmx · empresa nº 1</span></td><td class="sub">—</td><td>Interno</td><td class="sub">—</td><td><span class="pill p-ok">ligado</span></td><td><span class="pill p-ok">Ativa</span></td><td class="sub direita">é a sua empresa</td></tr>' +
       lista.map(function(e){
-        return '<tr><td class="nome"><b>'+esc(e.nome)+'</b><span class="sub" title="Endereço público: app.centraltmx.com/e/'+esc(e.id)+'">'+esc(e.id)+'</span></td>' +
-          '<td>'+esc(e.dono_email || '—')+'</td><td>'+esc(e.plano === 'teste' || !e.plano ? 'Teste' : e.plano)+'</td>' +
-          '<td>'+(e.origem === 'convite' ? '<span class="pill p-azul">Convite</span>' : '<span class="pill p-cinza">'+esc(e.origem === 'teste' ? 'Empresa de teste' : (e.origem || '—'))+'</span>')+'</td>' +
-          '<td class="sub num">'+data(e.criada)+'</td><td class="num">'+(e.contas || 0)+'</td><td>'+motorPill(e)+'</td>' +
-          '<td>'+(e.status === 'ativa' ? '<span class="pill p-ok">Ativa</span>' : '<span class="pill p-verm">'+esc(e.status)+'</span>')+'</td></tr>';
+        return '<tr><td class="nome"><b>'+esc(e.nome)+'</b><span class="sub" title="Endereço público: app.centraltmx.com/e/'+esc(e.id)+'">'+esc(e.id)+' · desde '+data(e.criada)+'</span></td>' +
+          '<td style="overflow-wrap:anywhere">'+esc(e.dono_email || '—')+'</td>' +
+          '<td>'+esc(e.plano === 'teste' || !e.plano ? 'Teste' : e.plano)+'<div class="sub">'+(e.origem === 'convite' ? 'veio por convite' : e.origem === 'teste' ? 'empresa de teste' : '')+'</div></td>' +
+          '<td class="num">'+(e.contas || 0)+'</td><td>'+motorPill(e)+'</td>' +
+          '<td>'+(e.status === 'ativa' ? '<span class="pill p-ok">Ativa</span>' : '<span class="pill p-verm" title="'+esc((e.bloqueio_motivo || '') + (e.bloqueado_por ? ' · por ' + e.bloqueado_por : ''))+'">Bloqueada</span><div class="sub">'+esc(e.bloqueio_motivo || '')+'</div>')+'</td>' +
+          '<td><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><button class="btn peq" data-suporte="'+esc(e.id)+'">Entrar como suporte</button>' +
+          (e.status === 'ativa' ? '<button class="btn peq perigo" data-bloquear="'+esc(e.id)+'">Bloquear</button>' : '<button class="btn peq" data-desbloquear="'+esc(e.id)+'" style="color:var(--green);border-color:rgba(63,191,127,.35)">Desbloquear</button>') + '</div></td></tr>';
       }).join('');
-    if(!lista.length && q) linhas += '<tr><td colspan="8" class="vazio">Nenhum cliente com “'+esc(busca)+'”.</td></tr>';
-    return '<div class="topo"><div><h1>Clientes</h1><p>Cada empresa tem banco, rotinas e endereço próprios. Bloquear e entrar como suporte vêm na próxima parte.</p></div>' +
+    if(!lista.length && q) linhas += '<tr><td colspan="7" class="vazio">Nenhum cliente com “'+esc(busca)+'”.</td></tr>';
+    return '<div class="topo"><div><h1>Clientes</h1><p>Cada empresa tem banco, rotinas e endereço próprios. Bloquear fecha o app da equipe, mas o pixel e as vendas continuam gravando.</p></div>' +
       '<div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button><button class="btn pri" data-tela="convites">+ Gerar convite</button></div></div>' +
       '<div class="kpis"><div class="kpi"><small>Clientes</small><b>'+EMPRESAS.length+'</b><span>sem contar a TMX</span></div>' +
       '<div class="kpi"><small>Ativos</small><b>'+ativos+'</b><span>podem entrar</span></div>' +
       '<div class="kpi"><small>Motores ligados</small><b>'+ligados+'</b><span>de '+EMPRESAS.length+'</span></div>' +
       '<div class="kpi"><small>Convites esperando</small><b>'+esperando()+'</b><span>ainda não usados</span></div></div>' +
       '<div class="filtros"><input class="busca" id="busca" placeholder="Buscar empresa, código ou e-mail" value="'+esc(busca)+'"></div>' +
-      '<div class="tab-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Plano</th><th>Entrou por</th><th>Criada</th><th>Contas</th><th>Motor</th><th>Situação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>' +
+      '<div class="tab-wrap"><table style="min-width:860px"><thead><tr><th>Empresa</th><th>Responsável</th><th>Plano</th><th>Contas</th><th>Motor</th><th>Situação</th><th class="direita">Ações</th></tr></thead><tbody>'+linhas+'</tbody></table></div>' +
       (EMPRESAS.length ? '' : '<p class="sub" style="padding:12px 8px">Ainda não tem nenhum cliente. Gere um convite e mande pro primeiro.</p>');
   }
   function situacaoPill(c){
@@ -177,21 +182,103 @@ tbody tr:last-child td{border-bottom:0}
       (erroConvite ? '<div class="erro" role="alert">'+esc(erroConvite)+'</div>' : '') + res + '</section>' +
       '<div class="tab-wrap"><table><thead><tr><th>Situação</th><th>E-mail</th><th>Anotação</th><th>Criado</th><th>Vence</th><th>Empresa criada</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
   }
+  var ST = { aberto:['Esperando a TMX','p-amar'], cliente:['Esperando o cliente','p-azul'], resolvido:['Resolvido','p-ok'] };
+  function stPill(s){ var x = ST[s] || [s, 'p-cinza']; return '<span class="pill '+x[1]+'">'+esc(x[0])+'</span>'; }
+  function telaSuporte(){
+    if(chamado) return telaChamado();
+    var lista = CHAMADOS.filter(function(c){ return filtroCh === 'todos' ? true : filtroCh === 'resolvidos' ? c.status === 'resolvido' : c.status !== 'resolvido'; });
+    var chips = [['abertos','Abertos'],['resolvidos','Resolvidos'],['todos','Todos']].map(function(f){
+      var n = CHAMADOS.filter(function(c){ return f[0] === 'todos' ? true : f[0] === 'resolvidos' ? c.status === 'resolvido' : c.status !== 'resolvido'; }).length;
+      return '<button class="btn peq" style="'+(filtroCh===f[0]?'background:var(--blue-bg);border-color:rgba(27,156,250,.45);color:var(--blue)':'')+'" data-fch="'+f[0]+'">'+f[1]+' · '+n+'</button>'; }).join('');
+    var linhas = lista.map(function(c){
+      return '<tr style="cursor:pointer" data-ch="'+c.id+'"><td class="sub num">#'+c.id+'</td><td><b>'+esc(c.assunto)+'</b><div class="sub">'+esc(c.aberto_por_nome || '')+(c.projeto ? ' · ' + esc(c.projeto) : '')+'</div></td>' +
+        '<td>'+esc(c.empresa_nome)+'</td><td>'+esc(c.tipo || '')+'</td><td class="sub num">'+data(c.atualizado, true)+'</td><td>'+stPill(c.status)+'</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="vazio">Nenhum chamado aqui.</td></tr>';
+    return '<div class="topo"><div><h1>Suporte</h1><p>Chamados que os clientes abrem pelo item Suporte no TMX deles. A resposta chega no sininho deles.</p></div><div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button></div></div>' +
+      '<div class="filtros">'+chips+'</div><div class="tab-wrap"><table><thead><tr><th>#</th><th>Assunto</th><th>Empresa</th><th>Tipo</th><th>Atualizado</th><th>Situação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+  }
+  function telaChamado(){
+    var c = chamado;
+    var fio = (c.msgs || []).map(function(m){
+      var cor = m.de === 'tmx' ? 'background:rgba(91,94,244,.16);border-color:rgba(91,94,244,.35);align-self:flex-end' : m.de === 'nota' ? 'background:var(--yellow-bg);border-color:rgba(245,181,68,.3);align-self:center' : 'background:var(--bg3);align-self:flex-start';
+      return '<div style="max-width:86%;border:1px solid var(--border);border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.5;'+cor+'"><div class="sub" style="font-size:11px;margin-bottom:3px">'+(m.de === 'nota' ? '🔒 nota interna · ' : '')+esc(m.autor)+' · '+data(m.criado, true)+'</div>'+esc(m.texto).replace(/\n/g, '<br>')+'</div>';
+    }).join('');
+    var e = EMPRESAS.find(function(x){ return x.id === c.empresa; }) || {};
+    return '<div class="topo"><div><button class="btn peq" data-acao="voltar-suporte" style="margin-bottom:8px">‹ Suporte</button><h1>#'+c.id+' · '+esc(c.assunto)+'</h1><p>'+esc(c.empresa_nome)+' · '+esc(c.tipo || '')+(c.projeto ? ' · ' + esc(c.projeto) : '')+' · aberto por '+esc(c.aberto_por_nome || '')+' em '+data(c.criado, true)+'</p></div>' +
+      '<div class="acoes">'+stPill(c.status)+'<button class="btn" data-suporte="'+esc(c.empresa)+'">Entrar como suporte</button></div></div>' +
+      '<section class="cartao"><div style="display:flex;flex-direction:column;gap:10px">'+fio+'</div>' +
+      '<textarea id="ch-txt" rows="4" style="width:100%;margin-top:14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font:13.5px Inter,sans-serif;resize:vertical" placeholder="Responder pro cliente…"></textarea>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ch-nota"> Nota interna (o cliente não vê)</label>' +
+      '<label class="sub" style="margin-left:auto">Depois de enviar: <select id="ch-st" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 8px"><option value="cliente">Esperando o cliente</option><option value="aberto">Esperando a TMX</option><option value="resolvido">Resolvido</option></select></label>' +
+      '<button class="btn pri" data-acao="responder">Enviar</button></div>' + (e.status && e.status !== 'ativa' ? '<p class="sub" style="margin:10px 0 0">Essa empresa está bloqueada: a equipe dela não abre o TMX, mas recebe a resposta quando for desbloqueada.</p>' : '') + '</section>';
+  }
+  function modalSuporte(e){
+    return '<div class="porta" style="position:fixed;inset:0;background:rgba(3,5,12,.72);z-index:30;min-height:0" data-fundo="1"><div class="caixa" style="text-align:left;max-width:460px">' +
+      '<h1 style="margin:0 0 6px">Entrar como suporte na '+esc(e.nome)+'</h1><p style="margin:0 0 14px">Abre o TMX dessa empresa como a equipe dela vê, sem a senha de ninguém. Fica na auditoria das duas empresas. Ao sair, você volta pra cá com a sua conta.</p>' +
+      '<label class="campo">Motivo (obrigatório)<input id="sp-motivo" placeholder="Ex.: chamado #12, pixel da VSL"></label>' +
+      '<div class="campo" style="margin-top:12px">O que pode fazer<div style="display:flex;gap:8px;flex-wrap:wrap;text-transform:none;letter-spacing:0"><label style="display:flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-weight:500"><input type="radio" name="sp-modo" value="olhar" checked> Só olhar</label><label style="display:flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-weight:500"><input type="radio" name="sp-modo" value="mexer"> Pode mexer</label></div></div>' +
+      '<label class="campo" style="margin-top:12px">Tempo<select id="sp-min"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">1 hora</option></select></label>' +
+      '<label class="sub" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sp-avisar" checked> Avisar a Diretoria da empresa que o suporte entrou</label>' +
+      '<div class="erro" id="sp-erro"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" data-acao="fechar-modal">Cancelar</button><button class="btn pri" data-acao="entrar-suporte" data-id="'+esc(e.id)+'">Entrar</button></div></div></div>';
+  }
+  function modalBloquear(e){
+    return '<div class="porta" style="position:fixed;inset:0;background:rgba(3,5,12,.72);z-index:30;min-height:0" data-fundo="1"><div class="caixa" style="text-align:left;max-width:440px">' +
+      '<h1 style="margin:0 0 6px">Bloquear a '+esc(e.nome)+'?</h1><p style="margin:0 0 14px">A equipe deles vê “conta suspensa” ao entrar. O pixel, as vendas e as páginas continuam gravando, então nada se perde. Dá pra desbloquear a qualquer hora.</p>' +
+      '<label class="campo">Motivo<select id="bl-motivo"><option>Pagamento atrasado</option><option>Pedido do cliente</option><option>Uso indevido</option><option>Outro</option></select></label>' +
+      '<div class="erro" id="bl-erro"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" data-acao="fechar-modal">Cancelar</button><button class="btn perigo" data-acao="confirmar-bloqueio" data-id="'+esc(e.id)+'">Bloquear</button></div></div></div>';
+  }
+  // Entra no TMX do cliente: guarda a conta da TMX deste aparelho e troca a sessão (com a mesma
+  // limpeza da troca de empresa do app). "Sair do suporte" lá dentro devolve a conta guardada.
+  function entrarNoCliente(r){
+    var PREFS = ['sl_theme','sl_sidebar_collapsed','sl_pwa_ios_dismissed','sl_notif_desktop','sl_nav_grupos','cp_cel_cols','ads_cp_larg','ads_cp_cols'];
+    try{
+      var guarda = {}; PREFS.forEach(function(k){ var v = localStorage.getItem(k); if(v !== null) guarda[k] = v; });
+      localStorage.clear();
+      try{ sessionStorage.removeItem('sl_tela'); }catch(e){}
+      Object.keys(guarda).forEach(function(k){ localStorage.setItem(k, guarda[k]); });
+      localStorage.setItem('_seeded_v4', '1');
+      localStorage.setItem('sl_tmx_token_guardado', token);
+      localStorage.setItem('sl_tmx_user_guardado', JSON.stringify(eu));
+      localStorage.setItem('sl_session_token', r.token);
+      localStorage.setItem('sl_auth', '1');
+      localStorage.setItem('sl_user_id', r.user.id);
+      localStorage.setItem('sl_suporte_user', JSON.stringify(r.user));
+      localStorage.setItem('sl_usuarios', JSON.stringify([r.user]));
+      localStorage.setItem('sl_empresa_id', r.empresa.id);
+      localStorage.setItem('sl_empresa_base', r.empresa.base || '');
+      localStorage.setItem('sl_empresa_nome', r.empresa.nome || '');
+    }catch(e){}
+    location.href = '/';
+  }
   function pintar(){
-    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + (tela === 'convites' ? telaConvites() : telaClientes()) + '</main></div>';
+    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + (tela === 'convites' ? telaConvites() : tela === 'suporte' ? telaSuporte() : telaClientes()) + '</main></div>' + modal;
     var b = document.getElementById('busca');
     if(b) b.oninput = function(){ busca = b.value; var pos = b.selectionStart; pintar(); var nb = document.getElementById('busca'); nb.focus(); try{ nb.setSelectionRange(pos, pos); }catch(e){} };
   }
   function carregar(){
-    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites')]).then(function(r){
+    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados')]).then(function(r){
       if(r[0].ok) EMPRESAS = r[0].j.empresas || [];
       if(r[1].ok) CONVITES = r[1].j.convites || [];
+      if(r[2].ok) CHAMADOS = r[2].j.chamados || [];
       pintar();
     });
   }
+  function abrirChamado(id){
+    return api('GET', '/api/plataforma/chamados/' + id).then(function(r){ if(r.ok){ chamado = r.j.chamado; tela = 'suporte'; pintar(); window.scrollTo(0, 0); } else aviso(r.j.error || 'Não abri o chamado.'); });
+  }
   raiz.addEventListener('click', function(ev){
-    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar]'); if(!a) return;
-    if(a.dataset.tela){ tela = a.dataset.tela; ultimoLink = tela === 'convites' ? ultimoLink : null; erroConvite = ''; pintar(); return window.scrollTo(0, 0); }
+    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo]'); if(!a) return;
+    if(a.dataset.fundo){ if(ev.target === a){ modal = ''; pintar(); } return; }
+    if(a.dataset.tela){ tela = a.dataset.tela; chamado = null; ultimoLink = tela === 'convites' ? ultimoLink : null; erroConvite = ''; pintar(); return window.scrollTo(0, 0); }
+    var empDe = function(id){ return EMPRESAS.find(function(x){ return x.id === id; }); };
+    if(a.dataset.suporte){ modal = modalSuporte(empDe(a.dataset.suporte) || { id: a.dataset.suporte, nome: a.dataset.suporte }); pintar(); var mo = document.getElementById('sp-motivo'); if(mo){ if(chamado) mo.value = 'Chamado #' + chamado.id + ' · ' + chamado.assunto; mo.focus(); } return; }
+    if(a.dataset.bloquear){ modal = modalBloquear(empDe(a.dataset.bloquear)); return pintar(); }
+    if(a.dataset.desbloquear){
+      a.disabled = true;
+      return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.desbloquear) + '/desbloquear').then(function(r){ aviso(r.ok ? 'Desbloqueada: a equipe já pode entrar.' : (r.j.error || 'Não consegui desbloquear.')); return carregar(); });
+    }
+    if(a.dataset.ch) return abrirChamado(a.dataset.ch);
+    if(a.dataset.fch){ filtroCh = a.dataset.fch; return pintar(); }
     if(a.dataset.cancelar){
       a.disabled = true; ultimoLink = null;   // o link mostrado pode ser justamente o que saiu
       return api('POST', '/api/plataforma/convites/' + encodeURIComponent(a.dataset.cancelar) + '/cancelar').then(function(r){
@@ -200,6 +287,32 @@ tbody tr:last-child td{border-bottom:0}
     }
     var ac = a.dataset.acao;
     if(ac === 'atualizar'){ a.disabled = true; return carregar().then(function(){ aviso('Atualizado.'); }); }
+    if(ac === 'fechar-modal'){ modal = ''; return pintar(); }
+    if(ac === 'voltar-suporte'){ chamado = null; return carregar(); }
+    if(ac === 'confirmar-bloqueio'){
+      var mot = document.getElementById('bl-motivo').value; a.disabled = true;
+      return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.id) + '/bloquear', { motivo: mot }).then(function(r){
+        if(!r.ok){ a.disabled = false; document.getElementById('bl-erro').textContent = r.j.error || 'Não consegui bloquear.'; return; }
+        modal = ''; aviso('Bloqueada. O pixel e as vendas continuam gravando.'); return carregar();
+      });
+    }
+    if(ac === 'entrar-suporte'){
+      var motivo = (document.getElementById('sp-motivo').value || '').trim();
+      if(!motivo){ document.getElementById('sp-erro').textContent = 'Escreva o motivo pra entrar.'; return; }
+      var modo = (document.querySelector('input[name="sp-modo"]:checked') || {}).value || 'olhar';
+      a.disabled = true; a.textContent = 'Entrando…';
+      return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.id) + '/suporte', { motivo: motivo, modo: modo, minutos: Number(document.getElementById('sp-min').value), avisar: document.getElementById('sp-avisar').checked })
+        .then(function(r){ if(!r.ok){ a.disabled = false; a.textContent = 'Entrar'; document.getElementById('sp-erro').textContent = r.j.error || 'Não consegui entrar.'; return; } entrarNoCliente(r.j); });
+    }
+    if(ac === 'responder'){
+      var txt = (document.getElementById('ch-txt').value || '').trim(), nota = document.getElementById('ch-nota').checked, st = document.getElementById('ch-st').value;
+      a.disabled = true;
+      return api('POST', '/api/plataforma/chamados/' + chamado.id + '/responder', { texto: txt, nota: nota, status: st }).then(function(r){
+        if(!r.ok){ a.disabled = false; return aviso(r.j.error || 'Não consegui enviar.'); }
+        aviso(txt ? (nota ? 'Nota guardada.' : 'Resposta enviada. O cliente recebe no sininho.') : 'Situação atualizada.');
+        return Promise.all([carregar(), abrirChamado(chamado.id)]);
+      });
+    }
     if(ac === 'copiar'){
       var t = ultimoLink ? ultimoLink.link : '';
       try{ navigator.clipboard.writeText(t).then(function(){ aviso('Link copiado.'); }, function(){ aviso('Selecione o link e copie.'); }); }catch(e){ aviso('Selecione o link e copie.'); }
@@ -223,6 +336,7 @@ tbody tr:last-child td{border-bottom:0}
     if(emp.id && emp.id !== 'tmx'){ return porta('Esta área é só da TMX', 'Você está logado numa conta de cliente. Saia dela no TMX e entre com a conta da Diretoria da TMX.'); }
     if(r.j.user.cargo !== 'Diretoria'){ return porta('Esta área é só da Diretoria', 'A Central TMX Admin abre só pra Diretoria da TMX.'); }
     eu = r.j.user;
+    try{ var av = sessionStorage.getItem('sl_admin_aviso'); if(av){ sessionStorage.removeItem('sl_admin_aviso'); setTimeout(function(){ aviso(av); }, 300); } }catch(e){}
     return carregar();
   }).catch(function(){ porta('Sem conexão', 'Não consegui falar com o servidor. Confira a internet e recarregue.'); });
 })();

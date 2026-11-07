@@ -95,7 +95,20 @@ Regras:
   e já devolve a sessão. Meta, checkout e pixel ficam pra aba Integrações de cada projeto. `test/cadastro.test.js`.
 - **Central TMX Admin** (`/admin`, `public/admin.html`): sistema à parte, só pra Diretoria da TMX, com o mesmo
   login do TMX. Primeira parte: Clientes (registro da plataforma) e Convites (gerar, copiar, mandar no WhatsApp,
-  cancelar). Bloquear, entrar como suporte, suporte e solicitações vêm depois (esboço com decisões pendentes).
+  cancelar), Suporte (chamados), bloquear/desbloquear e entrar como suporte.
+- **Bloquear** (`empresas.status='bloqueada'`): a portaria recusa sessão da equipe e login com 403 +
+  `X-TMX-Bloqueada` (o app mostra "conta suspensa"), mas o endereço `/e/<código>` sem sessão (pixel, webhook,
+  quiz, links) continua, pra nada se perder. A sessão de suporte (`ses_<código>.sup…`) entra mesmo bloqueada.
+- **Entrar como suporte**: `POST /api/plataforma/empresas/:id/suporte` (motivo obrigatório, 15/30/60 min, modo
+  `olhar` ou `mexer`, avisa a Diretoria do cliente). O motor cria a sessão com a pessoa dentro dela
+  (`_usuarioDaSessao`: não entra ninguém na equipe do cliente). No "só olhar" a trava em memória do motor
+  recusa toda escrita (403 + `X-TMX-So-Olhar`); suporte nunca mexe em `/api/me`. A Central guarda a conta da
+  TMX do aparelho (`sl_tmx_token_guardado`) e "Sair do suporte" devolve. Uma aba que vê a empresa do
+  aparelho mudar (outra aba) recarrega antes de mandar qualquer coisa (`_empresaDaAba`).
+- **Chamados**: moram no `plataforma.sqlite` (`chamados`, `chamado_msgs`). O cliente abre pelo item Suporte do
+  TMX dele (`/api/suporte/chamados*` no motor, que repassa com `_pedirAPortaria`; a empresa é sempre a do
+  motor). A TMX responde em `/api/plataforma/chamados/:id/responder` (nota interna não vai pro cliente) e o
+  cliente recebe no sininho. `test/admin-suporte.test.js`.
 
 ### Data model
 

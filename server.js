@@ -203,7 +203,7 @@ function _isSuperAdmin(req) {
     const db = readDB();
     const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (!sess) return false;
-    const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+    const user = _usuarioDaSessao(db, sess);
     if (!user || user.cargo !== 'Diretoria') return false;
     return getItemTenant(user) === TENANT_INTERNO_ID;
   } catch (e) {
@@ -275,13 +275,25 @@ function _plataforma() {
     try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}   // já existe
   }
   try { db.exec('ALTER TABLE convites ADD COLUMN cancelado INTEGER'); } catch (e) {}
+  for (const col of ['bloqueio_motivo TEXT', 'bloqueado_em INTEGER', 'bloqueado_por TEXT']) {
+    try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}
+  }
+  // Chamados de suporte: o cliente abre pelo TMX dele, a TMX responde pela Central Admin
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chamados (id INTEGER PRIMARY KEY AUTOINCREMENT, empresa TEXT NOT NULL, assunto TEXT, tipo TEXT, projeto TEXT,
+      status TEXT NOT NULL DEFAULT 'aberto', criado INTEGER, atualizado INTEGER, aberto_por TEXT, aberto_por_nome TEXT, aberto_por_email TEXT,
+      responsavel TEXT);
+    CREATE INDEX IF NOT EXISTS ch_emp ON chamados(empresa, atualizado);
+    CREATE TABLE IF NOT EXISTS chamado_msgs (id INTEGER PRIMARY KEY AUTOINCREMENT, chamado INTEGER NOT NULL, de TEXT, autor TEXT, texto TEXT, criado INTEGER);
+    CREATE INDEX IF NOT EXISTS chm_ch ON chamado_msgs(chamado, id);
+  `);
   _platDb = db;
   return db;
 }
 function _platPrep(sql) { if (!_platQ[sql]) _platQ[sql] = _plataforma().prepare(sql); return _platQ[sql]; }
 function _carregarEmpresas() {
   _empresas.clear();
-  for (const e of _platPrep('SELECT id, nome, status FROM empresas').all()) _empresas.set(e.id, { id: e.id, nome: e.nome, status: e.status });
+  for (const e of _platPrep('SELECT id, nome, status, bloqueio_motivo FROM empresas').all()) _empresas.set(e.id, { id: e.id, nome: e.nome, status: e.status, motivo: e.bloqueio_motivo || '' });
 }
 // Quem é o dono de cada e-mail. Cada motor manda a lista dele quando os usuários
 // mudam; a TMX indexa a dela direto. O primeiro dono fica com o e-mail: um
@@ -362,6 +374,11 @@ function _ligarMotor(emp) {
       console.log(`[PORTARIA] motor da empresa ${emp.id} pronto.`);
     } else if (msg.tipo === 'contas') {
       try { _indexarContas(emp.id, msg.emails); } catch (e) { console.error('[PLATAFORMA] índice de', emp.id, e.message); }
+    } else if (msg.tipo === 'pedido-portaria') {
+      // o motor pede algo à plataforma; a empresa é sempre a do motor, nunca a que veio do cliente
+      let r;
+      try { r = _atenderMotor(emp.id, msg.cmd, msg.dados || {}); } catch (e) { r = { ok: false, erro: e.message }; }
+      try { proc.send({ tipo: 'resposta-portaria', n: msg.n, r }); } catch (e) {}
     } else if (msg.tipo === 'resposta' && m.pedidos.has(msg.n)) {
       const p = m.pedidos.get(msg.n); m.pedidos.delete(msg.n); p(msg);
     }
@@ -378,14 +395,14 @@ function _ligarMotor(emp) {
     // até lá, pedido nenhum religa o motor (senão um defeito na subida viraria um laço)
     m.proximaTentativa = Date.now() + espera;
     console.error(`[PORTARIA] motor da empresa ${emp.id} parou (${sinal || code}); religo em ${Math.round(espera / 1000)}s.`);
-    setTimeout(() => { const e = _empresas.get(emp.id); if (e && e.status === 'ativa' && !m.proc) _ligarMotor(e); }, espera);
+    setTimeout(() => { const e = _empresas.get(emp.id); if (e && !m.proc) _ligarMotor(e); }, espera);
   });
   return m;
 }
 // Espera o motor estar ouvindo (ele leva ~1s pra subir). Liga se estiver desligado.
 function _motorPronto(id, ms) {
   const emp = _empresas.get(id);
-  if (!emp || emp.status !== 'ativa') return Promise.reject(new Error('empresa indisponível'));
+  if (!emp) return Promise.reject(new Error('empresa indisponível'));   // bloqueada continua ligada
   const atual = _motores.get(id);
   if (atual && !atual.proc && atual.proximaTentativa && Date.now() < atual.proximaTentativa) {
     return Promise.reject(new Error('o motor está religando'));
@@ -466,6 +483,17 @@ function _tokenDoPedido(req) {
 }
 const _RE_PREFIXO = /^\/e\/([a-z][a-z0-9]{5,15})(?=[/?]|$)/;
 const _RE_SESSAO_EMP = /^ses_([a-z][a-z0-9]{5,15})\./;
+// Empresa bloqueada (decisão de 07/11: "fecha só o app"): quem tem sessão da equipe e o login
+// param com "conta suspensa"; pixel, webhook de vendas, quiz e links (endereço /e/<código>, sem
+// sessão) continuam gravando, pra nada se perder. A sessão de suporte da TMX (ses_<código>.sup…)
+// continua entrando, pra dar pra ajudar a empresa bloqueada.
+function _respBloqueada(res, emp) {
+  if (res.headersSent) return;
+  res.statusCode = 403;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('X-TMX-Bloqueada', '1');
+  res.end(JSON.stringify({ error: 'A conta da sua empresa está suspensa. Fale com a TMX pra liberar.', codigo: 'EMPRESA_BLOQUEADA' }));
+}
 const _ROTAS_POR_EMAIL = new Set(['/api/auth/login', '/api/auth/forgot', '/api/auth/reset']);
 // Quem é de quem:
 // 1. endereço /e/<código>/... (pixel, webhook de vendas, WhatsApp, quiz, links);
@@ -489,10 +517,13 @@ function _portaria(req, res, next) {
     if (id && id !== mt[1]) return _respErro(res, 401, 'Sessão de outra empresa. Faça login de novo.');
     id = mt[1];
   }
-  const seguir = (corpo) => {
+  const seguir = (corpo, porEmail) => {
     const emp = _empresas.get(id);
     if (!emp) return _respErro(res, mt ? 401 : 404, mt ? 'Sessão inválida. Faça login de novo.' : 'Empresa não encontrada.');
-    if (emp.status !== 'ativa') return _respErro(res, 403, 'Conta suspensa. Fale com o suporte.');
+    if (emp.status !== 'ativa') {
+      const suporte = mt && tok.startsWith('ses_' + id + '.sup');
+      if (porEmail || (mt && !suporte)) return _respBloqueada(res, emp);
+    }
     _motorPronto(id).then(m => _encaminhar(req, res, m, caminho, corpo))
       .catch(() => _respErro(res, 503, 'A empresa está ligando. Tente de novo em instantes.'));
   };
@@ -508,7 +539,7 @@ function _portaria(req, res, next) {
       } else if (corpo.email) {
         try { dono = _empresaDoEmail(corpo.email); } catch (e) { dono = null; }
       }
-      if (dono && dono !== EMPRESA_TMX) { id = dono; return seguir(buf); }
+      if (dono && dono !== EMPRESA_TMX) { id = dono; return seguir(buf, true); }
       // é da TMX: o corpo já foi lido aqui, então entrega pronto pro express.json pular
       req.body = corpo; req._body = true;
       next();
@@ -653,6 +684,28 @@ if (!SOU_TMX) {
   // plataforma (cadastro, cobrança, painel SaaS, MCP, criar empresas) fica só na TMX.
   app.use(['/api/saas', '/api/billing', '/api/plataforma', '/api/cadastro', '/cadastro', '/admin', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
     (req, res) => res.status(404).json({ error: 'Não disponível.' }));
+}
+// Sessões de suporte abertas neste motor: hash do token -> { modo, expira }. Fica na memória
+// (montada na subida a partir do banco) pra checar cada pedido sem ler o db.json.
+const _sessoesSuporte = new Map();
+if (!SOU_TMX) {
+  app.use((req, res, next) => {
+    if (!_sessoesSuporte.size) return next();
+    const h = req.headers.authorization || '';
+    const tok = h.startsWith('Bearer ') ? h.slice(7).trim() : (typeof req.query.token === 'string' ? req.query.token : '');
+    if (!tok || tok.indexOf('.sup') < 0) return next();
+    const sup = _sessoesSuporte.get(crypto.createHash('sha256').update(tok).digest('hex'));
+    if (!sup) return next();
+    if (!(sup.expira > Date.now())) return res.status(401).json({ error: 'O tempo do suporte acabou.' });
+    const escreve = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if (escreve && req.path === '/api/auth/logout') return next();
+    // suporte nunca mexe na conta das pessoas (senha, perfil, sessões)
+    if (escreve && (sup.modo === 'olhar' || req.path.startsWith('/api/me'))) {
+      res.setHeader('X-TMX-So-Olhar', '1');
+      return res.status(403).json({ error: sup.modo === 'olhar' ? 'Suporte em modo só olhar: nada foi salvo.' : 'O suporte não mexe na conta das pessoas.', codigo: 'SUPORTE_SO_OLHAR' });
+    }
+    next();
+  });
 }
 app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
@@ -1156,6 +1209,23 @@ function _pruneSessoesExpiradas(db) {
   db.sessions = sess.filter(s => (s.lastActivity || s.createdAt || 0) + SESSION_TTL_MS > agora);
   return antes - db.sessions.length;
 }
+// Quem é a pessoa da sessão. A sessão de suporte da TMX não tem usuário na equipe do
+// cliente: a pessoa vem dentro da própria sessão (nome de quem entrou, modo e prazo).
+const ID_SUPORTE = 'suporte-tmx';
+function _usuarioDaSessao(db, sess) {
+  if (!sess) return null;
+  if (sess.suporte) {
+    return { id: ID_SUPORTE, nome: 'Suporte TMX · ' + (sess.suporte.por || 'TMX'), email: '', cargo: 'Diretoria', ativo: true,
+             suporte: { modo: sess.suporte.modo, expira: sess.suporte.expira, motivo: sess.suporte.motivo, por: sess.suporte.por } };
+  }
+  return ((db && db.store && db.store['sl_usuarios']) || []).find(u => u.id === sess.userId);
+}
+// A sessão de suporte vence no prazo escolhido, mesmo com uso
+function _sessaoVencida(sess) {
+  if (!sess) return true;
+  if (sess.suporte && !(sess.suporte.expira > Date.now())) return true;
+  return (sess.lastActivity || sess.createdAt) + SESSION_TTL_MS < Date.now();
+}
 function criarSessao(db, userId) {
   _pruneSessoesExpiradas(db);
   // Sessão de empresa nova leva a marca dela (ses_<código>.…): é por ela que a portaria
@@ -1180,11 +1250,11 @@ function validarSessao(db, token, tenantId) {
   const sess = _getSessions(db).find(s => s.tokenHash === tokenHash);
   if (!sess) return null;
   if (tenantId) {
-    const u = (db.store['sl_usuarios'] || []).find(x => x.id === sess.userId);
+    const u = _usuarioDaSessao(db, sess);
     if (!u || getItemTenant(u) !== tenantId) return null;
   }
-  // Verifica TTL
-  if ((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS < Date.now()) return null;
+  // Verifica TTL (e o prazo da sessão de suporte)
+  if (_sessaoVencida(sess)) return null;
   // Atualiza lastActivity
   sess.lastActivity = Date.now();
   return sess;
@@ -1251,7 +1321,7 @@ function _userInfoFromReq(req, db) {
     const token = authHeader.split(' ')[1];
     const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (sess) {
-      const u = (db.store['sl_usuarios'] || []).find(x => x.id === sess.userId);
+      const u = _usuarioDaSessao(db, sess);
       if (u) return { id: u.id, nome: u.nome, cargo: u.cargo };
     }
   }
@@ -2052,7 +2122,7 @@ function _authUser(req, db) {
   if (!token) return null;
   const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
   if (!sess) return null;
-  const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+  const user = _usuarioDaSessao(db, sess);
   return user || null;
 }
 
@@ -7178,7 +7248,7 @@ app.put('/api/tenant/branding', (req, res) => {
     const db = readDB();
     const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (!sess) return res.status(401).json({ error: 'Sessão expirada' });
-    const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+    const user = _usuarioDaSessao(db, sess);
     if (!user || user.cargo !== 'Diretoria') return res.status(403).json({ error: 'Só Diretoria pode editar branding' });
     if (getItemTenant(user) !== req.tenantId) return res.status(403).json({ error: 'Usuário não pertence a esse tenant' });
 
@@ -8058,7 +8128,7 @@ app.get('/api/auth/me', (req, res) => {
   const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
   if (!sess) return res.status(401).json({ error: 'Sessão inválida ou expirada' });
   writeDB(db); // salvar lastActivity atualizado
-  const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+  const user = _usuarioDaSessao(db, sess);
   if (!user || user.ativo === false) return res.status(401).json({ error: 'Usuário inexistente ou inativo' });
   const { senha: _s, senhaHash: _h, ...safeUser } = user;
   res.json({ user: safeUser, expiraEm: new Date((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS).toISOString(), empresa: _empresaInfo() });
@@ -8362,8 +8432,8 @@ function authUsuario(req, res, next) {
     const token = authHeader.split(' ')[1];
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const sess = _getSessions(db).find(s => s.tokenHash === tokenHash);
-    if (sess && (sess.lastActivity || sess.createdAt) + SESSION_TTL_MS >= Date.now()) {
-      const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+    if (sess && !_sessaoVencida(sess)) {
+      const user = _usuarioDaSessao(db, sess);
       if (user && user.ativo !== false && getItemTenant(user) === (req.tenantId || TENANT_DEFAULT_ID)) {
         // ⚠️ NUNCA gravar o banco aqui.
         // writeDB grava o arquivo INTEIRO a partir do snapshot lido no começo desta
@@ -8402,7 +8472,7 @@ function authDiretoria(req, res, next) {
     const token = authHeader.split(' ')[1];
     const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (sess) {
-      const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
+      const user = _usuarioDaSessao(db, sess);
       if (user && getItemTenant(user) !== (req.tenantId || TENANT_DEFAULT_ID)) return res.status(401).json({ error: 'Sessão de outra empresa. Faça login de novo.' });
       if (user && user.ativo !== false && user.cargo === 'Diretoria') {
         // Mesmo motivo do authUsuario: gravar o banco inteiro aqui, a partir de um
@@ -8442,7 +8512,7 @@ function _registrarEmpresa({ nome, criadaPor, plano, origem, donoEmail }) {
   return id;
 }
 app.get('/api/plataforma/empresas', authDiretoriaInterna, (req, res) => {
-  const lista = _platPrep('SELECT id, nome, status, criada, plano, origem, dono_email FROM empresas ORDER BY criada').all().map(e => {
+  const lista = _platPrep('SELECT id, nome, status, criada, plano, origem, dono_email, bloqueio_motivo, bloqueado_em, bloqueado_por FROM empresas ORDER BY criada').all().map(e => {
     const m = _motores.get(e.id);
     const n = _platPrep('SELECT COUNT(*) n FROM contas WHERE empresa=?').get(e.id).n;
     return Object.assign({}, e, { motor: m && m.porta ? 'ligado' : (m && m.proc ? 'ligando' : 'desligado'),
@@ -8602,6 +8672,140 @@ app.get('/cadastro', (req, res) => {
 app.get(['/admin', '/admin/'], (req, res) => {
   if (!SOU_TMX) return res.status(404).end();
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ══════════════════════════════════════════════
+// ── CENTRAL TMX ADMIN: BLOQUEAR, SUPORTE E CHAMADOS (07/11/2026) ──
+// Decisões (sugestões do esboço que o Thiago liberou): bloquear fecha só o app da empresa
+// (pixel e vendas seguem); entrar como suporte tem motivo obrigatório, prazo, modo "só olhar"
+// por padrão e avisa a Diretoria do cliente; tudo vai pra auditoria das duas empresas.
+// ══════════════════════════════════════════════
+function _empresaDaRota(req, res) {
+  const e = _empresas.get(String(req.params.id || ''));
+  if (!e) { res.status(404).json({ error: 'Empresa não encontrada.' }); return null; }
+  return e;
+}
+app.post('/api/plataforma/empresas/:id/bloquear', authDiretoriaInterna, (req, res) => {
+  const e = _empresaDaRota(req, res); if (!e) return;
+  const motivo = String((req.body && req.body.motivo) || '').trim().slice(0, 120) || 'sem motivo';
+  _platPrep("UPDATE empresas SET status='bloqueada', bloqueio_motivo=?, bloqueado_em=?, bloqueado_por=? WHERE id=?").run(motivo, Date.now(), req.user.nome || req.user.id, e.id);
+  e.status = 'bloqueada'; e.motivo = motivo;
+  const db = readDB(); audit(db, 'empresa_bloqueada', { empresa: e.id, nome: e.nome }, { motivo }, req.user); writeDB(db);
+  _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_bloqueada', meta: { motivo, por: req.user.nome } }).catch(() => {});
+  res.json({ ok: true });
+});
+app.post('/api/plataforma/empresas/:id/desbloquear', authDiretoriaInterna, (req, res) => {
+  const e = _empresaDaRota(req, res); if (!e) return;
+  _platPrep("UPDATE empresas SET status='ativa', bloqueio_motivo=NULL, bloqueado_em=NULL, bloqueado_por=NULL WHERE id=?").run(e.id);
+  e.status = 'ativa'; e.motivo = '';
+  const db = readDB(); audit(db, 'empresa_desbloqueada', { empresa: e.id, nome: e.nome }, null, req.user); writeDB(db);
+  _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_desbloqueada', meta: { por: req.user.nome } }).catch(() => {});
+  res.json({ ok: true });
+});
+// Entrar como suporte: o motor da empresa cria uma sessão de suporte (com prazo e modo)
+app.post('/api/plataforma/empresas/:id/suporte', authDiretoriaInterna, async (req, res) => {
+  const e = _empresaDaRota(req, res); if (!e) return;
+  const b = req.body || {};
+  const motivo = String(b.motivo || '').trim().slice(0, 200);
+  if (!motivo) return res.status(400).json({ error: 'Escreva o motivo pra entrar.' });
+  const modo = b.modo === 'mexer' ? 'mexer' : 'olhar';
+  const minutos = [15, 30, 60].includes(Number(b.minutos)) ? Number(b.minutos) : 30;
+  const avisar = b.avisar !== false;
+  const r = await _pedirAoMotor(e.id, 'sessao-suporte', { por: req.user.nome || 'TMX', modo, minutos, motivo, avisar });
+  if (!r || !r.ok) return res.status(500).json({ error: 'Não consegui abrir o suporte: ' + ((r && r.erro) || 'sem resposta') });
+  const db = readDB(); audit(db, 'suporte_entrou', { empresa: e.id, nome: e.nome }, { modo, minutos, motivo, avisou: avisar }, req.user); writeDB(db);
+  res.json({ ok: true, token: r.token, user: r.user, expira: r.expira, empresa: { id: e.id, nome: e.nome, base: '/e/' + e.id } });
+});
+
+// ── Chamados (lado da TMX) ──
+const STATUS_CHAMADO = { aberto: 'Esperando a TMX', cliente: 'Esperando o cliente', resolvido: 'Resolvido' };
+function _chamadoComMsgs(id) {
+  const c = _platPrep('SELECT * FROM chamados WHERE id=?').get(id);
+  if (!c) return null;
+  return Object.assign({}, c, { msgs: _platPrep('SELECT id, de, autor, texto, criado FROM chamado_msgs WHERE chamado=? ORDER BY id').all(id) });
+}
+// Avisa a Diretoria da TMX dentro do TMX (sininho). Sem WhatsApp por enquanto.
+function _avisarDiretoriaTmx(titulo, texto) {
+  try {
+    const db = readDB();
+    const notifs = db.store['sl_notifs'] = db.store['sl_notifs'] || [];
+    (db.store['sl_usuarios'] || []).filter(u => u && u.cargo === 'Diretoria' && u.ativo !== false).forEach(u => {
+      notifs.unshift({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 8), destId: u.id, destNome: u.nome || '', tipo: 'suporte',
+                       titulo, texto, refId: null, lida: false, criado: Date.now() });
+    });
+    if (!db.timestamps) db.timestamps = {};
+    db.timestamps['sl_notifs'] = now();
+    writeDB(db);
+  } catch (e) { console.error('[SUPORTE] aviso pra TMX:', e.message); }
+}
+// O motor pede algo à plataforma. A empresa vem da portaria (é a do motor), nunca do cliente.
+function _atenderMotor(empresa, cmd, d) {
+  const emp = _empresas.get(empresa) || { nome: empresa };
+  const u = d.usuario || {};
+  if (cmd === 'chamado-abrir') {
+    const assunto = String(d.assunto || '').trim().slice(0, 140), texto = String(d.texto || '').trim().slice(0, 5000);
+    if (!assunto || !texto) return { ok: false, erro: 'Diga o assunto e conte o que aconteceu.' };
+    const tipo = ['Problema', 'Dúvida', 'Pagamento', 'Pedido'].includes(d.tipo) ? d.tipo : 'Dúvida';
+    const agora = Date.now();
+    const r = _platPrep('INSERT INTO chamados(empresa, assunto, tipo, projeto, status, criado, atualizado, aberto_por, aberto_por_nome, aberto_por_email) VALUES(?,?,?,?,?,?,?,?,?,?)')
+      .run(empresa, assunto, tipo, String(d.projeto || '').slice(0, 60) || null, 'aberto', agora, agora, String(u.id || ''), String(u.nome || '').slice(0, 80), String(u.email || '').slice(0, 120));
+    const id = Number(r.lastInsertRowid);
+    _platPrep('INSERT INTO chamado_msgs(chamado, de, autor, texto, criado) VALUES(?,?,?,?,?)').run(id, 'cliente', String(u.nome || 'Cliente'), texto, agora);
+    _avisarDiretoriaTmx('🛟 Chamado #' + id + ' · ' + emp.nome, assunto + ' (' + tipo + ')');
+    return { ok: true, id };
+  }
+  if (cmd === 'chamado-listar') {
+    return { ok: true, chamados: _platPrep('SELECT id, assunto, tipo, projeto, status, criado, atualizado, aberto_por_nome FROM chamados WHERE empresa=? ORDER BY atualizado DESC LIMIT 200').all(empresa) };
+  }
+  const id = Number(d.id);
+  const c = id ? _platPrep('SELECT * FROM chamados WHERE id=? AND empresa=?').get(id, empresa) : null;
+  if (!c) return { ok: false, erro: 'Chamado não encontrado.' };
+  if (cmd === 'chamado-ver') {
+    const ch = _chamadoComMsgs(id);
+    ch.msgs = ch.msgs.filter(m => m.de !== 'nota');   // nota interna da TMX não vai pro cliente
+    return { ok: true, chamado: ch };
+  }
+  if (cmd === 'chamado-responder') {
+    const texto = String(d.texto || '').trim().slice(0, 5000);
+    if (!texto) return { ok: false, erro: 'Escreva a mensagem.' };
+    const agora = Date.now();
+    _platPrep('INSERT INTO chamado_msgs(chamado, de, autor, texto, criado) VALUES(?,?,?,?,?)').run(id, 'cliente', String(u.nome || 'Cliente'), texto, agora);
+    _platPrep("UPDATE chamados SET status='aberto', atualizado=? WHERE id=?").run(agora, id);
+    _avisarDiretoriaTmx('🛟 Resposta no chamado #' + id + ' · ' + emp.nome, c.assunto);
+    return { ok: true };
+  }
+  return { ok: false, erro: 'pedido desconhecido' };
+}
+app.get('/api/plataforma/chamados', authDiretoriaInterna, (req, res) => {
+  const lista = _platPrep('SELECT * FROM chamados ORDER BY atualizado DESC LIMIT 500').all().map(c =>
+    Object.assign({}, c, { empresa_nome: (_empresas.get(c.empresa) || {}).nome || c.empresa,
+      msgs: _platPrep('SELECT COUNT(*) n FROM chamado_msgs WHERE chamado=?').get(c.id).n }));
+  res.json({ chamados: lista, status: STATUS_CHAMADO });
+});
+app.get('/api/plataforma/chamados/:id', authDiretoriaInterna, (req, res) => {
+  const ch = _chamadoComMsgs(Number(req.params.id));
+  if (!ch) return res.status(404).json({ error: 'Chamado não encontrado.' });
+  const e = _empresas.get(ch.empresa) || {};
+  res.json({ chamado: Object.assign(ch, { empresa_nome: e.nome || ch.empresa, empresa_status: e.status || '' }) });
+});
+app.post('/api/plataforma/chamados/:id/responder', authDiretoriaInterna, (req, res) => {
+  const id = Number(req.params.id);
+  const c = _platPrep('SELECT * FROM chamados WHERE id=?').get(id);
+  if (!c) return res.status(404).json({ error: 'Chamado não encontrado.' });
+  const b = req.body || {};
+  const texto = String(b.texto || '').trim().slice(0, 5000);
+  const nota = b.nota === true;
+  const status = STATUS_CHAMADO[b.status] ? b.status : (texto && !nota ? 'cliente' : c.status);
+  const agora = Date.now();
+  if (texto) _platPrep('INSERT INTO chamado_msgs(chamado, de, autor, texto, criado) VALUES(?,?,?,?,?)').run(id, nota ? 'nota' : 'tmx', req.user.nome || 'TMX', texto, agora);
+  _platPrep('UPDATE chamados SET status=?, atualizado=?, responsavel=? WHERE id=?').run(status, agora, req.user.nome || 'TMX', id);
+  // o cliente fica sabendo pelo sininho do TMX dele (nota interna não avisa)
+  if ((texto && !nota) || (status === 'resolvido' && c.status !== 'resolvido')) {
+    _pedirAoMotor(c.empresa, 'notificar', { para: c.aberto_por, titulo: '🛟 Suporte TMX · chamado #' + id,
+      texto: texto && !nota ? 'A TMX respondeu: ' + texto.slice(0, 160) : 'Seu chamado foi marcado como resolvido.' }).catch(() => {});
+  }
+  const db = readDB(); audit(db, nota ? 'chamado_nota' : 'chamado_respondido', { chamado: id, empresa: c.empresa }, { status }, req.user); writeDB(db);
+  res.json({ ok: true });
 });
 
 // ── Helpers de data ──
@@ -22012,11 +22216,20 @@ if (!SOU_TMX) {
   process.on('disconnect', () => _gravarTudoESair('PORTARIA'));
   // Pedidos diretos da portaria
   process.on('message', msg => {
+    if (msg && msg.tipo === 'resposta-portaria' && _pedidosPortaria.has(msg.n)) {
+      const f = _pedidosPortaria.get(msg.n); _pedidosPortaria.delete(msg.n); return f(msg.r || { ok: false });
+    }
     if (!msg || msg.tipo !== 'pedido') return;
     const responder = r => { try { process.send(Object.assign({ tipo: 'resposta', n: msg.n }, r)); } catch (e) {} };
     try {
       if (msg.cmd === 'criar-diretoria') return responder(_criarPrimeiraDiretoria(msg.dados || {}));
       if (msg.cmd === 'cadastro-inicial') return responder(_cadastroInicial(msg.dados || {}));
+      if (msg.cmd === 'sessao-suporte') return responder(_abrirSessaoSuporte(msg.dados || {}));
+      if (msg.cmd === 'notificar') return responder(_notificarNoMotor(msg.dados || {}));
+      if (msg.cmd === 'auditar') {
+        const db = readDB(); audit(db, String((msg.dados || {}).acao || 'plataforma'), null, (msg.dados || {}).meta || null, { nome: 'Central TMX Admin' }); writeDB(db);
+        return responder({ ok: true });
+      }
       responder({ ok: false, erro: 'pedido desconhecido' });
     } catch (e) { responder({ ok: false, erro: e.message }); }
   });
@@ -22036,6 +22249,81 @@ function _criarPrimeiraDiretoria(d) {
   audit(db, 'empresa_primeira_diretoria', { userId: u.id, email }, null, { nome: 'Portaria' });
   writeDB(db);
   return { ok: true, userId: u.id };
+}
+
+// ── Suporte do lado do cliente: o botão Suporte do TMX dele ──
+// Os chamados moram no registro da plataforma; o motor só repassa, sempre com a empresa dele.
+function _quem(req) { return { id: req.user.id, nome: req.user.nome, email: req.user.email, cargo: req.user.cargo }; }
+app.get('/api/suporte/chamados', authUsuario, async (req, res) => {
+  if (SOU_TMX) return res.status(404).json({ error: 'Não disponível.' });
+  const r = await _pedirAPortaria('chamado-listar', { usuario: _quem(req) });
+  if (!r.ok) return res.status(502).json({ error: r.erro || 'O suporte não respondeu agora.' });
+  res.json({ chamados: r.chamados });
+});
+app.post('/api/suporte/chamados', authUsuario, async (req, res) => {
+  if (SOU_TMX) return res.status(404).json({ error: 'Não disponível.' });
+  const b = req.body || {};
+  const r = await _pedirAPortaria('chamado-abrir', { usuario: _quem(req), assunto: b.assunto, tipo: b.tipo, projeto: b.projeto, texto: b.texto });
+  if (!r.ok) return res.status(400).json({ error: r.erro || 'Não consegui abrir o chamado.' });
+  res.json({ ok: true, id: r.id });
+});
+app.get('/api/suporte/chamados/:id', authUsuario, async (req, res) => {
+  if (SOU_TMX) return res.status(404).json({ error: 'Não disponível.' });
+  const r = await _pedirAPortaria('chamado-ver', { usuario: _quem(req), id: req.params.id });
+  if (!r.ok) return res.status(404).json({ error: r.erro || 'Chamado não encontrado.' });
+  res.json({ chamado: r.chamado });
+});
+app.post('/api/suporte/chamados/:id/responder', authUsuario, async (req, res) => {
+  if (SOU_TMX) return res.status(404).json({ error: 'Não disponível.' });
+  const r = await _pedirAPortaria('chamado-responder', { usuario: _quem(req), id: req.params.id, texto: (req.body || {}).texto });
+  if (!r.ok) return res.status(400).json({ error: r.erro || 'Não consegui responder.' });
+  res.json({ ok: true });
+});
+
+// Pedido do motor à plataforma (chamados ficam no registro da plataforma, não no banco da empresa)
+const _pedidosPortaria = new Map();
+let _pedidoPortariaN = 0;
+function _pedirAPortaria(cmd, dados) {
+  if (SOU_TMX || !process.send) return Promise.resolve({ ok: false, erro: 'só existe nas empresas' });
+  return new Promise(ok => {
+    const n = ++_pedidoPortariaN;
+    const t = setTimeout(() => { _pedidosPortaria.delete(n); ok({ ok: false, erro: 'a plataforma não respondeu' }); }, 10000);
+    _pedidosPortaria.set(n, r => { clearTimeout(t); ok(r); });
+    process.send({ tipo: 'pedido-portaria', n, cmd, dados });
+  });
+}
+// Sessão de suporte: ninguém novo entra na equipe do cliente; a sessão carrega quem é e até quando vale
+function _abrirSessaoSuporte(d) {
+  const db = readDB();
+  if (!db.sessions) db.sessions = [];
+  const minutos = Number(d.minutos) || 30, expira = Date.now() + minutos * 60000;
+  const suporte = { por: String(d.por || 'TMX').slice(0, 60), modo: d.modo === 'mexer' ? 'mexer' : 'olhar', motivo: String(d.motivo || '').slice(0, 200), expira };
+  const token = 'ses_' + EMPRESA_MOTOR + '.sup' + crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  _pruneSessoesExpiradas(db);
+  db.sessions.push({ tokenHash, userId: ID_SUPORTE, suporte, createdAt: Date.now(), lastActivity: Date.now() });
+  _sessoesSuporte.set(tokenHash, { modo: suporte.modo, expira });
+  audit(db, 'suporte_entrou', { por: suporte.por }, { modo: suporte.modo, minutos, motivo: suporte.motivo }, { nome: 'Suporte TMX · ' + suporte.por });
+  if (d.avisar !== false) _avisarDiretoria(db, '🛟 O suporte da TMX entrou na sua conta',
+    suporte.por + ' entrou como suporte (' + (suporte.modo === 'mexer' ? 'pode mexer' : 'só olhando') + ') por até ' + minutos + ' min. Motivo: ' + suporte.motivo);
+  writeDB(db);
+  const user = _usuarioDaSessao(db, { suporte, userId: ID_SUPORTE });
+  return { ok: true, token, user, expira };
+}
+function _avisarDiretoria(db, titulo, texto, soPara) {
+  const notifs = db.store['sl_notifs'] = db.store['sl_notifs'] || [];
+  (db.store['sl_usuarios'] || []).filter(u => u && u.ativo !== false && (soPara ? u.id === soPara : u.cargo === 'Diretoria')).forEach(u => {
+    notifs.unshift({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 8), destId: u.id, destNome: u.nome || '', tipo: 'suporte',
+                     titulo, texto, refId: null, lida: false, criado: Date.now() });
+  });
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps['sl_notifs'] = now();
+}
+function _notificarNoMotor(d) {
+  const db = readDB();
+  _avisarDiretoria(db, String(d.titulo || '').slice(0, 120), String(d.texto || '').slice(0, 300), d.para || null);
+  writeDB(db);
+  return { ok: true };
 }
 
 // Cadastro do cliente: a conta (Diretoria), o nome da empresa e os projetos, numa
@@ -22079,6 +22367,9 @@ function _cadastroInicial(d) {
 // O motor de uma empresa ouve só por dentro do servidor (127.0.0.1, porta livre) e
 // diz à portaria em qual porta está. Ninguém de fora fala direto com ele.
 if (!SOU_TMX) {
+  try {
+    (readDB().sessions || []).forEach(x => { if (x && x.suporte && x.suporte.expira > Date.now()) _sessoesSuporte.set(x.tokenHash, { modo: x.suporte.modo, expira: x.suporte.expira }); });
+  } catch (e) {}
   const srv = app.listen(0, '127.0.0.1', () => {
     const porta = srv.address().port;
     console.log(`[MOTOR] empresa ${EMPRESA_MOTOR} ouvindo em 127.0.0.1:${porta} (dados em ${DATA_DIR})`);
@@ -22096,7 +22387,8 @@ if (!SOU_TMX) {
   console.log(`  ☁️   Remoto:   ${remoteOk ? 'ATIVO → ' + process.env.GITHUB_BACKUP_REPO : 'DESATIVADO (falta GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO)'}`);
   console.log('');
   // liga o motor de cada empresa ativa (a TMX já está de pé neste processo)
-  const ativas = [..._empresas.values()].filter(e => e.status === 'ativa');
+  // bloqueada também liga: o pixel e as vendas dela continuam gravando
+  const ativas = [..._empresas.values()];
   if (ativas.length) console.log(`  🏢  Empresas: ${ativas.length} motor(es) ligando`);
   ativas.forEach(e => { try { _ligarMotor(e); } catch (err) { console.error('[PORTARIA] não liguei', e.id, err.message); } });
 });

@@ -3801,6 +3801,10 @@ a.fn-btn{text-decoration:none;display:inline-block}
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       <span id="user-name-nav">Usuário</span>
     </div>
+    <div class="nav-item" id="nav-suporte" onclick="goTo('suporte')" style="display:none;" title="Falar com a TMX">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>
+      Suporte
+    </div>
     <div class="nav-item" id="nav-ajuda" onclick="window.open('/ajuda','_blank')" title="Central de Ajuda">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       Ajuda
@@ -4126,6 +4130,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
         <div style="flex:1;min-width:0;" id="gestao-content"></div>
       </div>
     </div>
+
+    <!-- SUPORTE (cliente fala com a TMX; os chamados ficam na Central TMX Admin) -->
+    <div class="page" id="page-suporte"><div id="suporte-mount" style="max-width:860px"></div></div>
 
     <!-- MEU PROTOCOLO -->
     <div class="page" id="page-protocolo">
@@ -7066,6 +7073,147 @@ function tmxEmpresa(){ try{ return localStorage.getItem('sl_empresa_id') || 'tmx
 function tmxBase(){ try{ return localStorage.getItem('sl_empresa_base') || ''; }catch(e){ return ''; } }
 function tmxEhTmx(){ return tmxEmpresa() === 'tmx'; }
 function urlPublica(caminho){ return location.origin + tmxBase() + caminho; }
+// Aviso rápido no rodapé da tela
+function _avisoTela(msg){
+  try{
+    var d = document.createElement('div');
+    d.textContent = msg;
+    d.style.cssText = 'position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:100000;background:#111524;border:1px solid rgba(255,255,255,.16);color:#fff;padding:10px 16px;border-radius:10px;font:600 13px Inter,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:calc(100% - 32px)';
+    document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 3200);
+  }catch(e){}
+}
+// A empresa com que esta aba abriu. Se outra aba trocar de empresa (outro login, entrar como
+// suporte), esta aba recarrega antes de mandar qualquer coisa: senão o que está na memória dela
+// subiria pra outra empresa com a sessão nova.
+var _empresaDaAba = tmxEmpresa();
+try{
+  window.addEventListener('storage', function(ev){
+    if(ev.key === 'sl_empresa_id' || ev.key === null){ if(tmxEmpresa() !== _empresaDaAba) location.reload(); }
+  });
+}catch(e){}
+// Conta da empresa bloqueada pela TMX: para a sincronização e mostra o aviso no lugar do app
+var _bloqueadaAvisada = 0;
+function _contaBloqueada(msg){
+  if(_bloqueadaAvisada) return; _bloqueadaAvisada = 1;
+  try{ if(_syncInterval) clearInterval(_syncInterval); }catch(e){}
+  setTimeout(function(){
+    try{
+      var ls = document.getElementById('login-screen'); if(ls) ls.classList.remove('hidden');
+      var er = document.getElementById('login-error'); if(er) er.textContent = msg || 'A conta da sua empresa está suspensa. Fale com a TMX pra liberar.';
+    }catch(e){}
+  }, 100);
+}
+// ── Modo suporte: a Diretoria da TMX dentro do TMX de um cliente ──
+function _ehSuporte(){ return !!(typeof currentUser !== 'undefined' && currentUser && currentUser.suporte); }
+function _escS(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function _mostrarFaixaSuporte(){
+  if(!_ehSuporte() || document.getElementById('faixa-suporte')) return;
+  var sp = currentUser.suporte, fim = new Date(sp.expira || Date.now());
+  var nome = ''; try{ nome = localStorage.getItem('sl_empresa_nome') || ''; }catch(e){}
+  var f = document.createElement('div');
+  f.id = 'faixa-suporte';
+  f.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#3E1493,#2509E4);color:#fff;font:600 13px Inter,sans-serif;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px max(14px,env(safe-area-inset-right,0px)) 8px max(14px,env(safe-area-inset-left,0px));padding-top:max(8px,env(safe-area-inset-top,0px))';
+  f.innerHTML = '<span>🛟 Você está como <b>suporte</b> na <b>'+_escS(nome || 'empresa')+'</b> · '+(sp.modo === 'mexer' ? 'pode mexer' : 'só olhar')+
+    ' · termina às '+String(fim.getHours()).padStart(2,'0')+':'+String(fim.getMinutes()).padStart(2,'0')+'</span>'+
+    '<button type="button" style="margin-left:auto;background:#fff;color:#2509E4;border:0;border-radius:8px;padding:6px 12px;font:700 12px Inter,sans-serif;cursor:pointer" onclick="_sairDoSuporte()">Sair do suporte</button>';
+  document.body.appendChild(f);
+  document.body.style.paddingTop = f.offsetHeight + 'px';
+  var falta = (sp.expira || 0) - Date.now();
+  if(falta > 0 && falta < 2147000000) setTimeout(function(){ _sairDoSuporte('O tempo do suporte acabou.'); }, falta);
+}
+// Sai do suporte e volta pra Central Admin com a conta da TMX que estava guardada
+function _sairDoSuporte(motivo){
+  var token = ''; try{ token = localStorage.getItem('sl_session_token') || ''; }catch(e){}
+  if(token) try{ _fetchSemTrava('/api/auth/logout', { method:'POST', keepalive:true, headers:{ 'Authorization':'Bearer '+token } }); }catch(e){}
+  var guardado = '', userGuardado = '';
+  try{ guardado = localStorage.getItem('sl_tmx_token_guardado') || ''; userGuardado = localStorage.getItem('sl_tmx_user_guardado') || ''; }catch(e){}
+  _limparCopiaLocal();
+  try{
+    if(guardado && userGuardado){
+      var u = JSON.parse(userGuardado);
+      localStorage.setItem('sl_session_token', guardado); localStorage.setItem('sl_auth', '1');
+      localStorage.setItem('sl_user_id', u.id); localStorage.setItem('sl_usuarios', JSON.stringify([u]));
+      localStorage.setItem('sl_empresa_id', 'tmx'); localStorage.setItem('sl_empresa_base', ''); localStorage.setItem('sl_empresa_nome', 'TMX');
+      localStorage.removeItem('sl_tmx_token_guardado'); localStorage.removeItem('sl_tmx_user_guardado');
+    }
+    if(motivo) sessionStorage.setItem('sl_admin_aviso', motivo);
+  }catch(e){}
+  location.href = '/admin';
+}
+// ── Página Suporte do cliente: abre chamado e conversa com a TMX ──
+var _supVista = 'lista', _supAberto = null, _supLista = [];
+var _SUP_STATUS = { aberto:['Esperando a TMX','#F59E0B'], cliente:['A TMX respondeu','#1B9CFA'], resolvido:['Resolvido','#10B981'] };
+function _supData(ms){ var d = new Date(ms || 0); return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); }
+function _supPill(st){ var x = _SUP_STATUS[st] || [st, '#8b93ab']; return '<span style="display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 9px;background:'+x[1]+'22;color:'+x[1]+'">'+_escS(x[0])+'</span>'; }
+function renderSuporte(){
+  var el = document.getElementById('suporte-mount'); if(!el) return;
+  var caixa = 'background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px';
+  if(_supVista === 'novo'){
+    var projs = (typeof getOfertasV2 === 'function' ? getOfertasV2() : []).map(function(o){ return o && o.nome; }).filter(Boolean);
+    el.innerHTML = '<div style="'+caixa+'"><div style="font-size:16px;font-weight:700;margin-bottom:4px">Abrir chamado</div><div style="font-size:12.5px;color:var(--text2);margin-bottom:16px">A TMX responde por aqui, e você recebe o aviso no sininho.</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">' +
+        '<div><label class="fl" for="sup-tipo">Sobre o quê?</label><select class="fi" id="sup-tipo" style="width:100%"><option value="Problema">Problema</option><option value="Dúvida">Dúvida</option><option value="Pagamento">Pagamento</option><option value="Pedido">Pedido (trocar plano, domínio, exportar dados…)</option></select></div>' +
+        '<div><label class="fl" for="sup-proj">Projeto</label><select class="fi" id="sup-proj" style="width:100%"><option value="">Nenhum em especial</option>'+projs.map(function(n){ return '<option>'+_escS(n)+'</option>'; }).join('')+'</select></div></div>' +
+      '<div style="margin-top:12px"><label class="fl" for="sup-assunto">Assunto</label><input class="fi" id="sup-assunto" maxlength="140" style="width:100%" placeholder="Ex.: o pixel não conta a página nova"></div>' +
+      '<div style="margin-top:12px"><label class="fl" for="sup-texto">Conte o que aconteceu</label><textarea class="fi" id="sup-texto" rows="5" style="width:100%;resize:vertical" placeholder="O que você fez, o que esperava e o que apareceu"></textarea></div>' +
+      '<div id="sup-erro" style="color:var(--red);font-size:12.5px;margin-top:8px"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn btn-ghost" onclick="_supVista=\'lista\';renderSuporte()">Voltar</button><button class="btn btn-primary" id="sup-enviar" onclick="_supEnviarNovo()">Enviar chamado</button></div></div>';
+    return;
+  }
+  if(_supVista === 'ver' && _supAberto){
+    var c = _supAberto;
+    var fio = (c.msgs || []).map(function(m){
+      var tmx = m.de === 'tmx';
+      return '<div style="max-width:86%;align-self:'+(tmx?'flex-start':'flex-end')+';background:'+(tmx?'rgba(91,94,244,.16)':'var(--bg3)')+';border:1px solid '+(tmx?'rgba(91,94,244,.35)':'var(--border)')+';border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:3px">'+(tmx?'TMX · ':'')+_escS(m.autor)+' · '+_supData(m.criado)+'</div>'+_escS(m.texto).replace(/\n/g,'<br>')+'</div>';
+    }).join('');
+    el.innerHTML = '<div style="'+caixa+'"><button class="btn btn-ghost" style="margin-bottom:10px" onclick="_supVista=\'lista\';renderSuporte()">‹ Chamados</button>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px"><div style="font-size:16px;font-weight:700">#'+c.id+' · '+_escS(c.assunto)+'</div>'+_supPill(c.status)+'</div>' +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+_escS(c.tipo || '')+(c.projeto?' · '+_escS(c.projeto):'')+' · aberto em '+_supData(c.criado)+'</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px">'+fio+'</div>' +
+      '<textarea class="fi" id="sup-resp" rows="3" style="width:100%;margin-top:14px;resize:vertical" placeholder="Responder pra TMX…"></textarea>' +
+      '<div id="sup-erro" style="color:var(--red);font-size:12.5px;margin-top:6px"></div>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-primary" id="sup-enviar" onclick="_supResponder()">Enviar</button></div></div>';
+    return;
+  }
+  el.innerHTML = '<div style="'+caixa+';display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><div style="font-size:16px;font-weight:700">Fale com a TMX</div><div style="font-size:12.5px;color:var(--text2)">Dúvidas, problemas e pedidos. A gente responde por aqui.</div></div>' +
+    '<button class="btn btn-primary" onclick="_supVista=\'novo\';renderSuporte()">+ Abrir chamado</button></div><div id="sup-lista" style="'+caixa+'"><div style="color:var(--text2);font-size:13px">Carregando…</div></div>';
+  fetch(API_BASE + '/api/suporte/chamados').then(function(r){ return r.json(); }).then(function(j){
+    _supLista = (j && j.chamados) || [];
+    var l = document.getElementById('sup-lista'); if(!l) return;
+    l.innerHTML = _supLista.length ? _supLista.map(function(c){
+      return '<div onclick="_supAbrir('+Number(c.id)+')" style="display:flex;gap:12px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--border);cursor:pointer">' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:600">#'+c.id+' · '+_escS(c.assunto)+'</div><div style="font-size:12px;color:var(--text2)">'+_escS(c.tipo || '')+(c.projeto?' · '+_escS(c.projeto):'')+' · '+_supData(c.atualizado)+'</div></div>'+_supPill(c.status)+'</div>';
+    }).join('') : '<div style="color:var(--text2);font-size:13px">Nenhum chamado ainda. Quando precisar, é só abrir um.</div>';
+  }).catch(function(){ var l = document.getElementById('sup-lista'); if(l) l.innerHTML = '<div style="color:var(--text2);font-size:13px">Não consegui carregar os chamados agora.</div>'; });
+}
+function _supAbrir(id){
+  fetch(API_BASE + '/api/suporte/chamados/' + id).then(function(r){ return r.json(); }).then(function(j){
+    if(!j || !j.chamado) return _avisoTela('Não consegui abrir o chamado.');
+    _supAberto = j.chamado; _supVista = 'ver'; renderSuporte();
+  });
+}
+function _supEnviarNovo(){
+  var g = function(id){ var x = document.getElementById(id); return x ? x.value.trim() : ''; };
+  var corpo = { tipo: g('sup-tipo'), projeto: g('sup-proj'), assunto: g('sup-assunto'), texto: g('sup-texto') };
+  var er = document.getElementById('sup-erro');
+  if(!corpo.assunto || !corpo.texto){ er.textContent = 'Diga o assunto e conte o que aconteceu.'; return; }
+  var b = document.getElementById('sup-enviar'); b.disabled = true; b.textContent = 'Enviando…';
+  fetch(API_BASE + '/api/suporte/chamados', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(corpo) })
+    .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+    .then(function(x){
+      if(!x.ok){ b.disabled = false; b.textContent = 'Enviar chamado'; er.textContent = (x.j && x.j.error) || 'Não consegui enviar.'; return; }
+      _avisoTela('Chamado aberto. A TMX vai responder por aqui.'); _supAbrir(x.j.id);
+    }).catch(function(){ b.disabled = false; b.textContent = 'Enviar chamado'; er.textContent = 'Sem conexão. Tente de novo.'; });
+}
+function _supResponder(){
+  var t = (document.getElementById('sup-resp') || {}).value || ''; t = t.trim();
+  if(!t || !_supAberto) return;
+  var b = document.getElementById('sup-enviar'); b.disabled = true;
+  fetch(API_BASE + '/api/suporte/chamados/' + _supAberto.id + '/responder', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ texto: t }) })
+    .then(function(r){ if(!r.ok) throw 0; _supAbrir(_supAberto.id); })
+    .catch(function(){ b.disabled = false; var er = document.getElementById('sup-erro'); if(er) er.textContent = 'Não consegui enviar. Tente de novo.'; });
+}
 // Textos fixos da tela que mostram um endereço público (ex.: webhook do WhatsApp)
 function _preencherUrlsPublicas(){
   try{ document.querySelectorAll('.tmx-url-publica').forEach(function(el){ el.textContent = urlPublica(el.getAttribute('data-caminho') || ''); }); }catch(e){}
@@ -7076,6 +7224,8 @@ var _PREFS_APARELHO = ['sl_theme','sl_sidebar_collapsed','sl_pwa_ios_dismissed',
 // depois do login (pushAllToServer) subiria os dados de uma empresa para a outra.
 function _limparCopiaLocal(){
   var guarda = {};
+  // a conta da TMX guardada enquanto a Diretoria está como suporte num cliente
+  ['sl_tmx_token_guardado','sl_tmx_user_guardado'].forEach(function(k){ try{ var v = localStorage.getItem(k); if(v !== null) guarda[k] = v; }catch(e){} });
   try{ _PREFS_APARELHO.forEach(function(k){ var v = localStorage.getItem(k); if(v !== null) guarda[k] = v; }); }catch(e){}
   try{ localStorage.clear(); }catch(e){}
   try{ sessionStorage.removeItem('sl_tela'); }catch(e){}   // a última tela aberta era da outra empresa
@@ -7130,20 +7280,34 @@ const SYNC_KEYS = ['tasks','sl_usuarios','sl_nichos','sl_ofertas_v2','sl_checkli
         }
       }catch(e){}
     }
+    // outra aba trocou a empresa deste aparelho: não manda nada, recarrega
+    if(ehApi && typeof _empresaDaAba !== 'undefined' && typeof tmxEmpresa === 'function' && tmxEmpresa() !== _empresaDaAba){
+      setTimeout(function(){ location.reload(); }, 0);
+      return Promise.reject(new Error('a empresa deste aparelho mudou'));
+    }
     var p = _fetchOrig(input, init);
     if(ehApi && url.indexOf('/api/auth/') < 0){
       p = p.then(function(resp){
         // 401 = sessão expirada/inválida. Manda pro login em vez de deixar o app
         // "logado" só na aparência, sem sincronizar nada.
         if(resp && resp.status === 401) { try{ _sessaoExpirou(); }catch(e){} }
+        if(resp && resp.status === 403){
+          try{
+            if(resp.headers.get('X-TMX-Bloqueada')) _contaBloqueada();
+            else if(resp.headers.get('X-TMX-So-Olhar')){ var ag = Date.now(); if(!window._soOlharAviso || ag - window._soOlharAviso > 5000){ window._soOlharAviso = ag; _avisoTela('Suporte em modo só olhar: nada foi salvo.'); } }
+          }catch(e){}
+        }
         return resp;
       });
     }
     return p;
   };
+  // pra sair do suporte sem passar pela trava da empresa
+  window._fetchSemTrava = _fetchOrig;
 })();
 var _sessaoAvisada = 0;
 function _sessaoExpirou(){
+  if(_ehSuporte()){ _sairDoSuporte('O tempo do suporte acabou.'); return; }
   if(_sessaoAvisada) return;             // uma vez só, senão vira loop
   if(localStorage.getItem('sl_auth') !== '1') return;
   _sessaoAvisada = 1;
@@ -8125,6 +8289,7 @@ function notif(t){
 const titles={
   dashboard:{t:'Dashboard',s:'Visão geral do projeto'},
   protocolo:{t:'Meu Protocolo',s:'Seu painel pessoal'},
+  suporte:{t:'Suporte',s:'Fale com a TMX: dúvidas, problemas e pedidos'},
   task:{t:'Task',s:''},
   metricas:{t:'Tráfego',s:'Gestão e controle de tráfego pago.'},
   criativos:{t:'Criativos',s:'Gerencie seus materiais criativos.'},
@@ -8175,6 +8340,7 @@ function goTo(id){
     // qualquer um abre por link antigo, aba velha, busca interna ou console.
     if(!_ehDir && typeof PAGINAS_DIRETORIA!=='undefined' && PAGINAS_DIRETORIA.indexOf(id)>=0) id = 'dashboard';
     if(id === 'protocolo' && !tmxEhTmx()) id = 'dashboard';   // fora da TMX não existe
+    if(id === 'suporte' && tmxEhTmx()) id = 'dashboard';      // a TMX atende pela Central Admin
     var _mArq = (typeof _moduloArquivadoDaPagina==='function') ? _moduloArquivadoDaPagina(id) : null;
     // fora da TMX nem a Diretoria abre: pro cliente o módulo não existe
     if(_mArq && (!_ehDir || !tmxEhTmx())) id = 'dashboard';
@@ -8243,6 +8409,7 @@ function goTo(id){
   if(id==='gestao'){renderGestaoSidebar();renderGestaoContent();}
   if(id==='financeiro' && typeof fiRender==='function')fiRender();
   if(id==='protocolo')renderProtocolo();
+  if(id==='suporte')renderSuporte();
   if(id==='infra'){renderInfraSidebar();renderInfraContent();}
   if(id==='ritual-detalhe')renderRitualDetalhe();
   // Mobile: atualiza título e bottom nav
@@ -28672,6 +28839,10 @@ async function tentarLogin(){
       var m429 = ''; try{ m429 = (await res.json()).error || ''; }catch(e){}
       err.textContent = m429 || 'Muitas tentativas nessa conta. Aguarde 10 minutos.';
       pwdInp.value='';
+    } else if(res.status === 403){
+      var m403 = ''; try{ m403 = (await res.json()).error || ''; }catch(e){}
+      err.textContent = m403 || 'Sua conta está suspensa. Fale com a TMX.';
+      pwdInp.value='';
     } else {
       err.textContent='E-mail ou senha inválidos.';
       pwdInp.value='';
@@ -28802,6 +28973,7 @@ function _applyNavPermissions(cargo){
   setDisp('nav-financeiro', isDir);
   // Meu Protocolo — apenas Diretoria (painel pessoal do Thiago)
   setDisp('nav-protocolo', isDir && tmxEhTmx());   // Meu Protocolo é só da TMX, fica fora do produto
+  setDisp('nav-suporte', !tmxEhTmx() && !_ehSuporte());   // o cliente fala com a TMX por aqui
 
   // Infra — Diretoria, Sócio e Infra
   setDisp('nav-infra', isDir || isSocio || isInfra);
@@ -29623,11 +29795,13 @@ function encerrarOnboarding(concluido){
 function restoreSession(){
   const uid = localStorage.getItem('sl_user_id');
   if(!uid) return false;
-  const user = getUsuarios().find(u=>u.id===uid);
+  let user = getUsuarios().find(u=>u.id===uid);
+  if(!user && uid === 'suporte-tmx'){ try{ user = JSON.parse(localStorage.getItem('sl_suporte_user') || 'null'); }catch(e){} }
   if(!user){ return false; }
   currentUser = user;
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
+  try{ _mostrarFaixaSuporte(); }catch(e){}
   // PR 6: aplica branding do tenant quando sessão é restaurada
   try{ carregarBranding(); }catch(e){}
   // Atualiza badge de notificações quando sessão é restaurada
