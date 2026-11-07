@@ -72,13 +72,23 @@ tr:last-child td { border-bottom: 0; }
 .opcao[aria-pressed="true"] { border-color: var(--azul); box-shadow: 0 0 0 1px var(--azul) inset; }
 .opcao b { display: block; }
 .opcao span { color: var(--tx2); font-size: 12.5px; }
-.editor { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 960px) { .editor { grid-template-columns: minmax(0, 1fr); } }
+/* editor: o chat fica com a tela toda; Prévia, Conferências, Versões e Campos abrem ao lado, meio a meio */
+.barra { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.barra button { border: 1px solid var(--line2); background: var(--bg3); border-radius: 99px; padding: 6px 14px; font-size: 13px; font-weight: 500; color: var(--tx2); }
+.barra button:hover { border-color: var(--azul); }
+.barra button[aria-pressed="true"] { background: var(--azul-s); color: var(--azul); border-color: var(--azul); }
+.barra .dica { color: var(--tx3); font-size: 12px; margin-left: 4px; }
+.area { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.area.dividida { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .area.dividida { grid-template-columns: minmax(0, 1fr); } }
+.painel-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.painel-cab h3 { font-size: 14px; }
 .campos { display: flex; flex-direction: column; gap: 12px; }
-.dir { min-width: 0; }
 .previa-area { background: var(--bg3); border: 1px solid var(--line); border-radius: 10px; display: flex; justify-content: center; padding: 12px; }
-iframe.previa { width: 390px; max-width: 100%; height: 720px; border: 0; border-radius: 8px; background: #fff; transition: width .2s; }
+iframe.previa { width: 390px; max-width: 100%; height: max(520px, calc(100vh - 300px)); border: 0; border-radius: 8px; background: #fff; transition: width .2s; }
 iframe.previa.pc { width: 100%; }
+.quem { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.quem label { display: flex; gap: 8px; align-items: center; font-size: 13.5px; cursor: pointer; }
 .conf { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .conf:last-child { border-bottom: 0; }
 .conf .chip { flex: none; margin-top: 1px; }
@@ -91,18 +101,35 @@ iframe.previa.pc { width: 100%; }
 .janela { background: var(--bg2); border: 1px solid var(--line2); border-radius: 14px; width: min(620px, 100%); max-height: 90vh; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .acoes { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 a { color: var(--azul); }
-.chat { display: flex; flex-direction: column; gap: 10px; }
-.chat-msgs { display: flex; flex-direction: column; gap: 8px; max-height: 460px; min-height: 160px; overflow-y: auto; padding: 4px 2px; }
-.bolha { max-width: 92%; padding: 9px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat { padding: 0; gap: 0; overflow: hidden; }
+.chat-msgs { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 18px; min-height: 240px; max-height: max(300px, calc(100vh - 440px)); }
+.bolha { max-width: min(720px, 88%); padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bolha .anexo { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; white-space: normal; }
+.bolha .anexo img { width: 110px; height: 78px; object-fit: cover; border-radius: 8px; border: 1px solid rgba(255,255,255,.3); }
+.bolha .n-img { display: block; font-size: 12px; opacity: .85; margin-bottom: 2px; }
 .bolha.eu { align-self: flex-end; background: var(--azul); color: #fff; border-bottom-right-radius: 4px; }
 .bolha.claude { align-self: flex-start; background: var(--bg3); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
 .bolha.acao { align-self: flex-start; color: var(--tx3); font-size: 12px; padding: 2px 4px; }
 .bolha.erro { align-self: flex-start; background: var(--erro-s); }
-.chat-sugs { display: flex; gap: 6px; flex-wrap: wrap; }
+.chat-sugs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 18px 12px; }
 .sug { border: 1px solid var(--line); background: var(--bg3); border-radius: 99px; padding: 5px 11px; font-size: 12px; }
 .sug:hover { border-color: var(--azul); }
-.chat-in { display: flex; gap: 8px; align-items: flex-end; }
-.chat-in textarea { font-family: var(--f); font-size: 13px; min-height: 44px; }
+.compositor { border-top: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.compositor.solta { outline: 2px dashed var(--azul); outline-offset: -4px; }
+.anexados { display: flex; gap: 8px; flex-wrap: wrap; }
+.anexados:empty { display: none; }
+.anexados .mini { position: relative; }
+.anexados img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line2); display: block; }
+.anexados button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: var(--bg3); color: var(--tx); font-size: 12px; line-height: 20px; padding: 0; box-shadow: 0 0 0 1px var(--line2); }
+textarea.caixa { width: 100%; min-height: 120px; resize: vertical; background: var(--bg3); border: 1px solid var(--line2); border-radius: 12px; padding: 12px 14px; font: 15px/1.5 var(--f); }
+.linha-envio { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.linha-envio .esq { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ic { border: 1px solid var(--line2); background: var(--bg3); border-radius: 99px; padding: 6px 12px; font-size: 13px; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.ic:hover { border-color: var(--azul); }
+.ic.ouvindo { background: rgba(255,89,38,.12); color: #FF5926; border-color: #FF5926; }
+.ponto { width: 8px; height: 8px; border-radius: 50%; background: #FF5926; display: inline-block; animation: pisca 1s infinite; }
+@keyframes pisca { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .ponto { animation: none; } }
 .guia { border: 1px solid var(--line); border-radius: 10px; background: var(--bg3); padding: 10px 14px; }
 .guia summary { cursor: pointer; font-weight: 600; color: var(--azul); }
 .guia[open] { display: flex; flex-direction: column; gap: 10px; }
@@ -137,7 +164,21 @@ body.embutido .cab { display: none; }
       <div><label class="rot" for="n-dom">Domínio</label><select class="campo" id="n-dom"></select></div>
       <div><label class="rot" for="n-slug">Endereço</label><input class="campo mono" id="n-slug" placeholder="foco-anual"><div class="ajuda mono" id="n-url"></div></div>
     </div>
-    <div><label class="rot">Modelo</label><div class="opcoes" id="n-modelos"></div></div>
+    <div><label class="rot">Começar de</label>
+      <div class="abas" role="group" aria-label="Começar de" id="n-origem">
+        <button data-o="modelo" aria-pressed="true">Um modelo</button>
+        <button data-o="copiar" aria-pressed="false">Copiar de um endereço</button>
+      </div></div>
+    <div id="n-caixa-modelo"><label class="rot">Modelo</label><div class="opcoes" id="n-modelos"></div></div>
+    <div id="n-caixa-copiar" class="campos" hidden>
+      <div><label class="rot" for="n-copiar-url">Endereço da página</label><input class="campo mono" id="n-copiar-url" placeholder="https://…" autocomplete="off" inputmode="url">
+        <div class="ajuda">O TMX baixa o HTML, as imagens, o CSS e os scripts do mesmo site, tira os pixels e rastreadores do dono e põe o pixel do TMX. Depois você muda pelo chat.</div></div>
+      <fieldset class="quem"><legend class="rot">De quem é essa página?</legend>
+        <label><input type="radio" name="n-aut" value="minha"> É minha</label>
+        <label><input type="radio" name="n-aut" value="autorizada"> É de outra pessoa, e eu tenho autorização dela pra copiar</label>
+      </fieldset>
+      <p class="ajuda">Só copie página sua ou com autorização do dono. Numa página de outra pessoa, o TMX só deixa publicar depois de trocar a VSL e o checkout pelos seus.</p>
+    </div>
     <div id="n-msg"></div>
     <div class="acoes"><button class="btn" id="bt-cancela-nova">Cancelar</button><button class="btn pri" id="bt-criar">Criar página</button></div>
   </div>
@@ -198,6 +239,7 @@ body.embutido .cab { display: none; }
 </section>
 
 <!-- ═════ EDITOR ═════ -->
+<!-- o chat fica com a tela toda; Prévia, Conferências, Versões e Campos abrem ao lado e dividem a tela -->
 <section id="v-editor" hidden>
   <div class="cartao">
     <div class="linha">
@@ -208,51 +250,58 @@ body.embutido .cab { display: none; }
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="chip" id="e-situacao"></span><button class="btn pri" id="bt-publicar">Publicar</button></div>
     </div>
-  </div>
-  <div class="editor">
-    <div class="cartao">
-      <div class="abas" role="group" aria-label="Como editar" id="e-modo" style="align-self:flex-start">
-        <button data-m="claude" aria-pressed="true">Pedir pro Claude</button>
-        <button data-m="campos" aria-pressed="false">Campos</button>
-      </div>
-      <div id="m-claude" class="chat">
-        <div id="chat-msgs" class="chat-msgs" aria-live="polite"></div>
-        <div class="chat-sugs" id="chat-sugs">
-          <button class="sug" data-texto="Troca a VSL pela ">Trocar a VSL…</button>
-          <button class="sug" data-texto="Troca o checkout por ">Trocar o checkout…</button>
-          <button class="sug" data-envia="Confere a página e me diz o que falta pra publicar.">Conferir a página</button>
-        </div>
-        <form id="chat-form" class="chat-in">
-          <textarea class="campo" id="chat-in" rows="2" placeholder="Ex.: troca a VSL pela 697 v3 e o checkout por https://checkout.payt.com.br/…"></textarea>
-          <button class="btn pri" type="submit" id="chat-enviar">Enviar</button>
-        </form>
-        <div class="linha"><span class="ajuda" id="chat-custo"></span><button class="btn mini" id="chat-nova" type="button">Nova conversa</button></div>
-        <p class="ajuda">O Claude muda os campos e cria versões, mas não publica: publicar é o botão, com as conferências. Usa a chave da Anthropic do TMX.</p>
-      </div>
-      <div id="m-campos" hidden>
-        <div class="campos" id="e-campos"></div>
-        <div id="e-msg"></div>
-        <div class="acoes"><button class="btn pri" id="bt-salvar-versao">Salvar versão</button></div>
-      </div>
+    <div class="barra" role="group" aria-label="Abrir ao lado" id="barra">
+      <button data-p="previa" aria-pressed="false">Prévia</button>
+      <button data-p="conf" aria-pressed="false">Conferências <span id="e-conf-n"></span></button>
+      <button data-p="versoes" aria-pressed="false">Versões</button>
+      <button data-p="campos" aria-pressed="false">Campos</button>
+      <span class="dica" id="barra-dica">Clique pra abrir ao lado. Clicou de novo, fecha.</span>
     </div>
-    <div class="dir">
-      <div class="cartao">
-        <div class="linha">
-          <div class="abas" role="group" aria-label="O que mostrar" id="e-abas">
-            <button data-a="previa" aria-pressed="true">Prévia</button>
-            <button data-a="conf" aria-pressed="false">Conferências <span id="e-conf-n"></span></button>
-            <button data-a="versoes" aria-pressed="false">Versões</button>
+  </div>
+  <div class="area" id="area">
+    <section class="cartao chat" aria-label="Chat com o Claude">
+      <div id="chat-msgs" class="chat-msgs" aria-live="polite"></div>
+      <div class="chat-sugs" id="chat-sugs">
+        <button class="sug" type="button" data-texto="Troca a VSL pela ">Trocar a VSL…</button>
+        <button class="sug" type="button" data-texto="Troca o checkout por ">Trocar o checkout…</button>
+        <button class="sug" type="button" data-texto="Deixa igual a esta página: https://">Usar outra página de referência…</button>
+        <button class="sug" type="button" data-envia="Confere a página e me diz o que falta pra publicar.">Conferir a página</button>
+      </div>
+      <form id="chat-form" class="compositor">
+        <div class="anexados" id="anexados"></div>
+        <textarea class="caixa" id="chat-in" placeholder="Peça o que quiser mudar. Dá pra colar o endereço de outra página, anexar um print ou falar."></textarea>
+        <div class="linha-envio">
+          <div class="esq">
+            <label class="ic" for="chat-arq" title="Anexar imagem (também dá pra colar ou arrastar)">📎 Imagem</label>
+            <input type="file" id="chat-arq" accept="image/*" multiple hidden>
+            <button type="button" class="ic" id="bt-falar">🎤 Falar</button>
+            <span class="ajuda" id="chat-custo" style="margin:0"></span>
+            <button class="btn mini" id="chat-nova" type="button">Nova conversa</button>
           </div>
+          <button class="btn pri" type="submit" id="chat-enviar">Enviar</button>
+        </div>
+        <p class="ajuda" style="margin:0">O Claude muda a página e cria versões, mas não publica: publicar é o botão, com as conferências. Enter envia, Shift+Enter pula linha. Usa a chave da Anthropic do TMX.</p>
+      </form>
+    </section>
+    <section class="cartao" id="painel" hidden aria-labelledby="painel-t">
+      <div class="painel-cab"><h3 id="painel-t"></h3>
+        <div style="display:flex;gap:6px;align-items:center">
           <div class="abas" role="group" aria-label="Aparelho" id="e-aparelho">
             <button data-ap="cel" aria-pressed="true">Celular</button><button data-ap="pc" aria-pressed="false">Computador</button>
           </div>
+          <button class="btn mini" id="bt-fechar-painel" type="button" aria-label="Fechar o painel">✕</button>
         </div>
-        <div id="a-previa"><div class="previa-area"><iframe class="previa" id="e-previa" sandbox="allow-same-origin" title="Prévia da página"></iframe></div>
-          <p class="ajuda">A prévia não roda scripts: não conta visita no TMX nem view na VTurb, e mostra a oferta sem esperar o atraso.</p></div>
-        <div id="a-conf" hidden><div id="e-conf"></div><div class="acoes"><button class="btn mini" id="bt-reconferir">Conferir de novo</button></div></div>
-        <div id="a-versoes" hidden><div id="e-versoes"></div></div>
       </div>
-    </div>
+      <div id="a-previa" hidden><div class="previa-area"><iframe class="previa" id="e-previa" sandbox="allow-same-origin" title="Prévia da página"></iframe></div>
+        <p class="ajuda">A prévia não roda scripts: não conta visita no TMX nem view na VTurb, e mostra a oferta sem esperar o atraso.</p></div>
+      <div id="a-conf" hidden><div id="e-conf"></div><div class="acoes"><button class="btn mini" id="bt-reconferir">Conferir de novo</button></div></div>
+      <div id="a-versoes" hidden><div id="v-msg"></div><div id="e-versoes"></div></div>
+      <div id="a-campos" hidden>
+        <div class="campos" id="e-campos"></div>
+        <div id="e-msg" style="margin-top:10px"></div>
+        <div class="acoes" style="margin-top:10px"><button class="btn pri" id="bt-salvar-versao">Salvar versão</button></div>
+      </div>
+    </section>
   </div>
 </section>
 
@@ -333,7 +382,7 @@ body.embutido .cab { display: none; }
           estado.dominios.length ? 'Nenhuma página ainda. Crie a primeira a partir de um modelo.' : 'Conecte uma hospedagem em Domínios pra criar a primeira página.') + '</p>'
       : '<div class="tab-wrap"><table><thead><tr><th>Página</th><th>Modelo</th><th>Situação</th><th></th></tr></thead><tbody>' + l.map(function (p) {
           var m = modeloDe(p.modelo);
-          return '<tr><td><b>' + esc(p.titulo) + '</b><br><span class="mono sub">' + esc(urlDe(p)) + '</span></td><td>' + esc(m ? m.nome : p.modelo) + '</td><td>' + situacao(p) + '</td>' +
+          return '<tr><td><b>' + esc(p.titulo) + '</b><br><span class="mono sub">' + esc(urlDe(p)) + '</span></td><td>' + esc(m ? m.nome : p.modelo === 'livre' ? 'Página livre' : p.modelo) + '</td><td>' + situacao(p) + '</td>' +
             '<td style="text-align:right"><button class="btn mini" data-abrir="' + esc(p.id) + '">Abrir</button></td></tr>';
         }).join('') + '</tbody></table></div>');
   }
@@ -363,15 +412,43 @@ body.embutido .cab { display: none; }
   }
   $('bt-nova').addEventListener('click', abrirNova);
   umSo($('n-modelos'), function (b) { modeloNovo = b.getAttribute('data-m'); });
+  // começar de um modelo ou copiar a página de um endereço
+  var origemNova = 'modelo';
+  umSo($('n-origem'), function (b) {
+    origemNova = b.getAttribute('data-o');
+    $('n-caixa-modelo').hidden = origemNova !== 'modelo'; $('n-caixa-copiar').hidden = origemNova !== 'copiar';
+    $('bt-criar').textContent = origemNova === 'copiar' ? 'Copiar página' : 'Criar página'; msg($('n-msg'));
+    if (origemNova === 'copiar') $('n-copiar-url').focus();
+  });
+  var urlCurta = function (u) { return String(u || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, ''); };
+  function resumoCopia(c) {
+    return '<div class="msg ok">Copiei <span class="mono">' + esc(urlCurta(c.origem)) + '</span>: ' + c.arquivos + (c.arquivos === 1 ? ' arquivo veio' : ' arquivos vieram') + ' junto' +
+        (c.ficaram_no_site_original ? ', e ' + c.ficaram_no_site_original + ' ficaram apontando pro site original (grandes demais ou não abriram)' : '') + '.</div>' +
+      (c.tirei && c.tirei.length ? '<p class="sub"><b>Tirei:</b> ' + esc(c.tirei.join(', ')) + '. O pixel do TMX entrou no lugar.</p>' : '<p class="sub">A página não tinha rastreador de outro dono. O pixel do TMX entrou.</p>') +
+      (c.avisos && c.avisos.length ? '<div class="msg alerta">' + c.avisos.map(esc).join('<br>') + '</div>' : '') +
+      (c.montada_por_js ? '<div class="msg alerta">A página quase não tem texto no HTML: ela é montada por JavaScript. A prévia pode sair vazia e o chat pode não conseguir mudar o texto.</div>' : '') +
+      '<p class="sub">Agora é só pedir pro Claude o que mudar: a VSL, o checkout, os textos.</p>';
+  }
   $('n-slug').addEventListener('input', urlNova); $('n-dom').addEventListener('change', urlNova);
   $('bt-cancela-nova').addEventListener('click', function () { if (EMB === 'editor') return avisarPai('paginas-voltar'); $('c-nova').hidden = true; });
   $('bt-criar').addEventListener('click', function () {
-    var b = this; b.disabled = true;
-    api('POST', '/api/pg/paginas', { titulo: $('n-titulo').value.trim(), dominio_id: $('n-dom').value, slug: $('n-slug').value.trim(), modelo: modeloNovo,
-      projeto: PROJ, funil: PROJ ? $('n-funil').value : '' }).then(function (r) {
+    var b = this, corpo = { titulo: $('n-titulo').value.trim(), dominio_id: $('n-dom').value, slug: $('n-slug').value.trim(), modelo: modeloNovo,
+      projeto: PROJ, funil: PROJ ? $('n-funil').value : '' };
+    if (origemNova === 'copiar') {
+      var u = $('n-copiar-url').value.trim(), aut = document.querySelector('input[name="n-aut"]:checked');
+      if (!/^https?:\/\/\S+\.\S+/.test(u)) return msg($('n-msg'), 'erro', 'Cole o endereço completo da página, com https://.');
+      if (!aut) return msg($('n-msg'), 'erro', 'Diga de quem é a página. Só dá pra copiar página sua ou com autorização do dono.');
+      corpo.copiar = { url: u, autorizacao: aut.value }; delete corpo.modelo;
+      msg($('n-msg'), '', 'Copiando a página e os arquivos dela. Pode levar até um minuto…');
+    }
+    b.disabled = true;
+    api('POST', '/api/pg/paginas', corpo).then(function (r) {
       b.disabled = false;
       if (r.s !== 200) return msg($('n-msg'), 'erro', esc(r.j.error));
-      $('c-nova').hidden = true; avisarPai('paginas-mudou'); carregar().then(function () { abrir(r.j.id); });
+      $('c-nova').hidden = true; avisarPai('paginas-mudou');
+      carregar().then(function () { return abrir(r.j.id); }).then(function () {
+        if (r.j.copia) janela('Página copiada', resumoCopia(r.j.copia), [{ t: 'Começar a editar', pri: true, f: function () { fechar(); $('chat-in').focus(); } }]);
+      });
     });
   });
 
@@ -428,7 +505,7 @@ body.embutido .cab { display: none; }
     mostrar('editor'); $('e-campos').innerHTML = '<p class="vazio">Abrindo…</p>'; msg($('e-msg'));
     return api('GET', '/api/pg/paginas/' + id).then(function (r) {
       if (r.s !== 200) { $('e-campos').innerHTML = '<div class="msg erro">' + esc(r.j.error) + '</div>'; return; }
-      atual = r.j; pintarEditor(); previa(); conferir();
+      atual = r.j; pintarEditor(); if (aberto === 'previa') previa(); conferir();
       if (chatDe !== id) carregarChat(id);
     });
   }
@@ -442,7 +519,8 @@ body.embutido .cab { display: none; }
     var p = atual.pagina, c = atual.campos;
     $('e-titulo').textContent = p.titulo; $('e-url').textContent = atual.endereco || 'sem domínio ainda: você escolhe ao publicar';
     if (atual.endereco) $('e-url').href = atual.endereco; else $('e-url').removeAttribute('href');
-    $('e-modelo').textContent = 'modelo ' + (atual.modelo ? atual.modelo.nome : p.modelo) + ' · versão ' + p.versao;
+    $('e-modelo').textContent = (p.modelo === 'livre' ? 'página livre' + (atual.copia && /^https?:/.test(atual.copia.origem || '') ? ', copiada de ' + urlCurta(atual.copia.origem) : '')
+      : 'modelo ' + (atual.modelo ? atual.modelo.nome : p.modelo)) + ' · versão ' + p.versao;
     $('e-situacao').outerHTML = '<span id="e-situacao">' + situacao(p) + '</span>';
     $('e-campos').innerHTML = atual.modelo.campos.map(function (f) {
       var id = 'c-' + f.k, v = esc(valorCampo(f, c)), ctl;
@@ -475,7 +553,19 @@ body.embutido .cab { display: none; }
       $('e-conf-n').textContent = n ? '(' + n + ')' : '✓';
     });
   }
-  umSo($('e-abas'), function (b) { var a = b.getAttribute('data-a'); ['previa', 'conf', 'versoes'].forEach(function (k) { $('a-' + k).hidden = k !== a; }); });
+  // painéis ao lado: nada aberto = o chat fica com a tela toda; clicar de novo fecha
+  var aberto = '';
+  function abrirPainel(pn) {
+    aberto = aberto === pn ? '' : pn;
+    [].forEach.call($('barra').querySelectorAll('button'), function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-p') === aberto ? 'true' : 'false'); });
+    $('area').classList.toggle('dividida', !!aberto); $('painel').hidden = !aberto; $('barra-dica').hidden = !!aberto;
+    ['previa', 'conf', 'versoes', 'campos'].forEach(function (k) { $('a-' + k).hidden = k !== aberto; });
+    $('e-aparelho').hidden = aberto !== 'previa';
+    $('painel-t').textContent = { previa: 'Prévia', conf: 'Conferências', versoes: 'Versões', campos: 'Campos' }[aberto] || '';
+    if (aberto === 'previa' && atual) previa();
+  }
+  $('barra').addEventListener('click', function (e) { var b = e.target.closest('button[data-p]'); if (b) abrirPainel(b.getAttribute('data-p')); });
+  $('bt-fechar-painel').addEventListener('click', function () { abrirPainel(aberto); });
   umSo($('e-aparelho'), function (b) { $('e-previa').classList.toggle('pc', b.getAttribute('data-ap') === 'pc'); });
   $('bt-reconferir').addEventListener('click', conferir);
   if (EMB) $('bt-voltar').textContent = EMB === 'criar' ? '‹ Voltar pras páginas' : '‹ Voltar para Páginas';
@@ -497,7 +587,8 @@ body.embutido .cab { display: none; }
     var b = e.target.closest('[data-volta]'); if (!b) return;
     api('POST', '/api/pg/paginas/' + atual.pagina.id + '/voltar/' + b.getAttribute('data-volta')).then(function (r) {
       var n0 = b.getAttribute('data-volta');
-      if (r.s === 200) abrir(atual.pagina.id).then(function () { msg($('e-msg'), 'ok', 'Voltou pro que era a versão ' + n0 + '. Virou a versão ' + r.j.n + '.'); });
+      if (r.s === 200) abrir(atual.pagina.id).then(function () { msg($('v-msg'), 'ok', 'Voltou pro que era a versão ' + n0 + '. Virou a versão ' + r.j.n + '.'); });
+      else msg($('v-msg'), 'erro', esc(r.j.error));
     });
   });
 
@@ -553,17 +644,28 @@ body.embutido .cab { display: none; }
   // ── chat com o Claude
   var chatDe = null, trabalhando = false;
   var dinheiro = function (v) { return 'US$ ' + (v || 0).toFixed(v < 0.1 ? 3 : 2).replace('.', ','); };
+  // o texto do Claude vem com **negrito** às vezes
+  var fmt = function (t) { return esc(t).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>'); };
+  function bolha(m, fotos) {
+    var topo = fotos && fotos.length ? '<div class="anexo">' + fotos.map(function (u, i) { return '<img src="' + u + '" alt="Imagem enviada ' + (i + 1) + '">'; }).join('') + '</div>'
+      : m.imagens ? '<span class="n-img">📎 ' + m.imagens + (m.imagens === 1 ? ' imagem' : ' imagens') + '</span>' : '';
+    return '<div class="bolha ' + esc(m.de) + '">' + topo + fmt(m.texto || '') + '</div>';
+  }
   function pintarChat(l, extra) {
-    var html = l.map(function (m) { return '<div class="bolha ' + esc(m.de) + '">' + esc(m.texto) + '</div>'; }).join('');
-    if (!l.length) html = '<div class="bolha claude">Me diga o que mudar nesta página: trocar a VSL, o checkout, o preço, a parcela ou o título. Eu mudo os campos, crio a versão e confiro. Publicar fica com você.</div>';
+    var html = l.map(function (m) { return bolha(m); }).join('');
+    if (!l.length) html = '<div class="bolha claude">Me diga o que mudar nesta página: a VSL, o checkout, o preço, os textos. Dá pra colar o endereço de outra página como referência, mandar um print (📎) ou falar (🎤). Eu mudo, crio a versão e confiro. Publicar fica com você.</div>';
     $('chat-msgs').innerHTML = html + (extra || '');
     $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
   }
   function custo(uso, pedido) {
     $('chat-custo').textContent = (pedido != null ? 'Este pedido: ' + dinheiro(pedido) + ' · ' : '') + 'Chat desta página: ' + dinheiro(uso && uso.custoUS);
   }
+  function avisoChat(t) {
+    var el = document.createElement('div'); el.className = 'bolha erro'; el.textContent = t;
+    $('chat-msgs').appendChild(el); $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
+  }
   function carregarChat(id) {
-    chatDe = id; pintarChat([]); $('chat-custo').textContent = '';
+    chatDe = id; pintarChat([]); $('chat-custo').textContent = ''; anexos = []; pintarAnexos();
     api('GET', '/api/pg/paginas/' + id + '/chat').then(function (r) {
       if (r.s !== 200 || chatDe !== id) return;
       pintarChat(r.j.mensagens); custo(r.j.uso);
@@ -571,22 +673,94 @@ body.embutido .cab { display: none; }
       if (!r.j.temChave) pintarChat(r.j.mensagens, '<div class="bolha erro">O TMX está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.</div>');
     });
   }
+
+  // 📎 imagens: reduzidas aqui mesmo (lado maior até 1568 px, JPEG), até 5 por mensagem
+  var anexos = [];
+  function pintarAnexos() {
+    $('anexados').innerHTML = anexos.map(function (a, i) {
+      return '<div class="mini"><img src="' + a.url + '" alt="Imagem anexada ' + (i + 1) + '"><button type="button" data-tira="' + i + '" aria-label="Tirar a imagem ' + (i + 1) + '">✕</button></div>';
+    }).join('');
+  }
+  function reduzir(f) {
+    return new Promise(function (ok, erro) {
+      var u = URL.createObjectURL(f), img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1568 / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(u);
+        var url = c.toDataURL('image/jpeg', 0.85);
+        ok({ tipo: 'image/jpeg', dados: url.split(',')[1], url: url });
+      };
+      img.onerror = function () { URL.revokeObjectURL(u); erro(); };
+      img.src = u;
+    });
+  }
+  function anexar(lista) {
+    [].slice.call(lista || []).filter(function (f) { return /^image\//.test(f.type); }).forEach(function (f) {
+      if (anexos.length >= 5) return avisoChat('Dá pra mandar até 5 imagens por mensagem.');
+      reduzir(f).then(function (a) { if (anexos.length < 5) { anexos.push(a); pintarAnexos(); } }).catch(function () { avisoChat('Não consegui abrir essa imagem.'); });
+    });
+  }
+  $('chat-arq').addEventListener('change', function () { anexar(this.files); this.value = ''; });
+  $('anexados').addEventListener('click', function (e) { var b = e.target.closest('[data-tira]'); if (b) { anexos.splice(Number(b.getAttribute('data-tira')), 1); pintarAnexos(); } });
+  // colar um print direto na caixa, ou arrastar a imagem pra cima do chat
+  $('chat-in').addEventListener('paste', function (e) {
+    var fs = e.clipboardData && e.clipboardData.files; if (fs && fs.length) { e.preventDefault(); anexar(fs); }
+  });
+  $('chat-form').addEventListener('dragover', function (e) { if (e.dataTransfer && [].some.call(e.dataTransfer.types || [], function (t) { return t === 'Files'; })) { e.preventDefault(); this.classList.add('solta'); } });
+  $('chat-form').addEventListener('dragleave', function () { this.classList.remove('solta'); });
+  $('chat-form').addEventListener('drop', function (e) { e.preventDefault(); this.classList.remove('solta'); anexar(e.dataTransfer && e.dataTransfer.files); });
+
+  // 🎤 falar: o navegador transforma a fala em texto (Chrome e Safari), sem guardar áudio
+  var Reconhecer = window.SpeechRecognition || window.webkitSpeechRecognition, rec = null, ouvindo = false;
+  function pintarFalar() {
+    var b = $('bt-falar'); b.classList.toggle('ouvindo', ouvindo);
+    b.innerHTML = ouvindo ? '<span class="ponto"></span> Ouvindo… clique pra parar' : '🎤 Falar';
+    b.setAttribute('aria-pressed', ouvindo ? 'true' : 'false');
+  }
+  function pararDeOuvir() { if (rec && ouvindo) { try { rec.stop(); } catch (e) {} } }
+  $('bt-falar').addEventListener('click', function () {
+    if (!Reconhecer) return avisoChat('Este navegador não transforma fala em texto. Use o Chrome ou o Safari.');
+    if (ouvindo) return pararDeOuvir();
+    var base = $('chat-in').value.replace(/\s*$/, ''); if (base) base += ' ';
+    rec = new Reconhecer(); rec.lang = 'pt-BR'; rec.interimResults = true; rec.continuous = true;
+    rec.onresult = function (e) {
+      var t = ''; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      $('chat-in').value = base + t.replace(/^\s+/, '');
+    };
+    rec.onerror = function (e) {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') avisoChat('O navegador não deixou usar o microfone. Libere o microfone pra este site (no cadeado da barra de endereço) e tente de novo.');
+      else if (e.error === 'audio-capture') avisoChat('Não achei microfone neste aparelho.');
+      else if (e.error !== 'no-speech' && e.error !== 'aborted') avisoChat('A fala parou (' + e.error + '). Tente de novo.');
+    };
+    rec.onend = function () { ouvindo = false; pintarFalar(); $('chat-in').focus(); };
+    try { rec.start(); ouvindo = true; pintarFalar(); } catch (e) { avisoChat('Não consegui ligar o microfone.'); }
+  });
+
   function enviar(texto) {
-    texto = String(texto || '').trim(); if (!texto || trabalhando || !atual) return;
-    var id = atual.pagina.id, antes = [].slice.call($('chat-msgs').querySelectorAll('.bolha')).map(function (b) { return b.outerHTML; }).join('');
-    trabalhando = true; $('chat-enviar').disabled = true; $('chat-in').value = '';
-    $('chat-msgs').innerHTML = antes + '<div class="bolha eu">' + esc(texto) + '</div><div class="bolha acao">O Claude está trabalhando…</div>';
+    texto = String(texto || '').trim(); if ((!texto && !anexos.length) || trabalhando || !atual) return;
+    pararDeOuvir();
+    var id = atual.pagina.id, fotos = anexos.map(function (a) { return a.url; }), imagens = anexos.map(function (a) { return { tipo: a.tipo, dados: a.dados }; });
+    var antes = [].slice.call($('chat-msgs').querySelectorAll('.bolha')).map(function (b) { return b.outerHTML; }).join('');
+    var eu = bolha({ de: 'eu', texto: texto }, fotos);
+    trabalhando = true; $('chat-enviar').disabled = true; $('chat-in').value = ''; anexos = []; pintarAnexos();
+    $('chat-msgs').innerHTML = antes + eu + '<div class="bolha acao">O Claude está trabalhando…</div>';
     $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
-    api('POST', '/api/pg/paginas/' + id + '/chat', { mensagem: texto }).then(function (r) {
+    api('POST', '/api/pg/paginas/' + id + '/chat', { mensagem: texto, imagens: imagens }).then(function (r) {
       trabalhando = false; $('chat-enviar').disabled = false;
       if (chatDe !== id) return;
-      if (r.s !== 200) { $('chat-msgs').innerHTML = antes + '<div class="bolha eu">' + esc(texto) + '</div><div class="bolha erro">' + esc(r.j.error || 'Não deu certo.') + '</div>'; $('chat-in').value = texto; return; }
+      if (r.s !== 200) {
+        $('chat-msgs').innerHTML = antes + eu + '<div class="bolha erro">' + esc(r.j.error || 'Não deu certo.') + '</div>';
+        // o que não foi, volta pra caixa
+        $('chat-in').value = texto; anexos = fotos.map(function (u, i) { return { tipo: imagens[i].tipo, dados: imagens[i].dados, url: u }; }); pintarAnexos(); return;
+      }
       pintarChat(r.j.mensagens); custo(r.j.uso, r.j.custoPedidoUS);
       if (r.j.mudou) abrir(id);
     });
   }
   $('chat-form').addEventListener('submit', function (e) { e.preventDefault(); enviar($('chat-in').value); });
-  $('chat-in').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(this.value); } });
+  $('chat-in').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); enviar(this.value); } });
   $('chat-sugs').addEventListener('click', function (e) {
     var b = e.target.closest('.sug'); if (!b) return;
     if (b.getAttribute('data-envia')) return enviar(b.getAttribute('data-envia'));
@@ -598,7 +772,6 @@ body.embutido .cab { display: none; }
       api('POST', '/api/pg/paginas/' + atual.pagina.id + '/chat/nova').then(function () { chatDe = null; carregarChat(atual.pagina.id); });
     });
   });
-  umSo($('e-modo'), function (b) { var m = b.getAttribute('data-m'); $('m-claude').hidden = m !== 'claude'; $('m-campos').hidden = m !== 'campos'; });
 
   carregar().then(function () {
     // #pg_… no endereço abre direto o editor da página; #nova abre o "Nova página"
