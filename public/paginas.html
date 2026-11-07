@@ -103,6 +103,10 @@ a { color: var(--azul); }
 .sug:hover { border-color: var(--azul); }
 .chat-in { display: flex; gap: 8px; align-items: flex-end; }
 .chat-in textarea { font-family: var(--f); font-size: 13px; min-height: 44px; }
+.guia { border: 1px solid var(--line); border-radius: 10px; background: var(--bg3); padding: 10px 14px; }
+.guia summary { cursor: pointer; font-weight: 600; color: var(--azul); }
+.guia[open] { display: flex; flex-direction: column; gap: 10px; }
+.guia ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 /* dentro do TMX (projeto ou Conexões) o título e as abas são do próprio TMX */
 body.embutido { padding: 0; background: transparent; }
 body.embutido .cab { display: none; }
@@ -148,6 +152,30 @@ body.embutido .cab { display: none; }
   <div class="cartao">
     <div class="linha"><h3>Conectar hospedagem</h3><span class="chip">FTP</span></div>
     <p class="sub">O domínio continua na sua hospedagem. O TMX monta a página e envia os arquivos pra lá quando você publica. Apontar o domínio pro TMX vem depois.</p>
+    <details class="guia" id="guia-ftp">
+      <summary>Como pegar esses dados</summary>
+      <p class="sub">As páginas da apostilai.ai ficam na HospedaInfo, que é por onde o seu Claude Code publica hoje. A Hostinger cuida só do DNS. Na dúvida, use a aba HospedaInfo.</p>
+      <div class="abas" role="group" aria-label="Onde está a hospedagem" id="guia-abas">
+        <button data-g="cpanel" aria-pressed="true">HospedaInfo ou outro cPanel</button>
+        <button data-g="hostinger" aria-pressed="false">Hostinger</button>
+      </div>
+      <ol id="g-cpanel">
+        <li>Entre no <b>cPanel</b> da hospedagem e, em <b>Arquivos</b>, abra <b>Contas de FTP</b>.</li>
+        <li>Crie uma conta só pro TMX: um login (ex.: <span class="mono">tmx</span>), o domínio (<span class="mono">apostilai.ai</span>) e uma senha forte. No campo <b>Diretório</b>, deixe só <span class="mono">public_html</span>.</li>
+        <li>Clique em <b>Criar conta de FTP</b>. Na lista, ao lado da conta nova, clique em <b>Configurar cliente FTP</b>: ali aparecem o <b>servidor FTP</b> e a <b>porta</b> (21).</li>
+        <li>Aqui no TMX: <b>Servidor</b> = o servidor FTP; <b>Usuário</b> = o login completo (<span class="mono">tmx@apostilai.ai</span>); <b>Senha</b> = a que você criou; <b>Pasta</b> = <span class="mono">/</span> (a conta já abre no public_html); <b>Endereço público</b> = <span class="mono">https://apostilai.ai/</span>.</li>
+      </ol>
+      <ol id="g-hostinger" hidden>
+        <li>No <b>hPanel</b>, abra <b>Sites</b> e clique em <b>Gerenciar</b> no domínio.</li>
+        <li>Em <b>Arquivos</b>, abra <b>Contas FTP</b>. Lá em cima aparecem o <b>servidor</b> (ftp.seudominio ou um IP), o <b>usuário</b> (u123456789.seudominio) e a <b>porta</b> 21. A senha não aparece.</li>
+        <li>Pra não trocar a senha principal, crie ali mesmo uma conta FTP nova só pro TMX, com o diretório <span class="mono">public_html</span>.</li>
+        <li>Aqui no TMX: <b>Pasta</b> = <span class="mono">/</span> se a conta aponta pro public_html, ou <span class="mono">/public_html</span> se você usar a conta principal. <b>Endereço público</b> = <span class="mono">https://seudominio/</span>.</li>
+      </ol>
+      <ul class="ajuda" style="margin:0;padding-left:18px">
+        <li>O endereço público tem que mostrar a pasta: se a pasta for <span class="mono">/public_html/p</span>, o endereço é <span class="mono">https://seudominio/p/</span>. O teste confere isso sozinho.</li>
+        <li>Segurança: deixe <b>Com TLS</b>. Se o teste disser que o certificado não confere (comum quando o servidor é um IP), troque pra <b>Com TLS, sem conferir o certificado</b>. Sem TLS só se nada mais funcionar.</li>
+      </ul>
+    </details>
     <div class="grade">
       <div><label class="rot" for="h-dominio">Domínio</label><input class="campo mono" id="h-dominio" placeholder="apostilai.ai" autocomplete="off"></div>
       <div><label class="rot" for="h-endereco">Endereço público</label><input class="campo mono" id="h-endereco" placeholder="https://apostilai.ai/" autocomplete="off"><div class="ajuda">Onde a pasta abaixo aparece no navegador.</div></div>
@@ -274,7 +302,7 @@ body.embutido .cab { display: none; }
   function carregar() {
     return api('GET', '/api/pg/estado' + (PROJ ? '?projeto=' + encodeURIComponent(PROJ) : '')).then(function (r) {
       if (r.s !== 200) return;
-      estado = r.j; pintarPaginas(); pintarDominios();
+      estado = r.j; pintarPaginas(); pintarDominios(); abrirGuia();
     });
   }
   function mostrar(v) {
@@ -283,6 +311,9 @@ body.embutido .cab { display: none; }
     $('titulo-tela').textContent = v === 'dominios' ? 'Domínios' : 'Páginas';
   }
   umSo($('abas'), function (b) { mostrar(b.getAttribute('data-v')); });
+  umSo($('guia-abas'), function (b) { var g = b.getAttribute('data-g'); $('g-cpanel').hidden = g !== 'cpanel'; $('g-hostinger').hidden = g !== 'hostinger'; });
+  // sem hospedagem conectada, o passo a passo já vem aberto
+  function abrirGuia() { if (!estado.dominios.length) $('guia-ftp').open = true; }
 
   // ── lista de páginas e nova página
   function domDe(id) { return estado.dominios.filter(function (d) { return d.id === id; })[0]; }
