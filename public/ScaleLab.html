@@ -2122,6 +2122,7 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .pc-px-t span{font-size:11.5px;color:var(--text2)}
 .pc-cod{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:nowrap;margin:8px 0;color:var(--text)}
 .pc-prod{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:13px}
+.pc-prod small{display:block;color:var(--text2);font-size:11.5px;margin-top:1px}
 .pc-chk{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;font-size:13px}
 .pc-chk input{margin-top:3px}
 .pc-chk small{display:block;color:var(--text2);font-size:11.5px;margin-top:1px}
@@ -39419,19 +39420,29 @@ function pcCopiar(i, bt){
   var manual = function(){ var r = document.createRange(); r.selectNodeContents(el); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(r); bt.textContent = 'Selecionado: aperte ⌘C'; };
   try { navigator.clipboard.writeText(t).then(ok, manual); } catch(e){ manual(); }
 }
-// Vendas: os produtos do cadastro que contam como venda deste projeto
+// Vendas: os produtos que contam como venda deste projeto. É a mesma regra do
+// servidor (_pedidoDoProjetoFn): o produto marcado nos blocos do Mapa dos funis
+// do projeto (Checkout, Upsell…) e o do cadastro da aba Produtos.
+function pcProdutosDoProjeto(){
+  var PAPEL = { principal:'Principal', bump:'Order bump', upsell:'Upsell', downsell:'Downsell' }, out = [], visto = {};
+  var poe = function(nome, papel, onde){ var k = _fnNrm(nome); if(!k || visto[k]) return; visto[k] = 1; out.push({ nome: nome, papel: papel, onde: onde }); };
+  var pd = pcProdutos;
+  if(pd && !pd.erro) (pd.lista || []).forEach(function(x){ if(x && x.projeto === fnProj) poe(x.nome, PAPEL[x.papel] || 'Principal', 'cadastro de Produtos'); });
+  fnDoProjeto().forEach(function(f){ (f.etapas || []).forEach(function(e){
+    String(e.produto || '').split(/[,;\n]+/).map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(nome){
+      poe(nome, e.tipo === 'upsell' ? 'Upsell' : e.tipo === 'downsell' ? 'Downsell' : (e.tipo === 'bump' || e.tipo === 'orderbump') ? 'Order bump' : 'Principal', 'bloco '+(e.nome || '')+' · funil '+(f.nome || ''));
+    });
+  }); });
+  return out;
+}
 function pcVendasCard(){
-  var pd = pcProdutos, PAPEL = { principal:'Principal', bump:'Order bump', upsell:'Upsell', downsell:'Downsell' };
-  var meus = (pd && !pd.erro) ? (pd.lista || []).filter(function(x){ return x && x.projeto === fnProj; }) : null;
-  var soltos = (pd && !pd.erro) ? (pd.vistos || []).filter(function(x){ return !x.cadastrado; }).length : 0;
-  var corpo = !pd ? '<div class="fx-sub">Buscando os produtos…</div>'
-    : pd.erro ? '<div class="fx-sub">Não consegui ler o cadastro de produtos agora.</div>'
-    : meus.length ? meus.map(function(x){ return '<div class="pc-prod"><b>'+fnEsc(x.nome)+'</b><span class="v2-pill neu">'+fnEsc(PAPEL[x.papel] || x.papel || 'Principal')+'</span></div>'; }).join('')
-    : '<div class="fx-sub">Nenhum produto ligado a este projeto ainda. Sem isso, a venda não entra na conta dele.</div>';
-  return '<div class="capi-card"><div class="capi-cab"><div><b>Vendas deste projeto'+(meus ? (meus.length ? '<span class="v2-pill ok">ligado</span>' : '<span class="v2-pill warn">falta ligar</span>') : '')+'</b>'+
-      '<span>Os produtos que contam como venda deste projeto e o papel de cada um. As vendas chegam pelo webhook da empresa.</span></div></div>'+corpo+
-    (soltos ? '<div class="fx-sub" style="margin-top:8px">'+soltos+' produto(s) venderam nos últimos 30 dias e estão fora do cadastro.</div>' : '')+
-    '<div class="lc-bts" style="margin-top:10px"><button class="fn-btn g sm" onclick="fnAba(\'produtos\')">Escolher os produtos ›</button></div></div>';
+  var pd = pcProdutos, meus = pcProdutosDoProjeto();
+  var corpo = meus.length ? meus.map(function(x){ return '<div class="pc-prod"><span><b>'+fnEsc(x.nome)+'</b><small>'+fnEsc(x.onde)+'</small></span><span class="v2-pill neu">'+fnEsc(x.papel)+'</span></div>'; }).join('')
+    : !pd ? '<div class="fx-sub">Buscando os produtos…</div>'
+    : '<div class="fx-sub">Nenhum produto ligado a este projeto ainda. Marque o produto no bloco do Checkout no Mapa ou no cadastro de Produtos: sem isso, a venda não entra na conta dele.</div>';
+  return '<div class="capi-card"><div class="capi-cab"><div><b>Vendas deste projeto'+(meus.length ? '<span class="v2-pill ok">ligado</span>' : pd ? '<span class="v2-pill warn">falta ligar</span>' : '')+'</b>'+
+      '<span>Os produtos que contam como venda deste projeto: os dos blocos do Mapa e os do cadastro de Produtos. As vendas chegam pelo webhook da empresa.</span></div></div>'+corpo+
+    '<div class="lc-bts" style="margin-top:10px"><button class="fn-btn g sm" onclick="fnAba(\'produtos\')">Cadastro de produtos ›</button></div></div>';
 }
 function _diaIso(ms){ var d = new Date(ms - 3 * 3600000); return d.toISOString().slice(0, 10); }
 function pcSalvar(bt){
