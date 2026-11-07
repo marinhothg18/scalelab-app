@@ -314,6 +314,7 @@ function _plataforma() {
     CREATE INDEX IF NOT EXISTS assinaturas_email ON assinaturas(email);
     CREATE INDEX IF NOT EXISTS assinaturas_sub ON assinaturas(pagarme_sub);
     CREATE TABLE IF NOT EXISTS pagarme_planos (chave TEXT PRIMARY KEY, plan_id TEXT NOT NULL, criado INTEGER);
+    CREATE TABLE IF NOT EXISTS plataforma_cfg (k TEXT PRIMARY KEY, v TEXT);
   `);
   try { db.exec('ALTER TABLE assinaturas ADD COLUMN acesso_enviado INTEGER'); } catch (e) {}   // já existe
   for (const col of ['bloqueio_motivo TEXT', 'bloqueado_em INTEGER', 'bloqueado_por TEXT']) {
@@ -9003,10 +9004,14 @@ app.get(['/planos', '/planos/obrigado'], (req, res) => {
 });
 // /api/planos-tmx: o nome /api/planos já era do mapa do funil (preço de cada plano das ofertas), autenticado
 app.get('/api/planos-tmx', (req, res) => {
+  const v = _vendaTmx();
+  const payt = v.gateway === 'payt';
   res.json({
-    cobranca: !!PAGARME_API_KEY,
+    cobranca: payt ? Object.keys(v.links).length > 0 : !!PAGARME_API_KEY,
+    gateway: v.gateway,
     planos: PLANOS_TMX.filter(p => p.venda).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, anual: p.gratis ? 0 : p.mensal * 10,
-      gratis: !!p.gratis, faixa: p.faixa, itens: p.itens }))
+      gratis: !!p.gratis, faixa: p.faixa, itens: p.itens,
+      checkout: payt && !p.gratis ? { mensal: v.links[p.id + ':mensal'] || null, anual: v.links[p.id + ':anual'] || null } : null }))
   });
 });
 
@@ -9025,6 +9030,10 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Esse e-mail não parece certo.', campo: 'email' });
     if (zap.length < 12 || zap.length > 13) return res.status(400).json({ error: 'O WhatsApp precisa ter DDD e número.', campo: 'whatsapp' });
     if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+  }
+  if (!p.gratis) {
+    const link = _linkPayt(p.id, ciclo);
+    if (link) return res.json({ ok: true, url: link, gateway: 'payt' });   // o pedido nasce com o aviso da Payt
   }
   const ref = 'as_' + crypto.randomBytes(18).toString('base64url');
   const agora = Date.now();
@@ -9080,6 +9089,8 @@ app.get('/assinar/:plano', assinarLimiter, async (req, res) => {
   if (!SOU_TMX) return res.status(404).end();
   const p = PLANOS_TMX.find(x => x.venda && x.id === String(req.params.plano || '').toLowerCase());
   if (!p) return res.redirect(302, '/planos#planos');
+  const payt = !p.gratis && _linkPayt(p.id, req.query.ciclo === 'anual' ? 'anual' : 'mensal');
+  if (payt) return res.redirect(302, payt);   // venda pela Payt: o link é fixo, robô de prévia não cria nada
   if (p.gratis || !PAGARME_API_KEY || _ROBO_PREVIA.test(String(req.get('user-agent') || ''))) return res.redirect(302, '/planos#planos');
   const r = await _abrirCheckout(p, req.query.ciclo === 'anual' ? 'anual' : 'mensal');
   res.redirect(302, r.ok ? r.url : '/planos#planos');
@@ -9195,6 +9206,147 @@ async function _faturasDaAssinatura(sub) {
   const lista = dados.map(f => ({ data: f.due_at || f.created_at || null, valor: Number(f.amount != null ? f.amount : (f.total || 0)) / 100, status: nomes[f.status] || f.status || '' }));
   _faturasCache.set(sub, { em: Date.now(), lista });
   return lista;
+}
+
+// ══════════════════════════════════════════════
+// ── VENDA DO TMX PELA PAYT (07/11/2026) ──
+// Decisão do Thiago: vender as assinaturas do TMX pela Payt, em vez da Pagar.me. Ele cria na Payt
+// um checkout por plano e ciclo e cola os links na Central (Cobrança e checkout). O botão da /planos
+// e o /assinar/<plano> levam direto pro link. A Payt avisa a venda em /api/billing/payt/<token>
+// (um endereço só pra isso, separado do aviso de vendas dos funis, pra venda do TMX não entrar no
+// faturamento dos projetos): pago → convite do plano, que vai sozinho pro e-mail e o WhatsApp da
+// compra (o mesmo caminho da Pagar.me). Reembolso, chargeback e cancelamento avisam a TMX.
+// ══════════════════════════════════════════════
+const _CHAVES_LINK_TMX = PLANOS_TMX.filter(p => p.venda && !p.gratis).flatMap(p => [p.id + ':mensal', p.id + ':anual']);
+function _vendaTmx() {
+  let v = {};
+  try { v = JSON.parse((_platPrep("SELECT v FROM plataforma_cfg WHERE k='venda_tmx'").get() || {}).v || '{}') || {}; } catch (e) {}
+  const links = {};
+  for (const k of _CHAVES_LINK_TMX) if (v.links && /^https:\/\//.test(String(v.links[k] || ''))) links[k] = String(v.links[k]);
+  return { gateway: v.gateway === 'pagarme' ? 'pagarme' : (v.gateway === 'payt' || Object.keys(links).length ? 'payt' : 'pagarme'),
+           token: v.token || '', links, atualizado: v.atualizado || null };
+}
+function _gravarVendaTmx(v) {
+  _platPrep("INSERT OR REPLACE INTO plataforma_cfg(k, v) VALUES('venda_tmx', ?)").run(JSON.stringify(v));
+}
+function _linkPayt(plano, ciclo) { const v = _vendaTmx(); return v.gateway === 'payt' ? (v.links[plano + ':' + ciclo] || null) : null; }
+function _tokenPaytTmx() {
+  const v = _vendaTmx();
+  if (v.token) return v.token;
+  v.token = crypto.randomBytes(24).toString('hex');
+  _gravarVendaTmx(v);
+  return v.token;
+}
+
+app.get('/api/plataforma/venda-tmx', authDiretoriaInterna, (req, res) => {
+  const token = _tokenPaytTmx();
+  const v = _vendaTmx();
+  res.json({ gateway: v.gateway, links: v.links, atualizado: v.atualizado,
+    webhook: URL_TMX + '/api/billing/payt/' + token,
+    planos: PLANOS_TMX.filter(p => p.venda && !p.gratis).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, anual: p.mensal * 10 })) });
+});
+app.post('/api/plataforma/venda-tmx', authDiretoriaInterna, (req, res) => {
+  const b = req.body || {};
+  const v = _vendaTmx();
+  if (b.gateway !== undefined) v.gateway = b.gateway === 'pagarme' ? 'pagarme' : 'payt';
+  if (b.links && typeof b.links === 'object') {
+    for (const k of _CHAVES_LINK_TMX) {
+      if (!(k in b.links)) continue;
+      const u = String(b.links[k] || '').trim();
+      if (u && !/^https:\/\/[^\s]+$/.test(u)) return res.status(400).json({ error: 'O link do ' + k.replace(':', ' ') + ' precisa começar com https://', campo: k });
+      if (u) v.links[k] = u.slice(0, 500); else delete v.links[k];
+    }
+  }
+  v.token = v.token || crypto.randomBytes(24).toString('hex');
+  v.atualizado = Date.now();
+  _gravarVendaTmx(v);
+  const db = readDB(); audit(db, 'venda_tmx_config', { gateway: v.gateway }, { links: Object.keys(v.links).length }, req.user); writeDB(db);
+  res.json({ ok: true, gateway: v.gateway, links: v.links });
+});
+app.post('/api/plataforma/venda-tmx/novo-token', authDiretoriaInterna, (req, res) => {
+  const v = _vendaTmx();
+  v.token = crypto.randomBytes(24).toString('hex');
+  _gravarVendaTmx(v);
+  const db = readDB(); audit(db, 'venda_tmx_token', null, null, req.user); writeDB(db);
+  res.json({ ok: true, webhook: URL_TMX + '/api/billing/payt/' + v.token });
+});
+
+// Qual plano e ciclo a venda da Payt é: pelo link do checkout (o que foi colado na Central) ou pelo nome
+function _planoDaVendaPayt(p, n) {
+  const v = _vendaTmx();
+  const texto = JSON.stringify((p && (p.link || p.checkout || p.offer)) || {}).toLowerCase();
+  for (const [k, url] of Object.entries(v.links)) {
+    const fim = String(url).replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop().toLowerCase();
+    if (fim && fim.length >= 4 && texto.indexOf(fim) >= 0) { const [plano, ciclo] = k.split(':'); return { plano, ciclo }; }
+  }
+  const nome = [n.produto, n.plano, n.periodicidade, p && p.link && p.link.title, p && p.product && p.product.name].join(' ').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const plano = /agencia/.test(nome) ? 'agencia' : /escala/.test(nome) ? 'escala' : /starter/.test(nome) ? 'starter' : null;
+  if (!plano) return null;
+  const ciclo = /anual|annual|year|12 ?meses/.test(nome) ? 'anual' : 'mensal';
+  return { plano, ciclo };
+}
+function _senhaUrlConfere(recebido, certo) {
+  const a = Buffer.from(String(recebido || '')), b = Buffer.from(String(certo || ''));
+  return !!certo && a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+app.post('/api/billing/payt/:token', (req, res) => {
+  if (!SOU_TMX) return res.status(404).end();
+  const v = _vendaTmx();
+  if (!_senhaUrlConfere(req.params.token, v.token)) return res.status(404).json({ error: 'Endereço de aviso desconhecido.' });
+  res.json({ ok: true });   // a Payt não precisa esperar
+  try { _tratarVendaPaytTmx(req.body || {}); } catch (e) { console.error('[COBRANÇA] aviso da Payt:', e.message); }
+});
+function _tratarVendaPaytTmx(p) {
+  const n = _normalizarVenda(p);
+  const st = String(n.status || '').toLowerCase();
+  const id = String(n.assinatura || n.pedidoId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);
+  if (!id) { console.warn('[COBRANÇA] aviso da Payt sem pedido'); return; }
+  let ref = 'pt_' + id;
+  let a = _assinatura(ref);
+  // renovação que chega sem o código da assinatura (pedido novo a cada mês): é o mesmo cliente do mesmo e-mail
+  const email = String(n.email || '').trim().toLowerCase();
+  if (!a && !n.assinatura && email) {
+    const ja = _platPrep("SELECT * FROM assinaturas WHERE ref LIKE 'pt_%' AND email=? AND status IN ('paga','atrasada','cancelada') ORDER BY criado DESC LIMIT 1").get(email);
+    if (ja) { a = ja; ref = ja.ref; }
+  }
+  console.log('[COBRANÇA] Payt', st || '(sem status)', a ? 'pedido ' + ref.slice(0, 12) : 'novo');
+  const contato = { email: n.email, nome: n.cliente, whatsapp: n.telefone };
+  const agora = Date.now();
+  if (_PAGO.test(st)) {
+    if (!a) {
+      const qual = _planoDaVendaPayt(p, n);
+      if (!qual) {
+        _avisarDiretoriaTmx('⚠️ Venda da Payt sem plano reconhecido', 'Chegou uma venda do produto "' + (n.produto || n.plano || '?') + '", mas o TMX não achou de qual plano é. Confira os links em Central › Cobrança e checkout, ou dê o acesso pelo Convites.');
+        return;
+      }
+      _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, atualizado, ultimo_evento) VALUES(?,?,?,?,?,?,?,?,?,?)')
+        .run(ref, qual.plano, qual.ciclo, null, null, null, agora, 'aguardando', agora, 'payt:' + st);
+      _liberarAssinatura(ref, 'payt', { contato }).catch(e => console.error('[COBRANÇA] liberar Payt:', e.message));
+      return;
+    }
+    // renovação ou pagamento em dia de novo
+    _platPrep('UPDATE assinaturas SET ultimo_evento=?, atualizado=? WHERE ref=?').run('payt:' + st, agora, ref);
+    if (a.status === 'atrasada' || a.status === 'cancelada') {
+      _platPrep("UPDATE assinaturas SET status='paga' WHERE ref=?").run(ref);
+      _avisarDiretoriaTmx('✅ Mensalidade em dia · ' + _planoDe(a.plano).nome, (a.nome || a.email || 'Um cliente') + ' pagou de novo pela Payt.');
+    }
+    return;
+  }
+  if (!a) return;   // pix gerado, boleto, carrinho: ainda não é cliente
+  const p2 = _planoDe(a.plano), quem = a.nome || a.email || 'Um cliente';
+  _platPrep('UPDATE assinaturas SET ultimo_evento=?, atualizado=? WHERE ref=?').run('payt:' + st, agora, ref);
+  if (/refund|reembols|chargeback/.test(st)) {
+    _platPrep("UPDATE assinaturas SET status='cancelada' WHERE ref=?").run(ref);
+    _avisarDiretoriaTmx('↩️ ' + (/chargeback/.test(st) ? 'Chargeback' : 'Reembolso') + ' · ' + p2.nome, 'A compra de ' + quem + ' pela Payt foi ' + (/chargeback/.test(st) ? 'contestada no cartão' : 'reembolsada') + '. O acesso continua até você bloquear na Central.');
+  } else if (/cancel/.test(st) || /cancel/.test(String(n.assinaturaStatus || ''))) {
+    if (a.status === 'cancelada') return;
+    _platPrep("UPDATE assinaturas SET status='cancelada' WHERE ref=?").run(ref);
+    _avisarDiretoriaTmx('🚫 Assinatura cancelada · ' + p2.nome, quem + ' cancelou a assinatura na Payt. O acesso continua até você bloquear na Central.');
+  } else if (/overdue|atras|late|failed|recus|refused/.test(st) && a.status === 'paga') {
+    _platPrep("UPDATE assinaturas SET status='atrasada' WHERE ref=?").run(ref);
+    _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p2.nome, 'A renovação de ' + quem + ' na Payt não passou.');
+  }
 }
 
 // A Central TMX Admin vê os pedidos: compras, testes grátis pedidos e o estado de cada cobrança
