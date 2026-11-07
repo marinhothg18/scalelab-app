@@ -109,6 +109,11 @@ Regras:
   TMX dele (`/api/suporte/chamados*` no motor, que repassa com `_pedirAPortaria`; a empresa é sempre a do
   motor). A TMX responde em `/api/plataforma/chamados/:id/responder` (nota interna não vai pro cliente) e o
   cliente recebe no sininho. `test/admin-suporte.test.js`.
+- **Meu plano** (Configurações › Meu plano, só Diretoria): `GET /api/meu-plano` mostra o plano da empresa (do
+  registro, via `_pedirAPortaria('meu-plano')`; a TMX é `interno`) e o uso de cada limite (`_usoDoPlano`, com os
+  dados da própria empresa). Os planos e limites ficam só em `PLANOS_TMX` no server.js (RASCUNHO, preços do
+  esboço). Nada trava por limite ainda. Trocar de plano: a Central muda em Clientes
+  (`POST /api/plataforma/empresas/:id/plano`); o cliente pede pelo Suporte. `test/meu-plano.test.js`.
 
 ### Data model
 

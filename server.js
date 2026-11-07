@@ -8694,6 +8694,95 @@ app.post('/api/plataforma/empresas/:id/bloquear', authDiretoriaInterna, (req, re
   _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_bloqueada', meta: { motivo, por: req.user.nome } }).catch(() => {});
   res.json({ ok: true });
 });
+// ══════════════════════════════════════════════
+// ── PLANOS E MEU PLANO (07/11/2026) ──
+// RASCUNHO: preços e limites são os do esboço (iguais aos da Malva, decisão 1 do Thiago ainda
+// em aberto). Ficam só aqui: mudar um número aqui muda a tela inteira. Nada trava por limite
+// ainda (decisão 4): a tela só mostra o uso e avisa quando chega perto.
+// ══════════════════════════════════════════════
+const PLANOS_TMX = [
+  { id: 'interno', nome: 'Interno', interno: true, desc: 'A TMX é a casa: sem plano, sem cobrança e sem limite.', limites: {} },
+  { id: 'teste', nome: 'Teste', desc: 'Sem cobrança e sem limite enquanto a TMX libera o acesso por convite.', limites: {} },
+  { id: 'iniciante', nome: 'Iniciante', venda: true, mensal: 0, gratis: true, faixa: 'Até R$ 10 mil de investimento em anúncios por mês',
+    limites: { invest: 10000, vendas: 30, projetos: 1, dominios: 1, contas: 1, pixels: 1, pessoas: 1, arquivosGB: 2 },
+    itens: ['Até 30 vendas aprovadas por mês', '1 projeto', '1 domínio próprio', '1 conta de anúncio', '1 pixel da Meta', 'Só você', '2 GB de arquivos'] },
+  { id: 'starter', nome: 'Starter', venda: true, mensal: 197, faixa: 'Até R$ 100 mil de investimento em anúncios por mês',
+    limites: { invest: 100000, projetos: 1, dominios: 3, contas: 3, pixels: 3, pessoas: 5, arquivosGB: 20 },
+    itens: ['Vendas sem limite', '1 projeto', '3 domínios próprios', '3 contas de anúncio', '3 pixels da Meta', '5 pessoas na equipe', '20 GB de arquivos', 'Suporte humano'] },
+  { id: 'escala', nome: 'Escala', venda: true, mensal: 497, faixa: 'Até R$ 300 mil de investimento em anúncios por mês',
+    limites: { invest: 300000, projetos: 3, dominios: 10, contas: 10, pixels: 10, pessoas: 20, arquivosGB: 100 },
+    itens: ['Vendas sem limite', '3 projetos', '10 domínios próprios', '10 contas de anúncio', '10 pixels da Meta', '20 pessoas na equipe', '100 GB de arquivos', 'Suporte humano'] },
+  { id: 'agencia', nome: 'Agência', venda: true, mensal: 997, faixa: 'Sem limite de investimento',
+    limites: { projetos: 10 },
+    itens: ['Vendas sem limite', '10 projetos', 'Domínios, contas e pixels sem limite', 'Equipe sem limite', 'Arquivos sem limite', 'Suporte prioritário'] }
+];
+const _planoDe = id => PLANOS_TMX.find(p => p.id === id) || PLANOS_TMX.find(p => p.id === 'teste');
+// O que a empresa usa agora de cada limite (dados dela: banco e base de pessoas do motor)
+function _usoDoPlano() {
+  const db = readDB();
+  const hoje = Date.now() - 3 * 3600000;
+  const desde = new Date(hoje - 30 * 86400000).toISOString().slice(0, 10);
+  const mes = new Date(hoje).toISOString().slice(0, 7) + '-01';
+  const um = (sql, ...a) => { try { const r = _q(sql).get(...a); return r ? Number(Object.values(r)[0]) || 0 : 0; } catch (e) { return 0; } };
+  const contas = new Set();
+  for (const t of ['meta_camp_dia', 'camp_dia']) {
+    try { _q(`SELECT DISTINCT conta FROM ${t} WHERE dia >= ? AND gasto > 0`).all(desde).forEach(r => { if (r.conta) contas.add(String(r.conta)); }); } catch (e) {}
+  }
+  // gasto: Meta direto ou Utmify, o que tiver mais (as duas leem as mesmas campanhas)
+  const invest = Math.max(um('SELECT COALESCE(SUM(gasto),0) g FROM meta_camp_dia WHERE dia >= ?', desde), um('SELECT COALESCE(SUM(gasto),0) g FROM camp_dia WHERE dia >= ?', desde));
+  let bytes = 0;
+  for (const d of [CD_UPLOAD_DIR, QUIZ_IMG_DIR]) {
+    try { for (const f of fs.readdirSync(d)) { try { bytes += fs.statSync(path.join(d, f)).size; } catch (e) {} } } catch (e) {}
+  }
+  return {
+    invest: Math.round(invest),
+    vendas: um('SELECT COUNT(DISTINCT pedido) n FROM pedidos WHERE pago=1 AND estorno=0 AND dia >= ?', mes),
+    projetos: (Array.isArray(db.store['sl_ofertas_v2']) ? db.store['sl_ofertas_v2'] : []).filter(o => o && o.nome).length,
+    dominios: um('SELECT COUNT(*) n FROM pg_dominios'),
+    contas: contas.size,
+    pixels: (Array.isArray(db.store[KEY_DESTINOS]) ? db.store[KEY_DESTINOS] : []).length,
+    pessoas: (db.store['sl_usuarios'] || []).filter(u => u && u.ativo !== false).length,
+    arquivosGB: Math.round(bytes / 1073741824 * 100) / 100
+  };
+}
+const _ROTULOS_USO = [['invest', 'Investimento em anúncios (30 dias)', 'brl'], ['vendas', 'Vendas aprovadas no mês'], ['projetos', 'Projetos'],
+  ['dominios', 'Domínios próprios'], ['contas', 'Contas de anúncio ativas'], ['pixels', 'Pixels da Meta'], ['pessoas', 'Pessoas na equipe'], ['arquivosGB', 'Arquivos', 'gb']];
+app.get('/api/meu-plano', authDiretoria, async (req, res) => {
+  try {
+    let reg = { plano: 'interno', status: 'ativa' };
+    if (!SOU_TMX) {
+      const r = await _pedirAPortaria('meu-plano', {});
+      if (!r.ok) return res.status(502).json({ error: 'Não consegui ler o plano agora.' });
+      reg = r;
+    }
+    const plano = _planoDe(reg.plano);
+    const uso = _usoDoPlano();
+    res.json({
+      interno: SOU_TMX,
+      plano: { id: plano.id, nome: plano.nome, desc: plano.desc || plano.faixa || '', mensal: plano.mensal == null ? null : plano.mensal, gratis: !!plano.gratis, faixa: plano.faixa || '' },
+      status: reg.status, desde: reg.criada || null,
+      uso: _ROTULOS_USO.map(([id, rotulo, tipo]) => ({ id, rotulo, tipo: tipo || '', usado: uso[id], limite: plano.limites[id] == null ? null : plano.limites[id] })),
+      planos: PLANOS_TMX.filter(p => p.venda).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, gratis: !!p.gratis, faixa: p.faixa, itens: p.itens })),
+      cobranca: { ligada: false }
+    });
+  } catch (e) { res.status(500).json({ error: 'Não consegui montar o plano: ' + e.message }); }
+});
+// A Central TMX Admin muda o plano de um cliente (enquanto a cobrança não faz isso sozinha)
+app.post('/api/plataforma/empresas/:id/plano', authDiretoriaInterna, (req, res) => {
+  const e = _empresaDaRota(req, res); if (!e) return;
+  const novo = String((req.body && req.body.plano) || '');
+  const p = PLANOS_TMX.find(x => x.id === novo && !x.interno);
+  if (!p) return res.status(400).json({ error: 'Plano desconhecido.' });
+  const antes = (_platPrep('SELECT plano FROM empresas WHERE id=?').get(e.id) || {}).plano || 'teste';
+  _platPrep('UPDATE empresas SET plano=? WHERE id=?').run(p.id, e.id);
+  const db = readDB(); audit(db, 'empresa_plano', { empresa: e.id, nome: e.nome }, { de: antes, para: p.id }, req.user); writeDB(db);
+  _pedirAoMotor(e.id, 'auditar', { acao: 'plano_trocado', meta: { de: antes, para: p.id, por: req.user.nome } }).catch(() => {});
+  res.json({ ok: true });
+});
+app.get('/api/plataforma/planos', authDiretoriaInterna, (req, res) => {
+  res.json({ planos: PLANOS_TMX.filter(p => !p.interno).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal == null ? null : p.mensal })) });
+});
+
 app.post('/api/plataforma/empresas/:id/desbloquear', authDiretoriaInterna, (req, res) => {
   const e = _empresaDaRota(req, res); if (!e) return;
   _platPrep("UPDATE empresas SET status='ativa', bloqueio_motivo=NULL, bloqueado_em=NULL, bloqueado_por=NULL WHERE id=?").run(e.id);
@@ -8753,6 +8842,10 @@ function _atenderMotor(empresa, cmd, d) {
     _platPrep('INSERT INTO chamado_msgs(chamado, de, autor, texto, criado) VALUES(?,?,?,?,?)').run(id, 'cliente', String(u.nome || 'Cliente'), texto, agora);
     _avisarDiretoriaTmx('🛟 Chamado #' + id + ' · ' + emp.nome, assunto + ' (' + tipo + ')');
     return { ok: true, id };
+  }
+  if (cmd === 'meu-plano') {
+    const e = _platPrep('SELECT plano, status, criada, origem FROM empresas WHERE id=?').get(empresa) || {};
+    return { ok: true, plano: e.plano || 'teste', status: e.status || 'ativa', criada: e.criada || null, origem: e.origem || '' };
   }
   if (cmd === 'chamado-listar') {
     return { ok: true, chamados: _platPrep('SELECT id, assunto, tipo, projeto, status, criado, atualizado, aberto_por_nome FROM chamados WHERE empresa=? ORDER BY atualizado DESC LIMIT 200').all(empresa) };

@@ -5177,10 +5177,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
 
       <!-- TAB: MEU PLANO (SaaS) -->
       <div id="cfg-panel-meuplano" style="display:none;max-width:1100px;">
-        <div style="background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(255,89,38,.10));border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:16px;">
-          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">💎 Meu Plano</div>
-          <div style="font-size:12px;color:var(--text2);">Plano atual, uso dos recursos vs limite, upgrade de plano e gerenciamento de assinatura.</div>
-        </div>
         <div id="meuplano-container">
           <div style="text-align:center;padding:40px;color:var(--text2);">Carregando...</div>
         </div>
@@ -21574,129 +21570,67 @@ function salvarBranding(){
 // ══════════════════════════════════════════════
 // ── MEU PLANO (Bloqueador 3/7) ──
 // ══════════════════════════════════════════════
+// Configurações › Meu plano (07/11/2026): plano da empresa, uso de cada limite e troca de plano.
+// Enquanto a cobrança não liga, trocar de plano vira um pedido no Suporte.
+var _mpCiclo = 'mensal';
+function _mpBRL(n){ return 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 }); }
 async function renderMeuPlanoTab(){
   var el = document.getElementById('meuplano-container');
   if(!el) return;
-  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2);">⏳ Carregando informações do plano...</div>';
-  try {
-    var r = await fetch(API_BASE+'/api/saas/meu-plano', {
-      headers: { 'Authorization': 'Bearer '+(localStorage.getItem('sl_session_token')||'') }
-    });
-    var data = await r.json();
-    if(!data.ok){ el.innerHTML = '<div style="text-align:center;padding:40px;color:#DC2626;">❌ Erro: '+(data.error||'')+'</div>'; return; }
-
-    var p = data.plano;
-    var uso = data.uso || {};
-    var t = data.tenant;
-
-    // Calcula dias de trial restantes
-    var trialInfo = '';
-    if(t && t.plano === 'trial' && t.trial && t.trial.expira){
-      var dias = Math.ceil((new Date(t.trial.expira) - new Date()) / (1000*60*60*24));
-      var cor = dias < 0 ? '#DC2626' : dias < 3 ? '#FBBF24' : '#16A34A';
-      var txt = dias < 0 ? 'EXPIROU há '+Math.abs(dias)+' dias' : dias+' dias restantes';
-      trialInfo = '<div style="background:rgba('+(dias<0?'220,38,38':dias<3?'251,191,36':'22,163,74')+',.1);border:1px solid '+cor+';color:'+cor+';padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;text-align:center;">⏰ Trial: '+txt+(dias<3 && dias>=0?' — Faça upgrade pra não perder acesso!':'')+'</div>';
-    }
-
-    // Barras de uso
-    var barraUso = function(label, info, icone){
-      if(!info) return '';
-      if(info.ilimitado) return '<div style="background:var(--bg);padding:14px;border-radius:10px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div><b>'+icone+' '+label+'</b><div style="font-size:11px;color:var(--text2);">'+(info.usado===-1?'—':info.usado)+' usados</div></div><span style="background:rgba(91,94,244,.15);color:var(--accent);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;">∞ ILIMITADO</span></div></div>';
-      var pct = info.pct || 0;
-      var cor = pct >= 90 ? '#DC2626' : pct >= 70 ? '#FBBF24' : '#16A34A';
-      return '<div style="background:var(--bg);padding:14px;border-radius:10px;margin-bottom:10px;">'+
-        '<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><b>'+icone+' '+label+'</b><span style="color:'+cor+';font-weight:700;">'+info.usado+' / '+info.limite+' ('+pct+'%)</span></div>'+
-        '<div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+cor+';transition:width .3s;"></div></div>'+
-        (pct >= 80 ? '<div style="font-size:11px;color:'+cor+';margin-top:6px;">⚠️ Você está chegando no limite. Considere upgrade.</div>' : '')+
-      '</div>';
-    };
-
-    // Card do plano atual
-    var precoLabel = p.precoBRL === 0 ? 'Grátis' : 'R$ '+p.precoBRL+'/mês';
-    var corPlano = p.id === 'trial' ? '#FBBF24' : p.id === 'basic' ? '#1B9CFA' : p.id === 'pro' ? '#5b5ef4' : '#FF5926';
-
-    // Features
-    var featLabels = {
-      demandas:'📋 Demandas', criativos:'🎨 Criativos', rh:'👥 RH', financeiro:'💰 Financeiro',
-      spy:'🕵️ Spy', spyWolfMaster:'🌐 Spy Wolf Master', iaWhatsapp:'🤖 IA WhatsApp',
-      ofx:'📥 OFX Bancário', apiTokens:'🔑 API Tokens', brandingCustom:'🎨 Branding Custom',
-      dominioProprio:'🌐 Domínio Próprio', relatoriosCustom:'📊 Relatórios Custom',
-      suportePrioritario:'🎯 Suporte Prioritário', nichosCustom:'🌟 Nichos Custom'
-    };
-    var featuresHtml = '';
-    Object.keys(featLabels).forEach(function(k){
-      if(featLabels[k]){
-        var ativo = p.features[k] === true;
-        featuresHtml += '<div style="font-size:12px;padding:5px 0;color:'+(ativo?'var(--text)':'var(--text3)')+';">'+(ativo?'✅':'❌')+' '+featLabels[k]+'</div>';
-      }
-    });
-
-    // Lista de outros planos pra upgrade
-    var planosOutros = ['basic','pro','enterprise'].filter(function(id){ return id !== p.id; });
-    var resp = await fetch(API_BASE+'/api/saas/planos');
-    var planosData = await resp.json();
-    var todosPlanos = planosData.planos || [];
-
-    var upgradeCards = planosOutros.map(function(id){
-      var po = todosPlanos.find(function(x){ return x.id === id; });
-      if(!po) return '';
-      var maisCaro = po.precoBRL > p.precoBRL;
-      var corOutro = po.id === 'basic' ? '#1B9CFA' : po.id === 'pro' ? '#5b5ef4' : '#FF5926';
-      return '<div style="background:var(--bg);border:2px solid '+corOutro+';border-radius:12px;padding:16px;">'+
-        '<div style="font-size:13px;font-weight:700;color:'+corOutro+';margin-bottom:4px;">'+po.nome+'</div>'+
-        '<div style="font-size:22px;font-weight:700;margin-bottom:6px;">R$ '+po.precoBRL+'<span style="font-size:12px;color:var(--text2);">/'+po.duracao+'</span></div>'+
-        '<ul style="font-size:11px;color:var(--text2);padding-left:18px;line-height:1.7;margin-bottom:12px;">'+
-          '<li>Até '+(po.limites.maxUsuarios===-1?'∞':po.limites.maxUsuarios)+' usuários</li>'+
-          '<li>Até '+(po.limites.maxDemandas===-1?'∞':po.limites.maxDemandas.toLocaleString('pt-BR'))+' demandas</li>'+
-          '<li>'+(po.limites.historicoMeses===-1?'Histórico ilimitado':'Histórico '+po.limites.historicoMeses+'m')+'</li>'+
-          (po.features.iaWhatsapp?'<li>✅ IA WhatsApp</li>':'')+
-          (po.features.spyWolfMaster?'<li>✅ Spy Wolf Master</li>':'')+
-          (po.features.apiTokens?'<li>✅ API Tokens</li>':'')+
-          (po.features.brandingCustom?'<li>✅ White-label</li>':'')+
-        '</ul>'+
-        '<button onclick="iniciarUpgrade(\''+po.id+'\')" style="width:100%;padding:10px;background:'+corOutro+';color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;">'+(maisCaro?'⬆️ Fazer Upgrade':'Mudar pra '+po.nome)+'</button>'+
-      '</div>';
-    }).join('');
-
-    el.innerHTML =
-      trialInfo +
-      '<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:flex-start;">'+
-        '<div>'+
-          // Card plano atual
-          '<div style="background:linear-gradient(135deg,rgba('+(p.id==='trial'?'251,191,36':p.id==='basic'?'27,156,250':p.id==='pro'?'91,94,244':'255,89,38')+',.15),transparent);border:2px solid '+corPlano+';border-radius:14px;padding:22px;margin-bottom:18px;">'+
-            '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">'+
-              '<div><div style="font-size:11px;color:'+corPlano+';font-weight:700;text-transform:uppercase;letter-spacing:1px;">Plano atual</div>'+
-              '<div style="font-size:28px;font-weight:800;color:'+corPlano+';margin-top:2px;">'+p.nome+'</div></div>'+
-              '<div style="text-align:right;"><div style="font-size:22px;font-weight:700;">'+precoLabel+'</div><div style="font-size:11px;color:var(--text2);">'+p.duracao+'</div></div>'+
-            '</div>'+
-          '</div>'+
-
-          // Uso atual
-          '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;">'+
-            '<div style="font-size:14px;font-weight:700;margin-bottom:14px;">📊 Uso atual do plano</div>'+
-            barraUso('Usuários ativos', uso.usuarios, '👤')+
-            barraUso('Demandas ativas', uso.demandas, '📋')+
-            barraUso('Clientes/Ofertas', uso.clientes, '🎯')+
-            barraUso('Nichos', uso.nichos, '🏷️')+
-          '</div>'+
-        '</div>'+
-
-        '<div>'+
-          // Features do plano atual
-          '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px;">'+
-            '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">✨ Features do '+p.nome+'</div>'+
-            featuresHtml+
-          '</div>'+
-
-          // Upgrade
-          (planosOutros.length ? '<div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;">⬆️ Outros planos</div>'+
-          '<div style="display:flex;flex-direction:column;gap:10px;">'+upgradeCards+'</div>' : '')+
-        '</div>'+
-      '</div>';
-  } catch(err){
-    el.innerHTML = '<div style="text-align:center;padding:40px;color:#DC2626;">❌ Erro: '+err.message+'</div>';
+  el.innerHTML = '<div style="padding:30px;color:var(--text2);text-align:center">Carregando o plano…</div>';
+  var d;
+  try{ var r = await fetch(API_BASE + '/api/meu-plano'); d = await r.json(); if(!r.ok) throw new Error(d && d.error); }
+  catch(e){ el.innerHTML = '<div style="padding:30px;color:var(--text2);text-align:center">Não consegui carregar o plano agora. Tente de novo em instantes.</div>'; return; }
+  var cartao = 'background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px';
+  var sub = 'font-size:12.5px;color:var(--text2);line-height:1.5';
+  var pill = function(t, cor){ return '<span style="display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 10px;background:'+cor+'22;color:'+cor+'">'+_escS(t)+'</span>'; };
+  var fmt = function(u, x){ return u.tipo === 'brl' ? _mpBRL(x) : u.tipo === 'gb' ? (Number(x || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' GB') : String(x || 0); };
+  var uso = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 26px">' + d.uso.map(function(u){
+    var lim = u.limite, pct = lim ? Math.min(100, Math.round((u.usado || 0) / lim * 100)) : 0;
+    var cor = pct >= 100 ? '#C52C58' : pct >= 80 ? '#FF5926' : '#1B9CFA';
+    var est = lim && pct >= 100 ? 'No limite do plano' : lim && pct >= 80 ? 'Perto do limite' : '';
+    return '<div style="padding:4px 0"><div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:6px"><b>'+_escS(u.rotulo)+'</b><span style="color:var(--text2);white-space:nowrap;font-variant-numeric:tabular-nums">'+fmt(u, u.usado)+(lim ? ' de '+fmt(u, lim) : ' · sem limite')+'</span></div>' +
+      '<div style="height:7px;border-radius:7px;background:var(--bg3);overflow:hidden" role="progressbar" aria-label="'+_escS(u.rotulo)+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><i style="display:block;height:100%;width:'+pct+'%;background:'+cor+'"></i></div>' +
+      (est ? '<span style="display:block;font-size:11px;font-weight:700;margin-top:4px;color:'+cor+'">'+est+'</span>' : '') + '</div>';
+  }).join('') + '</div>';
+  var p = d.plano, h = '';
+  if(d.interno){
+    h = '<div style="'+cartao+'"><div style="'+sub+'">Plano atual</div><div style="font-size:22px;font-weight:800;margin:2px 0">'+_escS(p.nome)+'</div><div style="'+sub+'">'+_escS(p.desc)+'</div></div>' +
+      '<div style="'+cartao+'"><div style="font-size:15px;font-weight:800;margin-bottom:4px">Uso</div><div style="'+sub+';margin-bottom:12px">Só pra você acompanhar. Nada aqui trava.</div>'+uso+'</div>' +
+      '<div style="'+cartao+'"><div style="'+sub+'">Os planos dos clientes você vê e muda pela <a href="/admin" style="color:var(--accent)">Central TMX Admin</a>.</div></div>';
+    el.innerHTML = h; return;
   }
+  var valor = p.mensal ? _mpBRL(p.mensal) + ' por mês' : (p.gratis ? 'Grátis por 30 dias' : 'Sem cobrança');
+  h = '<div style="'+cartao+';display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:flex-start">' +
+      '<div><div style="'+sub+'">Plano atual</div><div style="font-size:22px;font-weight:800;margin:2px 0">'+_escS(p.nome)+'</div><div style="'+sub+'">'+_escS(valor)+(p.faixa ? ' · '+_escS(p.faixa) : '')+'</div>' +
+      (p.desc && !p.faixa ? '<div style="'+sub+';margin-top:4px">'+_escS(p.desc)+'</div>' : '') + '<div style="'+sub+';margin-top:4px">Todas as ferramentas, e nenhuma cobrança por venda.</div></div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(d.status === 'ativa' ? pill('ativo', '#10B981') : pill('suspenso', '#C52C58'))+'<button class="btn btn-ghost" onclick="document.getElementById(\'mp-trocar\').scrollIntoView({behavior:\'smooth\'})">Trocar de plano</button></div></div>' +
+    '<div style="'+cartao+'"><div style="font-size:15px;font-weight:800;margin-bottom:4px">Uso do plano</div><div style="'+sub+';margin-bottom:12px">O que a empresa usa agora de cada limite. Investimento: últimos 30 dias, nas contas de anúncio ligadas. Vendas: aprovadas no mês.</div>'+uso+'</div>' +
+    '<div style="'+cartao+'" id="mp-trocar"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px"><div><div style="font-size:15px;font-weight:800;margin-bottom:4px">Trocar de plano</div><div style="'+sub+'">Você paga pela faixa de investimento em anúncios. Nenhum plano cobra por venda.</div></div>' +
+      '<div style="display:inline-flex;gap:3px;background:var(--bg3);border-radius:10px;padding:3px">' + [['mensal','Mensal'],['anual','Anual · 2 meses grátis']].map(function(c){
+        return '<button type="button" onclick="_mpCiclo=\''+c[0]+'\';renderMeuPlanoTab()" style="border:0;border-radius:8px;padding:7px 12px;font:700 12.5px Inter,sans-serif;cursor:pointer;background:'+(_mpCiclo===c[0]?'var(--bg2)':'transparent')+';color:'+(_mpCiclo===c[0]?'var(--text)':'var(--text2)')+'">'+c[1]+'</button>'; }).join('') + '</div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' + d.planos.map(function(x){
+        var atual = x.id === p.id;
+        var preco = x.gratis ? 'Grátis' : (_mpCiclo === 'anual' ? _mpBRL(Math.round(x.mensal * 10 / 12)) : _mpBRL(x.mensal));
+        var cond = x.gratis ? 'por 30 dias' : (_mpCiclo === 'anual' ? _mpBRL(x.mensal * 10) + ' por ano' : 'por mês, sem fidelidade');
+        var acao = atual ? pill('plano atual', '#3E1493') : x.gratis ? '<span style="'+sub+'">Só pra conta nova</span>' :
+          '<button class="btn btn-ghost" style="font-size:12px" onclick="_mpPedirTroca(\''+_escS(x.nome)+'\')">Pedir troca para '+_escS(x.nome)+'</button>';
+        return '<div style="border:'+(atual?'2px solid #3E1493':'1px solid var(--border)')+';border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--bg)">' +
+          '<b style="font-size:14.5px">'+_escS(x.nome)+'</b><div style="font-size:20px;font-weight:800">'+preco+(x.gratis ? '' : ' <small style="font-size:12px;color:var(--text2)">/mês</small>')+'</div><div style="'+sub+'">'+cond+'</div>' +
+          '<div style="'+sub+'">'+_escS(x.faixa)+'</div><ul style="margin:4px 0 6px;padding-left:16px;'+sub+'">'+x.itens.map(function(i){ return '<li>'+_escS(i)+'</li>'; }).join('')+'</ul><div style="margin-top:auto">'+acao+'</div></div>';
+      }).join('') + '</div><div style="'+sub+';margin-top:10px">Enquanto o pagamento pelo TMX não está ligado, a troca vira um pedido no Suporte e a TMX faz pra você.</div></div>' +
+    '<div style="'+cartao+';display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center"><div><div style="font-size:15px;font-weight:800;margin-bottom:4px">Espaços adicionais</div><div style="'+sub+'">Outra empresa no mesmo login, com projetos, equipe e limites separados.</div></div><button class="btn btn-ghost" onclick="_mpPedirEspaco()">Pedir pelo Suporte</button></div>' +
+    '<div style="'+cartao+'"><div style="font-size:15px;font-weight:800;margin-bottom:4px">Cobranças</div><div style="'+sub+'">As cobranças aparecem aqui quando o pagamento pelo TMX estiver ligado.</div></div>';
+  el.innerHTML = h;
 }
+function _mpPedido(assunto, texto){
+  return fetch(API_BASE + '/api/suporte/chamados', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ tipo:'Pedido', assunto: assunto, texto: texto }) })
+    .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+    .then(function(x){ _avisoTela(x.ok ? 'Pedido enviado. A TMX responde em Suporte.' : ((x.j && x.j.error) || 'Não consegui enviar o pedido.')); })
+    .catch(function(){ _avisoTela('Sem conexão. Tente de novo.'); });
+}
+function _mpPedirTroca(nome){ _mpPedido('Trocar para o plano ' + nome, 'Quero trocar o plano da empresa para o ' + nome + ' (' + (_mpCiclo === 'anual' ? 'anual' : 'mensal') + ').'); }
+function _mpPedirEspaco(){ _mpPedido('Espaço adicional', 'Quero mais uma empresa no mesmo login.'); }
 
 // ══════════════════════════════════════════════
 // ── INTEGRAÇÕES EXTERNAS ──
@@ -22354,6 +22288,7 @@ async function rodarLembretesAgora(){
 const _CFG_TODAS_TABS = ['geral','usuarios','equiperh','projetos','nichos','ofertas-cfg','checklists','apis','api-tokens','hospedagem','criativos-cfg','lembretes','relatorio','whatsapp','integracoes','conexoes','branding','meuplano','dados','arquivados','backup','ferramentas'];
 var CFG_SECOES = {
   empresa:     { t:'Empresa', p:'O nome que aparece no topo do TMX e nos relatórios.', paineis:['geral'] },
+  meuplano:    { t:'Meu plano', p:'O plano da empresa, quanto dele você usa e as cobranças.', paineis:['meuplano'], dir:true },
   equipe:      { t:'Equipe', p:'Quem entra no TMX, com cargo e WhatsApp. Cada pessoa daqui também está em Gestão › RH: cadastrou aqui, já aparece lá.', paineis:['usuarios','equiperh'] },
   projetos:    { t:'Nichos e projetos', p:'A mesma lista de Demandas, Criativos, Rituais, Arquivos e Projetos. O nicho fica mesmo sem projeto.', paineis:['projetos'] },
   checklists:  { t:'Modelos de checklist', p:'Listas prontas que você escolhe ao criar uma demanda.', paineis:['checklists'] },
@@ -22366,7 +22301,7 @@ var CFG_SECOES = {
   modulos:     { t:'Módulos arquivados', p:'Arquivar tira do menu de todo mundo sem apagar nada. Reativar traz de volta como estava.', paineis:['arquivados'], soTmx:true },
   ferramentas: { t:'Ferramentas', p:'Para quando algo parece desatualizado. No dia a dia não precisa.', paineis:['ferramentas'] }
 };
-var CFG_NAV = [['Empresa'], ['empresa','🏢'], ['equipe','👥'], ['Organização'], ['projetos','🗂️'], ['checklists','✅'], ['etapas','🎬'],
+var CFG_NAV = [['Empresa'], ['empresa','🏢'], ['meuplano','💳'], ['equipe','👥'], ['Organização'], ['projetos','🗂️'], ['checklists','✅'], ['etapas','🎬'],
   ['Avisos automáticos'], ['lembretes','⏰'], ['relatorios','📤'], ['Conexões'], ['conexoes','🔌'],
   ['Dados'], ['backup','💾'], ['lixeira','🗑️'], ['modulos','📦'], ['ferramentas','🛠️']];
 var CFG_CONEX = [
@@ -22410,6 +22345,7 @@ function cfgIr(secao, conexao){
 }
 function _cfgRenderPainel(t, isDir){
   if (t === 'arquivados') renderArquivadosCfg();
+  else if (t === 'meuplano') renderMeuPlanoTab();
   else if (t === 'usuarios') renderUsuarios();
   else if (t === 'equiperh') _cfgPintarEquipeRh();
   else if (t === 'projetos') _cfgPintarArvore();
@@ -22618,11 +22554,11 @@ function _cfgPintarEquipeRh(){
 }
 // Compatibilidade: telas antigas que abriam um grupo ou uma aba de Configurações
 function switchCfgGrupo(grupo){
-  cfgIr({ conta:'equipe', operacao:'projetos', automacao:'lembretes', integracoes:'conexoes', branding:'empresa', meuplano:'empresa', dados:'lixeira', avancado:'modulos' }[grupo] || 'equipe');
+  cfgIr({ conta:'equipe', operacao:'projetos', automacao:'lembretes', integracoes:'conexoes', branding:'empresa', meuplano:'meuplano', dados:'lixeira', avancado:'modulos' }[grupo] || 'equipe');
 }
 function switchCfgTab(tab){
   cfgIr({ geral:'empresa', usuarios:'equipe', nichos:'projetos', 'ofertas-cfg':'projetos', checklists:'checklists', 'criativos-cfg':'etapas', lembretes:'lembretes', relatorio:'relatorios',
-    integracoes:'conexoes', apis:'conexoes', 'api-tokens':'conexoes', whatsapp:'conexoes', dados:'lixeira', arquivados:'modulos', branding:'empresa', meuplano:'empresa' }[tab] || 'equipe',
+    integracoes:'conexoes', apis:'conexoes', 'api-tokens':'conexoes', whatsapp:'conexoes', dados:'lixeira', arquivados:'modulos', branding:'empresa', meuplano:'meuplano' }[tab] || 'equipe',
     { apis:'redtrack', 'api-tokens':'api', whatsapp:'whatsapp' }[tab]);
 }
 

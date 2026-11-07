@@ -97,6 +97,7 @@ tbody tr:last-child td{border-bottom:0}
 (function(){
   var raiz = document.getElementById('raiz');
   var token = ''; try{ token = localStorage.getItem('sl_session_token') || ''; }catch(e){}
+  var PLANOS = [];   // vem do servidor (rascunho dos preços fica só lá)
   var eu = null, tela = 'clientes', EMPRESAS = [], CONVITES = [], CHAMADOS = [], busca = '', ultimoLink = null, erroConvite = '';
   var filtroCh = 'abertos', chamado = null, modal = '';
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -136,7 +137,9 @@ tbody tr:last-child td{border-bottom:0}
       lista.map(function(e){
         return '<tr><td class="nome"><b>'+esc(e.nome)+'</b><span class="sub" title="Endereço público: app.centraltmx.com/e/'+esc(e.id)+'">'+esc(e.id)+' · desde '+data(e.criada)+'</span></td>' +
           '<td style="overflow-wrap:anywhere">'+esc(e.dono_email || '—')+'</td>' +
-          '<td>'+esc(e.plano === 'teste' || !e.plano ? 'Teste' : e.plano)+'<div class="sub">'+(e.origem === 'convite' ? 'veio por convite' : e.origem === 'teste' ? 'empresa de teste' : '')+'</div></td>' +
+          '<td><select data-plano="'+esc(e.id)+'" aria-label="Plano da '+esc(e.nome)+'" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px">' +
+            (PLANOS.length ? PLANOS : [{ id: e.plano || 'teste', nome: e.plano || 'Teste' }]).map(function(p){ return '<option value="'+esc(p.id)+'"'+((e.plano || 'teste') === p.id ? ' selected' : '')+'>'+esc(p.nome)+(p.mensal ? ' · R$ '+p.mensal : '')+'</option>'; }).join('') +
+            '</select><div class="sub">'+(e.origem === 'convite' ? 'veio por convite' : e.origem === 'teste' ? 'empresa de teste' : '')+'</div></td>' +
           '<td class="num">'+(e.contas || 0)+'</td><td>'+motorPill(e)+'</td>' +
           '<td>'+(e.status === 'ativa' ? '<span class="pill p-ok">Ativa</span>' : '<span class="pill p-verm" title="'+esc((e.bloqueio_motivo || '') + (e.bloqueado_por ? ' · por ' + e.bloqueado_por : ''))+'">Bloqueada</span><div class="sub">'+esc(e.bloqueio_motivo || '')+'</div>')+'</td>' +
           '<td><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><button class="btn peq" data-suporte="'+esc(e.id)+'">Entrar como suporte</button>' +
@@ -256,7 +259,8 @@ tbody tr:last-child td{border-bottom:0}
     if(b) b.oninput = function(){ busca = b.value; var pos = b.selectionStart; pintar(); var nb = document.getElementById('busca'); nb.focus(); try{ nb.setSelectionRange(pos, pos); }catch(e){} };
   }
   function carregar(){
-    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados')]).then(function(r){
+    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos')]).then(function(r){
+      if(r[3].ok) PLANOS = r[3].j.planos || [];
       if(r[0].ok) EMPRESAS = r[0].j.empresas || [];
       if(r[1].ok) CONVITES = r[1].j.convites || [];
       if(r[2].ok) CHAMADOS = r[2].j.chamados || [];
@@ -266,6 +270,14 @@ tbody tr:last-child td{border-bottom:0}
   function abrirChamado(id){
     return api('GET', '/api/plataforma/chamados/' + id).then(function(r){ if(r.ok){ chamado = r.j.chamado; tela = 'suporte'; pintar(); window.scrollTo(0, 0); } else aviso(r.j.error || 'Não abri o chamado.'); });
   }
+  // trocar o plano de um cliente (até a cobrança fazer isso sozinha)
+  raiz.addEventListener('change', function(ev){
+    var sel = ev.target.closest && ev.target.closest('[data-plano]'); if(!sel) return;
+    sel.disabled = true;
+    api('POST', '/api/plataforma/empresas/' + encodeURIComponent(sel.dataset.plano) + '/plano', { plano: sel.value }).then(function(r){
+      aviso(r.ok ? 'Plano trocado. O cliente já vê em Configurações › Meu plano.' : (r.j.error || 'Não consegui trocar o plano.')); return carregar();
+    });
+  });
   raiz.addEventListener('click', function(ev){
     var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo]'); if(!a) return;
     if(a.dataset.fundo){ if(ev.target === a){ modal = ''; pintar(); } return; }
