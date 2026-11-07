@@ -6,6 +6,33 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const bcrypt = require('bcryptjs');
 
+// ══════════════════════════════════════════════
+// ── MULTIEMPRESA: UM MOTOR POR EMPRESA (07/11/2026) ──
+// Este mesmo arquivo roda de dois jeitos:
+// - Sem TMX_EMPRESA: é o processo da TMX (empresa nº 1, dados em /data) e também a
+//   PORTARIA, que liga um motor por empresa e entrega a cada um os pedidos dele.
+// - Com TMX_EMPRESA=<código>: é o MOTOR daquela empresa, ligado pela portaria, com
+//   banco, rotinas e memória próprios em TMX_DATA_DIR. Ouve só por dentro do servidor.
+// Um motor não enxerga o banco nem a memória de outro: é isso que impede misturar.
+// ══════════════════════════════════════════════
+const EMPRESA_MOTOR = String(process.env.TMX_EMPRESA || '').trim().toLowerCase();
+const SOU_TMX = !EMPRESA_MOTOR;
+const EMPRESA_TMX = 'tmx';                       // código da TMX no registro da plataforma
+const _RE_EMPRESA_ID = /^[a-z][a-z0-9]{5,15}$/;  // código de empresa: letra + 5 a 15 letras/números
+// Endereço público da empresa: o pixel, o webhook, o quiz e os links levam isto na frente
+const BASE_PUBLICA = SOU_TMX ? '' : '/e/' + EMPRESA_MOTOR;
+if (!SOU_TMX && (!_RE_EMPRESA_ID.test(EMPRESA_MOTOR) || !process.env.TMX_DATA_DIR)) {
+  // sem pasta própria o motor abriria o banco da TMX: melhor não subir
+  console.error('[MOTOR] TMX_EMPRESA inválida ou sem TMX_DATA_DIR. Não subo.');
+  process.exit(1);
+}
+
+// Quem é este motor, pro app: código, nome e o endereço público (pixel, webhook, quiz)
+function _empresaInfo() {
+  return SOU_TMX ? { id: EMPRESA_TMX, nome: 'TMX', base: '' }
+                 : { id: EMPRESA_MOTOR, nome: String(process.env.TMX_EMPRESA_NOME || ''), base: BASE_PUBLICA };
+}
+
 // ── CONSTANTES DE AUTH ──
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias de inatividade
 const BCRYPT_ROUNDS = 10;
@@ -104,7 +131,8 @@ function _resolverTenantId(req) {
  * e pros próximos PRs começarem a consumir.
  */
 function _injetarTenant(req, res, next) {
-  req.tenantId = _resolverTenantId(req);
+  // No motor de uma empresa, o banco inteiro é dela: não há outra empresa pra resolver.
+  req.tenantId = SOU_TMX ? _resolverTenantId(req) : TENANT_DEFAULT_ID;
   // Expose no header de resposta pra debug (será removido em prod)
   res.setHeader('X-Tenant-Id', req.tenantId);
   next();
@@ -167,6 +195,7 @@ function _aplicarFiltroTenant(store, tenantId) {
  * útil pro painel SaaS poder ver dados de qualquer tenant.
  */
 function _isSuperAdmin(req) {
+  if (!SOU_TMX) return false;   // super-admin é só a Diretoria da TMX
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
   if (!token) return false;
@@ -200,13 +229,291 @@ const app = express();
 // inteira dividia a mesma cota de 200 req/min e um usuário sozinho podia
 // travar todo mundo. O 1 confia só no primeiro salto (o proxy do Railway) —
 // confiar na cadeia toda deixaria qualquer um forjar IP e furar o limite.
-app.set('trust proxy', 1);
+// O motor de uma empresa só recebe pedidos da portaria (127.0.0.1), que já põe o IP
+// real do visitante no X-Forwarded-For.
+app.set('trust proxy', SOU_TMX ? 1 : 'loopback');
 const PORT = process.env.PORT || 3001;
-const DATA_DIR = fs.existsSync('/data') ? '/data' : __dirname;
+// TMX_DATA_DIR: pasta do motor de uma empresa (/data/empresas/<código>) ou, nos
+// testes, a pasta isolada da TMX. Sem ela, a TMX fica onde sempre esteve.
+const DATA_DIR = process.env.TMX_DATA_DIR || (fs.existsSync('/data') ? '/data' : __dirname);
+try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const CD_UPLOAD_DIR = path.join(DATA_DIR, 'cd_uploads');
 try { if (!fs.existsSync(CD_UPLOAD_DIR)) fs.mkdirSync(CD_UPLOAD_DIR, { recursive: true }); } catch (e) {}
+
+// ══════════════════════════════════════════════
+// ── PORTARIA (só no processo da TMX) ──
+// Registro da plataforma em /data/plataforma.sqlite, fora do banco de qualquer
+// empresa: a lista de empresas e de quem é cada e-mail (um e-mail, uma empresa).
+// A portaria NÃO lê banco a cada pedido (foi o que deixou o site com 18 s de
+// resposta em 05/11): a lista de empresas fica na memória e o e-mail só é
+// consultado no login.
+// ══════════════════════════════════════════════
+const http = require('http');
+const PLATAFORMA_ARQ = path.join(DATA_DIR, 'plataforma.sqlite');
+const EMPRESAS_DIR = path.join(DATA_DIR, 'empresas');
+const _empresas = new Map();   // código -> { id, nome, status }
+const _motores = new Map();    // código -> { id, proc, porta, falhas, esperando, parar }
+let _platDb = null;
+const _platQ = {};
+function _plataforma() {
+  if (_platDb) return _platDb;
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(PLATAFORMA_ARQ);
+  db.exec(`
+    PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=3000;
+    CREATE TABLE IF NOT EXISTS empresas (id TEXT PRIMARY KEY, nome TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'ativa',
+      criada INTEGER, criada_por TEXT);
+    CREATE TABLE IF NOT EXISTS contas (email TEXT PRIMARY KEY, empresa TEXT NOT NULL, em INTEGER);
+    CREATE INDEX IF NOT EXISTS contas_emp ON contas(empresa);
+  `);
+  _platDb = db;
+  return db;
+}
+function _platPrep(sql) { if (!_platQ[sql]) _platQ[sql] = _plataforma().prepare(sql); return _platQ[sql]; }
+function _carregarEmpresas() {
+  _empresas.clear();
+  for (const e of _platPrep('SELECT id, nome, status FROM empresas').all()) _empresas.set(e.id, { id: e.id, nome: e.nome, status: e.status });
+}
+// Quem é o dono de cada e-mail. Cada motor manda a lista dele quando os usuários
+// mudam; a TMX indexa a dela direto. O primeiro dono fica com o e-mail: um
+// e-mail que já é de outra empresa não muda de dono em silêncio.
+function _indexarContas(empresa, emails) {
+  const db = _plataforma(), agora = Date.now();
+  const novos = new Set((emails || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean));
+  db.exec('BEGIN');
+  try {
+    for (const r of _platPrep('SELECT email FROM contas WHERE empresa=?').all(empresa)) {
+      if (!novos.has(r.email)) _platPrep('DELETE FROM contas WHERE email=? AND empresa=?').run(r.email, empresa);
+    }
+    for (const e of novos) {
+      const dono = _platPrep('SELECT empresa FROM contas WHERE email=?').get(e);
+      if (!dono) _platPrep('INSERT INTO contas(email, empresa, em) VALUES(?,?,?)').run(e, empresa, agora);
+      else if (dono.empresa !== empresa) console.warn(`[PLATAFORMA] o e-mail ${e} já é da empresa ${dono.empresa}; não vale para ${empresa}.`);
+    }
+    db.exec('COMMIT');
+  } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; }
+}
+function _empresaDoEmail(email) {
+  const r = _platPrep('SELECT empresa FROM contas WHERE email=?').get(String(email || '').trim().toLowerCase());
+  return r ? r.empresa : null;
+}
+// Lista de e-mails do banco: o motor avisa a portaria, a TMX grava direto.
+// Chamado no writeDB; só age quando a lista muda (custa um join de poucos e-mails).
+let _contasAssinatura = null;
+function _contasMudaram(db) {
+  const emails = ((db && db.store && db.store['sl_usuarios']) || [])
+    .map(u => u && u.email ? String(u.email).trim().toLowerCase() : '').filter(Boolean).sort();
+  const assinatura = emails.join('\n');
+  if (assinatura === _contasAssinatura) return;
+  _contasAssinatura = assinatura;
+  try {
+    if (SOU_TMX) _indexarContas(EMPRESA_TMX, emails);
+    else if (process.send) process.send({ tipo: 'contas', emails });
+  } catch (e) { console.error('[PLATAFORMA] índice de e-mails:', e.message); }
+}
+
+// ── Motores ──
+// Ambiente do motor: só o básico. As chaves da TMX no Railway (IA da Anthropic,
+// Utmify, VTurb, PageSpeed, backup no GitHub, Resend, Pagar.me) NÃO vão: cada
+// empresa cadastra as dela nas Integrações.
+function _envMotor(emp) {
+  const env = {};
+  for (const k of ['PATH', 'HOME', 'NODE_ENV', 'TZ', 'LANG', 'LC_ALL']) if (process.env[k]) env[k] = process.env[k];
+  // só pra testar aqui com uma Meta falsa; no Railway (/data) nunca vale
+  if (process.env.META_API_BASE_TESTE && !fs.existsSync('/data')) env.META_API_BASE_TESTE = process.env.META_API_BASE_TESTE;
+  env.TMX_EMPRESA = emp.id;
+  env.TMX_EMPRESA_NOME = emp.nome || '';
+  env.TMX_DATA_DIR = path.join(EMPRESAS_DIR, emp.id);
+  return env;
+}
+function _ligarMotor(emp) {
+  let m = _motores.get(emp.id);
+  if (m && m.proc) return m;
+  if (!m) { m = { id: emp.id, falhas: 0, esperando: [], pedidos: new Map() }; _motores.set(emp.id, m); }
+  m.parar = false; m.porta = null;
+  const env = _envMotor(emp);
+  fs.mkdirSync(env.TMX_DATA_DIR, { recursive: true });
+  const { fork } = require('child_process');
+  const proc = fork(__filename, [], { env, cwd: __dirname, execArgv: [], stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  m.proc = proc;
+  const prefixo = `[emp:${emp.id}] `;
+  const repassar = (fluxo, saida) => {
+    let resto = '';
+    fluxo.on('data', b => {
+      const linhas = (resto + b.toString()).split('\n'); resto = linhas.pop();
+      for (const l of linhas) if (l.trim()) saida.write(prefixo + l + '\n');
+    });
+  };
+  repassar(proc.stdout, process.stdout); repassar(proc.stderr, process.stderr);
+  proc.on('message', msg => {
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.tipo === 'pronto') {
+      m.porta = msg.porta; m.subiuEm = Date.now();
+      m.esperando.splice(0).forEach(f => { try { f(); } catch (e) {} });
+      console.log(`[PORTARIA] motor da empresa ${emp.id} pronto.`);
+    } else if (msg.tipo === 'contas') {
+      try { _indexarContas(emp.id, msg.emails); } catch (e) { console.error('[PLATAFORMA] índice de', emp.id, e.message); }
+    } else if (msg.tipo === 'resposta' && m.pedidos.has(msg.n)) {
+      const p = m.pedidos.get(msg.n); m.pedidos.delete(msg.n); p(msg);
+    }
+  });
+  proc.on('exit', (code, sinal) => {
+    if (m.proc !== proc) return;
+    m.proc = null; m.porta = null;
+    for (const [n, p] of m.pedidos) { m.pedidos.delete(n); p({ ok: false, erro: 'o motor parou' }); }
+    if (m.parar || _saindo) return;
+    // ficou de pé mais de 1 min: conta como queda nova, não como o mesmo defeito
+    if (m.subiuEm && Date.now() - m.subiuEm > 60000) m.falhas = 0;
+    m.falhas++;
+    const espera = Math.min(60000, 1000 * Math.pow(2, Math.min(m.falhas, 6)));
+    // até lá, pedido nenhum religa o motor (senão um defeito na subida viraria um laço)
+    m.proximaTentativa = Date.now() + espera;
+    console.error(`[PORTARIA] motor da empresa ${emp.id} parou (${sinal || code}); religo em ${Math.round(espera / 1000)}s.`);
+    setTimeout(() => { const e = _empresas.get(emp.id); if (e && e.status === 'ativa' && !m.proc) _ligarMotor(e); }, espera);
+  });
+  return m;
+}
+// Espera o motor estar ouvindo (ele leva ~1s pra subir). Liga se estiver desligado.
+function _motorPronto(id, ms) {
+  const emp = _empresas.get(id);
+  if (!emp || emp.status !== 'ativa') return Promise.reject(new Error('empresa indisponível'));
+  const atual = _motores.get(id);
+  if (atual && !atual.proc && atual.proximaTentativa && Date.now() < atual.proximaTentativa) {
+    return Promise.reject(new Error('o motor está religando'));
+  }
+  const m = _ligarMotor(emp);
+  if (m.porta) return Promise.resolve(m);
+  return new Promise((ok, falha) => {
+    const t = setTimeout(() => { m.esperando = m.esperando.filter(f => f !== pronto); falha(new Error('o motor demorou para subir')); }, ms || 15000);
+    const pronto = () => { clearTimeout(t); ok(m); };
+    m.esperando.push(pronto);
+  });
+}
+// Pedido direto ao motor (sem passar pela internet), ex.: criar o 1º usuário.
+let _pedidoN = 0;
+function _pedirAoMotor(id, cmd, dados, ms) {
+  return _motorPronto(id).then(m => new Promise(ok => {
+    const n = ++_pedidoN;
+    const t = setTimeout(() => { m.pedidos.delete(n); ok({ ok: false, erro: 'o motor não respondeu' }); }, ms || 10000);
+    m.pedidos.set(n, r => { clearTimeout(t); ok(r); });
+    m.proc.send({ tipo: 'pedido', n, cmd, dados });
+  }));
+}
+// Deploy/parada: cada motor recebe SIGTERM e grava o que está na fila (_gravarTudoESair).
+function _pararMotores(ms) {
+  const vivos = [..._motores.values()].filter(m => m.proc);
+  if (!vivos.length) return Promise.resolve();
+  return new Promise(ok => {
+    let falta = vivos.length;
+    const t = setTimeout(ok, ms || 8000);
+    vivos.forEach(m => {
+      m.parar = true;
+      m.proc.once('exit', () => { if (--falta === 0) { clearTimeout(t); ok(); } });
+      try { m.proc.kill('SIGTERM'); } catch (e) { if (--falta === 0) { clearTimeout(t); ok(); } }
+    });
+  });
+}
+
+// ── Encaminhar o pedido ao motor ──
+const _agenteMotor = new http.Agent({ keepAlive: true, maxSockets: 256 });
+const _SALTO = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer']);
+function _respErro(res, status, msg) {
+  if (res.headersSent) { try { res.destroy(); } catch (e) {} return; }
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify({ error: msg }));
+}
+function _encaminhar(req, res, m, caminho, corpo) {
+  const headers = {};
+  for (const [k, v] of Object.entries(req.headers)) if (!_SALTO.has(k)) headers[k] = v;
+  // O motor confia só no que a portaria diz: IP real e protocolo, nunca o que o visitante mandou
+  headers['x-forwarded-for'] = req.ip || '';
+  headers['x-forwarded-proto'] = req.protocol || 'http';
+  headers['x-tmx-empresa'] = m.id;
+  if (corpo !== undefined) headers['content-length'] = String(corpo.length);
+  const pr = http.request({ host: '127.0.0.1', port: m.porta, method: req.method, path: caminho, headers, agent: _agenteMotor }, r => {
+    const h = {};
+    for (const [k, v] of Object.entries(r.headers)) if (!_SALTO.has(k)) h[k] = v;
+    res.writeHead(r.statusCode, h);
+    r.pipe(res);
+  });
+  pr.on('error', () => _respErro(res, 502, 'A empresa não respondeu agora. Tente de novo em instantes.'));
+  res.on('close', () => { if (!res.writableFinished) pr.destroy(); });
+  if (corpo !== undefined) pr.end(corpo); else req.pipe(pr);
+}
+function _lerCorpo(req, limite) {
+  return new Promise((ok, falha) => {
+    const partes = []; let n = 0;
+    req.on('data', c => { n += c.length; if (n > limite) { falha(new Error('grande demais')); req.destroy(); } else partes.push(c); });
+    req.on('end', () => ok(Buffer.concat(partes)));
+    req.on('error', falha);
+  });
+}
+function _tokenDoPedido(req) {
+  const h = req.headers.authorization || '';
+  if (h.startsWith('Bearer ')) return h.slice(7).trim();
+  const q = req.query && req.query.token;
+  return typeof q === 'string' ? q : '';
+}
+const _RE_PREFIXO = /^\/e\/([a-z][a-z0-9]{5,15})(?=[/?]|$)/;
+const _RE_SESSAO_EMP = /^ses_([a-z][a-z0-9]{5,15})\./;
+const _ROTAS_POR_EMAIL = new Set(['/api/auth/login', '/api/auth/forgot', '/api/auth/reset']);
+// Quem é de quem:
+// 1. endereço /e/<código>/... (pixel, webhook de vendas, WhatsApp, quiz, links);
+// 2. sessão com a marca da empresa (ses_<código>.…); a sessão da TMX não tem marca;
+// 3. login, esqueci e redefinir: pelo e-mail (ou pela marca do código de redefinição);
+// 4. nada disso: é da TMX, exatamente como antes.
+// Marca de empresa que não existe ou está suspensa é recusada: nunca cai na TMX.
+function _portaria(req, res, next) {
+  if (!SOU_TMX || !_empresas.size) return next();   // sem empresas: tudo como sempre foi
+  const url = req.url || '/';
+  let id = null, caminho = url;
+  const mp = _RE_PREFIXO.exec(url);
+  if (mp) {
+    id = mp[1];
+    caminho = url.slice(mp[0].length) || '/';
+    if (caminho[0] !== '/') caminho = '/' + caminho;
+  }
+  const tok = _tokenDoPedido(req);
+  const mt = tok ? _RE_SESSAO_EMP.exec(tok) : null;
+  if (mt) {
+    if (id && id !== mt[1]) return _respErro(res, 401, 'Sessão de outra empresa. Faça login de novo.');
+    id = mt[1];
+  }
+  const seguir = (corpo) => {
+    const emp = _empresas.get(id);
+    if (!emp) return _respErro(res, mt ? 401 : 404, mt ? 'Sessão inválida. Faça login de novo.' : 'Empresa não encontrada.');
+    if (emp.status !== 'ativa') return _respErro(res, 403, 'Conta suspensa. Fale com o suporte.');
+    _motorPronto(id).then(m => _encaminhar(req, res, m, caminho, corpo))
+      .catch(() => _respErro(res, 503, 'A empresa está ligando. Tente de novo em instantes.'));
+  };
+  if (id) return seguir();
+  if (req.method === 'POST' && _ROTAS_POR_EMAIL.has(req.path)) {
+    _lerCorpo(req, 64 * 1024).then(buf => {
+      let corpo = {};
+      try { corpo = JSON.parse(buf.toString('utf8') || '{}') || {}; } catch (e) { corpo = {}; }
+      let dono = null;
+      if (req.path === '/api/auth/reset') {
+        const m = /^([a-z][a-z0-9]{5,15})\./.exec(String(corpo.token || ''));
+        if (m) dono = m[1];
+      } else if (corpo.email) {
+        try { dono = _empresaDoEmail(corpo.email); } catch (e) { dono = null; }
+      }
+      if (dono && dono !== EMPRESA_TMX) { id = dono; return seguir(buf); }
+      // é da TMX: o corpo já foi lido aqui, então entrega pronto pro express.json pular
+      req.body = corpo; req._body = true;
+      next();
+    }).catch(() => _respErro(res, 413, 'Pedido grande demais.'));
+    return;
+  }
+  return next();
+}
+if (SOU_TMX) {
+  try { _carregarEmpresas(); } catch (e) { console.error('[PLATAFORMA] não abri o registro:', e.message); }
+  app.use(_portaria);
+}
 const BACKUP_INTERVAL_MS = 60 * 60 * 1000; // 1h (Time Machine style)
 // Retenção em camadas: tudo da última 48h + 1/dia (90d) + 1/semana (12m) + 1/mês (forever)
 const RET_HOURS   = 48;        // horas mantidas hora-a-hora
@@ -334,6 +641,12 @@ app.use(express.json({ limit: '20mb' }));
 // Multi-tenancy PR 1: injeta req.tenantId em toda request.
 // Por enquanto sempre 'axcend-interno' — não afeta nada.
 app.use(_injetarTenant);
+if (!SOU_TMX) {
+  // No motor de uma empresa: o Meu Protocolo não faz parte do produto, e o que é da
+  // plataforma (cadastro, cobrança, painel SaaS, MCP, criar empresas) fica só na TMX.
+  app.use(['/api/saas', '/api/billing', '/api/plataforma', '/painel-saas', '/signup', '/mcp', '/api/store/sl_protocolo'],
+    (req, res) => res.status(404).json({ error: 'Não disponível.' }));
+}
 app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
@@ -650,6 +963,8 @@ function writeDB(db) {
     fs.writeFileSync(tmp, dados);
   }
   fs.renameSync(tmp, DB_FILE);
+  // e-mails da equipe mudaram: atualiza quem é de qual empresa (login pela portaria)
+  try { _contasMudaram(db); } catch (e) {}
 }
 
 function now() { return Math.floor(Date.now() / 1000); }
@@ -836,7 +1151,9 @@ function _pruneSessoesExpiradas(db) {
 }
 function criarSessao(db, userId) {
   _pruneSessoesExpiradas(db);
-  const token = 'ses_' + crypto.randomBytes(32).toString('hex');
+  // Sessão de empresa nova leva a marca dela (ses_<código>.…): é por ela que a portaria
+  // sabe pra qual motor mandar. A da TMX continua sem marca, como sempre foi.
+  const token = 'ses_' + (SOU_TMX ? '' : EMPRESA_MOTOR + '.') + crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   _getSessions(db).push({
     tokenHash,
@@ -967,6 +1284,12 @@ function _stripSenhas(value) {
 // Init
 function initDB() {
   const db = readDB();
+  // Empresa nova nasce sem ninguém: o 1º usuário (Diretoria) vem da portaria, com a
+  // senha escolhida. Os 6 usuários de exemplo, com senha fixa, só na TMX vazia.
+  if (!db.store['sl_usuarios'] && !SOU_TMX) {
+    db.store['sl_usuarios'] = [];
+    db.timestamps['sl_usuarios'] = now();
+  }
   if (!db.store['sl_usuarios']) {
     db.store['sl_usuarios'] = [
       { id:'u1', nome:'Thiago', email:'thiago@axcend.com', senha:'axcend2026', cargo:'Diretoria', ativo:true },
@@ -1000,8 +1323,9 @@ _migrarGestorEmDiasAntigos();
 // Migra tarefas com status legados (COPY_PENDENTE etc) pro novo modelo setor+status
 _migrarTasksParaSetorStatus();
 // Multi-tenancy PR 2: tagear items existentes com tenant_id='axcend-interno'.
-// Idempotente (não roda 2x). Snapshot automático antes.
-_migrarParaMultiTenant();
+// Idempotente (não roda 2x). Snapshot automático antes. Só na TMX: no motor de uma
+// empresa o banco inteiro já é dela.
+if (SOU_TMX) _migrarParaMultiTenant();
 // Limpeza de sessões expiradas a cada 1h
 setInterval(() => {
   try { const db = readDB(); const n = _pruneSessoesExpiradas(db); if (n > 0) { writeDB(db); console.log(`[AUTH] ${n} sessões expiradas removidas.`); } } catch {}
@@ -1635,8 +1959,8 @@ app.post('/api/auth/forgot', loginLimiter, async (req, res) => {
       return res.json({ ok: true, mensagem: 'Se o email existir, você vai receber um link de reset em alguns segundos.' });
     }
 
-    // Gera token de reset
-    const token = crypto.randomBytes(32).toString('hex');
+    // Gera token de reset (com a marca da empresa fora da TMX, pra portaria achar o motor)
+    const token = (SOU_TMX ? '' : EMPRESA_MOTOR + '.') + crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     user.resetSenha = {
       hash: tokenHash,
@@ -3238,7 +3562,7 @@ app.get('/api/integracoes/vendas/me', authDiretoria, (req, res) => {
     res.json({
       ok: true,
       configurado: !!(cfg && cfg.token),
-      urlWebhook: cfg && cfg.token ? `/api/webhook/vendas/${cfg.token}` : null,
+      urlWebhook: cfg && cfg.token ? `${BASE_PUBLICA}/api/webhook/vendas/${cfg.token}` : null,
       eventos: vendas.length,
       totalVendas: pagas.length,                       // pagas, que e o que a tela chama de venda
       pagasHoje: pagasHoje.length,
@@ -3272,7 +3596,7 @@ app.post('/api/integracoes/vendas/gerar-token', authDiretoria, (req, res) => {
     db.timestamps['sl_integracoes_vendas'] = now();
     audit(db, 'integracao.vendas.token', 'sl_integracoes_vendas', {}, req.user);
     writeDB(db);   // depois do audit
-    res.json({ ok: true, urlWebhook: `/api/webhook/vendas/${cfg.token}` });
+    res.json({ ok: true, urlWebhook: `${BASE_PUBLICA}/api/webhook/vendas/${cfg.token}` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -7687,6 +8011,8 @@ app.post('/api/auth/login', loginLimiterIp, loginLimiter, (req, res) => {
     user: safeUser,
     token,
     expiraEm: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    // de qual empresa é o login: o app limpa a cópia local quando o aparelho troca de empresa
+    empresa: _empresaInfo(),
     tenant: tenantInfo ? {
       id: tenantInfo.id,
       slug: tenantInfo.slug,
@@ -7728,7 +8054,7 @@ app.get('/api/auth/me', (req, res) => {
   const user = (db.store['sl_usuarios'] || []).find(u => u.id === sess.userId);
   if (!user || user.ativo === false) return res.status(401).json({ error: 'Usuário inexistente ou inativo' });
   const { senha: _s, senhaHash: _h, ...safeUser } = user;
-  res.json({ user: safeUser, expiraEm: new Date((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS).toISOString() });
+  res.json({ user: safeUser, expiraEm: new Date((sess.lastActivity || sess.createdAt) + SESSION_TTL_MS).toISOString(), empresa: _empresaInfo() });
 });
 
 app.get('/api/ping', (req, res) => res.json({ ok: true, version: '2.0', api: true }));
@@ -7998,6 +8324,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_push_cfg',            // chave privada que assina o aviso de venda
   'sl_push_aparelhos'       // aparelhos que recebem o aviso de venda
 ]);
+// Meu Protocolo fica fora do produto: no motor de uma empresa, a chave nunca sai do servidor
+if (!SOU_TMX) KEYS_SERVIDOR.add('sl_protocolo');
 function _ehDiretoria(req) { return !!(req.user && req.user.cargo === 'Diretoria'); }
 // Remove do payload as chaves restritas quando quem pede não é Diretoria.
 function _filtrarKeysPorCargo(obj, req) {
@@ -8086,11 +8414,52 @@ function authDiretoria(req, res, next) {
 // Diretoria da própria TMX. Tokens da API leem os dados da TMX pelo MCP e pela API v1,
 // então a Diretoria de uma empresa de fora não pode criar, listar nem revogar.
 function authDiretoriaInterna(req, res, next) {
+  if (!SOU_TMX) return res.status(403).json({ error: 'Acesso restrito à Diretoria da TMX.' });
   authDiretoria(req, res, () => {
     if (getItemTenant(req.user) !== TENANT_INTERNO_ID) return res.status(403).json({ error: 'Acesso restrito à Diretoria da TMX.' });
     next();
   });
 }
+
+// ══════════════════════════════════════════════
+// ── EMPRESAS DA PLATAFORMA (só a Diretoria da TMX) ──
+// Nesta etapa só cria empresa de teste: o cadastro público continua fechado.
+// ══════════════════════════════════════════════
+app.get('/api/plataforma/empresas', authDiretoriaInterna, (req, res) => {
+  const lista = _platPrep('SELECT id, nome, status, criada FROM empresas ORDER BY criada').all().map(e => {
+    const m = _motores.get(e.id);
+    const n = _platPrep('SELECT COUNT(*) n FROM contas WHERE empresa=?').get(e.id).n;
+    return Object.assign({}, e, { motor: m && m.porta ? 'ligado' : (m && m.proc ? 'ligando' : 'desligado'),
+      pid: m && m.proc ? m.proc.pid : null, quedas: m ? m.falhas : 0, contas: n, base: '/e/' + e.id });
+  });
+  res.json({ empresas: lista });
+});
+app.post('/api/plataforma/empresas', authDiretoriaInterna, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const nome = String(b.nome || '').trim().slice(0, 80);
+    const u = b.usuario || {};
+    const email = String(u.email || '').trim().toLowerCase();
+    const senha = String(u.senha || '');
+    if (!nome) return res.status(400).json({ error: 'Diga o nome da empresa.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'E-mail do primeiro usuário inválido.' });
+    if (senha.length < 8) return res.status(400).json({ error: 'A senha precisa de pelo menos 8 caracteres.' });
+    const dono = _empresaDoEmail(email);
+    if (dono) return res.status(409).json({ error: 'Esse e-mail já é de uma conta ' + (dono === EMPRESA_TMX ? 'da TMX' : 'de outra empresa') + '.' });
+    let id;
+    do { id = 'e' + crypto.randomBytes(5).toString('hex').slice(0, 7); } while (_empresas.has(id) || id === EMPRESA_TMX);
+    _platPrep('INSERT INTO empresas(id, nome, status, criada, criada_por) VALUES(?,?,?,?,?)').run(id, nome, 'ativa', Date.now(), req.user.id);
+    _empresas.set(id, { id, nome, status: 'ativa' });
+    const r = await _pedirAoMotor(id, 'criar-diretoria', { nome: String(u.nome || '').trim() || 'Diretoria', email, senhaHash: bcrypt.hashSync(senha, BCRYPT_ROUNDS) }, 20000);
+    const db = readDB();
+    audit(db, 'empresa_criada', { empresa: id, nome }, { email, motor: r && r.ok ? 'ok' : (r && r.erro) }, req.user);
+    writeDB(db);
+    if (!r || !r.ok) return res.status(500).json({ error: 'A empresa foi criada, mas o primeiro usuário não: ' + ((r && r.erro) || 'sem resposta'), id });
+    res.json({ ok: true, empresa: { id, nome, base: '/e/' + id } });
+  } catch (e) {
+    res.status(500).json({ error: 'Não consegui criar a empresa: ' + e.message });
+  }
+});
 
 // ── Helpers de data ──
 function _parseStamp(fname) {
@@ -8334,7 +8703,8 @@ async function pushBackupToGitHub(motivo) {
 // Auto-push a cada 24h (se configurado)
 async function _tickBackupRemoto() {
   try {
-    // Só se configurado
+    // Só a TMX (o repositório de backup é dela) e só se configurado
+    if (!SOU_TMX) return;
     if (!process.env.GITHUB_BACKUP_TOKEN || !process.env.GITHUB_BACKUP_REPO) return;
     // Só se última vez foi >20h atrás
     try {
@@ -11733,6 +12103,7 @@ setTimeout(_pessoasImportar, 20 * 1000);
 // antes e depois "canceled" valendo zero. Esses viram reembolso, com o valor da compra,
 // na base e no registro de vendas. Faz a cópia das duas antes e guarda o que mudou.
 async function _migrarReembolsosPayt() {
+  if (!SOU_TMX) return;   // correção única dos dados da TMX (30/10)
   const pdb = _pessoas(); if (!pdb || _pCfg('mig_reemb_payt_v1')) return;
   try {
     const l = _q(`SELECT c.id, c.pedido, (SELECT p.valor FROM pedidos p WHERE p.pedido=c.pedido AND p.pago=1 AND p.em < c.em ORDER BY p.em LIMIT 1) pv
@@ -11866,6 +12237,7 @@ function _escopoFunil(dbj, funilId) {
 // Uma vez só (03/11, pedido do Thiago): a página de assinatura entra no desenho do funil KALEBE.
 // Vendia pelo funil sem estar nele. A marca evita pôr de novo se ele tirar o bloco depois.
 (function _migrarAssinaturaNoFunil() {
+  if (!SOU_TMX) return;   // funil KALEBE: só na TMX
   try {
     const db = readDB();
     if (db._mig_assinatura_funil) return;
@@ -11890,6 +12262,7 @@ function _escopoFunil(dbj, funilId) {
 // mostrar quem chegou, quem viu a oferta e quem clicou. /espere foi a primeira,
 // /espera veio em 31/10 e /espera1 em 05/11. Bloco que já tem link fica como está.
 (function _migrarPaginasDoUpsell() {
+  if (!SOU_TMX) return;   // funil KALEBE: só na TMX
   try {
     const db = readDB();
     if (db._mig_upsell_paginas) return;
@@ -12326,7 +12699,7 @@ const _PAGINAS_IMPORTAR = { id: 'apostilai-20261020', projeto: 'CONCURSO', funil
 async function _paginasImportarUmaVez() {
   const imp = _PAGINAS_IMPORTAR, chave = 'importou:' + imp.id;
   try {
-    if (!fs.existsSync('/data')) return;                         // só no servidor de produção
+    if (!SOU_TMX || !fs.existsSync('/data')) return;             // só na TMX, no servidor de produção
     if (!_pessoas() || _q('SELECT 1 FROM cfg WHERE k=?').get(chave)) return;
     const db = readDB(), ja = new Set(_paginasReg(db).map(p => p.url)), novas = [];
     imp.itens.forEach(([cam, titulo, tipo]) => {
@@ -12353,7 +12726,7 @@ setTimeout(() => { _paginasImportarUmaVez().then(_paginasAcertarImportacao); }, 
 async function _paginasAcertarImportacao() {
   const imp = _PAGINAS_IMPORTAR, chave = 'importou:' + imp.id + ':acerto';
   try {
-    if (!fs.existsSync('/data') || !_pessoas() || _q('SELECT 1 FROM cfg WHERE k=?').get(chave)) return;
+    if (!SOU_TMX || !fs.existsSync('/data') || !_pessoas() || _q('SELECT 1 FROM cfg WHERE k=?').get(chave)) return;
     const db = readDB(), lista = _paginasReg(db), refazer = [];
     let adotadas = 0;
     imp.itens.forEach(([cam, titulo, tipo]) => {
@@ -19642,6 +20015,9 @@ app.get('/api/funil/ck', (req, res) => {
 });
 
 // ── Redirecionador: divide o trafego entre destinos por peso ──
+// Nome do cookie do sorteio: fora da TMX leva o código da empresa, pra um link /r/teste
+// de uma empresa não reaproveitar o sorteio do /r/teste de outra no mesmo domínio.
+function _abBiscoito(slug) { return 'tmx_ab_' + (SOU_TMX ? '' : EMPRESA_MOTOR + '_') + slug; }
 app.get('/r/:slug', (req, res) => {
   try {
     const slug = String(req.params.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -19656,7 +20032,7 @@ app.get('/r/:slug', (req, res) => {
     // comportamento dela entra na conta da variante errada. Um teste em que o
     // sujeito ve os dois lados nao mede o que diz medir.
     const bisc = String(req.headers.cookie || '')
-      .split(';').map(c => c.trim()).find(c => c.startsWith('tmx_ab_' + slug + '='));
+      .split(';').map(c => c.trim()).find(c => c.startsWith(_abBiscoito(slug) + '='));
     const jaFoi = bisc ? decodeURIComponent(bisc.split('=')[1] || '') : '';
     let escolhido = jaFoi ? r.destinos.find((d, i) => String(d.id || ('v' + i)) === jaFoi) : null;
     // teste encerrado com vencedora: todo mundo vai pra ela, inclusive quem ja
@@ -19680,7 +20056,7 @@ app.get('/r/:slug', (req, res) => {
     // atribuicao no meio do caminho
     if (!repetido) {
       res.setHeader('Set-Cookie',
-        'tmx_ab_' + slug + '=' + encodeURIComponent(vid) +
+        _abBiscoito(slug) + '=' + encodeURIComponent(vid) +
         ';Path=/;Max-Age=7776000;SameSite=Lax' +
         (req.headers['x-forwarded-proto'] === 'https' ? ';Secure' : ''));
     }
@@ -20424,7 +20800,7 @@ app.post('/api/quiz/imagem', authUsuario, express.raw({ type: () => true, limit:
     }
     const arquivo = 'qi' + Date.now().toString(36) + crypto.randomBytes(6).toString('hex') + '.' + ext;
     fs.writeFileSync(path.join(QUIZ_IMG_DIR, arquivo), buf);
-    res.json({ ok: true, url: '/qi/' + arquivo, tamanho: buf.length });
+    res.json({ ok: true, url: BASE_PUBLICA + '/qi/' + arquivo, tamanho: buf.length });
   } catch (e) { res.status(500).json({ error: 'Não consegui salvar a imagem.' }); }
 });
 app.get('/qi/:arquivo', (req, res) => {
@@ -20514,15 +20890,15 @@ app.get('/q/:slug', (req, res) => {
         'document.cookie="tmx_id="+vid+";path=/;max-age=7776000;SameSite=Lax"+(location.protocol==="https:"?";Secure":"");}' +
         'var U={};new URLSearchParams(location.search).forEach(function(v,k){if(/^utm_/.test(k))U[k]=v.slice(0,120);});' +
         'function envia(tipo,d){var c=JSON.stringify(Object.assign({q:Q.id,v:vid,e:tipo,u:U},d||{}));' +
-          'try{if(!(navigator.sendBeacon&&navigator.sendBeacon("/api/quiz/evento",new Blob([c],{type:"text/plain"}))))' +
-          'fetch("/api/quiz/evento",{method:"POST",body:c,keepalive:true,headers:{"Content-Type":"text/plain"}});}catch(e){}' +
+          'try{if(!(navigator.sendBeacon&&navigator.sendBeacon("' + BASE_PUBLICA + '/api/quiz/evento",new Blob([c],{type:"text/plain"}))))' +
+          'fetch("' + BASE_PUBLICA + '/api/quiz/evento",{method:"POST",body:c,keepalive:true,headers:{"Content-Type":"text/plain"}});}catch(e){}' +
           'try{if(window.fbq){if(tipo==="tela")fbq("trackCustom","QuizTela",{quiz:Q.slug,tela:(d.i||0)+1});' +
           'if(tipo==="fim")fbq("trackCustom","QuizConcluido",{quiz:Q.slug,perfil:d.p||""});' +
           'if(tipo==="clique")fbq("trackCustom","QuizFoiParaOferta",{quiz:Q.slug});}' +
           'if(window.ttq){if(tipo==="fim")ttq.track("CompleteRegistration");if(tipo==="clique")ttq.track("ClickButton");}}catch(e){}}' +
         'QuizMotor.montar(document.getElementById("qz"),Q,{modo:"vivo",vid:vid,n:' + _qzConcluiramSemana(q.id) + ',parametros:location.search.slice(1),enviar:envia});' +
       '})();</script>' +
-      (funil ? '<script src="/px.js" data-f="' + _qzEsc(funil.funil) + '" data-e="' + _qzEsc(funil.etapa || '') + '" async></script>' : '') +
+      (funil ? '<script src="' + BASE_PUBLICA + '/px.js" data-f="' + _qzEsc(funil.funil) + '" data-e="' + _qzEsc(funil.etapa || '') + '" async></script>' : '') +
       '</body></html>';
     res.type('html').send(html);
   } catch (e) {
@@ -20961,6 +21337,7 @@ const _arqTexto = a => '· ' + a.titulo + '\n' +
 // e um carimbo novo faria o servidor recusar a próxima gravação de uma aba desatualizada,
 // perdendo o arquivo que ela acabou de salvar. Se o campo se perder assim, _arqFaixaDe lê do título.
 function _arqPreencherFaixas() {
+  if (!SOU_TMX) return;   // correção única dos arquivos da TMX (05/11)
   if (!_pessoas() || _pCfg('mig_arq_faixas_v1')) return;
   try {
     const snap = criarSnapshotBackup('pre-faixas-ads');
@@ -20992,6 +21369,7 @@ setTimeout(_arqPreencherFaixas, 70 * 1000);
 // e o Thiago pediu pra todo mundo entrar de novo com e-mail e senha. A marca no SQLite
 // impede de repetir a cada reinício.
 function _derrubarSessoesUmaVez() {
+  if (!SOU_TMX) return;   // pedido de 05/11 sobre a TMX; numa empresa nova derrubaria o 1º login
   try {
     if (!_pessoas() || _pCfg('sessoes_derrubadas_20261105')) return;
     const db = readDB(), n = (db.sessions || []).length;
@@ -21454,15 +21832,55 @@ function _gravarTudoESair(sinal) {
     // _abVistosGravar faltava aqui: um deploy perdia ate 60s de "quem ja foi contado"
     ['ab_vistos', _abVistosGravar], ['quiz', _qzGravar]
   ];
+  // a portaria avisa os motores primeiro: cada um grava a fila dele enquanto a TMX grava a sua
+  const motores = SOU_TMX ? _pararMotores(8000) : Promise.resolve();
   for (const [nome, fn] of passos) {
     try { fn(); } catch (e) { console.error(`[${sinal}] ${nome} falhou:`, e.message); }
   }
   console.log(`[${sinal}] métricas gravadas.`);
-  process.exit(0);
+  motores.then(() => process.exit(0), () => process.exit(0));
 }
 ['SIGTERM', 'SIGINT'].forEach(s => process.on(s, () => _gravarTudoESair(s)));
 
-app.listen(PORT, () => {
+if (!SOU_TMX) {
+  // Portaria caiu ou fechou o canal: o motor grava o que tem e sai (não fica órfão)
+  process.on('disconnect', () => _gravarTudoESair('PORTARIA'));
+  // Pedidos diretos da portaria
+  process.on('message', msg => {
+    if (!msg || msg.tipo !== 'pedido') return;
+    const responder = r => { try { process.send(Object.assign({ tipo: 'resposta', n: msg.n }, r)); } catch (e) {} };
+    try {
+      if (msg.cmd === 'criar-diretoria') return responder(_criarPrimeiraDiretoria(msg.dados || {}));
+      responder({ ok: false, erro: 'pedido desconhecido' });
+    } catch (e) { responder({ ok: false, erro: e.message }); }
+  });
+}
+// 1º usuário de uma empresa nova: Diretoria, com a senha escolhida (já em bcrypt).
+function _criarPrimeiraDiretoria(d) {
+  const email = String(d.email || '').trim().toLowerCase();
+  if (!email || !d.senhaHash) return { ok: false, erro: 'faltou e-mail ou senha' };
+  const db = readDB();
+  const usuarios = db.store['sl_usuarios'] = db.store['sl_usuarios'] || [];
+  if (usuarios.some(u => String(u.email || '').toLowerCase() === email)) return { ok: false, erro: 'esse e-mail já está nesta empresa' };
+  const u = { id: 'u' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex'), nome: String(d.nome || 'Diretoria').slice(0, 80),
+              email, senhaHash: d.senhaHash, cargo: 'Diretoria', ativo: true, _updatedAt: Date.now() };
+  usuarios.push(u);
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps['sl_usuarios'] = now();
+  audit(db, 'empresa_primeira_diretoria', { userId: u.id, email }, null, { nome: 'Portaria' });
+  writeDB(db);
+  return { ok: true, userId: u.id };
+}
+
+// O motor de uma empresa ouve só por dentro do servidor (127.0.0.1, porta livre) e
+// diz à portaria em qual porta está. Ninguém de fora fala direto com ele.
+if (!SOU_TMX) {
+  const srv = app.listen(0, '127.0.0.1', () => {
+    const porta = srv.address().port;
+    console.log(`[MOTOR] empresa ${EMPRESA_MOTOR} ouvindo em 127.0.0.1:${porta} (dados em ${DATA_DIR})`);
+    if (process.send) process.send({ tipo: 'pronto', porta });
+  });
+} else app.listen(PORT, () => {
   console.log('');
   console.log('  ✅  ScaleLab Backend v2.0 rodando!');
   console.log('');
@@ -21473,4 +21891,8 @@ app.listen(PORT, () => {
   const remoteOk = !!(process.env.GITHUB_BACKUP_TOKEN && process.env.GITHUB_BACKUP_REPO);
   console.log(`  ☁️   Remoto:   ${remoteOk ? 'ATIVO → ' + process.env.GITHUB_BACKUP_REPO : 'DESATIVADO (falta GITHUB_BACKUP_TOKEN / GITHUB_BACKUP_REPO)'}`);
   console.log('');
+  // liga o motor de cada empresa ativa (a TMX já está de pé neste processo)
+  const ativas = [..._empresas.values()].filter(e => e.status === 'ativa');
+  if (ativas.length) console.log(`  🏢  Empresas: ${ativas.length} motor(es) ligando`);
+  ativas.forEach(e => { try { _ligarMotor(e); } catch (err) { console.error('[PORTARIA] não liguei', e.id, err.message); } });
 });
