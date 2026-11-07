@@ -125,6 +125,14 @@ Regras:
   TMX dele (`/api/suporte/chamados*` no motor, que repassa com `_pedirAPortaria`; a empresa é sempre a do
   motor). A TMX responde em `/api/plataforma/chamados/:id/responder` (nota interna não vai pro cliente) e o
   cliente recebe no sininho. `test/admin-suporte.test.js`.
+- **Primeiros passos** (07/11): tela `primeiros` do app, só pra Diretoria de empresa cliente. Abre sozinha só no
+  primeiro login (`ppIniciar`, depois do login e do `restoreSession`) e fica no topo do menu com quantos passos faltam
+  até tudo estar ligado: Meta, Utmify (opcional), checkout, produtos, contas e pixel de cada projeto, primeira venda.
+  Cada passo chama as rotas que já existiam (`/api/meta/conexao`, `/api/integracoes/utmify-mcp/config`,
+  `/api/integracoes/vendas/gerar-token`, `/api/produtos`). `GET/POST /api/primeiros-passos` só lê o que existe e guarda
+  `vistoEm` e os passos pulados (`sl_primeiros_passos`, em `KEYS_SERVIDOR`); a sessão de suporte não marca como visto.
+  Na aba Integrações do projeto, "Conectar a Meta", "Usar a Utmify" e "Ligar o checkout" abrem o passo (`ppIrPasso`;
+  na TMX, a conexão em Configurações). `test/primeiros-passos.test.js`.
 - **Meu plano** (Configurações › Meu plano, só Diretoria): `GET /api/meu-plano` mostra o plano da empresa (do
   registro, via `_pedirAPortaria('meu-plano')`; a TMX é `interno`) e o uso de cada limite (`_usoDoPlano`, com os
   dados da própria empresa). Os planos e limites ficam só em `PLANOS_TMX` no server.js, a lista única (preços

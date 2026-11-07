@@ -8365,7 +8365,8 @@ const KEYS_SERVIDOR = new Set([
   'sl_links_rastreados',    // links /l/; a tela le por /api/links/rastreados
   'sl_paginas_reg',         // páginas registradas; a tela le por /api/paginas
   'sl_push_cfg',            // chave privada que assina o aviso de venda
-  'sl_push_aparelhos'       // aparelhos que recebem o aviso de venda
+  'sl_push_aparelhos',      // aparelhos que recebem o aviso de venda
+  'sl_primeiros_passos'     // quando o cliente viu os Primeiros passos; a tela lê por /api/primeiros-passos
 ]);
 // Meu Protocolo fica fora do produto: no motor de uma empresa, a chave nunca sai do servidor
 if (!SOU_TMX) KEYS_SERVIDOR.add('sl_protocolo');
@@ -16794,6 +16795,64 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
       checks, paginas: abertas, webhook, origem, produtosSoltos, rodouEm: new Date().toISOString() };
     _saudeCache[fid] = { em: Date.now(), saida };
     res.json(saida);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// ── PRIMEIROS PASSOS DO CLIENTE (07/11/2026) ──
+// O cliente novo entrava no TMX sem saber onde ligar a Meta, o checkout e os produtos.
+// A tela "Primeiros passos" abre sozinha só no primeiro login da Diretoria de uma empresa
+// cliente e fica no menu até tudo estar ligado. Esta rota só lê o que já existe (as mesmas
+// conexões de Configurações › Conexões, o cadastro de produtos, as contas de cada projeto)
+// e guarda duas coisas: quando a tela foi vista e os passos que a pessoa disse que não usa.
+// Na TMX não existe.
+// ══════════════════════════════════════════════════════
+const KEY_PRIMEIROS = 'sl_primeiros_passos';
+const PASSOS_PULAVEIS = ['meta', 'utmify'];   // dá pra ligar só um dos dois
+function _primeirosCfg(db) { const c = db.store[KEY_PRIMEIROS]; return (c && typeof c === 'object') ? c : {}; }
+function _primeirosPassos(db) {
+  const cfg = _primeirosCfg(db), pulados = cfg.pulados || {};
+  const meta = _metaConexaoPublica(_metaCfg(db));
+  const utm = db.store[KEY_UTMIFY_MCP];
+  const vc = _vendasCfg(db);
+  const vendas = Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [];
+  const pagas = vendas.filter(_vendaPaga);
+  const produtos = _produtosCfg(db);
+  const proj = _projMetaCfg(db);
+  const projComContas = Object.keys(proj).filter(k => ((proj[k] || {}).contas || []).length);
+  let pixel = false;
+  try { pixel = !!(_pessoas() && _q('SELECT 1 FROM visitantes LIMIT 1').get()); } catch (e) {}
+  const passos = {
+    meta:     { ok: meta.conectado, contas: meta.contas.length, pixels: meta.pixels.length, pulado: !!pulados.meta },
+    utmify:   { ok: !!(utm && utm.token && !utm.ultimoErro), pulado: !!pulados.utmify },
+    checkout: { ok: vendas.length > 0, eventos: vendas.length,
+                url: vc && vc.token ? `${BASE_PUBLICA}/api/webhook/vendas/${vc.token}` : null },
+    produtos: { ok: produtos.length > 0, n: produtos.length, nomes: produtos.slice(0, 12).map(x => x.nome) },
+    projeto:  { ok: projComContas.length > 0 && pixel, comContas: projComContas, pixel },
+    venda:    { ok: pagas.length > 0, pagas: pagas.length, comPessoa: pagas.filter(v => v.vid).length }
+  };
+  const feitos = Object.keys(passos).filter(k => passos[k].ok || passos[k].pulado).length;
+  return { mostrar: !SOU_TMX, vistoEm: cfg.vistoEm || null, passos, feitos, total: Object.keys(passos).length };
+}
+app.get('/api/primeiros-passos', authDiretoria, (req, res) => {
+  if (SOU_TMX) return res.json({ ok: true, mostrar: false });
+  try { res.json(Object.assign({ ok: true }, _primeirosPassos(readDB()))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// { visto: true } na primeira vez que a tela abre; { pular: 'utmify' } (ou desfazer: true)
+app.post('/api/primeiros-passos', authDiretoria, (req, res) => {
+  if (SOU_TMX) return res.status(404).json({ error: 'Não existe na TMX.' });
+  try {
+    const b = req.body || {}, db = readDB(), cfg = Object.assign({}, _primeirosCfg(db));
+    // a sessão de suporte da TMX olha a tela sem gastar o "primeiro login" do cliente
+    if (b.visto && !cfg.vistoEm && !(req.user && req.user.suporte)) cfg.vistoEm = new Date().toISOString();
+    if (b.pular) {
+      if (PASSOS_PULAVEIS.indexOf(b.pular) < 0) return res.status(400).json({ error: 'Esse passo não dá pra pular.' });
+      cfg.pulados = Object.assign({}, cfg.pulados, { [b.pular]: !b.desfazer });
+    }
+    db.store[KEY_PRIMEIROS] = cfg;
+    writeDB(db);
+    res.json(Object.assign({ ok: true }, _primeirosPassos(db)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
