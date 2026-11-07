@@ -720,9 +720,9 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   }
   // ── Auditoria ──
   var ROT_AUD = { empresa_criada:'Criou uma empresa', empresa_cadastrada:'Cliente se cadastrou', empresa_bloqueada:'Bloqueou', empresa_desbloqueada:'Desbloqueou', empresa_plano:'Trocou o plano',
-    suporte_entrou:'Entrou como suporte', convite_criado:'Gerou convite', convite_cancelado:'Cancelou convite', assinatura_paga:'Assinatura paga', login_bloqueado:'Login recusado (empresa bloqueada)' };
+    suporte_entrou:'Entrou como suporte', venda_tmx_config:'Mudou a venda do TMX (links e checkout)', venda_tmx_token:'Gerou endereço novo do aviso da Payt', convite_criado:'Gerou convite', convite_cancelado:'Cancelou convite', assinatura_paga:'Assinatura paga', login_bloqueado:'Login recusado (empresa bloqueada)' };
   function carregarAuditoria(){
-    return Promise.all(['empresa_', 'suporte_entrou', 'convite_', 'assinatura_', 'login_bloqueado'].map(function(a){ return api('GET', '/api/auditoria/list?limit=200&action=' + encodeURIComponent(a)); })).then(function(rs){
+    return Promise.all(['empresa_', 'suporte_entrou', 'convite_', 'assinatura_', 'login_bloqueado', 'venda_tmx'].map(function(a){ return api('GET', '/api/auditoria/list?limit=200&action=' + encodeURIComponent(a)); })).then(function(rs){
       var vistos = {}, tudo = [];
       rs.forEach(function(r){ ((r.ok && r.j.entries) || []).forEach(function(x){ if(!vistos[x.id]){ vistos[x.id] = 1; tudo.push(x); } }); });
       AUD = tudo.sort(function(a, b){ return b.ts - a.ts; }).slice(0, 300);
@@ -737,6 +737,8 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     if(m.motivo) p.push('motivo: ' + m.motivo);
     if(m.modo) p.push(m.modo === 'mexer' ? 'pode mexer' : 'só olhar');
     if(m.minutos) p.push(m.minutos + ' min');
+    if(t.gateway) p.push('vende pela ' + (t.gateway === 'payt' ? 'Payt' : 'Pagar.me'));
+    if(m.links != null) p.push(m.links + ' link(s) de checkout');
     return p.join(' · ');
   }
   function telaAuditoria(){
@@ -878,7 +880,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       if(erroL) return aviso(erroL);
       a.disabled = true; a.textContent = 'Salvando…';
       return api('POST', '/api/plataforma/venda-tmx', { gateway: gwEscolhido || (VENDA && VENDA.gateway) || 'payt', links: links }).then(function(r){
-        if(!r.ok){ a.disabled = false; a.textContent = 'Salvar'; return aviso(r.j.error || 'Não consegui salvar os links.'); }
+        if(!r.ok){ a.disabled = false; a.textContent = 'Salvar'; if(r.j.campo){ var ic = document.querySelector('[data-link="'+r.j.campo+'"]'); if(ic) ic.focus(); } return aviso(r.j.error || 'Não consegui salvar os links.'); }
         rascunhoLinks = {}; gwEscolhido = null; aviso('Salvo. A página de planos já usa esses links.'); return carregar(true);
       });
     }
