@@ -21819,9 +21819,10 @@ app.get('/mcp', (req, res) => {
 // Páginas (modelos, versões, conferências e publicação na hospedagem): mora em paginas.js.
 // Só a Diretoria da TMX: as páginas e as senhas de hospedagem ficam no banco da TMX.
 // basePublica: prefixo do endereço público da empresa ('' na TMX); BASE_PUBLICA ainda não existe no main.
+// chaveIA: a mesma chave da Anthropic do agente do WhatsApp, pro chat do editor.
 try {
   require('./paginas')({ app, express, readDB, writeDB, audit, auth: authDiretoriaInterna, _pessoas, _q, _finCifrar, _finDecifrar,
-    basePublica: (typeof BASE_PUBLICA === 'string' ? BASE_PUBLICA : ''),
+    basePublica: (typeof BASE_PUBLICA === 'string' ? BASE_PUBLICA : ''), chaveIA: _getAIKey,
     vturbPlayers: () => { try { const c = readDB().store[KEY_VTURB]; return (c && c.players) || []; } catch (e) { return []; } } });
 } catch (e) { console.error('[PAGINAS] não subiu:', e.message); }
 
