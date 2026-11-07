@@ -158,6 +158,8 @@ function _resumo(m, a, b) {
 // ── montar o HTML de uma versão ──
 const _esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const _troca = (h, de, para) => (de && de !== para) ? h.split(de).join(para) : h;
+// prefixo do endereço público da empresa: '' na TMX, '/e/<código>' nas outras
+let _basePublica = '';
 function _montar(m, pg, campos, n) {
   const x = m.ext;
   let h = m.html;
@@ -178,7 +180,7 @@ function _montar(m, pg, campos, n) {
   if (m.parcela && campos.parcela) h = _troca(h, m.parcela, _esc(campos.parcela));
   // o pixel do TMX é sempre o primeiro script do <head>, com a marca da versão logo depois
   h = h.replace(/<script[^>]+centraltmx\.com\/px\.js[^>]*><\/script>\s*/g, '');
-  const tagPx = x.pixel || '<script src="https://app.centraltmx.com/px.js" async></script>';
+  const tagPx = x.pixel || '<script src="https://app.centraltmx.com' + _basePublica + '/px.js" async></script>';
   const marca = '<meta name="tmx-pagina" content="' + pg.id + ':' + n + '">';
   let pos = h.search(/<meta charset=["']?utf-8["']?\s*\/?>/i);
   if (pos >= 0) pos = h.indexOf('>', pos) + 1; else { pos = h.search(/<head[^>]*>/i); pos = pos >= 0 ? h.indexOf('>', pos) + 1 : 0; }
@@ -390,6 +392,7 @@ async function _testarHospedagem(d, senha) {
 // ══════════════════════════════════════════════
 module.exports = function montarPaginas(ctx) {
   const { app, express, readDB, writeDB, audit, auth, _pessoas, _q, _finCifrar, _finDecifrar } = ctx;
+  _basePublica = typeof ctx.basePublica === 'string' ? ctx.basePublica : '';
   let pronto = false;
   function _tabelas() {
     if (pronto) return true;

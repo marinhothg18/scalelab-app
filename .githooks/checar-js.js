@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ALVOS_JS = ['server.js'];
+const ALVOS_JS = ['server.js', 'paginas.js'];
 const PASTA_HTML = 'public';
 
 let falhas = 0;

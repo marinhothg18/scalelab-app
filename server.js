@@ -21438,6 +21438,15 @@ app.get('/mcp', (req, res) => {
     comoConectar: 'Use esta mesma URL com ?token=SEU_TOKEN no seu assistente. O token sai em Configurações → API.' });
 });
 
+// Páginas (modelos, versões, conferências e publicação na hospedagem): mora em paginas.js.
+// Só a Diretoria da TMX: as páginas e as senhas de hospedagem ficam no banco da TMX.
+// basePublica: prefixo do endereço público da empresa ('' na TMX); BASE_PUBLICA ainda não existe no main.
+try {
+  require('./paginas')({ app, express, readDB, writeDB, audit, auth: authDiretoriaInterna, _pessoas, _q, _finCifrar, _finDecifrar,
+    basePublica: (typeof BASE_PUBLICA === 'string' ? BASE_PUBLICA : ''),
+    vturbPlayers: () => { try { const c = readDB().store[KEY_VTURB]; return (c && c.players) || []; } catch (e) { return []; } } });
+} catch (e) { console.error('[PAGINAS] não subiu:', e.message); }
+
 // ── Não perder métrica no deploy ────────────────────────────────────────────
 // Os contadores ficam em buffer na memória e só descem pro disco a cada 30–45s.
 // Numa atualização o Railway manda SIGTERM e mata o processo: sem isto aqui, o
@@ -21461,13 +21470,6 @@ function _gravarTudoESair(sinal) {
   process.exit(0);
 }
 ['SIGTERM', 'SIGINT'].forEach(s => process.on(s, () => _gravarTudoESair(s)));
-
-// Páginas (modelos, versões, conferências e publicação na hospedagem): mora em paginas.js.
-// Só a Diretoria da TMX: as páginas e as senhas de hospedagem ficam no banco da TMX.
-try {
-  require('./paginas')({ app, express, readDB, writeDB, audit, auth: authDiretoriaInterna, _pessoas, _q, _finCifrar, _finDecifrar,
-    vturbPlayers: () => { try { const c = readDB().store[KEY_VTURB]; return (c && c.players) || []; } catch (e) { return []; } } });
-} catch (e) { console.error('[PAGINAS] não subiu:', e.message); }
 
 app.listen(PORT, () => {
   console.log('');
