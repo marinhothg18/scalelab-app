@@ -69,7 +69,7 @@ tbody tr:last-child td{border-bottom:0}
 .cartao{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin:0 8px 16px}
 .cartao h2{margin:0 0 4px;font-size:15px}
 .cartao p{margin:0 0 14px;color:var(--text2);font-size:12.5px;line-height:1.5}
-.form{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 160px auto;gap:10px;align-items:end}
+.form{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 190px 120px auto;gap:10px;align-items:end}
 .campo{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
 .campo input,.campo select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13.5px;text-transform:none;letter-spacing:0;font-weight:400}
 .resultado{margin-top:14px;border:1px solid rgba(63,191,127,.35);background:rgba(63,191,127,.07);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
@@ -97,7 +97,8 @@ tbody tr:last-child td{border-bottom:0}
 (function(){
   var raiz = document.getElementById('raiz');
   var token = ''; try{ token = localStorage.getItem('sl_session_token') || ''; }catch(e){}
-  var PLANOS = [];   // vem do servidor (rascunho dos preços fica só lá)
+  var PLANOS = [];   // vem do servidor (a lista de planos fica só lá, em PLANOS_TMX)
+  var PEDIDOS = [], COBRANCA = { cobranca: false, ambiente: null }, filtroPed = 'liberar', liberado = null;
   var eu = null, tela = 'clientes', EMPRESAS = [], CONVITES = [], CHAMADOS = [], busca = '', ultimoLink = null, erroConvite = '';
   var filtroCh = 'abertos', chamado = null, modal = '';
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -114,14 +115,18 @@ tbody tr:last-child td{border-bottom:0}
   var ICON = {
     clientes:'<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4zM8 13c-.3 0-.7 0-1.1.1A4.7 4.7 0 0 1 9 17v3H0v-3c0-2.2 4.4-4 8-4z"/>',
     convites:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>',
-    suporte:'<path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>'
+    suporte:'<path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>',
+    pedidos:'<path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM7.2 14.8h9.9c.8 0 1.4-.4 1.7-1l3.6-6.5L20.7 6H5.2l-.9-2H1v2h2l3.6 7.6-1.4 2.4c-.6 1.3.4 2.8 1.8 2.8H19v-2H7.4z"/>'
   };
+  // pedido de teste grátis ainda sem convite: o que a TMX precisa liberar
+  function convDoPedido(p){ return CONVITES.find(function(c){ return c.email && p.email && c.email === String(p.email).toLowerCase() && c.criado >= p.criado; }); }
+  function aLiberar(){ return PEDIDOS.filter(function(p){ return p.status === 'pedido' && !convDoPedido(p); }).length; }
   function chAbertos(){ return CHAMADOS.filter(function(c){ return c.status === 'aberto'; }).length; }
   function esperando(){ return CONVITES.filter(function(c){ return c.situacao === 'esperando'; }).length; }
   function lateral(){
     var n = function(id, txt, cont){ return '<button class="nav'+(tela===id?' on':'')+'" data-tela="'+id+'"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+ICON[id]+'</svg>'+txt+(cont?'<span class="cont">'+cont+'</span>':'')+'</button>'; };
     return '<aside class="side"><div class="marca"><b>Central TMX</b><span>ADMIN<i>SÓ A TMX</i></span></div>' +
-      n('clientes','Clientes') + n('suporte','Suporte', chAbertos()) + n('convites','Convites', esperando()) +
+      n('clientes','Clientes') + n('pedidos','Pedidos', aLiberar()) + n('suporte','Suporte', chAbertos()) + n('convites','Convites', esperando()) +
       '<div class="side-pe"><span>'+esc(eu.nome)+' · Diretoria da TMX</span><a href="/">← Voltar pro TMX</a></div></aside>';
   }
   function motorPill(e){
@@ -171,7 +176,8 @@ tbody tr:last-child td{border-bottom:0}
         '<span class="sub">O link só aparece agora. Se perder, cancele este e gere outro.</span></div>';
     }
     var linhas = CONVITES.map(function(c){
-      return '<tr><td>'+situacaoPill(c)+'</td><td>'+esc(c.email || '—')+'</td><td class="sub">'+esc(c.obs || '')+'</td><td class="sub num">'+data(c.criado, true)+'</td>' +
+      var pl = (PLANOS.find(function(x){ return x.id === c.plano; }) || {}).nome || c.plano || 'Teste';
+      return '<tr><td>'+situacaoPill(c)+'</td><td>'+esc(c.email || '—')+'<div class="sub">'+esc(pl)+'</div></td><td class="sub">'+esc(c.obs || '')+'</td><td class="sub num">'+data(c.criado, true)+'</td>' +
         '<td class="sub num">'+(c.situacao === 'usado' ? 'usado em ' + data(c.usado_em, true) : data(c.expira, true))+'</td>' +
         '<td>'+(c.empresa ? esc(nomes[c.empresa] || c.empresa) : '<span class="sub">—</span>')+'</td>' +
         '<td class="direita">'+(c.situacao === 'esperando' ? '<button class="btn peq perigo" data-cancelar="'+esc(c.id)+'">Cancelar</button>' : '')+'</td></tr>';
@@ -180,10 +186,44 @@ tbody tr:last-child td{border-bottom:0}
       '<section class="cartao"><h2>Gerar convite</h2><p>Se souber o e-mail do cliente, ele já vem preenchido no cadastro (e ele pode trocar).</p>' +
       '<div class="form"><label class="campo">E-mail do cliente (opcional)<input id="cv-email" type="email" placeholder="cliente@empresa.com" autocomplete="off"></label>' +
       '<label class="campo">Anotação (opcional)<input id="cv-obs" placeholder="Ex.: Márcia, Clínica Bem Estar" maxlength="200"></label>' +
+      '<label class="campo">Plano<select id="cv-plano">' + (PLANOS.length ? PLANOS : [{ id: 'teste', nome: 'Teste' }]).map(function(p){ return '<option value="'+esc(p.id)+'">'+esc(p.nome)+(p.id === 'iniciante' ? ' (grátis 30 dias)' : p.mensal ? ' · R$ ' + p.mensal : '')+'</option>'; }).join('') + '</select></label>' +
       '<label class="campo">Vale por<select id="cv-dias"><option value="3">3 dias</option><option value="7" selected>7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option></select></label>' +
       '<button class="btn pri" data-acao="gerar" id="cv-gerar">Gerar convite</button></div>' +
       (erroConvite ? '<div class="erro" role="alert">'+esc(erroConvite)+'</div>' : '') + res + '</section>' +
       '<div class="tab-wrap"><table><thead><tr><th>Situação</th><th>E-mail</th><th>Anotação</th><th>Criado</th><th>Vence</th><th>Empresa criada</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+  }
+  var STP = { pedido:['Teste grátis a liberar','p-amar'], aguardando:['Esperando o pagamento','p-cinza'], paga:['Paga','p-ok'], atrasada:['Atrasada','p-verm'], cancelada:['Cancelada','p-cinza'] };
+  function telaPedidos(){
+    var filtros = [['liberar','Teste grátis a liberar', function(p){ return p.status === 'pedido' && !convDoPedido(p); }],
+      ['pagas','Pagas', function(p){ return p.status === 'paga'; }], ['aguardando','Esperando pagamento', function(p){ return p.status === 'aguardando'; }],
+      ['problema','Atrasadas e canceladas', function(p){ return p.status === 'atrasada' || p.status === 'cancelada'; }], ['todos','Todos', function(){ return true; }]];
+    var atual = filtros.find(function(f){ return f[0] === filtroPed; }) || filtros[0];
+    var chips = filtros.map(function(f){ var n = PEDIDOS.filter(f[2]).length;
+      return '<button class="btn peq" style="'+(filtroPed===f[0]?'background:var(--blue-bg);border-color:rgba(27,156,250,.45);color:var(--blue)':'')+'" data-fped="'+f[0]+'">'+f[1]+' · '+n+'</button>'; }).join('');
+    var nomes = {}; EMPRESAS.forEach(function(e){ nomes[e.id] = e.nome; });
+    var linhas = PEDIDOS.filter(atual[2]).map(function(p){
+      var st = STP[p.status] || [p.status, 'p-cinza'], cv = convDoPedido(p);
+      var situacao = p.status === 'pedido' && cv ? '<span class="pill p-azul">Convite gerado</span><div class="sub">'+esc(cv.situacao === 'usado' ? 'já se cadastrou' : cv.situacao)+'</div>' : '<span class="pill '+st[1]+'">'+esc(st[0])+'</span>';
+      var empresa = p.empresa ? esc(nomes[p.empresa] || p.empresa) : (p.convite ? '<span class="sub">link de cadastro pronto, ainda não usou</span>' : '<span class="sub">—</span>');
+      var acao = '';
+      if(p.status === 'pedido' && !cv) acao = '<button class="btn peq pri" data-liberar="'+esc(p.id)+'">Liberar teste grátis</button>';
+      else if(p.convite && !p.empresa) acao = '<button class="btn peq" data-copiar-link="'+esc(p.convite)+'">Copiar link do cadastro</button>' + (p.whatsapp ? '<a class="btn peq" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(p.whatsapp).replace(/\D/g, ''))+'?text='+encodeURIComponent('Oi, ' + (p.nome || '') + '! Aqui está o seu link pra criar a conta no TMX: ' + p.convite)+'">WhatsApp</a>' : '');
+      return '<tr><td class="sub num">'+data(p.criado, true)+'</td><td><b>'+esc(p.nome || '—')+'</b><div class="sub">'+esc(p.email || '')+(p.whatsapp ? ' · ' + esc(p.whatsapp) : '')+'</div></td>' +
+        '<td>'+esc(p.plano_nome || p.plano)+'<div class="sub">'+esc(p.ciclo === 'anual' ? 'anual' : 'mensal')+'</div></td><td>'+situacao+'</td><td>'+empresa+'</td>' +
+        '<td><div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+acao+'</div></td></tr>';
+    }).join('') || '<tr><td colspan="6" class="vazio">Nada aqui.</td></tr>';
+    var aviso1 = !COBRANCA.cobranca ? '<div class="cartao" style="border-color:rgba(245,181,68,.35)"><b>A cobrança ainda não está ligada.</b> <span class="sub">Falta pôr a chave da Pagar.me no Railway. Os pedidos de teste grátis já chegam pela página de planos.</span></div>'
+      : COBRANCA.ambiente === 'teste' ? '<div class="cartao" style="border-color:rgba(27,156,250,.35)"><b>Pagar.me em modo de teste.</b> <span class="sub">Os pagamentos daqui não são de verdade.</span></div>' : '';
+    var res = '';
+    if(liberado){
+      var msg = 'Oi, ' + (liberado.nome || '') + '! Seu teste grátis do TMX está liberado. Crie a sua conta por este link: ' + liberado.link;
+      res = '<div class="cartao"><div class="resultado" role="status" style="margin-top:0"><b>Teste grátis liberado pra '+esc(liberado.nome || liberado.email)+'. O link vale uma vez e vence em '+esc(data(Date.parse(liberado.expira), true))+'.</b>' +
+        '<code>'+esc(liberado.link)+'</code><div class="acoes"><button class="btn pri" data-copiar-link="'+esc(liberado.link)+'">Copiar link</button>' +
+        '<a class="btn" href="https://wa.me/'+esc(String(liberado.zap || '').replace(/\D/g, ''))+'?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">Mandar no WhatsApp '+esc(liberado.zap || '')+'</a></div></div></div>';
+    }
+    return '<div class="topo"><div><h1>Pedidos</h1><p>Compras e pedidos de teste grátis que chegam pela página de planos (app.centraltmx.com/planos).</p></div><div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button></div></div>' +
+      aviso1 + res + '<div class="filtros">'+chips+'</div>' +
+      '<div class="tab-wrap"><table><thead><tr><th>Quando</th><th>Cliente</th><th>Plano</th><th>Situação</th><th>Empresa</th><th class="direita">Ação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
   }
   var ST = { aberto:['Esperando a TMX','p-amar'], cliente:['Esperando o cliente','p-azul'], resolvido:['Resolvido','p-ok'] };
   function stPill(s){ var x = ST[s] || [s, 'p-cinza']; return '<span class="pill '+x[1]+'">'+esc(x[0])+'</span>'; }
@@ -254,13 +294,14 @@ tbody tr:last-child td{border-bottom:0}
     location.href = '/';
   }
   function pintar(){
-    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + (tela === 'convites' ? telaConvites() : tela === 'suporte' ? telaSuporte() : telaClientes()) + '</main></div>' + modal;
+    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + (tela === 'convites' ? telaConvites() : tela === 'pedidos' ? telaPedidos() : tela === 'suporte' ? telaSuporte() : telaClientes()) + '</main></div>' + modal;
     var b = document.getElementById('busca');
     if(b) b.oninput = function(){ busca = b.value; var pos = b.selectionStart; pintar(); var nb = document.getElementById('busca'); nb.focus(); try{ nb.setSelectionRange(pos, pos); }catch(e){} };
   }
   function carregar(){
-    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos')]).then(function(r){
+    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos'), api('GET', '/api/plataforma/assinaturas')]).then(function(r){
       if(r[3].ok) PLANOS = r[3].j.planos || [];
+      if(r[4].ok){ PEDIDOS = r[4].j.assinaturas || []; COBRANCA = { cobranca: !!r[4].j.cobranca, ambiente: r[4].j.ambiente || null }; }
       if(r[0].ok) EMPRESAS = r[0].j.empresas || [];
       if(r[1].ok) CONVITES = r[1].j.convites || [];
       if(r[2].ok) CHAMADOS = r[2].j.chamados || [];
@@ -279,9 +320,9 @@ tbody tr:last-child td{border-bottom:0}
     });
   });
   raiz.addEventListener('click', function(ev){
-    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo]'); if(!a) return;
+    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fped],[data-liberar],[data-copiar-link]'); if(!a) return;
     if(a.dataset.fundo){ if(ev.target === a){ modal = ''; pintar(); } return; }
-    if(a.dataset.tela){ tela = a.dataset.tela; chamado = null; ultimoLink = tela === 'convites' ? ultimoLink : null; erroConvite = ''; pintar(); return window.scrollTo(0, 0); }
+    if(a.dataset.tela){ tela = a.dataset.tela; chamado = null; liberado = tela === 'pedidos' ? liberado : null; ultimoLink = tela === 'convites' ? ultimoLink : null; erroConvite = ''; pintar(); return window.scrollTo(0, 0); }
     var empDe = function(id){ return EMPRESAS.find(function(x){ return x.id === id; }); };
     if(a.dataset.suporte){ modal = modalSuporte(empDe(a.dataset.suporte) || { id: a.dataset.suporte, nome: a.dataset.suporte }); pintar(); var mo = document.getElementById('sp-motivo'); if(mo){ if(chamado) mo.value = 'Chamado #' + chamado.id + ' · ' + chamado.assunto; mo.focus(); } return; }
     if(a.dataset.bloquear){ modal = modalBloquear(empDe(a.dataset.bloquear)); return pintar(); }
@@ -290,6 +331,21 @@ tbody tr:last-child td{border-bottom:0}
       return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.desbloquear) + '/desbloquear').then(function(r){ aviso(r.ok ? 'Desbloqueada: a equipe já pode entrar.' : (r.j.error || 'Não consegui desbloquear.')); return carregar(); });
     }
     if(a.dataset.ch) return abrirChamado(a.dataset.ch);
+    if(a.dataset.fped){ filtroPed = a.dataset.fped; return pintar(); }
+    if(a.dataset.copiarLink){
+      var lk = a.dataset.copiarLink;
+      try{ navigator.clipboard.writeText(lk).then(function(){ aviso('Link copiado.'); }, function(){ aviso('Selecione o link e copie.'); }); }catch(e){ aviso('Selecione o link e copie.'); }
+      return;
+    }
+    if(a.dataset.liberar){
+      var ped = PEDIDOS.find(function(x){ return x.id === a.dataset.liberar; }); if(!ped) return;
+      a.disabled = true; a.textContent = 'Liberando…';
+      return api('POST', '/api/plataforma/convites', { email: ped.email, obs: 'Teste grátis · ' + (ped.nome || ''), dias: 7, plano: 'iniciante' }).then(function(r){
+        if(!r.ok){ aviso(r.j.error || 'Não consegui gerar o convite.'); return carregar(); }
+        liberado = { link: r.j.link, expira: r.j.expira, nome: ped.nome, email: ped.email, zap: ped.whatsapp };
+        return carregar();
+      });
+    }
     if(a.dataset.fch){ filtroCh = a.dataset.fch; return pintar(); }
     if(a.dataset.cancelar){
       a.disabled = true; ultimoLink = null;   // o link mostrado pode ser justamente o que saiu
@@ -332,8 +388,9 @@ tbody tr:last-child td{border-bottom:0}
     }
     if(ac === 'gerar'){
       var email = (document.getElementById('cv-email').value || '').trim(), obs = (document.getElementById('cv-obs').value || '').trim(), dias = document.getElementById('cv-dias').value;
+      var planoCv = (document.getElementById('cv-plano') || {}).value || 'teste';
       a.disabled = true; a.textContent = 'Gerando…'; erroConvite = '';
-      api('POST', '/api/plataforma/convites', { email: email, obs: obs, dias: dias }).then(function(r){
+      api('POST', '/api/plataforma/convites', { email: email, obs: obs, dias: dias, plano: planoCv }).then(function(r){
         if(!r.ok){ erroConvite = r.j.error || 'Não consegui gerar o convite.'; ultimoLink = null; return carregar(); }
         ultimoLink = { link: r.j.link, expira: r.j.expira };
         return carregar();

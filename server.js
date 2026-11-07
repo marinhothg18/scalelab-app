@@ -8429,7 +8429,8 @@ app.post('/api/plataforma/convites/:id/cancelar', authDiretoriaInterna, (req, re
 app.get('/api/cadastro/convite', cadastroLimiter, (req, res) => {
   const c = _conviteValido(req.query.c);
   if (!c) return res.status(404).json({ error: 'Esse link de cadastro não vale mais. Peça um novo pra quem te mandou.' });
-  res.json({ ok: true, email: c.email || '', plano: c.plano || 'teste', nichos: NICHOS_CADASTRO });
+  const pl = _planoDe(c.plano || 'teste');
+  res.json({ ok: true, email: c.email || '', plano: c.plano || 'teste', plano_nome: pl.nome, gratis: !!pl.gratis, nichos: NICHOS_CADASTRO });
 });
 
 app.post('/api/cadastro', cadastroLimiter, async (req, res) => {

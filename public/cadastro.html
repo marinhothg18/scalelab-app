@@ -94,7 +94,8 @@ select.login-input { appearance: auto; }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   var LOGO = '<div class="login-logo"><div class="login-logo-text">TMX</div><div class="login-logo-sub">DIGITAL</div></div>';
   function passos(){ return '<div class="cad-passos" aria-label="Passo '+passo+' de 3">'+[1,2,3].map(function(i){ return '<i class="'+(i <= passo ? 'on' : '')+'"></i>'; }).join('')+'</div>'; }
-  function nomePlano(p){ return !p || p === 'teste' ? 'Período de teste' : 'Plano ' + p; }
+  var planoNome = '', planoGratis = false;
+  function nomePlano(p){ if(!p || p === 'teste') return 'Período de teste'; return 'Plano ' + (planoNome || p) + (planoGratis ? ' · grátis por 30 dias' : ''); }
 
   function semConvite(msg){
     el.innerHTML = LOGO + '<div class="login-title">Link de cadastro</div><div class="login-sub">'+esc(msg)+'</div>' +
@@ -221,7 +222,7 @@ select.login-input { appearance: auto; }
     .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j || {} }; }); })
     .then(function(x){
       if(!x.ok){ return semConvite(x.j.error || 'Esse link de cadastro não vale mais.'); }
-      NICHOS = Array.isArray(x.j.nichos) ? x.j.nichos : []; plano = x.j.plano || ''; D.email = x.j.email || '';
+      NICHOS = Array.isArray(x.j.nichos) ? x.j.nichos : []; plano = x.j.plano || ''; planoNome = x.j.plano_nome || ''; planoGratis = !!x.j.gratis; D.email = x.j.email || '';
       pintar();
     })
     .catch(function(){ semConvite('Sem conexão com o servidor. Confira a internet e abra o link de novo.'); });

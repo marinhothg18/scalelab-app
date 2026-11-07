@@ -93,6 +93,24 @@ test('Meu plano', async (t) => {
     assert.strictEqual(lista.find(e => e.id === ctx.id).plano, 'escala');
   });
 
+  await t.test('convite com plano: o cadastro mostra o nome e a empresa nasce no plano', async () => {
+    const c = await chamar('POST', '/api/plataforma/convites', { token: ctx.tmx, corpo: { email: 'gratis@b.com', plano: 'iniciante', obs: 'Teste grátis' } });
+    assert.strictEqual(c.status, 200);
+    const codigo = new URL(c.dados.link).searchParams.get('c');
+    const info = (await chamar('GET', '/api/cadastro/convite?c=' + codigo)).dados;
+    assert.strictEqual(info.plano_nome, 'Iniciante');
+    assert.strictEqual(info.gratis, true);
+    const cad = await chamar('POST', '/api/cadastro', { corpo: { c: codigo, nome: 'Bia', email: 'gratis@b.com', senha: 'senha-da-bia-1', empresa: 'Empresa B', projetos: [{ nicho: 'Fitness', nome: 'TREINO' }] } });
+    assert.strictEqual(cad.status, 200, JSON.stringify(cad.dados));
+    const mp = (await chamar('GET', '/api/meu-plano', { token: cad.dados.token })).dados;
+    assert.strictEqual(mp.plano.id, 'iniciante');
+    assert.strictEqual(usoDe(mp, 'projetos').limite, 1);
+    // a Central lê os pedidos da página de planos
+    const ped = await chamar('GET', '/api/plataforma/assinaturas', { token: ctx.tmx });
+    assert.strictEqual(ped.status, 200);
+    assert.ok(Array.isArray(ped.dados.assinaturas));
+  });
+
   await t.test('o pedido de troca de plano chega como chamado na Central', async () => {
     const p = await chamar('POST', '/api/suporte/chamados', { token: ctx.a, corpo: { tipo: 'Pedido', assunto: 'Trocar para o plano Agência', texto: 'Quero trocar.' } });
     assert.strictEqual(p.status, 200);
