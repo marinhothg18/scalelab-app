@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auditoria IA · Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F5F7FB; --card: #FFFFFF; --text: #0F172A; --text2: #64748B; --text3: #94A3B8;
+    --border: #E2E8F0; --border-strong: #CBD5E1;
+    --roxo: #3E1493; --azul: #1B9CFA; --rosa: #C52C58; --laranja: #FF5926; --azul-deep: #2509E4;
+    --verde: #16A34A; --verde-bg: #DCFCE7;
+    --amarelo: #CA8A04; --amarelo-bg: #FEF9C3;
+    --vermelho: #DC2626; --vermelho-bg: #FEE2E2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+  .preview-banner {
+    max-width: 1280px; margin: 24px auto 0; padding: 18px 22px;
+    background: #0F172A; color: #fff; border-radius: 14px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .preview-banner-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: linear-gradient(135deg,var(--roxo),var(--azul));
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px;
+  }
+  .preview-banner h1 { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .preview-banner p { font-size: 12px; opacity: .7; }
+
+  .section-title {
+    max-width: 1280px; margin: 28px auto 12px; padding: 0 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text2);
+  }
+  .section-title small { color: var(--text3); font-weight: 400; letter-spacing: .5px; margin-left: 8px; text-transform: none; }
+
+  /* ═══ MOCKUP DO HEADER DA PÁGINA (como ficaria o botão) ═══ */
+  .page-mockup {
+    max-width: 1280px; margin: 0 auto; background: #fff;
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  }
+  .page-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .ph-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--text2); margin-right: 4px; }
+  .ph-btn {
+    padding: 9px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    background: var(--card); border: 1px solid var(--border); color: var(--text); font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .ph-btn.active { background: var(--azul); color: #fff; border-color: var(--azul); }
+  .ph-btn-atualizar { background: var(--azul); color: #fff; border-color: var(--azul); }
+  .ph-btn-ia {
+    background: linear-gradient(135deg, var(--roxo) 0%, var(--azul) 100%);
+    color: #fff; border: none; padding: 10px 16px;
+    box-shadow: 0 4px 14px rgba(62,20,147,.25);
+    font-weight: 700; position: relative;
+  }
+  .ph-btn-ia::before {
+    content: ''; position: absolute; top: -3px; right: -3px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--rosa); animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .6; transform: scale(1.4); }
+  }
+  .ph-spacer { flex: 1; }
+  .ph-projeto {
+    background: #0F172A; color: #fff; padding: 9px 14px; border-radius: 9px;
+    font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;
+  }
+
+  /* ═══ MODAL ═══ */
+  .modal-dim {
+    max-width: 1280px; margin: 24px auto; padding: 24px;
+    background: #CBD5E1; border-radius: 14px;
+    display: flex; justify-content: center;
+  }
+  .modal-card {
+    width: 100%; max-width: 920px; background: #fff; border-radius: 16px; overflow: hidden;
+    box-shadow: 0 25px 50px rgba(15,23,42,.25);
+  }
+  .modal-header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, var(--roxo), var(--azul));
+    color: #fff;
+  }
+  .modal-header-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(255,255,255,.2);
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+  }
+  .modal-header-title { font-size: 16px; font-weight: 700; }
+  .modal-header-sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .modal-header-actions { margin-left: auto; display: flex; gap: 6px; }
+  .mh-btn {
+    background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.2);
+    padding: 7px 12px; border-radius: 7px; font-size: 11.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .mh-btn:hover { background: rgba(255,255,255,.25); }
+
+  .modal-body { padding: 24px 28px; max-height: 70vh; overflow-y: auto; }
+
+  /* ═══ CARDS DO RELATÓRIO ═══ */
+  .r-block {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 14px;
+  }
+  .r-block-h {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text2); margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .r-block-h strong {
+    color: var(--text); font-size: 13px; letter-spacing: 0; text-transform: none; font-weight: 700;
+  }
+
+  /* Followup cards */
+  .followup-card {
+    background: #F8FAFC; border-left: 4px solid; border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 10px;
+  }
+  .followup-card.feito { border-left-color: var(--verde); }
+  .followup-card.nao-feito { border-left-color: var(--vermelho); }
+  .followup-card.aberto { border-left-color: var(--amarelo); }
+  .fup-rec { font-size: 13px; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .fup-status {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: .6px;
+  }
+  .fup-status.ok { background: var(--verde-bg); color: var(--verde); }
+  .fup-status.ko { background: var(--vermelho-bg); color: var(--vermelho); }
+  .fup-status.pend { background: var(--amarelo-bg); color: var(--amarelo); }
+  .fup-detail { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .fup-detail strong { color: var(--text); font-weight: 600; }
+
+  /* Tendência */
+  .tendencia-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .tend-metric { background: #F8FAFC; border-radius: 9px; padding: 12px; }
+  .tend-metric-label { font-size: 10.5px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+  .tend-metric-value { font-size: 20px; font-weight: 700; color: var(--text); }
+  .tend-metric-sub { font-size: 11px; color: var(--text2); margin-top: 3px; }
+  .tend-metric-sub.up { color: var(--verde); font-weight: 600; }
+  .tend-metric-sub.down { color: var(--vermelho); font-weight: 600; }
+
+  .tend-pattern {
+    background: linear-gradient(135deg, #EEF2FF, #FDF2F8); border-radius: 9px;
+    padding: 12px 14px; font-size: 12.5px; line-height: 1.6; color: var(--text);
+  }
+  .tend-pattern strong { color: var(--roxo); }
+
+  /* Panorama */
+  .pan-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .pan-kpi { background: #F8FAFC; padding: 12px; border-radius: 9px; border: 1px solid var(--border); }
+  .pan-kpi-label { font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .6px; }
+  .pan-kpi-value { font-size: 18px; font-weight: 700; margin: 4px 0; }
+  .pan-kpi-delta { font-size: 11px; font-weight: 600; }
+  .pan-kpi-delta.up { color: var(--verde); }
+  .pan-kpi-delta.down { color: var(--vermelho); }
+
+  /* VSL */
+  .vsl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .vsl-metric {
+    background: #F8FAFC; padding: 12px; border-radius: 9px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .vsl-metric-ic {
+    width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .vsl-metric-ic.ok { background: var(--verde-bg); color: var(--verde); }
+  .vsl-metric-ic.alerta { background: var(--amarelo-bg); color: var(--amarelo); }
+  .vsl-metric-body { flex: 1; min-width: 0; }
+  .vsl-metric-label { font-size: 10.5px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .vsl-metric-value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .vsl-drops {
+    background: #FEF2F2; border-radius: 9px; padding: 12px 14px;
+    border-left: 3px solid var(--vermelho);
+  }
+  .vsl-drops-h { font-size: 11.5px; font-weight: 700; color: var(--vermelho); margin-bottom: 8px; }
+  .vsl-drop-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; margin-bottom: 6px; }
+  .vsl-drop-tempo { font-weight: 700; color: var(--vermelho); min-width: 42px; font-variant-numeric: tabular-nums; }
+  .vsl-drop-bar { flex: 1; height: 5px; background: #FEE2E2; border-radius: 3px; overflow: hidden; }
+  .vsl-drop-bar-fill { height: 100%; background: var(--vermelho); border-radius: 3px; }
+  .vsl-drop-text { font-size: 12px; color: var(--text2); }
+  .vsl-diag {
+    background: #FFFBEB; border-left: 3px solid var(--amarelo); padding: 10px 14px;
+    border-radius: 7px; margin-top: 10px; font-size: 12.5px; line-height: 1.5;
+  }
+
+  /* Criativos */
+  .criativo-card {
+    border: 1px solid var(--border); border-radius: 11px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .criativo-card.vencedor { border-left: 4px solid var(--verde); background: #F0FDF4; }
+  .criativo-card.perdedor { border-left: 4px solid var(--vermelho); background: #FEF2F2; }
+  .criativo-card.estavel { border-left: 4px solid var(--amarelo); background: #FFFBEB; }
+  .cri-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .cri-badge {
+    font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 12px;
+    text-transform: uppercase; letter-spacing: .7px;
+  }
+  .cri-badge.ok { background: var(--verde); color: #fff; }
+  .cri-badge.ko { background: var(--vermelho); color: #fff; }
+  .cri-badge.manter { background: var(--amarelo); color: #fff; }
+  .cri-name { font-size: 14px; font-weight: 700; flex: 1; }
+
+  .cri-metrics {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px;
+    background: #fff; border-radius: 8px; padding: 10px;
+  }
+  .cri-period-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; color: var(--text2); letter-spacing: .6px; margin-bottom: 3px; }
+  .cri-period-main { font-size: 13px; font-weight: 700; }
+  .cri-period-sub { font-size: 10.5px; color: var(--text2); margin-top: 1px; }
+
+  .cri-behavior {
+    font-size: 12.5px; line-height: 1.6; margin-bottom: 10px; padding: 8px 10px;
+    background: rgba(255,255,255,.6); border-radius: 7px;
+  }
+  .cri-behavior strong { font-weight: 700; }
+
+  .cri-actions {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  }
+  .cri-actions-h { font-size: 10.5px; font-weight: 700; letter-spacing: .6px; color: var(--text2); text-transform: uppercase; margin-bottom: 6px; }
+  .cri-actions-item { font-size: 12.5px; padding: 3px 0; display: flex; gap: 6px; }
+  .cri-actions-item::before { content: '→'; color: var(--text2); font-weight: 700; }
+
+  /* Ações prioritárias */
+  .prio-card {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
+  }
+  .prio-num {
+    width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .prio-num.alta { background: var(--vermelho); }
+  .prio-num.media { background: var(--amarelo); }
+  .prio-num.baixa { background: var(--verde); }
+  .prio-body { flex: 1; min-width: 0; }
+  .prio-acao { font-size: 13px; font-weight: 700; }
+  .prio-detail { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  .prio-repetir {
+    font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 10px;
+    background: var(--vermelho-bg); color: var(--vermelho);
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+
+  /* Histórico sidebar */
+  .hist-item {
+    padding: 10px 12px; background: #F8FAFC; border-radius: 8px; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px; cursor: pointer; border: 1px solid transparent;
+  }
+  .hist-item:hover { background: #EFF6FF; border-color: var(--azul); }
+  .hist-item.ativa { background: #EFF6FF; border-color: var(--azul); }
+  .hist-date { font-size: 11px; font-weight: 700; min-width: 68px; }
+  .hist-meta { font-size: 11px; color: var(--text2); flex: 1; }
+  .hist-score {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    background: var(--verde-bg); color: var(--verde);
+  }
+  .hist-score.baixo { background: var(--vermelho-bg); color: var(--vermelho); }
+  .hist-score.medio { background: var(--amarelo-bg); color: var(--amarelo); }
+
+  /* Divergências */
+  .diverg-card {
+    background: #FEF3C7; border-radius: 9px; padding: 12px 14px;
+    border-left: 3px solid var(--laranja);
+  }
+  .diverg-main { display: flex; gap: 14px; margin-bottom: 8px; }
+  .diverg-col-h { font-size: 10.5px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
+  .diverg-col-v { font-size: 20px; font-weight: 800; margin-top: 2px; }
+  .diverg-gap { font-size: 12px; color: var(--text); }
+  .diverg-gap b { color: var(--laranja); font-weight: 700; }
+
+  /* Horários */
+  .horario-bar-wrap { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; }
+  .horario-bar-label { min-width: 70px; font-weight: 600; }
+  .horario-bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .horario-bar-fill { height: 100%; border-radius: 4px; }
+  .horario-bar-value { min-width: 60px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Rodapé do modal */
+  .modal-footer {
+    padding: 14px 24px; background: #F8FAFC; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .mf-info { font-size: 11px; color: var(--text2); flex: 1; }
+  .mf-btn {
+    padding: 10px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer;
+    font-family: inherit; display: inline-flex; align-items: center; gap: 6px; border: 1px solid;
+  }
+  .mf-btn-pdf { background: #fff; color: var(--text); border-color: var(--border); }
+  .mf-btn-wpp { background: #22C55E; color: #fff; border-color: #22C55E; }
+  .mf-btn-save { background: var(--azul); color: #fff; border-color: var(--azul); }
+
+  /* Resumo final */
+  .resumo-final {
+    background: linear-gradient(135deg, #FEF3C7, #FED7AA);
+    border-radius: 11px; padding: 18px 20px;
+  }
+  .resumo-final-h { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text); margin-bottom: 10px; }
+  .resumo-final-row { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; font-size: 12.5px; }
+  .resumo-final-row.destaque { font-size: 14px; font-weight: 700; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #92400E; }
+
+  /* Config IA */
+  .config-card {
+    max-width: 1280px; margin: 0 auto; background: #fff;
+    border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px;
+  }
+  .config-h { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+  .config-row { display: grid; grid-template-columns: 180px 1fr; gap: 16px; align-items: center; margin-bottom: 12px; }
+  .config-label { font-size: 12.5px; font-weight: 600; color: var(--text2); }
+  .config-input {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-family: inherit; font-size: 13px; color: var(--text);
+  }
+  .config-info { font-size: 11.5px; color: var(--text2); margin-top: 8px; padding: 10px 12px; background: #EFF6FF; border-left: 3px solid var(--azul); border-radius: 6px; }
+
+  .anotacao {
+    max-width: 1280px; margin: 20px auto; padding: 16px 20px;
+    background: #FFFBEB; border-left: 4px solid var(--amarelo); border-radius: 10px;
+    font-size: 13px; color: #78350F; line-height: 1.6;
+  }
+  .anotacao strong { color: #451A03; }
+</style>
+</head>
+<body>
+
+<!-- Banner topo -->
+<div class="preview-banner">
+  <div class="preview-banner-icon">IA</div>
+  <div>
+    <h1>Auditoria IA · Preview</h1>
+    <p>Como vai ficar o botão no topo, o modal aberto e o relatório completo</p>
+  </div>
+</div>
+
+<!-- 01: Como o botão fica no header -->
+<div class="section-title">01 · Botão no topo <small>ao lado de "Atualizar", com badge pulsando quando tem análise nova</small></div>
+<div class="page-mockup">
+  <div class="page-header">
+    <span class="ph-label">PERÍODO:</span>
+    <button class="ph-btn active">Hoje</button>
+    <button class="ph-btn">Ontem</button>
+    <button class="ph-btn">7 dias</button>
+    <button class="ph-btn">30 dias</button>
+    <button class="ph-btn">Este mês</button>
+    <div class="ph-spacer"></div>
+    <button class="ph-btn">⤒ Puxar período</button>
+    <button class="ph-btn">💾 Guardar histórico</button>
+    <button class="ph-btn-atualizar ph-btn">🔄 Atualizar</button>
+    <button class="ph-btn-ia ph-btn">🤖 Auditoria IA</button>
+    <span class="ph-projeto">PROJETO: <strong>KALEBE</strong> ▾</span>
+  </div>
+  <div style="padding: 60px 20px; text-align: center; color: var(--text3); font-size: 13px; background: #F8FAFC;">
+    ↑ conteúdo da aba (Resumo / Por Campanha / Relatório / etc) ↑
+  </div>
+</div>
+
+<!-- 02: O modal aberto com o relatório -->
+<div class="section-title">02 · Modal aberto com o relatório completo <small>23ª análise · comparando com a de ontem</small></div>
+<div class="modal-dim">
+  <div class="modal-card">
+
+    <div class="modal-header">
+      <div class="modal-header-icon">🤖</div>
+      <div>
+        <div class="modal-header-title">Auditoria IA · Projeto Kalebe</div>
+        <div class="modal-header-sub">23ª análise · 07/11/2026 às 19:45 · última foi ontem 20:10</div>
+      </div>
+      <div class="modal-header-actions">
+        <button class="mh-btn">📊 Histórico</button>
+        <button class="mh-btn">✕</button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Resumo executivo no topo -->
+      <div class="resumo-final">
+        <div class="resumo-final-h">⚡ TOP 3 AÇÕES PARA AGORA</div>
+        <div class="resumo-final-row">1. 🔴 <strong>PAUSAR AD199.2</strong> — é a 3ª análise seguida pedindo</div>
+        <div class="resumo-final-row">2. 🟡 <strong>DUPLICAR AD232.HK1</strong> em CBO 1.4 — 2ª vez pedindo</div>
+        <div class="resumo-final-row">3. 🟢 <strong>SUBIR AD255.1</strong> de R$ 500 → R$ 700/dia</div>
+        <div class="resumo-final-row destaque">
+          💰 Se seguir: +R$ 1.800 lucro projetado 48h · Se ignorar: –R$ 1.500
+        </div>
+      </div>
+
+      <div style="height: 20px;"></div>
+
+      <!-- 1. Followup -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>✅ Followup da análise de ontem</strong>
+          <span style="margin-left: auto; color: var(--text3);">3 de 4 verificadas</span>
+        </div>
+
+        <div class="followup-card feito">
+          <div class="fup-rec">
+            Escalar AD255.1 (R$ 303 → R$ 500)
+            <span class="fup-status ok">feito</span>
+          </div>
+          <div class="fup-detail">
+            Alterado às <strong>02:37</strong>. Resultado: ROAS subiu <strong>6.1x → 7.97x</strong>.
+            Lucro adicional hoje: <strong style="color: var(--verde);">+R$ 420</strong>. Decisão correta, manter.
+          </div>
+        </div>
+
+        <div class="followup-card nao-feito">
+          <div class="fup-rec">
+            Pausar AD199.2
+            <span class="fup-status ko">não feito</span>
+          </div>
+          <div class="fup-detail">
+            Ainda ativo. Gastou <strong>R$ 450 hoje sem venda</strong>. Prejuízo evitável acumulado:
+            <strong style="color: var(--vermelho);">R$ 1.280</strong>. 3ª análise pedindo pausa.
+          </div>
+        </div>
+
+        <div class="followup-card nao-feito">
+          <div class="fup-rec">
+            Duplicar AD232.HK1 em CBO 1.4
+            <span class="fup-status ko">não feito</span>
+          </div>
+          <div class="fup-detail">
+            Oportunidade perdida estimada: <strong style="color: var(--vermelho);">R$ 800 de lucro</strong>.
+            AD232.HK1 segue no teto do orçamento. Ainda dá tempo, fazer hoje.
+          </div>
+        </div>
+
+        <div class="followup-card aberto">
+          <div class="fup-rec">
+            Investigar drop na VSL em 2:10
+            <span class="fup-status pend">em aberto</span>
+          </div>
+          <div class="fup-detail">
+            Retenção neste ponto continua em <strong>32%</strong>, sem mudança há 5 análises.
+            Precisa revisar roteiro ou cortar trecho.
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Tendência -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>📈 Tendência de execução (últimas 7 análises)</strong>
+        </div>
+        <div class="tendencia-grid">
+          <div class="tend-metric">
+            <div class="tend-metric-label">Recomendações seguidas</div>
+            <div class="tend-metric-value">6 / 14</div>
+            <div class="tend-metric-sub">43% de aderência</div>
+          </div>
+          <div class="tend-metric">
+            <div class="tend-metric-label">Lucro extra capturado</div>
+            <div class="tend-metric-value" style="color: var(--verde);">+R$ 2.180</div>
+            <div class="tend-metric-sub up">↑ seguindo IA</div>
+          </div>
+          <div class="tend-metric">
+            <div class="tend-metric-label">Lucro perdido por ignorar</div>
+            <div class="tend-metric-value" style="color: var(--vermelho);">–R$ 3.400</div>
+            <div class="tend-metric-sub down">↓ decisões adiadas</div>
+          </div>
+        </div>
+        <div class="tend-pattern">
+          💡 <strong>Padrão detectado:</strong> o gestor é rápido pra escalar vencedores (média de 1 dia),
+          mas demora <strong>2.3 dias</strong> pra pausar criativos ruins. Resultado: dinheiro queimado em
+          criativos furados antes de ser cortado.
+        </div>
+      </div>
+
+      <!-- 3. Panorama -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>🎯 Panorama financeiro</strong>
+        </div>
+        <div class="pan-grid">
+          <div class="pan-kpi">
+            <div class="pan-kpi-label">Hoje</div>
+            <div class="pan-kpi-value">R$ 16.400</div>
+            <div class="pan-kpi-delta up">↑ +8% vs ontem</div>
+          </div>
+          <div class="pan-kpi">
+            <div class="pan-kpi-label">Gasto</div>
+            <div class="pan-kpi-value">R$ 3.890</div>
+            <div class="pan-kpi-delta up">↑ +12%</div>
+          </div>
+          <div class="pan-kpi">
+            <div class="pan-kpi-label">Lucro</div>
+            <div class="pan-kpi-value" style="color: var(--verde);">R$ 11.200</div>
+            <div class="pan-kpi-delta up">↑ ROAS 4.22x</div>
+          </div>
+          <div class="pan-kpi">
+            <div class="pan-kpi-label">Tendência 7d</div>
+            <div class="pan-kpi-value">4.22x</div>
+            <div class="pan-kpi-delta up">↗️ +16% em 7d</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. VSL -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>🎬 VSL · V3_Concurso_15min</strong>
+          <span style="margin-left: auto; color: var(--text3); font-size: 11px;">dados VTurb</span>
+        </div>
+        <div class="vsl-grid">
+          <div class="vsl-metric">
+            <div class="vsl-metric-ic ok">▶</div>
+            <div class="vsl-metric-body">
+              <div class="vsl-metric-label">Play rate</div>
+              <div class="vsl-metric-value">68%</div>
+            </div>
+          </div>
+          <div class="vsl-metric">
+            <div class="vsl-metric-ic alerta">⚠</div>
+            <div class="vsl-metric-body">
+              <div class="vsl-metric-label">Pitch rate</div>
+              <div class="vsl-metric-value">24% <span style="font-size: 11px; color: var(--text2); font-weight: 400;">(meta 30%)</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="vsl-drops">
+          <div class="vsl-drops-h">⚠ Pontos críticos de abandono</div>
+          <div class="vsl-drop-row">
+            <span class="vsl-drop-tempo">0:35</span>
+            <span class="vsl-drop-bar"><span class="vsl-drop-bar-fill" style="width: 55%;"></span></span>
+            <span class="vsl-drop-text">45% ficam — gancho segurando bem</span>
+          </div>
+          <div class="vsl-drop-row">
+            <span class="vsl-drop-tempo">2:10</span>
+            <span class="vsl-drop-bar"><span class="vsl-drop-bar-fill" style="width: 32%;"></span></span>
+            <span class="vsl-drop-text"><strong style="color: var(--vermelho);">32% ficam — quebra de ritmo</strong></span>
+          </div>
+          <div class="vsl-drop-row">
+            <span class="vsl-drop-tempo">8:40</span>
+            <span class="vsl-drop-bar"><span class="vsl-drop-bar-fill" style="width: 28%;"></span></span>
+            <span class="vsl-drop-text">28% chegam no pitch</span>
+          </div>
+        </div>
+
+        <div class="vsl-diag">
+          💡 <strong>Diagnóstico:</strong> o gancho segura bem até 2 minutos mas tem quebra forte entre
+          2:00 e 4:00 — provavelmente roteiro arrastado. Sugiro revisar esse trecho ou cortar 30-45s dele.
+          Pitch rate fica embaixo da meta por causa disso.
+        </div>
+      </div>
+
+      <!-- 5. Análise por criativo -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>🏆 Análise por criativo</strong>
+          <span style="margin-left: auto; color: var(--text3); font-size: 11px;">comparando 1d · 3d · 7d</span>
+        </div>
+
+        <div class="criativo-card vencedor">
+          <div class="cri-head">
+            <div class="cri-name">AD255.1 — Clementine Porter02</div>
+            <span class="cri-badge ok">Escalar mais</span>
+          </div>
+          <div class="cri-metrics">
+            <div>
+              <div class="cri-period-label">Hoje</div>
+              <div class="cri-period-main">ROAS 7.97x</div>
+              <div class="cri-period-sub">R$ 210 · 2 vendas</div>
+            </div>
+            <div>
+              <div class="cri-period-label">3 dias</div>
+              <div class="cri-period-main">ROAS 6.8x</div>
+              <div class="cri-period-sub">R$ 620 · 7 vendas</div>
+            </div>
+            <div>
+              <div class="cri-period-label">7 dias</div>
+              <div class="cri-period-main">ROAS 6.2x</div>
+              <div class="cri-period-sub">R$ 1.340 · 14 vendas</div>
+            </div>
+          </div>
+          <div class="cri-behavior">
+            📈 <strong>Subindo.</strong> ROAS cresceu em todos os períodos. Fadiga ainda baixa
+            (frequência 1.8). Hook rate 72%, CPM só +8% em 3 dias.
+          </div>
+          <div class="cri-actions">
+            <div class="cri-actions-h">Recomendações</div>
+            <div class="cri-actions-item">Subir orçamento R$ 500 → R$ 700/dia</div>
+            <div class="cri-actions-item">Duplicar em CBO 1.4 pra testar escala</div>
+            <div class="cri-actions-item">Não mexer na estrutura, tá funcionando</div>
+          </div>
+        </div>
+
+        <div class="criativo-card perdedor">
+          <div class="cri-head">
+            <div class="cri-name">AD199.2 — bestseniorCA2</div>
+            <span class="cri-badge ko">Pausar agora</span>
+          </div>
+          <div class="cri-metrics">
+            <div>
+              <div class="cri-period-label">Hoje</div>
+              <div class="cri-period-main" style="color: var(--vermelho);">ROAS 0x</div>
+              <div class="cri-period-sub">R$ 450 · 0 venda</div>
+            </div>
+            <div>
+              <div class="cri-period-label">3 dias</div>
+              <div class="cri-period-main" style="color: var(--vermelho);">ROAS 0.4x</div>
+              <div class="cri-period-sub">R$ 780 · 1 venda</div>
+            </div>
+            <div>
+              <div class="cri-period-label">7 dias</div>
+              <div class="cri-period-main" style="color: var(--vermelho);">ROAS 0.8x</div>
+              <div class="cri-period-sub">R$ 1.620 · 3 vendas</div>
+            </div>
+          </div>
+          <div class="cri-behavior">
+            📉 <strong>Em queda livre.</strong> CPM +23% em 3 dias. Hook rate caiu de 65% para 48%.
+            Última venda há 2 dias.
+          </div>
+          <div class="cri-actions">
+            <div class="cri-actions-h">Recomendações</div>
+            <div class="cri-actions-item">Pausar agora (já é a 3ª análise pedindo)</div>
+            <div class="cri-actions-item">Se continuar ativo mais 2 dias: prejuízo projetado R$ 1.200</div>
+            <div class="cri-actions-item">Guardar criativo pra re-teste em outro público</div>
+          </div>
+        </div>
+
+        <div class="criativo-card estavel">
+          <div class="cri-head">
+            <div class="cri-name">AD232.HK1 — ca 2</div>
+            <span class="cri-badge manter">Manter + duplicar</span>
+          </div>
+          <div class="cri-metrics">
+            <div>
+              <div class="cri-period-label">Hoje</div>
+              <div class="cri-period-main">ROAS 7.71x</div>
+              <div class="cri-period-sub">R$ 214 · 2 vendas</div>
+            </div>
+            <div>
+              <div class="cri-period-label">3 dias</div>
+              <div class="cri-period-main">ROAS 7.5x</div>
+              <div class="cri-period-sub">estável</div>
+            </div>
+            <div>
+              <div class="cri-period-label">7 dias</div>
+              <div class="cri-period-main">ROAS 7.2x</div>
+              <div class="cri-period-sub">estável</div>
+            </div>
+          </div>
+          <div class="cri-behavior">
+            📊 <strong>Performance consistente.</strong> Já tá no teto do orçamento (R$ 308/dia).
+            Sem sinal de queda nem de saturação.
+          </div>
+          <div class="cri-actions">
+            <div class="cri-actions-h">Recomendações</div>
+            <div class="cri-actions-item">Não mexer na campanha original</div>
+            <div class="cri-actions-item">Duplicar com +30% orçamento pra testar escala</div>
+            <div class="cri-actions-item">Se duplicata performar, migrar verba gradual</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Horários -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>⏰ Análise de horários</strong>
+          <span style="margin-left: auto; color: var(--text3); font-size: 11px;">dados TMX</span>
+        </div>
+        <div class="horario-bar-wrap">
+          <span class="horario-bar-label">14h-19h</span>
+          <span class="horario-bar-track"><span class="horario-bar-fill" style="width: 62%; background: var(--verde);"></span></span>
+          <span class="horario-bar-value">62% vendas</span>
+        </div>
+        <div class="horario-bar-wrap">
+          <span class="horario-bar-label">19h-00h</span>
+          <span class="horario-bar-track"><span class="horario-bar-fill" style="width: 24%; background: var(--azul);"></span></span>
+          <span class="horario-bar-value">24% vendas</span>
+        </div>
+        <div class="horario-bar-wrap">
+          <span class="horario-bar-label">07h-14h</span>
+          <span class="horario-bar-track"><span class="horario-bar-fill" style="width: 13%; background: var(--amarelo);"></span></span>
+          <span class="horario-bar-value">13% vendas</span>
+        </div>
+        <div class="horario-bar-wrap">
+          <span class="horario-bar-label">03h-07h</span>
+          <span class="horario-bar-track"><span class="horario-bar-fill" style="width: 1%; background: var(--vermelho);"></span></span>
+          <span class="horario-bar-value" style="color: var(--vermelho);">1% vendas</span>
+        </div>
+        <div class="vsl-diag" style="margin-top: 12px;">
+          💡 <strong>Sugestão:</strong> ativar dayparting. Matar campanhas entre 02h e 07h economizaria
+          estimado <strong>R$ 180/dia</strong> sem perder venda. Em 30 dias: R$ 5.400 de sobra pra reinvestir
+          em horário bom.
+        </div>
+      </div>
+
+      <!-- 7. Divergências -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>🔀 Divergências Utmify × TMX</strong>
+        </div>
+        <div class="diverg-card">
+          <div class="diverg-main">
+            <div>
+              <div class="diverg-col-h">Utmify</div>
+              <div class="diverg-col-v">14</div>
+              <div style="font-size: 11px; color: var(--text2);">atribuídas a campanha</div>
+            </div>
+            <div style="font-size: 24px; color: var(--laranja); align-self: center;">→</div>
+            <div>
+              <div class="diverg-col-h">TMX</div>
+              <div class="diverg-col-v">19</div>
+              <div style="font-size: 11px; color: var(--text2);">vendas totais</div>
+            </div>
+            <div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px;">
+              <div style="text-align: right;">
+                <div style="font-size: 11px; color: var(--text2);">Gap</div>
+                <div style="font-size: 22px; font-weight: 800; color: var(--laranja);">5</div>
+                <div style="font-size: 11px; color: var(--text2);">R$ 2.100</div>
+              </div>
+            </div>
+          </div>
+          <div class="diverg-gap">
+            Causa provável: <b>3 vendas de bio do Instagram</b> (orgânico) · <b>2 vendas com UTM quebrada no AD237</b>.
+            💡 Revisar parâmetros UTM do AD237 na Meta.
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Ações prioritárias -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>⚡ Ações prioritárias pra hoje</strong>
+        </div>
+        <div class="prio-card">
+          <div class="prio-num alta">1</div>
+          <div class="prio-body">
+            <div class="prio-acao">Pausar AD199.2</div>
+            <div class="prio-detail">Já queimou R$ 1.280 ao ignorar essa recomendação nas últimas análises</div>
+          </div>
+          <span class="prio-repetir">⚠ 3ª vez</span>
+        </div>
+        <div class="prio-card">
+          <div class="prio-num media">2</div>
+          <div class="prio-body">
+            <div class="prio-acao">Duplicar AD232.HK1 em CBO 1.4</div>
+            <div class="prio-detail">Oportunidade estimada: +R$ 800 de lucro nos próximos 3 dias</div>
+          </div>
+          <span class="prio-repetir">⚠ 2ª vez</span>
+        </div>
+        <div class="prio-card">
+          <div class="prio-num baixa">3</div>
+          <div class="prio-body">
+            <div class="prio-acao">Subir AD255.1 (R$ 500 → R$ 700)</div>
+            <div class="prio-detail">Teto de orçamento perto, sem sinal de fadiga</div>
+          </div>
+        </div>
+        <div class="prio-card">
+          <div class="prio-num media">4</div>
+          <div class="prio-body">
+            <div class="prio-acao">Investigar VSL 2:10</div>
+            <div class="prio-detail">Drop persistente há 5 análises. Revisar ou cortar 30-45s do roteiro</div>
+          </div>
+          <span class="prio-repetir" style="background: var(--amarelo-bg); color: var(--amarelo);">⏳ 5ª análise</span>
+        </div>
+      </div>
+
+      <!-- 9. Histórico (versão compacta no final) -->
+      <div class="r-block">
+        <div class="r-block-h">
+          <strong>📊 Histórico recente</strong>
+          <span style="margin-left: auto; color: var(--text3); font-size: 11px;">clique pra abrir</span>
+        </div>
+        <div class="hist-item ativa">
+          <span class="hist-date">07/11 19:45</span>
+          <span class="hist-meta">4 recomendações · agora</span>
+          <span class="hist-score">atual</span>
+        </div>
+        <div class="hist-item">
+          <span class="hist-date">06/11 20:10</span>
+          <span class="hist-meta">5 recomendações · 2 feitas</span>
+          <span class="hist-score medio">40%</span>
+        </div>
+        <div class="hist-item">
+          <span class="hist-date">05/11 19:30</span>
+          <span class="hist-meta">3 recomendações · 2 feitas</span>
+          <span class="hist-score">66%</span>
+        </div>
+        <div class="hist-item">
+          <span class="hist-date">04/11 18:50</span>
+          <span class="hist-meta">6 recomendações · 1 feita</span>
+          <span class="hist-score baixo">17%</span>
+        </div>
+        <div class="hist-item">
+          <span class="hist-date">03/11 20:05</span>
+          <span class="hist-meta">4 recomendações · 2 feitas</span>
+          <span class="hist-score medio">50%</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <div class="mf-info">
+        Gerado em 1m 42s · Custo: ~R$ 0,12 (API do cliente) · 23ª análise deste projeto
+      </div>
+      <button class="mf-btn mf-btn-pdf">📄 Exportar PDF</button>
+      <button class="mf-btn mf-btn-wpp">📱 Mandar WhatsApp</button>
+      <button class="mf-btn mf-btn-save">💾 Salvar análise</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- 03: Config da API key -->
+<div class="section-title">03 · Primeira vez do cliente <small>pede a API key da Anthropic</small></div>
+<div class="config-card">
+  <div class="config-h">🔑 Configurar IA · Projeto Kalebe</div>
+  <div class="config-row">
+    <div class="config-label">API Key Anthropic</div>
+    <input class="config-input" type="password" value="sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" readonly>
+  </div>
+  <div class="config-row">
+    <div class="config-label">Modelo</div>
+    <input class="config-input" value="claude-sonnet-4-20250514 (recomendado)" readonly>
+  </div>
+  <div class="config-row">
+    <div class="config-label">Projeto associado</div>
+    <input class="config-input" value="Kalebe" readonly>
+  </div>
+  <div class="config-info">
+    ℹ️ A chave é salva criptografada e usada só pra gerar análises desse projeto.
+    O custo médio por análise é <strong>R$ 0,10 a R$ 0,20</strong>. Pode trocar a chave a qualquer momento.
+    Mesma infra que já é usada no agente WhatsApp.
+  </div>
+</div>
+
+<!-- Anotação final -->
+<div class="anotacao">
+  <strong>📝 Resumo da proposta</strong><br><br>
+  <strong>Posição:</strong> botão roxo-azul no header da página, ao lado de "Atualizar", com badge pulsante quando tem análise nova pra rodar.<br>
+  <strong>Clique:</strong> abre modal grande com o relatório completo (que você viu acima).<br>
+  <strong>Dados analisados:</strong> todas as campanhas · todos os criativos · retenção VTurb · gasto Utmify · vendas TMX · ações do gestor · histórico das análises anteriores.<br>
+  <strong>Comparação por criativo:</strong> últimos 1 dia · 3 dias · 7 dias — a IA olha os 3 pra dar veredicto (escalar / pausar / manter).<br>
+  <strong>Followup automático:</strong> toda análise começa verificando se as recomendações anteriores foram feitas e mostra o impacto real (lucro ganho ou perdido).<br>
+  <strong>Histórico persistente:</strong> salvo na chave <code>sl_analises_ia</code>, fica disponível pra consultar qualquer análise antiga.<br>
+  <strong>Export:</strong> PDF ou envio direto pro WhatsApp do sócio.<br><br>
+  Se aprovar esse visual eu começo a implementar: endpoint no server, modal no front, integração com os dados da Utmify/TMX/VTurb que já existem. Estimativa: 1 commit grande, 3-4h de trabalho.
+</div>
+
+</body>
+</html>
