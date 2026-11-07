@@ -7,265 +7,667 @@
 <title>Central TMX Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* Central TMX Admin (07/11/2026): sistema à parte, só pra Diretoria da TMX, no visual escuro do TMX.
-   Primeira parte: Clientes e Convites. Os dados vêm de /api/plataforma/*. */
+/* Central TMX Admin (07/11/2026, versão 3): sistema à parte, só pra Diretoria da TMX.
+   Painel, clientes com ficha, uso, receita, cobrança, pedidos, convites, suporte, saúde e auditoria.
+   Os números vêm de /api/plataforma/painel (cada motor manda o resumo dele) e das rotas /api/plataforma/*.
+   Gráficos com uma cor só (azul TMX); situação sempre com texto, nunca só cor. */
 :root{
-  --bg:#080a12; --bg2:#111524; --bg3:#171b2e; --card:#111524; --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.16);
-  --accent:#1B9CFA; --accent2:#5b5ef4; --text:#ffffff; --text2:#8b93ab;
-  --green:#7fe0ad; --green-bg:rgba(63,191,127,.14); --red:#ff9a99; --red-bg:rgba(226,75,74,.14);
-  --yellow:#ffd28a; --yellow-bg:rgba(245,181,68,.14); --blue:#9fd3ff; --blue-bg:rgba(27,156,250,.15); --gray-bg:rgba(148,163,184,.16);
-  --laranja:#FF5926; --roxo:#3E1493;
+  --bg:#090A12; --bg2:#0E1019; --bg3:#171A2A; --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.14);
+  --tx:#F4F5FA; --tx2:#A0A7BF; --tx3:#6B7290;
+  --azul:#1B9CFA; --laranja:#FF5926;
+  --grad:linear-gradient(135deg,#3E1493 0%,#2509E4 45%,#1B9CFA 100%);
+  --serie:#1B9CFA;
+  --ok-bg:rgba(12,163,12,.16); --aviso-bg:rgba(250,178,25,.14); --serio-bg:rgba(236,131,90,.15); --crit-bg:rgba(208,59,59,.16);
+  --f-tit:'Plus Jakarta Sans','Inter',system-ui,sans-serif; --f:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
-body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px}
-button,input,select{font-family:inherit}
-.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
-.side{border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:2px;padding-left:max(12px,env(safe-area-inset-left,0px))}
-.marca{padding:4px 10px 16px;line-height:1.15}
-.marca b{font-size:17px;font-weight:800;background:linear-gradient(90deg,#C52C58,#FF5926);-webkit-background-clip:text;background-clip:text;color:transparent}
-.marca span{display:block;font-size:11px;letter-spacing:.22em;color:var(--text2);font-weight:700;margin-top:3px}
-.marca i{font-style:normal;font-size:9.5px;letter-spacing:.08em;font-weight:800;background:var(--laranja);color:#fff;border-radius:4px;padding:2px 6px;margin-left:6px;vertical-align:2px}
-.nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#d6dae6;font-size:13.5px;background:none;border:0;text-align:left;cursor:pointer;width:100%}
-.nav:hover{background:rgba(255,255,255,.04)}
-.nav.on{background:var(--accent2);color:#fff}
-.nav svg{width:16px;height:16px;flex:none;opacity:.85}
-.nav .cont{margin-left:auto;font-size:11px;font-weight:800;background:var(--laranja);color:#fff;border-radius:20px;padding:1px 7px}
-.side-pe{margin-top:auto;border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text2)}
-.side-pe a{color:var(--blue);text-decoration:none}
-.main{min-width:0;padding-block:18px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.topo{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:4px 8px 16px}
-.topo h1{margin:0;font-size:20px;font-weight:700}
-.topo p{margin:3px 0 0;color:var(--text2);font-size:12.5px}
-.btn{border:1px solid var(--border);background:var(--bg3);color:var(--text);border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
-.btn:hover{border-color:var(--border2)}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#04121f}
-.btn.perigo{color:var(--red);border-color:rgba(226,75,74,.35)}
-.btn.peq{padding:5px 10px;font-size:11.5px}
+body{background:radial-gradient(1200px 600px at 85% -10%,rgba(37,9,228,.16),transparent 60%),radial-gradient(900px 500px at -10% 10%,rgba(62,20,147,.22),transparent 60%),var(--bg);background-attachment:fixed;color:var(--tx);font:14px/1.5 var(--f)}
+button,input,select,textarea{font-family:inherit}
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+.side{position:sticky;top:0;height:100vh;overflow-y:auto;padding:18px 14px;padding-left:max(14px,env(safe-area-inset-left,0px));border-right:1px solid var(--line);background:rgba(9,10,18,.7);backdrop-filter:blur(10px);display:flex;flex-direction:column;gap:2px}
+.marca{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
+.marca .logo{width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center;font:800 13px var(--f-tit);box-shadow:0 6px 20px rgba(37,9,228,.45);flex:none}
+.marca b{display:block;font:800 15px var(--f-tit)}
+.marca span{font-size:10.5px;letter-spacing:.2em;color:var(--tx3);font-weight:700}
+.grupo{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3);font-weight:700;padding:14px 10px 6px}
+.nav{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:none;color:#CDD2E3;font-size:13.5px;text-align:left;cursor:pointer;position:relative}
+.nav:hover{background:rgba(255,255,255,.04);color:var(--tx)}
+.nav.on{background:linear-gradient(90deg,rgba(62,20,147,.55),rgba(27,156,250,.18));color:#fff}
+.nav.on::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--azul)}
+.nav svg{width:16px;height:16px;flex:none;opacity:.9}
+.nav .n{margin-left:auto;font-size:11px;font-weight:700;border-radius:20px;padding:1px 7px;background:rgba(255,89,38,.18);color:#FFB394}
+.pe{margin-top:auto;padding:12px 10px 4px;border-top:1px solid var(--line);font-size:12px;color:var(--tx3);display:flex;flex-direction:column;gap:4px}
+.pe b{color:var(--tx2);font-weight:600}
+.pe a{color:#9FD3FF;text-decoration:none}
+.main{min-width:0;padding-block:22px 64px;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+.topo{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin:0 6px 18px}
+.topo h1{margin:0;font:800 24px/1.15 var(--f-tit);letter-spacing:-.01em;text-wrap:balance}
+.topo p{margin:4px 0 0;color:var(--tx2);font-size:13px;max-width:72ch}
+.acoes{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:rgba(255,255,255,.03);color:var(--tx);border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{border-color:rgba(255,255,255,.28)}
+.btn.pri{background:var(--grad);border-color:transparent;box-shadow:0 6px 18px rgba(37,9,228,.35);color:#fff}
+.btn.perigo{color:#FF9B9B;border-color:rgba(208,59,59,.4)}
+.btn.verde{color:#7FE07F;border-color:rgba(12,163,12,.45)}
+.btn.peq{padding:5px 10px;font-size:11.5px;border-radius:8px}
 .btn:disabled{opacity:.55;cursor:default}
-.btn:focus-visible,.nav:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:0 8px 16px}
-.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;min-width:0}
-.kpi small{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700}
-.kpi b{display:block;font-size:24px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums}
-.kpi span{font-size:11.5px;color:var(--text2)}
-.filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 8px 12px}
-.busca{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 11px;font-size:12.5px;width:280px;max-width:100%}
-.tab-wrap{margin:0 8px;border:1px solid var(--border);border-radius:12px;background:var(--card);overflow-x:auto}
-table{border-collapse:collapse;width:100%;min-width:820px}
-th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);font-weight:700}
-td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.btn:focus-visible,.nav:focus-visible,.chip:focus-visible,tr[tabindex]:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+.grade{display:grid;gap:14px;margin:0 6px 14px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g21{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);border-radius:16px;padding:16px 18px;min-width:0}
+.card.solto{margin:0 6px 14px}
+.card.coluna{display:flex;flex-direction:column}
+.card.coluna .vazio-g{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px}
+.card h2{margin:0;font:700 14.5px var(--f-tit)}
+.card .sub{color:var(--tx2);font-size:12px;margin-top:2px}
+.card-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}
+.kpi{position:relative;overflow:hidden}
+.kpi small{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx2);font-weight:700}
+.kpi .v{font:800 28px/1.1 var(--f-tit);margin-top:8px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kpi .v.menor{font-size:19px;margin-top:12px}
+.kpi .d{font-size:12px;color:var(--tx2);margin-top:4px}
+.kpi.destaque{background:linear-gradient(135deg,rgba(62,20,147,.55),rgba(27,156,250,.18));border-color:rgba(27,156,250,.3)}
+.kpi .spark{position:absolute;right:12px;bottom:12px;width:92px;height:30px;opacity:.9}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border-radius:20px;padding:3px 9px;white-space:nowrap}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.st.ok{background:var(--ok-bg);color:#7FE07F} .st.av{background:var(--aviso-bg);color:#FFD27A} .st.se{background:var(--serio-bg);color:#FFB394} .st.cr{background:var(--crit-bg);color:#FF9B9B} .st.ne{background:rgba(148,163,184,.14);color:#C3C9D8} .st.az{background:rgba(27,156,250,.15);color:#9FD3FF}
+.tab{border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.02);overflow-x:auto;margin:0 6px 14px}
+.tab.dentro{margin:0}
+table{border-collapse:collapse;width:100%}
+th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
 tbody tr:last-child td{border-bottom:0}
-.nome b{display:block;font-weight:700}
-.sub{color:var(--text2);font-size:12px}
-.num{font-variant-numeric:tabular-nums}
-.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 9px;white-space:nowrap}
-.p-ok{background:var(--green-bg);color:var(--green)} .p-azul{background:var(--blue-bg);color:var(--blue)}
-.p-amar{background:var(--yellow-bg);color:var(--yellow)} .p-verm{background:var(--red-bg);color:var(--red)} .p-cinza{background:var(--gray-bg);color:#c3c9d8}
-.direita{text-align:right}
-.vazio{color:var(--text2);font-size:13px;text-align:center;padding:28px 14px}
-.cartao{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin:0 8px 16px}
-.cartao h2{margin:0 0 4px;font-size:15px}
-.cartao p{margin:0 0 14px;color:var(--text2);font-size:12.5px;line-height:1.5}
+tr.clica{cursor:pointer} tr.clica:hover{background:rgba(255,255,255,.025)}
+.nm b{display:block;font-weight:600} .nm small{color:var(--tx3);font-size:11.5px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap} .dir{text-align:right} td.mini{white-space:nowrap}
+.mini{color:var(--tx2);font-size:12px}
+.vazio{color:var(--tx2);font-size:13px;text-align:center;padding:26px 14px}
+.vazio-g{color:var(--tx2);font-size:12.5px;padding:18px 4px;text-align:center;line-height:1.5}
+.barra{height:8px;border-radius:8px;background:rgba(255,255,255,.07);overflow:hidden}
+.barra i{display:block;height:100%;border-radius:8px;background:var(--serie)}
+.barra.av i{background:#FAB219} .barra.cr i{background:#E05252}
+.linha-uso{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;margin-bottom:12px;font-size:12.5px}
+.linha-uso .barra{grid-column:1/-1}
+.lista{list-style:none;margin:0;padding:0}
+.lista li{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.lista li:last-child{border-bottom:0}
+.lista .t{flex:1;min-width:0;font-size:13px;overflow-wrap:anywhere}
+.lista .t small{display:block;color:var(--tx3);font-size:11.5px}
+.ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;font-size:14px}
+.graf{width:100%;height:auto;display:block;overflow:visible}
+.graf text{fill:var(--tx2);font:11px var(--f)}
+.graf .grade-l{stroke:rgba(255,255,255,.06)}
+.barras{display:flex;flex-direction:column;gap:9px}
+.b-lin{display:grid;grid-template-columns:minmax(0,38%) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:12.5px}
+.b-rot{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b-tr{height:14px;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden}
+.b-tr i{display:block;height:100%;border-radius:4px;background:var(--serie)}
+.b-v{font-variant-numeric:tabular-nums;font-weight:600;min-width:3ch;text-align:right}
+.b-lin:hover .b-tr i{filter:brightness(1.2)}
+.dica{position:fixed;z-index:50;pointer-events:none;background:#1C2033;border:1px solid var(--line2);border-radius:10px;padding:8px 10px;font-size:12px;box-shadow:0 12px 30px rgba(0,0,0,.45);max-width:240px}
+.dica b{display:block;font-size:13px}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 6px 12px}
+.chip{border:1px solid var(--line2);background:none;color:var(--tx2);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.chip.on{background:rgba(27,156,250,.14);border-color:rgba(27,156,250,.45);color:#9FD3FF}
+.busca{margin-left:auto;background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--tx);border-radius:10px;padding:8px 12px;font-size:12.5px;width:280px;max-width:100%}
+.fundo{position:fixed;inset:0;background:rgba(3,4,10,.62);z-index:30;display:flex;justify-content:flex-end}
+.gaveta{width:min(600px,100%);height:100%;overflow-y:auto;background:var(--bg2);border-left:1px solid var(--line2);padding:22px 22px 40px;padding-right:max(22px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+.gaveta .cab{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.gaveta h2.nome{margin:0;font:800 20px var(--f-tit)}
+.x{background:none;border:0;color:var(--tx2);font-size:24px;cursor:pointer;line-height:1;padding:0 4px}
+.tres{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+.tres b{display:block;font:700 18px var(--f-tit)}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:12px;border:1px solid var(--line2);border-radius:8px;padding:4px 9px;color:var(--tx)}
+.passos{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:12px;font-size:13px}
+.passos span{color:var(--tx2)}
+.copia{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;background:rgba(0,0,0,.25);border:1px solid var(--line2);border-radius:10px;padding:6px 6px 6px 10px}
+.copia code{flex:1;min-width:0;overflow-wrap:anywhere;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#9FD3FF}
+.nota{font-size:12.5px;border-radius:10px;padding:9px 12px;line-height:1.5}
+.nota.av{color:#FFD27A;background:var(--aviso-bg)} .nota.az{color:#9FD3FF;background:rgba(27,156,250,.1)}
+.previa{border-radius:12px;overflow:hidden;border:1px solid var(--line2);height:300px;position:relative;background:#fff}
+.previa iframe{border:0;width:200%;height:600px;transform:scale(.5);transform-origin:0 0;pointer-events:none}
+.campo{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em}
+.campo input,.campo select{background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--tx);border-radius:9px;padding:9px 11px;font-size:13.5px;text-transform:none;letter-spacing:0;font-weight:400}
+.campo select option{background:#171A2A}
 .form{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 190px 120px auto;gap:10px;align-items:end}
-.campo{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
-.campo input,.campo select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13.5px;text-transform:none;letter-spacing:0;font-weight:400}
 .resultado{margin-top:14px;border:1px solid rgba(63,191,127,.35);background:rgba(63,191,127,.07);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
-.resultado code{display:block;font:12.5px/1.5 ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-wrap:anywhere;user-select:all;color:#e7ecf7}
-.resultado .acoes{display:flex;gap:8px;flex-wrap:wrap}
-.erro{color:var(--red);font-size:12.5px;margin-top:10px}
+.resultado code{display:block;font:12.5px/1.5 ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-wrap:anywhere;user-select:all;color:#e7ecf7}
+.erro{color:#FF9B9B;font-size:12.5px;margin-top:10px}
 .porta{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
-.porta .caixa{max-width:420px;width:100%;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:center}
-.porta h1{margin:10px 0 6px;font-size:18px}
-.porta p{margin:0 0 18px;color:var(--text2);font-size:13px;line-height:1.55}
-.toast{position:fixed;bottom:max(18px,env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:#0f2a1f;border:1px solid rgba(63,191,127,.4);color:#bff0d6;padding:10px 16px;border-radius:10px;font-size:13px;z-index:40;max-width:calc(100% - 32px)}
-@media (max-width:900px){
+.porta .caixa{max-width:440px;width:100%;background:var(--bg2);border:1px solid var(--line2);border-radius:16px;padding:28px;text-align:center}
+.porta h1{margin:10px 0 6px;font:800 18px var(--f-tit)}
+.porta p{margin:0 0 18px;color:var(--tx2);font-size:13px;line-height:1.55}
+.modal{position:fixed;inset:0;background:rgba(3,5,12,.72);z-index:40;min-height:0}
+.modal .caixa{text-align:left}
+.radio{display:flex;gap:6px;align-items:center;border:1px solid var(--line2);border-radius:8px;padding:8px 10px;color:var(--tx);font-weight:500;text-transform:none;letter-spacing:0;font-size:13px}
+.fio{display:flex;flex-direction:column;gap:10px}
+.msg{max-width:86%;border:1px solid var(--line);border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.5;background:var(--bg3);align-self:flex-start;overflow-wrap:anywhere}
+.msg.tmx{background:rgba(62,20,147,.35);border-color:rgba(91,94,244,.4);align-self:flex-end}
+.msg.nota{background:var(--aviso-bg);border-color:rgba(245,181,68,.3);align-self:center}
+textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--tx);border-radius:10px;padding:10px 12px;font-size:13.5px;resize:vertical}
+.sel{background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--tx);border-radius:8px;padding:6px 8px;font-size:12.5px}
+.sel option{background:#171A2A}
+.toast{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;background:#0F2A1F;border:1px solid rgba(63,191,127,.4);color:#BFF0D6;padding:10px 16px;border-radius:10px;font-size:13px;max-width:calc(100% - 32px)}
+.carregando{opacity:.55;pointer-events:none}
+@media (max-width:1100px){ .g4{grid-template-columns:repeat(2,minmax(0,1fr))} .g21,.g3{grid-template-columns:1fr} }
+@media (max-width:820px){
   .app{grid-template-columns:1fr}
-  .side{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border);padding:10px max(12px,env(safe-area-inset-left,0px))}
-  .marca{width:100%;padding-bottom:6px}
-  .nav{width:auto}
-  .side-pe{display:none}
-  .form{grid-template-columns:1fr}
+  .side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line);padding:12px max(12px,env(safe-area-inset-left,0px))}
+  .marca{width:100%;padding-bottom:8px} .grupo,.pe{display:none} .nav{width:auto} .nav.on::before{display:none}
+  .g2,.g4{grid-template-columns:1fr} .busca{margin-left:0;width:100%} .form{grid-template-columns:1fr}
 }
+@media (prefers-reduced-motion:no-preference){ .gaveta.anim{animation:entra .2s ease-out} @keyframes entra{from{transform:translateX(30px);opacity:.5}to{transform:none;opacity:1}} }
 </style>
 </head>
 <body>
-<div id="raiz"><div class="porta"><div class="caixa"><div class="sub">Abrindo a Central TMX Admin…</div></div></div></div>
+<div id="raiz"><div class="porta"><div class="caixa"><div class="mini">Abrindo a Central TMX Admin…</div></div></div></div>
+<div class="dica" id="dica" hidden></div>
 <script>
 (function(){
-  var raiz = document.getElementById('raiz');
+  var raiz = document.getElementById('raiz'), dica = document.getElementById('dica');
   var token = ''; try{ token = localStorage.getItem('sl_session_token') || ''; }catch(e){}
-  var PLANOS = [];   // vem do servidor (a lista de planos fica só lá, em PLANOS_TMX)
-  var PEDIDOS = [], COBRANCA = { cobranca: false, ambiente: null }, filtroPed = 'liberar', liberado = null;
-  var eu = null, tela = 'clientes', EMPRESAS = [], CONVITES = [], CHAMADOS = [], busca = '', ultimoLink = null, erroConvite = '';
-  var filtroCh = 'abertos', chamado = null, modal = '';
+  // ── estado ──
+  var eu = null, tela = 'painel', P = null, PLANOS = [], PEDIDOS = [], COBRANCA = { cobranca: false, ambiente: null };
+  var CONVITES = [], CHAMADOS = [], AUD = null;
+  var busca = '', filtroCli = 'todos', aberto = null, incluirTmx = null, modal = '';
+  var filtroPed = 'liberar', liberado = null, ultimoLink = null, erroConvite = '';
+  var filtroCh = 'abertos', chamado = null, gavetaVista = null;
+  // ── utilidades ──
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function data(ms, comHora){ if(!ms) return '—'; var d = new Date(ms); var t = d.toLocaleDateString('pt-BR'); return comHora ? t + ' ' + d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : t; }
+  function ha(ms){ if(!ms) return 'nunca'; var s = (Date.now() - ms) / 1000; if(s < 90) return 'agora'; if(s < 3600) return 'há ' + Math.round(s / 60) + ' min'; if(s < 86400) return 'há ' + Math.round(s / 3600) + ' h'; var d = Math.round(s / 86400); return 'há ' + d + (d === 1 ? ' dia' : ' dias'); }
+  function duracao(seg){ if(seg < 60) return 'menos de 1 min'; var h = Math.floor(seg / 3600), d = Math.floor(h / 24); return d ? d + ' d ' + (h % 24) + ' h' : h ? h + ' h ' + Math.floor(seg % 3600 / 60) + ' min' : Math.floor(seg / 60) + ' min'; }
+  function brl(n){ return 'R$ ' + Number(n || 0).toLocaleString('pt-BR'); }
+  function brlK(n){ n = Number(n || 0); return n >= 1000 ? 'R$ ' + (n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : brl(n); }
+  function gb(n){ return Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' GB'; }
+  function mb(n){ return n >= 1024 ? (n / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' GB' : Math.round(n || 0) + ' MB'; }
+  function pct(a, b){ return b ? Math.round(a / b * 100) : 0; }
   function api(metodo, caminho, corpo){
     return fetch(caminho, { method: metodo, headers: Object.assign({ Authorization: 'Bearer ' + token }, corpo ? { 'Content-Type': 'application/json' } : {}), body: corpo ? JSON.stringify(corpo) : undefined })
       .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return { status: r.status, ok: r.ok, j: j }; }); });
   }
-  function aviso(t){ var d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 2600); }
+  function aviso(t){ var d = document.createElement('div'); d.className = 'toast'; d.setAttribute('role', 'status'); d.textContent = t; document.body.appendChild(d); setTimeout(function(){ d.remove(); }, 2800); }
+  function copiar(t, msg){ try{ navigator.clipboard.writeText(t).then(function(){ aviso(msg || 'Copiado.'); }, function(){ aviso('Selecione e copie.'); }); }catch(e){ aviso('Selecione e copie.'); } }
   function porta(titulo, texto){
-    raiz.innerHTML = '<div class="porta"><div class="caixa"><div class="marca" style="padding:0"><b>Central TMX</b><span>ADMIN</span></div><h1>'+esc(titulo)+'</h1><p>'+esc(texto)+'</p>' +
+    raiz.innerHTML = '<div class="porta"><div class="caixa"><div class="marca" style="justify-content:center;padding:0"><div class="logo">TMX</div><div style="text-align:left"><b>Central TMX</b><span>ADMIN</span></div></div><h1>'+esc(titulo)+'</h1><p>'+esc(texto)+'</p>' +
       '<a class="btn pri" href="/">Ir pro login do TMX</a></div></div>';
   }
-  var ICON = {
-    clientes:'<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4zM8 13c-.3 0-.7 0-1.1.1A4.7 4.7 0 0 1 9 17v3H0v-3c0-2.2 4.4-4 8-4z"/>',
-    convites:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>',
-    suporte:'<path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>',
-    pedidos:'<path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM7.2 14.8h9.9c.8 0 1.4-.4 1.7-1l3.6-6.5L20.7 6H5.2l-.9-2H1v2h2l3.6 7.6-1.4 2.4c-.6 1.3.4 2.8 1.8 2.8H19v-2H7.4z"/>'
-  };
-  // pedido de teste grátis ainda sem convite: o que a TMX precisa liberar
+  // ── dados derivados ──
+  function empresas(){ return (P && P.empresas) || []; }
+  function empDe(id){ return empresas().find(function(x){ return x.id === id; }); }
+  function tmxComoEmpresa(){ return { id: 'tmx', nome: 'TMX Digital', tmx: true, status: 'ativa', plano: 'interno', planoNome: 'Interno', mensal: null, criada: null, resumo: P && P.tmx, limites: [], motor: { estado: 'ligado', quedasHoje: 0 }, contas: null }; }
   function convDoPedido(p){ return CONVITES.find(function(c){ return c.email && p.email && c.email === String(p.email).toLowerCase() && c.criado >= p.criado; }); }
   function aLiberar(){ return PEDIDOS.filter(function(p){ return p.status === 'pedido' && !convDoPedido(p); }).length; }
   function chAbertos(){ return CHAMADOS.filter(function(c){ return c.status === 'aberto'; }).length; }
   function esperando(){ return CONVITES.filter(function(c){ return c.situacao === 'esperando'; }).length; }
+  function emTeste(e){ return e.plano === 'teste' || (e.plano === 'iniciante'); }
+  function pago(e){ return !!(e.mensal && e.assinatura && (e.assinatura.status === 'paga' || e.assinatura.status === 'atrasada')); }
+  function maiorUso(e){ var m = null; (e.limites || []).forEach(function(l){ if(l.limite && l.usado != null){ var r = l.usado / l.limite; if(!m || r > m.r) m = { r: r, l: l }; } }); return m; }
+  function perto(e){ return (e.limites || []).filter(function(l){ return l.limite && l.usado != null && l.usado / l.limite >= .8; }); }
+  function fmtUso(l, v){ return l.tipo === 'brl' ? brlK(v) : l.tipo === 'gb' ? gb(v) : Number(v || 0).toLocaleString('pt-BR'); }
+  function parado(e){ if(e.status !== 'ativa') return false; var u = e.resumo && e.resumo.ultimoAcesso; var base = u || e.criada || 0; return Date.now() - base > 7 * 86400000; }
+  function saudeGeral(){
+    if(!P) return { cls: 'ne', txt: 'carregando' };
+    var s = P.saude, memP = pct(s.memoria.usadoMB, s.memoria.limiteMB), discoP = s.disco ? pct(s.disco.totalGB - s.disco.livreGB, s.disco.totalGB) : 0;
+    var fora = empresas().filter(function(e){ return e.motor.estado === 'desligado'; }).length, quedas = empresas().reduce(function(t, e){ return t + e.motor.quedasHoje; }, 0);
+    if(fora || memP >= 90 || discoP >= 90) return { cls: 'cr', txt: fora ? fora + ' motor(es) fora do ar' : memP >= 90 ? 'memória quase cheia' : 'disco quase cheio' };
+    if(quedas || memP >= 80 || discoP >= 80) return { cls: 'av', txt: quedas ? quedas + ' queda(s) hoje' : memP >= 80 ? 'memória passando de 80%' : 'disco passando de 80%' };
+    return { cls: 'ok', txt: 'Tudo funcionando' };
+  }
+  // ── gráficos: uma cor por gráfico, dica ao passar o mouse ──
+  function barrasH(itens, opts){
+    opts = opts || {};
+    if(!itens.length || !itens.some(function(i){ return i[1] > 0; })) return '<div class="vazio-g">'+esc(opts.vazio || 'Sem dados ainda.')+'</div>';
+    var max = Math.max.apply(null, itens.map(function(i){ return i[1]; }).concat([1]));
+    return '<div class="barras" role="img" aria-label="'+esc(opts.titulo || '')+'">' + itens.map(function(it){
+      var p = it[1] > 0 ? Math.max(2, Math.round(it[1] / max * 100)) : 0, v = opts.fmt ? opts.fmt(it[1]) : Number(it[1]).toLocaleString('pt-BR');
+      return '<div class="b-lin" data-dica="'+esc(it[0])+'|'+esc(v)+'"><span class="b-rot">'+esc(it[0])+'</span><span class="b-tr"><i style="width:'+p+'%"></i></span><span class="b-v">'+esc(v)+'</span></div>';
+    }).join('') + '</div>';
+  }
+  var gradN = 0;
+  function area(valores, rotulos, opts){
+    opts = opts || {}; var w = 560, h = 190, e = 48, d = 12, t = 12, b = 26, id = 'ga' + (++gradN);
+    var max = Math.max.apply(null, valores.concat([1])) * 1.15;
+    var x = function(i){ return e + i * (w - e - d) / Math.max(1, valores.length - 1); }, y = function(v){ return t + (h - t - b) * (1 - v / max); };
+    var s = '<svg class="graf" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+esc(opts.titulo || '')+'">';
+    [0, .5, 1].forEach(function(f){ var v = max * f, yy = y(v); s += '<line class="grade-l" x1="'+e+'" x2="'+(w - d)+'" y1="'+yy+'" y2="'+yy+'"/><text x="'+(e - 6)+'" y="'+(yy + 4)+'" text-anchor="end">'+esc(opts.fmtEixo ? opts.fmtEixo(v) : Math.round(v))+'</text>'; });
+    var pts = valores.map(function(v, i){ return x(i) + ',' + y(v); }).join(' ');
+    s += '<defs><linearGradient id="'+id+'" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1B9CFA" stop-opacity=".35"/><stop offset="1" stop-color="#1B9CFA" stop-opacity="0"/></linearGradient></defs>' +
+      '<polygon points="'+x(0)+','+y(0)+' '+pts+' '+x(valores.length - 1)+','+y(0)+'" fill="url(#'+id+')"/>' +
+      '<polyline points="'+pts+'" fill="none" stroke="var(--serie)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    var passo = (w - e - d) / Math.max(1, valores.length - 1);
+    valores.forEach(function(v, i){
+      var ult = i === valores.length - 1;
+      s += '<circle cx="'+x(i)+'" cy="'+y(v)+'" r="'+(ult ? 5 : 3.5)+'" fill="'+(ult ? 'var(--serie)' : 'var(--bg2)')+'" stroke="var(--serie)" stroke-width="2"/>' +
+        '<rect x="'+(x(i) - passo / 2)+'" y="'+t+'" width="'+passo+'" height="'+(h - t - b)+'" fill="transparent" data-dica="'+esc(rotulos[i] || '')+'|'+esc(opts.fmt ? opts.fmt(v) : v)+'"/>' +
+        (rotulos[i] ? '<text x="'+x(i)+'" y="'+(h - 6)+'" text-anchor="middle">'+esc(rotulos[i])+'</text>' : '');
+    });
+    return s + '</svg>';
+  }
+  function spark(vals, cls){
+    var w = 92, h = 30, max = Math.max.apply(null, vals.concat([1]));
+    var pts = vals.map(function(v, i){ return (i * w / Math.max(1, vals.length - 1)).toFixed(1) + ',' + (h - 3 - v / max * (h - 6)).toFixed(1); }).join(' ');
+    return '<svg class="'+(cls || 'spark')+'" viewBox="0 0 '+w+' '+h+'" width="92" height="30" aria-hidden="true"><polyline points="'+pts+'" fill="none" stroke="#9FD3FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function semanas(){ var r = []; for(var i = 11; i >= 0; i--){ r.push(i === 0 ? 'esta' : i % 3 === 0 ? i + ' sem' : ''); } return r; }
+  // ── barra lateral ──
+  var ICON = {
+    painel:'<path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/>',
+    clientes:'<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zM8 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3zm8 2c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4zM8 13c-.3 0-.7 0-1.1.1A4.7 4.7 0 0 1 9 17v3H0v-3c0-2.2 4.4-4 8-4z"/>',
+    uso:'<path d="M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z"/>',
+    receita:'<path d="M3.5 18.5 9.5 12.5l4 4L22 6.9 20.6 5.5l-7.1 8-4-4L2 17z"/>',
+    cobranca:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H4v-6h16zm0-10H4V6h16z"/>',
+    pedidos:'<path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM7.2 14.8h9.9c.8 0 1.4-.4 1.7-1l3.6-6.5L20.7 6H5.2l-.9-2H1v2h2l3.6 7.6-1.4 2.4c-.6 1.3.4 2.8 1.8 2.8H19v-2H7.4z"/>',
+    convites:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z"/>',
+    suporte:'<path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>',
+    saude:'<path d="M12 21.35 10.55 20C5.4 15.36 2 12.27 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5z"/>',
+    auditoria:'<path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5z"/>'
+  };
   function lateral(){
-    var n = function(id, txt, cont){ return '<button class="nav'+(tela===id?' on':'')+'" data-tela="'+id+'"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+ICON[id]+'</svg>'+txt+(cont?'<span class="cont">'+cont+'</span>':'')+'</button>'; };
-    return '<aside class="side"><div class="marca"><b>Central TMX</b><span>ADMIN<i>SÓ A TMX</i></span></div>' +
-      n('clientes','Clientes') + n('pedidos','Pedidos', aLiberar()) + n('suporte','Suporte', chAbertos()) + n('convites','Convites', esperando()) +
-      '<div class="side-pe"><span>'+esc(eu.nome)+' · Diretoria da TMX</span><a href="/">← Voltar pro TMX</a></div></aside>';
+    var n = function(id, txt, cont){ return '<button class="nav'+(tela===id?' on':'')+'" data-tela="'+id+'"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+ICON[id]+'</svg>'+txt+(cont ? '<span class="n">'+cont+'</span>' : '')+'</button>'; };
+    var sg = saudeGeral();
+    return '<aside class="side"><div class="marca"><div class="logo">TMX</div><div><b>Central TMX</b><span>ADMIN</span></div></div>' +
+      n('painel','Painel') +
+      '<div class="grupo">Clientes</div>' + n('clientes','Clientes') + n('uso','Uso e oportunidades') + n('receita','Receita') + n('cobranca','Cobrança e checkout') + n('pedidos','Pedidos', aLiberar()) + n('convites','Convites', esperando()) +
+      '<div class="grupo">Atendimento</div>' + n('suporte','Suporte', chAbertos()) +
+      '<div class="grupo">Operação</div>' + n('saude','Saúde e capacidade', sg.cls === 'cr' || sg.cls === 'av' ? '!' : '') + n('auditoria','Auditoria') +
+      '<div class="pe"><b>'+esc(eu.nome)+' · Diretoria da TMX</b>'+(P ? '<span>Atualizado '+esc(ha(P.geradoEm))+'</span>' : '')+'<a href="/">← Voltar pro TMX</a></div></aside>';
   }
-  function motorPill(e){
-    if(e.motor === 'ligado') return '<span class="pill p-ok">ligado</span>' + (e.quedas ? ' <span class="sub">'+e.quedas+' queda(s)</span>' : '');
-    if(e.motor === 'ligando') return '<span class="pill p-amar">ligando</span>';
-    return '<span class="pill p-cinza">desligado</span>';
+  function topo(t, p, acoes){ return '<div class="topo"><div><h1>'+t+'</h1><p>'+p+'</p></div><div class="acoes">'+(acoes || '')+'</div></div>'; }
+  var BTN_ATUALIZAR = '<button class="btn" data-acao="atualizar">↻ Atualizar</button>';
+  function stCliente(e){
+    if(e.tmx) return '<span class="st az">É a sua empresa</span>';
+    if(e.status !== 'ativa') return '<span class="st cr" title="'+esc(e.bloqueio_motivo || '')+'">Bloqueada</span>';
+    if(e.assinatura && e.assinatura.status === 'atrasada') return '<span class="st cr">Pagamento atrasado</span>';
+    if(pago(e)) return '<span class="st ok">Pagando</span>';
+    return '<span class="st ne">'+(e.plano === 'iniciante' ? 'Iniciante grátis' : e.plano === 'teste' ? 'Teste' : 'Sem cobrança')+'</span>';
   }
+  function stMotor(e){
+    var m = e.motor || {};
+    if(m.estado === 'ligado') return m.quedasHoje ? '<span class="st se">caiu '+m.quedasHoje+'× hoje</span>' : '<span class="st ok">ligado</span>';
+    if(m.estado === 'ligando') return '<span class="st av">ligando</span>';
+    return '<span class="st cr">desligado</span>';
+  }
+  // ── Painel ──
+  function precisaDeVoce(){
+    var it = [];   // [ordem, cls, ícone, título, detalhe, atributo do botão]
+    var s = P.saude;
+    ((P.chamados && P.chamados.esperando) || []).forEach(function(c){
+      var h = (Date.now() - c.desde) / 3600000;
+      it.push([h >= 4 ? 0 : 2, h >= 4 ? 'cr' : 'av', '💬', 'Chamado #' + c.id + ' · ' + c.empresaNome, 'esperando a TMX ' + ha(c.desde) + ': ' + c.assunto, 'data-ch="'+c.id+'"']);
+    });
+    PEDIDOS.filter(function(p){ return p.status === 'atrasada'; }).forEach(function(p){ it.push([1, 'cr', '💳', 'Pagamento atrasado · ' + (p.nome || p.email || 'cliente sem contato ainda'), (p.plano_nome || p.plano) + ' · o acesso continua até você decidir', 'data-tela="pedidos"']); });
+    empresas().forEach(function(e){
+      if(e.motor.estado === 'desligado') it.push([0, 'cr', '⚙️', 'Motor desligado · ' + e.nome, 'o TMX dela não abre; religa sozinho', 'data-tela="saude"']);
+      else if(e.motor.quedasHoje >= 2) it.push([3, 'se', '⚙️', 'Motor instável · ' + e.nome, 'caiu ' + e.motor.quedasHoje + ' vezes hoje', 'data-tela="saude"']);
+    });
+    var lib = aLiberar(); if(lib) it.push([4, 'av', '🆓', lib + (lib === 1 ? ' pedido' : ' pedidos') + ' de teste grátis', 'esperando você liberar', 'data-tela="pedidos"']);
+    if(s.disco && pct(s.disco.totalGB - s.disco.livreGB, s.disco.totalGB) >= 80) it.push([1, 'se', '💾', 'Disco com ' + pct(s.disco.totalGB - s.disco.livreGB, s.disco.totalGB) + '% usado', gb(s.disco.livreGB) + ' livres', 'data-tela="saude"']);
+    if(pct(s.memoria.usadoMB, s.memoria.limiteMB) >= 80) it.push([1, 'se', '🧠', 'Memória com ' + pct(s.memoria.usadoMB, s.memoria.limiteMB) + '% usada', 'hora de pensar no plano do Railway', 'data-tela="saude"']);
+    empresas().forEach(function(e){ var m = maiorUso(e); if(m && m.r >= 1) it.push([5, 'ok', '📈', e.nome + (m.r > 1 ? ' passou do limite' : ' chegou no limite'), m.l.rotulo + ': ' + fmtUso(m.l, m.l.usado) + ' de ' + fmtUso(m.l, m.l.limite) + ' · hora de oferecer o plano de cima', 'data-c="'+e.id+'"']); });
+    if(!P.saude.backups.remoto.ligado || (P.saude.backups.remoto.ultimo && Date.now() - P.saude.backups.remoto.ultimo > 30 * 3600000)) it.push([6, 'av', '☁️', 'Cópia externa do banco da TMX', P.saude.backups.remoto.ligado ? 'a última foi ' + ha(P.saude.backups.remoto.ultimo) : 'está desligada', 'data-tela="saude"']);
+    if(!P.cobranca.ligada) it.push([7, 'ne', '💳', 'Cobrança desligada', 'falta a chave da Pagar.me no Railway', 'data-tela="cobranca"']);
+    it.sort(function(a, b){ return a[0] - b[0]; });
+    if(!it.length) return '<div class="vazio-g">Nada pendente agora. ✓</div>';
+    var fundo = { cr:'var(--crit-bg)', se:'var(--serio-bg)', av:'var(--aviso-bg)', ok:'var(--ok-bg)', ne:'rgba(148,163,184,.14)' };
+    return '<ul class="lista">' + it.slice(0, 7).map(function(x){ return '<li><span class="ic" style="background:'+fundo[x[1]]+'">'+x[2]+'</span><span class="t">'+esc(x[3])+'<small>'+esc(x[4])+'</small></span><button class="btn peq" '+x[5]+'>Abrir</button></li>'; }).join('') + '</ul>' +
+      (it.length > 7 ? '<div class="mini" style="margin-top:6px">e mais ' + (it.length - 7) + '</div>' : '');
+  }
+  function clientesParaGraf(){
+    var lista = empresas().filter(function(e){ return e.resumo; });
+    var temDado = lista.some(function(e){ return e.resumo.uso.invest || e.resumo.uso.vendas || Object.keys(e.resumo.modulos).some(function(k){ return e.resumo.modulos[k]; }); });
+    var com = incluirTmx === null ? !temDado : incluirTmx;
+    if(com && P.tmx) lista = [tmxComoEmpresa()].concat(lista);
+    return { lista: lista, comTmx: com && !!P.tmx };
+  }
+  function somaModulos(lista){
+    var soma = {}; lista.forEach(function(e){ var m = (e.resumo && e.resumo.modulos) || {}; Object.keys(m).forEach(function(k){ soma[k] = (soma[k] || 0) + m[k]; }); });
+    return Object.keys(soma).filter(function(k){ return soma[k] > 0; }).map(function(k){ return [k, soma[k]]; }).sort(function(a, b){ return b[1] - a[1]; });
+  }
+  function seloTmx(g){ return g.comTmx ? ' <span class="st az" style="font-size:10.5px;padding:1px 7px">com a TMX</span>' : ''; }
+  function telaPainel(){
+    var h = new Date().getHours(), oi = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+    var R = P.receita, C = P.chamados, S = P.saude, sg = saudeGeral();
+    var ativos = empresas().filter(function(e){ return e.status === 'ativa'; }), pagantes = empresas().filter(pago).length, bloq = empresas().length - ativos.length;
+    var g = clientesParaGraf();
+    var invest = g.lista.map(function(e){ return [e.nome, (e.resumo && e.resumo.uso.invest) || 0]; }).sort(function(a, b){ return b[1] - a[1]; }).slice(0, 6);
+    var porPlano = P.cobranca.planos.map(function(p){ return [p.nome, p.empresas]; });
+    var discoUso = S.disco ? S.disco.totalGB - S.disco.livreGB : null;
+    return topo(oi + ', ' + esc(String(eu.nome || '').split(' ')[0]), 'Clientes, receita, atendimento e servidor num lugar só.', BTN_ATUALIZAR + '<button class="btn pri" data-tela="convites">+ Convidar cliente</button>') +
+      '<div class="grade g4">' +
+        '<div class="card kpi destaque"><small>Receita mensal</small><div class="v">'+brl(R.mensal)+'</div><div class="d">'+(R.pagantes ? R.pagantes + (R.pagantes === 1 ? ' cliente pagando' : ' clientes pagando') : P.cobranca.ligada ? 'nenhum cliente pagando ainda' : 'cobrança desligada')+'</div>'+spark(R.meses.map(function(m){ return m.valor; }))+'</div>' +
+        '<div class="card kpi"><small>Clientes ativos</small><div class="v">'+ativos.length+'</div><div class="d">'+pagantes+' pagando · '+(ativos.length - pagantes)+' sem cobrança'+(bloq ? ' · ' + bloq + ' bloqueado(s)' : '')+'</div></div>' +
+        '<div class="card kpi"><small>Chamados abertos</small><div class="v">'+C.abertos+'</div><div class="d">'+(C.primeiraRespostaMin != null ? '1ª resposta em ' + (C.primeiraRespostaMin >= 60 ? Math.round(C.primeiraRespostaMin / 6) / 10 + ' h' : C.primeiraRespostaMin + ' min') + ' na média' : C.semResposta ? C.semResposta + ' sem resposta' : 'nada esperando')+'</div></div>' +
+        '<div class="card kpi"><small>Servidor</small><div class="v menor"><span class="st '+sg.cls+'">'+esc(sg.txt)+'</span></div><div class="d">memória '+mb(S.memoria.usadoMB)+' de '+mb(S.memoria.limiteMB)+(discoUso != null ? ' · disco ' + gb(discoUso) + ' de ' + gb(S.disco.totalGB) : '')+'</div></div>' +
+      '</div>' +
+      '<div class="grade g21">' +
+        '<div class="card coluna"><div class="card-cab"><div><h2>Receita mensal</h2><div class="sub">Soma das assinaturas pagas em cada mês (o anual entra dividido por 12)</div></div></div>'+
+          (R.meses.some(function(m){ return m.valor; }) ? area(R.meses.map(function(m){ return m.valor; }), R.meses.map(function(m){ return m.mes; }), { titulo: 'Receita mensal', fmt: brl, fmtEixo: function(v){ return brlK(Math.round(v)); } }) : '<div class="vazio-g" style="padding:40px 8px">A linha aparece quando o primeiro cliente pagar.'+(P.cobranca.ligada ? '' : '<span>A cobrança ainda está desligada. <button class="btn peq" data-tela="cobranca">Ver como ligar</button></span>')+'</div>')+'</div>' +
+        '<div class="card"><div class="card-cab"><div><h2>Precisa de você</h2><div class="sub">Do mais urgente pro menos</div></div></div>'+precisaDeVoce()+'</div>' +
+      '</div>' +
+      '<div class="grade g3">' +
+        '<div class="card"><h2>Quem mais investe em anúncios'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Últimos 30 dias, nas contas ligadas</div>'+barrasH(invest, { titulo: 'Quem mais investe', fmt: brlK, vazio: 'Aparece quando os clientes ligarem as contas de anúncio.' })+'</div>' +
+        '<div class="card"><h2>Clientes por plano</h2><div class="sub" style="margin-bottom:10px">Sem contar a TMX</div>'+barrasH(porPlano, { titulo: 'Clientes por plano', vazio: 'Nenhum cliente ainda.' })+'</div>' +
+        '<div class="card"><h2>O que mais usam'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Itens criados ou mexidos em 30 dias, por módulo</div>'+barrasH(somaModulos(g.lista).slice(0, 6), { titulo: 'O que mais usam', vazio: 'Aparece quando os clientes começarem a usar.' })+'</div>' +
+      '</div>';
+  }
+  // ── Clientes ──
   function telaClientes(){
     var q = busca.toLowerCase();
-    var lista = EMPRESAS.filter(function(e){ return !q || (e.nome + ' ' + e.id + ' ' + (e.dono_email || '')).toLowerCase().indexOf(q) >= 0; });
-    var ativos = EMPRESAS.filter(function(e){ return e.status === 'ativa'; }).length, ligados = EMPRESAS.filter(function(e){ return e.motor === 'ligado'; }).length;
-    var linhas = '<tr><td class="nome"><b>TMX Digital</b><span class="sub">tmx · empresa nº 1</span></td><td class="sub">—</td><td>Interno</td><td class="sub">—</td><td><span class="pill p-ok">ligado</span></td><td><span class="pill p-ok">Ativa</span></td><td class="sub direita">é a sua empresa</td></tr>' +
-      lista.map(function(e){
-        return '<tr><td class="nome"><b>'+esc(e.nome)+'</b><span class="sub" title="Endereço público: app.centraltmx.com/e/'+esc(e.id)+'">'+esc(e.id)+' · desde '+data(e.criada)+'</span></td>' +
-          '<td style="overflow-wrap:anywhere">'+esc(e.dono_email || '—')+'</td>' +
-          '<td><select data-plano="'+esc(e.id)+'" aria-label="Plano da '+esc(e.nome)+'" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12.5px">' +
-            (PLANOS.length ? PLANOS : [{ id: e.plano || 'teste', nome: e.plano || 'Teste' }]).map(function(p){ return '<option value="'+esc(p.id)+'"'+((e.plano || 'teste') === p.id ? ' selected' : '')+'>'+esc(p.nome)+(p.mensal ? ' · R$ '+p.mensal : '')+'</option>'; }).join('') +
-            '</select><div class="sub">'+(e.origem === 'convite' ? 'veio por convite' : e.origem === 'teste' ? 'empresa de teste' : '')+'</div></td>' +
-          '<td class="num">'+(e.contas || 0)+'</td><td>'+motorPill(e)+'</td>' +
-          '<td>'+(e.status === 'ativa' ? '<span class="pill p-ok">Ativa</span>' : '<span class="pill p-verm" title="'+esc((e.bloqueio_motivo || '') + (e.bloqueado_por ? ' · por ' + e.bloqueado_por : ''))+'">Bloqueada</span><div class="sub">'+esc(e.bloqueio_motivo || '')+'</div>')+'</td>' +
-          '<td><div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><button class="btn peq" data-suporte="'+esc(e.id)+'">Entrar como suporte</button>' +
-          (e.status === 'ativa' ? '<button class="btn peq perigo" data-bloquear="'+esc(e.id)+'">Bloquear</button>' : '<button class="btn peq" data-desbloquear="'+esc(e.id)+'" style="color:var(--green);border-color:rgba(63,191,127,.35)">Desbloquear</button>') + '</div></td></tr>';
-      }).join('');
-    if(!lista.length && q) linhas += '<tr><td colspan="7" class="vazio">Nenhum cliente com “'+esc(busca)+'”.</td></tr>';
-    return '<div class="topo"><div><h1>Clientes</h1><p>Cada empresa tem banco, rotinas e endereço próprios. Bloquear fecha o app da equipe, mas o pixel e as vendas continuam gravando.</p></div>' +
-      '<div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button><button class="btn pri" data-tela="convites">+ Gerar convite</button></div></div>' +
-      '<div class="kpis"><div class="kpi"><small>Clientes</small><b>'+EMPRESAS.length+'</b><span>sem contar a TMX</span></div>' +
-      '<div class="kpi"><small>Ativos</small><b>'+ativos+'</b><span>podem entrar</span></div>' +
-      '<div class="kpi"><small>Motores ligados</small><b>'+ligados+'</b><span>de '+EMPRESAS.length+'</span></div>' +
-      '<div class="kpi"><small>Convites esperando</small><b>'+esperando()+'</b><span>ainda não usados</span></div></div>' +
-      '<div class="filtros"><input class="busca" id="busca" placeholder="Buscar empresa, código ou e-mail" value="'+esc(busca)+'"></div>' +
-      '<div class="tab-wrap"><table style="min-width:860px"><thead><tr><th>Empresa</th><th>Responsável</th><th>Plano</th><th>Contas</th><th>Motor</th><th>Situação</th><th class="direita">Ações</th></tr></thead><tbody>'+linhas+'</tbody></table></div>' +
-      (EMPRESAS.length ? '' : '<p class="sub" style="padding:12px 8px">Ainda não tem nenhum cliente. Gere um convite e mande pro primeiro.</p>');
+    var filtros = [['todos','Todos', function(){ return true; }], ['pagando','Pagando', pago], ['teste','Sem cobrança', function(e){ return !pago(e) && e.status === 'ativa'; }],
+      ['atencao','Precisam de atenção', function(e){ return e.status !== 'ativa' || e.motor.estado !== 'ligado' || e.motor.quedasHoje || perto(e).length || (e.assinatura && e.assinatura.status === 'atrasada') || parado(e); }],
+      ['bloqueadas','Bloqueadas', function(e){ return e.status !== 'ativa'; }]];
+    var f = filtros.find(function(x){ return x[0] === filtroCli; }) || filtros[0];
+    var lista = empresas().filter(function(e){ return f[2](e) && (!q || (e.nome + ' ' + e.id + ' ' + (e.dono_email || '')).toLowerCase().indexOf(q) >= 0); });
+    var chips = filtros.map(function(x){ return '<button class="chip'+(filtroCli===x[0]?' on':'')+'" data-fcli="'+x[0]+'">'+x[1]+' · '+empresas().filter(x[2]).length+'</button>'; }).join('');
+    var linha = function(e){
+      var r = e.resumo;
+      return '<tr class="clica" tabindex="0" data-c="'+esc(e.id)+'"><td class="nm"><b>'+esc(e.nome)+'</b><small>'+esc(e.id)+' · '+(e.tmx ? 'empresa nº 1' : 'entrou ' + esc(ha(r && r.ultimoAcesso)))+'</small></td>' +
+        '<td>'+esc(e.planoNome)+'<div class="mini">'+(e.tmx ? 'sem cobrança' : e.mensal ? brl(e.mensal) + '/mês' : 'sem cobrança')+'</div></td>' +
+        '<td>'+(r ? spark(r.vendasSemanas, 'sp') : '<span class="mini">—</span>')+'</td>' +
+        '<td>'+(r ? '<div class="mini">'+brlK(r.uso.invest)+' em anúncios<br>'+r.uso.vendas+' vendas no mês</div>' : '<span class="mini">sem resposta do motor</span>')+'</td>' +
+        '<td class="num">'+(r ? r.uso.pessoas : '—')+'</td><td>'+stMotor(e)+'</td><td>'+stCliente(e)+'</td>' +
+        '<td class="dir">'+(e.tmx ? '' : '<button class="btn peq" data-suporte="'+esc(e.id)+'">Entrar como suporte</button>')+'</td></tr>';
+    };
+    var mostraTmx = P.tmx && filtroCli === 'todos' && (!q || 'tmx digital'.indexOf(q) >= 0);
+    var linhas = (mostraTmx ? linha(tmxComoEmpresa()) : '') + lista.map(linha).join('');
+    if(!linhas) linhas = '<tr><td colspan="8" class="vazio">'+(empresas().length ? 'Nenhum cliente nesse filtro.' : 'Ainda não tem nenhum cliente. Gere um convite e mande pro primeiro.')+'</td></tr>';
+    return topo('Clientes', 'Cada empresa tem banco, rotinas e endereço próprios. Clique numa linha pra ver tudo dela. Bloquear fecha o app da equipe, mas o pixel e as vendas continuam gravando.', BTN_ATUALIZAR + '<button class="btn pri" data-tela="convites">+ Gerar convite</button>') +
+      '<div class="filtros">'+chips+'<input class="busca" id="busca" placeholder="Buscar empresa, código ou e-mail" value="'+esc(busca)+'"></div>' +
+      '<div class="tab"><table style="min-width:980px"><thead><tr><th>Empresa</th><th>Plano</th><th>Vendas (12 semanas)</th><th>Uso (30 dias)</th><th>Pessoas</th><th>Motor</th><th>Situação</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
   }
-  function situacaoPill(c){
-    return c.situacao === 'usado' ? '<span class="pill p-ok">Usado</span>' : c.situacao === 'esperando' ? '<span class="pill p-amar">Esperando</span>' :
-           c.situacao === 'cancelado' ? '<span class="pill p-cinza">Cancelado</span>' : '<span class="pill p-cinza">Vencido</span>';
+  function gaveta(){
+    var e = aberto === 'tmx' ? tmxComoEmpresa() : empDe(aberto); if(!e) return '';
+    var r = e.resumo;
+    var linhaUso = function(l){
+      var v = l.usado || 0, ra = l.limite ? v / l.limite : 0, p = Math.min(100, Math.round(ra * 100)), cls = l.limite && ra > 1 ? 'cr' : l.limite && ra >= .8 ? 'av' : '';
+      return '<div class="linha-uso"><span>'+esc(l.rotulo)+'</span><span class="mini num">'+fmtUso(l, v)+(l.limite ? ' de ' + fmtUso(l, l.limite) : ' · sem limite')+'</span><div class="barra '+cls+'"><i style="width:'+(l.limite ? p : 0)+'%"></i></div></div>';
+    };
+    var modulos = r ? Object.keys(r.modulos).filter(function(k){ return r.modulos[k] > 0; }).map(function(k){ return [k, r.modulos[k]]; }).sort(function(a, b){ return b[1] - a[1]; }) : [];
+    var chs = CHAMADOS.filter(function(c){ return c.empresa === e.id; }).slice(0, 5);
+    var a = e.assinatura;
+    var acoes = e.tmx ? '' : '<div class="acoes"><button class="btn pri" data-suporte="'+esc(e.id)+'">Entrar como suporte</button>' +
+      '<label class="mini" style="display:flex;gap:6px;align-items:center">Plano <select class="sel" data-plano="'+esc(e.id)+'" aria-label="Plano da '+esc(e.nome)+'">' +
+        (PLANOS.length ? PLANOS : [{ id: e.plano, nome: e.planoNome }]).map(function(p){ return '<option value="'+esc(p.id)+'"'+(e.plano === p.id ? ' selected' : '')+'>'+esc(p.nome)+(p.mensal ? ' · R$ ' + p.mensal : '')+'</option>'; }).join('') + '</select></label>' +
+      (e.status === 'ativa' ? '<button class="btn perigo" data-bloquear="'+esc(e.id)+'">Bloquear</button>' : '<button class="btn verde" data-desbloquear="'+esc(e.id)+'">Desbloquear</button>') + '</div>';
+    var anim = gavetaVista !== aberto; gavetaVista = aberto;
+    return '<div class="fundo" data-fechar="1"><aside class="gaveta'+(anim ? ' anim' : '')+'" role="dialog" aria-modal="true" aria-label="'+esc(e.nome)+'">' +
+      '<div class="cab"><div><h2 class="nome">'+esc(e.nome)+'</h2><div class="mini">'+esc(e.id)+(e.criada ? ' · desde ' + data(e.criada) : '')+(e.dono_email ? ' · ' + esc(e.dono_email) : '')+(e.origem === 'convite' ? ' · veio por convite' : e.origem === 'teste' ? ' · empresa de teste' : '')+'</div></div><button class="x" data-fechar="1" aria-label="Fechar">×</button></div>' +
+      '<div class="tags">'+stCliente(e)+' '+stMotor(e)+(e.status !== 'ativa' && e.bloqueio_motivo ? ' <span class="mini">motivo: '+esc(e.bloqueio_motivo)+'</span>' : '')+'</div>' + acoes +
+      (r ? '' : '<div class="nota av">O motor desta empresa não respondeu agora ('+esc(e.erroResumo || 'sem resposta')+'). Os números voltam quando ele responder.</div>') +
+      (r ? '<div class="card"><h2>Vendas aprovadas por semana</h2><div class="sub" style="margin-bottom:8px">Últimas 12 semanas</div>'+(r.vendasSemanas.some(function(v){ return v; }) ? area(r.vendasSemanas, semanas(), { titulo: 'Vendas por semana' }) : '<div class="vazio-g">Nenhuma venda aprovada nessas 12 semanas.</div>')+'</div>' : '') +
+      (r && !e.tmx ? '<div class="card"><h2>Uso do plano '+esc(e.planoNome)+'</h2><div class="sub" style="margin-bottom:12px">O mesmo que o cliente vê em Configurações › Meu plano</div>'+e.limites.map(linhaUso).join('')+'</div>' : '') +
+      (r ? '<div class="card"><h2>Projetos ('+r.projetos.length+')</h2><div class="tags" style="margin-top:10px">'+(r.projetos.length ? r.projetos.map(function(p){ return '<span class="tag">'+esc(p)+'</span>'; }).join('') : '<span class="mini">Nenhum projeto ainda.</span>')+'</div></div>' : '') +
+      (r ? '<div class="card"><h2>O que mais usa</h2><div class="sub" style="margin-bottom:10px">Itens criados ou mexidos em 30 dias</div>'+barrasH(modulos, { titulo: 'Módulos', vazio: 'Ninguém mexeu em nada nos últimos 30 dias.' })+'</div>' : '') +
+      (!e.tmx ? '<div class="card"><h2>Assinatura</h2>'+(a ? '<div class="tres"><div><small class="mini">Situação</small><b>'+esc(a.status)+'</b></div><div><small class="mini">Valor por mês</small><b>'+brl(a.valorMes)+'</b></div><div><small class="mini">'+(a.ciclo === 'anual' ? 'Anual · pago em' : 'Mensal · pago em')+'</small><b>'+data(a.pago_em)+'</b></div></div>' : '<div class="sub">Sem assinatura na Pagar.me: '+(e.origem === 'convite' ? 'entrou por convite.' : 'empresa criada pela Central.')+'</div>')+'</div>' : '') +
+      (r ? '<div class="card"><h2>Motor desta empresa</h2><div class="tres"><div><small class="mini">Memória</small><b>'+mb(r.memMB)+'</b></div><div><small class="mini">Banco</small><b>'+r.bancoMB.toLocaleString('pt-BR')+' MB</b></div><div><small class="mini">Quedas hoje</small><b>'+(e.motor.quedasHoje || 0)+'</b></div></div><div class="mini" style="margin-top:10px">No ar há '+duracao(r.noArSeg)+' · última cópia do banco '+esc(ha(r.ultimoBackup))+'</div></div>' : '') +
+      (!e.tmx ? '<div class="card"><h2>Chamados</h2>'+(chs.length ? '<ul class="lista">'+chs.map(function(c){ return '<li><span class="t">#'+c.id+' · '+esc(c.assunto)+'<small>'+esc(c.tipo || '')+' · '+data(c.atualizado, true)+'</small></span>'+stCh(c.status)+'<button class="btn peq" data-ch="'+c.id+'">Abrir</button></li>'; }).join('')+'</ul>' : '<div class="sub">Nenhum chamado.</div>')+'</div>' : '') +
+    '</aside></div>';
+  }
+  // ── Uso e oportunidades ──
+  function telaUso(){
+    var g = clientesParaGraf();
+    var vendem = g.lista.map(function(e){ return [e.nome, (e.resumo && e.resumo.uso.vendas) || 0]; }).sort(function(a, b){ return b[1] - a[1]; }).slice(0, 8);
+    var investem = g.lista.map(function(e){ return [e.nome, (e.resumo && e.resumo.uso.invest) || 0]; }).sort(function(a, b){ return b[1] - a[1]; }).slice(0, 8);
+    var pertos = empresas().map(function(e){ return { e: e, l: perto(e) }; }).filter(function(x){ return x.l.length; });
+    var parados = empresas().filter(parado);
+    return topo('Uso e oportunidades', 'O que os clientes mais usam, quem mais vende e quem está perto do limite do plano (é aí que dá pra oferecer o plano de cima).', BTN_ATUALIZAR +
+        '<label class="chip'+(g.comTmx ? ' on' : '')+'" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="com-tmx"'+(g.comTmx ? ' checked' : '')+'> Incluir a TMX</label>') +
+      (g.comTmx && incluirTmx === null ? '<div class="filtros"><span class="nota az">Os clientes ainda não têm uso, então os gráficos mostram a TMX junto. Desmarque “Incluir a TMX” pra ver só os clientes.</span></div>' : '') +
+      '<div class="grade g2">' +
+        '<div class="card"><h2>Módulos mais usados'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Itens criados ou mexidos em 30 dias, somando todos</div>'+barrasH(somaModulos(g.lista), { titulo: 'Módulos mais usados', vazio: 'Aparece quando os clientes começarem a usar.' })+'</div>' +
+        '<div class="card"><h2>Quem mais vende pelo TMX'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Vendas aprovadas no mês</div>'+barrasH(vendem, { titulo: 'Quem mais vende', vazio: 'Nenhuma venda aprovada no mês.' })+'</div>' +
+      '</div>' +
+      '<div class="grade g2">' +
+        '<div class="card"><h2>Quem mais investe em anúncios'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Últimos 30 dias</div>'+barrasH(investem, { titulo: 'Quem mais investe', fmt: brlK, vazio: 'Aparece quando os clientes ligarem as contas de anúncio.' })+'</div>' +
+        '<div class="card"><div class="card-cab"><div><h2>Perto do limite do plano</h2><div class="sub">80% ou mais de algum limite. Cada um é uma conversa de upgrade; nada trava, só avisa.</div></div><span class="st '+(pertos.length ? 'av' : 'ok')+'">'+pertos.length+'</span></div>' +
+          (pertos.length ? '<ul class="lista">'+pertos.map(function(x){ return '<li><span class="ic" style="background:var(--aviso-bg)">📈</span><span class="t">'+esc(x.e.nome)+' · '+esc(x.e.planoNome)+'<small>'+x.l.map(function(l){ return esc(l.rotulo) + ' ' + fmtUso(l, l.usado) + ' de ' + fmtUso(l, l.limite); }).join(' · ')+'</small></span><button class="btn peq" data-c="'+esc(x.e.id)+'">Ver</button></li>'; }).join('')+'</ul>' : '<div class="vazio-g">Ninguém perto do limite.</div>')+'</div>' +
+      '</div>' +
+      '<div class="card solto"><div class="card-cab"><div><h2>Clientes parados</h2><div class="sub">Ativos, mas ninguém da equipe abre o TMX há 7 dias ou mais: risco de cancelar.</div></div><span class="st '+(parados.length ? 'se' : 'ok')+'">'+parados.length+'</span></div>' +
+        (parados.length ? '<ul class="lista">'+parados.map(function(e){ return '<li><span class="ic" style="background:var(--serio-bg)">💤</span><span class="t">'+esc(e.nome)+'<small>último acesso '+esc(ha(e.resumo && e.resumo.ultimoAcesso))+' · '+esc(e.planoNome)+'</small></span><button class="btn peq" data-c="'+esc(e.id)+'">Ver</button></li>'; }).join('')+'</ul>' : '<div class="vazio-g">Ninguém parado.</div>')+'</div>';
+  }
+  // ── Receita ──
+  function telaReceita(){
+    var R = P.receita, F = R.funil30;
+    var ass = PEDIDOS.filter(function(p){ return p.status === 'paga' || p.status === 'atrasada' || p.status === 'cancelada'; });
+    var linhas = ass.map(function(p){ var st = STP[p.status] || [p.status, 'ne']; return '<tr><td><b>'+esc(p.nome || '—')+'</b><div class="mini">'+esc(p.email || '')+'</div></td><td>'+esc(p.plano_nome || p.plano)+'<div class="mini">'+(p.ciclo === 'anual' ? 'anual' : 'mensal')+'</div></td><td class="mini num">'+data(p.pago_em)+'</td><td><span class="st '+st[1]+'">'+esc(st[0])+'</span></td><td>'+(p.empresa ? esc((empDe(p.empresa) || {}).nome || p.empresa) : '<span class="mini">—</span>')+'</td></tr>'; }).join('') ||
+      '<tr><td colspan="5" class="vazio">Nenhuma assinatura paga ainda.</td></tr>';
+    return topo('Receita', 'Quanto as assinaturas trazem por mês, quem paga, quem atrasou e quem saiu.', BTN_ATUALIZAR) +
+      (P.cobranca.ligada ? '' : '<div class="filtros"><span class="nota av">A cobrança pela Pagar.me ainda está desligada. <button class="btn peq" data-tela="cobranca">Ver como ligar</button></span></div>') +
+      '<div class="grade g4">' +
+        '<div class="card kpi destaque"><small>Receita mensal</small><div class="v">'+brl(R.mensal)+'</div><div class="d">'+R.pagantes+' assinatura(s) pagas</div></div>' +
+        '<div class="card kpi"><small>Ticket médio</small><div class="v">'+brl(R.pagantes ? Math.round(R.mensal / R.pagantes) : 0)+'</div><div class="d">por cliente pagante</div></div>' +
+        '<div class="card kpi"><small>Atrasadas</small><div class="v">'+R.atrasadas+'</div><div class="d">'+(R.atrasadas ? brl(R.emRisco) + ' por mês em risco' : 'nenhuma')+'</div></div>' +
+        '<div class="card kpi"><small>Neste mês</small><div class="v">+'+R.novasMes+'</div><div class="d">'+R.novasMes+' nova(s) · '+R.canceladasMes+' cancelada(s)</div></div>' +
+      '</div>' +
+      '<div class="grade g21">' +
+        '<div class="card"><h2>Receita mensal</h2><div class="sub" style="margin-bottom:8px">Últimos 6 meses</div>'+(R.meses.some(function(m){ return m.valor; }) ? area(R.meses.map(function(m){ return m.valor; }), R.meses.map(function(m){ return m.mes; }), { titulo: 'Receita', fmt: brl, fmtEixo: function(v){ return brlK(Math.round(v)); } }) : '<div class="vazio-g" style="padding:56px 8px">Sem receita nesses 6 meses.</div>')+'</div>' +
+        '<div class="card"><h2>Do pedido ao cliente ativo</h2><div class="sub" style="margin-bottom:10px">Últimos 30 dias</div>'+barrasH([['Pediram', F.pediram], ['Pagaram', F.pagaram], ['Se cadastraram', F.cadastraram], ['Ativos hoje', F.ativos]], { titulo: 'Do pedido ao cliente ativo', vazio: 'Nenhum pedido nos últimos 30 dias.' })+'</div>' +
+      '</div>' +
+      '<div class="tab"><table style="min-width:700px"><thead><tr><th>Cliente</th><th>Plano</th><th>Pago em</th><th>Situação</th><th>Empresa</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+  }
+  // ── Cobrança e checkout ──
+  function telaCobranca(){
+    var C = P.cobranca;
+    var amb = C.ambiente === 'teste' ? '<span class="st av">Teste</span>' : C.ambiente === 'producao' ? '<span class="st ok">De verdade</span>' : '—';
+    var temLink = !!C.linkCompra;
+    var linhas = C.planos.map(function(p){
+      var link = temLink && p.venda && !p.gratis ? '<span class="acoes" style="flex-wrap:nowrap"><button class="btn peq" data-copiar="'+esc(C.linkCompra.replace('{plano}', p.id))+'">Mensal</button><button class="btn peq" data-copiar="'+esc(C.linkCompra.replace('{plano}', p.id) + (C.linkCompra.indexOf('?') >= 0 ? '&' : '?') + 'ciclo=anual')+'">Anual</button></span>' : '<span class="mini">—</span>';
+      return '<tr><td><b>'+esc(p.nome)+'</b><div class="mini">'+esc(p.faixa)+'</div></td><td class="num">'+(p.gratis ? 'grátis' : p.mensal ? brl(p.mensal) : '—')+'</td><td class="num">'+(p.gratis || !p.mensal ? '—' : brl(p.mensal * 10))+'</td>' +
+        '<td>'+(p.venda ? '<span class="st ok">na página</span>' : '<span class="st ne">fora da página</span>')+'</td><td class="num">'+p.empresas+'</td>'+(temLink ? '<td>'+link+'</td>' : '')+'</tr>';
+    }).join('');
+    var avisos = PEDIDOS.filter(function(p){ return p.ultimo_evento; }).slice(0, 6).map(function(p){
+      return '<li><span class="ic" style="background:rgba(255,255,255,.05)">'+(/fail|recus/.test(p.ultimo_evento) ? '⚠️' : /cancel|expir/.test(p.ultimo_evento) ? '🚫' : '✅')+'</span><span class="t">'+esc(p.ultimo_evento)+'<small>'+esc((p.nome || p.email || '') + ' · ' + (p.plano_nome || p.plano))+'</small></span></li>';
+    }).join('');
+    return topo('Cobrança e checkout', 'Como os clientes pagam o TMX: a Pagar.me, os planos e preços, a página de planos e o que chegou dela.', BTN_ATUALIZAR) +
+      '<div class="grade g4">' +
+        '<div class="card kpi"><small>Pagar.me</small><div class="v menor">'+(C.ligada ? '<span class="st ok">Ligada</span>' : '<span class="st ne">Desligada</span>')+'</div><div class="d">'+(C.ligada ? 'a chave está no Railway' : 'falta a chave no Railway')+'</div></div>' +
+        '<div class="card kpi"><small>Ambiente</small><div class="v menor">'+amb+'</div><div class="d">chave sk_test_ = teste · sk_live_ = de verdade</div></div>' +
+        '<div class="card kpi"><small>Último aviso da Pagar.me</small><div class="v menor">'+(C.ultimoAviso ? esc(ha(C.ultimoAviso.em)) : 'nenhum ainda')+'</div><div class="d">'+(C.ultimoAviso ? esc(C.ultimoAviso.evento) : 'aparece aqui assim que ela mandar o 1º')+'</div></div>' +
+        '<div class="card kpi destaque"><small>Receita mensal</small><div class="v">'+brl(P.receita.mensal)+'</div><div class="d">'+P.receita.novasMes+' nova(s) neste mês · '+P.receita.atrasadas+' atrasada(s)</div></div>' +
+      '</div>' +
+      '<div class="grade g2">' +
+        '<div class="card"><h2>Ligar a cobrança</h2><div class="sub" style="margin-bottom:12px">Uma vez só. A chave você mesmo põe no Railway: a Central nunca pede nem mostra a chave.</div><ol class="passos">' +
+          '<li><b>Pegue a chave secreta na Pagar.me.</b> <span>No painel dela, na parte de chaves de API. Comece pela de teste (sk_test_…) e troque pela de produção (sk_live_…) quando der certo.</span></li>' +
+          '<li><b>Ponha no Railway.</b> <span>Serviço scalelab-web › Variables › nova variável PAGARME_API_KEY com a chave. O Railway reinicia sozinho.</span></li>' +
+          '<li><b>Cadastre o aviso na Pagar.me.</b> <span>No painel dela, na parte de Webhooks, cole este endereço e marque os eventos de assinatura, cobrança e fatura:</span><div class="copia"><code>'+esc(C.webhook)+'</code><button class="btn peq" data-copiar="'+esc(C.webhook)+'">Copiar</button></div></li>' +
+          '<li><b>Senha do aviso (opcional).</b> <span>'+(C.senhaAviso ? 'Ligada: a Pagar.me precisa mandar a senha que está em PAGARME_WEBHOOK_SENHA.' : 'Desligada. Pra ligar, crie PAGARME_WEBHOOK_SENHA no Railway e ponha a mesma senha no aviso, na Pagar.me.')+'</span></li>' +
+        '</ol>'+(C.ligada ? '<div class="nota az" style="margin-top:12px">Ligada'+(C.ambiente === 'teste' ? ' em modo de teste: os pagamentos daqui não são de verdade.' : '.')+'</div>' : '')+'</div>' +
+        '<div class="card"><h2>Como o cliente compra</h2><div class="sub" style="margin-bottom:12px">O caminho de quem assina, do começo ao fim</div><ol class="passos">' +
+          '<li><b>Escolhe o plano</b> <span>na página de planos (mensal ou anual) e clica em Assinar. Não preenche nada ali.</span><div class="copia"><code>'+esc(C.paginaPlanos)+'</code><button class="btn peq" data-copiar="'+esc(C.paginaPlanos)+'">Copiar</button><a class="btn peq" href="'+esc(C.paginaPlanos)+'" target="_blank" rel="noopener">Abrir</a></div></li>' +
+          '<li><b>Cai direto no checkout da Pagar.me</b> <span>e põe ali nome, e-mail, telefone e cartão.</span></li>' +
+          '<li><b>Comprou, recebe as instruções</b> <span>o TMX confere o pagamento com a Pagar.me e manda o link “Criar minha conta” pro e-mail e o WhatsApp que ele pôs no checkout.</span></li>' +
+          '<li><b>Iniciante (grátis)</b> <span>não tem checkout: preenche um formulário e vira um pedido que você libera em Pedidos.</span></li>' +
+        '</ol>'+(temLink ? '<div class="nota az" style="margin-top:12px">Pra vender por uma page sua, anúncio ou WhatsApp: cada plano tem o link de compra pronto na tabela abaixo (mensal e anual). Põe no botão e ele cai direto no checkout.'+(C.ligada ? '' : ' Enquanto a cobrança estiver desligada, o link leva pra página de planos.')+'</div>' : '')+'</div>' +
+      '</div>' +
+      '<div class="card solto"><div class="card-cab"><div><h2>Planos e preços</h2><div class="sub">O que aparece na página de planos e o que a Pagar.me cobra. O anual é 10 vezes o mensal.</div></div></div>' +
+        '<div style="overflow-x:auto"><table style="min-width:'+(temLink ? 820 : 640)+'px"><thead><tr><th>Plano</th><th>Mensal</th><th>Anual</th><th>Página</th><th>Clientes</th>'+(temLink ? '<th>Link de compra</th>' : '')+'</tr></thead><tbody>'+linhas+'</tbody></table></div>' +
+        '<div class="nota az" style="margin-top:12px">Mudar preço e limites por aqui chega na próxima parte. Por enquanto eles ficam no servidor (PLANOS_TMX).</div></div>' +
+      '<div class="grade g21">' +
+        '<div class="card"><div class="card-cab"><div><h2>Página de planos</h2><div class="sub">Como o cliente vê agora</div></div><a class="btn peq" href="/planos" target="_blank" rel="noopener">Abrir</a></div><div class="previa"><iframe src="/planos" title="Prévia da página de planos" loading="lazy" tabindex="-1"></iframe></div></div>' +
+        '<div class="card"><h2>Últimos avisos da Pagar.me</h2><div class="sub" style="margin-bottom:4px">Pagou, assinou, recusou, cancelou</div>'+(avisos ? '<ul class="lista">'+avisos+'</ul>' : '<div class="vazio-g">Nenhum aviso ainda.</div>')+'</div>' +
+      '</div>';
+  }
+  // ── Convites ──
+  function situacaoConvite(c){
+    return c.situacao === 'usado' ? '<span class="st ok">Usado</span>' : c.situacao === 'esperando' ? '<span class="st av">Esperando</span>' :
+           c.situacao === 'cancelado' ? '<span class="st ne">Cancelado</span>' : '<span class="st ne">Vencido</span>';
   }
   function telaConvites(){
-    var nomes = {}; EMPRESAS.forEach(function(e){ nomes[e.id] = e.nome; });
     var res = '';
     if(ultimoLink){
       var msg = 'Oi! Aqui está o seu link pra criar a conta no TMX: ' + ultimoLink.link;
       res = '<div class="resultado" role="status"><b>Convite pronto. Vale uma vez e vence em '+esc(data(Date.parse(ultimoLink.expira), true))+'.</b>' +
-        '<code id="link">'+esc(ultimoLink.link)+'</code><div class="acoes"><button class="btn pri" data-acao="copiar">Copiar link</button>' +
+        '<code>'+esc(ultimoLink.link)+'</code><div class="acoes"><button class="btn pri" data-copiar="'+esc(ultimoLink.link)+'">Copiar link</button>' +
         '<a class="btn" href="https://wa.me/?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">Mandar no WhatsApp</a></div>' +
-        '<span class="sub">O link só aparece agora. Se perder, cancele este e gere outro.</span></div>';
+        '<span class="mini">O link só aparece agora. Se perder, cancele este e gere outro.</span></div>';
     }
     var linhas = CONVITES.map(function(c){
       var pl = (PLANOS.find(function(x){ return x.id === c.plano; }) || {}).nome || c.plano || 'Teste';
-      return '<tr><td>'+situacaoPill(c)+'</td><td>'+esc(c.email || '—')+'<div class="sub">'+esc(pl)+'</div></td><td class="sub">'+esc(c.obs || '')+'</td><td class="sub num">'+data(c.criado, true)+'</td>' +
-        '<td class="sub num">'+(c.situacao === 'usado' ? 'usado em ' + data(c.usado_em, true) : data(c.expira, true))+'</td>' +
-        '<td>'+(c.empresa ? esc(nomes[c.empresa] || c.empresa) : '<span class="sub">—</span>')+'</td>' +
-        '<td class="direita">'+(c.situacao === 'esperando' ? '<button class="btn peq perigo" data-cancelar="'+esc(c.id)+'">Cancelar</button>' : '')+'</td></tr>';
+      return '<tr><td>'+situacaoConvite(c)+'</td><td>'+esc(c.email || '—')+'<div class="mini">'+esc(pl)+'</div></td><td class="mini">'+esc(c.obs || '')+'</td><td class="mini num">'+data(c.criado, true)+'</td>' +
+        '<td class="mini num">'+(c.situacao === 'usado' ? 'usado em ' + data(c.usado_em, true) : data(c.expira, true))+'</td>' +
+        '<td>'+(c.empresa ? esc((empDe(c.empresa) || {}).nome || c.empresa) : '<span class="mini">—</span>')+'</td>' +
+        '<td class="dir">'+(c.situacao === 'esperando' ? '<button class="btn peq perigo" data-cancelar="'+esc(c.id)+'">Cancelar</button>' : '')+'</td></tr>';
     }).join('') || '<tr><td colspan="7" class="vazio">Nenhum convite ainda.</td></tr>';
-    return '<div class="topo"><div><h1>Convites</h1><p>O cliente abre o link, cria o acesso, dá o nome da empresa e dos projetos e já entra no TMX dele.</p></div></div>' +
-      '<section class="cartao"><h2>Gerar convite</h2><p>Se souber o e-mail do cliente, ele já vem preenchido no cadastro (e ele pode trocar).</p>' +
+    return topo('Convites', 'O cliente abre o link, cria o acesso, dá o nome da empresa e dos projetos e já entra no TMX dele.') +
+      '<section class="card solto"><h2>Gerar convite</h2><div class="sub" style="margin-bottom:12px">Se souber o e-mail do cliente, ele já vem preenchido no cadastro (e ele pode trocar).</div>' +
       '<div class="form"><label class="campo">E-mail do cliente (opcional)<input id="cv-email" type="email" placeholder="cliente@empresa.com" autocomplete="off"></label>' +
       '<label class="campo">Anotação (opcional)<input id="cv-obs" placeholder="Ex.: Márcia, Clínica Bem Estar" maxlength="200"></label>' +
       '<label class="campo">Plano<select id="cv-plano">' + (PLANOS.length ? PLANOS : [{ id: 'teste', nome: 'Teste' }]).map(function(p){ return '<option value="'+esc(p.id)+'">'+esc(p.nome)+(p.id === 'iniciante' ? ' (grátis 30 dias)' : p.mensal ? ' · R$ ' + p.mensal : '')+'</option>'; }).join('') + '</select></label>' +
       '<label class="campo">Vale por<select id="cv-dias"><option value="3">3 dias</option><option value="7" selected>7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option></select></label>' +
-      '<button class="btn pri" data-acao="gerar" id="cv-gerar">Gerar convite</button></div>' +
+      '<button class="btn pri" data-acao="gerar">Gerar convite</button></div>' +
       (erroConvite ? '<div class="erro" role="alert">'+esc(erroConvite)+'</div>' : '') + res + '</section>' +
-      '<div class="tab-wrap"><table><thead><tr><th>Situação</th><th>E-mail</th><th>Anotação</th><th>Criado</th><th>Vence</th><th>Empresa criada</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+      '<div class="tab"><table style="min-width:820px"><thead><tr><th>Situação</th><th>E-mail</th><th>Anotação</th><th>Criado</th><th>Vence</th><th>Empresa criada</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
   }
-  var STP = { pedido:['Teste grátis a liberar','p-amar'], aguardando:['Esperando o pagamento','p-cinza'], paga:['Paga','p-ok'], atrasada:['Atrasada','p-verm'], cancelada:['Cancelada','p-cinza'] };
+  // ── Pedidos ──
+  var STP = { pedido:['Teste grátis a liberar','av'], aguardando:['Esperando o pagamento','ne'], paga:['Paga','ok'], atrasada:['Atrasada','cr'], cancelada:['Cancelada','ne'] };
   function telaPedidos(){
     var filtros = [['liberar','Teste grátis a liberar', function(p){ return p.status === 'pedido' && !convDoPedido(p); }],
       ['pagas','Pagas', function(p){ return p.status === 'paga'; }], ['aguardando','Esperando pagamento', function(p){ return p.status === 'aguardando'; }],
       ['problema','Atrasadas e canceladas', function(p){ return p.status === 'atrasada' || p.status === 'cancelada'; }], ['todos','Todos', function(){ return true; }]];
     var atual = filtros.find(function(f){ return f[0] === filtroPed; }) || filtros[0];
-    var chips = filtros.map(function(f){ var n = PEDIDOS.filter(f[2]).length;
-      return '<button class="btn peq" style="'+(filtroPed===f[0]?'background:var(--blue-bg);border-color:rgba(27,156,250,.45);color:var(--blue)':'')+'" data-fped="'+f[0]+'">'+f[1]+' · '+n+'</button>'; }).join('');
-    var nomes = {}; EMPRESAS.forEach(function(e){ nomes[e.id] = e.nome; });
+    var chips = filtros.map(function(f){ return '<button class="chip'+(filtroPed===f[0]?' on':'')+'" data-fped="'+f[0]+'">'+f[1]+' · '+PEDIDOS.filter(f[2]).length+'</button>'; }).join('');
     var linhas = PEDIDOS.filter(atual[2]).map(function(p){
-      var st = STP[p.status] || [p.status, 'p-cinza'], cv = convDoPedido(p);
-      var situacao = p.status === 'pedido' && cv ? '<span class="pill p-azul">Convite gerado</span><div class="sub">'+esc(cv.situacao === 'usado' ? 'já se cadastrou' : cv.situacao)+'</div>' : '<span class="pill '+st[1]+'">'+esc(st[0])+'</span>';
-      var empresa = p.empresa ? esc(nomes[p.empresa] || p.empresa) : (p.convite ? '<span class="sub">link de cadastro pronto, ainda não usou</span>' : '<span class="sub">—</span>');
+      var st = STP[p.status] || [p.status, 'ne'], cv = convDoPedido(p);
+      var situacao = p.status === 'pedido' && cv ? '<span class="st az">Convite gerado</span><div class="mini">'+esc(cv.situacao === 'usado' ? 'já se cadastrou' : cv.situacao)+'</div>' : '<span class="st '+st[1]+'">'+esc(st[0])+'</span>';
+      var empresa = p.empresa ? esc((empDe(p.empresa) || {}).nome || p.empresa) : (p.convite ? '<span class="mini">link de cadastro pronto, ainda não usou</span>' : '<span class="mini">—</span>');
       var acao = '';
       if(p.status === 'pedido' && !cv) acao = '<button class="btn peq pri" data-liberar="'+esc(p.id)+'">Liberar teste grátis</button>';
-      else if(p.convite && !p.empresa) acao = '<button class="btn peq" data-copiar-link="'+esc(p.convite)+'">Copiar link do cadastro</button>' + (p.whatsapp ? '<a class="btn peq" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(p.whatsapp).replace(/\D/g, ''))+'?text='+encodeURIComponent('Oi, ' + (p.nome || '') + '! Aqui está o seu link pra criar a conta no TMX: ' + p.convite)+'">WhatsApp</a>' : '');
-      return '<tr><td class="sub num">'+data(p.criado, true)+'</td><td><b>'+esc(p.nome || '—')+'</b><div class="sub">'+esc(p.email || '')+(p.whatsapp ? ' · ' + esc(p.whatsapp) : '')+'</div></td>' +
-        '<td>'+esc(p.plano_nome || p.plano)+'<div class="sub">'+esc(p.ciclo === 'anual' ? 'anual' : 'mensal')+'</div></td><td>'+situacao+'</td><td>'+empresa+'</td>' +
+      else if(p.convite && !p.empresa) acao = '<button class="btn peq" data-copiar="'+esc(p.convite)+'">Copiar link do cadastro</button>' + (p.whatsapp ? '<a class="btn peq" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(p.whatsapp).replace(/\D/g, ''))+'?text='+encodeURIComponent('Oi, ' + (p.nome || '') + '! Aqui está o seu link pra criar a conta no TMX: ' + p.convite)+'">WhatsApp</a>' : '');
+      var contato = (p.email || '') + (p.whatsapp ? (p.email ? ' · ' : '') + p.whatsapp : '');
+      return '<tr><td class="mini num">'+data(p.criado, true)+'</td><td><b>'+esc(p.nome || '—')+'</b><div class="mini">'+(contato ? esc(contato) : (p.status === 'paga' || p.status === 'aguardando' ? 'o contato chega com o aviso da Pagar.me' : '—'))+'</div></td>' +
+        '<td>'+esc(p.plano_nome || p.plano)+'<div class="mini">'+esc(p.ciclo === 'anual' ? 'anual' : 'mensal')+'</div></td><td>'+situacao+'</td><td>'+empresa+'</td>' +
         '<td><div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+acao+'</div></td></tr>';
     }).join('') || '<tr><td colspan="6" class="vazio">Nada aqui.</td></tr>';
-    var aviso1 = !COBRANCA.cobranca ? '<div class="cartao" style="border-color:rgba(245,181,68,.35)"><b>A cobrança ainda não está ligada.</b> <span class="sub">Falta pôr a chave da Pagar.me no Railway. Os pedidos de teste grátis já chegam pela página de planos.</span></div>'
-      : COBRANCA.ambiente === 'teste' ? '<div class="cartao" style="border-color:rgba(27,156,250,.35)"><b>Pagar.me em modo de teste.</b> <span class="sub">Os pagamentos daqui não são de verdade.</span></div>' : '';
+    var aviso1 = !COBRANCA.cobranca ? '<div class="filtros"><span class="nota av">A cobrança ainda não está ligada: falta pôr a chave da Pagar.me no Railway. Os pedidos de teste grátis já chegam pela página de planos.</span></div>'
+      : COBRANCA.ambiente === 'teste' ? '<div class="filtros"><span class="nota az">Pagar.me em modo de teste: os pagamentos daqui não são de verdade.</span></div>' : '';
     var res = '';
     if(liberado){
       var msg = 'Oi, ' + (liberado.nome || '') + '! Seu teste grátis do TMX está liberado. Crie a sua conta por este link: ' + liberado.link;
-      res = '<div class="cartao"><div class="resultado" role="status" style="margin-top:0"><b>Teste grátis liberado pra '+esc(liberado.nome || liberado.email)+'. O link vale uma vez e vence em '+esc(data(Date.parse(liberado.expira), true))+'.</b>' +
-        '<code>'+esc(liberado.link)+'</code><div class="acoes"><button class="btn pri" data-copiar-link="'+esc(liberado.link)+'">Copiar link</button>' +
+      res = '<div class="card solto"><div class="resultado" role="status" style="margin-top:0"><b>Teste grátis liberado pra '+esc(liberado.nome || liberado.email)+'. O link vale uma vez e vence em '+esc(data(Date.parse(liberado.expira), true))+'.</b>' +
+        '<code>'+esc(liberado.link)+'</code><div class="acoes"><button class="btn pri" data-copiar="'+esc(liberado.link)+'">Copiar link</button>' +
         '<a class="btn" href="https://wa.me/'+esc(String(liberado.zap || '').replace(/\D/g, ''))+'?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">Mandar no WhatsApp '+esc(liberado.zap || '')+'</a></div></div></div>';
     }
-    return '<div class="topo"><div><h1>Pedidos</h1><p>Compras e pedidos de teste grátis que chegam pela página de planos (app.centraltmx.com/planos).</p></div><div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button></div></div>' +
-      aviso1 + res + '<div class="filtros">'+chips+'</div>' +
-      '<div class="tab-wrap"><table><thead><tr><th>Quando</th><th>Cliente</th><th>Plano</th><th>Situação</th><th>Empresa</th><th class="direita">Ação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+    return topo('Pedidos', 'Compras e pedidos de teste grátis que chegam pela página de planos.', BTN_ATUALIZAR) + aviso1 + res +
+      '<div class="filtros">'+chips+'</div><div class="tab"><table style="min-width:820px"><thead><tr><th>Quando</th><th>Cliente</th><th>Plano</th><th>Situação</th><th>Empresa</th><th class="dir">Ação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
   }
-  var ST = { aberto:['Esperando a TMX','p-amar'], cliente:['Esperando o cliente','p-azul'], resolvido:['Resolvido','p-ok'] };
-  function stPill(s){ var x = ST[s] || [s, 'p-cinza']; return '<span class="pill '+x[1]+'">'+esc(x[0])+'</span>'; }
+  // ── Suporte ──
+  var STC = { aberto:['Esperando a TMX','av'], cliente:['Esperando o cliente','az'], resolvido:['Resolvido','ok'] };
+  function stCh(s){ var x = STC[s] || [s, 'ne']; return '<span class="st '+x[1]+'">'+esc(x[0])+'</span>'; }
   function telaSuporte(){
     if(chamado) return telaChamado();
+    var C = P.chamados;
     var lista = CHAMADOS.filter(function(c){ return filtroCh === 'todos' ? true : filtroCh === 'resolvidos' ? c.status === 'resolvido' : c.status !== 'resolvido'; });
     var chips = [['abertos','Abertos'],['resolvidos','Resolvidos'],['todos','Todos']].map(function(f){
       var n = CHAMADOS.filter(function(c){ return f[0] === 'todos' ? true : f[0] === 'resolvidos' ? c.status === 'resolvido' : c.status !== 'resolvido'; }).length;
-      return '<button class="btn peq" style="'+(filtroCh===f[0]?'background:var(--blue-bg);border-color:rgba(27,156,250,.45);color:var(--blue)':'')+'" data-fch="'+f[0]+'">'+f[1]+' · '+n+'</button>'; }).join('');
+      return '<button class="chip'+(filtroCh===f[0]?' on':'')+'" data-fch="'+f[0]+'">'+f[1]+' · '+n+'</button>'; }).join('');
     var linhas = lista.map(function(c){
-      return '<tr style="cursor:pointer" data-ch="'+c.id+'"><td class="sub num">#'+c.id+'</td><td><b>'+esc(c.assunto)+'</b><div class="sub">'+esc(c.aberto_por_nome || '')+(c.projeto ? ' · ' + esc(c.projeto) : '')+'</div></td>' +
-        '<td>'+esc(c.empresa_nome)+'</td><td>'+esc(c.tipo || '')+'</td><td class="sub num">'+data(c.atualizado, true)+'</td><td>'+stPill(c.status)+'</td></tr>';
+      return '<tr class="clica" tabindex="0" data-ch="'+c.id+'"><td class="mini num">#'+c.id+'</td><td><b>'+esc(c.assunto)+'</b><div class="mini">'+esc(c.aberto_por_nome || '')+(c.projeto ? ' · ' + esc(c.projeto) : '')+'</div></td>' +
+        '<td>'+esc(c.empresa_nome)+'</td><td>'+esc(c.tipo || '')+'</td><td class="mini num">'+data(c.atualizado, true)+'</td><td>'+stCh(c.status)+'</td></tr>';
     }).join('') || '<tr><td colspan="6" class="vazio">Nenhum chamado aqui.</td></tr>';
-    return '<div class="topo"><div><h1>Suporte</h1><p>Chamados que os clientes abrem pelo item Suporte no TMX deles. A resposta chega no sininho deles.</p></div><div class="acoes"><button class="btn" data-acao="atualizar">↻ Atualizar</button></div></div>' +
-      '<div class="filtros">'+chips+'</div><div class="tab-wrap"><table><thead><tr><th>#</th><th>Assunto</th><th>Empresa</th><th>Tipo</th><th>Atualizado</th><th>Situação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+    var tipos = Object.keys(C.porTipo).map(function(k){ return [k, C.porTipo[k]]; }).sort(function(a, b){ return b[1] - a[1]; });
+    return topo('Suporte', 'Chamados que os clientes abrem pelo item Suporte no TMX deles. A resposta chega no sininho deles.', BTN_ATUALIZAR) +
+      '<div class="grade g4"><div class="card kpi"><small>Abertos</small><div class="v">'+C.abertos+'</div><div class="d">'+C.esperandoTmx+' esperando a TMX</div></div>' +
+        '<div class="card kpi"><small>1ª resposta (média)</small><div class="v">'+(C.primeiraRespostaMin == null ? '—' : C.primeiraRespostaMin >= 60 ? (Math.round(C.primeiraRespostaMin / 6) / 10).toLocaleString('pt-BR') + ' h' : C.primeiraRespostaMin + ' min')+'</div><div class="d">chamados dos últimos 30 dias</div></div>' +
+        '<div class="card kpi"><small>Sem resposta</small><div class="v">'+C.semResposta+'</div><div class="d">abertos que ninguém respondeu</div></div>' +
+        '<div class="card kpi"><small>Resolvidos em 7 dias</small><div class="v">'+C.resolvidos7d+'</div></div></div>' +
+      '<div class="filtros">'+chips+'</div><div class="tab"><table style="min-width:760px"><thead><tr><th>#</th><th>Assunto</th><th>Empresa</th><th>Tipo</th><th>Atualizado</th><th>Situação</th></tr></thead><tbody>'+linhas+'</tbody></table></div>' +
+      '<div class="card solto"><h2>Chamados por tipo</h2><div class="sub" style="margin-bottom:10px">Últimos 30 dias</div>'+barrasH(tipos, { titulo: 'Chamados por tipo', vazio: 'Nenhum chamado nos últimos 30 dias.' })+'</div>';
   }
   function telaChamado(){
     var c = chamado;
     var fio = (c.msgs || []).map(function(m){
-      var cor = m.de === 'tmx' ? 'background:rgba(91,94,244,.16);border-color:rgba(91,94,244,.35);align-self:flex-end' : m.de === 'nota' ? 'background:var(--yellow-bg);border-color:rgba(245,181,68,.3);align-self:center' : 'background:var(--bg3);align-self:flex-start';
-      return '<div style="max-width:86%;border:1px solid var(--border);border-radius:12px;padding:10px 13px;font-size:13px;line-height:1.5;'+cor+'"><div class="sub" style="font-size:11px;margin-bottom:3px">'+(m.de === 'nota' ? '🔒 nota interna · ' : '')+esc(m.autor)+' · '+data(m.criado, true)+'</div>'+esc(m.texto).replace(/\n/g, '<br>')+'</div>';
+      return '<div class="msg'+(m.de === 'tmx' ? ' tmx' : m.de === 'nota' ? ' nota' : '')+'"><div class="mini" style="font-size:11px;margin-bottom:3px">'+(m.de === 'nota' ? '🔒 nota interna · ' : '')+esc(m.autor)+' · '+data(m.criado, true)+'</div>'+esc(m.texto).replace(/\n/g, '<br>')+'</div>';
     }).join('');
-    var e = EMPRESAS.find(function(x){ return x.id === c.empresa; }) || {};
+    var e = empDe(c.empresa) || {};
     return '<div class="topo"><div><button class="btn peq" data-acao="voltar-suporte" style="margin-bottom:8px">‹ Suporte</button><h1>#'+c.id+' · '+esc(c.assunto)+'</h1><p>'+esc(c.empresa_nome)+' · '+esc(c.tipo || '')+(c.projeto ? ' · ' + esc(c.projeto) : '')+' · aberto por '+esc(c.aberto_por_nome || '')+' em '+data(c.criado, true)+'</p></div>' +
-      '<div class="acoes">'+stPill(c.status)+'<button class="btn" data-suporte="'+esc(c.empresa)+'">Entrar como suporte</button></div></div>' +
-      '<section class="cartao"><div style="display:flex;flex-direction:column;gap:10px">'+fio+'</div>' +
-      '<textarea id="ch-txt" rows="4" style="width:100%;margin-top:14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font:13.5px Inter,sans-serif;resize:vertical" placeholder="Responder pro cliente…"></textarea>' +
-      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ch-nota"> Nota interna (o cliente não vê)</label>' +
-      '<label class="sub" style="margin-left:auto">Depois de enviar: <select id="ch-st" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 8px"><option value="cliente">Esperando o cliente</option><option value="aberto">Esperando a TMX</option><option value="resolvido">Resolvido</option></select></label>' +
-      '<button class="btn pri" data-acao="responder">Enviar</button></div>' + (e.status && e.status !== 'ativa' ? '<p class="sub" style="margin:10px 0 0">Essa empresa está bloqueada: a equipe dela não abre o TMX, mas recebe a resposta quando for desbloqueada.</p>' : '') + '</section>';
+      '<div class="acoes">'+stCh(c.status)+'<button class="btn" data-c="'+esc(c.empresa)+'">Ver o cliente</button><button class="btn" data-suporte="'+esc(c.empresa)+'">Entrar como suporte</button></div></div>' +
+      '<section class="card solto"><div class="fio">'+fio+'</div>' +
+      '<textarea id="ch-txt" class="resp" rows="4" placeholder="Responder pro cliente…"></textarea>' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><label class="mini" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ch-nota"> Nota interna (o cliente não vê)</label>' +
+      '<label class="mini" style="margin-left:auto">Depois de enviar: <select id="ch-st" class="sel"><option value="cliente">Esperando o cliente</option><option value="aberto">Esperando a TMX</option><option value="resolvido">Resolvido</option></select></label>' +
+      '<button class="btn pri" data-acao="responder">Enviar</button></div>' + (e.status && e.status !== 'ativa' ? '<p class="mini" style="margin:10px 0 0">Essa empresa está bloqueada: a equipe dela não abre o TMX, mas recebe a resposta quando for desbloqueada.</p>' : '') + '</section>';
   }
+  // ── Saúde e capacidade ──
+  function telaSaude(){
+    var S = P.saude, M = S.memoria, sg = saudeGeral();
+    var memP = pct(M.usadoMB, M.limiteMB), discoUso = S.disco ? S.disco.totalGB - S.disco.livreGB : 0, discoP = S.disco ? pct(discoUso, S.disco.totalGB) : 0;
+    var cls = function(p){ return p >= 90 ? 'cr' : p >= 80 ? 'av' : ''; };
+    var motores = [{ nome: 'TMX (portaria)', estado: 'ligado', mem: M.tmxMB, quedas: 0, banco: P.tmx ? P.tmx.bancoMB : null, backup: P.tmx ? P.tmx.ultimoBackup : null, noAr: S.noArSeg }]
+      .concat(empresas().map(function(e){ return { id: e.id, nome: e.nome, estado: e.motor.estado, mem: e.resumo ? e.resumo.memMB : null, quedas: e.motor.quedasHoje, banco: e.resumo ? e.resumo.bancoMB : null, backup: e.resumo ? e.resumo.ultimoBackup : null, noAr: e.resumo ? e.resumo.noArSeg : null }; }));
+    var linhas = motores.map(function(m){
+      return '<tr'+(m.id ? ' class="clica" tabindex="0" data-c="'+esc(m.id)+'"' : '')+'><td><b>'+esc(m.nome)+'</b></td><td>'+(m.estado === 'ligado' ? (m.quedas ? '<span class="st se">instável</span>' : '<span class="st ok">ligado</span>') : m.estado === 'ligando' ? '<span class="st av">ligando</span>' : '<span class="st cr">desligado</span>')+'</td>' +
+        '<td class="num">'+(m.mem != null ? mb(m.mem) : '—')+'</td><td class="num">'+(m.quedas || 0)+'</td><td class="num">'+(m.banco != null ? m.banco.toLocaleString('pt-BR') + ' MB' : '—')+'</td><td class="mini">'+(m.noAr != null ? duracao(m.noAr) : '—')+'</td><td class="mini">'+esc(ha(m.backup))+'</td></tr>';
+    }).join('');
+    var erros = S.erros.slice(0, 12).map(function(e){
+      var c = e.vezes >= 10 ? 'se' : 'av';
+      return '<li><span class="ic" style="background:var(--'+(c === 'se' ? 'serio' : 'aviso')+'-bg)">⚠️</span><span class="t">'+esc(e.msg)+'<small>'+esc(e.ondeNome)+' · '+esc(ha(e.ultimo))+(e.vezes > 1 ? ' · ' + e.vezes + ' vezes desde ' + data(e.primeiro, true) : '')+'</small></span><span class="st '+c+'">'+(e.vezes > 1 ? e.vezes + '×' : '1×')+'</span></li>';
+    }).join('');
+    var R = S.backups.remoto, remotoOk = R.ligado && R.ultimo && Date.now() - R.ultimo < 30 * 3600000;
+    return topo('Saúde e capacidade', 'Como está o servidor, quanto ainda cabe e o que deu erro. Um motor por empresa, todos no mesmo serviço do Railway.', BTN_ATUALIZAR) +
+      '<div class="grade g4">' +
+        '<div class="card kpi"><small>Situação</small><div class="v menor"><span class="st '+sg.cls+'">'+esc(sg.txt)+'</span></div><div class="d">no ar há '+duracao(S.noArSeg)+(S.versao ? ' · versão ' + esc(S.versao) : '')+'</div></div>' +
+        '<div class="card kpi"><small>Memória do servidor</small><div class="v">'+mb(M.usadoMB)+'</div><div class="barra '+cls(memP)+'" style="margin-top:10px"><i style="width:'+Math.min(100, memP)+'%"></i></div><div class="d">'+memP+'% de '+mb(M.limiteMB)+' ('+esc(M.fonte)+')</div></div>' +
+        '<div class="card kpi"><small>Disco /data</small><div class="v">'+(S.disco ? gb(discoUso) : '—')+'</div><div class="barra '+cls(discoP)+'" style="margin-top:10px"><i style="width:'+Math.min(100, discoP)+'%"></i></div><div class="d">'+(S.disco ? discoP + '% de ' + gb(S.disco.totalGB) + ' · ' + gb(S.disco.livreGB) + ' livres' : 'não deu pra medir')+'</div></div>' +
+        '<div class="card kpi destaque"><small>Ainda cabem</small><div class="v">~'+S.cabem+'</div><div class="d">empresas novas, deixando 20% de folga na memória (~'+M.mediaMotorMB+' MB cada)</div></div>' +
+      '</div>' +
+      '<div class="grade g21"><div class="tab dentro"><table style="min-width:780px"><thead><tr><th>Motor</th><th>Situação</th><th>Memória</th><th>Quedas hoje</th><th>Banco</th><th>No ar há</th><th>Última cópia</th></tr></thead><tbody>'+linhas+'</tbody></table></div>' +
+        '<div class="card"><h2>Memória por motor</h2><div class="sub" style="margin-bottom:10px">Agora</div>'+barrasH(motores.filter(function(m){ return m.mem != null; }).sort(function(a, b){ return b.mem - a.mem; }).slice(0, 10).map(function(m){ return [m.nome.replace(' (portaria)', ''), m.mem]; }), { titulo: 'Memória por motor', fmt: mb })+'</div></div>' +
+      '<div class="grade g2"><div class="card"><h2>Erros recentes</h2><div class="sub" style="margin-bottom:6px">Desde que o servidor subiu, agrupados por mensagem</div>'+(erros ? '<ul class="lista">'+erros+'</ul>' : '<div class="vazio-g">Nenhum erro desde que o servidor subiu. ✓</div>')+'</div>' +
+        '<div class="card"><h2>Cópias do banco</h2><ul class="lista">' +
+          '<li><span class="ic" style="background:var(--'+(remotoOk ? 'ok' : 'serio')+'-bg)">☁️</span><span class="t">TMX: cópia diária no GitHub<small>'+(R.ligado ? 'a última foi ' + esc(ha(R.ultimo)) : 'desligada: falta GITHUB_BACKUP_TOKEN e GITHUB_BACKUP_REPO no Railway')+'</small></span><span class="st '+(remotoOk ? 'ok' : 'se')+'">'+(remotoOk ? 'em dia' : R.ligado ? 'atrasada' : 'desligada')+'</span></li>' +
+          '<li><span class="ic" style="background:var(--ok-bg)">💾</span><span class="t">TMX: cópia de hora em hora no próprio servidor<small>a última foi '+esc(ha(P.tmx && P.tmx.ultimoBackup))+'</small></span><span class="st ok">ligada</span></li>' +
+          '<li><span class="ic" style="background:var(--serio-bg)">🏢</span><span class="t">Empresas clientes: só cópia no próprio servidor<small>cada motor copia o banco dele de hora em hora; falta a cópia externa antes de crescer</small></span><span class="st se">falta a externa</span></li>' +
+        '</ul></div></div>';
+  }
+  // ── Auditoria ──
+  var ROT_AUD = { empresa_criada:'Criou uma empresa', empresa_cadastrada:'Cliente se cadastrou', empresa_bloqueada:'Bloqueou', empresa_desbloqueada:'Desbloqueou', empresa_plano:'Trocou o plano',
+    suporte_entrou:'Entrou como suporte', convite_criado:'Gerou convite', convite_cancelado:'Cancelou convite', assinatura_paga:'Assinatura paga', login_bloqueado:'Login recusado (empresa bloqueada)' };
+  function carregarAuditoria(){
+    return Promise.all(['empresa_', 'suporte_entrou', 'convite_', 'assinatura_', 'login_bloqueado'].map(function(a){ return api('GET', '/api/auditoria/list?limit=200&action=' + encodeURIComponent(a)); })).then(function(rs){
+      var vistos = {}, tudo = [];
+      rs.forEach(function(r){ ((r.ok && r.j.entries) || []).forEach(function(x){ if(!vistos[x.id]){ vistos[x.id] = 1; tudo.push(x); } }); });
+      AUD = tudo.sort(function(a, b){ return b.ts - a.ts; }).slice(0, 300);
+    });
+  }
+  function detalheAud(x){
+    var t = x.target || {}, m = x.meta || {}, p = [];
+    if(t.nome || t.empresa) p.push((t.nome || '') + (t.empresa ? ' (' + t.empresa + ')' : ''));
+    if(t.email) p.push(t.email);
+    if(m.plano) p.push('plano ' + m.plano);
+    if(m.para) p.push((m.de ? m.de + ' → ' : 'plano ') + m.para);
+    if(m.motivo) p.push('motivo: ' + m.motivo);
+    if(m.modo) p.push(m.modo === 'mexer' ? 'pode mexer' : 'só olhar');
+    if(m.minutos) p.push(m.minutos + ' min');
+    return p.join(' · ');
+  }
+  function telaAuditoria(){
+    if(AUD === null) return topo('Auditoria', 'Quem fez o quê na Central.') + '<div class="card solto"><div class="vazio-g">Carregando…</div></div>';
+    var linhas = AUD.map(function(x){ return '<tr><td class="mini num">'+data(x.ts, true)+'</td><td>'+esc(x.userNome || '—')+'</td><td><b>'+esc(ROT_AUD[x.action] || x.action)+'</b></td><td class="mini">'+esc(detalheAud(x))+'</td></tr>'; }).join('') ||
+      '<tr><td colspan="4" class="vazio">Nada registrado ainda.</td></tr>';
+    return topo('Auditoria', 'Quem fez o quê na Central: criar empresa, convites, entrar como suporte, bloquear, trocar plano e assinaturas. Fica guardado 90 dias.', '<button class="btn" data-acao="atualizar-aud">↻ Atualizar</button>') +
+      '<div class="tab"><table style="min-width:720px"><thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Detalhe</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+  }
+  // ── modais (entrar como suporte, bloquear) ──
   function modalSuporte(e){
-    return '<div class="porta" style="position:fixed;inset:0;background:rgba(3,5,12,.72);z-index:30;min-height:0" data-fundo="1"><div class="caixa" style="text-align:left;max-width:460px">' +
+    return '<div class="porta modal" data-fundo="1"><div class="caixa" style="max-width:460px" role="dialog" aria-modal="true" aria-label="Entrar como suporte">' +
       '<h1 style="margin:0 0 6px">Entrar como suporte na '+esc(e.nome)+'</h1><p style="margin:0 0 14px">Abre o TMX dessa empresa como a equipe dela vê, sem a senha de ninguém. Fica na auditoria das duas empresas. Ao sair, você volta pra cá com a sua conta.</p>' +
       '<label class="campo">Motivo (obrigatório)<input id="sp-motivo" placeholder="Ex.: chamado #12, pixel da VSL"></label>' +
-      '<div class="campo" style="margin-top:12px">O que pode fazer<div style="display:flex;gap:8px;flex-wrap:wrap;text-transform:none;letter-spacing:0"><label style="display:flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-weight:500"><input type="radio" name="sp-modo" value="olhar" checked> Só olhar</label><label style="display:flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-weight:500"><input type="radio" name="sp-modo" value="mexer"> Pode mexer</label></div></div>' +
+      '<div class="campo" style="margin-top:12px">O que pode fazer<div style="display:flex;gap:8px;flex-wrap:wrap"><label class="radio"><input type="radio" name="sp-modo" value="olhar" checked> Só olhar</label><label class="radio"><input type="radio" name="sp-modo" value="mexer"> Pode mexer</label></div></div>' +
       '<label class="campo" style="margin-top:12px">Tempo<select id="sp-min"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">1 hora</option></select></label>' +
-      '<label class="sub" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sp-avisar" checked> Avisar a Diretoria da empresa que o suporte entrou</label>' +
+      '<label class="mini" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sp-avisar" checked> Avisar a Diretoria da empresa que o suporte entrou</label>' +
       '<div class="erro" id="sp-erro"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" data-acao="fechar-modal">Cancelar</button><button class="btn pri" data-acao="entrar-suporte" data-id="'+esc(e.id)+'">Entrar</button></div></div></div>';
   }
   function modalBloquear(e){
-    return '<div class="porta" style="position:fixed;inset:0;background:rgba(3,5,12,.72);z-index:30;min-height:0" data-fundo="1"><div class="caixa" style="text-align:left;max-width:440px">' +
+    return '<div class="porta modal" data-fundo="1"><div class="caixa" style="max-width:440px" role="dialog" aria-modal="true" aria-label="Bloquear">' +
       '<h1 style="margin:0 0 6px">Bloquear a '+esc(e.nome)+'?</h1><p style="margin:0 0 14px">A equipe deles vê “conta suspensa” ao entrar. O pixel, as vendas e as páginas continuam gravando, então nada se perde. Dá pra desbloquear a qualquer hora.</p>' +
       '<label class="campo">Motivo<select id="bl-motivo"><option>Pagamento atrasado</option><option>Pedido do cliente</option><option>Uso indevido</option><option>Outro</option></select></label>' +
       '<div class="erro" id="bl-erro"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" data-acao="fechar-modal">Cancelar</button><button class="btn perigo" data-acao="confirmar-bloqueio" data-id="'+esc(e.id)+'">Bloquear</button></div></div></div>';
@@ -293,50 +695,71 @@ tbody tr:last-child td{border-bottom:0}
     }catch(e){}
     location.href = '/';
   }
+  // ── desenhar ──
+  var TELAS = { painel: telaPainel, clientes: telaClientes, uso: telaUso, receita: telaReceita, cobranca: telaCobranca, pedidos: telaPedidos, convites: telaConvites, suporte: telaSuporte, saude: telaSaude, auditoria: telaAuditoria };
   function pintar(){
-    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + (tela === 'convites' ? telaConvites() : tela === 'pedidos' ? telaPedidos() : tela === 'suporte' ? telaSuporte() : telaClientes()) + '</main></div>' + modal;
+    gradN = 0;
+    var corpo;
+    try{ corpo = P ? (TELAS[tela] || telaPainel)() : '<div class="card solto"><div class="vazio-g">Carregando os números…</div></div>'; }
+    catch(err){ console.error(err); corpo = '<div class="card solto"><div class="vazio-g">Esta tela não abriu: '+esc(err.message)+'</div></div>'; }
+    if(!aberto) gavetaVista = null;
+    raiz.innerHTML = '<div class="app">' + lateral() + '<main class="main">' + corpo + '</main></div>' + (aberto && P ? gaveta() : '') + modal;
     var b = document.getElementById('busca');
     if(b) b.oninput = function(){ busca = b.value; var pos = b.selectionStart; pintar(); var nb = document.getElementById('busca'); nb.focus(); try{ nb.setSelectionRange(pos, pos); }catch(e){} };
+    var ct = document.getElementById('com-tmx');
+    if(ct) ct.onchange = function(){ incluirTmx = ct.checked; pintar(); };
   }
-  function carregar(){
-    return Promise.all([api('GET', '/api/plataforma/empresas'), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos'), api('GET', '/api/plataforma/assinaturas')]).then(function(r){
-      if(r[3].ok) PLANOS = r[3].j.planos || [];
-      if(r[4].ok){ PEDIDOS = r[4].j.assinaturas || []; COBRANCA = { cobranca: !!r[4].j.cobranca, ambiente: r[4].j.ambiente || null }; }
-      if(r[0].ok) EMPRESAS = r[0].j.empresas || [];
+  function carregar(novo){
+    return Promise.all([api('GET', '/api/plataforma/painel' + (novo ? '?novo=1' : '')), api('GET', '/api/plataforma/convites'), api('GET', '/api/plataforma/chamados'), api('GET', '/api/plataforma/planos'), api('GET', '/api/plataforma/assinaturas')]).then(function(r){
+      if(r[0].ok) P = r[0].j; else if(!P) aviso(r[0].j.error || 'Não consegui ler o painel.');
       if(r[1].ok) CONVITES = r[1].j.convites || [];
       if(r[2].ok) CHAMADOS = r[2].j.chamados || [];
+      if(r[3].ok) PLANOS = r[3].j.planos || [];
+      if(r[4].ok){ PEDIDOS = r[4].j.assinaturas || []; COBRANCA = { cobranca: !!r[4].j.cobranca, ambiente: r[4].j.ambiente || null }; }
+      if(tela === 'auditoria') return carregarAuditoria().then(pintar);
       pintar();
     });
   }
   function abrirChamado(id){
-    return api('GET', '/api/plataforma/chamados/' + id).then(function(r){ if(r.ok){ chamado = r.j.chamado; tela = 'suporte'; pintar(); window.scrollTo(0, 0); } else aviso(r.j.error || 'Não abri o chamado.'); });
+    return api('GET', '/api/plataforma/chamados/' + id).then(function(r){ if(r.ok){ chamado = r.j.chamado; tela = 'suporte'; aberto = null; pintar(); window.scrollTo(0, 0); } else aviso(r.j.error || 'Não abri o chamado.'); });
+  }
+  function irPara(t){
+    tela = t; chamado = null; aberto = null; modal = '';
+    if(t !== 'pedidos') liberado = null;
+    if(t !== 'convites'){ ultimoLink = null; erroConvite = ''; }
+    pintar(); window.scrollTo(0, 0);
+    if(t === 'auditoria' && AUD === null) carregarAuditoria().then(pintar);
   }
   // trocar o plano de um cliente (até a cobrança fazer isso sozinha)
   raiz.addEventListener('change', function(ev){
     var sel = ev.target.closest && ev.target.closest('[data-plano]'); if(!sel) return;
     sel.disabled = true;
     api('POST', '/api/plataforma/empresas/' + encodeURIComponent(sel.dataset.plano) + '/plano', { plano: sel.value }).then(function(r){
-      aviso(r.ok ? 'Plano trocado. O cliente já vê em Configurações › Meu plano.' : (r.j.error || 'Não consegui trocar o plano.')); return carregar();
+      aviso(r.ok ? 'Plano trocado. O cliente já vê em Configurações › Meu plano.' : (r.j.error || 'Não consegui trocar o plano.')); return carregar(true);
     });
   });
+  raiz.addEventListener('keydown', function(ev){
+    var tr = ev.target.closest && ev.target.closest('tr[data-c],tr[data-ch]');
+    if(tr && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); tr.click(); }
+  });
+  document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && (aberto || modal)){ if(modal) modal = ''; else aberto = null; pintar(); } });
   raiz.addEventListener('click', function(ev){
-    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fped],[data-liberar],[data-copiar-link]'); if(!a) return;
+    var a = ev.target.closest('[data-tela],[data-acao],[data-cancelar],[data-suporte],[data-bloquear],[data-desbloquear],[data-ch],[data-fch],[data-fundo],[data-fechar],[data-fped],[data-fcli],[data-liberar],[data-copiar],[data-c]'); if(!a) return;
     if(a.dataset.fundo){ if(ev.target === a){ modal = ''; pintar(); } return; }
-    if(a.dataset.tela){ tela = a.dataset.tela; chamado = null; liberado = tela === 'pedidos' ? liberado : null; ultimoLink = tela === 'convites' ? ultimoLink : null; erroConvite = ''; pintar(); return window.scrollTo(0, 0); }
-    var empDe = function(id){ return EMPRESAS.find(function(x){ return x.id === id; }); };
-    if(a.dataset.suporte){ modal = modalSuporte(empDe(a.dataset.suporte) || { id: a.dataset.suporte, nome: a.dataset.suporte }); pintar(); var mo = document.getElementById('sp-motivo'); if(mo){ if(chamado) mo.value = 'Chamado #' + chamado.id + ' · ' + chamado.assunto; mo.focus(); } return; }
+    if(a.dataset.fechar){ if(ev.target === a || a.classList.contains('x')){ aberto = null; pintar(); } return; }
+    if(a.dataset.tela) return irPara(a.dataset.tela);
+    if(a.dataset.copiar) return copiar(a.dataset.copiar, 'Copiado.');
+    if(a.dataset.suporte){ ev.stopPropagation(); modal = modalSuporte(empDe(a.dataset.suporte) || { id: a.dataset.suporte, nome: a.dataset.suporte }); pintar(); var mo = document.getElementById('sp-motivo'); if(mo){ if(chamado) mo.value = 'Chamado #' + chamado.id + ' · ' + chamado.assunto; mo.focus(); } return; }
     if(a.dataset.bloquear){ modal = modalBloquear(empDe(a.dataset.bloquear)); return pintar(); }
     if(a.dataset.desbloquear){
       a.disabled = true;
-      return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.desbloquear) + '/desbloquear').then(function(r){ aviso(r.ok ? 'Desbloqueada: a equipe já pode entrar.' : (r.j.error || 'Não consegui desbloquear.')); return carregar(); });
+      return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.desbloquear) + '/desbloquear').then(function(r){ aviso(r.ok ? 'Desbloqueada: a equipe já pode entrar.' : (r.j.error || 'Não consegui desbloquear.')); return carregar(true); });
     }
     if(a.dataset.ch) return abrirChamado(a.dataset.ch);
+    if(a.dataset.c){ aberto = a.dataset.c; return pintar(); }
     if(a.dataset.fped){ filtroPed = a.dataset.fped; return pintar(); }
-    if(a.dataset.copiarLink){
-      var lk = a.dataset.copiarLink;
-      try{ navigator.clipboard.writeText(lk).then(function(){ aviso('Link copiado.'); }, function(){ aviso('Selecione o link e copie.'); }); }catch(e){ aviso('Selecione o link e copie.'); }
-      return;
-    }
+    if(a.dataset.fcli){ filtroCli = a.dataset.fcli; return pintar(); }
+    if(a.dataset.fch){ filtroCh = a.dataset.fch; return pintar(); }
     if(a.dataset.liberar){
       var ped = PEDIDOS.find(function(x){ return x.id === a.dataset.liberar; }); if(!ped) return;
       a.disabled = true; a.textContent = 'Liberando…';
@@ -346,7 +769,6 @@ tbody tr:last-child td{border-bottom:0}
         return carregar();
       });
     }
-    if(a.dataset.fch){ filtroCh = a.dataset.fch; return pintar(); }
     if(a.dataset.cancelar){
       a.disabled = true; ultimoLink = null;   // o link mostrado pode ser justamente o que saiu
       return api('POST', '/api/plataforma/convites/' + encodeURIComponent(a.dataset.cancelar) + '/cancelar').then(function(r){
@@ -354,14 +776,15 @@ tbody tr:last-child td{border-bottom:0}
       });
     }
     var ac = a.dataset.acao;
-    if(ac === 'atualizar'){ a.disabled = true; return carregar().then(function(){ aviso('Atualizado.'); }); }
+    if(ac === 'atualizar'){ a.disabled = true; document.querySelector('.main') && document.querySelector('.main').classList.add('carregando'); return carregar(true).then(function(){ aviso('Atualizado.'); }); }
+    if(ac === 'atualizar-aud'){ AUD = null; pintar(); return carregarAuditoria().then(pintar); }
     if(ac === 'fechar-modal'){ modal = ''; return pintar(); }
     if(ac === 'voltar-suporte'){ chamado = null; return carregar(); }
     if(ac === 'confirmar-bloqueio'){
       var mot = document.getElementById('bl-motivo').value; a.disabled = true;
       return api('POST', '/api/plataforma/empresas/' + encodeURIComponent(a.dataset.id) + '/bloquear', { motivo: mot }).then(function(r){
         if(!r.ok){ a.disabled = false; document.getElementById('bl-erro').textContent = r.j.error || 'Não consegui bloquear.'; return; }
-        modal = ''; aviso('Bloqueada. O pixel e as vendas continuam gravando.'); return carregar();
+        modal = ''; aviso('Bloqueada. O pixel e as vendas continuam gravando.'); return carregar(true);
       });
     }
     if(ac === 'entrar-suporte'){
@@ -378,13 +801,8 @@ tbody tr:last-child td{border-bottom:0}
       return api('POST', '/api/plataforma/chamados/' + chamado.id + '/responder', { texto: txt, nota: nota, status: st }).then(function(r){
         if(!r.ok){ a.disabled = false; return aviso(r.j.error || 'Não consegui enviar.'); }
         aviso(txt ? (nota ? 'Nota guardada.' : 'Resposta enviada. O cliente recebe no sininho.') : 'Situação atualizada.');
-        return Promise.all([carregar(), abrirChamado(chamado.id)]);
+        return Promise.all([carregar(true), abrirChamado(chamado.id)]);
       });
-    }
-    if(ac === 'copiar'){
-      var t = ultimoLink ? ultimoLink.link : '';
-      try{ navigator.clipboard.writeText(t).then(function(){ aviso('Link copiado.'); }, function(){ aviso('Selecione o link e copie.'); }); }catch(e){ aviso('Selecione o link e copie.'); }
-      return;
     }
     if(ac === 'gerar'){
       var email = (document.getElementById('cv-email').value || '').trim(), obs = (document.getElementById('cv-obs').value || '').trim(), dias = document.getElementById('cv-dias').value;
@@ -397,7 +815,15 @@ tbody tr:last-child td{border-bottom:0}
       });
     }
   });
-  // Entrada: só a Diretoria da TMX, com a mesma conta do TMX
+  // dica dos gráficos
+  document.addEventListener('mousemove', function(ev){
+    var el = ev.target.closest && ev.target.closest('[data-dica]');
+    if(!el){ if(!dica.hidden) dica.hidden = true; return; }
+    var p = el.getAttribute('data-dica').split('|');
+    dica.innerHTML = '<b>'+esc(p[1])+'</b>'+esc(p[0]); dica.hidden = false;
+    dica.style.left = Math.min(ev.clientX + 14, innerWidth - 250) + 'px'; dica.style.top = (ev.clientY + 14) + 'px';
+  });
+  // ── entrada: só a Diretoria da TMX, com a mesma conta do TMX ──
   if(!token){ porta('Entre com a sua conta da TMX', 'A Central TMX Admin usa o mesmo login do TMX. Entre lá com a conta da Diretoria e abra esta página de novo.'); return; }
   api('GET', '/api/auth/me').then(function(r){
     if(!r.ok || !r.j.user){ return porta('Entre com a sua conta da TMX', 'A sua sessão expirou. Entre no TMX com a conta da Diretoria e abra esta página de novo.'); }
@@ -406,6 +832,7 @@ tbody tr:last-child td{border-bottom:0}
     if(r.j.user.cargo !== 'Diretoria'){ return porta('Esta área é só da Diretoria', 'A Central TMX Admin abre só pra Diretoria da TMX.'); }
     eu = r.j.user;
     try{ var av = sessionStorage.getItem('sl_admin_aviso'); if(av){ sessionStorage.removeItem('sl_admin_aviso'); setTimeout(function(){ aviso(av); }, 300); } }catch(e){}
+    pintar();
     return carregar();
   }).catch(function(){ porta('Sem conexão', 'Não consegui falar com o servidor. Confira a internet e recarregue.'); });
 })();
