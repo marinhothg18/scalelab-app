@@ -272,6 +272,17 @@ railway status             # confirma projeto/env/service linkados (joyful-celeb
 railway logs               # logs em tempo real
 ```
 
+**Subindo de um worktree (`.claude/worktrees/...`): passe o caminho.** O `railway up` procura o projeto ligado
+subindo as pastas e envia a pasta principal (`~/Projetos/scalelab`), não o worktree. Em 07/11/2026 isso pôs no ar
+uma versão 25 commits atrás (sem a correção da lixeira, os cargos e o resto) achando que era a nova. No worktree:
+
+```bash
+railway up "$PWD" --path-as-root --detach
+```
+
+Depois de subir, confira no ar que o arquivo novo chegou (ex.: o `/ScaleLab.html` tem o código que você mudou);
+"SUCCESS" no `railway deployment list` só diz que a versão subiu, não qual pasta foi.
+
 O `.railwayignore` define o que sobe. O `public/ScaleLab.html` é o arquivo servido — edite-o, não duplicatas em outros lugares.
 
 ## Workflow multi-máquina
