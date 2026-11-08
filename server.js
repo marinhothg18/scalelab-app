@@ -4398,7 +4398,7 @@ app.post('/api/push/testar', authNegocio, async (req, res) => {
 // esse parametro nem aparece no tools/list. Mantem get_dashboards,
 // get_dashboard_summary e get_meta_ad_objects; so tira google/kwai/tiktok,
 // que nao usamos. Conferido em tools/list nos dois modos.
-const UTMIFY_MCP_URL = 'https://mcp.utmify.com.br/mcp?resources=gs,gm,gu';
+const UTMIFY_MCP_URL = process.env.TMX_UTMIFY_URL || 'https://mcp.utmify.com.br/mcp?resources=gs,gm,gu';   // a variável é só pros testes
 const KEY_UTMIFY_MCP = 'sl_integracoes_utmify_mcp';   // server-only: guarda o token
 
 function _utmifyMcpCfg(db) {
@@ -5175,6 +5175,7 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
         const com = s.comissions || {}, est = s.statistics || {}, hc = s.hourlyCumulative || {};
         tot.reembolsoValor += cent(com.refundedGrossRevenue);
         tot.pendenteValor += cent(com.pendingGrossRevenue);
+        tot.recusadoValor = (tot.recusadoValor || 0) + cent(est.card && est.card.refused && est.card.refused.comission);
         aprovacao.cartao.a += Number(oc.approvedCreditCard) || 0; aprovacao.cartao.t += Number(oc.totalCreditCard) || 0;
         [['pix', est.pix], ['boleto', est.boleto]].forEach(([k, m]) => {
           const a = Number(m && m.approved && m.approved.ordersCount) || 0, p = Number(m && m.pending && m.pending.ordersCount) || 0;
@@ -5476,7 +5477,7 @@ function _panoramaComTmx(pano, de, ate, projetoId, filtros) {
       fonteReceita: 'tmx',
       kpis: Object.assign({}, pano.kpis, {
         receita, lucro: receita - inv, roas: inv > 0 ? receita / inv : 0, ticket: n > 0 ? receita / n : 0, cpa: n > 0 ? inv / n : 0,
-        reembolsoValor: Object.values(estornos).reduce((a, v) => a + v, 0), pendenteValor: somaV(pend),
+        reembolsoValor: Object.values(estornos).reduce((a, v) => a + v, 0), pendenteValor: somaV(pend), recusadoValor: somaV(pedidos.filter(p => !ehPaga(p) && !_PED_PENDENTE.test(p.status || ''))),
         pedidos: { total: pedidos.length, aprovadas: n, pendentes: pend.length, reembolsadas: Object.keys(estornos).length, recusadas: pedidos.length - n - pend.length }
       }),
       margem: _margem(receita, inv, n, _custosCfg(db)),
@@ -8110,6 +8111,623 @@ function _getAIKey() {
 // páginas, guardada no servidor: a tela só pergunta se ela existe, a chave nunca vai pro navegador.
 app.get('/api/ia/chave-status', authUsuario, (req, res) => {
   res.json({ ligada: !!_getAIKey() });
+});
+
+// ══════════════════════════════════════════════
+// ── AUDITORIA IA DO PROJETO (08/11/2026) ──
+// O botão Auditoria IA da Análise de tráfego. Entrega o relatório de fechamento do dia no padrão
+// que o Thiago usa (metas, decisões cópia por cópia, funil, contas, anúncio por anúncio em
+// hoje/3/7 dias, histórico, BIDCAP, testes, duplicação e prioridades).
+// O sistema soma e calcula tudo aqui (Utmify dia a dia, vendas TMX por anúncio, VTurb); o Claude
+// só lê as tabelas prontas, decide e escreve. Demora alguns minutos, então roda por fora: o POST
+// devolve um id e a tela pergunta como está. A chave é a mesma do agente do WhatsApp (_getAIKey).
+// ══════════════════════════════════════════════
+const AnthropicAud = require('@anthropic-ai/sdk').default;
+const MODELO_AUDITORIA = 'claude-opus-5-5';
+const _AUD_CARGOS = new Set(['Diretoria', 'Sócio', 'Gestor de Tráfego', 'Spy']);   // os que veem a Análise de tráfego
+const KEY_AUD_METAS = 'sl_auditoria_metas';                                         // { idDoProjeto: metas }
+// As metas do CONCURSO, as do fechamento de 07/11. Valem até alguém salvar outras na tela.
+const _AUD_METAS_PADRAO = { '6a3bdf5580463cdf64643bcf': { fatDia: 30000, lucroDia: 17000, investDia: 13000, cpa: 350, roiMin: 1.5, roiMax: 1.6, principal: 'Foco, Acervo', vsl: { play: 75, min1: 70, pitch: 30 } } };
+const _audJobs = new Map();
+let _audTabelaOk = false;
+function _audTabela() {
+  if (_audTabelaOk) return;
+  _pessoas().exec(`CREATE TABLE IF NOT EXISTS ia_auditorias (id TEXT PRIMARY KEY, projeto TEXT, projeto_nome TEXT, em INTEGER, por TEXT,
+    duracao_ms INTEGER, custo_us REAL, modelo TEXT, relatorio TEXT, contexto TEXT);
+    CREATE INDEX IF NOT EXISTS ia_auditorias_projeto ON ia_auditorias(projeto, em)`);
+  _audTabelaOk = true;
+}
+const _audLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 15, standardHeaders: false, legacyHeaders: false,
+  message: { error: 'Muitas auditorias nesta hora. Espere um pouco e tente de novo.' } });
+function _audPode(req, res, next) {
+  if (!_AUD_CARGOS.has(req.user && req.user.cargo)) return res.status(403).json({ error: 'A Auditoria IA é pra quem vê a Análise de tráfego.' });
+  next();
+}
+function _audMetas(db, projeto) {
+  const salvas = db.store[KEY_AUD_METAS] && db.store[KEY_AUD_METAS][projeto];
+  return salvas || (SOU_TMX && _AUD_METAS_PADRAO[projeto]) || {};
+}
+
+const _audFm = {
+  r: n => 'R$ ' + Math.round(Number(n) || 0).toLocaleString('pt-BR'),
+  n: n => Math.round(Number(n) || 0).toLocaleString('pt-BR'),
+  x: n => (Number(n) || 0).toFixed(2).replace('.', ','),
+  p: (a, b, c) => b ? ((Number(a) || 0) / b * 100).toFixed(c == null ? 0 : c).replace('.', ',') + '%' : '-',
+  dm: d => d.slice(8, 10) + '/' + d.slice(5, 7)
+};
+const _audTab = (cab, linhas) => '| ' + cab.join(' | ') + ' |\n|' + cab.map(() => '---').join('|') + '|\n' +
+  linhas.map(l => '| ' + l.map(c => String(c == null || c === '' ? '-' : c).replace(/\|/g, '/')).join(' | ') + ' |').join('\n');
+
+// Uma linha da Utmify em reais e inteiros. Linha com gasto zero e compra no pixel é atribuição atrasada: não soma.
+function _audNums(x) {
+  const c = v => (Number(v) || 0) / 100, n = v => Number(v) || 0, gasto = c(x.spend);
+  return { gasto, receita: c(x.grossRevenue), vendas: n(x.approvedOrdersCount), pixel: gasto > 0 ? n(x.salesFromFacebook) : 0, pend: n(x.pendingOrdersCount),
+    ic: n(x.initiateCheckout), lpv: n(x.landingPageViews), cliques: n(x.inlineLinkClicks), imp: n(x.impressions), v3: n(x.videoViews3Seconds), v75: n(x.video75Watched) };
+}
+const _audSoma = (a, b) => { Object.keys(b).forEach(k => { a[k] = (a[k] || 0) + (Number(b[k]) || 0); }); return a; };
+const _audAtivo = x => x.status === 'ACTIVE' && (!x.effectiveStatus || x.effectiveStatus === 'ACTIVE');
+const _audJanela = (o, dias) => { const t = {}; dias.forEach(d => { if (o.dias[d]) _audSoma(t, o.dias[d]); }); return t; };
+const _audTrio = t => (t.tmx || 0) + ' / ' + (t.vendas || 0) + ' / ' + (t.pixel || 0);
+const _audMaisVendas = t => Math.max(t.tmx || 0, t.vendas || 0);
+const _audRoas = t => (t.gasto > 0 ? _audFm.x(Math.max(t.receita || 0, t.tmxRec || 0) / t.gasto) : '-');
+const _audCustoIc = t => (t.ic ? _audFm.r(t.gasto / t.ic) : (t.gasto ? 'sem IC' : '-'));
+const _audJanelaTxt = t => (t.gasto || t.vendas || t.tmx ? _audFm.n(t.gasto) + ' · ' + _audTrio(t) + ' · ' + _audRoas(t) : '-');
+
+// A Utmify costuma dar erro em consulta de vários dias nesses níveis: é um dia por chamada.
+function _audIntervalo(d, dia) {
+  const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+  const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+  return { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off };
+}
+async function _audNivel(cfg, d, nivel, dia) {
+  const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: d.id, level: nivel, dateRange: _audIntervalo(d, dia) });
+  return (r && r.results) || [];
+}
+
+// O resumo de um dia: gasto e métricas da Utmify; faturamento e vendas do TMX (o mesmo número do painel), ou da Utmify se o TMX não tiver venda
+async function _audLerDia(dash, de, ate) {
+  const u = await _utmifyPanorama(de, ate, dash.id);
+  const t = _panoramaComTmx(u, de, ate, dash.id);
+  const base = (t && t.fonteReceita === 'tmx' && Number(t.kpis.receita) > 0) ? t : u;
+  const k = base.kpis || {}, ped = k.pedidos || {}, inv = Number(u.kpis.investimento) || 0, fat = Number(k.receita) || 0;
+  const cart = (base.aprovacao || {}).cartao || { a: 0, t: 0 };
+  return { fonte: base === u ? 'Utmify' : 'TMX', inv, fat, fatUtmify: Number(u.kpis.receita) || 0, lucro: fat - inv, n: Number(ped.aprovadas) || 0, pedidos: Number(ped.total) || 0,
+    reemb: Number(ped.reembolsadas) || 0, reembV: Number(k.reembolsoValor) || 0, pend: Number(ped.pendentes) || 0, pendV: Number(k.pendenteValor) || 0,
+    recusados: Math.max(0, cart.t - cart.a), tentativas: cart.t, recusadoV: Number(k.recusadoValor) || 0,
+    produtos: base.produtos || [], vendasHora: base.vendasHora || [], cliques: Number(u.kpis.cliques) || 0, lpv: Number(u.kpis.visitas) || 0, ic: Number(u.kpis.ics) || 0,
+    margem: base.margem || null, acum: u.acum || null, ticket: Number(k.ticket) || 0, erros: u.erros || [] };
+}
+
+// As VSLs com tráfego deste projeto: as que receberam visita dos anúncios dele (utm_content). A marcação
+// manual da tela de VSL manda; sem nenhuma ligação, ficam as marcadas como rodando.
+async function _audVslsDoProjeto(cfg, ads, nomeProj, de, ate, faltou) {
+  const ativas = await _vturbAtivas7d(cfg);
+  const { lista } = await _mcpVsls(cfg);
+  const dados = id => lista.find(p => String(p.id) === String(id)) || {};
+  const salvas = readDB().store.sl_vsl_projetos;
+  const mapa = (salvas && typeof salvas === 'object' && !Array.isArray(salvas)) ? salvas : {};
+  const alvo = _nrm(nomeProj), idsAds = new Set();
+  Object.values(ads).forEach(a => a.ids.forEach(i => idsAds.add(i)));
+  const per = _vturbPeriodo({ query: { de, ate } }), achadas = [];
+  const olhar = async v => {
+    const salvo = mapa[v.id] ? _nrm(mapa[v.id]) : '';
+    if (salvo && salvo !== alvo) return;
+    let vis = 0;
+    try {
+      const s = await _vtOrigemStats(cfg, String(v.id), 'utm_content', per);
+      s.linhas.forEach(l => { if (ads[_anuncioChave(l.nome)] || (/^\d{6,}$/.test(l.nome) && idsAds.has(l.nome))) vis += l.visUnicas; });
+    } catch (e) {}
+    if (vis >= 20 || salvo === alvo) achadas.push(Object.assign({}, dados(v.id), v, { vis }));
+  };
+  for (let i = 0; i < ativas.length; i += 4) await Promise.all(ativas.slice(i, i + 4).map(olhar));
+  if (achadas.length) return achadas.sort((a, b) => b.vis - a.vis).slice(0, 4);
+  const rodando = lista.filter(p => p.rodando && p.duracao && !(mapa[p.id] && _nrm(mapa[p.id]) !== alvo)).slice(0, 4);
+  if (rodando.length) faltou.push('não deu pra ligar as VSLs aos anúncios deste projeto pelas UTMs: usei as marcadas como rodando, confira pelo nome se são dele');
+  return rodando;
+}
+// Os números de uma VSL num período, em pessoas. Mesmas contas da ferramenta retencao_da_vsl.
+async function _audVslPeriodo(cfg, v, de, ate) {
+  const pr = _vturbPeriodo({ query: { de, ate } }), dur = Number(v.duracao) || 0, pitchSeg = Number(v.pitch) || 0;
+  const base = { player_id: String(v.id), start_date: pr.ini, end_date: pr.fim, timezone: 'America/Sao_Paulo', video_duration: dur };
+  const [bruto, st] = await Promise.all([
+    _vturbApiData(cfg.token, '/times/user_engagement', base, pr),
+    _vturbApiData(cfg.token, '/sessions/stats', Object.assign({ pitch_time: pitchSeg }, base), pr)
+  ]);
+  const curva = _vslCurvaDe(Array.isArray(bruto) ? bruto : ((bruto && (bruto.grouped_timed || bruto.timed || bruto.data || bruto.results)) || []));
+  const noSeg = s => curva.filter(x => x.t <= s).pop() || { t: 0, y: 0, n: 0 };
+  const play = Number(st.total_started_device_uniq || st.total_started) || 0;
+  const pessoas = s => (s <= dur && curva.length ? play * noSeg(s).y / 100 : null);
+  const gg = _vslGargalo(curva);
+  return { views: Number(st.total_viewed_device_uniq || st.total_viewed) || 0, play, m1: pessoas(60), m5: pessoas(300), m10: pessoas(600), m20: pessoas(1200),
+    pitch: pitchSeg && curva.length ? noSeg(pitchSeg).n : (Number(st.total_over_pitch) || 0), cliques: Number(st.total_clicked_device_uniq || st.total_clicked) || 0,
+    vendas: Number(st.total_conversions) || 0, pitchSeg, gargalo: gg ? Math.floor(gg.t0 / 60) + 'min' + String(Math.round(gg.t0 % 60)).padStart(2, '0') + ' (perde ' + gg.rel.toFixed(0) + '%)' : '' };
+}
+
+async function _audJuntarDados(job, b) {
+  const faltou = [], partes = [], fm = _audFm;
+  const recuo = b.dia === 'ontem' ? 1 : 0;
+  const D = _mcpDia(recuo), D1 = _mcpDia(recuo + 1), dias = [6, 5, 4, 3, 2, 1, 0].map(i => _mcpDia(recuo + i));
+  const d3 = dias.slice(-3), d7 = dias;
+  const dbIni = readDB(), metas = _audMetas(dbIni, b.projeto), nomesConta = _contaNomes();
+  const nomeConta = c => nomesConta[c] || c || '-';
+
+  job.etapa = 'Conectando na Utmify…';
+  const achado = await _utmifyDashboardsAtivos();
+  const dash = achado.lista.find(d => String(d.id) === String(b.projeto));
+  if (!dash) throw new Error('Esse projeto não está ligado na Utmify.');
+  const nomeProj = String(dash.nome || b.projetoNome || '').trim();
+
+  job.etapa = 'Lendo o resumo do dia…';
+  const rD = await _audLerDia(dash, D, D), rD1 = await _audLerDia(dash, D1, D1), r7 = await _audLerDia(dash, d7[0], D);
+  [...rD.erros, ...rD1.erros].slice(0, 3).forEach(e => faltou.push('resumo da Utmify (' + String(e).slice(0, 120) + ')'));
+
+  // ── anúncios e campanhas, um dia por vez (do mais antigo pro mais novo: o status que fica é o de agora) ──
+  const ads = {}, camps = {}, copias = {}, conc = {};
+  let semTmx = false, erroDia = '';
+  for (const dia of dias) {
+    job.etapa = 'Lendo anúncios e campanhas de ' + fm.dm(dia) + '…';
+    let la, lc;
+    try { la = await _audNivel(achado.cfg, dash, 'ad', dia); lc = await _audNivel(achado.cfg, dash, 'campaign', dia); }
+    catch (e) { erroDia = String(e.message || e).slice(0, 120); faltou.push('anúncios de ' + fm.dm(dia) + ' (' + erroDia + ')'); continue; }
+    lc.forEach(x => {
+      const id = String(x.id || x.campaignId || x.name);
+      const c = camps[id] || (camps[id] = { id, nome: '', conta: '', ativo: false, orc: 0, criada: '', dias: {} });
+      c.nome = String(x.name || c.nome).trim();
+      if (x.ca) c.conta = String(x.ca);
+      c.ativo = _audAtivo(x);
+      c.orc = (Number(x.dailyBudget) || 0) / 100;
+      c.lance = (Number(x.bidCap) || 0) / 100;
+      if (x.createdTime) c.criada = String(x.createdTime);
+      c.dias[dia] = _audNums(x);
+    });
+    const doDia = {};
+    la.forEach(x => {
+      const nome = String(x.name || '(sem nome)').trim(), k = _anuncioChave(nome), n = _audNums(x), cid = String(x.campaignId || '');
+      const a = ads[k] || (ads[k] = { k, nome, ids: new Set(), ativo: false, dias: {}, campsDia: {} });
+      const aid = String(x.id || x.adId || x.ad_id || '').trim();
+      if (aid) a.ids.add(aid);
+      if (a.visto !== dia) { a.visto = dia; a.ativo = false; }
+      if (_audAtivo(x)) a.ativo = true;
+      _audSoma(a.dias[dia] || (a.dias[dia] = {}), n);
+      if (n.gasto >= 5 && cid) (a.campsDia[dia] || (a.campsDia[dia] = new Set())).add(cid);
+      const kc = k + '|' + cid, c = copias[kc] || (copias[kc] = { k, nome, cid, conta: String(x.ca || ''), ativo: false, dias: {} });
+      if (c.visto !== dia) { c.visto = dia; c.ativo = false; }
+      if (_audAtivo(x)) c.ativo = true;
+      _audSoma(c.dias[dia] || (c.dias[dia] = {}), n);
+      const m = doDia[k] || (doDia[k] = { nome, ids: [], investimento: 0, porConta: {} });
+      m.investimento += n.gasto;
+      if (aid && m.ids.indexOf(aid) < 0 && m.ids.length < 30) m.ids.push(aid);
+    });
+    const com = _anunciosComTmx({ anuncios: Object.values(doDia) }, dia, dia, dash.id);
+    if (com && com.fonteReceita === 'tmx') {
+      conc[dia] = com.conciliacao;
+      com.anuncios.forEach(a => {
+        if (!a.vendas && !a.receita) return;
+        const k = _anuncioChave(a.nome), o = ads[k] || (ads[k] = { k, nome: a.nome, ids: new Set(), ativo: false, dias: {}, campsDia: {} });
+        const dd = o.dias[dia] || (o.dias[dia] = {});
+        dd.tmx = (dd.tmx || 0) + a.vendas; dd.tmxRec = (dd.tmxRec || 0) + a.receita;
+      });
+    } else semTmx = true;
+  }
+  if (!Object.keys(ads).length) throw new Error(erroDia ? 'A Utmify não respondeu os anúncios: ' + erroDia : 'A Utmify não devolveu nenhum anúncio desse projeto nos últimos 7 dias.');
+  if (semTmx) faltou.push('vendas do TMX por anúncio em algum dia: a coluna TMX pode estar incompleta');
+
+  // ── contexto e metas ──
+  const agora = new Date(Date.now() - 3 * 3600000);
+  const hora = String(agora.getUTCHours()).padStart(2, '0') + ':' + String(agora.getUTCMinutes()).padStart(2, '0');
+  let ultHora = -1, antes = 0;
+  ((rD.acum && rD.acum.inv) || []).forEach((v, h) => { if (v > antes + 0.01) { ultHora = h; antes = v; } });
+  const parcial = recuo === 0 ? ('parcial até ~' + (ultHora >= 0 ? (ultHora + 1) + 'h' : hora.slice(0, 2) + 'h')) : '';
+  const cpaRef = Number(metas.cpa) || (r7.n ? r7.fat / r7.n : 0);
+  const fator = cpaRef ? cpaRef / 350 : 1;
+  const totU = Object.values(ads).reduce((s, a) => s + (_audJanela(a, d7).vendas || 0), 0), totT = Object.values(ads).reduce((s, a) => s + (_audJanela(a, d7).tmx || 0), 0);
+  partes.push('=== CONTEXTO ===\nProjeto: ' + nomeProj + '\nDia analisado (D): ' + fm.dm(D) + '/' + D.slice(0, 4) + ' · ' + (parcial ? parcial + (ultHora >= 0 ? ' (último gasto registrado às ' + ultHora + 'h)' : '') : 'dia fechado') +
+    '\nDia anterior (D-1): ' + fm.dm(D1) + ' (fechado)\nAgora: ' + _mcpDia(0) + ' às ' + hora + ' (Brasília)\nFontes: Utmify, Central TMX e VTurb. Faturamento e vendas do resumo vêm de: ' + rD.fonte + '.' +
+    (metas.cpa ? '\nCPA meta do projeto: ' + fm.r(metas.cpa) : '\nSem CPA meta cadastrado: a régua é o CPA de equilíbrio dos últimos 7 dias (receita / vendas), ' + fm.r(cpaRef) + '. Diga isso no topo.') +
+    '\nFator de escala das regras em R$: ' + fm.x(fator) + ' (régua ÷ 350). Multiplique por ele todo valor em R$ das regras de decisão.' +
+    (!totU && totT ? '\nAVISO: o painel da Utmify deste projeto não recebe vendas (0 vendas em 7 dias, contra ' + totT + ' no TMX). Diga isso no topo e marque a coluna Utmify como "sem dado".' : '') +
+    (metas.principal ? '\nProduto principal: ' + metas.principal : ''));
+
+  // ── resumo ──
+  const principal = String(metas.principal || '').split(',').map(_nrm).filter(Boolean);
+  const dePrincipal = r => r.produtos.filter(x => principal.some(t => _nrm(x.produto).indexOf(t) >= 0)).reduce((s, x) => s + x.vendas, 0);
+  const somaAds = dia => Object.values(ads).reduce((s, a) => _audSoma(s, a.dias[dia] || {}), {});
+  const aD = somaAds(D), aD1 = somaAds(D1), cD = conc[D] || {}, cD1 = conc[D1] || {};
+  // receita ligada a anúncio na mesma fonte do faturamento do resumo
+  const recAd = (c, ad) => (rD.fonte === 'TMX' ? Number(c.receitaAnuncios) || 0 : Number(ad.receita) || 0);
+  if (metas.fatDia || metas.investDia) {
+    const mF = Number(metas.fatDia) || 0, mL = Number(metas.lucroDia) || 0, mI = Number(metas.investDia) || 0, mR = mI ? mF / mI : 0, roas = rD.inv ? rD.fat / rD.inv : 0;
+    const semAd = Math.max(0, rD.fat - recAd(cD, aD)), roasAds = rD.inv ? recAd(cD, aD) / rD.inv : 0;
+    partes.push('=== META DO DIA (já calculada) ===\n' + _audTab(['Item', 'Hoje', 'Meta', '% atingido', 'Falta'], [
+      ['Faturamento', fm.r(rD.fat), fm.r(mF), fm.p(rD.fat, mF), fm.r(Math.max(0, mF - rD.fat))],
+      ['Lucro (fat. menos invest.)', fm.r(rD.lucro), fm.r(mL), fm.p(rD.lucro, mL), fm.r(Math.max(0, mL - rD.lucro))],
+      ['Investimento', fm.r(rD.inv), 'até ' + fm.r(mI), fm.p(rD.inv, mI), fm.r(Math.max(0, mI - rD.inv)) + ' de espaço'],
+      ['ROAS geral', fm.x(roas), fm.x(mR), fm.p(roas, mR), '+' + fm.x(Math.max(0, mR - roas))],
+      ['Margem', fm.p(rD.lucro, rD.fat), fm.p(mL, mF), '-', '-']]) +
+      '\n\nReceita ligada a anúncio: ' + fm.r(recAd(cD, aD)) + '. Não rastreada (orgânico, bio, renovação): ' + fm.r(semAd) + ' (' + fm.p(semAd, rD.fat) + ').' +
+      (mI ? '\nROAS mínimo dos anúncios para fechar a meta: (' + fm.n(mF) + ' − ' + fm.n(semAd) + ') / ' + fm.n(mI) + ' = ' + fm.x((mF - semAd) / mI) + '. No dia os anúncios fizeram ' + fm.x(roasAds) + '.' +
+        '\nGastando todo o limite de ' + fm.r(mI) + ' com o ROAS de anúncios do dia, o dia daria ~' + fm.r(semAd + mI * roasAds) + '.' : '') +
+      (metas.cpa ? '\nPor anúncio: CPA ' + fm.r(metas.cpa) + (metas.roiMin ? ', ROI ' + fm.x(metas.roiMin) + (metas.roiMax ? ' a ' + fm.x(metas.roiMax) : '') : '') + '.' : ''));
+  } else partes.push('=== META DO DIA ===\nEste projeto não tem meta do dia cadastrada: pule a tabela de meta do dia e diga isso no topo.');
+  const linhaProdutos = () => {
+    const nomes = [...new Set([...rD.produtos, ...rD1.produtos].map(x => x.produto))];
+    return nomes.slice(0, 10).map(nome => {
+      const f = r => { const x = r.produtos.find(y => y.produto === nome); return x ? x.vendas + ' (' + fm.r(x.receita) + ')' : '0'; };
+      return ['Vendas: ' + nome, f(rD), f(rD1)];
+    });
+  };
+  const cpa = (r, n) => (n ? fm.r(r.inv / n) : '-');
+  const ligadas = (a, c) => 'TMX ' + (c.vendasAnuncios != null ? c.vendasAnuncios : '-') + ' · Utmify ' + (a.vendas || 0) + ' · pixel ' + (a.pixel || 0);
+  partes.push('=== RESUMO: D x D-1 (já calculado) ===\n' + _audTab(['Métrica', 'D' + (parcial ? ' (' + parcial + ')' : ''), 'D-1 (fechado)'], [
+    ['Investimento', fm.r(rD.inv), fm.r(rD1.inv)],
+    ['Faturamento', fm.r(rD.fat), fm.r(rD1.fat)],
+    ['Faturamento pela Utmify', fm.r(rD.fatUtmify), fm.r(rD1.fatUtmify)],
+    ['ROAS geral', rD.inv ? fm.x(rD.fat / rD.inv) : '-', rD1.inv ? fm.x(rD1.fat / rD1.inv) : '-'],
+    ['ROAS dos anúncios', rD.inv ? fm.x(recAd(cD, aD) / rD.inv) : '-', rD1.inv ? fm.x(recAd(cD1, aD1) / rD1.inv) : '-'],
+    ['Vendas aprovadas', rD.n, rD1.n], ...linhaProdutos(),
+    ['CPA geral', cpa(rD, rD.n), cpa(rD1, rD1.n)],
+    ...(principal.length ? [['CPA principal (' + metas.principal + ')', cpa(rD, dePrincipal(rD)), cpa(rD1, dePrincipal(rD1))]] : []),
+    ['Lucro (fat. menos invest.)', fm.r(rD.lucro), fm.r(rD1.lucro)],
+    ['Lucro com taxas e impostos', rD.margem ? fm.r(rD.margem.margem) : '-', rD1.margem ? fm.r(rD1.margem.margem) : '-'],
+    ['Reembolsos', rD.reemb + ' (' + fm.r(rD.reembV) + ')', rD1.reemb + ' (' + fm.r(rD1.reembV) + ')'],
+    ['Pix/boleto pendente', rD.pend + ' (' + fm.r(rD.pendV) + ')', rD1.pend + ' (' + fm.r(rD1.pendV) + ')'],
+    ['Cartão recusado', rD.recusados + ' de ' + rD.tentativas + ' (' + fm.p(rD.recusados, rD.tentativas) + ') · ' + fm.r(rD.recusadoV), rD1.recusados + ' de ' + rD1.tentativas + ' (' + fm.p(rD1.recusados, rD1.tentativas) + ') · ' + fm.r(rD1.recusadoV)],
+    ['Vendas ligadas a anúncio', ligadas(aD, cD), ligadas(aD1, cD1)]
+  ]) + '\n\nVendas por hora em D: ' + (rD.vendasHora.map((n, h) => (n ? h + 'h: ' + n : '')).filter(Boolean).join(' · ') || 'sem dado'));
+
+  // ── funil ──
+  job.etapa = 'Lendo a retenção das VSLs…';
+  let vsls = [];
+  const porVsl = [];
+  const totalVsl = { D: {}, D1: {} };
+  try {
+    const cfgV = _vturbExige();
+    vsls = await _audVslsDoProjeto(cfgV, ads, nomeProj, D1, D, faltou);
+    for (const v of vsls) {
+      try {
+        const [vD, vD1] = [await _audVslPeriodo(cfgV, v, D, D), await _audVslPeriodo(cfgV, v, D1, D1)];
+        const so = o => ({ views: o.views, play: o.play, m1: o.m1 || 0, m5: o.m5 || 0, m10: o.m10 || 0, m20: o.m20 || 0, pitch: o.pitch, cliques: o.cliques, vendas: o.vendas });
+        _audSoma(totalVsl.D, so(vD)); _audSoma(totalVsl.D1, so(vD1));
+        porVsl.push([v.nome, 'D: ' + fm.n(vD.play) + ' plays · play ' + fm.p(vD.play, vD.views) + ' · 1 min ' + fm.p(vD.m1, vD.play) + ' · pitch ' + fm.p(vD.pitch, vD.play, 1) + (vD.pitchSeg ? ' (' + Math.floor(vD.pitchSeg / 60) + 'min' + String(vD.pitchSeg % 60).padStart(2, '0') + ')' : '') + ' · ' + vD.cliques + ' cliques no botão (' + fm.p(vD.cliques, vD.pitch) + ' do pitch) · ' + vD.vendas + ' vendas VTurb (Tx checkout ' + fm.p(vD.vendas, vD.cliques) + ')' + (vD.gargalo ? ' · maior gargalo ' + vD.gargalo : ''),
+          'D-1: ' + fm.n(vD1.play) + ' plays · pitch ' + fm.p(vD1.pitch, vD1.play, 1) + ' · ' + vD1.cliques + ' cliques (' + fm.p(vD1.cliques, vD1.pitch) + ') · ' + vD1.vendas + ' vendas VTurb' + (vD1.gargalo ? ' · gargalo ' + vD1.gargalo : '')]);
+      } catch (e) { faltou.push('VSL ' + v.nome + ' (' + String(e.message || e).slice(0, 100) + ')'); }
+    }
+    if (!vsls.length) faltou.push('nenhuma VSL com tráfego achada neste projeto');
+  } catch (e) { faltou.push('retenção da VSL (' + String(e.message || e).slice(0, 120) + ')'); }
+  const vD = totalVsl.D, vO = totalVsl.D1;
+  const et = (nome, a, ta, b, tb) => [nome, fm.n(a), ta, fm.n(b), tb];
+  const etapasVsl = porVsl.length ? [
+    et('Views únicas VSL', vD.views, fm.p(vD.views, rD.lpv), vO.views, fm.p(vO.views, rD1.lpv)),
+    et('Play (únicos)', vD.play, fm.p(vD.play, vD.views), vO.play, fm.p(vO.play, vO.views)),
+    et('1 min', vD.m1, fm.p(vD.m1, vD.play), vO.m1, fm.p(vO.m1, vO.play)),
+    et('5 min', vD.m5, fm.p(vD.m5, vD.play), vO.m5, fm.p(vO.m5, vO.play)),
+    et('10 min', vD.m10, fm.p(vD.m10, vD.play), vO.m10, fm.p(vO.m10, vO.play)),
+    et('20 min', vD.m20, fm.p(vD.m20, vD.play), vO.m20, fm.p(vO.m20, vO.play)),
+    et('Pitch', vD.pitch, fm.p(vD.pitch, vD.play), vO.pitch, fm.p(vO.pitch, vO.play)),
+    et('Clique no botão', vD.cliques, fm.p(vD.cliques, vD.pitch), vO.cliques, fm.p(vO.cliques, vO.pitch))] : [];
+  const db = readDB();
+  const mv = metas.vsl || (() => { const s = Object.assign({}, VSL_METAS_PADRAO, (db.store.sl_vsl_metas && typeof db.store.sl_vsl_metas === 'object') ? db.store.sl_vsl_metas : {}); return { play: s.playRate, min1: s.ret1min, pitch: s.pctPitch }; })();
+  partes.push('=== FUNIL (VSLs somadas, já calculado) ===\n' + _audTab(['Etapa', 'D', 'Taxa D', 'D-1', 'Taxa D-1'], [
+    et('Cliques', rD.cliques, '-', rD1.cliques, '-'),
+    et('Página (LPV)', rD.lpv, fm.p(rD.lpv, rD.cliques), rD1.lpv, fm.p(rD1.lpv, rD1.cliques)),
+    ...etapasVsl,
+    et('IC (Meta)', rD.ic, '-', rD1.ic, '-'),
+    et('Pedidos', rD.pedidos, '-', rD1.pedidos, '-'),
+    et('Compraram', rD.n, fm.p(rD.n, rD.pedidos), rD1.n, fm.p(rD1.n, rD1.pedidos))]) +
+    '\n\nMetas da VSL: play ' + mv.play + '%, 1º minuto ' + mv.min1 + '%, pitch ' + mv.pitch + '%.' +
+    (porVsl.length ? '\n\nPor VSL:\n' + porVsl.map(l => '- ' + l[0] + '\n  ' + l[1] + '\n  ' + l[2]).join('\n') : ''));
+
+  // ── contas ──
+  job.etapa = 'Lendo as contas de anúncio…';
+  try {
+    const leConta = async dia => {
+      const m = {};
+      (await _audNivel(achado.cfg, dash, 'account', dia)).forEach(x => { const nome = String(x.name || x.ca || '(conta)').trim(); _audSoma(m[nome] || (m[nome] = {}), _audNums(x)); });
+      return m;
+    };
+    const cD_ = await leConta(D), cO_ = await leConta(D1);
+    const nomes = [...new Set([...Object.keys(cD_), ...Object.keys(cO_)])].sort((a, b) => ((cD_[b] || {}).gasto || 0) - ((cD_[a] || {}).gasto || 0));
+    const lin = (c = {}) => [fm.r(c.gasto), c.vendas || 0, _audRoas(c), c.ic || 0, _audCustoIc(c), c.ic ? fm.x((c.vendas || 0) / c.ic * 100).replace(',00', '') : '-'];
+    partes.push('=== CONTAS (já calculado) ===\n' + _audTab(['Conta', 'Gasto D', 'Vendas D', 'ROAS D', 'IC D', 'Custo por IC D', 'Vendas a cada 100 ICs D', 'Gasto D-1', 'Vendas D-1', 'ROAS D-1'],
+      nomes.slice(0, 30).map(n => [n, ...lin(cD_[n]), fm.r((cO_[n] || {}).gasto), (cO_[n] || {}).vendas || 0, _audRoas(cO_[n] || {})])) + '\nConta sem gasto = reserva.');
+  } catch (e) { faltou.push('contas de anúncio (' + String(e.message || e).slice(0, 120) + ')'); }
+
+  // ── anúncio por anúncio ──
+  const lista = Object.values(ads).map(a => ({ a, h: a.dias[D] || {}, t3: _audJanela(a, d3), t7: _audJanela(a, d7) }));
+  lista.sort((x, y) => (y.h.gasto || 0) - (x.h.gasto || 0) || (y.t7.gasto || 0) - (x.t7.gasto || 0));
+  const relevantes = lista.filter(l => (l.t7.gasto || 0) >= 20 || _audMaisVendas(l.t7) > 0);
+  const campsD = l => (l.a.campsDia[D] ? l.a.campsDia[D].size : 0);
+  partes.push('=== ANÚNCIOS, por nome (já calculado). Vendas = TMX / Utmify / pixel. Janelas = gasto · vendas · ROAS ===\n' + _audTab(
+    ['Anúncio', 'Status', 'Camp. D', 'Gasto D', 'Vendas D', 'Pix pend. D', 'IC D', 'Custo IC D', '3 dias', '7 dias', 'Custo IC 3d', 'Custo IC 7d', 'Taxa IC 3d', 'Taxa IC 7d', 'Hook 3d', 'Body 3d', 'CPM 3d', 'CTR 3d'],
+    relevantes.slice(0, 70).map(l => [l.a.nome, l.a.ativo ? 'ativo' : 'pausado', campsD(l), fm.r(l.h.gasto), _audTrio(l.h), l.h.pend || 0, l.h.ic || 0, _audCustoIc(l.h), _audJanelaTxt(l.t3), _audJanelaTxt(l.t7),
+      _audCustoIc(l.t3), _audCustoIc(l.t7), fm.p(l.t3.ic, l.t3.lpv, 1), fm.p(l.t7.ic, l.t7.lpv, 1), fm.p(l.t3.v3, l.t3.imp), fm.p(l.t3.v75, l.t3.v3), l.t3.imp ? fm.r(l.t3.gasto / l.t3.imp * 1000) : '-', fm.p(l.t3.cliques, l.t3.imp, 2)])) +
+    (relevantes.length > 70 ? '\n(os 70 de maior gasto, de ' + relevantes.length + ')' : ''));
+
+  const historico = lista.filter(l => (l.t7.gasto || 0) > 0).sort((x, y) => (y.t7.gasto || 0) - (x.t7.gasto || 0)).slice(0, 30);
+  partes.push('=== HISTÓRICO DE 7 DIAS (campanhas no dia / gasto / vendas, a maior entre TMX e Utmify) ===\n' + _audTab(['Anúncio', ...dias.map(fm.dm)],
+    historico.map(l => [l.a.nome, ...dias.map(d => { const x = l.a.dias[d]; return x && (x.gasto || _audMaisVendas(x)) ? (l.a.campsDia[d] ? l.a.campsDia[d].size : 0) + ' / ' + fm.n(x.gasto) + ' / ' + _audMaisVendas(x) : '-'; })])));
+
+  const copiasL = Object.values(copias).map(c => ({ c, h: c.dias[D] || {}, t3: _audJanela(c, d3), t7: _audJanela(c, d7), camp: camps[c.cid] || {} }))
+    .filter(x => (x.h.gasto || 0) >= 5 || x.c.ativo || (!x.c.ativo && (x.t3.vendas || x.t3.pixel)))
+    .sort((a, b) => (b.h.gasto || 0) - (a.h.gasto || 0));
+  partes.push('=== CÓPIAS (cada anúncio em cada campanha). Vendas = Utmify / pixel ===\n' + _audTab(
+    ['Anúncio', 'Campanha', 'Conta', 'Criada', 'Status agora', 'Orç./dia', 'Gasto D', 'IC D', 'Vendas D', 'Pix D', 'Gasto 3d', 'IC 3d', 'Vendas 3d', 'Gasto 7d', 'Vendas 7d'],
+    copiasL.slice(0, 140).map(x => [x.c.nome, x.camp.nome || x.c.cid, nomeConta(x.camp.conta || x.c.conta), x.camp.criada ? fm.dm(String(x.camp.criada).slice(0, 10)) : '-', (x.c.ativo && x.camp.ativo !== false) ? 'ativa' : 'pausada',
+      x.camp.orc ? fm.r(x.camp.orc) : '-', fm.r(x.h.gasto), x.h.ic || 0, (x.h.vendas || 0) + ' / ' + (x.h.pixel || 0), x.h.pend || 0, fm.r(x.t3.gasto), x.t3.ic || 0, (x.t3.vendas || 0) + ' / ' + (x.t3.pixel || 0), fm.r(x.t7.gasto), (x.t7.vendas || 0) + ' / ' + (x.t7.pixel || 0)])) +
+    (copiasL.length > 140 ? '\n(as 140 de maior gasto, de ' + copiasL.length + ')' : ''));
+
+  const diverge = (t, rotulo) => {
+    const l = lista.filter(x => { const v = x[t]; return (v.tmx || 0) !== (v.vendas || 0) || (v.pixel || 0) !== (v.vendas || 0); }).filter(x => x[t].tmx || x[t].vendas || x[t].pixel)
+      .map(x => x.a.nome + ': ' + _audTrio(x[t]));
+    return rotulo + ': ' + (l.length ? l.slice(0, 30).join(' · ') : 'nenhuma');
+  };
+  partes.push('=== DIVERGÊNCIAS (TMX / Utmify / pixel) ===\n' + diverge('h', 'D') + '\n' + diverge('t3', '3 dias'));
+
+  // ── BIDCAP e testes ──
+  const ehBid = n => /\bbid/i.test(n || ''), ehTeste = n => /1[.\-_ ]1[.\-_ ]3/.test(n || '');
+  const bids = Object.values(camps).filter(c => ehBid(c.nome) && (_audJanela(c, d7).gasto || 0) > 0);
+  if (bids.length) {
+    const porCriativo = Object.values(copias).filter(c => ehBid((camps[c.cid] || {}).nome)).map(c => ({ c, h: c.dias[D] || {}, t7: _audJanela(c, d7) })).filter(x => x.t7.gasto).sort((a, b) => (b.h.gasto || 0) - (a.h.gasto || 0));
+    const gastoBidD = porCriativo.reduce((s, x) => s + (x.h.gasto || 0), 0);
+    partes.push('=== BIDCAP (já calculado) ===\n' + _audTab(['Campanha', 'Status', 'Orç./dia', 'Gasto D', 'Vendas D', 'ROAS D', 'Gasto 7d', 'Vendas 7d', 'ROAS 7d', 'Lance'],
+      bids.map(c => { const h = c.dias[D] || {}, t = _audJanela(c, d7); return [c.nome, c.ativo ? 'ativa' : 'pausada', c.orc ? fm.r(c.orc) : '-', fm.r(h.gasto), h.vendas || 0, _audRoas(h), fm.r(t.gasto), t.vendas || 0, _audRoas(t), c.lance ? fm.r(c.lance) : '-']; })) +
+      '\n\nPor criativo:\n' + _audTab(['Anúncio', 'Gasto D', 'Parte do gasto', 'Vendas D', 'Custo IC D', 'Gasto 7d', 'Vendas 7d', 'Custo IC 7d'],
+        porCriativo.slice(0, 25).map(x => [x.c.nome, fm.r(x.h.gasto), fm.p(x.h.gasto || 0, gastoBidD), x.h.vendas || 0, _audCustoIc(x.h), fm.r(x.t7.gasto), x.t7.vendas || 0, _audCustoIc(x.t7)])));
+  } else partes.push('=== BIDCAP ===\nNenhuma campanha com "bid" no nome teve gasto nos últimos 7 dias.');
+  const testes = {};
+  Object.values(copias).filter(c => ehTeste((camps[c.cid] || {}).nome)).forEach(c => {
+    const t = testes[c.k] || (testes[c.k] = { nome: c.nome, k: c.k, dias: {}, ativo: false, ini: '', fim: '' });
+    if (c.ativo) t.ativo = true;
+    d7.forEach(d => { const x = c.dias[d]; if (x) { _audSoma(t.dias[d] || (t.dias[d] = {}), x); if (x.gasto) { if (!t.ini || d < t.ini) t.ini = d; if (!t.fim || d > t.fim) t.fim = d; } } });
+  });
+  const listaT = Object.values(testes).map(t => ({ t, s: _audJanela(t, d7) })).filter(x => x.s.gasto).sort((a, b) => b.s.gasto - a.s.gasto);
+  const foraDoTeste = k => Object.values(copias).filter(c => c.k === k && !ehTeste((camps[c.cid] || {}).nome) && (_audJanela(c, d7).gasto || 0) > 0).length;
+  partes.push('=== TESTES CRIATIVOS (campanhas 1.1.3, acumulado nos 7 dias). Vendas = Utmify / pixel ===\n' + (listaT.length ? _audTab(['Anúncio', 'Gasto no teste', 'Vendas', 'IC', 'Custo por IC', 'Status', 'Primeiro gasto', 'Último gasto', 'Cópias fora do teste'],
+    listaT.slice(0, 60).map(x => [x.t.nome, fm.r(x.s.gasto), (x.s.vendas || 0) + ' / ' + (x.s.pixel || 0), x.s.ic || 0, _audCustoIc(x.s), x.t.ativo ? 'ativo' : 'pausado', fm.dm(x.t.ini), fm.dm(x.t.fim), foraDoTeste(x.t.k)])) : 'Nenhum teste com gasto nos últimos 7 dias.'));
+
+  // ── funis do TMX e auditoria anterior ──
+  job.etapa = 'Lendo os funis…';
+  const alvo = nomeProj.toLowerCase();
+  const funis = (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).filter(f => f && String(f.projeto || '').trim().toLowerCase() === alvo)
+    .sort((a, b) => (b.etapas || []).length - (a.etapas || []).length).slice(0, 2);
+  for (const f of funis) {
+    for (const [rot, de] of [['D', D], ['D-1', D1]]) {
+      try { partes.push('=== FUNIL DO TMX · ' + f.nome + ' · ' + rot + ' ===\n' + await _mcpExecutar('onde_perco_gente', { funil: f.id, de, ate: de })); }
+      catch (e) { faltou.push('funil ' + f.nome + ' (' + String(e.message || e).slice(0, 100) + ')'); }
+    }
+  }
+  _audTabela();
+  const ant = _q('SELECT em, relatorio FROM ia_auditorias WHERE projeto=? ORDER BY em DESC LIMIT 1').get(b.projeto);
+  if (ant) {
+    try {
+      const r = JSON.parse(ant.relatorio);
+      const quando = new Date(ant.em - 3 * 3600000).toISOString().slice(0, 16).replace('T', ' às ');
+      partes.push('=== RECOMENDAÇÕES DA AUDITORIA ANTERIOR (' + quando + ') ===\n' + (r.acoes || []).map(a => '- [' + a.prioridade + '] ' + a.acao + ': ' + a.detalhe).join('\n'));
+    } catch (e) {}
+  }
+  if (faltou.length) partes.push('=== O QUE NÃO VEIO ===\n' + faltou.map(x => '- ' + x).join('\n'));
+  return { texto: partes.join('\n\n'), faltou, dia: D, parcial };
+}
+
+const AUD_SISTEMA = `Você é o analista de tráfego pago de uma operação brasileira de direct response: infoproduto vendido por VSL, anúncios na Meta. Você recebe os números reais de um projeto, já somados e calculados pelo sistema, e devolve o relatório de fechamento que o dono usa pra decidir o que duplicar, reativar, pausar e corrigir.
+
+COMO ESCREVER
+- Português do Brasil, direto, tabelas para números, frases curtas, sem excesso de ressalvas. Nunca use travessão: use ponto, vírgula ou "-" em célula vazia.
+- Dinheiro R$ 1.234, ROAS 1,60, porcentagem 51%.
+- Use só os números recebidos. Não invente valor, nome de anúncio, campanha ou causa. As tabelas já vêm calculadas: copie os valores em vez de refazer a conta. Causa que for hipótese vai escrita como hipótese ("provável").
+- O que não veio entra em Ressalvas e o relatório segue com o que há. Se uma seção ficou sem dado, diga em uma linha.
+
+COMO LER OS DADOS
+- Atribuição: compare TMX, Utmify e pixel lado a lado. Nenhuma é a principal. Quando batem, venda confirmada. Quando divergem, aponte o anúncio, a diferença e o motivo provável (sem UTM, atraso, outro anúncio). Para decidir, vale a venda que aparece em pelo menos uma fonte, dizendo quando só aparece numa.
+- Agrupe sempre pelo nome do anúncio, nunca pelo nome da campanha. Decisão de pausar cita a cópia: anúncio, campanha e conta.
+- Dia parcial: vendas e ICs da noite ainda entram, e a VTurb atrasa conversão em horas. Compare com o dia anterior fechado sabendo disso.
+- Amostra pequena não decide: diga que ainda é cedo em vez de mandar matar. Quem vendeu no dia não se pausa. Pix pendente conta como venda por 24 h.
+- Muitos ICs sem pedido num anúncio pode ser lote de ICs atrasado: mande conferir pixel e checkout antes de decidir.
+- Nomes: "1.1.3" ou "1-1-3" na campanha = teste criativo (1 campanha, 1 conjunto, 3 anúncios, um por hook). "CBO 1.3.1" = duplicata. "BIDCAP" ou "BID" = campanha de lance. AD216.2 é o Hook 2 do AD216. "AD245.1 - AD216.2 + C153" é um anúncio novo, com o Hook 2 do AD216 e o corpo do AD153 (C é corpo). Cada nome é um anúncio próprio. Se os nomes do projeto não seguirem isso, leia pelo que dá e diga.
+- Leituras que sempre fazer: número de campanhas por anúncio contra vendas por dia (aguenta escala ou tem teto); campanhas pausadas no dia em que venderam; CTR alto com taxa de IC baixa; CPM subindo só num anúncio; venda de receita baixa distorcendo ROAS; contas sem gasto são reserva.
+- Dinheiro parado = cartão recusado + Pix pendente. Pessoas na retenção já vêm calculadas.
+
+REGRAS DE DECISÃO (valores em R$ do projeto de referência, CPA meta R$ 350. Multiplique cada valor em R$ pelo fator de escala informado nos dados.)
+
+Pausar cópia (só se não vendeu no dia em nenhuma fonte nem tem Pix pendente): R$ 150+ no dia sem IC · custo por IC no dia > R$ 80 com mais de R$ 120 · histórico > R$ 350 sem venda e sem venda no dia · teste fora do limite (1 venda e > R$ 700; sem venda e > R$ 350 com custo por IC > R$ 40) · cópia pior que a irmã do mesmo anúncio, sem venda.
+
+Duplicação (fechamento)
+| Situação | Duplicatas |
+|---|---|
+| ROAS 3d ≥ 1,5 com 3+ vendas e histórico aguenta mais campanhas | 2 a 3 |
+| ROAS 3d ≥ 1,5 com 1 a 2 vendas | 1 a 2 |
+| Já quebrou com muitas cópias | 0 a 1, ou BIDCAP 2 |
+| Teste que vendeu com custo por IC ≤ R$ 45 | 1 |
+| Sem venda, custo por IC ≤ R$ 40 | 0, deixar a original rodar |
+| Em queda ou saturado | 0, consolidar em 1 campanha |
+| Campanha que vendeu e foi pausada | Reativar antes de duplicar |
+| Limite | 6 a 8 duplicatas novas por conta por dia |
+Duplique de preferência na conta que converte mais IC em venda.
+
+Testes
+| Situação | O que fazer |
+|---|---|
+| Vendeu e custo por IC ≤ R$ 45 | Duplicar 1× |
+| Sem venda, custo por IC ≤ R$ 40, ou taxa de IC > 7%, ou pitch > 22% | Até R$ 350 |
+| Custo por IC R$ 40 a 60, ou pitch < 15% | Até R$ 300 e rever |
+| Custo por IC > R$ 80, ou CPM > R$ 70 com CPC > R$ 3,50 | Pausar |
+| IC barato e sem venda após R$ 350 | Trocar o hook, não matar o corpo |
+| 1 venda (TMX, Utmify ou pixel) | Até R$ 700 |
+
+Corte aos R$ 160: custo por IC > R$ 50 e pitch < 15% = cortar · custo por IC ≤ R$ 40 ou pitch > 22% = ir a R$ 350 · 1 compra no pixel = ir a R$ 700.
+
+BIDCAP
+| Regra | Critério |
+|---|---|
+| Entrar | 2+ vendas, ou 1 venda com custo por IC ≤ R$ 40 e pitch > 20%. Teste nunca entra |
+| Sair | R$ 350 no BIDCAP sem venda, ou custo por IC > R$ 60 por 2 dias |
+| Subir orçamento | ROAS > 2 por 2 dias seguidos: +20 a 30% |
+| Voltar orçamento | ROAS < 1,2 no dia |
+| Dominante caindo (custo por IC > R$ 60 ou ROAS 3d < 1) | Baixar 20% e abrir BIDCAP 2 sem ele |
+
+Diagnóstico de criativo
+| Hook | Body | Taxa de IC | Diagnóstico | Ação |
+|---|---|---|---|---|
+| Alto | Alto | Baixa | Atrai curioso | Matar o corpo; hook que filtre |
+| Alto | Baixo | Qualquer | Corpo não segura | Manter o hook, trocar o corpo |
+| Baixo | Qualquer | Alta | Filtra comprador | Escalar com cuidado |
+| Qualquer | Qualquer | Alta sem pedido | Problema depois do clique | Conferir link, checkout, página |
+| Qualquer | Qualquer | Caindo 3 dias | Saturação | Consolidar e descansar 7 a 10 dias |
+
+O QUE ENTREGAR NO CAMPO markdown (exatamente estas seções, nesta ordem)
+
+# Relatório final · [Projeto] · DD/MM (dia fechado | parcial até ~Xh)
+Linha com data, janela e fontes.
+> Bloco de citação com as metas, o produto principal, BIDCAP rodando ou não, VSLs com tráfego e contas reserva.
+
+## 1. Resumo
+**Meta do dia**: a tabela já calculada, as linhas de receita ligada a anúncio e não rastreada, o ROAS mínimo com a conta escrita e um veredito em negrito (bateu ou não, e se o motivo é eficiência ou volume).
+A tabela D x D-1 completa. Leitura em 1 a 2 frases. Alertas: no máximo 3, numerados, com 🔴 ou 🟡, sempre com o valor em jogo.
+
+## 2. Decisões
+Tabela Ação | Item | Motivo. Ação: 🟢 Duplicar Nx, 🟢 Reativar, 🔴 Pausar, 🟡 Manter, ⚪ Orçamento. Pausa cita anúncio, campanha, conta e o número. Inclua a linha ⚪ com o saldo de verba (quanto corta e quanto repõe).
+
+## 3. Funil
+A tabela já calculada, depois "Por VSL" em uma linha por VSL e a Leitura (maior queda da VSL contra as metas, cartão recusado, Pix pendente, melhor horário).
+
+## 4. Contas
+Tabela Conta | Gasto | Vendas | ROAS | IC | Custo por IC | Vendas a cada 100 ICs, e uma linha comparando com ontem e dizendo onde priorizar duplicatas.
+
+## 5. Análise por anúncio
+Tabela Anúncio | Camp. hoje | Gasto | Vendas TMX / Utmify / pixel | Custo por IC | 3d (gasto · vendas · ROAS) | 7d (gasto · vendas · ROAS) | Decisão, com os anúncios que gastaram no dia ou pedem decisão.
+**Histórico de 7 dias (campanhas no dia / gasto / vendas)** para os principais, com a coluna Leitura (aguenta escala ou tem teto).
+**Divergências TMX x Utmify** logo abaixo.
+
+## 6. BIDCAP
+Gasto, vendas, ROAS, orçamento; tabela por criativo; dependência de um criativo; quem toma verba sem vender; quem vende sem receber verba; ações. Sem BIDCAP com gasto: diga e aponte candidatos pelas regras.
+
+## 7. Testes criativos
+Tabela Anúncio | Gasto acumulado | Vendas (Utmify / pixel) | Custo por IC | Veredito. Depois **Sobre o gestor**: pausas certas, pausas discutíveis e excesso de duplicação.
+
+## 8. Duplicação do fim do dia
+Tabela Anúncio | O que fazer | Onde, com linha de total em negrito. **Conta da meta**: como o mix novo chega (ou não) na meta, em números.
+
+## 9. Prioridades
+4 a 5 itens numerados, com o valor em jogo: checkout, VSL, dependência de criativo, rastreamento, disciplina com o gestor.
+
+Ressalvas: uma linha, só o que não fechou nas checagens.
+
+Se vierem recomendações da auditoria anterior, acrescente no fim "## 10. Recomendações anteriores": tabela Recomendação | Situação (feita, não feita, em aberto, não dá pra saber) | Evidência nos dados de agora.
+
+CAMPOS manchete E acoes
+manchete: uma frase com a situação do dia e o maior problema, com número.
+acoes: as ações da análise, da mais importante pra menos (5 a 12), para serem cobradas na próxima auditoria. Só ações concretas, com o nome do anúncio ou da campanha.`;
+
+const AUD_SCHEMA = { type: 'object', additionalProperties: false, required: ['manchete', 'markdown', 'acoes'],
+  properties: {
+    manchete: { type: 'string' },
+    markdown: { type: 'string', description: 'O relatório completo em Markdown, com tabelas' },
+    acoes: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['prioridade', 'acao', 'detalhe'], properties: {
+      prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'] }, acao: { type: 'string' }, detalhe: { type: 'string' } } } }
+  } };
+
+async function _audRodar(job, b) {
+  const inicio = Date.now();
+  try {
+    const { texto, faltou, dia, parcial } = await _audJuntarDados(job, b);
+    job.etapa = 'O Claude está analisando e escrevendo o relatório (leva alguns minutos)…';
+    const cliente = new AnthropicAud({ apiKey: _getAIKey(), timeout: 12 * 60 * 1000, maxRetries: 1 });
+    const stream = cliente.beta.messages.stream({
+      model: MODELO_AUDITORIA, max_tokens: 64000,
+      output_config: { effort: 'high', format: { type: 'json_schema', schema: AUD_SCHEMA } },
+      // se um filtro de segurança recusar, a própria API tenta outro modelo no mesmo pedido
+      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+      system: AUD_SISTEMA, messages: [{ role: 'user', content: texto }]
+    });
+    const r = await stream.finalMessage();
+    if (r.stop_reason === 'refusal') throw new Error('O Claude recusou esta análise. Tente de novo em instantes.');
+    if (r.stop_reason === 'max_tokens') throw new Error('A análise ficou maior que o limite. Tente de novo.');
+    const bloco = (r.content || []).find(c => c.type === 'text');
+    let relatorio;
+    try { relatorio = JSON.parse(bloco.text); } catch (e) { throw new Error('O Claude devolveu uma resposta que não deu pra ler. Tente de novo.'); }
+    relatorio.faltou = faltou;
+    const u = r.usage || {};
+    const custo = Math.round((((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)) * 4 + (u.output_tokens || 0) * 20 + (u.cache_read_input_tokens || 0) * 0.2) / 1e6 * 1000) / 1000;
+    const duracao = Date.now() - inicio;
+    _audTabela();
+    const contexto = { dia, parcial, entrada: u.input_tokens || 0, saida: u.output_tokens || 0 };
+    _q('INSERT INTO ia_auditorias (id, projeto, projeto_nome, em, por, duracao_ms, custo_us, modelo, relatorio, contexto) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(job.id, b.projeto, b.projetoNome || '', Date.now(), job.por, duracao, custo, r.model || MODELO_AUDITORIA, JSON.stringify(relatorio), JSON.stringify(contexto));
+    job.status = 'pronta'; job.etapa = '';
+    console.log('[AUDITORIA]', b.projetoNome || b.projeto, Math.round(duracao / 1000) + 's', 'US$', custo);
+  } catch (e) {
+    job.status = 'erro';
+    if (e instanceof AnthropicAud.AuthenticationError) job.erro = 'A Anthropic não aceitou a chave do TMX. Confira a chave em Configurações › Conexões.';
+    else if (e instanceof AnthropicAud.RateLimitError) job.erro = 'A Anthropic pediu pra esperar um pouco. Tente de novo em um minuto.';
+    else if (e instanceof AnthropicAud.APIError) job.erro = 'A Anthropic deu erro (' + (e.status || 'sem resposta') + '). Tente de novo.';
+    else job.erro = e.message || 'A auditoria falhou.';
+    console.error('[AUDITORIA] falhou:', e.message);
+  }
+}
+function _audSalva(id) {
+  _audTabela();
+  const x = _q('SELECT * FROM ia_auditorias WHERE id=?').get(id);
+  if (!x) return null;
+  const n = _q('SELECT COUNT(*) n FROM ia_auditorias WHERE projeto=? AND em<=?').get(x.projeto, x.em).n;
+  return { id: x.id, projeto: x.projeto, projetoNome: x.projeto_nome, em: x.em, por: x.por, duracaoMs: x.duracao_ms, custoUS: x.custo_us, modelo: x.modelo, n,
+    relatorio: JSON.parse(x.relatorio), contexto: JSON.parse(x.contexto || '{}') };
+}
+app.post('/api/ia/auditoria', authUsuario, _audPode, _audLimiter, (req, res) => {
+  if (!_getAIKey()) return res.status(400).json({ error: 'A chave da Anthropic ainda não está cadastrada.' });
+  const b = req.body || {};
+  const projeto = String(b.projeto || '').slice(0, 60);
+  if (!projeto) return res.status(400).json({ error: 'Escolha um projeto: a análise é sempre de um projeto só.' });
+  const projetoNome = String(b.projetoNome || '').slice(0, 80);
+  const dia = b.dia === 'ontem' ? 'ontem' : 'hoje';
+  for (const [id, j] of _audJobs) {
+    if (j.status !== 'rodando' && Date.now() - j.em > 3600000) _audJobs.delete(id);
+    else if (j.status === 'rodando' && j.projeto === projeto) return res.json({ ok: true, id, jaRodando: true });
+  }
+  const id = 'aud' + crypto.randomBytes(8).toString('hex');
+  const job = { id, status: 'rodando', etapa: 'Começando…', em: Date.now(), projeto, por: (req.user && req.user.nome) || '' };
+  _audJobs.set(id, job);
+  try { const db = readDB(); audit(db, 'ia_auditoria', { projeto: projetoNome || projeto, dia }, null, req.user); writeDB(db); } catch (e) {}
+  _audRodar(job, { projeto, projetoNome, dia });
+  res.json({ ok: true, id });
+});
+app.get('/api/ia/auditoria/:id', authUsuario, _audPode, (req, res) => {
+  const job = _audJobs.get(String(req.params.id));
+  if (!job) return res.status(404).json({ error: 'Essa análise não está mais rodando. Se o servidor reiniciou, rode de novo.' });
+  res.json({ status: job.status, etapa: job.etapa, erro: job.erro || '', seg: Math.round((Date.now() - job.em) / 1000) });
+});
+app.get('/api/ia/auditorias', authUsuario, _audPode, (req, res) => {
+  _audTabela();
+  const projeto = String(req.query.projeto || '').slice(0, 60);
+  const lista = _q('SELECT id, projeto_nome, em, por, custo_us, relatorio, contexto FROM ia_auditorias WHERE projeto=? ORDER BY em DESC LIMIT 30').all(projeto).map(x => {
+    let m = '', c = {};
+    try { m = JSON.parse(x.relatorio).manchete || ''; c = JSON.parse(x.contexto || '{}'); } catch (e) {}
+    return { id: x.id, projetoNome: x.projeto_nome, em: x.em, por: x.por, custoUS: x.custo_us, manchete: m, dia: c.dia || '', parcial: c.parcial || '' };
+  });
+  let rodando = null;
+  for (const [id, j] of _audJobs) if (j.status === 'rodando' && j.projeto === projeto) rodando = id;
+  res.json({ lista, rodando });
+});
+app.get('/api/ia/auditorias/:id', authUsuario, _audPode, (req, res) => {
+  const a = _audSalva(String(req.params.id));
+  if (!a) return res.status(404).json({ error: 'Não achei essa análise.' });
+  res.json(a);
+});
+app.get('/api/ia/auditoria-metas', authUsuario, _audPode, (req, res) => {
+  res.json({ metas: _audMetas(readDB(), String(req.query.projeto || '').slice(0, 60)) });
+});
+app.post('/api/ia/auditoria-metas', authUsuario, _audPode, (req, res) => {
+  const b = req.body || {}, projeto = String(b.projeto || '').slice(0, 60), m = b.metas || {};
+  if (!projeto) return res.status(400).json({ error: 'Diga o projeto.' });
+  const n = v => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : 0; };
+  const db = readDB();
+  const todas = (db.store[KEY_AUD_METAS] && typeof db.store[KEY_AUD_METAS] === 'object') ? db.store[KEY_AUD_METAS] : {};
+  todas[projeto] = Object.assign({}, _audMetas(db, projeto), { fatDia: n(m.fatDia), lucroDia: n(m.lucroDia), investDia: n(m.investDia), cpa: n(m.cpa), roiMin: n(m.roiMin), roiMax: n(m.roiMax), principal: String(m.principal || '').slice(0, 120) });
+  db.store[KEY_AUD_METAS] = todas;
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps[KEY_AUD_METAS] = now();
+  audit(db, 'ia_auditoria_metas', { projeto }, null, req.user);
+  writeDB(db);
+  res.json({ ok: true, metas: todas[projeto] });
 });
 
 async function _iaAnalisarDemanda(texto, db) {

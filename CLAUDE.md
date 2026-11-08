@@ -195,6 +195,15 @@ Stored on `sl_usuarios[].cargo`. Known values: `Diretoria`, `Gestor de Tráfego`
 - Meu Protocolo: só a conta do Thiago (`PROTOCOLO_DONO_EMAIL`), só na TMX.
 - Ainda não travado no servidor: as rotas de Tráfego/Análise (`/api/metricas/*` etc.) respondem a qualquer pessoa logada; o menu e a navegação é que escondem.
 
+### Auditoria IA (botão na Análise de tráfego, 08/11/2026)
+
+Entrega o relatório de fechamento do dia no padrão da skill `trafego` (metas, decisões cópia por cópia, funil, contas, anúncio por anúncio em hoje/3/7 dias, histórico, BIDCAP, testes, duplicação, prioridades). É sempre de um projeto só.
+
+- `_audJuntarDados` (server.js) soma tudo antes: Utmify um dia por chamada nos níveis `ad` e `campaign` (vários dias costumam dar erro), vendas TMX por anúncio (`_anunciosComTmx`, dia a dia), VSLs com tráfego do projeto (ligadas pelos anúncios no `utm_content`), metas. O Claude recebe tabelas prontas, decide pelas regras em `AUD_SISTEMA` e devolve `{manchete, markdown, acoes}`. Mudou a regra de decisão da skill, muda em `AUD_SISTEMA`.
+- `POST /api/ia/auditoria` devolve um id; a tela pergunta `GET /api/ia/auditoria/:id` até `pronta`. Fica em `ia_auditorias` (SQLite do motor). A próxima rodada recebe as `acoes` da anterior pra cobrar.
+- Metas por projeto em `sl_auditoria_metas` (`/api/ia/auditoria-metas`). Valores em R$ das regras escalam por CPA meta ÷ 350. Sem meta, a régua é o CPA de equilíbrio de 7 dias.
+- Modelo `claude-opus-5-5`, chave `_getAIKey()`. `fallbacks: 'default'` deixa a API tentar outro modelo se um filtro recusar. `test/auditoria.test.js` usa Utmify e Anthropic falsas (`TMX_UTMIFY_URL`, `ANTHROPIC_BASE_URL`).
+
 ### In-process cron jobs (all `setInterval` in `server.js`)
 
 Everything runs inside the single Node process — no external scheduler. If you add a long-running task, respect this model:
