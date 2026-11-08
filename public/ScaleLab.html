@@ -3722,6 +3722,81 @@ a.fn-btn{text-decoration:none;display:inline-block}
   .trs-filtros select{padding-left:6px;padding-right:2px}
   .trs-cx.trs-s4{grid-column:span 12}
 }
+/* ═══ CELULAR · alinhamento geral (08/11/2026). Tudo em ≤768px: o computador não muda. ═══ */
+.so-celular{ display:none; }
+.tema-chave{ margin-left:auto; width:36px; height:21px; border-radius:11px; background:var(--bg3); border:1px solid var(--border); position:relative; flex-shrink:0; transition:background .15s; box-sizing:border-box; }
+.tema-chave::after{ content:''; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%; background:var(--text2); transition:transform .15s; }
+.light-mode .tema-chave{ background:#1B9CFA; border-color:#1B9CFA; }
+.light-mode .tema-chave::after{ transform:translateX(15px); background:#fff; }
+@media (max-width:768px){
+  .nav-item.so-celular{ display:flex; align-items:center; }
+  /* iPhone: o app desenha embaixo do relógio e da barrinha de baixo. Em aparelho sem isso, o env() vale 0. */
+  .mobile-topbar{ height:calc(52px + env(safe-area-inset-top,0px)); padding-top:env(safe-area-inset-top,0px); box-sizing:border-box; }
+  .mobile-bottomnav{ height:calc(60px + env(safe-area-inset-bottom,0px)); padding-bottom:env(safe-area-inset-bottom,0px); box-sizing:border-box; }
+  .main{ padding-top:calc(52px + env(safe-area-inset-top,0px)); padding-bottom:calc(68px + env(safe-area-inset-bottom,0px)); }
+  .sidebar{ padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); box-sizing:border-box; }
+  .sidebar::before{ content:''; position:absolute; top:0; left:0; right:0; height:env(safe-area-inset-top,0px); background:var(--sidebar-bg); }
+  /* Tela branca: a barra de cima fica escura porque o relógio do iPhone é branco; a de baixo acompanha */
+  .light-mode .mobile-bottomnav{ background:#fff; border-top-color:#E8ECF4; }
+  .mobile-nav-btn{ font-size:10.5px; }
+  /* Tráfego: o filtro lateral vira fileira no topo */
+  #trafego-layout{ flex-direction:column !important; gap:12px !important; min-height:0 !important; }
+  #trafego-filtros-col{ min-width:0 !important; max-width:none !important; width:100% !important; }
+  #trafego-filtros-col > div:first-child{ display:none !important; }
+  #trafego-tipo-filtros{ flex-direction:row !important; gap:8px !important; overflow-x:auto !important; padding-bottom:4px; }
+  #trafego-tipo-filtros > div{ flex-shrink:0; white-space:nowrap; }
+  /* Rituais e Infra: mesmo jeito do Tráfego e da Gestão */
+  #page-rituais > div[style*="display:flex"], #page-infra > div[style*="display:flex"]{ flex-direction:column !important; gap:12px !important; min-height:0 !important; align-items:stretch !important; }
+  #page-rituais > div > div[style*="width:190px"], #page-infra > div > div[style*="max-width:200px"]{ width:100% !important; min-width:0 !important; max-width:none !important; }
+  #page-rituais > div > div[style*="width:190px"] > div:first-child, #page-infra > div > div[style*="max-width:200px"] > div:first-child{ display:none !important; }
+  #ritual-tipo-filtros, #infra-tipo-filtros{ display:flex !important; flex-direction:row !important; gap:8px !important; overflow-x:auto !important; padding-bottom:4px; }
+  #ritual-tipo-filtros > *, #infra-tipo-filtros > *{ flex:0 0 auto !important; width:auto !important; white-space:nowrap; }
+  #infra-content [style*="display:grid"]{ grid-template-columns:minmax(0,1fr) !important; }
+  #infra-content > div[style*="display:flex"], #infra-content > div > div[style*="display:flex"]{ flex-direction:column !important; }
+  #infra-content > div > div, #infra-content > div > div > div{ width:100% !important; min-width:0 !important; max-width:100% !important; box-sizing:border-box; }
+  #page-rituais [style*="repeat(auto-fill,minmax(220px,1fr))"]{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:10px !important; }
+  /* Demandas: filtros em duas colunas, sem nada pra fora da tela */
+  #page-task div[style*="padding:14px 20px"][style*="justify-content:space-between"]{ flex-direction:column !important; align-items:stretch !important; gap:10px !important; padding:12px !important; }
+  #page-task div:has(> #task-oferta-filter){ display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important; width:100% !important; min-width:0 !important; gap:8px !important; }
+  #page-task div:has(> #task-oferta-filter) > *{ width:100% !important; min-width:0 !important; max-width:100% !important; box-sizing:border-box; order:3; }
+  #task-resp-filter, #task-oferta-filter{ order:1 !important; }
+  #page-task div:has(> #task-oferta-filter) > div{ order:2 !important; }
+  #btn-nova-demanda{ grid-column:1 / -1; order:4 !important; }
+  .task-row-card [style*="flex-direction:column;align-items:flex-start;gap:5px"]{ flex-direction:row !important; align-items:center !important; flex-wrap:wrap !important; }
+  /* Janelas: o X volta a ser um botão quadrado */
+  .modal-header .modal-close, #modal-task .modal-header .modal-close{ flex:0 0 36px !important; width:36px !important; height:36px; min-height:36px; padding:0; }
+  /* Dashboard: os números em duas colunas, pra caber mais numa tela */
+  #home-kpi-row{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:10px !important; }
+  #home-kpi-row .home-kpi{ padding:12px; }
+  #home-kpi-row .home-kpi-icon{ width:30px; height:30px; font-size:15px; margin-bottom:8px; }
+  #home-kpi-row .home-kpi-val{ font-size:19px; }
+  #home-kpi-row .home-kpi-label{ font-size:10.5px; }
+  /* Formulários que ficavam cortados na lateral */
+  #page-iacopy .row[style*="grid-template-columns:1fr 2fr"], #page-adlibrary [style*="grid-template-columns:1fr 1fr 200px"]{ grid-template-columns:minmax(0,1fr) !important; }
+  #page-auditoria [style*="display:grid"][style*="padding:14px"]{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  #page-auditoria [style*="display:grid"][style*="padding:14px"] > *{ min-width:0; }
+  #page-auditoria [style*="display:grid"][style*="padding:14px"] input{ width:100%; min-width:0; box-sizing:border-box; }
+  /* Gestão */
+  #page-gestao [style*="grid-template-columns:repeat(4,1fr)"], #page-gestao [style*="grid-template-columns:repeat(5,1fr)"]{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  #page-gestao [style*="grid-template-columns:1fr 320px"], #page-gestao [style*="grid-template-columns:1fr 1fr;gap:16px"]{ grid-template-columns:minmax(0,1fr) !important; }
+  #page-gestao div:has(> [style*="grid-template-columns:repeat(7,1fr)"]){ overflow-x:auto !important; }
+  #page-gestao [style*="grid-template-columns:repeat(7,1fr)"]{ grid-template-columns:repeat(7,132px) !important; width:max-content; }
+  #page-gestao [style*="grid-template-columns:40px 1fr 140px"][style*="padding:10px 18px"]{ display:none !important; }
+  #page-gestao [style*="grid-template-columns:40px 1fr 140px"]{ grid-template-columns:32px minmax(0,1fr) minmax(0,1fr) !important; padding:12px !important; }
+  #page-gestao [style*="grid-template-columns:40px 1fr 140px"] > :nth-child(2){ grid-column:2 / -1; }
+  #page-gestao [style*="grid-template-columns:40px 1fr 140px"] > :nth-child(odd):nth-child(n+3){ grid-column:2; }
+  /* Detalhes */
+  .v2-k .r{ flex-wrap:wrap; }
+  .pc-grade{ grid-template-columns:minmax(0,1fr) !important; }
+  .pc-grade > *{ min-width:0; }
+  #page-arquivos [style*="justify-content:space-between"]{ flex-wrap:wrap; gap:8px; }
+  .sidebar-bot .nav-item{ padding-top:7px; padding-bottom:7px; }
+  .page, .page *{ scrollbar-width:none !important; }
+  /* Tabelas do Spy roláveis de lado, e nenhum texto menor que 11px */
+  #page-adlibrary div:has(> table){ overflow-x:auto !important; }
+  #page-adlibrary div[style*="justify-content:space-between"]{ flex-wrap:wrap; gap:8px; }
+  .page [style*="font-size:9px"], .page [style*="font-size:9.5px"], .page [style*="font-size:10px"], .page [style*="font-size:10.5px"]{ font-size:11px !important; }
+}
 </style>
 
 </head>
@@ -3793,11 +3868,19 @@ a.fn-btn{text-decoration:none;display:inline-block}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     Demandas
   </button>
-  <button class="mobile-nav-btn" id="mbn-chat" onclick="goTo('chat')">
+  <button class="mobile-nav-btn" id="mbn-adsmetrics" onclick="goTo('adsmetrics')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Análise
+  </button>
+  <button class="mobile-nav-btn" id="mbn-funis" onclick="goTo('funis')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+    Projetos
+  </button>
+  <button class="mobile-nav-btn" id="mbn-chat" style="display:none" onclick="goTo('chat')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
     Chat
   </button>
-  <button class="mobile-nav-btn" id="mbn-criativos" onclick="goTo('criativos')">
+  <button class="mobile-nav-btn" id="mbn-criativos" style="display:none" onclick="goTo('criativos')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 011.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
     Criativos
   </button>
@@ -3914,6 +3997,10 @@ a.fn-btn{text-decoration:none;display:inline-block}
     </div>
   </nav>
   <div class="sidebar-bot">
+    <div class="nav-item so-celular" id="nav-tela-branca" onclick="toggleTheme()">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      Tela branca <span class="tema-chave"></span>
+    </div>
     <div class="nav-item" id="nav-notif" onclick="goTo('notificacoes')">
       <svg class="nav-svg" id="nav-notif-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       Notificações
@@ -4278,9 +4365,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
 
     <!-- TRÁFEGO -->
     <div class="page" id="page-metricas">
-      <div style="display:flex;gap:20px;min-height:calc(100vh - 120px);">
+      <div id="trafego-layout" style="display:flex;gap:20px;min-height:calc(100vh - 120px);">
         <!-- Sidebar filtros -->
-        <div style="min-width:200px;max-width:200px;flex-shrink:0;">
+        <div id="trafego-filtros-col" style="min-width:200px;max-width:200px;flex-shrink:0;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:10px;letter-spacing:.5px;">Filtrar por tipo</div>
           <div id="trafego-tipo-filtros" style="display:flex;flex-direction:column;gap:4px;"></div>
         </div>
@@ -8578,6 +8665,14 @@ function _podeVerPagina(id, u){
   return true;   // Spy e cargos antigos: como antes, sem Gestão, Financeiro e Configurações
 }
 
+// Barra de baixo do celular: quem não vê Análise de tráfego ou Projetos fica com Chat e Criativos no lugar
+function _barraDeBaixoPorCargo(){
+  [['adsmetrics','chat'],['funis','criativos']].forEach(function(par){
+    var pode = _podeVerPagina(par[0]), a = document.getElementById('mbn-'+par[0]), b = document.getElementById('mbn-'+par[1]);
+    if(a) a.style.display = pode ? '' : 'none';
+    if(b) b.style.display = pode ? 'none' : '';
+  });
+}
 function goTo(id){
   // saiu do Funis com o mapa em edição: fecha a aba lateral (ela fica no body)
   try{ if(id !== 'funis' && typeof mpEditando !== 'undefined' && document.getElementById('mp-gaveta')){ mpEditando = false; fnSel = null; mpModo(); } }catch(e){}
@@ -8663,8 +8758,10 @@ function goTo(id){
   if(id==='ritual-detalhe')renderRitualDetalhe();
   // Mobile: atualiza título e bottom nav
   const titleEl=document.getElementById('mobile-section-title');
-  if(titleEl && titles[id]) titleEl.textContent=titles[id].t;
-  ['dashboard','task','chat','criativos'].forEach(k=>{
+  const _tituloCelular={task:'Demandas',adlibrary:'Ad Library',auditoria:'Auditoria',lixeira:'Lixeira'};
+  if(titleEl) titleEl.textContent=_tituloCelular[id]||(titles[id]&&titles[id].t)||titleEl.textContent;
+  _barraDeBaixoPorCargo();
+  ['dashboard','task','adsmetrics','funis','chat','criativos'].forEach(k=>{
     const btn=document.getElementById('mbn-'+k);
     if(btn) btn.classList.toggle('active', k===id);
   });
@@ -28132,7 +28229,7 @@ function renderRoiSidebar(){
     if(!anos[o.ano][o.mes])anos[o.ano][o.mes]=0;
     anos[o.ano][o.mes]++;
   });
-  pl.innerHTML=Object.entries(anos).map(([ano,meses])=>`
+  if(pl) pl.innerHTML=Object.entries(anos).map(([ano,meses])=>`
     <div class="roi-period-year">${ano} <span>▾</span></div>
     ${Object.entries(meses).map(([mes,cnt])=>`
       <div class="roi-period-month">${mes} <span>${cnt}</span></div>`).join('')}`).join('');

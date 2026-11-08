@@ -204,6 +204,10 @@ Entrega o relatório de fechamento do dia no padrão da skill `trafego` (metas, 
 - Metas por projeto em `sl_auditoria_metas` (`/api/ia/auditoria-metas`). Valores em R$ das regras escalam por CPA meta ÷ 350. Sem meta, a régua é o CPA de equilíbrio de 7 dias.
 - Modelo `claude-opus-5-5`, chave `_getAIKey()`. `fallbacks: 'default'` deixa a API tentar outro modelo se um filtro recusar. `test/auditoria.test.js` usa Utmify e Anthropic falsas (`TMX_UTMIFY_URL`, `ANTHROPIC_BASE_URL`).
 
+### Celular (08/11/2026)
+
+Barra de baixo: Dashboard, Demandas, Análise, Projetos e Menu (decisão do Thiago). Quem não pode ver Análise ou Projetos fica com Chat e Criativos no lugar (`_barraDeBaixoPorCargo`). O botão "Tela branca" fica na parte fixa do menu, só no celular. A barra de cima continua escura na tela branca porque o relógio do iPhone instalado é branco. Os ajustes de tela ficam no bloco `CELULAR · alinhamento geral` do CSS, tudo em ≤768px.
+
 ### In-process cron jobs (all `setInterval` in `server.js`)
 
 Everything runs inside the single Node process — no external scheduler. If you add a long-running task, respect this model:
