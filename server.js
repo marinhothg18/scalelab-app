@@ -3347,7 +3347,8 @@ function _metaConexaoPublica(cfg) {
   return { conectado: con, tokenFim: con ? '…' + String(cfg.accessToken).slice(-4) : '', conectadoEm: cfg.conectadoEm || null,
     quem: cfg.quem || null, permissoes: cfg.permissoes || [], atualizadoEm: cfg.listasEm || null,
     contas: (cfg.contas || []).map(c => Object.assign({}, c, { statusTxt: META_STATUS_CONTA[c.status] || ('status ' + c.status) })),
-    pixels: cfg.pixels || [], sync: cfg.sync || null, ultimoErro: cfg.ultimoErro || null, antigo: !!(cfg.accessToken && cfg.tipo !== 'sistema') };
+    pixels: cfg.pixels || [], sync: cfg.sync || null, ultimoErro: cfg.ultimoErro || null, antigo: !!(cfg.accessToken && cfg.tipo !== 'sistema'),
+    via: con ? (cfg.via || 'token') : '', expiraEm: con ? (cfg.expiraEm || null) : null, login: _metaLoginPublico() };
 }
 function _metaErroTxt(e) {
   const c = e && e.metaCode;
@@ -3355,7 +3356,7 @@ function _metaErroTxt(e) {
   // código 200 com "API access blocked": o app inteiro foi bloqueado (até /me falha), não é falta de permissão
   if (/api access blocked/i.test(String(e && e.message || ''))) return 'A Meta bloqueou o app que gerou este token ("API access blocked"). O token e as permissões estão certos: o bloqueio é do app. Abra o Depurador de tokens pra ver qual app é, entre no painel dele em developers.facebook.com e resolva o aviso da Meta (verificação da empresa, do uso de dados ou de política). Ou gere um token novo no usuário do sistema com outro app.';
   if (/data use checkup/i.test(String(e && e.message || ''))) return 'O app do Facebook que gerou o token está com o acesso suspenso até alguém fazer a "Verificação do uso de dados" (Data Use Checkup). Entre em developers.facebook.com → Meus apps → o app do token → painel, complete a verificação e cole o mesmo token de novo. Ou gere o token com outro app.';
-  if (c === 190) return 'A Meta recusou o token (vencido, apagado ou copiado pela metade). Gere outro no usuário do sistema.';
+  if (c === 190) return 'A Meta recusou o acesso (vencido, revogado ou token copiado pela metade). Conecte de novo pelo botão do Facebook ou cole outro token.';
   if (c === 10 || c === 200 || c === 294) return 'O token não tem a permissão que precisa' + (e.etapa ? ' pra ' + e.etapa : '') + '. A Meta disse: "' + String(e.message || '').slice(0, 200) + '". Confira no Depurador de tokens da Meta se ads_read e business_management estão no token, e se as contas foram atribuídas ao usuário do sistema.';
   if (c === 4 || c === 17 || c === 613 || c === 80004) return 'A Meta pediu pra esperar um pouco (limite de chamadas). Tente de novo em alguns minutos.';
   return (e && e.message) || 'A Meta não respondeu.';
@@ -3384,22 +3385,60 @@ app.get('/api/meta/conexao', authDiretoria, (req, res) => {
     res.json(Object.assign({ ok: true }, out));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+async function _metaGuardarConexao(token, req, extra) {
+  const l = await _metaListar({ accessToken: token });
+  if (!l.contas.length) { const e = new Error('O acesso funciona, mas não enxerga nenhuma conta de anúncio. Na janela do Facebook, marque as contas; no usuário do sistema, use "Atribuir ativos".'); e.semContas = true; throw e; }
+  const db = readDB(), cfg = _metaCfg(db) || {};
+  Object.assign(cfg, { accessToken: token, tipo: 'sistema', via: 'token', expiraEm: null, tokenTipo: '' }, extra || {}, { conectadoEm: new Date().toISOString(), quem: l.quem, permissoes: l.permissoes,
+    contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null, _updatedAt: Date.now() });
+  db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
+  audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length, via: cfg.via }, req.user);
+  writeDB(db);
+  // primeira puxada: 14 dias, sem segurar a resposta
+  setTimeout(() => _metaSincronizar({ dias: 14 }).catch(() => {}), 500);
+  return _metaConexaoPublica(cfg);
+}
 app.post('/api/meta/conexao', authDiretoria, async (req, res) => {
   const token = String((req.body || {}).token || '').trim();
   if (!/^[A-Za-z0-9_-]{40,600}$/.test(token)) return res.status(400).json({ error: 'Isso não parece um token da Meta. Ele começa com EAA e tem umas 200 letras.' });
+  try { res.json(Object.assign({ ok: true }, await _metaGuardarConexao(token, req))); }
+  catch (e) { res.status(400).json({ error: e.semContas ? e.message : _metaErroTxt(e) }); }
+});
+// ── CONECTAR COM FACEBOOK (Facebook Login for Business, 08/11/2026) ──
+// O botão de Configurações › Conexões: a pessoa autoriza na janela do Facebook, a Meta devolve um
+// code e o servidor troca por um token. Ninguém cria nem cola token. META_APP_ID, META_APP_SECRET e
+// META_LOGIN_CONFIG_ID ficam no Railway. Por enquanto só na TMX: pra cliente usar, o app precisa
+// passar na análise da Meta, e o segredo não pode ir pros motores (_envMotor é lista branca).
+function _metaLoginCfg() {
+  return { appId: String(process.env.META_APP_ID || '').trim(), segredo: String(process.env.META_APP_SECRET || '').trim(), configId: String(process.env.META_LOGIN_CONFIG_ID || '').trim() };
+}
+function _metaLoginPublico() {
+  const c = _metaLoginCfg(), pronto = !!(SOU_TMX && c.appId && c.segredo && c.configId);
+  return { pronto, naTmx: !!SOU_TMX, appId: pronto ? c.appId : '', configId: pronto ? c.configId : '' };
+}
+async function _metaOauth(params) {
+  const r = await fetch(`${META_API_BASE}/oauth/access_token?${new URLSearchParams(params)}`);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error || !j.access_token) {
+    const e = j.error || {}, err = new Error(e.error_user_msg || e.message || 'A Meta não devolveu o acesso.');
+    err.metaCode = e.code; err.httpStatus = r.status; throw err;
+  }
+  return j;
+}
+app.post('/api/meta/login', authDiretoria, async (req, res) => {
+  if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'O botão do Facebook ainda não está configurado no servidor.' });
+  const c = _metaLoginCfg(), b = req.body || {};
+  const code = String(b.code || '').trim().slice(0, 2000), curto = String(b.accessToken || '').trim().slice(0, 800);
+  if (!code && !curto) return res.status(400).json({ error: 'A janela do Facebook não devolveu a autorização.' });
   try {
-    const l = await _metaListar({ accessToken: token });
-    if (!l.contas.length) return res.status(400).json({ error: 'O token funciona, mas não enxerga nenhuma conta de anúncio. No usuário do sistema, use "Atribuir ativos" e marque as contas.' });
-    const db = readDB(), cfg = _metaCfg(db) || {};
-    Object.assign(cfg, { accessToken: token, tipo: 'sistema', conectadoEm: new Date().toISOString(), quem: l.quem, permissoes: l.permissoes,
-      contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null, _updatedAt: Date.now() });
-    db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
-    audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length }, req.user);
-    writeDB(db);
-    // primeira puxada: 14 dias, sem segurar a resposta
-    setTimeout(() => _metaSincronizar({ dias: 14 }).catch(() => {}), 500);
-    res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
-  } catch (e) { res.status(400).json({ error: _metaErroTxt(e) }); }
+    const t = await _metaOauth(code ? { client_id: c.appId, client_secret: c.segredo, code }
+      : { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.segredo, fb_exchange_token: curto });
+    let info = {};
+    try { info = (await _metaGet('debug_token', { input_token: t.access_token }, { accessToken: c.appId + '|' + c.segredo })).data || {}; } catch (e) {}
+    if (info.app_id && String(info.app_id) !== c.appId) return res.status(400).json({ error: 'Essa autorização não veio do app da TMX.' });
+    const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
+    res.json(Object.assign({ ok: true }, await _metaGuardarConexao(t.access_token, req, { via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') })));
+  } catch (e) { res.status(400).json({ error: e.semContas ? e.message : _metaErroTxt(e) }); }
 });
 app.post('/api/meta/conexao/atualizar', authDiretoria, async (req, res) => {
   const cfg0 = _metaCfg();

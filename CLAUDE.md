@@ -50,6 +50,7 @@ Production runs on Railway. Code/comments/UI are in pt-BR; keep new work in pt-B
 ### Environment variables
 
 - `PORT` — HTTP port (default 3001)
+- `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID` — optional, turn on the "Continuar com Facebook" button in Configurações › Conexões (Facebook Login for Business, TMX only for now; `/api/meta/login` trades the code for the token)
 - `GITHUB_BACKUP_TOKEN`, `GITHUB_BACKUP_REPO` — optional, enables daily off-site backup of `db.json` to a GitHub repo (`owner/repo`, PAT with `repo` scope)
 - When `/data` exists (Railway volume), `DATA_DIR = /data` and that's where `db.json` + `backups/` live. Locally they live next to `server.js`.
 
