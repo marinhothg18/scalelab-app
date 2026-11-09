@@ -3841,6 +3841,9 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .mc-fb-bt{ display:inline-flex; align-items:center; gap:9px; background:#1877F2; color:#fff; border:none; border-radius:8px; padding:11px 18px; font:600 14px inherit; font-family:inherit; cursor:pointer; }
 .mc-fb-bt:hover{ background:#166FE5; } .mc-fb-bt:disabled{ opacity:.55; cursor:not-allowed; }
 .mc-outro{ margin:0 0 10px; font-size:13px; } .mc-outro summary{ cursor:pointer; color:var(--text2); }
+.mc-link{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+.mc-link-res{ flex-basis:100%; display:flex; flex-direction:column; gap:5px; }
+.mc-link-res:empty{ display:none; }
 .mc-opcao{ border:1px solid var(--border); border-radius:10px; padding:14px; margin-top:10px; }
 .mc-opcao > b{ display:block; font-size:13.5px; margin-bottom:10px; } .mc-opcao .mc-fb{ margin:0; }
 </style>
@@ -40137,7 +40140,33 @@ var MC_FB_ICONE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="current
 var _mcFb = { pronto:false, cfg:null };
 function mcBlocoFb(login, titulo){
   return '<div class="mc-opcao"><b>'+titulo+'</b><div class="mc-fb"><button class="mc-fb-bt"'+(login.pronto ? ' onclick="mcFacebook(this)"' : ' disabled')+'>'+MC_FB_ICONE+'Continuar com Facebook</button><span class="fx-sub">'+
-    (login.pronto ? 'Você autoriza na janela do Facebook e escolhe as contas. Ninguém precisa criar token.' : 'Ainda desligado. Falta criar o app da Meta e colar META_APP_ID, META_LOGIN_CONFIG_ID e META_APP_SECRET no Railway.')+'</span></div></div>';
+    (login.pronto ? 'Você autoriza na janela do Facebook e escolhe as contas. Ninguém precisa criar token.' : 'Ainda desligado. Falta criar o app da Meta e colar META_APP_ID, META_LOGIN_CONFIG_ID e META_APP_SECRET no Railway.')+'</span></div>'+
+    (login.pronto ? '<div class="mc-link"><button type="button" class="fn-btn g sm" onclick="mcCopiarLink(this)">Copiar link para navegador multilogin</button><span class="fx-sub">Para Dolphin, AdsPower e parecidos: abra o link no perfil que já usa a conta.</span><div class="mc-link-res"></div></div>' : '')+'</div>';
+}
+// Link do multilogin: a conexão acontece em outro navegador, então esta tela fica olhando até ela chegar
+var _mcLinkEspera = null;
+function mcEsperarLink(antes, ate){
+  clearTimeout(_mcLinkEspera);
+  _mcLinkEspera = setTimeout(function(){
+    if(!document.querySelector('.mc-link-res input') || Date.now() > ate) return;
+    fetch(API_BASE+'/api/meta/conexao').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+      if(d && d.conectado && d.conectadoEm !== antes){ toastFn('Meta conectada: '+((d.contas || []).length)+' conta(s)'); mcRepintar(); return; }
+      mcEsperarLink(antes, ate);
+    }).catch(function(){ mcEsperarLink(antes, ate); });
+  }, 5000);
+}
+function mcCopiarLink(bt){
+  var txt = bt.textContent; bt.disabled = true; bt.textContent = 'Gerando o link…';
+  fetch(API_BASE+'/api/meta/login/link', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
+    .then(mcResposta).then(function(d){
+      var url = urlPublica(d.caminho), res = bt.parentElement.querySelector('.mc-link-res');
+      bt.disabled = false; bt.textContent = txt;
+      res.innerHTML = '<input class="fi" readonly aria-label="Link para o navegador multilogin" value="'+fnEsc(url)+'" onclick="this.select()">'+
+        '<span class="fx-sub">Vale por 30 minutos e funciona uma vez. Quando a conexão terminar, esta tela atualiza sozinha.</span>';
+      var copiou = function(){ toastFn('Link copiado'); }, manual = function(){ res.querySelector('input').select(); toastFn('Copie o link que apareceu aqui'); };
+      if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(copiou, manual); else manual();
+      mcEsperarLink(d.conectadoEm, d.expiraEm);
+    }).catch(function(e){ bt.disabled = false; bt.textContent = txt; mcMsg(e.message, 1); });
 }
 function mcCarregarFb(l){
   _mcFb.cfg = l;

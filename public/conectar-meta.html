@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Conectar Meta Ads · TMX</title>
+<style>
+  /* Link para navegador multilogin (09/11/2026): abre fora do painel, no perfil que já usa a conta de anúncio. */
+  :root{ --roxo:#3E1493; --azul:#1877F2; --azul2:#166FE5; --tinta:#111827; --suave:#5B6478; --borda:#E2E6EF; --claro:#EEF4FF; --aviso:#FFF4E5; --aviso-t:#8A4B00; --erro:#B42318; --ok:#067647; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px; background:#F3F4F8; color:var(--tinta); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .caixa{ width:100%; max-width:560px; background:#fff; border:1px solid var(--borda); border-radius:18px; overflow:hidden; }
+  .topo{ padding:18px 24px; border-bottom:1px solid var(--borda); text-align:center; font-weight:800; font-size:20px; letter-spacing:-.01em; color:var(--roxo); }
+  .topo span{ font-size:11px; font-weight:700; letter-spacing:.22em; color:var(--suave); margin-left:6px; }
+  .corpo{ padding:28px 24px; display:flex; flex-direction:column; gap:16px; }
+  h1{ margin:0; text-align:center; font-size:24px; letter-spacing:-.01em; }
+  .info{ background:var(--claro); border-radius:12px; padding:14px 16px; color:#1E3A8A; font-size:14px; }
+  .info b{ display:block; margin-bottom:4px; }
+  .alerta{ background:var(--aviso); color:var(--aviso-t); border-radius:12px; padding:12px 16px; font-size:14px; }
+  .miudo{ text-align:center; color:var(--suave); font-size:13.5px; margin:0; }
+  button{ align-self:center; display:inline-flex; align-items:center; gap:9px; background:var(--azul); color:#fff; border:0; border-radius:9px; padding:13px 22px; font:600 15px inherit; font-family:inherit; cursor:pointer; }
+  button:hover{ background:var(--azul2); }
+  button:disabled{ opacity:.6; cursor:default; }
+  button:focus-visible{ outline:3px solid #93C5FD; outline-offset:2px; }
+  .msg{ text-align:center; font-size:14px; margin:0; min-height:20px; }
+  .msg.ruim{ color:var(--erro); }
+  .feito{ text-align:center; color:var(--ok); font-weight:700; font-size:17px; margin:0; }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+<main class="caixa">
+  <div class="topo">TMX<span>DIGITAL</span></div>
+  <div class="corpo">
+    <h1>Conectar Meta Ads</h1>
+    <p class="miudo" id="carregando">Conferindo o link…</p>
+
+    <div id="pronto" hidden style="display:flex;flex-direction:column;gap:16px">
+      <div class="info"><b>Confira o perfil antes de continuar</b>O Facebook usa a conta aberta neste navegador. Você autoriza o TMX a acessar as contas de anúncio desse perfil, e a senha fica só no Facebook.</div>
+      <div class="alerta" id="substitui" hidden>Esta empresa já tem um perfil conectado. Esta autorização substitui o perfil atual.</div>
+      <p class="miudo" id="validade"></p>
+      <button type="button" id="ir">Continuar com Meta Ads</button>
+      <p class="msg" id="msg" role="status"></p>
+    </div>
+
+    <p class="feito" id="feito" hidden role="status"></p>
+    <p class="miudo" id="feito2" hidden>Pode fechar esta janela e voltar ao TMX.</p>
+    <p class="msg ruim" id="fora" hidden role="alert"></p>
+  </div>
+</main>
+<script>
+(function(){
+  var partes = location.pathname.split('/conectar-meta/'), base = partes[0], token = String(partes[1] || '').split('/')[0];
+  var api = base + '/api/meta/login/link/' + encodeURIComponent(token);
+  var $ = function(id){ return document.getElementById(id); };
+  var fbPronto = false;
+  function esconder(id){ $(id).hidden = true; }
+  function mostrar(id){ $(id).hidden = false; }
+  function fora(t){ esconder('carregando'); esconder('pronto'); $('fora').textContent = t; mostrar('fora'); }
+  function msg(t, ruim){ $('msg').textContent = t; $('msg').className = 'msg' + (ruim ? ' ruim' : ''); }
+  function respostaJson(r){ return r.json().catch(function(){ return {}; }).then(function(d){ if(!r.ok) throw new Error(d.error || 'Não deu certo. Tente de novo.'); return d; }); }
+
+  function carregarFacebook(appId){
+    window.fbAsyncInit = function(){ FB.init({ appId: appId, cookie: false, xfbml: false, version: 'v25.0' }); fbPronto = true; };
+    var s = document.createElement('script'); s.async = true; s.src = 'https://connect.facebook.net/pt_BR/sdk.js'; document.head.appendChild(s);
+  }
+
+  fetch(api, { cache: 'no-store' }).then(respostaJson).then(function(d){
+    esconder('carregando'); mostrar('pronto');
+    if(d.substitui) mostrar('substitui');
+    var hora = new Date(d.expiraEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    $('validade').textContent = (d.por ? 'Link gerado por ' + d.por + '. ' : '') + 'Vale até ' + hora + ' e funciona uma vez.';
+    carregarFacebook(d.appId);
+    var botao = $('ir');
+    botao.addEventListener('click', function(){
+      if(!fbPronto || !window.FB){ msg('O Facebook ainda está carregando. Tente de novo em alguns segundos. Se continuar, desligue o bloqueador de anúncios nesta página.', true); return; }
+      var txt = botao.textContent;
+      botao.disabled = true; botao.textContent = 'Aguardando o Facebook…'; msg('');
+      // tem que sair direto do clique: se esperar qualquer coisa antes, o navegador bloqueia a janela
+      FB.login(function(r){
+        var a = r && r.authResponse;
+        if(!a){ botao.disabled = false; botao.textContent = txt; msg('A janela do Facebook fechou sem devolver a autorização. Tente de novo e vá até o último botão dela.', true); return; }
+        botao.textContent = 'Conferindo com a Meta…';
+        fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: a.code || '', accessToken: a.accessToken || '' }) })
+          .then(respostaJson).then(function(f){
+            esconder('pronto');
+            $('feito').textContent = 'Conectado' + (f.perfil ? ': ' + f.perfil : '') + ', ' + f.contas + ' conta' + (f.contas === 1 ? '' : 's') + ' de anúncio.';
+            mostrar('feito'); mostrar('feito2');
+          }).catch(function(e){ botao.disabled = false; botao.textContent = txt; msg(e.message, true); });
+      }, { config_id: d.configId });
+    });
+  }).catch(function(e){ fora(e.message); });
+})();
+</script>
+</body>
+</html>

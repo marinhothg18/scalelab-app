@@ -3398,10 +3398,10 @@ async function _metaGuardarConexao(token, req, extra) {
   const l = await _metaListar({ accessToken: token });
   if (!l.contas.length) { const e = new Error('O acesso funciona, mas não enxerga nenhuma conta de anúncio. Na janela do Facebook, marque as contas; no usuário do sistema, use "Atribuir ativos".'); e.semContas = true; throw e; }
   const db = readDB(), cfg = _metaCfg(db) || {};
-  Object.assign(cfg, { accessToken: token, tipo: 'sistema', via: 'token', expiraEm: null, tokenTipo: '' }, extra || {}, { conectadoEm: new Date().toISOString(), quem: l.quem, permissoes: l.permissoes,
+  Object.assign(cfg, { accessToken: token, tipo: 'sistema', via: 'token', expiraEm: null, tokenTipo: '', porLink: false }, extra || {}, { conectadoEm: new Date().toISOString(), quem: l.quem, permissoes: l.permissoes,
     contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null, _updatedAt: Date.now() });
   db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
-  audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length, via: cfg.via }, req.user);
+  audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length, via: cfg.via, link: !!cfg.porLink }, req.user);
   writeDB(db);
   // primeira puxada: 14 dias, sem segurar a resposta
   setTimeout(() => _metaSincronizar({ dias: 14 }).catch(() => {}), 500);
@@ -3434,29 +3434,85 @@ async function _metaOauth(params) {
   }
   return j;
 }
-app.post('/api/meta/login', authMeta, async (req, res) => {
-  if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'O botão do Facebook ainda não está configurado no servidor.' });
-  const c = _metaLoginCfg(), b = req.body || {};
+// Troca a autorização do Facebook pelo token e guarda a conexão: o botão do painel e o link do multilogin passam aqui.
+async function _metaEntrarPeloFacebook(b, req, extra) {
+  const c = _metaLoginCfg();
   const code = String(b.code || '').trim().slice(0, 2000), curto = String(b.accessToken || '').trim().slice(0, 800);
   if (!code && !curto) {
     console.log('[meta-login] a janela voltou sem autorização; status do Facebook:', String(b.statusFb || '').slice(0, 40) || '(vazio)');
-    return res.status(400).json({ error: 'A janela do Facebook não devolveu a autorização.' });
+    const e = new Error('A janela do Facebook não devolveu a autorização.'); e.pronta = true; throw e;
   }
+  const t = await _metaOauth(code ? { client_id: c.appId, client_secret: c.segredo, code }
+    : { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.segredo, fb_exchange_token: curto });
+  let info = {};
+  try { info = (await _metaGet('debug_token', { input_token: t.access_token }, { accessToken: c.appId + '|' + c.segredo })).data || {}; } catch (e) {}
+  if (info.app_id && String(info.app_id) !== c.appId) { const e = new Error('Essa autorização não veio do app da TMX.'); e.pronta = true; throw e; }
+  const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
+  const conexao = await _metaGuardarConexao(t.access_token, req, Object.assign({ via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') }, extra || {}));
+  console.log('[meta-login] conectado pelo Facebook; contas:', (conexao.contas || []).length);
+  return conexao;
+}
+const _metaErroLogin = e => (e.semContas || e.pronta) ? e.message : _metaErroTxt(e);
+app.post('/api/meta/login', authMeta, async (req, res) => {
+  if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'O botão do Facebook ainda não está configurado no servidor.' });
+  try { res.json(Object.assign({ ok: true }, await _metaEntrarPeloFacebook(req.body || {}, req))); }
+  catch (e) { const erro = _metaErroLogin(e); console.log('[meta-login] falhou:', erro); res.status(400).json({ error: erro }); }
+});
+// ── LINK PARA NAVEGADOR MULTILOGIN (09/11/2026) ──
+// Quem usa Dolphin ou AdsPower autoriza no perfil que já usa a conta, sem entrar no TMX nesse navegador. O link
+// vale 30 minutos e uma conexão. No banco fica só o hash, e a conexão sai em nome de quem gerou o link.
+const META_LINK_MS = 30 * 60000;
+const metaLinkLimiter = rateLimit({ windowMs: 10 * 60000, max: 40, message: { error: 'Muitas tentativas. Espere alguns minutos.' } });
+const _metaLinkHash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+const _metaLinksEmUso = new Set();
+function _metaLinkAchar(cfg, token) {
+  const l = ((cfg && cfg.linksLogin) || []).find(x => x.h === _metaLinkHash(token));
+  if (!l) return { erro: 'Este link não existe. Gere outro no TMX.' };
+  if (l.usado) return { erro: 'Este link já foi usado. Gere outro no TMX.' };
+  if (l.expira < Date.now()) return { erro: 'Este link venceu. Gere outro no TMX.' };
+  return { l };
+}
+app.post('/api/meta/login/link', authMeta, (req, res) => {
   try {
-    const t = await _metaOauth(code ? { client_id: c.appId, client_secret: c.segredo, code }
-      : { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.segredo, fb_exchange_token: curto });
-    let info = {};
-    try { info = (await _metaGet('debug_token', { input_token: t.access_token }, { accessToken: c.appId + '|' + c.segredo })).data || {}; } catch (e) {}
-    if (info.app_id && String(info.app_id) !== c.appId) return res.status(400).json({ error: 'Essa autorização não veio do app da TMX.' });
-    const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
-    const conexao = await _metaGuardarConexao(t.access_token, req, { via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') });
-    console.log('[meta-login] conectado pelo Facebook; contas:', (conexao.contas || []).length);
-    res.json(Object.assign({ ok: true }, conexao));
+    if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'O botão do Facebook ainda não está configurado no servidor.' });
+    const db = readDB(), cfg = _metaCfg(db) || {}, agora = Date.now(), token = 'ml_' + crypto.randomBytes(24).toString('base64url');
+    cfg.linksLogin = (cfg.linksLogin || []).filter(x => !x.usado && x.expira > agora).slice(-4)
+      .concat([{ h: _metaLinkHash(token), criado: agora, expira: agora + META_LINK_MS, por: { id: req.user.id, nome: req.user.nome, cargo: req.user.cargo } }]);
+    db.store[KEY_META] = cfg;
+    audit(db, 'integracao.meta.link', KEY_META, {}, req.user);
+    writeDB(db);
+    res.json({ ok: true, caminho: '/conectar-meta/' + token, expiraEm: agora + META_LINK_MS, conectadoEm: cfg.conectadoEm || null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/meta/login/link/:token', metaLinkLimiter, (req, res) => {
+  try {
+    const login = _metaLoginPublico(), cfg = _metaCfg(), r = _metaLinkAchar(cfg, req.params.token);
+    res.set('Cache-Control', 'no-store');
+    if (!login.pronto) return res.status(400).json({ error: 'A conexão pelo Facebook não está ligada neste endereço.' });
+    if (r.erro) return res.status(410).json({ error: r.erro });
+    res.json({ ok: true, appId: login.appId, configId: login.configId, por: String((r.l.por && r.l.por.nome) || '').split(' ')[0], expiraEm: r.l.expira, substitui: !!(cfg.accessToken && cfg.tipo === 'sistema') });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/meta/login/link/:token', metaLinkLimiter, async (req, res) => {
+  const h = _metaLinkHash(req.params.token);
+  if (_metaLinksEmUso.has(h)) return res.status(409).json({ error: 'Este link já está conectando. Espere um pouco.' });
+  _metaLinksEmUso.add(h);
+  try {
+    if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'A conexão pelo Facebook não está ligada neste endereço.' });
+    const r = _metaLinkAchar(_metaCfg(), req.params.token);
+    if (r.erro) return res.status(410).json({ error: r.erro });
+    const conexao = await _metaEntrarPeloFacebook(req.body || {}, { user: r.l.por }, { porLink: true });
+    const db = readDB(), cfg = _metaCfg(db) || {}, x = (cfg.linksLogin || []).find(y => y.h === h);
+    if (x) { x.usado = new Date().toISOString(); db.store[KEY_META] = cfg; writeDB(db); }
+    res.json({ ok: true, contas: (conexao.contas || []).length, perfil: (conexao.quem && conexao.quem.nome) || '' });
   } catch (e) {
-    const erro = e.semContas ? e.message : _metaErroTxt(e);
-    console.log('[meta-login] falhou:', erro);
+    const erro = _metaErroLogin(e); console.log('[meta-login] link falhou:', erro);
     res.status(400).json({ error: erro });
-  }
+  } finally { _metaLinksEmUso.delete(h); }
+});
+app.get('/conectar-meta/:token', (req, res) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow'); res.set('Cache-Control', 'no-store'); res.set('Referrer-Policy', 'no-referrer');
+  res.sendFile(path.join(__dirname, 'public', 'conectar-meta.html'));
 });
 app.post('/api/meta/conexao/atualizar', authMeta, async (req, res) => {
   const cfg0 = _metaCfg();
@@ -3832,7 +3888,8 @@ app.post('/api/meta/puxar', authMeta, async (req, res) => {
 // "Quem mexeu" na conexão e nas campanhas, em Projetos › Integrações
 function _metaHistTexto(a) {
   const m = a.meta || {};
-  if (a.action === 'integracao.meta.conexao') return 'conectou a Meta' + (m.via === 'facebook' ? ' pelo Facebook' : '');
+  if (a.action === 'integracao.meta.link') return 'gerou um link para conectar a Meta';
+  if (a.action === 'integracao.meta.conexao') return 'conectou a Meta' + (m.link ? ' pelo link do multilogin' : m.via === 'facebook' ? ' pelo Facebook' : '');
   if (a.action === 'integracao.meta.desconectar') return 'desconectou a Meta';
   if (a.action === 'integracao.meta.atualizar') return 'atualizou as contas';
   if (a.action === 'integracao.meta.puxar') return 'puxou os números';
