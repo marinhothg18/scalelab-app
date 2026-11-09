@@ -40587,7 +40587,7 @@ async function pcSalvar(bt){
 // nova. O servidor (/api/primeiros-passos) diz o que já está ligado. Na TMX não existe.
 // ══════════════════════════════════════════════════════
 var ppDados = null, ppAberto = '', ppPlat = 'payt', ppVistos = null;
-var PP_ORDEM = ['claude','meta','utmify','checkout','produtos','projeto','venda'];
+var PP_ORDEM = ['claude','meta','utmify','checkout','produtos','projeto','anuncios','venda'];
 function _ppEhDir(){ return !!(currentUser && currentUser.cargo === 'Diretoria'); }
 function _ppPode(){ return _ppEhDir() && typeof tmxEhTmx === 'function' && !tmxEhTmx(); }
 function _ppPost(corpo){
@@ -40632,6 +40632,7 @@ function renderPrimeiros(){
 function _ppEstado(k, p){
   var x = p[k];
   if(x.pulado && !x.ok) return '<span class="pp-chip neu">não usa</span>';
+  if(k === 'anuncios') return x.ok ? '<span class="pp-chip ok">identificando</span>' : '<span class="pp-chip falta">falta colar</span>';
   if(k === 'meta') return x.ok ? '<span class="pp-chip ok">'+x.contas+' conta(s) · '+x.pixels+' pixel(s)</span>' : '<span class="pp-chip falta">falta ligar</span>';
   if(k === 'checkout') return x.ok ? '<span class="pp-chip ok">recebendo</span>' : x.url ? '<span class="pp-chip falta">esperando a 1ª venda</span>' : '<span class="pp-chip falta">falta ligar</span>';
   if(k === 'produtos') return x.ok ? '<span class="pp-chip ok">'+x.n+' produto(s)</span>' : '<span class="pp-chip falta">falta cadastrar</span>';
@@ -40645,6 +40646,7 @@ var PP_TXT = {
   checkout: ['Checkout', 'A plataforma manda cada venda pro TMX. Sem isso, o faturamento fica zerado.'],
   produtos: ['Produtos', 'O que você vende e em qual projeto. É assim que a venda entra na conta certa.'],
   projeto:  ['Contas e pixel de cada projeto', 'Quais contas de anúncio são de cada projeto, e o código do pixel nas páginas.'],
+  anuncios: ['Nome e link dos anúncios', 'Um nome para cada campanha e cada anúncio, e os parâmetros de URL. É assim que cada venda cai no anúncio certo.'],
   venda:    ['Primeira venda', 'Fecha sozinho quando a primeira venda paga chegar pelo checkout.']
 };
 function ppPintar(){
@@ -40653,7 +40655,7 @@ function ppPintar(){
   if(!ppAberto) ppAberto = PP_ORDEM.filter(function(k){ return !(p[k].ok || p[k].pulado); })[0] || '';
   var pct = Math.round(d.feitos / d.total * 100);
   var h = '<div class="pp-topo"><div><h2>'+(d.feitos >= d.total ? 'Tudo ligado. O TMX já está contando suas vendas.' : 'Ligue o que você usa e o TMX começa a contar suas vendas')+'</h2>'+
-    '<p>Os passos 1 a 5 valem pra empresa toda; o 6 é de cada projeto. Dá pra fazer agora ou voltar aqui pelo menu.</p></div>'+
+    '<p>Os passos 1 a 5 valem pra empresa toda; o 6 e o 7, pra cada projeto. Dá pra fazer agora ou voltar aqui pelo menu.</p></div>'+
     '<div class="pp-num"><b>'+d.feitos+'</b> de '+d.total+'</div><div class="pp-barra"><i style="width:'+pct+'%"></i></div></div>';
   h += PP_ORDEM.map(function(k, i){
     var x = p[k], feito = x.ok || x.pulado, ab = ppAberto === k;
@@ -40744,6 +40746,15 @@ function ppCorpo(k, x){
         return '<div class="pp-proj"><span><b>'+fnEsc(fnProjNome(n))+'</b><small>'+(ok ? 'contas de anúncio marcadas' : 'falta marcar as contas de anúncio')+'</small></span>'+
           '<button class="fn-btn '+(ok ? 'g ' : '')+'sm" onclick="ppAbrirProjeto(\''+fnEsc(n).replace(/'/g, "\\'")+'\', \'config\')">Abrir as Integrações ›</button></div>';
       }).join('') : '<div class="fx-vazio">Nenhum projeto ainda. Crie em Projetos › + Novo projeto.</div>');
+  }
+  if(k === 'anuncios'){
+    return (x.ok ? '<div class="pp-ok">✅ Já chegaram visitas com o anúncio identificado.</div>' : '')+
+      '<ol class="pp-como">'+
+        '<li>Dê um <b>nome próprio para cada campanha e cada anúncio</b>. Pode ser qualquer nome: o sistema não exige padrão. Só não deixe tudo como "Novo anúncio", porque nomes iguais somam num card só e não dá pra filtrar.</li>'+
+        '<li>Use o <b>mesmo nome para o mesmo criativo</b> em todas as campanhas. Assim o resultado dele aparece somado.</li>'+
+        '<li>No Gerenciador de Anúncios, cole o texto abaixo em <b>Parâmetros de URL</b>, em todos os anúncios. É ele que liga cada venda ao anúncio certo.</li></ol>'+
+      '<code class="lc-code">'+fnEsc(lcPadrao()).replace(/(\{\{[^}]+\}\})/g, '<b>$1</b>')+'</code>'+
+      '<div class="pp-linha"><button class="fn-btn" onclick="lcCopiar(lcPadrao(), this)">Copiar</button>'+(x.ok ? '' : '<button class="fn-btn g sm" onclick="renderPrimeiros()">Conferir agora</button>')+'</div>';
   }
   if(k === 'venda'){
     return x.ok ? '<div class="pp-ok">✅ '+x.pagas+' venda(s) paga(s); '+x.comPessoa+' com a pessoa ligada ao anúncio de onde veio.</div><div class="pp-linha"><button class="fn-btn g sm" onclick="goTo(\'dashboard\')">Ver o Dashboard ›</button></div>'

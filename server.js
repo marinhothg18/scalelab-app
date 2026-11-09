@@ -18187,6 +18187,10 @@ function _primeirosPassos(db) {
   const projComContas = Object.keys(proj).filter(k => ((proj[k] || {}).contas || []).length);
   let pixel = false;
   try { pixel = !!(_pessoas() && _q('SELECT 1 FROM visitantes LIMIT 1').get()); } catch (e) {}
+  // chegou visita com o id do anúncio no fim do utm_content: os parâmetros de URL estão no anúncio
+  let comAnuncio = false;
+  const ID_NO_FIM = '*[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]';
+  try { comAnuncio = !!(pixel && _q('SELECT 1 FROM visitantes WHERE p_cont GLOB ? OR u_cont GLOB ? LIMIT 1').get(ID_NO_FIM, ID_NO_FIM)); } catch (e) {}
   const passos = {
     claude:   { ok: !!((db.store['sl_whatsapp_config'] || {}).ai_key) },
     meta:     { ok: meta.conectado, contas: meta.contas.length, pixels: meta.pixels.length, pulado: !!pulados.meta },
@@ -18195,6 +18199,7 @@ function _primeirosPassos(db) {
                 url: vc && vc.token ? `${BASE_PUBLICA}/api/webhook/vendas/${vc.token}` : null },
     produtos: { ok: produtos.length > 0, n: produtos.length, nomes: produtos.slice(0, 12).map(x => x.nome) },
     projeto:  { ok: projComContas.length > 0 && pixel, comContas: projComContas, pixel },
+    anuncios: { ok: comAnuncio },
     venda:    { ok: pagas.length > 0, pagas: pagas.length, comPessoa: pagas.filter(v => v.vid).length }
   };
   const feitos = Object.keys(passos).filter(k => passos[k].ok || passos[k].pulado).length;

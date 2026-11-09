@@ -87,9 +87,9 @@ test('primeiros passos da empresa cliente', async (t) => {
     assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
     assert.strictEqual(r.dados.mostrar, true);
     assert.strictEqual(r.dados.vistoEm, null);
-    assert.strictEqual(r.dados.total, 7);
+    assert.strictEqual(r.dados.total, 8);
     assert.strictEqual(r.dados.feitos, 0);
-    assert.deepStrictEqual(Object.keys(r.dados.passos), ['claude', 'meta', 'utmify', 'checkout', 'produtos', 'projeto', 'venda']);
+    assert.deepStrictEqual(Object.keys(r.dados.passos), ['claude', 'meta', 'utmify', 'checkout', 'produtos', 'projeto', 'anuncios', 'venda']);
     assert.strictEqual(r.dados.passos.checkout.url, null);
     assert.strictEqual((await chamar('GET', '/api/primeiros-passos')).status, 401, 'sem login não lê');
   });
@@ -121,6 +121,19 @@ test('primeiros passos da empresa cliente', async (t) => {
     assert.strictEqual((await chamar('POST', '/api/primeiros-passos', { token: ctx.tokA, corpo: { pular: 'checkout' } })).status, 400);
   });
 
+  await t.test('nome e link dos anúncios: fica verde quando chega visita com o id do anúncio', async () => {
+    const ler = async () => (await chamar('GET', '/api/primeiros-passos', { token: ctx.tokA })).dados.passos.anuncios.ok;
+    assert.strictEqual(await ler(), false);
+    const visita = (id, cont) => chamar('POST', '/e/' + ctx.idA + '/api/funil/evento', { corpo: { id, funil: 'f1', etapa: 'e1', tipo: 'entrou', pg: 'site.com/a', sid: 's' + id, utm: {}, primeiro: { utm_source: 'FB', utm_content: cont } } });
+    await visita('vis-sem-id-01', 'Nome solto do anuncio');
+    await espera(300);
+    assert.strictEqual(await ler(), false, 'só o nome não prova que os parâmetros estão no anúncio');
+    await visita('vis-com-id-01', 'Criativo Mae|120212345678901');
+    let ok = false;
+    for (let i = 0; i < 30 && !ok; i++) { await espera(100); ok = await ler(); }
+    assert.strictEqual(ok, true);
+  });
+
   await t.test('checkout, produto e venda: o passo fica verde lendo o que já existe', async () => {
     const g = await chamar('POST', '/api/integracoes/vendas/gerar-token', { token: ctx.tokA });
     assert.strictEqual(g.status, 200);
@@ -136,7 +149,7 @@ test('primeiros passos da empresa cliente', async (t) => {
     assert.strictEqual(r.passos.produtos.ok, true);
     assert.deepStrictEqual(r.passos.produtos.nomes, ['Guia A']);
     assert.strictEqual(r.passos.venda.ok, true);
-    assert.strictEqual(r.feitos, 3);
+    assert.strictEqual(r.feitos, 4);
     // a TMX continua sem nada disso
     assert.strictEqual((await chamar('GET', '/api/primeiros-passos', { token: ctx.tmx })).dados.mostrar, false);
   });
