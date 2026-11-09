@@ -855,6 +855,11 @@ module.exports = function montarPaginas(ctx) {
     const cols = db.prepare('PRAGMA table_info(pg_paginas)').all().map(c => c.name);
     if (cols.indexOf('projeto') < 0) db.exec('ALTER TABLE pg_paginas ADD COLUMN projeto TEXT');
     if (cols.indexOf('funil') < 0) db.exec('ALTER TABLE pg_paginas ADD COLUMN funil TEXT');
+    // domínio hospedado no TMX (modo 'tmx'): a situação na Cloudflare e o que entra em todas as páginas dele
+    const colsDom = db.prepare('PRAGMA table_info(pg_dominios)').all().map(c => c.name);
+    for (const c of ['cf_id TEXT', 'est TEXT', 'txt_nome TEXT', 'txt_valor TEXT', 'head TEXT', 'corpo TEXT', 'verificado_em INTEGER', 'erro TEXT', 'icone INTEGER'])
+      if (colsDom.indexOf(c.split(' ')[0]) < 0) db.exec('ALTER TABLE pg_dominios ADD COLUMN ' + c);
+    db.exec('CREATE TABLE IF NOT EXISTS pg_r2 (dominio_id TEXT, pagina_id TEXT, nome TEXT, PRIMARY KEY (dominio_id, pagina_id, nome))');
     return (pronto = true);
   }
   const _funis = projeto => { try { return (ctx.funisDoProjeto && projeto) ? ctx.funisDoProjeto(projeto) : []; } catch (e) { return []; } };
@@ -865,8 +870,13 @@ module.exports = function montarPaginas(ctx) {
   function _auditar(req, acao, alvo, meta) {
     try { const db = readDB(); audit(db, acao, alvo, meta, req.user); writeDB(db); } catch (e) { console.error('[PAGINAS] auditoria:', e.message); }
   }
+  const _SUF_BR = /\.(com|net|org|art|blog|app|adv|med|eco|edu|gov|ind|inf|tv)\.br$/;
+  const _partesRaiz = h => (_SUF_BR.test(h) ? 3 : 2);
   const _domPublico = d => ({ id: d.id, dominio: d.dominio, modo: d.modo, host: d.host, porta: d.porta, usuario: d.usuario,
-    pasta: d.pasta, endereco: d.endereco, tls: d.tls, testado_em: d.testado_em, criado_em: d.criado_em });
+    pasta: d.pasta, endereco: d.endereco, tls: d.tls, testado_em: d.testado_em, criado_em: d.criado_em,
+    est: d.modo === 'tmx' ? d.est : 'ok', txt_nome: d.txt_nome || '', txt_valor: d.txt_valor || '', head: d.head || '', corpo: d.corpo || '', icone: !!d.icone,
+    verificado_em: d.verificado_em || null, erro: d.erro || '', raiz: d.dominio.split('.').length === _partesRaiz(d.dominio),
+    nome_dns: d.dominio.split('.').slice(0, -_partesRaiz(d.dominio)).join('.') || '@' });
   const _dom = id => _q('SELECT * FROM pg_dominios WHERE id=?').get(id);
   const _pag = id => _q('SELECT * FROM pg_paginas WHERE id=?').get(id);
   const _versao = (id, n) => { const v = _q('SELECT * FROM pg_versoes WHERE pagina_id=? AND n=?').get(id, n); return v ? Object.assign(v, { campos: JSON.parse(v.campos) }) : null; };
@@ -955,8 +965,9 @@ module.exports = function montarPaginas(ctx) {
     return { dominio, modo: 'ftp', host, porta, usuario, pasta, endereco, tls };
   }
 
-  app.get('/api/pg/estado', auth, (req, res) => {
+  app.get('/api/pg/estado', auth, async (req, res) => {
     if (!_tabelas()) return semBanco(res);
+    const hospedagem = await _hospInfo();
     const modelos = Object.values(_modelos()).map(m => ({ id: m.id, nome: m.nome, base: m.base, campos: _defs(m), padrao: _camposPadrao(m),
       tem: { vsl: !!m.ext.vsl, atraso: m.ext.atraso != null, checkout: m.ext.checkouts.length > 0, umClique: m.ext.umClique } }));
     const dominios = _q('SELECT * FROM pg_dominios ORDER BY criado_em').all().map(_domPublico);
@@ -965,7 +976,9 @@ module.exports = function montarPaginas(ctx) {
     const paginas = _q('SELECT * FROM pg_paginas ORDER BY criado_em DESC').all()
       .filter(p => !projeto || p.projeto === projeto)
       .map(p => Object.assign({}, p, { hash_ar: undefined, url: doms[p.dominio_id] ? _urlCurta(_endereco(doms[p.dominio_id], p.slug)) : '' }));
-    res.json({ modelos, dominios, paginas, funis: _funis(projeto) });
+    const testes = _testesTodos().filter(r => r.hospedado && doms[r.hospedado.dominio]).map(r => ({ nome: r.nome || r.slug, slug: r.slug, dominio: r.hospedado.dominio, caminho: r.hospedado.caminho,
+      ativo: r.ativo !== false, vencedora: r.vencedora || null }));
+    res.json({ modelos, dominios, paginas, funis: _funis(projeto), hospedagem, testes });
   });
 
   app.post('/api/pg/dominios/testar', auth, express.json({ limit: '20kb' }), async (req, res) => {
@@ -1001,9 +1014,23 @@ module.exports = function montarPaginas(ctx) {
     res.json(teste);
   });
 
-  app.post('/api/pg/dominios/:id/excluir', auth, (req, res) => {
+  app.post('/api/pg/dominios/:id/excluir', auth, async (req, res) => {
     if (!_tabelas()) return semBanco(res);
     const d = _dom(req.params.id); if (!d) return res.status(404).json({ error: 'Domínio não encontrado.' });
+    if (d.modo === 'tmx') {
+      // sai da Cloudflare junto: as páginas voltam a ser rascunho aqui e os testes A/B dele são encerrados
+      const r = await ctx.hosp('hosp-apagar', { host: d.dominio }, 60000);
+      if (!r || !r.ok) return res.status(502).json({ error: (r && r.erro) || 'Não consegui remover agora. Tente de novo em um minuto.' });
+      _q('UPDATE pg_paginas SET dominio_id=NULL, publicada=NULL, publicada_em=NULL, hash_ar=NULL WHERE dominio_id=?').run(d.id);
+      _q('DELETE FROM pg_r2 WHERE dominio_id=?').run(d.id);
+      _q('DELETE FROM pg_dominios WHERE id=?').run(d.id);
+      const db = readDB(), l = db.store['sl_redirecionadores'];
+      let mudou = false;
+      (Array.isArray(l) ? l : []).forEach(t => { if (t && t.hospedado && t.hospedado.dominio === d.id) { delete t.hospedado; t.ativo = false; t._updatedAt = Date.now(); mudou = true; } });
+      if (mudou) { if (!db.timestamps) db.timestamps = {}; db.timestamps['sl_redirecionadores'] = Math.floor(Date.now() / 1000); writeDB(db); }
+      _auditar(req, 'pg_dominio_hospedado_remover', d.id, { dominio: d.dominio });
+      return res.json({ ok: true });
+    }
     const n = _q('SELECT COUNT(*) n FROM pg_paginas WHERE dominio_id=?').get(d.id).n;
     if (n) return res.status(409).json({ error: 'Esse domínio tem ' + n + (n === 1 ? ' página' : ' páginas') + ' no TMX. As páginas na hospedagem não são apagadas, mas tire elas do TMX antes.' });
     _q('DELETE FROM pg_dominios WHERE id=?').run(d.id);
@@ -1144,9 +1171,10 @@ module.exports = function montarPaginas(ctx) {
     let subiram = 0;
     if (conf.some(c => c.st === 'alerta' || c.st === 'falta'))
       throw falha(409, 'Tem conferência com alerta ou faltando. Resolva antes de publicar.', { codigo: 'conferencia', conferencias: conf });
-    let senha; try { senha = _finDecifrar(d.id, JSON.parse(d.cred)).senha; } catch (e) { throw falha(400, e.message); }
     let antigo = null;
-    try {
+    if (d.modo === 'tmx') subiram = await _enviarHospedado(p, d, html, usados, v);
+    else try {
+      let senha; try { senha = _finDecifrar(d.id, JSON.parse(d.cred)).senha; } catch (e) { throw falha(400, e.message); }
       await _comFtp(d, senha, async c => {
         await c.cd(d.pasta || '/');
         await c.ensureDir(p.slug);
@@ -1173,6 +1201,7 @@ module.exports = function montarPaginas(ctx) {
         await c.uploadFrom(Readable.from([Buffer.from(html, 'utf8')]), 'index.html');
       });
     } catch (e) {
+      if (e.status) throw e;   // falha já explicada (senha da hospedagem não abriu)
       if (e.codigo === 'existe') throw falha(409, e.message + ' Se publicar mesmo assim, o TMX guarda uma cópia do arquivo de lá.', { codigo: 'existe' });
       throw falha(502, _erroFtp(e));
     }
@@ -1192,6 +1221,150 @@ module.exports = function montarPaginas(ctx) {
       } catch (e) { console.error('[PAGINAS] registrar no projeto:', e.message); }
     }
     return { ok: true, n, url, noAr, substituiu: antigo !== null, arquivos: usados.length, subiram };
+  }
+
+
+  // ══ Hospedagem própria: domínio do cliente apontado pra cá, páginas guardadas na Cloudflare ══
+  // Quem fala com a Cloudflare é a portaria (hospedagem.js), a chave não chega aqui.
+  let _hospInfoC = null, _hospInfoEm = 0;
+  async function _hospInfo() {
+    if (!ctx.hosp) return { ligada: false };
+    if (_hospInfoC && Date.now() - _hospInfoEm < 60000) return _hospInfoC;
+    const r = await ctx.hosp('hosp-info', {});
+    _hospInfoC = r && r.ok ? { ligada: !!r.ligada, alvo: r.alvo } : { ligada: false };
+    _hospInfoEm = Date.now();
+    return _hospInfoC;
+  }
+  const _testesTodos = () => { const l = readDB().store['sl_redirecionadores']; return Array.isArray(l) ? l.filter(Boolean) : []; };
+  // a página de cada versão sai do endereço dela: https://domínio/página/
+  function _paginaDaUrl(url, dominio) {
+    try { const u = new URL(String(url || '')); return u.hostname.toLowerCase() === dominio ? u.pathname.replace(/^\/+|\/+$/g, '') : ''; } catch (e) { return ''; }
+  }
+  function _hospConfig(d) {
+    const testes = {};
+    _testesTodos().forEach(r => {
+      const h = r.hospedado; if (!h || h.dominio !== d.id || r.tipo === 'checkout') return;
+      const caminho = String(h.caminho || '').toLowerCase().replace(/[^a-z0-9-]/g, ''); if (!caminho) return;
+      const variantes = (r.destinos || []).map((x, i) => ({ id: String(x.id || ('v' + i)), pagina: _paginaDaUrl(x.url, d.dominio), peso: Number(x.peso) || 1 })).filter(v => /^[a-z0-9-]+$/.test(v.pagina));
+      if (variantes.length) testes[caminho] = { id: String(r.slug), ativo: r.ativo !== false, vencedora: r.vencedora ? String(r.vencedora) : null, variantes };
+    });
+    return { testes, head: d.head || '', corpo: d.corpo || '', icone: !!d.icone };
+  }
+  async function _hospSinc(d) {
+    const r = await ctx.hosp('hosp-config', { host: d.dominio, cfg: _hospConfig(d) }, 30000);
+    if (!r || !r.ok) throw falha(502, 'Não consegui atualizar o domínio: ' + ((r && r.erro) || 'sem resposta') + '.');
+  }
+  let _syncT = null;
+  function sincronizarTestes() {
+    clearTimeout(_syncT);
+    _syncT = setTimeout(async () => {
+      if (!_tabelas()) return;
+      for (const d of _q("SELECT * FROM pg_dominios WHERE modo='tmx' AND est='ok'").all()) {
+        try { await _hospSinc(d); } catch (e) { console.error('[PAGINAS] atualizar testes de', d.dominio, e.message); }
+      }
+    }, 1500);
+    if (_syncT.unref) _syncT.unref();
+  }
+  const _UPD_DOM = 'UPDATE pg_dominios SET est=?, txt_nome=?, txt_valor=?, erro=?, verificado_em=? WHERE id=?';
+  async function _verificarDom(d) {
+    if (d.est === 'parado') {   // parou de esperar depois de 7 dias: cadastra de novo na Cloudflare
+      const c = await ctx.hosp('hosp-criar', { host: d.dominio }, 30000);
+      if (!c || !c.ok) throw falha(400, (c && c.erro) || 'Não consegui cadastrar agora.');
+      _q(_UPD_DOM).run(c.est, c.txt_nome, c.txt_valor, c.erro || '', Date.now(), d.id);
+      _q('UPDATE pg_dominios SET criado_em=? WHERE id=?').run(Date.now(), d.id);
+      return _dom(d.id);
+    }
+    const r = await ctx.hosp('hosp-status', { host: d.dominio }, 30000);
+    if (!r || !r.ok) throw falha(502, (r && r.erro) || 'Não consegui conferir agora.');
+    _q(_UPD_DOM).run(r.est, r.txt_nome || d.txt_nome, r.txt_valor || d.txt_valor, r.erro || '', Date.now(), d.id);
+    const novo = _dom(d.id);
+    if (r.est === 'ok' && d.est !== 'ok') {
+      await _hospSinc(novo);
+      if (ctx.avisarDiretoria) { try { ctx.avisarDiretoria('🌐 ' + d.dominio + ' está no ar', 'Certificado emitido. O domínio já pode receber páginas e testes A/B.'); } catch (e) {} }
+    }
+    return novo;
+  }
+  const ESPERA_DNS = 7 * 864e5;   // domínio esperando também é cobrado na Cloudflare
+  async function _checarPendentes() {
+    if (!ctx.hosp || !_tabelas()) return;
+    for (const d of _q("SELECT * FROM pg_dominios WHERE modo='tmx' AND est IN ('dns','ssl') LIMIT 30").all()) {
+      try {
+        if (d.est === 'dns' && Date.now() - d.criado_em > ESPERA_DNS) {
+          const r = await ctx.hosp('hosp-apagar', { host: d.dominio }, 30000);
+          if (r && r.ok) _q(_UPD_DOM).run('parado', d.txt_nome, d.txt_valor, 'Passou de 7 dias sem o registro aparecer no DNS.', Date.now(), d.id);
+        } else await _verificarDom(d);
+      } catch (e) { console.error('[PAGINAS] conferir', d.dominio, e.message); }
+    }
+  }
+  const _tPendentes = setInterval(_checarPendentes, 60000);
+  if (_tPendentes.unref) _tPendentes.unref();
+
+  app.post('/api/pg/dominios/hospedado', auth, express.json({ limit: '5kb' }), async (req, res) => {
+    if (!_tabelas()) return semBanco(res);
+    if (!ctx.hosp) return res.status(503).json({ error: 'A hospedagem no TMX ainda não está ligada.' });
+    const dominio = String((req.body || {}).dominio || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
+    if (_q('SELECT id FROM pg_dominios WHERE dominio=?').get(dominio)) return res.status(409).json({ error: 'Esse domínio já está cadastrado.' });
+    const r = await ctx.hosp('hosp-criar', { host: dominio }, 30000);
+    if (!r || !r.ok) return res.status(400).json({ error: (r && r.erro) || 'Não consegui cadastrar agora. Tente de novo em um minuto.' });
+    const id = 'dom_' + crypto.randomBytes(6).toString('hex'), agora = Date.now();
+    _q(`INSERT INTO pg_dominios (id, dominio, modo, host, porta, usuario, pasta, endereco, tls, cred, testado_em, criado_em, criado_por, cf_id, est, txt_nome, txt_valor, erro, verificado_em)
+        VALUES (?,?,'tmx','',0,'','/',?,'','',?,?,?,?,?,?,?,?,?)`).run(id, dominio, 'https://' + dominio + '/', agora, agora, quem(req), r.id, r.est, r.txt_nome, r.txt_valor, r.erro || '', agora);
+    _auditar(req, 'pg_dominio_hospedado_cadastrar', id, { dominio });
+    res.json({ ok: true, dominio: _domPublico(_dom(id)) });
+  });
+  app.post('/api/pg/dominios/:id/verificar', auth, async (req, res) => {
+    if (!_tabelas()) return semBanco(res);
+    const d = _dom(req.params.id);
+    if (!d || d.modo !== 'tmx') return res.status(404).json({ error: 'Domínio não encontrado.' });
+    try { res.json({ ok: true, dominio: _domPublico(await _verificarDom(d)) }); } catch (e) { responder(res, e); }
+  });
+  app.post('/api/pg/dominios/:id/scripts', auth, express.json({ limit: '60kb' }), async (req, res) => {
+    if (!_tabelas()) return semBanco(res);
+    const d = _dom(req.params.id);
+    if (!d || d.modo !== 'tmx') return res.status(404).json({ error: 'Domínio não encontrado.' });
+    const head = String((req.body || {}).head || ''), corpo = String((req.body || {}).corpo || '');
+    if (head.length > 20000 || corpo.length > 20000) return res.status(400).json({ error: 'Cada campo aceita até 20 mil caracteres.' });
+    _q('UPDATE pg_dominios SET head=?, corpo=? WHERE id=?').run(head, corpo, d.id);
+    _auditar(req, 'pg_dominio_scripts', d.id, { dominio: d.dominio, head: head.length, corpo: corpo.length });
+    try { if (d.est === 'ok') await _hospSinc(_dom(d.id)); res.json({ ok: true, dominio: _domPublico(_dom(d.id)) }); } catch (e) { responder(res, e); }
+  });
+  const ICONES = /^image\/(png|x-icon|vnd\.microsoft\.icon|svg\+xml)$/;
+  app.post('/api/pg/dominios/:id/icone', auth, express.raw({ type: () => true, limit: '1mb' }), async (req, res) => {
+    if (!_tabelas()) return semBanco(res);
+    const d = _dom(req.params.id);
+    if (!d || d.modo !== 'tmx') return res.status(404).json({ error: 'Domínio não encontrado.' });
+    const tipo = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!ICONES.test(tipo) || !Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Envie um PNG, ICO ou SVG de até 1 MB.' });
+    const r = await ctx.hosp('hosp-icone', { host: d.dominio, b64: req.body.toString('base64'), tipo }, 30000);
+    if (!r || !r.ok) return res.status(502).json({ error: (r && r.erro) || 'Não consegui enviar o ícone.' });
+    _q('UPDATE pg_dominios SET icone=1 WHERE id=?').run(d.id);
+    try { if (d.est === 'ok') await _hospSinc(_dom(d.id)); res.json({ ok: true, dominio: _domPublico(_dom(d.id)) }); } catch (e) { responder(res, e); }
+  });
+  // manda a página e os arquivos dela; os arquivos têm o conteúdo no nome, então só vão os que faltam
+  async function _enviarHospedado(p, d, html, usados, v) {
+    if (d.est !== 'ok') throw falha(409, 'O domínio ' + d.dominio + ' ainda está esperando o DNS. A página fica pronta aqui e você publica assim que ele conectar.', { codigo: 'dns' });
+    const envia = async (dados, ms) => {
+      const r = await ctx.hosp('hosp-gravar', Object.assign({ host: d.dominio }, dados), ms);
+      if (!r || !r.ok) throw falha(502, 'Não consegui enviar a página: ' + ((r && r.erro) || 'sem resposta') + '. Tente de novo em um minuto.');
+    };
+    const ja = new Set(_q('SELECT nome FROM pg_r2 WHERE dominio_id=? AND pagina_id=?').all(d.id, p.id).map(x => x.nome));
+    let subiram = 0;
+    for (const nome of usados) {
+      if (ja.has(nome)) continue;
+      const a = _q('SELECT dados, tipo FROM pg_arquivos WHERE pagina_id=? AND nome=?').get(p.id, nome);
+      await envia({ chave: p.slug + '/arquivos/' + nome, b64: Buffer.from(a.dados).toString('base64'), tipo: a.tipo, longo: true }, 60000);
+      _q('INSERT OR IGNORE INTO pg_r2 (dominio_id, pagina_id, nome) VALUES (?,?,?)').run(d.id, p.id, nome);
+      subiram++;
+    }
+    // página de modelo: o que é relativo à raiz está no site original do modelo
+    let final = html;
+    if (!v.campos.livre) {
+      const m = _modelos()[v.campos._modelo || p.modelo];
+      if (m && m.base) final = html.replace(/(\s(?:src|href)=["'])\/(?!\/)/g, '$1https://' + String(m.base).split('/')[0] + '/');
+    }
+    await envia({ chave: p.slug + '/index.html', b64: Buffer.from(final, 'utf8').toString('base64'), tipo: 'text/html; charset=utf-8' }, 30000);
+    await _hospSinc(d);
+    return subiram;
   }
 
   app.post('/api/pg/paginas', auth, express.json({ limit: '50kb' }), async (req, res) => {
@@ -1615,6 +1788,7 @@ module.exports = function montarPaginas(ctx) {
   });
 
   console.log('[PAGINAS] ' + Object.keys(_modelos()).length + ' modelos prontos');
+  return { sincronizarTestes, dominiosProntos: () => (_tabelas() ? _q("SELECT dominio FROM pg_dominios WHERE modo='tmx' AND est='ok'").all().map(x => x.dominio) : []) };
 };
 
 // O que a tela mostra da conversa: o texto de cada lado, sem pensamento nem chamadas de ferramenta

@@ -315,6 +315,8 @@ function _plataforma() {
     CREATE INDEX IF NOT EXISTS assinaturas_sub ON assinaturas(pagarme_sub);
     CREATE TABLE IF NOT EXISTS pagarme_planos (chave TEXT PRIMARY KEY, plan_id TEXT NOT NULL, criado INTEGER);
     CREATE TABLE IF NOT EXISTS plataforma_cfg (k TEXT PRIMARY KEY, v TEXT);
+    -- domínio de cliente hospedado na Cloudflare: um domínio é de uma empresa só
+    CREATE TABLE IF NOT EXISTS dominios_hospedados (host TEXT PRIMARY KEY, empresa TEXT NOT NULL, cf_id TEXT, criado INTEGER);
   `);
   try { db.exec('ALTER TABLE assinaturas ADD COLUMN acesso_enviado INTEGER'); } catch (e) {}   // já existe
   for (const col of ['bloqueio_motivo TEXT', 'bloqueado_em INTEGER', 'bloqueado_por TEXT']) {
@@ -333,6 +335,8 @@ function _plataforma() {
   return db;
 }
 function _platPrep(sql) { if (!_platQ[sql]) _platQ[sql] = _plataforma().prepare(sql); return _platQ[sql]; }
+// Hospedagem própria (Cloudflare): só a portaria tem a chave; o motor pede pelo canal interno
+const _hosp = SOU_TMX ? require('./hospedagem')({ platPrep: _platPrep }) : null;
 function _carregarEmpresas() {
   _empresas.clear();
   for (const e of _platPrep('SELECT id, nome, status, bloqueio_motivo FROM empresas').all()) _empresas.set(e.id, { id: e.id, nome: e.nome, status: e.status, motivo: e.bloqueio_motivo || '' });
@@ -7619,7 +7623,7 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   // mudou o desenho do funil (ex.: o minuto do pitch): o retrato em memória
   // e as visitas já marcadas se refazem logo, sem esperar os 15 min
   // depois de gravar: refazer antes deixaria o retrato com a lista antiga por 1 min
-  if (key === KEY_REDIRS) setTimeout(() => { _ckCache.em = 0; }, 0);
+  if (key === KEY_REDIRS) setTimeout(() => { _ckCache.em = 0; if (_paginasApi) _paginasApi.sincronizarTestes(); }, 0);
   if (key === 'sl_funis') { clearTimeout(_pitchTimer); _pitchTimer = setTimeout(() => { try { _fcCache.em = 0; _pitchRecalcular(); } catch (e) {} }, 3000); }
   let incoming = req.body;
   const existing = db.store[key];
@@ -10546,6 +10550,7 @@ function _avisarDiretoriaTmx(titulo, texto) {
 }
 // O motor pede algo à plataforma. A empresa vem da portaria (é a do motor), nunca do cliente.
 function _atenderMotor(empresa, cmd, d) {
+  if (String(cmd).startsWith('hosp-')) return _hosp.atender(empresa, cmd, d);
   const emp = _empresas.get(empresa) || { nome: empresa };
   const u = d.usuario || {};
   if (cmd === 'chamado-abrir') {
@@ -13320,6 +13325,12 @@ app.post('/api/funil/evento', express.text({ type: '*/*', limit: '16kb' }), (req
       try {
         // retrato de 1 min dos testes: ler o db.json inteiro a cada visita era caro
         const r = _funisCache().redirs[teste];
+        // pagina hospedada: o sorteio foi na entrega e o pixel avisa uma vez, na primeira visita
+        if (Number(c.abn)) {
+          _abContar(teste, variante, 'sorteio');
+          const dest = r && (r.destinos || []).find((x, i) => String(x.id || ('v' + i)) === variante);
+          if (dest) _fContar('redir:' + teste, dest.url, 'entrou', null, null);
+        }
         // meta e uma etapa do funil: chegar nela e a conversao do teste
         if (r && r.meta && r.meta !== 'compra' && String(r.meta) === etapa) _abContar(teste, variante, 'meta', visitante);
       } catch (e) {}
@@ -20814,6 +20825,7 @@ app.post('/api/ab/vencedora', authNegocio, (req, res) => {
     db.timestamps[KEY_REDIRS] = now();
     audit(db, variante ? 'ab_vencedora_declarada' : 'ab_vencedora_desfeita', slug, { variante, antes }, req.user);
     writeDB(db);
+    if (_paginasApi) _paginasApi.sincronizarTestes();
     res.json({ ok: true, teste: slug, vencedora: r.vencedora || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -21736,8 +21748,10 @@ const PIXEL_JS = `(function(w,d){
   // Versao visivel: sem isso nao da pra saber se a pagina esta rodando o pixel
   // novo ou uma copia velha em cache — e isso ja custou uma investigacao inteira.
   w.TMXOrigem = { vid: id, primeiro: primeiro, ultimoAnuncio: ultimoAnuncio, versao: TMX_VERSAO };
+  // Pagina hospedada no TMX: o sorteio foi na entrega, sem redirecionar, e a versao ja vem na pagina
+  var AB_ENTREGA = w.TMX_AB || null;
   ['t','v'].forEach(function(k){
-    var v = q.get('tmx_'+k);
+    var v = (AB_ENTREGA && AB_ENTREGA[k]) || q.get('tmx_'+k);
     try{ if(v) localStorage.setItem('tmx_ab_'+k, v); }catch(e){}
   });
   var teste = '', variante = '';
@@ -21750,7 +21764,7 @@ const PIXEL_JS = `(function(w,d){
   // link cadastrado no teste ("https://site.com/x/") — e o seletor mostraria as
   // duas como se fossem paginas diferentes. Minuscula tambem: /697 e /697/ e
   // /VSL e /vsl viravam linhas separadas na mesma tela.
-  var PAGINA = (location.host + location.pathname).toLowerCase()
+  var PAGINA = ((AB_ENTREGA && AB_ENTREGA.p) || (location.host + location.pathname)).toLowerCase()
                  .replace(/^www\\./, '').replace(/\\/+$/, '').slice(0, 160);
 
   // ── Trafego interno ──────────────────────────────────────────────────────
@@ -21787,7 +21801,7 @@ const PIXEL_JS = `(function(w,d){
   function manda(tipo, extra){
     var dados = Object.assign({ id:id, funil:FUNIL, etapa:ETAPA, tipo:tipo, utm:utm,
                                 pg:PAGINA, primeiro:primeiro, sid:SID, interno:INTERNO ? 1 : 0,
-                                teste:teste, variante:variante, versao:VERSAO, ref:d.referrer, qid:QID }, extra||{});
+                                teste:teste, variante:variante, abn:(AB_ENTREGA && AB_ENTREGA.n) ? 1 : 0, versao:VERSAO, ref:d.referrer, qid:QID }, extra||{});
     var corpo = JSON.stringify(dados);
     try{
       navigator.sendBeacon
@@ -22991,6 +23005,14 @@ function _dominiosConhecidos(db) {
     mapa[d] = mapa[d] || { dominio: d, usos: [], cadastrado: false };
     if (origem) mapa[d].usos.push({ origem, nome: String(nome || '').slice(0, 60) });
   };
+  // hospedado e no ar: vale também pra link curto, teste por link e quiz
+  try {
+    (_paginasApi ? _paginasApi.dominiosProntos() : []).forEach(h => {
+      add(h);
+      const k = _dominioLimpo(h);
+      if (mapa[k]) Object.assign(mapa[k], { cadastrado: true, ok: true, erro: '', hospedado: true });
+    });
+  } catch (e) {}
   (Array.isArray(db.store[KEY_DOMINIOS]) ? db.store[KEY_DOMINIOS] : []).forEach(x => {
     add(x.dominio);
     const k = _dominioLimpo(x.dominio);
@@ -24300,8 +24322,10 @@ app.get('/mcp', (req, res) => {
 // Só a Diretoria da TMX: as páginas e as senhas de hospedagem ficam no banco da TMX.
 // basePublica: prefixo do endereço público da empresa ('' na TMX); BASE_PUBLICA ainda não existe no main.
 // chaveIA: a mesma chave da Anthropic do agente do WhatsApp, pro chat do editor.
+var _paginasApi = null;
 try {
-  require('./paginas')({ app, express, readDB, writeDB, audit, auth: SOU_TMX ? authDiretoriaInterna : authDiretoria, _pessoas, _q, _finCifrar, _finDecifrar,
+  _paginasApi = require('./paginas')({ app, express, readDB, writeDB, audit, auth: SOU_TMX ? authDiretoriaInterna : authDiretoria, _pessoas, _q, _finCifrar, _finDecifrar,
+    hosp: _hospPedir, avisarDiretoria: (titulo, texto) => { const db = readDB(); _avisarDiretoria(db, titulo, texto); writeDB(db); },
     basePublica: (typeof BASE_PUBLICA === 'string' ? BASE_PUBLICA : ''), chaveIA: _getAIKey,
     // a página nasce num funil do projeto e, publicada, entra em Projetos › projeto › Páginas
     funisDoProjeto: projeto => (Array.isArray(readDB().store[KEY_FUNIS]) ? readDB().store[KEY_FUNIS] : []).filter(f => f && f.projeto === projeto).map(f => ({ id: f.id, nome: f.nome })),
@@ -24409,14 +24433,19 @@ app.post('/api/suporte/chamados/:id/responder', authUsuario, async (req, res) =>
 // Pedido do motor à plataforma (chamados ficam no registro da plataforma, não no banco da empresa)
 const _pedidosPortaria = new Map();
 let _pedidoPortariaN = 0;
-function _pedirAPortaria(cmd, dados) {
+function _pedirAPortaria(cmd, dados, ms) {
   if (SOU_TMX || !process.send) return Promise.resolve({ ok: false, erro: 'só existe nas empresas' });
   return new Promise(ok => {
     const n = ++_pedidoPortariaN;
-    const t = setTimeout(() => { _pedidosPortaria.delete(n); ok({ ok: false, erro: 'a plataforma não respondeu' }); }, 10000);
+    const t = setTimeout(() => { _pedidosPortaria.delete(n); ok({ ok: false, erro: 'a plataforma não respondeu' }); }, ms || 10000);
     _pedidosPortaria.set(n, r => { clearTimeout(t); ok(r); });
     process.send({ tipo: 'pedido-portaria', n, cmd, dados });
   });
+}
+// Hospedagem própria: na TMX responde aqui mesmo; numa empresa, pergunta à portaria
+function _hospPedir(cmd, dados, ms) {
+  if (SOU_TMX) return Promise.resolve().then(() => _hosp.atender('tmx', cmd, dados)).catch(e => ({ ok: false, erro: e.message }));
+  return _pedirAPortaria(cmd, dados, ms);
 }
 // Sessão de suporte: ninguém novo entra na equipe do cliente; a sessão carrega quem é e até quando vale
 function _abrirSessaoSuporte(d) {
@@ -24517,4 +24546,6 @@ if (!SOU_TMX) {
   const ativas = [..._empresas.values()];
   if (ativas.length) console.log(`  🏢  Empresas: ${ativas.length} motor(es) ligando`);
   ativas.forEach(e => { try { _ligarMotor(e); } catch (err) { console.error('[PORTARIA] não liguei', e.id, err.message); } });
+  if (_hosp && _hosp.ligada()) _hosp.instalar().then(() => console.log('  🌐  Hospedagem própria: pronta'))
+    .catch(e => console.error('[HOSPEDAGEM] não consegui instalar na Cloudflare:', e.message));
 });
