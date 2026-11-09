@@ -4467,7 +4467,7 @@ async function _pushEnviar(aparelhos, aviso) {
 function _avisarVenda(venda, db) {
   try {
     const usuarios = Array.isArray(db.store.sl_usuarios) ? db.store.sl_usuarios : [];
-    const aparelhos = _pushAparelhos(db).filter(a => { const u = usuarios.find(x => x.id === a.userId); return u && CARGOS_NEGOCIO.has(u.cargo); });
+    const aparelhos = _pushAparelhos(db).filter(a => { const u = usuarios.find(x => x.id === a.userId); return u && CARGOS_NEGOCIO.has(u.cargo) && !_projetosDoLimite(u); });   // o aviso não diz de que projeto é a venda
     if (!aparelhos.length) return;
     const valor = Number(venda.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     _pushEnviar(aparelhos, { titulo: 'Venda aprovada!', corpo: 'Valor: ' + valor, tag: 'venda-' + (venda.pedidoId || Date.now()) })
@@ -4796,13 +4796,19 @@ async function _utmifyDashboardsAtivos() {
 
 // Lista os projetos (dashboards) da Utmify — alimenta o filtro da tela
 app.get('/api/metricas/utmify/projetos', authUsuario, async (req, res) => {
+  // a lista guardada é de todos os projetos: quem tem projeto marcado recebe só os seus
+  const soOsMeus = s => {
+    if (!_projetosDoLimite(req.user)) return s;
+    const e = _escopoDe(readDB(), req.user);
+    return Object.assign({}, s, { projetos: s.projetos.filter(p => e.dashs.has(String(p.id))) });
+  };
   const pronto = _vivoGet('projetos', 10 * 60 * 1000);
-  if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
+  if (pronto) return res.json(Object.assign({ doCache: true }, soOsMeus(pronto)));
   try {
     const { lista } = await _utmifyDashboardsAtivos();
     const saida = { ok: true, projetos: lista.map(d => ({ id: d.id, nome: (d.nome || '').trim() || d.id })) };
     _vivoSet('projetos', saida);
-    res.json(saida);
+    res.json(soOsMeus(saida));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -7373,6 +7379,7 @@ app.get('/api/store', authUsuario, (req, res) => {
   const safe = _filtrarKeysPorCargo(Object.assign({}, baseStore), req);
   if (safe['sl_usuarios']) safe['sl_usuarios'] = _stripSenhas(safe['sl_usuarios']);
   if (safe['sl_lixeira']) safe['sl_lixeira'] = _lixeiraParaQuemPede(safe['sl_lixeira'], req);
+  if (_projetosDoLimite(req.user)) _recortarStore(safe, db, req.user);
   res.json(safe);
 });
 
@@ -7403,6 +7410,7 @@ app.get('/api/updates/:since', authUsuario, (req, res) => {
         : (k === 'sl_lixeira') ? _lixeiraParaQuemPede(valor, req) : valor;
     }
   });
+  if (_projetosDoLimite(req.user)) _recortarStore(data, db, req.user);
   res.json({ data, timestamp: now() });
 });
 
@@ -7507,12 +7515,16 @@ app.put('/api/store/:key', authUsuario, (req, res) => {
   // Fora da Diretoria, a pessoa só muda a própria conta, e nunca cargo, senha, e-mail,
   // ativo ou empresa. Antes, qualquer login virava Diretoria ou trocava a senha de
   // outra pessoa por aqui (05/11/2026). Contas novas, só a Diretoria cria.
+  if (_projetosDoLimite(req.user) && key !== 'sl_usuarios') {
+    incoming = _limiteAoGravar(key, incoming, existing, db, req.user);
+    if (incoming === null) return res.status(403).json({ error: 'Isto não faz parte dos seus projetos.', foraDoProjeto: true });
+  }
   if (key === 'sl_usuarios' && !_ehDiretoria(req)) {
     if (!Array.isArray(incoming)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
     const meu = String(req.user && req.user.id), atual = (Array.isArray(existing) ? existing : []).find(u => u && String(u.id) === meu);
     incoming = !atual ? [] : incoming.filter(u => u && String(u.id) === meu).map(u => {
       const c = Object.assign({}, u);
-      ['cargo', 'senha', 'senhaHash', 'email', 'ativo', 'tenant_id'].forEach(k => { if (k in atual) c[k] = atual[k]; else delete c[k]; });
+      ['cargo', 'senha', 'senhaHash', 'email', 'ativo', 'tenant_id', 'projetos'].forEach(k => { if (k in atual) c[k] = atual[k]; else delete c[k]; });
       return c;
     });
   }
@@ -7600,6 +7612,7 @@ app.post('/api/lixeira/soft-delete', authUsuario, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Item não encontrado' });
 
   const item = arr[idx];
+  if (!_podeLixeira(req, key, item)) return res.status(403).json({ error: 'Isto não faz parte dos seus projetos.' });
   arr.splice(idx, 1);
 
   // Adiciona à lixeira global
@@ -7633,7 +7646,7 @@ app.post('/api/lixeira/restore/:lixeiraId', authUsuario, (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'Item da lixeira não encontrado' });
 
   const entry = lix[idx];
-  if (!_podeLixeira(req, entry.sourceKey)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
+  if (!_podeLixeira(req, entry.sourceKey, entry.data)) return res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   if (!db.store[entry.sourceKey]) db.store[entry.sourceKey] = [];
   // Evita duplicar caso já exista
   const sourceArr = db.store[entry.sourceKey];
@@ -8964,6 +8977,7 @@ app.post('/api/ia/analisar-demanda', async (req, res) => {
     const db = readDB();
     const sess = validarSessao(db, token, req.tenantId || TENANT_DEFAULT_ID);
     if (!sess) return res.status(401).json({ error: 'Sessão inválida' });
+    if (_projetosDoLimite(_usuarioDaSessao(db, sess))) return res.status(403).json({ error: 'Isto não faz parte dos seus projetos.', foraDoProjeto: true });   // a IA lê as demandas de todos os projetos
     const texto = (req.body && req.body.texto) || '';
     if (!texto.trim()) return res.status(400).json({ error: 'Texto vazio' });
     const resultado = await _iaAnalisarDemanda(texto.trim(), db);
@@ -9137,7 +9151,12 @@ function _semSenhaNoItem(it) {
 // apagava a conta da Diretoria ou restaurava uma conta de Diretoria inventada (07/11/2026).
 // Contas, permissões, plataforma e o que guarda segredo: só a Diretoria. O resto segue o cargo
 // (_podeChave): o Sócio mexe no RH e nos candidatos, como no app.
-function _podeLixeira(req, k) {
+function _podeLixeira(req, k, item) {
+  if (_projetosDoLimite(req.user)) {
+    const dentro = _LIMITE_POR_ITEM[k];
+    if (!dentro || _LIMITE_SO_LER.has(k)) return false;
+    return item === undefined ? true : dentro(item, _escopoDe(readDB(), req.user));
+  }
   if (k === 'sl_usuarios' || k === 'sl_permissoes_roles' || KEYS_SERVIDOR.has(k) || KEYS_PLATAFORMA.has(k)) return _ehDiretoria(req);
   return _podeChave(req, k);
 }
@@ -9185,6 +9204,149 @@ const SESSAO_BUMP_MS = 60 * 60 * 1000;
 // Qualquer usuário logado e ativo (não só Diretoria).
 // Usado nas rotas de sync, que antes eram abertas — o banco inteiro era legível
 // por qualquer um que soubesse a URL, sem login nenhum.
+// ── SÓCIO POR PROJETO (09/11/2026) ──
+// Sócio com projetos marcados (sl_usuarios[].projetos) só recebe o que é desses projetos; sem nenhum
+// marcado continua como antes. O corte é aqui no servidor, a tela só acompanha. Rota que não estiver em
+// _ROTAS_DO_LIMITADO é recusada, então rota nova nasce fechada para essa pessoa. O projeto é o nome que
+// aparece em Projetos: bate com o dashboard da Utmify, com f.projeto dos funis e com o nicho ou a oferta.
+function _projetosDoLimite(u) {
+  if (!u || u.cargo !== 'Sócio' || !Array.isArray(u.projetos)) return null;
+  const l = u.projetos.map(p => String(p || '').trim()).filter(Boolean);
+  return l.length ? l : null;
+}
+const _listaSe = v => Array.isArray(v) ? v : [];
+function _escopoDe(db, u) {
+  const projetos = _projetosDoLimite(u) || [], nomes = new Set(projetos.map(_nrm)), s = db.store;
+  const e = { projetos, nomes, nichos: new Set(), nichosVer: new Set(), ofertas: new Set(), rotulos: new Set(nomes),
+    dashs: new Map(), funis: new Set(), slugs: new Set(), quizzes: new Set(), players: new Set() };
+  _listaSe(s.sl_nichos).forEach(n => { if (n && nomes.has(_nrm(n.nome))) { e.nichos.add(String(n.id)); e.nichosVer.add(String(n.id)); } });
+  _listaSe(s.sl_ofertas_v2).forEach(o => {
+    if (!o || !(e.nichos.has(String(o.nichoId)) || nomes.has(_nrm(o.nome)) || nomes.has(_nrm(o.projetoFunil)))) return;
+    e.ofertas.add(String(o.id)); e.nichosVer.add(String(o.nichoId));
+    if (o.nome) e.rotulos.add(_nrm(o.nome));
+  });
+  ((_utmifyMcpCfg(db) || {}).dashboards || []).forEach(d => { if (nomes.has(_nrm(d.nome))) e.dashs.set(String(d.id), String(d.nome || '').trim()); });
+  const doProj = x => !!x && nomes.has(_nrm(x.projeto));
+  _listaSe(s.sl_funis).filter(doProj).forEach(f => e.funis.add(String(f.id)));
+  _listaSe(s.sl_redirecionadores).filter(doProj).forEach(r => e.slugs.add(String(r.slug)));
+  _listaSe(s.sl_quizzes).filter(doProj).forEach(q => e.quizzes.add(String(q.id)));
+  const vsl = s.sl_vsl_projetos && typeof s.sl_vsl_projetos === 'object' ? s.sl_vsl_projetos : {};
+  Object.keys(vsl).forEach(id => { if (nomes.has(_nrm(vsl[id]))) e.players.add(String(id)); });
+  return e;
+}
+function _itemNoEscopo(it, e) {
+  if (!it || typeof it !== 'object') return false;
+  if (it.ofertaId) return e.ofertas.has(String(it.ofertaId));
+  if (it.nichoId) return e.nichos.has(String(it.nichoId));
+  return [it.ofertaNome, it.nichoNome, it.oferta, it.nicho, it.projeto].some(v => v && e.rotulos.has(_nrm(v)));
+}
+const _doProjetoDoFunil = (x, e) => !!x && e.nomes.has(_nrm(x.projeto));
+// chaves que têm dono: só sai e só entra o que for dos projetos da pessoa
+const _LIMITE_POR_ITEM = {
+  tasks: _itemNoEscopo, tasks_lixeira: _itemNoEscopo, criativos: _itemNoEscopo, rituais: _itemNoEscopo, sl_backlogs: _itemNoEscopo,
+  sl_contingencia: _itemNoEscopo, roi_ofertas: _itemNoEscopo,
+  sl_arq_projetos: (p, e) => !!p && (p.ofertaId ? e.ofertas.has(String(p.ofertaId)) : e.rotulos.has(_nrm(p.nome))),
+  sl_funis: _doProjetoDoFunil, sl_redirecionadores: _doProjetoDoFunil, sl_quizzes: _doProjetoDoFunil,
+  sl_ofertas_v2: (o, e) => !!o && e.ofertas.has(String(o.id)),
+  sl_nichos: (n, e) => !!n && e.nichosVer.has(String(n.id))
+};
+const _LIMITE_SO_LER = new Set(['sl_ofertas_v2', 'sl_nichos']);
+// sem projeto, mas o app precisa pra abrir (usuários, chat, Ad Library); o resto do banco não sai
+const _LIMITE_GERAIS = new Set(['sl_usuarios', 'msgs', 'sl_chats', 'cfg', 'equipe', 'sl_checklists', 'cri_status', 'valores_cultura', 'edu', 'adlib', 'swipes', 'sl_permissoes_roles', 'sl_modulos_arquivados']);
+const _LIMITE_GERAIS_GRAVA = new Set(['msgs', 'sl_chats']);
+function _recorteDaChave(k, v, e, u) {
+  if (_LIMITE_POR_ITEM[k]) return Array.isArray(v) ? v.filter(x => _LIMITE_POR_ITEM[k](x, e)) : undefined;
+  if (k === 'sl_notifs') return _listaSe(v).filter(n => n && n.destId === u.id);
+  if (k === 'sl_lixeira') return _listaSe(v).filter(x => x && _LIMITE_POR_ITEM[x.sourceKey] && !_LIMITE_SO_LER.has(x.sourceKey) && _LIMITE_POR_ITEM[x.sourceKey](x.data, e));
+  if (k === 'sl_vsl_projetos') { if (!v || typeof v !== 'object') return undefined; const o = {}; Object.keys(v).forEach(id => { if (e.players.has(String(id))) o[id] = v[id]; }); return o; }
+  return _LIMITE_GERAIS.has(k) ? v : undefined;
+}
+function _recortarStore(store, db, u) {
+  const e = _escopoDe(db, u);
+  Object.keys(store).forEach(k => { const v = _recorteDaChave(k, store[k], e, u); if (v === undefined) delete store[k]; else store[k] = v; });
+}
+// o que pode ser gravado por quem tem projeto: devolve a lista já cortada, ou null para recusar
+function _limiteAoGravar(key, incoming, existing, db, u) {
+  if (_LIMITE_GERAIS_GRAVA.has(key)) return incoming;
+  if (key === 'sl_notifs') {
+    if (!Array.isArray(incoming)) return null;
+    const dono = new Map(_listaSe(existing).map(n => [String(n && n.id), n && n.destId]));
+    return incoming.filter(n => n && (!dono.has(String(n.id)) || dono.get(String(n.id)) === u.id));
+  }
+  const dentro = _LIMITE_POR_ITEM[key];
+  if (!dentro || _LIMITE_SO_LER.has(key) || !Array.isArray(incoming)) return null;
+  const e = _escopoDe(db, u), atuais = new Map(_listaSe(existing).map(x => [String(x && x.id), x]));
+  // o item tem de ser do projeto antes e depois da mudança: não dá pra puxar nem empurrar pra outro
+  return incoming.filter(x => x && dentro(x, e) && (!atuais.has(String(x.id)) || dentro(atuais.get(String(x.id)), e)));
+}
+const _limDash = (campo, deBody) => (req, e) => {
+  const fonte = deBody ? (req.body || {}) : req.query, v = String(fonte[campo] || '');
+  if (v) return e.dashs.has(v);
+  const p = e.dashs.keys().next().value;
+  if (!p || deBody) return false;
+  req.query[campo] = p;
+  return true;
+};
+const _limNome = campo => (req, e) => {
+  const v = String(req.query[campo] || '');
+  if (v) return e.nomes.has(_nrm(v));
+  req.query[campo] = e.projetos[0];
+  return true;
+};
+const _limFunil = (req, e) => e.funis.has(String(req.query.funil || ''));
+const _limUltimo = req => decodeURIComponent(req.path.split('/').pop() || '');
+function _limCampanha(id, nome, e, db) {
+  if (!id && !nome) return false;
+  return _listaSe(db.store[KEY_METRICAS]).some(l => l && l.fonte === 'utmify' && (id ? String(l.campanhaId) === id : String(l.campanha) === nome) && e.nomes.has(_nrm(l.dashboard)));
+}
+const _ROTAS_DO_LIMITADO = [
+  // o próprio app: nessas, o corte é feito dentro da rota
+  ['GET', /^\/api\/store$/], ['GET', /^\/api\/updates\/\d+$/], ['PUT', /^\/api\/store\/[^/]+$/],
+  ['POST', /^\/api\/lixeira\/(soft-delete|restore\/[^/]+)$/],
+  ['GET', /^\/api\/permissoes\/roles$/], ['GET', /^\/api\/push\/estado$/], ['POST', /^\/api\/push\/(inscrever|sair|testar)$/],
+  ['GET', /^\/api\/spy\/master$/], ['POST', /^\/api\/whatsapp\/notificar$/],
+  ['GET', /^\/api\/fin\/resultado$/], ['GET', /^\/api\/produtos$/], ['GET', /^\/api\/metricas\/utmify\/projetos$/], ['GET', /^\/api\/vturb\/players$/],
+  // IA que só usa o texto que a pessoa mandou
+  ['POST', /^\/api\/ia\/copy\/(headlines|anuncio|variacoes|analise|advertorial)$/], ['POST', /^\/api\/ia\/analise-ads(-lote)?$/], ['GET', /^\/api\/ia\/chave-status$/],
+  // Tráfego e Análise: o projeto vem do id do dashboard
+  ['GET', /^\/api\/metricas\/utmify\/(anuncios|tempo-real|panorama|filtros|cobertura-utm)$/, _limDash('projeto')],
+  ['GET', /^\/api\/metricas\/(consolidado|tmx-campanhas)$/, _limDash('projeto')],
+  ['GET', /^\/api\/funil\/cliques$/, _limDash('projeto')], ['GET', /^\/api\/criativos\/ate-a-venda$/, _limDash('projeto')],
+  ['GET', /^\/api\/metricas\/utmify\/anuncio$/, (req, e) => { const v = String(req.query.dashboard || ''); return e.dashs.has(v) || e.nomes.has(_nrm(v)); }],
+  ['GET', /^\/api\/metricas\/campanha$/, (req, e, db) => _limCampanha(String(req.query.id || '').replace(/\D/g, ''), String(req.query.nome || ''), e, db)],
+  ['GET', /^\/api\/metricas\/campanha\/agora$/, (req, e, db) => _limCampanha(String(req.query.id || '').replace(/\D/g, ''), String(req.query.nome || ''), e, db)],
+  ['GET', /^\/api\/metricas\/campanhas\/marcas$/],
+  ['POST', /^\/api\/metricas\/campanhas\/marca$/, (req, e, db) => _limCampanha(String((req.body || {}).id || ''), '', e, db)],
+  ['POST', /^\/api\/ia\/auditoria$/, _limDash('projeto', true)],
+  ['GET', /^\/api\/ia\/auditoria\/[^/]+$/, (req, e) => { const j = _audJobs.get(_limUltimo(req)); return !j || e.dashs.has(String(j.projeto)); }],
+  ['GET', /^\/api\/ia\/auditorias$/, _limDash('projeto')],
+  ['GET', /^\/api\/ia\/auditorias\/[^/]+$/, (req, e) => { _audTabela(); const r = _q('SELECT projeto FROM ia_auditorias WHERE id=?').get(_limUltimo(req)); return !!r && e.dashs.has(String(r.projeto)); }],
+  ['GET', /^\/api\/ia\/auditoria-metas$/, _limDash('projeto')], ['POST', /^\/api\/ia\/auditoria-metas$/, _limDash('projeto', true)],
+  // Projetos: funis, páginas, testes, quiz e VSL
+  ['GET', /^\/api\/funil\/(agora|pessoas|pessoas\.csv|saude|pixel-saude|fora-do-mapa|mapa-numeros|blocos|fluxo|ao-vivo|resultado|stats)$/, _limFunil],
+  ['GET', /^\/api\/funil\/jornadas$/, (req, e) => !req.query.pg && _limFunil(req, e)],
+  ['GET', /^\/api\/funil\/vendas-lista$/, (req, e) => req.query.tipo !== 'sem' && _limFunil(req, e)],
+  ['GET', /^\/api\/funis\/versoes$/, _limFunil],
+  ['GET', /^\/api\/paginas$/, _limNome('projeto')], ['GET', /^\/api\/links\/rastreados$/, _limNome('projeto')],
+  ['GET', /^\/api\/projeto\/(vendas|reembolsos)$/, _limNome('projeto')],
+  ['GET', /^\/api\/vendas\/por-canal$/, (req, e) => { const p = String(req.query.projeto || ''), d = String(req.query.dash || ''); if (p) return e.nomes.has(_nrm(p)); if (d) return e.dashs.has(d); req.query.projeto = e.projetos[0]; return true; }],
+  ['GET', /^\/api\/ab\/(stats|v2)$/, (req, e) => e.slugs.has(String(req.query.teste || ''))],
+  ['GET', /^\/api\/quiz\/stats$/, (req, e) => e.quizzes.has(String(req.query.quiz || ''))],
+  ['GET', /^\/api\/quiz\/slug-livre$/], ['POST', /^\/api\/quiz\/imagem$/],
+  ['GET', /^\/api\/vturb\/(retencao|retencao-por-origem|por-campo|origem|origem-curvas)$/, (req, e) => e.players.has(String(req.query.player || ''))],
+  ['GET', /^\/api\/vturb\/painel$/, (req, e) => { if (!e.players.size) return false; req.query.players = [...e.players].join(','); return true; }],
+  ['GET', /^\/api\/desenhos$/, _limNome('projeto')],
+  ['GET', /^\/api\/desenhos\/[^/]+$/, (req, e, db) => { const d = _desenhos(db).find(x => x.id === _limUltimo(req)); return !!d && e.nomes.has(_nrm(d.projeto)); }],
+  ['POST', /^\/api\/desenhos$/, (req, e, db) => { const b = req.body || {}, d = b.id ? _desenhos(db).find(x => x.id === String(b.id)) : null; return e.nomes.has(_nrm(b.projeto)) && (!d || e.nomes.has(_nrm(d.projeto))); }]
+];
+function _limitadoPassa(req, db) {
+  if (!_projetosDoLimite(req.user)) return true;
+  const regra = _ROTAS_DO_LIMITADO.find(r => r[0] === req.method && r[1].test(req.path));
+  if (!regra) return false;
+  if (!regra[2]) return true;
+  try { return regra[2](req, _escopoDe(db, req.user), db) !== false; } catch (e) { return false; }
+}
+
 function authUsuario(req, res, next) {
   const db = readDB();
 
@@ -9204,6 +9366,7 @@ function authUsuario(req, res, next) {
         // O lastActivity da sessão é renovado no /api/auth/me (a cada abertura do app),
         // o que é suficiente pro TTL de 30 dias.
         req.user = user;
+        if (!_limitadoPassa(req, db)) return res.status(403).json({ error: 'Isto não faz parte dos seus projetos.', foraDoProjeto: true });
         return next();
       }
     }
@@ -9222,6 +9385,14 @@ function authNegocio(req, res, next) {
   authUsuario(req, res, () => {
     if (!req.user || !CARGOS_NEGOCIO.has(req.user.cargo)) return res.status(403).json({ error: 'Acesso restrito à Diretoria e aos sócios.' });
     next();
+  });
+}
+
+// o Financeiro da Diretoria; o Sócio com projeto só entra no resultado, e a rota corta o que ele vê
+function authFinDoProjeto(req, res, next) {
+  authUsuario(req, res, () => {
+    if (_ehDiretoria(req) || _projetosDoLimite(req.user)) return next();
+    res.status(403).json({ error: 'Acesso restrito à Diretoria.' });
   });
 }
 
@@ -10975,7 +11146,7 @@ function _gerarRelatorioSemanal(forcado) {
     if (!db.store['sl_notifs']) db.store['sl_notifs'] = [];
     destinos.forEach(uid => {
       const u = (db.store['sl_usuarios'] || []).find(x => x.id === uid);
-      if (!u) return;
+      if (!u || _projetosDoLimite(u)) return;   // o relatório é da empresa toda
       const dedupKey = `rel-semanal:${periodo_fim}:${uid}`;
       if (db.store['sl_notifs'].some(n => n.dedupKey === dedupKey)) return;
       db.store['sl_notifs'].unshift({
@@ -11021,7 +11192,7 @@ function _gerarRelatorioSemanal(forcado) {
       const msg = linhas.join('\n');
       destinos.forEach(uid => {
         const u = (db.store['sl_usuarios'] || []).find(x => x.id === uid);
-        if (!u || !u.whatsapp) return;
+        if (!u || !u.whatsapp || _projetosDoLimite(u)) return;
         sendWhatsAppMessage(u.whatsapp, msg).catch(()=>{});
       });
     }
@@ -11205,7 +11376,7 @@ function _gerarRelatorioDiario(forcado) {
     let enviados = 0;
     destinos.forEach(uid => {
       const u = usuarios.find(x => x.id === uid);
-      if (!u) return;
+      if (!u || _projetosDoLimite(u)) return;   // o relatório é da empresa toda
 
       // Notif interna
       if (!db.store['sl_notifs']) db.store['sl_notifs'] = [];
@@ -11349,6 +11520,12 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
     if (!user) {
       await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado no TMX Digital. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
       return res.json({ ok: true, skipped: 'user-nao-encontrado' });
+    }
+
+    // o agente responde com tarefas, ROI e relatórios de todos os projetos: quem tem projeto marcado usa o app
+    if (_projetosDoLimite(user)) {
+      await sendWhatsAppMessage(phone, `Olá ${user.nome}! Por aqui ainda não dá pra separar por projeto. Abra o TMX para ver as suas demandas e os seus números.`);
+      return res.json({ ok: true, skipped: 'socio-por-projeto' });
     }
 
     // Processa com IA (se configurada — env var ou cfg)
@@ -12364,6 +12541,7 @@ app.get('/api/vturb/players', authUsuario, async (req, res) => {
   try {
     const cfg = _vturbExige();
     const players = await _vturbPlayers(cfg.token);
+    if (_projetosDoLimite(req.user)) { const e = _escopoDe(readDB(), req.user); return res.json({ ok: true, players: players.filter(p => e.players.has(String(p.id))) }); }
     res.json({ ok: true, players });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -16229,7 +16407,7 @@ function _finMeses(de, ate) {
 // O resultado do período: vendas, reembolsos e tráfego por projeto (reais), e os
 // custos fixos (recorrentes, RH e contas avulsas). A tela aplica a taxa, o
 // imposto e o rateio — mexer em Configurações e ver o lucro mudar na hora.
-app.get('/api/fin/resultado', authDiretoria, (req, res) => {
+app.get('/api/fin/resultado', authFinDoProjeto, (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de vendas não abriu neste servidor.' });
     const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
@@ -16297,6 +16475,15 @@ app.get('/api/fin/resultado', authDiretoria, (req, res) => {
       (c.tipo === 'receber' ? extras : fixos).push(item);
     });
     const dias = Object.keys(porDia).sort().map(d => ({ d, v:porDia[d].v, n:porDia[d].n, vp:porDia[d].vp, t:porDia[d].t }));
+    if (_projetosDoLimite(req.user)) {
+      // só o resultado dos projetos da pessoa: nada de custo da empresa, equipe, gateway ou configuração
+      const e = _escopoDe(db, req.user), dentro = n => e.nomes.has(_nrm(n)), corta = o => { const s = {}; Object.keys(o || {}).filter(dentro).forEach(k => { s[k] = o[k]; }); return s; };
+      const meus = corta(projetos);
+      return res.json({ ok:true, de, ate, projetos:meus, testes:0, gateways:[], rh:{ pessoas:0, comSalario:0 }, custos:_custosCfg(db),
+        dias: dias.map(x => { const vp = corta(x.vp); return { d:x.d, v:Object.values(vp).reduce((a, b) => a + b, 0), n:0, vp, t:corta(x.t) }; }),
+        fixos: fixos.filter(f => f.proj && dentro(f.proj)), extras: extras.filter(f => f.proj && dentro(f.proj)),
+        cfg: { rateio:'fat', custosProjeto: _listaSe(_finCfg(db).custosProjeto).filter(c => c && dentro(c.projeto)) } });
+    }
     res.json({ ok:true, de, ate, projetos, dias, fixos, extras, testes,
       gateways: Object.keys(gateways).map(g => Object.assign({ g }, gateways[g])).sort((a, b) => b.v - a.v),
       rh: { pessoas: rh.length, comSalario }, custos: _custosCfg(db), cfg: _finCfg(db) });
@@ -17699,6 +17886,10 @@ app.get('/api/produtos', authUsuario, (req, res) => {
       const p = _produtoDe(x.nome, lista);
       return Object.assign(x, { cadastrado: !!p, produtoId: p ? p.id : null, projeto: p ? (p.projeto || '') : '' });
     }).sort((a, b) => b.receita - a.receita || b.vendas - a.vendas);
+    if (_projetosDoLimite(req.user)) {
+      const e = _escopoDe(db, req.user), dele = x => !!x && e.nomes.has(_nrm(x.projeto));
+      return res.json({ ok: true, lista: lista.filter(dele), vistos: saida.filter(dele) });
+    }
     res.json({ ok: true, lista, vistos: saida });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

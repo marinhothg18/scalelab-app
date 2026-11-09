@@ -7229,16 +7229,21 @@ a.fn-btn{text-decoration:none;display:inline-block}
         </div>
         <div class="fg form-full">
           <label class="fl">Cargo *</label>
-          <select class="fs" id="u-cargo" style="width:100%;">
+          <select class="fs" id="u-cargo" style="width:100%;" onchange="uPintarProjetos(uProjetosMarcados())">
             <option value="">Selecionar cargo</option>
             <option value="Diretoria">Dono (vê tudo)</option>
-            <option value="Sócio">Sócio (vê tudo menos o Financeiro e as Configurações)</option>
+            <option value="Sócio">Sócio (escolha os projetos abaixo)</option>
             <option value="Gestor de Tráfego">Gestor de Tráfego (Demandas, Criativos, Rituais, Arquivos, Tráfego, Análise e Projetos)</option>
             <option value="Copy">Copy (Demandas, Criativos, Rituais, Arquivos e Projetos)</option>
             <option value="Editor">Editor (Demandas, Criativos, Arquivos e os Rituais em que estiver)</option>
             <option>Infra</option>
             <option>Spy</option>
           </select>
+        </div>
+        <div class="fg form-full" id="u-projetos-box" style="display:none;">
+          <label class="fl">Projetos que esta pessoa vê</label>
+          <div id="u-projetos" style="display:flex;flex-direction:column;gap:6px;max-height:190px;overflow-y:auto;"></div>
+          <div style="font-size:10.5px;color:var(--text2);margin-top:4px;">Marque um ou mais. Se não marcar nenhum, ela continua vendo todos, como é hoje.</div>
         </div>
         <div class="fg form-full">
           <label class="fl">Status</label>
@@ -7749,6 +7754,11 @@ async function syncFromServer(){
       // Snapshot ANTES de aplicar pra detectar notificações novas destinadas ao usuário
       var _notifsAntes = data.sl_notifs ? new Set(g('sl_notifs',[]).map(function(n){ return n && n.id; })) : null;
       _gravarDoServidor(data);
+      // a Diretoria mudou os projetos desta pessoa com o app aberto
+      if(data.sl_usuarios && currentUser){
+        var _eu = data.sl_usuarios.filter(function(u){ return u && u.id === currentUser.id; })[0];
+        if(_eu && _eu.cargo === currentUser.cargo){ currentUser.projetos = _eu.projetos || []; if(_conferirEscopoLocal(currentUser)) return; }
+      }
       tasks = g('tasks',[]);
       criativos = g('criativos',[]);
       // o Editor só vê Rituais se estiver em algum: ritual novo (ou cargo trocado) refaz o menu
@@ -8689,6 +8699,25 @@ function _estaEmAlgumRitual(u){
   var nome = (u && u.nome) || '';
   try{ return (g('rituais', []) || []).some(function(r){ return r && Array.isArray(r.participantes) && r.participantes.indexOf(nome) >= 0; }); }catch(e){ return false; }
 }
+// Sócio com projetos marcados: o servidor só entrega o que é deles (_ROTAS_DO_LIMITADO), a tela acompanha
+function _socioPorProjeto(u){ u = u || currentUser; return !!(u && u.cargo === 'Sócio' && Array.isArray(u.projetos) && u.projetos.length); }
+var PAGINAS_SOCIO_POR_PROJETO = ['dashboard','task','criativos','rituais','arquivos','metricas','adsmetrics','funis','gestao','financeiro','chat','adlibrary','iacopy','educacional','notificacoes'];
+var GESTAO_SOCIO_POR_PROJETO = ['prog_demanda','risco','plan_semanal'];
+// a cópia do aparelho guarda o que a pessoa via antes: quando os projetos dela mudam, ela é refeita
+function _conferirEscopoLocal(u, semRecarregar){
+  var agora = _socioPorProjeto(u) ? JSON.stringify(u.projetos.slice().sort()) : '', antes = '';
+  try{ antes = localStorage.getItem('sl_escopo_projetos') || ''; }catch(e){}
+  if(agora === antes) return false;
+  try{
+    SYNC_KEYS.forEach(function(k){ if(k !== 'sl_usuarios') localStorage.removeItem(k); });
+    localStorage.removeItem('ads_projeto');
+    if(agora) localStorage.setItem('sl_escopo_projetos', agora); else localStorage.removeItem('sl_escopo_projetos');
+  }catch(e){}
+  // no login a carga completa vem logo depois; recarregar ali perderia a pessoa num aparelho novo
+  if(semRecarregar) return false;
+  location.reload();
+  return true;
+}
 function _podeVerPagina(id, u){
   u = u || currentUser;
   if(!u) return false;
@@ -8696,6 +8725,7 @@ function _podeVerPagina(id, u){
   if(id === 'protocolo') return tmxEhTmx() && _ehDonoDoProtocolo(u);
   if(id === 'primeiros') return !tmxEhTmx() && c === 'Diretoria';
   if(c === 'Diretoria') return true;
+  if(_socioPorProjeto(u)) return PAGINAS_SOCIO_POR_PROJETO.indexOf(id) >= 0;
   if(id === 'configuracoes' || id === 'financeiro') return false;
   if(c === 'Sócio') return true;
   if(id === 'gestao') return false;
@@ -8785,7 +8815,7 @@ function goTo(id){
   if(id==='adlibrary')renderAdlib();
   if(id==='fila')renderFila();
   if(id==='adsmetrics')renderAdsMetrics();
-  if(id==='funis')renderFunis();
+  if(id==='funis'){ renderFunis(); try{ fnEsconderAbasDaEmpresa(); }catch(e){} }
   if(id==='vsl')renderVsl();
   if(id==='quiz' && typeof renderQuiz==='function')renderQuiz();
   if(id==='rituais')renderRituais();
@@ -10906,7 +10936,8 @@ function renderGestaoSidebar(){
   var el = document.getElementById('gestao-tipo-filtros');
   if(!el) return;
   var _isDirG = currentUser && currentUser.cargo === 'Diretoria';
-  el.innerHTML = GESTAO_TABS.filter(function(t){ return !t.soDir || _isDirG; }).map(function(t){
+  if(_socioPorProjeto() && GESTAO_SOCIO_POR_PROJETO.indexOf(_gestaoTab) < 0) _gestaoTab = 'prog_demanda';
+  el.innerHTML = GESTAO_TABS.filter(function(t){ return (!t.soDir || _isDirG) && (!_socioPorProjeto() || GESTAO_SOCIO_POR_PROJETO.indexOf(t.id) >= 0); }).map(function(t){
     var active = _gestaoTab === t.id;
     var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+t.color+';margin-right:8px;flex-shrink:0;"></span>';
     return '<div onclick="_gestaoTab=\''+t.id+'\';renderGestaoSidebar();renderGestaoContent();" style="display:flex;align-items:center;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:'+(active?'700':'500')+';color:'+(active?'#fff':'var(--text2)')+';background:'+(active?'var(--accent)':'transparent')+';transition:all .15s;">'+dot+t.icon+' '+t.label+'</div>';
@@ -10916,6 +10947,7 @@ function renderGestaoSidebar(){
 function renderGestaoContent(){
   var el = document.getElementById('gestao-content');
   if(!el) return;
+  if(_socioPorProjeto() && GESTAO_SOCIO_POR_PROJETO.indexOf(_gestaoTab) < 0) _gestaoTab = 'prog_demanda';
   if(_gestaoTab === 'prog_demanda'){ renderProgDemanda(); }
   else if(_gestaoTab === 'risco'){ renderItensRisco(); }
   else if(_gestaoTab === 'plan_semanal'){ renderPlanejamentoSemanal(); }
@@ -19038,6 +19070,7 @@ function salvarCriativo(){
     status:st,ads,
     criado:new Date().toLocaleDateString('pt-BR')
   };
+  if(_socioPorProjeto() && !c.ofertaId && !c.nichoId){ alert('Escolha o projeto deste criativo.'); return; }
   if(_editCriId){
     criativos = criativos.map(x=>x.id===_editCriId ? {...c, id:_editCriId, criado:x.criado} : x);
     _editCriId = null;
@@ -23730,7 +23763,7 @@ function renderUsuarios(){
       const ativo = u.ativo !== false;
       return '<tr>'+
         '<td><div class="eq-pessoa">'+av+'<div><b>'+esc(u.nome)+'</b><small>'+esc(u.email)+'</small></div></div></td>'+
-        '<td><span class="eq-cargo" style="color:'+cor+';background:color-mix(in srgb, '+cor+' 12%, transparent)">'+esc(_nomeCargo(u.cargo) || '—')+'</span></td>'+
+        '<td><span class="eq-cargo" style="color:'+cor+';background:color-mix(in srgb, '+cor+' 12%, transparent)">'+esc(_nomeCargo(u.cargo) || '—')+'</span>'+(_socioPorProjeto(u) ? '<div style="font-size:10.5px;color:var(--text2);margin-top:3px;">'+esc(u.projetos.map(fnProjNome).join(', '))+'</div>' : '')+'</td>'+
         '<td>'+(u.whatsapp ? '<span class="v2-pill ok">cadastrado</span> <button class="eq-mini" onclick="testarWhatsAppUsuario(\''+u.id+'\')" title="Mandar uma mensagem de teste">Testar</button>' : '<span class="v2-pill warn" title="Sem WhatsApp a pessoa não recebe lembrete nem relatório">falta</span>')+'</td>'+
         '<td>'+(!ativo ? '<span class="v2-pill neu">—</span>' : (_rhDoUsuario(u, rhColabs) ? '<span class="v2-pill ok">no RH</span>' : '<span class="v2-pill warn">falta no RH</span>'))+'</td>'+
         '<td>'+(ativo ? '<span class="v2-pill ok">Ativo</span>' : '<span class="v2-pill bad">Inativo</span>')+'</td>'+
@@ -23790,6 +23823,7 @@ function openAddUsuario(){
   document.getElementById('u-edit-id').value='';
   ['u-nome','u-email','u-senha','u-whatsapp','u-foto'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('u-cargo').value='';
+  uPintarProjetos([]);
   document.getElementById('u-ativo').value='true';
   // Reset avatar
   _setUserFotoPreview('', '');
@@ -23808,6 +23842,7 @@ function editarUsuario(id){
   document.getElementById('u-email').value = u.email;
   document.getElementById('u-senha').value = u.senha||'';
   document.getElementById('u-cargo').value = u.cargo;
+  uPintarProjetos(u.projetos || []);
   document.getElementById('u-ativo').value = u.ativo!==false ? 'true' : 'false';
   const wa = document.getElementById('u-whatsapp'); if(wa) wa.value = u.whatsapp||'';
   const foto = document.getElementById('u-foto'); if(foto) foto.value = u.foto||'';
@@ -23816,6 +23851,38 @@ function editarUsuario(id){
   const sEl = document.getElementById('u-senha'); if(sEl) sEl.type = 'password';
   const eye = document.getElementById('u-senha-eye'); if(eye) eye.textContent = '👁️';
   openModal('modal-add-usuario');
+}
+
+// ── Sócio por projeto: os projetos são os mesmos da tela Projetos, pela chave que ela usa ──
+function uProjetosMarcados(){ return Array.prototype.map.call(document.querySelectorAll('#u-projetos input:checked'), function(x){ return x.value; }); }
+function uListaProjetos(dashs){
+  var l = dashs.slice();
+  fnFunis().forEach(function(f){ if(f.projeto && l.indexOf(f.projeto) < 0) l.push(f.projeto); });
+  var ligadas = {};
+  l.forEach(function(k){ var o = fnProjOferta(k); if(o) ligadas[o.id] = k; });
+  getOfertasV2().forEach(function(o){ if(o && o.nome && !ligadas[o.id] && l.indexOf(o.nome) < 0) l.push(o.nome); });
+  var ocultos = fnProjOcultos();
+  return l.filter(function(k){ return ocultos.indexOf(k) < 0; });
+}
+function uPintarProjetos(marcados){
+  var box = document.getElementById('u-projetos-box'), el = document.getElementById('u-projetos'); if(!box || !el) return;
+  var socio = document.getElementById('u-cargo').value === 'Sócio';
+  box.style.display = socio ? '' : 'none';
+  if(!socio){ el.innerHTML = ''; return; }
+  var pintar = function(dashs){
+    var chaves = uListaProjetos(dashs);
+    marcados.forEach(function(k){ if(chaves.indexOf(k) < 0) chaves.push(k); });
+    el.innerHTML = chaves.map(function(k){
+      var nome = fnProjNome(k);
+      return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" value="'+fnEsc(k)+'"'+(marcados.indexOf(k) >= 0 ? ' checked' : '')+'> '+fnEsc(nome)+(nome !== k ? ' <span style="color:var(--text2);font-size:11px;">'+fnEsc(k)+'</span>' : '')+'</label>';
+    }).join('') || '<div style="font-size:12px;color:var(--text2);">Nenhum projeto cadastrado ainda.</div>';
+  };
+  pintar([]);
+  fetch('/api/metricas/utmify/projetos').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    // já pode ter marcado algo enquanto a lista carregava
+    var agora = uProjetosMarcados(); marcados = agora.length ? agora : marcados;
+    pintar(((d && d.projetos) || []).map(function(p){ return p.nome; }));
+  }).catch(function(){});
 }
 
 function salvarUsuario(){
@@ -23828,14 +23895,16 @@ function salvarUsuario(){
   const whatsapp = (document.getElementById('u-whatsapp')||{}).value.trim() || '';
   const foto = (document.getElementById('u-foto')||{}).value || '';
   if(!nome||!email||!cargo){ alert('Preencha nome, e-mail e cargo.'); return; }
+  const projetos = cargo === 'Sócio' ? uProjetosMarcados() : [];
   let lista = getUsuarios();
   if(id){
-    lista = lista.map(u=> u.id===id ? {...u, nome, email, cargo, ativo, whatsapp, foto, ...(senha?{senha}:{})} : u);
+    // _updatedAt novo: sem ele o servidor mantém a versão antiga e o limite de projetos não muda
+    lista = lista.map(u=> u.id===id ? {...u, nome, email, cargo, ativo, whatsapp, foto, projetos, _updatedAt:Date.now(), ...(senha?{senha}:{})} : u);
     notif('Membro atualizado!');
   } else {
     if(!senha){ alert('Informe a senha.'); return; }
     if(lista.find(u=>u.email.toLowerCase()===email.toLowerCase())){ alert('E-mail já cadastrado.'); return; }
-    lista.push({id:'u'+Date.now(), nome, email, senha, cargo, ativo, whatsapp, foto});
+    lista.push({id:'u'+Date.now(), nome, email, senha, cargo, ativo, whatsapp, foto, projetos});
     notif('Membro adicionado!');
   }
   saveUsuarios(lista);
@@ -25457,6 +25526,7 @@ function salvarTask(){
   const nichoNome = nichoId ? (nichos.find(n=>n.id===nichoId)||{}).nome||'' : '';
   const ofertaId = (document.getElementById('t-oferta-v2')||{}).value||'';
   const ofertaNome = ofertaId ? (ofertas.find(o=>o.id===ofertaId)||{}).nome||'' : '';
+  if(_socioPorProjeto() && !ofertaId && !nichoId){ alert('Escolha o projeto desta demanda.'); return; }
   const link = document.getElementById('t-link').value;
   const linksRef = getLinksRef();
   const linkRef = linksRef.length ? linksRef[0].url : ''; // backward compat
@@ -28160,6 +28230,12 @@ function salvarRitual(){
       : (document.getElementById('ritual-semana-alt')||{}).value||'',
     criado: window._editRitualId ? undefined : new Date().toLocaleDateString('pt-BR')
   };
+  if(_socioPorProjeto() && !obj.ofertaId && !obj.nichoId){
+    // só o tipo Análise de dados pergunta o projeto; nos outros, com um projeto só, já é dele
+    var meusProjetos = g('sl_ofertas_v2', []);
+    if(meusProjetos.length !== 1){ notif('⚠️ Escolha o tipo Análise de dados e o projeto deste ritual.'); return; }
+    obj.ofertaId = meusProjetos[0].id; obj.ofertaNome = meusProjetos[0].nome; obj.nichoId = meusProjetos[0].nichoId || '';
+  }
   if(window._editRitualId){
     rituais = rituais.map(r=>r.id===window._editRitualId ? {...r,...obj} : r);
   } else {
@@ -29344,7 +29420,7 @@ function _applyNavPermissions(cargo){
    ['nav-funis','funis'], ['nav-adlibrary','adlibrary'], ['nav-gestao','gestao'], ['nav-financeiro','financeiro'],
    ['nav-protocolo','protocolo']].forEach(function(x){ setDisp(x[0], _podeVerPagina(x[1], u)); });
   setDisp('nav-suporte', !tmxEhTmx() && !_ehSuporte());   // o cliente fala com a TMX por aqui
-  setDisp('nav-infra', isDir || isSocio || isInfra);
+  setDisp('nav-infra', (isDir || isSocio || isInfra) && !_socioPorProjeto(u));
   const configNav = document.querySelector('[onclick="goTo(\'configuracoes\')"]');
   if(configNav) configNav.style.display = _podeVerPagina('configuracoes', u) ? '' : 'none';
   // Auditoria: removida da sidebar (acesso pelo card em Configurações > Dados)
@@ -29363,6 +29439,7 @@ function _loginOk(user){
   currentUser = user;
   localStorage.setItem('sl_auth','1');
   localStorage.setItem('sl_user_id', user.id);
+  _conferirEscopoLocal(user, true);
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('login-error').textContent='';
   document.getElementById('user-name-nav').textContent = user.nome;
@@ -30157,6 +30234,7 @@ function restoreSession(){
   if(!user && uid === 'suporte-tmx'){ try{ user = JSON.parse(localStorage.getItem('sl_suporte_user') || 'null'); }catch(e){} }
   if(!user){ return false; }
   currentUser = user;
+  if(_conferirEscopoLocal(user)) return true;
   document.getElementById('user-name-nav').textContent = user.nome;
   _applyNavPermissions(user.cargo);
   try{ _mostrarFaixaSuporte(); }catch(e){}
@@ -32528,9 +32606,16 @@ var FN_ABA_INFO = {
 };
 var fnAbaAtual = 'resultado';
 
+// ficam de fora para quem tem projeto marcado: leem dados de todos os projetos ou mexem em configuração da empresa
+var FN_ABAS_SO_DA_EMPRESA = ['recup','assin','regras','config'];
+function fnEsconderAbasDaEmpresa(){
+  if(!_socioPorProjeto()) return;
+  FN_ABAS_SO_DA_EMPRESA.forEach(function(k){ document.querySelectorAll('[onclick*="fnAba(\''+k+'\'"]').forEach(function(b){ b.style.display = 'none'; }); });
+}
 function fnAba(qual, bt){
   if(qual === 'saude') qual = 'pixel';
-  if(FN_ABAS.indexOf(qual) < 0) qual = 'resultado';
+  if(FN_ABAS.indexOf(qual) < 0 || (_socioPorProjeto() && FN_ABAS_SO_DA_EMPRESA.indexOf(qual) >= 0)) qual = 'resultado';
+  fnEsconderAbasDaEmpresa();
   if(fnAbaAtual === 'jornada' && qual !== 'jornada') jvParar();
   if(fnAbaAtual === 'mapa' && qual !== 'mapa' && typeof mpEditando !== 'undefined'){ mpEditando = false; fnSel = null; mpModo(); }
   fnAbaAtual = qual;
@@ -38176,6 +38261,17 @@ function fiRender(){
 }
 function fiCarregar(){
   var meu = ++fiPedido, per = fiPeriodo(fiEst.per);
+  if(_socioPorProjeto()){
+    // só o resultado dos projetos dela: o servidor não entrega contas nem despesas da empresa
+    var pedidos = [v2Json('/api/fin/resultado?de='+per.de+'&ate='+per.ate)];
+    if(fiEst.comparar){ var ant = fiAnterior(per); pedidos.push(v2Json('/api/fin/resultado?de='+ant.de+'&ate='+ant.ate)); }
+    Promise.all(pedidos).then(function(r){
+      if(meu !== fiPedido) return;
+      fiRes = r[0]; fiCad = { cfg:fiRes.cfg || {} }; fiCustos = fiRes.custos; fiCaixa = { conexoes:[], saldos:[], serie:[], cartoes:[] }; fiAnt = r[1] || null; fiMeses = null;
+      fiPintar();
+    }).catch(function(e){ if(meu === fiPedido) v2Erro(document.getElementById('fi-main'), e.message); });
+    return;
+  }
   var ps = [v2Json('/api/fin/resultado?de='+per.de+'&ate='+per.ate), fiCad ? Promise.resolve(fiCad) : v2Json('/api/fin/dados'),
             fiCustos ? Promise.resolve({ custos:fiCustos }) : v2Json('/api/custos'),
             // o que foi lido da Conta Simples e da Lootrush; se a base falhar, ao menos as conexões
@@ -38195,13 +38291,14 @@ function fiIr(id){ fiEst.aba = id; fiPintar(); try{ window.scrollTo({ top:0 }); 
 function fiPintarNav(){
   var el = document.getElementById('fi-nav'); if(!el) return;
   el.innerHTML = '<div class="fi-plat"><div class="ic">'+fiIc('banco')+'</div><div><small>PLATAFORMA</small><b>Financeiro</b></div></div>'+
-    '<button class="fi-novo" onclick="fiNovoCompromisso()">'+fiIc('mais')+' Nova conta a pagar</button>'+
-    FI_PAGINAS.map(function(p){
+    (_socioPorProjeto() ? '' : '<button class="fi-novo" onclick="fiNovoCompromisso()">'+fiIc('mais')+' Nova conta a pagar</button>')+
+    FI_PAGINAS.filter(function(p){ return !_socioPorProjeto() || p.id === 'dre'; }).map(function(p){
       if(p.sep) return '<div class="fi-sep"></div>';
       return '<div class="fi-nv'+(fiEst.aba === p.id ? ' on' : '')+'" onclick="fiIr(\''+p.id+'\')">'+fiIc(p.i)+'<span>'+p.t+'</span>'+(p.f2 && !fiTemConta() ? '<span class="fi-tg f2">fase 2</span>' : '')+'</div>';
     }).join('');
 }
 function fiPintar(){
+  if(_socioPorProjeto()) fiEst.aba = 'dre';
   fiPintarNav();
   var el = document.getElementById('fi-main'); if(!el || !fiRes || !fiCad) return;
   var f = { visao:fiTelaVisao, dre:fiTelaDRE, ap:fiTelaAP, rec:fiTelaRec, lanc:fiTelaLanc, fluxo:fiTelaFluxo, cart:fiTelaCart,
@@ -38448,7 +38545,7 @@ function fiTelaDRE(){
   t += linha('= Lucro operacional', function(r){ return r.lucro; }, 'fim', '', null, true);
   t += '</tbody></table></div></div>';
   var semFixos = !Object.keys(grupos).length;
-  t += '<div class="s" style="margin:-4px 2px 14px;color:var(--text2);font-size:12px">'+(semFixos ? 'Sem custo fixo cadastrado: o lucro aqui é igual à margem. <a href="#" onclick="fiNovoRecorrente();return false">Cadastrar um recorrente ›</a>' : 'Custo fixo sem projeto é dividido '+((fiCad.cfg || {}).rateio === 'igual' ? 'em partes iguais' : 'pelo faturamento')+' entre os projetos que venderam (muda em Configurações).')+
+  if(!_socioPorProjeto()) t += '<div class="s" style="margin:-4px 2px 14px;color:var(--text2);font-size:12px">'+(semFixos ? 'Sem custo fixo cadastrado: o lucro aqui é igual à margem. <a href="#" onclick="fiNovoRecorrente();return false">Cadastrar um recorrente ›</a>' : 'Custo fixo sem projeto é dividido '+((fiCad.cfg || {}).rateio === 'igual' ? 'em partes iguais' : 'pelo faturamento')+' entre os projetos que venderam (muda em Configurações).')+
     ' · <a href="#" onclick="fiIr(\'cfg\');return false">'+(fiCustosProj().length ? 'Custos por venda de cada projeto ›' : 'Cadastrar um custo por venda de um projeto (curso, bônus, comissão) ›')+'</a></div>';
   return h + t;
 }
@@ -43722,9 +43819,12 @@ async function _carregarProjetosUtmify(){
     const r = await fetch('/api/metricas/utmify/projetos');
     const d = await r.json().catch(()=>({}));
     if(!r.ok || !d.projetos) return;
-    sel.innerHTML = '<option value="">Todos os projetos</option>' +
+    var soMeus = _socioPorProjeto();
+    sel.innerHTML = (soMeus ? '' : '<option value="">Todos os projetos</option>') +
       // o mesmo nome de Demandas e de Projetos (PROJETO KALEBE, não CONCURSO); o valor continua o id do dashboard
       d.projetos.map(function(p){ return '<option value="'+_esc(p.id)+'">'+_esc(typeof fnProjNome === 'function' ? fnProjNome(p.nome) : p.nome)+'</option>'; }).join('');
+    // sem "todos": fica sempre um dos projetos dela escolhido
+    if(soMeus && d.projetos[0] && !d.projetos.some(function(p){ return String(p.id) === _adsProjeto(); })) localStorage.setItem('ads_projeto', d.projetos[0].id);
     sel.value = _adsProjeto();
     sel.dataset.pronto = '1';
   }catch(e){}

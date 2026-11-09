@@ -196,6 +196,12 @@ Stored on `sl_usuarios[].cargo`. Known values: `Diretoria`, `Gestor de Tráfego`
 - Meu Protocolo: só a conta do Thiago (`PROTOCOLO_DONO_EMAIL`), só na TMX.
 - Ainda não travado no servidor: as rotas de Tráfego/Análise (`/api/metricas/*` etc.) respondem a qualquer pessoa logada; o menu e a navegação é que escondem.
 
+**Sócio por projeto (decisão do Thiago, 09/11/2026)**: `Sócio` com `sl_usuarios[].projetos` preenchido só recebe e só grava o que é desses projetos; sem nenhum marcado continua como acima. O projeto é a chave da tela Projetos (`CONCURSO`), que bate com o dashboard da Utmify, com `f.projeto` e com o nicho ou a oferta (`_escopoDe`).
+- O corte é no servidor, dentro de `authUsuario` (`_limitadoPassa`): **rota nova nasce fechada** para essa pessoa. Para abrir, some em `_ROTAS_DO_LIMITADO` com a checagem do projeto; rota que aceita "sem projeto" ou id desconhecido devolve tudo, então a checagem vem antes.
+- Chave nova do store também nasce fechada: entre em `_LIMITE_POR_ITEM` (tem dono) ou `_LIMITE_GERAIS` (sem projeto). `projetos` é campo protegido em `PUT /api/store/sl_usuarios`.
+- Financeiro: só `GET /api/fin/resultado`, cortado no fim da rota, e a tela mostra só o DRE. Gestão: Programação, Riscos e Planejamento (`GESTAO_SOCIO_POR_PROJETO`).
+- Fora para essa pessoa: agente do WhatsApp, aviso de venda no celular e relatórios, porque falam da empresa toda. `test/socio-projeto.test.js`.
+
 ### Auditoria IA (botão na Análise de tráfego, 08/11/2026)
 
 Entrega o relatório de fechamento do dia no padrão da skill `trafego` (metas, decisões cópia por cópia, funil, contas, anúncio por anúncio em hoje/3/7 dias, histórico, BIDCAP, testes, duplicação, prioridades). É sempre de um projeto só.
