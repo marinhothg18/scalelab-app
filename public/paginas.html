@@ -139,6 +139,14 @@ textarea.caixa { width: 100%; min-height: 120px; resize: vertical; background: v
 /* dentro do TMX (projeto ou Conexões) o título e as abas são do próprio TMX */
 body.embutido { padding: 0; background: transparent; }
 body.embutido .cab { display: none; }
+body.emb-criar .cab { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+body.emb-criar .cab > div:first-child { display: none; }
+.status-dom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 500px) { .status-dom { grid-template-columns: minmax(0, 1fr); } }
+.status-dom div { border: 1px solid var(--line); background: var(--bg3); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; color: var(--tx2); }
+.status-dom b { display: block; color: var(--tx); font-size: 13px; }
+.voltar-dom { background: none; border: 0; padding: 0; color: var(--azul); font-weight: 600; font-size: 13px; }
+.janela-larga { width: min(760px, 100%); }
 </style>
 </head>
 <body>
@@ -190,56 +198,13 @@ body.embutido .cab { display: none; }
 
 <!-- ═════ DOMÍNIOS ═════ -->
 <section id="v-dominios" hidden>
-  <div class="cartao">
-    <h3>Domínios conectados</h3>
-    <div id="lista-dominios"></div>
-  </div>
-  <div class="cartao">
-    <div class="linha"><h3>Conectar hospedagem</h3><span class="chip">FTP</span></div>
-    <p class="sub">O domínio continua na sua hospedagem. O TMX monta a página e envia os arquivos pra lá quando você publica. Apontar o domínio pro TMX vem depois.</p>
-    <details class="guia" id="guia-ftp">
-      <summary>Como pegar esses dados</summary>
-      <p class="sub">Use a aba da empresa onde o seu site está hospedado. Na dúvida, veja onde você paga a hospedagem do site.</p>
-      <div class="abas" role="group" aria-label="Onde está a hospedagem" id="guia-abas">
-        <button data-g="cpanel" aria-pressed="true">HospedaInfo ou outro cPanel</button>
-        <button data-g="hostinger" aria-pressed="false">Hostinger</button>
-      </div>
-      <ol id="g-cpanel">
-        <li>Entre no <b>cPanel</b> da hospedagem e, em <b>Arquivos</b>, abra <b>Contas de FTP</b>.</li>
-        <li>Crie uma conta só pro TMX: um login (ex.: <span class="mono">tmx</span>), o domínio (<span class="mono">seusite.com.br</span>) e uma senha forte. No campo <b>Diretório</b>, deixe só <span class="mono">public_html</span>.</li>
-        <li>Clique em <b>Criar conta de FTP</b>. Na lista, ao lado da conta nova, clique em <b>Configurar cliente FTP</b>: ali aparecem o <b>servidor FTP</b> e a <b>porta</b> (21).</li>
-        <li>Aqui no TMX: <b>Servidor</b> = o servidor FTP; <b>Usuário</b> = o login completo (<span class="mono">tmx@seusite.com.br</span>); <b>Senha</b> = a que você criou; <b>Pasta</b> = <span class="mono">/</span> (a conta já abre no public_html); <b>Endereço público</b> = <span class="mono">https://seusite.com.br/</span>.</li>
-      </ol>
-      <ol id="g-hostinger" hidden>
-        <li>No <b>hPanel</b>, abra <b>Sites</b> e clique em <b>Gerenciar</b> no domínio.</li>
-        <li>Em <b>Arquivos</b>, abra <b>Contas FTP</b>. Lá em cima aparecem o <b>servidor</b> (ftp.seudominio ou um IP), o <b>usuário</b> (u123456789.seudominio) e a <b>porta</b> 21. A senha não aparece.</li>
-        <li>Pra não trocar a senha principal, crie ali mesmo uma conta FTP nova só pro TMX, com o diretório <span class="mono">public_html</span>.</li>
-        <li>Aqui no TMX: <b>Pasta</b> = <span class="mono">/</span> se a conta aponta pro public_html, ou <span class="mono">/public_html</span> se você usar a conta principal. <b>Endereço público</b> = <span class="mono">https://seudominio/</span>.</li>
-      </ol>
-      <ul class="ajuda" style="margin:0;padding-left:18px">
-        <li>O endereço público tem que mostrar a pasta: se a pasta for <span class="mono">/public_html/p</span>, o endereço é <span class="mono">https://seudominio/p/</span>. O teste confere isso sozinho.</li>
-        <li>Segurança: deixe <b>Com TLS</b>. Se o teste disser que o certificado não confere (comum quando o servidor é um IP), troque pra <b>Com TLS, sem conferir o certificado</b>. Sem TLS só se nada mais funcionar.</li>
-      </ul>
-    </details>
-    <div class="grade">
-      <div><label class="rot" for="h-dominio">Domínio</label><input class="campo mono" id="h-dominio" placeholder="seusite.com.br" autocomplete="off"></div>
-      <div><label class="rot" for="h-endereco">Endereço público</label><input class="campo mono" id="h-endereco" placeholder="https://seusite.com.br/" autocomplete="off"><div class="ajuda">Onde a pasta abaixo aparece no navegador.</div></div>
-      <div><label class="rot" for="h-host">Servidor FTP</label><input class="campo mono" id="h-host" placeholder="ftp.seusite.com.br ou o IP" autocomplete="off"></div>
-      <div><label class="rot" for="h-porta">Porta</label><input class="campo mono" id="h-porta" value="21" inputmode="numeric" autocomplete="off"></div>
-      <div><label class="rot" for="h-usuario">Usuário</label><input class="campo mono" id="h-usuario" autocomplete="off"></div>
-      <div><label class="rot" for="h-senha">Senha</label><input class="campo mono" id="h-senha" type="password" autocomplete="new-password"></div>
-      <div><label class="rot" for="h-pasta">Pasta das páginas</label><input class="campo mono" id="h-pasta" value="/" autocomplete="off"><div class="ajuda">A pasta do site, a mesma do endereço público.</div></div>
-      <div><label class="rot" for="h-tls">Segurança</label>
-        <select class="campo" id="h-tls">
-          <option value="tls">Com TLS (recomendado)</option>
-          <option value="tls-sem-cert">Com TLS, sem conferir o certificado</option>
-          <option value="sem-tls">Sem TLS (a senha vai aberta)</option>
-        </select></div>
+  <div id="dom-lista">
+    <div class="cartao">
+      <div class="linha"><div><h3>Seus domínios</h3><div class="sub" id="dom-uso"></div></div><button class="btn pri" id="bt-add-dom">+ Adicionar domínio</button></div>
+      <div id="lista-dominios"></div>
     </div>
-    <div id="h-passos" class="passos"></div>
-    <div class="acoes"><button class="btn" id="bt-testar">Testar conexão</button><button class="btn pri" id="bt-salvar" disabled>Salvar</button></div>
-    <p class="ajuda">O teste cria um arquivo pequeno na pasta, confere que ele abre no endereço público e apaga. A senha fica cifrada no servidor e nunca volta pra esta tela. Só a Diretoria conecta.</p>
   </div>
+  <div id="dom-detalhe" hidden></div>
 </section>
 
 <!-- ═════ EDITOR ═════ -->
@@ -309,6 +274,54 @@ body.embutido .cab { display: none; }
   </div>
 </section>
 
+<div class="veu" id="veu-ftp" hidden>
+  <div class="janela janela-larga" role="dialog" aria-modal="true" aria-label="Conectar minha hospedagem">
+    <div class="linha"><h3>Conectar minha hospedagem</h3><span class="chip">FTP</span></div>
+    <p class="sub">Hostinger, HospedaInfo ou qualquer outra. O domínio continua lá, e o TMX envia os arquivos quando você publica.</p>
+    <details class="guia" id="guia-ftp">
+      <summary>Como pegar esses dados</summary>
+      <p class="sub">Use a aba da empresa onde o seu site está hospedado. Na dúvida, veja onde você paga a hospedagem do site.</p>
+      <div class="abas" role="group" aria-label="Onde está a hospedagem" id="guia-abas">
+        <button data-g="cpanel" aria-pressed="true">HospedaInfo ou outro cPanel</button>
+        <button data-g="hostinger" aria-pressed="false">Hostinger</button>
+      </div>
+      <ol id="g-cpanel">
+        <li>Entre no <b>cPanel</b> da hospedagem e, em <b>Arquivos</b>, abra <b>Contas de FTP</b>.</li>
+        <li>Crie uma conta só pro TMX: um login (ex.: <span class="mono">tmx</span>), o domínio (<span class="mono">seusite.com.br</span>) e uma senha forte. No campo <b>Diretório</b>, deixe só <span class="mono">public_html</span>.</li>
+        <li>Clique em <b>Criar conta de FTP</b>. Na lista, ao lado da conta nova, clique em <b>Configurar cliente FTP</b>: ali aparecem o <b>servidor FTP</b> e a <b>porta</b> (21).</li>
+        <li>Aqui no TMX: <b>Servidor</b> = o servidor FTP; <b>Usuário</b> = o login completo (<span class="mono">tmx@seusite.com.br</span>); <b>Senha</b> = a que você criou; <b>Pasta</b> = <span class="mono">/</span> (a conta já abre no public_html); <b>Endereço público</b> = <span class="mono">https://seusite.com.br/</span>.</li>
+      </ol>
+      <ol id="g-hostinger" hidden>
+        <li>No <b>hPanel</b>, abra <b>Sites</b> e clique em <b>Gerenciar</b> no domínio.</li>
+        <li>Em <b>Arquivos</b>, abra <b>Contas FTP</b>. Lá em cima aparecem o <b>servidor</b> (ftp.seudominio ou um IP), o <b>usuário</b> (u123456789.seudominio) e a <b>porta</b> 21. A senha não aparece.</li>
+        <li>Pra não trocar a senha principal, crie ali mesmo uma conta FTP nova só pro TMX, com o diretório <span class="mono">public_html</span>.</li>
+        <li>Aqui no TMX: <b>Pasta</b> = <span class="mono">/</span> se a conta aponta pro public_html, ou <span class="mono">/public_html</span> se você usar a conta principal. <b>Endereço público</b> = <span class="mono">https://seudominio/</span>.</li>
+      </ol>
+      <ul class="ajuda" style="margin:0;padding-left:18px">
+        <li>O endereço público tem que mostrar a pasta: se a pasta for <span class="mono">/public_html/p</span>, o endereço é <span class="mono">https://seudominio/p/</span>. O teste confere isso sozinho.</li>
+        <li>Segurança: deixe <b>Com TLS</b>. Se o teste disser que o certificado não confere (comum quando o servidor é um IP), troque pra <b>Com TLS, sem conferir o certificado</b>. Sem TLS só se nada mais funcionar.</li>
+      </ul>
+    </details>
+    <div class="grade">
+      <div><label class="rot" for="h-dominio">Domínio</label><input class="campo mono" id="h-dominio" placeholder="seusite.com.br" autocomplete="off"></div>
+      <div><label class="rot" for="h-endereco">Endereço público</label><input class="campo mono" id="h-endereco" placeholder="https://seusite.com.br/" autocomplete="off"><div class="ajuda">Onde a pasta abaixo aparece no navegador.</div></div>
+      <div><label class="rot" for="h-host">Servidor FTP</label><input class="campo mono" id="h-host" placeholder="ftp.seusite.com.br ou o IP" autocomplete="off"></div>
+      <div><label class="rot" for="h-porta">Porta</label><input class="campo mono" id="h-porta" value="21" inputmode="numeric" autocomplete="off"></div>
+      <div><label class="rot" for="h-usuario">Usuário</label><input class="campo mono" id="h-usuario" autocomplete="off"></div>
+      <div><label class="rot" for="h-senha">Senha</label><input class="campo mono" id="h-senha" type="password" autocomplete="new-password"></div>
+      <div><label class="rot" for="h-pasta">Pasta das páginas</label><input class="campo mono" id="h-pasta" value="/" autocomplete="off"><div class="ajuda">A pasta do site, a mesma do endereço público.</div></div>
+      <div><label class="rot" for="h-tls">Segurança</label>
+        <select class="campo" id="h-tls">
+          <option value="tls">Com TLS (recomendado)</option>
+          <option value="tls-sem-cert">Com TLS, sem conferir o certificado</option>
+          <option value="sem-tls">Sem TLS (a senha vai aberta)</option>
+        </select></div>
+    </div>
+    <div id="h-passos" class="passos"></div>
+    <div class="acoes"><button class="btn" id="bt-ftp-cancela">Cancelar</button><button class="btn" id="bt-testar">Testar conexão</button><button class="btn pri" id="bt-salvar" disabled>Salvar</button></div>
+    <p class="ajuda">O teste cria um arquivo pequeno na pasta, confere que ele abre no endereço público e apaga. A senha fica cifrada no servidor e nunca volta pra esta tela. Só a Diretoria conecta.</p>
+  </div>
+</div>
 <div class="veu" id="veu" hidden>
   <div class="janela" role="dialog" aria-modal="true" aria-labelledby="j-titulo">
     <h3 id="j-titulo">Publicar</h3>
@@ -326,6 +339,7 @@ body.embutido .cab { display: none; }
   // ?embutido=editor (dentro de Projetos › projeto › Páginas) ou ?embutido=hospedagem (Configurações › Conexões)
   var Q = new URLSearchParams(location.search), EMB = Q.get('embutido') || '', PROJ = Q.get('projeto') || '';
   if (EMB) document.body.classList.add('embutido');
+  if (EMB === 'criar') document.body.classList.add('emb-criar');
   function avisarPai(tipo) { try { if (parent && parent !== window) parent.postMessage({ tmx: tipo }, location.origin); } catch (e) {} }
   var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
   var mmss = function (s) { if (s == null || !isFinite(s)) return ''; var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
@@ -343,6 +357,7 @@ body.embutido .cab { display: none; }
       .catch(function () { return { s: 0, j: { error: 'Sem conexão com o servidor.' } }; });
   }
   function msg(el, tipo, txt) { el.innerHTML = txt ? '<div class="msg ' + tipo + '">' + txt + '</div>' : ''; }
+  var domAberto = null, vigia = null;
   function umSo(grupo, fn) {
     grupo.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b || b.parentNode !== grupo) return;
@@ -356,14 +371,16 @@ body.embutido .cab { display: none; }
     return api('GET', '/api/pg/estado' + (PROJ ? '?projeto=' + encodeURIComponent(PROJ) : '')).then(function (r) {
       if (r.s !== 200) return;
       estado = r.j; pintarPaginas(); pintarDominios(); abrirGuia();
+      if (domAberto) pintarDetalhe();
     });
   }
   function mostrar(v) {
+    if (v !== 'dominios') fecharDetalhe();
     ['paginas', 'dominios', 'editor'].forEach(function (k) { $('v-' + k).hidden = k !== v; });
     $('abas').hidden = v === 'editor';
     $('titulo-tela').textContent = v === 'dominios' ? 'Domínios' : 'Páginas';
   }
-  umSo($('abas'), function (b) { mostrar(b.getAttribute('data-v')); });
+  umSo($('abas'), function (b) { fecharDetalhe(); mostrar(b.getAttribute('data-v')); });
   umSo($('guia-abas'), function (b) { var g = b.getAttribute('data-g'); $('g-cpanel').hidden = g !== 'cpanel'; $('g-hostinger').hidden = g !== 'hostinger'; });
   // sem hospedagem conectada, o passo a passo já vem aberto
   function abrirGuia() { if (!estado.dominios.length) $('guia-ftp').open = true; }
@@ -371,7 +388,7 @@ body.embutido .cab { display: none; }
   // ── lista de páginas e nova página
   function domDe(id) { return estado.dominios.filter(function (d) { return d.id === id; })[0]; }
   function modeloDe(id) { return estado.modelos.filter(function (m) { return m.id === id; })[0]; }
-  function urlDe(p) { var d = domDe(p.dominio_id); return d ? new URL(p.slug + '/', d.endereco).href : 'sem domínio ainda · /' + p.slug; }
+  function urlDe(p) { var d = domDe(p.dominio_id); return d ? d.endereco + p.slug + '/' : 'sem domínio ainda · /' + p.slug; }
   function situacao(p) {
     if (!p.publicada) return '<span class="chip">Rascunho</span>';
     return '<span class="chip ok">No ar · versão ' + p.publicada + '</span>' + (p.versao !== p.publicada ? ' <span class="chip alerta">rascunho diferente</span>' : '');
@@ -380,10 +397,10 @@ body.embutido .cab { display: none; }
     var l = estado.paginas;
     // sem hospedagem dá pra criar e conversar com o Claude; só publicar precisa dela
     var semHosp = !estado.dominios.length && EMB === 'criar'
-      ? '<div class="msg alerta" style="margin-bottom:10px">Pra <b>publicar</b>, conecte a hospedagem em Configurações › Conexões › Hospedagem. Criar a página e conversar com o Claude já funciona. <button class="btn mini" type="button" data-ir-hosp="1">Conectar a hospedagem</button></div>' : '';
+      ? '<div class="msg alerta" style="margin-bottom:10px">Pra <b>publicar</b>, conecte um domínio. Criar a página e conversar com o Claude já funciona. <button class="btn mini" type="button" data-ir-hosp="1">Conectar um domínio</button></div>' : '';
     $('lista-paginas').innerHTML = semHosp + (!l.length
       ? '<p class="vazio">' + (PROJ ? 'Nenhuma página feita no TMX neste projeto ainda. Clique em Nova página e peça as mudanças pro Claude.' :
-          estado.dominios.length ? 'Nenhuma página ainda. Crie a primeira a partir de um modelo.' : 'Conecte uma hospedagem em Domínios pra criar a primeira página.') + '</p>'
+          estado.dominios.length ? 'Nenhuma página ainda. Clique em Nova página pra criar a primeira.' : 'Conecte um domínio em Domínios pra criar a primeira página.') + '</p>'
       : '<div class="tab-wrap"><table><thead><tr><th>Página</th><th>Modelo</th><th>Situação</th><th></th></tr></thead><tbody>' + l.map(function (p) {
           var m = modeloDe(p.modelo);
           return '<tr><td><b>' + esc(p.titulo) + '</b><br><span class="mono sub">' + esc(urlDe(p)) + '</span></td><td>' + esc(m ? m.nome : p.modelo === 'livre' ? 'Página livre' : p.modelo) + '</td><td>' + situacao(p) + '</td>' +
@@ -392,11 +409,11 @@ body.embutido .cab { display: none; }
   }
   $('lista-paginas').addEventListener('click', function (e) {
     var b = e.target.closest('[data-abrir]'); if (b) abrir(b.getAttribute('data-abrir'));
-    if (e.target.closest('[data-ir-hosp]')) avisarPai('paginas-hospedagem');
+    if (e.target.closest('[data-ir-hosp]')) irDominios();
   });
   function urlNova() {
     var d = domDe($('n-dom').value), s = $('n-slug').value.trim() || '…';
-    $('n-url').textContent = d ? new URL(s + '/', d.endereco).href : 'O domínio fica pra depois: você escolhe na hora de publicar.';
+    $('n-url').textContent = d ? d.endereco + s + '/' : 'O domínio fica pra depois: você escolhe na hora de publicar.';
   }
   function abrirNova() {
     if (!estado.dominios.length && !EMB) { mostrar('dominios'); $('abas').children[1].click(); return; }
@@ -406,8 +423,7 @@ body.embutido .cab { display: none; }
     $('n-funil-caixa').hidden = !PROJ;
     $('n-funil').innerHTML = '<option value="">Sem funil</option>' + fs.map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.nome) + '</option>'; }).join('');
     if (fs.length) $('n-funil').value = fs[0].id;
-    $('n-dom').innerHTML = estado.dominios.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + '</option>'; }).join('') +
-      (EMB ? '<option value="">Escolher depois</option>' : '');
+    pintarOpcoesDom();
     $('n-modelos').innerHTML = estado.modelos.map(function (m, i) {
       return '<button class="opcao" data-m="' + esc(m.id) + '" aria-pressed="' + (i === 0) + '"><b>' + esc(m.nome) + '</b><span class="mono">' + esc(m.base) + '</span></button>';
     }).join('');
@@ -441,7 +457,12 @@ body.embutido .cab { display: none; }
       (c.montada_por_js ? '<div class="msg alerta">A página quase não tem texto no HTML: ela é montada por JavaScript. A prévia pode sair vazia e o chat pode não conseguir mudar o texto.</div>' : '') +
       '<p class="sub">Agora é só pedir pro Claude o que mudar: a VSL, o checkout, os textos.</p>';
   }
-  $('n-slug').addEventListener('input', urlNova); $('n-dom').addEventListener('change', urlNova);
+  $('n-slug').addEventListener('input', urlNova);
+  var domAntes = '';
+  $('n-dom').addEventListener('change', function () {
+    if (this.value === '__novo') { this.value = domAntes; addDominio('form'); return; }
+    domAntes = this.value; urlNova();
+  });
   $('bt-cancela-nova').addEventListener('click', function () { if (EMB === 'editor') return avisarPai('paginas-voltar'); $('c-nova').hidden = true; });
   $('bt-criar').addEventListener('click', function () {
     var b = this, corpo = { titulo: $('n-titulo').value.trim(), dominio_id: $('n-dom').value, slug: $('n-slug').value.trim(), modelo: modeloNovo,
@@ -465,23 +486,200 @@ body.embutido .cab { display: none; }
     });
   });
 
-  // ── domínios
+  // ── domínios: hospedados no TMX (Cloudflare) ou na hospedagem do cliente (FTP)
+  function irDominios() {
+    if (EMB === 'criar' || !EMB) { mostrar('dominios'); [].forEach.call($('abas').children, function (x) { x.setAttribute('aria-pressed', x.getAttribute('data-v') === 'dominios' ? 'true' : 'false'); }); return; }
+    avisarPai('paginas-hospedagem');
+  }
+  function pintarOpcoesDom(sel) {
+    var op = function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + (d.modo === 'tmx' && d.est !== 'ok' ? ' · aguardando DNS' : '') + '</option>'; };
+    var tmx = estado.dominios.filter(function (d) { return d.modo === 'tmx'; }), ftp = estado.dominios.filter(function (d) { return d.modo !== 'tmx'; });
+    $('n-dom').innerHTML = (tmx.length ? '<optgroup label="Hospedados no TMX">' + tmx.map(op).join('') + '</optgroup>' : '') +
+      (ftp.length ? '<optgroup label="Na minha hospedagem (FTP)">' + ftp.map(op).join('') + '</optgroup>' : '') +
+      (EMB ? '<option value="">Escolher depois</option>' : '') + '<option value="__novo">+ Adicionar domínio…</option>';
+    if (sel !== undefined) $('n-dom').value = sel;
+    else if ($('n-dom').value === '__novo') $('n-dom').value = '';
+    domAntes = $('n-dom').value;
+  }
+  function chipDom(d) {
+    if (d.modo !== 'tmx') return '<span class="chip">Conectado por FTP</span>';
+    return { dns: '<span class="chip alerta">Aguardando DNS</span>', ssl: '<span class="chip azul">Emitindo certificado</span>', ok: '<span class="chip ok">No ar</span>', parado: '<span class="chip erro">Parou de esperar</span>' }[d.est] || '';
+  }
+  var testesDe = function (id) { return (estado.testes || []).filter(function (t) { return t.dominio === id; }); };
+  var usoPlanoLido = false;
+  function lerUsoPlano() {
+    if (usoPlanoLido) return; usoPlanoLido = true;
+    api('GET', '/api/meu-plano').then(function (r) {
+      var u = r.s === 200 && (r.j.uso || []).filter(function (x) { return x.id === 'dominios'; })[0];
+      if (u && u.limite != null) $('dom-uso').textContent = estado.dominios.length + ' de ' + u.limite + ' domínios do seu plano';
+    });
+  }
   function pintarDominios() {
     var l = estado.dominios;
-    $('lista-dominios').innerHTML = !l.length ? '<p class="vazio">Nenhuma hospedagem conectada.</p>'
-      : '<div class="tab-wrap"><table><thead><tr><th>Domínio</th><th>Hospedagem</th><th>Testado</th><th></th></tr></thead><tbody>' + l.map(function (d) {
-          return '<tr><td><b>' + esc(d.dominio) + '</b><br><span class="mono sub">' + esc(d.endereco) + '</span></td>' +
-            '<td class="mono">FTP · ' + esc(d.host) + ':' + esc(d.porta) + ' · ' + esc(d.usuario) + ' · ' + esc(d.pasta) + (d.tls === 'sem-tls' ? ' <span class="chip alerta">sem TLS</span>' : '') + '</td>' +
-            '<td>' + data(d.testado_em) + '</td><td style="text-align:right;white-space:nowrap"><button class="btn mini" data-testar="' + esc(d.id) + '">Testar</button> <button class="btn mini" data-excluir="' + esc(d.id) + '">Excluir</button></td></tr>';
-        }).join('') + '</tbody></table></div><div id="d-msg"></div>';
+    $('dom-uso').textContent = l.length === 1 ? '1 domínio' : l.length + ' domínios';
+    usoPlanoLido = false; lerUsoPlano();
+    $('lista-dominios').innerHTML = !l.length ? '<p class="vazio">Nenhum domínio conectado. Clique em + Adicionar domínio pra colocar o primeiro.</p>'
+      : '<div class="tab-wrap"><table><thead><tr><th>Domínio</th><th>Onde fica</th><th>Páginas</th><th>Testes A/B</th><th>Situação</th><th></th></tr></thead><tbody>' + l.map(function (d) {
+          return '<tr><td><b class="mono">' + esc(d.dominio) + '</b></td><td>' + (d.modo === 'tmx' ? 'Hospedado no TMX' : 'Minha hospedagem · ' + esc(d.host)) + '</td><td>' + (d.n_paginas || 0) + '</td><td>' + testesDe(d.id).length + '</td><td>' + chipDom(d) + '</td>' +
+            '<td style="text-align:right"><button class="btn mini" data-abrir-dom="' + esc(d.id) + '">Abrir</button></td></tr>';
+        }).join('') + '</tbody></table></div>';
   }
-  $('lista-dominios').addEventListener('click', function (e) {
-    var t = e.target.closest('[data-testar]'), x = e.target.closest('[data-excluir]');
-    if (t) { t.disabled = true; api('POST', '/api/pg/dominios/' + t.getAttribute('data-testar') + '/testar').then(function (r) { t.disabled = false; msg($('d-msg'), r.j.ok ? 'ok' : 'erro', passosHtml(r.j)); carregar(); }); }
-    if (x) confirmar('Excluir esta hospedagem do TMX?', 'A senha guardada é apagada. Nada na hospedagem muda.', 'Excluir', function () {
-      api('POST', '/api/pg/dominios/' + x.getAttribute('data-excluir') + '/excluir').then(function (r) { if (r.s !== 200) msg($('d-msg'), 'erro', esc(r.j.error)); carregar(); });
+  function linhaDns(tipo, nome, valor, nota) {
+    return '<tr><td class="mono">' + tipo + '</td><td><span class="mono">' + esc(nome) + '</span> <button class="btn mini" type="button" data-copiar="' + esc(nome) + '">Copiar</button></td>' +
+      '<td><span class="mono">' + esc(valor) + '</span> <button class="btn mini" type="button" data-copiar="' + esc(valor) + '">Copiar</button>' + (nota ? '<div class="ajuda">' + nota + '</div>' : '') + '</td></tr>';
+  }
+  function blocoConecte(d) {
+    var alvo = (estado.hospedagem || {}).alvo || '';
+    if (d.est === 'ok') return '<div class="msg ok"><b>Tudo certo.</b> Certificado emitido, e o domínio já recebe páginas e testes A/B.</div>';
+    var parou = d.est === 'parado';
+    var regs = linhaDns('CNAME', d.nome_dns, alvo, 'Aponta o domínio para o sistema.') +
+      (d.raiz && d.txt_nome ? linhaDns('TXT', d.txt_nome, d.txt_valor, 'Crie este primeiro: é ele que comprova que o domínio é seu.') : '');
+    return (parou ? '<div class="msg alerta">Passaram 7 dias sem o registro aparecer, então o sistema parou de esperar. Crie o registro e clique em Conferir de novo.</div>' : '') +
+      '<p class="sub">Crie o registro abaixo no painel onde você gerencia o DNS do domínio (Registro.br, Cloudflare, GoDaddy, Hostinger).</p>' +
+      '<div class="tab-wrap"><table><thead><tr><th>Tipo</th><th>Nome</th><th>Valor</th></tr></thead><tbody>' + regs + '</tbody></table></div>' +
+      (d.raiz ? '<div class="msg alerta">Este é o domínio raiz. Nem todo provedor aceita CNAME na raiz. Se o seu não aceitar, use um subdomínio como <b class="mono">lp.' + esc(d.dominio) + '</b>.</div>' : '') +
+      '<div class="status-dom"><div><b>DNS</b>' + (d.est === 'ssl' ? 'Registro encontrado' : 'Esperando o registro aparecer') + '</div><div><b>Certificado (SSL)</b>' + (d.est === 'ssl' ? 'Emitindo agora' : 'Sai sozinho depois do DNS') + '</div></div>' +
+      (d.erro && !parou ? '<div class="ajuda">' + esc(d.erro) + '</div>' : '') +
+      '<div class="linha"><span class="ajuda">' + (d.verificado_em ? 'Última verificação em ' + data(d.verificado_em) + ' · ' : '') + 'o sistema confere sozinho a cada minuto</span><button class="btn mini" type="button" data-verificar="' + esc(d.id) + '">' + (parou ? 'Conferir de novo' : 'Verificar agora') + '</button></div><div id="d-msg"></div>';
+  }
+  function pararVigia() { if (vigia) { clearInterval(vigia); vigia = null; } }
+  // enquanto a pessoa olha, confere de 15 em 15 segundos; o servidor continua conferindo sozinho a cada minuto
+  function vigiar(id, depois) {
+    pararVigia();
+    vigia = setInterval(function () {
+      api('POST', '/api/pg/dominios/' + id + '/verificar').then(function (r) {
+        if (r.s === 200 && r.j.dominio.est !== (domDe(id) || {}).est) carregar().then(depois);
+      });
+    }, 15000);
+  }
+  function fecharDetalhe() { domAberto = null; pararVigia(); if ($('dom-detalhe')) { $('dom-detalhe').hidden = true; $('dom-lista').hidden = false; } }
+  function abrirDominio(id) { domAberto = id; pintarDetalhe(); if ((domDe(id) || {}).est === 'dns' || (domDe(id) || {}).est === 'ssl') vigiar(id, function () {}); else pararVigia(); }
+  function pintarDetalhe() {
+    var d = domDe(domAberto);
+    if (!d) return fecharDetalhe();
+    var pgs = estado.paginas.filter(function (p) { return p.dominio_id === d.id; }), tts = testesDe(d.id), fora = (d.n_paginas || 0) - pgs.length;
+    $('dom-lista').hidden = true; $('dom-detalhe').hidden = false;
+    $('dom-detalhe').innerHTML = '<div style="margin-bottom:12px"><button class="voltar-dom" data-voltar-dom="1">‹ Domínios</button></div>' +
+      '<div class="linha" style="margin-bottom:12px"><div><h2 class="mono" style="font-size:18px">' + esc(d.dominio) + '</h2><div class="sub">' + (d.modo === 'tmx' ? 'Hospedado no TMX' : 'Na minha hospedagem · FTP') + ' · ' + (d.n_paginas || 0) + ((d.n_paginas || 0) === 1 ? ' página' : ' páginas') + '</div></div>' + chipDom(d) + '</div>' +
+      (d.modo === 'tmx' ? '<div class="cartao"><h3>' + (d.est === 'ok' ? 'Domínio conectado' : 'Conecte o domínio') + '</h3>' + blocoConecte(d) + '</div>'
+        : '<div class="cartao"><div class="linha"><h3>Hospedagem por FTP</h3><button class="btn mini" data-testar="' + esc(d.id) + '">Testar conexão</button></div>' +
+          '<p class="mono sub">' + esc(d.host) + ':' + esc(d.porta) + ' · ' + esc(d.usuario) + ' · ' + esc(d.pasta) + (d.tls === 'sem-tls' ? ' <span class="chip alerta">sem TLS</span>' : '') + '</p>' +
+          '<p class="sub">O domínio continua onde está. O TMX envia os arquivos pra lá quando você publica.</p><div class="msg alerta">Aqui o teste A/B passa por um link do TMX que redireciona, porque o TMX não fica no caminho da visita. Hospedado no TMX, o teste roda no próprio endereço.</div><div id="d-msg"></div></div>') +
+      '<div class="cartao"><div class="linha"><h3>Páginas neste domínio</h3><button class="btn" data-nova-dom="' + esc(d.id) + '">Nova página</button></div>' +
+        (pgs.length ? '<div class="tab-wrap"><table><tbody>' + pgs.map(function (p) { return '<tr><td><b>' + esc(p.titulo) + '</b><br><span class="mono sub">' + esc(urlDe(p)) + '</span></td><td style="text-align:right">' + situacao(p) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="vazio">Nenhuma página aqui ' + (PROJ ? 'neste projeto ' : '') + 'ainda.</p>') +
+        (fora > 0 ? '<p class="ajuda">Mais ' + fora + (fora === 1 ? ' página de outro projeto.' : ' páginas de outros projetos.') + '</p>' : '') + '</div>' +
+      '<div class="cartao"><div class="linha"><h3>Testes A/B neste domínio</h3>' + (EMB === 'criar' ? '<button class="btn" data-ir-testes="1">Abrir Testes A/B</button>' : '') + '</div>' +
+        (tts.length ? '<div class="tab-wrap"><table><tbody>' + tts.map(function (t) { return '<tr><td><b>' + esc(t.nome) + '</b><br><span class="mono sub">' + esc(d.endereco + t.caminho) + '</span></td><td style="text-align:right">' + (t.vencedora ? '<span class="chip azul">Encerrado</span>' : t.ativo ? '<span class="chip ok">Testando</span>' : '<span class="chip">Pausado</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="vazio">Nenhum teste neste domínio ainda.</p>') + '</div>' +
+      (d.modo === 'tmx' ? '<div class="cartao"><h3>Scripts globais</h3><p class="sub">Entram em todas as páginas publicadas neste domínio. O pixel do TMX já entra sozinho; aqui vão Tag Manager e verificação de domínio, colados uma vez só.</p><div class="grade">' +
+          '<div><label class="rot" for="s-head">Dentro do &lt;head&gt;</label><textarea class="campo" id="s-head" placeholder="&lt;!-- Google Tag Manager, verificação do domínio --&gt;">' + esc(d.head) + '</textarea></div>' +
+          '<div><label class="rot" for="s-corpo">Antes do &lt;/body&gt;</label><textarea class="campo" id="s-corpo" placeholder="&lt;!-- noscript, chat etc. --&gt;">' + esc(d.corpo) + '</textarea></div></div>' +
+          '<div id="s-msg"></div><div class="acoes"><button class="btn" data-salvar-scripts="' + esc(d.id) + '">Salvar scripts</button></div></div>' +
+        '<div class="cartao"><div class="linha"><div><h3>Ícone da aba</h3><p class="sub">Aparece na aba do navegador em todas as páginas deste domínio. PNG, ICO ou SVG quadrado, até 1 MB.</p></div><label class="btn" for="s-icone">' + (d.icone ? 'Trocar ícone' : 'Enviar ícone') + '</label><input type="file" id="s-icone" accept=".png,.ico,.svg,image/png,image/x-icon,image/svg+xml" data-dom="' + esc(d.id) + '" hidden></div><div id="i-msg"></div></div>' : '') +
+      '<div class="cartao"><div class="linha"><div><h3>Remover domínio</h3><p class="sub">' + (d.modo === 'tmx' ? 'O domínio deixa de responder pelo TMX, as páginas dele voltam a ser rascunho e os testes A/B são encerrados.' : 'O TMX para de publicar aqui. O que já está na sua hospedagem continua lá.') + '</p></div><button class="btn" style="color:var(--erro)" data-excluir="' + esc(d.id) + '">Remover</button></div></div>';
+  }
+  function copiar(v) {
+    var ok = function () { var a = document.activeElement; if (a && a.getAttribute && a.getAttribute('data-copiar') != null) { var t = a.textContent; a.textContent = 'Copiado'; setTimeout(function () { a.textContent = t; }, 1200); } };
+    try { navigator.clipboard.writeText(v).then(ok).catch(function () {}); } catch (e) {}
+  }
+  function verificar(id, b, depois) {
+    if (b) b.disabled = true;
+    api('POST', '/api/pg/dominios/' + id + '/verificar').then(function (r) {
+      if (b) b.disabled = false;
+      if (r.s !== 200) { if ($('d-msg')) msg($('d-msg'), 'erro', esc(r.j.error)); return; }
+      carregar().then(function () { if (depois) depois(); if ($('d-msg') && r.j.dominio.est !== 'ok') msg($('d-msg'), '', 'Conferido agora. O registro pode levar de alguns minutos a algumas horas pra aparecer.'); });
     });
+  }
+  $('bt-add-dom').addEventListener('click', function () { addDominio('dom'); });
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-copiar]'); if (c) { c.focus(); return copiar(c.getAttribute('data-copiar')); }
   });
+  $('v-dominios').addEventListener('click', function (e) {
+    var g = function (a) { return e.target.closest('[' + a + ']'); }, x;
+    if ((x = g('data-abrir-dom'))) return abrirDominio(x.getAttribute('data-abrir-dom'));
+    if (g('data-voltar-dom')) return fecharDetalhe();
+    if ((x = g('data-verificar'))) return verificar(x.getAttribute('data-verificar'), x);
+    if ((x = g('data-nova-dom'))) { var id = x.getAttribute('data-nova-dom'); fecharDetalhe(); mostrar('paginas'); [].forEach.call($('abas').children, function (y) { y.setAttribute('aria-pressed', y.getAttribute('data-v') === 'paginas' ? 'true' : 'false'); }); abrirNova(); pintarOpcoesDom(id); urlNova(); return; }
+    if (g('data-ir-testes')) return avisarPai('paginas-testes');
+    if ((x = g('data-testar'))) { x.disabled = true; var t = x; return api('POST', '/api/pg/dominios/' + t.getAttribute('data-testar') + '/testar').then(function (r) { t.disabled = false; msg($('d-msg'), r.j.ok ? 'ok' : 'erro', passosHtml(r.j)); }); }
+    if ((x = g('data-salvar-scripts'))) {
+      x.disabled = true; var bs = x;
+      return api('POST', '/api/pg/dominios/' + bs.getAttribute('data-salvar-scripts') + '/scripts', { head: $('s-head').value, corpo: $('s-corpo').value }).then(function (r) {
+        bs.disabled = false;
+        if (r.s !== 200) return msg($('s-msg'), 'erro', esc(r.j.error));
+        var d = domDe(domAberto); if (d) { d.head = $('s-head').value; d.corpo = $('s-corpo').value; }
+        msg($('s-msg'), 'ok', 'Scripts salvos. Em até um minuto eles entram em todas as páginas deste domínio.');
+      });
+    }
+    if ((x = g('data-excluir'))) {
+      var dx = domDe(x.getAttribute('data-excluir')); if (!dx) return;
+      return confirmar('Remover ' + dx.dominio + '?', dx.modo === 'tmx' ? 'O domínio deixa de responder pelo TMX, as páginas dele voltam a ser rascunho e os testes A/B são encerrados.' : 'A senha guardada é apagada. Nada na hospedagem muda.', 'Remover', function () {
+        api('POST', '/api/pg/dominios/' + dx.id + '/excluir').then(function (r) {
+          if (r.s !== 200) { if ($('d-msg')) msg($('d-msg'), 'erro', esc(r.j.error)); return; }
+          fecharDetalhe(); avisarPai('paginas-mudou'); carregar();
+        });
+      });
+    }
+  });
+  $('v-dominios').addEventListener('change', function (e) {
+    if (e.target.id !== 's-icone' || !e.target.files[0]) return;
+    var f = e.target.files[0], id = e.target.getAttribute('data-dom');
+    if (f.size > 1024 * 1024) return msg($('i-msg'), 'erro', 'Esse arquivo passa de 1 MB.');
+    var t = ''; try { t = localStorage.getItem('sl_session_token') || ''; } catch (x) {}
+    var tipo = f.type || (/\.ico$/i.test(f.name) ? 'image/x-icon' : /\.svg$/i.test(f.name) ? 'image/svg+xml' : 'image/png');
+    fetch('/api/pg/dominios/' + id + '/icone', { method: 'POST', headers: { 'Content-Type': tipo, 'Authorization': 'Bearer ' + t }, body: f })
+      .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (r) { if (r.s !== 200) return msg($('i-msg'), 'erro', esc(r.j.error)); carregar().then(function () { msg($('i-msg'), 'ok', 'Ícone enviado. Em até um minuto ele aparece nas páginas.'); }); })
+      .catch(function () { msg($('i-msg'), 'erro', 'Sem conexão com o servidor.'); });
+  });
+  // as duas formas de hospedar, na mesma janela
+  var depoisFtp = null;
+  function abrirFtp(dominio, deOnde) {
+    fechar();
+    if (dominio) { $('h-dominio').value = dominio; $('h-endereco').placeholder = 'https://' + dominio + '/'; }
+    depoisFtp = deOnde; $('h-passos').innerHTML = ''; testado = ''; $('bt-salvar').disabled = true; $('veu-ftp').hidden = false; $('h-dominio').focus();
+  }
+  function fecharFtp() { $('veu-ftp').hidden = true; $('h-senha').value = ''; }
+  $('bt-ftp-cancela').addEventListener('click', fecharFtp);
+  $('veu-ftp').addEventListener('click', function (e) { if (e.target === this) fecharFtp(); });
+  function addDominio(deOnde) {
+    var h = estado.hospedagem || {}, valor = '';
+    function pinta(erro) {
+      janela('Adicionar domínio', '<div class="opcoes">' +
+          '<button class="opcao" type="button" aria-pressed="true" data-modo="tmx"' + (h.ligada ? '' : ' disabled') + '><b>Hospedar no TMX</b><span>' + (h.ligada ? 'Você aponta o domínio e o TMX cuida do resto. Teste A/B no próprio endereço.' : 'Ainda não está disponível.') + '</span></button>' +
+          '<button class="opcao" type="button" aria-pressed="false" data-modo="ftp"><b>Na minha hospedagem</b><span>Hostinger, HospedaInfo ou qualquer outra. O domínio fica lá e o TMX envia as páginas por FTP.</span></button></div>' +
+        '<div><label class="rot" for="j-host">Domínio</label><input class="campo mono" id="j-host" placeholder="lp.suamarca.com.br" autocomplete="off" value="' + esc(valor) + '">' +
+        '<div class="ajuda">Prefira um subdomínio, como lp.suamarca.com.br: funciona em qualquer provedor de DNS e pede um registro só.</div></div>' +
+        '<div id="j-msg">' + (erro ? '<div class="msg erro">' + esc(erro) + '</div>' : '') + '</div>',
+        [{ t: 'Cancelar', f: fechar }, { t: 'Adicionar', pri: true, desligado: !h.ligada, f: salvar }]);
+      $('j-host').focus();
+      $('j-corpo').querySelector('[data-modo="ftp"]').addEventListener('click', function () { abrirFtp($('j-host').value.trim(), deOnde); });
+    }
+    function salvar() {
+      valor = $('j-host').value.trim();
+      if (!valor) return pinta('Digite o domínio.');
+      msg($('j-msg'), '', 'Cadastrando…');
+      api('POST', '/api/pg/dominios/hospedado', { dominio: valor }).then(function (r) {
+        if (r.s !== 200) return pinta(r.j.error);
+        carregar().then(function () { conectar(r.j.dominio.id, deOnde); });
+      });
+    }
+    if (!h.ligada) return abrirFtp('', deOnde);
+    pinta();
+  }
+  function conectar(id, deOnde) {
+    function pinta() {
+      var d = domDe(id); if (!d) return fechar();
+      janela(d.dominio, '<div style="margin-bottom:2px">' + chipDom(d) + '</div>' + blocoConecte(d),
+        deOnde === 'form'
+          ? [{ t: d.est === 'ok' ? 'Usar este domínio' : 'Continuar a página e publicar depois', pri: d.est === 'ok', f: usar }]
+          : [{ t: 'Fechar', f: function () { pararVigia(); fechar(); } }, { t: 'Ver o domínio', pri: true, f: function () { fechar(); irDominios(); abrirDominio(id); } }]);
+      var v = $('j-corpo').querySelector('[data-verificar]');
+      if (v) v.addEventListener('click', function () { verificar(id, v, pinta); });
+    }
+    function usar() { pararVigia(); fechar(); pintarOpcoesDom(id); urlNova(); }
+    pinta();
+    vigiar(id, pinta);
+  }
   function hospedagem() {
     return { dominio: $('h-dominio').value.trim(), endereco: $('h-endereco').value.trim(), host: $('h-host').value.trim(), porta: $('h-porta').value.trim(),
              usuario: $('h-usuario').value.trim(), senha: $('h-senha').value, pasta: $('h-pasta').value.trim(), tls: $('h-tls').value };
@@ -507,8 +705,9 @@ body.embutido .cab { display: none; }
   $('bt-salvar').addEventListener('click', function () {
     var b = this; b.disabled = true;
     api('POST', '/api/pg/dominios', hospedagem()).then(function (r) {
-      $('h-passos').innerHTML = '<div class="msg ' + (r.s === 200 ? 'ok' : 'erro') + '">' + (r.s === 200 ? 'Hospedagem conectada. Já dá pra criar páginas nela.' : passosHtml(r.j)) + '</div>';
-      if (r.s === 200) { $('h-senha').value = ''; testado = ''; carregar(); } else b.disabled = false;
+      if (r.s !== 200) { $('h-passos').innerHTML = '<div class="msg erro">' + passosHtml(r.j) + '</div>'; b.disabled = false; return; }
+      $('h-senha').value = ''; testado = ''; fecharFtp();
+      carregar().then(function () { if (depoisFtp === 'form') { pintarOpcoesDom(r.j.dominio.id); urlNova(); } });
     });
   });
 
@@ -618,10 +817,10 @@ body.embutido .cab { display: none; }
   // página criada sem domínio: escolhe agora; sem hospedagem conectada, leva até ela
   function escolherDominio() {
     var ds = estado.dominios || [];
-    if (!ds.length) return janela('Falta a hospedagem', '<p class="sub">Pra publicar, conecte a hospedagem onde as páginas ficam no ar. Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem. A página continua aqui como rascunho.</p>',
-      [{ t: 'Agora não', f: fechar }, { t: 'Conectar a hospedagem', pri: true, f: function () { fechar(); if (EMB) avisarPai('paginas-hospedagem'); else { mostrar('dominios'); $('abas').children[1].click(); } } }]);
+    if (!ds.length) return janela('Falta o domínio', '<p class="sub">Pra publicar, conecte o domínio onde a página vai ficar. Ele vale pra empresa toda. A página continua aqui como rascunho.</p>',
+      [{ t: 'Agora não', f: fechar }, { t: 'Conectar um domínio', pri: true, f: function () { fechar(); irDominios(); } }]);
     janela('Onde a página vai ficar', '<div class="grade"><div><label class="rot" for="j-dom">Domínio</label><select class="campo" id="j-dom">' +
-      ds.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.dominio) + '</option>'; }).join('') + '</select></div>' +
+      ds.map(function (d) { var esp = d.modo === 'tmx' && d.est !== 'ok'; return '<option value="' + esc(d.id) + '"' + (esp ? ' disabled' : '') + '>' + esc(d.dominio) + (esp ? ' · aguardando DNS' : '') + '</option>'; }).join('') + '</select></div>' +
       '<div><label class="rot" for="j-slug">Endereço</label><input class="campo mono" id="j-slug" value="' + esc(atual.pagina.slug) + '"></div></div><div id="j-msg"></div>',
       [{ t: 'Cancelar', f: fechar }, { t: 'Continuar', pri: true, f: function () {
         api('POST', '/api/pg/paginas/' + atual.pagina.id + '/dominio', { dominio_id: $('j-dom').value, slug: $('j-slug').value.trim() }).then(function (r) {
@@ -634,7 +833,7 @@ body.embutido .cab { display: none; }
     if (!atual.dominio) return escolherDominio();
     conferir().then(function () {
       var p = atual.pagina, d = atual.dominio, trava = ultimasConf.some(function (c) { return c.st === 'alerta' || c.st === 'falta'; });
-      var corpo = '<p class="sub">A versão <b>' + p.versao + '</b> vai ao ar em <span class="mono">' + esc(atual.endereco) + '</span>. O TMX envia por FTP pra <span class="mono">' + esc(d.host) + ' · ' + esc(String(d.pasta || '/').replace(/\/?$/, '/')) + esc(p.slug) + '/index.html</span> e confere que a página abriu.</p>' +
+      var corpo = '<p class="sub">A versão <b>' + p.versao + '</b> vai ao ar em <span class="mono">' + esc(atual.endereco) + '</span>. ' + (d.modo === 'tmx' ? 'Ela entra no ar na hora.' : 'O TMX envia por FTP pra <span class="mono">' + esc(d.host) + ' · ' + esc(String(d.pasta || '/').replace(/\/?$/, '/')) + esc(p.slug) + '/index.html</span> e confere que a página abriu.') + '</p>' +
         confHtml(ultimasConf) + (trava ? '<div class="msg erro">Tem conferência com alerta ou faltando. Resolva nos campos antes de publicar.</div>' : '');
       janela('Publicar "' + p.titulo + '"?', corpo, [{ t: 'Cancelar', f: fechar }, { t: 'Publicar agora', pri: true, desligado: trava, f: function () { publicar(false); } }]);
     });

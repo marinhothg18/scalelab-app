@@ -970,7 +970,8 @@ module.exports = function montarPaginas(ctx) {
     const hospedagem = await _hospInfo();
     const modelos = Object.values(_modelos()).map(m => ({ id: m.id, nome: m.nome, base: m.base, campos: _defs(m), padrao: _camposPadrao(m),
       tem: { vsl: !!m.ext.vsl, atraso: m.ext.atraso != null, checkout: m.ext.checkouts.length > 0, umClique: m.ext.umClique } }));
-    const dominios = _q('SELECT * FROM pg_dominios ORDER BY criado_em').all().map(_domPublico);
+    const contagem = {}; _q('SELECT dominio_id d, COUNT(*) n FROM pg_paginas GROUP BY dominio_id').all().forEach(x => { contagem[x.d] = x.n; });
+    const dominios = _q('SELECT * FROM pg_dominios ORDER BY criado_em').all().map(d => Object.assign(_domPublico(d), { n_paginas: contagem[d.id] || 0 }));
     const projeto = String(req.query.projeto || '').slice(0, 60);
     const doms = {}; dominios.forEach(d => { doms[d.id] = d; });
     const paginas = _q('SELECT * FROM pg_paginas ORDER BY criado_em DESC').all()

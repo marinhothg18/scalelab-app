@@ -22736,7 +22736,7 @@ var CFG_CONEX = [
   { id:'utmify',   ic:'📈', nome:'Utmify',         desc:'Gasto e métricas de campanha.', paineis:['integracoes'], ver:'utmify' },
   { id:'vturb',    ic:'🎬', nome:'VTurb',          desc:'Retenção, pitch e conversão dentro das VSLs.', paineis:['integracoes'], ver:'vturb' },
   { id:'checkout', ic:'💰', nome:'Checkouts',      desc:'Payt, Kiwify, Hotmart, Hubla, AppMax, Kirvano, Cakto, Perfect Pay e Cartpanda mandam as vendas pra cá.', paineis:['integracoes'], ver:'checkout' },
-  { id:'hospedagem', ic:'🌐', nome:'Hospedagem',   desc:'FTP da hospedagem onde as páginas ficam no ar (HospedaInfo, Hostinger, qualquer cPanel). O TMX publica nela.', paineis:['hospedagem'] },
+  { id:'hospedagem', ic:'🌐', nome:'Domínios e hospedagem', desc:'Onde as páginas ficam no ar: hospedadas no TMX ou na sua hospedagem (HospedaInfo, Hostinger, qualquer cPanel).', paineis:['hospedagem'] },
   { id:'whatsapp', ic:'💬', nome:'WhatsApp',       desc:'Z-API. Manda lembretes e relatórios e recebe as mensagens pro agente.', paineis:['whatsapp'], ver:'whatsapp' },
   { id:'ia',       ic:'🤖', nome:'Agente de IA',   desc:'Claude ou OpenAI, pra responder pelo WhatsApp e no chat das páginas.', paineis:['whatsapp'], ver:'ia' },
   { id:'email',    ic:'📧', nome:'E-mail',         desc:'Resend: boas-vindas e troca de senha.', paineis:['integracoes'], ver:'email' },
@@ -32011,6 +32011,7 @@ window.addEventListener('message', function(e){
   if(e.data.tmx === 'paginas-voltar'){ pgEst.dados = null; pgCarregar(); }
   else if(e.data.tmx === 'paginas-mudou') pgEst.dados = null;   // a lista de Páginas busca de novo quando abrir
   else if(e.data.tmx === 'paginas-hospedagem') pgIrHospedagem();
+  else if(e.data.tmx === 'paginas-testes') fnAba('redir', document.querySelector('.fx-nav-i[data-aba="redir"]'));
 });
 function pgNota(n){ return n == null ? 'sem' : n >= 90 ? 'bom' : n >= 50 ? 'med' : 'ruim'; }
 function pgVel(v){
@@ -33804,28 +33805,8 @@ function dmSeletor(alvo, atual, onEscolher){
 
 function dmAdicionar(el, onEscolher){
   dzCaixa('Adicionar domínio',
-    'Primeiro aponte o DNS desse endereço pro Railway (o mesmo passo do <b>ir.kalebeaprovado.online</b>). ' +
-    'Assim que salvar eu confiro se ele já está caindo aqui.',
-    [{ chave:'d', rot:'Domínio', ph:'quiz.suaoferta.com.br',
-       dica:'Com o ponto e a terminação. Pode colar com https:// — eu limpo.' }],
-    function(v){
-      var bruto = String(v.d || '').trim(); if(!bruto) return;
-      toastFn('Conferindo o DNS…');
-      fetch('/api/dominios', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ dominio: bruto }) })
-        .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
-        .then(function(x){
-          if(!x.ok){ dzCaixa('Não deu', fnEsc(x.d.error || 'Domínio inválido.'), [], function(){}); return; }
-          _dmCache = null;
-          onEscolher(x.d.dominio);
-          dmSeletor(el, x.d.dominio, onEscolher);
-          if(!x.d.apontado){
-            dzCaixa('Salvo, mas o DNS ainda não aponta', '<b>' + fnEsc(x.d.dominio) + '</b>: ' + fnEsc(x.d.erro) +
-              '.<br><br>O link já usa esse domínio, mas <b>só abre depois</b> que o DNS apontar pro Railway. ' +
-              'Pode levar de minutos a algumas horas — use o botão <b>checar</b> pra conferir.', [], function(){});
-          }
-        });
-    });
+    'Domínios novos são cadastrados em <b>Projetos › Criar páginas › Domínios</b>. Depois de conectado, ele aparece nesta lista. ',
+    [], function(){});
 }
 
 // ── Caixa de diálogo ────────────────────────────────────────────────────────
@@ -37651,7 +37632,7 @@ function abPintarConfig(el){
           'placeholder="—" title="Preço desta variante. Só preencha se as variantes têm preços diferentes." '+
           'onchange="abValorVar('+i+',this.value)">')+
         '<button class="fn-btn g sm" onclick="abTirarVar('+i+')">✕</button></div>'+
-      '<input class="ab-var-url" value="'+fnEsc(v.url||'')+'" placeholder="https://…" onchange="abUrlVar('+i+',this.value)">'+
+      '<input class="ab-var-url" value="'+fnEsc(v.url||'')+'" placeholder="https://…"'+(r.hospedado ? ' readonly title="A página desta versão é do próprio domínio do teste."' : ' onchange="abUrlVar('+i+',this.value)"')+'>'+
       (ck ? '' : '<div class="ab-var-res auto">'+
         '<div><span class="k">Cliques no link</span><span class="v">'+fnNum(v.sorteios||0)+'</span></div>'+
         '<div><span class="k">Pessoas <small title="Precisa do pixel na página">?</small></span>'+
@@ -37765,12 +37746,13 @@ function abPintarConfig(el){
         (ck ? ckCaixaLink(r)
           : '<div class="ab-link"><span class="rot">Link pra colar no anúncio</span>'+
           '<span class="u" id="ab-url">'+fnEsc(abUrlDoTeste(r))+'</span>'+
-          '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>')+
+          '<button class="fn-btn g sm" onclick="fnCopiar(\'ab-url\')">Copiar</button></div>'+
+          (r.hospedado ? '<div class="fx-sub" style="margin:-4px 0 12px">Quem clica é sorteado aqui mesmo, sem redirecionar: o endereço não muda e a pessoa cai sempre na mesma versão.</div>' : ''))+
         '<div class="fn-sec">'+(ck ? 'Versões do checkout · divisão' : 'Variantes · divisão do tráfego')+'</div>'+
         caixas+
-        '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">'+
+        (r.hospedado ? '' : '<div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">'+
           '<input id="ab-nova-url" placeholder="https://… (nova variante)" style="flex:1;min-width:190px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none">'+
-          '<button class="fn-btn g" onclick="abAddVar()">Adicionar variante</button></div>'+
+          '<button class="fn-btn g" onclick="abAddVar()">Adicionar variante</button></div>')+
         avisoReceita+
         '<div class="fn-split" style="margin-top:14px">'+barra+'</div>'+
         '<div style="font-size:11.5px;color:var(--text2);margin-top:8px">'+
@@ -37783,7 +37765,7 @@ function abPintarConfig(el){
         '<div class="fn-cx2"><h3>Configuração</h3>'+
           '<div class="fn-campo"><label>Nome</label>'+
             '<input value="'+fnEsc(r.nome||'')+'" onchange="abCampo(\'nome\',this.value)"></div>'+
-          (ck ? '' : '<div class="fn-campo"><label>Atalho do link</label>'+
+          (ck || r.hospedado ? '' : '<div class="fn-campo"><label>Atalho do link</label>'+
             '<input value="'+fnEsc(r.slug)+'" onchange="abMudarSlug(this.value)"></div>'+
           '<div class="fn-campo"><label>Domínio do link</label>'+
             '<div id="ab-dominio-sel"></div></div>')+
@@ -37801,7 +37783,7 @@ function abPintarConfig(el){
           '<button class="fn-btn g sm" style="width:100%;color:var(--red)" onclick="abRemover()">Remover</button>'+
         '</div></div></div>';
   // o seletor busca a lista no servidor, entao entra depois do HTML pronto
-  if(!ck) dmSeletor('ab-dominio-sel', r.dominio || '', function(v){
+  if(!ck && !r.hospedado) dmSeletor('ab-dominio-sel', r.dominio || '', function(v){
     var t = fnRedAtual(); if(!t) return;
     t.dominio = v; fnGravarRed(t);
     // so atualiza o link na tela; repintar tudo destruiria o seletor aberto
@@ -37974,6 +37956,7 @@ function abAddVar(){
 // O link do teste pode morar num domínio seu — o servidor responde /r/:slug em
 // qualquer host que chegue nele, então só falta o DNS apontar pra cá.
 function abUrlDoTeste(r){
+  if(r && r.hospedado && r.hospedado.host) return 'https://' + r.hospedado.host + '/' + r.hospedado.caminho;
   var d = String((r && r.dominio) || '').trim()
             .replace(/^https?:\/\//i, '').replace(/\/+$/, '');
   return d ? ('https://' + d + '/r/' + r.slug) : urlPublica('/r/' + r.slug);
@@ -38000,7 +37983,7 @@ function abPausar(){
   var r=fnRedAtual(); if(!r) return;
   r.ativo = (r.ativo === false);
   fnGravarRed(r); fnPintarRed();
-  toastFn(r.ativo ? 'Link reativado' : 'Link pausado — quem clicar vê erro');
+  toastFn(r.ativo ? 'Link reativado' : (r.hospedado ? 'Teste pausado: todo mundo vê a versão original' : 'Link pausado — quem clicar vê erro'));
 }
 async function abRemover(){
   var r=fnRedAtual(); if(!r) return;
@@ -38081,7 +38064,103 @@ function abCriarCheckout(bt){
   v2Modal('<div class="v2-cab"><h3>✅ Teste criado</h3><button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
     ckCaixaLink(r)+'<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="fn-btn" onclick="v2Fechar(this)">Entendi</button></div>', 'p');
 }
-async function abNovoPagina(){
+// Teste no próprio domínio (hospedado no TMX): de 2 a 5 páginas já no ar, um endereço e a divisão.
+// Quem não cria páginas, ou não tem domínio hospedado com páginas no ar, segue com o link /r/.
+var abH = null;
+async function abNovoPagina(forcarLink){
+  if(!forcarLink && typeof pgPodeCriar === 'function' && pgPodeCriar()){
+    var est = null;
+    try{ est = await v2Json('/api/pg/estado?projeto='+encodeURIComponent(fnProj)); }catch(e){}
+    if(est && est.hospedagem && est.hospedagem.ligada){
+      var noAr = (est.paginas||[]).filter(function(p){ return p.publicada && p.dominio_id; });
+      var doms = (est.dominios||[]).filter(function(d){
+        return d.modo === 'tmx' && d.est === 'ok' && noAr.filter(function(p){ return p.dominio_id === d.id; }).length >= 2;
+      });
+      if(doms.length){
+        abH = { nome:'', caminho:'', dom:doms[0].id, doms:doms, paginas:noAr, testes:est.testes||[], escolhidas:[], pesos:{}, erro:'' };
+        abH.ov = v2Modal('<div id="abh-corpo"></div>', 'p');
+        abhPintar();
+        return;
+      }
+    }
+  }
+  return abNovoLink();
+}
+function abhPintar(){
+  var h = abH, el = document.getElementById('abh-corpo'); if(!h || !el) return;
+  var d = h.doms.filter(function(x){ return x.id === h.dom; })[0];
+  var pgs = h.paginas.filter(function(p){ return p.dominio_id === h.dom; });
+  var soma = h.escolhidas.reduce(function(a,id){ return a + (+h.pesos[id]||0); }, 0);
+  var linhas = pgs.map(function(p){
+    var i = h.escolhidas.indexOf(p.id);
+    return '<div style="display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap">'+
+      '<label style="display:flex;gap:8px;align-items:center;flex:1;min-width:180px;cursor:pointer"><input type="checkbox"'+(i>=0?' checked':'')+' onchange="abhMarcar(\''+fnEsc(p.id)+'\',this.checked)">'+
+        '<span><b style="font-size:13px">'+(i>=0 ? 'Versão '+'ABCDE'[i]+' · ' : '')+fnEsc(p.titulo)+'</b><span style="display:block;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--text2)">/'+fnEsc(p.slug)+'/'+(p.funil ? '' : ' · sem funil')+'</span></span></label>'+
+      (i>=0 ? '<input type="number" min="0" max="100" value="'+h.pesos[p.id]+'" aria-label="Porcentagem" onchange="abhPeso(\''+fnEsc(p.id)+'\',this.value)" style="width:72px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--text);font-size:13px"><span style="font-size:12.5px;color:var(--text2)">%</span>' : '')+
+    '</div>';
+  }).join('');
+  var semFunil = h.escolhidas.some(function(id){ var p = h.paginas.filter(function(x){ return x.id === id; })[0]; return p && !p.funil; });
+  el.innerHTML = '<div class="v2-cab"><h3>Novo teste de página</h3><button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
+    '<div class="fn-campo"><label>Nome do teste</label><input id="abh-nome" value="'+fnEsc(h.nome)+'" placeholder="Ex.: Oferta 597 × 697" oninput="abH.nome=this.value"></div>'+
+    '<div class="fn-campo"><label>Domínio</label><select onchange="abhDominio(this.value)">'+h.doms.map(function(x){ return '<option value="'+fnEsc(x.id)+'"'+(x.id===h.dom?' selected':'')+'>'+fnEsc(x.dominio)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="fn-campo"><label>Endereço do teste</label><input id="abh-cam" value="'+fnEsc(h.caminho)+'" placeholder="oferta" oninput="abhCaminho(this)">'+
+      '<div id="abh-link" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--text2);margin-top:4px;word-break:break-all">Link do anúncio: https://'+fnEsc(d.dominio)+'/'+fnEsc(h.caminho||'…')+'</div></div>'+
+    '<div style="margin-bottom:11px"><div class="v2-rot" style="margin-bottom:5px">Páginas no ar neste domínio (de 2 a 5; a primeira marcada é a original)</div>'+
+      '<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">'+linhas+'</div></div>'+
+    (h.escolhidas.length ? '<div style="font-size:12.5px;color:var(--text2);margin-bottom:10px">Soma da divisão: <b>'+soma+'%</b>'+(soma===100?'':' (precisa dar 100%)')+'</div>' : '')+
+    (semFunil ? '<div class="fx-aviso">Uma das páginas marcadas não está em nenhum funil. O teste sorteia, mas as visitas dela não entram na conta. Coloque a página num funil antes de rodar.</div>' : '')+
+    (h.erro ? '<div class="fx-aviso">'+fnEsc(h.erro)+'</div>' : '')+
+    '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:6px">'+
+      '<button class="fn-btn g" onclick="abhLink()">Usar um link que redireciona</button>'+
+      '<button class="fn-btn" onclick="abhCriar()">Criar teste</button></div>';
+}
+function abhCaminho(i){
+  var v = i.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9-]+/g,'-').replace(/^-+/,'');
+  i.value = v; abH.caminho = v;
+  var d = abH.doms.filter(function(x){ return x.id === abH.dom; })[0];
+  document.getElementById('abh-link').textContent = 'Link do anúncio: https://'+d.dominio+'/'+(v||'…');
+}
+function abhDominio(id){ abH.dom = id; abH.escolhidas = []; abH.pesos = {}; abH.erro = ''; abhPintar(); }
+function abhMarcar(id, marcou){
+  var h = abH;
+  if(marcou){ if(h.escolhidas.length >= 5){ h.erro = 'O teste aceita até 5 páginas.'; abhPintar(); return; } h.escolhidas.push(id); }
+  else { h.escolhidas = h.escolhidas.filter(function(x){ return x !== id; }); delete h.pesos[id]; }
+  h.erro = '';
+  var n = h.escolhidas.length;
+  h.escolhidas.forEach(function(x,i){ h.pesos[x] = Math.floor(100/n) + (i===0 ? 100%n : 0); });
+  abhPintar();
+}
+function abhPeso(id, v){
+  var h = abH; h.pesos[id] = Math.max(0, Math.min(100, Math.round(+v)||0));
+  if(h.escolhidas.length === 2){ var o = h.escolhidas.filter(function(x){ return x !== id; })[0]; h.pesos[o] = 100 - h.pesos[id]; }
+  abhPintar();
+}
+function abhLink(){ var ov = abH && abH.ov; abH = null; if(ov) v2Fechar(ov); abNovoPagina(true); }
+function abhCriar(){
+  var h = abH, nome = String(h.nome||'').trim(), cam = String(h.caminho||'').replace(/-+$/,'');
+  var erro = function(t){ h.erro = t; abhPintar(); };
+  if(!nome) return erro('Dê um nome ao teste.');
+  if(fnReds().some(function(x){ return (x.projeto||'') === fnProj && String(x.nome||'').trim().toLowerCase() === nome.toLowerCase(); })) return erro('Já existe um teste com esse nome neste projeto.');
+  if(!cam) return erro('Escolha o endereço do teste.');
+  if(h.paginas.some(function(p){ return p.dominio_id === h.dom && p.slug === cam; }) || h.testes.some(function(t){ return t.dominio === h.dom && t.caminho === cam; })) return erro('Esse endereço já é usado neste domínio.');
+  if(h.escolhidas.length < 2) return erro('Marque pelo menos 2 páginas no ar.');
+  if(h.escolhidas.reduce(function(a,id){ return a + (+h.pesos[id]||0); }, 0) !== 100) return erro('A divisão precisa somar 100%.');
+  var d = h.doms.filter(function(x){ return x.id === h.dom; })[0], l = fnReds(), fa = fnAtual();
+  var slug = cam, n = 2;
+  while(l.some(function(x){ return x.slug === slug; })) slug = cam + '-' + (n++);
+  var marca = Date.now().toString(36);
+  var destinos = h.escolhidas.map(function(id, i){
+    var p = h.paginas.filter(function(x){ return x.id === id; })[0];
+    return { id:'v'+marca+i, nome:'Versão '+'ABCDE'[i]+' · '+p.titulo, url:'https://'+d.dominio+'/'+p.slug+'/', peso:+h.pesos[id] };
+  });
+  l.push({ id:'r'+Date.now(), nome:nome, slug:slug, projeto:fnProj, funil: fa ? fa.id : '', ativo:true, hipotese:'', meta:'', minVendas:40,
+           criadoEm:new Date().toISOString(), destinos:destinos, hospedado:{ dominio:d.id, host:d.dominio, caminho:cam }, _updatedAt:Date.now() });
+  fnSalvarReds(l);
+  var ov = h.ov; abH = null; if(ov) v2Fechar(ov);
+  abSel = slug; fnPintarRed();
+  toastFn('Teste criado. Copie o link e cole no anúncio.');
+}
+async function abNovoLink(){
   var nome = ((await tmxPerguntar('Nome do teste (obrigatório, ex.: VSL 597 × 697):')) || '').trim();
   if(!nome){ toastFn('O teste precisa de um nome'); return; }
   var igual = fnReds().some(function(x){ return (x.projeto||'') === fnProj && String(x.nome||'').trim().toLowerCase() === nome.toLowerCase(); });

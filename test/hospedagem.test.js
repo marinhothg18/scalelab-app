@@ -227,7 +227,8 @@ test('hospedagem no TMX', async (t) => {
     }, 4000, 'contar o sorteio e a pessoa');
     assert.strictEqual(est.pessoas, 1);
 
-    const venc = await chamar('POST', '/api/ab/vencedora', { token: c.a.token, corpo: { teste: 'oferta-ab', variante: 'v2' } });
+    // a regra de declarar (95% e o mínimo de vendas) continua na rota; aqui o que importa é a vencedora chegar lá
+    const venc = await chamar('PUT', '/api/store/sl_redirecionadores', { token: c.a.token, corpo: [Object.assign({}, teste, { vencedora: 'v2', _updatedAt: Date.now() + 1000 })] });
     assert.strictEqual(venc.status, 200, JSON.stringify(venc.dados));
     await ate(() => JSON.parse(CF.r2.m.get('lp.loja-a.com.br/_tmx.json').b.toString()).testes.oferta.vencedora === 'v2', 6000, 'vencedora chegar na Cloudflare');
     W.limparCache();

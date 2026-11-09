@@ -50,6 +50,7 @@ Production runs on Railway. Code/comments/UI are in pt-BR; keep new work in pt-B
 ### Environment variables
 
 - `PORT` — HTTP port (default 3001)
+- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` — optional, enables hosted pages (see "Hospedagem própria"). Without all three, the client only sees FTP. `HOSPEDAGEM_ALVO` defaults to `paginas.paginasnoar.com`.
 - `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID` — optional, turn on the "Continuar com Facebook" button in Configurações › Conexões and in Projetos › Integrações (Facebook Login for Business, TMX only for now; `/api/meta/login` trades the code for the token)
 - `GITHUB_BACKUP_TOKEN`, `GITHUB_BACKUP_REPO` — optional, enables daily off-site backup of `db.json` to a GitHub repo (`owner/repo`, PAT with `repo` scope)
 - When `/data` exists (Railway volume), `DATA_DIR = /data` and that's where `db.json` + `backups/` live. Locally they live next to `server.js`.
@@ -147,6 +148,19 @@ Regras:
   dados da própria empresa). Os planos e limites ficam só em `PLANOS_TMX` no server.js, a lista única (preços
   da Malva, decididos em 07/11; anual = 10× o mensal). Nada trava por limite ainda. Trocar de plano: a Central muda em Clientes
   (`POST /api/plataforma/empresas/:id/plano`); o cliente pede pelo Suporte. `test/meu-plano.test.js`.
+
+### Hospedagem própria (Cloudflare, 09/11/2026)
+
+Cada domínio é de um de dois jeitos, escolhido ao cadastrar em Projetos › Criar páginas › Domínios (`pg_dominios.modo`): `tmx` (hospedado aqui) ou `ftp` (a hospedagem do cliente, como já era).
+
+- **Caminho da visita:** o cliente aponta um CNAME pra `paginas.paginasnoar.com` (Cloudflare for SaaS, zona `paginasnoar.com`). O `cloudflare/worker.mjs` responde na rota `*/*` e lê as páginas do R2 (bucket `tmx-paginas`, uma pasta por domínio, `_tmx.json` com testes e scripts). **O servidor não fica no caminho:** se o TMX cair, a página continua no ar.
+- **Quem fala com a Cloudflare é só a portaria** (`hospedagem.js`). O motor pede com `ctx.hosp('hosp-…')`, a empresa vem do canal e cada comando confere o dono do domínio em `dominios_hospedados` (`plataforma.sqlite`). Um domínio é de uma empresa só.
+- **Instalação:** a portaria instala bucket, programa e rota ao subir, se as chaves existirem; o programa só é reenviado se mudar. **Editou `worker.mjs`? Subir o servidor já atualiza a Cloudflare.** A escrita no R2 passa pelo próprio programa (`/_tmx-admin/`, só no `HOSPEDAGEM_ALVO`, com segredo derivado da chave de API).
+- **Teste A/B no domínio** (`r.hospedado = {dominio, host, caminho}` em `sl_redirecionadores`): o programa sorteia no próprio endereço, sem redirecionar, guarda em cookie e injeta `window.TMX_AB` (t, v, p, n). O pixel usa `TMX_AB` no lugar de `tmx_t`/`tmx_v` e `p` como página; `abn:1` conta o sorteio. Mudou o teste: `_paginasApi.sincronizarTestes()` regrava o `_tmx.json` (vale em até 30 s). Domínio FTP segue com o link `/r/`.
+- `/r/`, `/l/`, `/q/`, `/qi/`, `/px.js` e os eventos do pixel e do quiz, no domínio do cliente, são repassados ao servidor (`/e/<código>` da empresa).
+- **Domínio esperando DNS também é cobrado:** depois de 7 dias sai da Cloudflare (`est='parado'`, "Conferir de novo" cadastra outra vez).
+- O Workers grátis aguenta só 100 mil pedidos/dia; passou disso, a página dá erro. Antes de anúncio de verdade, assinar o plano pago (US$ 5/mês).
+- `test/hospedagem.test.js` (Cloudflare falsa rodando o programa de verdade) e `test/worker-paginas.test.js`.
 
 ### Data model
 
