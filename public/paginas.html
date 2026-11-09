@@ -120,6 +120,8 @@ a { color: var(--azul); }
 .anexados:empty { display: none; }
 .anexados .mini { position: relative; }
 .anexados img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line2); display: block; }
+.anexados .mini.arq { display: flex; align-items: center; height: 64px; max-width: 240px; padding: 0 16px 0 12px; border: 1px solid var(--line2); border-radius: 8px; font-size: 12.5px; }
+.anexados .mini.arq span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anexados button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: var(--bg3); color: var(--tx); font-size: 12px; line-height: 20px; padding: 0; box-shadow: 0 0 0 1px var(--line2); }
 textarea.caixa { width: 100%; min-height: 120px; resize: vertical; background: var(--bg3); border: 1px solid var(--line2); border-radius: 12px; padding: 12px 14px; font: 15px/1.5 var(--f); }
 .linha-envio { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -269,11 +271,11 @@ body.embutido .cab { display: none; }
       </div>
       <form id="chat-form" class="compositor">
         <div class="anexados" id="anexados"></div>
-        <textarea class="caixa" id="chat-in" placeholder="Peça o que quiser mudar. Dá pra colar o endereço de outra página, anexar um print ou falar."></textarea>
+        <textarea class="caixa" id="chat-in" placeholder="Peça o que quiser mudar. Dá pra colar o endereço de outra página, anexar imagem, PDF ou HTML, ou falar."></textarea>
         <div class="linha-envio">
           <div class="esq">
-            <label class="ic" for="chat-arq" title="Anexar imagem (também dá pra colar ou arrastar)">📎 Imagem</label>
-            <input type="file" id="chat-arq" accept="image/*" multiple hidden>
+            <label class="ic" for="chat-arq" title="Anexar imagem, PDF ou HTML (também dá pra colar ou arrastar)">📎 Arquivo</label>
+            <input type="file" id="chat-arq" accept="image/*,.pdf,application/pdf,.html,.htm,text/html" multiple hidden>
             <button type="button" class="ic" id="bt-falar">🎤 Falar</button>
             <span class="ajuda" id="chat-custo" style="margin:0"></span>
             <button class="btn mini" id="chat-nova" type="button">Nova conversa</button>
@@ -649,11 +651,12 @@ body.embutido .cab { display: none; }
   function bolha(m, fotos) {
     var topo = fotos && fotos.length ? '<div class="anexo">' + fotos.map(function (u, i) { return '<img src="' + u + '" alt="Imagem enviada ' + (i + 1) + '">'; }).join('') + '</div>'
       : m.imagens ? '<span class="n-img">📎 ' + m.imagens + (m.imagens === 1 ? ' imagem' : ' imagens') + '</span>' : '';
+    if (m.arquivos && m.arquivos.length) topo += '<span class="n-img">📄 ' + esc(m.arquivos.join(', ')) + '</span>';
     return '<div class="bolha ' + esc(m.de) + '">' + topo + fmt(m.texto || '') + '</div>';
   }
   function pintarChat(l, extra) {
     var html = l.map(function (m) { return bolha(m); }).join('');
-    if (!l.length) html = '<div class="bolha claude">Me diga o que mudar nesta página: a VSL, o checkout, o preço, os textos. Dá pra colar o endereço de outra página como referência, mandar um print (📎) ou falar (🎤). Eu mudo, crio a versão e confiro. Publicar fica com você.</div>';
+    if (!l.length) html = '<div class="bolha claude">Me diga o que mudar nesta página: a VSL, o checkout, o preço, os textos. Dá pra colar o endereço de outra página como referência, mandar print, PDF ou HTML (📎) ou falar (🎤). Eu mudo, crio a versão e confiro. Publicar fica com você.</div>';
     $('chat-msgs').innerHTML = html + (extra || '');
     $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
   }
@@ -675,11 +678,25 @@ body.embutido .cab { display: none; }
   }
 
   // 📎 imagens: reduzidas aqui mesmo (lado maior até 1568 px, JPEG), até 5 por mensagem
-  var anexos = [];
+  // 📎 PDF (até 10 MB) e HTML (até 3 MB): até 3 por mensagem. O servidor confere de novo.
+  var anexos = [], PDF_MAX = 10 * 1024 * 1024, HTML_MAX = 3e6;
   function pintarAnexos() {
     $('anexados').innerHTML = anexos.map(function (a, i) {
+      if (a.arq) return '<div class="mini arq" title="' + esc(a.nome) + '"><span>📄 ' + esc(a.nome) + '</span><button type="button" data-tira="' + i + '" aria-label="Tirar o arquivo ' + esc(a.nome) + '">✕</button></div>';
       return '<div class="mini"><img src="' + a.url + '" alt="Imagem anexada ' + (i + 1) + '"><button type="button" data-tira="' + i + '" aria-label="Tirar a imagem ' + (i + 1) + '">✕</button></div>';
     }).join('');
+  }
+  function lerArquivo(f, pdf) {
+    if (anexos.filter(function (a) { return a.arq; }).length >= 3) return avisoChat('Dá pra mandar até 3 arquivos por mensagem.');
+    if (f.size > (pdf ? PDF_MAX : HTML_MAX)) return avisoChat('O arquivo ' + f.name + ' passa do limite: ' + (pdf ? '10 MB pra PDF.' : '3 MB pra HTML.'));
+    var r = new FileReader();
+    r.onerror = function () { avisoChat('Não consegui abrir o arquivo ' + f.name + '.'); };
+    r.onload = function () {
+      if (anexos.filter(function (a) { return a.arq; }).length >= 3) return;
+      anexos.push(pdf ? { arq: 'pdf', nome: f.name, dados: String(r.result).split(',')[1] || '' } : { arq: 'html', nome: f.name, texto: String(r.result) });
+      pintarAnexos();
+    };
+    if (pdf) r.readAsDataURL(f); else r.readAsText(f);
   }
   function reduzir(f) {
     return new Promise(function (ok, erro) {
@@ -697,9 +714,14 @@ body.embutido .cab { display: none; }
     });
   }
   function anexar(lista) {
-    [].slice.call(lista || []).filter(function (f) { return /^image\//.test(f.type); }).forEach(function (f) {
-      if (anexos.length >= 5) return avisoChat('Dá pra mandar até 5 imagens por mensagem.');
-      reduzir(f).then(function (a) { if (anexos.length < 5) { anexos.push(a); pintarAnexos(); } }).catch(function () { avisoChat('Não consegui abrir essa imagem.'); });
+    var nImg = function () { return anexos.filter(function (a) { return !a.arq; }).length; };
+    [].slice.call(lista || []).forEach(function (f) {
+      var nome = f.name || '';
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(nome)) return lerArquivo(f, true);
+      if (f.type === 'text/html' || /\.html?$/i.test(nome)) return lerArquivo(f, false);
+      if (!/^image\//.test(f.type)) return avisoChat('Dá pra anexar imagem, PDF ou HTML. O arquivo ' + nome + ' não é nenhum deles.');
+      if (nImg() >= 5) return avisoChat('Dá pra mandar até 5 imagens por mensagem.');
+      reduzir(f).then(function (a) { if (nImg() < 5) { anexos.push(a); pintarAnexos(); } }).catch(function () { avisoChat('Não consegui abrir essa imagem.'); });
     });
   }
   $('chat-arq').addEventListener('change', function () { anexar(this.files); this.value = ''; });
@@ -741,19 +763,24 @@ body.embutido .cab { display: none; }
   function enviar(texto) {
     texto = String(texto || '').trim(); if ((!texto && !anexos.length) || trabalhando || !atual) return;
     pararDeOuvir();
-    var id = atual.pagina.id, fotos = anexos.map(function (a) { return a.url; }), imagens = anexos.map(function (a) { return { tipo: a.tipo, dados: a.dados }; });
+    var soImg = anexos.filter(function (a) { return !a.arq; }), soArq = anexos.filter(function (a) { return a.arq; }), guardados = anexos;
+    // o servidor aceita até 20 MB por pedido, já com o base64
+    var peso = guardados.reduce(function (t, a) { return t + (a.dados || a.texto || '').length; }, 0);
+    if (peso > 19e6) return avisoChat('Os anexos estão pesados demais pra ir juntos. Mande uma parte agora e o resto na próxima mensagem.');
+    var id = atual.pagina.id, fotos = soImg.map(function (a) { return a.url; }), imagens = soImg.map(function (a) { return { tipo: a.tipo, dados: a.dados }; });
+    var arquivos = soArq.map(function (a) { return a.arq === 'pdf' ? { tipo: 'pdf', nome: a.nome, dados: a.dados } : { tipo: 'html', nome: a.nome, texto: a.texto }; });
     var antes = [].slice.call($('chat-msgs').querySelectorAll('.bolha')).map(function (b) { return b.outerHTML; }).join('');
-    var eu = bolha({ de: 'eu', texto: texto }, fotos);
+    var eu = bolha({ de: 'eu', texto: texto, arquivos: soArq.map(function (a) { return a.nome; }) }, fotos);
     trabalhando = true; $('chat-enviar').disabled = true; $('chat-in').value = ''; anexos = []; pintarAnexos();
     $('chat-msgs').innerHTML = antes + eu + '<div class="bolha acao">O Claude está trabalhando…</div>';
     $('chat-msgs').scrollTop = $('chat-msgs').scrollHeight;
-    api('POST', '/api/pg/paginas/' + id + '/chat', { mensagem: texto, imagens: imagens }).then(function (r) {
+    api('POST', '/api/pg/paginas/' + id + '/chat', { mensagem: texto, imagens: imagens, arquivos: arquivos }).then(function (r) {
       trabalhando = false; $('chat-enviar').disabled = false;
       if (chatDe !== id) return;
       if (r.s !== 200) {
         $('chat-msgs').innerHTML = antes + eu + '<div class="bolha erro">' + esc(r.j.error || 'Não deu certo.') + '</div>';
         // o que não foi, volta pra caixa
-        $('chat-in').value = texto; anexos = fotos.map(function (u, i) { return { tipo: imagens[i].tipo, dados: imagens[i].dados, url: u }; }); pintarAnexos(); return;
+        $('chat-in').value = texto; anexos = guardados; pintarAnexos(); return;
       }
       pintarChat(r.j.mensagens); custo(r.j.uso, r.j.custoPedidoUS);
       if (r.j.mudou) abrir(id);
