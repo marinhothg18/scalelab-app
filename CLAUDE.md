@@ -266,6 +266,7 @@ Barra de baixo: Dashboard, Demandas, Análise, Projetos e Menu (decisão do Thia
 
 Everything runs inside the single Node process — no external scheduler. If you add a long-running task, respect this model:
 
+- `_metaSincronizar` — every 15min light (today's spend only, `leve`), every hour full via `_metaRodar` (placements and change history).
 - `_lembretesRodar` — every 15min. Generates notifications for demandas (24h/6h/2h/30min/vencendo, atrasadas, rituais do dia, backlog 3d/7d). Dedup-keyed per day per rule per target. Also fires WhatsApp when `_notificarViaWhatsApp` is wired.
 - `_gerarRelatorioSemanal` — hourly check, fires only on configured weekday+hour (default Fri 18h). Writes to `sl_relatorios_semanais`, notifies destinatários, sends WhatsApp summary.
 - `_gerarRelatorioDiario` — hourly check, fires at configured hour (default 18h). Sends daily summary via WhatsApp + internal notif.

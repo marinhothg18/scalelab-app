@@ -3636,7 +3636,7 @@ app.post('/api/meta/conexao/desconectar', authMeta, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── NÚMEROS DA META, DE HORA EM HORA ──
+// ── NÚMEROS DA META: GASTO DE HOJE A CADA 15 MIN, COMPLETO A CADA HORA ──
 // Grava em tabelas próprias (meta_camp_dia, meta_camp_hora) pra rodar uma
 // semana ao lado da Utmify sem mexer no que as telas mostram hoje. As mudanças
 // de orçamento, lance e status vêm do histórico da conta, com a hora exata.
@@ -3701,7 +3701,8 @@ async function _metaSincronizar(opts) {
   if (!geral || !geral.accessToken || geral.tipo !== 'sistema' || !_pessoas()) return null;
   if (_metaSyncRodando) return null;
   _metaSyncRodando = true;
-  const t0 = Date.now(), dias = Math.min(Math.max(Number(opts.dias) || 2, 1), 30);
+  // leve: só o gasto de hoje (campanhas, dia e hora). Posicionamento e histórico de mudanças ficam para a puxada completa
+  const t0 = Date.now(), leve = !!opts.leve, dias = leve ? 1 : Math.min(Math.max(Number(opts.dias) || 2, 1), 30);
   const hoje = _diaBR(t0), desde = _diaBR(t0 - (dias - 1) * 86400000);
   const r = { contas: 0, campanhas: 0, linhasDia: 0, linhasHora: 0, mudancas: 0, erros: [] };
   const STATUS_VIVOS = JSON.stringify(['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW']);
@@ -3790,6 +3791,7 @@ async function _metaSincronizar(opts) {
           r.linhasHora++;
         });
 
+        if (!leve) {
         // 3b) gasto por posicionamento (Instagram Stories, Facebook Feed...), por dia.
         // A UTM da venda traz o posicionamento ({{placement}}); a Meta traz o gasto dele.
         const pp = await _metaTudo(c.id + '/insights', { level: 'campaign', fields: 'campaign_id,spend,impressions,inline_link_clicks',
@@ -3811,7 +3813,9 @@ async function _metaSincronizar(opts) {
           });
           _pessoas().exec('COMMIT');
         } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+        }
 
+        if (!leve) {
         // 4) histórico de mudanças: orçamento, lance e status, com a hora exata
         const desdeAtv = Math.floor(Math.max(t0 - dias * 86400000, (geral.sync && geral.sync.atividadesAte && !opts.dias ? geral.sync.atividadesAte - 3600000 : 0)) / 1000);
         const atvs = await _metaTudo(c.id + '/activities', { fields: 'event_type,event_time,object_id,object_name,extra_data,actor_name',
@@ -3836,6 +3840,7 @@ async function _metaSincronizar(opts) {
             .run(camp, nome, '', campo, val(ex.old_value), val(ex.new_value), em, null, 'meta');
           r.mudancas++;
         });
+        }
         r.contas++;
         break;
       } catch (e) {
@@ -3853,7 +3858,8 @@ async function _metaSincronizar(opts) {
       const db = readDB(), cf = _metaCfg(db);
       if (cf) {
         cf.sync = { em: Date.now(), seg: Math.round((Date.now() - t0) / 1000), contas: r.contas, campanhas: r.campanhas, linhasDia: r.linhasDia,
-                    linhasHora: r.linhasHora, mudancas: r.mudancas, erros: r.erros.slice(0, 10), atividadesAte: t0 };
+                    linhasHora: r.linhasHora, mudancas: r.mudancas, erros: r.erros.slice(0, 10), leve,
+                    atividadesAte: leve ? ((cf.sync && cf.sync.atividadesAte) || null) : t0 };   // a leve não olha o histórico: não pode marcar como visto
         if (r.erros.length && !r.contas) cf.ultimoErro = r.erros[0];
         db.store[KEY_META] = cf; writeDB(db);
       }
@@ -3884,7 +3890,12 @@ async function _metaRodar() {
   return r;
 }
 setTimeout(() => _metaRodar().catch(e => console.error('[META]', e.message)), 3 * 60 * 1000);
-setInterval(() => _metaRodar().catch(e => console.error('[META]', e.message)), 60 * 60 * 1000);
+// De 15 em 15 minutos o gasto de hoje; a cada hora, no lugar dela, a puxada completa
+let _metaTiques = 0;
+setInterval(() => {
+  _metaTiques++;
+  (_metaTiques % 4 === 0 ? _metaRodar() : _metaSincronizar({ leve: true })).catch(e => console.error('[META]', e.message));
+}, 15 * 60 * 1000);
 setInterval(() => _capiEnviarPendentes().catch(e => console.error('[CAPI] envio:', e.message)), 60 * 1000);
 // Mexer nas campanhas pelo TMX: ativar, pausar e mudar orçamento. Só a Diretoria e só com o token
 // tendo ads_management. Vale na hora na Meta; fica na auditoria e no histórico da campanha.
@@ -4003,7 +4014,7 @@ app.post('/api/meta/orcamento', authMeta, async (req, res) => {
 });
 app.post('/api/meta/puxar', authMeta, async (req, res) => {
   try {
-    const r = await _metaSincronizar({ dias: Math.min(Number((req.body || {}).dias) || 2, 30) });
+    const r = await _metaSincronizar({ dias: Math.min(Number((req.body || {}).dias) || 2, 30), leve: (req.body || {}).leve === true });
     if (!r) return res.status(400).json({ error: _metaSyncRodando ? 'Já está puxando. Espere terminar.' : 'Conecte a Meta primeiro.' });
     const db = readDB();
     audit(db, 'integracao.meta.puxar', KEY_META, { contas: r.contas }, req.user);

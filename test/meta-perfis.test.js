@@ -32,7 +32,7 @@ function falsa(req, res) {
     const erro = (code, message) => { res.statusCode = 400; ok({ error: { code, message } }); };
     if (p === 'oauth/access_token') return ok({ access_token: curtos[q.get('fb_exchange_token')] || T('A'), token_type: 'bearer', expires_in: 5184000 });
     if (p === 'debug_token') return ok({ data: { app_id: APP_ID, type: 'USER', expires_at: Math.floor(Date.now() / 1000) + 5184000 } });
-    chamadas.push({ metodo: req.method, p, tk });
+    chamadas.push({ metodo: req.method, p, tk, quebra: u.searchParams.get('breakdowns') || '', periodo: u.searchParams.get('time_range') || '' });
     if (!pf || mortos.has(tk)) return erro(190, 'token recusado');
     if (p === 'me/permissions') return ok({ data: ['ads_read', 'ads_management'].map(permission => ({ permission, status: 'granted' })) });
     if (p === 'me/adaccounts') return ok({ data: pf.contas.map(c => ({ id: 'act_' + c, account_id: c, name: 'Conta ' + c, account_status: 1, currency: 'BRL', timezone_name: 'America/Sao_Paulo' })) });
@@ -139,6 +139,29 @@ test('cada conta sai pelo perfil que a enxerga', async () => {
   assert.deepStrictEqual(usouEm('111'), [T('A')]);
   assert.deepStrictEqual(usouEm('222'), [T('A')], 'conta repetida usa quem conectou primeiro');
   assert.deepStrictEqual(usouEm('333'), [T('B')]);
+});
+
+test('a puxada de 15 em 15 minutos traz só o gasto de hoje', async () => {
+  const antes = banco().store.sl_integracoes_meta.sync.atividadesAte;
+  assert.ok(antes, 'a puxada completa marcou até onde viu o histórico');
+  chamadas = [];
+  await espera(5);
+  await ate(async () => (await chamar('POST', '/api/meta/puxar', { token: dono, corpo: { leve: true } })).status === 200, 20000, 'puxada leve', () => log);
+  const de111 = chamadas.filter(x => x.p.startsWith('act_111/'));
+  assert.ok(de111.some(x => x.p === 'act_111/campaigns'), 'campanhas e orçamento vêm');
+  assert.ok(de111.some(x => x.p === 'act_111/insights' && /hourly/.test(x.quebra)), 'hora a hora vem');
+  assert.ok(!de111.some(x => /publisher_platform/.test(x.quebra)), 'posicionamento fica para a completa');
+  assert.ok(!de111.some(x => x.p === 'act_111/activities'), 'histórico fica para a completa');
+  const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+  assert.ok(de111.filter(x => x.periodo).every(x => JSON.parse(x.periodo).since === hoje), 'só hoje: ' + JSON.stringify(de111.map(x => x.periodo)));
+  const s = banco().store.sl_integracoes_meta.sync;
+  assert.strictEqual(s.leve, true);
+  assert.strictEqual(s.atividadesAte, antes, 'a leve não marca o histórico como visto');
+  chamadas = [];
+  await puxar();
+  const c = chamadas.filter(x => x.p.startsWith('act_111/'));
+  assert.ok(c.some(x => x.p === 'act_111/activities') && c.some(x => /publisher_platform/.test(x.quebra)), 'a completa continua trazendo tudo');
+  assert.notStrictEqual(banco().store.sl_integracoes_meta.sync.atividadesAte, antes);
 });
 
 test('pausar sai pelo perfil da conta daquela campanha', async () => {
