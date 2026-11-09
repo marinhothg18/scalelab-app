@@ -118,7 +118,7 @@ test('o link abre sem login, conecta uma vez e fica em nome de quem gerou', asyn
 test('link vencido é recusado e avisa que já tem perfil conectado', async () => {
   const r = await gerar();
   const api = doLink(r.dados.caminho);
-  assert.strictEqual((await chamar('GET', api)).dados.substitui, true);
+  assert.strictEqual((await chamar('GET', api)).dados.jaTem, 1);
   const d = banco();
   d.store.sl_integracoes_meta.linksLogin.forEach(x => { x.expira = Date.now() - 1000; });
   fs.writeFileSync(path.join(dir, 'db.json'), JSON.stringify(d));

@@ -39,7 +39,7 @@
 
     <div id="pronto" hidden style="display:flex;flex-direction:column;gap:16px">
       <div class="info"><b>Confira o perfil antes de continuar</b>O Facebook usa a conta aberta neste navegador. Você autoriza o TMX a acessar as contas de anúncio desse perfil, e a senha fica só no Facebook.</div>
-      <div class="alerta" id="substitui" hidden>Esta empresa já tem um perfil conectado. Esta autorização substitui o perfil atual.</div>
+      <div class="alerta" id="ja-tem" hidden>Esta empresa já tem perfil conectado. Este entra junto com os outros. Se for o mesmo perfil, só renova o acesso.</div>
       <p class="miudo" id="validade"></p>
       <button type="button" id="ir">Continuar com Meta Ads</button>
       <p class="msg" id="msg" role="status"></p>
@@ -69,7 +69,7 @@
 
   fetch(api, { cache: 'no-store' }).then(respostaJson).then(function(d){
     esconder('carregando'); mostrar('pronto');
-    if(d.substitui) mostrar('substitui');
+    if(d.jaTem) mostrar('ja-tem');
     var hora = new Date(d.expiraEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     $('validade').textContent = (d.por ? 'Link gerado por ' + d.por + '. ' : '') + 'Vale até ' + hora + ' e funciona uma vez.';
     carregarFacebook(d.appId);

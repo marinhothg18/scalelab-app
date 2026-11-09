@@ -2172,6 +2172,8 @@ body.mp-gaveta-on #fn-dentro{margin-right:350px}
 .capi-cab b .v2-pill{margin-left:8px;vertical-align:middle}
 .pc-px{padding:12px 0;border-top:1px solid var(--border)}
 .capi-cab + .pc-px{border-top:0;padding-top:0}
+.mc-perfil-l{display:flex;justify-content:space-between;align-items:center;gap:10px 14px;flex-wrap:wrap}
+.mc-perfil-n{min-width:0;flex:1 1 240px}
 .pc-px-t{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px}
 .pc-px-t span{font-size:11.5px;color:var(--text2)}
 .pc-cod{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:nowrap;margin:8px 0;color:var(--text)}
@@ -40061,7 +40063,7 @@ function _cardMeta(con, cp){
         '<button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div>'+(login.naTmx ? '</div>' : '')+'<div id="mc-res" class="mc-res"></div>'
         : '<div class="fx-sub">Só a Diretoria conecta a Meta.</div>');
   } else {
-    var q = con.quem || {}, sy = con.sync || null;
+    var sy = con.sync || null;
     // token salvo não é conexão funcionando: se a última puxada não leu conta nenhuma, o selo diz isso
     var mcFalhou = !!(sy && sy.erros && sy.erros.length && !sy.contas);
     var mcBloq = mcFalhou && sy.erros.some(function(e){ return /bloqueou o app|api access blocked/i.test(e); });
@@ -40072,26 +40074,25 @@ function _cardMeta(con, cp){
       var x = mcMsgs.filter(function(y){ return y.m === m; })[0];
       if(x){ if(conta && x.contas.indexOf(conta) < 0) x.contas.push(conta); } else mcMsgs.push({ m: m, contas: conta ? [conta] : [] });
     });
-    var mcFb = con.via === 'facebook';
-    var mcVence = con.expiraEm ? new Date(con.expiraEm).toLocaleDateString('pt-BR') : '';
-    h += '<div class="capi-cab"><div><b>Meta</b><span>'+(mcFb ? 'Conectada pelo Facebook por' : 'Usuário do sistema')+' <b>'+fnEsc(q.nome || q.id || '')+'</b>'+(mcFb ? (mcVence ? ' · vale até '+fnEsc(mcVence) : ' · sem vencimento') : ' · token '+fnEsc(con.tokenFim || ''))+' · listas '+mcHa(Date.parse(con.atualizadoEm || ''))+'</span></div>'+
-      (mcFalhou ? '<span class="v2-pill warn" title="O token está salvo, mas a última puxada não conseguiu ler nenhuma conta">'+(mcBloq ? 'Bloqueado pela Meta' : 'Sem acesso')+'</span>' : '<span class="v2-pill ok">Conectado</span>')+'</div>'+
-      '<div class="capi-chips" style="margin-bottom:10px">'+MC_PERMS.map(function(p){ var ok = (con.permissoes || []).indexOf(p[0]) >= 0;
+    var mcPs = con.perfis || [], mcPerms = {};
+    mcPs.forEach(function(p){ if(!p.caiu) (p.permissoes || []).forEach(function(x){ mcPerms[x] = 1; }); });
+    h += '<div class="capi-cab"><div><b>Meta</b><span>'+(con.via !== 'facebook' && con.tokenFim ? 'Token '+fnEsc(con.tokenFim)+' · ' : '')+'Listas '+mcHa(Date.parse(con.atualizadoEm || ''))+'</span></div>'+
+      (mcFalhou ? '<span class="v2-pill warn" title="O token está salvo, mas a última puxada não conseguiu ler nenhuma conta">'+(mcBloq ? 'Bloqueado pela Meta' : 'Sem acesso')+'</span>' : mcPerfisPill(mcPs))+'</div>'+
+      mcPerfisHtml(con, dir)+
+      '<div class="capi-chips" style="margin:12px 0 10px">'+MC_PERMS.map(function(p){ var ok = !!mcPerms[p[0]];
         return '<span class="capi-chip'+(ok ? ' on' : '')+'" title="'+fnEsc(p[1])+'">'+(ok ? '✓ ' : '✕ ')+p[0]+'</span>'; }).join('')+'</div>'+
       '<div class="capi-aviso">Puxa da Meta a cada hora: gasto por campanha (hoje hora a hora), cliques, vídeo de 3 s a 100%, orçamento, lance e o histórico de mudanças. '+
         'Na primeira semana roda ao lado da Utmify, pra comparar. '+(sy ? '<b>Última puxada '+mcHa(sy.em)+'</b>: '+sy.contas+' conta(s), '+sy.campanhas+' campanha(s), '+sy.mudancas+' mudança(s) nova(s).' : '<b>Primeira puxada em andamento.</b>')+
         mcMsgs.slice(0, 3).map(function(x){ return '<br><span style="color:var(--v2-laranja,#F59E0B)">'+(x.contas.length ? fnEsc(x.contas.join(', '))+': ' : '')+fnEsc(x.m)+'</span>'; }).join('')+'</div>'+
-      (dir && login.naTmx && !mcFb ? mcBlocoFb(login, 'Conectar com o Facebook, sem token') : '')+
-      (dir ? '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button><button class="fn-btn g sm" onclick="mcAtualizar(this)">Atualizar listas</button>'+
-        (login.pronto && mcFb ? '<button class="fn-btn g sm" onclick="mcFacebook(this)">Conectar de novo pelo Facebook</button>' : '')+
-        '<button class="fn-btn g sm" onclick="mcTrocar()">Trocar token</button><button class="fn-btn g sm" onclick="mcDesconectar(this)">Desconectar</button></div>'+
-        '<div id="mc-troca" style="display:none" class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="Token novo (EAAG…)" autocomplete="off" aria-label="Token novo"><button class="fn-btn" onclick="mcConectar(this)">Trocar</button></div><div id="mc-res" class="mc-res"></div>' : '');
+      (dir ? '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn sm" onclick="mcAbrirAdd(this)">Adicionar outro perfil</button><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button></div>'+
+        '<div class="mc-add" style="display:none">'+(login.naTmx ? mcBlocoFb(login, 'Conectar mais um perfil') : '')+
+          '<div class="mc-opcao"><b>Colar um token</b><div class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="Token (EAAG…)" autocomplete="off" aria-label="Token do perfil ou do usuário do sistema"><button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div></div></div><div id="mc-res" class="mc-res"></div>' : '');
     var cs = con.contas || [];
     h += '<div class="v2-rot vd-sec">Contas de anúncio · '+cs.length+'</div>'+
       '<div style="overflow-x:auto"><table class="sv-tab" style="min-width:560px"><tr><th>Conta</th><th>Situação</th><th class="n">Gasto 14 dias</th><th>Projeto</th></tr>'+
       cs.map(function(c){
         var st = c.status === 1 || c.status === 201 ? 'ok' : (c.status === 2 || c.status === 101 ? 'neu' : 'warn');
-        return '<tr><td><b>'+fnEsc(c.nome || c.conta)+'</b><div class="fx-sub mono">'+fnEsc(c.conta)+(c.bm ? ' · '+fnEsc(c.bm) : '')+'</div></td>'+
+        return '<tr><td><b>'+fnEsc(c.nome || c.conta)+'</b><div class="fx-sub mono">'+fnEsc(c.conta)+(c.bm ? ' · '+fnEsc(c.bm) : '')+mcPorQuem(c, con)+'</div></td>'+
           '<td><span class="v2-pill '+st+'">'+fnEsc(c.statusTxt || '')+'</span></td><td class="n">'+fnDin(c.gasto14 || 0)+
             (c.moeda && c.moeda !== 'BRL' ? '<div class="fx-sub">conta em '+fnEsc(c.moeda)+', convertido</div>' : '')+'</td>'+
           '<td>'+((c.projetos || []).length ? c.projetos.map(function(p){ return '<span class="v2-pill neu">'+fnEsc(p)+'</span>'; }).join(' ')+((c.projetos || []).length > 1 ? ' <span class="v2-pill warn" title="Cada projeto pega as campanhas pelo nome">pelo nome</span>' : '')
@@ -40132,7 +40133,7 @@ function mcConectar(bt){
   if(!tk){ mcMsg('Cole o token primeiro.', 1); return; }
   bt.disabled = true; bt.textContent = 'Conferindo com a Meta…';
   fetch(API_BASE+'/api/meta/conexao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: tk }) })
-    .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); mcRepintar(); })
+    .then(mcResposta).then(function(d){ toastFn(d.novo.nome+' conectado: '+d.novo.contas+' conta(s), '+d.novo.pixels+' pixel(s). Puxando os números…'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Conectar'; mcMsg(e.message, 1); });
 }
 // Conectar com Facebook: o FB.login tem de sair direto do clique, então o SDK já vem carregado
@@ -40150,7 +40151,7 @@ function mcEsperarLink(antes, ate){
   _mcLinkEspera = setTimeout(function(){
     if(!document.querySelector('.mc-link-res input') || Date.now() > ate) return;
     fetch(API_BASE+'/api/meta/conexao').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
-      if(d && d.conectado && d.conectadoEm !== antes){ toastFn('Meta conectada: '+((d.contas || []).length)+' conta(s)'); mcRepintar(); return; }
+      if(d && d.conectado && d.ultimaConexaoEm !== antes){ toastFn('Perfil conectado'); mcRepintar(); return; }
       mcEsperarLink(antes, ate);
     }).catch(function(){ mcEsperarLink(antes, ate); });
   }, 5000);
@@ -40165,7 +40166,7 @@ function mcCopiarLink(bt){
         '<span class="fx-sub">Vale por 30 minutos e funciona uma vez. Quando a conexão terminar, esta tela atualiza sozinha.</span>';
       var copiou = function(){ toastFn('Link copiado'); }, manual = function(){ res.querySelector('input').select(); toastFn('Copie o link que apareceu aqui'); };
       if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(copiou, manual); else manual();
-      mcEsperarLink(d.conectadoEm, d.expiraEm);
+      mcEsperarLink(d.ultimaConexaoEm, d.expiraEm);
     }).catch(function(e){ bt.disabled = false; bt.textContent = txt; mcMsg(e.message, 1); });
 }
 function mcCarregarFb(l){
@@ -40188,14 +40189,45 @@ function mcFacebook(bt){
     }
     bt.textContent = 'Conferindo com a Meta…';
     fetch(API_BASE+'/api/meta/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code:a.code || '', accessToken:a.accessToken || '' }) })
-      .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); mcRepintar(); })
+      .then(mcResposta).then(function(d){ toastFn(d.novo.nome+' conectado: '+d.novo.contas+' conta(s), '+d.novo.pixels+' pixel(s). Puxando os números…'); mcRepintar(); })
       .catch(function(e){ volta(); mcMsg(e.message, 1); });
   }, { config_id:_mcFb.cfg.configId }); // configuração de token de usuário: volta accessToken, e o servidor troca por um longo
 }
-function mcTrocar(){ var t = document.getElementById('mc-troca'); if(t) t.style.display = t.style.display === 'none' ? 'flex' : 'none'; }
-function mcAtualizar(bt){
+// Os perfis conectados: o mesmo bloco em Configurações (Dono) e em Projetos › Integrações
+var _mcCon = null;
+function mcPlural(n, um, varios){ return n+' '+(n === 1 ? um : varios); }
+function mcPerfisPill(ps){
+  var ruins = ps.filter(function(p){ return p.caiu; }).length, ok = ps.length - ruins;
+  if(!ok) return '<span class="v2-pill warn">Sem acesso</span>';
+  return '<span class="v2-pill ok">'+(ps.length === 1 ? 'Conectada' : mcPlural(ok, 'perfil funcionando', 'perfis funcionando'))+'</span>'+(ruins ? ' <span class="v2-pill warn">'+ruins+' para reconectar</span>' : '');
+}
+function mcPerfisHtml(con, pode){
+  _mcCon = con;
+  return (con.perfis || []).map(function(p){
+    var data = p.expiraEm ? new Date(p.expiraEm).toLocaleDateString('pt-BR') : '';
+    var info = [p.via === 'facebook' ? (p.porLink ? 'Pelo link do multilogin' : 'Pelo Facebook') : 'Por token',
+      p.expiraEm ? (Date.now() > p.expiraEm ? 'venceu em ' : 'vale até ')+data : 'sem vencimento', mcPlural(p.contas, 'conta', 'contas'), mcPlural(p.pixels, 'pixel', 'pixels')];
+    var id = fnEsc(p.id);
+    return '<div class="pc-px"><div class="mc-perfil-l"><div class="mc-perfil-n"><b>'+fnEsc(p.nome)+'</b> '+(p.caiu ? '<span class="v2-pill warn">Acesso caiu</span>' : '<span class="v2-pill ok">Funcionando</span>')+
+      '<div class="fx-sub">'+fnEsc(info.join(' · '))+'</div>'+(p.caiu && p.erro ? '<div class="fx-sub" style="color:var(--v2-laranja,#F59E0B)">'+fnEsc(p.erro)+'</div>' : '')+'</div>'+
+      (pode ? '<div class="lc-bts" style="margin:0">'+(p.caiu ? '<button class="fn-btn sm" onclick="mcAbrirAdd(this, true)">Reconectar</button>' : '<button class="fn-btn g sm" onclick="mcAtualizar(this, \''+id+'\')">Atualizar listas</button>')+
+        '<button class="fn-btn g sm" onclick="mcDesconectar(this, \''+id+'\')">Desconectar</button></div>' : '')+'</div></div>';
+  }).join('');
+}
+function mcPorQuem(c, con){
+  var ps = con.perfis || []; if(ps.length < 2) return '';
+  var vivos = (c.perfis || []).map(function(id){ return ps.filter(function(p){ return p.id === id; })[0]; }).filter(function(p){ return p && !p.caiu; });
+  return vivos.length ? ' · por '+fnEsc(vivos[0].nome)+(vivos[1] ? ', com '+fnEsc(vivos[1].nome)+' de reserva' : '') : ' · sem acesso';
+}
+function mcAbrirAdd(bt, abrir){
+  var card = bt.closest('.capi-card'), b = card && card.querySelector('.mc-add');
+  if(!b){ mcMsg('Peça ao Dono para conectar em Configurações › Conexões da empresa › Meta Ads.', 1); return; }
+  b.style.display = (abrir || b.style.display === 'none') ? '' : 'none';
+  if(abrir) b.scrollIntoView({ block:'nearest' });
+}
+function mcAtualizar(bt, perfil){
   bt.disabled = true;
-  fetch(API_BASE+'/api/meta/conexao/atualizar', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' })
+  fetch(API_BASE+'/api/meta/conexao/atualizar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(perfil ? { perfil: perfil } : {}) })
     .then(mcResposta).then(function(){ toastFn('Listas atualizadas'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; mcMsg(e.message, 1); });
 }
@@ -40205,16 +40237,23 @@ function mcPuxar(bt){
     .then(mcResposta).then(function(d){ var r = d.resultado || {}; toastFn('Puxado: '+r.campanhas+' campanha(s), '+r.mudancas+' mudança(s) nova(s)'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Puxar agora'; mcMsg(e.message, 1); });
 }
-async function mcDesconectar(bt){
-  if(!(await tmxConfirmar('Desconectar a Meta? O TMX para de puxar os números e de mandar compras, e as contas somem das Integrações dos projetos. Os números já puxados e o que cada projeto marcou ficam guardados.'))) return;
+async function mcDesconectar(bt, perfil){
+  var con = _mcCon || {}, ps = con.perfis || [], p = ps.filter(function(x){ return x.id === perfil; })[0], varios = !!p && ps.length > 1;
+  var aviso = 'Desconectar a Meta? O TMX para de puxar os números e de mandar compras, e as contas somem das Integrações dos projetos. Os números já puxados e o que cada projeto marcou ficam guardados.';
+  if(varios){
+    var saem = [], ficam = [], lista = function(a){ return a.length <= 5 ? ': '+a.join(', ') : ''; };
+    (con.contas || []).forEach(function(c){ var de = c.perfis || []; if(de.indexOf(perfil) >= 0) (de.length > 1 ? ficam : saem).push(c.nome || c.conta); });
+    aviso = 'Desconectar '+p.nome+'?\n\n'+(saem.length ? mcPlural(saem.length, 'conta sai', 'contas saem')+' do TMX'+lista(saem)+'. ' : 'Nenhuma conta sai do TMX. ')+
+      (ficam.length ? mcPlural(ficam.length, 'conta continua', 'contas continuam')+' pelo outro perfil'+lista(ficam)+'. ' : '')+'O que cada projeto marcou fica guardado.';
+  }
+  if(!(await tmxConfirmar(aviso))) return;
   bt.disabled = true;
-  fetch(API_BASE+'/api/meta/conexao/desconectar', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' })
-    .then(mcResposta).then(function(){ toastFn('Meta desconectada'); mcRepintar(); })
+  fetch(API_BASE+'/api/meta/conexao/desconectar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(perfil ? { perfil: perfil } : {}) })
+    .then(mcResposta).then(function(){ toastFn(varios ? 'Perfil desconectado' : 'Meta desconectada'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; mcMsg(e.message, 1); });
 }
 // o quadro da Meta aparece em Configurações (Dono) e em Projetos › Integrações
 function mcRepintar(){ if(cur === 'funis' && fnAbaAtual === 'config') pcCarregar(); else renderIntegracoesTab(); }
-function mcFbTroca(){ var t = document.getElementById('mc-fb-troca'); if(t) t.style.display = t.style.display === 'none' ? '' : 'none'; }
 
 // ══════════════════════════════════════════════════════
 // ── DESTINOS: OS PIXELS QUE RECEBEM AS COMPRAS ──
@@ -40313,20 +40352,17 @@ var pcDados = null, pcSel = null, pcProdutos = null, pcMeta = null, pcMetaHist =
 // a conexão fica aqui para o Gestor de Tráfego não precisar de Configurações. Ela vale para todos os projetos.
 function pcMetaCard(){
   if(!_podeMexerNaMeta() || !pcMeta) return '';
-  var con = pcMeta, login = con.login || {}, q = con.quem || {};
+  var con = pcMeta, login = con.login || {};
   if(login.pronto) mcCarregarFb(login);
-  var aviso = '<div class="fx-sub" style="margin-top:6px">Enquanto a Meta não aprovar o app, o seu perfil precisa estar em Funções do app.</div>';
+  var aviso = '<div class="fx-sub" style="margin-top:6px">Enquanto a Meta não aprovar o app, cada perfil precisa estar em Funções do app.</div>';
   var h = '<div class="capi-card"><div class="capi-cab"><div><b>Conexão com a Meta</b><span>Vale para todos os projetos da empresa.</span></div>'+
-    (con.conectado ? '<span class="v2-pill ok">Conectada</span>' : '<span class="v2-pill neu">Não conectada</span>')+'</div>';
+    (con.conectado ? mcPerfisPill(con.perfis || []) : '<span class="v2-pill neu">Não conectada</span>')+'</div>';
   if(!con.conectado){
     h += (login.pronto ? mcBlocoFb(login, 'Conectar com o Facebook')+aviso : '<div class="fx-sub">'+(currentUser.cargo === 'Diretoria' ? 'Conecte em Configurações › Conexões da empresa › Meta Ads.' : 'O botão do Facebook ainda não está ligado nesta conta. Peça ao Dono para conectar em Configurações.')+'</div>');
   } else {
-    var vence = con.expiraEm ? new Date(con.expiraEm).toLocaleDateString('pt-BR') : '';
-    h += '<div class="fx-sub">'+(con.via === 'facebook' ? 'Conectada pelo Facebook por' : 'Conectada por')+' <b>'+fnEsc(q.nome || q.id || '')+'</b>'+(vence ? ' · vale até '+fnEsc(vence) : '')+' · '+(con.contas || []).length+' conta(s)</div>'+
-      '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button><button class="fn-btn g sm" onclick="mcAtualizar(this)">Atualizar listas</button>'+
-      (login.pronto ? '<button class="fn-btn g sm" onclick="mcFbTroca()">Conectar outro perfil</button>' : '')+
-      '<button class="fn-btn g sm" onclick="mcDesconectar(this)">Desconectar</button></div>'+
-      (login.pronto ? '<div id="mc-fb-troca" style="display:none"><div class="capi-aviso">O novo perfil substitui o de <b>'+fnEsc(q.nome || 'quem conectou')+'</b> em todos os projetos. As contas que só esse perfil enxerga saem do TMX até alguém conectar de novo.</div>'+mcBlocoFb(login, 'Continuar com o outro perfil')+aviso+'</div>' : '');
+    h += mcPerfisHtml(con, true)+
+      '<div class="lc-bts" style="margin:12px 0 4px">'+(login.pronto ? '<button class="fn-btn sm" onclick="mcAbrirAdd(this)">Adicionar outro perfil</button>' : '')+'<button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button></div>'+
+      (login.pronto ? '<div class="mc-add" style="display:none">'+mcBlocoFb(login, 'Conectar mais um perfil')+aviso+'</div>' : '');
   }
   h += '<div id="mc-res" class="mc-res"></div>';
   var hm = function(t){ var d = new Date(t); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
@@ -40420,6 +40456,8 @@ function pcPintar(){
       var sub = [fnDin(c.gasto)+' em 14 dias'];
       if((c.outros || []).length) sub.push('dividida com '+c.outros.join(', '));
       else if((c.utmify || []).length) sub.push('na Utmify: '+c.utmify.join(', '));
+      if((c.por || []).length) sub.push('por '+c.por[0]+(c.por[1] ? ', com '+c.por[1]+' de reserva' : ''));
+      if(c.semAcesso) sub.push('sem acesso: reconecte o perfil');
       if(c.status === 2 || c.status === 101) sub.push('desativada');
       return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+disContas+' onchange="pcConta(\''+fnEsc(c.conta)+'\', this.checked)">'+
         '<span><b>'+fnEsc(c.nome || c.conta)+'</b><small>'+(c.nome ? fnEsc(c.conta)+' · ' : '')+fnEsc(sub.join(' · '))+'</small></span></label>';

@@ -3127,7 +3127,10 @@ const VENDAS_RETENCAO_DIAS = 365;
 
 function _metaCfg(db) {
   const c = (db || readDB()).store[KEY_META];
-  return (c && typeof c === 'object') ? c : null;
+  if (!c || typeof c !== 'object') return null;
+  // conexão de antes dos vários perfis: vira um perfil só na leitura e fica assim na próxima gravação
+  if (!Array.isArray(c.perfis) && c.accessToken && c.tipo === 'sistema') { c.perfis = [_metaPerfilDaConexaoAntiga(c)]; _metaEspelhar(c); }
+  return c;
 }
 // act_123 e 123 são aceitos; a Graph API exige o prefixo act_
 function _metaActId(id) {
@@ -3349,6 +3352,66 @@ async function _metaListar(cfg) {
   }
   return { quem: { id: String(eu.id || ''), nome: String(eu.name || '') }, permissoes, contas, pixels: Object.values(pixels) };
 }
+// ── VÁRIOS PERFIS NA META (09/11/2026) ──
+// Cada perfil do Facebook conectado guarda o próprio token, contas e pixels em cfg.perfis. Os campos de cima (accessToken, contas,
+// pixels, quem, permissoes) continuam como espelho: o token do primeiro perfil que funciona e a lista de todos, sem repetir conta.
+// Quem precisa falar com a Meta sobre uma conta usa _metaPerfisDaConta: o que conectou primeiro e, se ele falhar, o seguinte.
+function _metaPerfilDaConexaoAntiga(c) {
+  return { id: String((c.quem && c.quem.id) || 'perfil-1'), accessToken: c.accessToken, via: c.via || 'token', expiraEm: c.expiraEm || null, tokenTipo: c.tokenTipo || '', porLink: !!c.porLink,
+    conectadoEm: c.conectadoEm || null, quem: c.quem || null, permissoes: c.permissoes || [], contas: c.contas || [], pixels: c.pixels || [], listasEm: c.listasEm || null };
+}
+function _metaPerfis(cfg) { return (cfg && Array.isArray(cfg.perfis)) ? cfg.perfis : []; }
+function _metaVenceu(p) { return !!(p.expiraEm && p.expiraEm < Date.now()); }
+function _metaVivo(p) { return !p.caiuEm && !_metaVenceu(p); }
+function _metaPerfisVivos(cfg) { return _metaPerfis(cfg).filter(_metaVivo); }
+function _metaPerfisDaConta(cfg, conta) { return _metaPerfisVivos(cfg).filter(p => (p.contas || []).some(c => c.conta === String(conta))); }
+function _metaEspelhar(cfg) {
+  const ps = _metaPerfis(cfg);
+  // sem nenhum perfil: as listas ficam como estão, e quem decide esconder é a tela (contasOcultas)
+  if (!ps.length) { delete cfg.accessToken; cfg.tipo = ''; return cfg; }
+  const p0 = ps.find(_metaVivo) || ps[0];
+  Object.assign(cfg, { accessToken: p0.accessToken, tipo: 'sistema', via: p0.via || 'token', expiraEm: p0.expiraEm || null, tokenTipo: p0.tokenTipo || '', porLink: !!p0.porLink, quem: p0.quem || null, permissoes: p0.permissoes || [] });
+  const contas = {}, pixels = {};
+  ps.forEach(p => {
+    (p.contas || []).forEach(c => { const x = contas[c.conta] || (contas[c.conta] = Object.assign({}, c, { perfis: [] })); x.perfis.push(p.id); });
+    (p.pixels || []).forEach(px => {
+      const x = pixels[px.id] || (pixels[px.id] = Object.assign({}, px, { contas: [] }));
+      (px.contas || []).forEach(k => { if (x.contas.indexOf(k) < 0) x.contas.push(k); });
+      if ((px.ultimo || 0) > (x.ultimo || 0)) x.ultimo = px.ultimo;
+    });
+  });
+  cfg.contas = Object.values(contas); cfg.pixels = Object.values(pixels);
+  const listas = ps.map(p => p.listasEm).filter(Boolean).sort();
+  if (listas.length) cfg.listasEm = listas[listas.length - 1];
+  return cfg;
+}
+function _metaAnotarPerfil(id, campos) {
+  try {
+    const db = readDB(), cfg = _metaCfg(db), p = _metaPerfis(cfg).find(x => x.id === id);
+    if (!p) return;
+    Object.assign(p, campos); _metaEspelhar(cfg); db.store[KEY_META] = cfg; writeDB(db);
+  } catch (e) { console.error('[META] não anotei o perfil:', e.message); }
+}
+// só o código 190 quer dizer que o acesso do perfil acabou; os outros erros são daquela conta ou daquele momento
+function _metaPerfilCaiu(p, e) {
+  if (!e || e.metaCode !== 190 || p.caiuEm) return;
+  p.caiuEm = Date.now(); p.erro = _metaErroTxt(e);
+  _metaAnotarPerfil(p.id, { caiuEm: p.caiuEm, erro: p.erro });
+}
+// acesso recusado ou conta que este perfil não enxerga: vale tentar com outro. Limite de chamadas, não: a Meta só pediu para esperar.
+function _metaTentaOutro(e) { return [3, 10, 100, 190, 200, 272, 278, 294, 803].includes(e && e.metaCode); }
+async function _metaTentar(perfis, fn) {
+  let ultimo = null;
+  for (const p of perfis) {
+    try { return await fn(p); }
+    catch (e) { ultimo = e; _metaPerfilCaiu(p, e); if (!_metaTentaOutro(e)) break; }
+  }
+  throw ultimo || _metaErroTela('Nenhum perfil conectado tem acesso a isso.');
+}
+function _metaPerfilPublico(p) {
+  return { id: p.id, nome: (p.quem && p.quem.nome) || p.id, via: p.via || 'token', porLink: !!p.porLink, conectadoEm: p.conectadoEm || null, expiraEm: p.expiraEm || null, atualizadoEm: p.listasEm || null,
+    contas: (p.contas || []).length, pixels: (p.pixels || []).length, permissoes: p.permissoes || [], caiu: !_metaVivo(p), erro: p.erro || (_metaVenceu(p) ? 'O acesso deste perfil venceu. Conecte de novo.' : '') };
+}
 function _metaConexaoPublica(cfg) {
   cfg = cfg || {};
   const con = !!(cfg.accessToken && cfg.tipo === 'sistema');
@@ -3356,7 +3419,8 @@ function _metaConexaoPublica(cfg) {
     quem: cfg.quem || null, permissoes: cfg.permissoes || [], atualizadoEm: cfg.listasEm || null,
     contas: (cfg.contas || []).map(c => Object.assign({}, c, { statusTxt: META_STATUS_CONTA[c.status] || ('status ' + c.status) })),
     pixels: cfg.pixels || [], sync: cfg.sync || null, ultimoErro: cfg.ultimoErro || null, antigo: !!(cfg.accessToken && cfg.tipo !== 'sistema'),
-    via: con ? (cfg.via || 'token') : '', expiraEm: con ? (cfg.expiraEm || null) : null, login: _metaLoginPublico() };
+    via: con ? (cfg.via || 'token') : '', expiraEm: con ? (cfg.expiraEm || null) : null, login: _metaLoginPublico(),
+    perfis: con ? _metaPerfis(cfg).map(_metaPerfilPublico) : [], ultimaConexaoEm: cfg.ultimaConexaoEm || cfg.conectadoEm || null };
 }
 function _metaErroTxt(e) {
   const c = e && e.metaCode;
@@ -3397,15 +3461,29 @@ app.get('/api/meta/conexao', authMeta, (req, res) => {
 async function _metaGuardarConexao(token, req, extra) {
   const l = await _metaListar({ accessToken: token });
   if (!l.contas.length) { const e = new Error('O acesso funciona, mas não enxerga nenhuma conta de anúncio. Na janela do Facebook, marque as contas; no usuário do sistema, use "Atribuir ativos".'); e.semContas = true; throw e; }
-  const db = readDB(), cfg = _metaCfg(db) || {};
-  Object.assign(cfg, { accessToken: token, tipo: 'sistema', via: 'token', expiraEm: null, tokenTipo: '', porLink: false }, extra || {}, { conectadoEm: new Date().toISOString(), quem: l.quem, permissoes: l.permissoes,
-    contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null, _updatedAt: Date.now() });
+  const db = readDB(), cfg = _metaCfg(db) || {}, agora = new Date().toISOString(), perfis = _metaPerfis(cfg).slice();
+  const novo = Object.assign({ via: 'token', expiraEm: null, tokenTipo: '', porLink: false }, extra || {},
+    { id: String(l.quem.id), accessToken: token, conectadoEm: agora, quem: l.quem, permissoes: l.permissoes, contas: l.contas, pixels: l.pixels, listasEm: agora });
+  // o mesmo perfil entrando de novo só renova o acesso; perfil novo entra no fim e não tira a vez de ninguém
+  const i = perfis.findIndex(p => p.id === novo.id);
+  if (i >= 0) perfis[i] = novo; else perfis.push(novo);
+  // a semana de comparação conta da primeira conexão: mais um perfil não recomeça a espera
+  if (!_metaPerfis(cfg).length) cfg.conectadoEm = agora;
+  cfg.perfis = perfis;
+  Object.assign(cfg, { ultimaConexaoEm: agora, ultimoErro: null, _updatedAt: Date.now() });
+  _metaEspelhar(cfg);
   db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
-  audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length, via: cfg.via, link: !!cfg.porLink }, req.user);
+  audit(db, 'integracao.meta.conexao', KEY_META, { quem: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length, via: novo.via, link: !!novo.porLink }, req.user);
   writeDB(db);
-  // primeira puxada: 14 dias, sem segurar a resposta
-  setTimeout(() => _metaSincronizar({ dias: 14 }).catch(() => {}), 500);
-  return _metaConexaoPublica(cfg);
+  _metaPuxarAoConectar(20);
+  return Object.assign(_metaConexaoPublica(cfg), { novo: { nome: l.quem.nome, contas: l.contas.length, pixels: l.pixels.length } });
+}
+// primeira puxada: 14 dias, sem segurar a resposta. Se outra puxada estiver rodando, espera ela acabar (até 10 min)
+function _metaPuxarAoConectar(tentativas) {
+  setTimeout(() => {
+    if (_metaSyncRodando && tentativas > 0) return _metaPuxarAoConectar(tentativas - 1);
+    _metaSincronizar({ dias: 14 }).catch(() => {});
+  }, tentativas === 20 ? 500 : 30000);
 }
 app.post('/api/meta/conexao', authDiretoria, async (req, res) => {
   const token = String((req.body || {}).token || '').trim();
@@ -3449,7 +3527,7 @@ async function _metaEntrarPeloFacebook(b, req, extra) {
   if (info.app_id && String(info.app_id) !== c.appId) { const e = new Error('Essa autorização não veio do app da TMX.'); e.pronta = true; throw e; }
   const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
   const conexao = await _metaGuardarConexao(t.access_token, req, Object.assign({ via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') }, extra || {}));
-  console.log('[meta-login] conectado pelo Facebook; contas:', (conexao.contas || []).length);
+  console.log('[meta-login] conectado pelo Facebook; contas:', conexao.novo.contas);
   return conexao;
 }
 const _metaErroLogin = e => (e.semContas || e.pronta) ? e.message : _metaErroTxt(e);
@@ -3482,7 +3560,7 @@ app.post('/api/meta/login/link', authMeta, (req, res) => {
     audit(db, 'integracao.meta.link', KEY_META, {}, req.user);
     writeDB(db);
     // META_LINK_BASE: a entrada pela Cloudflare, pra quem usa proxy. Só ligar depois de pôr o domínio no app da Meta.
-    res.json({ ok: true, caminho: '/conectar-meta/' + token, entrada: String(process.env.META_LINK_BASE || '').trim().replace(/\/+$/, ''), expiraEm: agora + META_LINK_MS, conectadoEm: cfg.conectadoEm || null });
+    res.json({ ok: true, caminho: '/conectar-meta/' + token, entrada: String(process.env.META_LINK_BASE || '').trim().replace(/\/+$/, ''), expiraEm: agora + META_LINK_MS, ultimaConexaoEm: _metaConexaoPublica(cfg).ultimaConexaoEm });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/meta/login/link/:token', metaLinkLimiter, (req, res) => {
@@ -3491,7 +3569,7 @@ app.get('/api/meta/login/link/:token', metaLinkLimiter, (req, res) => {
     res.set('Cache-Control', 'no-store');
     if (!login.pronto) return res.status(400).json({ error: 'A conexão pelo Facebook não está ligada neste endereço.' });
     if (r.erro) return res.status(410).json({ error: r.erro });
-    res.json({ ok: true, appId: login.appId, configId: login.configId, por: String((r.l.por && r.l.por.nome) || '').split(' ')[0], expiraEm: r.l.expira, substitui: !!(cfg.accessToken && cfg.tipo === 'sistema') });
+    res.json({ ok: true, appId: login.appId, configId: login.configId, por: String((r.l.por && r.l.por.nome) || '').split(' ')[0], expiraEm: r.l.expira, jaTem: _metaPerfis(cfg).length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/meta/login/link/:token', metaLinkLimiter, async (req, res) => {
@@ -3505,7 +3583,7 @@ app.post('/api/meta/login/link/:token', metaLinkLimiter, async (req, res) => {
     const conexao = await _metaEntrarPeloFacebook(req.body || {}, { user: r.l.por }, { porLink: true });
     const db = readDB(), cfg = _metaCfg(db) || {}, x = (cfg.linksLogin || []).find(y => y.h === h);
     if (x) { x.usado = new Date().toISOString(); db.store[KEY_META] = cfg; writeDB(db); }
-    res.json({ ok: true, contas: (conexao.contas || []).length, perfil: (conexao.quem && conexao.quem.nome) || '' });
+    res.json({ ok: true, contas: conexao.novo.contas, perfil: conexao.novo.nome });
   } catch (e) {
     const erro = _metaErroLogin(e); console.log('[meta-login] link falhou:', erro);
     res.status(400).json({ error: erro });
@@ -3518,26 +3596,41 @@ app.get('/conectar-meta/:token', (req, res) => {
 app.post('/api/meta/conexao/atualizar', authMeta, async (req, res) => {
   const cfg0 = _metaCfg();
   if (!cfg0 || !cfg0.accessToken || cfg0.tipo !== 'sistema') return res.status(400).json({ error: 'Conecte a Meta primeiro.' });
+  const pedido = String((req.body || {}).perfil || ''), alvos = _metaPerfis(cfg0).filter(p => !pedido || p.id === pedido);
+  if (!alvos.length) return res.status(404).json({ error: 'Esse perfil não está mais conectado.' });
   try {
-    const l = await _metaListar(cfg0);
-    const db = readDB(), cfg = _metaCfg(db) || {};
-    Object.assign(cfg, { quem: l.quem, permissoes: l.permissoes, contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null });
+    const listas = {}, erros = {};
+    for (const p of alvos) {
+      try { listas[p.id] = await _metaListar(p); }
+      catch (e) { erros[p.id] = e; }
+    }
+    const db = readDB(), cfg = _metaCfg(db) || {}, agora = new Date().toISOString();
+    _metaPerfis(cfg).forEach(p => {
+      const l = listas[p.id], e = erros[p.id];
+      if (l) Object.assign(p, { quem: l.quem, permissoes: l.permissoes, contas: l.contas, pixels: l.pixels, listasEm: agora, caiuEm: null, erro: '' });
+      else if (e && e.metaCode === 190) Object.assign(p, { caiuEm: Date.now(), erro: _metaErroTxt(e) });
+    });
+    const falhas = Object.values(erros), certos = Object.values(listas);
+    cfg.ultimoErro = falhas.length && !certos.length ? _metaErroTxt(falhas[0]) : null;
+    _metaEspelhar(cfg);
     db.store[KEY_META] = cfg;
-    audit(db, 'integracao.meta.atualizar', KEY_META, { contas: l.contas.length }, req.user);
+    if (certos.length) audit(db, 'integracao.meta.atualizar', KEY_META, { contas: certos.reduce((n, l) => n + l.contas.length, 0) }, req.user);
     writeDB(db);
+    if (!certos.length) return res.status(400).json({ error: cfg.ultimoErro });
     if ((req.body || {}).puxar) setTimeout(() => _metaSincronizar({ dias: 2 }).catch(() => {}), 200);
     res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
-  } catch (e) {
-    const db = readDB(), cfg = _metaCfg(db) || {}; cfg.ultimoErro = _metaErroTxt(e); db.store[KEY_META] = cfg; writeDB(db);
-    res.status(400).json({ error: cfg.ultimoErro });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/meta/conexao/desconectar', authMeta, (req, res) => {
   try {
-    const db = readDB(), cfg = _metaCfg(db) || {};
-    delete cfg.accessToken; cfg.tipo = ''; cfg.desconectadoEm = new Date().toISOString();
+    // sem dizer o perfil, desconecta todos (aba aberta antes da atualização ainda chama assim)
+    const pedido = String((req.body || {}).perfil || ''), db = readDB(), cfg = _metaCfg(db) || {}, antes = _metaPerfis(cfg), sai = antes.find(p => p.id === pedido);
+    if (pedido && !sai) return res.status(404).json({ error: 'Esse perfil não está mais conectado.' });
+    cfg.perfis = pedido ? antes.filter(p => p.id !== pedido) : [];
+    _metaEspelhar(cfg);
+    if (!cfg.perfis.length) { delete cfg.accessToken; cfg.tipo = ''; cfg.desconectadoEm = new Date().toISOString(); }
     db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
-    audit(db, 'integracao.meta.desconectar', KEY_META, {}, req.user);
+    audit(db, 'integracao.meta.desconectar', KEY_META, (sai && cfg.perfis.length) ? { perfil: (sai.quem && sai.quem.nome) || sai.id } : {}, req.user);
     writeDB(db);
     res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3604,8 +3697,8 @@ async function _cambioPeriodo(moeda, desde, ate) {
 let _metaSyncRodando = false;
 async function _metaSincronizar(opts) {
   opts = opts || {};
-  const cfg = _metaCfg();
-  if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema' || !_pessoas()) return null;
+  const geral = _metaCfg();
+  if (!geral || !geral.accessToken || geral.tipo !== 'sistema' || !_pessoas()) return null;
   if (_metaSyncRodando) return null;
   _metaSyncRodando = true;
   const t0 = Date.now(), dias = Math.min(Math.max(Number(opts.dias) || 2, 1), 30);
@@ -3613,8 +3706,20 @@ async function _metaSincronizar(opts) {
   const r = { contas: 0, campanhas: 0, linhasDia: 0, linhasHora: 0, mudancas: 0, erros: [] };
   const STATUS_VIVOS = JSON.stringify(['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW']);
   try {
-    for (const c of (cfg.contas || [])) {
+    // perfil que caiu e voltou a responder (a Meta às vezes recusa por um tempo) volta sozinho
+    for (const p of _metaPerfis(geral)) {
+      if (!p.caiuEm || _metaVenceu(p)) continue;
+      try { await _metaGet('me', { fields: 'id' }, p); p.caiuEm = null; p.erro = ''; _metaAnotarPerfil(p.id, { caiuEm: null, erro: '' }); } catch (e) {}
+    }
+    let semPerfil = 0;
+    for (const c of (geral.contas || [])) {
       if (c.status !== 1 && c.status !== 201 && c.status !== 9) continue;   // conta fora do ar: nada pra puxar
+      const perfisDaConta = _metaPerfisDaConta(geral, c.conta);
+      if (!perfisDaConta.length) { semPerfil++; continue; }
+      let erroConta = null;
+      for (const cfg of perfisDaConta) {
+      erroConta = null;
+      const placar = { campanhas: r.campanhas, linhasDia: r.linhasDia, linhasHora: r.linhasHora, mudancas: r.mudancas, linhasPos: r.linhasPos };
       try {
         // conta em outra moeda: todo valor em dinheiro vira real pela cotação do dia
         const moeda = String(c.moeda || 'BRL').toUpperCase();
@@ -3708,7 +3813,7 @@ async function _metaSincronizar(opts) {
         } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
 
         // 4) histórico de mudanças: orçamento, lance e status, com a hora exata
-        const desdeAtv = Math.floor(Math.max(t0 - dias * 86400000, (cfg.sync && cfg.sync.atividadesAte && !opts.dias ? cfg.sync.atividadesAte - 3600000 : 0)) / 1000);
+        const desdeAtv = Math.floor(Math.max(t0 - dias * 86400000, (geral.sync && geral.sync.atividadesAte && !opts.dias ? geral.sync.atividadesAte - 3600000 : 0)) / 1000);
         const atvs = await _metaTudo(c.id + '/activities', { fields: 'event_type,event_time,object_id,object_name,extra_data,actor_name',
           since: String(desdeAtv), limit: '200' }, cfg, 5);
         atvs.forEach(a => {
@@ -3732,8 +3837,16 @@ async function _metaSincronizar(opts) {
           r.mudancas++;
         });
         r.contas++;
-      } catch (e) { r.erros.push((c.nome || c.conta) + ': ' + _metaErroTxt(e)); }
+        break;
+      } catch (e) {
+        erroConta = e; _metaPerfilCaiu(cfg, e);
+        if (!_metaTentaOutro(e)) break;
+        Object.assign(r, placar);   // vai tentar com o próximo perfil: o que este contou não vale
+      }
+      }
+      if (erroConta) r.erros.push((c.nome || c.conta) + ': ' + _metaErroTxt(erroConta));
     }
+    if (semPerfil) r.erros.push(semPerfil + ' conta(s) sem perfil com acesso. Reconecte o perfil em Projetos › Integrações.');
   } finally {
     _metaSyncRodando = false;
     try {
@@ -3785,11 +3898,19 @@ const META_MOEDAS_ORCAMENTO = ['BRL', 'USD'];
 const _metaSoDigitos = v => String(v || '').replace(/\D/g, '').slice(0, 30);
 function _metaErroTela(msg, http) { const e = new Error(msg); e.httpTela = http || 400; return e; }
 function _metaResponderErro(res, e) { res.status(e.httpTela || 400).json({ error: e.httpTela ? e.message : _metaErroTxt(e) }); }
-function _metaParaMudar() {
+// Quem pode mexer naquela campanha: os perfis com ads_management que enxergam a conta dela, na ordem em que conectaram.
+// Campanha que ainda não foi puxada (conta desconhecida): tenta com todos.
+function _metaParaMudar(camp) {
   const cfg = _metaCfg();
-  if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema') throw _metaErroTela('Conecte a Meta primeiro (Configurações → Conexões → Meta Ads).');
-  if ((cfg.permissoes || []).indexOf('ads_management') < 0) throw _metaErroTela('A conexão com a Meta não tem a permissão ads_management. Conecte de novo com essa permissão.');
-  return cfg;
+  if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema' || !_metaPerfis(cfg).length) throw _metaErroTela('Conecte a Meta primeiro (Configurações → Conexões → Meta Ads).');
+  const vivos = _metaPerfisVivos(cfg);
+  if (!vivos.length) throw _metaErroTela('O acesso à Meta caiu. Reconecte o perfil em Projetos › Integrações.');
+  const podem = vivos.filter(p => (p.permissoes || []).indexOf('ads_management') >= 0);
+  if (!podem.length) throw _metaErroTela('A conexão com a Meta não tem a permissão ads_management. Conecte de novo com essa permissão.');
+  let conta = '';
+  try { if (camp && _pessoas()) conta = String((_q('SELECT conta FROM meta_camp_dia WHERE id=? LIMIT 1').get(String(camp)) || {}).conta || ''); } catch (e) {}
+  const deles = conta ? podem.filter(p => (p.contas || []).some(c => c.conta === conta)) : [];
+  return deles.length ? deles : podem;
 }
 async function _metaGravar(id, campos, cfg) {
   const r = await fetch(META_API_BASE + '/' + id, { method: 'POST', body: new URLSearchParams(Object.assign({}, campos, { access_token: cfg.accessToken })) });
@@ -3821,20 +3942,22 @@ function _metaAnotarMudanca(camp, nome, campo, de, para) {
 // lido na hora: o que a tela mostra é o que está valendo na Meta agora
 app.get('/api/meta/campanha/:id/estrutura', authMeta, async (req, res) => {
   try {
-    const id = _metaSoDigitos(req.params.id), cfg = _metaParaMudar();
+    const id = _metaSoDigitos(req.params.id), perfis = _metaParaMudar(id);
     if (!id) throw _metaErroTela('Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.');
     const CAMPOS = 'id,name,status,effective_status,daily_budget,lifetime_budget';
-    const [c, conjuntos, anuncios] = await Promise.all([
-      _metaGet(id, { fields: CAMPOS + ',account_id' }, cfg),
-      _metaTudo(id + '/adsets', { fields: CAMPOS, limit: '200' }, cfg, 3),
-      _metaTudo(id + '/ads', { fields: 'id,name,status,effective_status,adset_id', limit: '500' }, cfg, 3)
-    ]);
-    const moeda = await _metaMoedaDaConta(c.account_id, cfg);
-    const item = o => ({ id: String(o.id), nome: String(o.name || ''), status: String(o.status || ''), efetivo: String(o.effective_status || o.status || ''), orc: _metaOrc(o) });
-    const porConjunto = {};
-    anuncios.forEach(a => { (porConjunto[a.adset_id] = porConjunto[a.adset_id] || []).push(item(a)); });
-    res.json({ ok: true, moeda, podeOrcamento: META_MOEDAS_ORCAMENTO.includes(moeda), campanha: item(c),
-      conjuntos: conjuntos.map(s => Object.assign(item(s), { anuncios: porConjunto[s.id] || [] })) });
+    res.json(await _metaTentar(perfis, async cfg => {
+      const [c, conjuntos, anuncios] = await Promise.all([
+        _metaGet(id, { fields: CAMPOS + ',account_id' }, cfg),
+        _metaTudo(id + '/adsets', { fields: CAMPOS, limit: '200' }, cfg, 3),
+        _metaTudo(id + '/ads', { fields: 'id,name,status,effective_status,adset_id', limit: '500' }, cfg, 3)
+      ]);
+      const moeda = await _metaMoedaDaConta(c.account_id, cfg);
+      const item = o => ({ id: String(o.id), nome: String(o.name || ''), status: String(o.status || ''), efetivo: String(o.effective_status || o.status || ''), orc: _metaOrc(o) });
+      const porConjunto = {};
+      anuncios.forEach(a => { (porConjunto[a.adset_id] = porConjunto[a.adset_id] || []).push(item(a)); });
+      return { ok: true, moeda, podeOrcamento: META_MOEDAS_ORCAMENTO.includes(moeda), campanha: item(c),
+        conjuntos: conjuntos.map(s => Object.assign(item(s), { anuncios: porConjunto[s.id] || [] })) };
+    }));
   } catch (e) { _metaResponderErro(res, e); }
 });
 // /api/meta/campanha/status é o endereço antigo: aba aberta antes da atualização ainda chama
@@ -3842,8 +3965,8 @@ app.post(['/api/meta/status', '/api/meta/campanha/status'], authMeta, async (req
   try {
     const b = req.body || {}, nivel = META_NIVEIS[b.nivel] ? b.nivel : 'campanha', n = META_NIVEIS[nivel], id = _metaSoDigitos(b.id), ativo = b.ativo === true;
     if (!id) throw _metaErroTela(nivel === 'campanha' ? 'Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.' : 'Esse item não tem o id da Meta.');
-    const cfg = _metaParaMudar(), para = ativo ? 'ACTIVE' : 'PAUSED';
-    await _metaGravar(id, { status: para }, cfg);
+    const para = ativo ? 'ACTIVE' : 'PAUSED';
+    await _metaTentar(_metaParaMudar(nivel === 'campanha' ? id : _metaSoDigitos(b.camp)), cfg => _metaGravar(id, { status: para }, cfg));
     const nome = String(b.nome || '').slice(0, 160), camp = nivel === 'campanha' ? id : _metaSoDigitos(b.camp);
     const mudanca = _metaAnotarMudanca(camp, nome, n.status, ativo ? 'PAUSED' : 'ACTIVE', para);
     if (nivel === 'campanha' && _pessoas()) _q('UPDATE camp_estado SET status=?, em=? WHERE id=?').run(para, mudanca.em, id);
@@ -3858,14 +3981,16 @@ app.post('/api/meta/orcamento', authMeta, async (req, res) => {
     const b = req.body || {}, nivel = ['campanha', 'conjunto'].includes(b.nivel) ? b.nivel : '', id = _metaSoDigitos(b.id), valor = Math.round(Number(b.valor) * 100) / 100;
     if (!nivel || !id) throw _metaErroTela('Diga a campanha ou o conjunto.');
     if (!(valor > 0)) throw _metaErroTela('Digite um valor maior que zero.');
-    const cfg = _metaParaMudar();
-    const atual = await _metaGet(id, { fields: 'daily_budget,lifetime_budget,account_id' }, cfg), orc = _metaOrc(atual);
-    if (!orc) throw _metaErroTela(nivel === 'conjunto' ? 'Este conjunto usa o orçamento da campanha. Mude na campanha.' : 'Esta campanha tem o orçamento nos conjuntos. Mude em cada conjunto.');
-    const moeda = await _metaMoedaDaConta(atual.account_id, cfg);
-    if (!META_MOEDAS_ORCAMENTO.includes(moeda)) throw _metaErroTela('Esta conta está em ' + (moeda || 'outra moeda') + '. Mude o orçamento no Gerenciador de Anúncios.');
-    // a tela manda o valor que estava mostrando: se alguém mudou nesse meio tempo, não passa por cima
-    if (b.de !== undefined && Math.round(Number(b.de) * 100) !== Math.round(orc.valor * 100)) throw _metaErroTela('O orçamento mudou na Meta depois que você abriu esta tela. Abra de novo para ver o valor atual.', 409);
-    await _metaGravar(id, { [orc.tipo === 'dia' ? 'daily_budget' : 'lifetime_budget']: String(Math.round(valor * 100)) }, cfg);
+    const { orc, moeda } = await _metaTentar(_metaParaMudar(nivel === 'campanha' ? id : _metaSoDigitos(b.camp)), async cfg => {
+      const atual = await _metaGet(id, { fields: 'daily_budget,lifetime_budget,account_id' }, cfg), orc = _metaOrc(atual);
+      if (!orc) throw _metaErroTela(nivel === 'conjunto' ? 'Este conjunto usa o orçamento da campanha. Mude na campanha.' : 'Esta campanha tem o orçamento nos conjuntos. Mude em cada conjunto.');
+      const moeda = await _metaMoedaDaConta(atual.account_id, cfg);
+      if (!META_MOEDAS_ORCAMENTO.includes(moeda)) throw _metaErroTela('Esta conta está em ' + (moeda || 'outra moeda') + '. Mude o orçamento no Gerenciador de Anúncios.');
+      // a tela manda o valor que estava mostrando: se alguém mudou nesse meio tempo, não passa por cima
+      if (b.de !== undefined && Math.round(Number(b.de) * 100) !== Math.round(orc.valor * 100)) throw _metaErroTela('O orçamento mudou na Meta depois que você abriu esta tela. Abra de novo para ver o valor atual.', 409);
+      await _metaGravar(id, { [orc.tipo === 'dia' ? 'daily_budget' : 'lifetime_budget']: String(Math.round(valor * 100)) }, cfg);
+      return { orc, moeda };
+    });
     const [deReal, paraReal] = await Promise.all([_metaEmReais(orc.valor, moeda), _metaEmReais(valor, moeda)]);
     const n = META_NIVEIS[nivel], nome = String(b.nome || '').slice(0, 160), camp = nivel === 'campanha' ? id : _metaSoDigitos(b.camp);
     const mudanca = _metaAnotarMudanca(camp, nome, n.mudaOrc, deReal, paraReal);
@@ -3891,7 +4016,7 @@ function _metaHistTexto(a) {
   const m = a.meta || {};
   if (a.action === 'integracao.meta.link') return 'gerou um link para conectar a Meta';
   if (a.action === 'integracao.meta.conexao') return 'conectou a Meta' + (m.link ? ' pelo link do multilogin' : m.via === 'facebook' ? ' pelo Facebook' : '');
-  if (a.action === 'integracao.meta.desconectar') return 'desconectou a Meta';
+  if (a.action === 'integracao.meta.desconectar') return m.perfil ? 'desconectou o perfil ' + m.perfil + ' da Meta' : 'desconectou a Meta';
   if (a.action === 'integracao.meta.atualizar') return 'atualizou as contas';
   if (a.action === 'integracao.meta.puxar') return 'puxou os números';
   const x = /^meta_(campanha|conjunto|anuncio)_(ativad[ao]|pausad[ao]|orcamento)$/.exec(String(a.action || ''));
@@ -15314,7 +15439,12 @@ function _destinosDoProjeto(db, capi, projeto) {
   if (!l.length && px) l.push({ id: 'px_' + px, pixel: px, nome: 'Pixel ' + px, token: '', testCode: capi.testCode || '', criado: null, legado: true });
   return l;
 }
-function _destinoToken(d, mc) { return d.token || (mc && mc.accessToken && mc.tipo === 'sistema' ? mc.accessToken : ''); }
+function _destinoToken(d, mc) {
+  if (d.token) return d.token;
+  if (!(mc && mc.accessToken && mc.tipo === 'sistema')) return '';
+  const vivos = _metaPerfisVivos(mc), dono = d.pixel ? vivos.find(p => (p.pixels || []).some(x => String(x.id) === String(d.pixel))) : null;
+  return (dono || vivos[0] || mc).accessToken;
+}
 // a semana de comparação conta a partir do destino mais novo do projeto
 function _liberaEnvio(dests, mc) {
   const ts = dests.map(d => d.criado).filter(Boolean);
@@ -15344,7 +15474,7 @@ app.post('/api/destinos', authDiretoria, async (req, res) => {
     const tokenFinal = token || (b.limparToken ? '' : (velho && velho.token) || '');
     // confere o pixel na Meta com o token que vai ser usado pra enviar
     let nomeMeta = velho && velho.pixel === pixel ? velho.nomeMeta || '' : '', conferido = null, aviso = '';
-    const tk = tokenFinal || _destinoToken({}, _metaCfg(db0));
+    const tk = tokenFinal || _destinoToken({ pixel }, _metaCfg(db0));
     if (tk) {
       try { const j = await _metaGet(pixel, { fields: 'id,name' }, { accessToken: tk }); nomeMeta = String(j.name || ''); conferido = Date.now(); }
       catch (e) {
@@ -22787,7 +22917,12 @@ app.get('/api/projeto/config', authUsuario, (req, res) => {
       if (nm) (dashDe[x.conta] = dashDe[x.conta] || []).push(nm);
     });
     const contasSet = {};
-    (mc.contas || []).forEach(c => { contasSet[c.conta] = { conta: c.conta, nome: c.nome, status: c.status, statusTxt: META_STATUS_CONTA[c.status] || '' }; });
+    const perfisMc = _metaPerfis(mc), vivoId = {}, nomeId = {}, mostraPor = perfisMc.length > 1 && _ehDaMeta(req);
+    perfisMc.forEach(p => { vivoId[p.id] = _metaVivo(p); nomeId[p.id] = (p.quem && p.quem.nome) || p.id; });
+    (mc.contas || []).forEach(c => {
+      const de = c.perfis || [], por = de.filter(id => vivoId[id]);
+      contasSet[c.conta] = { conta: c.conta, nome: c.nome, status: c.status, statusTxt: META_STATUS_CONTA[c.status] || '', por: mostraPor ? por.map(id => nomeId[id]) : [], semAcesso: metaLigada && de.length > 0 && !por.length };
+    });
     camps.forEach(c => { if (c.conta && !contasSet[c.conta]) contasSet[c.conta] = { conta: c.conta, nome: nomes[c.conta] || '', status: null }; });
     meu.contas.forEach(c => { if (!contasSet[c]) contasSet[c] = { conta: c, nome: nomes[c] || '', status: null }; });
     const gastoConta = {}; camps.forEach(c => { gastoConta[c.conta] = (gastoConta[c.conta] || 0) + (Number(c.gasto) || 0); });

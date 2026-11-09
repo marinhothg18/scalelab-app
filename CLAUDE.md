@@ -162,6 +162,10 @@ Cada domínio é de um de dois jeitos, escolhido ao cadastrar em Projetos › Cr
 - O Workers grátis aguenta só 100 mil pedidos/dia; passou disso, a página dá erro. Antes de anúncio de verdade, assinar o plano pago (US$ 5/mês).
 - `test/hospedagem.test.js` (Cloudflare falsa rodando o programa de verdade) e `test/worker-paginas.test.js`.
 
+### Meta: vários perfis (09/11/2026)
+
+`sl_integracoes_meta.perfis` guarda cada perfil conectado (token, contas, pixels). Os campos de cima (`accessToken`, `contas`, `pixels`, `quem`, `permissoes`) são espelho, feito por `_metaEspelhar`: token do primeiro perfil que funciona e a lista de todos, sem repetir conta. Conexão antiga vira um perfil na leitura (`_metaCfg`), sem migração. Para falar com a Meta sobre uma conta, `_metaPerfisDaConta`; para mexer em campanha, `_metaTentar(_metaParaMudar(camp), fn)`, que passa para o próximo perfil quando o acesso é recusado. Erro 190 marca `caiuEm`, e a puxada reabilita sozinha se o perfil voltar a responder. Conectar o mesmo perfil só renova; `conectadoEm` (semana de comparação) não muda com perfil novo, `ultimaConexaoEm` muda. `test/meta-perfis.test.js`.
+
 ### Data model
 
 `db.json` is the database. Schema:
