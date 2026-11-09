@@ -2692,14 +2692,16 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .ab-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
 .ab-kpi .r{font-size:11.5px;color:var(--text2)}
 .ab-kpi .v{font-size:27px;font-weight:800;letter-spacing:-.035em;line-height:1.1;margin-top:3px;font-variant-numeric:tabular-nums}
-.ab-linha{display:grid;grid-template-columns:1fr 132px 158px 118px;gap:14px;align-items:center;
+.ab-linha{display:grid;grid-template-columns:1fr 132px 158px 118px 34px;gap:14px;align-items:center;
   padding:14px 0;border-bottom:1px solid var(--border);cursor:pointer}
 .ab-linha:last-child{border-bottom:none}
 .ab-linha:hover{background:var(--bg3)}
 .ab-linha .t{font-weight:700;font-size:13.5px}
 .ab-linha .s{font-size:11.5px;color:var(--text2);margin-top:2px;font-family:ui-monospace,Menlo,monospace}
 .ab-res{text-align:right;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
-@media(max-width:820px){ .ab-linha{grid-template-columns:1fr 118px} .ab-linha .ab-res{display:none} }
+@media(max-width:820px){ .ab-linha{grid-template-columns:1fr 118px 34px} .ab-linha .ab-res{display:none} }
+.ab-apagar{width:30px;height:30px;display:grid;place-items:center;border:1px solid transparent;border-radius:8px;background:none;color:var(--text2);cursor:pointer;font-size:14px}
+.ab-apagar:hover,.ab-apagar:focus-visible{border-color:var(--red);color:var(--red)}
 .ab-chip{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:5px;white-space:nowrap}
 .ab-chip.rodando{background:rgba(34,197,94,.15);color:var(--green)}
 .ab-chip.dividindo{background:var(--bg3);color:var(--text2)}
@@ -37486,7 +37488,8 @@ function abPintarLista(){
         '<div class="s">'+(r.tipo === 'checkout' ? '🛒 teste de checkout · '+ckOndeRoda(r) : fnEsc(abUrlDoTeste(r).replace(/^https?:\/\//,'')))+' · '+abLinhaVars(r, d)+'</div></div>'+
       '<div><span class="ab-chip '+e+'">'+AB_SELO[e]+'</span></div>'+
       '<div class="ab-res" style="color:'+resumo.cor+'">'+resumo.txt+'</div>'+
-      '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div></div>';
+      '<div class="ab-res" style="color:var(--text2)">'+resumo.extra+'</div>'+
+      '<button class="ab-apagar" title="Apagar este teste" aria-label="Apagar o teste '+fnEsc(r.nome||r.slug)+'" onclick="event.stopPropagation();abApagarDaLista(\''+fnEsc(r.slug)+'\')">🗑</button></div>';
   }).join('');
 
   // Teste sem meta divide o trafego e nunca da veredito — e o erro mais comum
@@ -37990,12 +37993,15 @@ function abPausar(){
   fnGravarRed(r); fnPintarRed();
   toastFn(r.ativo ? 'Link reativado' : (r.hospedado ? 'Teste pausado: todo mundo vê a versão original' : 'Link pausado — quem clicar vê erro'));
 }
-async function abRemover(){
-  var r=fnRedAtual(); if(!r) return;
-  if(!(await tmxConfirmar('Remover "'+(r.nome||r.slug)+'"? O link para de funcionar na hora.'))) return;
-  fnSalvarReds(fnReds().filter(function(x){ return x.id!==r.id; }));
-  abSel=null; fnPintarRed(); toastFn('Removido');
+// Apagar vai pela Lixeira: gravar a lista sem o teste não apaga nada no servidor (o merge guarda o que falta)
+async function abApagarItem(r){
+  if(!(await tmxConfirmar('Apagar o teste "'+(r.nome||r.slug)+'"?\n\nO link para de funcionar na hora. Ele fica 30 dias na Lixeira, caso precise voltar.'))) return;
+  sDelete('sl_redirecionadores', r.id, 'Teste A/B');
+  if(abSel === r.slug) abSel = null;
+  fnPintarRed(); toastFn('Teste apagado. Fica 30 dias na Lixeira.');
 }
+function abRemover(){ var r=fnRedAtual(); if(r) abApagarItem(r); }
+function abApagarDaLista(slug){ var r=fnReds().filter(function(x){ return x.slug===slug; })[0]; if(r) abApagarItem(r); }
 function abNovo(){
   v2Modal('<div class="v2-cab"><h3>Que teste você quer criar?</h3><button class="fn-btn g sm" onclick="v2Fechar(this)">✕</button></div>'+
     '<div style="display:grid;gap:10px;margin-top:6px">'+

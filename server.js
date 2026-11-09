@@ -8000,6 +8000,7 @@ app.post('/api/lixeira/soft-delete', authUsuario, (req, res) => {
   writeDB(db);
   _broadcastSync(key, req.headers['x-client-id']);
   _broadcastSync('sl_lixeira', req.headers['x-client-id']);
+  if (key === KEY_REDIRS) { _ckCache.em = 0; if (_paginasApi) _paginasApi.sincronizarTestes(); }
   res.json({ ok: true });
 });
 
@@ -8027,6 +8028,7 @@ app.post('/api/lixeira/restore/:lixeiraId', authUsuario, (req, res) => {
   writeDB(db);
   _broadcastSync(entry.sourceKey, req.headers['x-client-id']);
   _broadcastSync('sl_lixeira', req.headers['x-client-id']);
+  if (entry.sourceKey === KEY_REDIRS) { _ckCache.em = 0; if (_paginasApi) _paginasApi.sincronizarTestes(); }
   res.json({ ok: true, restaurado: entry.data });
 });
 

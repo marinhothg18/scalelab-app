@@ -238,6 +238,26 @@ test('hospedagem no TMX', async (t) => {
     assert.deepStrictEqual(lista.dados.testes.map(x => [x.slug, x.caminho, x.vencedora]), [['oferta-ab', 'oferta', 'v2']]);
   });
 
+  await t.test('apagar o teste pela Lixeira tira ele do domínio e não volta sozinho; restaurar traz de novo', async () => {
+    const cfg = () => JSON.parse(CF.r2.m.get('lp.loja-a.com.br/_tmx.json').b.toString()).testes;
+    const outro = { id: 'r2', nome: 'Para apagar', slug: 'para-apagar', projeto: '', ativo: true, _updatedAt: Date.now() + 2000, hospedado: { dominio: c.dom.id, caminho: 'apagar' },
+      destinos: [{ id: 'v1', nome: 'A', url: 'https://lp.loja-a.com.br/oferta-a/', peso: 1 }] };
+    assert.strictEqual((await chamar('PUT', '/api/store/sl_redirecionadores', { token: c.a.token, corpo: [outro] })).status, 200);
+    await ate(() => cfg().apagar, 6000, 'teste novo chegar');
+    const d = await chamar('POST', '/api/lixeira/soft-delete', { token: c.a.token, corpo: { key: 'sl_redirecionadores', itemId: 'r2', tipo: 'Teste A/B' } });
+    assert.strictEqual(d.status, 200, JSON.stringify(d.dados));
+    await ate(() => !cfg().apagar, 6000, 'teste sair do domínio');
+    assert.ok(cfg().oferta, 'os outros testes ficam');
+    const st = await chamar('GET', '/api/store', { token: c.a.token });
+    assert.ok(!st.dados.sl_redirecionadores.some(x => x.id === 'r2'));
+    const l = st.dados.sl_lixeira.find(x => x.originalId === 'r2');
+    assert.ok(l, 'fica na Lixeira');
+    assert.strictEqual((await chamar('POST', '/api/lixeira/restore/' + encodeURIComponent(l.id), { token: c.a.token })).status, 200);
+    await ate(() => cfg().apagar, 6000, 'teste voltar');
+    await chamar('POST', '/api/lixeira/soft-delete', { token: c.a.token, corpo: { key: 'sl_redirecionadores', itemId: 'r2', tipo: 'Teste A/B' } });
+    await ate(() => !cfg().apagar, 6000, 'teste sair de novo');
+  });
+
   await t.test('o link curto do teste passa pelo domínio do cliente até a empresa certa', async () => {
     W.limparCache();
     const r = await visitar('lp.loja-a.com.br', '/r/oferta-ab');
