@@ -86,48 +86,44 @@ test('cobrança pela Pagar.me', async (t) => {
   await t.test('a página e os planos abrem para qualquer um', async () => {
     const p = await chamar('GET', '/planos');
     assert.strictEqual(p.status, 200);
-    assert.match(p.dados, /Você paga pela faixa de investimento/);
+    assert.match(p.dados, /Escolha pelo tamanho da sua operação/);
     assert.strictEqual((await chamar('GET', '/planos/obrigado?r=as_x')).status, 200);
     const l = await chamar('GET', '/api/planos-tmx');
     assert.strictEqual(l.status, 200);
     assert.strictEqual(l.dados.cobranca, true);
-    assert.deepStrictEqual(l.dados.planos.map(x => x.id), ['iniciante', 'starter', 'escala', 'agencia']);
-    const st = l.dados.planos.find(x => x.id === 'starter');
-    assert.strictEqual(st.mensal, 197);
-    assert.strictEqual(st.anual, 1970, 'anual = 10 meses (2 grátis)');
+    assert.deepStrictEqual(l.dados.planos.map(x => x.id), ['pro', 'elite', 'premium']);
+    const st = l.dados.planos.find(x => x.id === 'pro');
+    assert.strictEqual(st.mensal, 97);
+    assert.strictEqual(st.anual, 970, 'anual = 10 meses (2 grátis)');
+    assert.strictEqual(st.testeDias, 7);
+    assert.strictEqual(l.dados.planos.find(x => x.id === 'elite').destaque, true);
   });
 
   await t.test('confere os dados antes de abrir o pagamento', async () => {
     assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'nada' } })).status, 400);
-    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'starter', email: 'a@b.com', whatsapp: '11999990000' } })).dados.campo, 'nome');
-    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'starter', nome: 'Ana', email: 'ana', whatsapp: '11999990000' } })).dados.campo, 'email');
-    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'starter', nome: 'Ana', email: 'ana@clinica.com', whatsapp: '123' } })).dados.campo, 'whatsapp');
-    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'starter', nome: 'T', email: 'thiago@axcend.com', whatsapp: '11999990000' } })).status, 409, 'quem já tem conta entra pelo login');
+    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'pro', email: 'a@b.com', whatsapp: '11999990000' } })).dados.campo, 'nome');
+    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'pro', nome: 'Ana', email: 'ana', whatsapp: '11999990000' } })).dados.campo, 'email');
+    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'pro', nome: 'Ana', email: 'ana@clinica.com', whatsapp: '123' } })).dados.campo, 'whatsapp');
+    assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano: 'pro', nome: 'T', email: 'thiago@axcend.com', whatsapp: '11999990000' } })).status, 409, 'quem já tem conta entra pelo login');
     assert.strictEqual(pg.links.length, 0, 'nada chegou na Pagar.me');
   });
 
-  await t.test('o teste grátis vira pedido pra TMX liberar, sem Pagar.me', async () => {
-    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'iniciante', nome: 'Bia', email: 'bia@loja.com', whatsapp: '(21) 98888-7777' } });
-    assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.dados.gratis, true);
-    assert.strictEqual(pg.links.length, 0);
-    const tmx = await chamar('POST', '/api/auth/login', { corpo: { email: 'thiago@axcend.com', senha: 'axcend2026' } });
-    ctx.tmx = tmx.dados.token;
-    const l = await chamar('GET', '/api/plataforma/assinaturas', { token: ctx.tmx });
-    assert.strictEqual(l.status, 200);
-    const pedido = l.dados.assinaturas.find(a => a.email === 'bia@loja.com');
-    assert.ok(pedido && pedido.status === 'pedido' && pedido.whatsapp === '5521988887777');
+  await t.test('os planos antigos saíram da venda', async () => {
+    ctx.tmx = (await chamar('POST', '/api/auth/login', { corpo: { email: 'thiago@axcend.com', senha: 'axcend2026' } })).dados.token;
     assert.strictEqual((await chamar('GET', '/api/plataforma/assinaturas')).status, 401, 'lista só pra Diretoria da TMX');
+    for (const plano of ['iniciante', 'starter', 'escala', 'agencia']) {
+      assert.strictEqual((await chamar('POST', '/api/assinar', { corpo: { plano, nome: 'Bia', email: 'bia@loja.com', whatsapp: '(21) 98888-7777' } })).status, 400, plano);
+    }
   });
 
-  await t.test('assinar o Starter anual abre o link de assinatura da Pagar.me', async () => {
-    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'starter', ciclo: 'anual', nome: 'Ana Souza', email: 'Ana@Clinica.com', whatsapp: '11 99999-0000' } });
+  await t.test('assinar o Pro anual abre o link de assinatura da Pagar.me', async () => {
+    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'pro', ciclo: 'anual', nome: 'Ana Souza', email: 'Ana@Clinica.com', whatsapp: '11 99999-0000' } });
     assert.strictEqual(r.status, 200, JSON.stringify(r.dados) + log.slice(-1500));
     assert.match(r.dados.url, /^https:\/\/payment-link\.pagar\.me\/pl_1$/);
     ctx.ref = r.dados.ref;
     assert.strictEqual(pg.planos.length, 1);
     assert.strictEqual(pg.planos[0].interval, 'year');
-    assert.strictEqual(pg.planos[0].items[0].pricing_scheme.price, 197000, 'R$ 1.970 em centavos');
+    assert.strictEqual(pg.planos[0].items[0].pricing_scheme.price, 97000, 'R$ 970 em centavos');
     assert.deepStrictEqual(pg.planos[0].payment_methods, ['credit_card']);
     const link = pg.links[0];
     assert.strictEqual(link.type, 'subscription');
@@ -137,7 +133,7 @@ test('cobrança pela Pagar.me', async (t) => {
     assert.strictEqual(link.customer_settings.customer.email, 'ana@clinica.com');
     assert.ok(link.flow_settings.success_url.endsWith('/planos/obrigado?r=' + ctx.ref));
     // o segundo pedido do mesmo plano e ciclo reaproveita o plano já criado lá
-    const r2 = await chamar('POST', '/api/assinar', { corpo: { plano: 'starter', ciclo: 'anual', nome: 'Caio', email: 'caio@x.com', whatsapp: '11988887777' } });
+    const r2 = await chamar('POST', '/api/assinar', { corpo: { plano: 'pro', ciclo: 'anual', nome: 'Caio', email: 'caio@x.com', whatsapp: '11988887777' } });
     assert.strictEqual(r2.status, 200);
     assert.strictEqual(pg.planos.length, 1);
   });
@@ -160,13 +156,13 @@ test('cobrança pela Pagar.me', async (t) => {
     await ate(async () => (await chamar('GET', '/api/assinar/situacao?r=' + ctx.ref)).dados.status === 'paga', 5000, 'liberar');
     const s = await chamar('GET', '/api/assinar/situacao?r=' + ctx.ref);
     assert.match(s.dados.convite, /\/cadastro\?c=cv_/);
-    assert.strictEqual(s.dados.plano, 'Starter');
-    assert.strictEqual(s.dados.valor, 1970);
+    assert.strictEqual(s.dados.plano, 'Pro');
+    assert.strictEqual(s.dados.valor, 970);
     ctx.codigo = new URL(s.dados.convite).searchParams.get('c');
     const c = await chamar('GET', '/api/cadastro/convite?c=' + ctx.codigo);
     assert.strictEqual(c.status, 200);
     assert.strictEqual(c.dados.email, 'ana@clinica.com');
-    assert.strictEqual(c.dados.plano, 'starter');
+    assert.strictEqual(c.dados.plano, 'pro');
     // o aviso repetido não gera outro convite
     await aviso('charge.paid', { id: 'ch_1', customer: { code: ctx.ref } });
     await espera(300);
@@ -188,7 +184,7 @@ test('cobrança pela Pagar.me', async (t) => {
     assert.strictEqual(r.status, 200, JSON.stringify(r.dados) + log.slice(-2000));
     const emp = await chamar('GET', '/api/plataforma/empresas', { token: ctx.tmx });
     const e = emp.dados.empresas.find(x => x.nome === 'Clínica Ana');
-    assert.strictEqual(e.plano, 'starter');
+    assert.strictEqual(e.plano, 'pro');
     assert.strictEqual(e.origem, 'compra');
     const s = await chamar('GET', '/api/assinar/situacao?r=' + ctx.ref);
     assert.strictEqual(s.dados.cadastrado, true);
@@ -196,11 +192,11 @@ test('cobrança pela Pagar.me', async (t) => {
     // o Meu plano do cliente mostra a assinatura dele
     const mp = await chamar('GET', '/api/meu-plano', { token: r.dados.token });
     assert.strictEqual(mp.status, 200, JSON.stringify(mp.dados));
-    assert.strictEqual(mp.dados.plano.id, 'starter');
+    assert.strictEqual(mp.dados.plano.id, 'pro');
     assert.strictEqual(mp.dados.cobranca.ligada, true);
     assert.strictEqual(mp.dados.cobranca.status, 'paga');
     assert.strictEqual(mp.dados.cobranca.ciclo, 'anual');
-    assert.strictEqual(mp.dados.cobranca.valor, 1970);
+    assert.strictEqual(mp.dados.cobranca.valor, 970);
     assert.ok(Array.isArray(mp.dados.cobranca.faturas));
   });
 
@@ -216,7 +212,7 @@ test('cobrança pela Pagar.me', async (t) => {
 
   await t.test('compra direto pela Pagar.me, sem dados antes: o aviso traz o contato e manda o acesso', async () => {
     const antes = pg.links.length;
-    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'escala', ciclo: 'mensal' } });
+    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'elite', ciclo: 'mensal' } });
     assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
     const link = pg.links[antes];
     assert.ok(!link.customer_settings, 'sem dados da pessoa no link: a Pagar.me pede no checkout');
@@ -229,7 +225,7 @@ test('cobrança pela Pagar.me', async (t) => {
     assert.strictEqual(s.dados.avisado, true, 'o link foi pro e-mail e o WhatsApp da compra');
     const c = await chamar('GET', '/api/cadastro/convite?c=' + new URL(s.dados.convite).searchParams.get('c'));
     assert.strictEqual(c.dados.email, 'duda@loja.com');
-    assert.strictEqual(c.dados.plano, 'escala');
+    assert.strictEqual(c.dados.plano, 'elite');
     const d = (await chamar('GET', '/api/plataforma/assinaturas', { token: ctx.tmx })).dados.assinaturas.find(x => x.email === 'duda@loja.com');
     assert.strictEqual(d.whatsapp, '5531977776666');
     assert.strictEqual(d.nome, 'Duda Lima');
@@ -237,7 +233,7 @@ test('cobrança pela Pagar.me', async (t) => {
 
   await t.test('liberado pela tela antes do aviso: o aviso depois manda o acesso pro e-mail da compra', async () => {
     const antes = pg.links.length;
-    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'agencia', ciclo: 'anual' } });
+    const r = await chamar('POST', '/api/assinar', { corpo: { plano: 'premium', ciclo: 'anual' } });
     assert.strictEqual(r.status, 200);
     const link = pg.links[antes];
     pg.pagos.add(link.id);
@@ -254,12 +250,12 @@ test('cobrança pela Pagar.me', async (t) => {
   await t.test('link de compra direto /assinar/<plano> leva pro checkout; robô de prévia não abre pedido', async () => {
     const ir = (caminho, ua) => fetch(base + caminho, { redirect: 'manual', headers: ua ? { 'User-Agent': ua } : {} });
     const antes = pg.links.length;
-    const r = await ir('/assinar/escala?ciclo=anual');
+    const r = await ir('/assinar/elite?ciclo=anual');
     assert.strictEqual(r.status, 302);
     assert.match(r.headers.get('location'), /^https:\/\/payment-link\.pagar\.me\/pl_/);
     assert.strictEqual(pg.links.length, antes + 1);
     assert.strictEqual(pg.planos.find(x => x.id === pg.links[antes].cart_settings.recurrences[0].plan_id).interval, 'year');
-    for (const [caminho, ua] of [['/assinar/escala', 'WhatsApp/2.23.20 A'], ['/assinar/iniciante'], ['/assinar/nada']]) {
+    for (const [caminho, ua] of [['/assinar/elite', 'WhatsApp/2.23.20 A'], ['/assinar/iniciante'], ['/assinar/starter'], ['/assinar/nada']]) {
       const x = await ir(caminho, ua);
       assert.strictEqual(x.status, 302);
       assert.strictEqual(x.headers.get('location'), '/planos#planos', caminho);

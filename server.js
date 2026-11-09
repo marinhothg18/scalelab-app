@@ -319,6 +319,10 @@ function _plataforma() {
     CREATE TABLE IF NOT EXISTS dominios_hospedados (host TEXT PRIMARY KEY, empresa TEXT NOT NULL, cf_id TEXT, criado INTEGER);
   `);
   try { db.exec('ALTER TABLE assinaturas ADD COLUMN acesso_enviado INTEGER'); } catch (e) {}   // já existe
+  // atrasada_em: quando o pagamento falhou; coberto_ate: até quando o que já foi pago (ou o teste) vale
+  for (const col of ['atrasada_em INTEGER', 'coberto_ate INTEGER']) {
+    try { db.exec('ALTER TABLE assinaturas ADD COLUMN ' + col); } catch (e) {}
+  }
   for (const col of ['bloqueio_motivo TEXT', 'bloqueado_em INTEGER', 'bloqueado_por TEXT']) {
     try { db.exec('ALTER TABLE empresas ADD COLUMN ' + col); } catch (e) {}
   }
@@ -10037,22 +10041,34 @@ app.post('/api/plataforma/empresas/:id/bloquear', authDiretoriaInterna, (req, re
 // com o anual valendo 10× o mensal (2 meses grátis). Esta é a lista única de planos: a tela,
 // a Central e a cobrança leem daqui. Nada trava por limite ainda (decisão 4): a tela só mostra
 // o uso e avisa quando chega perto.
+// Desde 09/11 a venda é por tamanho da operação: Pro, Elite e Premium, com 7 dias grátis. Os planos por faixa
+// de investimento saíram da venda (sem `venda: true`), mas continuam aqui para quem já está neles.
 // ══════════════════════════════════════════════
+const DIAS_TESTE_PLANO = 7;
 const PLANOS_TMX = [
   { id: 'interno', nome: 'Interno', interno: true, desc: 'A TMX é a casa: sem plano, sem cobrança e sem limite.', limites: {} },
   { id: 'teste', nome: 'Teste', desc: 'Sem cobrança e sem limite enquanto a TMX libera o acesso por convite.', limites: {} },
-  { id: 'iniciante', nome: 'Iniciante', venda: true, mensal: 0, gratis: true, faixa: 'Até R$ 10 mil de investimento em anúncios por mês',
+  { id: 'iniciante', nome: 'Iniciante', mensal: 0, gratis: true, faixa: 'Até R$ 10 mil de investimento em anúncios por mês',
     limites: { invest: 10000, vendas: 30, projetos: 1, dominios: 1, contas: 1, pixels: 1, pessoas: 1, arquivosGB: 2 },
     itens: ['Até 30 vendas aprovadas por mês', '1 projeto', '1 domínio próprio', '1 conta de anúncio', '1 pixel da Meta', 'Só você', '2 GB de arquivos'] },
-  { id: 'starter', nome: 'Starter', venda: true, mensal: 197, faixa: 'Até R$ 100 mil de investimento em anúncios por mês',
+  { id: 'starter', nome: 'Starter', mensal: 197, faixa: 'Até R$ 100 mil de investimento em anúncios por mês',
     limites: { invest: 100000, projetos: 1, dominios: 3, contas: 3, pixels: 3, pessoas: 5, arquivosGB: 20 },
     itens: ['Vendas sem limite', '1 projeto', '3 domínios próprios', '3 contas de anúncio', '3 pixels da Meta', '5 pessoas na equipe', '20 GB de arquivos', 'Suporte humano'] },
-  { id: 'escala', nome: 'Escala', venda: true, mensal: 497, faixa: 'Até R$ 300 mil de investimento em anúncios por mês',
+  { id: 'escala', nome: 'Escala', mensal: 497, faixa: 'Até R$ 300 mil de investimento em anúncios por mês',
     limites: { invest: 300000, projetos: 3, dominios: 10, contas: 10, pixels: 10, pessoas: 20, arquivosGB: 100 },
     itens: ['Vendas sem limite', '3 projetos', '10 domínios próprios', '10 contas de anúncio', '10 pixels da Meta', '20 pessoas na equipe', '100 GB de arquivos', 'Suporte humano'] },
-  { id: 'agencia', nome: 'Agência', venda: true, mensal: 997, faixa: 'Sem limite de investimento',
+  { id: 'agencia', nome: 'Agência', mensal: 997, faixa: 'Sem limite de investimento',
     limites: { projetos: 10 },
-    itens: ['Vendas sem limite', '10 projetos', 'Domínios, contas e pixels sem limite', 'Equipe sem limite', 'Arquivos sem limite', 'Suporte prioritário'] }
+    itens: ['Vendas sem limite', '10 projetos', 'Domínios, contas e pixels sem limite', 'Equipe sem limite', 'Arquivos sem limite', 'Suporte prioritário'] },
+  { id: 'pro', nome: 'Pro', venda: true, mensal: 97, faixa: 'Para quem toca um projeto',
+    limites: { vendas: 300, projetos: 1, pessoas: 4, pixels: 1, dominios: 1, contas: 3 },
+    itens: ['Até 300 vendas aprovadas por mês', '1 projeto', 'Até 4 pessoas na equipe', '1 dashboard', '1 pixel', '1 domínio próprio', '3 contas de anúncio'] },
+  { id: 'elite', nome: 'Elite', venda: true, destaque: true, mensal: 247, faixa: 'Para quem já tem mais de um projeto',
+    limites: { vendas: 1000, projetos: 3, pessoas: 8, pixels: 3, dominios: 3, contas: 10 },
+    itens: ['Até 1.000 vendas aprovadas por mês', '3 projetos', 'Até 8 pessoas na equipe', '3 dashboards', '3 pixels', '3 domínios próprios', '10 contas de anúncio'] },
+  { id: 'premium', nome: 'Premium', venda: true, mensal: 397, faixa: 'Para time grande e alto volume',
+    limites: { vendas: 2500, projetos: 6, pessoas: 20, pixels: 6, dominios: 6 },
+    itens: ['Até 2.500 vendas aprovadas por mês', '6 projetos', 'Até 20 pessoas na equipe', '6 dashboards', '6 pixels', '6 domínios próprios', 'Contas de anúncio sem limite'] }
 ];
 const _planoDe = id => PLANOS_TMX.find(p => p.id === id) || PLANOS_TMX.find(p => p.id === 'teste');
 // O que a empresa usa agora de cada limite (dados dela: banco e base de pessoas do motor)
@@ -10240,6 +10256,7 @@ async function _liberarAssinatura(ref, motivo, extra = {}) {
   if (!mudou.changes) return false;
   const a = _assinatura(ref);
   const p = _planoDe(a.plano);
+  _anotarPago(ref, a.ciclo, !!extra.emTeste);
   const codigo = 'cv_' + crypto.randomBytes(24).toString('base64url');
   const hash = _hashConvite(codigo);
   _platPrep('INSERT INTO convites(hash, email, plano, obs, criado, criado_por, expira) VALUES(?,?,?,?,?,?,?)')
@@ -10258,6 +10275,62 @@ async function _liberarAssinatura(ref, motivo, extra = {}) {
   console.log('[COBRANÇA] paga:', p.id, a.ciclo, '(' + motivo + ')');
   return true;
 }
+// ── SEM PAGAMENTO, A CONTA SUSPENDE SOZINHA (decisão do Thiago, 09/11/2026) ──
+// Pagamento recusado: avisa o cliente e, 3 dias depois, suspende. Cancelou: vale até o fim do que já foi pago (ou do
+// teste de 7 dias) e mais 3 dias. Pagou de novo, volta sozinho. Bloqueio feito à mão na Central só a Central tira.
+// Suspensa, a empresa continua recebendo pixel, vendas e links (a portaria só recusa a equipe).
+const COBRANCA_ESPERA_MS = Number(process.env.COBRANCA_ESPERA_MS_TESTE) || 3 * 86400000;
+const BLOQUEIO_COBRANCA = 'Cobrança automática';
+const _USUARIO_COBRANCA = { id: 'sistema', nome: 'Cobrança', cargo: 'sistema' };
+function _anotarPago(ref, ciclo, emTeste) {
+  const dias = emTeste ? DIAS_TESTE_PLANO : (ciclo === 'anual' ? 365 : 30);
+  _platPrep('UPDATE assinaturas SET coberto_ate=?, atrasada_em=NULL WHERE ref=?').run(Date.now() + dias * 86400000, ref);
+}
+function _avisarClienteCobranca(a, titulo, texto) {
+  if (a.email) _enviarEmail({ to: a.email, subject: titulo, text: texto,
+    html: '<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0F172A"><h2 style="margin:0 0 8px">' + _escHtml(titulo) + '</h2><p>' + _escHtml(texto) + '</p></div>' }).catch(() => {});
+  if (a.whatsapp) sendWhatsAppMessage(a.whatsapp, titulo + '\n\n' + texto).catch(() => {});
+}
+function _marcarAtrasada(a) {
+  const agora = Date.now();
+  const r = _platPrep("UPDATE assinaturas SET status='atrasada', atrasada_em=?, atualizado=? WHERE ref=? AND status='paga'").run(agora, agora, a.ref);
+  if (!r.changes) return false;
+  const p = _planoDe(a.plano);
+  _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p.nome, 'O pagamento de ' + (a.nome || a.email || 'um cliente') + ' não passou. Se continuar sem pagar, a conta é suspensa sozinha em 3 dias.');
+  _avisarClienteCobranca(a, 'Seu pagamento do TMX não passou', 'Não conseguimos cobrar o seu plano ' + p.nome + '. Confira o cartão ou fale com a TMX pelo Suporte. Se continuar sem pagamento, o acesso da equipe é suspenso em 3 dias. O pixel, as vendas e os links continuam funcionando.');
+  return true;
+}
+function _suspenderInadimplentes() {
+  if (!SOU_TMX) return;
+  try {
+    const limite = Date.now() - COBRANCA_ESPERA_MS;
+    const vencidas = _platPrep("SELECT * FROM assinaturas WHERE empresa IS NOT NULL AND ((status='atrasada' AND atrasada_em<?) OR (status='cancelada' AND coberto_ate<?))").all(limite, limite);
+    for (const a of vencidas) {
+      const e = _empresas.get(a.empresa);
+      if (!e || e.status === 'bloqueada') continue;
+      if (_platPrep("SELECT 1 FROM assinaturas WHERE empresa=? AND status='paga' LIMIT 1").get(a.empresa)) continue;   // tem outra assinatura em dia
+      const motivo = 'Pagamento em atraso';
+      _platPrep("UPDATE empresas SET status='bloqueada', bloqueio_motivo=?, bloqueado_em=?, bloqueado_por=? WHERE id=?").run(motivo, Date.now(), BLOQUEIO_COBRANCA, e.id);
+      e.status = 'bloqueada'; e.motivo = motivo;
+      const db = readDB(); audit(db, 'empresa_bloqueada', { empresa: e.id, nome: e.nome }, { motivo, automatico: true }, _USUARIO_COBRANCA); writeDB(db);
+      _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_bloqueada', meta: { motivo, por: BLOQUEIO_COBRANCA } }).catch(() => {});
+      _avisarDiretoriaTmx('⛔ Conta suspensa · ' + e.nome, 'Sem pagamento há mais de 3 dias. Pixel, vendas e links continuam; a equipe não entra até pagar.');
+      _avisarClienteCobranca(a, 'Seu acesso ao TMX foi suspenso', 'Não recebemos o pagamento do seu plano. O pixel, as vendas e os links continuam funcionando, e o acesso da equipe volta sozinho assim que o pagamento for confirmado. Para resolver, fale com a TMX pelo WhatsApp.');
+    }
+  } catch (e) { console.error('[COBRANÇA] suspensão:', e.message); }
+}
+function _voltarAoAr(a) {
+  if (!a || !a.empresa) return;
+  const e = _empresas.get(a.empresa);
+  if (!e || e.status !== 'bloqueada') return;
+  const r = _platPrep("UPDATE empresas SET status='ativa', bloqueio_motivo=NULL, bloqueado_em=NULL, bloqueado_por=NULL WHERE id=? AND bloqueado_por=?").run(e.id, BLOQUEIO_COBRANCA);
+  if (!r.changes) return;
+  e.status = 'ativa'; e.motivo = '';
+  const db = readDB(); audit(db, 'empresa_desbloqueada', { empresa: e.id, nome: e.nome }, { automatico: true }, _USUARIO_COBRANCA); writeDB(db);
+  _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_desbloqueada', meta: { por: BLOQUEIO_COBRANCA } }).catch(() => {});
+  _avisarClienteCobranca(a, 'Seu acesso ao TMX voltou', 'O pagamento foi confirmado e a sua equipe já pode entrar de novo.');
+}
+setInterval(_suspenderInadimplentes, Number(process.env.COBRANCA_TICK_MS_TESTE) || 60 * 60 * 1000);
 // Os dados da pessoa que a Pagar.me pediu no checkout (só preenche o que o pedido ainda não tem)
 function _contatoNoPedido(ref, c) {
   const email = String(c.email || '').trim().toLowerCase();
@@ -10336,7 +10409,7 @@ app.get('/api/planos-tmx', (req, res) => {
     cobranca: payt ? Object.keys(v.links).length > 0 : !!PAGARME_API_KEY,
     gateway: v.gateway,
     planos: PLANOS_TMX.filter(p => p.venda).map(p => ({ id: p.id, nome: p.nome, mensal: p.mensal, anual: p.gratis ? 0 : p.mensal * 10,
-      gratis: !!p.gratis, faixa: p.faixa, itens: p.itens,
+      gratis: !!p.gratis, faixa: p.faixa, itens: p.itens, destaque: !!p.destaque, testeDias: p.gratis ? 0 : DIAS_TESTE_PLANO,
       checkout: payt && !p.gratis ? { mensal: v.links[p.id + ':mensal'] || null, anual: v.links[p.id + ':anual'] || null } : null }))
   });
 });
@@ -10497,15 +10570,16 @@ async function _tratarAvisoPagarme(ev) {
       if (pago) await _liberarAssinatura(a.ref, 'aviso ' + tipo, { sub: subId, cliente: cli.id, contato });
     } else if (a.status === 'atrasada' && tipo === 'charge.paid') {
       _platPrep("UPDATE assinaturas SET status='paga', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
+      _anotarPago(a.ref, a.ciclo, false); _voltarAoAr(a);
       _avisarDiretoriaTmx('✅ Mensalidade em dia · ' + p.nome, quem + ' pagou a cobrança que estava atrasada.');
-    }
+    } else if (a.status === 'paga' && tipo === 'charge.paid') _anotarPago(a.ref, a.ciclo, false);
   } else if (tipo === 'charge.payment_failed') {
-    if (a.status === 'paga') _platPrep("UPDATE assinaturas SET status='atrasada', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
-    _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p.nome, 'O cartão de ' + quem + ' recusou a cobrança do ' + p.nome + '. A Pagar.me tenta de novo; o acesso continua até você decidir.');
+    if (!_marcarAtrasada(a)) _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p.nome, 'O cartão de ' + quem + ' recusou a cobrança do ' + p.nome + '.');
   } else if (tipo === 'subscription.canceled' || tipo === 'subscription.expired') {
     _platPrep("UPDATE assinaturas SET status='cancelada', atualizado=? WHERE ref=?").run(Date.now(), a.ref);
-    _avisarDiretoriaTmx('🚫 Assinatura ' + (tipo === 'subscription.expired' ? 'expirada' : 'cancelada') + ' · ' + p.nome, quem + ' saiu do ' + p.nome + '. O acesso continua até você bloquear na Central.');
+    _avisarDiretoriaTmx('🚫 Assinatura ' + (tipo === 'subscription.expired' ? 'expirada' : 'cancelada') + ' · ' + p.nome, quem + ' saiu do ' + p.nome + '. O acesso vale até o fim do que já foi pago; depois disso, mais 3 dias e a conta é suspensa sozinha.');
   } else if (tipo === 'charge.refunded' || tipo === 'charge.chargedback') {
+    _platPrep('UPDATE assinaturas SET coberto_ate=NULL WHERE ref=?').run(a.ref);   // dinheiro devolvido: quem decide o acesso é a TMX
     _avisarDiretoriaTmx('↩️ ' + (tipo === 'charge.refunded' ? 'Reembolso' : 'Chargeback') + ' · ' + p.nome, 'Cobrança de ' + quem + ' ' + (tipo === 'charge.refunded' ? 'reembolsada' : 'contestada no cartão') + '.');
   }
 }
@@ -10609,7 +10683,8 @@ function _planoDaVendaPayt(p, n) {
   }
   const nome = [n.produto, n.plano, n.periodicidade, p && p.link && p.link.title, p && p.product && p.product.name].join(' ').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const plano = /agencia/.test(nome) ? 'agencia' : /escala/.test(nome) ? 'escala' : /starter/.test(nome) ? 'starter' : null;
+  const plano = /premium/.test(nome) ? 'premium' : /elite/.test(nome) ? 'elite' : /\bpro\b/.test(nome) ? 'pro'
+    : /agencia/.test(nome) ? 'agencia' : /escala/.test(nome) ? 'escala' : /starter/.test(nome) ? 'starter' : null;
   if (!plano) return null;
   const ciclo = /anual|annual|year|12 ?meses/.test(nome) ? 'anual' : 'mensal';
   return { plano, ciclo };
@@ -10647,7 +10722,10 @@ function _tratarVendaPaytTmx(p) {
   console.log('[COBRANÇA] Payt', st || '(sem status)', a ? 'pedido ' + ref.slice(0, 12) : 'novo');
   const contato = { email: n.email, nome: n.cliente, whatsapp: n.telefone };
   const agora = Date.now();
-  if (_PAGO.test(st)) {
+  // teste grátis: a Payt pode avisar como "trial" ou como uma venda de valor zero. Ainda falta ver o aviso de verdade numa compra de teste.
+  const emTeste = /trial/.test(st) || /trial/.test(String(n.assinaturaStatus || '')) || !(Number(n.valor) > 0);
+  const comecouTeste = /trial/.test(st) || (/trial/.test(String(n.assinaturaStatus || '')) && !/cancel|refund|reembols|chargeback|overdue|atras|late|failed|recus|refused/.test(st));
+  if (_PAGO.test(st) || comecouTeste) {
     if (!a) {
       const qual = _planoDaVendaPayt(p, n);
       if (!qual) {
@@ -10656,13 +10734,15 @@ function _tratarVendaPaytTmx(p) {
       }
       _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, atualizado, ultimo_evento) VALUES(?,?,?,?,?,?,?,?,?,?)')
         .run(ref, qual.plano, qual.ciclo, null, null, null, agora, 'aguardando', agora, 'payt:' + st);
-      _liberarAssinatura(ref, 'payt', { contato }).catch(e => console.error('[COBRANÇA] liberar Payt:', e.message));
+      _liberarAssinatura(ref, 'payt', { contato, emTeste }).catch(e => console.error('[COBRANÇA] liberar Payt:', e.message));
       return;
     }
     // renovação ou pagamento em dia de novo
     _platPrep('UPDATE assinaturas SET ultimo_evento=?, atualizado=? WHERE ref=?').run('payt:' + st, agora, ref);
+    _anotarPago(ref, a.ciclo, emTeste);
     if (a.status === 'atrasada' || a.status === 'cancelada') {
       _platPrep("UPDATE assinaturas SET status='paga' WHERE ref=?").run(ref);
+      _voltarAoAr(a);
       _avisarDiretoriaTmx('✅ Mensalidade em dia · ' + _planoDe(a.plano).nome, (a.nome || a.email || 'Um cliente') + ' pagou de novo pela Payt.');
     }
     return;
@@ -10671,15 +10751,14 @@ function _tratarVendaPaytTmx(p) {
   const p2 = _planoDe(a.plano), quem = a.nome || a.email || 'Um cliente';
   _platPrep('UPDATE assinaturas SET ultimo_evento=?, atualizado=? WHERE ref=?').run('payt:' + st, agora, ref);
   if (/refund|reembols|chargeback/.test(st)) {
-    _platPrep("UPDATE assinaturas SET status='cancelada' WHERE ref=?").run(ref);
+    _platPrep("UPDATE assinaturas SET status='cancelada', coberto_ate=NULL WHERE ref=?").run(ref);   // dinheiro devolvido: quem decide o acesso é a TMX
     _avisarDiretoriaTmx('↩️ ' + (/chargeback/.test(st) ? 'Chargeback' : 'Reembolso') + ' · ' + p2.nome, 'A compra de ' + quem + ' pela Payt foi ' + (/chargeback/.test(st) ? 'contestada no cartão' : 'reembolsada') + '. O acesso continua até você bloquear na Central.');
   } else if (/cancel/.test(st) || /cancel/.test(String(n.assinaturaStatus || ''))) {
     if (a.status === 'cancelada') return;
     _platPrep("UPDATE assinaturas SET status='cancelada' WHERE ref=?").run(ref);
-    _avisarDiretoriaTmx('🚫 Assinatura cancelada · ' + p2.nome, quem + ' cancelou a assinatura na Payt. O acesso continua até você bloquear na Central.');
+    _avisarDiretoriaTmx('🚫 Assinatura cancelada · ' + p2.nome, quem + ' cancelou a assinatura na Payt. O acesso vale até o fim do que já foi pago ou do teste; depois disso, mais 3 dias e a conta é suspensa sozinha.');
   } else if (/overdue|atras|late|failed|recus|refused/.test(st) && a.status === 'paga') {
-    _platPrep("UPDATE assinaturas SET status='atrasada' WHERE ref=?").run(ref);
-    _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p2.nome, 'A renovação de ' + quem + ' na Payt não passou.');
+    _marcarAtrasada(a);
   }
 }
 
