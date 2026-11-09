@@ -22304,6 +22304,18 @@ function _cardMetaAds(m){
 var PLATAFORMAS_VENDA = [
   { id:'payt', nome:'Payt', cor:'#1B9CFA',
     passo:'A URL de cima, sem plataforma, é a que a Payt já usa e continua funcionando. Pra uma integração nova, use esta.' },
+  { id:'kirvano', nome:'Kirvano', cor:'#7C3AED',
+    passo:'Na Kirvano: Integrações › Webhooks › Criar Webhook. Dê um nome, cole a URL, escolha os produtos e marque os eventos de venda aprovada, recusada, reembolso, chargeback, Pix e boleto gerados e expirados, carrinho abandonado e assinatura renovada.',
+    aviso:'A Kirvano devolve o src e as UTMs: o pixel do TMX põe o id da pessoa no src do link do checkout. Faça uma compra de teste pra conferir que ela chega com o id.' },
+  { id:'cakto', nome:'Cakto', cor:'#0D9488',
+    passo:'Na Cakto: Integrações › Webhooks. Crie um webhook, cole a URL, escolha os produtos e marque: Compra aprovada, Compra recusada, Reembolso, Chargeback, Pix gerado, Boleto gerado, Pix expirado, Abandono de checkout e Assinatura renovada.',
+    aviso:'A Cakto devolve o sck e as UTMs: o pixel já põe o id da pessoa no link do checkout. Numa venda parcelada, confira se o valor é o que você espera.' },
+  { id:'perfectpay', nome:'Perfect Pay', cor:'#2563EB',
+    passo:'Na Perfect Pay: Ferramentas › Webhook - Vendas › Adicionar. Cole a URL, marque todos os produtos e todos os eventos.',
+    aviso:'A Perfect Pay devolve o sck e as UTMs: o pixel já põe o id da pessoa no link do checkout. Faça uma compra de teste pra conferir que ela chega com o id.' },
+  { id:'cartpanda', nome:'Cartpanda', cor:'#F59E0B',
+    passo:'Na Cartpanda: Configurações › Webhooks. Crie um webhook em cada loja, cole a URL e marque os eventos de pedido criado, pago, atualizado e reembolsado.',
+    aviso:'A Cartpanda não publica o formato do aviso de venda. Faça um pedido de teste e confira o valor, o produto e se a venda chega com o id da pessoa antes de confiar nos números.' },
   { id:'hubla', nome:'Hubla', cor:'#3E1493',
     passo:'Na Hubla: Integrações › Automações › Webhook › Adicionar regra. Cole a URL, escolha os produtos e marque os eventos de fatura (criada, paga, expirada, reembolsada e mudança de status) e o de carrinho abandonado. Em “Como enviar seus dados”, deixe “Integração recomendada”.' },
   { id:'appmax', nome:'AppMax', cor:'#FF5926',
@@ -22749,7 +22761,7 @@ var CFG_CONEX = [
   { id:'meta',     ic:'Ⓜ️', nome:'Meta Ads',       desc:'Contas de anúncio, pixels e as compras que vão pra Meta.', paineis:['integracoes'], ver:'meta' },
   { id:'utmify',   ic:'📈', nome:'Utmify',         desc:'Gasto e métricas de campanha.', paineis:['integracoes'], ver:'utmify' },
   { id:'vturb',    ic:'🎬', nome:'VTurb',          desc:'Retenção, pitch e conversão dentro das VSLs.', paineis:['integracoes'], ver:'vturb' },
-  { id:'checkout', ic:'💰', nome:'Checkouts',      desc:'Payt, Kiwify, Hubla e AppMax mandam as vendas pra cá.', paineis:['integracoes'], ver:'checkout' },
+  { id:'checkout', ic:'💰', nome:'Checkouts',      desc:'Payt, Kiwify, Hotmart, Hubla, AppMax, Kirvano, Cakto, Perfect Pay e Cartpanda mandam as vendas pra cá.', paineis:['integracoes'], ver:'checkout' },
   { id:'hospedagem', ic:'🌐', nome:'Hospedagem',   desc:'FTP da hospedagem onde as páginas ficam no ar (HospedaInfo, Hostinger, qualquer cPanel). O TMX publica nela.', paineis:['hospedagem'], soTmx:true },
   { id:'whatsapp', ic:'💬', nome:'WhatsApp',       desc:'Z-API. Manda lembretes e relatórios e recebe as mensagens pro agente.', paineis:['whatsapp'], ver:'whatsapp' },
   { id:'ia',       ic:'🤖', nome:'Agente de IA',   desc:'Claude ou OpenAI, pra responder pelo WhatsApp e no chat das páginas.', paineis:['whatsapp'], ver:'ia' },
@@ -36646,7 +36658,7 @@ var MP_MODULOS = [
 ];
 // Payt, Hubla, AppMax e Kiwify têm webhook aqui: escolher uma delas filtra o bloco
 // (só as vendas e os cliques de compra daquela plataforma)
-var MP_INTEGRACOES = ['Payt','Hubla','AppMax','Kiwify','Hotmart','Eduzz','Monetizze','Kirvano','Cakto','Ticto','Outra'];
+var MP_INTEGRACOES = ['Payt','Hubla','AppMax','Kiwify','Hotmart','Eduzz','Monetizze','Kirvano','Cakto','PerfectPay','Cartpanda','Ticto','Outra'];
 
 function mpModo(){
   var de = document.getElementById('mp-desenho'); if(!de) return;
@@ -36941,8 +36953,8 @@ function mpLeituraOferta(n, b){
 // Integração do checkout (e dos módulos de pagamento): de qual gateway vem a venda
 // a plataforma pelo link colado no bloco, quando a integração não foi escolhida
 // (o servidor faz a mesma conta em _platDoBloco)
-var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax', kiwify:'Kiwify', hotmart:'Hotmart' };
-function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : /kiwify/i.test(u) ? 'kiwify' : /hotmart/i.test(u) ? 'hotmart' : ''; }
+var FN_PLAT_NOME = { payt:'Payt', hubla:'Hubla', appmax:'AppMax', kiwify:'Kiwify', hotmart:'Hotmart', kirvano:'Kirvano', cakto:'Cakto', perfectpay:'PerfectPay', cartpanda:'Cartpanda' };
+function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /hub\.?la/i.test(u) ? 'hubla' : /appmax/i.test(u) ? 'appmax' : /kiwify/i.test(u) ? 'kiwify' : /hotmart/i.test(u) ? 'hotmart' : /kirvano/i.test(u) ? 'kirvano' : /cakto/i.test(u) ? 'cakto' : /perfect-?pay/i.test(u) ? 'perfectpay' : /cartpanda/i.test(u) ? 'cartpanda' : ''; }
 function fnCampoIntegracao(n){
   if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
   var pelo = (!n.integracao || n.integracao === 'Outra') ? fnPlatDoLink(n.url) : '';
