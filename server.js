@@ -22714,8 +22714,11 @@ app.get('/api/projeto/config', authUsuario, (req, res) => {
     if (!projeto) return res.status(400).json({ error: 'Qual projeto?' });
     const db = readDB(), cfg = _projMetaCfg(db), meu = cfg[projeto] || { contas: [], regra: '' }, capi = _capiCfg(db), mc = _metaCfg(db) || {};
     const desde = _diaBR(Date.now() - 13 * 86400000), nomes = _contaNomes();
+    // Desconectou: as contas daquele perfil saem da tela na hora. O que cada projeto marcou fica guardado
+    // e volta quando alguém conectar de novo. Quem nunca conectou segue vendo as contas da Utmify.
+    const metaLigada = !!(mc.accessToken && mc.tipo === 'sistema'), contasOcultas = !metaLigada && !!mc.desconectadoEm;
     // campanhas dos 14 dias: da Meta quando conectada, senão da Utmify
-    const temMeta = !!_q('SELECT 1 FROM meta_camp_dia WHERE dia>=? LIMIT 1').get(desde);
+    const temMeta = metaLigada && !!_q('SELECT 1 FROM meta_camp_dia WHERE dia>=? LIMIT 1').get(desde);
     const camps = temMeta
       ? _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM meta_camp_dia WHERE dia>=? GROUP BY conta, id').all(desde)
       : _q('SELECT conta, id, MAX(nome) nome, SUM(gasto) gasto FROM ' + _campDiaUnica('c.dia>=?') + ' GROUP BY conta, id').all(desde);
@@ -22730,17 +22733,17 @@ app.get('/api/projeto/config', authUsuario, (req, res) => {
     camps.forEach(c => { if (c.conta && !contasSet[c.conta]) contasSet[c.conta] = { conta: c.conta, nome: nomes[c.conta] || '', status: null }; });
     meu.contas.forEach(c => { if (!contasSet[c]) contasSet[c] = { conta: c, nome: nomes[c] || '', status: null }; });
     const gastoConta = {}; camps.forEach(c => { gastoConta[c.conta] = (gastoConta[c.conta] || 0) + (Number(c.gasto) || 0); });
-    const contas = Object.values(contasSet).map(c => Object.assign(c, {
+    const contas = contasOcultas ? [] : Object.values(contasSet).map(c => Object.assign(c, {
       gasto: Math.round(gastoConta[c.conta] || 0),
       outros: Object.keys(cfg).filter(p => p !== projeto && (cfg[p].contas || []).indexOf(c.conta) >= 0),
       utmify: dashDe[c.conta] || [] })).sort((a, b) => b.gasto - a.gasto);
     const outrasRegras = {}; Object.keys(cfg).forEach(p => { if (p !== projeto && cfg[p].regra) outrasRegras[p] = cfg[p].regra; });
     res.json({ ok: true, projeto, contas, sel: meu.contas || [], regra: meu.regra || '', configurado: !!(meu.contas && meu.contas.length),
-      outrasRegras, fonte: temMeta ? 'meta' : 'utmify', desde,
-      campanhas: camps.filter(c => (Number(c.gasto) || 0) > 0).map(c => ({ conta: c.conta, nome: c.nome, gasto: Math.round(Number(c.gasto) || 0) })),
+      outrasRegras, fonte: temMeta ? 'meta' : 'utmify', desde, contasOcultas,
+      campanhas: contasOcultas ? [] : camps.filter(c => (Number(c.gasto) || 0) > 0).map(c => ({ conta: c.conta, nome: c.nome, gasto: Math.round(Number(c.gasto) || 0) })),
       destinos: _destinos(db).map(_destinoPublico), destinosSel: _destinosDoProjeto(db, capi, projeto).filter(d => !d.legado).map(d => d.id),
       pixelAntigo: ((capi.pixels || {})[projeto] && !((capi.destinos || {})[projeto] || []).length) ? capi.pixels[projeto] : '',
-      modo: _capiModo(capi, projeto), metaConectada: !!(mc.accessToken && mc.tipo === 'sistema'),
+      modo: _capiModo(capi, projeto), metaConectada: metaLigada,
       liberaEnvioEm: _liberaEnvio(_destinosDoProjeto(db, capi, projeto), mc), comparacao: _projComparacao(db, projeto), dir: _ehDir(req), podeContas: _ehDaMeta(req) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
