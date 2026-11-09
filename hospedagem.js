@@ -65,7 +65,10 @@ module.exports = function montarHospedagem({ platPrep }) {
       gravarCfg('hosp_worker', marca);
     }
     const rotas = await cf('GET', '/zones/' + c.zona + '/workers/routes');
-    if (!(rotas || []).some(r => r.pattern === '*/*' && r.script === SCRIPT)) await cf('POST', '/zones/' + c.zona + '/workers/routes', { pattern: '*/*', script: SCRIPT });
+    // */* atende os domínios dos clientes; o endereço do sistema (o /_tmx-admin/ e o link da Meta) precisa da rota dele
+    for (const pattern of ['*/*', c.alvo + '/*']) {
+      if (!(rotas || []).some(r => r.pattern === pattern && r.script === SCRIPT)) await cf('POST', '/zones/' + c.zona + '/workers/routes', { pattern, script: SCRIPT });
+    }
     return { ok: true };
   }
 

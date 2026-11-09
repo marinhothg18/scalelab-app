@@ -119,9 +119,9 @@ test('hospedagem no TMX', async (t) => {
   const cadastrar = (tok, dominio) => chamar('POST', '/api/pg/dominios/hospedado', { token: tok, corpo: { dominio } });
 
   await t.test('ao ligar, instala o armazenamento, o programa e a rota uma vez', async () => {
-    await ate(() => CF.rotas.length > 0, 8000, 'instalar');
+    await ate(() => CF.rotas.length > 1, 8000, 'instalar');
     assert.deepStrictEqual(CF.buckets, ['tmx-paginas']);
-    assert.deepStrictEqual(CF.rotas, [{ pattern: '*/*', script: 'tmx-paginas' }]);
+    assert.deepStrictEqual(CF.rotas, [{ pattern: '*/*', script: 'tmx-paginas' }, { pattern: 'paginas.paginasnoar.com/*', script: 'tmx-paginas' }]);
     assert.strictEqual(CF.envios, 1);
     assert.deepStrictEqual(CF.worker.meta.bindings.map(b => b.type).sort(), ['plain_text', 'plain_text', 'r2_bucket', 'secret_text']);
     assert.strictEqual(CF.worker.meta.bindings.find(b => b.name === 'ORIGEM').text, base, 'o programa sabe pra onde repassar o link da Meta');
