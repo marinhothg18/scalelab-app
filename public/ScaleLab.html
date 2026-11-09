@@ -3367,6 +3367,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-pdf{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;padding:6px 11px}
 .cp-pdf:hover{border-color:var(--accent);color:var(--accent)}
 .cp-pdf:disabled{opacity:.6;cursor:default}
+.cp-pdf.on{border-color:var(--accent);color:var(--accent)}
 .cp-cols{position:relative}
 .cp-cols summary{list-style:none;padding:6px 11px}
 .cp-cols summary::-webkit-details-marker{display:none}
@@ -3392,6 +3393,11 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-tab{border-collapse:separate;border-spacing:0;font-size:12.5px;width:max-content;min-width:100%}
 .cp-tab th{position:sticky;top:0;z-index:3;background:var(--bg3);font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);text-align:right;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
 .cp-tab th.ord{cursor:pointer;user-select:none} .cp-tab th.ord:hover,.cp-tab th.ord.on{color:var(--accent)}
+.cp-tab th.cp-mv{cursor:grab;user-select:none;color:var(--accent)}
+.cp-tab th.cp-mv i{font-style:normal;opacity:.65;margin-right:4px}
+.cp-tab th.cp-mv-sai{opacity:.45}
+.cp-tab th.cp-mv-esq{box-shadow:inset 3px 0 0 var(--accent)}
+.cp-tab th.cp-mv-dir{box-shadow:inset -3px 0 0 var(--accent)}
 .cp-tab td{padding:9px 12px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;background:var(--bg2)}
 .cp-tab td small{font-size:10.5px;color:var(--text2)}
 .cp-tab tbody tr{cursor:pointer}
@@ -7543,7 +7549,7 @@ function _preencherUrlsPublicas(){
   try{ document.querySelectorAll('.tmx-url-publica').forEach(function(el){ el.textContent = urlPublica(el.getAttribute('data-caminho') || ''); }); }catch(e){}
 }
 // Preferências do aparelho que sobrevivem à troca de empresa (tema, menu, colunas)
-var _PREFS_APARELHO = ['sl_theme','sl_sidebar_collapsed','sl_pwa_ios_dismissed','sl_notif_desktop','sl_nav_grupos','cp_cel_cols','ads_cp_larg','ads_cp_cols','sl_admin_tema'];
+var _PREFS_APARELHO = ['sl_theme','sl_sidebar_collapsed','sl_pwa_ios_dismissed','sl_notif_desktop','sl_nav_grupos','cp_cel_cols','ads_cp_larg','ads_cp_cols','ads_cp_ordem','sl_admin_tema'];
 // Trocou de empresa neste aparelho: apaga a cópia local da outra. Sem isso, o envio
 // depois do login (pushAllToServer) subiria os dados de uma empresa para a outra.
 function _limparCopiaLocal(){
@@ -45296,6 +45302,18 @@ var CP_COLS = [
   { k:'dias',  t:'Dias no ar',     g:'Info',     on:0, s:function(c){ return c.criada ? Date.now() - Date.parse(c.criada) : null; }, v:function(c){ return c.criada ? Math.max(0, Math.floor((Date.now() - Date.parse(c.criada + 'T12:00:00')) / 86400000)) : '<i>—</i>'; } }
 ];
 (function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_cols') || 'null'); if(Array.isArray(s)) CP_COLS.forEach(function(c){ c.on = s.indexOf(c.k) >= 0 ? 1 : 0; }); }catch(e){} })();
+// Ordem das colunas: com o lápis ligado, arrasta pelo título. Fica neste aparelho, como a escolha das colunas.
+// A tabela, o PDF e os cards leem CP_COLS, então basta mudar a ordem dela.
+var CP_COLS_PADRAO = CP_COLS.map(function(c){ return c.k; });
+function cpAplicarOrdem(salva){
+  var porK = {}; CP_COLS.forEach(function(c){ porK[c.k] = c; });
+  var ordem = salva.filter(function(k){ return porK[k]; });
+  // coluna que surgiu depois da ordem guardada entra logo depois da vizinha dela no padrão
+  CP_COLS_PADRAO.forEach(function(k, i){ if(ordem.indexOf(k) < 0) ordem.splice(i ? ordem.indexOf(CP_COLS_PADRAO[i-1]) + 1 : 0, 0, k); });
+  CP_COLS.length = 0;
+  ordem.forEach(function(k){ CP_COLS.push(porK[k]); });
+}
+(function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_ordem') || 'null'); if(Array.isArray(s)) cpAplicarOrdem(s); }catch(e){} })();
 function cpPct(v, casas){ return v == null || isNaN(v) ? '<i>—</i>' : (v*100).toLocaleString('pt-BR',{minimumFractionDigits:casas,maximumFractionDigits:casas})+'%'; }
 // a linha do TMX desta campanha: pelo id da Meta primeiro (campanha renomeada
 // mantém o id), pelo nome se a venda não trouxe id
@@ -45336,6 +45354,46 @@ function cpPredef(q){
   CP_COLS.forEach(function(c){ c.on = sets[q].indexOf(c.k) >= 0 ? 1 : 0; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar();
 }
 function cpOrdenar(k){ if(cpEst.ord === k) cpEst.desc = !cpEst.desc; else { cpEst.ord = k; cpEst.desc = true; } cpPintar(); }
+function cpGuardarOrdem(){ try{ var ks = CP_COLS.map(function(c){ return c.k; }); if(ks.join() === CP_COLS_PADRAO.join()) localStorage.removeItem('ads_cp_ordem'); else localStorage.setItem('ads_cp_ordem', JSON.stringify(ks)); }catch(e){} }
+function cpAlternarMover(){ cpEst.moverCols = !cpEst.moverCols; cpEst.colsAberto = false; cpPintar(); }
+function cpOrdemPadrao(){ cpAplicarOrdem(CP_COLS_PADRAO.slice()); cpGuardarOrdem(); cpPintar(); }
+function cpMoverCol(de, para, depois){
+  if(de === para) return;
+  var ks = CP_COLS.map(function(c){ return c.k; });
+  ks.splice(ks.indexOf(de), 1);
+  var i = ks.indexOf(para); if(i < 0) return;
+  ks.splice(depois ? i + 1 : i, 0, de);
+  cpAplicarOrdem(ks); cpGuardarOrdem(); cpPintar();
+}
+var _cpArraste = null;
+function _cpThDe(e){ var n = e.target; if(n && n.nodeType !== 1) n = n.parentElement; return n && n.closest ? n.closest('th[data-cp-col]') : null; }
+function _cpLimparAlvo(){ document.querySelectorAll('.cp-mv-esq,.cp-mv-dir').forEach(function(x){ x.classList.remove('cp-mv-esq','cp-mv-dir'); }); }
+function _cpDepois(e, th){ var r = th.getBoundingClientRect(); return e.clientX > r.left + r.width / 2; }
+document.addEventListener('dragstart', function(e){
+  var th = _cpThDe(e); if(!th) return;
+  _cpArraste = th.getAttribute('data-cp-col');
+  e.dataTransfer.effectAllowed = 'move';
+  try{ e.dataTransfer.setData('text/plain', _cpArraste); }catch(x){}
+  th.classList.add('cp-mv-sai');
+});
+document.addEventListener('dragover', function(e){
+  if(!_cpArraste) return;
+  // as colunas de fora da tela: encostou na beirada, a tabela anda sozinha
+  var rolo = document.querySelector('#cp-novo .cp-rolo'), f2 = rolo && rolo.querySelector('thead .f2'), f3 = rolo && rolo.querySelector('thead .f3');
+  if(rolo && f2){ var esq = f2.getBoundingClientRect().right, dir = f3 ? f3.getBoundingClientRect().left : rolo.getBoundingClientRect().right; if(e.clientX < esq + 50) rolo.scrollLeft -= 16; else if(e.clientX > dir - 50) rolo.scrollLeft += 16; }
+  _cpLimparAlvo();
+  var th = _cpThDe(e); if(!th || th.getAttribute('data-cp-col') === _cpArraste) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  th.classList.add(_cpDepois(e, th) ? 'cp-mv-dir' : 'cp-mv-esq');
+});
+document.addEventListener('drop', function(e){
+  if(!_cpArraste) return;
+  var th = _cpThDe(e), de = _cpArraste; _cpArraste = null; _cpLimparAlvo();
+  if(!th) return cpPintar();
+  e.preventDefault();
+  cpMoverCol(de, th.getAttribute('data-cp-col'), _cpDepois(e, th));
+});
+document.addEventListener('dragend', function(){ if(!_cpArraste) return; _cpArraste = null; _cpLimparAlvo(); document.querySelectorAll('.cp-mv-sai').forEach(function(x){ x.classList.remove('cp-mv-sai'); }); });
 // Barra de rolagem lateral também EM CIMA da tabela: com 45 campanhas a barra
 // de baixo fica longe, e sem ela não dava pra ver as colunas da direita.
 function cpLigarRolagem(raiz){
@@ -45532,6 +45590,7 @@ async function cpOrcSalvar(){
     .catch(function(e){ ok.disabled = false; ok.textContent = 'Salvar na Meta'; var r = document.getElementById('cp-orc-res'); if(r) r.innerHTML = '<span class="neg">Não mudou: '+fnEsc(e.message)+'</span>'; });
 }
 function cpPintar(){
+  if(_cpArraste) return;   // os números ao vivo não podem refazer a tabela no meio do arraste
   cpMetaCarregar();
   cpMarcasCarregar();
   var novo = document.getElementById('cp-novo'), antiga = document.getElementById('ads-cp-antiga');
@@ -45560,6 +45619,8 @@ function cpBarra(){
       '<div class="cp-pop"><div class="cp-pre"><span>Rápido:</span><button onclick="cpPredef(\'enxuta\')">Enxuta</button><button onclick="cpPredef(\'dinheiro\')">Dinheiro</button><button onclick="cpPredef(\'anuncio\')">Anúncio</button><button onclick="cpPredef(\'funil\')">Funil</button><button onclick="cpPredef(\'video\')">Vídeo</button><button onclick="cpPredef(\'tudo\')">Tudo</button></div>'+
       Object.keys(grupos).map(function(g){ return '<div class="cp-gr"><b>'+g+'</b>'+grupos[g].map(function(c){ return '<label><input type="checkbox"'+(c.on ? ' checked' : '')+' onchange="cpAlternarCol(\''+c.k+'\')"> '+c.t+'</label>'; }).join('')+'</div>'; }).join('')+
       '<div class="cp-nota">O TMX lembra a sua escolha neste aparelho.</div></div></details>'+
+    '<button class="cp-pdf'+(cpEst.moverCols ? ' on' : '')+'" onclick="cpAlternarMover()" title="Arraste o título de uma coluna para mudar a ordem">'+(cpEst.moverCols ? '✓ Concluir' : '✎ Editar colunas')+'</button>'+
+    (cpEst.moverCols ? '<button class="cp-pdf" onclick="cpOrdemPadrao()">Ordem padrão</button><span class="cp-aviso">Arraste o título da coluna para o lugar que quiser.</span>' : '')+
     '<button class="cp-pdf" onclick="cpExportarPdf(this)" title="Baixa um PDF com as colunas, os filtros e a ordem desta tabela">⬇ Exportar PDF</button>'+
     '<span class="cp-dica">Shift + rodinha do mouse também anda pro lado</span>'+
     '<span class="cp-rolar"><button onclick="cpRolar(-1)" aria-label="Rolar pra esquerda">‹</button><button onclick="cpRolar(1)" aria-label="Rolar pra direita">›</button></span></div>';
@@ -45896,7 +45957,10 @@ function cpTabela(l){
   var cs = cpColsOn(), mx = Math.max.apply(null, l.map(function(c){ return c.investimento || 0; }).concat([1]));
   var fixa = cpFixa;
   l = cpOrdenadas(l);
-  var th = function(c){ return '<th class="ord'+(cpEst.ord === c.k ? ' on' : '')+'" onclick="cpOrdenar(\''+c.k+'\')"'+(c.tit ? ' title="'+fnEsc(c.tit)+'"' : '')+'>'+c.t+(cpEst.ord === c.k ? (cpEst.desc ? ' ↓' : ' ↑') : '')+'</th>'; };
+  var th = function(c){
+    if(cpEst.moverCols) return '<th class="cp-mv" draggable="true" data-cp-col="'+fnEsc(c.k)+'" title="Arraste para mudar a ordem"><i>⠿</i>'+c.t+'</th>';
+    return '<th class="ord'+(cpEst.ord === c.k ? ' on' : '')+'" onclick="cpOrdenar(\''+c.k+'\')"'+(c.tit ? ' title="'+fnEsc(c.tit)+'"' : '')+'>'+c.t+(cpEst.ord === c.k ? (cpEst.desc ? ' ↓' : ' ↑') : '')+'</th>';
+  };
   var rep = cpRepetidos();
   var linhas = l.map(function(c, i){
     var st = cpStatus(c.status), nr = rep[adsCampNorm(c.nome)] || 0;
