@@ -3421,6 +3421,42 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-link{margin-top:10px;background:none;border:0;color:var(--accent);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;padding:0}
 /* a análise */
 .cp-s{margin:18px 0 8px}
+/* controle na Meta: conjuntos, anúncios e orçamento */
+.cp-ctrl-topo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;color:var(--text2)}
+.cp-ctrl{display:flex;flex-direction:column;gap:8px}
+.cp-cj{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.cp-cj-l,.cp-ad{display:flex;align-items:center;gap:10px}
+.cp-cj-l .cp-sw,.cp-ad .cp-sw{margin:0;flex:none}
+.cp-cj .cp-sw:not(.on){background:rgba(148,163,184,.4)}
+.cp-cj-nome{flex:1;min-width:0;display:block;background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.cp-cj-nome b{display:block;font-size:13px;overflow-wrap:anywhere}
+.cp-cj-nome small{font-size:11px;color:var(--text2)}
+.cp-cj-sem{font-size:11px;color:var(--text2)}
+.cp-orc-bt{flex:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:5px 9px;color:var(--text);font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.cp-orc-bt:hover:not(:disabled){border-color:var(--accent)}
+.cp-ads{margin:8px 0 0 44px;display:flex;flex-direction:column}
+.cp-ad{padding:7px 0;border-top:1px solid var(--border)}
+.cp-ad-nome{flex:1;min-width:0;font-size:12.5px;overflow-wrap:anywhere}
+.cp-orc-lapis{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-left:4px;padding:0;border:0;border-radius:6px;background:none;color:var(--text2);cursor:pointer;vertical-align:middle}
+.cp-orc-lapis::before{content:"✎";font-size:12px;line-height:1}
+.cp-orc-lapis:hover{background:var(--bg3);color:var(--text)}
+.cp-orc-lapis:disabled{opacity:.4;cursor:wait}
+.v2-mod.cp-orc-mod{max-width:440px}
+.cp-orc-mod .v2-cab{flex-wrap:nowrap}
+.cp-orc-rot{display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px}
+.cp-orc-in{width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font:inherit;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.cp-orc-in:focus{outline:2px solid var(--accent,#1B9CFA);outline-offset:1px}
+.cp-orc-rap{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}
+.cp-orc-rap button{background:var(--bg3);border:0;border-radius:8px;padding:8px 0;color:var(--text);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.cp-orc-res{font-size:13px;min-height:20px;margin:6px 0}
+.cp-orc-ac{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+@media (max-width:768px){
+  .cp-cj-l{flex-wrap:wrap}
+  .cp-cj-nome{flex:1 1 calc(100% - 50px)}
+  .cp-ads{margin-left:0}
+  .cp-cj-l .cp-sw,.cp-ad .cp-sw{min-height:0;min-width:0}
+  .cp-orc-lapis{width:32px;height:32px;min-height:0;min-width:0}
+}
 .cp-ks{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:6px}
 .cp-k{background:var(--bg3);border-radius:10px;padding:9px 12px} .cp-k span{display:block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--text2)}
 .cp-k b{font-size:18px;font-variant-numeric:tabular-nums} .cp-k small{font-size:11px;color:var(--text2);font-weight:600}
@@ -44927,7 +44963,7 @@ function cpCelulaNome(c, nr){
 // ══════════════════════════════════════════════════════
 var cpDados = [], cpEst = { nivel:'campanhas', conta:'', status:'', busca:'', marca:'', ord:'lucro', desc:true, colsAberto:false };
 var CP_COLS = [
-  { k:'orc',   t:'Orçamento',      g:'Dinheiro', on:1, v:function(c){ return c.orc != null ? fmtAds(c.orc).replace(/,\d\d$/,'')+'<small>'+(c.orcVida ? ' total' : '/dia')+'</small>' : '<i>—</i>'; } },
+  { k:'orc',   t:'Orçamento',      g:'Dinheiro', on:1, v:function(c){ return (c.orc != null ? fmtAds(c.orc).replace(/,\d\d$/,'')+'<small>'+(c.orcVida ? ' total' : '/dia')+'</small>' : '<i>—</i>')+cpOrcLapis(c); } },
   { k:'investimento', t:'Gasto',   g:'Dinheiro', on:1, v:function(c, mx){ return fmtAds(c.investimento)+'<div class="cp-barra"><i style="width:'+Math.round((c.investimento||0)/mx*100)+'%"></i></div>'; } },
   { k:'faturamento', t:'Faturamento', g:'Dinheiro', on:1, tit:'Soma das vendas que o TMX deu a esta campanha', v:function(c){ return c.faturamento ? fmtAds(c.faturamento) : '<i>—</i>'; } },
   { k:'lucro', t:'Lucro',          g:'Dinheiro', on:1, cls:function(c){ return c.lucro >= 0 ? 'pos' : 'neg'; }, v:function(c){ return fmtAds(c.lucro); } },
@@ -45034,7 +45070,7 @@ function cpMetaCarregar(){
   if(cpMeta || !lcEhDir()) return;
   cpMeta = { carregando: true };
   fetch(API_BASE+'/api/meta/conexao').then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){ cpMeta = { conectado: !!(d && d.conectado), pode: !!(d && d.conectado && (d.permissoes || []).indexOf('ads_management') >= 0) }; cpPintar(); })
+    .then(function(d){ cpMeta = { conectado: !!(d && d.conectado), pode: !!(d && d.conectado && (d.permissoes || []).indexOf('ads_management') >= 0) }; cpPintar(); cpPintarAnalise(); })
     .catch(function(){ cpMeta = { conectado: false, pode: false }; });
 }
 function cpChave(c, st){
@@ -45044,7 +45080,7 @@ function cpChave(c, st){
   return '<button class="cp-sw'+(on ? ' on' : '')+(pode ? '' : ' apagada')+'" role="switch" aria-checked="'+on+'" title="'+fnEsc(tit)+'" aria-label="'+fnEsc(tit)+'" onclick="event.stopPropagation();cpAlternarStatus('+cpDados.indexOf(c)+', this)"><i></i></button>';
 }
 function cpPausarDaAnalise(bt){
-  cpAlternarStatus(cpAnaliseIdx, bt, function(st){ if(cpAnalise && cpAnalise.campanha){ cpAnalise.campanha.status = st; cpPintarAnalise(); } });
+  cpAlternarStatus(cpAnaliseIdx, bt, function(st, mudanca){ if(cpAnalise && cpAnalise.campanha){ cpAnalise.campanha.status = st; cpCtrlMudou(mudanca); cpPintarAnalise(); if(cpPodeMudar() && cpAnalise.campanha.id) cpCtrlBuscar(String(cpAnalise.campanha.id)); } });
 }
 async function cpAlternarStatus(i, bt, depois){
   var c = cpDados[i]; if(!c) return;
@@ -45052,10 +45088,151 @@ async function cpAlternarStatus(i, bt, depois){
   var ativo = cpStatus(c.status)[1] !== 'on';
   if(!(await tmxConfirmar((ativo ? 'Ativar' : 'Pausar')+' a campanha na Meta?\n\n'+cpNomeCurto(c.nome)))) return;
   if(bt) bt.disabled = true;
-  fetch(API_BASE+'/api/meta/campanha/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: c.campanhaId, ativo: ativo, nome: c.nome }) })
+  fetch(API_BASE+'/api/meta/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nivel:'campanha', id: c.campanhaId, ativo: ativo, nome: c.nome }) })
     .then(function(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); })
-    .then(function(d){ c.status = d.status; c.mudanca = { campo:'status', de: ativo ? 'PAUSED' : 'ACTIVE', para: d.status, em: Date.now() }; toastFn(ativo ? 'Campanha ativada' : 'Campanha pausada'); cpPintar(); if(depois) depois(d.status); })
+    .then(function(d){ c.status = d.status; c.mudanca = d.mudanca; toastFn(ativo ? 'Campanha ativada' : 'Campanha pausada'); cpPintar(); if(depois) depois(d.status, d.mudanca); })
     .catch(function(e){ if(bt) bt.disabled = false; toastFn('Não mudou: '+e.message); });
+}
+// ── Orçamento e liga/desliga de conjunto e anúncio, direto na Meta (09/11/2026) ──
+// Lê da Meta na hora antes de mudar: o número da tabela é da última sincronização, e em conta
+// de dólar ele já vem convertido. O valor que vai pra Meta é sempre na moeda da conta.
+var cpCtrl = {}, cpCtrlFechados = {}, cpCtrlRolar = false, _cpOrc = null;
+var CP_NIVEL_TXT = { campanha:['a campanha','Campanha'], conjunto:['o conjunto','Conjunto'], anuncio:['o anúncio','Anúncio'] };
+function cpPodeMudar(){ return !!(currentUser && currentUser.cargo === 'Diretoria' && cpMeta && cpMeta.pode); }
+function cpCtrlIrAoQuadro(){ var s = document.getElementById('cp-ctrl'); if(s) s.scrollIntoView({ block:'start' }); }
+function cpCtrlBuscar(camp){
+  var x = cpCtrl[camp] = cpCtrl[camp] || {};
+  if(x.buscando) return x.buscando;
+  x.buscando = fetch(API_BASE+'/api/meta/campanha/'+encodeURIComponent(camp)+'/estrutura').then(mcResposta)
+    .then(function(d){ x.d = d; x.erro = ''; })
+    .catch(function(e){ x.erro = e.message; })
+    .then(function(){ x.buscando = null; cpPintarAnalise(); if(cpCtrlRolar){ cpCtrlRolar = false; cpCtrlIrAoQuadro(); } return x; });
+  return x.buscando;
+}
+function cpCtrlItem(camp, nivel, id){
+  var d = (cpCtrl[camp] || {}).d, achou = null; if(!d) return null;
+  if(nivel === 'campanha') return d.campanha;
+  d.conjuntos.forEach(function(s){ if(nivel === 'conjunto' && s.id === id) achou = s; s.anuncios.forEach(function(a){ if(nivel === 'anuncio' && a.id === id) achou = a; }); });
+  return achou;
+}
+function cpCtrlMudou(m){ if(m && cpAnalise) (cpAnalise.mudancas = cpAnalise.mudancas || []).push(m); }
+async function cpCtrlAlternar(camp, nivel, id, bt){
+  var it = cpCtrlItem(camp, nivel, id); if(!it) return;
+  var ativo = it.status !== 'ACTIVE';
+  if(!(await tmxConfirmar((ativo ? 'Ativar ' : 'Pausar ')+CP_NIVEL_TXT[nivel][0]+' na Meta?\n\n'+cpNomeCurto(it.nome)))) return;
+  bt.disabled = true;
+  fetch(API_BASE+'/api/meta/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nivel:nivel, id:id, camp:camp, ativo:ativo, nome:it.nome }) })
+    .then(mcResposta)
+    .then(function(d){ it.status = d.status; toastFn(CP_NIVEL_TXT[nivel][1]+(ativo ? ' ativado' : ' pausado')); cpCtrlMudou(d.mudanca); return cpCtrlBuscar(camp); })
+    .catch(function(e){ bt.disabled = false; toastFn('Não mudou: '+e.message); });
+}
+function cpCtrlStatus(s){
+  var m = { ACTIVE:['No ar','on'], PAUSED:['Pausado','off'], CAMPAIGN_PAUSED:['Campanha pausada','off'], ADSET_PAUSED:['Conjunto pausado','off'], IN_PROCESS:['Em análise','off'], PENDING_REVIEW:['Em análise','off'], WITH_ISSUES:['Com problema','off'], DISAPPROVED:['Reprovado','off'], PENDING_BILLING_INFO:['Falta pagamento','off'] };
+  return m[s] || [String(s || '—').toLowerCase().replace(/_/g,' '), 'off'];
+}
+function cpMoeda(v, moeda){ return Number(v).toLocaleString('pt-BR', { style:'currency', currency:moeda || 'BRL' }); }
+function cpOrcTxt(o, moeda){ return cpMoeda(o.valor, moeda)+(o.tipo === 'total' ? ' no total' : ' /dia'); }
+function cpCtrlChave(camp, nivel, it){
+  var on = it.status === 'ACTIVE', t = (on ? 'Pausar ' : 'Ativar ')+CP_NIVEL_TXT[nivel][0]+': '+cpNomeCurto(it.nome);
+  return '<button class="cp-sw'+(on ? ' on' : '')+'" role="switch" aria-checked="'+on+'" title="'+fnEsc(t)+'" aria-label="'+fnEsc(t)+'" onclick="cpCtrlAlternar(\''+camp+'\',\''+nivel+'\',\''+it.id+'\',this)"><i></i></button>';
+}
+function cpCtrlOrcBt(camp, nivel, it, d){
+  return '<button class="cp-orc-bt"'+(d.podeOrcamento ? ' onclick="cpOrcJanela(\''+camp+'\',\''+nivel+'\',\''+it.id+'\')" title="Mudar orçamento na Meta"' : ' disabled title="Conta em '+fnEsc(d.moeda)+': mude no Gerenciador de Anúncios"')+'>'+cpOrcTxt(it.orc, d.moeda)+(d.podeOrcamento ? ' <span aria-hidden="true">✎</span>' : '')+'</button>';
+}
+function cpCtrlHtml(camp){
+  if(!camp || !currentUser || currentUser.cargo !== 'Diretoria') return '';
+  var cab = '<div class="v2-rot cp-s" id="cp-ctrl">Conjuntos e anúncios</div>';
+  if(!cpPodeMudar()) return cab+'<div class="cp-nota">Para ligar, desligar e mudar orçamento por aqui, conecte a Meta em Configurações › Conexões da empresa › Meta Ads.</div>';
+  var x = cpCtrl[camp] || {}, d = x.d;
+  if(!d) return cab+(x.erro ? '<div class="v2-alerta warn"><div><b>Não buscou na Meta</b><span>'+fnEsc(x.erro)+'</span></div><button class="fn-btn g sm" onclick="cpCtrlBuscar(\''+camp+'\')">Tentar de novo</button></div>' : '<div class="cp-nota">Buscando na Meta…</div>');
+  var lista = d.conjuntos.map(function(s){
+    var st = cpCtrlStatus(s.efetivo), fechado = !!cpCtrlFechados[s.id], noAr = s.anuncios.filter(function(a){ return a.efetivo === 'ACTIVE'; }).length;
+    var ads = s.anuncios.map(function(a){ var sa = cpCtrlStatus(a.efetivo);
+      return '<div class="cp-ad">'+cpCtrlChave(camp, 'anuncio', a)+'<span class="cp-ad-nome" title="'+fnEsc(a.nome)+'">'+fnEsc(cpNomeCurto(a.nome))+'</span><span class="cp-st '+sa[1]+'">'+sa[0]+'</span></div>'; }).join('');
+    return '<div class="cp-cj"><div class="cp-cj-l">'+cpCtrlChave(camp, 'conjunto', s)+
+      '<button class="cp-cj-nome" aria-expanded="'+(!fechado)+'" onclick="cpCtrlFechados[\''+s.id+'\']=!cpCtrlFechados[\''+s.id+'\'];cpPintarAnalise()"><b>'+fnEsc(cpNomeCurto(s.nome))+'</b><small>'+(fechado ? '▸ ' : '▾ ')+s.anuncios.length+(s.anuncios.length === 1 ? ' anúncio' : ' anúncios')+' · '+noAr+' no ar</small></button>'+
+      '<span class="cp-st '+st[1]+'">'+st[0]+'</span>'+
+      (s.orc ? cpCtrlOrcBt(camp, 'conjunto', s, d) : '<span class="cp-cj-sem">Orçamento da campanha</span>')+'</div>'+
+      (fechado ? '' : '<div class="cp-ads">'+(ads || '<div class="cp-nota">Nenhum anúncio neste conjunto.</div>')+'</div>')+'</div>';
+  }).join('');
+  return cab+'<div class="cp-ctrl-topo">'+(d.campanha.orc ? '<span>Orçamento da campanha</span>'+cpCtrlOrcBt(camp, 'campanha', d.campanha, d) : '<span>O orçamento desta campanha fica em cada conjunto.</span>')+
+      '<span>O que você muda aqui vale na hora na Meta.'+(d.moeda === 'USD' ? ' Conta em dólar.' : '')+'</span></div>'+
+    (x.erro ? '<div class="v2-alerta warn"><div><b>Não atualizou</b><span>'+fnEsc(x.erro)+'</span></div></div>' : '')+
+    '<div class="cp-ctrl">'+(lista || '<div class="cp-nota">Nenhum conjunto nesta campanha.</div>')+'</div>';
+}
+function cpOrcLapis(c){
+  if(!c.campanhaId || !cpPodeMudar()) return '';
+  return '<button class="cp-orc-lapis" title="Mudar orçamento na Meta" aria-label="Mudar orçamento na Meta" onclick="event.stopPropagation();cpOrcDaTabela('+cpDados.indexOf(c)+',this)"></button>';
+}
+async function cpOrcDaTabela(i, bt){
+  var c = cpDados[i]; if(!c) return;
+  var camp = String(c.campanhaId);
+  bt.disabled = true;
+  var x = await cpCtrlBuscar(camp);
+  bt.disabled = false;
+  if(x.erro){ toastFn('Não buscou na Meta: '+x.erro); return; }
+  if(x.d.campanha.orc) return cpOrcJanela(camp, 'campanha', camp);
+  toastFn('Esta campanha tem o orçamento em cada conjunto');
+  cpCtrlRolar = true; cpAbrir(i);
+}
+function cpOrcDaAnalise(){
+  var camp = String(cpAnalise.campanha.id || ''), d = (cpCtrl[camp] || {}).d;
+  if(!d){ toastFn('Ainda buscando na Meta. Tente de novo em instantes.'); return; }
+  if(d.campanha.orc) return cpOrcJanela(camp, 'campanha', camp);
+  toastFn('Esta campanha tem o orçamento em cada conjunto');
+  cpCtrlIrAoQuadro();
+}
+function cpOrcNum(v){ return Number(v).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+// aceita 1.500,50 · 1500,5 · 1500.5 · 1.500
+function cpOrcLer(t){
+  var s = String(t || '').replace(/[^\d.,]/g, '');
+  if(s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  return Math.round(parseFloat(s) * 100) / 100;
+}
+function cpOrcJanela(camp, nivel, id){
+  var d = (cpCtrl[camp] || {}).d, it = cpCtrlItem(camp, nivel, id); if(!d || !it || !it.orc) return;
+  if(!d.podeOrcamento){ toastFn('Esta conta está em '+d.moeda+'. Mude o orçamento no Gerenciador de Anúncios.'); return; }
+  _cpOrc = { camp:camp, nivel:nivel, id:id, atual:it.orc.valor, moeda:d.moeda, nome:it.nome };
+  var rap = [['−20%',0.8],['+20%',1.2],['+30%',1.3],['+50%',1.5],['2×',2]].map(function(x){ return '<button type="button" onclick="cpOrcAplicar('+x[1]+')">'+x[0]+'</button>'; }).join('');
+  var ov = v2Modal('<div class="v2-cab"><div><h2>Mudar orçamento</h2><div class="fx-sub">'+CP_NIVEL_TXT[nivel][1]+': '+fnEsc(cpNomeCurto(it.nome))+'</div></div><button class="fn-btn g sm" aria-label="Fechar" onclick="v2Fechar(this)">×</button></div>'+
+    '<label class="cp-orc-rot" for="cp-orc-v">'+(it.orc.tipo === 'total' ? 'Orçamento total' : 'Orçamento por dia')+' em '+(d.moeda === 'USD' ? 'dólar' : 'real')+'</label>'+
+    '<input id="cp-orc-v" class="cp-orc-in" inputmode="decimal" autocomplete="off" value="'+cpOrcNum(it.orc.valor)+'" oninput="cpOrcPrever()" onkeydown="if(event.key===\'Enter\')cpOrcSalvar()">'+
+    '<div class="cp-orc-rap">'+rap+'</div><div class="cp-orc-res" id="cp-orc-res" aria-live="polite"></div>'+
+    '<div class="cp-nota">Vale na hora na Meta.'+(d.moeda === 'USD' ? ' Esta conta é em dólar: digite o valor em dólar.' : '')+'</div>'+
+    '<div class="cp-orc-ac"><button class="fn-btn g" onclick="v2Fechar(this)">Cancelar</button><button class="fn-btn" id="cp-orc-ok" onclick="cpOrcSalvar()">Salvar na Meta</button></div>', 'cp-orc-mod');
+  ov.id = 'cp-orc';
+  cpOrcPrever();
+  var inp = document.getElementById('cp-orc-v'); inp.focus(); inp.select();
+}
+function cpOrcAplicar(f){ document.getElementById('cp-orc-v').value = cpOrcNum(Math.round(_cpOrc.atual * f * 100) / 100); cpOrcPrever(); }
+function cpOrcPrever(){
+  var o = _cpOrc, n = cpOrcLer(document.getElementById('cp-orc-v').value), res = document.getElementById('cp-orc-res'), ok = document.getElementById('cp-orc-ok');
+  if(!(n > 0)){ res.textContent = 'Digite um valor maior que zero.'; ok.disabled = true; return; }
+  var dif = Math.round((n / o.atual - 1) * 100);
+  res.innerHTML = 'Hoje <b>'+cpMoeda(o.atual, o.moeda)+'</b>'+(n === o.atual ? ' · sem mudança' : ' → <b>'+cpMoeda(n, o.moeda)+'</b> <span class="'+(dif >= 0 ? 'pos' : 'neg')+'">'+(dif > 0 ? '+' : '')+dif+'%</span>');
+  ok.disabled = n === o.atual;
+}
+async function cpOrcSalvar(){
+  var o = _cpOrc, n = cpOrcLer(document.getElementById('cp-orc-v').value), ok = document.getElementById('cp-orc-ok');
+  if(!(n > 0) || n === o.atual || ok.disabled) return;
+  // dedo errado aqui gasta dinheiro de verdade: mudança grande pede mais uma confirmação
+  if((n >= o.atual * 2 || n <= o.atual / 2) && !(await tmxConfirmar('Mudança grande de orçamento. Confirma?\n\nDe '+cpMoeda(o.atual, o.moeda)+' para '+cpMoeda(n, o.moeda)+'\n'+cpNomeCurto(o.nome)))) return;
+  ok.disabled = true; ok.textContent = 'Salvando…';
+  fetch(API_BASE+'/api/meta/orcamento', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nivel:o.nivel, id:o.id, camp:o.camp, valor:n, de:o.atual, nome:o.nome }) })
+    .then(mcResposta)
+    .then(function(d){
+      toastFn('Orçamento agora: '+cpMoeda(d.valor, d.moeda));
+      v2Fechar(document.getElementById('cp-orc'));
+      cpCtrlMudou(d.mudanca);
+      if(o.nivel === 'campanha'){
+        var c = cpDados.filter(function(x){ return String(x.campanhaId) === o.camp; })[0];
+        if(c){ if(d.valorReal != null) c.orc = d.valorReal; c.mudanca = d.mudanca; cpPintar(); }
+        if(cpAnalise && String(cpAnalise.campanha.id) === o.camp && d.valorReal != null) cpAnalise.campanha.orc = d.valorReal;
+      }
+      return cpCtrlBuscar(o.camp);
+    })
+    .catch(function(e){ ok.disabled = false; ok.textContent = 'Salvar na Meta'; var r = document.getElementById('cp-orc-res'); if(r) r.innerHTML = '<span class="neg">Não mudou: '+fnEsc(e.message)+'</span>'; });
 }
 function cpPintar(){
   cpMetaCarregar();
@@ -45508,7 +45685,7 @@ function cpAdsPeriodo(n){
 }
 function cpAbrir(i){
   var c = cpDados[i]; if(!c) return;
-  cpAnaliseIdx = i; cpAdsDias = 0; cpAdsCache = {};
+  cpAnaliseIdx = i; cpAdsDias = 0; cpAdsCache = {}; delete cpCtrl[String(c.campanhaId || '')];
   var p = getAdsDates();
   var ov = v2Modal('<div class="fx-vazio">Montando a análise de '+fnEsc(cpNomeCurto(c.nome))+'…</div>');
   ov.id = 'cp-analise';
@@ -45518,7 +45695,8 @@ function cpAbrir(i){
 }
 function cpPintarAnalise(){
   var ov = document.getElementById('cp-analise'), d = cpAnalise; if(!ov || !d) return;
-  var m = d.campanha, t = d.tmx, st = cpStatus(m.status);
+  var m = d.campanha, t = d.tmx, st = cpStatus(m.status), campCtrl = String(m.id || '');
+  if(campCtrl && cpPodeMudar() && !cpCtrl[campCtrl]) cpCtrlBuscar(campCtrl);
   var din = function(v){ return v == null ? '<i>só a Diretoria vê</i>' : fmtAds(v); };
   var pct = function(v, casas){ return v == null || !isFinite(v) ? '—' : (v*100).toLocaleString('pt-BR',{minimumFractionDigits:casas,maximumFractionDigits:casas})+'%'; };
   var k = function(rot, v, sub){ return '<div class="cp-k"><span>'+rot+'</span><b>'+v+'</b>'+(sub ? '<small>'+sub+'</small>' : '')+'</div>'; };
@@ -45536,11 +45714,12 @@ function cpPintarAnalise(){
     met('CTA', semV || !m.v75 ? '—' : pct(m.cliques/m.v75, 0))+met('Conv. checkout', t.ck ? pct(t.vendas/t.ck, 0) : '—')+met('Conv. cliques', m.cliques ? pct(t.vendas/m.cliques, 2) : '—');
   var hm = function(ms){ var x = new Date(ms); return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'); };
   var dm = function(ms){ var x = new Date(ms); return String(x.getDate()).padStart(2,'0')+'/'+String(x.getMonth()+1).padStart(2,'0'); };
-  var campo = { orc:'Orçamento', bid:'Bid cap', status:'Status' };
-  var fv = function(cmp, v){ if(v === '' || v == null) return '—'; return cmp === 'status' ? cpStatus(v)[0] : fmtAds(Number(v)); };
+  var campo = { orc:'Orçamento', bid:'Bid cap', status:'Status', status_conjunto:'Conjunto', status_anuncio:'Anúncio', orc_conjunto:'Orçamento do conjunto' };
+  var fv = function(cmp, v){ if(v === '' || v == null) return '—'; return /^status/.test(cmp) ? cpStatus(v)[0] : fmtAds(Number(v)); };
   var mud = (d.mudancas || []).slice().reverse().map(function(x){
-    return '<div class="v2-feed-i"><span class="v2-ic warn">✎</span><div><b>'+campo[x.campo]+': '+(x.de !== '' ? fv(x.campo, x.de)+' → ' : '')+fv(x.campo, x.para)+'</b>'+
-      '<div class="sub">'+(x.fonte === 'utmify' ? 'feito pela Utmify, na hora exata' : (x.desde ? 'entre '+hm(x.desde)+' e '+hm(x.em)+' (o TMX confere a cada sincronização)' : 'visto às '+hm(x.em)))+'</div></div><span class="h">'+dm(x.em)+' '+hm(x.em)+'</span></div>'; }).join('');
+    var filho = /_(conjunto|anuncio)$/.test(x.campo) && x.nome ? ' '+fnEsc(cpNomeCurto(x.nome)) : '';
+    return '<div class="v2-feed-i"><span class="v2-ic warn">✎</span><div><b>'+campo[x.campo]+filho+': '+(x.de !== '' ? fv(x.campo, x.de)+' → ' : '')+fv(x.campo, x.para)+'</b>'+
+      '<div class="sub">'+(x.fonte === 'utmify' ? 'feito pela Utmify, na hora exata' : (x.desde ? 'entre '+hm(x.desde)+' e '+hm(x.em)+' (o TMX confere a cada sincronização)' : x.fonte === 'tmx' ? 'feito pelo TMX às '+hm(x.em) : 'visto às '+hm(x.em)))+'</div></div><span class="h">'+dm(x.em)+' '+hm(x.em)+'</span></div>'; }).join('');
   var desde = d.registroDesde ? ' O TMX anota as mudanças desde '+dm(d.registroDesde)+' '+hm(d.registroDesde)+'.' : '';
   var adsSel = cpAdsDias ? cpAdsCache[cpAdsDias] || {} : d;
   var ads = (adsSel.anuncios || []).map(function(a){
@@ -45550,10 +45729,10 @@ function cpPintarAnalise(){
       '<td>'+pct(a.ctr, 2)+'</td><td>'+pct(a.hook, 0)+'</td><td>'+pct(a.cta, 0)+'</td></tr>'; }).join('');
   ov.querySelector('.v2-mod').innerHTML =
     '<div class="v2-cab"><div><h2>'+fnEsc(cpNomeCurto(m.nome))+'</h2><div class="cp-chips" style="margin-top:6px"><span class="cp-st '+st[1]+'">'+st[0]+'</span>'+(m.conta ? '<span>'+fnEsc(m.conta)+'</span>' : '')+
-      (m.orc != null ? '<span>'+fmtAds(m.orc)+(m.orcVida ? ' total' : '/dia')+'</span>' : '')+(m.bid != null ? '<span>bid cap '+fmtAds(m.bid)+'</span>' : '')+(m.criada ? '<span>criada em '+m.criada.slice(8,10)+'/'+m.criada.slice(5,7)+'</span>' : '')+'</div></div>'+
+      (cpCtrl[campCtrl] && cpCtrl[campCtrl].d && cpCtrl[campCtrl].d.campanha.orc ? '<span>'+cpOrcTxt(cpCtrl[campCtrl].d.campanha.orc, cpCtrl[campCtrl].d.moeda)+'</span>' : m.orc != null ? '<span>'+fmtAds(m.orc)+(m.orcVida ? ' total' : '/dia')+'</span>' : '')+(m.bid != null ? '<span>bid cap '+fmtAds(m.bid)+'</span>' : '')+(m.criada ? '<span>criada em '+m.criada.slice(8,10)+'/'+m.criada.slice(5,7)+'</span>' : '')+'</div></div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="cp-vivo" id="cp-vivo" title="Pessoas nas páginas agora vindas desta campanha"><i aria-hidden="true"></i><b>…</b> ao vivo</span>'+
         (lcEhDir() ? '<button class="fn-btn g sm" onclick="cpPausarDaAnalise(this)" title="'+(cpMeta && cpMeta.pode ? (st[1] === 'on' ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta') : 'Pra pausar daqui, conecte a Meta com ads_management (Integrações → Meta)')+'"'+(cpMeta && cpMeta.pode ? '' : ' style="opacity:.55"')+'>'+(st[1] === 'on' ? '⏸ Pausar' : '▶ Ativar')+'</button>' : '')+
-        '<button class="fn-btn g sm" disabled title="Em breve: mudar o orçamento pelo TMX">✎ Orçamento</button><button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
+        (cpPodeMudar() ? '<button class="fn-btn g sm" onclick="cpOrcDaAnalise()" title="Mudar o orçamento na Meta">✎ Orçamento</button>' : '<button class="fn-btn g sm" disabled title="Para mudar daqui, conecte a Meta em Configurações › Conexões da empresa">✎ Orçamento</button>')+'<button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
     (d.erroAoVivo ? '<div class="v2-alerta warn"><div><b>A Utmify não respondeu agora</b><span>Mostrando o que o TMX já tinha guardado. '+fnEsc(d.erroAoVivo)+'</span></div></div>' : '')+
     '<div class="cp-ks">'+k('Gasto', fmtAds(m.gasto))+k('Faturamento', din(t.faturamento), 'TMX')+k('Lucro', t.faturamento == null ? din(null) : '<span class="'+(t.faturamento - m.gasto >= 0 ? 'pos' : 'neg')+'">'+fmtAds(t.faturamento - m.gasto)+'</span>')+
       k('ROAS', m.gasto && t.faturamento != null ? (t.faturamento/m.gasto).toFixed(2).replace('.',',')+'x' : '—')+k('Vendas', t.vendas, 'TMX')+'</div>'+
@@ -45563,6 +45742,7 @@ function cpPintarAnalise(){
     '<div class="v2-rot cp-s" style="display:flex;align-items:center;gap:8px">Resultado por dia <span class="cp-seg" style="margin-left:auto"><button class="'+(cpDiaVista === 'graf' ? 'on' : '')+'" onclick="cpDiaVista=\'graf\';cpPintarAnalise()">Gráfico</button><button class="'+(cpDiaVista === 'tab' ? 'on' : '')+'" onclick="cpDiaVista=\'tab\';cpPintarAnalise()">Tabela</button></span></div>'+
       '<div class="cp-nota">Os 7 dias até '+dm(Date.parse(d.ate+'T12:00:00'))+'. Gasto da Utmify; faturamento do TMX.</div>'+(cpDiaVista === 'graf' ? cpGraficoDias(d) : cpTabelaDias(d))+
     '<div class="v2-rot cp-s">Vendas por hora · '+dm(Date.parse(d.ate+'T12:00:00'))+'</div>'+cpGraficoHoras(d)+
+    cpCtrlHtml(campCtrl)+
     '<div class="v2-rot cp-s">Orçamento e mudanças</div>'+(mud || '<div class="cp-nota">Nenhuma mudança de orçamento, bid cap ou status vista no período.'+desde+'</div>')+
     (mud ? '<div class="cp-nota" style="margin-top:6px">'+desde.trim()+'</div>' : '')+
     '<div class="v2-rot cp-s" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">Anúncios desta campanha <span class="cp-seg" style="margin-left:auto">'+
@@ -45609,6 +45789,7 @@ function cpGraficoHoras(d){
     if(h % 2 === 0) s += '<text x="'+(x+bw/2)+'" y="'+(H-6)+'" text-anchor="middle" font-size="9.5" fill="currentColor" fill-opacity="'+(ehHoje && h > hAgora ? '.25' : '.6')+'">'+h+'h</text>';
   }
   (d.mudancas || []).forEach(function(m){
+    if(/_(conjunto|anuncio)$/.test(m.campo)) return;   // o gráfico marca só o que mudou na campanha
     var dt = new Date(m.em); if(new Date(m.em - 3*3600000).toISOString().slice(0,10) !== d.ate) return;
     var xh = L + (dt.getHours() + dt.getMinutes()/60)*bw;
     s += '<line x1="'+xh+'" x2="'+xh+'" y1="4" y2="'+(H-B)+'" stroke="#ef4444" stroke-dasharray="3 3"><title>'+(m.campo === 'orc' ? 'orçamento' : m.campo)+' mudou às '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0')+'</title></line>'+

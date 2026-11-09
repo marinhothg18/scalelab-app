@@ -205,6 +205,14 @@ Entrega o relatório de fechamento do dia no padrão da skill `trafego` (metas, 
 - Metas por projeto em `sl_auditoria_metas` (`/api/ia/auditoria-metas`). Valores em R$ das regras escalam por CPA meta ÷ 350. Sem meta, a régua é o CPA de equilíbrio de 7 dias.
 - Modelo `claude-opus-5-5`, chave `_getAIKey()`. `fallbacks: 'default'` deixa a API tentar outro modelo se um filtro recusar. `test/auditoria.test.js` usa Utmify e Anthropic falsas (`TMX_UTMIFY_URL`, `ANTHROPIC_BASE_URL`).
 
+### Mexer nas campanhas pelo TMX (09/11/2026)
+
+Decisão do Thiago: o TMX faz tudo como a Utmify, então a conexão fica com `ads_management` (nada de "só leitura"). Hoje: orçamento de campanha e conjunto, e pausar/ativar campanha, conjunto e anúncio, em Análise de tráfego › Por Campanha (lápis na coluna Orçamento e quadro "Conjuntos e anúncios" dentro de Análise ›). Duplicar ainda não existe.
+
+- Rotas (só Diretoria): `GET /api/meta/campanha/:id/estrutura` (lê da Meta na hora), `POST /api/meta/status` (`/api/meta/campanha/status` fica pra aba antiga) e `POST /api/meta/orcamento`.
+- O orçamento vai em centavos na moeda da conta; só BRL e USD (`META_MOEDAS_ORCAMENTO`). A tela manda o valor que estava vendo em `de`: se mudou na Meta, volta 409.
+- `camp_mudancas` anota em real, com `campo` `status_conjunto`, `status_anuncio` ou `orc_conjunto` para o que é de conjunto e anúncio (ficam fora do selo da tabela e das marcas do gráfico por hora). Cada ação vai para a auditoria (`meta_<nivel>_*`). `test/meta-controle.test.js` usa Meta falsa.
+
 ### Celular (08/11/2026)
 
 Barra de baixo: Dashboard, Demandas, Análise, Projetos e Menu (decisão do Thiago). Quem não pode ver Análise ou Projetos fica com Chat e Criativos no lugar (`_barraDeBaixoPorCargo`). O botão "Tela branca" fica na parte fixa do menu, só no celular. A barra de cima continua escura na tela branca porque o relógio do iPhone instalado é branco. Os ajustes de tela ficam no bloco `CELULAR · alinhamento geral` do CSS, tudo em ≤768px.

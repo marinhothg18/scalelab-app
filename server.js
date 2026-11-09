@@ -3659,6 +3659,8 @@ async function _metaSincronizar(opts) {
             return (campo === 'orc' || campo === 'lance') && /^\d+$/.test(String(v)) ? String(emReal(Number(v) / 100, _diaBR(em))) : String(v).slice(0, 60);
           };
           if (_q("SELECT 1 FROM camp_mudancas WHERE camp=? AND em=? AND campo=? AND fonte='meta'").get(camp, em, campo)) return;
+          // o que o próprio TMX mudou volta aqui nas atividades da Meta: já está anotado
+          if (_q("SELECT 1 FROM camp_mudancas WHERE camp=? AND fonte='tmx' AND desde IS NULL AND campo IN (?, ?) AND ABS(em-?)<300000").get(camp, campo, campo === 'orc' ? 'orc_conjunto' : 'status_conjunto', em)) return;
           const nome = (estado[camp] && estado[camp].nome) || String(a.object_name || '').slice(0, 160);
           _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)')
             .run(camp, nome, '', campo, val(ex.old_value), val(ex.new_value), em, null, 'meta');
@@ -3706,33 +3708,108 @@ async function _metaRodar() {
 setTimeout(() => _metaRodar().catch(e => console.error('[META]', e.message)), 3 * 60 * 1000);
 setInterval(() => _metaRodar().catch(e => console.error('[META]', e.message)), 60 * 60 * 1000);
 setInterval(() => _capiEnviarPendentes().catch(e => console.error('[CAPI] envio:', e.message)), 60 * 1000);
-// Pausar e ativar campanha direto da Análise de tráfego. Só a Diretoria, e só
-// com o token tendo ads_management. Fica na auditoria e no histórico da campanha.
-app.post('/api/meta/campanha/status', authDiretoria, async (req, res) => {
+// Mexer nas campanhas pelo TMX: ativar, pausar e mudar orçamento. Só a Diretoria e só com o token
+// tendo ads_management. Vale na hora na Meta; fica na auditoria e no histórico da campanha.
+const META_NIVEIS = {
+  campanha: { on: 'meta_campanha_ativada', off: 'meta_campanha_pausada', orc: 'meta_campanha_orcamento', status: 'status', mudaOrc: 'orc' },
+  conjunto: { on: 'meta_conjunto_ativado', off: 'meta_conjunto_pausado', orc: 'meta_conjunto_orcamento', status: 'status_conjunto', mudaOrc: 'orc_conjunto' },
+  anuncio: { on: 'meta_anuncio_ativado', off: 'meta_anuncio_pausado', status: 'status_anuncio' }
+};
+// a Meta guarda orçamento em centavos; moeda sem centavos (iene, por exemplo) daria valor 100 vezes errado
+const META_MOEDAS_ORCAMENTO = ['BRL', 'USD'];
+const _metaSoDigitos = v => String(v || '').replace(/\D/g, '').slice(0, 30);
+function _metaErroTela(msg, http) { const e = new Error(msg); e.httpTela = http || 400; return e; }
+function _metaResponderErro(res, e) { res.status(e.httpTela || 400).json({ error: e.httpTela ? e.message : _metaErroTxt(e) }); }
+function _metaParaMudar() {
+  const cfg = _metaCfg();
+  if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema') throw _metaErroTela('Conecte a Meta primeiro (Configurações → Conexões → Meta Ads).');
+  if ((cfg.permissoes || []).indexOf('ads_management') < 0) throw _metaErroTela('A conexão com a Meta não tem a permissão ads_management. Conecte de novo com essa permissão.');
+  return cfg;
+}
+async function _metaGravar(id, campos, cfg) {
+  const r = await fetch(META_API_BASE + '/' + id, { method: 'POST', body: new URLSearchParams(Object.assign({}, campos, { access_token: cfg.accessToken })) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error || j.success === false) {
+    const e = new Error((j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + r.status));
+    e.metaCode = j.error && j.error.code;
+    throw e;
+  }
+}
+const _metaOrc = o => Number(o.daily_budget) > 0 ? { valor: _metaReais(o.daily_budget), tipo: 'dia' }
+  : Number(o.lifetime_budget) > 0 ? { valor: _metaReais(o.lifetime_budget), tipo: 'total' } : null;
+async function _metaMoedaDaConta(contaId, cfg) {
+  const conta = (cfg.contas || []).find(x => x.conta === String(contaId || ''));
+  if (conta && conta.moeda) return String(conta.moeda).toUpperCase();
+  return String((await _metaGet('act_' + contaId, { fields: 'currency' }, cfg)).currency || '').toUpperCase();
+}
+// o histórico da campanha é todo em real, como o resto da tela
+async function _metaEmReais(valor, moeda) {
+  if (moeda === 'BRL') return valor;
+  try { const hoje = _diaBR(Date.now()), taxa = await _cambioPeriodo(moeda, hoje, hoje); return Math.round(valor * taxa[hoje] * 100) / 100; }
+  catch (e) { return null; }
+}
+function _metaAnotarMudanca(camp, nome, campo, de, para) {
+  const m = { campo, nome, de: de == null ? '' : String(de), para: para == null ? '' : String(para), em: Date.now(), desde: null, fonte: 'tmx' };
+  if (_pessoas() && camp) _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)').run(camp, nome, '', m.campo, m.de, m.para, m.em, null, 'tmx');
+  return m;
+}
+// lido na hora: o que a tela mostra é o que está valendo na Meta agora
+app.get('/api/meta/campanha/:id/estrutura', authDiretoria, async (req, res) => {
   try {
-    const b = req.body || {}, id = String(b.id || '').replace(/\D/g, '').slice(0, 30), ativo = b.ativo === true;
-    if (!id) return res.status(400).json({ error: 'Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.' });
-    const cfg = _metaCfg();
-    if (!cfg || !cfg.accessToken || cfg.tipo !== 'sistema') return res.status(400).json({ error: 'Conecte a Meta primeiro (Configurações → Integrações → Meta).' });
-    if ((cfg.permissoes || []).indexOf('ads_management') < 0) return res.status(400).json({ error: 'O token da Meta não tem a permissão ads_management. Gere outro token marcando ads_management e troque em Integrações → Meta.' });
-    const corpo = new URLSearchParams({ status: ativo ? 'ACTIVE' : 'PAUSED', access_token: cfg.accessToken });
-    const r = await fetch(META_API_BASE + '/' + id, { method: 'POST', body: corpo });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error || j.success === false) {
-      const e = new Error((j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + r.status)); e.metaCode = j.error && j.error.code;
-      return res.status(400).json({ error: _metaErroTxt(e) });
-    }
-    const nome = String(b.nome || '').slice(0, 160), agora = Date.now();
-    if (_pessoas()) {
-      _q('INSERT INTO camp_mudancas(camp, nome, dashboard, campo, de, para, em, desde, fonte) VALUES(?,?,?,?,?,?,?,?,?)')
-        .run(id, nome, '', 'status', ativo ? 'PAUSED' : 'ACTIVE', ativo ? 'ACTIVE' : 'PAUSED', agora, null, 'tmx');
-      _q('UPDATE camp_estado SET status=?, em=? WHERE id=?').run(ativo ? 'ACTIVE' : 'PAUSED', agora, id);
-    }
+    const id = _metaSoDigitos(req.params.id), cfg = _metaParaMudar();
+    if (!id) throw _metaErroTela('Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.');
+    const CAMPOS = 'id,name,status,effective_status,daily_budget,lifetime_budget';
+    const [c, conjuntos, anuncios] = await Promise.all([
+      _metaGet(id, { fields: CAMPOS + ',account_id' }, cfg),
+      _metaTudo(id + '/adsets', { fields: CAMPOS, limit: '200' }, cfg, 3),
+      _metaTudo(id + '/ads', { fields: 'id,name,status,effective_status,adset_id', limit: '500' }, cfg, 3)
+    ]);
+    const moeda = await _metaMoedaDaConta(c.account_id, cfg);
+    const item = o => ({ id: String(o.id), nome: String(o.name || ''), status: String(o.status || ''), efetivo: String(o.effective_status || o.status || ''), orc: _metaOrc(o) });
+    const porConjunto = {};
+    anuncios.forEach(a => { (porConjunto[a.adset_id] = porConjunto[a.adset_id] || []).push(item(a)); });
+    res.json({ ok: true, moeda, podeOrcamento: META_MOEDAS_ORCAMENTO.includes(moeda), campanha: item(c),
+      conjuntos: conjuntos.map(s => Object.assign(item(s), { anuncios: porConjunto[s.id] || [] })) });
+  } catch (e) { _metaResponderErro(res, e); }
+});
+// /api/meta/campanha/status é o endereço antigo: aba aberta antes da atualização ainda chama
+app.post(['/api/meta/status', '/api/meta/campanha/status'], authDiretoria, async (req, res) => {
+  try {
+    const b = req.body || {}, nivel = META_NIVEIS[b.nivel] ? b.nivel : 'campanha', n = META_NIVEIS[nivel], id = _metaSoDigitos(b.id), ativo = b.ativo === true;
+    if (!id) throw _metaErroTela(nivel === 'campanha' ? 'Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.' : 'Esse item não tem o id da Meta.');
+    const cfg = _metaParaMudar(), para = ativo ? 'ACTIVE' : 'PAUSED';
+    await _metaGravar(id, { status: para }, cfg);
+    const nome = String(b.nome || '').slice(0, 160), camp = nivel === 'campanha' ? id : _metaSoDigitos(b.camp);
+    const mudanca = _metaAnotarMudanca(camp, nome, n.status, ativo ? 'PAUSED' : 'ACTIVE', para);
+    if (nivel === 'campanha' && _pessoas()) _q('UPDATE camp_estado SET status=?, em=? WHERE id=?').run(para, mudanca.em, id);
     const db = readDB();
-    audit(db, ativo ? 'meta_campanha_ativada' : 'meta_campanha_pausada', id, { nome }, req.user);
+    audit(db, ativo ? n.on : n.off, id, { nome, camp }, req.user);
     writeDB(db);
-    res.json({ ok: true, status: ativo ? 'ACTIVE' : 'PAUSED' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ ok: true, status: para, mudanca });
+  } catch (e) { _metaResponderErro(res, e); }
+});
+app.post('/api/meta/orcamento', authDiretoria, async (req, res) => {
+  try {
+    const b = req.body || {}, nivel = ['campanha', 'conjunto'].includes(b.nivel) ? b.nivel : '', id = _metaSoDigitos(b.id), valor = Math.round(Number(b.valor) * 100) / 100;
+    if (!nivel || !id) throw _metaErroTela('Diga a campanha ou o conjunto.');
+    if (!(valor > 0)) throw _metaErroTela('Digite um valor maior que zero.');
+    const cfg = _metaParaMudar();
+    const atual = await _metaGet(id, { fields: 'daily_budget,lifetime_budget,account_id' }, cfg), orc = _metaOrc(atual);
+    if (!orc) throw _metaErroTela(nivel === 'conjunto' ? 'Este conjunto usa o orçamento da campanha. Mude na campanha.' : 'Esta campanha tem o orçamento nos conjuntos. Mude em cada conjunto.');
+    const moeda = await _metaMoedaDaConta(atual.account_id, cfg);
+    if (!META_MOEDAS_ORCAMENTO.includes(moeda)) throw _metaErroTela('Esta conta está em ' + (moeda || 'outra moeda') + '. Mude o orçamento no Gerenciador de Anúncios.');
+    // a tela manda o valor que estava mostrando: se alguém mudou nesse meio tempo, não passa por cima
+    if (b.de !== undefined && Math.round(Number(b.de) * 100) !== Math.round(orc.valor * 100)) throw _metaErroTela('O orçamento mudou na Meta depois que você abriu esta tela. Abra de novo para ver o valor atual.', 409);
+    await _metaGravar(id, { [orc.tipo === 'dia' ? 'daily_budget' : 'lifetime_budget']: String(Math.round(valor * 100)) }, cfg);
+    const [deReal, paraReal] = await Promise.all([_metaEmReais(orc.valor, moeda), _metaEmReais(valor, moeda)]);
+    const n = META_NIVEIS[nivel], nome = String(b.nome || '').slice(0, 160), camp = nivel === 'campanha' ? id : _metaSoDigitos(b.camp);
+    const mudanca = _metaAnotarMudanca(camp, nome, n.mudaOrc, deReal, paraReal);
+    if (nivel === 'campanha' && _pessoas()) _q('UPDATE camp_estado SET orc=?, em=? WHERE id=?').run(valor, mudanca.em, id);
+    const db = readDB();
+    audit(db, n.orc, id, { nome, camp, de: orc.valor, para: valor, moeda, tipo: orc.tipo }, req.user);
+    writeDB(db);
+    res.json({ ok: true, valor, tipo: orc.tipo, moeda, valorReal: paraReal, mudanca });
+  } catch (e) { _metaResponderErro(res, e); }
 });
 app.post('/api/meta/puxar', authDiretoria, async (req, res) => {
   try {
@@ -6181,7 +6258,7 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       const t = porDiaTmx[d] || { vendas: 0, faturamento: 0 };
       return { dia: d, gasto: g, fatUtmify: ls.length ? fu : null, lucroUtmify: lu, vendasTmx: t.vendas, fatTmx: t.faturamento };
     });
-    const mudancas = (_pessoas() && m.id) ? _q('SELECT campo, de, para, em, desde, fonte FROM camp_mudancas WHERE camp=? AND em BETWEEN ? AND ? ORDER BY em').all(m.id, per.ini - 86400000, per.fim) : [];
+    const mudancas = (_pessoas() && m.id) ? _q('SELECT campo, nome, de, para, em, desde, fonte FROM camp_mudancas WHERE camp=? AND em BETWEEN ? AND ? ORDER BY em').all(m.id, per.ini - 86400000, per.fim) : [];
     if (!dir) { m.faturamento = null; m.fatLiquido = null; m.lucro = null; tmx.faturamento = null; tmx.fatHora = null; porDia.forEach(x => { x.fatUtmify = null; x.lucroUtmify = null; x.fatTmx = null; }); anuncios.forEach(a => { a.faturamento = null; a.lucro = null; a.fatTmx = null; a.lucroTmx = null; }); }
     res.json({ ok: true, de: per.de, ate: per.ate, campanha: m, tmx, porDia, mudancas, anuncios, erroAoVivo,
       registroDesde: _pessoas() ? ((_q('SELECT MIN(em) em FROM camp_estado').get() || {}).em || null) : null });
@@ -6198,7 +6275,7 @@ function _comMudancas(lista, de, ate) {
   try {
     if (!_pessoas() || !lista.length) return lista;
     const per = _periodoMs(de, ate), ult = {};
-    _q('SELECT camp, campo, de, para, em, fonte FROM camp_mudancas WHERE em BETWEEN ? AND ? ORDER BY em').all(per.ini, per.fim).forEach(x => { ult[x.camp] = x; });
+    _q("SELECT camp, campo, de, para, em, fonte FROM camp_mudancas WHERE em BETWEEN ? AND ? AND campo NOT IN ('status_conjunto','status_anuncio','orc_conjunto') ORDER BY em").all(per.ini, per.fim).forEach(x => { ult[x.camp] = x; });
     lista.forEach(c => { if (c.campanhaId && ult[c.campanhaId]) c.mudanca = ult[c.campanhaId]; });
   } catch (e) {}
   return lista;
