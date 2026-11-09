@@ -87,9 +87,9 @@ test('primeiros passos da empresa cliente', async (t) => {
     assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
     assert.strictEqual(r.dados.mostrar, true);
     assert.strictEqual(r.dados.vistoEm, null);
-    assert.strictEqual(r.dados.total, 6);
+    assert.strictEqual(r.dados.total, 7);
     assert.strictEqual(r.dados.feitos, 0);
-    assert.deepStrictEqual(Object.keys(r.dados.passos), ['meta', 'utmify', 'checkout', 'produtos', 'projeto', 'venda']);
+    assert.deepStrictEqual(Object.keys(r.dados.passos), ['claude', 'meta', 'utmify', 'checkout', 'produtos', 'projeto', 'venda']);
     assert.strictEqual(r.dados.passos.checkout.url, null);
     assert.strictEqual((await chamar('GET', '/api/primeiros-passos')).status, 401, 'sem login não lê');
   });

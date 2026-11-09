@@ -168,10 +168,12 @@ body.embutido .cab { display: none; }
     </div>
     <div><label class="rot">Começar de</label>
       <div class="abas" role="group" aria-label="Começar de" id="n-origem">
+        <button data-o="branco" aria-pressed="false">Em branco</button>
         <button data-o="modelo" aria-pressed="true">Um modelo</button>
         <button data-o="copiar" aria-pressed="false">Copiar de um endereço</button>
       </div></div>
     <div id="n-caixa-modelo"><label class="rot">Modelo</label><div class="opcoes" id="n-modelos"></div></div>
+    <p class="ajuda" id="n-caixa-branco" hidden>A página começa vazia. Depois é só pedir pro Claude montar no chat: dá pra mandar texto, print, PDF ou HTML.</p>
     <div id="n-caixa-copiar" class="campos" hidden>
       <div><label class="rot" for="n-copiar-url">Endereço da página</label><input class="campo mono" id="n-copiar-url" placeholder="https://…" autocomplete="off" inputmode="url">
         <div class="ajuda">O TMX baixa o HTML, as imagens, o CSS e os scripts do mesmo site, tira os pixels e rastreadores do dono e põe o pixel do TMX. Depois você muda pelo chat.</div></div>
@@ -197,16 +199,16 @@ body.embutido .cab { display: none; }
     <p class="sub">O domínio continua na sua hospedagem. O TMX monta a página e envia os arquivos pra lá quando você publica. Apontar o domínio pro TMX vem depois.</p>
     <details class="guia" id="guia-ftp">
       <summary>Como pegar esses dados</summary>
-      <p class="sub">As páginas da apostilai.ai ficam na HospedaInfo, que é por onde o seu Claude Code publica hoje. A Hostinger cuida só do DNS. Na dúvida, use a aba HospedaInfo.</p>
+      <p class="sub">Use a aba da empresa onde o seu site está hospedado. Na dúvida, veja onde você paga a hospedagem do site.</p>
       <div class="abas" role="group" aria-label="Onde está a hospedagem" id="guia-abas">
         <button data-g="cpanel" aria-pressed="true">HospedaInfo ou outro cPanel</button>
         <button data-g="hostinger" aria-pressed="false">Hostinger</button>
       </div>
       <ol id="g-cpanel">
         <li>Entre no <b>cPanel</b> da hospedagem e, em <b>Arquivos</b>, abra <b>Contas de FTP</b>.</li>
-        <li>Crie uma conta só pro TMX: um login (ex.: <span class="mono">tmx</span>), o domínio (<span class="mono">apostilai.ai</span>) e uma senha forte. No campo <b>Diretório</b>, deixe só <span class="mono">public_html</span>.</li>
+        <li>Crie uma conta só pro TMX: um login (ex.: <span class="mono">tmx</span>), o domínio (<span class="mono">seusite.com.br</span>) e uma senha forte. No campo <b>Diretório</b>, deixe só <span class="mono">public_html</span>.</li>
         <li>Clique em <b>Criar conta de FTP</b>. Na lista, ao lado da conta nova, clique em <b>Configurar cliente FTP</b>: ali aparecem o <b>servidor FTP</b> e a <b>porta</b> (21).</li>
-        <li>Aqui no TMX: <b>Servidor</b> = o servidor FTP; <b>Usuário</b> = o login completo (<span class="mono">tmx@apostilai.ai</span>); <b>Senha</b> = a que você criou; <b>Pasta</b> = <span class="mono">/</span> (a conta já abre no public_html); <b>Endereço público</b> = <span class="mono">https://apostilai.ai/</span>.</li>
+        <li>Aqui no TMX: <b>Servidor</b> = o servidor FTP; <b>Usuário</b> = o login completo (<span class="mono">tmx@seusite.com.br</span>); <b>Senha</b> = a que você criou; <b>Pasta</b> = <span class="mono">/</span> (a conta já abre no public_html); <b>Endereço público</b> = <span class="mono">https://seusite.com.br/</span>.</li>
       </ol>
       <ol id="g-hostinger" hidden>
         <li>No <b>hPanel</b>, abra <b>Sites</b> e clique em <b>Gerenciar</b> no domínio.</li>
@@ -220,9 +222,9 @@ body.embutido .cab { display: none; }
       </ul>
     </details>
     <div class="grade">
-      <div><label class="rot" for="h-dominio">Domínio</label><input class="campo mono" id="h-dominio" placeholder="apostilai.ai" autocomplete="off"></div>
-      <div><label class="rot" for="h-endereco">Endereço público</label><input class="campo mono" id="h-endereco" placeholder="https://apostilai.ai/" autocomplete="off"><div class="ajuda">Onde a pasta abaixo aparece no navegador.</div></div>
-      <div><label class="rot" for="h-host">Servidor FTP</label><input class="campo mono" id="h-host" placeholder="ftp.apostilai.ai ou o IP" autocomplete="off"></div>
+      <div><label class="rot" for="h-dominio">Domínio</label><input class="campo mono" id="h-dominio" placeholder="seusite.com.br" autocomplete="off"></div>
+      <div><label class="rot" for="h-endereco">Endereço público</label><input class="campo mono" id="h-endereco" placeholder="https://seusite.com.br/" autocomplete="off"><div class="ajuda">Onde a pasta abaixo aparece no navegador.</div></div>
+      <div><label class="rot" for="h-host">Servidor FTP</label><input class="campo mono" id="h-host" placeholder="ftp.seusite.com.br ou o IP" autocomplete="off"></div>
       <div><label class="rot" for="h-porta">Porta</label><input class="campo mono" id="h-porta" value="21" inputmode="numeric" autocomplete="off"></div>
       <div><label class="rot" for="h-usuario">Usuário</label><input class="campo mono" id="h-usuario" autocomplete="off"></div>
       <div><label class="rot" for="h-senha">Senha</label><input class="campo mono" id="h-senha" type="password" autocomplete="new-password"></div>
@@ -282,7 +284,7 @@ body.embutido .cab { display: none; }
           </div>
           <button class="btn pri" type="submit" id="chat-enviar">Enviar</button>
         </div>
-        <p class="ajuda" style="margin:0">O Claude muda a página e cria versões, mas não publica: publicar é o botão, com as conferências. Enter envia, Shift+Enter pula linha. Usa a chave da Anthropic do TMX.</p>
+        <p class="ajuda" style="margin:0">O Claude muda a página e cria versões, mas não publica: publicar é o botão, com as conferências. Enter envia, Shift+Enter pula linha. Usa a chave do Claude cadastrada nesta empresa.</p>
       </form>
     </section>
     <section class="cartao" id="painel" hidden aria-labelledby="painel-t">
@@ -380,7 +382,7 @@ body.embutido .cab { display: none; }
     var semHosp = !estado.dominios.length && EMB === 'criar'
       ? '<div class="msg alerta" style="margin-bottom:10px">Pra <b>publicar</b>, conecte a hospedagem em Configurações › Conexões › Hospedagem. Criar a página e conversar com o Claude já funciona. <button class="btn mini" type="button" data-ir-hosp="1">Conectar a hospedagem</button></div>' : '';
     $('lista-paginas').innerHTML = semHosp + (!l.length
-      ? '<p class="vazio">' + (PROJ ? 'Nenhuma página feita no TMX neste projeto ainda. Clique em Nova página, escolha um modelo e peça as mudanças pro Claude.' :
+      ? '<p class="vazio">' + (PROJ ? 'Nenhuma página feita no TMX neste projeto ainda. Clique em Nova página e peça as mudanças pro Claude.' :
           estado.dominios.length ? 'Nenhuma página ainda. Crie a primeira a partir de um modelo.' : 'Conecte uma hospedagem em Domínios pra criar a primeira página.') + '</p>'
       : '<div class="tab-wrap"><table><thead><tr><th>Página</th><th>Modelo</th><th>Situação</th><th></th></tr></thead><tbody>' + l.map(function (p) {
           var m = modeloDe(p.modelo);
@@ -410,15 +412,23 @@ body.embutido .cab { display: none; }
       return '<button class="opcao" data-m="' + esc(m.id) + '" aria-pressed="' + (i === 0) + '"><b>' + esc(m.nome) + '</b><span class="mono">' + esc(m.base) + '</span></button>';
     }).join('');
     modeloNovo = estado.modelos.length ? estado.modelos[0].id : null;
+    // sem modelos (empresa cliente), a aba de modelo some e a página começa em branco
+    var bM = $('n-origem').querySelector('[data-o="modelo"]'); bM.hidden = !estado.modelos.length;
+    if (!estado.modelos.length && origemNova === 'modelo') trocarOrigem('branco');
     $('c-nova').hidden = false; msg($('n-msg')); urlNova(); $('n-titulo').focus();
   }
   $('bt-nova').addEventListener('click', abrirNova);
   umSo($('n-modelos'), function (b) { modeloNovo = b.getAttribute('data-m'); });
   // começar de um modelo ou copiar a página de um endereço
   var origemNova = 'modelo';
+  function trocarOrigem(o) {
+    origemNova = o;
+    [].forEach.call($('n-origem').querySelectorAll('button'), function (x) { x.setAttribute('aria-pressed', x.getAttribute('data-o') === o ? 'true' : 'false'); });
+    $('n-caixa-modelo').hidden = o !== 'modelo'; $('n-caixa-copiar').hidden = o !== 'copiar'; $('n-caixa-branco').hidden = o !== 'branco';
+  }
   umSo($('n-origem'), function (b) {
     origemNova = b.getAttribute('data-o');
-    $('n-caixa-modelo').hidden = origemNova !== 'modelo'; $('n-caixa-copiar').hidden = origemNova !== 'copiar';
+    $('n-caixa-modelo').hidden = origemNova !== 'modelo'; $('n-caixa-copiar').hidden = origemNova !== 'copiar'; $('n-caixa-branco').hidden = origemNova !== 'branco';
     $('bt-criar').textContent = origemNova === 'copiar' ? 'Copiar página' : 'Criar página'; msg($('n-msg'));
     if (origemNova === 'copiar') $('n-copiar-url').focus();
   });
@@ -443,6 +453,7 @@ body.embutido .cab { display: none; }
       corpo.copiar = { url: u, autorizacao: aut.value }; delete corpo.modelo;
       msg($('n-msg'), '', 'Copiando a página e os arquivos dela. Pode levar até um minuto…');
     }
+    if (origemNova === 'branco') { corpo.branco = true; delete corpo.modelo; }
     b.disabled = true;
     api('POST', '/api/pg/paginas', corpo).then(function (r) {
       b.disabled = false;
@@ -673,7 +684,7 @@ body.embutido .cab { display: none; }
       if (r.s !== 200 || chatDe !== id) return;
       pintarChat(r.j.mensagens); custo(r.j.uso);
       $('chat-in').disabled = $('chat-enviar').disabled = !r.j.temChave;
-      if (!r.j.temChave) pintarChat(r.j.mensagens, '<div class="bolha erro">O TMX está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.</div>');
+      if (!r.j.temChave) pintarChat(r.j.mensagens, '<div class="bolha erro">Falta cadastrar a chave do Claude desta empresa. Ela fica em Configurações › Conexões › Agente de IA.</div>');
     });
   }
 

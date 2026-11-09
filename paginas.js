@@ -40,8 +40,9 @@ const MODELOS = {
 const MODELO_IA = 'claude-opus-5-5';
 // US$ por milhão de tokens do Claude Opus 5.5 (escrita no cache de 5 min = 1,25x a entrada): só pra estimar o custo na tela
 const PRECO_IA = { entrada: 4, saida: 20, cacheLeitura: 0.2, cacheEscrita: 5 };
-const SISTEMA_CHAT = 'Você é o assistente de páginas do Central TMX, o sistema da operação de infoprodutos do Thiago (Apostilai, para concursos). ' +
-  'Em cada conversa você edita uma página de vendas, só pelas ferramentas.\n\n' +
+const INICIO_CHAT_EMPRESA = 'Você é o assistente de páginas deste sistema, usado por empresas que vendem com tráfego pago. ';
+const INICIO_CHAT_TMX = 'Você é o assistente de páginas do Central TMX, o sistema da operação de infoprodutos do Thiago (Apostilai, para concursos). ';
+const SISTEMA_CHAT = 'Em cada conversa você edita uma página de vendas, só pelas ferramentas.\n\n' +
   'Como trabalhar:\n' +
   '- Responda em português do Brasil, curto e direto: o que mudou e o que as conferências disseram.\n' +
   '- Antes de mudar qualquer coisa, leia a página com ver_pagina. A pessoa também edita pela tela entre um pedido e outro.\n' +
@@ -146,7 +147,9 @@ function _extrair(html) {
   };
 }
 let _modelosMem = null;
+// Os modelos são as páginas de venda da própria TMX: só existem na TMX. Numa empresa cliente a página nasce em branco ou copiada.
 function _modelos() {
+  if (_basePublica) return {};
   if (_modelosMem) return _modelosMem;
   const m = {};
   for (const [id, cfg] of Object.entries(MODELOS)) {
@@ -347,6 +350,7 @@ async function _baixar(url, max) {
 // scripts do próprio site vêm junto pra pasta arquivos/ da página.
 const ARQ_MAX = 120, ARQ_TOTAL = 25e6, ARQ_UM = 5e6, HTML_MAX = 3e6;
 // PDF anexado no chat: até 10 MB (em base64) e, somando a conversa, o que cabe num pedido à Anthropic junto com as imagens
+const ARQ_EMPRESA_MAX = 1e9;   // soma dos arquivos das páginas copiadas de uma empresa cliente
 const PDF_B64_MAX = 13.5e6, PDF_CONVERSA_MAX = 15e6, ANEXOS_HTML_MAX = 10;
 const NAVEGADOR = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1 CentralTMX-Paginas/1.0';
 // os do dono de antes: o que manda visita, clique ou venda pra fora
@@ -826,6 +830,11 @@ async function _testarHospedagem(d, senha) {
 module.exports = function montarPaginas(ctx) {
   const { app, express, readDB, writeDB, audit, auth, _pessoas, _q, _finCifrar, _finDecifrar } = ctx;
   _basePublica = typeof ctx.basePublica === 'string' ? ctx.basePublica : '';
+  // numa empresa cliente não há modelos: a instrução e as ferramentas não falam deles
+  const _sistemaChat = () => _basePublica
+    ? INICIO_CHAT_EMPRESA + SISTEMA_CHAT.replace(/- Página de modelo:[^\n]*\n/, '').replace(/- Numa página de modelo, trocar_trecho[^\n]*\n/, '').replace('Dois tipos de página:', 'Toda página aqui é livre:').replace('ofereça montar a partir do modelo mais parecido', 'ofereça montar uma página nova pelo chat').replace(/ Se a ferramenta disser que é igual a um modelo[^\n]*\n/, ' Use o que ela mostrar como referência.\n')
+    : INICIO_CHAT_TMX + SISTEMA_CHAT;
+  const _ferramentasChat = () => _basePublica ? FERRAMENTAS_CHAT.filter(f => f.name !== 'trocar_modelo') : FERRAMENTAS_CHAT;
   let pronto = false;
   function _tabelas() {
     if (pronto) return true;
@@ -921,6 +930,8 @@ module.exports = function montarPaginas(ctx) {
     avisos: copia.avisos, montada_por_js: copia.montadaPorJs, vsls: copia.vsls.map(v => v.tipo + ' ' + v.id), checkouts: copia.checkouts });
   async function _copiar(url, autorizacao) {
     if (autorizacao !== 'minha' && autorizacao !== 'autorizada') throw falha(400, 'Diga se a página é sua ou se você tem autorização do dono pra copiar.');
+    // o disco é um só pra todas as empresas: cada cópia traz até 25 MB de arquivos
+    if (_basePublica && Number((_q('SELECT COALESCE(SUM(tamanho),0) n FROM pg_arquivos').get() || {}).n) > ARQ_EMPRESA_MAX) throw falha(400, 'Os arquivos das suas páginas passaram de 1 GB. Fale com o suporte pra liberar mais espaço.');
     let u; try { u = new URL(String(url || '').trim()); } catch (e) { throw falha(400, 'Endereço inválido. Use o endereço completo, com https://.'); }
     try { return await _clonar(u.href); } catch (e) { throw falha(400, 'Não consegui copiar essa página: ' + e.message + '.'); }
   }
@@ -928,7 +939,7 @@ module.exports = function montarPaginas(ctx) {
   // o que chega da tela pra conectar uma hospedagem (a senha só vive nesta chamada)
   function _lerHospedagem(b) {
     const dominio = String(b.dominio || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(dominio)) throw new Error('Domínio inválido. Use só o endereço, como apostilai.ai.');
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(dominio)) throw new Error('Domínio inválido. Use só o endereço, como seusite.com.br.');
     const host = String(b.host || '').trim();
     if (!/^[a-zA-Z0-9.:-]+$/.test(host)) throw new Error('Servidor inválido.');
     const porta = Number(b.porta) || 21;
@@ -1034,6 +1045,15 @@ module.exports = function montarPaginas(ctx) {
     campos._modelo = m.id;
     const id = _inserir(n, b, m.id, b.titulo || m.nome, campos, 'Criada a partir do modelo ' + m.nome, req);
     _auditar(req, 'pg_pagina_criar', id, { dominio: n.d ? n.d.dominio : null, slug: n.slug, modelo: m.id, projeto: n.projeto });
+    return { id };
+  }
+  // Em branco: a página nasce livre, com o mínimo, e o Claude monta pelo chat
+  function opCriarBranca(b, req) {
+    const n = _lerNova(b), titulo = String(b.titulo || '').trim().slice(0, 120) || n.slug;
+    const html = '<!doctype html>\n<html lang="pt-BR">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' + _esc(titulo) + '</title>\n</head>\n<body>\n<h1>' + _esc(titulo) + '</h1>\n</body>\n</html>\n';
+    const campos = _camposDaCopia({ html, origem: 'em branco', titulo, checkouts: [], vsls: [], tirados: [], avisos: [], funilDoPixel: '' }, 'minha', titulo);
+    const id = _inserir(n, b, 'livre', titulo, campos, 'Criada em branco', req);
+    _auditar(req, 'pg_pagina_criar', id, { dominio: n.d ? n.d.dominio : null, slug: n.slug, modelo: 'em branco', projeto: n.projeto });
     return { id };
   }
   // "Copiar de um endereço": a página nasce livre, com o HTML e os arquivos da original
@@ -1177,7 +1197,7 @@ module.exports = function montarPaginas(ctx) {
   app.post('/api/pg/paginas', auth, express.json({ limit: '50kb' }), async (req, res) => {
     if (!_tabelas()) return semBanco(res);
     const b = req.body || {};
-    try { res.json(Object.assign({ ok: true }, b.copiar ? await opCriarCopia(b, req) : opCriar(b, req))); } catch (e) { responder(res, e); }
+    try { res.json(Object.assign({ ok: true }, b.copiar ? await opCriarCopia(b, req) : b.branco ? opCriarBranca(b, req) : opCriar(b, req))); } catch (e) { responder(res, e); }
   });
 
   app.get('/api/pg/paginas/:id', auth, (req, res) => {
@@ -1267,7 +1287,7 @@ module.exports = function montarPaginas(ctx) {
   function _ia() {
     if (ctx.clienteIA) return ctx.clienteIA;   // só no teste local, com um cliente de mentira
     const chave = String((ctx.chaveIA && ctx.chaveIA()) || '');
-    if (!chave) throw falha(400, 'O TMX está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.');
+    if (!chave) throw falha(400, _basePublica ? 'Cadastre a sua chave do Claude em Primeiros passos ou em Configurações › Conexões › Agente de IA.' : 'O TMX está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.');
     if (!_cliente || _clienteChave !== chave) { _cliente = new Anthropic({ apiKey: chave }); _clienteChave = chave; }
     return _cliente;
   }
@@ -1552,7 +1572,7 @@ module.exports = function montarPaginas(ctx) {
           // se um filtro de segurança recusar, a própria API tenta outro modelo no mesmo pedido
           betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
           cache_control: { type: 'ephemeral' },
-          system: SISTEMA_CHAT, tools: FERRAMENTAS_CHAT,
+          system: _sistemaChat(), tools: _ferramentasChat(),
           messages: msgs.concat(novas)
         });
         const u = r.usage || {};
@@ -1581,7 +1601,7 @@ module.exports = function montarPaginas(ctx) {
       res.json({ mensagens: _paraTela(msgs.concat(novas)), mudou: depois.versao !== versaoAntes, n: depois.versao,
         uso: _usoDaPagina(p.id), custoPedidoUS: Math.round(_custoUS(uso) * 1000) / 1000 });
     } catch (e) {
-      if (e instanceof Anthropic.AuthenticationError) return res.status(400).json({ error: 'A Anthropic não aceitou a chave do TMX. Confira a chave em Configurações › WhatsApp + Agente IA.' });
+      if (e instanceof Anthropic.AuthenticationError) return res.status(400).json({ error: _basePublica ? 'A Anthropic não aceitou a sua chave do Claude. Confira em Configurações › Conexões › Agente de IA.' : 'A Anthropic não aceitou a chave do TMX. Confira a chave em Configurações › WhatsApp + Agente IA.' });
       if (e instanceof Anthropic.RateLimitError) return res.status(429).json({ error: 'A Anthropic pediu pra esperar um pouco. Tente de novo em um minuto.' });
       if (e instanceof Anthropic.BadRequestError) return res.status(400).json({ error: 'A Anthropic recusou o pedido: ' + e.message });
       if (e instanceof Anthropic.APIError) return res.status(502).json({ error: 'A Anthropic deu erro (' + (e.status || 'sem resposta') + '). Tente de novo.' });

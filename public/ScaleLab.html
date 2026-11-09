@@ -22762,7 +22762,7 @@ var CFG_CONEX = [
   { id:'utmify',   ic:'📈', nome:'Utmify',         desc:'Gasto e métricas de campanha.', paineis:['integracoes'], ver:'utmify' },
   { id:'vturb',    ic:'🎬', nome:'VTurb',          desc:'Retenção, pitch e conversão dentro das VSLs.', paineis:['integracoes'], ver:'vturb' },
   { id:'checkout', ic:'💰', nome:'Checkouts',      desc:'Payt, Kiwify, Hotmart, Hubla, AppMax, Kirvano, Cakto, Perfect Pay e Cartpanda mandam as vendas pra cá.', paineis:['integracoes'], ver:'checkout' },
-  { id:'hospedagem', ic:'🌐', nome:'Hospedagem',   desc:'FTP da hospedagem onde as páginas ficam no ar (HospedaInfo, Hostinger, qualquer cPanel). O TMX publica nela.', paineis:['hospedagem'], soTmx:true },
+  { id:'hospedagem', ic:'🌐', nome:'Hospedagem',   desc:'FTP da hospedagem onde as páginas ficam no ar (HospedaInfo, Hostinger, qualquer cPanel). O TMX publica nela.', paineis:['hospedagem'] },
   { id:'whatsapp', ic:'💬', nome:'WhatsApp',       desc:'Z-API. Manda lembretes e relatórios e recebe as mensagens pro agente.', paineis:['whatsapp'], ver:'whatsapp' },
   { id:'ia',       ic:'🤖', nome:'Agente de IA',   desc:'Claude ou OpenAI, pra responder pelo WhatsApp e no chat das páginas.', paineis:['whatsapp'], ver:'ia' },
   { id:'email',    ic:'📧', nome:'E-mail',         desc:'Resend: boas-vindas e troca de senha.', paineis:['integracoes'], ver:'email' },
@@ -32014,7 +32014,7 @@ function pgCarregar(){
   if(pgPodeCriar()) v2Json('/api/pg/estado?projeto='+encodeURIComponent(fnProj))
     .then(function(t){ if(pgEst.pedido !== pedido) return; pgEst.tmx = t; pgPintar(); }).catch(function(){});
 }
-function pgPodeCriar(){ return !!(currentUser && currentUser.cargo === 'Diretoria' && (typeof tmxEhTmx !== 'function' || tmxEhTmx())); }
+function pgPodeCriar(){ return !!(currentUser && currentUser.cargo === 'Diretoria'); }
 // Criar páginas: o construtor (paginas.html, com o chat do Claude) abre nesta aba do projeto.
 // Volta pro que estava aberto ao trocar de aba; muda de projeto, recarrega.
 var pgCriarProj = '';
@@ -32611,7 +32611,7 @@ var FN_ABA_INFO = {
   quiz:    ['Quiz',        'Os quizzes deste projeto: montar, publicar e ver onde abandonam.'],
   vsl:     ['Análise de VSL', 'Retenção, pitch e conversão das VSLs deste projeto, direto da VTurb.'],
   paginas: ['Páginas', 'Todas as páginas do projeto, com data, versões, números e velocidade. As que o Claude Code sobe entram sozinhas.'],
-  criar:   ['Criar páginas', 'Monte a página a partir de um modelo e peça as mudanças pro Claude no chat. Publicar leva pra sua hospedagem.'],
+  criar:   ['Criar páginas', 'Monte a página e peça as mudanças pro Claude no chat. Publicar leva pra sua hospedagem.'],
   vendas:  ['Vendas', 'Cada venda aprovada do período: de onde veio e o que vai pra Meta. Clique numa pra abrir.'],
   reembolsos:['Reembolsos', 'Quem pediu o dinheiro de volta no período: o cliente, a compra, quanto tempo depois e de que anúncio ela tinha vindo.'],
   config:  ['Integrações', 'O que este projeto usa: tráfego, pixel, produtos e as compras que vão pra Meta. A conexão com a Meta, a Utmify e os checkouts é da empresa, em Configurações › Conexões, e acontece uma vez só.']
@@ -40364,7 +40364,7 @@ async function pcSalvar(bt){
 // nova. O servidor (/api/primeiros-passos) diz o que já está ligado. Na TMX não existe.
 // ══════════════════════════════════════════════════════
 var ppDados = null, ppAberto = '', ppPlat = 'payt', ppVistos = null;
-var PP_ORDEM = ['meta','utmify','checkout','produtos','projeto','venda'];
+var PP_ORDEM = ['claude','meta','utmify','checkout','produtos','projeto','venda'];
 function _ppEhDir(){ return !!(currentUser && currentUser.cargo === 'Diretoria'); }
 function _ppPode(){ return _ppEhDir() && typeof tmxEhTmx === 'function' && !tmxEhTmx(); }
 function _ppPost(corpo){
@@ -40416,6 +40416,7 @@ function _ppEstado(k, p){
   return x.ok ? '<span class="pp-chip ok">ligado</span>' : '<span class="pp-chip falta">falta ligar</span>';
 }
 var PP_TXT = {
+  claude:   ['Chave do Claude', 'É ela que faz os relatórios, a Auditoria IA, o chat das páginas e o agente do WhatsApp. O uso é cobrado direto na sua conta da Anthropic.'],
   meta:     ['Meta Ads', 'Contas de anúncio, gasto e pixels. É daqui que vem o investimento do dia.'],
   utmify:   ['Utmify', 'Se você usa a Utmify, o TMX puxa as métricas dela e compara com as dele.'],
   checkout: ['Checkout', 'A plataforma manda cada venda pro TMX. Sem isso, o faturamento fica zerado.'],
@@ -40429,7 +40430,7 @@ function ppPintar(){
   if(!ppAberto) ppAberto = PP_ORDEM.filter(function(k){ return !(p[k].ok || p[k].pulado); })[0] || '';
   var pct = Math.round(d.feitos / d.total * 100);
   var h = '<div class="pp-topo"><div><h2>'+(d.feitos >= d.total ? 'Tudo ligado. O TMX já está contando suas vendas.' : 'Ligue o que você usa e o TMX começa a contar suas vendas')+'</h2>'+
-    '<p>Os passos 1 a 4 valem pra empresa toda; o 5 é de cada projeto. Dá pra fazer agora ou voltar aqui pelo menu.</p></div>'+
+    '<p>Os passos 1 a 5 valem pra empresa toda; o 6 é de cada projeto. Dá pra fazer agora ou voltar aqui pelo menu.</p></div>'+
     '<div class="pp-num"><b>'+d.feitos+'</b> de '+d.total+'</div><div class="pp-barra"><i style="width:'+pct+'%"></i></div></div>';
   h += PP_ORDEM.map(function(k, i){
     var x = p[k], feito = x.ok || x.pulado, ab = ppAberto === k;
@@ -40449,6 +40450,17 @@ function ppPintar(){
 function ppAbrir(k){ ppAberto = ppAberto === k ? '' : k; ppPintar(); var b = document.getElementById('pp-'+k); if(b && ppAberto) b.scrollIntoView({ block:'nearest', behavior:'smooth' }); }
 function _ppMsg(id, txt, ruim){ var o = document.getElementById(id); if(o){ o.className = 'pp-msg '+(ruim ? 'ruim' : 'bom'); o.textContent = txt; } }
 function ppCorpo(k, x){
+  if(k === 'claude'){
+    if(x.ok) return '<div class="pp-ok">✅ Chave do Claude cadastrada. Os relatórios, a Auditoria IA e o chat das páginas já usam a sua conta.</div>'+
+      '<div class="pp-linha"><button class="fn-btn g sm" onclick="ppConexao(\'ia\')">Ver a conexão ›</button></div>';
+    return '<ol class="pp-como">'+
+        '<li>Entre em <b>console.anthropic.com</b> e crie a sua conta (é diferente da assinatura do app do Claude).</li>'+
+        '<li>Em <b>Plans &amp; Billing</b>, coloque crédito. O uso é cobrado ali, direto na sua conta.</li>'+
+        '<li>Em <b>API Keys</b>, clique em <b>Create Key</b> e copie a chave. Ela começa com <b>sk-ant-</b> e só aparece uma vez.</li>'+
+        '<li>Cole aqui. Ela fica só no servidor da sua empresa.</li></ol>'+
+      '<div class="pp-linha"><input type="password" id="pp-claude-chave" class="fi" placeholder="sk-ant-…" autocomplete="off" aria-label="Chave do Claude"><button class="fn-btn" onclick="ppClaude(this)">Conectar</button></div>'+
+      '<div class="pp-msg" id="pp-claude-msg"></div>';
+  }
   if(k === 'meta'){
     if(x.ok) return '<div class="pp-ok">✅ Meta conectada: '+x.contas+' conta(s) de anúncio e '+x.pixels+' pixel(s). O TMX puxa o gasto sozinho, de hora em hora.</div>'+
       '<div class="pp-linha"><button class="fn-btn g sm" onclick="ppConexao(\'meta\')">Ver a conexão ›</button></div>';
@@ -40524,6 +40536,14 @@ function ppMeta(bt){
   fetch(API_BASE+'/api/meta/conexao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: tk }) })
     .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s).'); ppAberto = ''; renderPrimeiros(); })
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Conectar'; _ppMsg('pp-meta-msg', e.message, 1); });
+}
+function ppClaude(bt){
+  var ch = String((document.getElementById('pp-claude-chave') || {}).value || '').trim();
+  if(!ch){ _ppMsg('pp-claude-msg', 'Cole a chave primeiro.', 1); return; }
+  bt.disabled = true; bt.textContent = 'Conferindo…';
+  fetch(API_BASE+'/api/ia/chave', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ chave: ch }) })
+    .then(mcResposta).then(function(){ toastFn('Chave do Claude cadastrada.'); ppAberto = ''; renderPrimeiros(); })
+    .catch(function(e){ bt.disabled = false; bt.textContent = 'Conectar'; _ppMsg('pp-claude-msg', e.message, 1); });
 }
 function ppUtmify(bt){
   var tk = String((document.getElementById('pp-utm-token') || {}).value || '').trim();

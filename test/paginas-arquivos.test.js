@@ -157,11 +157,4 @@ test('Anexos no chat da página', async (t) => {
     await enviar({ mensagem: 'leia' });
     assert.strictEqual(ultimoResultado(pedidos[pedidos.length - 1]).is_error, true);
   });
-
-  await t.test('empresa cliente: o construtor continua fechado', async () => {
-    const c = await chamar('POST', '/api/plataforma/empresas', { token: ctx.tmx, corpo: { nome: 'Empresa A', usuario: { nome: 'Dona', email: 'dona@a.com', senha: 'senha-da-A-123' } } });
-    assert.strictEqual(c.status, 200, JSON.stringify(c.dados));
-    const a = (await chamar('POST', '/api/auth/login', { corpo: { email: 'dona@a.com', senha: 'senha-da-A-123' } })).dados.token;
-    assert.strictEqual((await chamar('GET', '/api/pg/estado', { token: a })).status, 403);
-  });
 });

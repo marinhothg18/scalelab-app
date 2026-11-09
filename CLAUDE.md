@@ -87,7 +87,15 @@ Regras:
 - O app (`_empresaDoLogin`) apaga a cópia local quando o aparelho troca de empresa.
 - Fora da TMX, Meu Protocolo e os 5 módulos de `MODULOS_ARQUIVAVEIS` (IA, Educacional, Infra,
   Ajuda, Tour) não existem: `_modulosArquivados()` devolve todos, e em Configurações as seções com
-  `soTmx` (Módulos arquivados, Hospedagem) somem. Páginas também fica só na TMX.
+  `soTmx` (Módulos arquivados) somem.
+- **Criar páginas nas empresas** (09/11): a Diretoria de cada empresa cria páginas (em branco, por cópia de um link ou
+  pelo HTML que anexa no chat). Os modelos da TMX não aparecem (`_modelos()` devolve vazio com `_basePublica`) e a
+  instrução do chat não cita a TMX (`_sistemaChat`, `_ferramentasChat`). Hospedagem (FTP) é de cada empresa.
+- **Chave do Claude de cada empresa** (09/11): é o primeiro passo dos Primeiros passos e não dá pra pular. `POST /api/ia/chave`
+  (Diretoria, nunca a sessão de suporte) confere na Anthropic, guarda em `sl_whatsapp_config.ai_key` e não devolve a chave.
+  `_getAIKey()` no motor só enxerga essa chave, porque a da TMX não está na lista branca do `_envMotor`: relatórios, Auditoria IA,
+  chat das páginas e agente do WhatsApp gastam da conta do cliente. Sem chave, `_semChaveIA` manda cadastrar.
+  `test/paginas-clientes.test.js`.
 - **MCP e API v1 por empresa** (07/11): `/e/<código>/mcp?token=…` e `/e/<código>/api/v1/...` chegam ao
   motor da empresa. A Diretoria dela gera, lista e revoga os tokens (`authTokensApi`: na TMX continua
   `authDiretoriaInterna`); o token fica no `db.api_tokens` do motor, só o sha256, e não abre outra empresa

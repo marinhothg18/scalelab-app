@@ -384,6 +384,7 @@ function _envMotor(emp) {
   for (const k of ['PATH', 'HOME', 'NODE_ENV', 'TZ', 'LANG', 'LC_ALL']) if (process.env[k]) env[k] = process.env[k];
   // só pra testar aqui com uma Meta falsa; no Railway (/data) nunca vale
   if (process.env.META_API_BASE_TESTE && !fs.existsSync('/data')) env.META_API_BASE_TESTE = process.env.META_API_BASE_TESTE;
+  if (process.env.ANTHROPIC_BASE_URL && !fs.existsSync('/data')) env.ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL;
   env.TMX_EMPRESA = emp.id;
   env.TMX_EMPRESA_NOME = emp.nome || '';
   env.TMX_DATA_DIR = path.join(EMPRESAS_DIR, emp.id);
@@ -2308,7 +2309,7 @@ const IA_COPY_MODEL = 'claude-sonnet-4-5-20250929';
 // Helper genérico pra chamar Claude com prompt do sistema + user
 async function _chamarClaudeCopy(systemPrompt, userPrompt, maxTokens = 2000) {
   const aiKey = _getAIKey();
-  if (!aiKey) throw new Error('Configure ANTHROPIC_API_KEY no Railway pra usar IA de copy');
+  if (!aiKey) throw new Error(_semChaveIA('Configure ANTHROPIC_API_KEY no Railway pra usar IA de copy'));
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -7846,7 +7847,7 @@ app.post('/api/ia/rankear-candidato', authUsuario, async (req, res) => {
     const v = vagas.find(x => String(x.id) === String(c.vagaId));
     if (!v) return res.status(404).json({ error: 'Vaga não encontrada' });
     const aiKey = _getAIKey();
-    if (!aiKey) return res.status(500).json({ error: 'IA não configurada (defina ANTHROPIC_API_KEY ou ai_key)' });
+    if (!aiKey) return res.status(500).json({ error: _semChaveIA('IA não configurada (defina ANTHROPIC_API_KEY ou ai_key)') });
 
     // Coleta entrega(s) de teste se houver
     const emailNorm = String(c.email||'').toLowerCase().trim();
@@ -8386,6 +8387,33 @@ function _getAIKey() {
 
 // A Auditoria IA (Análise de tráfego) usa a mesma chave do agente do WhatsApp e do editor de
 // páginas, guardada no servidor: a tela só pergunta se ela existe, a chave nunca vai pro navegador.
+// Numa empresa cliente, o que aparece quando falta a chave do Claude dela (a da TMX nunca chega ao motor)
+function _semChaveIA(textoTmx) {
+  return SOU_TMX ? textoTmx : 'Cadastre a sua chave do Claude em Primeiros passos ou em Configurações › Conexões › Agente de IA.';
+}
+// A empresa cliente cadastra a própria chave do Claude: confere na Anthropic antes de guardar e nunca devolve a chave.
+app.post('/api/ia/chave', authDiretoria, async (req, res) => {
+  if (SOU_TMX) return res.status(404).json({ error: 'Na TMX a chave fica em Configurações.' });
+  if (req.user && req.user.suporte) return res.status(403).json({ error: 'A chave do Claude é a Diretoria da empresa que cadastra. O suporte da TMX não mexe nisso.' });
+  const chave = String((req.body || {}).chave || '').trim();
+  if (!/^sk-ant-[\w-]{10,300}$/.test(chave)) return res.status(400).json({ error: 'Essa chave não parece do Claude. Ela começa com sk-ant-. Copie de novo em console.anthropic.com.' });
+  try {
+    await new AnthropicAud({ apiKey: chave, timeout: 20000, maxRetries: 1 }).models.list({ limit: 1 });
+  } catch (e) {
+    if (e instanceof AnthropicAud.AuthenticationError || e instanceof AnthropicAud.PermissionDeniedError) return res.status(400).json({ error: 'A Anthropic não aceitou essa chave. Confira se copiou inteira e se ela está ativa.' });
+    console.error('[IA] conferir a chave:', e.message);
+    return res.status(502).json({ error: 'Não consegui falar com a Anthropic agora. Tente de novo em um minuto.' });
+  }
+  const db = readDB(), cfg = Object.assign({}, db.store['sl_whatsapp_config'] || {});
+  cfg.ai_key = chave;
+  if (!cfg.ai_provider) cfg.ai_provider = 'claude';
+  db.store['sl_whatsapp_config'] = cfg;
+  if (!db.timestamps) db.timestamps = {};
+  db.timestamps['sl_whatsapp_config'] = now();
+  audit(db, 'ia_chave_cadastrada', null, null, req.user);
+  writeDB(db);
+  res.json({ ok: true });
+});
 app.get('/api/ia/chave-status', authUsuario, (req, res) => {
   res.json({ ligada: !!_getAIKey() });
 });
@@ -8934,7 +8962,7 @@ async function _audRodar(job, b) {
     console.log('[AUDITORIA]', b.projetoNome || b.projeto, Math.round(duracao / 1000) + 's', 'US$', custo);
   } catch (e) {
     job.status = 'erro';
-    if (e instanceof AnthropicAud.AuthenticationError) job.erro = 'A Anthropic não aceitou a chave do TMX. Confira a chave em Configurações › Conexões.';
+    if (e instanceof AnthropicAud.AuthenticationError) job.erro = (SOU_TMX ? 'A Anthropic não aceitou a chave do TMX.' : 'A Anthropic não aceitou a sua chave do Claude.') + ' Confira a chave em Configurações › Conexões.';
     else if (e instanceof AnthropicAud.RateLimitError) job.erro = 'A Anthropic pediu pra esperar um pouco. Tente de novo em um minuto.';
     else if (e instanceof AnthropicAud.APIError) job.erro = 'A Anthropic deu erro (' + (e.status || 'sem resposta') + '). Tente de novo.';
     else job.erro = e.message || 'A auditoria falhou.';
@@ -9010,7 +9038,7 @@ app.post('/api/ia/auditoria-metas', authUsuario, _audPode, (req, res) => {
 async function _iaAnalisarDemanda(texto, db) {
   const cfg = (db.store['sl_whatsapp_config']) || {};
   const aiKey = _getAIKey();
-  if (!aiKey) throw new Error('IA não configurada (defina ANTHROPIC_API_KEY no Railway ou em Configurações → WhatsApp/IA)');
+  if (!aiKey) throw new Error(_semChaveIA('IA não configurada (defina ANTHROPIC_API_KEY no Railway ou em Configurações → WhatsApp/IA)'));
 
   const usuarios = (db.store['sl_usuarios'] || []).filter(u => u && u.ativo !== false).map(u => ({ id: u.id, nome: u.nome, cargo: u.cargo }));
   const nichos = (db.store['sl_nichos'] || []).map(n => ({ id: n.id, nome: n.nome }));
@@ -11735,7 +11763,7 @@ async function _processarMensagemIA(texto, user, cfg) {
 // Chama Claude com tool use
 async function _chamarClaude(texto, user, cfg) {
   const aiKey = _getAIKey();
-  if (!aiKey) throw new Error('IA não configurada (defina ANTHROPIC_API_KEY no Railway)');
+  if (!aiKey) throw new Error(_semChaveIA('IA não configurada (defina ANTHROPIC_API_KEY no Railway)'));
   const tools = _agentTools();
   const hojeStr = new Date().toLocaleDateString('pt-BR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
   const systemPrompt = `Você é o assistente operacional do TMX Digital (sistema de gestão de tráfego pago em centralaxcend.com).
@@ -11819,7 +11847,7 @@ Se faltar info importante (responsável, prazo), execute mesmo assim com valores
 
 async function _chamarOpenAI(texto, user, cfg) {
   const aiKey = _getAIKey();
-  if (!aiKey) throw new Error('IA não configurada (defina AI_KEY ou ANTHROPIC_API_KEY no Railway)');
+  if (!aiKey) throw new Error(_semChaveIA('IA não configurada (defina AI_KEY ou ANTHROPIC_API_KEY no Railway)'));
   // Simplificação: usa chat completion sem tool (pra suportar OpenAI precisaria traduzir tools)
   const body = {
     model: 'gpt-4o-mini',
@@ -17905,6 +17933,7 @@ function _primeirosPassos(db) {
   let pixel = false;
   try { pixel = !!(_pessoas() && _q('SELECT 1 FROM visitantes LIMIT 1').get()); } catch (e) {}
   const passos = {
+    claude:   { ok: !!((db.store['sl_whatsapp_config'] || {}).ai_key) },
     meta:     { ok: meta.conectado, contas: meta.contas.length, pixels: meta.pixels.length, pulado: !!pulados.meta },
     utmify:   { ok: !!(utm && utm.token && !utm.ultimoErro), pulado: !!pulados.utmify },
     checkout: { ok: vendas.length > 0, eventos: vendas.length,
@@ -24152,7 +24181,7 @@ app.get('/mcp', (req, res) => {
 // basePublica: prefixo do endereço público da empresa ('' na TMX); BASE_PUBLICA ainda não existe no main.
 // chaveIA: a mesma chave da Anthropic do agente do WhatsApp, pro chat do editor.
 try {
-  require('./paginas')({ app, express, readDB, writeDB, audit, auth: authDiretoriaInterna, _pessoas, _q, _finCifrar, _finDecifrar,
+  require('./paginas')({ app, express, readDB, writeDB, audit, auth: SOU_TMX ? authDiretoriaInterna : authDiretoria, _pessoas, _q, _finCifrar, _finDecifrar,
     basePublica: (typeof BASE_PUBLICA === 'string' ? BASE_PUBLICA : ''), chaveIA: _getAIKey,
     // a página nasce num funil do projeto e, publicada, entra em Projetos › projeto › Páginas
     funisDoProjeto: projeto => (Array.isArray(readDB().store[KEY_FUNIS]) ? readDB().store[KEY_FUNIS] : []).filter(f => f && f.projeto === projeto).map(f => ({ id: f.id, nome: f.nome })),
