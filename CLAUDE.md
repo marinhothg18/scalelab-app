@@ -50,7 +50,7 @@ Production runs on Railway. Code/comments/UI are in pt-BR; keep new work in pt-B
 ### Environment variables
 
 - `PORT` — HTTP port (default 3001)
-- `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID` — optional, turn on the "Continuar com Facebook" button in Configurações › Conexões (Facebook Login for Business, TMX only for now; `/api/meta/login` trades the code for the token)
+- `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID` — optional, turn on the "Continuar com Facebook" button in Configurações › Conexões and in Projetos › Integrações (Facebook Login for Business, TMX only for now; `/api/meta/login` trades the code for the token)
 - `GITHUB_BACKUP_TOKEN`, `GITHUB_BACKUP_REPO` — optional, enables daily off-site backup of `db.json` to a GitHub repo (`owner/repo`, PAT with `repo` scope)
 - When `/data` exists (Railway volume), `DATA_DIR = /data` and that's where `db.json` + `backups/` live. Locally they live next to `server.js`.
 
@@ -203,6 +203,7 @@ Stored on `sl_usuarios[].cargo`. Known values: `Diretoria`, `Gestor de Tráfego`
 - Todos: Dashboard, Chat, Ad Library e Notificações. Rituais de quem não é gestor mostram só aqueles em que a pessoa participa.
 - Meu Protocolo: só a conta do Thiago (`PROTOCOLO_DONO_EMAIL`), só na TMX.
 - Ainda não travado no servidor: as rotas de Tráfego/Análise (`/api/metricas/*` etc.) respondem a qualquer pessoa logada; o menu e a navegação é que escondem.
+- **Meta (decisão do Thiago, 09/11/2026)**: Dono e `Gestor de Tráfego` conectam pelo Facebook, atualizam, puxam, desconectam, pausam/ativam, mudam orçamento e escolhem as contas de cada projeto (`authMeta` no servidor, `_podeMexerNaMeta` na tela; o gestor faz isso em Projetos › abre o projeto › Integrações, no quadro `pcMetaCard`). Só o Dono: token colado, destinos e envio de compras (`POST /api/projeto/config` ignora `destinos` e `modo` de quem não é Dono). O gestor não recebe `tokenFim`. Quem mexeu fica em `GET /api/meta/historico`. A conexão é uma só por empresa. `test/gestor-meta.test.js`.
 
 **Sócio por projeto (decisão do Thiago, 09/11/2026)**: `Sócio` com `sl_usuarios[].projetos` preenchido só recebe e só grava o que é desses projetos; sem nenhum marcado continua como acima. O projeto é a chave da tela Projetos (`CONCURSO`), que bate com o dashboard da Utmify, com `f.projeto` e com o nicho ou a oferta (`_escopoDe`).
 - O corte é no servidor, dentro de `authUsuario` (`_limitadoPassa`): **rota nova nasce fechada** para essa pessoa. Para abrir, some em `_ROTAS_DO_LIMITADO` com a checagem do projeto; rota que aceita "sem projeto" ou id desconhecido devolve tudo, então a checagem vem antes.
@@ -223,7 +224,7 @@ Entrega o relatório de fechamento do dia no padrão da skill `trafego` (metas, 
 
 Decisão do Thiago: o TMX faz tudo como a Utmify, então a conexão fica com `ads_management` (nada de "só leitura"). Hoje: orçamento de campanha e conjunto, e pausar/ativar campanha, conjunto e anúncio, em Análise de tráfego › Por Campanha (lápis na coluna Orçamento e quadro "Conjuntos e anúncios" dentro de Análise ›). Duplicar ainda não existe.
 
-- Rotas (só Diretoria): `GET /api/meta/campanha/:id/estrutura` (lê da Meta na hora), `POST /api/meta/status` (`/api/meta/campanha/status` fica pra aba antiga) e `POST /api/meta/orcamento`.
+- Rotas (Dono e Gestor de Tráfego, `authMeta`): `GET /api/meta/campanha/:id/estrutura` (lê da Meta na hora), `POST /api/meta/status` (`/api/meta/campanha/status` fica pra aba antiga) e `POST /api/meta/orcamento`.
 - O orçamento vai em centavos na moeda da conta; só BRL e USD (`META_MOEDAS_ORCAMENTO`). A tela manda o valor que estava vendo em `de`: se mudou na Meta, volta 409.
 - `camp_mudancas` anota em real, com `campo` `status_conjunto`, `status_anuncio` ou `orc_conjunto` para o que é de conjunto e anúncio (ficam fora do selo da tabela e das marcas do gráfico por hora). Cada ação vai para a auditoria (`meta_<nivel>_*`). `test/meta-controle.test.js` usa Meta falsa.
 

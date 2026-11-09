@@ -1,5 +1,5 @@
 // Mexer nas campanhas pelo TMX (09/11/2026): ativar, pausar e orçamento de campanha, conjunto e anúncio.
-// Sobe o servidor com uma Meta falsa e confere: só a Diretoria muda, o valor vai em centavos na moeda
+// Sobe o servidor com uma Meta falsa e confere: só Dono e Gestor de Tráfego mudam, o valor vai em centavos na moeda
 // da conta, ninguém passa por cima de um valor que mudou, e tudo fica na auditoria e no histórico.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
@@ -93,7 +93,7 @@ test('sem a Meta conectada nada muda', async () => {
   assert.strictEqual(gravacoes.length, 0);
 });
 
-test('só a Diretoria mexe, e nunca sem ads_management', async (t) => {
+test('só Dono e Gestor de Tráfego mexem, e nunca sem ads_management', async (t) => {
   await t.test('sem login é recusado', async () => {
     for (const [m, c] of [['GET', '/api/meta/campanha/100/estrutura'], ['POST', '/api/meta/status'], ['POST', '/api/meta/orcamento']])
       assert.strictEqual((await chamar(m, c, m === 'POST' ? { corpo: { id: '100', valor: 1 } } : {})).status, 401, c);
@@ -106,11 +106,11 @@ test('só a Diretoria mexe, e nunca sem ads_management', async (t) => {
     assert.match(r.dados.error, /ads_management/);
     assert.strictEqual(gravacoes.length, 0);
   });
-  await t.test('quem não é Diretoria é recusado', async () => {
+  await t.test('os outros cargos são recusados', async () => {
     permissoes = ['ads_read', 'ads_management'];
     assert.strictEqual((await conectar()).status, 200);
-    await chamar('PUT', '/api/store/sl_usuarios', { token: dono, corpo: [{ id: 'u-gestor', nome: 'Gestor', email: 'gestor@tmx.test', senha: 'senha-gestor-1', cargo: 'Gestor de Tráfego', ativo: true, _updatedAt: Date.now() }] });
-    const outro = (await chamar('POST', '/api/auth/login', { corpo: { email: 'gestor@tmx.test', senha: 'senha-gestor-1' } })).dados.token;
+    await chamar('PUT', '/api/store/sl_usuarios', { token: dono, corpo: [{ id: 'u-copy', nome: 'Copy', email: 'copy@tmx.test', senha: 'senha-copy-1', cargo: 'Copy', ativo: true, _updatedAt: Date.now() }] });
+    const outro = (await chamar('POST', '/api/auth/login', { corpo: { email: 'copy@tmx.test', senha: 'senha-copy-1' } })).dados.token;
     assert.ok(outro);
     assert.strictEqual((await chamar('POST', '/api/meta/orcamento', { token: outro, corpo: { nivel: 'campanha', id: '100', valor: 600 } })).status, 403);
     assert.strictEqual((await chamar('POST', '/api/meta/status', { token: outro, corpo: { nivel: 'anuncio', id: '102', ativo: false } })).status, 403);

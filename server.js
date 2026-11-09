@@ -3368,9 +3368,10 @@ function _metaErroTxt(e) {
 // o envio de verdade só libera depois de 7 dias de Meta conectada (a semana de comparação)
 const META_COMPARACAO_DIAS = 7;
 function _metaLiberaEnvioEm(cfg) { const t = cfg && cfg.conectadoEm ? Date.parse(cfg.conectadoEm) : 0; return t ? t + META_COMPARACAO_DIAS * 86400000 : null; }
-app.get('/api/meta/conexao', authDiretoria, (req, res) => {
+app.get('/api/meta/conexao', authMeta, (req, res) => {
   try {
     const db = readDB(), cfg = _metaCfg(db), out = _metaConexaoPublica(cfg), proj = _projMetaCfg(db), capi = _capiCfg(db);
+    if (!_ehDiretoria(req)) out.tokenFim = '';
     const gasto = {};
     if (_pessoas()) _q('SELECT conta, SUM(gasto) g FROM meta_camp_dia WHERE dia>=? GROUP BY conta').all(_diaBR(Date.now() - 13 * 86400000)).forEach(x => { gasto[x.conta] = Math.round(x.g || 0); });
     out.contas = out.contas.map(c => Object.assign(c, { gasto14: gasto[c.conta] || 0,
@@ -3429,7 +3430,7 @@ async function _metaOauth(params) {
   }
   return j;
 }
-app.post('/api/meta/login', authDiretoria, async (req, res) => {
+app.post('/api/meta/login', authMeta, async (req, res) => {
   if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'O botão do Facebook ainda não está configurado no servidor.' });
   const c = _metaLoginCfg(), b = req.body || {};
   const code = String(b.code || '').trim().slice(0, 2000), curto = String(b.accessToken || '').trim().slice(0, 800);
@@ -3453,14 +3454,16 @@ app.post('/api/meta/login', authDiretoria, async (req, res) => {
     res.status(400).json({ error: erro });
   }
 });
-app.post('/api/meta/conexao/atualizar', authDiretoria, async (req, res) => {
+app.post('/api/meta/conexao/atualizar', authMeta, async (req, res) => {
   const cfg0 = _metaCfg();
   if (!cfg0 || !cfg0.accessToken || cfg0.tipo !== 'sistema') return res.status(400).json({ error: 'Conecte a Meta primeiro.' });
   try {
     const l = await _metaListar(cfg0);
     const db = readDB(), cfg = _metaCfg(db) || {};
     Object.assign(cfg, { quem: l.quem, permissoes: l.permissoes, contas: l.contas, pixels: l.pixels, listasEm: new Date().toISOString(), ultimoErro: null });
-    db.store[KEY_META] = cfg; writeDB(db);
+    db.store[KEY_META] = cfg;
+    audit(db, 'integracao.meta.atualizar', KEY_META, { contas: l.contas.length }, req.user);
+    writeDB(db);
     if ((req.body || {}).puxar) setTimeout(() => _metaSincronizar({ dias: 2 }).catch(() => {}), 200);
     res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
   } catch (e) {
@@ -3468,7 +3471,7 @@ app.post('/api/meta/conexao/atualizar', authDiretoria, async (req, res) => {
     res.status(400).json({ error: cfg.ultimoErro });
   }
 });
-app.post('/api/meta/conexao/desconectar', authDiretoria, (req, res) => {
+app.post('/api/meta/conexao/desconectar', authMeta, (req, res) => {
   try {
     const db = readDB(), cfg = _metaCfg(db) || {};
     delete cfg.accessToken; cfg.tipo = ''; cfg.desconectadoEm = new Date().toISOString();
@@ -3755,7 +3758,7 @@ function _metaAnotarMudanca(camp, nome, campo, de, para) {
   return m;
 }
 // lido na hora: o que a tela mostra é o que está valendo na Meta agora
-app.get('/api/meta/campanha/:id/estrutura', authDiretoria, async (req, res) => {
+app.get('/api/meta/campanha/:id/estrutura', authMeta, async (req, res) => {
   try {
     const id = _metaSoDigitos(req.params.id), cfg = _metaParaMudar();
     if (!id) throw _metaErroTela('Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.');
@@ -3774,7 +3777,7 @@ app.get('/api/meta/campanha/:id/estrutura', authDiretoria, async (req, res) => {
   } catch (e) { _metaResponderErro(res, e); }
 });
 // /api/meta/campanha/status é o endereço antigo: aba aberta antes da atualização ainda chama
-app.post(['/api/meta/status', '/api/meta/campanha/status'], authDiretoria, async (req, res) => {
+app.post(['/api/meta/status', '/api/meta/campanha/status'], authMeta, async (req, res) => {
   try {
     const b = req.body || {}, nivel = META_NIVEIS[b.nivel] ? b.nivel : 'campanha', n = META_NIVEIS[nivel], id = _metaSoDigitos(b.id), ativo = b.ativo === true;
     if (!id) throw _metaErroTela(nivel === 'campanha' ? 'Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.' : 'Esse item não tem o id da Meta.');
@@ -3789,7 +3792,7 @@ app.post(['/api/meta/status', '/api/meta/campanha/status'], authDiretoria, async
     res.json({ ok: true, status: para, mudanca });
   } catch (e) { _metaResponderErro(res, e); }
 });
-app.post('/api/meta/orcamento', authDiretoria, async (req, res) => {
+app.post('/api/meta/orcamento', authMeta, async (req, res) => {
   try {
     const b = req.body || {}, nivel = ['campanha', 'conjunto'].includes(b.nivel) ? b.nivel : '', id = _metaSoDigitos(b.id), valor = Math.round(Number(b.valor) * 100) / 100;
     if (!nivel || !id) throw _metaErroTela('Diga a campanha ou o conjunto.');
@@ -3812,11 +3815,34 @@ app.post('/api/meta/orcamento', authDiretoria, async (req, res) => {
     res.json({ ok: true, valor, tipo: orc.tipo, moeda, valorReal: paraReal, mudanca });
   } catch (e) { _metaResponderErro(res, e); }
 });
-app.post('/api/meta/puxar', authDiretoria, async (req, res) => {
+app.post('/api/meta/puxar', authMeta, async (req, res) => {
   try {
     const r = await _metaSincronizar({ dias: Math.min(Number((req.body || {}).dias) || 2, 30) });
     if (!r) return res.status(400).json({ error: _metaSyncRodando ? 'Já está puxando. Espere terminar.' : 'Conecte a Meta primeiro.' });
+    const db = readDB();
+    audit(db, 'integracao.meta.puxar', KEY_META, { contas: r.contas }, req.user);
+    writeDB(db);
     res.json({ ok: true, resultado: r });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// "Quem mexeu" na conexão e nas campanhas, em Projetos › Integrações
+function _metaHistTexto(a) {
+  const m = a.meta || {};
+  if (a.action === 'integracao.meta.conexao') return 'conectou a Meta' + (m.via === 'facebook' ? ' pelo Facebook' : '');
+  if (a.action === 'integracao.meta.desconectar') return 'desconectou a Meta';
+  if (a.action === 'integracao.meta.atualizar') return 'atualizou as contas';
+  if (a.action === 'integracao.meta.puxar') return 'puxou os números';
+  const x = /^meta_(campanha|conjunto|anuncio)_(ativad[ao]|pausad[ao]|orcamento)$/.exec(String(a.action || ''));
+  if (!x) return '';
+  const alvo = { campanha: 'a campanha', conjunto: 'o conjunto', anuncio: 'o anúncio' }[x[1]], nome = String(m.nome || a.target || '').replace(/\|\s*\d{10,}\s*$/, '').trim();
+  if (x[2] !== 'orcamento') return (x[2].startsWith('ativ') ? 'ativou ' : 'pausou ') + alvo + ' ' + nome;
+  const din = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: m.moeda === 'USD' ? 'USD' : 'BRL' });
+  return 'mudou o orçamento d' + alvo.slice(0, 1) + ' ' + alvo.slice(2) + ' ' + nome + ' de ' + din(m.de) + ' para ' + din(m.para);
+}
+app.get('/api/meta/historico', authMeta, (req, res) => {
+  try {
+    const itens = _listaSe(readDB().store.sl_auditlog).slice(0, 3000).map(a => ({ texto: _metaHistTexto(a), quem: a.userNome || '', em: a.ts })).filter(x => x.texto).slice(0, 8);
+    res.json({ ok: true, itens });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Comparação com a Utmify: gasto por conta e por dia, as duas fontes lado a lado
@@ -9549,6 +9575,16 @@ function authNegocio(req, res, next) {
   authUsuario(req, res, () => {
     if (!req.user || !CARGOS_NEGOCIO.has(req.user.cargo)) return res.status(403).json({ error: 'Acesso restrito à Diretoria e aos sócios.' });
     next();
+  });
+}
+
+// quem conecta a Meta e mexe nas campanhas: o Dono e o Gestor de Tráfego (decisão do Thiago, 09/11/2026).
+// Token colado e envio de compras continuam só com o Dono, em authDiretoria.
+function _ehDaMeta(req) { return !!(req.user && (req.user.cargo === 'Diretoria' || req.user.cargo === 'Gestor de Tráfego')); }
+function authMeta(req, res, next) {
+  authUsuario(req, res, () => {
+    if (_ehDaMeta(req)) return next();
+    res.status(403).json({ error: 'Acesso restrito ao Dono e ao Gestor de Tráfego.' });
   });
 }
 
@@ -22609,10 +22645,11 @@ app.get('/api/projeto/config', authUsuario, (req, res) => {
       destinos: _destinos(db).map(_destinoPublico), destinosSel: _destinosDoProjeto(db, capi, projeto).filter(d => !d.legado).map(d => d.id),
       pixelAntigo: ((capi.pixels || {})[projeto] && !((capi.destinos || {})[projeto] || []).length) ? capi.pixels[projeto] : '',
       modo: _capiModo(capi, projeto), metaConectada: !!(mc.accessToken && mc.tipo === 'sistema'),
-      liberaEnvioEm: _liberaEnvio(_destinosDoProjeto(db, capi, projeto), mc), comparacao: _projComparacao(db, projeto), dir: _ehDir(req) });
+      liberaEnvioEm: _liberaEnvio(_destinosDoProjeto(db, capi, projeto), mc), comparacao: _projComparacao(db, projeto), dir: _ehDir(req), podeContas: _ehDaMeta(req) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/projeto/config', authDiretoria, (req, res) => {
+// o Gestor de Tráfego escolhe as contas e a palavra do projeto; pixel e envio de compras são do Dono
+app.post('/api/projeto/config', authMeta, (req, res) => {
   try {
     const b = req.body || {}, projeto = String(b.projeto || '').trim().slice(0, 80);
     if (!projeto) return res.status(400).json({ error: 'Qual projeto?' });
@@ -22620,6 +22657,7 @@ app.post('/api/projeto/config', authDiretoria, (req, res) => {
     const contas = [...new Set((Array.isArray(b.contas) ? b.contas : []).map(c => String(c).replace(/^act_/, '').replace(/\D/g, '')).filter(Boolean))].slice(0, 60);
     const regra = String(b.regra || '').trim().slice(0, 60);
     cfg[projeto] = { contas, regra, _updatedAt: Date.now() };
+    if (!_ehDiretoria(req)) { delete b.destinos; delete b.modo; }
     if (Array.isArray(b.destinos)) {
       const ids = new Set(_destinos(db).map(d => d.id));
       capi.destinos = Object.assign({}, capi.destinos); capi.destinos[projeto] = [...new Set(b.destinos.map(String))].filter(id => ids.has(id)).slice(0, 10);

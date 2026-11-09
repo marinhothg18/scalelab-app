@@ -8699,6 +8699,8 @@ function _estaEmAlgumRitual(u){
   var nome = (u && u.nome) || '';
   try{ return (g('rituais', []) || []).some(function(r){ return r && Array.isArray(r.participantes) && r.participantes.indexOf(nome) >= 0; }); }catch(e){ return false; }
 }
+// quem conecta a Meta e mexe nas campanhas: o Dono e o Gestor de Tráfego (o servidor confere em authMeta)
+function _podeMexerNaMeta(u){ u = u || currentUser; return !!(u && (u.cargo === 'Diretoria' || u.cargo === 'Gestor de Tráfego')); }
 // Sócio com projetos marcados: o servidor só entrega o que é deles (_ROTAS_DO_LIMITADO), a tela acompanha
 function _socioPorProjeto(u){ u = u || currentUser; return !!(u && u.cargo === 'Sócio' && Array.isArray(u.projetos) && u.projetos.length); }
 var PAGINAS_SOCIO_POR_PROJETO = ['dashboard','task','criativos','rituais','arquivos','metricas','adsmetrics','funis','gestao','financeiro','chat','adlibrary','iacopy','educacional','notificacoes'];
@@ -32614,7 +32616,7 @@ var FN_ABA_INFO = {
   criar:   ['Criar páginas', 'Monte a página e peça as mudanças pro Claude no chat. Publicar leva pra sua hospedagem.'],
   vendas:  ['Vendas', 'Cada venda aprovada do período: de onde veio e o que vai pra Meta. Clique numa pra abrir.'],
   reembolsos:['Reembolsos', 'Quem pediu o dinheiro de volta no período: o cliente, a compra, quanto tempo depois e de que anúncio ela tinha vindo.'],
-  config:  ['Integrações', 'O que este projeto usa: tráfego, pixel, produtos e as compras que vão pra Meta. A conexão com a Meta, a Utmify e os checkouts é da empresa, em Configurações › Conexões, e acontece uma vez só.']
+  config:  ['Integrações', 'O que este projeto usa: tráfego, pixel, produtos e as compras que vão pra Meta. A conexão com a Meta, a Utmify e os checkouts valem para a empresa inteira e são feitos uma vez só.']
 };
 var fnAbaAtual = 'resultado';
 
@@ -40004,13 +40006,13 @@ function capiResumoHtml(r){
       (r.ipDesde ? ' IP e navegador guardados desde '+v2Data(r.ipDesde)+', no clique pra comprar.' : '')+'</div>';
 }
 function mcResposta(r){ return r.json().then(function(d){ if(!r.ok) throw new Error(d.error || 'falhou'); return d; }); }
-function mcMsg(txt, ruim){ var o = document.getElementById('mc-res'); if(o) o.innerHTML = '<span style="color:'+(ruim ? 'var(--v2-laranja,#F59E0B)' : 'var(--v2-verde,#22C55E)')+'">'+fnEsc(txt)+'</span>'; }
+function mcMsg(txt, ruim){ var o = (cur === 'funis' && document.querySelector('#fn-p-config #mc-res')) || document.getElementById('mc-res'); if(o) o.innerHTML = '<span style="color:'+(ruim ? 'var(--v2-laranja,#F59E0B)' : 'var(--v2-verde,#22C55E)')+'">'+fnEsc(txt)+'</span>'; }
 function mcConectar(bt){
   var tk = String((document.getElementById('mc-token') || {}).value || '').trim();
   if(!tk){ mcMsg('Cole o token primeiro.', 1); return; }
   bt.disabled = true; bt.textContent = 'Conferindo com a Meta…';
   fetch(API_BASE+'/api/meta/conexao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: tk }) })
-    .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); renderIntegracoesTab(); })
+    .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Conectar'; mcMsg(e.message, 1); });
 }
 // Conectar com Facebook: o FB.login tem de sair direto do clique, então o SDK já vem carregado
@@ -40040,7 +40042,7 @@ function mcFacebook(bt){
     }
     bt.textContent = 'Conferindo com a Meta…';
     fetch(API_BASE+'/api/meta/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code:a.code || '', accessToken:a.accessToken || '' }) })
-      .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); renderIntegracoesTab(); })
+      .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); mcRepintar(); })
       .catch(function(e){ volta(); mcMsg(e.message, 1); });
   }, { config_id:_mcFb.cfg.configId }); // configuração de token de usuário: volta accessToken, e o servidor troca por um longo
 }
@@ -40048,22 +40050,25 @@ function mcTrocar(){ var t = document.getElementById('mc-troca'); if(t) t.style.
 function mcAtualizar(bt){
   bt.disabled = true;
   fetch(API_BASE+'/api/meta/conexao/atualizar', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' })
-    .then(mcResposta).then(function(){ toastFn('Listas atualizadas'); renderIntegracoesTab(); })
+    .then(mcResposta).then(function(){ toastFn('Listas atualizadas'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; mcMsg(e.message, 1); });
 }
 function mcPuxar(bt){
   bt.disabled = true; bt.textContent = 'Puxando…';
   fetch(API_BASE+'/api/meta/puxar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dias: 2 }) })
-    .then(mcResposta).then(function(d){ var r = d.resultado || {}; toastFn('Puxado: '+r.campanhas+' campanha(s), '+r.mudancas+' mudança(s) nova(s)'); renderIntegracoesTab(); })
+    .then(mcResposta).then(function(d){ var r = d.resultado || {}; toastFn('Puxado: '+r.campanhas+' campanha(s), '+r.mudancas+' mudança(s) nova(s)'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Puxar agora'; mcMsg(e.message, 1); });
 }
 async function mcDesconectar(bt){
   if(!(await tmxConfirmar('Desconectar a Meta? O TMX para de puxar os números e de mandar compras. Os números já puxados ficam.'))) return;
   bt.disabled = true;
   fetch(API_BASE+'/api/meta/conexao/desconectar', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' })
-    .then(mcResposta).then(function(){ toastFn('Meta desconectada'); renderIntegracoesTab(); })
+    .then(mcResposta).then(function(){ toastFn('Meta desconectada'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; mcMsg(e.message, 1); });
 }
+// o quadro da Meta aparece em Configurações (Dono) e em Projetos › Integrações
+function mcRepintar(){ if(cur === 'funis' && fnAbaAtual === 'config') pcCarregar(); else renderIntegracoesTab(); }
+function mcFbTroca(){ var t = document.getElementById('mc-fb-troca'); if(t) t.style.display = t.style.display === 'none' ? '' : 'none'; }
 
 // ══════════════════════════════════════════════════════
 // ── DESTINOS: OS PIXELS QUE RECEBEM AS COMPRAS ──
@@ -40158,9 +40163,36 @@ function pcDestino(id, on){ var i = pcSel.destinos.indexOf(id); if(on && i < 0) 
 // Quais contas de anúncio são do projeto, a palavra que separa as campanhas
 // nas contas divididas, o pixel e o modo de envio das compras.
 // ══════════════════════════════════════════════════════
-var pcDados = null, pcSel = null, pcProdutos = null;
+var pcDados = null, pcSel = null, pcProdutos = null, pcMeta = null, pcMetaHist = [];
+// a conexão fica aqui para o Gestor de Tráfego não precisar de Configurações. Ela vale para todos os projetos.
+function pcMetaCard(){
+  if(!_podeMexerNaMeta() || !pcMeta) return '';
+  var con = pcMeta, login = con.login || {}, q = con.quem || {};
+  if(login.pronto) mcCarregarFb(login);
+  var aviso = '<div class="fx-sub" style="margin-top:6px">Enquanto a Meta não aprovar o app, o seu perfil precisa estar em Funções do app.</div>';
+  var h = '<div class="capi-card"><div class="capi-cab"><div><b>Conexão com a Meta</b><span>Vale para todos os projetos da empresa.</span></div>'+
+    (con.conectado ? '<span class="v2-pill ok">Conectada</span>' : '<span class="v2-pill neu">Não conectada</span>')+'</div>';
+  if(!con.conectado){
+    h += (login.pronto ? mcBlocoFb(login, 'Conectar com o Facebook')+aviso : '<div class="fx-sub">'+(currentUser.cargo === 'Diretoria' ? 'Conecte em Configurações › Conexões da empresa › Meta Ads.' : 'O botão do Facebook ainda não está ligado nesta conta. Peça ao Dono para conectar em Configurações.')+'</div>');
+  } else {
+    var vence = con.expiraEm ? new Date(con.expiraEm).toLocaleDateString('pt-BR') : '';
+    h += '<div class="fx-sub">'+(con.via === 'facebook' ? 'Conectada pelo Facebook por' : 'Conectada por')+' <b>'+fnEsc(q.nome || q.id || '')+'</b>'+(vence ? ' · vale até '+fnEsc(vence) : '')+' · '+(con.contas || []).length+' conta(s)</div>'+
+      '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button><button class="fn-btn g sm" onclick="mcAtualizar(this)">Atualizar listas</button>'+
+      (login.pronto ? '<button class="fn-btn g sm" onclick="mcFbTroca()">Conectar outro perfil</button>' : '')+
+      '<button class="fn-btn g sm" onclick="mcDesconectar(this)">Desconectar</button></div>'+
+      (login.pronto ? '<div id="mc-fb-troca" style="display:none"><div class="capi-aviso">O novo perfil substitui o de <b>'+fnEsc(q.nome || 'quem conectou')+'</b> em todos os projetos. As contas que só esse perfil enxerga saem do TMX até alguém conectar de novo.</div>'+mcBlocoFb(login, 'Continuar com o outro perfil')+aviso+'</div>' : '');
+  }
+  h += '<div id="mc-res" class="mc-res"></div>';
+  var hm = function(t){ var d = new Date(t); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+  if(pcMetaHist.length) h += '<div class="v2-rot vd-sec">Quem mexeu</div>'+pcMetaHist.map(function(x){ return '<div class="v2-feed-i"><span class="v2-ic warn">✎</span><div><b>'+fnEsc(x.quem || 'Alguém')+'</b> '+fnEsc(x.texto)+'</div><span class="h">'+hm(x.em)+'</span></div>'; }).join('');
+  return h+'</div>';
+}
 function pcCarregar(){
   var cx = document.getElementById('fn-p-config'); if(!cx) return;
+  if(_podeMexerNaMeta()) Promise.all([
+    fetch(API_BASE+'/api/meta/conexao').then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; }),
+    fetch(API_BASE+'/api/meta/historico').then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
+  ]).then(function(r){ pcMeta = r[0]; pcMetaHist = (r[1] && r[1].itens) || []; if(pcDados) pcPintar(); });
   // os produtos do cadastro (o mesmo da aba Produtos): quais contam como venda deste projeto
   fetch('/api/produtos').then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){ pcProdutos = d || { erro: true }; if(pcDados) pcPintar(); })
@@ -40230,7 +40262,7 @@ function pcTestarEnvio(bt){
 }
 function pcPintar(){
   var cx = document.getElementById('fn-p-config'), d = pcDados; if(!cx || !d) return;
-  var dir = d.dir, dis = dir ? '' : ' disabled', cm = d.comparacao || {};
+  var dir = d.dir, dis = dir ? '' : ' disabled', disContas = (dir || d.podeContas) ? '' : ' disabled', cm = d.comparacao || {};
   var libera = d.liberaEnvioEm, podeEnviar = !!(libera && Date.now() >= libera);
   var esq = '<div class="capi-card"><div class="capi-cab"><div><b>Tráfego deste projeto'+(d.configurado ? '<span class="v2-pill ok">ligado</span>' : '<span class="v2-pill warn">falta ligar</span>')+'</b>'+
       '<span>'+(d.configurado ? 'Decidido aqui: contas e, nas contas divididas, a palavra no nome.' : 'Hoje vem do dashboard da Utmify. Passa a ser decidido aqui.')+
@@ -40242,12 +40274,12 @@ function pcPintar(){
       if((c.outros || []).length) sub.push('dividida com '+c.outros.join(', '));
       else if((c.utmify || []).length) sub.push('na Utmify: '+c.utmify.join(', '));
       if(c.status === 2 || c.status === 101) sub.push('desativada');
-      return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+dis+' onchange="pcConta(\''+fnEsc(c.conta)+'\', this.checked)">'+
+      return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+disContas+' onchange="pcConta(\''+fnEsc(c.conta)+'\', this.checked)">'+
         '<span><b>'+fnEsc(c.nome || c.conta)+'</b><small>'+(c.nome ? fnEsc(c.conta)+' · ' : '')+fnEsc(sub.join(' · '))+'</small></span></label>';
     }).join('') : '<div class="fx-vazio">Nenhuma conta ainda. Conecte a Meta (ou a Utmify) e as contas de anúncio aparecem aqui pra marcar.</div>'+
        (_ppEhDir() ? '<div class="lc-bts" style="margin-top:8px"><button class="fn-btn sm" onclick="ppIrPasso(\'meta\')">Conectar a Meta</button><button class="fn-btn g sm" onclick="ppIrPasso(\'utmify\')">Usar a Utmify</button></div>' : ''))+
     '<div class="v2-rot" style="margin:14px 0 6px">Nas contas divididas, entra a campanha que tem no nome</div>'+
-    '<input class="fi" id="pc-regra" value="'+fnEsc(pcSel.regra)+'" placeholder="ex.: '+fnEsc(String(fnProj || 'CONCURSO').toUpperCase())+'"'+dis+' oninput="pcSel.regra=this.value;pcPintarPrevia()">'+
+    '<input class="fi" id="pc-regra" value="'+fnEsc(pcSel.regra)+'" placeholder="ex.: '+fnEsc(String(fnProj || 'CONCURSO').toUpperCase())+'"'+disContas+' oninput="pcSel.regra=this.value;pcPintarPrevia()">'+
     (Object.keys(d.outrasRegras || {}).length ? '<div class="fx-sub" style="margin-top:4px">Outros projetos: '+Object.keys(d.outrasRegras).map(function(p){ return fnEsc(p)+' pega "'+fnEsc(d.outrasRegras[p])+'"'; }).join(' · ')+'</div>' : '')+
     '<div id="pc-previa" style="margin-top:10px"></div></div>';
   var dsl = d.destinos || [];
@@ -40287,8 +40319,8 @@ function pcPintar(){
         '<span>Anúncio visto em outro aparelho</span><span class="n">'+fnNum(cm.outroAparelho || 0)+'</span><span class="n">—</span>'+
         '<span>Sem pessoa ligada</span><span class="n">'+fnNum(cm.semPessoa || 0)+'</span><span class="n">—</span></div>'+
       '<div class="fx-sub" style="margin-top:8px">'+(cm.temMeta ? 'Gasto do TMX: direto da Meta, pelas contas e pela palavra deste projeto.' : 'O gasto do TMX aparece quando a Meta estiver conectada.')+' As vendas da Utmify entram na comparação na próxima etapa.</div></div>';
-  cx.innerHTML = '<div class="pc-grade"><div>'+esq+pcPixelCard()+'</div><div>'+pcVendasCard()+dir2+'</div></div>'+
-    (dir ? '<div class="lc-bts" style="margin-top:4px"><button class="fn-btn" onclick="pcSalvar(this)">Salvar</button><span id="pc-res" class="fx-sub"></span></div>' : '<div class="fx-sub">Só a Diretoria muda a configuração do projeto.</div>');
+  cx.innerHTML = pcMetaCard()+'<div class="pc-grade"><div>'+esq+pcPixelCard()+'</div><div>'+pcVendasCard()+dir2+'</div></div>'+
+    (dir || d.podeContas ? '<div class="lc-bts" style="margin-top:4px"><button class="fn-btn" onclick="pcSalvar(this)">Salvar</button><span id="pc-res" class="fx-sub"></span></div>' : '<div class="fx-sub">Só o Dono e o Gestor de Tráfego mudam a configuração do projeto.</div>');
   pcPintarPrevia();
 }
 // Pixel: um código por funil, o mesmo em todas as páginas dele. O servidor
@@ -45199,14 +45231,14 @@ function cpFiltradas(){
 // aparece apagada e o clique explica o que falta.
 var cpMeta = null;
 function cpMetaCarregar(){
-  if(cpMeta || !lcEhDir()) return;
+  if(cpMeta || !_podeMexerNaMeta()) return;
   cpMeta = { carregando: true };
   fetch(API_BASE+'/api/meta/conexao').then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){ cpMeta = { conectado: !!(d && d.conectado), pode: !!(d && d.conectado && (d.permissoes || []).indexOf('ads_management') >= 0) }; cpPintar(); cpPintarAnalise(); })
     .catch(function(){ cpMeta = { conectado: false, pode: false }; });
 }
 function cpChave(c, st){
-  if(!lcEhDir() || !c.campanhaId) return '';
+  if(!_podeMexerNaMeta() || !c.campanhaId) return '';
   var on = st[1] === 'on', pode = cpMeta && cpMeta.pode;
   var tit = !pode ? (cpMeta && cpMeta.conectado ? 'Pra pausar daqui, o token da Meta precisa de ads_management' : 'Pra pausar daqui, conecte a Meta em Integrações') : (on ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta');
   return '<button class="cp-sw'+(on ? ' on' : '')+(pode ? '' : ' apagada')+'" role="switch" aria-checked="'+on+'" title="'+fnEsc(tit)+'" aria-label="'+fnEsc(tit)+'" onclick="event.stopPropagation();cpAlternarStatus('+cpDados.indexOf(c)+', this)"><i></i></button>';
@@ -45230,7 +45262,7 @@ async function cpAlternarStatus(i, bt, depois){
 // de dólar ele já vem convertido. O valor que vai pra Meta é sempre na moeda da conta.
 var cpCtrl = {}, cpCtrlFechados = {}, cpCtrlRolar = false, _cpOrc = null;
 var CP_NIVEL_TXT = { campanha:['a campanha','Campanha'], conjunto:['o conjunto','Conjunto'], anuncio:['o anúncio','Anúncio'] };
-function cpPodeMudar(){ return !!(currentUser && currentUser.cargo === 'Diretoria' && cpMeta && cpMeta.pode); }
+function cpPodeMudar(){ return !!(_podeMexerNaMeta() && cpMeta && cpMeta.pode); }
 function cpCtrlIrAoQuadro(){ var s = document.getElementById('cp-ctrl'); if(s) s.scrollIntoView({ block:'start' }); }
 function cpCtrlBuscar(camp){
   var x = cpCtrl[camp] = cpCtrl[camp] || {};
@@ -45272,9 +45304,9 @@ function cpCtrlOrcBt(camp, nivel, it, d){
   return '<button class="cp-orc-bt"'+(d.podeOrcamento ? ' onclick="cpOrcJanela(\''+camp+'\',\''+nivel+'\',\''+it.id+'\')" title="Mudar orçamento na Meta"' : ' disabled title="Conta em '+fnEsc(d.moeda)+': mude no Gerenciador de Anúncios"')+'>'+cpOrcTxt(it.orc, d.moeda)+(d.podeOrcamento ? ' <span aria-hidden="true">✎</span>' : '')+'</button>';
 }
 function cpCtrlHtml(camp){
-  if(!camp || !currentUser || currentUser.cargo !== 'Diretoria') return '';
+  if(!camp || !_podeMexerNaMeta()) return '';
   var cab = '<div class="v2-rot cp-s" id="cp-ctrl">Conjuntos e anúncios</div>';
-  if(!cpPodeMudar()) return cab+'<div class="cp-nota">Para ligar, desligar e mudar orçamento por aqui, conecte a Meta em Configurações › Conexões da empresa › Meta Ads.</div>';
+  if(!cpPodeMudar()) return cab+'<div class="cp-nota">Para ligar, desligar e mudar orçamento por aqui, conecte a Meta em Projetos › abra o projeto › Integrações.</div>';
   var x = cpCtrl[camp] || {}, d = x.d;
   if(!d) return cab+(x.erro ? '<div class="v2-alerta warn"><div><b>Não buscou na Meta</b><span>'+fnEsc(x.erro)+'</span></div><button class="fn-btn g sm" onclick="cpCtrlBuscar(\''+camp+'\')">Tentar de novo</button></div>' : '<div class="cp-nota">Buscando na Meta…</div>');
   var lista = d.conjuntos.map(function(s){
@@ -45863,7 +45895,7 @@ function cpPintarAnalise(){
     '<div class="v2-cab"><div><h2>'+fnEsc(cpNomeCurto(m.nome))+'</h2><div class="cp-chips" style="margin-top:6px"><span class="cp-st '+st[1]+'">'+st[0]+'</span>'+(m.conta ? '<span>'+fnEsc(m.conta)+'</span>' : '')+
       (cpCtrl[campCtrl] && cpCtrl[campCtrl].d && cpCtrl[campCtrl].d.campanha.orc ? '<span>'+cpOrcTxt(cpCtrl[campCtrl].d.campanha.orc, cpCtrl[campCtrl].d.moeda)+'</span>' : m.orc != null ? '<span>'+fmtAds(m.orc)+(m.orcVida ? ' total' : '/dia')+'</span>' : '')+(m.bid != null ? '<span>bid cap '+fmtAds(m.bid)+'</span>' : '')+(m.criada ? '<span>criada em '+m.criada.slice(8,10)+'/'+m.criada.slice(5,7)+'</span>' : '')+'</div></div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="cp-vivo" id="cp-vivo" title="Pessoas nas páginas agora vindas desta campanha"><i aria-hidden="true"></i><b>…</b> ao vivo</span>'+
-        (lcEhDir() ? '<button class="fn-btn g sm" onclick="cpPausarDaAnalise(this)" title="'+(cpMeta && cpMeta.pode ? (st[1] === 'on' ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta') : 'Pra pausar daqui, conecte a Meta com ads_management (Integrações → Meta)')+'"'+(cpMeta && cpMeta.pode ? '' : ' style="opacity:.55"')+'>'+(st[1] === 'on' ? '⏸ Pausar' : '▶ Ativar')+'</button>' : '')+
+        (_podeMexerNaMeta() ? '<button class="fn-btn g sm" onclick="cpPausarDaAnalise(this)" title="'+(cpMeta && cpMeta.pode ? (st[1] === 'on' ? 'Pausar esta campanha na Meta' : 'Ativar esta campanha na Meta') : 'Pra pausar daqui, conecte a Meta com ads_management (Integrações → Meta)')+'"'+(cpMeta && cpMeta.pode ? '' : ' style="opacity:.55"')+'>'+(st[1] === 'on' ? '⏸ Pausar' : '▶ Ativar')+'</button>' : '')+
         (cpPodeMudar() ? '<button class="fn-btn g sm" onclick="cpOrcDaAnalise()" title="Mudar o orçamento na Meta">✎ Orçamento</button>' : '<button class="fn-btn g sm" disabled title="Para mudar daqui, conecte a Meta em Configurações › Conexões da empresa">✎ Orçamento</button>')+'<button class="fn-btn g sm" onclick="v2Fechar(this)">×</button></div></div>'+
     (d.erroAoVivo ? '<div class="v2-alerta warn"><div><b>A Utmify não respondeu agora</b><span>Mostrando o que o TMX já tinha guardado. '+fnEsc(d.erroAoVivo)+'</span></div></div>' : '')+
     '<div class="cp-ks">'+k('Gasto', fmtAds(m.gasto))+k('Faturamento', din(t.faturamento), 'TMX')+k('Lucro', t.faturamento == null ? din(null) : '<span class="'+(t.faturamento - m.gasto >= 0 ? 'pos' : 'neg')+'">'+fmtAds(t.faturamento - m.gasto)+'</span>')+
