@@ -40159,7 +40159,7 @@ function mcCopiarLink(bt){
   var txt = bt.textContent; bt.disabled = true; bt.textContent = 'Gerando o link…';
   fetch(API_BASE+'/api/meta/login/link', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
     .then(mcResposta).then(function(d){
-      var url = urlPublica(d.caminho), res = bt.parentElement.querySelector('.mc-link-res');
+      var url = d.entrada ? d.entrada + d.caminho : urlPublica(d.caminho), res = bt.parentElement.querySelector('.mc-link-res');
       bt.disabled = false; bt.textContent = txt;
       res.innerHTML = '<input class="fi" readonly aria-label="Link para o navegador multilogin" value="'+fnEsc(url)+'" onclick="this.select()">'+
         '<span class="fx-sub">Vale por 30 minutos e funciona uma vez. Quando a conexão terminar, esta tela atualiza sozinha.</span>';

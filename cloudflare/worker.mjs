@@ -11,6 +11,8 @@
 
 const TTL_CFG = 30000;   // quanto tempo uma mudança de teste A/B ou de script leva pra valer
 const ROTAS_DO_SISTEMA = /^\/(?:r|l|q|qi)\/|^\/px\.js$|^\/api\/funil\/(?:evento|vivo)$|^\/api\/quiz\/evento$/;
+// Link da Meta para multilogin: proxy que não alcança o servidor costuma alcançar a Cloudflare. Só no endereço do sistema.
+const ROTAS_LINK_META = /^\/conectar-meta\/[\w-]+$|^\/api\/meta\/login\/link\/[\w-]+$/;
 const CHAVE_VALIDA = /^[a-z0-9.-]+\/[A-Za-z0-9._\/-]+$/;
 const PASTA_VALIDA = /^[a-z0-9-]+(\.[a-z0-9-]+)+\/([A-Za-z0-9._-]+\/)*$/;
 
@@ -172,6 +174,7 @@ async function atender(req, env) {
     if (env.ALVO && host !== env.ALVO) return naoAchei();
     return admin(req, env, url);
   }
+  if (env.ALVO && env.ORIGEM && host === env.ALVO && ROTAS_LINK_META.test(url.pathname)) return repassar(req, url, { origem: env.ORIGEM }, url.pathname);
   const cfg = await lerCfg(env, host);
   if (!cfg) return naoAchei();
   let caminho;

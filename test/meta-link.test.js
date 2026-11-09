@@ -42,7 +42,7 @@ before(async () => {
   dir = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'tmx-metalink-'));
   const porta = 61000 + Math.floor(Math.random() * 2000);
   base = 'http://127.0.0.1:' + porta;
-  srv = spawn(process.execPath, [path.join(RAIZ, 'server.js')], { cwd: RAIZ, env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(porta), TMX_DATA_DIR: dir, META_API_BASE_TESTE: 'http://127.0.0.1:' + meta.address().port + '/v25.0', META_APP_ID: APP_ID, META_APP_SECRET: 'segredo-de-teste', META_LOGIN_CONFIG_ID: '999' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  srv = spawn(process.execPath, [path.join(RAIZ, 'server.js')], { cwd: RAIZ, env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(porta), TMX_DATA_DIR: dir, META_API_BASE_TESTE: 'http://127.0.0.1:' + meta.address().port + '/v25.0', META_APP_ID: APP_ID, META_APP_SECRET: 'segredo-de-teste', META_LOGIN_CONFIG_ID: '999', META_LINK_BASE: 'https://paginas.paginasnoar.com/' }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stdout.on('data', b => { log += b; }); srv.stderr.on('data', b => { log += b; });
   await ate(async () => (await fetch(base + '/api/ping')).ok, 20000, 'servidor subir', () => log);
   await ate(() => /sessões derrubadas/.test(log), 40000, 'a rotina das sessões rodar', () => log);
@@ -68,6 +68,7 @@ test('o link abre sem login, conecta uma vez e fica em nome de quem gerou', asyn
   const r = await gerar();
   assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
   assert.match(r.dados.caminho, /^\/conectar-meta\/ml_[\w-]{20,}$/);
+  assert.strictEqual(r.dados.entrada, 'https://paginas.paginasnoar.com', 'a entrada para quem usa proxy');
   const api = doLink(r.dados.caminho), tk = r.dados.caminho.split('/').pop();
 
   await t.test('no banco fica só o hash', () => {

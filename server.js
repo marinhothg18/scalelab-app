@@ -3481,7 +3481,8 @@ app.post('/api/meta/login/link', authMeta, (req, res) => {
     db.store[KEY_META] = cfg;
     audit(db, 'integracao.meta.link', KEY_META, {}, req.user);
     writeDB(db);
-    res.json({ ok: true, caminho: '/conectar-meta/' + token, expiraEm: agora + META_LINK_MS, conectadoEm: cfg.conectadoEm || null });
+    // META_LINK_BASE: a entrada pela Cloudflare, pra quem usa proxy. Só ligar depois de pôr o domínio no app da Meta.
+    res.json({ ok: true, caminho: '/conectar-meta/' + token, entrada: String(process.env.META_LINK_BASE || '').trim().replace(/\/+$/, ''), expiraEm: agora + META_LINK_MS, conectadoEm: cfg.conectadoEm || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/meta/login/link/:token', metaLinkLimiter, (req, res) => {

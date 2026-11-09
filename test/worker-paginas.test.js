@@ -116,6 +116,23 @@ test('com vencedora, todo mundo vê ela; pausado, todo mundo vê a original sem 
   assert.ok(!h.includes('TMX_AB'));
 });
 
+test('o link da Meta para multilogin passa pela Cloudflare, só no endereço do sistema', async () => {
+  const antes = global.fetch, pedidos = [];
+  global.fetch = async (u, o) => { pedidos.push({ u, o }); return new Response('ok', { status: 200 }); };
+  const noAlvo = (c, m) => W.default.fetch(new Request('https://paginas.paginasnoar.com' + c, { method: m || 'GET', headers: { 'CF-Connecting-IP': '9.9.9.9' } }), Object.assign({}, env, { ORIGEM: 'https://app.centraltmx.com' }));
+  try {
+    await noAlvo('/conectar-meta/ml_abc-1');
+    await noAlvo('/api/meta/login/link/ml_abc-1', 'POST');
+    assert.deepStrictEqual(pedidos.map(p => [p.u, p.o.method]), [['https://app.centraltmx.com/conectar-meta/ml_abc-1', 'GET'], ['https://app.centraltmx.com/api/meta/login/link/ml_abc-1', 'POST']]);
+    assert.strictEqual(pedidos[0].o.headers.get('X-Forwarded-For'), '9.9.9.9');
+    pedidos.length = 0;
+    assert.strictEqual((await noAlvo('/api/store')).status, 404);
+    assert.strictEqual((await noAlvo('/api/meta/login/link', 'POST')).status, 404, 'gerar link continua só no painel');
+    assert.strictEqual((await W.default.fetch(new Request('https://' + HOST + '/conectar-meta/ml_abc'), Object.assign({}, env, { ORIGEM: 'https://app.centraltmx.com' }))).status, 404, 'domínio de cliente não abre o link');
+    assert.strictEqual(pedidos.length, 0);
+  } finally { global.fetch = antes; }
+});
+
 test('links, quiz e pixel passam pro servidor, com o prefixo da empresa', async () => {
   const antes = global.fetch, pedidos = [];
   global.fetch = async (u, o) => { pedidos.push({ u, o }); return new Response('ok', { status: 200 }); };

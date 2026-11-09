@@ -55,11 +55,11 @@ module.exports = function montarHospedagem({ platPrep }) {
     try { await cf('POST', '/accounts/' + c.conta + '/r2/buckets', { name: BUCKET }); }
     catch (e) { if (e.status !== 409 && !/already exists/i.test(e.message)) throw e; }
     const fonte = fs.readFileSync(ARQ_WORKER, 'utf8');
-    const marca = crypto.createHash('sha256').update(fonte + '|' + segredo() + '|' + c.alvo).digest('hex');
+    const marca = crypto.createHash('sha256').update(fonte + '|' + segredo() + '|' + c.alvo + '|' + c.origem).digest('hex');
     if (lerCfg('hosp_worker') !== marca) {
       const form = new FormData();
       form.append('metadata', JSON.stringify({ main_module: 'worker.mjs', compatibility_date: '2026-01-15', bindings: [
-        { type: 'r2_bucket', name: 'PAGINAS', bucket_name: BUCKET }, { type: 'secret_text', name: 'SEGREDO', text: segredo() }, { type: 'plain_text', name: 'ALVO', text: c.alvo }] }));
+        { type: 'r2_bucket', name: 'PAGINAS', bucket_name: BUCKET }, { type: 'secret_text', name: 'SEGREDO', text: segredo() }, { type: 'plain_text', name: 'ALVO', text: c.alvo }, { type: 'plain_text', name: 'ORIGEM', text: c.origem }] }));
       form.append('worker.mjs', new Blob([fonte], { type: 'application/javascript+module' }), 'worker.mjs');
       await cf('PUT', '/accounts/' + c.conta + '/workers/scripts/' + SCRIPT, undefined, { form, ms: 60000 });
       gravarCfg('hosp_worker', marca);

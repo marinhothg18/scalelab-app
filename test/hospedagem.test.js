@@ -123,7 +123,8 @@ test('hospedagem no TMX', async (t) => {
     assert.deepStrictEqual(CF.buckets, ['tmx-paginas']);
     assert.deepStrictEqual(CF.rotas, [{ pattern: '*/*', script: 'tmx-paginas' }]);
     assert.strictEqual(CF.envios, 1);
-    assert.deepStrictEqual(CF.worker.meta.bindings.map(b => b.type).sort(), ['plain_text', 'r2_bucket', 'secret_text']);
+    assert.deepStrictEqual(CF.worker.meta.bindings.map(b => b.type).sort(), ['plain_text', 'plain_text', 'r2_bucket', 'secret_text']);
+    assert.strictEqual(CF.worker.meta.bindings.find(b => b.name === 'ORIGEM').text, base, 'o programa sabe pra onde repassar o link da Meta');
     assert.ok(!JSON.stringify(CF.worker.meta).includes('tok-teste'), 'a chave de API não vai pro programa');
     c.tmx = (await chamar('POST', '/api/auth/login', { corpo: { email: 'thiago@axcend.com', senha: 'axcend2026' } })).dados.token;
     c.a = await empresa('Loja A', 'dono@a.com'); c.b = await empresa('Loja B', 'dono@b.com');
