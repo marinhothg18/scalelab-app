@@ -622,7 +622,10 @@ if (!fs.existsSync(BACKUP_DIR)) {
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  // O padrão do helmet (same-origin) corta a ligação com a janela do Facebook:
+  // o FB.login volta sem autorização e nada chega ao servidor.
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
 }));
 
 // Rate limiting global. SSE stream é pulado — é uma conexão long-lived
@@ -3429,7 +3432,10 @@ app.post('/api/meta/login', authDiretoria, async (req, res) => {
   if (!_metaLoginPublico().pronto) return res.status(400).json({ error: 'O botão do Facebook ainda não está configurado no servidor.' });
   const c = _metaLoginCfg(), b = req.body || {};
   const code = String(b.code || '').trim().slice(0, 2000), curto = String(b.accessToken || '').trim().slice(0, 800);
-  if (!code && !curto) return res.status(400).json({ error: 'A janela do Facebook não devolveu a autorização.' });
+  if (!code && !curto) {
+    console.log('[meta-login] a janela voltou sem autorização; status do Facebook:', String(b.statusFb || '').slice(0, 40) || '(vazio)');
+    return res.status(400).json({ error: 'A janela do Facebook não devolveu a autorização.' });
+  }
   try {
     const t = await _metaOauth(code ? { client_id: c.appId, client_secret: c.segredo, code }
       : { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.segredo, fb_exchange_token: curto });
@@ -3437,8 +3443,14 @@ app.post('/api/meta/login', authDiretoria, async (req, res) => {
     try { info = (await _metaGet('debug_token', { input_token: t.access_token }, { accessToken: c.appId + '|' + c.segredo })).data || {}; } catch (e) {}
     if (info.app_id && String(info.app_id) !== c.appId) return res.status(400).json({ error: 'Essa autorização não veio do app da TMX.' });
     const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
-    res.json(Object.assign({ ok: true }, await _metaGuardarConexao(t.access_token, req, { via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') })));
-  } catch (e) { res.status(400).json({ error: e.semContas ? e.message : _metaErroTxt(e) }); }
+    const conexao = await _metaGuardarConexao(t.access_token, req, { via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') });
+    console.log('[meta-login] conectado pelo Facebook; contas:', (conexao.contas || []).length);
+    res.json(Object.assign({ ok: true }, conexao));
+  } catch (e) {
+    const erro = e.semContas ? e.message : _metaErroTxt(e);
+    console.log('[meta-login] falhou:', erro);
+    res.status(400).json({ error: erro });
+  }
 });
 app.post('/api/meta/conexao/atualizar', authDiretoria, async (req, res) => {
   const cfg0 = _metaCfg();

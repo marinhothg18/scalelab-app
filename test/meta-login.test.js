@@ -61,6 +61,17 @@ after(async () => {
   if (meta) meta.close();
 });
 
+test('a janela do Facebook consegue falar de volta com o TMX', async () => {
+  const r = await fetch(comApp.base + '/ScaleLab.html');
+  assert.strictEqual(r.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups');
+});
+
+test('janela que volta sem autorização fica registrada no log', async () => {
+  const r = await comApp.chamar('POST', '/api/meta/login', { token: comApp.dono, corpo: { statusFb: 'unknown' } });
+  assert.strictEqual(r.status, 400);
+  await ate(() => /\[meta-login\] a janela voltou sem autorização; status do Facebook: unknown/.test(comApp.log()), 3000, 'o registro aparecer', comApp.log);
+});
+
 test('sem o app configurado o botão não aparece e a rota recusa', async () => {
   const c = (await semApp.chamar('GET', '/api/meta/conexao', { token: semApp.dono })).dados;
   assert.strictEqual(c.login.pronto, false);

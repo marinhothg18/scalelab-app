@@ -39888,12 +39888,16 @@ function mcFacebook(bt){
   bt.disabled = true; bt.textContent = 'Aguardando o Facebook…';
   FB.login(function(r){
     var a = r && r.authResponse;
-    if(!a){ volta(); mcMsg('A conexão foi cancelada na janela do Facebook.', 1); return; }
+    if(!a){
+      // Só pra ficar no log do servidor como a janela voltou: sem isso, esta falha não aparece em lugar nenhum
+      fetch(API_BASE+'/api/meta/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ statusFb:(r && r.status) || 'sem resposta' }) }).catch(function(){});
+      volta(); mcMsg('A janela do Facebook fechou sem devolver a autorização. Tente de novo e vá até o último botão dela.', 1); return;
+    }
     bt.textContent = 'Conferindo com a Meta…';
     fetch(API_BASE+'/api/meta/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code:a.code || '', accessToken:a.accessToken || '' }) })
       .then(mcResposta).then(function(d){ toastFn('Meta conectada: '+d.contas.length+' conta(s), '+d.pixels.length+' pixel(s). Puxando os números…'); renderIntegracoesTab(); })
       .catch(function(e){ volta(); mcMsg(e.message, 1); });
-  }, { config_id:_mcFb.cfg.configId, response_type:'code', override_default_response_type:true });
+  }, { config_id:_mcFb.cfg.configId }); // configuração de token de usuário: volta accessToken, e o servidor troca por um longo
 }
 function mcTrocar(){ var t = document.getElementById('mc-troca'); if(t) t.style.display = t.style.display === 'none' ? 'flex' : 'none'; }
 function mcAtualizar(bt){
