@@ -2783,6 +2783,15 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .fn-campo label{display:block;font-size:10.5px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
 .fn-campo input,.fn-campo select,.fn-campo textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:13px;outline:none;font-family:inherit}
 .fn-campo input:focus,.fn-campo select:focus,.fn-campo textarea:focus{border-color:var(--accent)}
+.fn-passo{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:800;margin-right:6px;letter-spacing:0;vertical-align:1px}
+.fn-ck-lista{border:1px solid var(--border);border-radius:8px;max-height:300px;overflow-y:auto}
+.fn-campo .fn-ck-l{display:flex;align-items:center;gap:8px;padding:9px 10px;margin:0;border-top:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:0;cursor:pointer}
+.fn-campo .fn-ck-l:first-child{border-top:0}
+.fn-campo .fn-ck-l.todos{background:var(--bg3)}
+.fn-campo .fn-ck-l input{width:auto;flex:none;margin:0;padding:0}
+.fn-ck-l span{flex:1;min-width:0;overflow-wrap:anywhere}
+.fn-ck-l small{font-size:11px;font-weight:500;color:var(--text2);font-variant-numeric:tabular-nums}
+.fn-ck-vazia{padding:12px;font-size:12px;color:var(--text2)}
 .fn-pre{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:13px;font-size:11.5px;overflow-x:auto;line-height:1.6;font-family:ui-monospace,Menlo,monospace;color:var(--text);white-space:pre;max-height:340px}
 .fn-tb{width:100%;border-collapse:collapse;font-size:13px}
 .fn-tb th{text-align:left;padding:9px 10px;font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
@@ -35752,11 +35761,15 @@ function fnNoCorpo(n, b, vt){
       '<button class="fn-btn g sm" style="width:100%;margin-top:9px" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();fnAbrirCkTeste(\''+fnEsc(b.slug)+'\')">Abrir o teste ›</button>'; }
   } else if(n.tipo === 'checkout' && b.viaClique){
     // qual checkout é: a integração e o produto (ou os que mais saíram)
-    sub = [n.integracao || FN_PLAT_NOME[b.plataforma] || 'Checkout', n.produto || 'todos os produtos'].join(' · ') +
+    var cksN = n.checkouts || [], avisoCk = b.pedeProduto ? 'Sem produto, o bloco não conta nada.' : (!n.produto ? 'Contando tudo. Escolha o produto neste bloco.' : '');
+    sub = b.pedeProduto ? 'Escolha o produto' : [n.integracao || FN_PLAT_NOME[b.plataforma] || 'Checkout',
+            n.produto ? n.produto + (cksN.length ? ' › '+(cksN.length === 1 ? (cksN[0].nome || '1 checkout') : cksN.length+' checkouts') : '') : 'todos os produtos'].join(' · ') +
           ((b.semPlataformas || []).length ? ' · sem '+b.semPlataformas.map(function(p){ return FN_PLAT_NOME[p] || p; }).join(', ') : '');
-    grade = m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
+    grade = b.pedeProduto ? m('Abriram', '—') + m('Compraram', '—') + m('Conversão', '—') + m('Faturamento', '—')
+      : m('Abriram', fnNum(b.pessoas), laranja) + m('Compraram', fnNum(b.vendas), b.vendas ? verde : '') +
       m('Conversão', pc(b.conversao)) + m('Faturamento', din(b.faturamento));
-    pe = fnNoSoma('Por origem', b.porOrigem) + fnNoSoma('Por página de entrada', b.porEntrada) +
+    pe = (avisoCk ? '<div class="fx-c-url" style="color:var(--v2-laranja,#F59E0B);font-weight:700;margin-bottom:4px">'+avisoCk+'</div>' : '') +
+      fnNoSoma('Por origem', b.porOrigem) + fnNoSoma('Por página de entrada', b.porEntrada) +
       fnNoProdutos(b) + (b.semClique ? '<div class="fx-c-url" style="margin-top:4px" title="Compraram, mas o clique no botão de compra não foi registrado (botão por JavaScript, ou abriu o checkout por outro link)">'+
       b.semClique+' comprador'+(b.semClique===1?'':'es')+' sem o clique registrado</div>' : '') +
       (b.semPessoa ? '<div class="fx-c-url" style="margin-top:2px">'+b.semPessoa+' venda'+(b.semPessoa===1?'':'s')+' sem pessoa ligada (pela campanha ou produto)</div>' : '');
@@ -36923,18 +36936,21 @@ function fnPlatDoLink(u){ u = String(u||''); return /payt/i.test(u) ? 'payt' : /
 function fnCampoIntegracao(n){
   if(!(n.tipo === 'checkout' || n.pagamento || n.tipo === 'upsell' || n.tipo === 'downsell')) return '';
   var pelo = (!n.integracao || n.integracao === 'Outra') ? fnPlatDoLink(n.url) : '';
-  return '<div class="fn-campo"><label>Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
+  var ehCk = n.tipo === 'checkout';
+  return '<div class="fn-campo"><label>'+(ehCk ? '<span class="fn-passo">1</span>' : '')+'Integração</label><select onchange="fnSalvarIntegracao(\''+n.id+'\',this.value)">'+
     '<option value="">— escolher —</option>'+MP_INTEGRACOES.map(function(x){ return '<option'+(n.integracao===x?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'+
     (pelo ? '<div style="font-size:10.5px;color:var(--accent);margin-top:5px;font-weight:700">Pelo link colado, este bloco já conta só a '+FN_PLAT_NOME[pelo]+'.</div>' : '')+
-    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">De onde vem a venda deste bloco. Com Payt, Hubla, AppMax ou Kiwify, o bloco conta só as vendas e os cliques de compra dessa plataforma: dá pra ter um Checkout Payt e outro Hubla lado a lado. As vendas entram pelo webhook em Configurações › Integrações.</div></div>';
+    '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">'+(ehCk ? 'De onde vem a venda deste bloco.' : 'De onde vem a venda deste bloco. Com Payt, Hubla, AppMax ou Kiwify, o bloco conta só as vendas e os cliques de compra dessa plataforma: dá pra ter um Checkout Payt e outro Hubla lado a lado. As vendas entram pelo webhook em Configurações › Integrações.')+'</div></div>';
 }
 // Produto do bloco: é o nome que chega no webhook (ex.: "Apostilai Acervo").
 // O checkout fica com o principal, o upsell com o dele — e as vendas se separam.
-var fnProdutosVistos = null, fnProdNo = null;
+var fnProdutosVistos = null, fnProdNo = null, fnVendidos = null, fnProdEm = 0;
 function fnCarregarProdutosVistos(){
-  if(fnProdutosVistos) return;
-  fnProdutosVistos = [];
+  if(fnProdutosVistos && Date.now() - fnProdEm < 60000) return;
+  fnProdEm = Date.now();
+  fnProdutosVistos = fnProdutosVistos || [];
   fetch('/api/produtos').then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+    fnVendidos = (d && d.vendidos) || {};
     fnProdutosVistos = ((d && d.vistos) || []).filter(function(x){ return x.nome && x.nome !== '(sem nome)'; });
     // os cadastrados em Produtos também entram, mesmo antes do primeiro aviso
     var tem = {}; fnProdutosVistos.forEach(function(x){ tem[x.nome.toLowerCase()] = 1; });
@@ -36943,7 +36959,61 @@ function fnCarregarProdutosVistos(){
     });
     var dl = document.getElementById('fn-prod-lista');
     if(dl) dl.innerHTML = fnProdOpcoes(fnProdNo);
-  }).catch(function(){});
+    fnPintarCkCampos();
+  }).catch(function(){ if(fnVendidos === null){ fnVendidos = {}; fnPintarCkCampos(); } });
+}
+// Bloco de checkout: integração, produto e checkout, um depois do outro. A lista só traz o que já vendeu na
+// plataforma escolhida, e o bloco conta só o que estiver escolhido aqui.
+function fnPlatBloco(n){ var k = String(n.integracao||'').toLowerCase(); return FN_PLAT_NOME[k] ? k : ((!k || k === 'outra') ? fnPlatDoLink(n.url) : ''); }
+function fnMesmoCk(a, b){ return (a.link || b.link) ? a.link === b.link : a.nome === b.nome; }
+function fnCkLista(n, p){
+  if(!n.produto) return '<div class="fn-ck-vazia">Escolha o produto primeiro.</div>';
+  if(!p) return '<div class="fn-ck-vazia">Este produto foi escrito à mão. Escolha um da lista para separar por checkout.</div>';
+  var cs = p.checkouts || [], marc = n.checkouts || [], rep = {};
+  if(!cs.length) return '<div class="fn-ck-vazia">Este produto só vendeu por um checkout até agora. Quando vender por outro, ele aparece aqui.</div>';
+  cs.forEach(function(c){ rep[c.nome] = (rep[c.nome] || 0) + 1; });
+  return '<label class="fn-ck-l todos"><input type="checkbox"'+(marc.length ? '' : ' checked')+' onchange="fnTodosCheckouts(\''+n.id+'\')"><span>Todos os checkouts deste produto</span><small>'+fnNum(p.vendas)+'</small></label>'+
+    cs.map(function(c, i){
+      var on = marc.some(function(m){ return fnMesmoCk(m, c); });
+      var rot = (c.nome || 'Checkout') + ((!c.nome || rep[c.nome] > 1) && c.link ? ' · …'+c.link.slice(-6) : '');
+      return '<label class="fn-ck-l"><input type="checkbox"'+(on ? ' checked' : '')+' onchange="fnMarcarCheckout(\''+n.id+'\','+i+',this.checked)"><span>'+fnEsc(rot)+'</span><small>'+fnNum(c.vendas)+'</small></label>';
+    }).join('');
+}
+function fnCkDoBloco(n){
+  var l = (fnVendidos && fnVendidos[fnPlatBloco(n)]) || [];
+  return l.filter(function(p){ return p.nome === n.produto; })[0] || null;
+}
+function fnCkCampos(n){
+  var pl = fnPlatBloco(n), nomePl = n.integracao || FN_PLAT_NOME[pl] || '', l = (fnVendidos && fnVendidos[pl]) || [], sel = n.produto || '', p = fnCkDoBloco(n);
+  var vazio = fnVendidos === null ? 'Buscando os produtos…' : !nomePl ? 'Escolha a integração primeiro' : l.length ? 'Escolha o produto' : 'Nenhuma venda pela '+nomePl+' ainda';
+  var ops = '<option value="">'+fnEsc(vazio)+'</option>'+
+    (sel && !p ? '<option value="'+fnEsc(sel)+'" selected>'+fnEsc(sel)+' (escrito antes)</option>' : '')+
+    l.map(function(x){ return '<option value="'+fnEsc(x.nome)+'"'+(x.nome === sel ? ' selected' : '')+'>'+fnEsc(x.nome)+' ('+fnNum(x.vendas)+' venda'+(x.vendas === 1 ? '' : 's')+')</option>'; }).join('');
+  var dica = !nomePl ? '' : l.length ? 'Só os produtos que já venderam pela '+nomePl+'.' : 'O produto aparece aqui sozinho depois da primeira venda.';
+  return '<div class="fn-campo"><label><span class="fn-passo">2</span>Produto</label><select onchange="fnSalvarProdutoLista(\''+n.id+'\',this.value)"'+(l.length || sel ? '' : ' disabled')+'>'+ops+'</select>'+
+      (dica ? '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">'+fnEsc(dica)+'</div>' : '')+'</div>'+
+    '<div class="fn-campo"><label><span class="fn-passo">3</span>Checkout</label><div class="fn-ck-lista">'+fnCkLista(n, p)+'</div>'+
+      '<div style="font-size:10.5px;color:var(--text2);margin-top:5px">Marque um, vários ou todos os checkouts do produto.</div></div>';
+}
+function fnPintarCkCampos(){ var c = document.getElementById('fn-ck-campos'); if(c && fnProdNo) c.innerHTML = fnCkCampos(fnProdNo); }
+function fnCkSalvou(f, n, msg){ fnProdNo = n; fnGravar(f); fnNos(); fnPintarCkCampos(); toastFn(msg); setTimeout(fnCarregarStats, 1200); }
+function fnSalvarProdutoLista(id, v){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.produto = String(v||'').slice(0, 200); n.prodExato = !!v; n.checkouts = [];
+  fnCkSalvou(f, n, v ? 'Produto: '+v : 'Produto tirado');
+}
+function fnTodosCheckouts(id){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  n.checkouts = [];
+  fnCkSalvou(f, n, 'Todos os checkouts do produto');
+}
+function fnMarcarCheckout(id, i, on){
+  var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
+  var p = fnCkDoBloco(n), c = p && (p.checkouts || [])[i]; if(!c) return;
+  var l = (n.checkouts || []).filter(function(m){ return !fnMesmoCk(m, c); });
+  if(on) l.push({ nome: c.nome || '', link: c.link || '' });
+  n.checkouts = l;
+  fnCkSalvou(f, n, l.length ? l.length+' checkout'+(l.length === 1 ? '' : 's')+' neste bloco' : 'Todos os checkouts do produto');
 }
 // opções do campo de produto: os da plataforma do bloco primeiro, com de onde vieram
 function fnProdOpcoes(n){
@@ -36961,8 +37031,8 @@ function fnProdOpcoes(n){
 function fnCampoProduto(n){
   if(!(n.tipo === 'checkout' || n.tipo === 'upsell' || n.tipo === 'downsell' || n.tipo === 'obrigado' || n.pagamento)) return '';
   fnProdNo = n; fnCarregarProdutosVistos();
-  var dica = n.tipo === 'checkout' ? 'O produto principal. Vazio = toda venda de quem clicou em comprar.'
-           : n.tipo === 'obrigado' ? 'Vazio = toda venda do funil.'
+  if(n.tipo === 'checkout') return '<div id="fn-ck-campos">'+fnCkCampos(n)+'</div>';
+  var dica = n.tipo === 'obrigado' ? 'Vazio = toda venda do funil.'
            : 'O produto deste '+(n.tipo === 'downsell' ? 'downsell' : 'upsell')+'. É por ele que a venda fica separada da principal.';
   return '<div class="fn-campo"><label>Produto vendido aqui</label>'+
     '<input list="fn-prod-lista" value="'+fnEsc(n.produto||'')+'" placeholder="como aparece no checkout" onchange="fnSalvarProduto(\''+n.id+'\',this.value)">'+
@@ -36977,7 +37047,11 @@ function fnSalvarProduto(id, v){
 }
 function fnSalvarIntegracao(id, v){
   var f = fnAtual(); if(!f) return; var n = fnAcha(f, id); if(!n) return;
-  n.integracao = v; fnGravar(f); fnNos(); toastFn(v ? 'Integração: '+v : 'Integração tirada');
+  n.integracao = v;
+  // o produto é da plataforma: trocou a integração, escolhe o produto de novo
+  if(n.tipo === 'checkout'){ n.produto = ''; n.prodExato = false; n.checkouts = []; fnProdNo = n; fnPintarCkCampos(); }
+  fnGravar(f); fnNos(); toastFn(v ? 'Integração: '+v : 'Integração tirada');
+  setTimeout(fnCarregarStats, 1200);
 }
 // ── arrastar módulo da aba lateral pro mapa ──
 function mpArrastarModulo(ev, gi, ii){
@@ -37041,6 +37115,7 @@ function mpCriarBloco(it, x, y){
     id = 'e'+Date.now();
     var e = { id:id, nome:nome, tipo:it.tipo, url:'', x:Math.max(0,x), y:Math.max(0,y) };
     if(it.pagamento) e.pagamento = true;
+    if(it.tipo === 'checkout') e.exigeProduto = true;
     if(it.tipo === 'split') e.slug = '';
     if(it.tipo === 'cktest'){
       // com um teste de checkout só no projeto, ele já vem escolhido
@@ -37186,7 +37261,7 @@ function fnAddEtapa(){
   var ant = fnAcha(f, pai);
   var id = 'e'+Date.now();
   f.ligacoes = f.ligacoes || [];
-  f.etapas.push({ id:id, nome:nome, tipo:tipo, url:url,
+  f.etapas.push({ id:id, nome:nome, tipo:tipo, url:url, exigeProduto: tipo === 'checkout' ? true : undefined,
                   x:((ant&&ant.x)||200)+185, y:((ant&&ant.y)||140)+70 });
   if(pai) f.ligacoes.push([pai,id]);
   document.getElementById('fn-n-nome').value=''; document.getElementById('fn-n-url').value='';

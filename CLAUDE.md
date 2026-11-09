@@ -220,6 +220,14 @@ Entrega o relatório de fechamento do dia no padrão da skill `trafego` (metas, 
 - Metas por projeto em `sl_auditoria_metas` (`/api/ia/auditoria-metas`). Valores em R$ das regras escalam por CPA meta ÷ 350. Sem meta, a régua é o CPA de equilíbrio de 7 dias.
 - Modelo `claude-opus-5-5`, chave `_getAIKey()`. `fallbacks: 'default'` deixa a API tentar outro modelo se um filtro recusar. `test/auditoria.test.js` usa Utmify e Anthropic falsas (`TMX_UTMIFY_URL`, `ANTHROPIC_BASE_URL`).
 
+### Bloco de checkout do funil por produto e checkout (09/11/2026)
+
+No bloco `checkout`, a configuração tem três passos: integração, produto e checkout (`fnCkCampos`). A lista vem de `vendidos` em `GET /api/produtos` (`_produtosVendidos`): só o que teve venda paga naquela plataforma.
+
+- Cada venda guarda `ck_nome` e `ck_link` em `pedidos` (`checkoutNome`/`checkoutLink` em `_normalizarVenda`). Na Payt vêm de `link.title` e `link.url`; nas outras, do `plan_name`. Só vale daqui para a frente: venda antiga separa por checkout apenas quando o clique no link foi visto (`ckPath`). Assinatura paga da Payt chega com o título "Assinatura", então o nome sai de outro aviso do mesmo link.
+- O bloco grava `produto`, `prodExato: true` (nome inteiro: "Apostilai Elite" não leva "Apostilai Elite 10") e `checkouts: [{nome, link}]` (vazio = todos). Abriram conta os cliques nos links do bloco (`linksDoBloco`).
+- Bloco novo nasce com `exigeProduto`: sem produto não conta nada (`pedeProduto`). Bloco antigo sem produto continua contando tudo, com o aviso "Contando tudo", até alguém escolher: decisão do Thiago para não zerar funis em uso. `test/funil-checkout-produto.test.js`.
+
 ### Mexer nas campanhas pelo TMX (09/11/2026)
 
 Decisão do Thiago: o TMX faz tudo como a Utmify, então a conexão fica com `ads_management` (nada de "só leitura"). Hoje: orçamento de campanha e conjunto, e pausar/ativar campanha, conjunto e anúncio, em Análise de tráfego › Por Campanha (lápis na coluna Orçamento e quadro "Conjuntos e anúncios" dentro de Análise ›). Duplicar ainda não existe.

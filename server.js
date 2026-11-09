@@ -4057,6 +4057,10 @@ function _normalizarVenda(p) {
     metodo:       String(_pega(p, ['transaction.payment_method','payment_method','payment.method','metodo']) || '').toLowerCase().slice(0, 30),
     telefone:     String(_pega(p, ['customer.phone','cliente.telefone','customer_phone','buyer.phone']) || '').replace(/[^\d+]/g, '').slice(0, 20),
     plano:        String(_pega(p, ['subscription.plan_name','plan_name','link.title']) || '').slice(0, 80),
+    // Qual checkout vendeu (09/11/2026). O plano da assinatura vem genérico ("Apostilai Foco"): na Payt o
+    // nome e o link do checkout estão em link.title e link.url. Nas outras plataformas vale o nome da oferta.
+    checkoutNome: String(_pega(p, ['link.title','plan_name','subscription.plan_name']) || '').trim().slice(0, 120),
+    checkoutLink: _normPg(_pega(p, ['link.url']) || ''),
     assinatura:   String(_pega(p, ['subscription.code','subscription.id','subscription_id']) || '').slice(0, 40),
     cobrancas:    Number(_pega(p, ['subscription.charges']) || 0) || 0,
     periodicidade:String(_pega(p, ['subscription.periodicity']) || '').toLowerCase().slice(0, 20),
@@ -13767,6 +13771,8 @@ function _pessoas() {
     // os códigos de rastreio que vieram na venda (UTMs, src, sck, xcod, fbclid): o
     // aviso cru só guarda os últimos 50, e o marketing da venda precisa de todos
     try { db.exec('ALTER TABLE pedidos ADD COLUMN codigos TEXT'); } catch (e) {}
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_nome TEXT'); } catch (e) {}
+    try { db.exec('ALTER TABLE pedidos ADD COLUMN ck_link TEXT'); } catch (e) {}
     try { db.exec('CREATE INDEX IF NOT EXISTS ped_ck ON pedidos(ck_teste)'); } catch (e) {}
     _pdb = db;
     let sal = db.prepare("SELECT v FROM cfg WHERE k='sal'").get();
@@ -14257,8 +14263,8 @@ function _pedidoRegistrar(venda, p, opts) {
     const idPed = venda.pedidoId ? (String(venda.pedidoId).slice(0, 60) + '|' + String(venda.status || '').slice(0, 30)) : venda.id;
     const ins = _q(`INSERT OR IGNORE INTO pedidos(id, pedido, status, pago, estorno, valor, liquido, produto, plano, metodo, motivo,
         visitante, lead, casou, sem_origem, sck, fonte, camp, cont, termo, cred_fonte, cred_camp, cred_cont, cred_canal, apoio,
-        funil, teste, variante, renovacao, em, dia, ck_teste, ck_var, plataforma, codigos)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        funil, teste, variante, renovacao, em, dia, ck_teste, ck_var, plataforma, codigos, ck_nome, ck_link)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       idPed, txt(venda.pedidoId, 60), txt(venda.status, 30), pago ? 1 : 0, estorno,
       valorPed, liquido, txt(venda.produto, 120), txt(venda.plano, 80), txt(venda.metodo, 30),
       pago ? null : txt(_motivoFalha(venda), 60),
@@ -14268,7 +14274,8 @@ function _pedidoRegistrar(venda, p, opts) {
       cred ? cred.canal : null, apoio, ref.funil || null, ref.teste || null, ref.variante || null,
       venda.renovacao ? 1 : 0, em, _diaBR(em),
       venda.ck ? txt(venda.ck.t, 60) : null, venda.ck ? txt(venda.ck.v, 40) : null, txt(venda.plataforma, 20),
-      venda.codigos && Object.keys(venda.codigos).length ? JSON.stringify(venda.codigos) : null);
+      venda.codigos && Object.keys(venda.codigos).length ? JSON.stringify(venda.codigos) : null,
+      txt(venda.checkoutNome, 120), venda.checkoutLink || null);
 
     if (ins.changes && cred && cred.outroVis) _q('UPDATE pedidos SET cred_vis=? WHERE id=?').run(cred.outroVis, idPed);
     if (ins.changes && vis) {
@@ -18066,9 +18073,43 @@ function _tipoCampanha(v) {
   return 'nome';
 }
 
+// O que já vendeu em cada plataforma, com os checkouts de cada produto: é a lista do bloco de checkout do
+// funil. Produto entra sozinho na primeira venda paga. Assinatura paga chega com o título "Assinatura",
+// então o nome do checkout vem de qualquer aviso daquele link que tenha o nome de verdade.
+function _produtosVendidos() {
+  if (!_pessoas()) return {};
+  const linhas = _q(`SELECT COALESCE(NULLIF(plataforma,''),'payt') pl, produto, plano, ck_nome, ck_link, pago, estorno, renovacao, COUNT(*) n
+                     FROM pedidos WHERE produto IS NOT NULL AND produto<>'' GROUP BY pl, produto, plano, ck_nome, ck_link, pago, estorno, renovacao`).all();
+  const nomeReal = {};
+  linhas.forEach(x => {
+    if (!x.ck_link || !x.ck_nome || /^assinatura$/i.test(String(x.ck_nome).trim())) return;
+    const k = x.pl + '|' + x.ck_link, a = nomeReal[k] || (nomeReal[k] = {});
+    a[x.ck_nome] = (a[x.ck_nome] || 0) + x.n;
+  });
+  const melhor = (pl, link) => { const a = nomeReal[pl + '|' + link]; return a ? Object.keys(a).sort((p, q) => a[q] - a[p])[0] : ''; };
+  const porPl = {};
+  linhas.forEach(x => {
+    if (!x.pago || x.estorno || x.renovacao) return;
+    const lp = porPl[x.pl] || (porPl[x.pl] = {}), p = lp[x.produto] || (lp[x.produto] = { nome: x.produto, vendas: 0, ck: {} });
+    p.vendas += x.n;
+    const nome = String((x.ck_link && melhor(x.pl, x.ck_link)) || x.ck_nome || x.plano || '').trim();
+    // sem link e com o nome igual ao do produto, a venda não diz de qual checkout veio
+    if (!x.ck_link && (!nome || _nrm(nome) === _nrm(x.produto))) return;
+    const k = x.ck_link || ('n:' + _nrm(nome)), c = p.ck[k] || (p.ck[k] = { nome, link: x.ck_link || '', vendas: 0 });
+    c.vendas += x.n;
+  });
+  const out = {};
+  Object.keys(porPl).forEach(pl => {
+    out[pl] = Object.values(porPl[pl]).sort((a, b) => b.vendas - a.vendas).map(p => ({
+      nome: p.nome, vendas: p.vendas, checkouts: Object.values(p.ck).sort((a, b) => b.vendas - a.vendas).slice(0, 30)
+    }));
+  });
+  return out;
+}
+
 app.get('/api/produtos', authUsuario, (req, res) => {
   try {
-    const db = readDB(), lista = _produtosCfg(db);
+    const db = readDB(), lista = _produtosCfg(db), vendidos = _produtosVendidos();
     const corte = Date.now() - 30 * 86400000, vistos = {};
     // Todo aviso conta, não só a venda paga: oferta nova costuma ter pix gerado
     // ou cartão recusado antes da primeira aprovada, e sem isso o produto não
@@ -18089,9 +18130,11 @@ app.get('/api/produtos', authUsuario, (req, res) => {
     }).sort((a, b) => b.receita - a.receita || b.vendas - a.vendas);
     if (_projetosDoLimite(req.user)) {
       const e = _escopoDe(db, req.user), dele = x => !!x && e.nomes.has(_nrm(x.projeto));
-      return res.json({ ok: true, lista: lista.filter(dele), vistos: saida.filter(dele) });
+      const seus = {};
+      Object.keys(vendidos).forEach(pl => { seus[pl] = vendidos[pl].filter(p => dele(_produtoDe(p.nome, lista))); });
+      return res.json({ ok: true, lista: lista.filter(dele), vistos: saida.filter(dele), vendidos: seus });
     }
-    res.json({ ok: true, lista, vistos: saida });
+    res.json({ ok: true, lista, vistos: saida, vendidos });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/produtos', authNegocio, (req, res) => {
@@ -18668,21 +18711,54 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     // Produto do bloco: o checkout vende o principal, o upsell vende outro. A
     // venda de cada um chega no webhook com o nome do produto, e é por ele que
     // o bloco separa o que é dele.
-    const prodLista = e => String((e && e.produto) || '').split(/[,;\n]+/).map(_nrm).filter(Boolean);
+    // Produto escolhido na lista vale pelo nome inteiro: "Apostilai Elite" não leva junto "Apostilai Elite 10".
+    const prodLista = e => {
+      if (e && e.prodExato) { const u = _nrm(e.produto), l = u ? [u] : []; l.exato = true; return l; }
+      return String((e && e.produto) || '').split(/[,;\n]+/).map(_nrm).filter(Boolean);
+    };
     // Os blocos de checkout do desenho (sem página com pixel). Um clique é do
     // bloco pelo link dele (quando o clique trouxe o caminho) ou, se o bloco
     // não tem produto, pela plataforma. Bloco com produto e clique sem caminho:
     // não dá pra saber o produto, então o clique fica no bloco geral.
     // A venda é do bloco com a plataforma E o produto dela; o resto, do geral.
-    const blocosCk = () => (f.etapas || []).filter(x => x.tipo === 'checkout' && !(porEtapa[x.id] && porEtapa[x.id].size))
-      .map(x => ({ id: x.id, plat: _platDoBloco(x), lst: prodLista(x), path: x.url ? _normPg(x.url) : '' }));
-    const ckDoBloco = (b, c) => (b.path && c.path) ? c.path === b.path : !!(b.plat && c.plat === b.plat && !b.lst.length && !b.path);
+    // Bloco novo nasce pedindo o produto: sem ele não conta nada nem entra na divisão com os outros.
+    const pedeProduto = x => !!(x && x.tipo === 'checkout' && x.exigeProduto && !String(x.produto || '').trim());
+    const cksDe = x => (Array.isArray(x && x.checkouts) ? x.checkouts : []).filter(c => c && (c.nome || c.link));
+    // Os links de compra do bloco com produto escolhido: o colado, os dos checkouts marcados, os que já
+    // apareceram em avisos desse produto e os que os compradores do período abriram.
+    let _regLinks = null, _blocosCkMemo = null;
+    const linksRegistrados = () => _regLinks || (_regLinks = _q(`SELECT DISTINCT produto, COALESCE(NULLIF(plataforma,''),'payt') pl, ck_nome, ck_link FROM pedidos WHERE ck_link IS NOT NULL AND ck_link<>''`).all());
+    const linksDoBloco = b => {
+      const s = new Set(); if (b.path) s.add(b.path);
+      b.cks.forEach(c => { if (c.link) s.add(c.link); });
+      linksRegistrados().forEach(r => {
+        if (_nrm(r.produto) !== b.lst[0] || (b.plat && r.pl !== b.plat)) return;
+        if (b.cks.length && !b.cks.some(c => c.link ? c.link === r.ck_link : _nrm(c.nome) === _nrm(r.ck_nome))) return;
+        s.add(r.ck_link);
+      });
+      vendas.forEach(o => { if (o.ckPath && vendaDoBloco(b, o)) s.add(o.ckPath); });
+      return s;
+    };
+    const blocosCk = () => {
+      if (_blocosCkMemo) return _blocosCkMemo;
+      const l = (f.etapas || []).filter(x => x.tipo === 'checkout' && !(porEtapa[x.id] && porEtapa[x.id].size) && !pedeProduto(x))
+        .map(x => ({ id: x.id, plat: _platDoBloco(x), lst: prodLista(x), path: x.url ? _normPg(x.url) : '', cks: cksDe(x) }));
+      l.forEach(b => { if (b.lst.exato) b.links = linksDoBloco(b); });
+      return (_blocosCkMemo = l);
+    };
+    const ckDoBloco = (b, c) => b.links ? (!!c.path && b.links.has(c.path))
+      : ((b.path && c.path) ? c.path === b.path : !!(b.plat && c.plat === b.plat && !b.lst.length && !b.path));
+    // O checkout da venda: pelo link quando se sabe; sem link, pelo nome. O nome antigo era só o plano.
+    const casaCk = (o, cks) => !cks || !cks.length || cks.some(c => {
+      const l = o.ck_link || o.ckPath || '';
+      return (c.link && l) ? l === c.link : _nrm(o.ck_nome || o.plano) === _nrm(c.nome);
+    });
     // Venda e bloco: o Acervo de 297 e o de 697 são o MESMO produto em links de
     // checkout diferentes. Quando se sabe o link que a pessoa abriu pra comprar
     // (o último clique de compra), vale o link; sem clique visto, plataforma + produto.
-    const vendaDoBloco = (b, o) => (b.path && o.ckPath) ? (o.ckPath === b.path && casaProdV(o, b.lst))
-                                                          : (!!b.plat && _vendaDaPlat(o, b.plat) && casaProdV(o, b.lst));
-    const casaProd = (o, lst) => !lst.length || lst.some(p => { const x = _nrm(o.produto); return x === p || x.indexOf(p) >= 0; });
+    const vendaDoBloco = (b, o) => casaCk(o, b.cks) && ((b.path && o.ckPath) ? (o.ckPath === b.path && casaProdV(o, b.lst))
+                                                          : (!!b.plat && _vendaDaPlat(o, b.plat) && casaProdV(o, b.lst)));
+    const casaProd = (o, lst) => !lst.length || lst.some(p => { const x = _nrm(o.produto); return x === p || (!lst.exato && x.indexOf(p) >= 0); });
     const casaProdV = casaProd;
     const topProd = lst => {
       const c = {}; lst.forEach(o => { const k = String(o.produto || '(sem nome)').trim(); c[k] = (c[k] || 0) + 1; });
@@ -18840,6 +18916,10 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
           veredito: t && t.veredito ? (({ controle, desafiante, chance, liftRpp, faltaVendas, minPorLado, vendasMenorLado, podeDeclarar, sugerida, leitura }) =>
             ({ controle, desafiante, chance, liftRpp, faltaVendas, minPorLado, vendasMenorLado, podeDeclarar, sugerida, leitura }))(t.veredito) : null,
           torta: !!(t && t.divisao && t.divisao.torta) };
+      } else if (e.tipo === 'checkout' && !temPagina && pedeProduto(e)) {
+        conj[e.id] = new Set();
+        nos[e.id] = { tipo: 'checkout', viaClique: true, pedeProduto: true, produto: '', integracao: e.integracao || '', plataforma: _platDoBloco(e), semPlataformas: [],
+                      pessoas: 0, cliques: 0, vendas: 0, faturamento: dir ? 0 : null, conversao: 0, semPessoa: 0, produtos: [], semClique: 0, porOrigem: [], porEntrada: [] };
       } else if (e.tipo === 'checkout' && !temPagina) {
         // Checkout do gateway não recebe pixel: vale quem clicou em comprar, e
         // quem comprou (passou pelo checkout mesmo se o clique não foi visto).
@@ -18853,7 +18933,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         // pela Payt saía deste e não entrava naquele, e sumia do mapa.
         const blocos = blocosCk(), eu = blocos.find(b => b.id === e.id) || { plat, lst, path: e.url ? _normPg(e.url) : '' };
         const outros = blocos.filter(b => b.id !== e.id), geral = !plat && !eu.path;
-        const outras = geral ? [...new Set(outros.map(b => b.plat).filter(Boolean))] : [];
+        // "sem Payt" só quando outro bloco leva a Payt inteira; bloco de um produto só tira aquele produto
+        const outras = geral ? [...new Set(outros.filter(b => !b.lst.length).map(b => b.plat).filter(Boolean))] : [];
         const deOutro = o => outros.some(b => vendaDoBloco(b, o));
         const vf = geral ? vendas.filter(o => casaProd(o, lst) && (!outros.length || !deOutro(o)))
                          : vendas.filter(o => vendaDoBloco(eu, o));
@@ -18934,6 +19015,7 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       }
       // página → checkout: a seta diz o mesmo que o bloco ("checkouts" de quem
       // clicou em comprar nela), não quem abriu o checkout em qualquer página
+      if (nos[l[1]] && nos[l[1]].pedeProduto) { fios[l[0] + '|' + l[1]] = { n: 0, pct: 0 }; return; }
       if (nos[l[1]] && nos[l[1]].viaClique && porEtapa[l[0]]) {
         const blocos = blocosCk(), eu = blocos.find(b => b.id === l[1]), outros = blocos.filter(b => b.id !== l[1]);
         const geral = !eu || (!eu.plat && !eu.path);
