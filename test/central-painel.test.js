@@ -81,7 +81,7 @@ test('Painel da Central', async (t) => {
     assert.strictEqual(d.cobranca.ligada, false);
     assert.ok(d.cobranca.webhook.endsWith('/api/billing/webhook'));
     assert.ok(d.cobranca.linkCompra.endsWith('/assinar/{plano}'));
-    assert.deepStrictEqual(d.cobranca.planos.map(p => p.id), ['teste', 'iniciante', 'starter', 'escala', 'agencia']);
+    assert.deepStrictEqual(d.cobranca.planos.map(p => p.id), ['teste', 'iniciante', 'starter', 'escala', 'agencia', 'pro', 'elite', 'premium']);
     assert.strictEqual(d.chamados.esperandoTmx, 1);
     assert.strictEqual(d.chamados.semResposta, 1);
     assert.strictEqual(d.chamados.esperando[0].empresaNome, 'Empresa A');

@@ -65,7 +65,7 @@ test('Meu plano', async (t) => {
     assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
     assert.strictEqual(r.dados.interno, false);
     assert.strictEqual(r.dados.plano.id, 'teste');
-    assert.deepStrictEqual(r.dados.planos.map(p => p.id), ['iniciante', 'starter', 'escala', 'agencia']);
+    assert.deepStrictEqual(r.dados.planos.map(p => p.id), ['pro', 'elite', 'premium']);
     assert.strictEqual(usoDe(r.dados, 'pessoas').usado, 1);
     assert.strictEqual(usoDe(r.dados, 'projetos').usado, 0);
     assert.strictEqual(r.dados.cobranca.ligada, false);
