@@ -3632,7 +3632,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
    Quase tudo aqui só vale em tela estreita: o computador não muda.
    ══════════════════════════════════════════════════════ */
 .ads-periodos{display:contents}
-.ads-mais-bt,.ads-rel-ord,.ads-rel-cards,.so-cel{display:none}
+.ads-mais-bt,.so-cel{display:none}
 .cpc-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:10px 12px 11px}
 .cpc-card.fixa{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
 .cpc-top{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:4px 6px;align-items:start}
@@ -3703,7 +3703,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
   .ads-datas input{flex:1;min-width:0}
   .ads-abas{overflow-x:auto;scrollbar-width:none;gap:0!important;margin-bottom:10px!important}
   .ads-tab{flex:none;white-space:nowrap;padding:8px 10px}
-  #relatorio-sort-bar{display:none!important}
   /* filtros de Por Campanha */
   #cp-novo .cp-filtros{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
   #cp-novo .cp-filtros select,#cp-novo .cp-busca{width:100%;min-width:0}
@@ -3715,10 +3714,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
   #cpm-pop .ac{min-height:44px;font-size:14px}
   .cp-mrc{width:28px;height:28px;margin:-4px 0 0 -4px}
   .cpc-st .cp-sw{min-height:0;min-width:0;flex:none}
-  /* Relatório de Campanhas */
-  .ads-rel-tab{display:none}
-  .ads-rel-ord{display:block;width:100%;margin-bottom:10px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:6px 10px;color:var(--text);font-weight:600}
-  .ads-rel-cards{display:flex;flex-direction:column;gap:10px}
   /* Por Anúncio: as métricas em 3 colunas, como nos cards de campanha */
   .anp-ls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 8px}
   .anp-l{display:block!important;padding:0!important;font-size:11px!important;min-width:0}
@@ -5977,15 +5972,8 @@ a.fn-btn{text-decoration:none;display:inline-block}
         <div class="ads-abas" style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;align-items:center;">
           <button class="ads-tab" onclick="switchAdsTab('ofertas',this)">📦 Resumo</button>
           <button class="ads-tab active" onclick="switchAdsTab('campanhas',this)">📢 Por Campanha</button>
-          <button class="ads-tab" onclick="switchAdsTab('relatorio',this)">📊 Relatório de Campanhas</button>
           <button class="ads-tab" onclick="switchAdsTab('anuncio',this)">🎯 Por Anúncio</button>
           <button class="ads-tab" onclick="switchAdsTab('realtime',this)">🟢 Tempo Real</button>
-          <div style="margin-left:auto;display:flex;gap:6px;align-items:center;padding-bottom:4px;" id="relatorio-sort-bar" style="display:none;">
-            <span style="font-size:11px;color:var(--text2);font-weight:600;">ORDENAR:</span>
-            <button class="ads-filter-btn active" id="rsort-roas" onclick="setRelatorioSort('roas',this)">ROAS</button>
-            <button class="ads-filter-btn" id="rsort-lucro" onclick="setRelatorioSort('lucro',this)">Lucro</button>
-            <button class="ads-filter-btn" id="rsort-gasto" onclick="setRelatorioSort('gasto',this)">Gasto</button>
-          </div>
         </div>
 
         <div id="ads-selo-utmify" style="font-size:11px;color:var(--text2);margin:-8px 0 14px 0;"></div>
@@ -6180,31 +6168,6 @@ a.fn-btn{text-decoration:none;display:inline-block}
               <tbody id="ads-body-campanhas"><tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text2);">Configure a API Key e clique em Atualizar</td></tr></tbody>
             </table>
           </div>
-        </div>
-
-        <!-- TAB: RELATÓRIO DE CRIATIVOS -->
-        <div id="ads-tab-relatorio" class="ads-tab-panel" style="display:none;">
-          <div style="margin-bottom:14px;">
-            <input id="relatorio-search" type="text" placeholder="🔍  Buscar campanha..." oninput="renderRelatorio()" style="width:100%;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
-          </div>
-          <select id="relatorio-ordem-cel" class="ads-rel-ord" aria-label="Ordenar" onchange="relatorioSortKey=this.value;renderRelatorio()"><option value="roas">Ordenar: ROAS</option><option value="lucro">Ordenar: Lucro</option><option value="gasto">Ordenar: Gasto</option></select>
-          <div class="ads-rel-tab" style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;font-size:13px;">
-              <thead>
-                <tr style="border-bottom:1px solid var(--border);">
-                  <th style="text-align:left;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Criativo / Campanha</th>
-                  <th style="text-align:right;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Gasto</th>
-                  <th style="text-align:right;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Faturamento</th>
-                  <th style="text-align:right;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Lucro</th>
-                  <th style="text-align:right;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">ROAS</th>
-                  <th style="text-align:right;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">Conv.</th>
-                  <th style="text-align:right;padding:10px 12px;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;">CPA</th>
-                </tr>
-              </thead>
-              <tbody id="ads-relatorio-grid"></tbody>
-            </table>
-          </div>
-          <div class="ads-rel-cards" id="ads-relatorio-cards"></div>
         </div>
 
         <!-- TAB: POR ANÚNCIO -->
@@ -42942,29 +42905,17 @@ function setAdsFilter(preset, btn){
   }
 }
 
-let relatorioSortKey = 'roas';
-
 function switchAdsTab(tab, btn){
   document.querySelectorAll('.ads-tab').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.ads-tab-panel').forEach(p=>p.style.display='none');
   if(btn) btn.classList.add('active');
   if(btn && innerWidth <= 768){ try{ btn.scrollIntoView({ inline:'center', block:'nearest' }); }catch(e){} }
   document.getElementById('ads-tab-'+tab).style.display='block';
-  const sortBar = document.getElementById('relatorio-sort-bar');
-  if(sortBar) sortBar.style.display = tab==='relatorio' ? 'flex' : 'none';
   const utmify = _adsFonte()==='utmify';
-  if(tab==='relatorio') renderRelatorio();
   if(tab==='anuncio')   utmify ? carregarAnunciosUtmify() : renderAnuncios();
   if(tab==='ofertas' && !utmify) renderResumo();
   if(tab==='ofertas' && utmify) trsDesenhar();
   switchAdsTabRealtime(tab==='realtime');
-}
-
-function setRelatorioSort(key, btn){
-  relatorioSortKey = key;
-  document.querySelectorAll('#relatorio-sort-bar .ads-filter-btn').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  renderRelatorio();
 }
 
 // ── TEMPO REAL ──────────────────────────────────────────
@@ -43689,63 +43640,6 @@ function renderPorConta(){
   const accMgrMap = buildAccountManagerMap();
   const rows = groupByKey(adsCampanhasData, name=>extractConta(name));
   renderGroupTable('ads-body-conta', rows, 'Gestor', r=>accMgrMap[r.label]||'—');
-}
-
-function renderRelatorio(){
-  const tbody = document.getElementById('ads-relatorio-grid');
-  if(!tbody) return;
-  const cardsRel = document.getElementById('ads-relatorio-cards');
-  if(!adsCampanhasData || !adsCampanhasData.length){
-    if(cardsRel) cardsRel.innerHTML='<div class="cp-vazio">Carregue os dados primeiro.</div>';
-    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text2);">Carregue os dados primeiro.</td></tr>';
-    return;
-  }
-  const query = (document.getElementById('relatorio-search')?.value||'').toLowerCase();
-
-  const sorted = [...adsCampanhasData]
-    .filter(c => !query || (c._name||'').toLowerCase().includes(query))
-    .sort((a,b)=>{
-      if(relatorioSortKey==='roas')  return (b.roas||0)-(a.roas||0);
-      if(relatorioSortKey==='lucro') return (b.profit||0)-(a.profit||0);
-      if(relatorioSortKey==='gasto') return (b.cost||0)-(a.cost||0);
-      return 0;
-    });
-
-  if(!sorted.length){
-    if(cardsRel) cardsRel.innerHTML='<div class="cp-vazio">Nenhum resultado encontrado.</div>';
-    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text2);">Nenhum resultado encontrado.</td></tr>';
-    return;
-  }
-  // no celular a tabela vira card (o CSS escolhe qual dos dois aparece)
-  if(cardsRel) cardsRel.innerHTML = sorted.map(c=>{
-    const p = cpPartesNome(c._name), lucro = c.profit||0, roas = c.roas||0;
-    const cel = (t,v,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><span>'+t+'</span><b>'+v+'</b></div>';
-    return '<article class="cpc-card"><div class="cpc-top sem-mrc"><div class="cpc-nome"><b>'+fnEsc(p.t)+'</b>'+(p.s?'<small>'+fnEsc(p.s)+'</small>':'')+'</div>'+trsRoasPill(roas)+'</div>'+
-      '<div class="cpc-nums">'+cel('Gasto',fmtAds(c.cost))+cel('Faturamento',fmtAds(c.total_revenue))+cel('Lucro',fmtAds(lucro),lucro>=0?'pos':'neg')+
-      cel('Vendas',c.approved||0)+cel('CPA',c.cpa>0?fmtAds(c.cpa):'—')+cel('Cliques',fnNum(c.clicks||0))+'</div></article>';
-  }).join('');
-
-  tbody.innerHTML = sorted.map((c,i)=>{
-    const roas     = c.roas || 0;
-    const profit   = c.profit || 0;
-    const roasBg   = roas >= 1.5 ? 'rgba(22,163,74,.18)' : roas >= 1 ? 'rgba(202,138,4,.18)' : 'rgba(220,38,38,.18)';
-    const roasColor= roas >= 1.5 ? 'var(--green)' : roas >= 1 ? 'var(--yellow)' : 'var(--red)';
-    const profColor= profit > 0 ? 'var(--green)' : profit < 0 ? 'var(--red)' : 'var(--text2)';
-    const profSign = profit > 0 ? '+' : '';
-    const name     = String(c._name||'Campanha').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const rowBg    = i%2===0 ? '' : 'background:rgba(255,255,255,.02);';
-    return `<tr style="border-bottom:1px solid var(--border);${rowBg}">
-      <td style="padding:10px 12px;color:var(--text);font-size:12px;max-width:380px;word-break:break-word;">${name}</td>
-      <td style="padding:10px 12px;text-align:right;white-space:nowrap;">${fmtAds(c.cost)}</td>
-      <td style="padding:10px 12px;text-align:right;color:var(--green);white-space:nowrap;">${fmtAds(c.total_revenue)}</td>
-      <td style="padding:10px 12px;text-align:right;font-weight:700;color:${profColor};white-space:nowrap;">${profSign}${fmtAds(profit)}</td>
-      <td style="padding:10px 12px;text-align:right;white-space:nowrap;">
-        <span style="background:${roasBg};color:${roasColor};border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;">${roas>0?roas.toFixed(2)+'x':'—'}</span>
-      </td>
-      <td style="padding:10px 12px;text-align:right;">${c.approved||0}</td>
-      <td style="padding:10px 12px;text-align:right;">${c.cpa>0?fmtAds(c.cpa):'—'}</td>
-    </tr>`;
-  }).join('');
 }
 
 function renderAnuncios(){
