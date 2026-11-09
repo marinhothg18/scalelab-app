@@ -40098,7 +40098,7 @@ function mcPuxar(bt){
     .catch(function(e){ bt.disabled = false; bt.textContent = 'Puxar agora'; mcMsg(e.message, 1); });
 }
 async function mcDesconectar(bt){
-  if(!(await tmxConfirmar('Desconectar a Meta? O TMX para de puxar os números e de mandar compras. Os números já puxados ficam.'))) return;
+  if(!(await tmxConfirmar('Desconectar a Meta? O TMX para de puxar os números e de mandar compras, e as contas somem das Integrações dos projetos. Os números já puxados e o que cada projeto marcou ficam guardados.'))) return;
   bt.disabled = true;
   fetch(API_BASE+'/api/meta/conexao/desconectar', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' })
     .then(mcResposta).then(function(){ toastFn('Meta desconectada'); mcRepintar(); })
@@ -40302,10 +40302,11 @@ function pcPintar(){
   var cx = document.getElementById('fn-p-config'), d = pcDados; if(!cx || !d) return;
   var dir = d.dir, dis = dir ? '' : ' disabled', disContas = (dir || d.podeContas) ? '' : ' disabled', cm = d.comparacao || {};
   var libera = d.liberaEnvioEm, podeEnviar = !!(libera && Date.now() >= libera);
-  var esq = '<div class="capi-card"><div class="capi-cab"><div><b>Tráfego deste projeto'+(d.configurado ? '<span class="v2-pill ok">ligado</span>' : '<span class="v2-pill warn">falta ligar</span>')+'</b>'+
-      '<span>'+(d.configurado ? 'Decidido aqui: contas e, nas contas divididas, a palavra no nome.' : 'Hoje vem do dashboard da Utmify. Passa a ser decidido aqui.')+
-      ' Gasto '+(d.fonte === 'meta' ? 'direto da Meta.' : 'pela Utmify, até a Meta conectar.')+'</span></div></div>'+
-    '<div class="v2-rot" style="margin-bottom:6px">Contas de anúncio</div>'+
+  var esq = '<div class="capi-card"><div class="capi-cab"><div><b>Tráfego deste projeto'+(d.contasOcultas ? '<span class="v2-pill neu">Meta desconectada</span>' : d.configurado ? '<span class="v2-pill ok">ligado</span>' : '<span class="v2-pill warn">falta ligar</span>')+'</b>'+
+      '<span>'+(d.contasOcultas ? 'As contas de anúncio aparecem aqui quando a Meta for conectada. O que já estava marcado neste projeto fica guardado.'
+        : (d.configurado ? 'Decidido aqui: contas e, nas contas divididas, a palavra no nome.' : 'Hoje vem do dashboard da Utmify. Passa a ser decidido aqui.')+
+      ' Gasto '+(d.fonte === 'meta' ? 'direto da Meta.' : 'pela Utmify, até a Meta conectar.'))+'</span></div></div>'+
+    (d.contasOcultas ? '</div>' : '<div class="v2-rot" style="margin-bottom:6px">Contas de anúncio</div>'+
     ((d.contas || []).length ? (d.contas || []).map(function(c){
       var on = pcSel.contas.indexOf(c.conta) >= 0;
       var sub = [fnDin(c.gasto)+' em 14 dias'];
@@ -40319,7 +40320,7 @@ function pcPintar(){
     '<div class="v2-rot" style="margin:14px 0 6px">Nas contas divididas, entra a campanha que tem no nome</div>'+
     '<input class="fi" id="pc-regra" value="'+fnEsc(pcSel.regra)+'" placeholder="ex.: '+fnEsc(String(fnProj || 'CONCURSO').toUpperCase())+'"'+disContas+' oninput="pcSel.regra=this.value;pcPintarPrevia()">'+
     (Object.keys(d.outrasRegras || {}).length ? '<div class="fx-sub" style="margin-top:4px">Outros projetos: '+Object.keys(d.outrasRegras).map(function(p){ return fnEsc(p)+' pega "'+fnEsc(d.outrasRegras[p])+'"'; }).join(' · ')+'</div>' : '')+
-    '<div id="pc-previa" style="margin-top:10px"></div></div>';
+    '<div id="pc-previa" style="margin-top:10px"></div></div>');
   var dsl = d.destinos || [];
   var pxSel = (dsl.length ? dsl.map(function(x){ var on = pcSel.destinos.indexOf(x.id) >= 0;
       return '<label class="pc-chk"><input type="checkbox"'+(on ? ' checked' : '')+dis+' onchange="pcDestino(\''+fnEsc(x.id)+'\', this.checked)">'+

@@ -156,6 +156,25 @@ test('o gestor escolhe as contas do projeto e não muda o envio de compras', asy
   assert.deepStrictEqual(d.destinosSel, antes.dados.destinosSel, 'os destinos não mudam');
 });
 
+test('desconectou, as contas somem e o que foi marcado fica guardado', async () => {
+  const config = async () => (await chamar('GET', '/api/projeto/config?projeto=Teste', { token: gestor })).dados;
+  const antes = await config();
+  assert.ok(antes.contas.length > 0);
+  assert.strictEqual(antes.contasOcultas, false);
+  assert.strictEqual((await chamar('POST', '/api/meta/conexao/desconectar', { token: gestor, corpo: {} })).status, 200);
+  const fora = await config();
+  assert.deepStrictEqual(fora.contas, []);
+  assert.deepStrictEqual(fora.campanhas, []);
+  assert.strictEqual(fora.contasOcultas, true);
+  assert.deepStrictEqual(fora.sel, ['111'], 'o que estava marcado continua guardado');
+  assert.strictEqual(fora.fonte, 'utmify');
+  assert.strictEqual((await chamar('POST', '/api/meta/login', { token: gestor, corpo: { accessToken: 'curto-do-facebook' } })).status, 200);
+  const volta = await config();
+  assert.ok(volta.contas.some(c => c.conta === '111'), 'conectou de novo, as contas voltam');
+  assert.strictEqual(volta.contasOcultas, false);
+  assert.deepStrictEqual(volta.sel, ['111']);
+});
+
 test('o gestor desconecta', async () => {
   assert.strictEqual((await chamar('POST', '/api/meta/conexao/desconectar', { token: gestor, corpo: {} })).status, 200);
   assert.strictEqual((await chamar('GET', '/api/meta/conexao', { token: dono })).dados.conectado, false);
