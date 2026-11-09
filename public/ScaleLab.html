@@ -3799,7 +3799,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
 }
 .mc-fb{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:12px 0 6px; }
 .mc-fb-bt{ display:inline-flex; align-items:center; gap:9px; background:#1877F2; color:#fff; border:none; border-radius:8px; padding:11px 18px; font:600 14px inherit; font-family:inherit; cursor:pointer; }
-.mc-fb-bt:hover{ background:#166FE5; } .mc-fb-bt:disabled{ opacity:.7; cursor:default; }
+.mc-fb-bt:hover{ background:#166FE5; } .mc-fb-bt:disabled{ opacity:.55; cursor:not-allowed; }
 .mc-outro{ margin:0 0 10px; font-size:13px; } .mc-outro summary{ cursor:pointer; color:var(--text2); }
 .mc-opcao{ border:1px solid var(--border); border-radius:10px; padding:14px; margin-top:10px; }
 .mc-opcao > b{ display:block; font-size:13.5px; margin-bottom:10px; } .mc-opcao .mc-fb{ margin:0; }
@@ -39783,15 +39783,15 @@ function _cardMeta(con, cp){
   if(!con.conectado){
     h += '<div class="capi-cab"><div><b>Meta · conexão da BM</b><span>Puxa gasto, campanhas e vídeo direto da Meta e deixa pausar campanha pelo TMX. Pra mandar as compras basta um destino com o token do pixel (quadro Destinos, abaixo).</span></div><span class="v2-pill neu">Não conectado</span></div>'+
       (con.antigo ? '<div class="capi-aviso">Hoje tem um token antigo, de uma conta só, que vence em horas. Conectar aqui troca por um que não vence e enxerga todas as contas.</div>' : '')+
-      (dir && login.pronto ? '<div class="mc-opcao"><b>Opção 1 · Conectar com o Facebook</b><div class="mc-fb"><button class="mc-fb-bt" onclick="mcFacebook(this)">'+MC_FB_ICONE+'Continuar com Facebook</button><span class="fx-sub">Você autoriza na janela do Facebook e escolhe as contas. Ninguém precisa criar token.</span></div></div><div class="mc-opcao"><b>Opção 2 · Colar um token</b><details class="mc-outro"><summary>Como gerar o token</summary>' : '')+
+      (dir && login.naTmx ? mcBlocoFb(login, 'Opção 1 · Conectar com o Facebook')+'<div class="mc-opcao"><b>Opção 2 · Colar um token</b><details class="mc-outro"><summary>Como gerar o token</summary>' : '')+
       '<ol class="mc-passos">'+
         '<li>Abra <b>business.facebook.com</b> → Configurações do negócio → Usuários → <b>Usuários do sistema</b> → Adicionar. Nome: "TMX Central", função <b>Administrador</b>.</li>'+
         '<li>No usuário criado, <b>Atribuir ativos</b>: todas as <b>contas de anúncio</b> (Gerenciar campanhas) e todos os <b>pixels</b> (Controle total).</li>'+
         '<li><b>Gerar novo token</b> → escolha o app → marque <b>ads_read</b> e <b>business_management</b>. Marque <b>ads_management</b> só se quiser pausar e mudar orçamento pelo TMX. Validade: <b>Nunca</b>.</li>'+
         '<li>Cole o token aqui. Ele fica só no servidor e nunca volta pra tela.</li></ol>'+
-      (dir && login.pronto ? '</details>' : '')+
+      (dir && login.naTmx ? '</details>' : '')+
       (dir ? '<div class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="EAAG…" autocomplete="off" aria-label="Token do usuário do sistema">'+
-        '<button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div>'+(login.pronto ? '</div>' : '')+'<div id="mc-res" class="mc-res"></div>'
+        '<button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div>'+(login.naTmx ? '</div>' : '')+'<div id="mc-res" class="mc-res"></div>'
         : '<div class="fx-sub">Só a Diretoria conecta a Meta.</div>');
   } else {
     var q = con.quem || {}, sy = con.sync || null;
@@ -39814,8 +39814,9 @@ function _cardMeta(con, cp){
       '<div class="capi-aviso">Puxa da Meta a cada hora: gasto por campanha (hoje hora a hora), cliques, vídeo de 3 s a 100%, orçamento, lance e o histórico de mudanças. '+
         'Na primeira semana roda ao lado da Utmify, pra comparar. '+(sy ? '<b>Última puxada '+mcHa(sy.em)+'</b>: '+sy.contas+' conta(s), '+sy.campanhas+' campanha(s), '+sy.mudancas+' mudança(s) nova(s).' : '<b>Primeira puxada em andamento.</b>')+
         mcMsgs.slice(0, 3).map(function(x){ return '<br><span style="color:var(--v2-laranja,#F59E0B)">'+(x.contas.length ? fnEsc(x.contas.join(', '))+': ' : '')+fnEsc(x.m)+'</span>'; }).join('')+'</div>'+
+      (dir && login.naTmx && !mcFb ? mcBlocoFb(login, 'Conectar com o Facebook, sem token') : '')+
       (dir ? '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button><button class="fn-btn g sm" onclick="mcAtualizar(this)">Atualizar listas</button>'+
-        (login.pronto ? '<button class="fn-btn g sm" onclick="mcFacebook(this)">Conectar de novo pelo Facebook</button>' : '')+
+        (login.pronto && mcFb ? '<button class="fn-btn g sm" onclick="mcFacebook(this)">Conectar de novo pelo Facebook</button>' : '')+
         '<button class="fn-btn g sm" onclick="mcTrocar()">Trocar token</button><button class="fn-btn g sm" onclick="mcDesconectar(this)">Desconectar</button></div>'+
         '<div id="mc-troca" style="display:none" class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="Token novo (EAAG…)" autocomplete="off" aria-label="Token novo"><button class="fn-btn" onclick="mcConectar(this)">Trocar</button></div><div id="mc-res" class="mc-res"></div>' : '');
     var cs = con.contas || [];
@@ -39870,6 +39871,10 @@ function mcConectar(bt){
 // Conectar com Facebook: o FB.login tem de sair direto do clique, então o SDK já vem carregado
 var MC_FB_ICONE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>';
 var _mcFb = { pronto:false, cfg:null };
+function mcBlocoFb(login, titulo){
+  return '<div class="mc-opcao"><b>'+titulo+'</b><div class="mc-fb"><button class="mc-fb-bt"'+(login.pronto ? ' onclick="mcFacebook(this)"' : ' disabled')+'>'+MC_FB_ICONE+'Continuar com Facebook</button><span class="fx-sub">'+
+    (login.pronto ? 'Você autoriza na janela do Facebook e escolhe as contas. Ninguém precisa criar token.' : 'Ainda desligado. Falta criar o app da Meta e colar META_APP_ID, META_LOGIN_CONFIG_ID e META_APP_SECRET no Railway.')+'</span></div></div>';
+}
 function mcCarregarFb(l){
   _mcFb.cfg = l;
   if(_mcFb.pronto || document.getElementById('facebook-jssdk')) return;
