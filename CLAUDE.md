@@ -219,6 +219,10 @@ Decisão do Thiago: o TMX faz tudo como a Utmify, então a conexão fica com `ad
 - O orçamento vai em centavos na moeda da conta; só BRL e USD (`META_MOEDAS_ORCAMENTO`). A tela manda o valor que estava vendo em `de`: se mudou na Meta, volta 409.
 - `camp_mudancas` anota em real, com `campo` `status_conjunto`, `status_anuncio` ou `orc_conjunto` para o que é de conjunto e anúncio (ficam fora do selo da tabela e das marcas do gráfico por hora). Cada ação vai para a auditoria (`meta_<nivel>_*`). `test/meta-controle.test.js` usa Meta falsa.
 
+### Checkouts que mandam venda (09/11/2026)
+
+Payt, Hubla, AppMax, Kiwify, Hotmart, Kirvano, Cakto, Perfect Pay e Cartpanda. Cada um tem URL própria (`/api/webhook/vendas/<token>/<plataforma>`) e uma função `_venda<Plataforma>` que traduz o aviso para o formato comum; para somar outro, entre em `_PLATAFORMAS_VENDA`, `_adaptarVenda`, `_plataformaDoPayload` e `PLATAFORMAS_VENDA` (tela). Cada aviso vira uma linha em `sl_vendas`, e o cru fica em `sl_vendas_raw` (`ultimosBrutos`) para conferir campo a campo. A Kirvano não devolve `sck` nos exemplos: o pixel põe o id da pessoa também no `src`. A Cartpanda não publica o corpo do aviso: `_vendaCartpanda` foi feita pelo formato do pedido e precisa ser conferida com a primeira venda real. `test/checkouts-novos.test.js`.
+
 ### Celular (08/11/2026)
 
 Barra de baixo: Dashboard, Demandas, Análise, Projetos e Menu (decisão do Thiago). Quem não pode ver Análise ou Projetos fica com Chat e Criativos no lugar (`_barraDeBaixoPorCargo`). O botão "Tela branca" fica na parte fixa do menu, só no celular. A barra de cima continua escura na tela branca porque o relógio do iPhone instalado é branco. Os ajustes de tela ficam no bloco `CELULAR · alinhamento geral` do CSS, tudo em ≤768px.

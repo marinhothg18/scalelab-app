@@ -4089,6 +4089,10 @@ function _plataformaDoPayload(p) {
   if (p.webhook_event_type || (p.order_id && (p.Product || p.Customer || p.Commissions || p.TrackingParameters)) ||
       (p.checkout_link && /kiwify/i.test(String(p.checkout_link)))) return 'kiwify';
   if (typeof p.event === 'string' && /^(PURCHASE_|SUBSCRIPTION_|SWITCH_PLAN)/.test(p.event) && p.data && typeof p.data === 'object') return 'hotmart';
+  if (typeof p.secret === 'string' && typeof p.event === 'string' && p.data && typeof p.data === 'object') return 'cakto';
+  if (typeof p.event === 'string' && (p.sale_id || p.checkout_id) && p.customer) return 'kirvano';
+  if (p.sale_status_enum !== undefined && p.code) return 'perfectpay';
+  if (/^order\./.test(String(p.event || '')) || (p.order && p.order.line_items) || (p.line_items && p.payment_status !== undefined)) return 'cartpanda';
   if (p.link || p.transaction) return 'payt';
   return 'outra';
 }
@@ -4316,12 +4320,143 @@ function _vendaHotmart(p) {
     created_at: iso(pu.order_date || p.creation_date), paid_at: iso(pu.approved_date)
   };
 }
+const _rastreioDe = o => ({ utm_source: o.utm_source || '', utm_medium: o.utm_medium || '', utm_campaign: o.utm_campaign || '',
+                           utm_content: o.utm_content || '', utm_term: o.utm_term || '', sck: o.sck || '', src: o.src || '' });
+// "R$ 1.169,80", "500,00", "500.00" ou 500
+function _reaisDoTexto(v) {
+  if (typeof v === 'number') return v;
+  const s = String(v == null ? '' : v).replace(/[^\d.,-]/g, '');
+  if (!s) return null;
+  const n = Number(s.indexOf(',') >= 0 ? s.replace(/\./g, '').replace(',', '.') : s);
+  return Number.isFinite(n) ? n : null;
+}
+const _meioDePagamento = m => { const t = String(m || '').toLowerCase(); return /pix/.test(t) ? 'pix' : (/bank_slip|billet|boleto/.test(t) ? 'boleto' : (/card|credit|^cc$/.test(t) ? 'credit_card' : t)); };
+
+// Kirvano (exemplos na central de ajuda): valor em texto ("R$ 169,80"), rastreio em utm { src, utm_* }.
+// O exemplo oficial não traz sck: o pixel põe o id da pessoa também no src dos links da Kirvano.
+const _KIRVANO_EVENTO = { SALE_APPROVED: 'paid', SUBSCRIPTION_RENEWED: 'paid', SALE_REFUSED: 'refused', SALE_REFUNDED: 'refunded', SALE_CHARGEBACK: 'chargeback',
+  PIX_GENERATED: 'waiting_payment', BANK_SLIP_GENERATED: 'waiting_payment', PIX_EXPIRED: 'canceled', BANK_SLIP_EXPIRED: 'canceled', ABANDONED_CART: 'lost_cart' };
+function _vendaKirvano(p) {
+  const ev = String(p.event || '').toUpperCase(), status = _KIRVANO_EVENTO[ev];
+  if (!status) return null;                                     // assinatura cancelada ou atrasada, teste: não é venda
+  const c = p.customer || {}, lista = Array.isArray(p.products) ? p.products : [], prod = lista.find(x => x && !x.is_order_bump) || lista[0] || {}, u = _minusculas(p.utm || {});
+  const cliente = { name: c.name || '', email: c.email || '', phone: c.phone_number || c.phone || '', document: c.document || '' };
+  if (status === 'lost_cart') {
+    return { orderId: 'kirvano-carrinho:' + String(c.email || c.phone_number || p.checkout_id || Date.now()), status, valor: null,
+      products: [{ name: prod.name || '' }], customer: cliente, trackingParameters: _rastreioDe(u), tmx_vid: u.tmx_vid || '', created_at: p.created_at || '' };
+  }
+  if (!p.sale_id) return null;
+  const pg = p.payment || {}, plano = p.plan || {}, renovou = ev === 'SUBSCRIPTION_RENEWED', recorrente = String(p.type || '').toUpperCase() === 'RECURRING';
+  return {
+    // a renovação repete o sale_id: sem o sufixo ela apagaria a venda original
+    orderId: 'kirvano:' + String(p.sale_id) + (renovou ? ':renov:' + String(p.created_at || Date.now()) : ''), status,
+    valor: _reaisDoTexto(p.total_price), valor_liquido: null, currency: 'BRL',
+    products: [{ name: prod.name || '' }], plan_name: plano.name || '', customer: cliente,
+    payment_method: _meioDePagamento(pg.method || p.payment_method),
+    trackingParameters: _rastreioDe(u), tmx_vid: u.tmx_vid || '',
+    subscription: recorrente ? { id: String(p.sale_id), status, charges: renovou ? 2 : 1, plan_name: plano.name || '', periodicity: plano.charge_frequency || '', started_at: '' } : undefined,
+    subscription_id: recorrente ? String(p.sale_id) : '',
+    created_at: p.created_at || '', paid_at: pg.finished_at || ''
+  };
+}
+
+// Cakto (docs.cakto.com.br, Guia de Webhooks): { secret, event, data }, valores em reais. No webhook V2
+// o data é uma lista com um pedido por item da cobrança (principal, order bump, upsell). Abandono vem em
+// outro formato, sem id. O líquido é o cobrado menos a taxa, antes da divisão da coprodução.
+const _CAKTO_EVENTO = { purchase_approved: 'paid', subscription_renewed: 'paid', purchase_refused: 'refused', refund: 'refunded', chargeback: 'chargeback',
+  pix_gerado: 'waiting_payment', boleto_gerado: 'waiting_payment', picpay_gerado: 'waiting_payment', openfinance_nubank_gerado: 'waiting_payment',
+  oxxo_gerado: 'waiting_payment', spei_gerado: 'waiting_payment', pse_gerado: 'waiting_payment', nequi_gerado: 'waiting_payment',
+  pix_expirado: 'canceled', checkout_abandonment: 'lost_cart' };
+function _vendaCakto(p) {
+  const ev = String(p.event || '').toLowerCase(), status = _CAKTO_EVENTO[ev];
+  if (!status) return null;                                     // pedido de reembolso, disputa, assinatura sem cobrança: não é venda
+  const itens = Array.isArray(p.data) ? p.data.filter(Boolean) : (p.data ? [p.data] : []), d = itens.find(x => x.offer_type === 'main') || itens[0];
+  if (!d) return null;
+  const pr = d.product || {}, of = d.offer || {};
+  if (status === 'lost_cart') {
+    const q = _queryDe(d.checkoutUrl);
+    return { orderId: 'cakto-carrinho:' + String(d.customerEmail || d.customerCellphone || Date.now()), status, valor: null,
+      products: [{ name: pr.name || of.name || '' }], customer: { name: d.customerName || '', email: d.customerEmail || '', phone: d.customerCellphone || '', document: '' },
+      trackingParameters: _rastreioDe(q), tmx_vid: q.tmx_vid || '', created_at: d.createdAt || '' };
+  }
+  if (!d.id) return null;
+  const c = d.customer || {}, q = Object.assign({}, _queryDe(d.checkoutUrl), _minusculas({ utm_source: d.utm_source, utm_medium: d.utm_medium, utm_campaign: d.utm_campaign, utm_term: d.utm_term, utm_content: d.utm_content, sck: d.sck }));
+  const soma = k => itens.reduce((a, x) => a + (_num(x[k]) || 0), 0), valor = soma('amount'), taxa = soma('fees'), sub = d.subscription;
+  return {
+    orderId: 'cakto:' + String(d.id), status,
+    valor: itens.some(x => x.amount != null) ? valor : (of.price != null ? _num(of.price) : null),
+    valor_liquido: taxa > 0 && taxa < valor ? Math.round((valor - taxa) * 100) / 100 : null, currency: d.currency || 'BRL',
+    products: [{ name: pr.name || of.name || '' }], plan_name: of.name || '',
+    customer: { name: c.name || '', email: c.email || '', phone: c.phone || '', document: c.docNumber || '' },
+    payment_method: _meioDePagamento(d.paymentMethod),
+    trackingParameters: _rastreioDe(q), tmx_vid: q.tmx_vid || '',
+    subscription: sub ? { id: sub.id || '', status: sub.status || '', charges: ev === 'subscription_renewed' ? 2 : 1, plan_name: of.name || '', periodicity: '', started_at: '' } : undefined,
+    subscription_id: (sub && sub.id) || '', created_at: d.createdAt || '', paid_at: d.paidAt || ''
+  };
+}
+
+// Perfect Pay (app.perfectpay.com.br/docs/api, PostBack): o status é numérico e o rastreio vem em metadata.
+const _PERFECTPAY_STATUS = { 1: 'waiting_payment', 2: 'paid', 3: 'waiting_payment', 5: 'refused', 6: 'canceled', 7: 'refunded', 8: 'paid', 9: 'chargeback', 10: 'paid',
+  11: 'canceled', 12: 'lost_cart', 13: 'canceled', 15: 'canceled', 16: 'paid', 17: 'chargeback', 18: 'refunded', 19: 'refunded', 20: 'refunded' };
+function _vendaPerfectpay(p) {
+  const status = _PERFECTPAY_STATUS[Number(p.sale_status_enum)];
+  if (!status || !p.code) return null;                          // em disputa ou teste: a venda continua como estava
+  const c = p.customer || {}, pr = p.product || {}, plano = p.plan || {}, m = _minusculas(p.metadata || {}), sub = p.subscription || null;
+  const cliente = { name: c.full_name || '', email: c.email || '', phone: c.phone_formated_ddi || ((c.phone_extension || '') + (c.phone_area_code || '') + (c.phone_number || '')), document: c.identification_number || '' };
+  if (status === 'lost_cart') {
+    return { orderId: 'perfectpay-carrinho:' + String(c.email || p.code), status, valor: null, products: [{ name: pr.name || '' }], customer: cliente,
+      trackingParameters: _rastreioDe(m), tmx_vid: m.tmx_vid || '', created_at: p.date_created || '' };
+  }
+  const cobrancas = Number((sub && sub.charges_made) || 0), plataforma = (Array.isArray(p.commission) ? p.commission : []).find(x => x && Number(x.affiliation_type_enum) === 0);
+  const valor = _num(p.sale_amount), taxa = plataforma ? _num(plataforma.commission_amount) : null;
+  return {
+    orderId: 'perfectpay:' + String(p.code) + (cobrancas > 1 ? ':renov:' + cobrancas : ''), status,
+    valor, valor_liquido: valor != null && taxa != null ? Math.round((valor - taxa) * 100) / 100 : null, currency: p.currency_enum_key || 'BRL',
+    products: [{ name: pr.name || '' }], plan_name: plano.name || '', customer: cliente,
+    payment_method: _meioDePagamento(p.payment_type_enum_key),
+    trackingParameters: _rastreioDe(m), tmx_vid: m.tmx_vid || '',
+    subscription: sub ? { id: sub.code || '', status: sub.status || '', charges: cobrancas, plan_name: plano.name || '', periodicity: '', started_at: '' } : undefined,
+    subscription_id: (sub && sub.code) || '', created_at: p.date_created || '', paid_at: p.date_approved || ''
+  };
+}
+
+// Cartpanda: a documentação lista os eventos (order.created, order.paid, order.updated, order.refunded) e os
+// campos do pedido, mas não o corpo do aviso. Aqui aceita o pedido em "order" ou solto, e o aviso cru fica
+// guardado em sl_vendas_raw para conferir com a primeira venda de verdade.
+const _CARTPANDA_EVENTO = { 'order.paid': 'paid', 'order.refunded': 'refunded', 'order.created': 'waiting_payment' };
+function _vendaCartpanda(p) {
+  const o = (p.order && typeof p.order === 'object') ? p.order : p;
+  if (!o || !o.id || Number(o.test) === 1 || Number(o.is_cartx_test) === 1) return null;   // produto, teste
+  const ev = String(p.event || '').toLowerCase();
+  if (/^product\./.test(ev)) return null;
+  const pag = Number(o.payment_status), situacao = Number(o.status_id);
+  const status = Number(o.chargeback_received) === 1 ? 'chargeback' : (_CARTPANDA_EVENTO[ev] === 'paid' || _CARTPANDA_EVENTO[ev] === 'refunded' ? _CARTPANDA_EVENTO[ev]
+    : (situacao === 5 ? 'refunded' : situacao === 4 || pag === 4 ? 'canceled' : pag === 3 ? 'paid' : pag === 1 ? 'waiting_payment' : (_CARTPANDA_EVENTO[ev] || '')));
+  if (!status) return null;
+  const itens = Array.isArray(o.line_items) ? o.line_items : [], c = o.customer || {}, meta = _minusculas(o.tracking_parameters || o.utm_params || o.utms || p.tracking_parameters || {});
+  const q = Object.assign({}, _queryDe(o.checkout_link), _queryDe(o.landing_site), meta);
+  // total_price vem como "500,00"; unformatted_total_price, em centavos
+  const valor = o.unformatted_total_price != null ? _centavos(o.unformatted_total_price) : _reaisDoTexto(o.total_price);
+  const moeda = String(o.presentment_currency || o.currency || '').trim();
+  return {
+    orderId: 'cartpanda:' + String(o.id), status, valor, valor_liquido: null,
+    currency: /BRL|R\$/i.test(moeda) || !moeda ? 'BRL' : (/^\$$/.test(moeda) ? 'USD' : moeda.slice(0, 3).toUpperCase()),
+    products: [{ name: (itens[0] && (itens[0].title || itens[0].name)) || '' }],
+    customer: { name: c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' '), email: c.email || o.email || '', phone: c.phone || o.phone || '', document: c.cpf || '' },
+    payment_method: _meioDePagamento(o.payment_type),
+    trackingParameters: _rastreioDe(q), tmx_vid: q.tmx_vid || '', created_at: o.created_at || '', paid_at: o.processed_at || ''
+  };
+}
 function _adaptarVenda(p, plataforma, req) {
   try {
     if (plataforma === 'hubla') return _vendaHubla(p || {}, req);
     if (plataforma === 'appmax') return _vendaAppmax(p || {});
     if (plataforma === 'kiwify') return _vendaKiwify(p || {});
     if (plataforma === 'hotmart') return _vendaHotmart(p || {});
+    if (plataforma === 'kirvano') return _vendaKirvano(p || {});
+    if (plataforma === 'cakto') return _vendaCakto(p || {});
+    if (plataforma === 'perfectpay') return _vendaPerfectpay(p || {});
+    if (plataforma === 'cartpanda') return _vendaCartpanda(p || {});
   } catch (e) { console.error('[VENDAS] ' + plataforma + ' não traduziu:', e.message); return null; }
   return p;
 }
@@ -4330,17 +4465,18 @@ function _adaptarVenda(p, plataforma, req) {
 // A URL sem plataforma (a que a Payt já usa) continua valendo e descobre a
 // plataforma pelo formato do que chegou. Cada plataforma é traduzida pro
 // formato comum antes de qualquer conta, então o resto do sistema não muda.
-const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax', 'kiwify', 'hotmart'];
+const _PLATAFORMAS_VENDA = ['payt', 'hubla', 'appmax', 'kiwify', 'hotmart', 'kirvano', 'cakto', 'perfectpay', 'cartpanda'];
 // Bloco de pagamento do mapa com "Integração" escolhida: conta só o que é
 // daquela plataforma — a venda pelo campo plataforma do pedido, o clique de
 // compra pelo host pra onde foi. Com Payt e Hubla no mesmo funil (teste de
 // checkout), cada bloco mostra o seu. Hotmart, Eduzz etc. não têm webhook
 // aqui: escolher um deles não filtra nada.
-const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i], ['kiwify', /kiwify/i], ['hotmart', /hotmart/i]];
+const _PLAT_HOST = [['payt', /payt/i], ['hubla', /hub\.?la/i], ['appmax', /appmax/i], ['kiwify', /kiwify/i], ['hotmart', /hotmart/i],
+  ['kirvano', /kirvano/i], ['cakto', /cakto/i], ['perfectpay', /perfect-?pay/i], ['cartpanda', /cartpanda/i]];
 // Página (host/caminho) que é checkout: o nome da plataforma só vale no domínio
 // (pay.hub.la, checkout.payt...). No caminho não: /697hubla é página de venda,
 // e era tratada como checkout. As palavras genéricas valem no endereço todo.
-const _CK_MARCAS = /payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|hubla|hub\.la|appmax/i;
+const _CK_MARCAS = /payt|kiwify|hotmart|monetizze|eduzz|cakto|ticto|kirvano|perfectpay|cartpanda|hubla|hub\.la|appmax/i;
 const _CK_PALAVRAS = /checkout|pagamento|pay\.|carrinho/i;
 function _pgEhCheckout(pg) { const x = String(pg || '').replace(/^https?:\/\//i, ''); return _CK_MARCAS.test(x.split('/')[0]) || _CK_PALAVRAS.test(x); }
 function _platDoHost(h) { const x = _PLAT_HOST.find(p => p[1].test(String(h || ''))); return x ? x[0] : ''; }
@@ -21863,7 +21999,7 @@ const PIXEL_JS = `(function(w,d){
   // unico "abriu o checkout" da visita antes do clique de verdade.
   var GATEWAYS = new RegExp([
     'payt','kiwify','hotmart','monetizze','eduzz','braip','perfectpay','cakto','ticto',
-    'kirvano','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
+    'kirvano','cartpanda','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
     'octuspay','buygoods','iexperience','guru','vega','hubla','hub\\\\.la'
   ].join('|'), 'i');
   var PALAVRAS = new RegExp([
@@ -22000,6 +22136,11 @@ const PIXEL_JS = `(function(w,d){
       if(!/tmx_[a-z0-9]/i.test(sck)){
         // nao joga fora o que a pagina ja pos ali — anexa depois de um til
         u.searchParams.set('sck', (sck && !VAZIO.test(sck) ? sck + '~' : '') + 'tmx_' + id);
+      }
+      // a Kirvano so devolve src e as UTMs no aviso de venda: o id vai no src tambem
+      if(/kirvano/i.test(u.hostname)){
+        var srcK = (u.searchParams.get('src') || '').trim();
+        if(!/tmx_[a-z0-9]/i.test(srcK)) u.searchParams.set('src', (srcK && !VAZIO.test(srcK) ? srcK + '~' : '') + 'tmx_' + id);
       }
       if(ck){
         // a versao do teste vai no sck, junto do id da pessoa
@@ -22247,7 +22388,7 @@ app.get('/r/:slug', (req, res) => {
 const KEY_LINKS = 'sl_links_rastreados';   // server-only: gerenciado pelas rotas abaixo
 // a mesma lista do pixel (ehCheckout no px.js): gateway no domínio, palavra de compra no caminho
 const _LK_GATEWAYS = new RegExp(['payt','kiwify','hotmart','monetizze','eduzz','braip','perfectpay','cakto','ticto',
-  'kirvano','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
+  'kirvano','cartpanda','greenn','lastlink','pepper','yampi','appmax','doppus','vindi','adoorei',
   'octuspay','buygoods','iexperience','guru','vega','hubla','hub\\.la'].join('|'), 'i');
 const _LK_PALAVRAS = new RegExp(['checkout','pagamento','payment','pague','pedido','carrinho','cart','order',
   'finalizar','confirmacao','confirmation','pay\\.'].join('|'), 'i');
@@ -22288,6 +22429,10 @@ app.get('/l/:slug', (req, res) => {
       const sck = String(u.searchParams.get('sck') || '').trim();
       if (!/tmx_[a-z0-9]/i.test(sck)) u.searchParams.set('sck', (sck && !/^(organic|organico|direct|direto|none|null)$/i.test(sck) ? sck + '~' : '') + 'tmx_' + vid);
       if (!u.searchParams.get('tmx_vid')) u.searchParams.set('tmx_vid', vid);
+      if (/kirvano/i.test(u.hostname)) {   // a Kirvano só devolve src e as UTMs no aviso de venda
+        const srcK = String(u.searchParams.get('src') || '').trim();
+        if (!/tmx_[a-z0-9]/i.test(srcK)) u.searchParams.set('src', (srcK && !/^(organic|organico|direct|direto|none|null)$/i.test(srcK) ? srcK + '~' : '') + 'tmx_' + vid);
+      }
       try {
         const c = { id: vid, funil: l.funil || '', etapa: 'link', pg: String(req.headers.host || '') + '/l/' + slug, aqui,
                     utm: { source: aqui.utm_source, medium: aqui.utm_medium, campaign: aqui.utm_campaign, content: aqui.utm_content, term: aqui.utm_term },
