@@ -4763,6 +4763,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
               <button class="roi-filter-btn active" onclick="setRoiPeriod(7,this)">Últimos 7 dias</button>
               <button class="roi-filter-btn" onclick="setRoiPeriod(15,this)">Últimos 15 dias</button>
               <button class="roi-filter-btn" onclick="setRoiPeriod(30,this)">Últimos 30 dias</button>
+              <button class="roi-filter-btn" onclick="setRoiMes(this)">Este mês</button>
               <div style="display:flex;align-items:center;gap:6px;">
                 <input type="date" id="roi-data-de" onchange="setRoiPeriodCustom()" style="background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-size:12px;color:var(--text);outline:none;cursor:pointer;">
                 <span style="font-size:12px;color:var(--text2);">até</span>
@@ -5742,6 +5743,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
                   <option value="ontem">Ontem</option>
                   <option value="7d">7 dias</option>
                   <option value="30d">30 dias</option>
+                  <option value="mes">Este mês</option>
                   <option value="custom">Personalizado…</option>
                 </select>
                 <span id="fn-per-custom" style="display:none;gap:6px;align-items:center">
@@ -5934,6 +5936,7 @@ a.fn-btn{text-decoration:none;display:inline-block}
             <option value="7d" selected>7 dias</option>
             <option value="15d">15 dias</option>
             <option value="30d">30 dias</option>
+            <option value="mes">Este mês</option>
             <option value="custom">Personalizado…</option>
           </select>
           <span id="vs-datas" style="display:none;gap:6px;align-items:center">
@@ -28518,6 +28521,16 @@ function setRoiPeriod(dias,el){
   renderRoiHome();
 }
 
+// "Este mês": do dia 1 até hoje, nas mesmas datas do personalizado (que continua lá)
+function setRoiMes(el){
+  roiDataDe = primeiroDiaDoMesBR(); roiDataAte = hojeBR(); roiPeriodo = -1;
+  const de=document.getElementById('roi-data-de'); if(de) de.value=roiDataDe;
+  const ate=document.getElementById('roi-data-ate'); if(ate) ate.value=roiDataAte;
+  document.querySelectorAll('.roi-filter-btn').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderRoiHome();
+}
+
 function setRoiPeriodCustom(){
   roiDataDe=(document.getElementById('roi-data-de')||{}).value||'';
   roiDataAte=(document.getElementById('roi-data-ate')||{}).value||'';
@@ -30608,6 +30621,7 @@ function fnPeriodo(){
   if(per==='ontem'){ de = hojeBR(1); ate = hojeBR(1); }
   if(per==='7d')  de = hojeBR(6);
   if(per==='30d') de = hojeBR(29);
+  if(per==='mes') de = primeiroDiaDoMesBR();   // do dia 1 do mês (Brasília) até hoje
   if(per==='custom'){
     var d1 = (document.getElementById('fn-per-de') ||{}).value;
     var d2 = (document.getElementById('fn-per-ate')||{}).value;
@@ -30719,6 +30733,7 @@ function vsPeriodo(){
   if(per==='3d')    return { de:vsDia(2),  ate:vsDia(0) };
   if(per==='15d')   return { de:vsDia(14), ate:vsDia(0) };
   if(per==='30d')   return { de:vsDia(29), ate:vsDia(0) };
+  if(per==='mes')   return { de:primeiroDiaDoMesBR(), ate:vsDia(0) };
   return { de:vsDia(6), ate:vsDia(0) };
 }
 function vsTrocarPeriodo(v){
@@ -32099,7 +32114,7 @@ function fnProjId(){
 var pgEst = { per:'hoje', filtro:'todas', dados:null, proj:'', tmx:null };
 var PG_TIPO = { vsl:'VSL', presell:'Pré-sell', quiz:'Quiz', checkout:'Checkout próprio', obrigado:'Obrigado', upsell:'Upsell', downsell:'Downsell', backredirect:'Back redirect', bio:'Bio', conteudo:'Conteúdo', ponte:'Ponte pro checkout', planos:'Planos', outra:'Página' };
 var PG_ORIGEM = { claude:['CLAUDE CODE','cc'], manual:['MANUAL','man'], pixel:['VISTA PELO PIXEL','px'], mapa:['NO MAPA','man'], tmx:['FEITA NO TMX','tmx'] };
-function pgPeriodo(){ var p = pgEst.per; return p === 'ontem' ? { de:hojeBR(1), ate:hojeBR(1) } : p === '7d' ? { de:hojeBR(6), ate:hojeBR(0) } : p === '30d' ? { de:hojeBR(29), ate:hojeBR(0) } : { de:hojeBR(0), ate:hojeBR(0) }; }
+function pgPeriodo(){ var p = pgEst.per; return p === 'ontem' ? { de:hojeBR(1), ate:hojeBR(1) } : p === '7d' ? { de:hojeBR(6), ate:hojeBR(0) } : p === '30d' ? { de:hojeBR(29), ate:hojeBR(0) } : p === 'mes' ? { de:primeiroDiaDoMesBR(), ate:hojeBR(0) } : { de:hojeBR(0), ate:hojeBR(0) }; }
 function pgCarregar(){
   var cx = document.getElementById('fn-p-paginas'); if(!cx) return;
   if(pgEst.proj !== fnProj){ pgEst.proj = fnProj; pgEst.dados = null; }
@@ -32179,7 +32194,7 @@ function pgPintar(){
     (t && !(t.dominios || []).length ? '<div class="v2-alerta warn" style="margin-bottom:10px"><div><b>Pra publicar página daqui, conecte a hospedagem</b><span>Ela é da empresa toda e fica em Configurações › Conexões › Hospedagem. Criar a página e conversar com o Claude já funciona, em Criar páginas.</span></div>'+
       '<button class="fn-btn g sm" onclick="pgIrHospedagem()">Conectar a hospedagem</button></div>' : '')+
     '<div class="pg-topo"><div class="cp-seg">'+f('todas','Todas')+f('claude','Do Claude Code')+(t ? f('tmx','Feitas no TMX') : '')+f('pixel','Vistas pelo pixel')+f('fora','Fora do mapa')+f('lenta','Lentas')+'</div>'+
-      '<select onchange="pgEst.per=this.value;pgCarregar()">'+per('hoje','Hoje')+per('ontem','Ontem')+per('7d','7 dias')+per('30d','30 dias')+'</select>'+
+      '<select onchange="pgEst.per=this.value;pgCarregar()">'+per('hoje','Hoje')+per('ontem','Ontem')+per('7d','7 dias')+per('30d','30 dias')+per('mes','Este mês')+'</select>'+
       '<button class="fn-btn g sm" id="pg-medir-todas" onclick="pgMedirTodas(this)">⚡ Medir as não medidas</button><button class="fn-btn sm" onclick="pgRegistrar()">+ Registrar página</button>'+
       (t ? '<button class="fn-btn sm" style="background:var(--accent);border-color:var(--accent);color:#fff" onclick="pgEditor(\'nova\')">+ Nova página</button>' : '')+'</div>'+
     (d.temChave ? '' : '<div class="v2-alerta warn" style="margin-bottom:10px"><div><b>Falta a chave do Google pra medir velocidade</b><span>O PageSpeed só mede com uma chave (é grátis). Depois de criada, ela vai na variável PAGESPEED_KEY do Railway. O resto da aba funciona sem ela.</span></div></div>')+
@@ -48033,7 +48048,7 @@ function hoje(voltar){ return (typeof hojeBR === 'function') ? hojeBR(voltar || 
 function periodoDatas(p){
   if (p === 'custom' && ui.de && ui.ate) return { de: ui.de, ate: ui.ate };
   return p === 'hoje' ? { de:hoje(0), ate:hoje(0) } : p === 'ontem' ? { de:hoje(1), ate:hoje(1) }
-       : p === '30d' ? { de:hoje(29), ate:hoje(0) } : { de:hoje(6), ate:hoje(0) };
+       : p === '30d' ? { de:hoje(29), ate:hoje(0) } : p === 'mes' ? { de:hoje(0).slice(0, 8) + '01', ate:hoje(0) } : { de:hoje(6), ate:hoje(0) };
 }
 // O servidor guarda as CONTAGENS por 180 dias, mas o detalhe de cada pessoa
 // (resposta, ligacao com a VSL, venda) so por 30. Um periodo antigo mostraria
@@ -48044,7 +48059,7 @@ function rotuloPeriodo(p){
     var f = function(x){ var a = x.split('-'); return a[2] + '/' + a[1]; };
     return ui.de === ui.ate ? ('em ' + f(ui.de)) : ('de ' + f(ui.de) + ' a ' + f(ui.ate));
   }
-  return { hoje:'hoje', ontem:'ontem', '7d':'nos últimos 7 dias', '30d':'nos últimos 30 dias' }[p] || '';
+  return { hoje:'hoje', ontem:'ontem', '7d':'nos últimos 7 dias', '30d':'nos últimos 30 dias', mes:'neste mês' }[p] || '';
 }
 function hostLink(q){ var d = String((q && q.dominio) || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, ''); return d || (location.host + tmxBase()); }
 function linkDo(q){ return 'https://' + hostLink(q) + '/q/' + (q ? q.slug : ''); }
@@ -48644,7 +48659,7 @@ function pintarResultados(){
       'e as vendas ligadas ao quiz ficam guardadas por ' + QZ_DIAS_PESSOA + ' dias — nesse trecho elas aparecem zeradas ' +
       'por falta de dado, não porque ninguém comprou.</div>' : '';
   v.innerHTML = '<div class="qp-filtros"><div class="qp-segmentado" role="group" aria-label="Período">' +
-    [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['7d', '7 dias'], ['30d', '30 dias'], ['custom', 'Escolher datas']].map(function(x){
+    [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['7d', '7 dias'], ['30d', '30 dias'], ['mes', 'Este mês'], ['custom', 'Escolher datas']].map(function(x){
       return '<button type="button" data-qp="periodo" data-p="' + x[0] + '" aria-pressed="' + (ui.periodo === x[0]) + '">' + x[1] + '</button>'; }).join('') +
     '</div>' +
     (ui.periodo === 'custom'

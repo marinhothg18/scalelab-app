@@ -3937,6 +3937,7 @@ async function _metaSincronizar(opts) {
                     linhasHora: r.linhasHora, mudancas: r.mudancas, erros: r.erros.slice(0, 10), cru: r.cru || null, leve,
                     atividadesAte: leve ? ((cf.sync && cf.sync.atividadesAte) || null) : t0 };   // a leve não olha o histórico: não pode marcar como visto
         if (r.erros.length && !r.contas) cf.ultimoErro = r.erros[0];
+        else if (r.contas && !r.erros.length) cf.ultimoErro = null;   // voltou a funcionar: o aviso velho sai do cartão
         db.store[KEY_META] = cf; writeDB(db);
       }
     } catch (e) { console.error('[META] não gravei o resumo da puxada:', e.message); }

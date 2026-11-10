@@ -227,5 +227,9 @@ test('erro da Meta: a tela recebe o código, o subcódigo e o fbtrace_id exatos,
   const con = (await chamar('GET', '/api/meta/conexao', { token: dono })).dados;
   assert.deepStrictEqual({ codigo: con.sync.cru.codigo, sub: con.sync.cru.sub, tipo: con.sync.cru.tipo, trace: con.sync.cru.trace },
     { codigo: 200, sub: 2859013, tipo: 'OAuthException', trace: 'AbCdEfTraceDeTeste' });
+  assert.match(con.ultimoErro || '', /API access blocked/);
   await ate(async () => (await chamar('POST', '/api/meta/puxar', { token: dono, corpo: { dias: 1 } })).status === 200, 20000, 'puxada de volta', () => log);
+  const depois = (await chamar('GET', '/api/meta/conexao', { token: dono })).dados;
+  assert.strictEqual(depois.ultimoErro, null, 'a Meta voltou: o aviso velho sai do cartão');
+  assert.strictEqual(depois.sync.cru, null);
 });
