@@ -40719,7 +40719,11 @@ function _cardMeta(con, cp){
         return '<span class="capi-chip'+(ok ? ' on' : '')+'" title="'+fnEsc(p[1])+'">'+(ok ? '✓ ' : '✕ ')+p[0]+'</span>'; }).join('')+'</div>'+
       '<div class="capi-aviso">O gasto de hoje atualiza a cada 15 minutos. Uma vez por hora puxa tudo: gasto por campanha, cliques, vídeo de 3 s a 100%, orçamento, lance, posicionamentos e o histórico de mudanças. '+
         'Na primeira semana roda ao lado da Utmify, pra comparar. '+(sy ? '<b>Última puxada '+mcHa(sy.em)+'</b>: '+sy.contas+' conta(s), '+sy.campanhas+' campanha(s), '+sy.mudancas+' mudança(s) nova(s).' : '<b>Primeira puxada em andamento.</b>')+
-        mcMsgs.slice(0, 3).map(function(x){ return '<br><span style="color:var(--v2-laranja,#F59E0B)">'+(x.contas.length ? fnEsc(x.contas.join(', '))+': ' : '')+fnEsc(x.m)+'</span>'; }).join('')+'</div>'+
+        mcMsgs.slice(0, 3).map(function(x){ return '<br><span style="color:var(--v2-laranja,#F59E0B)">'+(x.contas.length ? fnEsc(x.contas.join(', '))+': ' : '')+fnEsc(x.m)+'</span>'; }).join('')+
+        // o erro exato da Meta, pra procurar o motivo ou mandar pro suporte dela
+        (sy && sy.cru && mcFalhou ? '<br><span style="font-size:11.5px;color:var(--text2)">Erro exato da Meta ('+fnEsc(sy.cru.conta)+'): código <b>'+fnEsc(sy.cru.codigo)+'</b>'+
+          (sy.cru.sub ? ', subcódigo <b>'+fnEsc(sy.cru.sub)+'</b>' : '')+(sy.cru.tipo ? ', '+fnEsc(sy.cru.tipo) : '')+(sy.cru.msg ? ', «'+fnEsc(sy.cru.msg)+'»' : '')+
+          (sy.cru.titulo ? ', '+fnEsc(sy.cru.titulo) : '')+(sy.cru.trace ? '. fbtrace_id: <code style="user-select:all">'+fnEsc(sy.cru.trace)+'</code>' : '')+'</span>' : '')+'</div>'+
       (dir ? '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn sm" onclick="mcAbrirAdd(this)">Adicionar outro perfil</button><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button></div>'+
         '<div class="mc-add" style="display:none">'+(login.naTmx ? mcBlocoFb(login, 'Conectar mais um perfil') : '')+
           '<div class="mc-opcao"><b>Colar um token</b><div class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="Token (EAAG…)" autocomplete="off" aria-label="Token do perfil ou do usuário do sistema"><button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div></div></div><div id="mc-res" class="mc-res"></div>' : '');

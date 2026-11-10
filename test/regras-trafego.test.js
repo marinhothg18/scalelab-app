@@ -17,7 +17,7 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
 const ate = async (cond, ms, oQue, log) => { const fim = Date.now() + ms; for (;;) { try { if (await cond()) return; } catch (e) {} if (Date.now() > fim) throw new Error('demorou demais: ' + oQue + '\n' + (log ? log().slice(-1500) : '')); await espera(150); } };
 const hoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
 
-let meta, srv, dir, base, log = '', dono, gravacoes = [], falharPorAnuncio = false;
+let meta, srv, dir, base, log = '', dono, gravacoes = [], falharPorAnuncio = false, bloqueada = false;
 const C = { '100': '1000000000100', '200': '1000000000200' };
 const objetos = {
   [C['100']]: { id: C['100'], name: 'CBO 1-1-3 | TESTE | CONCURSO | ' + C['100'], status: 'ACTIVE', effective_status: 'ACTIVE', daily_budget: '50000', account_id: '111' },
@@ -37,6 +37,8 @@ function falsa(req, res) {
     req.on('end', () => { const { access_token, ...campos } = Object.fromEntries(new URLSearchParams(corpo)); gravacoes.push({ id: p, campos }); if (objetos[p]) Object.assign(objetos[p], campos, campos.status ? { effective_status: campos.status } : {}); ok({ success: true }); });
     return;
   }
+  if (bloqueada && p === 'act_111/campaigns') { res.statusCode = 400;
+    return ok({ error: { message: '(#200) API access blocked.', type: 'OAuthException', code: 200, error_subcode: 2859013, fbtrace_id: 'AbCdEfTraceDeTeste' } }); }
   if (p === 'me/permissions') return ok({ data: ['ads_read', 'ads_management'].map(permission => ({ permission, status: 'granted' })) });
   if (p === 'me/adaccounts') return ok({ data: [{ id: 'act_111', account_id: '111', name: 'ca 2', account_status: 1, currency: 'BRL', timezone_name: 'America/Sao_Paulo' }] });
   if (p === 'me') return ok({ id: '77', name: 'Pessoa Exemplo' });
@@ -212,4 +214,18 @@ test('falha da Meta por anúncio não derruba a puxada da campanha', async () =>
   assert.strictEqual(r.status, 200);
   assert.strictEqual(r.dados.resultado.contas, 1);
   assert.ok(r.dados.resultado.erros.some(e => /por anúncio/.test(e)), JSON.stringify(r.dados.resultado.erros));
+});
+
+test('erro da Meta: a tela recebe o código, o subcódigo e o fbtrace_id exatos, não um palpite', async () => {
+  bloqueada = true;
+  let r; await ate(async () => (r = await chamar('POST', '/api/meta/puxar', { token: dono, corpo: { dias: 1 } })).status === 200, 20000, 'puxada', () => log);
+  bloqueada = false;
+  const erro = r.dados.resultado.erros.find(e => /API access blocked/.test(e));
+  assert.ok(erro, JSON.stringify(r.dados.resultado.erros));
+  assert.match(erro, /\[Meta: código 200, subcódigo 2859013, OAuthException, «\(#200\) API access blocked\.»\]/);
+  assert.doesNotMatch(erro, /bloqueou o app/, 'sem o palpite de que o bloqueio é do app');
+  const con = (await chamar('GET', '/api/meta/conexao', { token: dono })).dados;
+  assert.deepStrictEqual({ codigo: con.sync.cru.codigo, sub: con.sync.cru.sub, tipo: con.sync.cru.tipo, trace: con.sync.cru.trace },
+    { codigo: 200, sub: 2859013, tipo: 'OAuthException', trace: 'AbCdEfTraceDeTeste' });
+  await ate(async () => (await chamar('POST', '/api/meta/puxar', { token: dono, corpo: { dias: 1 } })).status === 200, 20000, 'puxada de volta', () => log);
 });

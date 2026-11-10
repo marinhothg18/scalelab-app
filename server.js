@@ -3246,19 +3246,28 @@ app.post('/api/integracoes/meta/config', authDiretoria, (req, res) => {
 });
 
 // Chamada crua na Graph API, com erro legível (o do Meta vem aninhado)
+// O erro como a Meta devolveu: código, subcódigo, tipo, a mensagem crua e o fbtrace_id (o que o suporte da Meta
+// pede). Antes só o código ficava, e a tela mostrava um palpite ("bloqueou o app") que nem sempre era o caso (10/11/2026).
+function _metaErroDe(j, httpStatus, padrao) {
+  const e = (j && j.error) || {};
+  const err = new Error(e.error_user_msg || e.message || padrao || ('HTTP ' + httpStatus));
+  err.metaCode = e.code; err.httpStatus = httpStatus;
+  err.metaSub = e.error_subcode || null; err.metaTipo = e.type || ''; err.metaMsgCru = e.message || '';
+  err.metaTitulo = e.error_user_title || ''; err.metaTrace = e.fbtrace_id || '';
+  return err;
+}
+// "Meta: código 200, subcódigo 1815, OAuthException, «API access blocked.»" — vazio quando não veio da Meta
+function _metaCodigoTxt(e) {
+  if (!e || e.metaCode == null) return '';
+  return 'Meta: código ' + e.metaCode + (e.metaSub ? ', subcódigo ' + e.metaSub : '') + (e.metaTipo ? ', ' + e.metaTipo : '') +
+    (e.metaMsgCru ? ', «' + String(e.metaMsgCru).slice(0, 160) + '»' : '') + (e.metaTitulo ? ', ' + String(e.metaTitulo).slice(0, 80) : '');
+}
 async function _metaGet(pathRel, params, cfg) {
   const qs = new URLSearchParams(Object.assign({ access_token: cfg.accessToken }, params || {}));
   const url = `${META_API_BASE}/${pathRel}?${qs}`;
   const r = await fetch(url);
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error) {
-    const e = j.error || {};
-    const msg = e.error_user_msg || e.message || `HTTP ${r.status}`;
-    const err = new Error(msg);
-    err.metaCode = e.code;
-    err.httpStatus = r.status;
-    throw err;
-  }
+  if (!r.ok || j.error) throw _metaErroDe(j, r.status);
   return j;
 }
 
@@ -3439,10 +3448,14 @@ function _metaConexaoPublica(cfg) {
     perfis: con ? _metaPerfis(cfg).map(_metaPerfilPublico) : [], ultimaConexaoEm: cfg.ultimaConexaoEm || cfg.conectadoEm || null };
 }
 function _metaErroTxt(e) {
+  const txt = _metaErroTxtBase(e), cod = _metaCodigoTxt(e);
+  return cod ? txt + ' [' + cod + ']' : txt;
+}
+function _metaErroTxtBase(e) {
   const c = e && e.metaCode;
   // a Meta suspende o app (não o token) até alguém fazer a verificação anual de uso de dados
   // código 200 com "API access blocked": o app inteiro foi bloqueado (até /me falha), não é falta de permissão
-  if (/api access blocked/i.test(String(e && e.message || ''))) return 'A Meta bloqueou o app que gerou este token ("API access blocked"). O token e as permissões estão certos: o bloqueio é do app. Abra o Depurador de tokens pra ver qual app é, entre no painel dele em developers.facebook.com e resolva o aviso da Meta (verificação da empresa, do uso de dados ou de política). Ou gere um token novo no usuário do sistema com outro app.';
+  if (/api access blocked/i.test(String(e && e.message || ''))) return 'A Meta recusou o acesso à API ("API access blocked"). O bloqueio pode estar no app, no perfil que conectou ou na conta: veja se há aviso no painel do app em developers.facebook.com e na Qualidade da conta do perfil (facebook.com/accountquality).';
   if (/data use checkup/i.test(String(e && e.message || ''))) return 'O app do Facebook que gerou o token está com o acesso suspenso até alguém fazer a "Verificação do uso de dados" (Data Use Checkup). Entre em developers.facebook.com → Meus apps → o app do token → painel, complete a verificação e cole o mesmo token de novo. Ou gere o token com outro app.';
   if (c === 190) return 'A Meta recusou o acesso (vencido, revogado ou token copiado pela metade). Conecte de novo pelo botão do Facebook ou cole outro token.';
   if (c === 10 || c === 200 || c === 294) return 'O token não tem a permissão que precisa' + (e.etapa ? ' pra ' + e.etapa : '') + '. A Meta disse: "' + String(e.message || '').slice(0, 200) + '". Confira no Depurador de tokens da Meta se ads_read e business_management estão no token, e se as contas foram atribuídas ao usuário do sistema.';
@@ -3522,10 +3535,7 @@ function _metaLoginPublico() {
 async function _metaOauth(params) {
   const r = await fetch(`${META_API_BASE}/oauth/access_token?${new URLSearchParams(params)}`);
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error || !j.access_token) {
-    const e = j.error || {}, err = new Error(e.error_user_msg || e.message || 'A Meta não devolveu o acesso.');
-    err.metaCode = e.code; err.httpStatus = r.status; throw err;
-  }
+  if (!r.ok || j.error || !j.access_token) throw _metaErroDe(j, r.status, 'A Meta não devolveu o acesso.');
   return j;
 }
 // Troca a autorização do Facebook pelo token e guarda a conexão: o botão do painel e o link do multilogin passam aqui.
@@ -3911,7 +3921,11 @@ async function _metaSincronizar(opts) {
         Object.assign(r, placar);   // vai tentar com o próximo perfil: o que este contou não vale
       }
       }
-      if (erroConta) r.erros.push((c.nome || c.conta) + ': ' + _metaErroTxt(erroConta));
+      if (erroConta) {
+        r.erros.push((c.nome || c.conta) + ': ' + _metaErroTxt(erroConta));
+        if (!r.cru && erroConta.metaCode != null) r.cru = { conta: c.nome || c.conta, codigo: erroConta.metaCode, sub: erroConta.metaSub || null, tipo: erroConta.metaTipo || '',
+          msg: String(erroConta.metaMsgCru || erroConta.message || '').slice(0, 300), titulo: erroConta.metaTitulo || '', trace: erroConta.metaTrace || '', em: Date.now() };
+      }
     }
     if (semPerfil) r.erros.push(semPerfil + ' conta(s) sem perfil com acesso. Reconecte o perfil em Projetos › Integrações.');
   } finally {
@@ -3920,14 +3934,14 @@ async function _metaSincronizar(opts) {
       const db = readDB(), cf = _metaCfg(db);
       if (cf) {
         cf.sync = { em: Date.now(), seg: Math.round((Date.now() - t0) / 1000), contas: r.contas, campanhas: r.campanhas, linhasDia: r.linhasDia,
-                    linhasHora: r.linhasHora, mudancas: r.mudancas, erros: r.erros.slice(0, 10), leve,
+                    linhasHora: r.linhasHora, mudancas: r.mudancas, erros: r.erros.slice(0, 10), cru: r.cru || null, leve,
                     atividadesAte: leve ? ((cf.sync && cf.sync.atividadesAte) || null) : t0 };   // a leve não olha o histórico: não pode marcar como visto
         if (r.erros.length && !r.contas) cf.ultimoErro = r.erros[0];
         db.store[KEY_META] = cf; writeDB(db);
       }
     } catch (e) { console.error('[META] não gravei o resumo da puxada:', e.message); }
   }
-  if (r.erros.length) console.error('[META] puxada com erro:', r.erros.slice(0, 3).join(' | '));
+  if (r.erros.length) console.error('[META] puxada com erro:', r.erros.slice(0, 3).join(' | ') + (r.cru && r.cru.trace ? ' | fbtrace_id ' + r.cru.trace : ''));
   return r;
 }
 // Uma vez: a primeira puxada (22/10) gravou o gasto das contas em dólar como se fosse
@@ -3988,11 +4002,7 @@ function _metaParaMudar(camp) {
 async function _metaGravar(id, campos, cfg) {
   const r = await fetch(META_API_BASE + '/' + id, { method: 'POST', body: new URLSearchParams(Object.assign({}, campos, { access_token: cfg.accessToken })) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error || j.success === false) {
-    const e = new Error((j.error && (j.error.error_user_msg || j.error.message)) || ('HTTP ' + r.status));
-    e.metaCode = j.error && j.error.code;
-    throw e;
-  }
+  if (!r.ok || j.error || j.success === false) throw _metaErroDe(j, r.status);
 }
 const _metaOrc = o => Number(o.daily_budget) > 0 ? { valor: _metaReais(o.daily_budget), tipo: 'dia' }
   : Number(o.lifetime_budget) > 0 ? { valor: _metaReais(o.lifetime_budget), tipo: 'total' } : null;
