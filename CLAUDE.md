@@ -208,7 +208,7 @@ Two layers with different audiences:
 
 1. **User sessions** (for the SPA) — `POST /api/auth/login` with email+password returns a Bearer token. Sessions are stored as `sha256(token)` in `db.sessions`, TTL = 30 days of inactivity (`lastActivity` bumped on every `authDiretoria` / `/api/auth/me` hit). `authDiretoria` middleware protects Diretoria-only endpoints (backup, audit log, forcing lembretes/relatórios). The legacy `x-user-email`/`x-user-senha` headers were removed on 05/11/2026: only sessions authenticate. A session only works on the tenant of its own user: `validarSessao(db, token, req.tenantId)` and `authUsuario`/`authDiretoria` check it (a global middleware that re-read db.json per request made production crawl; never add one). Public signup (`/api/saas/signup`) is closed unless `CADASTRO_PUBLICO=1`. API tokens (`/api/tokens/*`) use `authTokensApi`: on the TMX it is `authDiretoriaInterna`; in a company motor it is that company's Diretoria, and the token only reads that company's MCP and `/api/v1` (see "MCP e API v1 por empresa"). Outside Diretoria, `PUT /api/store/sl_usuarios` only changes the caller's own record and never `cargo`/`senha`/`email`/`ativo`/`tenant_id`.
 
-2. **External API tokens** (for agents / integrations) — issued via `POST /api/tokens/generate` (returned **once**, then only the `sha256` hash is kept). Used by `/api/v1/*` routes via `authAPI` middleware. Rate-limited at 60 req/min. `/api/v1/dados/:chave` never returns `KEYS_SERVIDOR`, `CHAVES_CREDENCIAL` (Z-API/IA key, Utmify token) or any password field (`CAMPOS_SENHA`), on the TMX too since 07/11/2026. The Central's `cd_*` keys are in `KEYS_DIRETORIA`.
+2. **External API tokens** (for agents / integrations) — issued via `POST /api/tokens/generate` (returned **once**, then only the `sha256` hash is kept). Used by `/api/v1/*` routes via `authAPI` middleware. Rate-limited at 60 req/min. MCP tokens only read, except a token with `podeMeta` (Diretoria turns it on in Configurações › Conexões › Acesso por API, `POST /api/tokens/permissao/:id`, since 10/11/2026): then the MCP also lists `estrutura_da_campanha`, `pausar_ou_ativar` and `mudar_orcamento`, which go through the same `_metaMudarStatus`/`_metaMudarOrcamento` as the screen, budget only up to 2× or ½ at a time, audited as "Claude · token <nome>" (`test/mcp-meta.test.js`). `/api/v1/dados/:chave` never returns `KEYS_SERVIDOR`, `CHAVES_CREDENCIAL` (Z-API/IA key, Utmify token) or any password field (`CAMPOS_SENHA`), on the TMX too since 07/11/2026. The Central's `cd_*` keys are in `KEYS_DIRETORIA`.
 
 Passwords: bcrypt at rest. Legacy `senha` (plaintext) is migrated on first login or on server boot via `_migrarSenhasParaHash`. `_stripSenhas` strips both `senha` and `senhaHash` from every user response. Keep this — never send either field to clients.
 
@@ -280,6 +280,15 @@ Everything runs inside the single Node process — no external scheduler. If you
 - `_limparAuditoriaAntiga` — 2x/day, drops audit entries older than 90 days.
 - `_pruneSessoesExpiradas` — hourly, drops expired sessions.
 - `_limparLixeiraAntiga` — every 6h, purges trash items older than 30 days.
+- `regras-trafego.js` `rodar` — every 60s, runs the active Regras de tráfego that are due (each has its own 15/30/60 min and time window). See below.
+
+### Regras de tráfego (10/11/2026)
+
+`regras-trafego.js` (servidor) + Análise de tráfego › aba ⚡ Regras, Projetos › Regras (só as do projeto; as regras antigas da Utmify ficam recolhidas embaixo) e o botão ⚡ na tabela Por Campanha. Só Dono e Gestor de Tráfego (`authMeta`). "Nestes itens, se estas condições baterem, faça isto, neste horário": pausar, ativar, mudar orçamento (% com teto/piso, só BRL e diário) ou só avisar.
+- Guarda em `sl_regras_trafego` (`KEYS_SERVIDOR`): `{ lista, auto }`. A **execução automática nasce desligada** e só o Dono liga (`POST /api/regras-trafego/auto`); desligada, a regra só registra "seria" no histórico (`regras_log`). "Só avisar" funciona sempre.
+- Números: Meta por campanha (`meta_camp_dia`) e por anúncio (`meta_ad_dia`, puxado junto no `_metaSincronizar`; conjunto = soma dos anúncios). `meta_puxado` diz quais dias vieram: sem a linha, é "sem dado", nunca zero. TMX: pedidos e sessões ligados pelo id no utm (ou pelo nome do anúncio).
+- Mexe na Meta pelo mesmo `_metaMudarStatus`/`_metaMudarOrcamento` da tela, com "Regra · nome" em Quem mexeu. Campanha fixada no topo fica de fora (padrão). `test/regras-trafego.test.js`.
+- `toastFn` do app mostra o balão `#tmx-toast` (antes só ia pro console).
 
 ### WhatsApp + IA agent
 

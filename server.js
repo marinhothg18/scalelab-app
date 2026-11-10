@@ -1583,9 +1583,21 @@ app.get('/api/tokens/list', authTokensApi, (req, res) => {
     criado: t.criado,
     criadoPor: t.criadoPor,
     ultimoUso: t.ultimoUso,
-    totalReqs: t.totalReqs || 0
+    totalReqs: t.totalReqs || 0,
+    podeMeta: !!t.podeMeta
   }));
   res.json(tokens);
+});
+// Liga ou desliga o token para o Claude pausar, ativar e mudar orçamento na Meta (sem isso o token só lê)
+app.post('/api/tokens/permissao/:id', authTokensApi, (req, res) => {
+  const id = parseInt(req.params.id), meta = !!(req.body && req.body.meta === true);
+  const db = readDB();
+  const token = (db.api_tokens || []).find(t => t.id === id && t.ativo);
+  if (!token) return res.status(404).json({ error: 'Token não encontrado ou revogado.' });
+  token.podeMeta = meta;
+  audit(db, meta ? 'api_token_meta_ligado' : 'api_token_meta_desligado', { tokenId: token.id, nome: token.nome }, null, _userInfoFromReq(req, db));
+  writeDB(db);
+  res.json({ ok: true, podeMeta: meta });
 });
 
 // POST /api/tokens/revoke/:id — revoga um token
@@ -3708,6 +3720,7 @@ async function _metaSincronizar(opts) {
   // leve: só o gasto de hoje (campanhas, dia e hora). Posicionamento e histórico de mudanças ficam para a puxada completa
   const t0 = Date.now(), leve = !!opts.leve, dias = leve ? 1 : Math.min(Math.max(Number(opts.dias) || 2, 1), 30);
   const hoje = _diaBR(t0), desde = _diaBR(t0 - (dias - 1) * 86400000);
+  const diasDaPuxada = []; for (let k = dias - 1; k >= 0; k--) diasDaPuxada.push(_diaBR(t0 - k * 86400000));
   const r = { contas: 0, campanhas: 0, linhasDia: 0, linhasHora: 0, mudancas: 0, erros: [] };
   const STATUS_VIVOS = JSON.stringify(['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'PENDING_REVIEW']);
   try {
@@ -3733,7 +3746,7 @@ async function _metaSincronizar(opts) {
         // 1) campanhas e conjuntos: orçamento, lance, status
         const camps = await _metaTudo(c.id + '/campaigns', { fields: 'id,name,status,effective_status,daily_budget,lifetime_budget,bid_strategy,created_time',
           effective_status: STATUS_VIVOS, limit: '500' }, cfg, 6);
-        const sets = await _metaTudo(c.id + '/adsets', { fields: 'id,campaign_id,daily_budget,lifetime_budget,bid_amount,effective_status',
+        const sets = await _metaTudo(c.id + '/adsets', { fields: 'id,name,campaign_id,status,daily_budget,lifetime_budget,bid_amount,effective_status,created_time',
           effective_status: STATUS_VIVOS, limit: '500' }, cfg, 8);
         const porCamp = {}, campDoSet = {};
         sets.forEach(s => {
@@ -3780,8 +3793,53 @@ async function _metaSincronizar(opts) {
                    e.criada || null, agora);
             r.linhasDia++;
           });
+          // a situação de agora de cada campanha (a de ontem pausada também, pra regra de ativar) e os dias que já vieram
+          camps.forEach(k => {
+            const e = estado[k.id] || {};
+            _q(`INSERT INTO meta_camp(id, conta, nome, status, efetivo, orc, orc_vida, criado, em) VALUES(?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET conta=excluded.conta, nome=excluded.nome, status=excluded.status, efetivo=excluded.efetivo, orc=excluded.orc,
+                  orc_vida=excluded.orc_vida, criado=excluded.criado, em=excluded.em`)
+              .run(String(k.id), c.conta, e.nome || '', String(k.status || ''), String(k.effective_status || k.status || ''), k.daily_budget ? emReal(_metaReais(k.daily_budget), hoje) : null,
+                   e.orcVida == null ? null : e.orcVida, e.criada || null, agora);
+          });
+          diasDaPuxada.forEach(dia => _q('INSERT OR REPLACE INTO meta_puxado(conta, dia, nivel, em) VALUES(?,?,?,?)').run(c.conta, dia, 'camp', agora));
           _pessoas().exec('COMMIT');
         } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+
+        // 2b) por anúncio (Regras de tráfego, 10/11/2026): gasto, cliques e compras de cada anúncio por dia, e a situação de cada
+        // conjunto e anúncio. O conjunto é a soma dos anúncios dele. Falha aqui não derruba os números da campanha.
+        try {
+          const ads = await _metaTudo(c.id + '/ads', { fields: 'id,name,adset_id,campaign_id,status,effective_status,created_time', effective_status: STATUS_VIVOS, limit: '500' }, cfg, 10);
+          const insAd = await _metaTudo(c.id + '/insights', { level: 'ad', fields: 'ad_id,ad_name,adset_id,campaign_id,spend,impressions,inline_link_clicks,actions',
+            time_range: JSON.stringify({ since: desde, until: hoje }), time_increment: '1', limit: '500' }, cfg, 20);
+          const quando = s => s ? (Date.parse(s) || null) : null;
+          _pessoas().exec('BEGIN');
+          try {
+            sets.forEach(x => _q(`INSERT INTO meta_conj(id, conta, camp, nome, status, efetivo, orc, orc_vida, criado, em) VALUES(?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET conta=excluded.conta, camp=excluded.camp, nome=excluded.nome, status=excluded.status, efetivo=excluded.efetivo,
+                  orc=excluded.orc, orc_vida=excluded.orc_vida, criado=excluded.criado, em=excluded.em`)
+              .run(String(x.id), c.conta, String(x.campaign_id), String(x.name || '').slice(0, 160), String(x.status || ''), String(x.effective_status || ''),
+                   x.daily_budget ? emReal(_metaReais(x.daily_budget), hoje) : null, x.lifetime_budget ? emReal(_metaReais(x.lifetime_budget), hoje) : null, quando(x.created_time), agora));
+            ads.forEach(a => _q(`INSERT INTO meta_ad(id, conta, camp, conj, nome, status, efetivo, criado, em) VALUES(?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET conta=excluded.conta, camp=excluded.camp, conj=excluded.conj, nome=excluded.nome, status=excluded.status,
+                  efetivo=excluded.efetivo, criado=excluded.criado, em=excluded.em`)
+              .run(String(a.id), c.conta, String(a.campaign_id), String(a.adset_id), String(a.name || '').slice(0, 160), String(a.status || ''), String(a.effective_status || ''), quando(a.created_time), agora));
+            insAd.forEach(d => {
+              const dia = String(d.date_start).slice(0, 10);
+              _q(`INSERT INTO meta_ad_dia(dia, conta, camp, conj, id, nome, gasto, imp, link_cliques, compras, em) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                  ON CONFLICT(dia, id) DO UPDATE SET conta=excluded.conta, camp=excluded.camp, conj=excluded.conj, nome=excluded.nome, gasto=excluded.gasto,
+                    imp=excluded.imp, link_cliques=excluded.link_cliques, compras=excluded.compras, em=excluded.em`)
+                .run(dia, c.conta, String(d.campaign_id), String(d.adset_id), String(d.ad_id), String(d.ad_name || '').slice(0, 160), emReal(Number(d.spend) || 0, dia),
+                     Number(d.impressions) || 0, Number(d.inline_link_clicks) || 0, _metaAcao(d.actions, _META_ACOES.compras), agora);
+              r.linhasAnuncio = (r.linhasAnuncio || 0) + 1;
+            });
+            diasDaPuxada.forEach(dia => _q('INSERT OR REPLACE INTO meta_puxado(conta, dia, nivel, em) VALUES(?,?,?,?)').run(c.conta, dia, 'ad', agora));
+            _pessoas().exec('COMMIT');
+          } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+        } catch (e) {
+          if (e.metaCode === 190) throw e;   // o acesso caiu: o próximo perfil tenta a conta inteira
+          r.erros.push((c.nome || c.conta) + ' (por anúncio): ' + _metaErroTxt(e));
+        }
 
         // 3) hoje, hora a hora (no fuso da conta)
         const hs = await _metaTudo(c.id + '/insights', { level: 'campaign', fields: 'campaign_id,spend,impressions,inline_link_clicks',
@@ -3955,12 +4013,11 @@ function _metaAnotarMudanca(camp, nome, campo, de, para) {
   return m;
 }
 // lido na hora: o que a tela mostra é o que está valendo na Meta agora
-app.get('/api/meta/campanha/:id/estrutura', authMeta, async (req, res) => {
-  try {
-    const id = _metaSoDigitos(req.params.id), perfis = _metaParaMudar(id);
+async function _metaEstrutura(idBruto) {
+    const id = _metaSoDigitos(idBruto), perfis = _metaParaMudar(id);
     if (!id) throw _metaErroTela('Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.');
     const CAMPOS = 'id,name,status,effective_status,daily_budget,lifetime_budget';
-    res.json(await _metaTentar(perfis, async cfg => {
+    return _metaTentar(perfis, async cfg => {
       const [c, conjuntos, anuncios] = await Promise.all([
         _metaGet(id, { fields: CAMPOS + ',account_id' }, cfg),
         _metaTudo(id + '/adsets', { fields: CAMPOS, limit: '200' }, cfg, 3),
@@ -3972,49 +4029,75 @@ app.get('/api/meta/campanha/:id/estrutura', authMeta, async (req, res) => {
       anuncios.forEach(a => { (porConjunto[a.adset_id] = porConjunto[a.adset_id] || []).push(item(a)); });
       return { ok: true, moeda, podeOrcamento: META_MOEDAS_ORCAMENTO.includes(moeda), campanha: item(c),
         conjuntos: conjuntos.map(s => Object.assign(item(s), { anuncios: porConjunto[s.id] || [] })) };
-    }));
-  } catch (e) { _metaResponderErro(res, e); }
+    });
+}
+app.get('/api/meta/campanha/:id/estrutura', authMeta, async (req, res) => {
+  try { res.json(await _metaEstrutura(req.params.id)); } catch (e) { _metaResponderErro(res, e); }
 });
 // /api/meta/campanha/status é o endereço antigo: aba aberta antes da atualização ainda chama
-app.post(['/api/meta/status', '/api/meta/campanha/status'], authMeta, async (req, res) => {
-  try {
-    const b = req.body || {}, nivel = META_NIVEIS[b.nivel] ? b.nivel : 'campanha', n = META_NIVEIS[nivel], id = _metaSoDigitos(b.id), ativo = b.ativo === true;
+// quem: a pessoa logada (tela) ou o token do Claude (MCP). Tudo vai pra auditoria e pro "Quem mexeu".
+async function _metaMudarStatus(b, quem) {
+    const nivel = META_NIVEIS[b.nivel] ? b.nivel : 'campanha', n = META_NIVEIS[nivel], id = _metaSoDigitos(b.id), ativo = b.ativo === true;
     if (!id) throw _metaErroTela(nivel === 'campanha' ? 'Essa campanha não tem o id da Meta ainda. Espere a próxima sincronização.' : 'Esse item não tem o id da Meta.');
     const para = ativo ? 'ACTIVE' : 'PAUSED';
     await _metaTentar(_metaParaMudar(nivel === 'campanha' ? id : _metaSoDigitos(b.camp)), cfg => _metaGravar(id, { status: para }, cfg));
     const nome = String(b.nome || '').slice(0, 160), camp = nivel === 'campanha' ? id : _metaSoDigitos(b.camp);
     const mudanca = _metaAnotarMudanca(camp, nome, n.status, ativo ? 'PAUSED' : 'ACTIVE', para);
-    if (nivel === 'campanha' && _pessoas()) _q('UPDATE camp_estado SET status=?, em=? WHERE id=?').run(para, mudanca.em, id);
+    if (nivel === 'campanha' && _pessoas()) {
+      _q('UPDATE camp_estado SET status=?, em=? WHERE id=?').run(para, mudanca.em, id);
+      _q('UPDATE meta_camp_dia SET status=? WHERE id=? AND dia=(SELECT MAX(dia) FROM meta_camp_dia WHERE id=?)').run(para, id, id);   // a lista do Claude já vê a mudança
+    }
+    // as regras de tráfego também já veem a mudança, sem esperar a próxima puxada
+    if (_pessoas()) _q('UPDATE ' + { campanha: 'meta_camp', conjunto: 'meta_conj', anuncio: 'meta_ad' }[nivel] + ' SET status=?, efetivo=? WHERE id=?').run(para, para, id);
     const db = readDB();
-    audit(db, ativo ? n.on : n.off, id, { nome, camp }, req.user);
+    audit(db, ativo ? n.on : n.off, id, { nome, camp }, quem);
     writeDB(db);
-    res.json({ ok: true, status: para, mudanca });
-  } catch (e) { _metaResponderErro(res, e); }
+    return { ok: true, status: para, mudanca };
+}
+app.post(['/api/meta/status', '/api/meta/campanha/status'], authMeta, async (req, res) => {
+  try { res.json(await _metaMudarStatus(req.body || {}, req.user)); } catch (e) { _metaResponderErro(res, e); }
 });
-app.post('/api/meta/orcamento', authMeta, async (req, res) => {
-  try {
-    const b = req.body || {}, nivel = ['campanha', 'conjunto'].includes(b.nivel) ? b.nivel : '', id = _metaSoDigitos(b.id), valor = Math.round(Number(b.valor) * 100) / 100;
+// fator: o Claude só muda até o dobro ou até a metade de uma vez; a tela não tem esse limite
+async function _metaMudarOrcamento(b, quem, fator) {
+    const nivel = ['campanha', 'conjunto'].includes(b.nivel) ? b.nivel : '', id = _metaSoDigitos(b.id), pct = Number(b.pct) || 0;
+    let valor = Math.round(Number(b.valor) * 100) / 100;
     if (!nivel || !id) throw _metaErroTela('Diga a campanha ou o conjunto.');
-    if (!(valor > 0)) throw _metaErroTela('Digite um valor maior que zero.');
+    if (!pct && !(valor > 0)) throw _metaErroTela('Digite um valor maior que zero.');
     const { orc, moeda } = await _metaTentar(_metaParaMudar(nivel === 'campanha' ? id : _metaSoDigitos(b.camp)), async cfg => {
       const atual = await _metaGet(id, { fields: 'daily_budget,lifetime_budget,account_id' }, cfg), orc = _metaOrc(atual);
       if (!orc) throw _metaErroTela(nivel === 'conjunto' ? 'Este conjunto usa o orçamento da campanha. Mude na campanha.' : 'Esta campanha tem o orçamento nos conjuntos. Mude em cada conjunto.');
       const moeda = await _metaMoedaDaConta(atual.account_id, cfg);
       if (!META_MOEDAS_ORCAMENTO.includes(moeda)) throw _metaErroTela('Esta conta está em ' + (moeda || 'outra moeda') + '. Mude o orçamento no Gerenciador de Anúncios.');
+      // regra de tráfego: a porcentagem sai do valor de agora na Meta, com teto (subindo) ou piso (baixando) em reais por dia
+      if (pct) {
+        if (moeda !== 'BRL') throw _metaErroTela('A regra só muda orçamento de conta em real.');
+        if (orc.tipo !== 'dia') throw _metaErroTela('A regra só muda orçamento diário.');
+        const lim = Number(b.limite) || 0;
+        valor = Math.round(orc.valor * (1 + pct / 100) * 100) / 100;
+        if (lim) valor = pct > 0 ? Math.min(valor, lim) : Math.max(valor, lim);
+        if (Math.abs(valor - orc.valor) < 0.01) { const e = _metaErroTela('O orçamento já está no ' + (pct > 0 ? 'teto' : 'piso') + ' da regra.'); e.semMudanca = true; throw e; }
+      }
       // a tela manda o valor que estava mostrando: se alguém mudou nesse meio tempo, não passa por cima
       if (b.de !== undefined && Math.round(Number(b.de) * 100) !== Math.round(orc.valor * 100)) throw _metaErroTela('O orçamento mudou na Meta depois que você abriu esta tela. Abra de novo para ver o valor atual.', 409);
+      if (fator && (valor > orc.valor * fator + 0.001 || valor < orc.valor / fator - 0.001)) throw _metaErroTela('Pelo Claude o orçamento muda até o dobro ou até a metade de uma vez (hoje está em ' + orc.valor + '). Para mudar mais, use a tela do TMX.');
       await _metaGravar(id, { [orc.tipo === 'dia' ? 'daily_budget' : 'lifetime_budget']: String(Math.round(valor * 100)) }, cfg);
       return { orc, moeda };
     });
     const [deReal, paraReal] = await Promise.all([_metaEmReais(orc.valor, moeda), _metaEmReais(valor, moeda)]);
     const n = META_NIVEIS[nivel], nome = String(b.nome || '').slice(0, 160), camp = nivel === 'campanha' ? id : _metaSoDigitos(b.camp);
     const mudanca = _metaAnotarMudanca(camp, nome, n.mudaOrc, deReal, paraReal);
-    if (nivel === 'campanha' && _pessoas()) _q('UPDATE camp_estado SET orc=?, em=? WHERE id=?').run(valor, mudanca.em, id);
+    if (nivel === 'campanha' && _pessoas()) {
+      _q('UPDATE camp_estado SET orc=?, em=? WHERE id=?').run(valor, mudanca.em, id);
+      if (paraReal != null) _q('UPDATE meta_camp_dia SET ' + (orc.tipo === 'dia' ? 'orc' : 'orc_vida') + '=? WHERE id=? AND dia=(SELECT MAX(dia) FROM meta_camp_dia WHERE id=?)').run(paraReal, id, id);
+    }
+    if (_pessoas() && paraReal != null) _q('UPDATE ' + (nivel === 'campanha' ? 'meta_camp' : 'meta_conj') + ' SET ' + (orc.tipo === 'dia' ? 'orc' : 'orc_vida') + '=? WHERE id=?').run(paraReal, id);
     const db = readDB();
-    audit(db, n.orc, id, { nome, camp, de: orc.valor, para: valor, moeda, tipo: orc.tipo }, req.user);
+    audit(db, n.orc, id, { nome, camp, de: orc.valor, para: valor, moeda, tipo: orc.tipo }, quem);
     writeDB(db);
-    res.json({ ok: true, valor, tipo: orc.tipo, moeda, valorReal: paraReal, mudanca });
-  } catch (e) { _metaResponderErro(res, e); }
+    return { ok: true, valor, tipo: orc.tipo, moeda, valorReal: paraReal, mudanca };
+}
+app.post('/api/meta/orcamento', authMeta, async (req, res) => {
+  try { res.json(await _metaMudarOrcamento(req.body || {}, req.user)); } catch (e) { _metaResponderErro(res, e); }
 });
 app.post('/api/meta/puxar', authMeta, async (req, res) => {
   try {
@@ -9521,6 +9604,7 @@ const KEYS_SERVIDOR = new Set([
   'sl_canais',              // canais de trafego; a tela le por /api/canais
   'sl_regras',              // regras automaticas; a tela le por /api/regras
   'sl_regras_log',          // log das regras; idem
+  'sl_regras_trafego',      // regras de tráfego (10/11/2026); a tela lê por /api/regras-trafego
   'sl_funis_versoes',       // fotos das versoes do funil; a tela le por /api/funis/versoes
   'sl_funil_notas',         // anotacoes do grafico por dia; a tela le por /api/funil/resultado
   'sl_destinos',            // pixels que recebem as compras, com o token da API de Conversões
@@ -14034,6 +14118,18 @@ function _pessoas() {
       CREATE TABLE IF NOT EXISTS meta_camp_hora (dia TEXT, hora INTEGER, id TEXT, conta TEXT, gasto REAL, imp INTEGER, cliques INTEGER,
         PRIMARY KEY (dia, hora, id));
       CREATE TABLE IF NOT EXISTS meta_contas_nome (conta TEXT PRIMARY KEY, nome TEXT, em INTEGER);
+      -- Regras de tráfego (10/11/2026): a situação de agora de cada campanha, conjunto e anúncio, os números por anúncio
+      -- (o conjunto é a soma dos anúncios dele) e quais dias de cada conta já foram puxados (zero é diferente de não ter dado)
+      CREATE TABLE IF NOT EXISTS meta_camp (id TEXT PRIMARY KEY, conta TEXT, nome TEXT, status TEXT, efetivo TEXT, orc REAL, orc_vida REAL, criado INTEGER, em INTEGER);
+      CREATE TABLE IF NOT EXISTS meta_conj (id TEXT PRIMARY KEY, conta TEXT, camp TEXT, nome TEXT, status TEXT, efetivo TEXT, orc REAL, orc_vida REAL, criado INTEGER, em INTEGER);
+      CREATE TABLE IF NOT EXISTS meta_ad (id TEXT PRIMARY KEY, conta TEXT, camp TEXT, conj TEXT, nome TEXT, status TEXT, efetivo TEXT, criado INTEGER, em INTEGER);
+      CREATE TABLE IF NOT EXISTS meta_ad_dia (dia TEXT, conta TEXT, camp TEXT, conj TEXT, id TEXT, nome TEXT, gasto REAL, imp INTEGER, link_cliques INTEGER, compras INTEGER, em INTEGER,
+        PRIMARY KEY (dia, id));
+      CREATE INDEX IF NOT EXISTS mad_conta ON meta_ad_dia(conta, dia);
+      CREATE TABLE IF NOT EXISTS meta_puxado (conta TEXT, dia TEXT, nivel TEXT, em INTEGER, PRIMARY KEY (conta, dia, nivel));
+      CREATE TABLE IF NOT EXISTS regras_log (n INTEGER PRIMARY KEY AUTOINCREMENT, regra TEXT, em INTEGER, dia TEXT, nivel TEXT, item TEXT, nome TEXT, camp TEXT,
+        valores TEXT, resultado TEXT, acao TEXT, detalhe TEXT);
+      CREATE INDEX IF NOT EXISTS rl_regra ON regras_log(regra, em);
       CREATE TABLE IF NOT EXISTS cambio (moeda TEXT, dia TEXT, valor REAL, fechamento INTEGER, em INTEGER, PRIMARY KEY (moeda, dia));
       CREATE TABLE IF NOT EXISTS meta_pos_dia (dia TEXT, conta TEXT, camp TEXT, pos TEXT, gasto REAL, imp INTEGER, cliques INTEGER, em INTEGER,
         PRIMARY KEY (dia, camp, pos));
@@ -14729,6 +14825,9 @@ function _pessoasManter() {
     _q('DELETE FROM paginas WHERE em < ?').run(agora - SESSOES_DIAS * 86400000);
     _q('DELETE FROM capi_visita WHERE em < ?').run(agora - CAPI_VISITA_DIAS * 86400000);
     _q('DELETE FROM meta_camp_hora WHERE dia < ?').run(_diaBR(agora - 30 * 86400000));
+    _q('DELETE FROM meta_ad_dia WHERE dia < ?').run(_diaBR(agora - 60 * 86400000));
+    _q('DELETE FROM meta_puxado WHERE dia < ?').run(_diaBR(agora - 120 * 86400000));
+    _q('DELETE FROM regras_log WHERE em < ?').run(agora - 90 * 86400000);
     _q('DELETE FROM meta_camp_dia WHERE dia < ?').run(_diaBR(agora - 120 * 86400000));
     _q('DELETE FROM meta_pos_dia WHERE dia < ?').run(_diaBR(agora - 120 * 86400000));
     if (r1.changes || r2.changes) console.log('[PESSOAS] retenção: ' + r1.changes + ' eventos e ' + r2.changes + ' sessões antigas saíram.');
@@ -16554,7 +16653,8 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
       if ((b.k === 'play' || b.k === 'pitch') && !b.n) return;
       if (ant && ant.n) {
         const taxa = b.n / ant.n;
-        if (!queda || taxa < queda.taxa) queda = { de: ant.k, para: b.k, deNome: ant.nome, paraNome: b.nome, taxa };
+        // etapa com mais gente que a anterior não é queda (vem de outra fonte: orgânico, recuperação)
+        if (taxa < 1 && (!queda || taxa < queda.taxa)) queda = { de: ant.k, para: b.k, deNome: ant.nome, paraNome: b.nome, taxa };
       }
       ant = b;
     });
@@ -24204,6 +24304,32 @@ const MCP_FERRAMENTAS = [
     inputSchema: { type: 'object', properties: {
       numero: { type: 'string', description: 'Nome ou número do anúncio' },
       projeto: { type: 'string', description: 'Parte do nome do projeto ou do nicho, para o caso de o mesmo número existir em mais de um (opcional)' } }, required: ['numero'] } },
+  { name: 'campanhas_da_meta',
+    description: 'Campanhas da Meta das contas conectadas: id, conta, situação, orçamento, gasto de hoje e dos últimos 3 dias. Dados da última puxada (no máximo 15 minutos atrás). Use para achar o id antes de pausar, ativar ou mudar orçamento.',
+    inputSchema: { type: 'object', properties: {
+      busca: { type: 'string', description: 'Parte do nome da campanha (opcional)' },
+      so_ativas: { type: 'boolean', description: 'true mostra só as ativas' },
+      limite: { type: 'number', description: 'Quantas campanhas. Padrão 30' } } } },
+  { name: 'estrutura_da_campanha', mexeMeta: true,
+    description: 'Lê na hora, na Meta, uma campanha com os conjuntos e anúncios: ids, situação e orçamento. Use antes de pausar um conjunto ou anúncio, ou de mudar orçamento.',
+    inputSchema: { type: 'object', properties: { campanha: { type: 'string', description: 'Id da campanha na Meta' } }, required: ['campanha'] } },
+  { name: 'pausar_ou_ativar', mexeMeta: true,
+    description: 'Pausa ou ativa uma campanha, um conjunto ou um anúncio na Meta. Vale na hora. Antes, confirme com a pessoa o que vai mudar. Fica registrado no TMX com o nome deste token.',
+    inputSchema: { type: 'object', properties: {
+      nivel: { type: 'string', enum: ['campanha', 'conjunto', 'anuncio'] },
+      id: { type: 'string', description: 'Id do item na Meta' },
+      ativo: { type: 'boolean', description: 'true ativa, false pausa' },
+      campanha: { type: 'string', description: 'Id da campanha do conjunto ou anúncio (obrigatório para conjunto e anúncio)' },
+      nome: { type: 'string', description: 'Nome do item, para o histórico' } }, required: ['nivel', 'id', 'ativo'] } },
+  { name: 'mudar_orcamento', mexeMeta: true,
+    description: 'Muda o orçamento de uma campanha (CBO) ou de um conjunto (ABO) na Meta, em reais. Vale na hora. Muda até o dobro ou até a metade de uma vez. Antes, confirme o novo valor com a pessoa.',
+    inputSchema: { type: 'object', properties: {
+      nivel: { type: 'string', enum: ['campanha', 'conjunto'] },
+      id: { type: 'string', description: 'Id da campanha ou do conjunto na Meta' },
+      valor: { type: 'number', description: 'Novo orçamento em reais' },
+      valor_atual: { type: 'number', description: 'O orçamento que você acabou de ler em estrutura_da_campanha. Se mudou na Meta nesse meio tempo, nada é alterado.' },
+      campanha: { type: 'string', description: 'Id da campanha do conjunto (obrigatório para conjunto)' },
+      nome: { type: 'string', description: 'Nome do item, para o histórico' } }, required: ['nivel', 'id', 'valor', 'valor_atual'] } },
   { name: 'vendas_recentes',
     description: 'As últimas vendas e checkouts registrados, com anúncio e horário. É o mesmo feed "Acontecendo agora" do painel.',
     inputSchema: { type: 'object', properties: {
@@ -24222,8 +24348,9 @@ const MCP_TEXTOS_EMPRESA = {
   listar_arquivos: { props: { nicho: 'Parte do nome do nicho', projeto: 'Parte do nome do projeto' } },
   buscar_copy_por_ad: { description: 'Acha o doc com o roteiro de um anúncio pelo nome ou número, pela faixa de ADs cadastrada nos arquivos da Central de Arquivos, e diz o que procurar dentro dele. Entende AD216, 216, AD216.2 (Hook 2 do AD216) e remontagens como AD245.1 - AD216.2 + C153 (anúncio novo feito com o Hook 2 do AD216 e o corpo do AD153), respondendo hook e corpo separadamente. Depois, abra o link e vá ao bloco indicado. Se nenhum arquivo cobrir o número, avisa "faixa não cadastrada".' }
 };
-function _mcpFerramentas() {
-  return MCP_FERRAMENTAS.filter(f => SOU_TMX || !f.soTmx).map(f => {
+// mexeMeta: só aparece para o token com "Pode mexer na Meta" ligado
+function _mcpFerramentas(tk) {
+  return MCP_FERRAMENTAS.filter(f => (SOU_TMX || !f.soTmx) && (!f.mexeMeta || (tk && tk.podeMeta))).map(f => {
     const t = SOU_TMX ? null : MCP_TEXTOS_EMPRESA[f.name];
     const schema = JSON.parse(JSON.stringify(f.inputSchema));
     if (t && t.props) {
@@ -24236,8 +24363,59 @@ function _mcpNomeServidor() {
   return SOU_TMX ? 'Central TMX' : 'TMX · ' + (_empresaInfo().nome || EMPRESA_MOTOR);
 }
 
-async function _mcpExecutar(nome, a) {
+const _MCP_SITUACAO = { ACTIVE: 'ativa', PAUSED: 'pausada', CAMPAIGN_PAUSED: 'campanha pausada', ADSET_PAUSED: 'conjunto pausado', IN_PROCESS: 'em processamento', WITH_ISSUES: 'com problema', PENDING_REVIEW: 'em análise' };
+const _mcpOrc = o => o ? _mcpBrl(o.valor) + (o.tipo === 'dia' ? ' por dia' : ' no total') : 'sem orçamento próprio';
+async function _mcpMeta(nome, a, tk) {
+  const quem = { id: 'api-' + tk.id, nome: 'Claude · token ' + tk.nome, cargo: 'API' };
+  if (nome === 'campanhas_da_meta') {
+    if (!_pessoas()) throw new Error('a base de dados não abriu neste servidor');
+    const hoje = _diaBR(Date.now());
+    const linhas = _q('SELECT dia, conta, id, nome, status, orc, orc_vida, gasto, compras FROM meta_camp_dia WHERE dia>=? ORDER BY dia DESC').all(_diaBR(Date.now() - 2 * 86400000));
+    if (!linhas.length) return 'Nenhuma campanha da Meta nos últimos 3 dias. Confira se a Meta está conectada em Projetos › Integrações.';
+    const porId = {};
+    linhas.forEach(l => {
+      const c = porId[l.id] || (porId[l.id] = { id: l.id, conta: l.conta, nome: l.nome, status: l.status, orc: l.orc, orcVida: l.orc_vida, hoje: 0, g3: 0, compras: 0 });
+      c.g3 += l.gasto || 0; c.compras += l.compras || 0; if (l.dia === hoje) c.hoje += l.gasto || 0;
+    });
+    let lista = Object.values(porId);
+    const busca = String(a.busca || '').toLowerCase().trim();
+    if (busca) lista = lista.filter(c => String(c.nome || '').toLowerCase().includes(busca));
+    if (a.so_ativas) lista = lista.filter(c => c.status === 'ACTIVE');
+    lista.sort((x, y) => y.hoje - x.hoje || y.g3 - x.g3);
+    const nomes = _contaNomes(), lim = Math.min(Math.max(Number(a.limite) || 30, 1), 100);
+    return [lista.length + ' campanha(s)' + (lista.length > lim ? ', mostrando ' + lim : '') + ':'].concat(lista.slice(0, lim).map(c =>
+      '• ' + c.nome + ' (id ' + c.id + ') · conta ' + (nomes[c.conta] || c.conta) + ' · ' + (_MCP_SITUACAO[c.status] || c.status || '?') +
+      ' · orçamento ' + (c.orc ? _mcpBrl(c.orc) + ' por dia' : c.orcVida ? _mcpBrl(c.orcVida) + ' no total' : 'nos conjuntos') +
+      ' · gasto hoje ' + _mcpBrl(c.hoje) + ' · 3 dias ' + _mcpBrl(c.g3) + ' · compras na Meta em 3 dias ' + c.compras)).join('\n') +
+      (tk.podeMeta ? '' : '\n\nEste token só lê. Para o Claude pausar, ativar ou mudar orçamento, a Diretoria liga "Pode mexer na Meta" no token em Configurações › Conexões › Acesso por API.');
+  }
+  if (nome === 'estrutura_da_campanha') {
+    const e = await _metaEstrutura(a.campanha), c = e.campanha;
+    const sit = o => (_MCP_SITUACAO[o.efetivo] || o.efetivo) + (o.status !== o.efetivo ? ' (ligado: ' + (_MCP_SITUACAO[o.status] || o.status) + ')' : '');
+    return ['Campanha ' + c.nome + ' (id ' + c.id + ') · ' + sit(c) + ' · ' + _mcpOrc(c.orc) + (e.moeda !== 'BRL' ? ' · conta em ' + e.moeda : '') + (e.podeOrcamento ? '' : ' · orçamento só pelo Gerenciador (moeda da conta)')]
+      .concat(e.conjuntos.map(s => '  Conjunto ' + s.nome + ' (id ' + s.id + ') · ' + sit(s) + ' · ' + _mcpOrc(s.orc) +
+        s.anuncios.map(x => '\n    Anúncio ' + x.nome + ' (id ' + x.id + ') · ' + sit(x)).join(''))).join('\n');
+  }
+  if (nome === 'pausar_ou_ativar') {
+    if (a.nivel !== 'campanha' && !_metaSoDigitos(a.campanha)) throw new Error('para conjunto ou anúncio, informe também o id da campanha');
+    const r = await _metaMudarStatus({ nivel: a.nivel, id: a.id, ativo: a.ativo === true, camp: a.campanha, nome: a.nome }, quem);
+    return (r.status === 'ACTIVE' ? 'Ativado: ' : 'Pausado: ') + (a.nome || a.nivel + ' ' + a.id) + '. Já vale na Meta e ficou registrado no TMX em nome de "' + quem.nome + '".';
+  }
+  if (nome === 'mudar_orcamento') {
+    if (!(Number(a.valor_atual) > 0)) throw new Error('informe o valor_atual que você leu em estrutura_da_campanha');
+    if (a.nivel === 'conjunto' && !_metaSoDigitos(a.campanha)) throw new Error('para conjunto, informe também o id da campanha');
+    const r = await _metaMudarOrcamento({ nivel: a.nivel, id: a.id, valor: a.valor, de: a.valor_atual, camp: a.campanha, nome: a.nome }, quem, 2);
+    return 'Orçamento de ' + (a.nome || a.nivel + ' ' + a.id) + ' mudou de ' + _mcpBrl(a.valor_atual) + ' para ' + _mcpBrl(r.valor) + (r.tipo === 'dia' ? ' por dia' : ' no total') + '. Já vale na Meta e ficou registrado no TMX em nome de "' + quem.nome + '".';
+  }
+  return null;
+}
+
+async function _mcpExecutar(nome, a, tk) {
   a = a || {};
+  if (tk && ['campanhas_da_meta', 'estrutura_da_campanha', 'pausar_ou_ativar', 'mudar_orcamento'].includes(nome)) {
+    try { return await _mcpMeta(nome, a, tk); }
+    catch (e) { throw new Error(e.httpTela ? e.message : _metaErroTxt(e)); }
+  }
   const per = _mcpPeriodo(a);
 
   if (nome === 'listar_projetos') {
@@ -24570,19 +24748,20 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
   const corpo = req.body || {};
   const id = corpo.id !== undefined ? corpo.id : null;
   const erro = (codigo, msg) => res.json({ jsonrpc: '2.0', id, error: { code: codigo, message: msg } });
-  if (!_mcpAutenticar(req)) {
+  const tk = _mcpAutenticar(req);
+  if (!tk) {
     return res.status(401).json({ jsonrpc: '2.0', id,
       error: { code: -32001, message: 'Token inválido ou não informado. Gere um token da API no Central TMX e use ?token= no fim da URL.' } });
   }
   const metodo = String(corpo.method || '');
-  const ferramentas = _mcpFerramentas();
+  const ferramentas = _mcpFerramentas(tk);
   try {
     if (metodo === 'initialize') {
       const quem = SOU_TMX ? 'do Central TMX' : 'da ' + (_empresaInfo().nome || 'empresa') + ' no TMX';
       return res.json({ jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOLO,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: _mcpNomeServidor(), version: '1.0.0' },
-        instructions: 'Dados da operação ' + quem + ': vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. Somente leitura. Todos os valores em reais e as datas no fuso de Brasília.' } });
+        instructions: 'Dados da operação ' + quem + ': vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. ' + (tk.podeMeta ? 'Este token também pausa, ativa e muda orçamento na Meta: antes de qualquer mudança, confirme com a pessoa exatamente o que vai mudar.' : 'Somente leitura.') + ' Todos os valores em reais e as datas no fuso de Brasília.' } });
     }
     if (metodo.indexOf('notifications/') === 0) return res.status(202).end();
     if (metodo === 'ping') return res.json({ jsonrpc: '2.0', id, result: {} });
@@ -24591,7 +24770,7 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
       const nome = String((corpo.params || {}).name || '');
       if (!ferramentas.some(f => f.name === nome)) return erro(-32602, 'Ferramenta desconhecida: ' + nome);
       try {
-        const texto = await _mcpExecutar(nome, (corpo.params || {}).arguments || {});
+        const texto = await _mcpExecutar(nome, (corpo.params || {}).arguments || {}, tk);
         return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(texto) }] } });
       } catch (e) {
         // erro da ferramenta volta como resultado, não como falha do protocolo:
@@ -24606,7 +24785,7 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
   }
 });
 app.get('/mcp', (req, res) => {
-  res.json({ ok: true, servidor: _mcpNomeServidor(), protocolo: MCP_PROTOCOLO, somenteLeitura: true,
+  res.json({ ok: true, servidor: _mcpNomeServidor(), protocolo: MCP_PROTOCOLO, somenteLeitura: 'depende do token: só com "Pode mexer na Meta" ligado o Claude pausa, ativa e muda orçamento',
     ferramentas: _mcpFerramentas().map(f => f.name),
     comoConectar: 'Use esta mesma URL com ?token=SEU_TOKEN no seu assistente. O token sai em Configurações › Conexões › Acesso por API.' });
 });
@@ -24625,6 +24804,19 @@ try {
     registrarPagina: d => { const db = readDB(), p = _paginaRegistrar(db, d); if (d.pgId) p.pgId = d.pgId; writeDB(db); _paginaMedir(p.url).catch(() => {}); return p; },
     vturbPlayers: () => { try { const c = readDB().store[KEY_VTURB]; return (c && c.players) || []; } catch (e) { return []; } } });
 } catch (e) { console.error('[PAGINAS] não subiu:', e.message); }
+
+// Regras de tráfego (10/11/2026): mora em regras-trafego.js
+try {
+  require('./regras-trafego')({ app, readDB, writeDB, audit, authMeta, authDiretoria, _q, _pessoas, _metaCfg, _metaMudarStatus, _metaMudarOrcamento, _metaErroTxt,
+    _nrm, _idDaCampUtm, contaNomes: _contaNomes, ehDiretoria: _ehDiretoria,
+    projetos: () => Object.keys(_projMetaCfg(readDB())),
+    projetoDaCampanha: () => _projetoDaCampanhaFn(readDB()),
+    marcas: () => { const m = readDB().store[KEY_CAMP_MARCAS]; return m && typeof m === 'object' && !Array.isArray(m) ? m : {}; },
+    notificar: (destId, titulo, texto) => {
+      try { const db = readDB(); _avisarDiretoria(db, titulo, texto, destId); writeDB(db); } catch (e) {}
+      _notificarViaWhatsApp(destId, titulo, texto).catch(() => {});
+    } });
+} catch (e) { console.error('[REGRAS] não subiu:', e.message); }
 
 // ── Não perder métrica no deploy ────────────────────────────────────────────
 // Os contadores ficam em buffer na memória e só descem pro disco a cada 30–45s.
