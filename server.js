@@ -3139,6 +3139,42 @@ function _margem(receita, investimento, vendas, cfg) {
   };
 }
 const VENDAS_RAW_MAX = 50;
+// O que o TMX fez com cada aviso do checkout: registrou, duplicado, ignorado ou erro. Sem dado de
+// cliente (hora, plataforma, status, pedido, produto e valor). Nasceu em 11/11/2026: 6 vendas aprovadas
+// na Payt não apareceram e não dava pra saber se a Payt não mandou ou se o TMX descartou calado.
+const KEY_VENDAS_AVISOS = 'sl_vendas_avisos', VENDAS_AVISOS_MAX = 300;
+function _avisoGuardar(db, ent) {
+  const l = Array.isArray(db.store[KEY_VENDAS_AVISOS]) ? db.store[KEY_VENDAS_AVISOS] : [];
+  l.push(ent);
+  db.store[KEY_VENDAS_AVISOS] = l.slice(-VENDAS_AVISOS_MAX);
+}
+// Os últimos avisos pra tela de Checkouts. Os que chegaram antes do registro saem do cru (os 50
+// últimos): o TMX confere se aquele pedido, com aquele status, está nas vendas.
+function _avisosParaTela(db, n) {
+  const l = (Array.isArray(db.store[KEY_VENDAS_AVISOS]) ? db.store[KEY_VENDAS_AVISOS] : []).slice(-n);
+  const desde = l.length ? l[0].em : Infinity;
+  const vendas = Array.isArray(db.store[KEY_VENDAS]) ? db.store[KEY_VENDAS] : [];
+  const temVenda = new Set(vendas.map(v => (v.pedidoId || '') + '|' + (v.status || '')));
+  const raw = Array.isArray(db.store[KEY_VENDAS_RAW]) ? db.store[KEY_VENDAS_RAW] : [];
+  const antigos = raw.filter(x => x && Date.parse(x.em) < desde).map(x => {
+    const e = { em: Date.parse(x.em), plataforma: x.plataforma || 'payt', status: _avisoStatusCru(x.payload), pedido: '', produto: '', valor: null, resultado: '', antigo: true };
+    try {
+      const a = _adaptarVenda(x.payload, e.plataforma, { query: {}, headers: {}, params: {}, body: x.payload || {} });
+      if (!a) e.resultado = 'ignorado';
+      else {
+        const v = _normalizarVenda(a);
+        Object.assign(e, { status: String(v.status || e.status).slice(0, 40), pedido: String(v.pedidoId || '').slice(0, 60),
+          produto: String(v.produto || '').slice(0, 80), valor: Number(v.valor) || null });
+        e.resultado = temVenda.has(e.pedido + '|' + (v.status || '')) ? 'registrado' : 'nao_esta';
+      }
+    } catch (er) { e.resultado = 'erro'; e.erro = String(er.message || '').slice(0, 200); }
+    return e;
+  });
+  return antigos.concat(l).slice(-n).reverse();
+}
+function _avisoStatusCru(bruto) {
+  return String(_pega(bruto || {}, ['status', 'order_status', 'payment_status', 'event', 'type', 'evento', 'webhook_event_type']) || '').slice(0, 40);
+}
 const VENDAS_RETENCAO_DIAS = 365;
 
 function _metaCfg(db) {
@@ -4191,6 +4227,7 @@ app.get('/api/integracoes/vendas/me', authDiretoria, (req, res) => {
       comVid: vendas.filter(v => v.vid).length,
       semValor: pagas.filter(v => !(Number(v.valor) > 0)).length,
       ultimaVenda: pagas.length ? pagas[pagas.length - 1].recebidoEm : null,
+      avisos: _avisosParaTela(db, 40),
       // por plataforma: venda guardada antes das integrações novas veio da Payt
       porPlataforma: _PLATAFORMAS_VENDA.reduce((o, pl) => {
         const dela = vendas.filter(v => (v.plataforma || 'payt') === pl), pg = dela.filter(_vendaPaga);
@@ -4817,6 +4854,7 @@ function _platDoBloco(e) {
 // venda sem plataforma é de antes da Hubla e da AppMax entrarem: era da Payt
 function _vendaDaPlat(o, plat) { if (!plat) return true; const p = String(o.plataforma || '').toLowerCase(); return p ? p === plat : plat === 'payt'; }
 function _receberVenda(req, res) {   // body já vem parseado pelo express.json global
+  let aviso = null;   // o que aconteceu com este aviso, pro registro (e pro log, se der erro)
   try {
     const db = readDB();
     const cfg = _vendasCfg(db);
@@ -4834,10 +4872,14 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
     const raw = db.store[KEY_VENDAS_RAW] || [];
     raw.push({ em: new Date().toISOString(), plataforma, payload: bruto });
     db.store[KEY_VENDAS_RAW] = raw.slice(-VENDAS_RAW_MAX);
+    aviso = { em: Date.now(), plataforma, status: _avisoStatusCru(bruto), pedido: '', produto: '', valor: null, resultado: '' };
 
     // evento que não é venda (teste de conexão, membro adicionado…): só registra
     const payload = _adaptarVenda(bruto, plataforma, req);
     if (!payload) {
+      aviso.resultado = 'ignorado';
+      _avisoGuardar(db, aviso);
+      console.warn('[VENDAS] aviso ignorado (não é venda): ' + plataforma + ' · status ' + (aviso.status || 'vazio'));
       if (!db.timestamps) db.timestamps = {};
       db.timestamps[KEY_VENDAS_RAW] = now();
       writeDB(db);
@@ -4860,6 +4902,9 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
     }
     // dedupe por pedidoId (gateways reenviam o mesmo evento)
     const jaTem = venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && v.status === venda.status);
+    Object.assign(aviso, { status: String(venda.status || aviso.status || '').slice(0, 40), pedido: String(venda.pedidoId || '').slice(0, 60),
+      produto: String(venda.produto || '').slice(0, 80), valor: Number(venda.valor) || null, resultado: jaTem ? 'duplicado' : 'registrado' });
+    _avisoGuardar(db, aviso);
     // o aviso sai uma vez por pedido: o gateway pode mandar "approved" e depois "completed"
     const avisar = !jaTem && _vendaPaga(venda) && Number(venda.valor) > 0 &&
       !(venda.pedidoId && vendas.some(v => v.pedidoId === venda.pedidoId && _vendaPaga(v)));
@@ -4875,10 +4920,20 @@ function _receberVenda(req, res) {   // body já vem parseado pelo express.json 
     if (!db.timestamps) db.timestamps = {};
     db.timestamps[KEY_VENDAS] = now();
     writeDB(db);
+    aviso.gravado = true;
     if (avisar) _avisarVenda(venda, db);
     res.json({ ok: true, duplicada: !!jaTem });
   } catch (err) {
-    // nunca devolve 500 pro gateway sem contexto — muitos desativam o webhook após erros
+    // nunca devolve 500 pro gateway sem contexto — muitos desativam o webhook após erros.
+    // Mas não pode sumir calado: vai pro log e pro registro dos avisos.
+    console.error('[VENDAS] aviso com erro: ' + ((aviso && aviso.plataforma) || '?') + ' · status ' + ((aviso && aviso.status) || '?') +
+      ' · pedido ' + ((aviso && aviso.pedido) || '?') + ': ' + err.message);
+    try {
+      const d2 = readDB();
+      _avisoGuardar(d2, Object.assign({ em: Date.now(), plataforma: '', status: '', pedido: '', produto: '', valor: null }, aviso || {},
+        { resultado: aviso && aviso.gravado ? 'erro_depois' : 'erro', erro: String(err.message || '').slice(0, 200) }));
+      writeDB(d2);
+    } catch (e2) { console.error('[VENDAS] nem o registro do erro gravou:', e2.message); }
     res.status(200).json({ ok: false, erro: err.message });
   }
 }
@@ -9593,6 +9648,7 @@ const KEYS_SERVIDOR = new Set([
   'sl_integracoes_meta',    // access token do Meta Ads
   'sl_integracoes_vendas',  // token secreto da URL de webhook
   'sl_vendas_raw',          // payloads crus dos gateways (dados de cliente)
+  'sl_vendas_avisos',       // o que o TMX fez com cada aviso do checkout (sem dado de cliente)
   'sl_integracoes_utmify_mcp', // token de acesso do MCP da Utmify
   'sl_vturb',               // token da API de analytics da VTurb
   'sl_funil_evfoto',        // foto interna dos contadores; nao serve pra tela

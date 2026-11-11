@@ -22451,6 +22451,42 @@ function copiarUrlPlataforma(id, bt){
   try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); }
   if(bt){ var t = bt.textContent; bt.textContent = '✅ Copiado'; setTimeout(function(){ bt.textContent = t; }, 1500); }
 }
+// Os últimos avisos do checkout e o que o TMX fez com cada um (11/11/2026). Responde "a venda não
+// apareceu: o checkout não mandou ou o TMX descartou?". Sem dado de cliente.
+function _avisosCheckout(l){
+  if(!l || !l.length) return '';
+  var ST = {paid:'pago', canceled:'cancelado', waiting_payment:'aguardando pagamento', lost_cart:'carrinho perdido', chargeback:'chargeback',
+            refunded:'reembolsado', refused:'recusado', expired:'expirado', billed:'faturado (aviso depois do pago)'};
+  var RES = {
+    registrado:  ['✅ registrou', '#16A34A'],
+    duplicado:   ['↺ repetido, já tinha', 'var(--text2)'],
+    ignorado:    ['— não é venda', 'var(--text2)'],
+    nao_esta:    ['⚠️ chegou, mas não está nas vendas', '#D97706'],
+    erro:        ['❌ erro, não registrou', '#DC2626'],
+    erro_depois: ['✅ registrou · ⚠️ o aviso deu erro', '#D97706']
+  };
+  var hora = function(ms){ try{ return new Date(ms).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).replace(',', ''); }catch(e){ return ''; } };
+  var din = function(x){ return x ? 'R$ '+Number(x).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : ''; };
+  var td = 'padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;';
+  return '<div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:14px;">'+
+    '<div style="font-size:13px;font-weight:700;margin-bottom:2px;">Últimos avisos do checkout</div>'+
+    '<div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;line-height:1.5;">O que cada checkout mandou e o que o TMX fez com cada aviso. Se uma venda paga não aparece aqui, o checkout não mandou o aviso pro TMX.</div>'+
+    '<div style="overflow:auto;max-height:340px;"><table style="border-collapse:collapse;width:100%;min-width:680px;font-size:12px;">'+
+    '<thead><tr>'+['Quando','Pedido','Status','O que o TMX fez','Valor','Produto','Plataforma'].map(function(t){
+      return '<th style="'+td+'text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);position:sticky;top:0;background:var(--bg);">'+t+'</th>'; }).join('')+'</tr></thead><tbody>'+
+    l.map(function(a){
+      var r = RES[a.resultado] || [a.resultado || '—', 'var(--text2)'];
+      var pago = /^(paid|approved|aprovad|pago|completed|authorized|captured|active)/i.test(a.status || '');
+      return '<tr'+(pago ? ' style="font-weight:700"' : '')+'>'+
+        '<td style="'+td+'font-variant-numeric:tabular-nums;">'+_esc(hora(a.em))+'</td>'+
+        '<td style="'+td+'font-family:Menlo,monospace;font-size:11px;">'+_esc(a.pedido || '—')+'</td>'+
+        '<td style="'+td+'">'+_esc(ST[a.status] || a.status || '—')+'</td>'+
+        '<td style="'+td+'color:'+r[1]+';"'+(a.erro ? ' title="'+_esc(a.erro)+'"' : '')+'>'+r[0]+(a.erro ? '<div style="font-weight:400;font-size:11px;white-space:normal;">'+_esc(a.erro)+'</div>' : '')+'</td>'+
+        '<td style="'+td+'text-align:right;">'+din(a.valor)+'</td>'+
+        '<td style="'+td+'max-width:200px;overflow:hidden;text-overflow:ellipsis;">'+_esc(a.produto || '')+'</td>'+
+        '<td style="'+td+'">'+_esc(a.plataforma || '')+'</td></tr>';
+    }).join('')+'</tbody></table></div></div>';
+}
 function _cardVendas(v){
   v = v || {};
   var url = v.urlWebhook ? (location.origin + v.urlWebhook) : '';
@@ -22494,6 +22530,7 @@ function _cardVendas(v){
           (v.comVid===0 && v.eventos ? '<br><span style="color:#D97706;">⚠️ Nenhuma venda chegou com o id do visitante: sem o pixel na página, o funil não consegue dizer de qual página e de qual variante veio a compra.</span>' : '')+
           (v.semValor ? '<br><span style="color:var(--text2);">'+v.semValor+' venda(s) paga(s) guardadas antes da correção estão sem valor.</span>' : '')+
         '</div>' : '')+
+        _avisosCheckout(v.avisos)+
         ((v.ultimosBrutos && v.ultimosBrutos.length)
           ? '<details style="margin-bottom:12px;"><summary style="cursor:pointer;font-size:12px;color:var(--text2);">Ver os últimos webhooks recebidos (pra conferir o formato)</summary>'+
             '<pre style="background:var(--bg);padding:12px;border-radius:8px;font-size:10.5px;overflow-x:auto;max-height:260px;margin-top:8px;">'+_esc(JSON.stringify(v.ultimosBrutos,null,1))+'</pre></details>'
