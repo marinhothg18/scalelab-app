@@ -154,7 +154,7 @@ test('hospedagem no TMX', async (t) => {
     const r = await cadastrar(c.b.token, 'lp.loja-a.com.br');
     assert.strictEqual(r.status, 400);
     assert.match(r.dados.error, /outra conta/);
-    for (const d of ['x.paginasnoar.com', 'app.centraltmx.com', 'ir.kalebeaprovado.online', 'nao-e-dominio']) assert.strictEqual((await cadastrar(c.b.token, d)).status, 400, d);
+    for (const d of ['x.paginasnoar.com', 'app.centraltmx.com', 'app.scalroi.com', 'scalroi.com', 'ir.kalebeaprovado.online', 'nao-e-dominio']) assert.strictEqual((await cadastrar(c.b.token, d)).status, 400, d);
     assert.strictEqual((await cadastrar(c.a.token, 'lp.loja-a.com.br')).status, 409);
     const est = await chamar('GET', '/api/pg/estado', { token: c.b.token });
     assert.strictEqual(est.dados.dominios.length, 0);

@@ -12,7 +12,7 @@ const BUCKET = 'tmx-paginas', SCRIPT = 'tmx-paginas', ARQ_WORKER = path.join(__d
 const so_teste = v => (process.env[v] && !fs.existsSync('/data')) ? process.env[v] : '';
 const DOMINIO_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 // domínios do próprio sistema nunca viram domínio de cliente
-const RESERVADOS = /(^|\.)(centraltmx\.com|paginasnoar\.com|railway\.app)$|^ir\.kalebeaprovado\.online$/;
+const RESERVADOS = /(^|\.)(centraltmx\.com|scalroi\.com|paginasnoar\.com|railway\.app)$|^ir\.kalebeaprovado\.online$/;
 
 module.exports = function montarHospedagem({ platPrep }) {
   const cfg = () => ({ token: process.env.CLOUDFLARE_API_TOKEN || '', conta: process.env.CLOUDFLARE_ACCOUNT_ID || '', zona: process.env.CLOUDFLARE_ZONE_ID || '',

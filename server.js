@@ -770,6 +770,37 @@ if (!SOU_TMX) {
     next();
   });
 }
+// ── Endereço só de vendas e endereço só de links (11/11/2026) ──
+// scalroi.com é a página de vendas: a raiz mostra os planos e as telas do sistema vão pro
+// app.scalroi.com. Domínio de links (ir.kalebeaprovado.online e os de Configurações › Domínios)
+// não mostra o sistema: só os links, quizzes e testes dele funcionam. O resto (API, pixel,
+// arquivos) segue igual em todos os endereços.
+const HOSTS_SITE = new Set(['scalroi.com', 'www.scalroi.com']);
+const APP_PRINCIPAL = 'https://app.scalroi.com';
+const TELAS_DO_SISTEMA = /^\/(?:(?!planos\.html$)[\w-]+\.html|admin(?:\/.*)?|cadastro(?:\/.*)?|painel-saas|signup|login)$/i;
+let _hostsDeLink = { em: 0, lista: new Set(['ir.kalebeaprovado.online']) };
+function _ehHostDeLink(host) {
+  if (Date.now() - _hostsDeLink.em > 60 * 1000) {
+    const lista = new Set(['ir.kalebeaprovado.online']);
+    try { (readDB().store[KEY_DOMINIOS] || []).forEach(x => { const d = _dominioLimpo(x && x.dominio); if (d) lista.add(d); }); } catch (e) {}
+    HOSTS_SITE.forEach(h => lista.delete(h));
+    _hostsDeLink = { em: Date.now(), lista };
+  }
+  return _hostsDeLink.lista.has(host);
+}
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const host = String(req.headers.host || '').toLowerCase().split(':')[0];
+  if (HOSTS_SITE.has(host)) {
+    if (req.path === '/' || req.path === '/index.html') return res.sendFile(path.join(__dirname, 'public', 'planos.html'));
+    if (TELAS_DO_SISTEMA.test(req.path)) return res.redirect(301, APP_PRINCIPAL + req.originalUrl);
+    return next();
+  }
+  if ((req.path === '/' || req.path === '/planos' || TELAS_DO_SISTEMA.test(req.path)) && _ehHostDeLink(host)) {
+    return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Página não encontrada</title><body style="font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;color:#555"><p>Página não encontrada.</p></body>');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 // URL raiz serve o app
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ScaleLab.html')));
@@ -10451,7 +10482,9 @@ app.get('/api/plataforma/planos', authDiretoriaInterna, (req, res) => {
 const PAGARME_BASE = process.env.PAGARME_API_BASE   // os testes automáticos apontam pra uma Pagar.me de mentira
   || (/^sk_test_/.test(PAGARME_API_KEY) ? 'https://sdx-api.pagar.me/core/v5' : 'https://api.pagar.me/core/v5');
 const PAGARME_WEBHOOK_SENHA = process.env.PAGARME_WEBHOOK_SENHA || '';
-const URL_TMX = (process.env.URL_TMX || 'https://app.centraltmx.com').replace(/\/+$/, '');
+// endereço que vai nos links de convite, cadastro e cobrança: app.scalroi.com desde 11/11/2026
+// (o app.centraltmx.com continua abrindo o mesmo sistema; os links já enviados seguem valendo)
+const URL_TMX = (process.env.URL_TMX || 'https://app.scalroi.com').replace(/\/+$/, '');
 const COBRANCA_DIAS_CONVITE = 30;
 const _precoPlano = (p, ciclo) => (ciclo === 'anual' ? p.mensal * 10 : p.mensal);
 const _reais = v => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });

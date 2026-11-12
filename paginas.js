@@ -135,7 +135,7 @@ function _extrair(html) {
   const t = html.match(/<title>([^<]*)<\/title>/i);
   const pl = html.match(/scripts\.converteai\.net\/([a-f0-9-]+)\/(players|ab-test)\/([a-f0-9]{24})\//);
   const d = html.match(/var DELAY_SEG\s*=\s*(\d+)/);
-  const px = html.match(/<script[^>]+centraltmx\.com\/px\.js[^>]*><\/script>/);
+  const px = html.match(/<script[^>]+(?:centraltmx|scalroi)\.com\/px\.js[^>]*><\/script>/);
   return {
     titulo: t ? t[1].trim() : '',
     vsl: pl ? { conta: pl[1], tipo: pl[2], id: pl[3] } : null,
@@ -279,8 +279,11 @@ function _montar(m, pg, campos, n) {
   const tagPx = x.pixel && (!pg.funil || pg.funil === fDoModelo) ? x.pixel : _tagPx(pg.funil || fDoModelo);
   return _porPixel(h, tagPx, pg.id + ':' + n);
 }
-const PX_TMX = /<script[^>]+centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js[^>]*><\/script>\s*/g;
-const _tagPx = funil => '<script src="https://app.centraltmx.com' + _basePublica + '/px.js"' + (funil ? ' data-f="' + _esc(funil) + '"' : '') + ' async></script>';
+// o pixel das páginas novas sai pelo app.scalroi.com (11/11/2026); o do app.centraltmx.com, que já está nas
+// páginas no ar, continua contando e é reconhecido como pixel do TMX em todo lugar daqui
+const ORIGEM_PX = String(process.env.URL_TMX || 'https://app.scalroi.com').replace(/\/+$/, '');
+const PX_TMX = /<script[^>]+(?:centraltmx|scalroi)\.com(?:\/e\/[\w-]+)?\/px\.js[^>]*><\/script>\s*/g;
+const _tagPx = funil => '<script src="' + ORIGEM_PX + _basePublica + '/px.js"' + (funil ? ' data-f="' + _esc(funil) + '"' : '') + ' async></script>';
 // o pixel do TMX é sempre o primeiro script do <head>, com a marca da versão logo depois
 function _porPixel(h, tagPx, marca) {
   h = h.replace(PX_TMX, '').replace(/<meta name="tmx-pagina"[^>]*>\s*/g, '');
@@ -297,7 +300,7 @@ function _montarLivre(pg, c, n) {
 // A prévia não pode contar visita nem view: sai o pixel, os rastreadores e o player
 // (fica só a capa). A tela ainda abre num iframe sem scripts.
 function _previa(html, endereco, slug, baseHref) {
-  let h = html.replace(/<script\b[^>]*\bsrc=["'][^"']*(centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js|converteai\.net|funnelway|utmify|googletagmanager|connect\.facebook)[^"']*["'][^>]*>\s*<\/script>/gi, '');
+  let h = html.replace(/<script\b[^>]*\bsrc=["'][^"']*((?:centraltmx|scalroi)\.com(?:\/e\/[\w-]+)?\/px\.js|converteai\.net|funnelway|utmify|googletagmanager|connect\.facebook)[^"']*["'][^>]*>\s*<\/script>/gi, '');
   h = h.replace(/<link[^>]+(converteai|vturb|\.m3u8)[^>]*>/gi, '');
   h = h.replace(/<vturb-smartplayer\b[^>]*>[\s\S]*?<\/vturb-smartplayer>/gi,
     '<div style="aspect-ratio:9/16;max-width:400px;margin:0 auto;background:#0b1020;color:#cbd5e1;display:grid;place-items:center;border-radius:12px;font:600 14px system-ui;text-align:center;padding:16px">Capa da VSL<br><span style="font-weight:400;font-size:12px">a prévia não carrega o player, pra não contar view na VTurb</span></div>');
@@ -368,7 +371,7 @@ const RASTREIO = [
   ['Pinterest', /pintrk|ct\.pinterest\.com/i],
   ['Taboola', /taboola/i],
   ['Outbrain', /outbrain/i],
-  ['Pixel da SCALROI', /centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js/i]
+  ['Pixel da SCALROI', /(?:centraltmx|scalroi)\.com(?:\/e\/[\w-]+)?\/px\.js/i]
 ];
 const _rastreiosDe = s => RASTREIO.filter(r => r[1].test(s)).map(r => r[0]);
 function _limparRastreio(html) {
@@ -463,7 +466,7 @@ function _decodificar(buf, ct) {
   try { return new TextDecoder(String(cs || 'utf-8').toLowerCase()).decode(buf); } catch (e) { return buf.toString('utf8'); }
 }
 
-const CDN_PUBLICA = /(^|\.)(fonts\.googleapis\.com|fonts\.gstatic\.com|cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|ajax\.googleapis\.com|code\.jquery\.com|use\.fontawesome\.com|kit\.fontawesome\.com|ka-f\.fontawesome\.com|converteai\.net|vturb\.com\.br|vturb\.net|centraltmx\.com|cdn\.tailwindcss\.com|youtube\.com|ytimg\.com|vimeo\.com|vimeocdn\.com|bootstrapcdn\.com|payt\.com\.br)$/i;
+const CDN_PUBLICA = /(^|\.)(fonts\.googleapis\.com|fonts\.gstatic\.com|cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|ajax\.googleapis\.com|code\.jquery\.com|use\.fontawesome\.com|kit\.fontawesome\.com|ka-f\.fontawesome\.com|converteai\.net|vturb\.com\.br|vturb\.net|centraltmx\.com|scalroi\.com|cdn\.tailwindcss\.com|youtube\.com|ytimg\.com|vimeo\.com|vimeocdn\.com|bootstrapcdn\.com|payt\.com\.br)$/i;
 const SUFIXO_2 = /\.(com|net|org|gov|edu|art|blog|app|eco|ind|inf|adv|med|nom)\.br$|\.co\.uk$|\.com\.(ar|mx|pt|co)$/i;
 const _raizDe = h => String(h).toLowerCase().split('.').slice(SUFIXO_2.test(h) ? -3 : -2).join('.');
 const EXT_TIPO = { '.css': 'text/css', '.js': 'application/javascript', '.mjs': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -537,7 +540,7 @@ function _prepararHtml(bruto) {
     .replace(/<meta\b[^>]*charset\s*=[^>]*>\s*/gi, '').replace(/<meta\b[^>]*http-equiv=["']?content-type[^>]*>\s*/gi, '');
   html = /<head\b[^>]*>/i.test(html) ? html.replace(/<head\b[^>]*>/i, s => s + '\n<meta charset="utf-8">') : '<meta charset="utf-8">\n' + html;
   // o pixel do TMX que a página já tinha (só o da TMX, sem /e/<empresa>): serve de funil se a página for dele
-  const pxAntigo = (html.match(/<script[^>]+src=["']https:\/\/app\.centraltmx\.com\/px\.js["'][^>]*>/i) || [''])[0];
+  const pxAntigo = (html.match(/<script[^>]+src=["']https:\/\/app\.(?:centraltmx|scalroi)\.com\/px\.js["'][^>]*>/i) || [''])[0];
   const funilDoPixel = (pxAntigo.match(/data-f=["']([\w-]{1,80})["']/) || [])[1] || '';
   const limpo = _limparRastreio(html);
   return { html: limpo.html, funilDoPixel, limpo };
@@ -679,7 +682,7 @@ async function _confAtraso(ctx, vsl, atraso) {
 function _confPixel(html) {
   const head = html.slice(0, Math.max(0, html.search(/<\/head>/i)));
   const primeiro = (head.match(/<script\b[^>]*>/i) || [''])[0];
-  return /centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js/.test(primeiro)
+  return /(?:centraltmx|scalroi)\.com(?:\/e\/[\w-]+)?\/px\.js/.test(primeiro)
     ? { r: 'Pixel da SCALROI é o primeiro script', st: 'ok', d: 'Entra sozinho em toda versão.' }
     : { r: 'Pixel da SCALROI é o primeiro script', st: 'alerta', d: 'O primeiro script do <head> não é o pixel da SCALROI.' };
 }
