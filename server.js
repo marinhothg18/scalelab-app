@@ -770,6 +770,71 @@ if (!SOU_TMX) {
     next();
   });
 }
+// ── O que ainda chega pelo endereço antigo (12/11/2026) ──
+// Pra desligar o app.centraltmx.com sem perder nada: conta por tipo (webhook de cada checkout, pixel de cada
+// site, link, MCP, WhatsApp, cobrança, tela do sistema) o que chega por ele. Sem dado de cliente: do webhook
+// fica só a plataforma, do pixel só o site. Fica na memória e vai pro SQLite a cada 2 minutos.
+const HOST_ANTIGO = 'app.centraltmx.com';
+const _antigoMem = new Map();
+function _antigoTipo(req) {
+  const p = req.path.replace(/^\/e\/[\w-]+(?=\/)/, '');
+  const site = () => {
+    if (req.headers['x-tmx-dominio']) return String(req.headers['x-tmx-dominio']).slice(0, 120) + ' (hospedado no TMX)';
+    try { return new URL(req.headers.origin || req.headers.referer || '').hostname; } catch (e) { return ''; }
+  };
+  let m;
+  if ((m = p.match(/^\/api\/webhook\/vendas\/[^/]+(?:\/([a-z]+))?/))) return ['Webhook de checkout', m[1] || 'payt (endereço sem plataforma)'];
+  if (p === '/px.js' || /^\/api\/(?:funil\/(?:evento|vivo)|quiz\/evento)$/.test(p)) return ['Pixel das páginas', site() || '(sem site)'];
+  if (/^\/(?:r|l|q|qi)\/[^/]+/.test(p)) return ['Link, quiz ou teste A/B', p.split('/').slice(0, 3).join('/')];
+  if (p.startsWith('/mcp')) return ['MCP (Claude)', ''];
+  if (p.startsWith('/api/v1/')) return ['API v1', ''];
+  if (p.startsWith('/api/whatsapp/webhook')) return ['WhatsApp (Z-API)', ''];
+  if (p.startsWith('/api/billing/')) return ['Cobrança', p.split('/')[3] || ''];
+  if (/^\/(?:conectar-meta|api\/meta\/login\/link)\//.test(p)) return ['Conectar Meta', ''];
+  if (p === '/api/auth/login' && req.method === 'POST') return ['Login no sistema', ''];
+  if (req.method === 'GET' && (p === '/' || /^\/[\w-]+\.html$/.test(p) || /^\/(?:admin|cadastro|planos)(?:\/|$)/.test(p))) return ['Telas do sistema', p];
+  return null;
+}
+app.use((req, res, next) => {
+  try {
+    if (String(req.headers.host || '').toLowerCase().split(':')[0] === HOST_ANTIGO) {
+      const t = _antigoTipo(req);
+      if (t) {
+        const dia = _diaBR(Date.now()), k = dia + '\u0001' + t[0] + '\u0001' + t[1];
+        const x = _antigoMem.get(k) || { dia, tipo: t[0], item: String(t[1]).slice(0, 160), qtd: 0, ultimo: 0 };
+        x.qtd++; x.ultimo = Date.now();
+        _antigoMem.set(k, x);
+      }
+    }
+  } catch (e) {}
+  next();
+});
+function _antigoGravar() {
+  if (!_antigoMem.size || !_pessoas()) return;
+  try {
+    _q('CREATE TABLE IF NOT EXISTS endereco_antigo (dia TEXT, tipo TEXT, item TEXT, qtd INTEGER, ultimo INTEGER, PRIMARY KEY (dia, tipo, item))').run();
+    const st = _q('INSERT INTO endereco_antigo(dia, tipo, item, qtd, ultimo) VALUES(?,?,?,?,?) ON CONFLICT(dia, tipo, item) DO UPDATE SET qtd = qtd + excluded.qtd, ultimo = MAX(ultimo, excluded.ultimo)');
+    const itens = [..._antigoMem.values()];
+    _antigoMem.clear();
+    itens.forEach(x => st.run(x.dia, x.tipo, x.item, x.qtd, x.ultimo));
+  } catch (e) { console.error('[endereço antigo] não gravou:', e.message); }
+}
+setInterval(_antigoGravar, 2 * 60 * 1000);
+// GET /api/endereco-antigo: o que chegou pelo app.centraltmx.com, por tipo, nos últimos 30 dias
+app.get('/api/endereco-antigo', authDiretoria, (req, res) => {
+  try {
+    _antigoGravar();
+    const desde = _diaBR(Date.now() - 30 * 86400000), sem7 = _diaBR(Date.now() - 6 * 86400000);
+    let linhas = [];
+    if (_pessoas()) {
+      _q('CREATE TABLE IF NOT EXISTS endereco_antigo (dia TEXT, tipo TEXT, item TEXT, qtd INTEGER, ultimo INTEGER, PRIMARY KEY (dia, tipo, item))').run();
+      linhas = _q('SELECT tipo, item, SUM(qtd) AS qtd, SUM(CASE WHEN dia >= ? THEN qtd ELSE 0 END) AS qtd7, MAX(ultimo) AS ultimo, MIN(dia) AS primeiroDia FROM endereco_antigo WHERE dia >= ? GROUP BY tipo, item ORDER BY ultimo DESC').all(sem7, desde);
+    }
+    const inicio = _pessoas() ? (_q('SELECT MIN(dia) AS d FROM endereco_antigo').get() || {}).d || null : null;
+    res.json({ ok: true, host: HOST_ANTIGO, contandoDesde: inicio, itens: linhas, zeradoHa7Dias: !linhas.some(l => l.qtd7 > 0) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Endereço só de vendas e endereço só de links (11/11/2026) ──
 // scalroi.com é a página de vendas: a raiz mostra os planos e as telas do sistema vão pro
 // app.scalroi.com. Domínio de links (ir.kalebeaprovado.online e os de Configurações › Domínios)

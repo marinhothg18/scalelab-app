@@ -48,8 +48,11 @@ function lerBiscoito(req, nome) {
 function absolutizar(html, pagina) {
   return html.replace(/(["'(])(?:\.\/)?arquivos\//g, (m, antes) => antes + '/' + pagina + '/arquivos/');
 }
+// O endereço antigo do sistema sai do HTML na hora de servir (11/11/2026): as páginas publicadas antes da
+// troca chamam o pixel, os links e o quiz pelo endereço novo sem precisar publicar de novo.
+const ENDERECO_ANTIGO = /https:\/\/app\.centraltmx\.com(?=[\/"'?#\s]|$)/g;
 export function injetar(html, cfg, ab) {
-  let h = html;
+  let h = cfg.origem && !/centraltmx/.test(cfg.origem) ? html.replace(ENDERECO_ANTIGO, cfg.origem) : html;
   const cabeca = (ab ? '<script>window.TMX_AB=' + JSON.stringify(ab).replace(/</g, '\\u003c') + '</script>' : '') +
     (cfg.icone ? '<link rel="icon" href="/favicon.ico">' : '') + (cfg.head || '');
   if (cabeca) h = /<head\b[^>]*>/i.test(h) ? h.replace(/<head\b[^>]*>/i, m => m + cabeca) : cabeca + h;
@@ -175,8 +178,10 @@ async function atender(req, env) {
     return admin(req, env, url);
   }
   if (env.ALVO && env.ORIGEM && host === env.ALVO && ROTAS_LINK_META.test(url.pathname)) return repassar(req, url, { origem: env.ORIGEM }, url.pathname);
-  const cfg = await lerCfg(env, host);
-  if (!cfg) return naoAchei();
+  // a origem gravada em cada domínio é a da hora em que ele foi configurado: a do programa é a de agora
+  const cfg0 = await lerCfg(env, host);
+  if (!cfg0) return naoAchei();
+  const cfg = env.ORIGEM ? Object.assign({}, cfg0, { origem: env.ORIGEM }) : cfg0;
   let caminho;
   try { caminho = decodeURIComponent(url.pathname); } catch (e) { return naoAchei(); }
   if (caminho.includes('..') || /(^|\/)_/.test(caminho.replace(/^\//, ''))) {

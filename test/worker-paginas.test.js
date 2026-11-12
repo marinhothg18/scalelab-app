@@ -171,3 +171,16 @@ test('gravar exige o segredo e o endereço do sistema', async () => {
   assert.strictEqual(del.status, 200);
   assert.strictEqual(env.PAGINAS.m.size, 0);
 });
+
+test('troca de endereço (11/11/2026): a origem do programa vale pra todo domínio e o HTML antigo chama o endereço novo', async () => {
+  env.ORIGEM = 'https://app.scalroi.com';
+  await pr(env, HOST + '/c/index.html', pagina('C', '<script src="https://app.centraltmx.com/e/abc/px.js" data-f="f1" async></script><a href="https://app.centraltmx.com/q/quiz1">quiz</a><a href="https://app.centraltmx.com.br/x">outro</a>'));
+  const h = await (await abrir('/c/')).text();
+  assert.match(h, /src="https:\/\/app\.scalroi\.com\/e\/abc\/px\.js" data-f="f1"/);
+  assert.match(h, /href="https:\/\/app\.scalroi\.com\/q\/quiz1"/);
+  assert.match(h, /href="https:\/\/app\.centraltmx\.com\.br\/x"/, 'outro domínio parecido fica como está');
+  const antes = global.fetch, pedidos = [];
+  global.fetch = async (u) => { pedidos.push(u); return new Response('ok', { status: 200 }); };
+  try { await abrir('/px.js'); } finally { global.fetch = antes; }
+  assert.deepStrictEqual(pedidos, ['https://app.scalroi.com/e/abc/px.js'], 'a origem gravada no domínio (origem.test) dá lugar à de agora');
+});

@@ -276,7 +276,7 @@ function _montar(m, pg, campos, n) {
   if (m.parcela && campos.parcela) h = _troca(h, m.parcela, _esc(campos.parcela));
   // o pixel do modelo conta no funil dele; a página de outro funil leva o pixel desse funil
   const fDoModelo = (x.pixel.match(/data-f="([^"]*)"/) || [])[1] || '';
-  const tagPx = x.pixel && (!pg.funil || pg.funil === fDoModelo) ? x.pixel : _tagPx(pg.funil || fDoModelo);
+  const tagPx = x.pixel && (!pg.funil || pg.funil === fDoModelo) ? x.pixel.replace(/https:\/\/app\.centraltmx\.com/, ORIGEM_PX) : _tagPx(pg.funil || fDoModelo);
   return _porPixel(h, tagPx, pg.id + ':' + n);
 }
 // o pixel das páginas novas sai pelo app.scalroi.com (11/11/2026); o do app.centraltmx.com, que já está nas

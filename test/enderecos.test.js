@@ -12,12 +12,15 @@ const path = require('path');
 const RAIZ = path.join(__dirname, '..');
 const espera = ms => new Promise(r => setTimeout(r, ms));
 let dir, srv, porta, log = '';
-function pedir(host, caminho, metodo) {
+function pedir(host, caminho, metodo, extra) {
+  extra = extra || {};
   return new Promise((ok, nao) => {
-    const r = http.request({ host: '127.0.0.1', port: porta, path: caminho, method: metodo || 'GET', headers: { Host: host } }, res => {
+    const headers = Object.assign({ Host: host }, extra.headers || {});
+    if (extra.corpo !== undefined) headers['Content-Type'] = 'application/json';
+    const r = http.request({ host: '127.0.0.1', port: porta, path: caminho, method: metodo || 'GET', headers }, res => {
       let b = ''; res.on('data', c => { b += c; }); res.on('end', () => ok({ status: res.statusCode, local: res.headers.location || '', corpo: b }));
     });
-    r.on('error', nao); r.end();
+    r.on('error', nao); if (extra.corpo !== undefined) r.write(JSON.stringify(extra.corpo)); r.end();
   });
 }
 before(async () => {
@@ -73,4 +76,27 @@ test('app.scalroi.com e os outros endereços continuam abrindo o sistema', async
     assert.ok(ehSistema(r.corpo), h + ' devia abrir o sistema');
   }
   assert.ok(ehVendas((await pedir('app.scalroi.com', '/planos')).corpo));
+});
+
+test('o que chega pelo app.centraltmx.com fica contado, por tipo, sem dado de cliente', async () => {
+  const fim = Date.now() + 40000;
+  while (!/sessões derrubadas/.test(log)) { if (Date.now() > fim) throw new Error('rotina das sessões não rodou'); await espera(200); }
+  const antigo = 'app.centraltmx.com';
+  await pedir(antigo, '/api/webhook/vendas/tokenquenaoexiste/kiwify', 'POST', { corpo: { status: 'paid', customer: { email: 'pessoa@exemplo.com' } } });
+  await pedir(antigo, '/px.js', 'GET', { headers: { Referer: 'https://apostilai.ai/acervo/' } });
+  await pedir(antigo, '/q/quiz-velho');
+  await pedir(antigo, '/');
+  await pedir('app.scalroi.com', '/px.js', 'GET', { headers: { Referer: 'https://nao-conta.com/' } });   // endereço novo não entra
+  const login = await pedir('127.0.0.1', '/api/auth/login', 'POST', { corpo: { email: 'thiago@axcend.com', senha: 'axcend2026' } });
+  const token = JSON.parse(login.corpo).token;
+  const r = await pedir('127.0.0.1', '/api/endereco-antigo', 'GET', { headers: { Authorization: 'Bearer ' + token } });
+  assert.strictEqual(r.status, 200, r.corpo);
+  const d = JSON.parse(r.corpo), por = Object.fromEntries(d.itens.map(x => [x.tipo + '|' + x.item, x.qtd]));
+  assert.strictEqual(por['Webhook de checkout|kiwify'], 1, r.corpo);
+  assert.strictEqual(por['Pixel das páginas|apostilai.ai'], 1, r.corpo);
+  assert.strictEqual(por['Link, quiz ou teste A/B|/q/quiz-velho'], 1, r.corpo);
+  assert.ok(por['Telas do sistema|/'] >= 1, r.corpo);   // o teste de cima também abre a raiz pelo endereço antigo
+  assert.ok(!r.corpo.includes('nao-conta.com') && !r.corpo.includes('pessoa@exemplo') && !r.corpo.includes('tokenquenaoexiste'), r.corpo);
+  assert.strictEqual(d.zeradoHa7Dias, false);
+  assert.strictEqual((await pedir('127.0.0.1', '/api/endereco-antigo')).status, 401);
 });
