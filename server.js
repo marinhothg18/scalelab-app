@@ -3580,7 +3580,11 @@ function _metaConexaoPublica(cfg) {
     contas: (cfg.contas || []).map(c => Object.assign({}, c, { statusTxt: META_STATUS_CONTA[c.status] || ('status ' + c.status) })),
     pixels: cfg.pixels || [], sync: cfg.sync || null, ultimoErro: cfg.ultimoErro || null, antigo: !!(cfg.accessToken && cfg.tipo !== 'sistema'),
     via: con ? (cfg.via || 'token') : '', expiraEm: con ? (cfg.expiraEm || null) : null, login: _metaLoginPublico(),
-    perfis: con ? _metaPerfis(cfg).map(_metaPerfilPublico) : [], ultimaConexaoEm: cfg.ultimaConexaoEm || cfg.conectadoEm || null };
+    perfis: con ? _metaPerfis(cfg).map(_metaPerfilPublico) : [], ultimaConexaoEm: cfg.ultimaConexaoEm || cfg.conectadoEm || null,
+    temDados: _metaTemDados(), podeApagar: !SOU_TMX, apagadoEm: cfg.apagadoEm || null };
+}
+function _metaTemDados() {
+  try { return !!(_pessoas() && (_q('SELECT 1 FROM meta_camp LIMIT 1').get() || _q('SELECT 1 FROM meta_camp_dia LIMIT 1').get())); } catch (e) { return false; }
 }
 function _metaErroTxt(e) {
   const txt = _metaErroTxtBase(e), cod = _metaCodigoTxt(e);
@@ -3792,6 +3796,47 @@ app.post('/api/meta/conexao/atualizar', authMeta, async (req, res) => {
     if (!certos.length) return res.status(400).json({ error: cfg.ultimoErro });
     if ((req.body || {}).puxar) setTimeout(() => _metaSincronizar({ dias: 2 }).catch(() => {}), 200);
     res.json(Object.assign({ ok: true }, _metaConexaoPublica(cfg)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// ── Apagar os números da Meta desta empresa (12/11/2026) ──
+// Depois de desconectar, a Diretoria de uma empresa cliente pode tirar da SCALROI tudo o que veio da Meta:
+// campanhas, conjuntos, anúncios, gastos, as contas e pixels listados e o histórico que o cartão mostra em
+// "Quem mexeu" (o registro de auditoria continua guardado, só deixa de aparecer). Só com a Meta desconectada,
+// senão a próxima puxada traz tudo de volta. Na TMX não existe: ali o histórico alimenta as Regras e a Análise.
+const META_TABELAS_DADOS = ['meta_camp_dia', 'meta_camp_hora', 'meta_camp', 'meta_conj', 'meta_ad', 'meta_ad_dia', 'meta_puxado', 'meta_pos_dia', 'meta_contas_nome'];
+app.post('/api/meta/apagar-dados', authDiretoria, (req, res) => {
+  try {
+    if (SOU_TMX) return res.status(403).json({ error: 'Na TMX os números da Meta não são apagados por aqui.' });
+    if ((req.body || {}).confirmar !== 'APAGAR') return res.status(400).json({ error: 'Confirme que quer apagar.' });
+    const db = readDB(), cfg = _metaCfg(db) || {};
+    if (cfg.accessToken || _metaPerfis(cfg).length) return res.status(409).json({ error: 'Desconecte a Meta antes de apagar os números.' });
+    let linhas = 0;
+    if (_pessoas()) {
+      _pessoas().exec('BEGIN');
+      try {
+        // as mudanças de status e orçamento anotadas daqui também levam o nome das campanhas
+        try { linhas += _q("DELETE FROM camp_mudancas WHERE camp IN (SELECT id FROM meta_camp UNION SELECT id FROM meta_camp_dia)").run().changes; } catch (e) {}
+        META_TABELAS_DADOS.forEach(t => { try { linhas += _q('DELETE FROM ' + t).run().changes; } catch (e) {} });
+        _pessoas().exec('COMMIT');
+      } catch (e) { try { _pessoas().exec('ROLLBACK'); } catch (e2) {} throw e; }
+    }
+    ['contas', 'pixels'].forEach(k => { cfg[k] = []; });
+    ['sync', 'quem', 'ultimoErro', 'listasEm', 'permissoes'].forEach(k => { delete cfg[k]; });
+    cfg.apagadoEm = Date.now();
+    // a auditoria fica (o quê, quando e quem da equipe fez), mas sem o que veio da Meta: nome de campanha e de perfil
+    let anonimas = 0;
+    _listaSe(db.store.sl_auditlog).forEach(a => {
+      if (!a || !a.meta || typeof a.meta !== 'object' || !/^(meta_|integracao\.meta\.)/.test(String(a.action || ''))) return;
+      let mexeu = false;
+      ['nome', 'quem', 'perfil'].forEach(k => { if (a.meta[k]) { a.meta[k] = '(apagado)'; mexeu = true; } });
+      if (mexeu) anonimas++;
+    });
+    if (!db.timestamps) db.timestamps = {};
+    if (anonimas) db.timestamps.sl_auditlog = now();
+    db.store[KEY_META] = cfg; if (!db.timestamps) db.timestamps = {}; db.timestamps[KEY_META] = now();
+    audit(db, 'integracao.meta.apagar', KEY_META, { linhas, anonimas }, req.user);
+    writeDB(db);
+    res.json(Object.assign({ ok: true, linhas }, _metaConexaoPublica(cfg)));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/meta/conexao/desconectar', authMeta, (req, res) => {
@@ -4275,6 +4320,7 @@ function _metaHistTexto(a) {
   if (a.action === 'integracao.meta.desconectar') return m.perfil ? 'desconectou o perfil ' + m.perfil + ' da Meta' : 'desconectou a Meta';
   if (a.action === 'integracao.meta.atualizar') return 'atualizou as contas';
   if (a.action === 'integracao.meta.puxar') return 'puxou os números';
+  if (a.action === 'integracao.meta.apagar') return 'apagou os números da Meta';
   const x = /^meta_(campanha|conjunto|anuncio)_(ativad[ao]|pausad[ao]|orcamento)$/.exec(String(a.action || ''));
   if (!x) return '';
   const alvo = { campanha: 'a campanha', conjunto: 'o conjunto', anuncio: 'o anúncio' }[x[1]], nome = String(m.nome || a.target || '').replace(/\|\s*\d{10,}\s*$/, '').trim();
@@ -4284,7 +4330,10 @@ function _metaHistTexto(a) {
 }
 app.get('/api/meta/historico', authMeta, (req, res) => {
   try {
-    const itens = _listaSe(readDB().store.sl_auditlog).slice(0, 3000).map(a => ({ texto: _metaHistTexto(a), quem: a.userNome || '', em: a.ts })).filter(x => x.texto).slice(0, 8);
+    // depois de "apagar os números", o que veio antes some do cartão (continua na auditoria)
+    const db = readDB(), desde = Number((_metaCfg(db) || {}).apagadoEm) || 0;
+    const itens = _listaSe(db.store.sl_auditlog).slice(0, 3000).filter(a => (Number(a.ts) || 0) >= desde)
+      .map(a => ({ texto: _metaHistTexto(a), quem: a.userNome || '', em: a.ts })).filter(x => x.texto).slice(0, 8);
     res.json({ ok: true, itens });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

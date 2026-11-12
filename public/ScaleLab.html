@@ -40871,6 +40871,7 @@ function _cardMeta(con, cp){
   if(dir && login.pronto) mcCarregarFb(login);
   var h = '<div class="capi-card" id="mc-card">';
   if(!con.conectado){
+    h += (dir ? mcApagarHtml(con) : '');
     h += '<div class="capi-cab"><div><b>Meta · conexão da BM</b><span>Puxa gasto, campanhas e vídeo direto da Meta e deixa pausar campanha pela SCALROI. Pra mandar as compras basta um destino com o token do pixel (quadro Destinos, abaixo).</span></div><span class="v2-pill neu">Não conectado</span></div>'+
       (con.antigo ? '<div class="capi-aviso">Hoje tem um token antigo, de uma conta só, que vence em horas. Conectar aqui troca por um que não vence e enxerga todas as contas.</div>' : '')+
       (dir && login.pronto ? mcBlocoFb(login, 'Opção 1 · Conectar com o Facebook')+'<div class="mc-opcao"><b>Opção 2 · Colar um token</b><details class="mc-outro"><summary>Como gerar o token</summary>' : '')+
@@ -41077,6 +41078,25 @@ async function mcDesconectar(bt, perfil){
     .then(mcResposta).then(function(){ toastFn(varios ? 'Perfil desconectado' : 'Meta desconectada'); mcRepintar(); })
     .catch(function(e){ bt.disabled = false; mcMsg(e.message, 1); });
 }
+// ── Apagar os números da Meta (12/11/2026) ──
+// Com a Meta desconectada, o Dono de uma empresa cliente tira da SCALROI o que veio da Meta: campanhas, gastos,
+// contas e o histórico do cartão. Na TMX não aparece (podeApagar vem falso do servidor).
+function mcApagarHtml(con){
+  if(!con || con.conectado || !con.podeApagar || !con.temDados || (typeof currentUser !== 'undefined' && currentUser && currentUser.cargo !== 'Diretoria')) return '';
+  return '<div class="capi-aviso" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span style="flex:1;min-width:220px">A Meta está desconectada, mas os números que ela já mandou (campanhas, gastos e contas) continuam guardados aqui.</span>'+
+    '<button class="fn-btn g sm" onclick="mcApagarDados(this)">Apagar os números da Meta</button></div>';
+}
+async function mcApagarDados(bt){
+  if(!(await tmxConfirmar('Apagar os números da Meta?\n\nSaem da SCALROI as campanhas, conjuntos, anúncios, gastos, contas e pixels que vieram da Meta, e o histórico do cartão. O registro de auditoria continua, sem os nomes vindos da Meta. Não dá para desfazer; para ver de novo, conecte a Meta e ela puxa os últimos 14 dias.'))) return;
+  bt.disabled = true; bt.textContent = 'Apagando…';
+  fetch(API_BASE+'/api/meta/apagar-dados', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ confirmar: 'APAGAR' }) })
+    .then(mcResposta).then(function(){
+      toastFn('Números da Meta apagados');
+      cpDados = []; adsCampanhasData = []; _adsPeriodoCarregado = ''; cpNv = { chave:'', d:null, carregando:'', erro:'', em:0 };
+      mcRepintar();
+    })
+    .catch(function(e){ bt.disabled = false; bt.textContent = 'Apagar os números da Meta'; mcMsg(e.message, 1); });
+}
 // o quadro da Meta aparece em Configurações (Dono) e em Projetos › Integrações
 function mcRepintar(){ if(cur === 'funis' && fnAbaAtual === 'config') pcCarregar(); else renderIntegracoesTab(); }
 
@@ -41183,6 +41203,7 @@ function pcMetaCard(){
   var h = '<div class="capi-card"><div class="capi-cab"><div><b>Conexão com a Meta</b><span>Vale para todos os projetos da empresa.</span></div>'+
     (con.conectado ? mcPerfisPill(con.perfis || []) : '<span class="v2-pill neu">Não conectada</span>')+'</div>';
   if(!con.conectado){
+    h += mcApagarHtml(con);
     h += (login.pronto ? mcBlocoFb(login, 'Conectar com o Facebook')+aviso : '<div class="fx-sub">'+(currentUser.cargo === 'Diretoria' ? 'Conecte em Configurações › Conexões da empresa › Meta Ads.' : 'O botão do Facebook ainda não está ligado nesta conta. Peça ao Dono para conectar em Configurações.')+'</div>');
   } else {
     h += mcPerfisHtml(con, true)+

@@ -51,7 +51,7 @@ async function subir(env) {
   return s;
 }
 const ENV = { META_APP_ID: 'app-1', META_APP_SECRET: SEGREDO, META_LOGIN_CONFIG_ID: 'config-1' };
-let comApp, semApp;
+let comApp, semApp, empresaTeste;
 before(async () => {
   meta = await new Promise(r => { const s = http.createServer(falsa).listen(0, '127.0.0.1', () => r(s)); });
   [comApp, semApp] = await Promise.all([subir(ENV), subir({})]);
@@ -164,4 +164,42 @@ test('empresa cliente conecta pelo botão do Facebook, e o segredo fica só na p
   const ruim = await chamar('POST', '/api/meta/login', { token: tok, corpo: { code: 'ruim' } });
   assert.strictEqual(ruim.status, 400);
   assert.match(ruim.dados.error, /Invalid verification code/);
+  empresaTeste = { idEmp, tok };
+});
+
+// Apagar os números da Meta (12/11/2026): a empresa cliente desconecta e tira da SCALROI o que veio da Meta,
+// inclusive os nomes que ficavam no histórico do cartão e na auditoria. Na TMX a rota não existe.
+test('empresa cliente apaga os números da Meta depois de desconectar; na TMX não apaga', async () => {
+  const { chamar, dono, dir } = comApp, { idEmp, tok } = empresaTeste;
+  const { DatabaseSync } = require('node:sqlite');
+  const arq = path.join(dir, 'empresas', idEmp, 'pessoas.sqlite');
+  await ate(() => fs.existsSync(arq), 10000, 'banco da empresa');
+  const banco = new DatabaseSync(arq);
+  banco.prepare("INSERT INTO meta_camp(id, conta, nome, status, efetivo, orc, orc_vida, criado, em) VALUES('120','111','CAMPANHA SECRETA','PAUSED','PAUSED',50,null,?,?)").run(Date.now(), Date.now());
+  banco.prepare("INSERT INTO meta_camp_dia(dia, conta, id, nome, gasto, imp, em) VALUES('2026-11-12','111','120','CAMPANHA SECRETA',12.5,100,?)").run(Date.now());
+  banco.prepare("INSERT INTO meta_ad(id, conta, camp, conj, nome, status, efetivo, criado, em) VALUES('121','111','120','122','AD SECRETO','ACTIVE','ACTIVE',?,?)").run(Date.now(), Date.now());
+  banco.close();
+  const st = await chamar('POST', '/api/meta/status', { token: tok, corpo: { nivel: 'campanha', id: '120', ativo: false, nome: 'CAMPANHA SECRETA' } });
+  assert.ok([200, 400, 502].includes(st.status), 'a mudança fica na auditoria mesmo que a Meta falsa não grave');
+  // com a Meta conectada não apaga: a próxima puxada traria tudo de volta
+  assert.strictEqual((await chamar('POST', '/api/meta/apagar-dados', { token: tok, corpo: { confirmar: 'APAGAR' } })).status, 409);
+  assert.strictEqual((await chamar('POST', '/api/meta/conexao/desconectar', { token: tok, corpo: {} })).status, 200);
+  const antes = (await chamar('GET', '/api/meta/conexao', { token: tok })).dados;
+  assert.deepStrictEqual([antes.conectado, antes.temDados, antes.podeApagar], [false, true, true]);
+  assert.strictEqual((await chamar('POST', '/api/meta/apagar-dados', { token: tok, corpo: {} })).status, 400, 'sem confirmar não apaga');
+  const r = await chamar('POST', '/api/meta/apagar-dados', { token: tok, corpo: { confirmar: 'APAGAR' } });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  assert.deepStrictEqual([r.dados.temDados, r.dados.contas.length], [false, 0]);
+  const b2 = new DatabaseSync(arq, { readOnly: true });
+  assert.deepStrictEqual(['meta_camp', 'meta_camp_dia', 'meta_ad'].map(t => b2.prepare('SELECT COUNT(*) n FROM ' + t).get().n), [0, 0, 0]);
+  b2.close();
+  // o cartão mostra só o que veio depois de apagar; a auditoria fica, sem os nomes vindos da Meta
+  const hist = (await chamar('GET', '/api/meta/historico', { token: tok })).dados.itens;
+  assert.deepStrictEqual(hist.map(x => x.texto), ['apagou os números da Meta']);
+  const bancoEmp = fs.readFileSync(path.join(dir, 'empresas', idEmp, 'db.json'), 'utf8');
+  assert.ok(!bancoEmp.includes('CAMPANHA SECRETA') && !bancoEmp.includes('Pessoa Exemplo') && !bancoEmp.includes('Conta Exemplo'), 'nada com nome vindo da Meta');
+  assert.ok(bancoEmp.includes('integracao.meta.apagar'), 'apagar fica registrado');
+  // na TMX não existe
+  assert.strictEqual((await chamar('POST', '/api/meta/apagar-dados', { token: dono, corpo: { confirmar: 'APAGAR' } })).status, 403);
+  assert.strictEqual((await chamar('GET', '/api/meta/conexao', { token: dono })).dados.podeApagar, false);
 });
