@@ -20,7 +20,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch (e) {}
-  event.waitUntil(self.registration.showNotification(d.titulo || 'TMX Digital', {
+  event.waitUntil(self.registration.showNotification(d.titulo || 'SCALROI', {
     body: d.corpo || '', icon: '/icon-192.png', badge: '/icon-192.png', tag: d.tag
   }));
 });

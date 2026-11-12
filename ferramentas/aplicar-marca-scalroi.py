@@ -160,14 +160,34 @@ def manifesto_e_icones():
   s = s.replace('"background_color": "#0A1628"', '"background_color": "#050A18"').replace('"theme_color": "#3E1493"', '"theme_color": "#050A18"')
   gravar(p, s)
   os.makedirs(os.path.join(RAIZ, 'public/marca'), exist_ok=True)
-  def png(tam, destino, origem=ICONE_ORIGEM):
-    subprocess.run(['sips', '-s', 'format', 'png', '-Z', str(tam), origem, '--out', os.path.join(RAIZ, destino)], check=True, capture_output=True)
-  png(256, 'public/marca/scalroi-icone.png'); png(512, 'public/icon-512.png'); png(192, 'public/icon-192.png')
-  png(180, 'public/apple-touch-icon.png'); png(120, 'public/apple-touch-icon-120.png'); png(152, 'public/apple-touch-icon-152.png')
-  png(167, 'public/apple-touch-icon-167.png'); png(32, 'public/favicon-32.png'); png(1200, 'public/marca/scalroi-logo.png', LOGO_ORIGEM)
-  png(64, 'public/marca/_fav64.png')
-  b64 = base64.b64encode(open(os.path.join(RAIZ, 'public/marca/_fav64.png'), 'rb').read()).decode()
-  os.remove(os.path.join(RAIZ, 'public/marca/_fav64.png'))
+  # O ícone de origem é um quadrado arredondado sobre fundo branco. Daqui saem dois:
+  #  cheio: quadrado inteiro no fundo escuro (tela de início do iPhone e Android, que arredondam sozinhos)
+  #  recortado: cantos transparentes (aba do navegador e logo do menu), sem o branco em volta
+  from PIL import Image, ImageDraw
+  im = Image.open(ICONE_ORIGEM).convert('RGB')
+  cinza = im.convert('L')
+  escuro = cinza.point(lambda v: 255 if v < 60 else 0)
+  x0, y0, x1, y1 = escuro.getbbox()
+  lado = int(min(x1 - x0, y1 - y0) * .975)   # tira 1,25% de cada borda: o canto da origem não é um arco perfeito
+  cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+  im = im.crop((cx - lado // 2, cy - lado // 2, cx - lado // 2 + lado, cy - lado // 2 + lado))
+  fundo = im.crop((int(lado * .03), int(lado * .45), int(lado * .07), int(lado * .55))).resize((1, 1), Image.BOX).getpixel((0, 0))
+  R = int(lado * .28)   # o arredondado da origem é 25% do lado (medido na diagonal); 28% cobre todo o branco
+  cantos = Image.new('L', (lado * 4, lado * 4), 255)
+  ImageDraw.Draw(cantos).rounded_rectangle((0, 0, lado * 4 - 1, lado * 4 - 1), radius=R * 4, fill=0)
+  cantos = cantos.resize((lado, lado), Image.LANCZOS)
+  cheio = im.copy(); cheio.paste(Image.new('RGB', (lado, lado), fundo), (0, 0), cantos)
+  recortado = im.convert('RGBA'); recortado.putalpha(cantos.point(lambda v: 255 - v))
+  def png(tam, destino, base):
+    base.resize((tam, tam), Image.LANCZOS).save(os.path.join(RAIZ, destino), optimize=True)
+  png(256, 'public/marca/scalroi-icone.png', recortado); png(32, 'public/favicon-32.png', recortado)
+  png(512, 'public/icon-512.png', cheio); png(192, 'public/icon-192.png', cheio)
+  png(180, 'public/apple-touch-icon.png', cheio); png(120, 'public/apple-touch-icon-120.png', cheio)
+  png(152, 'public/apple-touch-icon-152.png', cheio); png(167, 'public/apple-touch-icon-167.png', cheio)
+  subprocess.run(['sips', '-s', 'format', 'png', '-Z', '1200', LOGO_ORIGEM, '--out', os.path.join(RAIZ, 'public/marca/scalroi-logo.png')], check=True, capture_output=True)
+  import io
+  buf = io.BytesIO(); recortado.resize((64, 64), Image.LANCZOS).save(buf, 'PNG', optimize=True)
+  b64 = base64.b64encode(buf.getvalue()).decode()
   gravar('public/favicon.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><image width="64" height="64" href="data:image/png;base64,' + b64 + '"/></svg>\n')
 
 def servidor():
@@ -241,6 +261,29 @@ def textos():
   gravar('public/admin.html', _linhas(ler('public/admin.html'), _masc))
   gravar('server.js', _linhas(ler('server.js'), _servidor_txt))
 
+_ICONES = ('<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=scalroi">\n'
+           '<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=scalroi">\n'
+           '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=scalroi">')
+
+def icones():
+  """Ícone da SCALROI em todas as telas do cliente, com ?v=scalroi pro navegador não ficar com o da TMX guardado."""
+  for p in ['public/planos.html', 'public/admin.html', 'public/cadastro.html', 'public/conectar-meta.html', 'public/paginas.html', 'public/reset-senha.html']:
+    if not os.path.exists(os.path.join(RAIZ, p)): continue
+    s = ler(p)
+    if 'rel="icon"' not in s:
+      s = re.sub(r'(<meta name="viewport"[^>]*>)', lambda m: m.group(1) + '\n' + _ICONES, s, count=1)
+      gravar(p, s)
+  s = ler('public/ScaleLab.html')
+  s = s.replace("icon: '/favicon.ico',", "icon: '/icon-192.png?v=scalroi',")   # aviso do navegador: /favicon.ico não existe
+  s = re.sub(r'href="(/(?:favicon-32\.png|favicon\.svg|apple-touch-icon(?:-\d+)?\.png|manifest\.json))"', r'href="\1?v=scalroi"', s)
+  gravar('public/ScaleLab.html', s)
+  s = ler('public/manifest.json')
+  s = re.sub(r'"src": "(/icon-\d+\.png)"', r'"src": "\1?v=scalroi"', s)
+  gravar('public/manifest.json', s)
+  s = ler('public/sw.js')
+  s = s.replace("showNotification(d.titulo || 'TMX Digital'", "showNotification(d.titulo || 'SCALROI'")
+  gravar('public/sw.js', s)
+
 def dominio(novo):
   """Troca o endereço que o cliente vê (app.centraltmx.com) pelo domínio novo. Só depois que ele responder.
   Comentários ficam como estão; app.centraltmx.com continua no ar (pixel, webhooks e MCP já instalados)."""
@@ -254,5 +297,5 @@ if __name__ == '__main__':
   if '--dominio' in sys.argv:
     novo = sys.argv[sys.argv.index('--dominio') + 1]
     dominio(novo); print('endereço trocado para ' + novo); sys.exit(0)
-  sistema(); central(); planos(); cadastro(); manifesto_e_icones(); servidor(); textos()
+  sistema(); central(); planos(); cadastro(); manifesto_e_icones(); icones(); servidor(); textos()
   print('marca SCALROI aplicada')
