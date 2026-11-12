@@ -287,7 +287,8 @@ def icones():
 def dominio(novo):
   """Troca o endereço que o cliente vê (app.centraltmx.com) pelo domínio novo. Só depois que ele responder.
   Comentários ficam como estão; app.centraltmx.com continua no ar (pixel, webhooks e MCP já instalados)."""
-  for p in ['public/planos.html', 'public/site.html', 'public/ScaleLab.html']:
+  # site.html fica: é o site da agência TMX Digital, não do produto
+  for p in ['public/planos.html', 'public/ScaleLab.html']:
     if os.path.exists(os.path.join(RAIZ, p)):
       gravar(p, _linhas(ler(p), lambda t: t.replace('app.centraltmx.com', novo)))
 
