@@ -116,7 +116,7 @@ test('Central TMX Admin: bloquear, suporte e chamados', async (t) => {
     // a Diretoria da A foi avisada e a auditoria da TMX registrou
     await chamar('POST', '/api/plataforma/empresas/' + ctx.idA + '/desbloquear', { token: ctx.tmx });
     const notifs = JSON.stringify((await store(ctx.tokA)).sl_notifs || []);
-    assert.match(notifs, /suporte da TMX entrou/);
+    assert.match(notifs, /suporte da SCALROI entrou/);
     assert.match(notifs, /chamado do pixel/);
     const tmxStore = await store(ctx.tmx);
     assert.ok((tmxStore.sl_auditlog || []).some(x => x.action === 'suporte_entrou'));
@@ -154,7 +154,7 @@ test('Central TMX Admin: bloquear, suporte e chamados', async (t) => {
     const visto = (await chamar('GET', '/api/suporte/chamados/' + ctx.ch, { token: ctx.tokA })).dados.chamado;
     assert.strictEqual(visto.status, 'cliente');
     assert.deepStrictEqual(visto.msgs.map(m => m.de), ['cliente', 'tmx'], 'nota interna não aparece pro cliente');
-    await ate(async () => /A TMX respondeu/.test(JSON.stringify((await store(ctx.tokA)).sl_notifs || [])), 5000, 'aviso da resposta no cliente');
+    await ate(async () => /A SCALROI respondeu/.test(JSON.stringify((await store(ctx.tokA)).sl_notifs || [])), 5000, 'aviso da resposta no cliente');
     // cliente responde e volta pra fila da TMX
     assert.strictEqual((await chamar('POST', '/api/suporte/chamados/' + ctx.ch + '/responder', { token: ctx.tokA, corpo: { texto: 'Troquei, deu certo.' } })).status, 200);
     assert.strictEqual((await chamar('GET', '/api/plataforma/chamados/' + ctx.ch, { token: ctx.tmx })).dados.chamado.status, 'aberto');

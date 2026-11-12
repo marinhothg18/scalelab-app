@@ -177,6 +177,62 @@ def servidor():
                 "const BRANDING_DEFAULT = {\n  nome: 'SCALROI',\n  primary: '#22D94A',\n  secondary: '#0E9F35',")
   gravar(p, s)
 
+# ── textos: "TMX" (o sistema) vira SCALROI; "a TMX" (a empresa) só vira onde o cliente lê ──
+_P = r'(?![A-Za-z0-9_\-]|\.[A-Za-z])'
+_MASC = [(r'\bpelo TMX' + _P, 'pela SCALROI'), (r'\bPelo TMX' + _P, 'Pela SCALROI'), (r'\bno TMX' + _P, 'na SCALROI'), (r'\bNo TMX' + _P, 'Na SCALROI'),
+         (r'\bdo TMX' + _P, 'da SCALROI'), (r'\bDo TMX' + _P, 'Da SCALROI'), (r'\bao TMX' + _P, 'à SCALROI'), (r'\bAo TMX' + _P, 'À SCALROI'),
+         (r'\bnum TMX' + _P, 'numa SCALROI'), (r'\bseu TMX' + _P, 'sua SCALROI'), (r'\bSeu TMX' + _P, 'Sua SCALROI'), (r'\bnosso TMX' + _P, 'nossa SCALROI'),
+         (r'\beste TMX' + _P, 'esta SCALROI'), (r'\bum TMX' + _P, 'uma SCALROI'), (r'\bo TMX' + _P, 'a SCALROI'), (r'\bO TMX' + _P, 'A SCALROI')]
+_SOLTO = r"(?<![A-Za-z0-9_./\-'])TMX" + _P
+_FRASES_CLIENTE = ['fale com a TMX', 'Fale com a TMX', 'Falar com a TMX', 'Esperando a TMX', 'A TMX respondeu', 'A TMX vai responder', 'A TMX responde', 'a TMX faz',
+                   'O suporte da TMX', 'suporte da TMX', 'app da TMX', 'A TMX já foi avisada', 'enquanto a TMX libera', 'a TMX libera', 'A TMX libera']
+
+_SERVIDOR_TROCAS = [("'TMX Digital <noreply@", "'SCALROI <noreply@"), ("Resetar senha · TMX Digital", "Resetar senha · SCALROI"),
+  ("não aponta pro TMX Digital", "não aponta pra SCALROI"), ("'Teste TMX Digital'", "'Teste SCALROI'"),
+  ("tenantNome: (t && t.nome) || 'TMX Digital'", "tenantNome: (t && t.nome) || 'SCALROI'"),
+  ("a coluna TMX", "a coluna SCALROI"), ("Fontes: Utmify, Central TMX e VTurb", "Fontes: Utmify, SCALROI e VTurb"),
+  ("'TMX ' + (c.vendasAnuncios", "'SCALROI ' + (c.vendasAnuncios"), ("Vendas = TMX / Utmify", "Vendas = SCALROI / Utmify"),
+  ("a maior entre TMX e Utmify", "a maior entre SCALROI e Utmify"), ("DIVERGÊNCIAS (TMX / Utmify", "DIVERGÊNCIAS (SCALROI / Utmify"),
+  ("=== FUNIL DO TMX", "=== FUNIL DA SCALROI"), ("'TMX API v1'", "'SCALROI API v1'"),
+  ("name: ('TMX ' + p.nome", "name: ('SCALROI ' + p.nome"), ("statement_descriptor: 'TMX DIGITAL'", "statement_descriptor: 'SCALROI'"),
+  ("name: 'TMX ' + p.nome", "name: 'SCALROI ' + p.nome"), ("'🛟 Suporte TMX · chamado #'", "'🛟 Suporte SCALROI · chamado #'"),
+  ("Relatório Semanal TMX Digital", "Relatório Semanal SCALROI"), ("Relatório Diário TMX Digital", "Relatório Diário SCALROI"),
+  ("'Notificação TMX Digital'", "'Notificação SCALROI'"), ("fonte: 'pixel TMX'", "fonte: 'pixel SCALROI'"),
+  ("Tem uma tag do Central TMX", "Tem uma tag da SCALROI")]
+
+def _linhas(s, troca):
+  saida = []
+  for ln in s.split('\n'):
+    st = ln.lstrip()
+    if st.startswith(('//', '/*', '*', '<!--')) or 'sl_empresa_nome' in ln:
+      saida.append(ln); continue
+    m = re.search(r'\s//\s', ln)
+    codigo, resto = (ln[:m.start()], ln[m.start():]) if m else (ln, '')
+    saida.append(troca(codigo) + resto)
+  return '\n'.join(saida)
+
+def _masc(t):
+  for de, para in _MASC: t = re.sub(de, para, t)
+  return t
+
+def _tudo(t):
+  t = t.replace('Empresa TMX', 'Empresa')
+  t = t.replace("'TMX · '", "'SCALROI · '").replace("doc.text('TMX DIGITAL'", "doc.text('SCALROI'").replace(", 'TMX')", ", 'SCALROI')").replace(", 'TMX']", ", 'SCALROI']")
+  t = _masc(t)
+  return re.sub(_SOLTO, 'SCALROI', t)
+
+def _servidor_txt(t):
+  t = _masc(t)
+  for de, para in _SERVIDOR_TROCAS: t = t.replace(de, para)
+  for f in _FRASES_CLIENTE: t = t.replace(f, f.replace('TMX', 'SCALROI'))
+  return t
+
+def textos():
+  for p in ['public/ScaleLab.html', 'public/planos.html', 'public/cadastro.html', 'public/paginas.html', 'public/conectar-meta.html', 'paginas.js']:
+    if os.path.exists(os.path.join(RAIZ, p)): gravar(p, _linhas(ler(p), _tudo))
+  gravar('public/admin.html', _linhas(ler('public/admin.html'), _masc))
+  gravar('server.js', _linhas(ler('server.js'), _servidor_txt))
+
 if __name__ == '__main__':
-  sistema(); central(); planos(); cadastro(); manifesto_e_icones(); servidor()
+  sistema(); central(); planos(); cadastro(); manifesto_e_icones(); servidor(); textos()
   print('marca SCALROI aplicada')

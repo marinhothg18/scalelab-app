@@ -549,7 +549,7 @@ function _respBloqueada(res, emp) {
   res.statusCode = 403;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('X-TMX-Bloqueada', '1');
-  res.end(JSON.stringify({ error: 'A conta da sua empresa está suspensa. Fale com a TMX pra liberar.', codigo: 'EMPRESA_BLOQUEADA' }));
+  res.end(JSON.stringify({ error: 'A conta da sua empresa está suspensa. Fale com a SCALROI pra liberar.', codigo: 'EMPRESA_BLOQUEADA' }));
 }
 const _ROTAS_POR_EMAIL = new Set(['/api/auth/login', '/api/auth/forgot', '/api/auth/reset']);
 const _RE_API_EMPRESA = /^\/(mcp(?=[/?]|$)|api\/v1\/|api\/spy\/)/;
@@ -1528,7 +1528,7 @@ function authTokensApi(req, res, next) {
   if (SOU_TMX) return authDiretoriaInterna(req, res, next);
   authDiretoria(req, res, () => {
     if (req.user && req.user.suporte && req.method !== 'GET') {
-      return res.status(403).json({ error: 'Só a Diretoria da empresa gera ou revoga token da API. O suporte da TMX não mexe nisso.', codigo: 'SUPORTE_SEM_TOKEN' });
+      return res.status(403).json({ error: 'Só a Diretoria da empresa gera ou revoga token da API. O suporte da SCALROI não mexe nisso.', codigo: 'SUPORTE_SEM_TOKEN' });
     }
     next();
   });
@@ -1990,7 +1990,7 @@ app.post('/api/spy/import', authAPI, (req, res) => {
 // Free tier: 100 emails/dia, 3000/mês
 // ══════════════════════════════════════════════
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const RESEND_FROM = process.env.RESEND_FROM || 'TMX Digital <noreply@centralaxcend.com>';
+const RESEND_FROM = process.env.RESEND_FROM || 'SCALROI <noreply@centralaxcend.com>';
 
 async function _enviarEmail({ to, subject, html, text, replyTo }) {
   try {
@@ -2051,7 +2051,7 @@ function _emailTemplateResetSenha(nome, linkReset) {
   return _emailTemplateBase(`
     <h2 style="margin:0 0 16px 0;font-size:22px;">🔐 Resetar sua senha</h2>
     <p>Oi ${nome || 'tudo bem'}!</p>
-    <p>Recebemos um pedido pra resetar a senha da sua conta no TMX Digital.</p>
+    <p>Recebemos um pedido pra resetar a senha da sua conta na SCALROI Digital.</p>
     <p>Clica no botão abaixo pra criar uma nova senha (link válido por <b>1 hora</b>):</p>
     <p style="text-align:center;margin:28px 0;">
       <a href="${linkReset}" style="display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;">Criar nova senha</a>
@@ -2064,7 +2064,7 @@ function _emailTemplateResetSenha(nome, linkReset) {
 
 function _emailTemplateBoasVindas(nome, urlPainel) {
   return _emailTemplateBase(`
-    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo ao TMX Digital, ${nome || 'tudo bem'}!</h2>
+    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo à SCALROI Digital, ${nome || 'tudo bem'}!</h2>
     <p>Sua conta foi criada com sucesso. Você tem <b>14 dias grátis</b> pra testar tudo.</p>
     <p>Acesse seu painel:</p>
     <p style="text-align:center;margin:28px 0;">
@@ -2114,8 +2114,8 @@ app.post('/api/email/test', authDiretoria, async (req, res) => {
     if (!to || !to.includes('@')) return res.status(400).json({ error: 'email destinatário inválido' });
     const r = await _enviarEmail({
       to,
-      subject: '🧪 Teste do TMX Digital',
-      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado do TMX Digital. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
+      subject: '🧪 Teste da SCALROI Digital',
+      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado da SCALROI Digital. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
     });
     res.json(r);
   } catch (err) {
@@ -2174,7 +2174,7 @@ app.post('/api/auth/forgot', loginLimiter, async (req, res) => {
     // Envia email
     const emailResult = await _enviarEmail({
       to: user.email,
-      subject: '🔐 Resetar senha · TMX Digital',
+      subject: '🔐 Resetar senha · SCALROI',
       html: _emailTemplateResetSenha(user.nome, linkReset)
     });
 
@@ -2773,7 +2773,7 @@ app.post('/api/me/dominio/verificar', authDiretoria, async (req, res) => {
         _tenantCache = { ts: 0, byHost: new Map(), bySlug: new Map() };
         return res.json({ ok: true, verificado: true, cnames, mensagem: 'DNS verificado! Acesse https://' + tenant.dominio + ' em 5-15 min (tempo do SSL).' });
       }
-      return res.json({ ok: true, verificado: false, cnames, mensagem: 'CNAME encontrado mas não aponta pro TMX Digital. Esperado: cname.centralaxcend.com' });
+      return res.json({ ok: true, verificado: false, cnames, mensagem: 'CNAME encontrado mas não aponta pra SCALROI. Esperado: cname.centralaxcend.com' });
     } catch (e) {
       return res.json({ ok: true, verificado: false, mensagem: 'DNS não propagou ainda. Tente novamente em 5-30 min.', erro: e.message });
     }
@@ -3069,7 +3069,7 @@ app.post('/api/integracoes/utmify/test', authDiretoria, async (req, res) => {
     const tenantId = req.tenantId || TENANT_DEFAULT_ID;
     const r = await _enviarEventoUtmify(tenantId, 'lead', {
       orderId: 'test-' + Date.now(),
-      customerName: 'Teste TMX Digital',
+      customerName: 'Teste SCALROI',
       customerEmail: 'teste@axcend.com',
       productName: 'Evento de teste',
       value: 0
@@ -3586,7 +3586,7 @@ async function _metaEntrarPeloFacebook(b, req, extra) {
     : { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.segredo, fb_exchange_token: curto });
   let info = {};
   try { info = (await _metaGet('debug_token', { input_token: t.access_token }, { accessToken: c.appId + '|' + c.segredo })).data || {}; } catch (e) {}
-  if (info.app_id && String(info.app_id) !== c.appId) { const e = new Error('Essa autorização não veio do app da TMX.'); e.pronta = true; throw e; }
+  if (info.app_id && String(info.app_id) !== c.appId) { const e = new Error('Essa autorização não veio do app da SCALROI.'); e.pronta = true; throw e; }
   const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
   const conexao = await _metaGuardarConexao(t.access_token, req, Object.assign({ via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') }, extra || {}));
   console.log('[meta-login] conectado pelo Facebook; contas:', conexao.novo.contas);
@@ -3607,9 +3607,9 @@ const _metaLinkHash = t => crypto.createHash('sha256').update(String(t)).digest(
 const _metaLinksEmUso = new Set();
 function _metaLinkAchar(cfg, token) {
   const l = ((cfg && cfg.linksLogin) || []).find(x => x.h === _metaLinkHash(token));
-  if (!l) return { erro: 'Este link não existe. Gere outro no TMX.' };
-  if (l.usado) return { erro: 'Este link já foi usado. Gere outro no TMX.' };
-  if (l.expira < Date.now()) return { erro: 'Este link venceu. Gere outro no TMX.' };
+  if (!l) return { erro: 'Este link não existe. Gere outro na SCALROI.' };
+  if (l.usado) return { erro: 'Este link já foi usado. Gere outro na SCALROI.' };
+  if (l.expira < Date.now()) return { erro: 'Este link venceu. Gere outro na SCALROI.' };
   return { l };
 }
 app.post('/api/meta/login/link', authMeta, (req, res) => {
@@ -4126,7 +4126,7 @@ async function _metaMudarOrcamento(b, quem, fator) {
       }
       // a tela manda o valor que estava mostrando: se alguém mudou nesse meio tempo, não passa por cima
       if (b.de !== undefined && Math.round(Number(b.de) * 100) !== Math.round(orc.valor * 100)) throw _metaErroTela('O orçamento mudou na Meta depois que você abriu esta tela. Abra de novo para ver o valor atual.', 409);
-      if (fator && (valor > orc.valor * fator + 0.001 || valor < orc.valor / fator - 0.001)) throw _metaErroTela('Pelo Claude o orçamento muda até o dobro ou até a metade de uma vez (hoje está em ' + orc.valor + '). Para mudar mais, use a tela do TMX.');
+      if (fator && (valor > orc.valor * fator + 0.001 || valor < orc.valor / fator - 0.001)) throw _metaErroTela('Pelo Claude o orçamento muda até o dobro ou até a metade de uma vez (hoje está em ' + orc.valor + '). Para mudar mais, use a tela da SCALROI.');
       await _metaGravar(id, { [orc.tipo === 'dia' ? 'daily_budget' : 'lifetime_budget']: String(Math.round(valor * 100)) }, cfg);
       return { orc, moeda };
     });
@@ -7676,7 +7676,7 @@ app.post('/api/saas/signup', async (req, res) => {
       const adminInterno = (db.store['sl_usuarios'] || []).find(u => u.cargo === 'Diretoria' && u.tenant_id === TENANT_INTERNO_ID && u.whatsapp);
       if (cfg.ativo && adminInterno && adminInterno.whatsapp) {
         sendWhatsAppMessage(adminInterno.whatsapp,
-          `🎉 *Novo cliente no TMX Digital!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
+          `🎉 *Novo cliente na SCALROI Digital!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
         ).catch(()=>{});
       }
     } catch(e) { console.error('[signup notif WA]', e.message); }
@@ -7684,7 +7684,7 @@ app.post('/api/saas/signup', async (req, res) => {
     // 📧 Hook email: envia boas-vindas pro novo admin
     _enviarEmail({
       to: email.toLowerCase(),
-      subject: `🎉 Bem-vindo ao TMX Digital, ${nomeAdmin}!`,
+      subject: `🎉 Bem-vindo à SCALROI Digital, ${nomeAdmin}!`,
       html: _emailTemplateBoasVindas(nomeAdmin, `https://${slug}.${SAAS_ROOT_DOMAIN}/?token=${token}`)
     }).catch(()=>{});
 
@@ -7833,7 +7833,7 @@ app.get('/api/tenant/branding', (req, res) => {
     const branding = (t && t.branding) ? t.branding : {};
     res.json({
       tenantId: req.tenantId,
-      tenantNome: (t && t.nome) || 'TMX Digital',
+      tenantNome: (t && t.nome) || 'SCALROI',
       branding: Object.assign({}, BRANDING_DEFAULT, branding)
     });
   } catch (e) {
@@ -8442,7 +8442,7 @@ app.post('/api/teste/publica/:slug/enviar', testeLimiter, (req, res) => {
         diretoria.forEach(d => {
           if (!d.whatsapp) return;
           const titulo = '📝 Teste prático recebido!';
-          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja no TMX Digital.`;
+          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja na SCALROI Digital.`;
           _notificarViaWhatsApp(d.id, titulo, texto).catch(()=>{});
         });
       } catch (e) { console.error('[WA teste]', e.message); }
@@ -8777,7 +8777,7 @@ function _semChaveIA(textoTmx) {
 // A empresa cliente cadastra a própria chave do Claude: confere na Anthropic antes de guardar e nunca devolve a chave.
 app.post('/api/ia/chave', authDiretoria, async (req, res) => {
   if (SOU_TMX) return res.status(404).json({ error: 'Na TMX a chave fica em Configurações.' });
-  if (req.user && req.user.suporte) return res.status(403).json({ error: 'A chave do Claude é a Diretoria da empresa que cadastra. O suporte da TMX não mexe nisso.' });
+  if (req.user && req.user.suporte) return res.status(403).json({ error: 'A chave do Claude é a Diretoria da empresa que cadastra. O suporte da SCALROI não mexe nisso.' });
   const chave = String((req.body || {}).chave || '').trim();
   if (!/^sk-ant-[\w-]{10,300}$/.test(chave)) return res.status(400).json({ error: 'Essa chave não parece do Claude. Ela começa com sk-ant-. Copie de novo em console.anthropic.com.' });
   try {
@@ -8998,7 +8998,7 @@ async function _audJuntarDados(job, b) {
     } else semTmx = true;
   }
   if (!Object.keys(ads).length) throw new Error(erroDia ? 'A Utmify não respondeu os anúncios: ' + erroDia : 'A Utmify não devolveu nenhum anúncio desse projeto nos últimos 7 dias.');
-  if (semTmx) faltou.push('vendas do TMX por anúncio em algum dia: a coluna TMX pode estar incompleta');
+  if (semTmx) faltou.push('vendas da SCALROI por anúncio em algum dia: a coluna SCALROI pode estar incompleta');
 
   // ── contexto e metas ──
   const agora = new Date(Date.now() - 3 * 3600000);
@@ -9010,10 +9010,10 @@ async function _audJuntarDados(job, b) {
   const fator = cpaRef ? cpaRef / 350 : 1;
   const totU = Object.values(ads).reduce((s, a) => s + (_audJanela(a, d7).vendas || 0), 0), totT = Object.values(ads).reduce((s, a) => s + (_audJanela(a, d7).tmx || 0), 0);
   partes.push('=== CONTEXTO ===\nProjeto: ' + nomeProj + '\nDia analisado (D): ' + fm.dm(D) + '/' + D.slice(0, 4) + ' · ' + (parcial ? parcial + (ultHora >= 0 ? ' (último gasto registrado às ' + ultHora + 'h)' : '') : 'dia fechado') +
-    '\nDia anterior (D-1): ' + fm.dm(D1) + ' (fechado)\nAgora: ' + _mcpDia(0) + ' às ' + hora + ' (Brasília)\nFontes: Utmify, Central TMX e VTurb. Faturamento e vendas do resumo vêm de: ' + rD.fonte + '.' +
+    '\nDia anterior (D-1): ' + fm.dm(D1) + ' (fechado)\nAgora: ' + _mcpDia(0) + ' às ' + hora + ' (Brasília)\nFontes: Utmify, SCALROI e VTurb. Faturamento e vendas do resumo vêm de: ' + rD.fonte + '.' +
     (metas.cpa ? '\nCPA meta do projeto: ' + fm.r(metas.cpa) : '\nSem CPA meta cadastrado: a régua é o CPA de equilíbrio dos últimos 7 dias (receita / vendas), ' + fm.r(cpaRef) + '. Diga isso no topo.') +
     '\nFator de escala das regras em R$: ' + fm.x(fator) + ' (régua ÷ 350). Multiplique por ele todo valor em R$ das regras de decisão.' +
-    (!totU && totT ? '\nAVISO: o painel da Utmify deste projeto não recebe vendas (0 vendas em 7 dias, contra ' + totT + ' no TMX). Diga isso no topo e marque a coluna Utmify como "sem dado".' : '') +
+    (!totU && totT ? '\nAVISO: o painel da Utmify deste projeto não recebe vendas (0 vendas em 7 dias, contra ' + totT + ' na SCALROI). Diga isso no topo e marque a coluna Utmify como "sem dado".' : '') +
     (metas.principal ? '\nProduto principal: ' + metas.principal : ''));
 
   // ── resumo ──
@@ -9045,7 +9045,7 @@ async function _audJuntarDados(job, b) {
     });
   };
   const cpa = (r, n) => (n ? fm.r(r.inv / n) : '-');
-  const ligadas = (a, c) => 'TMX ' + (c.vendasAnuncios != null ? c.vendasAnuncios : '-') + ' · Utmify ' + (a.vendas || 0) + ' · pixel ' + (a.pixel || 0);
+  const ligadas = (a, c) => 'SCALROI ' + (c.vendasAnuncios != null ? c.vendasAnuncios : '-') + ' · Utmify ' + (a.vendas || 0) + ' · pixel ' + (a.pixel || 0);
   partes.push('=== RESUMO: D x D-1 (já calculado) ===\n' + _audTab(['Métrica', 'D' + (parcial ? ' (' + parcial + ')' : ''), 'D-1 (fechado)'], [
     ['Investimento', fm.r(rD.inv), fm.r(rD1.inv)],
     ['Faturamento', fm.r(rD.fat), fm.r(rD1.fat)],
@@ -9125,14 +9125,14 @@ async function _audJuntarDados(job, b) {
   lista.sort((x, y) => (y.h.gasto || 0) - (x.h.gasto || 0) || (y.t7.gasto || 0) - (x.t7.gasto || 0));
   const relevantes = lista.filter(l => (l.t7.gasto || 0) >= 20 || _audMaisVendas(l.t7) > 0);
   const campsD = l => (l.a.campsDia[D] ? l.a.campsDia[D].size : 0);
-  partes.push('=== ANÚNCIOS, por nome (já calculado). Vendas = TMX / Utmify / pixel. Janelas = gasto · vendas · ROAS ===\n' + _audTab(
+  partes.push('=== ANÚNCIOS, por nome (já calculado). Vendas = SCALROI / Utmify / pixel. Janelas = gasto · vendas · ROAS ===\n' + _audTab(
     ['Anúncio', 'Status', 'Camp. D', 'Gasto D', 'Vendas D', 'Pix pend. D', 'IC D', 'Custo IC D', '3 dias', '7 dias', 'Custo IC 3d', 'Custo IC 7d', 'Taxa IC 3d', 'Taxa IC 7d', 'Hook 3d', 'Body 3d', 'CPM 3d', 'CTR 3d'],
     relevantes.slice(0, 70).map(l => [l.a.nome, l.a.ativo ? 'ativo' : 'pausado', campsD(l), fm.r(l.h.gasto), _audTrio(l.h), l.h.pend || 0, l.h.ic || 0, _audCustoIc(l.h), _audJanelaTxt(l.t3), _audJanelaTxt(l.t7),
       _audCustoIc(l.t3), _audCustoIc(l.t7), fm.p(l.t3.ic, l.t3.lpv, 1), fm.p(l.t7.ic, l.t7.lpv, 1), fm.p(l.t3.v3, l.t3.imp), fm.p(l.t3.v75, l.t3.v3), l.t3.imp ? fm.r(l.t3.gasto / l.t3.imp * 1000) : '-', fm.p(l.t3.cliques, l.t3.imp, 2)])) +
     (relevantes.length > 70 ? '\n(os 70 de maior gasto, de ' + relevantes.length + ')' : ''));
 
   const historico = lista.filter(l => (l.t7.gasto || 0) > 0).sort((x, y) => (y.t7.gasto || 0) - (x.t7.gasto || 0)).slice(0, 30);
-  partes.push('=== HISTÓRICO DE 7 DIAS (campanhas no dia / gasto / vendas, a maior entre TMX e Utmify) ===\n' + _audTab(['Anúncio', ...dias.map(fm.dm)],
+  partes.push('=== HISTÓRICO DE 7 DIAS (campanhas no dia / gasto / vendas, a maior entre SCALROI e Utmify) ===\n' + _audTab(['Anúncio', ...dias.map(fm.dm)],
     historico.map(l => [l.a.nome, ...dias.map(d => { const x = l.a.dias[d]; return x && (x.gasto || _audMaisVendas(x)) ? (l.a.campsDia[d] ? l.a.campsDia[d].size : 0) + ' / ' + fm.n(x.gasto) + ' / ' + _audMaisVendas(x) : '-'; })])));
 
   const copiasL = Object.values(copias).map(c => ({ c, h: c.dias[D] || {}, t3: _audJanela(c, d3), t7: _audJanela(c, d7), camp: camps[c.cid] || {} }))
@@ -9149,7 +9149,7 @@ async function _audJuntarDados(job, b) {
       .map(x => x.a.nome + ': ' + _audTrio(x[t]));
     return rotulo + ': ' + (l.length ? l.slice(0, 30).join(' · ') : 'nenhuma');
   };
-  partes.push('=== DIVERGÊNCIAS (TMX / Utmify / pixel) ===\n' + diverge('h', 'D') + '\n' + diverge('t3', '3 dias'));
+  partes.push('=== DIVERGÊNCIAS (SCALROI / Utmify / pixel) ===\n' + diverge('h', 'D') + '\n' + diverge('t3', '3 dias'));
 
   // ── BIDCAP e testes ──
   const ehBid = n => /\bbid/i.test(n || ''), ehTeste = n => /1[.\-_ ]1[.\-_ ]3/.test(n || '');
@@ -9180,7 +9180,7 @@ async function _audJuntarDados(job, b) {
     .sort((a, b) => (b.etapas || []).length - (a.etapas || []).length).slice(0, 2);
   for (const f of funis) {
     for (const [rot, de] of [['D', D], ['D-1', D1]]) {
-      try { partes.push('=== FUNIL DO TMX · ' + f.nome + ' · ' + rot + ' ===\n' + await _mcpExecutar('onde_perco_gente', { funil: f.id, de, ate: de })); }
+      try { partes.push('=== FUNIL DA SCALROI · ' + f.nome + ' · ' + rot + ' ===\n' + await _mcpExecutar('onde_perco_gente', { funil: f.id, de, ate: de })); }
       catch (e) { faltou.push('funil ' + f.nome + ' (' + String(e.message || e).slice(0, 100) + ')'); }
     }
   }
@@ -9345,7 +9345,7 @@ async function _audRodar(job, b) {
     console.log('[AUDITORIA]', b.projetoNome || b.projeto, Math.round(duracao / 1000) + 's', 'US$', custo);
   } catch (e) {
     job.status = 'erro';
-    if (e instanceof AnthropicAud.AuthenticationError) job.erro = (SOU_TMX ? 'A Anthropic não aceitou a chave do TMX.' : 'A Anthropic não aceitou a sua chave do Claude.') + ' Confira a chave em Configurações › Conexões.';
+    if (e instanceof AnthropicAud.AuthenticationError) job.erro = (SOU_TMX ? 'A Anthropic não aceitou a chave da SCALROI.' : 'A Anthropic não aceitou a sua chave do Claude.') + ' Confira a chave em Configurações › Conexões.';
     else if (e instanceof AnthropicAud.RateLimitError) job.erro = 'A Anthropic pediu pra esperar um pouco. Tente de novo em um minuto.';
     else if (e instanceof AnthropicAud.APIError) job.erro = 'A Anthropic deu erro (' + (e.status || 'sem resposta') + '). Tente de novo.';
     else job.erro = e.message || 'A auditoria falhou.';
@@ -9588,7 +9588,7 @@ app.get('/api/sync/stream', (req, res) => {
 app.get('/api/v1/docs', (req, res) => {
   const end = _enderecosApi();
   res.json({
-    nome: SOU_TMX ? 'ScaleLab API v1' : 'TMX API v1',
+    nome: SOU_TMX ? 'ScaleLab API v1' : 'SCALROI API v1',
     versao: '1.0.0',
     empresa: SOU_TMX ? undefined : _empresaInfo().nome || EMPRESA_MOTOR,
     autenticacao: 'Bearer Token no header Authorization',
@@ -10063,7 +10063,7 @@ app.post('/api/plataforma/convites', authDiretoriaInterna, (req, res) => {
   const b = req.body || {};
   const email = String(b.email || '').trim().toLowerCase();
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'E-mail inválido.' });
-  if (email && _empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX.' });
+  if (email && _empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta na SCALROI.' });
   const dias = Math.min(30, Math.max(1, parseInt(b.dias, 10) || CONVITE_DIAS_PADRAO));
   const codigo = 'cv_' + crypto.randomBytes(24).toString('base64url');
   const expira = Date.now() + dias * 86400000;
@@ -10127,7 +10127,7 @@ app.post('/api/cadastro', cadastroLimiter, async (req, res) => {
   if (projetos.some(p => !p.nicho)) return res.status(400).json({ error: 'Escolha o nicho de cada projeto.', campo: 'projetos' });
   const nomes = projetos.map(p => p.nome.toLowerCase());
   if (new Set(nomes).size !== nomes.length) return res.status(400).json({ error: 'Dois projetos com o mesmo nome.', campo: 'projetos' });
-  if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+  if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta na SCALROI. Entre pela tela de login.', campo: 'email' });
   // gasta o convite de uma vez só: dois envios ao mesmo tempo não criam duas empresas
   const hash = _hashConvite(b.c);
   const gastou = _platPrep('UPDATE convites SET usado_em=? WHERE hash=? AND usado_em IS NULL AND cancelado IS NULL AND (expira IS NULL OR expira>=?)').run(Date.now(), hash, Date.now());
@@ -10146,7 +10146,7 @@ app.post('/api/cadastro', cadastroLimiter, async (req, res) => {
     writeDB(db);
     if (!r || !r.ok) {
       console.error('[CADASTRO] empresa', id, 'criada sem a conta:', r && r.erro);
-      return res.status(500).json({ error: 'Não consegui terminar o cadastro. A TMX já foi avisada e vai te chamar.' });
+      return res.status(500).json({ error: 'Não consegui terminar o cadastro. A SCALROI já foi avisada e vai te chamar.' });
     }
     console.log('[CADASTRO] empresa nova', id, '(' + empresa + ') com', projetos.length, 'projeto(s)');
     res.json({ ok: true, token: r.token, user: r.user, empresa: { id, nome: empresa, base: '/e/' + id } });
@@ -10200,7 +10200,7 @@ app.post('/api/plataforma/empresas/:id/bloquear', authDiretoriaInterna, (req, re
 const DIAS_TESTE_PLANO = 7;
 const PLANOS_TMX = [
   { id: 'interno', nome: 'Interno', interno: true, desc: 'A TMX é a casa: sem plano, sem cobrança e sem limite.', limites: {} },
-  { id: 'teste', nome: 'Teste', desc: 'Sem cobrança e sem limite enquanto a TMX libera o acesso por convite.', limites: {} },
+  { id: 'teste', nome: 'Teste', desc: 'Sem cobrança e sem limite enquanto a SCALROI libera o acesso por convite.', limites: {} },
   { id: 'iniciante', nome: 'Iniciante', mensal: 0, gratis: true, faixa: 'Até R$ 10 mil de investimento em anúncios por mês',
     limites: { invest: 10000, vendas: 30, projetos: 1, dominios: 1, contas: 1, pixels: 1, pessoas: 1, arquivosGB: 2 },
     itens: ['Até 30 vendas aprovadas por mês', '1 projeto', '1 domínio próprio', '1 conta de anúncio', '1 pixel da Meta', 'Só você', '2 GB de arquivos'] },
@@ -10384,12 +10384,12 @@ async function _planoPagarme(p, ciclo) {
   const ja = _platPrep('SELECT plan_id FROM pagarme_planos WHERE chave=?').get(chave);
   if (ja) return { ok: true, id: ja.plan_id };
   const r = await _pagarme('POST', '/plans', {
-    name: ('TMX ' + p.nome + (ciclo === 'anual' ? ' anual' : ' mensal')).slice(0, 64),
+    name: ('SCALROI ' + p.nome + (ciclo === 'anual' ? ' anual' : ' mensal')).slice(0, 64),
     description: p.faixa || '', currency: 'BRL',
     interval: ciclo === 'anual' ? 'year' : 'month', interval_count: 1,
     billing_type: 'prepaid', payment_methods: ['credit_card'], installments: [1],
-    statement_descriptor: 'TMX DIGITAL',
-    items: [{ name: 'TMX ' + p.nome, quantity: 1, pricing_scheme: { scheme_type: 'unit', price: centavos } }],
+    statement_descriptor: 'SCALROI',
+    items: [{ name: 'SCALROI ' + p.nome, quantity: 1, pricing_scheme: { scheme_type: 'unit', price: centavos } }],
     metadata: { plano: p.id, ciclo }
   });
   if (!r.ok || !r.dados || !r.dados.id) return { ok: false, erro: r.erro || 'a Pagar.me não devolveu o plano' };
@@ -10450,7 +10450,7 @@ function _marcarAtrasada(a) {
   if (!r.changes) return false;
   const p = _planoDe(a.plano);
   _avisarDiretoriaTmx('⚠️ Cobrança recusada · ' + p.nome, 'O pagamento de ' + (a.nome || a.email || 'um cliente') + ' não passou. Se continuar sem pagar, a conta é suspensa sozinha em 3 dias.');
-  _avisarClienteCobranca(a, 'Seu pagamento do TMX não passou', 'Não conseguimos cobrar o seu plano ' + p.nome + '. Confira o cartão ou fale com a TMX pelo Suporte. Se continuar sem pagamento, o acesso da equipe é suspenso em 3 dias. O pixel, as vendas e os links continuam funcionando.');
+  _avisarClienteCobranca(a, 'Seu pagamento da SCALROI não passou', 'Não conseguimos cobrar o seu plano ' + p.nome + '. Confira o cartão ou fale com a SCALROI pelo Suporte. Se continuar sem pagamento, o acesso da equipe é suspenso em 3 dias. O pixel, as vendas e os links continuam funcionando.');
   return true;
 }
 function _suspenderInadimplentes() {
@@ -10468,7 +10468,7 @@ function _suspenderInadimplentes() {
       const db = readDB(); audit(db, 'empresa_bloqueada', { empresa: e.id, nome: e.nome }, { motivo, automatico: true }, _USUARIO_COBRANCA); writeDB(db);
       _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_bloqueada', meta: { motivo, por: BLOQUEIO_COBRANCA } }).catch(() => {});
       _avisarDiretoriaTmx('⛔ Conta suspensa · ' + e.nome, 'Sem pagamento há mais de 3 dias. Pixel, vendas e links continuam; a equipe não entra até pagar.');
-      _avisarClienteCobranca(a, 'Seu acesso ao TMX foi suspenso', 'Não recebemos o pagamento do seu plano. O pixel, as vendas e os links continuam funcionando, e o acesso da equipe volta sozinho assim que o pagamento for confirmado. Para resolver, fale com a TMX pelo WhatsApp.');
+      _avisarClienteCobranca(a, 'Seu acesso à SCALROI foi suspenso', 'Não recebemos o pagamento do seu plano. O pixel, as vendas e os links continuam funcionando, e o acesso da equipe volta sozinho assim que o pagamento for confirmado. Para resolver, fale com a SCALROI pelo WhatsApp.');
     }
   } catch (e) { console.error('[COBRANÇA] suspensão:', e.message); }
 }
@@ -10481,7 +10481,7 @@ function _voltarAoAr(a) {
   e.status = 'ativa'; e.motivo = '';
   const db = readDB(); audit(db, 'empresa_desbloqueada', { empresa: e.id, nome: e.nome }, { automatico: true }, _USUARIO_COBRANCA); writeDB(db);
   _pedirAoMotor(e.id, 'auditar', { acao: 'empresa_desbloqueada', meta: { por: BLOQUEIO_COBRANCA } }).catch(() => {});
-  _avisarClienteCobranca(a, 'Seu acesso ao TMX voltou', 'O pagamento foi confirmado e a sua equipe já pode entrar de novo.');
+  _avisarClienteCobranca(a, 'Seu acesso à SCALROI voltou', 'O pagamento foi confirmado e a sua equipe já pode entrar de novo.');
 }
 setInterval(_suspenderInadimplentes, Number(process.env.COBRANCA_TICK_MS_TESTE) || 60 * 60 * 1000);
 // Os dados da pessoa que a Pagar.me pediu no checkout (só preenche o que o pedido ainda não tem)
@@ -10507,17 +10507,17 @@ function _mandarAcesso(ref) {
   const primeiro = String(a.nome || '').split(' ')[0] || '';
   if (a.email) {
     _enviarEmail({
-      to: a.email, subject: 'Seu acesso ao TMX está pronto',
+      to: a.email, subject: 'Seu acesso à SCALROI está pronto',
       html: '<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;color:#0F172A">' +
         '<h2 style="margin:0 0 8px">Pagamento aprovado' + (primeiro ? ', ' + _escHtml(primeiro) : '') + '</h2>' +
         '<p>O plano <b>' + _escHtml(p.nome) + '</b> (' + _escHtml(valor) + ') está ativo. Agora crie a sua conta: acesso, nome da empresa e projetos. Leva uns 2 minutos.</p>' +
         '<p style="margin:24px 0"><a href="' + link + '" style="background:#1B9CFA;color:#fff;padding:12px 20px;border-radius:9px;text-decoration:none;font-weight:700">Criar minha conta</a></p>' +
         '<p style="color:#475569;font-size:13px">O link vale para um cadastro e vence em ' + COBRANCA_DIAS_CONVITE + ' dias.</p></div>',
-      text: 'Pagamento aprovado. Crie a sua conta no TMX por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias): ' + link
+      text: 'Pagamento aprovado. Crie a sua conta na SCALROI por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias): ' + link
     }).catch(() => {});
   }
   if (a.whatsapp) {
-    sendWhatsAppMessage(a.whatsapp, 'Pagamento aprovado' + (primeiro ? ', ' + primeiro : '') + '! Bem-vindo ao TMX. 🎉\n\n' +
+    sendWhatsAppMessage(a.whatsapp, 'Pagamento aprovado' + (primeiro ? ', ' + primeiro : '') + '! Bem-vindo à SCALROI. 🎉\n\n' +
       'Plano ' + p.nome + ' (' + valor + ').\nCrie a sua conta por este link (vale ' + COBRANCA_DIAS_CONVITE + ' dias):\n' + link).catch(() => {});
   }
   return true;
@@ -10581,7 +10581,7 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
     if (!nome) return res.status(400).json({ error: 'Diga o seu nome.', campo: 'nome' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Esse e-mail não parece certo.', campo: 'email' });
     if (zap.length < 12 || zap.length > 13) return res.status(400).json({ error: 'O WhatsApp precisa ter DDD e número.', campo: 'whatsapp' });
-    if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta no TMX. Entre pela tela de login.', campo: 'email' });
+    if (_empresaDoEmail(email)) return res.status(409).json({ error: 'Esse e-mail já tem conta na SCALROI. Entre pela tela de login.', campo: 'email' });
   }
   if (!p.gratis) {
     const link = _linkPayt(p.id, ciclo);
@@ -10602,7 +10602,7 @@ app.post('/api/assinar', assinarLimiter, async (req, res) => {
     return res.json({ ok: true, gratis: true });
   }
 
-  if (!PAGARME_API_KEY) return res.status(503).json({ error: 'A compra pelo site ainda não está ligada. Fale com a TMX pelo WhatsApp.' });
+  if (!PAGARME_API_KEY) return res.status(503).json({ error: 'A compra pelo site ainda não está ligada. Fale com a SCALROI pelo WhatsApp.' });
   const r = await _abrirCheckout(p, ciclo, { nome, email, whatsapp: zap, ref });
   if (!r.ok) return res.status(502).json({ error: 'Não consegui abrir o pagamento agora. Tente de novo em instantes.' });
   res.json({ ok: true, url: r.url, ref: r.ref });
@@ -10615,7 +10615,7 @@ async function _abrirCheckout(p, ciclo, c = {}) {
   const pl = await _planoPagarme(p, ciclo);
   if (!pl.ok) { console.error('[COBRANÇA] plano', p.id, ciclo, ':', pl.erro); return { ok: false }; }
   const corpo = {
-    name: ('TMX ' + p.nome + ' ' + ciclo).slice(0, 64), type: 'subscription', max_paid_sessions: 1, expires_in: 3 * 24 * 60,
+    name: ('SCALROI ' + p.nome + ' ' + ciclo).slice(0, 64), type: 'subscription', max_paid_sessions: 1, expires_in: 3 * 24 * 60,
     payment_settings: { accepted_payment_methods: ['credit_card'], credit_card_settings: { operation_type: 'auth_and_capture' } },
     cart_settings: { recurrences: [{ plan_id: pl.id, start_in: 1 }] },
     flow_settings: { success_url: URL_TMX + '/planos/obrigado?r=' + ref },
@@ -10882,7 +10882,7 @@ function _tratarVendaPaytTmx(p) {
     if (!a) {
       const qual = _planoDaVendaPayt(p, n);
       if (!qual) {
-        _avisarDiretoriaTmx('⚠️ Venda da Payt sem plano reconhecido', 'Chegou uma venda do produto "' + (n.produto || n.plano || '?') + '", mas o TMX não achou de qual plano é. Confira os links em Central › Cobrança e checkout, ou dê o acesso pelo Convites.');
+        _avisarDiretoriaTmx('⚠️ Venda da Payt sem plano reconhecido', 'Chegou uma venda do produto "' + (n.produto || n.plano || '?') + '", mas a SCALROI não achou de qual plano é. Confira os links em Central › Cobrança e checkout, ou dê o acesso pelo Convites.');
         return;
       }
       _platPrep('INSERT INTO assinaturas(ref, plano, ciclo, nome, email, whatsapp, criado, status, atualizado, ultimo_evento) VALUES(?,?,?,?,?,?,?,?,?,?)')
@@ -10954,7 +10954,7 @@ app.post('/api/plataforma/empresas/:id/suporte', authDiretoriaInterna, async (re
 });
 
 // ── Chamados (lado da TMX) ──
-const STATUS_CHAMADO = { aberto: 'Esperando a TMX', cliente: 'Esperando o cliente', resolvido: 'Resolvido' };
+const STATUS_CHAMADO = { aberto: 'Esperando a SCALROI', cliente: 'Esperando o cliente', resolvido: 'Resolvido' };
 function _chamadoComMsgs(id) {
   const c = _platPrep('SELECT * FROM chamados WHERE id=?').get(id);
   if (!c) return null;
@@ -11043,8 +11043,8 @@ app.post('/api/plataforma/chamados/:id/responder', authDiretoriaInterna, (req, r
   _platPrep('UPDATE chamados SET status=?, atualizado=?, responsavel=? WHERE id=?').run(status, agora, req.user.nome || 'TMX', id);
   // o cliente fica sabendo pelo sininho do TMX dele (nota interna não avisa)
   if ((texto && !nota) || (status === 'resolvido' && c.status !== 'resolvido')) {
-    _pedirAoMotor(c.empresa, 'notificar', { para: c.aberto_por, titulo: '🛟 Suporte TMX · chamado #' + id,
-      texto: texto && !nota ? 'A TMX respondeu: ' + texto.slice(0, 160) : 'Seu chamado foi marcado como resolvido.' }).catch(() => {});
+    _pedirAoMotor(c.empresa, 'notificar', { para: c.aberto_por, titulo: '🛟 Suporte SCALROI · chamado #' + id,
+      texto: texto && !nota ? 'A SCALROI respondeu: ' + texto.slice(0, 160) : 'Seu chamado foi marcado como resolvido.' }).catch(() => {});
   }
   const db = readDB(); audit(db, nota ? 'chamado_nota' : 'chamado_respondido', { chamado: id, empresa: c.empresa }, { status }, req.user); writeDB(db);
   res.json({ ok: true });
@@ -11801,7 +11801,7 @@ function _gerarRelatorioSemanal(forcado) {
     if (cfg.enviarWhatsApp !== false) {
       const fmtBR = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
       const linhas = [];
-      linhas.push('📊 *Relatório Semanal TMX Digital*');
+      linhas.push('📊 *Relatório Semanal SCALROI*');
       linhas.push(`_${periodo_ini.split('-').reverse().join('/')} a ${periodo_fim.split('-').reverse().join('/')}_`);
       linhas.push('');
       linhas.push('*💰 KPIs*');
@@ -11960,7 +11960,7 @@ function _gerarRelatorioDiario(forcado) {
     const fmtBR = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR');
     const dataBR = hojeStr.split('-').reverse().join('/');
     const linhas = [];
-    linhas.push(`📋 *Relatório Diário TMX Digital — ${dataBR}*`);
+    linhas.push(`📋 *Relatório Diário SCALROI — ${dataBR}*`);
     linhas.push('');
     linhas.push('*✅ Demandas hoje*');
     linhas.push(`• Concluídas hoje: ${concluidasHoje.length}`);
@@ -12115,7 +12115,7 @@ app.post('/api/whatsapp/test', authDiretoria, async (req, res) => {
   const { phone, message } = req.body || {};
   const to = phone || (req.user && req.user.whatsapp);
   if (!to) return res.status(400).json({ error: 'Informe um telefone ou cadastre o seu no perfil.' });
-  const r = await sendWhatsAppMessage(to, message || '🤖 Teste do TMX Digital! Está funcionando.');
+  const r = await sendWhatsAppMessage(to, message || '🤖 Teste da SCALROI Digital! Está funcionando.');
   res.json(r);
 });
 
@@ -12153,13 +12153,13 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
     );
 
     if (!user) {
-      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado no TMX Digital. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
+      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado na SCALROI Digital. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
       return res.json({ ok: true, skipped: 'user-nao-encontrado' });
     }
 
     // o agente responde com tarefas, ROI e relatórios de todos os projetos: quem tem projeto marcado usa o app
     if (_projetosDoLimite(user)) {
-      await sendWhatsAppMessage(phone, `Olá ${user.nome}! Por aqui ainda não dá pra separar por projeto. Abra o TMX para ver as suas demandas e os seus números.`);
+      await sendWhatsAppMessage(phone, `Olá ${user.nome}! Por aqui ainda não dá pra separar por projeto. Abra a SCALROI para ver as suas demandas e os seus números.`);
       return res.json({ ok: true, skipped: 'socio-por-projeto' });
     }
 
@@ -12237,7 +12237,7 @@ async function _chamarClaude(texto, user, cfg) {
   if (!aiKey) throw new Error(_semChaveIA('IA não configurada (defina ANTHROPIC_API_KEY no Railway)'));
   const tools = _agentTools();
   const hojeStr = new Date().toLocaleDateString('pt-BR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const systemPrompt = `Você é o assistente operacional do TMX Digital (sistema de gestão de tráfego pago em centralaxcend.com).
+  const systemPrompt = `Você é o assistente operacional da SCALROI Digital (sistema de gestão de tráfego pago em centralaxcend.com).
 Usuário falando: ${user.nome} (cargo: ${user.cargo}, ID: ${user.id}).
 Hoje: ${hojeStr}.
 
@@ -12323,7 +12323,7 @@ async function _chamarOpenAI(texto, user, cfg) {
   const body = {
     model: 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: `Você é o assistente do TMX Digital. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
+      { role: 'system', content: `Você é o assistente da SCALROI Digital. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
       { role: 'user', content: texto }
     ]
   };
@@ -12833,7 +12833,7 @@ async function _notificarViaWhatsApp(destId, titulo, texto) {
 app.post('/api/whatsapp/notificar', authUsuario, async (req, res) => {
   const { destId, titulo, texto } = req.body || {};
   if (!destId || !texto) return res.status(400).json({ error: 'destId + texto obrigatórios' });
-  await _notificarViaWhatsApp(destId, titulo || 'Notificação TMX Digital', texto);
+  await _notificarViaWhatsApp(destId, titulo || 'Notificação SCALROI', texto);
   res.json({ ok: true });
 });
 setTimeout(_tickBackupRemoto, 2*60*1000);   // primeira tentativa 2min após boot
@@ -15173,7 +15173,7 @@ function _compradoresSemRastreio(dbj, esc, per) {
       id: 'venda:' + ult.id, venda: ult.id, lead: ult.lead || null, nome: (l && l.nome) || '', email: (l && l.email_mask) || '',
       status: 'comprador', semRastreio: true, motivo,
       motivoTexto: _SEM_ORIGEM_EXPLICA[motivo] || (motivo === 'Ligada pela campanha'
-        ? 'A venda trouxe a UTM da campanha, mas não o sck do TMX: dá pra saber o anúncio, não a pessoa nem a página.' : ''),
+        ? 'A venda trouxe a UTM da campanha, mas não o sck da SCALROI: dá pra saber o anúncio, não a pessoa nem a página.' : ''),
       produto: [...new Set(vs.map(o => o.produto).filter(Boolean))].join(' + '),
       toque: { fonte: pri.fonte || '', cont: pri.cont || '', camp: pri.camp || '', em: pri.em },
       ultimo: { tipo: 'compra', rot: '', em: ult.em, pg: '' },
@@ -16025,7 +16025,7 @@ function _capiDaVenda(o, dir) {
 // pessoa, qual VSL ela assistiu e a linha do tempo até a compra. Nunca nome,
 // e-mail ou telefone: o aviso cru tem dado de cliente, e daqui só sai rastreio.
 const _SEM_ORIGEM_EXPLICA = {
-  'Checkout limpou o src/sck': 'A venda chegou marcada como orgânica e sem o sck do TMX: a pessoa abriu o checkout por um link sem o pixel (WhatsApp, e-mail, bio, link direto) ou o checkout perdeu os parâmetros.',
+  'Checkout limpou o src/sck': 'A venda chegou marcada como orgânica e sem o sck da SCALROI: a pessoa abriu o checkout por um link sem o pixel (WhatsApp, e-mail, bio, link direto) ou o checkout perdeu os parâmetros.',
   'Sem id nem UTM': 'Nada na venda liga a uma visita: sem sck, sem UTM, e o e-mail ou telefone não bate com ninguém que o pixel viu.',
   'UTM com macro vazia': 'O anúncio mandou a UTM com {{macro}} sem preencher.',
   'Jornada expirou (> 7 dias)': 'A pessoa foi vista, mas a última visita foi há mais de 7 dias.'
@@ -16701,10 +16701,10 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
     const etapas = [
       { k: 'impressoes', nome: 'Impressões', fonte: 'Meta', n: imp, custo: imp ? gasto / imp * 1000 : 0, rotCusto: 'CPM' },
       { k: 'cliques', nome: 'Cliques', fonte: 'Meta', n: cliques, custo: cliques ? gasto / cliques : 0, rotCusto: 'CPC' },
-      { k: 'chegaram', nome: 'Chegaram na página', fonte: 'pixel TMX', n: chegaram, custo: chegaram ? gasto / chegaram : 0 },
+      { k: 'chegaram', nome: 'Chegaram na página', fonte: 'pixel SCALROI', n: chegaram, custo: chegaram ? gasto / chegaram : 0 },
       { k: 'play', nome: 'Deram play', fonte: 'Vturb', n: play, custo: play ? gasto / play : 0 },
       { k: 'pitch', nome: 'Passaram do pitch', fonte: 'Vturb', n: pitch, custo: pitch ? gasto / pitch : 0 },
-      { k: 'checkout', nome: 'Clicaram no botão', fonte: 'pixel TMX', n: checkout, custo: checkout ? gasto / checkout : 0 },
+      { k: 'checkout', nome: 'Clicaram no botão', fonte: 'pixel SCALROI', n: checkout, custo: checkout ? gasto / checkout : 0 },
       { k: 'abriram', nome: 'Abriram o checkout', fonte: 'eventos do checkout · Payt', n: abriram.size, custo: abriram.size ? gasto / abriram.size : 0 },
       { k: 'pix', nome: 'Pix gerado, não pago', fonte: 'não compraram', n: pixSem.size, sub: true },
       { k: 'cartao', nome: 'Cartão recusado', fonte: 'não compraram', n: cartaoRec.size, sub: true },
@@ -16747,7 +16747,7 @@ app.get('/api/funil/resultado', authNegocio, async (req, res) => {
         queda.frase = 'Chegam na página e não dão play. Confira a capa do vídeo, o autoplay e o tempo de carregamento.';
         queda.acao = { rotulo: 'Ver a retenção da VSL', aba: 'vsl' };
       } else if (queda.para === 'abriram') {
-        queda.frase = 'Clicam no botão e o checkout não registra. Pode ser checkout lento ou o link do botão sem o código do TMX.';
+        queda.frase = 'Clicam no botão e o checkout não registra. Pode ser checkout lento ou o link do botão sem o código da SCALROI.';
         queda.acao = { rotulo: 'Abrir Pixel e saúde', aba: 'pixel' };
       } else {
         queda.frase = 'Esta é a passagem que mais perde gente no período.';
@@ -17640,7 +17640,7 @@ async function _lrMcp(cred, nome, args) {
     if (r.status === 429 || cod === -32005) { await _finDorme(3000 * (tent + 1)); continue; }
     if (cod === -32001 || r.status === 401) throw new Error('A Lootrush recusou a API key (inválida ou vencida).');
     if (cod === -32003) throw new Error('A API key da Lootrush não tem o escopo "mcp". Crie uma com o escopo mcp (leitura).');
-    if (cod === -32004) throw new Error('A API key da Lootrush tem lista de IPs, e o servidor do TMX não está nela.');
+    if (cod === -32004) throw new Error('A API key da Lootrush tem lista de IPs, e o servidor da SCALROI não está nela.');
     if (j && j.error) throw new Error('A Lootrush respondeu: ' + String(j.error.message || JSON.stringify(j.error)).slice(0, 200));
     if (!r.ok || !j) throw new Error('A Lootrush respondeu ' + r.status + '.');
     const res = j.result || {}, t = res.content && res.content[0] && res.content[0].text;
@@ -18279,7 +18279,7 @@ app.get('/api/funil/saude', authUsuario, async (req, res) => {
     // um funil de 5 páginas iria a zero só por isso e esconderia o resto
     semTag.forEach((p, i) => checks.push({ nivel: 'ruim', peso: i ? 12 : 25,
       titulo: 'Página "' + p.nome + '" sem o pixel deste funil',
-      texto: (p.status === 'outro_funil' ? 'Tem uma tag do Central TMX, mas de outro funil. ' : 'Não encontrei a tag no código da página. ') +
+      texto: (p.status === 'outro_funil' ? 'Tem uma tag da SCALROI, mas de outro funil. ' : 'Não encontrei a tag no código da página. ') +
              'Ninguém que passa por ela é contado, e as vendas que saem dela chegam sem dizer de onde vieram.',
       acao: { rotulo: 'Copiar o pixel', aba: 'pixel', etapa: p.etapa } }));
     foraAr.forEach(p => checks.push({ nivel: 'ruim', peso: 20,
@@ -24381,7 +24381,7 @@ const MCP_FERRAMENTAS = [
     description: 'Lê na hora, na Meta, uma campanha com os conjuntos e anúncios: ids, situação e orçamento. Use antes de pausar um conjunto ou anúncio, ou de mudar orçamento.',
     inputSchema: { type: 'object', properties: { campanha: { type: 'string', description: 'Id da campanha na Meta' } }, required: ['campanha'] } },
   { name: 'pausar_ou_ativar', mexeMeta: true,
-    description: 'Pausa ou ativa uma campanha, um conjunto ou um anúncio na Meta. Vale na hora. Antes, confirme com a pessoa o que vai mudar. Fica registrado no TMX com o nome deste token.',
+    description: 'Pausa ou ativa uma campanha, um conjunto ou um anúncio na Meta. Vale na hora. Antes, confirme com a pessoa o que vai mudar. Fica registrado na SCALROI com o nome deste token.',
     inputSchema: { type: 'object', properties: {
       nivel: { type: 'string', enum: ['campanha', 'conjunto', 'anuncio'] },
       id: { type: 'string', description: 'Id do item na Meta' },
@@ -24466,13 +24466,13 @@ async function _mcpMeta(nome, a, tk) {
   if (nome === 'pausar_ou_ativar') {
     if (a.nivel !== 'campanha' && !_metaSoDigitos(a.campanha)) throw new Error('para conjunto ou anúncio, informe também o id da campanha');
     const r = await _metaMudarStatus({ nivel: a.nivel, id: a.id, ativo: a.ativo === true, camp: a.campanha, nome: a.nome }, quem);
-    return (r.status === 'ACTIVE' ? 'Ativado: ' : 'Pausado: ') + (a.nome || a.nivel + ' ' + a.id) + '. Já vale na Meta e ficou registrado no TMX em nome de "' + quem.nome + '".';
+    return (r.status === 'ACTIVE' ? 'Ativado: ' : 'Pausado: ') + (a.nome || a.nivel + ' ' + a.id) + '. Já vale na Meta e ficou registrado na SCALROI em nome de "' + quem.nome + '".';
   }
   if (nome === 'mudar_orcamento') {
     if (!(Number(a.valor_atual) > 0)) throw new Error('informe o valor_atual que você leu em estrutura_da_campanha');
     if (a.nivel === 'conjunto' && !_metaSoDigitos(a.campanha)) throw new Error('para conjunto, informe também o id da campanha');
     const r = await _metaMudarOrcamento({ nivel: a.nivel, id: a.id, valor: a.valor, de: a.valor_atual, camp: a.campanha, nome: a.nome }, quem, 2);
-    return 'Orçamento de ' + (a.nome || a.nivel + ' ' + a.id) + ' mudou de ' + _mcpBrl(a.valor_atual) + ' para ' + _mcpBrl(r.valor) + (r.tipo === 'dia' ? ' por dia' : ' no total') + '. Já vale na Meta e ficou registrado no TMX em nome de "' + quem.nome + '".';
+    return 'Orçamento de ' + (a.nome || a.nivel + ' ' + a.id) + ' mudou de ' + _mcpBrl(a.valor_atual) + ' para ' + _mcpBrl(r.valor) + (r.tipo === 'dia' ? ' por dia' : ' no total') + '. Já vale na Meta e ficou registrado na SCALROI em nome de "' + quem.nome + '".';
   }
   return null;
 }
@@ -24824,7 +24824,7 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
   const ferramentas = _mcpFerramentas(tk);
   try {
     if (metodo === 'initialize') {
-      const quem = SOU_TMX ? 'do Central TMX' : 'da ' + (_empresaInfo().nome || 'empresa') + ' no TMX';
+      const quem = SOU_TMX ? 'do Central TMX' : 'da ' + (_empresaInfo().nome || 'empresa') + ' na SCALROI';
       return res.json({ jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOLO,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: _mcpNomeServidor(), version: '1.0.0' },
@@ -25011,7 +25011,7 @@ function _abrirSessaoSuporte(d) {
   db.sessions.push({ tokenHash, userId: ID_SUPORTE, suporte, createdAt: Date.now(), lastActivity: Date.now() });
   _sessoesSuporte.set(tokenHash, { modo: suporte.modo, expira });
   audit(db, 'suporte_entrou', { por: suporte.por }, { modo: suporte.modo, minutos, motivo: suporte.motivo }, { nome: 'Suporte TMX · ' + suporte.por });
-  if (d.avisar !== false) _avisarDiretoria(db, '🛟 O suporte da TMX entrou na sua conta',
+  if (d.avisar !== false) _avisarDiretoria(db, '🛟 O suporte da SCALROI entrou na sua conta',
     suporte.por + ' entrou como suporte (' + (suporte.modo === 'mexer' ? 'pode mexer' : 'só olhando') + ') por até ' + minutos + ' min. Motivo: ' + suporte.motivo);
   writeDB(db);
   const user = _usuarioDaSessao(db, { suporte, userId: ID_SUPORTE });

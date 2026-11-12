@@ -41,7 +41,7 @@ const MODELO_IA = 'claude-opus-5-5';
 // US$ por milhão de tokens do Claude Opus 5.5 (escrita no cache de 5 min = 1,25x a entrada): só pra estimar o custo na tela
 const PRECO_IA = { entrada: 4, saida: 20, cacheLeitura: 0.2, cacheEscrita: 5 };
 const INICIO_CHAT_EMPRESA = 'Você é o assistente de páginas deste sistema, usado por empresas que vendem com tráfego pago. ';
-const INICIO_CHAT_TMX = 'Você é o assistente de páginas do Central TMX, o sistema da operação de infoprodutos do Thiago (Apostilai, para concursos). ';
+const INICIO_CHAT_TMX = 'Você é o assistente de páginas do Central SCALROI, o sistema da operação de infoprodutos do Thiago (Apostilai, para concursos). ';
 const SISTEMA_CHAT = 'Em cada conversa você edita uma página de vendas, só pelas ferramentas.\n\n' +
   'Como trabalhar:\n' +
   '- Responda em português do Brasil, curto e direto: o que mudou e o que as conferências disseram.\n' +
@@ -51,7 +51,7 @@ const SISTEMA_CHAT = 'Em cada conversa você edita uma página de vendas, só pe
   '- Se a pessoa disser o nome de um vídeo, use procurar_vsl. Se aparecer mais de um parecido, pergunte qual.\n' +
   '- Ao trocar a VSL sem dizer o tempo, a oferta vai sozinha pro pitch da VSL nova. Se uma conferência der alerta, explique o que fazer.\n\n' +
   'Dois tipos de página:\n' +
-  '- Página de modelo: segue um dos modelos da TMX e muda pelos campos (mudar_campos). trocar_modelo troca o modelo e leva os campos que servem no novo.\n' +
+  '- Página de modelo: segue um dos modelos da SCALROI e muda pelos campos (mudar_campos). trocar_modelo troca o modelo e leva os campos que servem no novo.\n' +
   '- Página livre: copiada de um endereço, e o HTML é a página. Use ver_html pra achar o trecho exato, trocar_trecho pra texto e partes do HTML, trocar_vsl pro player da VTurb e trocar_checkout pros botões de compra. Nela, mudar_campos só muda titulo e naoTem.\n' +
   '- Numa página de modelo, trocar_trecho solta a página do modelo: ela vira livre. Diga isso na resposta quando acontecer.\n\n' +
   'Endereço de outra página:\n' +
@@ -80,19 +80,19 @@ const FERRAMENTAS_CHAT = [
       titulo: SO_TEXTO, vsl: SO_TEXTO, atraso: SO_TEXTO, checkout: SO_TEXTO, plano: { type: 'string', enum: ['ANUAL', 'MENSAL'] },
       produto: SO_TEXTO, preco: SO_TEXTO, parcela: SO_TEXTO, valor: SO_TEXTO, naoTem: SO_TEXTO } } },
   { name: 'procurar_vsl',
-    description: 'Procura VSLs na VTurb conectada ao TMX pelo nome do vídeo. Devolve id, nome, duração e o tempo do pitch. Testes A/B não aparecem: peça o código do teste.',
+    description: 'Procura VSLs na VTurb conectada à SCALROI pelo nome do vídeo. Devolve id, nome, duração e o tempo do pitch. Testes A/B não aparecem: peça o código do teste.',
     input_schema: { type: 'object', additionalProperties: false, properties: { busca: { type: 'string', description: 'parte do nome do vídeo, ex.: 697 v3' } }, required: ['busca'] } },
   { name: 'voltar_versao',
     description: 'Volta o rascunho pro que era uma versão anterior. Cria uma versão nova com aqueles campos e não publica.',
     input_schema: { type: 'object', additionalProperties: false, properties: { versao: { type: 'integer', description: 'o número da versão' } }, required: ['versao'] } },
   { name: 'abrir_endereco',
-    description: 'Abre uma página pública pelo endereço e devolve o que tem nela: título, cabeçalhos, começo do texto, VSL da VTurb, checkouts, preços, parcelas, rastreadores e se ela é igual ou parecida com um dos modelos da TMX. Não muda nada.',
+    description: 'Abre uma página pública pelo endereço e devolve o que tem nela: título, cabeçalhos, começo do texto, VSL da VTurb, checkouts, preços, parcelas, rastreadores e se ela é igual ou parecida com um dos modelos da SCALROI. Não muda nada.',
     input_schema: { type: 'object', additionalProperties: false, properties: { url: { type: 'string', description: 'o endereço completo, com https://' } }, required: ['url'] } },
   { name: 'trocar_modelo',
     description: 'Troca o modelo da página e cria uma versão nova. Leva pro modelo novo os campos que ele também tem (título, VSL, atraso, checkout, plano, produto, preço, parcela). Numa página livre, ela volta a ser de modelo com o título dela. Não publica.',
     input_schema: { type: 'object', additionalProperties: false, properties: { modelo: { type: 'string', enum: Object.keys(MODELOS) } }, required: ['modelo'] } },
   { name: 'copiar_pagina',
-    description: 'Copia a página inteira de um endereço pra esta página: o HTML, as imagens, o CSS e os scripts do mesmo site. Tira os pixels e rastreadores do dono (Meta, Google, UTMify, TikTok...) e põe o pixel do TMX. A página vira livre e o que era antes fica nas versões. Só use depois que a pessoa responder se a página é dela ou se tem autorização do dono.',
+    description: 'Copia a página inteira de um endereço pra esta página: o HTML, as imagens, o CSS e os scripts do mesmo site. Tira os pixels e rastreadores do dono (Meta, Google, UTMify, TikTok...) e põe o pixel da SCALROI. A página vira livre e o que era antes fica nas versões. Só use depois que a pessoa responder se a página é dela ou se tem autorização do dono.',
     input_schema: { type: 'object', additionalProperties: false, properties: {
       url: { type: 'string', description: 'o endereço completo, com https://' },
       autorizacao: { type: 'string', enum: ['minha', 'autorizada'], description: 'minha: a pessoa disse que a página é dela. autorizada: a pessoa disse que é de outro dono e que tem autorização dele pra copiar.' } },
@@ -102,7 +102,7 @@ const FERRAMENTAS_CHAT = [
     input_schema: { type: 'object', additionalProperties: false, properties: {
       id: { type: 'string', description: 'o id do arquivo' }, busca: { type: 'string', description: 'um pedaço do texto ou do HTML' }, parte: { type: 'integer', description: 'qual parte, a partir de 0, quando não há busca' } }, required: ['id'] } },
   { name: 'usar_arquivo_html',
-    description: 'Faz esta página virar o HTML de um arquivo que a pessoa anexou. Tira os pixels e rastreadores do dono (Meta, Google, UTMify, TikTok...) e põe o pixel do TMX. A página vira livre e o que era antes fica nas versões. Não publica. Só use depois que a pessoa responder se a página é dela ou se tem autorização do dono.',
+    description: 'Faz esta página virar o HTML de um arquivo que a pessoa anexou. Tira os pixels e rastreadores do dono (Meta, Google, UTMify, TikTok...) e põe o pixel da SCALROI. A página vira livre e o que era antes fica nas versões. Não publica. Só use depois que a pessoa responder se a página é dela ou se tem autorização do dono.',
     input_schema: { type: 'object', additionalProperties: false, properties: {
       id: { type: 'string', description: 'o id do arquivo' },
       autorizacao: { type: 'string', enum: ['minha', 'autorizada'], description: 'minha: a pessoa disse que a página é dela. autorizada: a pessoa disse que é de outro dono e que tem autorização dele.' } },
@@ -270,7 +270,7 @@ function _montar(m, pg, campos, n) {
     h = h.replace(/<link[^>]+\.m3u8[^>]*>\s*/gi, '');
   }
   if (x.atraso != null && Number.isFinite(campos.atraso))
-    h = h.replace(/var DELAY_SEG\s*=\s*\d+;[^\n]*/, 'var DELAY_SEG = ' + campos.atraso + ';   /* ' + _mmss(campos.atraso) + ', definido no TMX */');
+    h = h.replace(/var DELAY_SEG\s*=\s*\d+;[^\n]*/, 'var DELAY_SEG = ' + campos.atraso + ';   /* ' + _mmss(campos.atraso) + ', definido na SCALROI */');
   if (campos.checkout && CHECKOUT_OK.test(campos.checkout)) x.checkouts.forEach(u => { h = _troca(h, u, campos.checkout); });
   if (m.preco && campos.preco) h = _troca(h, m.preco, _esc(campos.preco));
   if (m.parcela && campos.parcela) h = _troca(h, m.parcela, _esc(campos.parcela));
@@ -368,7 +368,7 @@ const RASTREIO = [
   ['Pinterest', /pintrk|ct\.pinterest\.com/i],
   ['Taboola', /taboola/i],
   ['Outbrain', /outbrain/i],
-  ['Pixel do TMX', /centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js/i]
+  ['Pixel da SCALROI', /centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js/i]
 ];
 const _rastreiosDe = s => RASTREIO.filter(r => r[1].test(s)).map(r => r[0]);
 function _limparRastreio(html) {
@@ -592,7 +592,7 @@ async function _clonar(url) {
   html = _refsHtml(html, base, a => arquivos.has(a) ? 'arquivos/' + arquivos.get(a).nome : null);
   const avisos = limpo.avisos.slice();
   for (const a of arquivos.values()) if (a.ref === 'js') {
-    const r = _rastreiosDe(a.buf.toString('utf8')).filter(n => n !== 'Pixel do TMX');
+    const r = _rastreiosDe(a.buf.toString('utf8')).filter(n => n !== 'Pixel da SCALROI');
     if (r.length) avisos.push('O script ' + new URL(a.url).pathname.split('/').pop() + ', do site original, tem ' + r.join(', ') + ' dentro. Ele ficou na página: confira se é do dono de antes.');
   }
   const t = html.match(/<title>([^<]*)<\/title>/i), texto = _textoVisivel(html);
@@ -680,8 +680,8 @@ function _confPixel(html) {
   const head = html.slice(0, Math.max(0, html.search(/<\/head>/i)));
   const primeiro = (head.match(/<script\b[^>]*>/i) || [''])[0];
   return /centraltmx\.com(?:\/e\/[\w-]+)?\/px\.js/.test(primeiro)
-    ? { r: 'Pixel do TMX é o primeiro script', st: 'ok', d: 'Entra sozinho em toda versão.' }
-    : { r: 'Pixel do TMX é o primeiro script', st: 'alerta', d: 'O primeiro script do <head> não é o pixel do TMX.' };
+    ? { r: 'Pixel da SCALROI é o primeiro script', st: 'ok', d: 'Entra sozinho em toda versão.' }
+    : { r: 'Pixel da SCALROI é o primeiro script', st: 'alerta', d: 'O primeiro script do <head> não é o pixel da SCALROI.' };
 }
 function _confNaoTem(html, naoTemTxt) {
   const naoTem = String(naoTemTxt || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -702,7 +702,7 @@ async function _conferirLivre(ctx, pg, c, html) {
     const orig = new Set((c.vslsOriginais || []).map(v => v.id)), ainda = vsls.filter(v => orig.has(v.id));
     const minhas = _contasVturb(), fora = vsls.filter(v => minhas.indexOf(v.conta) < 0);
     if (outro && ainda.length) l.push({ r: 'A VSL é a sua', st: 'alerta', d: 'O vídeo ainda é o da página original (' + ainda.map(v => v.id).join(', ') + '). Troque pela sua VSL.' });
-    else if (fora.length) l.push({ r: 'A VSL é a sua', st: 'conferir', d: 'O player é de uma conta da VTurb que não é a dos modelos do TMX (' + fora.map(v => v.conta).join(', ') + '). Se o vídeo não for seu, troque.' });
+    else if (fora.length) l.push({ r: 'A VSL é a sua', st: 'conferir', d: 'O player é de uma conta da VTurb que não é a dos modelos da SCALROI (' + fora.map(v => v.conta).join(', ') + '). Se o vídeo não for seu, troque.' });
     else l.push({ r: 'A VSL é a sua', st: 'ok', d: 'Player da sua conta da VTurb.' });
   }
   const cks = _checkoutsDe(html), rotCk = 'Checkout é o seu';
@@ -1033,7 +1033,7 @@ module.exports = function montarPaginas(ctx) {
       return res.json({ ok: true });
     }
     const n = _q('SELECT COUNT(*) n FROM pg_paginas WHERE dominio_id=?').get(d.id).n;
-    if (n) return res.status(409).json({ error: 'Esse domínio tem ' + n + (n === 1 ? ' página' : ' páginas') + ' no TMX. As páginas na hospedagem não são apagadas, mas tire elas do TMX antes.' });
+    if (n) return res.status(409).json({ error: 'Esse domínio tem ' + n + (n === 1 ? ' página' : ' páginas') + ' na SCALROI. As páginas na hospedagem não são apagadas, mas tire elas da SCALROI antes.' });
     _q('DELETE FROM pg_dominios WHERE id=?').run(d.id);
     _auditar(req, 'pg_hospedagem_excluir', d.id, { dominio: d.dominio });
     res.json({ ok: true });
@@ -1054,7 +1054,7 @@ module.exports = function montarPaginas(ctx) {
     const projeto = String(b.projeto || '').trim().slice(0, 60), funil = String(b.funil || '').slice(0, 80);
     if (d ? _q('SELECT id FROM pg_paginas WHERE dominio_id=? AND slug=?').get(d.id, slug)
           : _q("SELECT id FROM pg_paginas WHERE (dominio_id IS NULL OR dominio_id='') AND slug=? AND COALESCE(projeto,'')=?").get(slug, projeto))
-      throw falha(409, 'Já existe uma página do TMX nesse endereço.');
+      throw falha(409, 'Já existe uma página da SCALROI nesse endereço.');
     if (funil && !_funis(projeto).some(f => f.id === funil)) throw falha(400, 'Esse funil não é do projeto ' + projeto + '.');
     return { d, slug, projeto, funil };
   }
@@ -1123,7 +1123,7 @@ module.exports = function montarPaginas(ctx) {
     const slug = String(b.slug || p.slug || '').trim().toLowerCase();
     _slugValido(slug);
     const outra = _q('SELECT id FROM pg_paginas WHERE dominio_id=? AND slug=? AND id<>?').get(d.id, slug, p.id);
-    if (outra) throw falha(409, 'Já existe uma página do TMX em ' + d.dominio + '/' + slug + '.');
+    if (outra) throw falha(409, 'Já existe uma página da SCALROI em ' + d.dominio + '/' + slug + '.');
     _q('UPDATE pg_paginas SET dominio_id=?, slug=? WHERE id=?').run(d.id, slug, p.id);
     _auditar(req, 'pg_pagina_dominio', p.id, { dominio: d.dominio, slug });
     return { endereco: _endereco(d, slug) };
@@ -1183,7 +1183,7 @@ module.exports = function montarPaginas(ctx) {
         // nunca escreve por cima de algo que o TMX não pôs lá sem o "sim" de quem publica
         if (atual !== null && _sha(atual) !== p.hash_ar) {
           if (!substituir) {
-            const e = new Error(p.hash_ar ? 'A página na hospedagem mudou por fora desde a última publicação do TMX.' : 'Já existe uma página nesse endereço na hospedagem, e ela não foi publicada pelo TMX.');
+            const e = new Error(p.hash_ar ? 'A página na hospedagem mudou por fora desde a última publicação da SCALROI.' : 'Já existe uma página nesse endereço na hospedagem, e ela não foi publicada pela SCALROI.');
             e.codigo = 'existe'; throw e;
           }
           antigo = atual;
@@ -1203,7 +1203,7 @@ module.exports = function montarPaginas(ctx) {
       });
     } catch (e) {
       if (e.status) throw e;   // falha já explicada (senha da hospedagem não abriu)
-      if (e.codigo === 'existe') throw falha(409, e.message + ' Se publicar mesmo assim, o TMX guarda uma cópia do arquivo de lá.', { codigo: 'existe' });
+      if (e.codigo === 'existe') throw falha(409, e.message + ' Se publicar mesmo assim, a SCALROI guarda uma cópia do arquivo de lá.', { codigo: 'existe' });
       throw falha(502, _erroFtp(e));
     }
     const agora = Date.now();
@@ -1218,7 +1218,7 @@ module.exports = function montarPaginas(ctx) {
       try {
         const tipo = v.campos.livre ? (_vslsDe(html).length ? 'vsl' : 'outra') : (TIPO_DO_MODELO[v.campos._modelo || p.modelo] || 'outra');
         ctx.registrarPagina({ url, projeto: p.projeto, titulo: p.titulo, tipo, funil: p.funil || '',
-          origem: 'tmx', por: quem(req), versao: 'versão ' + n + ' publicada pelo TMX', pgId: p.id });
+          origem: 'tmx', por: quem(req), versao: 'versão ' + n + ' publicada pela SCALROI', pgId: p.id });
       } catch (e) { console.error('[PAGINAS] registrar no projeto:', e.message); }
     }
     return { ok: true, n, url, noAr, substituiu: antigo !== null, arquivos: usados.length, subiram };
@@ -1302,7 +1302,7 @@ module.exports = function montarPaginas(ctx) {
 
   app.post('/api/pg/dominios/hospedado', auth, express.json({ limit: '5kb' }), async (req, res) => {
     if (!_tabelas()) return semBanco(res);
-    if (!ctx.hosp) return res.status(503).json({ error: 'A hospedagem no TMX ainda não está ligada.' });
+    if (!ctx.hosp) return res.status(503).json({ error: 'A hospedagem na SCALROI ainda não está ligada.' });
     const dominio = String((req.body || {}).dominio || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '');
     if (_q('SELECT id FROM pg_dominios WHERE dominio=?').get(dominio)) return res.status(409).json({ error: 'Esse domínio já está cadastrado.' });
     const r = await ctx.hosp('hosp-criar', { host: dominio }, 30000);
@@ -1461,7 +1461,7 @@ module.exports = function montarPaginas(ctx) {
   function _ia() {
     if (ctx.clienteIA) return ctx.clienteIA;   // só no teste local, com um cliente de mentira
     const chave = String((ctx.chaveIA && ctx.chaveIA()) || '');
-    if (!chave) throw falha(400, _basePublica ? 'Cadastre a sua chave do Claude em Primeiros passos ou em Configurações › Conexões › Agente de IA.' : 'O TMX está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.');
+    if (!chave) throw falha(400, _basePublica ? 'Cadastre a sua chave do Claude em Primeiros passos ou em Configurações › Conexões › Agente de IA.' : 'A SCALROI está sem chave da Anthropic. Ela é a mesma do agente do WhatsApp: cadastre em Configurações › WhatsApp + Agente IA.');
     if (!_cliente || _clienteChave !== chave) { _cliente = new Anthropic({ apiKey: chave }); _clienteChave = chave; }
     return _cliente;
   }
@@ -1560,7 +1560,7 @@ module.exports = function montarPaginas(ctx) {
       const termos = sem(a.busca).split(/\s+/).filter(Boolean);
       const achadas = (ctx.vturbPlayers() || []).filter(x => { const n = sem(x.nome); return termos.every(t => n.includes(t)); })
         .slice(0, 15).map(x => ({ id: x.id, nome: x.nome, duracao: _mmss(Number(x.duracao) || 0), pitch: x.pitch ? _mmss(Number(x.pitch)) : 'sem pitch na VTurb' }));
-      return achadas.length ? { vsls: achadas } : { vsls: [], nota: 'Nenhuma VSL com esse nome na VTurb do TMX. Teste A/B não aparece aqui: peça o código do teste (ab-...).' };
+      return achadas.length ? { vsls: achadas } : { vsls: [], nota: 'Nenhuma VSL com esse nome na VTurb da SCALROI. Teste A/B não aparece aqui: peça o código do teste (ab-...).' };
     }
     if (nome === 'voltar_versao') {
       const r = opVoltar(atual, a.versao, req);
@@ -1646,7 +1646,7 @@ module.exports = function montarPaginas(ctx) {
             : 'Não consegui ler o pitch dessa VSL: o tempo da oferta ficou como estava.';
         }
         if (s != null) html = _porAtraso(html, s);
-      } else nota = 'A página não tem um tempo de oferta que o TMX reconheça (DELAY_SEG ou delaySeconds). Se ela mostra a oferta depois de um tempo, procure com ver_html e ajuste com trocar_trecho.';
+      } else nota = 'A página não tem um tempo de oferta que a SCALROI reconheça (DELAY_SEG ou delaySeconds). Se ela mostra a oferta depois de um tempo, procure com ver_html e ajuste com trocar_trecho.';
       const at2 = _atrasoDe(html);
       const r = _novaVersao(atual, Object.assign({}, v.campos, { html }), 'Trocou a VSL ' + de.id + ' por ' + novo.id + (at2 ? ', oferta aos ' + _mmss(at2.s) : ''), req, 'livre');
       return comConf({ versao_nova: r.n, nota });
@@ -1670,7 +1670,7 @@ module.exports = function montarPaginas(ctx) {
       });
       const conhecido = /checkout\.payt\.com\.br|pay\.hotmart\.com|pay\.kiwify\.com\.br|eduzz\.com|monetizze\.com\.br|perfectpay\.com\.br|ticto\.app|braip\.com|greenn\.com\.br|cakto\.com\.br|lastlink\.com/i.test(para);
       const r = _novaVersao(atual, Object.assign({}, v.campos, { html }), 'Trocou o checkout' + (alvos.length > 1 ? ' (' + alvos.length + ' links)' : '') + ' por ' + para, req, 'livre');
-      return comConf({ versao_nova: r.n, trocou: vezes, nota: conhecido ? undefined : 'Esse link não é de um checkout que o TMX conhece: confira se é o certo.' });
+      return comConf({ versao_nova: r.n, trocou: vezes, nota: conhecido ? undefined : 'Esse link não é de um checkout que a SCALROI conhece: confira se é o certo.' });
     }
     throw new Error('Ferramenta desconhecida: ' + nome);
   }
@@ -1775,7 +1775,7 @@ module.exports = function montarPaginas(ctx) {
       res.json({ mensagens: _paraTela(msgs.concat(novas)), mudou: depois.versao !== versaoAntes, n: depois.versao,
         uso: _usoDaPagina(p.id), custoPedidoUS: Math.round(_custoUS(uso) * 1000) / 1000 });
     } catch (e) {
-      if (e instanceof Anthropic.AuthenticationError) return res.status(400).json({ error: _basePublica ? 'A Anthropic não aceitou a sua chave do Claude. Confira em Configurações › Conexões › Agente de IA.' : 'A Anthropic não aceitou a chave do TMX. Confira a chave em Configurações › WhatsApp + Agente IA.' });
+      if (e instanceof Anthropic.AuthenticationError) return res.status(400).json({ error: _basePublica ? 'A Anthropic não aceitou a sua chave do Claude. Confira em Configurações › Conexões › Agente de IA.' : 'A Anthropic não aceitou a chave da SCALROI. Confira a chave em Configurações › WhatsApp + Agente IA.' });
       if (e instanceof Anthropic.RateLimitError) return res.status(429).json({ error: 'A Anthropic pediu pra esperar um pouco. Tente de novo em um minuto.' });
       if (e instanceof Anthropic.BadRequestError) return res.status(400).json({ error: 'A Anthropic recusou o pedido: ' + e.message });
       if (e instanceof Anthropic.APIError) return res.status(502).json({ error: 'A Anthropic deu erro (' + (e.status || 'sem resposta') + '). Tente de novo.' });

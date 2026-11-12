@@ -246,7 +246,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   function copiar(t, msg){ try{ navigator.clipboard.writeText(t).then(function(){ aviso(msg || 'Copiado.'); }, function(){ aviso('Selecione e copie.'); }); }catch(e){ aviso('Selecione e copie.'); } }
   function porta(titulo, texto){
     raiz.innerHTML = '<div class="porta"><div class="caixa"><div class="marca" style="justify-content:center;padding:0"><img class="logo" src="/marca/scalroi-icone.png" alt=""><div style="text-align:left"><b>Central SCAL<i>ROI</i></b><span>ADMIN</span></div></div><h1>'+esc(titulo)+'</h1><p>'+esc(texto)+'</p>' +
-      '<a class="btn pri" href="/">Ir pro login do TMX</a></div></div>';
+      '<a class="btn pri" href="/">Ir pro login da SCALROI</a></div></div>';
   }
   // ── dados derivados ──
   function empresas(){ return (P && P.empresas) || []; }
@@ -356,7 +356,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     });
     PEDIDOS.filter(function(p){ return p.status === 'atrasada'; }).forEach(function(p){ it.push([1, 'cr', '💳', 'Pagamento atrasado · ' + (p.nome || p.email || 'cliente sem contato ainda'), (p.plano_nome || p.plano) + ' · o acesso continua até você decidir', 'data-tela="pedidos"']); });
     empresas().forEach(function(e){
-      if(e.motor.estado === 'desligado') it.push([0, 'cr', '⚙️', 'Motor desligado · ' + e.nome, 'o TMX dela não abre; religa sozinho', 'data-tela="saude"']);
+      if(e.motor.estado === 'desligado') it.push([0, 'cr', '⚙️', 'Motor desligado · ' + e.nome, 'a SCALROI dela não abre; religa sozinho', 'data-tela="saude"']);
       else if(e.motor.quedasHoje >= 2) it.push([3, 'se', '⚙️', 'Motor instável · ' + e.nome, 'caiu ' + e.motor.quedasHoje + ' vezes hoje', 'data-tela="saude"']);
     });
     var lib = aLiberar(); if(lib) it.push([4, 'av', '🆓', lib + (lib === 1 ? ' pedido' : ' pedidos') + ' de teste grátis', 'esperando você liberar', 'data-tela="pedidos"']);
@@ -475,14 +475,14 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       (g.comTmx && incluirTmx === null ? '<div class="filtros"><span class="nota az">Os clientes ainda não têm uso, então os gráficos mostram a TMX junto. Desmarque “Incluir a TMX” pra ver só os clientes.</span></div>' : '') +
       '<div class="grade g2">' +
         '<div class="card"><h2>Módulos mais usados'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Itens criados ou mexidos em 30 dias, somando todos</div>'+barrasH(somaModulos(g.lista), { titulo: 'Módulos mais usados', vazio: 'Aparece quando os clientes começarem a usar.' })+'</div>' +
-        '<div class="card"><h2>Quem mais vende pelo TMX'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Vendas aprovadas no mês</div>'+barrasH(vendem, { titulo: 'Quem mais vende', vazio: 'Nenhuma venda aprovada no mês.' })+'</div>' +
+        '<div class="card"><h2>Quem mais vende pela SCALROI'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Vendas aprovadas no mês</div>'+barrasH(vendem, { titulo: 'Quem mais vende', vazio: 'Nenhuma venda aprovada no mês.' })+'</div>' +
       '</div>' +
       '<div class="grade g2">' +
         '<div class="card"><h2>Quem mais investe em anúncios'+seloTmx(g)+'</h2><div class="sub" style="margin-bottom:10px">Últimos 30 dias</div>'+barrasH(investem, { titulo: 'Quem mais investe', fmt: brlK, vazio: 'Aparece quando os clientes ligarem as contas de anúncio.' })+'</div>' +
         '<div class="card"><div class="card-cab"><div><h2>Perto do limite do plano</h2><div class="sub">80% ou mais de algum limite. Cada um é uma conversa de upgrade; nada trava, só avisa.</div></div><span class="st '+(pertos.length ? 'av' : 'ok')+'">'+pertos.length+'</span></div>' +
           (pertos.length ? '<ul class="lista">'+pertos.map(function(x){ return '<li><span class="ic" style="background:var(--aviso-bg)">📈</span><span class="t">'+esc(x.e.nome)+' · '+esc(x.e.planoNome)+'<small>'+x.l.map(function(l){ return esc(l.rotulo) + ' ' + fmtUso(l, l.usado) + ' de ' + fmtUso(l, l.limite); }).join(' · ')+'</small></span><button class="btn peq" data-c="'+esc(x.e.id)+'">Ver</button></li>'; }).join('')+'</ul>' : '<div class="vazio-g">Ninguém perto do limite.</div>')+'</div>' +
       '</div>' +
-      '<div class="card solto"><div class="card-cab"><div><h2>Clientes parados</h2><div class="sub">Ativos, mas ninguém da equipe abre o TMX há 7 dias ou mais: risco de cancelar.</div></div><span class="st '+(parados.length ? 'se' : 'ok')+'">'+parados.length+'</span></div>' +
+      '<div class="card solto"><div class="card-cab"><div><h2>Clientes parados</h2><div class="sub">Ativos, mas ninguém da equipe abre a SCALROI há 7 dias ou mais: risco de cancelar.</div></div><span class="st '+(parados.length ? 'se' : 'ok')+'">'+parados.length+'</span></div>' +
         (parados.length ? '<ul class="lista">'+parados.map(function(e){ return '<li><span class="ic" style="background:var(--serio-bg)">💤</span><span class="t">'+esc(e.nome)+'<small>último acesso '+esc(ha(e.resumo && e.resumo.ultimoAcesso))+' · '+esc(e.planoNome)+'</small></span><button class="btn peq" data-c="'+esc(e.id)+'">Ver</button></li>'; }).join('')+'</ul>' : '<div class="vazio-g">Ninguém parado.</div>')+'</div>';
   }
   // ── Receita ──
@@ -526,9 +526,9 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     }).join('');
     var ultimo = payt ? (V && V.ultimoAviso) : C.ultimoAviso;
     // escolher por onde vende
-    var escolha = V ? '<div class="card solto"><div class="card-cab"><div><h2>Por onde o TMX vende</h2><div class="sub">O botão Assinar da página de planos e os links /assinar/&lt;plano&gt; levam pro checkout escolhido aqui.</div></div>' +
+    var escolha = V ? '<div class="card solto"><div class="card-cab"><div><h2>Por onde a SCALROI vende</h2><div class="sub">O botão Assinar da página de planos e os links /assinar/&lt;plano&gt; levam pro checkout escolhido aqui.</div></div>' +
         '<div class="ciclo-gw" role="group" aria-label="Por onde vende">' + [['payt', 'Payt'], ['pagarme', 'Pagar.me']].map(function(g){ return '<button class="chip'+(gw === g[0] ? ' on' : '')+'" data-gw="'+g[0]+'" aria-pressed="'+(gw === g[0])+'">'+g[1]+'</button>'; }).join('') + '</div></div>' +
-        (V.gateway !== gw ? '<div class="nota av">Você escolheu '+esc(nomeGw)+', mas ainda não salvou. Até salvar, o TMX continua vendendo pela '+(V.gateway === 'payt' ? 'Payt' : 'Pagar.me')+'.</div>' : '') + '</div>' : '';
+        (V.gateway !== gw ? '<div class="nota av">Você escolheu '+esc(nomeGw)+', mas ainda não salvou. Até salvar, a SCALROI continua vendendo pela '+(V.gateway === 'payt' ? 'Payt' : 'Pagar.me')+'.</div>' : '') + '</div>' : '';
     // Payt: links por plano e ciclo + aviso
     var cardPayt = '';
     if(V && payt){
@@ -543,11 +543,11 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
           '<div style="overflow-x:auto"><table style="min-width:640px"><thead><tr><th>Plano</th><th>Mensal</th><th>Anual</th></tr></thead><tbody>'+campos+'</tbody></table></div>' +
           '<div class="acoes" style="margin-top:12px"><button class="btn pri" data-acao="salvar-venda">Salvar</button><span class="mini">Plano sem link: o botão dele leva pra página de planos.</span></div></div>' +
         '<div class="grade g2">' +
-          '<div class="card"><h2>Aviso da Payt (webhook)</h2><div class="sub" style="margin-bottom:10px">É por ele que o TMX sabe que alguém pagou, pediu reembolso ou cancelou.</div>' +
+          '<div class="card"><h2>Aviso da Payt (webhook)</h2><div class="sub" style="margin-bottom:10px">É por ele que a SCALROI sabe que alguém pagou, pediu reembolso ou cancelou.</div>' +
             '<div class="copia"><code>'+esc(hook || 'o endereço aparece aqui')+'</code>'+(hook ? '<button class="btn peq" data-copiar="'+esc(hook)+'">Copiar</button>' : '')+'</div>' +
             '<div class="acoes" style="margin-top:10px">'+(confirmaToken ? '<span class="mini">O endereço antigo para de funcionar e você precisa trocar na Payt.</span><button class="btn peq perigo" data-acao="novo-token-ok">Gerar outro mesmo assim</button><button class="btn peq" data-acao="novo-token-nao">Cancelar</button>' : '<button class="btn peq" data-acao="novo-token">Gerar endereço novo</button>')+'</div></div>' +
           '<div class="card"><h2>Passo a passo na Payt</h2><ol class="passos" style="margin-top:10px">' +
-            '<li><b>Crie as ofertas do TMX na Payt.</b> <span>Uma pra cada plano e ciclo: Pro, Elite e Premium, mensal e anual, com 7 dias grátis e o mesmo preço da tabela.</span></li>' +
+            '<li><b>Crie as ofertas da SCALROI na Payt.</b> <span>Uma pra cada plano e ciclo: Pro, Elite e Premium, mensal e anual, com 7 dias grátis e o mesmo preço da tabela.</span></li>' +
             '<li><b>Copie o link de checkout de cada uma</b> <span>e cole no campo certo aqui ao lado. Depois clique em Salvar.</span></li>' +
             '<li><b>Cadastre o aviso.</b> <span>Na parte de postback (webhook) da Payt, cole o endereço acima e marque venda aprovada, reembolso, chargeback e cancelamento.</span></li>' +
             '<li><b>Faça uma compra de teste.</b> <span>Ela aparece em Pedidos, e o convite chega no e-mail e no WhatsApp de quem comprou.</span></li>' +
@@ -566,14 +566,14 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     var comoCompra = '<div class="card"><h2>Como o cliente compra</h2><div class="sub" style="margin-bottom:12px">O caminho de quem assina, do começo ao fim</div><ol class="passos">' +
           '<li><b>Escolhe o plano</b> <span>na página de planos (mensal ou anual) e clica em Testar 7 dias grátis. Não preenche nada ali.</span><div class="copia"><code>'+esc(C.paginaPlanos)+'</code><button class="btn peq" data-copiar="'+esc(C.paginaPlanos)+'">Copiar</button><a class="btn peq" href="'+esc(C.paginaPlanos)+'" target="_blank" rel="noopener">Abrir</a></div></li>' +
           '<li><b>Cai direto no checkout da '+nomeGw+'</b> <span>e põe ali nome, e-mail, telefone e '+(payt ? 'a forma de pagamento' : 'cartão')+'.</span></li>' +
-          '<li><b>Comprou, recebe as instruções</b> <span>a '+nomeGw+' avisa o TMX, que manda o link “Criar minha conta” pro e-mail e o WhatsApp da compra.</span></li>' +
+          '<li><b>Comprou, recebe as instruções</b> <span>a '+nomeGw+' avisa a SCALROI, que manda o link “Criar minha conta” pro e-mail e o WhatsApp da compra.</span></li>' +
         '</ol>'+(temLink ? '<div class="nota az" style="margin-top:12px">Pra vender por uma page sua, anúncio ou WhatsApp: cada plano tem o link de compra pronto na tabela de planos (mensal e anual). Ele leva direto pro checkout da '+nomeGw+'.</div>' : '')+'</div>';
     var kpiVende = payt
       ? '<div class="card kpi"><small>Vende pela</small><div class="v menor"><span class="st '+(preenchidos ? 'ok' : 'av')+'">Payt</span></div><div class="d">'+preenchidos+' de '+chaves.length+' links preenchidos</div></div>'
       : '<div class="card kpi"><small>Vende pela</small><div class="v menor">'+(C.ligada ? '<span class="st ok">Pagar.me</span>' : '<span class="st ne">Pagar.me desligada</span>')+'</div><div class="d">'+(C.ligada ? 'a chave está no Railway' : 'falta a chave no Railway')+'</div></div>';
     var kpi2 = payt ? '<div class="card kpi"><small>Aviso da Payt</small><div class="v menor">'+(V && V.webhook ? '<span class="st ok">endereço pronto</span>' : '<span class="st ne">sem endereço</span>')+'</div><div class="d">cadastre na Payt (passo 3)</div></div>'
       : '<div class="card kpi"><small>Ambiente</small><div class="v menor">'+amb+'</div><div class="d">chave sk_test_ = teste · sk_live_ = de verdade</div></div>';
-    return topo('Cobrança e checkout', 'Como os clientes pagam o TMX: por onde vende, os links de checkout, os planos e preços, a página de planos e os avisos que chegaram.', BTN_ATUALIZAR) +
+    return topo('Cobrança e checkout', 'Como os clientes pagam a SCALROI: por onde vende, os links de checkout, os planos e preços, a página de planos e os avisos que chegaram.', BTN_ATUALIZAR) +
       '<div class="grade g4">' + kpiVende + kpi2 +
         '<div class="card kpi"><small>Último aviso da '+nomeGw+'</small><div class="v menor">'+(ultimo && ultimo.em ? esc(ha(ultimo.em)) : 'nenhum ainda')+'</div><div class="d">'+(ultimo && ultimo.evento ? esc(ultimo.evento) : 'aparece aqui assim que chegar o 1º')+'</div></div>' +
         '<div class="card kpi destaque"><small>Receita mensal</small><div class="v">'+brl(P.receita.mensal)+'</div><div class="d">'+P.receita.novasMes+' nova(s) neste mês · '+P.receita.atrasadas+' atrasada(s)</div></div>' +
@@ -595,7 +595,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   function telaConvites(){
     var res = '';
     if(ultimoLink){
-      var msg = 'Oi! Aqui está o seu link pra criar a conta no TMX: ' + ultimoLink.link;
+      var msg = 'Oi! Aqui está o seu link pra criar a conta na SCALROI: ' + ultimoLink.link;
       res = '<div class="resultado" role="status"><b>Convite pronto. Vale uma vez e vence em '+esc(data(Date.parse(ultimoLink.expira), true))+'.</b>' +
         '<code>'+esc(ultimoLink.link)+'</code><div class="acoes"><button class="btn pri" data-copiar="'+esc(ultimoLink.link)+'">Copiar link</button>' +
         '<a class="btn" href="https://wa.me/?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">Mandar no WhatsApp</a></div>' +
@@ -608,7 +608,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
         '<td>'+(c.empresa ? esc((empDe(c.empresa) || {}).nome || c.empresa) : '<span class="mini">—</span>')+'</td>' +
         '<td class="dir">'+(c.situacao === 'esperando' ? '<button class="btn peq perigo" data-cancelar="'+esc(c.id)+'">Cancelar</button>' : '')+'</td></tr>';
     }).join('') || '<tr><td colspan="7" class="vazio">Nenhum convite ainda.</td></tr>';
-    return topo('Convites', 'O cliente abre o link, cria o acesso, dá o nome da empresa e dos projetos e já entra no TMX dele.') +
+    return topo('Convites', 'O cliente abre o link, cria o acesso, dá o nome da empresa e dos projetos e já entra na SCALROI dele.') +
       '<section class="card solto"><h2>Gerar convite</h2><div class="sub" style="margin-bottom:12px">Se souber o e-mail do cliente, ele já vem preenchido no cadastro (e ele pode trocar).</div>' +
       '<div class="form"><label class="campo">E-mail do cliente (opcional)<input id="cv-email" type="email" placeholder="cliente@empresa.com" autocomplete="off"></label>' +
       '<label class="campo">Anotação (opcional)<input id="cv-obs" placeholder="Ex.: Márcia, Clínica Bem Estar" maxlength="200"></label>' +
@@ -632,7 +632,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       var empresa = p.empresa ? esc((empDe(p.empresa) || {}).nome || p.empresa) : (p.convite ? '<span class="mini">link de cadastro pronto, ainda não usou</span>' : '<span class="mini">—</span>');
       var acao = '';
       if(p.status === 'pedido' && !cv) acao = '<button class="btn peq pri" data-liberar="'+esc(p.id)+'">Liberar teste grátis</button>';
-      else if(p.convite && !p.empresa) acao = '<button class="btn peq" data-copiar="'+esc(p.convite)+'">Copiar link do cadastro</button>' + (p.whatsapp ? '<a class="btn peq" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(p.whatsapp).replace(/\D/g, ''))+'?text='+encodeURIComponent('Oi, ' + (p.nome || '') + '! Aqui está o seu link pra criar a conta no TMX: ' + p.convite)+'">WhatsApp</a>' : '');
+      else if(p.convite && !p.empresa) acao = '<button class="btn peq" data-copiar="'+esc(p.convite)+'">Copiar link do cadastro</button>' + (p.whatsapp ? '<a class="btn peq" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(p.whatsapp).replace(/\D/g, ''))+'?text='+encodeURIComponent('Oi, ' + (p.nome || '') + '! Aqui está o seu link pra criar a conta na SCALROI: ' + p.convite)+'">WhatsApp</a>' : '');
       var contato = (p.email || '') + (p.whatsapp ? (p.email ? ' · ' : '') + p.whatsapp : '');
       return '<tr><td class="mini num">'+data(p.criado, true)+'</td><td><b>'+esc(p.nome || '—')+'</b><div class="mini">'+(contato ? esc(contato) : (p.status === 'paga' || p.status === 'aguardando' ? 'o contato chega com o aviso da Pagar.me' : '—'))+'</div></td>' +
         '<td>'+esc(p.plano_nome || p.plano)+'<div class="mini">'+esc(p.ciclo === 'anual' ? 'anual' : 'mensal')+'</div></td><td>'+situacao+'</td><td>'+empresa+'</td>' +
@@ -642,7 +642,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       : COBRANCA.ambiente === 'teste' ? '<div class="filtros"><span class="nota az">Pagar.me em modo de teste: os pagamentos daqui não são de verdade.</span></div>' : '';
     var res = '';
     if(liberado){
-      var msg = 'Oi, ' + (liberado.nome || '') + '! Seu teste grátis do TMX está liberado. Crie a sua conta por este link: ' + liberado.link;
+      var msg = 'Oi, ' + (liberado.nome || '') + '! Seu teste grátis da SCALROI está liberado. Crie a sua conta por este link: ' + liberado.link;
       res = '<div class="card solto"><div class="resultado" role="status" style="margin-top:0"><b>Teste grátis liberado pra '+esc(liberado.nome || liberado.email)+'. O link vale uma vez e vence em '+esc(data(Date.parse(liberado.expira), true))+'.</b>' +
         '<code>'+esc(liberado.link)+'</code><div class="acoes"><button class="btn pri" data-copiar="'+esc(liberado.link)+'">Copiar link</button>' +
         '<a class="btn" href="https://wa.me/'+esc(String(liberado.zap || '').replace(/\D/g, ''))+'?text='+encodeURIComponent(msg)+'" target="_blank" rel="noopener">Mandar no WhatsApp '+esc(liberado.zap || '')+'</a></div></div></div>';
@@ -665,7 +665,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
         '<td>'+esc(c.empresa_nome)+'</td><td>'+esc(c.tipo || '')+'</td><td class="mini num">'+data(c.atualizado, true)+'</td><td>'+stCh(c.status)+'</td></tr>';
     }).join('') || '<tr><td colspan="6" class="vazio">Nenhum chamado aqui.</td></tr>';
     var tipos = Object.keys(C.porTipo).map(function(k){ return [k, C.porTipo[k]]; }).sort(function(a, b){ return b[1] - a[1]; });
-    return topo('Suporte', 'Chamados que os clientes abrem pelo item Suporte no TMX deles. A resposta chega no sininho deles.', BTN_ATUALIZAR) +
+    return topo('Suporte', 'Chamados que os clientes abrem pelo item Suporte na SCALROI deles. A resposta chega no sininho deles.', BTN_ATUALIZAR) +
       '<div class="grade g4"><div class="card kpi"><small>Abertos</small><div class="v">'+C.abertos+'</div><div class="d">'+C.esperandoTmx+' esperando a TMX</div></div>' +
         '<div class="card kpi"><small>1ª resposta (média)</small><div class="v">'+(C.primeiraRespostaMin == null ? '—' : C.primeiraRespostaMin >= 60 ? (Math.round(C.primeiraRespostaMin / 6) / 10).toLocaleString('pt-BR') + ' h' : C.primeiraRespostaMin + ' min')+'</div><div class="d">chamados dos últimos 30 dias</div></div>' +
         '<div class="card kpi"><small>Sem resposta</small><div class="v">'+C.semResposta+'</div><div class="d">abertos que ninguém respondeu</div></div>' +
@@ -685,7 +685,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
       '<textarea id="ch-txt" class="resp" rows="4" placeholder="Responder pro cliente…"></textarea>' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><label class="mini" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ch-nota"> Nota interna (o cliente não vê)</label>' +
       '<label class="mini" style="margin-left:auto">Depois de enviar: <select id="ch-st" class="sel"><option value="cliente">Esperando o cliente</option><option value="aberto">Esperando a TMX</option><option value="resolvido">Resolvido</option></select></label>' +
-      '<button class="btn pri" data-acao="responder">Enviar</button></div>' + (e.status && e.status !== 'ativa' ? '<p class="mini" style="margin:10px 0 0">Essa empresa está bloqueada: a equipe dela não abre o TMX, mas recebe a resposta quando for desbloqueada.</p>' : '') + '</section>';
+      '<button class="btn pri" data-acao="responder">Enviar</button></div>' + (e.status && e.status !== 'ativa' ? '<p class="mini" style="margin:10px 0 0">Essa empresa está bloqueada: a equipe dela não abre a SCALROI, mas recebe a resposta quando for desbloqueada.</p>' : '') + '</section>';
   }
   // ── Saúde e capacidade ──
   function telaSaude(){
@@ -721,7 +721,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   }
   // ── Auditoria ──
   var ROT_AUD = { empresa_criada:'Criou uma empresa', empresa_cadastrada:'Cliente se cadastrou', empresa_bloqueada:'Bloqueou', empresa_desbloqueada:'Desbloqueou', empresa_plano:'Trocou o plano',
-    suporte_entrou:'Entrou como suporte', venda_tmx_config:'Mudou a venda do TMX (links e checkout)', venda_tmx_token:'Gerou endereço novo do aviso da Payt', convite_criado:'Gerou convite', convite_cancelado:'Cancelou convite', assinatura_paga:'Assinatura paga', login_bloqueado:'Login recusado (empresa bloqueada)' };
+    suporte_entrou:'Entrou como suporte', venda_tmx_config:'Mudou a venda da SCALROI (links e checkout)', venda_tmx_token:'Gerou endereço novo do aviso da Payt', convite_criado:'Gerou convite', convite_cancelado:'Cancelou convite', assinatura_paga:'Assinatura paga', login_bloqueado:'Login recusado (empresa bloqueada)' };
   function carregarAuditoria(){
     return Promise.all(['empresa_', 'suporte_entrou', 'convite_', 'assinatura_', 'login_bloqueado', 'venda_tmx'].map(function(a){ return api('GET', '/api/auditoria/list?limit=200&action=' + encodeURIComponent(a)); })).then(function(rs){
       var vistos = {}, tudo = [];
@@ -752,7 +752,7 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
   // ── modais (entrar como suporte, bloquear) ──
   function modalSuporte(e){
     return '<div class="porta modal" data-fundo="1"><div class="caixa" style="max-width:460px" role="dialog" aria-modal="true" aria-label="Entrar como suporte">' +
-      '<h1 style="margin:0 0 6px">Entrar como suporte na '+esc(e.nome)+'</h1><p style="margin:0 0 14px">Abre o TMX dessa empresa como a equipe dela vê, sem a senha de ninguém. Fica na auditoria das duas empresas. Ao sair, você volta pra cá com a sua conta.</p>' +
+      '<h1 style="margin:0 0 6px">Entrar como suporte na '+esc(e.nome)+'</h1><p style="margin:0 0 14px">Abre a SCALROI dessa empresa como a equipe dela vê, sem a senha de ninguém. Fica na auditoria das duas empresas. Ao sair, você volta pra cá com a sua conta.</p>' +
       '<label class="campo">Motivo (obrigatório)<input id="sp-motivo" placeholder="Ex.: chamado #12, pixel da VSL"></label>' +
       '<div class="campo" style="margin-top:12px">O que pode fazer<div style="display:flex;gap:8px;flex-wrap:wrap"><label class="radio"><input type="radio" name="sp-modo" value="olhar" checked> Só olhar</label><label class="radio"><input type="radio" name="sp-modo" value="mexer"> Pode mexer</label></div></div>' +
       '<label class="campo" style="margin-top:12px">Tempo<select id="sp-min"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">1 hora</option></select></label>' +
@@ -951,11 +951,11 @@ textarea.resp{width:100%;margin-top:14px;background:rgba(255,255,255,.04);border
     dica.style.left = Math.min(ev.clientX + 14, innerWidth - 250) + 'px'; dica.style.top = (ev.clientY + 14) + 'px';
   });
   // ── entrada: só a Diretoria da TMX, com a mesma conta do TMX ──
-  if(!token){ porta('Entre com a sua conta da TMX', 'A Central TMX Admin usa o mesmo login do TMX. Entre lá com a conta da Diretoria e abra esta página de novo.'); return; }
+  if(!token){ porta('Entre com a sua conta da TMX', 'A Central TMX Admin usa o mesmo login da SCALROI. Entre lá com a conta da Diretoria e abra esta página de novo.'); return; }
   api('GET', '/api/auth/me').then(function(r){
-    if(!r.ok || !r.j.user){ return porta('Entre com a sua conta da TMX', 'A sua sessão expirou. Entre no TMX com a conta da Diretoria e abra esta página de novo.'); }
+    if(!r.ok || !r.j.user){ return porta('Entre com a sua conta da TMX', 'A sua sessão expirou. Entre na SCALROI com a conta da Diretoria e abra esta página de novo.'); }
     var emp = r.j.empresa || {};
-    if(emp.id && emp.id !== 'tmx'){ return porta('Esta área é só da TMX', 'Você está logado numa conta de cliente. Saia dela no TMX e entre com a conta da Diretoria da TMX.'); }
+    if(emp.id && emp.id !== 'tmx'){ return porta('Esta área é só da TMX', 'Você está logado numa conta de cliente. Saia dela na SCALROI e entre com a conta da Diretoria da TMX.'); }
     if(r.j.user.cargo !== 'Diretoria'){ return porta('Esta área é só da Diretoria', 'A Central TMX Admin abre só pra Diretoria da TMX.'); }
     eu = r.j.user;
     try{ var av = sessionStorage.getItem('sl_admin_aviso'); if(av){ sessionStorage.removeItem('sl_admin_aviso'); setTimeout(function(){ aviso(av); }, 300); } }catch(e){}

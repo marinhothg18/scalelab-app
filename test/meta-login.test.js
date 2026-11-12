@@ -105,7 +105,7 @@ test('o botão do Facebook conecta sem ninguém criar token', async (t) => {
     const r = await chamar('POST', '/api/meta/login', { token: dono, corpo: { code: 'bom' } });
     appDoToken = 'app-1';
     assert.strictEqual(r.status, 400);
-    assert.match(r.dados.error, /não veio do app da TMX/);
+    assert.match(r.dados.error, /não veio do app da SCALROI/);
   });
   await t.test('o code vira token no servidor e a conexão fica de pé', async () => {
     const r = await chamar('POST', '/api/meta/login', { token: dono, corpo: { code: 'bom' } });
