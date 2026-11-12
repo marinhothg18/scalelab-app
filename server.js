@@ -4212,8 +4212,9 @@ app.get('/api/integracoes/vendas/me', authDiretoria, (req, res) => {
     const porStatus = {};
     vendas.forEach(v => { const st = String(v.status || '(sem status)'); porStatus[st] = (porStatus[st] || 0) + 1; });
     const pagas = vendas.filter(_vendaPaga);
-    const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
-    const pagasHoje = pagas.filter(v => String(v.recebidoEm || '').slice(0, 10) === hoje);
+    // o dia da venda no horário de Brasília: depois das 21h o recebidoEm (UTC) já está no dia seguinte
+    const hoje = _diaBR(Date.now());
+    const pagasHoje = pagas.filter(v => { const t = Date.parse(v.recebidoEm || ''); return t > 0 && _diaBR(t) === hoje; });
     res.json({
       ok: true,
       configurado: !!(cfg && cfg.token),
@@ -5335,6 +5336,103 @@ function _filtrarProjeto(lista, projeto) {
   if (!projeto) return lista;
   const alvo = lista.filter(d => String(d.id) === String(projeto));
   return alvo.length ? alvo : lista;
+}
+
+// ── Conjuntos e anúncios da tabela Por Campanha (11/11/2026) ──
+// A tabela desce de nível como na Utmify: marca a campanha e vê os conjuntos e os anúncios dela.
+// Gasto, orçamento, status e vídeo vêm ao vivo da Utmify, os dois níveis numa resposta só (o anúncio
+// diz de que conjunto é, e a venda do conjunto sai dos anúncios dele). Vendas e faturamento são as do
+// TMX, como na linha da campanha: a venda cai no anúncio pelo id que chega no utm_content e, sem id,
+// pelo nome do anúncio dentro da campanha dela.
+app.get('/api/metricas/utmify/niveis', authUsuario, async (req, res) => {
+  const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' });
+  const projeto = String(req.query.projeto || '').slice(0, 40);
+  const chave = 'niveis|' + de + '|' + ate + '|' + projeto;
+  try {
+    let vivo = _vivoGet(chave, req.query.forcar === '1' ? 10 * 1000 : 60 * 1000);
+    if (!vivo) vivo = await _vivoUmaVez(chave, async () => {
+      const achado = await _utmifyDashboardsAtivos();
+      const lista = _filtrarProjeto(achado.lista, projeto), conjuntos = [], anuncios = [], erros = [];
+      for (const d of lista) {
+        const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
+        const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
+        const faixa = { from: de + 'T00:00:00' + off, to: ate + 'T23:59:59' + off };
+        for (const [level, destino] of [['adset', conjuntos], ['ad', anuncios]]) {
+          try {
+            const r = await _utmifyChamarTool(achado.cfg.token, 'get_meta_ad_objects', { dashboardId: d.id, level, dateRange: faixa });
+            ((r && r.results) || []).forEach(a => destino.push(_nivelDaUtmify(a, level, d)));
+          } catch (e) { erros.push((d.nome || d.id) + ' (' + (level === 'ad' ? 'anúncios' : 'conjuntos') + '): ' + e.message); }
+        }
+      }
+      const saida = { de, ate, conjuntos, anuncios, erros };
+      // vazio não fica guardado: se foi tropeço da Utmify, o próximo pedido tenta de novo
+      if (conjuntos.length || anuncios.length) _vivoSet(chave, saida);
+      return saida;
+    });
+    res.json(Object.assign({ ok: true }, _niveisComTmx(vivo, de, ate, projeto)));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+function _nivelDaUtmify(a, level, d) {
+  const cent = v => (Number(v) || 0) / 100, n = v => Number(v) || 0, video = a.videoViews3Seconds != null;
+  return {
+    id: String(a.id || (level === 'ad' ? a.adId : a.adsetId) || ''), nome: String(a.name || '').trim() || '(sem nome)',
+    campanhaId: String(a.campaignId || ''), conjuntoId: String(a.adsetId || ''), contaId: String(a.accountId || ''), conta: String(a.ca || ''),
+    dashboard: String(d.nome || d.id || '').trim(), status: String(a.status || ''), efetivo: String(a.effectiveStatus || a.status || ''),
+    orc: a.dailyBudget != null ? cent(a.dailyBudget) : (n(a.lifetimeBudget) > 0 ? cent(a.lifetimeBudget) : null),
+    orcVida: a.dailyBudget == null && n(a.lifetimeBudget) > 0, bid: a.bidCap != null ? cent(a.bidCap) : null,
+    criada: String(a.createdTime || '').slice(0, 10),
+    investimento: cent(a.spend), fatUtmify: cent(a.grossRevenue), vendasUtmify: n(a.approvedOrdersCount), pendentes: n(a.pendingOrdersCount),
+    impressoes: n(a.impressions), cliques: n(a.inlineLinkClicks), lpv: n(a.landingPageViews), ic: n(a.initiateCheckout),
+    vv: video ? n(a.videoViews) : undefined, v3: video ? n(a.videoViews3Seconds) : undefined, v75: video ? n(a.video75Watched) : undefined,
+    freq: a.frequency != null ? Number(a.frequency) : null
+  };
+}
+function _niveisComTmx(vivo, de, ate, projeto) {
+  const copia = lista => lista.map(x => Object.assign({}, x, { faturamento: x.fatUtmify, aprovadas: x.vendasUtmify, vendas: x.vendasUtmify }));
+  let conjuntos = copia(vivo.conjuntos), anuncios = copia(vivo.anuncios), fonteReceita = 'utmify', semAnuncio = {};
+  if (_pessoas()) {
+    try {
+      const db = readDB();
+      let nomeProj = '';
+      if (projeto) { const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto); nomeProj = dP ? String(dP.nome || '').trim() : ''; }
+      const doProjeto = _pedidoDoProjetoResumoFn(db, nomeProj);
+      const nomePorId = {};
+      _q('SELECT id, nome FROM camp_dia ORDER BY dia').all().forEach(c => { if (c.id && c.nome) nomePorId[String(c.id)] = c.nome; });
+      const idDe = _campIdDoPedidoFn(nomePorId);
+      const zera = x => Object.assign(x, { faturamento: 0, aprovadas: 0, vendas: 0 });
+      anuncios.forEach(zera); conjuntos.forEach(zera);
+      // mesmo nome na mesma campanha (um anúncio por conjunto): a venda sem id fica com o que mais gastou
+      const adPorId = {}, adPorNome = {}, cjPorId = {};
+      anuncios.slice().sort((a, b) => b.investimento - a.investimento).forEach(a => {
+        adPorId[a.id] = a;
+        const k = a.campanhaId + '|' + _anuncioChave(a.nome);
+        if (!adPorNome[k]) adPorNome[k] = a;
+      });
+      conjuntos.forEach(s => { cjPorId[s.id] = s; });
+      _q(`SELECT pedido, valor, liquido, produto, cred_canal, cred_camp, cred_cont, camp, casou, visitante, funil, sem_origem, em
+          FROM pedidos WHERE pago=1 AND estorno=0 AND renovacao=0 AND dia BETWEEN ? AND ?`).all(de, ate).filter(doProjeto).forEach(p => {
+        if (!_campNorm(p.cred_camp)) return;   // sem campanha: fica fora também na linha da campanha
+        const campId = idDe(p) || _idDaCampUtm(p.cred_camp), cont = p.cred_cont || '', adId = _idDaCampUtm(cont);
+        const a = (adId && adPorId[adId]) || (campId ? adPorNome[campId + '|' + _anuncioChave(_semId(_contSemId(cont)))] : null);
+        if (!a) { const k = campId || _campNorm(p.cred_camp); semAnuncio[k] = (semAnuncio[k] || 0) + 1; return; }
+        const v = Number(p.valor) || 0, s = cjPorId[a.conjuntoId];
+        a.vendas++; a.aprovadas++; a.faturamento += v;
+        if (s) { s.vendas++; s.aprovadas++; s.faturamento += v; }
+      });
+      fonteReceita = 'tmx';
+    } catch (e) {
+      console.error('[TMX] vendas por conjunto e anúncio falharam, ficou a Utmify:', e.message);
+      conjuntos = copia(vivo.conjuntos); anuncios = copia(vivo.anuncios); semAnuncio = {};
+    }
+  }
+  const contas = x => {
+    const g = x.investimento, imp = x.impressoes, video = x.v3 !== undefined;
+    return Object.assign(x, { lucro: x.faturamento - g, roas: g > 0 ? x.faturamento / g : 0, cpa: x.aprovadas > 0 ? g / x.aprovadas : null,
+      ctr: imp > 0 ? x.cliques / imp : null, cpc: x.cliques > 0 ? g / x.cliques : null, cpm: imp > 0 ? g / imp * 1000 : null,
+      hook: video && imp > 0 ? x.v3 / imp : null, hold: video && imp > 0 ? x.v75 / imp : null });
+  };
+  return { de: vivo.de, ate: vivo.ate, conjuntos: conjuntos.map(contas), anuncios: anuncios.map(contas), erros: vivo.erros || [], fonteReceita, semAnuncio };
 }
 
 // Anuncios do periodo, agregados entre os dashboards
@@ -9858,7 +9956,7 @@ const _ROTAS_DO_LIMITADO = [
   // IA que só usa o texto que a pessoa mandou
   ['POST', /^\/api\/ia\/copy\/(headlines|anuncio|variacoes|analise|advertorial)$/], ['POST', /^\/api\/ia\/analise-ads(-lote)?$/], ['GET', /^\/api\/ia\/chave-status$/],
   // Tráfego e Análise: o projeto vem do id do dashboard
-  ['GET', /^\/api\/metricas\/utmify\/(anuncios|tempo-real|panorama|filtros|cobertura-utm)$/, _limDash('projeto')],
+  ['GET', /^\/api\/metricas\/utmify\/(anuncios|tempo-real|panorama|filtros|cobertura-utm|niveis)$/, _limDash('projeto')],
   ['GET', /^\/api\/metricas\/(consolidado|tmx-campanhas)$/, _limDash('projeto')],
   ['GET', /^\/api\/funil\/cliques$/, _limDash('projeto')], ['GET', /^\/api\/criativos\/ate-a-venda$/, _limDash('projeto')],
   ['GET', /^\/api\/metricas\/utmify\/anuncio$/, (req, e) => { const v = String(req.query.dashboard || ''); return e.dashs.has(v) || e.nomes.has(_nrm(v)); }],

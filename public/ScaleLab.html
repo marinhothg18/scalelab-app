@@ -3458,6 +3458,36 @@ a.fn-btn{text-decoration:none;display:inline-block}
 .cp-seg{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:2px;gap:2px}
 .cp-seg button{border:0;background:none;border-radius:7px;padding:5px 12px;font:inherit;font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer}
 .cp-seg button.on{background:var(--accent);color:#fff}
+.cp-seg-it{display:inline-flex;align-items:center;border-radius:7px}
+.cp-seg-it.on{background:var(--accent)}
+.cp-seg .cp-seg-it.on>button{color:#fff}
+.cp-seg .cp-seg-x{margin:0 4px 0 -6px;padding:2px 8px;border-radius:999px;background:var(--accent);color:#fff;font-size:11px;font-weight:800}
+.cp-seg .cp-seg-it.on .cp-seg-x{background:rgba(255,255,255,.24)}
+.cp-seg .cp-seg-x:hover{filter:brightness(1.12)}
+.cp-trilha{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;font-size:12.5px;color:var(--text2)}
+.cp-pai{display:inline-flex;align-items:center;gap:4px;max-width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:999px;padding:3px 4px 3px 10px;color:var(--text);font-weight:600;font-size:12px}
+.cp-pai>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}
+.cp-pai button{border:0;background:none;color:var(--text2);cursor:pointer;border-radius:50%;width:22px;height:22px;line-height:1;font-size:15px}
+.cp-pai button:hover{background:var(--border);color:var(--text)}
+.cp-sel{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border));background:color-mix(in srgb,var(--accent) 7%,var(--bg2));border-radius:10px;font-size:12.5px}
+.cp-sel b{font-weight:700}
+.cp-pdf.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.cp-pdf.pri:hover{color:#fff;filter:brightness(1.08)}
+.cp-pdf.leve{background:none;border-color:transparent;color:var(--text2)}
+a.cp-pdf{text-decoration:none;display:inline-flex;align-items:center}
+.cp-ck{display:flex;align-items:center;justify-content:center;width:100%;min-height:38px;cursor:pointer}
+.cp-ck input{width:16px;height:16px;margin:0;accent-color:var(--accent);cursor:pointer}
+#cp-tabela .f0{position:sticky;left:0;z-index:2;width:40px;min-width:40px;max-width:40px;padding:0 4px;text-align:center}
+#cp-tabela .f1{left:40px}
+#cp-tabela .f2{left:126px}
+#cp-tabela thead .f0,#cp-tabela tfoot .f0{z-index:5;background:var(--bg3)}
+#cp-tabela tbody tr.sel td{background:color-mix(in srgb,var(--accent) 7%,var(--bg2))}
+#cp-tabela tbody tr.sel:hover td{background:color-mix(in srgb,var(--accent) 11%,var(--bg2))}
+.cp-sub{display:block;margin-top:3px;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(var(--cp-larg,330px) - 26px)}
+.cp-nv-nota{margin-top:8px;font-size:12px;color:var(--text2)}
+.cpc-marcar{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer;min-height:36px}
+.cpc-marcar input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.cpc-card.sel{border-color:var(--accent)}
 .cp-tbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
 .cp-dica{font-size:11.5px;color:var(--text2);margin-left:auto}
 .cp-rolar{display:flex;gap:4px}
@@ -45965,7 +45995,7 @@ function cpCelulaNome(c, nr){
 // ══════════════════════════════════════════════════════
 var cpDados = [], cpEst = { nivel:'campanhas', conta:'', status:'', busca:'', marca:'', ord:'lucro', desc:true, colsAberto:false };
 var CP_COLS = [
-  { k:'orc',   t:'Orçamento',      g:'Dinheiro', on:1, v:function(c){ return (c.orc != null ? fmtAds(c.orc).replace(/,\d\d$/,'')+'<small>'+(c.orcVida ? ' total' : '/dia')+'</small>' : '<i>—</i>')+cpOrcLapis(c); } },
+  { k:'orc',   t:'Orçamento',      g:'Dinheiro', on:1, v:function(c){ return (c.orc != null ? fmtAds(c.orc).replace(/,\d\d$/,'')+'<small>'+(c.orcVida ? ' total' : '/dia')+'</small>' : '<i>'+(c._nv === 'conjuntos' ? 'da campanha' : '—')+'</i>')+cpOrcLapis(c); } },
   { k:'investimento', t:'Gasto',   g:'Dinheiro', on:1, v:function(c, mx){ return fmtAds(c.investimento)+'<div class="cp-barra"><i style="width:'+Math.round((c.investimento||0)/mx*100)+'%"></i></div>'; } },
   { k:'faturamento', t:'Faturamento', g:'Dinheiro', on:1, tit:'Soma das vendas que o TMX deu a esta campanha', v:function(c){ return c.faturamento ? fmtAds(c.faturamento) : '<i>—</i>'; } },
   { k:'lucro', t:'Lucro',          g:'Dinheiro', on:1, cls:function(c){ return c.lucro >= 0 ? 'pos' : 'neg'; }, v:function(c){ return fmtAds(c.lucro); } },
@@ -46116,6 +46146,283 @@ function cpFiltradas(){
     return (!cpEst.conta || c.conta === cpEst.conta) && (!cpEst.status || st === cpEst.status) && (!b || String(c.nome).toLowerCase().indexOf(b) >= 0) && (!mc || (cpEst.marca === 'fixa' ? mc.fixa : mc.cor === cpEst.marca));
   });
 }
+// ── Conjuntos e anúncios na tabela Por Campanha (11/11/2026) ──
+// Como na Utmify: a caixinha marca campanhas (ou conjuntos) e as abas Conjuntos e Anúncios mostram só o
+// que é delas. A marcação fica ao trocar de aba. Gasto, status e vídeo vêm ao vivo da Utmify (os dois
+// níveis de uma vez); vendas e faturamento são as do TMX, como na linha da campanha.
+var CP_SEL_DO = { campanhas:'camp', conjuntos:'cj', anuncios:'ad' };
+var cpNv = { chave:'', d:null, carregando:'', erro:'', em:0 }, cpNvMudou = {};
+cpEst.sel = { camp:{}, cj:{}, ad:{} };
+function cpTem(o){ for(var k in o) return true; return false; }
+function cpQtd(o){ return Object.keys(o).length; }
+function cpPl(n, um, varios){ return n+' '+(n === 1 ? um : varios); }
+function cpNvNivel(){ return cpEst.nivel === 'conjuntos' || cpEst.nivel === 'anuncios'; }
+function cpNvChave(){ var p = getAdsDates(); return p.from+'|'+p.to+'|'+_qsProjeto(); }
+function cpNvPronto(){ return !!(cpNv.d && cpNv.chave === cpNvChave()); }
+function cpNvCarregar(forcar){
+  var k = cpNvChave();
+  if(cpNv.carregando === k) return;
+  if(!forcar && cpNv.chave === k && (cpNv.d || cpNv.erro) && Date.now() - cpNv.em < 60000) return;
+  var p = getAdsDates();
+  cpNv.carregando = k;
+  v2Json('/api/metricas/utmify/niveis?de='+p.from+'&ate='+p.to+_qsProjeto()+(forcar ? '&forcar=1' : ''))
+    .then(function(d){
+      if(cpNv.carregando !== k) return;
+      var agora = Date.now();
+      d._cj = {};
+      ['conjuntos','anuncios'].forEach(function(nv){
+        d[nv] = d[nv] || [];
+        d[nv].forEach(function(r){
+          r._nv = nv;
+          // o que foi mudado daqui vale até a Utmify ver a mudança
+          var m = cpNvMudou[r.id];
+          if(m && agora - m.em < 5*60000){ if(m.status){ r.status = m.status; r.efetivo = m.efetivo; } if(m.orc != null) r.orc = m.orc; }
+          if(nv === 'conjuntos') d._cj[r.id] = r;
+        });
+      });
+      cpNv = { chave:k, d:d, carregando:'', erro:'', em:agora };
+      cpPodar(); cpPintar();
+    })
+    .catch(function(e){
+      if(cpNv.carregando !== k) return;
+      if(cpNv.chave !== k) cpNv.d = null;
+      cpNv.carregando = ''; cpNv.erro = e.message; cpNv.chave = k; cpNv.em = Date.now();
+      cpPintar();
+    });
+}
+function cpNvTodos(nv){ return cpNv.d ? (cpNv.d[nv] || []) : []; }
+function cpNvAchar(nv, id){
+  if(!cpNv.d) return null;
+  if(nv === 'conjuntos') return cpNv.d._cj[id] || null;
+  return cpNvTodos(nv).filter(function(r){ return r.id === id; })[0] || null;
+}
+var _cpCampIdx = { ref:null, m:{} };
+function cpCampNomeDe(id){
+  if(_cpCampIdx.ref !== cpDados){ _cpCampIdx = { ref:cpDados, m:{} }; (cpDados||[]).forEach(function(c){ if(c.campanhaId) _cpCampIdx.m[String(c.campanhaId)] = c.nome; }); }
+  return _cpCampIdx.m[String(id)] || '';
+}
+// "CBO 1.3.1 | CONCURSO | AD226.HK1 | bestseniorCA2 | 05/11" -> "AD226.HK1 · 05/11"
+function cpCampCurta(nome){
+  if(!nome) return '';
+  var p = cpPartesNome(nome), dt = (cpNomeCurto(nome).match(/(\d\d\/\d\d)\s*$/) || [])[1];
+  return p.t+(dt && p.t.indexOf(dt) < 0 ? ' · '+dt : '');
+}
+// conjunto chamado "01" vira "Conjunto 01"; nome que já diz o que é fica como está
+function cpNvTitulo(r){ if(!r) return ''; return r._nv === 'conjuntos' && /^\d/.test(r.nome) ? 'Conjunto '+r.nome : r.nome; }
+function cpNvDentro(nv, r){
+  var s = cpEst.sel;
+  if(nv === 'anuncios' && cpTem(s.cj)) return !!s.cj[r.conjuntoId];
+  return !cpTem(s.camp) || !!s.camp[r.campanhaId];
+}
+function cpNvLinhas(nv){
+  var b = cpEst.busca.toLowerCase();
+  return cpNvTodos(nv).filter(function(r){
+    if(!cpNvDentro(nv, r) || (cpEst.conta && r.conta !== cpEst.conta)) return false;
+    if(cpEst.status && (cpEst.status === 'on') !== (r.efetivo === 'ACTIVE')) return false;
+    // a marca é da campanha: o conjunto e o anúncio seguem a dela
+    if(cpEst.marca){ var mc = cpMarcas[cpIdMarca(r)] || {}; if(cpEst.marca === 'fixa' ? !mc.fixa : mc.cor !== cpEst.marca) return false; }
+    if(b){ var cj = nv === 'anuncios' ? cpNvAchar('conjuntos', r.conjuntoId) : null;
+      if((r.nome+' '+cpCampNomeDe(r.campanhaId)+(cj ? ' '+cj.nome : '')).toLowerCase().indexOf(b) < 0) return false; }
+    return true;
+  });
+}
+// desmarcar a campanha tira os conjuntos e anúncios dela que estavam marcados
+function cpPodar(){
+  var s = cpEst.sel; if(!cpNv.d) return;
+  Object.keys(s.cj).forEach(function(id){ var r = cpNvAchar('conjuntos', id); if(r && !cpNvDentro('conjuntos', r)) delete s.cj[id]; });
+  Object.keys(s.ad).forEach(function(id){ var r = cpNvAchar('anuncios', id); if(r && !cpNvDentro('anuncios', r)) delete s.ad[id]; });
+}
+function cpNvRotulo(nv){
+  var s = cpEst.sel, nc = cpQtd(s.camp), nj = cpQtd(s.cj);
+  if(nv === 'conjuntos') return nc ? 'Conjuntos de '+cpPl(nc, 'campanha', 'campanhas') : 'Conjuntos';
+  return nj ? 'Anúncios de '+cpPl(nj, 'conjunto', 'conjuntos') : nc ? 'Anúncios de '+cpPl(nc, 'campanha', 'campanhas') : 'Anúncios';
+}
+function cpIrNivel(nv){ cpEst.nivel = nv; cpPintar(); }
+function cpSelMarcar(sk, id, on){ var o = cpEst.sel[sk]; if(on) o[id] = 1; else delete o[id]; cpPodar(); cpPintar(); }
+function cpDesmarcar(sk){ cpEst.sel[sk] = {}; cpPodar(); cpPintar(); }
+function cpSelTodos(nv, on){
+  var o = cpEst.sel[CP_SEL_DO[nv]];
+  var ids = nv === 'campanhas' ? cpFiltradas().filter(function(c){ return c.campanhaId; }).map(function(c){ return String(c.campanhaId); })
+                               : cpNvLinhas(nv).map(function(r){ return r.id; });
+  ids.forEach(function(id){ if(on) o[id] = 1; else delete o[id]; });
+  cpPodar(); cpPintar();
+}
+function cpCkTodos(nv, ids){
+  var o = cpEst.sel[CP_SEL_DO[nv]], m = ids.filter(function(id){ return o[id]; }).length, todos = ids.length > 0 && m === ids.length;
+  return '<label class="cp-ck" title="Marcar todos"><input type="checkbox" id="cp-ck-todos"'+(todos ? ' checked' : '')+' data-meio="'+(m && !todos ? 1 : 0)+'" aria-label="Marcar todos" onchange="cpSelTodos(\''+nv+'\',this.checked)"></label>';
+}
+function cpCk(sk, id, rotulo){
+  if(!id) return '';
+  return '<label class="cp-ck"><input type="checkbox"'+(cpEst.sel[sk][id] ? ' checked' : '')+' aria-label="Marcar '+fnEsc(rotulo)+'" onchange="cpSelMarcar(\''+sk+'\',\''+fnEsc(id)+'\',this.checked)"></label>';
+}
+function cpSelCel(sk, id){
+  if(!id) return '<span></span>';
+  return '<label class="cpc-marcar"><input type="checkbox"'+(cpEst.sel[sk][id] ? ' checked' : '')+' onchange="cpSelMarcar(\''+sk+'\',\''+fnEsc(id)+'\',this.checked)"> Marcar</label>';
+}
+function cpGerenciador(sk){
+  var ids = Object.keys(cpEst.sel[sk]); if(!ids.length || !cpNv.d) return '';
+  var r = sk === 'camp' ? (cpNvTodos('conjuntos').filter(function(x){ return x.campanhaId === ids[0]; })[0] || cpNvTodos('anuncios').filter(function(x){ return x.campanhaId === ids[0]; })[0])
+                        : cpNvAchar(sk === 'cj' ? 'conjuntos' : 'anuncios', ids[0]);
+  if(!r || !r.contaId) return '';
+  var q = { camp:['adsets','selected_campaign_ids'], cj:['ads','selected_adset_ids'], ad:['ads','selected_ad_ids'] }[sk];
+  return 'https://adsmanager.facebook.com/adsmanager/manage/'+q[0]+'?act='+encodeURIComponent(r.contaId)+'&'+q[1]+'='+ids.map(encodeURIComponent).join(',');
+}
+// a linha de cima da tabela: de que campanhas são os conjuntos da tela e o que fazer com o que está marcado
+function cpSelBarra(){
+  var nv = cpEst.nivel, s = cpEst.sel, h = '';
+  var pai = nv === 'conjuntos' ? (cpTem(s.camp) ? 'camp' : '') : nv === 'anuncios' ? (cpTem(s.cj) ? 'cj' : cpTem(s.camp) ? 'camp' : '') : '';
+  if(pai){
+    var ids = Object.keys(s[pai]);
+    h += '<div class="cp-trilha"><span>Mostrando só os '+(nv === 'conjuntos' ? 'conjuntos' : 'anúncios')+' de:</span>'+ids.slice(0, 3).map(function(id){
+      var r = pai === 'cj' ? cpNvAchar('conjuntos', id) : null, cheio = pai === 'camp' ? cpCampNomeDe(id) : (r ? cpNvTitulo(r)+' · '+cpCampNomeDe(r.campanhaId) : '');
+      var t = pai === 'camp' ? 'Campanha '+(cpCampCurta(cheio) || id) : (r ? cpNvTitulo(r)+' · '+cpCampCurta(cpCampNomeDe(r.campanhaId)) : 'Conjunto '+id);
+      return '<span class="cp-pai" title="'+fnEsc(cheio || t)+'"><span>'+fnEsc(t)+'</span><button aria-label="Tirar '+fnEsc(t)+'" title="Tirar" onclick="cpSelMarcar(\''+pai+'\',\''+fnEsc(id)+'\',false)">×</button></span>';
+    }).join('')+(ids.length > 3 ? '<span>e mais '+(ids.length - 3)+'</span>' : '')+'</div>';
+  }
+  var sk = CP_SEL_DO[nv];
+  if(sk && cpTem(s[sk])){
+    var o = s[sk], n = cpQtd(o), bts = '';
+    if(nv === 'campanhas'){
+      var nCj = cpNv.d ? cpNvTodos('conjuntos').filter(function(r){ return o[r.campanhaId]; }).length : null;
+      var nAd = cpNv.d ? cpNvTodos('anuncios').filter(function(r){ return o[r.campanhaId]; }).length : null;
+      bts += '<button class="cp-pdf pri" onclick="cpIrNivel(\'conjuntos\')">Ver '+(nCj == null ? 'os conjuntos' : cpPl(nCj, 'conjunto', 'conjuntos'))+' ›</button>'+
+             '<button class="cp-pdf" onclick="cpIrNivel(\'anuncios\')">Ver '+(nAd == null ? 'os anúncios' : cpPl(nAd, 'anúncio', 'anúncios'))+' ›</button>';
+    } else if(nv === 'conjuntos'){
+      var nA = cpNvTodos('anuncios').filter(function(r){ return o[r.conjuntoId]; }).length;
+      bts += '<button class="cp-pdf pri" onclick="cpIrNivel(\'anuncios\')">Ver '+cpPl(nA, 'anúncio', 'anúncios')+' ›</button>';
+    }
+    var g = cpGerenciador(sk);
+    if(g) bts += '<a class="cp-pdf" href="'+fnEsc(g)+'" target="_blank" rel="noopener">Abrir no Gerenciador ↗</a>';
+    var nome = { campanhas:['campanha marcada','campanhas marcadas'], conjuntos:['conjunto marcado','conjuntos marcados'], anuncios:['anúncio marcado','anúncios marcados'] }[nv];
+    h += '<div class="cp-sel"><b>✓ '+n+' '+(n === 1 ? nome[0] : nome[1])+'</b>'+bts+'<button class="cp-pdf leve" onclick="cpDesmarcar(\''+sk+'\')">Desmarcar</button></div>';
+  }
+  return h;
+}
+function cpNvChaveBt(r){
+  if(!_podeMexerNaMeta() || !r.campanhaId) return '';
+  var nivel = r._nv === 'conjuntos' ? 'conjunto' : 'anuncio', on = r.status === 'ACTIVE', pode = cpMeta && cpMeta.pode;
+  var tit = !pode ? (cpMeta && cpMeta.conectado ? 'Pra pausar daqui, o token da Meta precisa de ads_management' : 'Pra pausar daqui, conecte a Meta em Integrações')
+                  : (on ? 'Pausar ' : 'Ativar ')+CP_NIVEL_TXT[nivel][0]+' na Meta'+(on && r.efetivo !== 'ACTIVE' ? ' (hoje não roda: '+cpCtrlStatus(r.efetivo)[0].toLowerCase()+')' : '');
+  return '<button class="cp-sw'+(on ? ' on' : '')+(!pode || (on && r.efetivo !== 'ACTIVE') ? ' apagada' : '')+'" role="switch" aria-checked="'+on+'" title="'+fnEsc(tit)+'" aria-label="'+fnEsc(tit)+'" onclick="event.stopPropagation();cpNvAlternar(\''+r._nv+'\',\''+fnEsc(r.id)+'\',this)"><i></i></button>';
+}
+function cpNvStatusCel(r){ var st = cpCtrlStatus(r.efetivo); return cpNvChaveBt(r)+'<span class="cp-st '+st[1]+'">'+st[0]+'</span>'; }
+function cpNvSub(r){
+  var camp = cpCampNomeDe(r.campanhaId) || ('campanha de id …'+String(r.campanhaId).slice(-5));
+  if(r._nv === 'conjuntos') return cpNomeCurto(camp);
+  var cj = cpNvAchar('conjuntos', r.conjuntoId);
+  return (cj ? cpNvTitulo(cj)+' · ' : '')+cpCampCurta(camp);
+}
+function cpNvNomeCel(r){
+  var cheio = r._nv === 'conjuntos' ? cpCampNomeDe(r.campanhaId) : cpNvSub(r)+' · '+cpCampNomeDe(r.campanhaId);
+  return '<td class="f2"><div class="tx"><b title="'+fnEsc(r.nome)+'">'+fnEsc(cpNvTitulo(r))+'</b><span class="cp-sub" title="'+fnEsc(cheio)+'">↳ '+fnEsc(cpNvSub(r))+'</span>'+
+    (r.conta ? '<div class="cp-chips"><span>'+fnEsc(r.conta)+'</span></div>' : '')+'</div><i class="cp-alca" data-cp-alca="1"></i></td>';
+}
+function cpNvEspera(nv){
+  var nome = nv === 'conjuntos' ? 'conjuntos' : 'anúncios';
+  if(cpNv.erro && cpNv.chave === cpNvChave() && !cpNv.d) return '<div class="cp-vazio">Não buscou os '+nome+' na Utmify: '+fnEsc(cpNv.erro)+' <button class="cp-link" onclick="cpNvCarregar(true)">Tentar de novo</button></div>';
+  return '<div class="cp-vazio">Buscando os '+nome+' na Utmify…</div>';
+}
+function cpNvNotas(nv){
+  var d = cpNv.d, h = ''; if(!d) return '';
+  if(d.erros && d.erros.length) h += '<div class="cp-nv-nota">A Utmify não devolveu tudo: '+fnEsc(d.erros.join(' · '))+'</div>';
+  if(d.fonteReceita === 'tmx'){
+    var s = cpEst.sel.camp, n = 0;
+    Object.keys(d.semAnuncio || {}).forEach(function(k){ if(!cpTem(s) || s[k]) n += d.semAnuncio[k]; });
+    if(n) h += '<div class="cp-nv-nota">'+cpPl(n, 'venda do TMX', 'vendas do TMX')+(cpTem(s) ? ' destas campanhas' : '')+(n === 1 ? ' não trouxe o anúncio na UTM: conta na campanha, mas não em um conjunto ou anúncio.' : ' não trouxeram o anúncio na UTM: contam na campanha, mas não em um conjunto ou anúncio.')+'</div>';
+  } else h += '<div class="cp-nv-nota">Vendas e faturamento destes '+(nv === 'conjuntos' ? 'conjuntos' : 'anúncios')+' são os da Utmify.</div>';
+  return h;
+}
+function cpNvTabela(nv, l){
+  if(!cpNvPronto()) return cpNvEspera(nv);
+  var cs = cpColsOn(), sk = CP_SEL_DO[nv], nome = nv === 'conjuntos' ? ['conjunto','conjuntos','Conjunto'] : ['anúncio','anúncios','Anúncio'];
+  l = cpOrdenadas(l);
+  var mx = Math.max.apply(null, l.map(function(c){ return c.investimento || 0; }).concat([1]));
+  var th = function(c){
+    if(cpEst.moverCols) return '<th class="cp-mv" draggable="true" data-cp-col="'+fnEsc(c.k)+'" title="Arraste para mudar a ordem"><i>⠿</i>'+c.t+'</th>';
+    return '<th class="ord'+(cpEst.ord === c.k ? ' on' : '')+'" onclick="cpOrdenar(\''+c.k+'\')"'+(c.tit ? ' title="'+fnEsc(c.tit)+'"' : '')+'>'+c.t+(cpEst.ord === c.k ? (cpEst.desc ? ' ↓' : ' ↑') : '')+'</th>';
+  };
+  var regra = 'Criar uma regra para os '+nome[1]+' desta campanha';
+  var linhas = l.map(function(r){
+    var sel = !!cpEst.sel[sk][r.id];
+    return '<tr class="'+(sel ? 'sel' : '')+(cpFixa(r) ? ' fixa' : '')+'" onclick="cpSelMarcar(\''+sk+'\',\''+fnEsc(r.id)+'\','+(!sel)+')">'+
+      '<td class="f0" onclick="event.stopPropagation()">'+cpCk(sk, r.id, cpNvTitulo(r))+'</td>'+
+      '<td class="f1">'+cpNvStatusCel(r)+'</td>'+cpNvNomeCel(r)+
+      cs.map(function(col){ return '<td'+(col.cls ? ' class="'+col.cls(r)+'"' : '')+'>'+col.v(r, mx)+'</td>'; }).join('')+
+      '<td class="f3">'+(r.campanhaId && _podeMexerNaMeta() ? '<button onclick="event.stopPropagation();rgtAtalhoNv(\''+nv+'\',\''+fnEsc(r.id)+'\')" title="'+regra+'" aria-label="'+regra+'">⚡</button>' : '')+'</td></tr>';
+  }).join('');
+  var somas = cpTotais(l, true), tot = somas.tot;
+  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f0">'+cpCkTodos(nv, l.map(function(r){ return r.id; }))+'</th><th class="f1">Status</th>'+
+    '<th class="f2">'+nome[2]+'<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna '+nome[2]+'" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
+    (linhas || '<tr><td colspan="'+(cs.length + 4)+'" class="cp-vazio">Nenhum '+nome[0]+' neste filtro.</td></tr>')+'</tbody>'+
+    '<tfoot><tr><td class="f0"></td><td class="f1"></td><td class="f2"><b>'+cpPl(l.length, nome[0], nome[1])+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+
+    cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(somas.lucroTot >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>'+cpNvNotas(nv);
+}
+// no celular: o mesmo card da campanha, com "Marcar" embaixo
+function cpNvCards(nv, l){
+  if(!cpNvPronto()) return cpNvEspera(nv);
+  l = cpOrdenadas(l);
+  var sk = CP_SEL_DO[nv], mx = Math.max.apply(null, l.map(function(c){ return c.investimento || 0; }).concat([1]));
+  var na = cpcColsAtivas(), resto = CP_COLS.filter(function(c){ return na.indexOf(c) < 0; });
+  var cel = function(col, c){ return '<div'+(col.cls ? ' class="'+col.cls(c)+'"' : '')+'><span>'+col.t+'</span><b>'+col.v(c, mx)+'</b></div>'; };
+  var est = function(id, t){ return '<button class="cpc-chip'+(cpEst.status === id ? ' on' : '')+'" onclick="cpEst.status=cpEst.status===\''+id+'\'?\'\':\''+id+'\';cpPintar()">'+t+'</button>'; };
+  var cards = l.map(function(r){
+    var st = cpCtrlStatus(r.efetivo), id = 'nv:'+r.id, aberto = !!cpcAbertos[id];
+    return '<article class="cpc-card'+(cpEst.sel[sk][r.id] ? ' sel' : '')+'"><div class="cpc-top sem-mrc"><div class="cpc-nome"><b>'+fnEsc(cpNvTitulo(r))+'</b><small>'+fnEsc(cpNvSub(r))+'</small>'+(r.conta ? '<div class="cp-chips"><span>'+fnEsc(r.conta)+'</span></div>' : '')+'</div>'+
+      '<div class="cpc-st">'+cpNvChaveBt(r)+'<span class="cp-st '+st[1]+'">'+st[0]+'</span></div></div>'+
+      '<div class="cpc-nums">'+na.map(function(col){ return cel(col, r); }).join('')+'</div>'+
+      (aberto ? '<div class="cpc-nums extra">'+resto.map(function(col){ return cel(col, r); }).join('')+'</div>' : '')+
+      '<div class="cpc-acoes">'+cpSelCel(sk, r.id)+'<button class="cpc-ver" onclick="cpcAbertos[\''+fnEsc(id)+'\']=!cpcAbertos[\''+fnEsc(id)+'\'];cpPintar()">'+(aberto ? 'Ver menos' : 'Ver todas as métricas')+'</button></div></article>';
+  }).join('');
+  var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); }, g = soma('investimento'), f = soma('faturamento'), lu = soma('lucro');
+  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()">'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpExportarPdf(this)" aria-label="Exportar PDF">PDF</button><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
+    '<div class="cpc-fixos"><div class="cpc-chips">'+est('on','Ativas')+est('off','Pausadas')+cpFiltrosMarca()+'</div></div>'+
+    '<div class="cpc-soma"><div><span>Gasto</span><b>'+fmtAds(g)+'</b></div><div><span>Lucro</span><b class="'+(lu >= 0 ? 'pos' : 'neg')+'">'+fmtAds(lu)+'</b></div><div><span>ROAS</span><b>'+(g ? (f/g).toFixed(2).replace('.',',')+'x' : '—')+'</b></div></div>'+
+    (cards ? '<div class="cpc-lista">'+cards+'</div>' : '<div class="cp-vazio">Nenhum '+(nv === 'conjuntos' ? 'conjunto' : 'anúncio')+' neste filtro.</div>')+cpNvNotas(nv);
+}
+// liga e pausa direto na Meta, como a campanha
+async function cpNvAlternar(nv, id, bt){
+  var r = cpNvAchar(nv, id); if(!r) return;
+  if(!cpMeta || !cpMeta.pode){ toastFn(cpMeta && cpMeta.conectado ? 'O token da Meta não tem ads_management. Gere outro marcando essa permissão e troque em Integrações → Meta.' : 'Pra pausar e ativar daqui, conecte a Meta em Configurações → Integrações → Meta.'); return; }
+  var nivel = nv === 'conjuntos' ? 'conjunto' : 'anuncio', ativo = r.status !== 'ACTIVE';
+  if(!(await tmxConfirmar((ativo ? 'Ativar ' : 'Pausar ')+CP_NIVEL_TXT[nivel][0]+' na Meta?\n\n'+cpNvTitulo(r)+'\n'+cpNomeCurto(cpCampNomeDe(r.campanhaId))))) return;
+  bt.disabled = true;
+  fetch(API_BASE+'/api/meta/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ nivel:nivel, id:r.id, camp:r.campanhaId, ativo:ativo, nome:r.nome }) })
+    .then(mcResposta)
+    .then(function(d){
+      r.status = d.status || (ativo ? 'ACTIVE' : 'PAUSED');
+      if(r.efetivo === 'ACTIVE' || r.efetivo === 'PAUSED') r.efetivo = r.status;
+      cpNvMudou[r.id] = { status:r.status, efetivo:r.efetivo, em:Date.now() };
+      delete cpCtrl[r.campanhaId];
+      toastFn(CP_NIVEL_TXT[nivel][1]+(ativo ? ' ativado' : ' pausado'));
+      cpPintar();
+    })
+    .catch(function(e){ bt.disabled = false; toastFn('Não mudou: '+e.message); });
+}
+// o lápis do orçamento do conjunto: lê na Meta o valor de agora e abre a mesma janela da campanha
+async function cpNvOrc(id, bt){
+  var r = cpNvAchar('conjuntos', id); if(!r || !r.campanhaId) return;
+  bt.disabled = true;
+  var x = await cpCtrlBuscar(r.campanhaId);
+  bt.disabled = false;
+  if(x.erro){ toastFn('Não buscou na Meta: '+x.erro); return; }
+  var it = cpCtrlItem(r.campanhaId, 'conjunto', id);
+  if(!it || !it.orc){ toastFn('Este conjunto usa o orçamento da campanha'); return; }
+  cpOrcJanela(r.campanhaId, 'conjunto', id);
+}
+function cpNvOrcMudou(id, valor){
+  var r = cpNvAchar('conjuntos', id); if(!r || valor == null) return;
+  r.orc = valor; cpNvMudou[id] = Object.assign(cpNvMudou[id] || {}, { orc:valor, em:Date.now() });
+  cpPintar();
+}
+// ⚡ no conjunto ou no anúncio: a regra já vem com a campanha dele e o nível certo
+function rgtAtalhoNv(nv, id){
+  var r = cpNvAchar(nv, id); if(!r || !r.campanhaId) return;
+  var alvo = nv === 'conjuntos' ? 'conjunto' : 'anuncio', nomeC = cpCampNomeDe(r.campanhaId) || ('campanha '+r.campanhaId);
+  (rgtD ? Promise.resolve() : rgtBuscar()).then(function(){
+    rgtCampNomes[String(r.campanhaId)] = nomeC;
+    rgtAbrir(null, { campanhas:[String(r.campanhaId)], alvo:alvo, statusItem:'todos', nome:('Regra dos '+(alvo === 'conjunto' ? 'conjuntos' : 'anúncios')+' da '+cpNomeCurto(nomeC)).slice(0, 80) });
+  }).catch(function(e){ toastFn('Não consegui abrir as regras: '+e.message); });
+}
 // ── ligar e pausar campanha (pela Meta) ──
 // Só a Diretoria vê a chave. Sem a Meta conectada com ads_management ela
 // aparece apagada e o clique explica o que falta.
@@ -46215,6 +46522,7 @@ function cpCtrlHtml(camp){
     '<div class="cp-ctrl">'+(lista || '<div class="cp-nota">Nenhum conjunto nesta campanha.</div>')+'</div>';
 }
 function cpOrcLapis(c){
+  if(c._nv) return c._nv === 'conjuntos' && c.orc != null && c.campanhaId && cpPodeMudar() ? '<button class="cp-orc-lapis" title="Mudar orçamento na Meta" aria-label="Mudar orçamento na Meta" onclick="event.stopPropagation();cpNvOrc(\''+fnEsc(c.id)+'\',this)"></button>' : '';
   if(!c.campanhaId || !cpPodeMudar()) return '';
   return '<button class="cp-orc-lapis" title="Mudar orçamento na Meta" aria-label="Mudar orçamento na Meta" onclick="event.stopPropagation();cpOrcDaTabela('+cpDados.indexOf(c)+',this)"></button>';
 }
@@ -46283,7 +46591,7 @@ async function cpOrcSalvar(){
         var c = cpDados.filter(function(x){ return String(x.campanhaId) === o.camp; })[0];
         if(c){ if(d.valorReal != null) c.orc = d.valorReal; c.mudanca = d.mudanca; cpPintar(); }
         if(cpAnalise && String(cpAnalise.campanha.id) === o.camp && d.valorReal != null) cpAnalise.campanha.orc = d.valorReal;
-      }
+      } else if(o.nivel === 'conjunto') cpNvOrcMudou(o.id, d.valorReal != null ? d.valorReal : null);
       return cpCtrlBuscar(o.camp);
     })
     .catch(function(e){ ok.disabled = false; ok.textContent = 'Salvar na Meta'; var r = document.getElementById('cp-orc-res'); if(r) r.innerHTML = '<span class="neg">Não mudou: '+fnEsc(e.message)+'</span>'; });
@@ -46298,8 +46606,14 @@ function cpPintar(){
   novo.style.display = utm ? '' : 'none'; if(antiga) antiga.style.display = utm ? 'none' : '';
   if(!utm) return;
   var contas = []; (cpDados||[]).forEach(function(c){ if(c.conta && contas.indexOf(c.conta) < 0) contas.push(c.conta); });
-  var nv = function(id, t){ return '<button class="'+(cpEst.nivel === id ? 'on' : '')+'" onclick="cpEst.nivel=\''+id+'\';cpPintar()">'+t+'</button>'; };
-  var h = '<div class="cp-filtros"><span class="cp-seg">'+nv('contas','Contas')+nv('campanhas','Campanhas')+'</span>'+
+  // as abas: o número ao lado é o que está marcado naquele nível, e clicar nele desmarca
+  var nv = function(id, t, sk){
+    var n = sk ? cpQtd(cpEst.sel[sk]) : 0, on = cpEst.nivel === id;
+    return '<span class="cp-seg-it'+(on ? ' on' : '')+'"><button onclick="cpIrNivel(\''+id+'\')"'+(on ? ' aria-current="true"' : '')+'>'+t+'</button>'+
+      (n ? '<button class="cp-seg-x" onclick="cpDesmarcar(\''+sk+'\')" title="Desmarcar '+n+'" aria-label="Desmarcar '+n+'">'+n+' ×</button>' : '')+'</span>';
+  };
+  if(cpNvNivel() || cpTem(cpEst.sel.camp)) cpNvCarregar();
+  var h = '<div class="cp-filtros"><span class="cp-seg">'+nv('contas','Contas')+nv('campanhas','Campanhas','camp')+nv('conjuntos',cpNvRotulo('conjuntos'),'cj')+nv('anuncios',cpNvRotulo('anuncios'),'ad')+'</span>'+
     '<select onchange="cpEst.conta=this.value;cpPintar()"><option value="">Todas as contas</option>'+contas.map(function(c){ return '<option'+(cpEst.conta === c ? ' selected' : '')+'>'+fnEsc(c)+'</option>'; }).join('')+'</select>'+
     '<select class="cp-f-st" onchange="cpEst.status=this.value;cpPintar()"><option value="">Qualquer status</option><option value="on"'+(cpEst.status === 'on' ? ' selected' : '')+'>Ativas</option><option value="off"'+(cpEst.status === 'off' ? ' selected' : '')+'>Pausadas</option></select>'+
     '<input class="cp-busca" placeholder="Filtrar pelo nome (ex.: AD179)" value="'+fnEsc(cpEst.busca)+'" oninput="cpEst.busca=this.value;clearTimeout(window._cpb);window._cpb=setTimeout(function(){cpPintar();var i=document.querySelector(\'#cp-novo .cp-busca\');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)">'+
@@ -46307,7 +46621,12 @@ function cpPintar(){
     (contas.length ? '' : '<span class="cp-aviso">A conta de cada campanha passa a vir na próxima sincronização com a Utmify.</span>')+'</div>';
   // refazer a tabela não pode jogar a pessoa de volta pro começo dela
   var rl = novo.querySelector('.cp-rolo'), sx = rl ? rl.scrollLeft : 0, sy = rl ? rl.scrollTop : 0;
-  novo.innerHTML = h + (cpEst.nivel === 'contas' ? cpContas(contas) : ('<div class="so-pc">'+cpBarra()+cpTabela(cpFiltradas())+'</div><div class="so-cel">'+cpCards(cpFiltradas())+'</div>'));
+  var corpo;
+  if(cpEst.nivel === 'contas') corpo = cpContas(contas);
+  else if(cpNvNivel()){ var ln = cpNvLinhas(cpEst.nivel); corpo = cpSelBarra()+'<div class="so-pc">'+cpBarra()+cpNvTabela(cpEst.nivel, ln)+'</div><div class="so-cel">'+cpNvCards(cpEst.nivel, ln)+'</div>'; }
+  else corpo = cpSelBarra()+'<div class="so-pc">'+cpBarra()+cpTabela(cpFiltradas())+'</div><div class="so-cel">'+cpCards(cpFiltradas())+'</div>';
+  novo.innerHTML = h + corpo;
+  var todos = document.getElementById('cp-ck-todos'); if(todos) todos.indeterminate = todos.getAttribute('data-meio') === '1';
   cpLigarRolagem(novo);
   rl = novo.querySelector('.cp-rolo'); if(rl){ rl.scrollLeft = sx; rl.scrollTop = sy; }
   if(!cpPdfLibs) setTimeout(function(){ cpPdfCarregar().catch(function(){}); }, 1500);
@@ -46359,12 +46678,12 @@ function cpCards(lista){
   var est = function(id, t){ return '<button class="cpc-chip'+(cpEst.status === id ? ' on' : '')+'" onclick="cpEst.status=cpEst.status===\''+id+'\'?\'\':\''+id+'\';cpPintar()">'+t+'</button>'; };
   var cards = l.map(function(c){
     var i = cpDados.indexOf(c), st = cpStatus(c.status), id = cpIdMarca(c), p = cpPartesNome(c.nome, c.dashboard), aberto = !!cpcAbertos[id], m = cpMarcas[id] || {};
-    return '<article class="cpc-card'+(cpFixa(c) ? ' fixa' : '')+'"><div class="cpc-top">'+cpBotaoMarca(c)+
+    return '<article class="cpc-card'+(cpFixa(c) ? ' fixa' : '')+(c.campanhaId && cpEst.sel.camp[String(c.campanhaId)] ? ' sel' : '')+'"><div class="cpc-top">'+cpBotaoMarca(c)+
       '<div class="cpc-nome"><b>'+fnEsc(p.t)+'</b>'+(p.s ? '<small>'+fnEsc(p.s)+'</small>' : '')+'<div class="cp-chips">'+cpChips(c, rep[adsCampNorm(c.nome)] || 0)+'</div></div>'+
       '<div class="cpc-st">'+(m.fixa ? '<span class="cp-pin" title="Fixada no topo">'+CP_PIN+'</span>' : '')+cpChave(c, st)+'<span class="cp-st '+st[1]+'">'+st[0]+'</span></div></div>'+
       '<div class="cpc-nums">'+na.map(function(col){ return cel(col, c); }).join('')+'</div>'+
       (aberto ? '<div class="cpc-nums extra">'+resto.map(function(col){ return cel(col, c); }).join('')+'</div>' : '')+
-      '<div class="cpc-acoes"><button class="cpc-ver" onclick="cpcAbertos[\''+fnEsc(id).replace(/'/g,"\\'")+'\']=!cpcAbertos[\''+fnEsc(id).replace(/'/g,"\\'")+'\'];cpPintar()">'+(aberto ? 'Ver menos' : 'Ver todas as métricas')+'</button><button class="cpc-ana" onclick="cpAbrir('+i+')">Análise ›</button></div></article>';
+      '<div class="cpc-acoes">'+cpSelCel('camp', c.campanhaId ? String(c.campanhaId) : '')+'<button class="cpc-ver" onclick="cpcAbertos[\''+fnEsc(id).replace(/'/g,"\\'")+'\']=!cpcAbertos[\''+fnEsc(id).replace(/'/g,"\\'")+'\'];cpPintar()">'+(aberto ? 'Ver menos' : 'Ver todas as métricas')+'</button><button class="cpc-ana" onclick="cpAbrir('+i+')">Análise ›</button></div></article>';
   }).join('');
   // as vendas do TMX que a Utmify não tem como campanha, iguais às linhas extras da tabela
   var so = cpSoTmx(), semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
@@ -46396,8 +46715,8 @@ function cpcAlternarCol(k, inp){
 }
 
 // a linha de totais: somam as campanhas e também as vendas do TMX que não têm linha na Utmify
-function cpTotais(l){
-  var so = cpSoTmx(), semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
+function cpTotais(l, soLinhas){
+  var so = soLinhas ? { extras:[], sem:[] } : cpSoTmx(), semFat = so.sem.reduce(function(a, p){ return a + (Number(p.valor) || 0); }, 0);
   var nExtra = so.extras.reduce(function(a, x){ return a + x.vendas; }, 0) + so.sem.length;
   var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); };
   var fatExtra = so.extras.reduce(function(a, x){ return a + (Number(x.faturamento) || 0); }, 0) + semFat, lucroTot = soma('lucro') + fatExtra;
@@ -46533,8 +46852,11 @@ function pdfExportar(bt, montar){
   cpPdfCarregar().then(gerar).catch(function(e){ toastFn('Não gerou o PDF: '+e.message); fim(); });
 }
 function cpPdfMontar(){
-  var C = PDF_COR, l = cpOrdenadas(cpFiltradas()), cs = cpColsOn(), so = cpTotais(l), rep = cpRepetidos();
+  var nvl = cpNvNivel(), nv = cpEst.nivel;
+  var C = PDF_COR, l = cpOrdenadas(nvl ? cpNvLinhas(nv) : cpFiltradas()), cs = cpColsOn(), so = cpTotais(l, nvl), rep = cpRepetidos();
   var filtros = [];
+  if(nvl && cpTem(cpEst.sel.camp) && !(nv === 'anuncios' && cpTem(cpEst.sel.cj))) filtros.push('de '+cpPl(cpQtd(cpEst.sel.camp), 'campanha marcada', 'campanhas marcadas'));
+  if(nvl && nv === 'anuncios' && cpTem(cpEst.sel.cj)) filtros.push('de '+cpPl(cpQtd(cpEst.sel.cj), 'conjunto marcado', 'conjuntos marcados'));
   if(cpEst.conta) filtros.push('conta '+cpEst.conta);
   if(cpEst.status) filtros.push(cpEst.status === 'on' ? 'só ativas' : 'só pausadas');
   if(cpEst.busca) filtros.push('nome com "'+cpEst.busca+'"');
@@ -46542,12 +46864,13 @@ function cpPdfMontar(){
 
   // os números do período, na mesma conta da linha de totais da tabela
   var luNum = so.lucroTot;
-  var r = pdfInicio('Relatório por campanha', filtros, [['Gasto',so.tot.investimento],['Faturamento',so.tot.faturamento],['Lucro',so.tot.lucro,luNum >= 0 ? C.VERDE : C.VERM],['ROAS',so.tot.roas],['CPA',so.cpa],['Vendas',String(so.tot.aprovadas)]]);
+  var r = pdfInicio(nvl ? (nv === 'conjuntos' ? 'Relatório por conjunto' : 'Relatório por anúncio') : 'Relatório por campanha', filtros, [['Gasto',so.tot.investimento],['Faturamento',so.tot.faturamento],['Lucro',so.tot.lucro,luNum >= 0 ? C.VERDE : C.VERM],['ROAS',so.tot.roas],['CPA',so.cpa],['Vendas',String(so.tot.aprovadas)]]);
 
-  var campos = ['Campanha','Status'].concat(cs.map(function(c){ return c.t; }));
+  var campos = [nvl ? (nv === 'conjuntos' ? 'Conjunto' : 'Anúncio') : 'Campanha','Status'].concat(cs.map(function(c){ return c.t; }));
   var cor = {}, linhas = l.map(function(c, i){
     var nr = rep[adsCampNorm(c.nome)] || 0;
     cs.forEach(function(col, j){ if(col.cls) cor[i+'|'+(j+2)] = col.cls(c); });
+    if(nvl) return [cpPdfTxt(cpNvTitulo(c))+' · '+cpPdfTxt(cpNvSub(c))+(c.conta ? ' · '+cpPdfTxt(c.conta) : ''), cpCtrlStatus(c.efetivo)[0]].concat(cs.map(function(col){ return cpPdfTxt(col.v(c, 1)); }));
     return [cpPdfTxt(cpNomeCurto(c.nome))+(c.conta ? ' · '+cpPdfTxt(c.conta) : '')+(nr > 1 && c.campanhaId ? ' · id …'+String(c.campanhaId).slice(-5) : ''), cpStatus(c.status)[0]]
       .concat(cs.map(function(col){ return cpPdfTxt(col.v(c, 1)); }));
   });
@@ -46558,7 +46881,7 @@ function cpPdfMontar(){
   };
   so.so.extras.forEach(function(x){ linhas.push(soTmx(x.nome, 'sem gasto no período', x.vendas, x.faturamento)); });
   if(so.so.sem.length) linhas.push(soTmx('Sem campanha', 'orgânico, bio, sem rastreio', so.so.sem.length, so.semFat));
-  var pe = [so.nCamp+' campanha'+(so.nCamp === 1 ? '' : 's'), ''].concat(cs.map(function(c){ return so.tot[c.k] != null ? cpPdfTxt(so.tot[c.k]) : ''; }));
+  var pe = [nvl ? cpPl(l.length, nv === 'conjuntos' ? 'conjunto' : 'anúncio', nv === 'conjuntos' ? 'conjuntos' : 'anúncios') : so.nCamp+' campanha'+(so.nCamp === 1 ? '' : 's'), ''].concat(cs.map(function(c){ return so.tot[c.k] != null ? cpPdfTxt(so.tot[c.k]) : ''; }));
 
   // com poucas colunas o nome tem folga; com "Tudo" marcado o que não couber segue na página seguinte
   var nc = campos.length, corpo = nc <= 10 ? 8.5 : nc <= 14 ? 7.5 : 6.6;
@@ -46574,9 +46897,10 @@ function cpPdfMontar(){
       if(d.section === 'foot' && campos[d.column.index] === 'Lucro') d.cell.styles.textColor = luNum >= 0 ? C.VERDE : C.VERM;
     }
   }));
-  return pdfFim(r, 'campanhas');
+  return pdfFim(r, nvl ? nv : 'campanhas');
 }
 function cpExportarPdf(bt){
+  if(cpNvNivel()){ if(!cpNvPronto() || !cpNvLinhas(cpEst.nivel).length){ toastFn('Nada neste filtro'); return; } return pdfExportar(bt, cpPdfMontar); }
   if(!cpFiltradas().length && !cpTotais([]).nCamp && !cpSoTmx().sem.length){ toastFn('Nenhuma campanha neste filtro'); return; }
   pdfExportar(bt, cpPdfMontar);
 }
@@ -46663,7 +46987,9 @@ function cpTabela(l){
   var rep = cpRepetidos();
   var linhas = l.map(function(c, i){
     var st = cpStatus(c.status), nr = rep[adsCampNorm(c.nome)] || 0;
-    return '<tr class="'+(fixa(c) ? 'fixa' : '')+'" onclick="cpAbrir('+cpDados.indexOf(c)+')">'+
+    var cid = c.campanhaId ? String(c.campanhaId) : '', sel = !!(cid && cpEst.sel.camp[cid]);
+    return '<tr class="'+(fixa(c) ? 'fixa' : '')+(sel ? ' sel' : '')+'" onclick="cpAbrir('+cpDados.indexOf(c)+')">'+
+      '<td class="f0" onclick="event.stopPropagation()">'+cpCk('camp', cid, cpNomeCurto(c.nome))+'</td>'+
       '<td class="f1">'+cpChave(c, st)+'<span class="cp-st '+st[1]+'">'+st[0]+'</span></td>'+
       cpCelulaNome(c, nr)+
       cs.map(function(col){ return '<td'+(col.cls ? ' class="'+col.cls(c)+'"' : '')+'>'+col.v(c, mx)+'</td>'; }).join('')+
@@ -46674,7 +47000,7 @@ function cpTabela(l){
   var somas = cpTotais(l), so = somas.so, semFat = somas.semFat, tot = somas.tot, lucroTot = somas.lucroTot, nCamp = somas.nCamp;
   var linhaTmx = function(nome, chip, dica, n, fat, clique){
     return '<tr class="cp-so-tmx"'+(clique ? ' onclick="'+clique+'"' : ' style="cursor:default"')+'>'+
-      '<td class="f1"><span class="cp-st off">—</span></td>'+
+      '<td class="f0"></td><td class="f1"><span class="cp-st off">—</span></td>'+
       '<td class="f2"><b title="'+fnEsc(nome)+'">'+fnEsc(cpNomeCurto(nome))+'</b><div class="cp-chips"><span class="mu" title="'+fnEsc(dica)+'">'+chip+'</span></div><i class="cp-alca" data-cp-alca="1"></i></td>'+
       cs.map(function(col){
         var v = col.k === 'aprovadas' ? n
@@ -46693,9 +47019,10 @@ function cpTabela(l){
   if(so.sem.length) linhas += linhaTmx('Sem campanha', 'orgânico, bio, sem rastreio',
     'Vendas pagas que não vieram de anúncio: link da bio, visita direta, renovação e as que chegaram sem o código do TMX. Clique pra ver cada uma.',
     so.sem.length, semFat, 'cpAbrirSemCampanha()');
-  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f1">Status</th><th class="f2">Campanha<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna Campanha" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
-    (linhas || '<tr><td colspan="'+(cs.length + 3)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+
-    '<tfoot><tr><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(lucroTot >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
+  var idsCamp = l.filter(function(c){ return c.campanhaId; }).map(function(c){ return String(c.campanhaId); });
+  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f0">'+cpCkTodos('campanhas', idsCamp)+'</th><th class="f1">Status</th><th class="f2">Campanha<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna Campanha" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
+    (linhas || '<tr><td colspan="'+(cs.length + 4)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+
+    '<tfoot><tr><td class="f0"></td><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(lucroTot >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
 }
 function cpContas(contas){
   if(!contas.length) return '<div class="cp-vazio">A conta de cada campanha passa a vir na próxima sincronização com a Utmify (a cada 15 a 30 minutos).</div>';
