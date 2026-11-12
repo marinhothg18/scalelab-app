@@ -175,6 +175,14 @@ def servidor():
   p = 'server.js'; s = ler(p)
   s = s.replace("const BRANDING_DEFAULT = {\n  nome: 'TMX Digital',\n  primary: '#5b5ef4',\n  secondary: '#3E1493',",
                 "const BRANDING_DEFAULT = {\n  nome: 'SCALROI',\n  primary: '#22D94A',\n  secondary: '#0E9F35',")
+  # o roxo da marca antiga salvo na empresa (a TMX tem) não conta como escolha: vale o verde
+  antes = "    const branding = (t && t.branding) ? t.branding : {};\n    res.json({"
+  depois = ("    const branding = Object.assign({}, (t && t.branding) ? t.branding : {});\n"
+            "    // Roxo da marca antiga salvo na empresa (11/11/2026) não é escolha: vale a cor padrão da SCALROI.\n"
+            "    if (String(branding.primary || '').toLowerCase() === '#5b5ef4') delete branding.primary;\n"
+            "    if (String(branding.secondary || '').toLowerCase() === '#3e1493') delete branding.secondary;\n"
+            "    res.json({")
+  if antes in s: s = s.replace(antes, depois)
   gravar(p, s)
 
 # ── textos: "TMX" (o sistema) vira SCALROI; "a TMX" (a empresa) só vira onde o cliente lê ──

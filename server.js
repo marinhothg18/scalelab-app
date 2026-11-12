@@ -7928,7 +7928,10 @@ app.get('/api/tenant/branding', (req, res) => {
     const db = readDB();
     const tenants = db.store['sl_saas_tenants'] || [];
     const t = tenants.find(x => x && x.id === req.tenantId);
-    const branding = (t && t.branding) ? t.branding : {};
+    const branding = Object.assign({}, (t && t.branding) ? t.branding : {});
+    // Roxo da marca antiga salvo na empresa (11/11/2026) não é escolha: vale a cor padrão da SCALROI.
+    if (String(branding.primary || '').toLowerCase() === '#5b5ef4') delete branding.primary;
+    if (String(branding.secondary || '').toLowerCase() === '#3e1493') delete branding.secondary;
     res.json({
       tenantId: req.tenantId,
       tenantNome: (t && t.nome) || 'SCALROI',
