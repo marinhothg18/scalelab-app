@@ -247,10 +247,12 @@ def _tudo(t):
   t = t.replace('Empresa TMX', 'Empresa')
   t = t.replace("'TMX · '", "'SCALROI · '").replace("doc.text('TMX DIGITAL'", "doc.text('SCALROI'").replace(", 'TMX')", ", 'SCALROI')").replace(", 'TMX']", ", 'SCALROI']")
   t = _masc(t)
+  t = t.replace('SCALROI Digital', 'SCALROI').replace('A SCALROI puxa o gasto sozinho', 'A SCALROI puxa o gasto sozinha')
   return re.sub(_SOLTO, 'SCALROI', t)
 
 def _servidor_txt(t):
   t = _masc(t)
+  t = t.replace('SCALROI Digital', 'SCALROI')   # "do TMX Digital" virava "da SCALROI Digital"
   for de, para in _SERVIDOR_TROCAS: t = t.replace(de, para)
   for f in _FRASES_CLIENTE: t = t.replace(f, f.replace('TMX', 'SCALROI'))
   return t

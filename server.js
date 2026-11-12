@@ -2082,7 +2082,7 @@ function _emailTemplateResetSenha(nome, linkReset) {
   return _emailTemplateBase(`
     <h2 style="margin:0 0 16px 0;font-size:22px;">🔐 Resetar sua senha</h2>
     <p>Oi ${nome || 'tudo bem'}!</p>
-    <p>Recebemos um pedido pra resetar a senha da sua conta na SCALROI Digital.</p>
+    <p>Recebemos um pedido pra resetar a senha da sua conta na SCALROI.</p>
     <p>Clica no botão abaixo pra criar uma nova senha (link válido por <b>1 hora</b>):</p>
     <p style="text-align:center;margin:28px 0;">
       <a href="${linkReset}" style="display:inline-block;background:linear-gradient(135deg,#5b5ef4,#3E1493);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:700;">Criar nova senha</a>
@@ -2095,7 +2095,7 @@ function _emailTemplateResetSenha(nome, linkReset) {
 
 function _emailTemplateBoasVindas(nome, urlPainel) {
   return _emailTemplateBase(`
-    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo à SCALROI Digital, ${nome || 'tudo bem'}!</h2>
+    <h2 style="margin:0 0 16px 0;font-size:22px;">🎉 Bem-vindo à SCALROI, ${nome || 'tudo bem'}!</h2>
     <p>Sua conta foi criada com sucesso. Você tem <b>14 dias grátis</b> pra testar tudo.</p>
     <p>Acesse seu painel:</p>
     <p style="text-align:center;margin:28px 0;">
@@ -2145,8 +2145,8 @@ app.post('/api/email/test', authDiretoria, async (req, res) => {
     if (!to || !to.includes('@')) return res.status(400).json({ error: 'email destinatário inválido' });
     const r = await _enviarEmail({
       to,
-      subject: '🧪 Teste da SCALROI Digital',
-      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado da SCALROI Digital. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
+      subject: '🧪 Teste da SCALROI',
+      html: _emailTemplateBase(`<h2>Funcionou!</h2><p>Esse é um email de teste enviado da SCALROI. Se você recebeu, a integração com Resend está OK.</p><p style="font-size:13px;color:#999;">Enviado em ${new Date().toLocaleString('pt-BR')}</p>`)
     });
     res.json(r);
   } catch (err) {
@@ -7805,7 +7805,7 @@ app.post('/api/saas/signup', async (req, res) => {
       const adminInterno = (db.store['sl_usuarios'] || []).find(u => u.cargo === 'Diretoria' && u.tenant_id === TENANT_INTERNO_ID && u.whatsapp);
       if (cfg.ativo && adminInterno && adminInterno.whatsapp) {
         sendWhatsAppMessage(adminInterno.whatsapp,
-          `🎉 *Novo cliente na SCALROI Digital!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
+          `🎉 *Novo cliente na SCALROI!*\n\n*Empresa:* ${empresa}\n*Admin:* ${nomeAdmin}\n*Email:* ${email}\n*Subdomínio:* ${slug}.${SAAS_ROOT_DOMAIN}\n*Plano:* Trial 14 dias\n\n_via signup público_`
         ).catch(()=>{});
       }
     } catch(e) { console.error('[signup notif WA]', e.message); }
@@ -7813,7 +7813,7 @@ app.post('/api/saas/signup', async (req, res) => {
     // 📧 Hook email: envia boas-vindas pro novo admin
     _enviarEmail({
       to: email.toLowerCase(),
-      subject: `🎉 Bem-vindo à SCALROI Digital, ${nomeAdmin}!`,
+      subject: `🎉 Bem-vindo à SCALROI, ${nomeAdmin}!`,
       html: _emailTemplateBoasVindas(nomeAdmin, `https://${slug}.${SAAS_ROOT_DOMAIN}/?token=${token}`)
     }).catch(()=>{});
 
@@ -8574,7 +8574,7 @@ app.post('/api/teste/publica/:slug/enviar', testeLimiter, (req, res) => {
         diretoria.forEach(d => {
           if (!d.whatsapp) return;
           const titulo = '📝 Teste prático recebido!';
-          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja na SCALROI Digital.`;
+          const texto = `*${nome}* enviou entrega da vaga *${v.titulo}*\n\nEmail: ${email}\nTempo: ${Math.round(tempoGasto/60)}min\n${entregaLink ? 'Link: '+entregaLink : ''}\n\n👁️ Veja na SCALROI.`;
           _notificarViaWhatsApp(d.id, titulo, texto).catch(()=>{});
         });
       } catch (e) { console.error('[WA teste]', e.message); }
@@ -12249,7 +12249,7 @@ app.post('/api/whatsapp/test', authDiretoria, async (req, res) => {
   const { phone, message } = req.body || {};
   const to = phone || (req.user && req.user.whatsapp);
   if (!to) return res.status(400).json({ error: 'Informe um telefone ou cadastre o seu no perfil.' });
-  const r = await sendWhatsAppMessage(to, message || '🤖 Teste da SCALROI Digital! Está funcionando.');
+  const r = await sendWhatsAppMessage(to, message || '🤖 Teste da SCALROI! Está funcionando.');
   res.json(r);
 });
 
@@ -12287,7 +12287,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
     );
 
     if (!user) {
-      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado na SCALROI Digital. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
+      await sendWhatsAppMessage(phone, '👋 Olá! Este número não está cadastrado na SCALROI. Peça ao admin pra cadastrar seu WhatsApp no perfil.');
       return res.json({ ok: true, skipped: 'user-nao-encontrado' });
     }
 
@@ -12371,7 +12371,7 @@ async function _chamarClaude(texto, user, cfg) {
   if (!aiKey) throw new Error(_semChaveIA('IA não configurada (defina ANTHROPIC_API_KEY no Railway)'));
   const tools = _agentTools();
   const hojeStr = new Date().toLocaleDateString('pt-BR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const systemPrompt = `Você é o assistente operacional da SCALROI Digital (sistema de gestão de tráfego pago em centralaxcend.com).
+  const systemPrompt = `Você é o assistente operacional da SCALROI (sistema de gestão de tráfego pago em centralaxcend.com).
 Usuário falando: ${user.nome} (cargo: ${user.cargo}, ID: ${user.id}).
 Hoje: ${hojeStr}.
 
@@ -12457,7 +12457,7 @@ async function _chamarOpenAI(texto, user, cfg) {
   const body = {
     model: 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: `Você é o assistente da SCALROI Digital. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
+      { role: 'system', content: `Você é o assistente da SCALROI. Usuário: ${user.nome} (${user.cargo}). Responda em português.` },
       { role: 'user', content: texto }
     ]
   };
