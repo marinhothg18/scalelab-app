@@ -40867,15 +40867,15 @@ function _cardMeta(con, cp){
   if(!con.conectado){
     h += '<div class="capi-cab"><div><b>Meta · conexão da BM</b><span>Puxa gasto, campanhas e vídeo direto da Meta e deixa pausar campanha pela SCALROI. Pra mandar as compras basta um destino com o token do pixel (quadro Destinos, abaixo).</span></div><span class="v2-pill neu">Não conectado</span></div>'+
       (con.antigo ? '<div class="capi-aviso">Hoje tem um token antigo, de uma conta só, que vence em horas. Conectar aqui troca por um que não vence e enxerga todas as contas.</div>' : '')+
-      (dir && login.naTmx ? mcBlocoFb(login, 'Opção 1 · Conectar com o Facebook')+'<div class="mc-opcao"><b>Opção 2 · Colar um token</b><details class="mc-outro"><summary>Como gerar o token</summary>' : '')+
+      (dir && login.pronto ? mcBlocoFb(login, 'Opção 1 · Conectar com o Facebook')+'<div class="mc-opcao"><b>Opção 2 · Colar um token</b><details class="mc-outro"><summary>Como gerar o token</summary>' : '')+
       '<ol class="mc-passos">'+
         '<li>Abra <b>business.facebook.com</b> → Configurações do negócio → Usuários → <b>Usuários do sistema</b> → Adicionar. Nome: "SCALROI Central", função <b>Administrador</b>.</li>'+
         '<li>No usuário criado, <b>Atribuir ativos</b>: todas as <b>contas de anúncio</b> (Gerenciar campanhas) e todos os <b>pixels</b> (Controle total).</li>'+
         '<li><b>Gerar novo token</b> → escolha o app → marque <b>ads_read</b> e <b>business_management</b>. Marque <b>ads_management</b> só se quiser pausar e mudar orçamento pela SCALROI. Validade: <b>Nunca</b>.</li>'+
         '<li>Cole o token aqui. Ele fica só no servidor e nunca volta pra tela.</li></ol>'+
-      (dir && login.naTmx ? '</details>' : '')+
+      (dir && login.pronto ? '</details>' : '')+
       (dir ? '<div class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="EAAG…" autocomplete="off" aria-label="Token do usuário do sistema">'+
-        '<button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div>'+(login.naTmx ? '</div>' : '')+'<div id="mc-res" class="mc-res"></div>'
+        '<button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div>'+(login.pronto ? '</div>' : '')+'<div id="mc-res" class="mc-res"></div>'
         : '<div class="fx-sub">Só a Diretoria conecta a Meta.</div>');
   } else {
     var sy = con.sync || null;
@@ -40904,7 +40904,7 @@ function _cardMeta(con, cp){
           (sy.cru.sub ? ', subcódigo <b>'+fnEsc(sy.cru.sub)+'</b>' : '')+(sy.cru.tipo ? ', '+fnEsc(sy.cru.tipo) : '')+(sy.cru.msg ? ', «'+fnEsc(sy.cru.msg)+'»' : '')+
           (sy.cru.titulo ? ', '+fnEsc(sy.cru.titulo) : '')+(sy.cru.trace ? '. fbtrace_id: <code style="user-select:all">'+fnEsc(sy.cru.trace)+'</code>' : '')+'</span>' : '')+'</div>'+
       (dir ? '<div class="lc-bts" style="margin:12px 0 4px"><button class="fn-btn sm" onclick="mcAbrirAdd(this)">Adicionar outro perfil</button><button class="fn-btn g sm" onclick="mcPuxar(this)">Puxar agora</button></div>'+
-        '<div class="mc-add" style="display:none">'+(login.naTmx ? mcBlocoFb(login, 'Conectar mais um perfil') : '')+
+        '<div class="mc-add" style="display:none">'+(login.pronto ? mcBlocoFb(login, 'Conectar mais um perfil') : '')+
           '<div class="mc-opcao"><b>Colar um token</b><div class="mc-linha"><input type="password" id="mc-token" class="fi" placeholder="Token (EAAG…)" autocomplete="off" aria-label="Token do perfil ou do usuário do sistema"><button class="fn-btn" onclick="mcConectar(this)">Conectar</button></div></div></div><div id="mc-res" class="mc-res"></div>' : '');
     var cs = con.contas || [];
     h += '<div class="v2-rot vd-sec">Contas de anúncio · '+cs.length+'</div>'+

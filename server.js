@@ -393,6 +393,9 @@ function _envMotor(emp) {
   // só pra testar aqui com uma Meta falsa; no Railway (/data) nunca vale
   if (process.env.META_API_BASE_TESTE && !fs.existsSync('/data')) env.META_API_BASE_TESTE = process.env.META_API_BASE_TESTE;
   if (process.env.ANTHROPIC_BASE_URL && !fs.existsSync('/data')) env.ANTHROPIC_BASE_URL = process.env.ANTHROPIC_BASE_URL;
+  // o botão do Facebook nas empresas (12/11/2026): o id do app e o da configuração do login são públicos (vão pra tela).
+  // O segredo do app (META_APP_SECRET) não vai: a troca da autorização pelo token é feita pela portaria.
+  for (const k of ['META_APP_ID', 'META_LOGIN_CONFIG_ID']) if (process.env[k]) env[k] = process.env[k];
   env.TMX_EMPRESA = emp.id;
   env.TMX_EMPRESA_NOME = emp.nome || '';
   env.TMX_DATA_DIR = path.join(EMPRESAS_DIR, emp.id);
@@ -3655,13 +3658,13 @@ app.post('/api/meta/conexao', authDiretoria, async (req, res) => {
 // ── CONECTAR COM FACEBOOK (Facebook Login for Business, 08/11/2026) ──
 // O botão de Configurações › Conexões: a pessoa autoriza na janela do Facebook, a Meta devolve um
 // code e o servidor troca por um token. Ninguém cria nem cola token. META_APP_ID, META_APP_SECRET e
-// META_LOGIN_CONFIG_ID ficam no Railway. Por enquanto só na TMX: pra cliente usar, o app precisa
-// passar na análise da Meta, e o segredo não pode ir pros motores (_envMotor é lista branca).
+// META_LOGIN_CONFIG_ID ficam no Railway. Desde 12/11/2026 vale também nas empresas clientes: o motor tem só o
+// id do app e da configuração, e pede à portaria a troca da autorização pelo token (o segredo nunca sai dela).
 function _metaLoginCfg() {
   return { appId: String(process.env.META_APP_ID || '').trim(), segredo: String(process.env.META_APP_SECRET || '').trim(), configId: String(process.env.META_LOGIN_CONFIG_ID || '').trim() };
 }
 function _metaLoginPublico() {
-  const c = _metaLoginCfg(), pronto = !!(SOU_TMX && c.appId && c.segredo && c.configId);
+  const c = _metaLoginCfg(), pronto = !!(c.appId && c.configId && (SOU_TMX ? c.segredo : true));
   return { pronto, naTmx: !!SOU_TMX, appId: pronto ? c.appId : '', configId: pronto ? c.configId : '' };
 }
 async function _metaOauth(params) {
@@ -3670,21 +3673,33 @@ async function _metaOauth(params) {
   if (!r.ok || j.error || !j.access_token) throw _metaErroDe(j, r.status, 'A Meta não devolveu o acesso.');
   return j;
 }
-// Troca a autorização do Facebook pelo token e guarda a conexão: o botão do painel e o link do multilogin passam aqui.
-async function _metaEntrarPeloFacebook(b, req, extra) {
+// Troca a autorização da janela do Facebook pelo token. Precisa do segredo do app, que só a portaria tem:
+// numa empresa, o motor pede pra ela (comando meta-trocar) e recebe o token da própria empresa.
+async function _metaTrocarAutorizacao(b) {
   const c = _metaLoginCfg();
   const code = String(b.code || '').trim().slice(0, 2000), curto = String(b.accessToken || '').trim().slice(0, 800);
   if (!code && !curto) {
     console.log('[meta-login] a janela voltou sem autorização; status do Facebook:', String(b.statusFb || '').slice(0, 40) || '(vazio)');
     const e = new Error('A janela do Facebook não devolveu a autorização.'); e.pronta = true; throw e;
   }
+  if (!SOU_TMX) {
+    const r = await _pedirAPortaria('meta-trocar', { code, accessToken: curto }, 30000);
+    if (!r || !r.ok || !r.token) { const e = new Error((r && r.erro) || 'A plataforma não conseguiu trocar a autorização do Facebook.'); e.pronta = true; throw e; }
+    return { token: r.token, vence: r.vence || null, tipo: r.tipo || '' };
+  }
+  if (!c.segredo) { const e = new Error('O botão do Facebook ainda não está configurado no servidor.'); e.pronta = true; throw e; }
   const t = await _metaOauth(code ? { client_id: c.appId, client_secret: c.segredo, code }
     : { grant_type: 'fb_exchange_token', client_id: c.appId, client_secret: c.segredo, fb_exchange_token: curto });
   let info = {};
   try { info = (await _metaGet('debug_token', { input_token: t.access_token }, { accessToken: c.appId + '|' + c.segredo })).data || {}; } catch (e) {}
   if (info.app_id && String(info.app_id) !== c.appId) { const e = new Error('Essa autorização não veio do app da SCALROI.'); e.pronta = true; throw e; }
   const vence = Number(info.expires_at) > 0 ? Number(info.expires_at) * 1000 : (Number(t.expires_in) > 0 ? Date.now() + Number(t.expires_in) * 1000 : null);
-  const conexao = await _metaGuardarConexao(t.access_token, req, Object.assign({ via: 'facebook', expiraEm: vence, tokenTipo: String(info.type || '') }, extra || {}));
+  return { token: t.access_token, vence, tipo: String(info.type || '') };
+}
+// Troca a autorização e guarda a conexão: o botão do painel e o link do multilogin passam aqui.
+async function _metaEntrarPeloFacebook(b, req, extra) {
+  const t = await _metaTrocarAutorizacao(b);
+  const conexao = await _metaGuardarConexao(t.token, req, Object.assign({ via: 'facebook', expiraEm: t.vence, tokenTipo: t.tipo }, extra || {}));
   console.log('[meta-login] conectado pelo Facebook; contas:', conexao.novo.contas);
   return conexao;
 }
@@ -11180,6 +11195,12 @@ function _avisarDiretoriaTmx(titulo, texto) {
 // O motor pede algo à plataforma. A empresa vem da portaria (é a do motor), nunca do cliente.
 function _atenderMotor(empresa, cmd, d) {
   if (String(cmd).startsWith('hosp-')) return _hosp.atender(empresa, cmd, d);
+  // o botão do Facebook da empresa: a portaria troca a autorização pelo token (o segredo do app fica aqui)
+  if (cmd === 'meta-trocar') {
+    return _metaTrocarAutorizacao({ code: d.code, accessToken: d.accessToken })
+      .then(t => { console.log('[meta-login] autorização trocada para a empresa', empresa); return Object.assign({ ok: true }, t); })
+      .catch(e => ({ ok: false, erro: _metaErroLogin(e) }));
+  }
   const emp = _empresas.get(empresa) || { nome: empresa };
   const u = d.usuario || {};
   if (cmd === 'chamado-abrir') {

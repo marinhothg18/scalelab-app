@@ -135,3 +135,33 @@ test('o botão do Facebook conecta sem ninguém criar token', async (t) => {
     assert.strictEqual(r.dados.expiraEm, null);
   });
 });
+
+test('empresa cliente conecta pelo botão do Facebook, e o segredo fica só na portaria (12/11/2026)', async () => {
+  const { chamar, dono, dir } = comApp;
+  const c = await chamar('POST', '/api/plataforma/empresas', { token: dono,
+    corpo: { nome: 'Empresa Review', usuario: { nome: 'Dona Review', email: 'dona@review.test', senha: 'senha-review-123' } } });
+  assert.strictEqual(c.status, 200, JSON.stringify(c.dados) + comApp.log().slice(-1500));
+  const idEmp = c.dados.empresa.id;
+  const tok = (await chamar('POST', '/api/auth/login', { corpo: { email: 'dona@review.test', senha: 'senha-review-123' } })).dados.token;
+  assert.ok(tok);
+  const antes = (await chamar('GET', '/api/meta/conexao', { token: tok })).dados;
+  assert.deepStrictEqual({ pronto: antes.login.pronto, appId: antes.login.appId, configId: antes.login.configId }, { pronto: true, appId: 'app-1', configId: 'config-1' });
+  assert.ok(!JSON.stringify(antes).includes(SEGREDO));
+  const trocasAntes = chamadas.filter(x => x.p.endsWith('/oauth/access_token') && x.q.code === 'da-empresa').length;
+  const r = await chamar('POST', '/api/meta/login', { token: tok, corpo: { code: 'da-empresa' } });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados) + comApp.log().slice(-1500));
+  assert.strictEqual(r.dados.via, 'facebook');
+  assert.ok(!JSON.stringify(r.dados).includes(TOKEN) && !JSON.stringify(r.dados).includes(SEGREDO));
+  const troca = chamadas.filter(x => x.p.endsWith('/oauth/access_token') && x.q.code === 'da-empresa');
+  assert.strictEqual(troca.length, trocasAntes + 1, 'a troca aconteceu uma vez');
+  assert.strictEqual(troca.pop().q.client_secret, SEGREDO, 'quem trocou foi a portaria, com o segredo dela');
+  // o token fica no banco da empresa, não no da TMX
+  const bancoEmp = fs.readFileSync(path.join(dir, 'empresas', idEmp, 'db.json'), 'utf8');
+  assert.ok(bancoEmp.includes(TOKEN), 'a conexão é da empresa');
+  assert.ok(!bancoEmp.includes(SEGREDO), 'o segredo do app nunca chega na empresa');
+  assert.strictEqual((await chamar('GET', '/api/meta/conexao', { token: tok })).dados.conectado, true);
+  // code recusado na portaria vira erro claro na empresa
+  const ruim = await chamar('POST', '/api/meta/login', { token: tok, corpo: { code: 'ruim' } });
+  assert.strictEqual(ruim.status, 400);
+  assert.match(ruim.dados.error, /Invalid verification code/);
+});
