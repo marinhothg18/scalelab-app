@@ -5499,17 +5499,19 @@ function _nivelDaUtmify(a, level, d) {
     freq: a.frequency != null ? Number(a.frequency) : null
   };
 }
-function _niveisComTmx(vivo, de, ate, projeto) {
+function _niveisComTmx(vivo, de, ate, projeto, opc) {
+  opc = opc || {};
   const copia = lista => lista.map(x => Object.assign({}, x, { faturamento: x.fatUtmify, aprovadas: x.vendasUtmify, vendas: x.vendasUtmify }));
   let conjuntos = copia(vivo.conjuntos), anuncios = copia(vivo.anuncios), fonteReceita = 'utmify', semAnuncio = {};
   if (_pessoas()) {
     try {
       const db = readDB();
-      let nomeProj = '';
-      if (projeto) { const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto); nomeProj = dP ? String(dP.nome || '').trim() : ''; }
+      let nomeProj = String(opc.nomeProj || '');
+      if (projeto && !nomeProj) { const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto); nomeProj = dP ? String(dP.nome || '').trim() : ''; }
       const doProjeto = _pedidoDoProjetoResumoFn(db, nomeProj);
       const nomePorId = {};
       _q('SELECT id, nome FROM camp_dia ORDER BY dia').all().forEach(c => { if (c.id && c.nome) nomePorId[String(c.id)] = c.nome; });
+      Object.keys(opc.nomes || {}).forEach(id => { if (!nomePorId[id]) nomePorId[id] = opc.nomes[id]; });
       const idDe = _campIdDoPedidoFn(nomePorId);
       const zera = x => Object.assign(x, { faturamento: 0, aprovadas: 0, vendas: 0 });
       anuncios.forEach(zera); conjuntos.forEach(zera);
@@ -5545,6 +5547,167 @@ function _niveisComTmx(vivo, de, ate, projeto) {
   };
   return { de: vivo.de, ate: vivo.ate, conjuntos: conjuntos.map(contas), anuncios: anuncios.map(contas), erros: vivo.erros || [], fonteReceita, semAnuncio };
 }
+
+// ── Análise de tráfego pela Meta (12/11/2026) ──
+// Empresa sem Utmify (e quem revisa o app na Meta) abria Por Campanha vazia. A fonte "Meta" monta a mesma tabela e as
+// mesmas abas com o que a sincronização da Meta já guarda a cada 15 min: meta_camp_dia (os números de cada dia),
+// meta_camp (status e orçamento de agora), meta_conj, meta_ad e meta_ad_dia (o conjunto soma os anúncios dele). Vendas e
+// faturamento são os da SCALROI, como na Utmify. O projeto é o de Projetos › Integrações (sl_projetos_meta): as contas
+// dele e, em conta dividida, a palavra no nome da campanha. Item sem gasto no período aparece se está no ar ou foi criado
+// há menos de 30 dias: a campanha de teste que ainda não gastou e a que acabou de ser pausada continuam à vista.
+const _META_NO_AR = /^(ACTIVE|IN_PROCESS|WITH_ISSUES|PENDING_REVIEW)$/;
+function _metaProjetosDaFonte(db, u) {
+  const cfg = _projMetaCfg(db), lim = _projetosDoLimite(u);
+  const todos = Object.keys(cfg).filter(p => (cfg[p].contas || []).length).sort((a, b) => a.localeCompare(b));
+  return lim ? todos.filter(p => lim.some(l => _nrm(l) === _nrm(p))) : todos;
+}
+// o que a sincronização da Meta viu por último em cada conta: item que parou de vir (arquivado, apagado) sai da lista
+function _metaFrescoFn(tabela) {
+  const ult = {};
+  _q('SELECT conta, MAX(em) em FROM ' + tabela + ' GROUP BY conta').all().forEach(x => { ult[x.conta] = Number(x.em) || 0; });
+  return x => (Number(x.em) || 0) >= (ult[x.conta] || 0) - 26 * 3600000;
+}
+// id → nome atual de cada campanha que a Meta mostrou (o nome do dia mais recente; o de agora por cima)
+function _metaNomesCamp() {
+  const nomes = {};
+  try {
+    _q('SELECT id, nome, MAX(dia) d FROM meta_camp_dia GROUP BY id').all().forEach(c => { if (c.id && c.nome) nomes[String(c.id)] = c.nome; });
+    _q('SELECT id, nome FROM meta_camp').all().forEach(c => { if (c.id && c.nome) nomes[String(c.id)] = c.nome; });
+  } catch (e) {}
+  return nomes;
+}
+function _metaPainel(db, de, ate, projeto) {
+  const nomeConta = _contaNomes(), dono = projeto ? _projetoDaCampanhaFn(db) : null;
+  const desde30 = _diaBR(Date.parse(ate + 'T15:00:00Z') - 30 * 86400000), recente = ms => !!ms && _diaBR(Number(ms)) >= desde30;
+  const camps = {};
+  _q('SELECT id, conta, nome, status, efetivo, orc, orc_vida, criado, em FROM meta_camp').all().forEach(c => { camps[c.id] = c; });
+  const fresca = _metaFrescoFn('meta_camp');
+  // ABO: o orçamento da campanha é a soma dos conjuntos no ar, como a Meta mostra
+  const abo = {};
+  _q("SELECT camp, SUM(orc) orc FROM meta_conj WHERE efetivo='ACTIVE' AND orc IS NOT NULL GROUP BY camp").all().forEach(x => { abo[x.camp] = Number(x.orc) || 0; });
+  const nova = (id, conta) => ({ campanhaId: String(id), nome: '', contaId: String(conta || ''), status: '', investimento: 0, impressoes: 0, cliques: 0,
+    lpv: 0, ic: 0, vv: 0, v3: 0, v75: 0, comprasMeta: 0, _fi: 0, _video: false, _criado: null, _orcDia: null, _orcVida: null, bid: null });
+  const m = {};
+  _q(`SELECT dia, conta, id, nome, status, orc, orc_vida, lance, gasto, imp, freq, link_cliques, lpv, ic, compras, plays, v3, v75, criada
+      FROM meta_camp_dia WHERE dia BETWEEN ? AND ? ORDER BY dia`).all(de, ate).forEach(l => {
+    const x = m[l.id] || (m[l.id] = nova(l.id, l.conta)), imp = Number(l.imp) || 0;
+    x.investimento += Number(l.gasto) || 0; x.impressoes += imp; x.cliques += Number(l.link_cliques) || 0;
+    x.lpv += Number(l.lpv) || 0; x.ic += Number(l.ic) || 0; x.comprasMeta += Number(l.compras) || 0;
+    x.vv += Number(l.plays) || 0; x.v3 += Number(l.v3) || 0; x.v75 += Number(l.v75) || 0;
+    if (Number(l.plays) || Number(l.v3)) x._video = true;
+    x._fi += (Number(l.freq) || 0) * imp;   // frequência não soma: média pelas impressões de cada dia
+    // o estado é o do dia mais recente do período
+    if (l.nome) x.nome = l.nome; if (l.conta) x.contaId = String(l.conta); if (l.status) x.status = l.status;
+    x._orcDia = l.orc; x._orcVida = l.orc_vida; if (l.lance != null) x.bid = l.lance; if (l.criada) x._criado = l.criada;
+  });
+  Object.values(camps).forEach(c => {
+    if (m[c.id] || !fresca(c) || !(_META_NO_AR.test(c.efetivo || '') || recente(c.criado))) return;
+    m[c.id] = Object.assign(nova(c.id, c.conta), { nome: c.nome || '' });
+  });
+  const lista = Object.values(m).map(x => {
+    const c = camps[x.campanhaId];
+    if (c) { if (c.nome) x.nome = c.nome; x.status = c.efetivo || c.status || x.status; if (c.conta) x.contaId = String(c.conta); if (c.criado) x._criado = c.criado; }
+    if (c && c.orc != null) Object.assign(x, { orc: Number(c.orc), orcVida: false });
+    else if (Number(c ? c.orc_vida : x._orcVida) > 0) Object.assign(x, { orc: Number(c ? c.orc_vida : x._orcVida), orcVida: true });
+    else Object.assign(x, { orc: abo[x.campanhaId] != null ? abo[x.campanhaId] : (x._orcDia != null ? Number(x._orcDia) : null), orcVida: false });
+    const g = x.investimento, imp = x.impressoes, video = x._video, fi = x._fi;
+    x.conta = nomeConta[x.contaId] || x.contaId; x.criada = x._criado ? _diaBR(Number(x._criado)) : '';
+    Object.assign(x, { faturamento: 0, aprovadas: 0, vendas: 0, lucro: -g, pendentes: 0, freq: fi && imp > 0 ? fi / imp : null,
+      ctr: imp > 0 ? x.cliques / imp : null, cpc: x.cliques > 0 ? g / x.cliques : null, cpm: imp > 0 ? g / imp * 1000 : null,
+      hook: video && imp > 0 ? x.v3 / imp : null, hold: video && imp > 0 ? x.v75 / imp : null });
+    if (!video) { delete x.vv; delete x.v3; delete x.v75; }
+    ['_fi', '_video', '_criado', '_orcDia', '_orcVida'].forEach(k => { delete x[k]; });
+    return x;
+  }).filter(x => !dono || dono(x.contaId, x.nome) === projeto);
+  // vendas da SCALROI: a campanha é reconhecida pelo id que vem no fim da UTM, também pelos nomes que só a Meta conhece
+  const tmx = _tmxPorCampanha(db, de, ate, '', true, { nomeProj: projeto, nomes: _metaNomesCamp() });
+  _campanhasComTmx(_comMudancas(lista, de, ate), tmx);
+  lista.forEach(c => { delete c.fatUtmify; delete c.vendasUtmify; });
+  lista.sort((a, b) => b.investimento - a.investimento);
+  const soma = k => lista.reduce((a, c) => a + (Number(c[k]) || 0), 0);
+  const fatSem = tmx.semCampanha.reduce((a, p) => a + (Number(p.valor) || 0), 0);
+  const fatCamp = Object.values(tmx.porCampanha).reduce((a, x) => a + (Number(x.faturamento) || 0), 0);
+  const inv = soma('investimento'), fat = fatCamp + fatSem, cliques = soma('cliques'), imp = soma('impressoes'), vendas = tmx.total;
+  const porConta = {};
+  lista.forEach(c => {
+    const o = porConta[c.contaId] || (porConta[c.contaId] = { contaId: c.contaId, nome: c.conta, investimento: 0, faturamento: 0, lucro: 0, vendas: 0, campanhas: 0 });
+    o.investimento += c.investimento; o.faturamento += c.faturamento; o.lucro += c.lucro; o.vendas += c.aprovadas; o.campanhas++;
+  });
+  let ultimaPuxada = null;
+  try { const u = _q('SELECT MAX(em) em FROM meta_puxado').get(); ultimaPuxada = u && u.em ? Number(u.em) : null; } catch (e) {}
+  return {
+    de, ate, projeto,
+    kpis: { investimento: inv, faturamento: fat, lucro: fat - inv, vendas, cliques, impressoes: imp, lpv: soma('lpv'), ic: soma('ic'),
+      roas: inv > 0 ? fat / inv : 0, cpc: cliques > 0 ? inv / cliques : 0, cpm: imp > 0 ? inv / imp * 1000 : 0, cpa: vendas > 0 ? inv / vendas : 0 },
+    porCampanha: lista, porConta: Object.values(porConta).sort((a, b) => b.investimento - a.investimento), ultimaPuxada
+  };
+}
+// conjuntos e anúncios no mesmo formato de /api/metricas/utmify/niveis, pra tabela não saber de onde veio
+function _metaNiveis(db, de, ate, projeto) {
+  const nomeConta = _contaNomes(), dono = projeto ? _projetoDaCampanhaFn(db) : null;
+  const desde30 = _diaBR(Date.parse(ate + 'T15:00:00Z') - 30 * 86400000), recente = ms => !!ms && _diaBR(Number(ms)) >= desde30;
+  const nomeCamp = {};
+  _q('SELECT id, conta, nome FROM meta_camp').all().forEach(c => { nomeCamp[c.id] = c.nome; });
+  const doProj = (conta, camp) => !dono || dono(conta, nomeCamp[camp] || '') === projeto;
+  const nums = {};
+  _q('SELECT id, conj, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c FROM meta_ad_dia WHERE dia BETWEEN ? AND ? GROUP BY id').all(de, ate)
+    .forEach(x => { nums[x.id] = { g: Number(x.g) || 0, i: Number(x.i) || 0, c: Number(x.c) || 0 }; });
+  const linha = (x, nv) => ({ id: String(x.id), nome: String(x.nome || '').trim() || '(sem nome)', campanhaId: String(x.camp || ''),
+    conjuntoId: nv === 'ad' ? String(x.conj || '') : String(x.id), contaId: String(x.conta || ''), conta: nomeConta[x.conta] || String(x.conta || ''),
+    status: String(x.status || ''), efetivo: String(x.efetivo || x.status || ''), criada: x.criado ? _diaBR(Number(x.criado)) : '',
+    investimento: 0, impressoes: 0, cliques: 0, fatUtmify: 0, vendasUtmify: 0, pendentes: 0, freq: null, bid: null });
+  const frescoAd = _metaFrescoFn('meta_ad'), frescoCj = _metaFrescoFn('meta_conj');
+  const anuncios = [], cjUsado = {};
+  _q('SELECT id, conta, camp, conj, nome, status, efetivo, criado, em FROM meta_ad').all().forEach(a => {
+    const n = nums[a.id];
+    if (!doProj(a.conta, a.camp)) return;
+    if (!n && !(frescoAd(a) && (_META_NO_AR.test(a.efetivo || '') || recente(a.criado)))) return;
+    const r = linha(a, 'ad');
+    if (n) Object.assign(r, { investimento: n.g, impressoes: n.i, cliques: n.c });
+    anuncios.push(r); cjUsado[a.conj] = 1;
+  });
+  // anúncio que gastou e já não está em meta_ad (apagado depois): entra com o nome do dia
+  const vistos = new Set(anuncios.map(a => a.id));
+  _q(`SELECT id, conta, camp, conj, nome, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c FROM meta_ad_dia WHERE dia BETWEEN ? AND ? GROUP BY id`).all(de, ate).forEach(a => {
+    if (vistos.has(a.id) || !doProj(a.conta, a.camp)) return;
+    anuncios.push(Object.assign(linha(Object.assign({}, a, { status: 'DELETED' }), 'ad'), { investimento: Number(a.g) || 0, impressoes: Number(a.i) || 0, cliques: Number(a.c) || 0 }));
+    cjUsado[a.conj] = 1;
+  });
+  const conjuntos = [], porCj = {};
+  _q('SELECT id, conta, camp, nome, status, efetivo, orc, orc_vida, criado, em FROM meta_conj').all().forEach(s => {
+    if (!doProj(s.conta, s.camp)) return;
+    if (!cjUsado[s.id] && !(frescoCj(s) && (_META_NO_AR.test(s.efetivo || '') || recente(s.criado)))) return;
+    const r = linha(s, 'adset');
+    r.orc = s.orc != null ? Number(s.orc) : (Number(s.orc_vida) > 0 ? Number(s.orc_vida) : null);
+    r.orcVida = s.orc == null && Number(s.orc_vida) > 0;
+    conjuntos.push(r); porCj[s.id] = r;
+  });
+  // o conjunto é a soma dos anúncios dele
+  anuncios.forEach(a => { const s = porCj[a.conjuntoId]; if (s) { s.investimento += a.investimento; s.impressoes += a.impressoes; s.cliques += a.cliques; } });
+  return _niveisComTmx({ de, ate, conjuntos, anuncios, erros: [] }, de, ate, '', { nomeProj: projeto, nomes: _metaNomesCamp() });
+}
+app.get('/api/metricas/meta/projetos', authUsuario, (req, res) => {
+  try { res.json({ ok: true, projetos: _metaProjetosDaFonte(readDB(), req.user).map(p => ({ id: p, nome: p })) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+function _metaRotaPeriodo(req, res) {
+  const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) { res.status(400).json({ error: 'Informe de/ate no formato AAAA-MM-DD.' }); return null; }
+  if (!_pessoas()) { res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' }); return null; }
+  return { de, ate, projeto: String(req.query.projeto || '').slice(0, 80) };
+}
+app.get('/api/metricas/meta/painel', authUsuario, (req, res) => {
+  const p = _metaRotaPeriodo(req, res); if (!p) return;
+  try {
+    const db = readDB(), mc = _metaCfg(db) || {};
+    res.json(Object.assign({ ok: true, conectada: !!mc.accessToken, contas: (mc.contas || []).length }, _metaPainel(db, p.de, p.ate, p.projeto)));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/metricas/meta/niveis', authUsuario, (req, res) => {
+  const p = _metaRotaPeriodo(req, res); if (!p) return;
+  try { res.json(Object.assign({ ok: true }, _metaNiveis(readDB(), p.de, p.ate, p.projeto))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Anuncios do periodo, agregados entre os dashboards
 app.get('/api/metricas/utmify/anuncios', authUsuario, (req, res) => _rotaAnuncios(req, res));
@@ -7037,7 +7200,10 @@ app.get('/api/metricas/tmx-campanhas', authUsuario, (req, res) => {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return res.status(400).json({ error: 'Informe o período.' });
-    const t = _tmxPorCampanha(readDB(), de, ate, String(req.query.projeto || '').slice(0, 40), _ehDir(req));
+    const db = readDB(), projeto = String(req.query.projeto || '').slice(0, 80);
+    // fonte Meta: o projeto vem pelo nome (Projetos › Integrações) e a campanha é reconhecida também pelos ids que só a Meta tem
+    const t = req.query.fonte === 'meta' ? _tmxPorCampanha(db, de, ate, '', _ehDir(req), { nomeProj: projeto, nomes: _metaNomesCamp() })
+                                         : _tmxPorCampanha(db, de, ate, projeto.slice(0, 40), _ehDir(req));
     res.json({ ok: true, de, ate, projeto: t.projeto, total: t.total, porCampanha: t.porCampanha, semCampanha: t.semCampanha });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -7061,10 +7227,12 @@ function _pedidoDoProjetoResumoFn(db, nomeProj) {
     return [...projDoProduto(p.produto)].some(x => _nrm(x) === np);
   };
 }
-function _tmxPorCampanha(db, de, ate, projeto, dir) {
-    // projeto da tela = dashboard da Utmify; no TMX, os funis com o mesmo nome de projeto
-    let nomeProj = '';
-    if (projeto) {
+function _tmxPorCampanha(db, de, ate, projeto, dir, opc) {
+    // projeto da tela = dashboard da Utmify; no TMX, os funis com o mesmo nome de projeto.
+    // Pela fonte Meta (opc) o projeto já vem pelo nome e as campanhas conhecidas incluem as que só a Meta tem.
+    opc = opc || {};
+    let nomeProj = String(opc.nomeProj || '');
+    if (projeto && !nomeProj) {
       const dP = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === projeto);
       nomeProj = dP ? String(dP.nome || '').trim() : '';
     }
@@ -7078,6 +7246,7 @@ function _tmxPorCampanha(db, de, ate, projeto, dir) {
     // a venda não batia com a linha da campanha. O nome que vale é o atual.
     const nomePorId = {};
     _q('SELECT id, nome FROM camp_dia ORDER BY dia').all().forEach(c => { if (c.id && c.nome) nomePorId[String(c.id)] = c.nome; });
+    Object.keys(opc.nomes || {}).forEach(id => { if (!nomePorId[id]) nomePorId[id] = opc.nomes[id]; });
     const idDe = _campIdDoPedidoFn(nomePorId);
     const porCampanha = {}, semCampanha = [];
     peds.forEach(p => {
@@ -10070,7 +10239,10 @@ const _ROTAS_DO_LIMITADO = [
   ['POST', /^\/api\/ia\/copy\/(headlines|anuncio|variacoes|analise|advertorial)$/], ['POST', /^\/api\/ia\/analise-ads(-lote)?$/], ['GET', /^\/api\/ia\/chave-status$/],
   // Tráfego e Análise: o projeto vem do id do dashboard
   ['GET', /^\/api\/metricas\/utmify\/(anuncios|tempo-real|panorama|filtros|cobertura-utm|niveis)$/, _limDash('projeto')],
-  ['GET', /^\/api\/metricas\/(consolidado|tmx-campanhas)$/, _limDash('projeto')],
+  ['GET', /^\/api\/metricas\/consolidado$/, _limDash('projeto')],
+  ['GET', /^\/api\/metricas\/tmx-campanhas$/, (req, e) => req.query.fonte === 'meta' ? _limNome('projeto')(req, e) : _limDash('projeto')(req, e)],
+  // fonte Meta da Análise: o projeto é o nome de Projetos › Integrações; a lista de projetos já sai cortada
+  ['GET', /^\/api\/metricas\/meta\/(painel|niveis)$/, _limNome('projeto')], ['GET', /^\/api\/metricas\/meta\/projetos$/],
   ['GET', /^\/api\/funil\/cliques$/, _limDash('projeto')], ['GET', /^\/api\/criativos\/ate-a-venda$/, _limDash('projeto')],
   ['GET', /^\/api\/metricas\/utmify\/anuncio$/, (req, e) => { const v = String(req.query.dashboard || ''); return e.dashs.has(v) || e.nomes.has(_nrm(v)); }],
   ['GET', /^\/api\/metricas\/campanha$/, (req, e, db) => _limCampanha(String(req.query.id || '').replace(/\D/g, ''), String(req.query.nome || ''), e, db)],
