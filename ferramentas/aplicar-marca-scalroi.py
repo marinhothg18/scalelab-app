@@ -6,8 +6,8 @@ import re, os, sys, base64, subprocess
 
 RAIZ = os.getcwd()
 AQUI = os.path.dirname(os.path.abspath(__file__))
-ICONE_ORIGEM = os.path.join(AQUI, 'icone.jpg')     # 1254x1254, o "S" com a seta
-LOGO_ORIGEM = os.path.join(AQUI, 'logo.jpg')       # 1600x533, SCALROI por extenso
+ICONE_ORIGEM = os.path.join(AQUI, 'marca-scalroi-icone.jpg')     # 1254x1254, o "S" com a seta
+LOGO_ORIGEM = os.path.join(AQUI, 'marca-scalroi-logo.jpg')       # 1600x533, SCALROI por extenso
 
 def ler(p): return open(os.path.join(RAIZ, p), encoding='utf-8').read()
 def gravar(p, s): open(os.path.join(RAIZ, p), 'w', encoding='utf-8').write(s)
@@ -233,6 +233,18 @@ def textos():
   gravar('public/admin.html', _linhas(ler('public/admin.html'), _masc))
   gravar('server.js', _linhas(ler('server.js'), _servidor_txt))
 
+def dominio(novo):
+  """Troca o endereço que o cliente vê (app.centraltmx.com) pelo domínio novo. Só depois que ele responder.
+  Comentários ficam como estão; app.centraltmx.com continua no ar (pixel, webhooks e MCP já instalados)."""
+  for p in ['public/planos.html', 'public/site.html', 'public/ScaleLab.html']:
+    if os.path.exists(os.path.join(RAIZ, p)):
+      gravar(p, _linhas(ler(p), lambda t: t.replace('app.centraltmx.com', novo)))
+
 if __name__ == '__main__':
+  # python3 ferramentas/aplicar-marca-scalroi.py               -> nome, logo, cores e textos (endereço continua o atual)
+  # python3 ferramentas/aplicar-marca-scalroi.py --dominio X   -> só a troca do endereço, quando X já estiver no ar
+  if '--dominio' in sys.argv:
+    novo = sys.argv[sys.argv.index('--dominio') + 1]
+    dominio(novo); print('endereço trocado para ' + novo); sys.exit(0)
   sistema(); central(); planos(); cadastro(); manifesto_e_icones(); servidor(); textos()
   print('marca SCALROI aplicada')
