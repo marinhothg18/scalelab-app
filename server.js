@@ -7963,8 +7963,7 @@ app.get(['/site', '/vendas'], (req, res) => {
 });
 // /planos é a página de planos de verdade (COBRANÇA PELA PAGAR.ME); /pricing leva pra ela
 app.get('/pricing', (req, res) => res.redirect('/planos'));
-app.get('/privacidade', (req, res) => res.redirect('/termos#privacidade'));
-app.get('/lgpd', (req, res) => res.redirect('/termos#privacidade'));
+app.get('/lgpd', (req, res) => res.redirect('/privacidade'));   // a política agora tem página própria (12/11/2026)
 
 // GET /api/spy/master — bibliotecas mestre (qualquer usuário autenticado pode ler)
 // Mostra o banco master que VOCÊ alimenta — clientes veem como "Inteligência TMX Digital"
@@ -10749,6 +10748,11 @@ const situacaoLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 600, standard
   message: { error: 'Muitas consultas. Espere um pouco.' } });
 const _ehRef = r => /^as_[A-Za-z0-9_-]{20,40}$/.test(String(r || ''));
 
+// Páginas legais da SCALROI: a Meta pede a política de privacidade e as instruções de exclusão de dados do app (12/11/2026)
+app.get(['/privacidade', '/exclusao-de-dados'], (req, res) => {   // /termos já tinha rota própria, mais acima
+  if (!SOU_TMX) return res.status(404).end();
+  res.sendFile(path.join(__dirname, 'public', req.path.replace(/^\/+|\/+$/g, '') + '.html'));
+});
 app.get(['/planos', '/planos/obrigado'], (req, res) => {
   if (!SOU_TMX) return res.status(404).end();
   res.sendFile(path.join(__dirname, 'public', 'planos.html'));

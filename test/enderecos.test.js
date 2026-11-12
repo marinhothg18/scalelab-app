@@ -100,3 +100,13 @@ test('o que chega pelo app.centraltmx.com fica contado, por tipo, sem dado de cl
   assert.strictEqual(d.zeradoHa7Dias, false);
   assert.strictEqual((await pedir('127.0.0.1', '/api/endereco-antigo')).status, 401);
 });
+
+test('as páginas legais abrem no scalroi.com e no app (pra Meta conferir)', async () => {
+  for (const h of ['scalroi.com', 'app.scalroi.com']) {
+    for (const [c, txt] of [['/privacidade', 'Política de Privacidade'], ['/termos', 'Termos de Uso'], ['/exclusao-de-dados', 'Exclusão de dados'], ['/privacidade/', 'Política de Privacidade']]) {
+      const r = await pedir(h, c);
+      assert.strictEqual(r.status, 200, h + c);
+      assert.ok(r.corpo.includes(txt) && r.corpo.includes('58.197.325/0001-96'), h + c);
+    }
+  }
+});
