@@ -16,7 +16,7 @@ const RESERVADOS = /(^|\.)(centraltmx\.com|scalroi\.com|paginasnoar\.com|railway
 
 module.exports = function montarHospedagem({ platPrep }) {
   const cfg = () => ({ token: process.env.CLOUDFLARE_API_TOKEN || '', conta: process.env.CLOUDFLARE_ACCOUNT_ID || '', zona: process.env.CLOUDFLARE_ZONE_ID || '',
-    alvo: process.env.HOSPEDAGEM_ALVO || 'paginas.paginasnoar.com', origem: process.env.HOSPEDAGEM_ORIGEM || 'https://app.centraltmx.com' });
+    alvo: process.env.HOSPEDAGEM_ALVO || 'paginas.paginasnoar.com', origem: process.env.HOSPEDAGEM_ORIGEM || 'https://app.scalroi.com' });   // app.scalroi.com desde 11/11/2026
   const ligada = () => { const c = cfg(); return !!(c.token && c.conta && c.zona); };
   const apiBase = () => so_teste('CLOUDFLARE_API_BASE') || 'https://api.cloudflare.com/client/v4';
   const adminBase = () => so_teste('HOSPEDAGEM_ADMIN_BASE') || 'https://' + cfg().alvo;
