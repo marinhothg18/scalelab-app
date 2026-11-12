@@ -55,7 +55,32 @@ def sistema():
   s = s.replace('<div class="login-logo-text" style="font-size:40px;letter-spacing:-1px;">TMX</div>\n      <div style="font-size:14px;font-weight:700;letter-spacing:4px;color:var(--text2);align-self:center;padding-top:8px;">DIGITAL</div>',
                 '<img src="' + ICONE + '" alt="" style="width:52px;height:52px;border-radius:13px">\n      <div class="login-logo-text scal" style="font-size:40px;letter-spacing:-1px;">SCAL<span>ROI</span></div>')
   s = s.replace('TMX Digital', 'SCALROI')
-  css = ('<style id="marca-scalroi">\n/* Marca SCALROI: ícone + nome (SCAL na cor do texto, ROI em verde) */\n'
+  # tema escuro na pegada do esboço: verde neon do logo com texto escuro em cima
+  base = re.sub(r'<style id="marca-scalroi">.*?</style>', '', s, flags=re.S)
+  regras = ''.join(re.findall(r'<style[^>]*>(.*?)</style>', base, re.S))
+  sels = set()
+  for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', regras):
+    sel, corpo = m.group(1).strip(), m.group(2)
+    if re.search(r'background(?:-color)?\s*:\s*var\(--(accent|accent-grad|blue|accent2|purple)\)', corpo) and re.search(r'(^|;)\s*color\s*:\s*(#fff|#ffffff|white)\b', corpo, re.I):
+      for x in sel.split(','):
+        x = re.sub(r'/\*.*?\*/', '', x, flags=re.S).strip()
+        if x and not x.startswith('.light-mode') and not x.startswith('@') and x != '.nav-item.active':
+          sels.add(x)
+  inl = []
+  for v in ('accent', 'accent-grad', 'blue', 'accent2', 'purple'):
+    inl += ['[style*="background:var(--%s)"]' % v, '[style*="background: var(--%s)"]' % v]
+  escuro = ',\n'.join('body:not(.light-mode) ' + x for x in sorted(sels) + inl)
+  claro = ',\n'.join('body.light-mode ' + x for x in sorted(sels) + inl)
+  css_escuro = (':root{--accent:#22D94A;--accent2:#22D94A;--accent-grad:linear-gradient(135deg,#22D94A,#7CFF5A);--blue:#22D94A;--purple:#22D94A;--green:#4ADE80;--red:#F87171;--sidebar-bg:#0B1426;--text2:#94A3B8;--text3:#64748B}\n'
+    + escuro + '{color:#04210E !important}\n'
+    + 'body:not(.light-mode) .nav-item.active{background:rgba(34,217,74,.14) !important;color:#7CFF5A !important;box-shadow:inset 3px 0 0 #22D94A !important}\n'
+    + 'body:not(.light-mode) .nav-item.active .nav-svg{stroke:#7CFF5A !important}\n'
+    + 'body:not(.light-mode) .btn-primary,body:not(.light-mode) .login-btn{box-shadow:0 8px 24px rgba(34,217,74,.28) !important;font-weight:700}\n'
+    + 'body:not(.light-mode) .card,body:not(.light-mode) .stat-card{border-color:rgba(255,255,255,.08)}\n'
+    + claro + '{background:linear-gradient(135deg,#22D94A,#7CFF5A) !important;color:#04210E !important;border-color:transparent !important}\n'
+    + 'body.light-mode .btn-primary,body.light-mode .login-btn{box-shadow:0 6px 18px rgba(34,217,74,.30) !important;font-weight:700}\n')
+  css = ('<style id="marca-scalroi">\n/* Marca SCALROI: ícone + nome (SCAL na cor do texto, ROI em verde) */\n' + css_escuro +
+
     '.logo-ic{width:30px;height:30px;border-radius:8px;flex:none;display:block}\n'
     '.logo-tmx{background:none !important;-webkit-text-fill-color:currentColor !important;color:var(--text) !important;font-size:21px !important;font-weight:900 !important;letter-spacing:-.3px !important}\n'
     '.logo-roi{color:#22D94A;-webkit-text-fill-color:#22D94A}\n.light-mode .logo-roi{color:#16A34A;-webkit-text-fill-color:#16A34A}\n'
@@ -145,6 +170,13 @@ def manifesto_e_icones():
   os.remove(os.path.join(RAIZ, 'public/marca/_fav64.png'))
   gravar('public/favicon.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><image width="64" height="64" href="data:image/png;base64,' + b64 + '"/></svg>\n')
 
+def servidor():
+  """Cor padrão da empresa (aplicada por cima do tema quando a empresa não escolheu outra)."""
+  p = 'server.js'; s = ler(p)
+  s = s.replace("const BRANDING_DEFAULT = {\n  nome: 'TMX Digital',\n  primary: '#5b5ef4',\n  secondary: '#3E1493',",
+                "const BRANDING_DEFAULT = {\n  nome: 'SCALROI',\n  primary: '#22D94A',\n  secondary: '#0E9F35',")
+  gravar(p, s)
+
 if __name__ == '__main__':
-  sistema(); central(); planos(); cadastro(); manifesto_e_icones()
+  sistema(); central(); planos(); cadastro(); manifesto_e_icones(); servidor()
   print('marca SCALROI aplicada')

@@ -7817,9 +7817,9 @@ app.get('/api/spy/nichos', authAPI, (req, res) => {
 // branding (não toda a info do tenant), pra qualquer um logado.
 // ══════════════════════════════════════════════
 const BRANDING_DEFAULT = {
-  nome: 'TMX Digital',
-  primary: '#5b5ef4',
-  secondary: '#3E1493',
+  nome: 'SCALROI',
+  primary: '#22D94A',
+  secondary: '#0E9F35',
   bgDark: '#0F0F0F',
   logoUrl: '',
   faviconUrl: ''
