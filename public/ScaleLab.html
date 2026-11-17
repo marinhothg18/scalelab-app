@@ -41722,13 +41722,23 @@ function pvPintar(){
 // ── REEMBOLSOS (aba própria, embaixo de Vendas): quem pediu o dinheiro de volta, quanto
 // tempo depois da compra, de que anúncio a venda tinha vindo e o contato. Só Diretoria e Sócio.
 var rbDados = null, rbPedido = 0, rbProd = '';
+// Contar por (17/11/2026): 'reembolso' = os reembolsos que chegaram no período; 'compra' = a safra,
+// as vendas feitas no período e quantas delas foram reembolsadas até hoje. A escolha fica no aparelho.
+var rbModo = (function(){ try{ return localStorage.getItem('rb_modo') === 'compra' ? 'compra' : 'reembolso'; }catch(e){ return 'reembolso'; } })();
+function rbTrocarModo(m){ if(m === rbModo) return; rbModo = m; try{ localStorage.setItem('rb_modo', m); }catch(e){} rbCarregar(); }
+function rbSeletorModo(){
+  return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="fx-sub" style="margin:0">Contar por:</span>'+
+    '<div class="pv-filtros" style="margin:0">'+[['reembolso','Data do reembolso'],['compra','Data da compra']].map(function(x){
+      return '<button class="'+(rbModo === x[0] ? 'on' : '')+'" onclick="rbTrocarModo(\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>'+
+    '<span class="fx-sub" style="margin:0">'+(rbModo === 'compra' ? 'as vendas feitas no período e quantas delas já pediram o dinheiro de volta' : 'os reembolsos que chegaram no período')+'</span></div>';
+}
 function rbCarregar(){
   var cx = document.getElementById('fn-p-reembolsos'); if(!cx) return;
   if(!lcEhDir()){ cx.innerHTML = '<div class="v2-alerta info"><div><b>Os reembolsos ficam com a Diretoria</b><span>A lista tem o nome, o e-mail e o telefone de cada cliente.</span></div></div>'; return; }
   var p = fnPeriodo(), meu = ++rbPedido;
   rbProd = '';   // período novo, produto escolhido some
-  cx.innerHTML = '<div class="fx-vazio">Buscando os reembolsos…</div>';
-  v2Json('/api/projeto/reembolsos?projeto='+encodeURIComponent(fnProj || '')+'&de='+p.de+'&ate='+p.ate)
+  cx.innerHTML = rbSeletorModo()+'<div class="fx-vazio">Buscando os reembolsos…</div>';
+  v2Json('/api/projeto/reembolsos?projeto='+encodeURIComponent(fnProj || '')+'&de='+p.de+'&ate='+p.ate+(rbModo === 'compra' ? '&por=compra' : ''))
     .then(function(r){ if(meu !== rbPedido) return; rbDados = r; rbPintar(); })
     .catch(function(e){ if(meu === rbPedido) cx.innerHTML = '<div class="fx-aviso ruim"><b>Não consegui carregar</b>'+fnEsc(e.message)+'</div>'; });
 }
@@ -41770,20 +41780,27 @@ function rbTabProdutos(){
     '<div style="overflow-x:auto" class="rb-prod"><table class="sv-tab pv-tab" style="min-width:560px">'+
     '<tr><th>Produto</th><th class="n">Compraram</th><th class="n">Reembolsaram</th><th class="n">Taxa</th><th class="n">Devolvido</th></tr>'+
     linhas+'</table></div>'+
-    '<div class="fx-sub" style="margin:6px 0 14px">A taxa é o reembolso que chegou no período contra as vendas aprovadas no período. '+
-    'Quem comprou antes e devolveu agora conta no reembolso e não na venda'+(foraDoPeriodo ? ' — é o caso dos produtos sem taxa acima' : '')+
-    ', então num período curto a taxa de um produto pode passar de 100%.</div>';
+    (rbDados.modo === 'compra'
+      ? '<div class="fx-sub" style="margin:6px 0 14px">A taxa é de quem comprou no período: das vendas feitas entre '+rbDiaCurto(rbDados.de)+' e '+rbDiaCurto(rbDados.ate)+
+        ', quantas pediram o dinheiro de volta até hoje, não importa quando o reembolso chegou. Venda com menos de '+(rbDados.garantiaDias || 7)+' dias ainda está na garantia, então a taxa dela ainda pode subir.</div>'
+      : '<div class="fx-sub" style="margin:6px 0 14px">A taxa é o reembolso que chegou no período contra as vendas aprovadas no período. '+
+        'Quem comprou antes e devolveu agora conta no reembolso e não na venda'+(foraDoPeriodo ? ' — é o caso dos produtos sem taxa acima' : '')+
+        ', então num período curto a taxa de um produto pode passar de 100%. Para ver a taxa de quem comprou no período, conte por <b>Data da compra</b>.</div>');
 }
+function rbDiaCurto(d){ return String(d || '').slice(8, 10)+'/'+String(d || '').slice(5, 7); }
 function rbPintar(){
   var cx = document.getElementById('fn-p-reembolsos'), r = rbDados; if(!cx || !r) return;
-  var t = r.total || {}, l = r.reembolsos || [], multi = r.de !== r.ate;
+  var safra = r.modo === 'compra';
+  var t = r.total || {}, l = r.reembolsos || [], multi = safra || r.de !== r.ate;
   var pct = function(a, b){ return b ? (a / b * 100).toLocaleString('pt-BR', { maximumFractionDigits:1 })+'%' : '—'; };
   var kpi = function(k, v, sub){ return '<div class="pv-kpi"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+sub+'</div></div>'; };
-  var h = '<div class="pv-kpis">'+kpi('Reembolsadas', fnNum(t.n || 0), t.chargebacks ? fnNum(t.chargebacks)+' '+(t.chargebacks === 1 ? 'é chargeback' : 'são chargeback') : 'nenhum chargeback')+
-      kpi('Valor devolvido', v2Din(t.valor || 0), pct(t.valor || 0, t.valorVendas)+' do faturamento do período')+
-      kpi('Taxa de reembolso', pct(t.n || 0, t.vendas), fnNum(t.vendas || 0)+' vendas aprovadas no período')+
+  var h = rbSeletorModo()+'<div class="pv-kpis">'+kpi('Reembolsadas', fnNum(t.n || 0), t.chargebacks ? fnNum(t.chargebacks)+' '+(t.chargebacks === 1 ? 'é chargeback' : 'são chargeback') : 'nenhum chargeback')+
+      kpi('Valor devolvido', v2Din(t.valor || 0), pct(t.valor || 0, t.valorVendas)+(safra ? ' do faturamento dessas vendas' : ' do faturamento do período'))+
+      kpi('Taxa de reembolso', pct(t.n || 0, t.vendas), safra
+        ? fnNum(t.vendas || 0)+' vendas feitas no período'+(t.naGarantia ? ' · '+fnNum(t.naGarantia)+' ainda na garantia' : '')
+        : fnNum(t.vendas || 0)+' vendas aprovadas no período')+
       kpi('Tempo até reembolsar', rbTempo(t.tempoMediano), 'metade pede antes disso')+'</div>'+rbTabProdutos();
-  if(!l.length){ cx.innerHTML = h+'<div class="fx-vazio">Nenhum reembolso deste projeto no período.</div>'; return; }
+  if(!l.length){ cx.innerHTML = h+'<div class="fx-vazio">'+(safra ? 'Nenhuma venda deste período foi reembolsada até agora.' : 'Nenhum reembolso deste projeto no período.')+'</div>'; return; }
   if(rbProd) l = l.filter(function(x){ return rbNomeProd(x) === rbProd; });
   // produto que vendeu e não devolveu nada também é clicável — e é boa notícia
   if(!l.length){ cx.innerHTML = h+'<div class="fx-vazio">Nenhum reembolso de <b>'+fnEsc(rbProd)+'</b> no período. '+

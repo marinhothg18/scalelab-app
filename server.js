@@ -23776,6 +23776,9 @@ app.get('/api/projeto/vendas', authUsuario, (req, res) => {
 // Reembolsos do projeto (Projeto › Reembolsos, logo abaixo de Vendas): o reembolso ou chargeback
 // que chegou no período, a compra que ele desfez, quanto tempo depois veio, de que anúncio
 // a venda tinha vindo e o contato do cliente. Contato é dado pessoal: só Diretoria e Sócio.
+// por=compra (17/11/2026): a safra. Em vez do reembolso que CHEGOU no período, as vendas FEITAS no
+// período e quantas delas foram reembolsadas até hoje, chegue quando chegar. A taxa não passa de 100%,
+// e as vendas ainda dentro dos 7 dias de garantia vêm contadas à parte (a taxa delas ainda pode subir).
 app.get('/api/projeto/reembolsos', authNegocio, (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
@@ -23792,7 +23795,20 @@ app.get('/api/projeto/reembolsos', authNegocio, (req, res) => {
       if (!c.email && v.email) c.email = v.email;
       if (!c.telefone && v.telefone) c.telefone = v.telefone;
     });
-    const estornos = _q('SELECT * FROM pedidos WHERE estorno=1 AND dia>=? AND dia<=? ORDER BY em DESC LIMIT 1000').all(de, ate);
+    const porCompra = req.query.por === 'compra';
+    // as vendas aprovadas do período; na safra, uma por pedido (a primeira paga)
+    let vendas = _q('SELECT * FROM pedidos WHERE pago=1 AND renovacao=0 AND dia>=? AND dia<=? ORDER BY em').all(de, ate).filter(doProjeto);
+    if (porCompra) { const vistos = new Set(); vendas = vendas.filter(v => { const k = v.pedido || v.id; if (vistos.has(k)) return false; vistos.add(k); return true; }); }
+    let estornos;
+    if (porCompra) {
+      // os reembolsos desses pedidos, em qualquer data (um por pedido: o primeiro que chegou)
+      const peds = [...new Set(vendas.map(v => v.pedido).filter(Boolean))], achados = [], ja = new Set();
+      for (let i = 0; i < peds.length; i += 400) {
+        const lote = peds.slice(i, i + 400);
+        achados.push(..._q('SELECT * FROM pedidos WHERE estorno=1 AND pedido IN (' + lote.map(() => '?').join(',') + ') ORDER BY em').all(...lote));
+      }
+      estornos = achados.filter(r => { if (ja.has(r.pedido)) return false; ja.add(r.pedido); return true; }).sort((a, b) => b.em - a.em);
+    } else estornos = _q('SELECT * FROM pedidos WHERE estorno=1 AND dia>=? AND dia<=? ORDER BY em DESC LIMIT 1000').all(de, ate);
     const lista = [];
     estornos.forEach(r => {
       const pg = r.pedido ? _q('SELECT * FROM pedidos WHERE pedido=? AND pago=1 ORDER BY em LIMIT 1').get(r.pedido) : null;
@@ -23808,7 +23824,9 @@ app.get('/api/projeto/reembolsos', authNegocio, (req, res) => {
         nome: c.nome || '', email: c.email || '', telefone: c.telefone || '' });
     });
     // a taxa: reembolsos contra as vendas aprovadas do mesmo período
-    const vendas = _q('SELECT * FROM pedidos WHERE pago=1 AND renovacao=0 AND dia>=? AND dia<=?').all(de, ate).filter(doProjeto);
+    // safra: as vendas que ainda estão dentro dos 7 dias de garantia e não foram reembolsadas
+    const GARANTIA_DIAS = 7, reemb = new Set(lista.map(x => x.pedido).filter(Boolean));
+    const naGarantia = porCompra ? vendas.filter(v => !reemb.has(v.pedido) && Date.now() - v.em < GARANTIA_DIAS * 86400000).length : null;
     const tempos = lista.filter(x => x.tempoMs != null).map(x => x.tempoMs).sort((a, b) => a - b);
     // Por produto: quantos compraram e quantos pediram de volta, pra ver que
     // produto devolve mais. A lista é a união dos dois lados — produto que
@@ -23830,8 +23848,8 @@ app.get('/api/projeto/reembolsos', authNegocio, (req, res) => {
                valor: c.valor, chargebacks: c.chargebacks,
                tempoMediano: t.length ? t[Math.floor(t.length / 2)] : null };
     }).sort((a, b) => b.valor - a.valor || b.reembolsos - a.reembolsos || b.vendas - a.vendas);
-    res.json({ ok: true, projeto, de, ate, reembolsos: lista, produtos,
-      total: { n: lista.length, valor: lista.reduce((s, x) => s + x.valor, 0), chargebacks: lista.filter(x => x.tipo === 'chargeback').length,
+    res.json({ ok: true, projeto, de, ate, modo: porCompra ? 'compra' : 'reembolso', garantiaDias: GARANTIA_DIAS, reembolsos: lista, produtos,
+      total: { n: lista.length, naGarantia, valor: lista.reduce((s, x) => s + x.valor, 0), chargebacks: lista.filter(x => x.tipo === 'chargeback').length,
         vendas: vendas.length, valorVendas: vendas.reduce((s, x) => s + (Number(x.valor) || 0), 0),
         tempoMediano: tempos.length ? tempos[Math.floor(tempos.length / 2)] : null } });
   } catch (e) { res.status(500).json({ error: e.message }); }
