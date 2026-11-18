@@ -5588,6 +5588,22 @@ function _niveisComTmx(vivo, de, ate, projeto, opc) {
       conjuntos = copia(vivo.conjuntos); anuncios = copia(vivo.anuncios); semAnuncio = {};
     }
   }
+  // visitas da SCALROI (_visitasDoPeriodo): o anúncio pelo id; sem id, pelo nome na campanha, no que mais gastou.
+  // O conjunto é a soma dos anúncios dele.
+  try {
+    const vis = _visitasDoPeriodo(de, ate);
+    if (vis) {
+      const porNome = {}, cj = {};
+      anuncios.slice().sort((a, b) => b.investimento - a.investimento).forEach(a => {
+        const k = 'n:' + a.campanhaId + '|' + _anuncioChave(a.nome);
+        if (a.campanhaId && !porNome[k]) porNome[k] = a;
+      });
+      anuncios.forEach(a => { a.visitas = vis.ad['id:' + a.id] || 0; });
+      Object.keys(vis.ad).forEach(k => { if (porNome[k]) porNome[k].visitas += vis.ad[k]; });
+      conjuntos.forEach(s => { s.visitas = 0; cj[s.id] = s; });
+      anuncios.forEach(a => { const s = cj[a.conjuntoId]; if (s) s.visitas += a.visitas; });
+    }
+  } catch (e) { console.error('[TMX] visitas por conjunto e anúncio:', e.message); }
   const contas = x => {
     const g = x.investimento, imp = x.impressoes, video = x.v3 !== undefined;
     return Object.assign(x, { lucro: x.faturamento - g, roas: g > 0 ? x.faturamento / g : 0, cpa: x.aprovadas > 0 ? g / x.aprovadas : null,
@@ -6474,14 +6490,52 @@ function _anunciosComTmx(saida, de, ate, projetoId) {
 function _campanhasComTmx(lista, tmx) {
   const porId = {}, usados = new Set();
   Object.values(tmx.porCampanha).forEach(x => { if (x.campanhaId) porId[String(x.campanhaId)] = x; });
+  let vis = null;
+  try { if (tmx.de && tmx.ate) vis = _visitasDoPeriodo(tmx.de, tmx.ate); } catch (e) { console.error('[TMX] visitas por campanha:', e.message); }
+  const visNome = new Set();
   lista.forEach(c => {
     let t = c.campanhaId ? porId[String(c.campanhaId)] : null;
     if (!t) { const n = _campNorm(c.nome); if (tmx.porCampanha[n] && !usados.has(n)) { t = tmx.porCampanha[n]; usados.add(n); } }
     const fat = t ? (Number(t.faturamento) || 0) : 0, n = t ? t.vendas : 0, g = Number(c.investimento) || 0;
     c.fatUtmify = c.faturamento; c.vendasUtmify = c.aprovadas;
     Object.assign(c, { faturamento: fat, aprovadas: n, vendas: n, lucro: fat - g, roas: g > 0 ? fat / g : 0, cpa: n > 0 ? g / n : null });
+    // visitas: pelo id; as que vieram só com o nome, na primeira cópia com esse nome (como a venda)
+    if (vis) {
+      const kn = 'n:' + _campNorm(c.nome);
+      let v = c.campanhaId ? (vis.camp['id:' + c.campanhaId] || 0) : 0;
+      if (vis.camp[kn] && !visNome.has(kn)) { v += vis.camp[kn]; visNome.add(kn); }
+      c.visitas = v;
+    }
   });
   return lista;
+}
+// ── Visitas da SCALROI por campanha e por anúncio (18/11/2026) ──
+// "Visualizações da página" é o número da Meta: sem o pixel dela abrindo na página, fica 0 mesmo com gente
+// chegando (as campanhas da PRF ficaram assim). Esta conta é do pixel da SCALROI: pessoas (fora a equipe) que
+// abriram a página no período vindas daquela campanha ou anúncio, pela UTM da visita. O id da Meta no fim da
+// UTM manda; sem id, vale o nome (o anúncio, pelo nome dentro da campanha dele). Guarda 1 min por período.
+const _visCache = new Map();
+function _visitasDoPeriodo(de, ate) {
+  const chave = de + '|' + ate, pronto = _visCache.get(chave);
+  if (pronto && Date.now() - pronto.em < 60000) return pronto.v;
+  if (!_pessoas()) return null;
+  const per = _periodoMs(de, ate), camp = {}, ad = {};
+  const junta = (m, k, vis) => { (m[k] || (m[k] = new Set())).add(vis); };
+  _q("SELECT visitante, camp, cont FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0 AND camp IS NOT NULL AND camp<>''").all(per.ini, per.fim).forEach(x => {
+    if (!x.visitante) return;
+    const cid = _idDaCampUtm(x.camp);
+    junta(camp, cid ? 'id:' + cid : 'n:' + _campNorm(x.camp), x.visitante);
+    const cont = String(x.cont || '').trim();
+    if (!cont) return;
+    const aid = _idDaCampUtm(cont);
+    if (aid) junta(ad, 'id:' + aid, x.visitante);
+    else if (cid) junta(ad, 'n:' + cid + '|' + _anuncioChave(_semId(_contSemId(cont))), x.visitante);
+  });
+  const conta = m => { const o = {}; Object.keys(m).forEach(k => { o[k] = m[k].size; }); return o; };
+  const v = { camp: conta(camp), ad: conta(ad) };
+  _visCache.set(chave, { em: Date.now(), v });
+  if (_visCache.size > 40) _visCache.delete(_visCache.keys().next().value);
+  return v;
 }
 function _panoramaComTmx(pano, de, ate, projetoId, filtros) {
   if (!pano || !pano.kpis || !_pessoas()) return pano;
@@ -7316,7 +7370,7 @@ function _tmxPorCampanha(db, de, ate, projeto, dir, opc) {
       c.vendas++; c.faturamento += Number(p.valor) || 0;
       c.pedidos.push(linha(p));
     });
-    return { projeto: nomeProj, total: peds.length, porCampanha, semCampanha };
+    return { projeto: nomeProj, total: peds.length, porCampanha, semCampanha, de, ate };
 }
 
 // ── API INTERNA DA UTMIFY (a mesma que o painel deles usa) ──

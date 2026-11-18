@@ -78,6 +78,12 @@ before(async () => {
   for (const v of [venda('V1', 'AD226.HK1 | 1000000000301'), venda('V2', 'AD231.3 | TESTE'), venda('V3', 'AD999 sumiu')]) {
     assert.strictEqual((await chamar('POST', aviso, { corpo: v })).status, 200);
   }
+  // visitas pelo pixel da SCALROI (18/11): duas com o id do anúncio no utm_content, uma só com o nome
+  const visita = (id, cont) => chamar('POST', '/api/funil/evento', { corpo: { id, funil: 'f1', etapa: 'e1', tipo: 'entrou', pg: 'site.com/a', sid: 's' + id,
+    aqui: { utm_source: 'FB', utm_campaign: CAMP_NOME + '|' + CAMP, utm_content: cont } } });
+  await visita('p1', 'AD226.HK1|1000000000301');
+  await visita('p2', 'AD226.HK1|1000000000302');
+  await visita('p3', 'AD231.3 | TESTE');
   await espera(400);
 });
 after(async () => {
@@ -122,4 +128,13 @@ test('a segunda consulta usa o que já veio da Utmify', async () => {
   assert.strictEqual(r.status, 200);
   assert.strictEqual(chamadas, antes);
   assert.strictEqual(r.dados.anuncios.find(x => x.id === '1000000000301').aprovadas, 1, 'a cópia guardada não acumula venda');
+  assert.strictEqual(r.dados.conjuntos.find(x => x.id === '1000000000201').visitas, 2, 'nem visita');
+});
+
+test('visitas da SCALROI: o anúncio pelo id e, sem id, pelo nome; o conjunto soma (18/11)', async () => {
+  const r = await chamar('GET', '/api/metricas/utmify/niveis?de=' + HOJE + '&ate=' + HOJE, { token: tmx });
+  const ad = id => r.dados.anuncios.find(x => x.id === id).visitas, cj = id => r.dados.conjuntos.find(x => x.id === id).visitas;
+  // o AD226.HK1 tem duas cópias com o mesmo nome: cada uma fica com a visita do id dela
+  assert.deepStrictEqual([ad('1000000000301'), ad('1000000000302'), ad('1000000000303')], [1, 1, 1]);
+  assert.deepStrictEqual([cj('1000000000201'), cj('1000000000202'), cj('1000000000203')], [2, 1, 0]);
 });

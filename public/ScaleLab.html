@@ -46287,6 +46287,8 @@ var CP_COLS = [
   { k:'margem',t:'Margem',         g:'Dinheiro', on:0, tit:'Lucro ÷ faturamento', s:function(c){ return c.faturamento ? c.lucro / c.faturamento : null; }, v:function(c){ return c.faturamento ? cpPct(c.lucro / c.faturamento, 0) : '<i>—</i>'; } },
   { k:'pendentes', t:'Pendentes',  g:'Vendas',   on:0, soma:1, tit:'Pix ou boleto gerado e ainda não pago', v:function(c){ return c.pendentes || 0; } },
   { k:'lpv',   t:'Visualizações da página', g:'Funil', on:0, soma:1, tit:'Quantos carregaram a página depois do clique (a Meta chama de LPV)', v:function(c){ return fnNum(c.lpv||0); } },
+  // 18/11/2026: o mesmo, contado pelo pixel da SCALROI. Gente aqui e 0 na coluna da Meta = o pixel da Meta não abre na página
+  { k:'visitas', t:'Visitas (SCALROI)', g:'Funil', on:0, soma:1, tit:'Pessoas que abriram a página vindas daqui, contadas pelo pixel da SCALROI (não depende do pixel da Meta). Se aqui tem gente e "Visualizações da página" está 0, o pixel da Meta não está abrindo na página.', v:function(c){ return c.visitas == null ? '<i>—</i>' : fnNum(c.visitas); } },
   { k:'conexao',t:'Taxa de conexão', g:'Funil',  on:0, tit:'Visualizações da página ÷ cliques: quantos cliques viram a página abrir', s:function(c){ return c.cliques ? c.lpv / c.cliques : null; }, v:function(c){ return c.cliques ? cpPct(c.lpv / c.cliques, 0) : '<i>—</i>'; } },
   { k:'cplpv', t:'Custo por visualização', g:'Funil', on:0, s:function(c){ return c.lpv ? c.investimento / c.lpv : null; }, v:function(c){ return c.lpv ? fmtAds(c.investimento / c.lpv) : '<i>—</i>'; } },
   { k:'ic',    t:'Inícios de checkout', g:'Funil', on:0, soma:1, tit:'Quantos abriram o checkout, pelo pixel da Meta', v:function(c){ return fnNum(c.ic||0); } },
@@ -46302,7 +46304,13 @@ var CP_COLS = [
   { k:'criada',t:'Criada em',      g:'Info',     on:0, s:function(c){ return c.criada ? Date.parse(c.criada) : null; }, v:function(c){ return c.criada ? String(c.criada).slice(8,10)+'/'+String(c.criada).slice(5,7) : '<i>—</i>'; } },
   { k:'dias',  t:'Dias no ar',     g:'Info',     on:0, s:function(c){ return c.criada ? Date.now() - Date.parse(c.criada) : null; }, v:function(c){ return c.criada ? Math.max(0, Math.floor((Date.now() - Date.parse(c.criada + 'T12:00:00')) / 86400000)) : '<i>—</i>'; } }
 ];
-(function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_cols') || 'null'); if(Array.isArray(s)) CP_COLS.forEach(function(c){ c.on = s.indexOf(c.k) >= 0 ? 1 : 0; }); }catch(e){} })();
+(function(){ try{ var s = JSON.parse(localStorage.getItem('ads_cp_cols') || 'null'); if(Array.isArray(s)) CP_COLS.forEach(function(c){ c.on = s.indexOf(c.k) >= 0 ? 1 : 0; });
+  // quem já olhava a coluna da Meta ganha a da SCALROI ao lado uma vez; se desligar, fica desligada
+  if(Array.isArray(s) && s.indexOf('lpv') >= 0 && s.indexOf('visitas') < 0 && !localStorage.getItem('ads_cp_visitas')){
+    CP_COLS.forEach(function(c){ if(c.k === 'visitas') c.on = 1; });
+    localStorage.setItem('ads_cp_cols', JSON.stringify(CP_COLS.filter(function(c){ return c.on; }).map(function(c){ return c.k; })));
+  }
+  localStorage.setItem('ads_cp_visitas', '1'); }catch(e){} })();
 // Ordem das colunas: com o lápis ligado, arrasta pelo título. Fica neste aparelho, como a escolha das colunas.
 // A tabela, o PDF e os cards leem CP_COLS, então basta mudar a ordem dela.
 var CP_COLS_PADRAO = CP_COLS.map(function(c){ return c.k; });
@@ -46350,7 +46358,7 @@ function cpAlternarCol(k){ CP_COLS.forEach(function(c){ if(c.k === k) c.on = c.o
 function cpPredef(q){
   var sets = { enxuta:['investimento','lucro','roas','aprovadas','cpa'], dinheiro:['orc','investimento','faturamento','lucro','roas','cpa','aprovadas'],
                anuncio:['investimento','aprovadas','impressoes','cliques','ctr','cpc','cpm','hook','hold','freq'],
-               funil:['investimento','aprovadas','cliques','lpv','conexao','ic','convpag','convck','cpa'],
+               funil:['investimento','aprovadas','cliques','lpv','visitas','conexao','ic','convpag','convck','cpa'],
                video:['investimento','aprovadas','impressoes','vv','v3','hook','v75','hold','ret','retbody','cta','ctr'], tudo:CP_COLS.map(function(c){ return c.k; }) };
   CP_COLS.forEach(function(c){ c.on = sets[q].indexOf(c.k) >= 0 ? 1 : 0; }); cpGuardarCols(); cpEst.colsAberto = true; cpPintar();
 }

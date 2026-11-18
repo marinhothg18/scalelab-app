@@ -88,6 +88,14 @@ before(async () => {
     transaction: { total_price: 83976, payment_method: 'pix', payment_status: 'paid' } }, extra);
   assert.strictEqual((await chamar('POST', aviso, { corpo: venda('M1', { utm_source: 'FB', utm_campaign: 'NOME ANTIGO CONCURSO | ' + C.cbo, utm_content: 'AD226.1 | TESTE' }) })).status, 200);
   assert.strictEqual((await chamar('POST', aviso, { corpo: venda('M2', {}) })).status, 200);
+  // visitas pelo pixel da SCALROI (antes de qualquer tela pedir: a conta fica guardada 1 min)
+  const visita = (id, camp, cont, extra) => chamar('POST', '/api/funil/evento', { corpo: Object.assign({ id, funil: 'f1', etapa: 'e1', tipo: 'entrou', pg: 'site.com/a', sid: 's' + id,
+    aqui: { utm_source: 'FB', utm_campaign: camp, utm_content: cont } }, extra || {}) });
+  await visita('v1', 'CBO 1-1-3 | CONCURSO | ' + C.cbo, 'AD231.3 | TESTE');
+  await visita('v1', 'CBO 1-1-3 | CONCURSO | ' + C.cbo, 'AD231.3 | TESTE');   // a mesma pessoa de novo: conta uma
+  await visita('v2', 'NOME ANTIGO | ' + C.cbo, 'AD226.1 | TESTE');
+  await visita('v3', 'CBO 1-1-3 | CONCURSO | ' + C.cbo, 'AD226.1 | TESTE', { interno: 1 });   // a equipe não conta
+  await visita('v4', 'ABO | RENDA', 'AD88.1');   // sem o id da campanha: entra pelo nome
   await espera(400);
 });
 after(async () => {
@@ -150,6 +158,17 @@ test('conjuntos e anúncios no formato da tabela', async () => {
   assert.deepStrictEqual([ad('103').aprovadas, ad('103').investimento, ad('103').status], [0, 10, 'ACTIVE']);
   const so = await chamar('GET', '/api/metricas/meta/niveis' + per() + '&projeto=RENDA', { token: dono });
   assert.deepStrictEqual([so.dados.conjuntos.map(x => x.id), so.dados.anuncios.map(x => x.id)], [['201'], ['202']]);
+});
+
+test('visitas da SCALROI por campanha, conjunto e anúncio (18/11)', async () => {
+  const p = await chamar('GET', '/api/metricas/meta/painel' + per(), { token: dono });
+  const c = id => p.dados.porCampanha.find(x => x.campanhaId === id);
+  // pelo id da campanha (mesmo com o nome antigo na UTM) e, sem id, pelo nome
+  assert.deepStrictEqual([c(C.cbo).visitas, c(C.abo).visitas, c(C.nova).visitas], [2, 1, 0]);
+  const n = await chamar('GET', '/api/metricas/meta/niveis' + per(), { token: dono });
+  const ad = id => n.dados.anuncios.find(x => x.id === id), cj = id => n.dados.conjuntos.find(x => x.id === id);
+  // o anúncio pelo nome dentro da campanha; o conjunto soma os anúncios; sem o id da campanha não chega no anúncio
+  assert.deepStrictEqual([ad('102').visitas, ad('103').visitas, cj('101').visitas, ad('202').visitas, cj('201').visitas], [1, 1, 2, 0, 0]);
 });
 
 test('pausar pela tela aparece na hora, sem esperar a próxima puxada', async () => {
