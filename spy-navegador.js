@@ -6,6 +6,9 @@
 // Regras: um navegador por vez, um anúncio por vez, pausa entre eles, e o navegador fecha sempre no fim.
 // No Railway (Linux) o Chromium vem do @sparticuz/chromium (descompacta no /tmp, nunca no /data); no Mac, o Chrome instalado.
 'use strict';
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 let chromium = null;
 try { chromium = require('playwright-core').chromium; } catch (e) { chromium = null; }
@@ -16,10 +19,19 @@ async function abrirNavegador() {
   if (!chromium) throw new Error('playwright-core não está instalado');
   if (process.env.SPY_CHROMIUM_PATH) return chromium.launch({ executablePath: process.env.SPY_CHROMIUM_PATH, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   if (process.platform === 'linux') {
+    // Chromium do sistema, se a imagem tiver (apt)
+    if (fs.existsSync('/usr/bin/chromium')) return chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
     const sp = require('@sparticuz/chromium');
+    const exe = await sp.executablePath();
+    // Fora da AWS o pacote não descompacta as bibliotecas de sistema que o Chromium usa (libnss3, libnspr4, libexpat):
+    // sem elas o navegador nem abre no Railway. Descompacta aqui (no /tmp) e aponta o LD_LIBRARY_PATH só pro navegador.
+    const lambdafs = require('@sparticuz/chromium/build/lambdafs').default;
+    const libs = await lambdafs.inflate(path.join(path.dirname(require.resolve('@sparticuz/chromium/package.json')), 'bin', 'al2023.tar.br'));
+    const env = Object.assign({}, process.env, { LD_LIBRARY_PATH: [path.join(libs, 'lib'), process.env.LD_LIBRARY_PATH].filter(Boolean).join(':'),
+      FONTCONFIG_PATH: process.env.FONTCONFIG_PATH || path.join(os.tmpdir(), 'fonts') });
     // --single-process é pro Lambda; o Playwright não funciona com ele
     const args = (sp.args || []).filter(a => a !== '--single-process' && a !== '--no-zygote').concat(['--disable-dev-shm-usage']);
-    return chromium.launch({ executablePath: await sp.executablePath(), args, headless: true });
+    return chromium.launch({ executablePath: exe, args, headless: true, env });
   }
   return chromium.launch({ channel: 'chrome', headless: true });
 }

@@ -487,9 +487,12 @@ function criarNucleo(o) {
               const cid = aplicarLink(adId, res);
               if (cid) { busca.achados++; enfileirar([cid]); }
             });
+            // no log, pra dar pra ver o que aconteceu no servidor
+            console.log('[SPY] busca de vídeos (' + bib + '): ' + busca.achados + ' de ' + l.length + ' achados' + (r.erro ? ' · ' + String(r.erro).split('\n')[0].slice(0, 300) : ''));
+            if (r.erro) console.error('[SPY] busca de vídeos, erro completo:', String(r.erro).slice(0, 2000));
             if (r.bloqueado) { busca.bloqueado_em = agora(); cfgGravar('busca_bloqueada_em', busca.bloqueado_em); busca.erro = r.erro; bibsNaBusca.clear(); }
-            else if (r.erro) busca.erro = r.erro;
-            else if (r.achados) { busca.bloqueado_em = 0; cfgGravar('busca_bloqueada_em', 0); }
+            else if (r.erro) busca.erro = String(r.erro).split('\n')[0].slice(0, 300);
+            else if (r.achados) { busca.bloqueado_em = 0; cfgGravar('busca_bloqueada_em', 0); busca.erro = ''; }
           }
         } catch (e) { busca.erro = e.message; console.error('[SPY] busca de vídeos:', e.message); }
         finally { busca.rodando = false; busca.fim_em = agora(); }
