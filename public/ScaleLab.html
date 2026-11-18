@@ -38412,11 +38412,14 @@ function abPintarConfig(el){
   // teste de checkout: não tem link de anúncio, domínio nem meta (é a compra)
   var ck = r.tipo === 'checkout';
   var d = ck ? null : abDados[r.slug], e = abEstado(r);
-  var vars = (d && d.variantes) || (r.destinos||[]).map(function(x,i){
-    return { id:x.id||('v'+i), nome:x.nome||('Variante '+(i+1)), url:x.url, peso:x.peso||1,
-             pessoas:0, metas:0, conversao:0 };
+  // a configuração vem sempre do que está gravado agora (r.destinos); os números de cada variante vêm do
+  // servidor. Antes ela vinha inteira dos números, buscados quando a tela abriu: mudar a % gravava, mas a
+  // caixa voltava a mostrar o peso antigo até atualizar a página.
+  var vars = (r.destinos||[]).map(function(x,i){
+    var id = x.id||('v'+i), st = d && d.variantes ? (d.variantes.filter(function(v){ return v.id === id; })[0] || d.variantes[i]) : null;
+    return Object.assign({ pessoas:0, metas:0, conversao:0 }, st || {}, { id:id, nome:x.nome||('Variante '+(i+1)), url:x.url, peso:abPesoVar(x), valor:x.valor });
   });
-  var pesoTot = vars.reduce(function(a,v){ return a+(Number(v.peso)||1); },0) || 1;
+  var pesoTot = vars.reduce(function(a,v){ return a+abPesoVar(v); },0) || 1;
   var pal = ['#16A34A','#0E9F35','#F59E0B','#E5484D','#22C55E','#F59E0B'];
   var temPreco = d && d.precoVaria;
   var temReceita = !!(d && (d.variantes||[]).some(function(v){ return (v.receita||0) > 0; }));
@@ -38432,12 +38435,12 @@ function abPintarConfig(el){
         // continua ali pra quem quiser mexer nele direto.
         '<span class="ab-var-rot">tráfego</span>'+
         '<input class="ab-var-pcin" type="number" min="0" max="100" step="1" '+
-          'value="'+Math.round((Number(v.peso)||1)/pesoTot*100)+'" '+
+          'value="'+Math.round(abPesoVar(v)/pesoTot*100)+'" '+
           'title="Quanto do tráfego vai pra esta variante. As outras se ajustam sozinhas." '+
           'onchange="abPorcento('+i+',this.value)">'+
         '<span class="ab-var-rot" style="margin-left:-4px">%</span>'+
         '<span class="ab-var-rot" title="Peso bruto do sorteio. A porcentagem sai daqui.">peso</span>'+
-        '<input class="ab-var-peso" type="number" min="0" value="'+(v.peso||1)+'" onchange="abPeso('+i+',this.value)">'+
+        '<input class="ab-var-peso" type="number" min="0" value="'+abPesoVar(v)+'" onchange="abPeso('+i+',this.value)">'+
         (ck ? '' : '<span class="ab-var-rot">R$</span>'+
         '<input class="ab-var-peso" type="number" min="0" step="0.01" value="'+(v.valor||'')+'" '+
           'placeholder="—" title="Preço desta variante. Só preencha se as variantes têm preços diferentes." '+
@@ -38479,8 +38482,8 @@ function abPintarConfig(el){
   var barra = vars.map(function(v,i){
     var pc = temSorteio && v.fatiaReal != null
       ? v.fatiaReal
-      : (Number(v.peso)||1)/pesoTot*100;
-    var alvo = v.fatiaAlvo != null ? v.fatiaAlvo : (Number(v.peso)||1)/pesoTot*100;
+      : abPesoVar(v)/pesoTot*100;
+    var alvo = abPesoVar(v)/pesoTot*100;   // a divisão configurada agora (a do servidor pode ser de antes da mudança)
     var tit = temSorteio
       ? v.nome+': '+pc.toFixed(1)+'% do sorteio real (alvo '+alvo.toFixed(0)+'%)'
       : v.nome+': '+Math.round(pc)+'% configurado';
@@ -38690,6 +38693,8 @@ function abCampo(campo, valor){
 function abNomeVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].nome=(v||'').trim(); fnGravarRed(r); }
 function abUrlVar(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].url=(v||'').trim(); fnGravarRed(r); fnPintarRed(); }
 function abPeso(i, v){ var r=fnRedAtual(); if(!r) return; r.destinos[i].peso=Math.max(0,+v||0); fnGravarRed(r); fnPintarRed(); }
+// o mesmo peso que o sorteio usa: 0 é 0 (não recebe ninguém); só sem peso vale 1
+function abPesoVar(x){ var n = Number(x && x.peso); return (x && x.peso != null && x.peso !== '' && isFinite(n)) ? Math.max(0, n) : 1; }
 
 // Digitar a porcentagem de UMA variante e dizer implicitamente o que sobra pras
 // outras. Elas se ajustam mantendo a proporcao que ja tinham entre si — mexer em
@@ -42526,7 +42531,7 @@ function abControleDivisao(r){
   var ds = r.destinos || [];
   if(r.vencedora) return '';
   if(ds.length !== 2) return ds.length > 2 ? '<div class="v2-cx ab-div-ctl"><h3>Mudar a divisão</h3><div class="fx-sub">Com '+ds.length+' variantes, ajuste a porcentagem de cada uma em ⚙ Configurar teste.</div></div>' : '';
-  var p0 = Number(ds[0].peso) || 1, p1 = Number(ds[1].peso) || 1, pa = Math.round(p0 / (p0 + p1) * 100);
+  var p0 = abPesoVar(ds[0]), p1 = abPesoVar(ds[1]), pa = (p0 + p1) > 0 ? Math.round(p0 / (p0 + p1) * 100) : 50;
   var pre = [50, 70, 80, 90].map(function(x){
     return '<button class="fn-btn g sm'+(pa === x ? ' on' : '')+'" onclick="abDividir('+x+')">'+x+'/'+(100-x)+'</button>';
   }).join('');
@@ -42545,8 +42550,8 @@ function abDivPrevia(v){
 async function abDividir(pa){
   var r = fnRedAtual(); if(!r || !r.destinos || r.destinos.length !== 2) return;
   pa = Math.max(5, Math.min(95, Math.round(+pa)));
-  var p0 = Number(r.destinos[0].peso) || 1, p1 = Number(r.destinos[1].peso) || 1;
-  if(Math.round(p0 / (p0 + p1) * 100) === pa){ return; }
+  var p0 = abPesoVar(r.destinos[0]), p1 = abPesoVar(r.destinos[1]);
+  if((p0 + p1) > 0 && Math.round(p0 / (p0 + p1) * 100) === pa){ return; }
   if(!(await tmxConfirmar('Mudar a divisão pra A '+pa+'% · B '+(100-pa)+'%?\n\nQuem já caiu numa variante continua nela. A nova divisão vale pra quem chegar a partir de agora.'))){ fnPintarRed(); return; }
   r.destinos[0].peso = pa; r.destinos[1].peso = 100 - pa;
   fnGravarRed(r); delete abDados[r.slug]; delete abDados2[r.slug]; fnPintarRed();

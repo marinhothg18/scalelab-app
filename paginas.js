@@ -1249,7 +1249,7 @@ module.exports = function montarPaginas(ctx) {
     _testesTodos().forEach(r => {
       const h = r.hospedado; if (!h || h.dominio !== d.id || r.tipo === 'checkout') return;
       const caminho = String(h.caminho || '').toLowerCase().replace(/[^a-z0-9-]/g, ''); if (!caminho) return;
-      const variantes = (r.destinos || []).map((x, i) => ({ id: String(x.id || ('v' + i)), pagina: _paginaDaUrl(x.url, d.dominio), peso: Number(x.peso) || 1 })).filter(v => /^[a-z0-9-]+$/.test(v.pagina));
+      const variantes = (r.destinos || []).map((x, i) => ({ id: String(x.id || ('v' + i)), pagina: _paginaDaUrl(x.url, d.dominio), peso: (x.peso != null && x.peso !== '' && isFinite(Number(x.peso))) ? Math.max(0, Number(x.peso)) : 1 })).filter(v => /^[a-z0-9-]+$/.test(v.pagina));
       if (variantes.length) testes[caminho] = { id: String(r.slug), ativo: r.ativo !== false, vencedora: r.vencedora ? String(r.vencedora) : null, variantes };
     });
     return { testes, head: d.head || '', corpo: d.corpo || '', icone: !!d.icone };

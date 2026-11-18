@@ -20680,7 +20680,7 @@ function _funilFoto(f, db) {
     etapas: (f.etapas || []).map(e => ({ id: e.id, nome: e.nome || '', tipo: e.tipo || '', url: e.url || '' })),
     fontes: (f.fontes || []).map(o => ({ id: o.id, nome: o.nome || '', campanha: o.utmCampanha || '', regra: o.utmRegra || '' })),
     ligacoes: (f.ligacoes || []).map(l => l.join('>')).sort(),
-    testes: redirs.map(r => ({ slug: r.slug, nome: r.nome || r.slug, divisao: (r.destinos || []).map(d => ({ nome: d.nome || d.url || '', peso: Number(d.peso) || 1 })) }))
+    testes: redirs.map(r => ({ slug: r.slug, nome: r.nome || r.slug, divisao: (r.destinos || []).map(d => ({ nome: d.nome || d.url || '', peso: _pesoVar(d) })) }))
   };
 }
 function _funilDiff(a, b) {
@@ -21749,7 +21749,7 @@ app.get('/api/ab/stats', authUsuario, (req, res) => {
     (r.destinos || []).forEach((d, i) => {
       porVar[String(d.id || ('v' + i))] = {
         id: String(d.id || ('v' + i)), nome: d.nome || ('Variante ' + (i + 1)),
-        url: d.url || '', peso: Number(d.peso) || 1, valor: Number(d.valor) || 0,
+        url: d.url || '', peso: _pesoVar(d), valor: Number(d.valor) || 0,
         sorteios: 0, pessoas: 0, metas: 0
       };
     });
@@ -21943,7 +21943,7 @@ function _abV2(slug, de, ate, op) {
   per.de = _diaBR(per.ini); per.ate = _diaBR(per.fim);
   const meta = r.meta || 'compra';
   const vars = (r.destinos || []).map((d, i) => ({ id: String(d.id || ('v' + i)), nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '',
-    peso: Number(d.peso) || 1, sorteios: 0, pessoas: 0, pitch: 0, checkout: 0, vendas: 0, receita: 0, metas: 0, receitas: [], porDia: {} }));
+    peso: _pesoVar(d), sorteios: 0, pessoas: 0, pitch: 0, checkout: 0, vendas: 0, receita: 0, metas: 0, receitas: [], porDia: {} }));
   const porId = {}; vars.forEach(v => { porId[v.id] = v; });
   // teste de checkout: o sorteio é no pixel, na própria página, e a base é
   // quem abriu o checkout — a página é a mesma pras duas versões
@@ -23090,10 +23090,11 @@ const PIXEL_JS = `(function(w,d){
     // sorteio pelo id da pessoa: o mesmo id cai sempre no mesmo lado
     var h = 0, str = id + '|' + t.t;
     for(var j=0;j<str.length;j++) h = (h * 31 + str.charCodeAt(j)) >>> 0;
-    var tot = 0; t.d.forEach(function(x){ tot += (x.p || 1); });
+    var pp = function(x){ return x.p == null ? 1 : x.p; }, tot = 0; t.d.forEach(function(x){ tot += pp(x); });
+    if(!(tot > 0)){ pp = function(){ return 1; }; tot = t.d.length; }
     var r = (h % 10000) / 10000 * tot;
     v = t.d[0].id;
-    for(var n=0;n<t.d.length;n++){ r -= (t.d[n].p || 1); if(r < 0){ v = t.d[n].id; break; } }
+    for(var n=0;n<t.d.length;n++){ if(pp(t.d[n]) > 0 && r < pp(t.d[n])){ v = t.d[n].id; break; } r -= pp(t.d[n]); }
     try{ localStorage.setItem(k, v); }catch(e){}
     return v;
   }
@@ -23343,6 +23344,17 @@ app.get('/px.js', (req, res) => {
 // (sempre o mesmo pra ela). Botão sem a marca não é tocado. Se o pixel não
 // carregar, o botão vai pro checkout A normalmente — ninguém fica sem comprar.
 // Público de propósito (roda na página do funil): só devolve links de checkout.
+// Peso de cada variante do teste A/B (18/11/2026): 0 é 0, a variante não recebe ninguém; só sem peso vale 1.
+// Antes era "Number(peso) || 1": o 0 virava 1, e "100% pra uma variante" seguia dividindo meio a meio.
+function _pesoVar(d) { const n = Number(d && d.peso); return (d && d.peso != null && d.peso !== '' && isFinite(n)) ? Math.max(0, n) : 1; }
+// sorteia pelo peso; com todos em 0 divide igual (senão o link não teria pra onde mandar)
+function _sortearVar(lista) {
+  const ps = lista.map(_pesoVar), total = ps.reduce((s, p) => s + p, 0);
+  if (!(total > 0)) return lista[Math.floor(Math.random() * lista.length)];
+  let x = Math.random() * total;
+  for (let i = 0; i < lista.length; i++) { if (ps[i] > 0 && x < ps[i]) return lista[i]; x -= ps[i]; }
+  return lista[ps.findIndex(p => p > 0)];
+}
 let _ckCache = { em: 0, porSlug: {} };
 function _ckTestesCache() {
   if (_ckCache.em && Date.now() - _ckCache.em < 60000) return _ckCache;
@@ -23351,7 +23363,7 @@ function _ckTestesCache() {
   (Array.isArray(db.store[KEY_REDIRS]) ? db.store[KEY_REDIRS] : [])
     .filter(r => r && r.tipo === 'checkout' && r.ativo !== false && Array.isArray(r.destinos))
     .forEach(r => {
-      const d = r.destinos.map((x, i) => ({ id: String(x.id || ('v' + i)), u: String(x.url || '').trim(), p: Number(x.peso) || 1 }))
+      const d = r.destinos.map((x, i) => ({ id: String(x.id || ('v' + i)), u: String(x.url || '').trim(), p: _pesoVar(x) }))
         .filter(x => /^https?:\/\//i.test(x.u));
       if (!d.length) return;
       const t = String(r.slug || '').toLowerCase();
@@ -23400,12 +23412,7 @@ app.get('/r/:slug', (req, res) => {
     }
     const repetido = !!escolhido;
 
-    if (!escolhido) {
-      const total = r.destinos.reduce((s, d) => s + (Number(d.peso) || 1), 0);
-      let x = Math.random() * total;
-      escolhido = r.destinos[0];
-      for (const d of r.destinos) { x -= (Number(d.peso) || 1); if (x <= 0) { escolhido = d; break; } }
-    }
+    if (!escolhido) escolhido = _sortearVar(r.destinos);
     // Cada destino precisa de um id estavel: sem ele nao da pra dizer quem levou
     // qual depois. Slug de link antigo nao tem, entao cai na posicao.
     const vid = String(escolhido.id || ('v' + r.destinos.indexOf(escolhido)));
