@@ -241,14 +241,17 @@ function lerAnuncioMcp(a) {
   const m = a.midia || {};
   const urlVideo = String(m.url_video || a.url_video || ''), urlImg = String(m.url_imagem || a.url_imagem || ''), urlCapa = String(m.url_capa || a.url_capa || '');
   let tipo = String(m.tipo || '').toLowerCase();
-  if (!['video', 'imagem', 'carrossel', 'texto'].includes(tipo)) tipo = urlVideo ? 'video' : urlImg ? 'imagem' : 'texto';
+  // sem o link (o Claude no Chrome não consegue repassar o do fbcdn) o vídeo chega depois, pela página de envio
+  if (!['video', 'imagem', 'carrossel', 'texto'].includes(tipo)) tipo = urlVideo ? 'video' : urlImg ? 'imagem' : 'video';
   if (tipo === 'video' && !urlVideo && urlImg) tipo = 'imagem';
   const midia = tipo === 'video' ? urlVideo : (urlImg || urlVideo);
   const copy = String(a.copy || a.texto || '').slice(0, 8000), titulo = String(a.titulo || '').slice(0, 500);
   const link = String(a.link_destino || a.link || '').slice(0, 2000), legenda = String(a.legenda || '').slice(0, 300);
   const pageId = String(a.page_id || '').replace(/\D/g, '');
+  // sem o arquivo, cada anúncio é um criativo até o vídeo chegar: a mesma copy roda com vídeos diferentes, então juntar
+  // pela copy erraria. Quando o vídeo chega, a impressão digital junta os iguais.
   const chaveMidia = midia ? (tipo === 'video' ? 'v:' : tipo === 'carrossel' ? 'c:' : 'i:') + (nomeArquivo(midia) || sha256(midia).slice(0, 24))
-    : 't:' + sha256(copy + '|' + titulo + '|' + pageId).slice(0, 24);
+    : tipo === 'texto' ? 't:' + sha256(copy + '|' + titulo + '|' + pageId).slice(0, 24) : 'a:' + String(a.ad_archive_id || a.id || '').replace(/\D/g, '');
   return { ad_archive_id: String(a.ad_archive_id || a.id || '').replace(/\D/g, ''), page_id: pageId, page_name: String(a.page_name || '').slice(0, 200),
     copy, titulo, cta_tipo: String(a.cta_tipo || '').slice(0, 60), cta_texto: String(a.cta || a.cta_texto || '').slice(0, 120), link_destino: link,
     dominio: hostDe(link) || (SpyLink.ehDominio(legenda) ? SpyLink.limparDominio(legenda) : ''), legenda, inicio: lerData(a.inicio_veiculacao),
@@ -316,7 +319,12 @@ function criarNucleo(o) {
   db.exec("UPDATE spy_criativo SET midia_status='pendente' WHERE midia_status='baixando'; UPDATE spy_criativo SET transcricao_status=NULL WHERE transcricao_status='rodando'");
   const Q = {};
   const q = sql => Q[sql] || (Q[sql] = db.prepare(sql));
-  const tx = fn => { db.exec('BEGIN'); try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; } };
+  let emTx = 0;
+  const tx = fn => {
+    if (emTx) return fn();
+    emTx++; db.exec('BEGIN');
+    try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { try { db.exec('ROLLBACK'); } catch (e2) {} throw e; } finally { emTx--; }
+  };
   const cfgLer = k => { const r = q('SELECT v FROM spy_cfg WHERE k=?').get(k); return r ? r.v : ''; };
   const cfgGravar = (k, v) => q('INSERT INTO spy_cfg(k, v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').run(k, String(v));
   const erroHttp = (msg, http) => { const e = new Error(msg); e.http = http || 400; return e; };
@@ -421,6 +429,105 @@ function criarNucleo(o) {
     if (f.status) l = l.filter(b => b.status === f.status);
     return l;
   }
+  // anúncios no ar desta biblioteca cujo criativo ainda não tem vídeo (o link nunca veio, ou venceu)
+  function midiasFaltando(bibId) {
+    return q(`SELECT a.ad_archive_id FROM spy_anuncio_bib ab JOIN spy_anuncio a ON a.ad_archive_id=ab.ad_archive_id JOIN spy_criativo c ON c.id=a.criativo_id
+      WHERE ab.biblioteca_id=? AND ab.ativo=1 AND (c.midia_status='sem_link' OR (c.midia_status='erro' AND c.midia_erro LIKE '%venceu%'))`).all(bibId).map(r => r.ad_archive_id);
+  }
+  // ── Busca do vídeo pelo id do anúncio (spy-navegador.js): um anúncio por criativo sem vídeo, um de cada vez ──
+  const busca = { rodando: false, bib: null, total: 0, feitos: 0, achados: 0, erro: '', bloqueado_em: Number(cfgLer('busca_bloqueada_em')) || 0, fim_em: 0 };
+  const bibsNaBusca = new Set();
+  function paraBuscar(bibId, forcar) {
+    return q(`SELECT c.id cid, (SELECT a.ad_archive_id FROM spy_anuncio a JOIN spy_anuncio_bib ab ON ab.ad_archive_id=a.ad_archive_id
+        WHERE a.criativo_id=c.id AND ab.biblioteca_id=? AND ab.ativo=1 ORDER BY a.visto_ultima_vez_em DESC, a.ad_archive_id LIMIT 1) ad
+      FROM spy_criativo c WHERE c.mesclado_em IS NULL AND (c.midia_status='sem_link' OR (c.midia_status='erro' AND c.midia_erro LIKE '%venceu%'))
+      AND (? OR c.midia_tentativas < 3)`).all(bibId, forcar ? 1 : 0).filter(r => r.ad);
+  }
+  // o link chegou: grava no anúncio, junta pelo mesmo arquivo e manda baixar
+  function aplicarLink(adId, r) {
+    const a = q('SELECT * FROM spy_anuncio WHERE ad_archive_id=?').get(String(adId));
+    if (!a) return null;
+    let cid = resolver(a.criativo_id);
+    const url = r && r.video && hostPermitido(r.video) ? r.video : (r && r.imagem && hostPermitido(r.imagem) ? r.imagem : '');
+    if (!url) {
+      q("UPDATE spy_criativo SET midia_tentativas=midia_tentativas+1, midia_erro=? WHERE id=? AND midia_status IN ('sem_link','erro')").run(String((r && r.erro) || 'o vídeo não apareceu').slice(0, 200), cid);
+      return null;
+    }
+    const tipo = url === r.video ? 'video' : 'imagem';
+    return tx(() => {
+      q("UPDATE spy_anuncio SET midia_url=?, thumb_url=COALESCE(NULLIF(?,''), thumb_url), tipo=? WHERE ad_archive_id=?").run(url, r.capa && hostPermitido(r.capa) ? r.capa : (tipo === 'imagem' ? url : ''), tipo, a.ad_archive_id);
+      const chave = (tipo === 'video' ? 'v:' : 'i:') + (nomeArquivo(url) || sha256(url).slice(0, 24));
+      const ja = q('SELECT criativo_id FROM spy_chave WHERE chave=?').get(chave);
+      if (ja && resolver(ja.criativo_id) !== cid) { const outro = resolver(ja.criativo_id); mesclar(cid, outro, agora()); cid = outro; }
+      else q('INSERT OR IGNORE INTO spy_chave (chave, criativo_id) VALUES (?,?)').run(chave, cid);
+      const c = q('SELECT midia_status FROM spy_criativo WHERE id=?').get(cid);
+      if (c && c.midia_status !== 'ok') q("UPDATE spy_criativo SET tipo=?, midia_status='pendente', midia_erro=NULL, midia_tentativas=0 WHERE id=?").run(tipo, cid);
+      return c && c.midia_status === 'ok' ? null : cid;
+    });
+  }
+  // dispara a busca em segundo plano (depois de cada coleta e pelo botão "Baixar vídeos"); uma de cada vez
+  function buscarVideos(bibId, forcar) {
+    if (!o.buscador || !o.buscador.disponivel()) return { ok: false, motivo: 'O navegador do servidor não está instalado.' };
+    if (forcar) q(`UPDATE spy_criativo SET midia_tentativas=0 WHERE midia_status IN ('sem_link','erro') AND id IN (SELECT a.criativo_id FROM spy_anuncio a
+      JOIN spy_anuncio_bib ab ON ab.ad_archive_id=a.ad_archive_id WHERE ab.biblioteca_id=?)`).run(bibId);
+    const aBuscar = paraBuscar(bibId, forcar).length;
+    bibsNaBusca.add(bibId);
+    if (!busca.rodando) {
+      busca.rodando = true;
+      (async () => {
+        try {
+          while (bibsNaBusca.size) {
+            const bib = bibsNaBusca.values().next().value;
+            bibsNaBusca.delete(bib);
+            const l = paraBuscar(bib, forcar).slice(0, o.limiteBusca || 150);
+            Object.assign(busca, { bib, total: l.length, feitos: 0, achados: 0, erro: '' });
+            if (!l.length) continue;
+            const r = await o.buscador.buscar(l.map(x => x.ad), async (adId, res) => {
+              busca.feitos++;
+              const cid = aplicarLink(adId, res);
+              if (cid) { busca.achados++; enfileirar([cid]); }
+            });
+            if (r.bloqueado) { busca.bloqueado_em = agora(); cfgGravar('busca_bloqueada_em', busca.bloqueado_em); busca.erro = r.erro; bibsNaBusca.clear(); }
+            else if (r.erro) busca.erro = r.erro;
+            else if (r.achados) { busca.bloqueado_em = 0; cfgGravar('busca_bloqueada_em', 0); }
+          }
+        } catch (e) { busca.erro = e.message; console.error('[SPY] busca de vídeos:', e.message); }
+        finally { busca.rodando = false; busca.fim_em = agora(); }
+      })();
+    }
+    return { ok: true, a_buscar: aBuscar };
+  }
+  const estadoBusca = () => Object.assign({ disponivel: !!(o.buscador && o.buscador.disponivel()) }, busca);
+  // Coleta registrada antes de 18/11 sem o link juntava os anúncios pela copy (a mesma copy roda com vídeos diferentes).
+  // Separa uma vez: o 1º anúncio fica no criativo, cada um dos outros ganha o seu, com as mesmas etiquetas e família.
+  function dividirPorCopy() {
+    if (cfgLer('dividido_por_copy_v1')) return 0;
+    let n = 0;
+    tx(() => {
+      for (const c of q("SELECT * FROM spy_criativo WHERE mesclado_em IS NULL AND midia_status='sem_midia' AND tipo='texto'").all()) {
+        const ads = q('SELECT ad_archive_id, midia_url FROM spy_anuncio WHERE criativo_id=? ORDER BY inicio_veiculacao, ad_archive_id').all(c.id);
+        if (!ads.length || ads.some(a => a.midia_url)) continue;
+        const ets = q("SELECT * FROM spy_etiqueta WHERE alvo_tipo='spy_criativo' AND alvo_id=?").all(c.id);
+        q("UPDATE spy_criativo SET tipo='video', midia_status='sem_link' WHERE id=?").run(c.id);
+        q('INSERT OR IGNORE INTO spy_chave (chave, criativo_id) VALUES (?,?)').run('a:' + ads[0].ad_archive_id, c.id);
+        for (const a of ads.slice(1)) {
+          const id = novoId('cr_'), t = agora();
+          q(`INSERT INTO spy_criativo (id, tipo, midia_status, familia_id, partes, partes_origem, nao_modelar, nao_modelar_motivo, nao_modelar_origem, nao_modelar_por,
+            primeiro_visto_em, ultimo_visto_em, criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, 'video', 'sem_link', c.familia_id, c.partes, c.partes_origem,
+            c.nao_modelar, c.nao_modelar_motivo, c.nao_modelar_origem, c.nao_modelar_por, c.primeiro_visto_em, c.ultimo_visto_em, t, t);
+          for (const e of ets) q('INSERT OR IGNORE INTO spy_etiqueta (id, empresa, alvo_tipo, alvo_id, campo, valor, parte, origem, confianca, por, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+            .run(novoId('et_'), e.empresa, e.alvo_tipo, id, e.campo, e.valor, e.parte, e.origem, e.confianca, e.por, e.atualizado_em);
+          q('UPDATE spy_anuncio SET criativo_id=? WHERE ad_archive_id=?').run(id, a.ad_archive_id);
+          q('INSERT OR IGNORE INTO spy_chave (chave, criativo_id) VALUES (?,?)').run('a:' + a.ad_archive_id, id);
+          recalcular(id, agora());
+          n++;
+        }
+        recalcular(c.id, agora());
+      }
+    });
+    cfgGravar('dividido_por_copy_v1', new Date(agora()).toISOString());
+    return n;
+  }
   function adsConhecidos(bibId) { return q('SELECT ad_archive_id FROM spy_anuncio_bib WHERE biblioteca_id=? AND ativo=1').all(bibId).map(r => r.ad_archive_id); }
 
   // ── Criativos ──
@@ -432,7 +539,7 @@ function criarNucleo(o) {
     if (!id) {
       id = novoId('cr_');
       q(`INSERT INTO spy_criativo (id, tipo, midia_status, primeiro_visto_em, ultimo_visto_em, criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?)`)
-        .run(id, ad.tipo, ad.midia ? 'pendente' : 'sem_midia', agoraMs, agoraMs, agoraMs, agoraMs);
+        .run(id, ad.tipo, ad.midia ? 'pendente' : ad.tipo === 'texto' ? 'sem_midia' : 'sem_link', agoraMs, agoraMs, agoraMs, agoraMs);
     }
     for (const c of chaves) q('INSERT OR IGNORE INTO spy_chave (chave, criativo_id) VALUES (?,?)').run(c, id);
     return id;
@@ -674,11 +781,11 @@ function criarNucleo(o) {
       if (querTranscricao && !temTranscricao() && c.transcricao_status !== 'rodando') await transcrever(cid);
       return cid;
     }
-    if (c.midia_status === 'sem_midia') return cid;
+    if (c.midia_status === 'sem_midia' || c.midia_status === 'sem_link') return cid;   // sem link: quem busca é o navegador (buscarVideos)
     if (!midia) { q("UPDATE spy_criativo SET midia_status='aguardando', midia_erro=? WHERE id=?").run('O armazenamento dos vídeos (Cloudflare R2) não está ligado neste servidor.', cid); return cid; }
     if (!FFMPEG) { q("UPDATE spy_criativo SET midia_status='erro', midia_erro=? WHERE id=?").run('ffmpeg não está instalado neste servidor', cid); return cid; }
     const ad = q("SELECT * FROM spy_anuncio WHERE criativo_id=? AND midia_url<>'' ORDER BY visto_ultima_vez_em DESC LIMIT 1").get(cid);
-    if (!ad) { q("UPDATE spy_criativo SET midia_status='sem_midia' WHERE id=?").run(cid); return cid; }
+    if (!ad) { q('UPDATE spy_criativo SET midia_status=? WHERE id=?').run(c.tipo === 'texto' ? 'sem_midia' : 'sem_link', cid); return cid; }
     const ext = c.tipo === 'video' ? 'mp4' : (/\.png(\?|$)/i.test(ad.midia_url) ? 'png' : /\.webp(\?|$)/i.test(ad.midia_url) ? 'webp' : 'jpg');
     const tmp = path.join(tmpDir, cid + '.' + ext), tmpThumb = path.join(tmpDir, cid + '-t.jpg');
     q("UPDATE spy_criativo SET midia_status='baixando', midia_tentativas=midia_tentativas+1 WHERE id=?").run(cid);
@@ -955,10 +1062,17 @@ function criarNucleo(o) {
       transcritos: criativos.filter(c => c.transcricao_status === 'ok').length,
       aguardando_transcricao: criativos.filter(c => c.transcricao_status === 'aguardando').length,
       pendentes: criativos.filter(c => ['pendente', 'baixando'].includes(c.midia_status) || c.transcricao_status === 'rodando' || (c.midia_status === 'ok' && c.tipo === 'video' && !c.transcricao_status)).length,
-      erros: criativos.filter(c => c.midia_status === 'erro').length, aguardando_armazenamento: criativos.filter(c => c.midia_status === 'aguardando').length };
+      erros: criativos.filter(c => c.midia_status === 'erro').length, aguardando_armazenamento: criativos.filter(c => c.midia_status === 'aguardando').length,
+      aguardando_link: criativos.filter(c => c.midia_status === 'sem_link' && c.anuncios_ativos > 0).length };
+    // aba Anúncios: todos os anúncios da biblioteca, com o criativo de cada um
+    const anuncios = q(`SELECT a.ad_archive_id id, a.page_name pagina, substr(a.copy,1,160) copy, a.inicio_veiculacao ini, a.fim_veiculacao fim, ab.ativo, a.quantidade, a.criativo_id cid
+      FROM spy_anuncio_bib ab JOIN spy_anuncio a ON a.ad_archive_id=ab.ad_archive_id WHERE ab.biblioteca_id=? ORDER BY ab.ativo DESC, a.inicio_veiculacao DESC, a.ad_archive_id LIMIT 3000`).all(bibId)
+      .map(x => ({ id: x.id, pagina: x.pagina, copy: x.copy, inicio: x.ini ? new Date(x.ini * 1000).toISOString().slice(0, 10) : null, fim: x.fim ? new Date(x.fim * 1000).toISOString().slice(0, 10) : null,
+        ativo: !!x.ativo, quantidade: x.quantidade, criativo_id: resolver(x.cid) }));
     return { biblioteca: bibPub(b), kpis: { ads_ativos: b.ads_ativos || 0, criativos: ativos.length, familias: fam.size,
       mais_antigo_dias: ativos.length ? Math.max.apply(null, ativos.map(c => c.dias_no_ar || 0)) : null },
-      serie: serieDe(bibId, 31), dominios: dom, paginas, funil_id: funil ? funil.id : null, processamento: proc, criativos };
+      serie: serieDe(bibId, 31), dominios: dom, paginas, funil_id: funil ? funil.id : null, processamento: proc, criativos, anuncios,
+      busca: Object.assign(estadoBusca(), { desta: busca.bib === bibId }) };
   }
   function detalheCriativo(cid0) {
     const agoraMs = agora(), cid = resolver(cid0);
@@ -1017,7 +1131,7 @@ function criarNucleo(o) {
       AND e.parte=(SELECT CASE WHEN EXISTS(SELECT 1 FROM spy_etiqueta x WHERE x.empresa=e.empresa AND x.alvo_tipo=e.alvo_tipo AND x.alvo_id=e.alvo_id AND x.campo=e.campo AND x.parte='todo') THEN 'todo' ELSE e.parte END)`).all(EMP, dim);
     for (const r of rows) {
       const cid = resolver(r.cid), c = q('SELECT * FROM spy_criativo WHERE id=?').get(cid);
-      if (!c) continue;
+      if (!c || !c.anuncios_total) continue;
       const bibs = q(`SELECT DISTINCT b.id, b.nicho_id FROM spy_anuncio_bib ab JOIN spy_anuncio a ON a.ad_archive_id=ab.ad_archive_id JOIN spy_biblioteca b ON b.id=ab.biblioteca_id
         WHERE a.criativo_id=? AND b.empresa=?`).all(cid, EMP);
       if (f.nicho_id && !bibs.some(b => b.nicho_id === f.nicho_id)) continue;
@@ -1039,7 +1153,7 @@ function criarNucleo(o) {
 
   return { db, q, EMP, cfgLer, cfgGravar, nichos, salvarNicho, regras, salvarRegras, bibRow, bibPub, criarBiblioteca, mudarBiblioteca, listarBibliotecas, adsConhecidos,
     registrarColeta, enfileirar, processar, pendentesDaBiblioteca, salvarDoClaude, salvarDaTela, detalheBiblioteca, detalheCriativo, registrarFunil, funis,
-    registrarRodada, rodadas, buscar, mercado, kpis, resolver, statusDe, fila: () => ({ fila: fila.length, rodando }), agora };
+    registrarRodada, rodadas, buscar, mercado, kpis, resolver, statusDe, midiasFaltando, buscarVideos, estadoBusca, dividirPorCopy, aplicarLink, fila: () => ({ fila: fila.length, rodando }), agora };
 }
 
 // ══════════════════════════════════════════════
@@ -1109,7 +1223,7 @@ const FERRAMENTAS = [
       multiplicador_escala: { type: 'number', description: 'Avisa quando os anúncios de um criativo multiplicam por isso em 7 dias' },
       horario_rotina: { type: 'string', description: 'HH:MM, horário de Fortaleza' } } } },
   { name: 'spy_registrar_coleta', soTmx: true,
-    description: 'Spy: grava o que você leu na Biblioteca de Anúncios de UMA biblioteca, num dia. O servidor grava ou atualiza os anúncios, marca como fora do ar os que sumiram (só se a lista estiver completa), tira a foto do dia e devolve o resumo (novos, parados, escalando). Em seguida baixa os vídeos pelos links (eles expiram, mande logo), junta os vídeos iguais num criativo só e transcreve. Mande em anuncios o anúncio inteiro dos ids novos (os já conhecidos podem ir só em ativos_ids). Idempotente: repetir no mesmo dia refaz a foto do dia. Devolve JSON.',
+    description: 'Spy: grava o que você leu na Biblioteca de Anúncios de UMA biblioteca, num dia. O servidor grava ou atualiza os anúncios, marca como fora do ar os que sumiram (só se a lista estiver completa), tira a foto do dia e devolve o resumo (novos, parados, escalando). Mande em anuncios o anúncio inteiro dos ids novos (os já conhecidos podem ir só em ativos_ids). Não precisa do link do vídeo: o servidor busca sozinho, pelo id de cada anúncio, baixa, junta os vídeos iguais num criativo só e transcreve. Idempotente: repetir no mesmo dia refaz a foto do dia. Devolve JSON.',
     inputSchema: { type: 'object', properties: {
       biblioteca_id: { type: 'string' },
       dia: { type: 'string', description: 'AAAA-MM-DD, padrão hoje (Brasília)' },
@@ -1177,14 +1291,18 @@ module.exports = function montarSpy(d) {
   const usaR2 = !!(hosp && hosp.ligada && hosp.ligada() && hosp.midiaGuardar) && process.env.SPY_MIDIA !== 'disco';
   // nunca no volume do Railway: sem o R2 em produção, o vídeo espera o armazenamento ser ligado
   const midia = usaR2 ? midiaR2(hosp) : (fs.existsSync('/data') ? null : midiaDisco(path.join(DATA_DIR, 'spy_midia')));
-  const N = criarNucleo({ dir: DATA_DIR, agora, midia, empresa: 'tmx',
+  // o navegador que busca o vídeo pelo id do anúncio (SPY_BUSCADOR=desligado tira; nos testes entra um de mentira)
+  const buscador = d.buscador !== undefined ? d.buscador : (process.env.SPY_BUSCADOR === 'desligado' ? null : require('./spy-navegador')());
+  const N = criarNucleo({ dir: DATA_DIR, agora, midia, empresa: 'tmx', buscador,
     baixarQualquer: !!so_teste('SPY_MIDIA_LIVRE_TESTE'),
     transcritor: () => process.env.ASSEMBLYAI_API_KEY ? transcritorAssembly(process.env.ASSEMBLYAI_API_KEY, so_teste('ASSEMBLYAI_BASE_TESTE') || 'https://api.assemblyai.com') : null });
   console.log('[SPY] pronto · vídeos em ' + (midia ? midia.nome : 'NENHUM (R2 desligado)') + ' · ffmpeg ' + (FFMPEG ? 'ok' : 'FALTANDO') + ' · AssemblyAI ' + (process.env.ASSEMBLYAI_API_KEY ? 'ok' : 'sem chave'));
   try { const n = semente(N); if (n) console.log('[SPY] base inicial: ' + n + ' bibliotecas e os nichos.'); } catch (e) { console.error('[SPY] base inicial falhou:', e.message); }
+  try { const n = N.dividirPorCopy(); if (n) console.log('[SPY] ' + n + ' anúncios que estavam juntos só pela copy viraram criativos próprios.'); } catch (e) { console.error('[SPY] divisão por copy falhou:', e.message); }
 
-  const config = () => ({ assemblyai: !!process.env.ASSEMBLYAI_API_KEY, ffmpeg: !!FFMPEG, midia: midia ? midia.nome : 'nenhum', fila: N.fila() });
-  function aposColeta(bibId) { const p = N.pendentesDaBiblioteca(bibId); if (p.length) N.enfileirar(p); return p.length; }
+  const config = () => ({ assemblyai: !!process.env.ASSEMBLYAI_API_KEY, ffmpeg: !!FFMPEG, midia: midia ? midia.nome : 'nenhum', fila: N.fila(), busca: N.estadoBusca() });
+  // depois de cada coleta: baixa o que já tem link e manda o navegador buscar o vídeo dos que não têm
+  function aposColeta(bibId) { const p = N.pendentesDaBiblioteca(bibId); if (p.length) N.enfileirar(p); const b = midia ? N.buscarVideos(bibId) : { a_buscar: 0 }; return { na_fila: p.length, a_buscar: b.a_buscar || 0 }; }
   const quem = req => (req.user && req.user.nome) || '';
   const resp = (res, fn) => { try { res.json(Object.assign({ ok: true }, fn())); } catch (e) { res.status(e.http || 400).json({ error: e.message }); } };
   // ⚙ Configurações (nichos, regras e rotina): só a conta do Thiago (decisão dele em 18/11). O MCP continua podendo: o token é dele.
@@ -1208,11 +1326,14 @@ module.exports = function montarSpy(d) {
     if (!det) return res.status(404).json({ error: 'Biblioteca não encontrada.' });
     res.json(Object.assign({ ok: true, config: config() }, det));
   });
+  // botão "Baixar vídeos": baixa o que tem link e busca no Facebook o vídeo de quem não tem
   app.post('/api/spy/bibliotecas/:id/processar', authUsuario, (req, res) => {
+    if (!N.bibRow(req.params.id)) return res.status(404).json({ error: 'Biblioteca não encontrada.' });
     const p = N.pendentesDaBiblioteca(req.params.id, true);
     N.q("UPDATE spy_criativo SET midia_tentativas=0 WHERE midia_status='erro' AND id IN (SELECT value FROM json_each(?))").run(JSON.stringify(p));
     if (p.length) N.enfileirar(p);
-    res.json({ ok: true, na_fila: p.length });
+    const b = midia ? N.buscarVideos(req.params.id, true) : { ok: false, motivo: 'O armazenamento dos vídeos não está ligado.' };
+    res.json({ ok: true, na_fila: p.length, a_buscar: b.a_buscar || 0, motivo: b.ok ? '' : b.motivo });
   });
   app.get('/api/spy/criativos/:id', authUsuario, (req, res) => {
     const c = N.detalheCriativo(req.params.id);
@@ -1221,9 +1342,12 @@ module.exports = function montarSpy(d) {
   });
   app.post('/api/spy/criativos/:id/etiquetas', authUsuario, (req, res) => resp(res, () => ({ criativo: N.detalheCriativo(N.salvarDaTela(req.params.id, req.body || {}, quem(req))) })));
   app.post('/api/spy/criativos/:id/processar', authUsuario, (req, res) => {
-    const cid = N.resolver(req.params.id);
+    const cid = N.resolver(req.params.id), c = N.detalheCriativo(cid);
+    if (!c) return res.status(404).json({ error: 'Criativo não encontrado.' });
     N.q("UPDATE spy_criativo SET midia_tentativas=0 WHERE id=? AND midia_status='erro'").run(cid);
-    N.enfileirar([cid]);
+    // sem link (ou link vencido): o navegador busca de novo no Facebook
+    if (midia && (c.midia_status === 'sem_link' || (c.midia_status === 'erro' && /venceu/.test(c.midia_erro || '')))) c.bibliotecas.forEach(b => N.buscarVideos(b.id, true));
+    else N.enfileirar([cid]);
     res.json({ ok: true });
   });
   app.get('/api/spy/funis', authUsuario, (req, res) => resp(res, () => ({ funis: N.funis(), vigiar: json(N.cfgLer('vigiar')) || null })));
@@ -1281,7 +1405,9 @@ module.exports = function montarSpy(d) {
     if (nome === 'spy_salvar_regras') return J({ regras: N.salvarRegras(a) });
     if (nome === 'spy_registrar_coleta') {
       const r = N.registrarColeta(String(a.biblioteca_id || ''), a, por);
-      r.videos_na_fila = aposColeta(r.biblioteca_id);
+      const ap = aposColeta(r.biblioteca_id);
+      r.videos_na_fila = ap.na_fila; r.videos_a_buscar = ap.a_buscar;
+      if (ap.a_buscar) r.aviso_videos = 'O servidor vai buscar no Facebook, um por um, o vídeo de ' + ap.a_buscar + ' criativo(s) sem vídeo. Não precisa mandar link.';
       if (!midia) r.aviso_midia = 'O armazenamento dos vídeos (R2) não está ligado: os anúncios foram gravados, os vídeos esperam.';
       return J(r);
     }
@@ -1340,3 +1466,4 @@ module.exports.transcritorAssembly = transcritorAssembly;
 module.exports.semente = semente;
 module.exports.FERRAMENTAS = FERRAMENTAS;
 module.exports.FFMPEG = FFMPEG;
+module.exports.criarBuscador = require('./spy-navegador');

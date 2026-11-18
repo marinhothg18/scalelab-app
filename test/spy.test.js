@@ -241,3 +241,93 @@ test('rodada, busca na fala, mercado, nichos e regras', () => {
   assert.deepStrictEqual(N.salvarRegras({ multiplicador_escala: 4, horario_rotina: '07:40' }), { avisar_criativo_novo_em_ouro: true, biblioteca_nova_min_anuncios: 30, multiplicador_escala: 4, horario_rotina: '07:40' });
   assert.strictEqual(N.salvarRegras({ horario_rotina: '25:99' }).horario_rotina, '07:40', 'horário inválido não entra');
 });
+
+test('sem o link na coleta: cada anúncio vira um criativo, o servidor busca o vídeo pelo id, baixa e junta os iguais', async () => {
+  relogio = D1 + 3 * DIA;
+  const vid = n => base + '/cdn/' + n + '?oe=FFFFFFFF';
+  const achados = { '7001': { video: vid('v2.mp4'), capa: base + '/cdn/capa.jpg' }, '7002': { video: vid('v2.mp4') }, '7003': { video: vid('v3.mp4') }, '7004': { erro: 'o anúncio não apareceu na página' } };
+  const pedidos = [];
+  const buscador = { disponivel: () => true, async buscar(ids, cb) { pedidos.push(ids.slice()); for (const id of ids) await cb(id, achados[id] || { erro: 'x' }); return { tentados: ids.length }; } };
+  const Nb = Spy.criarNucleo({ dir: fs.mkdtempSync(path.join(dir, 'nb-')), agora: () => relogio, midia: Spy.midiaDisco(path.join(dir, 'mb')), tmpDir: path.join(dir, 'tmpb'), baixarQualquer: true,
+    transcritor: () => Spy.transcritorAssembly('chave-aai', base), buscador });
+  const b = Nb.criarBiblioteca({ tipo: 'dominio', referencia: 'busca.com.br' }).biblioteca;
+  const semLink = (id, p) => ({ ad_archive_id: id, page_id: p[0], page_name: p[1], copy: 'A mesma copy em vídeos diferentes', inicio_veiculacao: '2026-11-10' });
+  const r = Nb.registrarColeta(b.id, { completa: true, anuncios: [semLink('7001', PA), semLink('7002', PA), semLink('7003', PB), semLink('7004', PB)] });
+  assert.strictEqual(r.criativos_ativos, 4, 'mesma copy não junta: cada anúncio é um criativo até o vídeo chegar');
+  assert.ok(Nb.detalheBiblioteca(b.id).criativos.every(c => c.midia_status === 'sem_link'));
+  assert.deepStrictEqual(Nb.pendentesDaBiblioteca(b.id), [], 'sem link não entra na fila de download');
+  assert.strictEqual(Nb.buscarVideos(b.id).a_buscar, 4);
+  for (let i = 0; i < 200 && Nb.estadoBusca().rodando; i++) await new Promise(x => setTimeout(x, 25));
+  for (let i = 0; i < 400 && (Nb.fila().fila || Nb.fila().rodando); i++) await new Promise(x => setTimeout(x, 50));
+  assert.deepStrictEqual(pedidos, [['7001', '7002', '7003', '7004']], 'um anúncio por criativo, numa busca só');
+  const det = Nb.detalheBiblioteca(b.id);
+  const comVideo = det.criativos.filter(c => c.midia_status === 'ok');
+  assert.strictEqual(comVideo.length, 2, '7001 e 7002 vieram com o mesmo arquivo: viraram um só; 7003 é outro');
+  assert.strictEqual(comVideo.find(c => c.anuncios_ativos === 2).arquivo.startsWith('v/'), true);
+  const falhou = det.criativos.find(c => c.midia_status === 'sem_link');
+  assert.match(falhou.midia_erro, /não apareceu/);
+  assert.strictEqual(Nb.estadoBusca().achados, 3);
+  // a aba Anúncios: cada anúncio com o criativo dele
+  assert.deepStrictEqual(det.anuncios.map(a => a.id).sort(), ['7001', '7002', '7003', '7004']);
+  assert.strictEqual(det.anuncios.find(a => a.id === '7001').criativo_id, det.anuncios.find(a => a.id === '7002').criativo_id);
+  // falhou 3 vezes: a busca automática desiste; o botão (forçar) tenta de novo
+  for (let k = 0; k < 2; k++) { Nb.buscarVideos(b.id); for (let i = 0; i < 200 && Nb.estadoBusca().rodando; i++) await new Promise(x => setTimeout(x, 25)); }
+  assert.strictEqual(Nb.buscarVideos(b.id).a_buscar, 0);
+  assert.strictEqual(Nb.buscarVideos(b.id, true).a_buscar, 1);
+  for (let i = 0; i < 200 && Nb.estadoBusca().rodando; i++) await new Promise(x => setTimeout(x, 25));
+  Nb.db.close();
+});
+
+test('o Facebook pedindo login: a busca para e avisa', async () => {
+  const buscador = { disponivel: () => true, async buscar(ids, cb) { await cb(ids[0], { login: true, erro: 'o Facebook pediu login' }); return { bloqueado: true, erro: 'O Facebook pediu login ao servidor.' }; } };
+  const Nl = Spy.criarNucleo({ dir: fs.mkdtempSync(path.join(dir, 'nl-')), agora: () => relogio, midia: Spy.midiaDisco(path.join(dir, 'ml')), tmpDir: path.join(dir, 'tmpl'), buscador });
+  const b = Nl.criarBiblioteca({ tipo: 'dominio', referencia: 'login.com.br' }).biblioteca;
+  Nl.registrarColeta(b.id, { anuncios: [{ ad_archive_id: '8101', copy: 'x' }] });
+  Nl.buscarVideos(b.id);
+  for (let i = 0; i < 200 && Nl.estadoBusca().rodando; i++) await new Promise(x => setTimeout(x, 25));
+  assert.ok(Nl.estadoBusca().bloqueado_em > 0);
+  assert.match(Nl.estadoBusca().erro, /login/);
+  assert.strictEqual(Nl.detalheBiblioteca(b.id).busca.bloqueado_em > 0, true);
+  Nl.db.close();
+});
+
+test('coleta antiga juntada pela copy: separa uma vez, cada anúncio com as etiquetas e a família', () => {
+  const Nd = Spy.criarNucleo({ dir: fs.mkdtempSync(path.join(dir, 'nd-')), agora: () => relogio, midia: null, tmpDir: path.join(dir, 'tmpd') });
+  const b = Nd.criarBiblioteca({ tipo: 'dominio', referencia: 'antiga.com.br' }).biblioteca;
+  // é assim que a versão de 18/11 (0a8c6b7) gravou: sem link, tipo texto, todos no mesmo criativo pela copy
+  const velho = id => ({ ad_archive_id: id, page_id: '1', page_name: 'P', copy: 'mesma copy', midia: { tipo: 'texto' } });
+  Nd.registrarColeta(b.id, { completa: true, anuncios: [velho('9101'), velho('9102'), velho('9103')] });
+  const c0 = Nd.detalheBiblioteca(b.id).criativos;
+  assert.strictEqual(c0.length, 1);
+  Nd.salvarDoClaude({ criativo_id: c0[0].id, etiquetas: [{ campo: 'angulo', valor: 'Notícia' }], familia: 'B · Live privada' });
+  assert.strictEqual(Nd.dividirPorCopy(), 2);
+  assert.strictEqual(Nd.dividirPorCopy(), 0, 'uma vez só');
+  const cs = Nd.detalheBiblioteca(b.id).criativos;
+  assert.strictEqual(cs.length, 3);
+  assert.ok(cs.every(c => c.midia_status === 'sem_link' && c.tipo === 'video' && c.familia.nome === 'B · Live privada' && c.etiquetas.angulo[0].valor === 'Notícia' && c.anuncios_ativos === 1));
+  assert.deepStrictEqual(Nd.midiasFaltando(b.id).sort(), ['9101', '9102', '9103']);
+  assert.strictEqual(Nd.mercado({ dim: 'angulo' }).linhas.find(l => l.valor === 'Notícia').criativos, 3);
+  Nd.db.close();
+});
+
+test('o navegador de verdade (Chrome) acha o card pelo id numa página que imita a Biblioteca', { skip: !(fs.existsSync('/Applications/Google Chrome.app') || process.env.SPY_CHROMIUM_PATH) && 'sem Chrome nesta máquina' }, async () => {
+  const pg = http.createServer((req, res) => {
+    const id = new URL(req.url, 'http://x').searchParams.get('id');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    if (id === '999') return res.end('<!doctype html><body><h1>Entre no Facebook</h1><p>Faça login para continuar</p></body>');
+    const card = (i, v) => '<div><div><span>Ativo</span><span>Identificação da biblioteca: ' + i + '</span></div><img src="' + base + '/cdn/capa.jpg" width="40"><video src="' + base + '/cdn/' + v + '" poster="' + base + '/cdn/capa.jpg"></video></div>';
+    // como o Facebook: a página traz outros anúncios além do pedido
+    res.end('<!doctype html><body><div>' + card('111111111', 'v1.mp4') + card(id, 'v3.mp4') + card('222222222', 'v2.mp4') + '</div></body>');
+  });
+  await new Promise(r => pg.listen(0, '127.0.0.1', r));
+  const bus = Spy.criarBuscador({ base: 'http://127.0.0.1:' + pg.address().port, pausaMs: 0, esperaMs: 3000 });
+  const vistos = {};
+  const r = await bus.buscar(['5551234', '999', '999'], (id, x) => { vistos[id] = x; });
+  pg.close();
+  assert.ok(vistos['5551234'], r.erro);
+  assert.match(vistos['5551234'].video, /\/cdn\/v3\.mp4$/, 'o vídeo do card pedido, não o primeiro da página');
+  assert.match(vistos['5551234'].capa, /capa\.jpg$/);
+  assert.strictEqual(vistos['999'].login, true);
+  assert.strictEqual(r.bloqueado, true, 'login duas vezes seguidas: para');
+  assert.strictEqual(bus.aberto(), false, 'o navegador fechou');
+});

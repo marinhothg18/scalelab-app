@@ -10014,7 +10014,7 @@ function spyVistaBiblioteca(v){
     var mudou = JSON.stringify(_spyDet) !== JSON.stringify(d);
     _spyDet = d;
     if(mudou) _spyVista().innerHTML = spyHtmlBiblioteca(d);
-    if((d.processamento || {}).pendentes) _spyAgendar(function(){ if(_spy.vista === 'biblioteca' && _spy.bib === id) spyVistaBiblioteca(_spyVista()); }, 8000);
+    if((d.processamento || {}).pendentes || (d.busca && d.busca.rodando)) _spyAgendar(function(){ if(_spy.vista === 'biblioteca' && _spy.bib === id) spyVistaBiblioteca(_spyVista()); }, 8000);
   }).catch(function(e){ _spyFalhou(v, e); });
 }
 function spyFiltro(k, val){ _spy[k] = val; if(_spyDet && _spyVista()) _spyVista().innerHTML = spyHtmlBiblioteca(_spyDet); }
@@ -10052,6 +10052,20 @@ function spyHtmlBiblioteca(d){
   var doms = Object.keys(d.dominios || {});
   var grade;
   if(!b.ultima_coleta_em) grade = '<div class="sp-vazio">Ainda sem coleta. A rotina do Claude abre esta biblioteca no Chrome e manda os anúncios'+(b.ouro ? ' (ouro: todo dia)' : '')+'.<br>Pra coletar agora, peça no chat do Claude: “coleta a biblioteca '+_spyE(b.nome)+' no Spy”.</div>';
+  else if(_spy.bibAba === 'anuncios'){
+    var porCri = {}; todos.forEach(function(c){ porCri[c.id] = c; });
+    var ads = d.anuncios || [];
+    grade = ads.length ? '<div class="sp-tw"><table><thead><tr><th>Início</th><th>Página</th><th>Copy</th><th>Criativo</th><th>Status</th><th></th></tr></thead><tbody>'+ads.map(function(a){
+      var c = porCri[a.criativo_id];
+      return '<tr><td style="white-space:nowrap;">'+_spyDataCurta(a.inicio)+'</td><td>'+_spyE(a.pagina || '—')+(a.quantidade > 1 ? ' <span class="sp-pq sp-mut">×'+a.quantidade+'</span>' : '')+'</td>'+
+        '<td class="sp-pq" style="max-width:380px;line-height:17px;">'+_spyE((a.copy || '').slice(0, 120))+((a.copy || '').length > 120 ? '…' : '')+'</td>'+
+        '<td>'+(c ? '<a class="sp-nome sp-pq" onclick="spyAbrirCri(\''+c.id+'\')" style="display:flex;gap:8px;align-items:center;">'+
+          '<span style="width:30px;height:42px;border-radius:5px;flex:none;background:#1f2937'+(c.thumb ? ' url('+_spyMidia(c.thumb)+') center/cover' : '')+';"></span>'+
+          '<span>'+(c.familia ? _spyE(c.familia.nome)+'<br>' : '')+(c.midia_status === 'ok' ? (c.tipo === 'video' ? 'Vídeo '+_spyTempo(c.duracao_s) : 'Imagem') : '<span class="sp-mut">sem vídeo ainda</span>')+(c.anuncios_ativos > 1 ? ' <span class="sp-mut">· '+c.anuncios_ativos+' anúncios</span>' : '')+'</span></a>' : '—')+'</td>'+
+        '<td>'+(a.ativo ? '<span class="sp-pill p-novo">Ativo</span>' : '<span class="sp-pill p-par">Parou</span>'+(a.fim ? '<div class="sp-pq sp-mut">'+_spyDataCurta(a.fim)+'</div>' : ''))+'</td>'+
+        '<td><a href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(a.id)+'" target="_blank" rel="noopener" style="color:var(--sp-verde);white-space:nowrap;">Abrir no Facebook</a></td></tr>';
+    }).join('')+'</tbody></table></div>' : '<div class="sp-vazio">Nenhum anúncio ainda.</div>';
+  }
   else if(_spy.bibAba === 'familias'){
     var g = {}; ativos.forEach(function(c){ var nm = c.familia ? c.familia.nome : ''; (g[nm] = g[nm] || []).push(c); });
     var nomes = Object.keys(g).sort(function(a, c){ return (a === '') - (c === '') || g[c].length - g[a].length; });
@@ -10067,7 +10081,8 @@ function spyHtmlBiblioteca(d){
       '<h2 class="sp-tit">'+_spyE(b.nome)+'</h2><div class="sp-sub">Busca por '+SpyLink.rotuloTipo(b.tipo).toLowerCase()+': '+_spyE(b.referencia)+' · '+_spyE(b.pais)+' · Nicho: '+(n ? _spyE(n.nome) : 'A definir')+
       ((d.paginas || []).length ? ' · Páginas: '+d.paginas.map(function(x){ return _spyE(x.nome)+' ('+x.n+')'; }).join(', ') : '')+'</div></div>'+
       '<div class="sp-lin">'+(b.ouro ? '<span class="sp-pill p-ouro">★ Ouro · coleta todo dia</span>' : '<button class="sp-btn sm" onclick="spyMudarBib(\''+b.id+'\',{ouro:true})">☆ Virar ouro</button>')+
-      '<a class="sp-btn" href="'+_spyE(b.link)+'" target="_blank" rel="noopener">Abrir na Biblioteca</a></div></div>'+
+      '<a class="sp-btn" href="'+_spyE(b.link)+'" target="_blank" rel="noopener">Abrir na Biblioteca</a>'+
+      (b.ultima_coleta_em ? '<button class="sp-btn pri" onclick="spyBaixarVideos(\''+b.id+'\')"'+(d.busca && d.busca.rodando && d.busca.desta ? ' disabled' : '')+'>'+(d.busca && d.busca.rodando && d.busca.desta ? 'Buscando vídeos…' : 'Baixar vídeos')+'</button>' : '')+'</div></div>'+
     (b.erro ? '<div class="sp-aviso">'+_spyE(b.erro)+'</div>' : '')+
     '<div class="sp-kpis">'+
       '<div class="sp-card sp-kpi"><div class="l">Anúncios ativos</div><div class="v">'+(b.ultima_coleta_em ? k.ads_ativos : '—')+'</div><div class="s">'+(dOnt !== null ? '<b class="'+_spyClasse(dOnt)+'">'+_spySinal(dOnt)+' vs. ontem</b> · ' : '')+(b.ultima_coleta_em ? 'coleta '+_spyQuando(b.ultima_coleta_em) : 'ainda não coletou')+'</div></div>'+
@@ -10080,15 +10095,26 @@ function spyHtmlBiblioteca(d){
         (doms.length > 1 ? '<div class="sp-pq sp-mut">Também: '+doms.slice(1, 5).map(function(x){ return _spyE(x)+' ('+d.dominios[x]+')'; }).join(', ')+'</div>' : '')+'</div>'+
       '<div style="flex:1 1 240px;"><div class="sp-pq sp-mut">Vídeos</div><b>'+p.guardados+' de '+p.total+' guardados · '+p.transcritos+' transcritos</b>'+
         (p.pendentes ? '<div class="sp-pq sp-mut">Baixando e transcrevendo '+p.pendentes+'… a tela atualiza sozinha.</div>' : '')+
+        (d.busca && d.busca.rodando && d.busca.desta ? '<div class="sp-pq sp-mut">Buscando no Facebook: '+d.busca.feitos+' de '+d.busca.total+' ('+d.busca.achados+' achados)… a tela atualiza sozinha.</div>'
+          : p.aguardando_link ? '<div class="sp-pq sp-mut">'+p.aguardando_link+' sem vídeo ainda. O servidor busca depois de cada coleta, ou clique em Baixar vídeos.</div>' : '')+
+        (d.busca && d.busca.bloqueado_em ? '<div class="sp-pq" style="color:var(--sp-amb);">O Facebook pediu login ao servidor em '+_spyQuando(d.busca.bloqueado_em)+': os vídeos não foram baixados. Dá pra abrir cada anúncio no Facebook.</div>'
+          : d.busca && !d.busca.disponivel && p.aguardando_link ? '<div class="sp-pq" style="color:var(--sp-amb);">O navegador do servidor não está instalado: os vídeos não são buscados.</div>' : '')+
         (p.aguardando_transcricao ? '<div class="sp-pq" style="color:var(--sp-amb);">'+p.aguardando_transcricao+' aguardando transcrição (chave ou cota da AssemblyAI).</div>' : '')+
         (p.erros ? '<div class="sp-pq" style="color:var(--sp-verm);">'+p.erros+' com erro. <a style="cursor:pointer;color:var(--sp-verde);" onclick="spyProcessarBib(\''+b.id+'\')">Tentar de novo</a></div>' : '')+'</div>'+
       (d.funil_id ? '<a class="sp-pq" style="font-weight:700;cursor:pointer;color:var(--sp-verde);" onclick="_spy.funil=\''+d.funil_id+'\';spyIr(\'funis\')">ver funil vigiado ›</a>' : '')+
     '</div>' : '')+
-    (b.ultima_coleta_em ? '<div class="sp-lin">'+'<div class="sp-tabs">'+aba('criativos', 'Criativos', ativos.length)+aba('familias', 'Famílias', Object.keys(fams).length)+aba('saiu', 'Saíram do ar', parados.length)+'</div><span style="flex:1 1 10px;"></span>'+
+    (b.ultima_coleta_em ? '<div class="sp-lin">'+'<div class="sp-tabs">'+aba('criativos', 'Criativos', ativos.length)+aba('anuncios', 'Anúncios', (d.anuncios || []).filter(function(a){ return a.ativo; }).length)+aba('familias', 'Famílias', Object.keys(fams).length)+aba('saiu', 'Saíram do ar', parados.length)+'</div><span style="flex:1 1 10px;"></span>'+(_spy.bibAba === 'anuncios' ? '' :
       '<select aria-label="Filtrar ângulo" onchange="spyFiltro(\'fAng\',this.value)"><option value="">Todos os ângulos</option>'+SpyLink.ANGULOS.map(function(a){ return '<option'+(_spy.fAng === a ? ' selected' : '')+'>'+_spyE(a)+'</option>'; }).join('')+'</select>'+
       '<select aria-label="Filtrar status" onchange="spyFiltro(\'fSt\',this.value)"><option value="">Todos os status</option>'+['novo','escalando','estavel'].map(function(s){ return '<option value="'+s+'"'+(_spy.fSt === s ? ' selected' : '')+'>'+SPY_ST[s][0]+'</option>'; }).join('')+'</select>'+
-      '<select aria-label="Ordenar" onchange="spyFiltro(\'ord\',this.value)">'+[['ads','Mais anúncios'],['antigo','Há mais tempo no ar'],['novo','Mais novos']].map(function(o){ return '<option value="'+o[0]+'"'+(_spy.ord === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select></div>' : '')+
+      '<select aria-label="Ordenar" onchange="spyFiltro(\'ord\',this.value)">'+[['ads','Mais anúncios'],['antigo','Há mais tempo no ar'],['novo','Mais novos']].map(function(o){ return '<option value="'+o[0]+'"'+(_spy.ord === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select>')+'</div>' : '')+
     grade+'</div>';
+}
+async function spyBaixarVideos(id){
+  try{
+    var d = await _spyJson('/api/spy/bibliotecas/'+encodeURIComponent(id)+'/processar', 'POST', {});
+    _avisoTela(d.motivo ? d.motivo : d.a_buscar ? 'Buscando '+d.a_buscar+' vídeo(s) no Facebook, um por um' : d.na_fila ? d.na_fila+' na fila' : 'Nenhum vídeo faltando');
+    spyRender();
+  }catch(e){ tmxAviso('Não consegui.\n\n'+e.message); }
 }
 async function spyProcessarBib(id){
   try{ var d = await _spyJson('/api/spy/bibliotecas/'+encodeURIComponent(id)+'/processar', 'POST', {}); _avisoTela(d.na_fila ? d.na_fila+' na fila' : 'Nada pendente'); spyRender(); }
@@ -10150,7 +10176,9 @@ function spyHtmlCriativo(c){
   if(c.midia_status === 'ok' && c.tipo === 'video') midia = '<video id="spy-player" class="sp-player" controls playsinline preload="metadata"'+(c.thumb ? ' poster="'+_spyMidia(c.thumb)+'"' : '')+' src="'+_spyMidia(c.arquivo)+'"></video>';
   else if(c.midia_status === 'ok') midia = '<img src="'+_spyMidia(c.arquivo)+'" style="width:100%;border-radius:12px;display:block;" alt="Criativo">';
   else midia = '<div class="sp-sem-video">'+(c.midia_status === 'erro' ? 'Não consegui guardar o vídeo: '+_spyE(c.midia_erro || 'erro')+'<br><br><button class="sp-btn sm" onclick="spyProcessarCri()">Tentar de novo</button>'
-    : c.midia_status === 'aguardando' ? _spyE(c.midia_erro || 'O vídeo espera o armazenamento.') : c.midia_status === 'sem_midia' ? 'Anúncio só de texto: não tem vídeo nem imagem.' : 'Baixando o vídeo pro acervo…')+'</div>';
+    : c.midia_status === 'aguardando' ? _spyE(c.midia_erro || 'O vídeo espera o armazenamento.') : c.midia_status === 'sem_midia' ? 'Anúncio só de texto: não tem vídeo nem imagem.'
+    : c.midia_status === 'sem_link' ? 'Vídeo não baixado ainda.'+(c.midia_erro ? '<br><span style="opacity:.8">'+_spyE(c.midia_erro)+'</span>' : '')+'<br><br><button class="sp-btn sm" onclick="spyProcessarCri()">Buscar de novo</button>' : 'Baixando o vídeo pro acervo…')+
+    ((c.anuncios || [])[0] && c.midia_status !== 'ok' && c.midia_status !== 'pendente' && c.midia_status !== 'baixando' ? '<br><br><a href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(c.anuncios[0].ad_archive_id)+'" target="_blank" rel="noopener" style="color:#7CFF5A;font-weight:700;">Abrir no Facebook</a>' : '')+'</div>';
   var campos = [['angulo','Ângulo','select',SpyLink.ANGULOS],['dor','Dor'],['persona','Persona'],['formato','Formato','select',SpyLink.FORMATOS],['mecanismo','Mecanismo'],['nome_chiclete','Nome chiclete'],['prova','Prova','lista',SPY_PROVAS],['cta','CTA','lista',SPY_CTAS]];
   var valores = {};
   var form = campos.map(function(f){

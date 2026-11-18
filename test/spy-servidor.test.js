@@ -46,7 +46,7 @@ before(async () => {
   const porta = 59000 + Math.floor(Math.random() * 900);
   base = 'http://127.0.0.1:' + porta;
   srv = spawn(process.execPath, [path.join(RAIZ, 'server.js')], { cwd: RAIZ, env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(porta), TMX_DATA_DIR: path.join(dir, 'tmx'),
-    ASSEMBLYAI_API_KEY: 'aai-falsa', ASSEMBLYAI_BASE_TESTE: baseFalso, SPY_MIDIA_LIVRE_TESTE: '1' } });
+    ASSEMBLYAI_API_KEY: 'aai-falsa', ASSEMBLYAI_BASE_TESTE: baseFalso, SPY_MIDIA_LIVRE_TESTE: '1', SPY_BUSCADOR: 'desligado' } });
   srv.stdout.on('data', b => { log += b; }); srv.stderr.on('data', b => { log += b; });
   await ate(async () => (await fetch(base + '/api/ping')).ok, 20000, 'servidor subir', () => log);
   await ate(() => /sessões derrubadas/.test(log), 40000, 'a rotina das sessões rodar', () => log);
@@ -150,4 +150,16 @@ test('MCP configura (biblioteca, nicho, sugestão), registra funil e rodada; o a
   const busca = (await chamar('GET', '/api/spy/busca?q=tchau', { token: lucas })).dados;
   assert.strictEqual(busca.resultados[0].inicio_s, 0.9);
   assert.strictEqual((await chamar('GET', '/api/spy/mercado?dim=angulo', { token: lucas })).dados.linhas.find(l => l.valor === 'Prova').criativos, 1);
+});
+
+test('coleta sem link: os anúncios entram, a aba Anúncios lista todos, e sem o navegador a tela avisa', async () => {
+  const bib = (await ferramenta('spy_salvar_biblioteca', { tipo: 'dominio', referencia: 'semlink.com.br', nome: 'Sem link' })).biblioteca;
+  const col = await ferramenta('spy_registrar_coleta', { biblioteca_id: bib.id, completa: true, anuncios: [{ ad_archive_id: '6001', page_name: 'P', copy: 'c', inicio_veiculacao: '2026-11-01' }, { ad_archive_id: '6002', page_name: 'P', copy: 'c' }] });
+  assert.deepStrictEqual([col.anuncios_ativos, col.criativos_ativos, col.videos_a_buscar], [2, 2, 0]);
+  const d = (await chamar('GET', '/api/spy/bibliotecas/' + bib.id, { token: lucas })).dados;
+  assert.deepStrictEqual(d.anuncios.map(a => [a.id, a.ativo]).sort(), [['6001', true], ['6002', true]]);
+  assert.strictEqual(d.processamento.aguardando_link, 2);
+  assert.strictEqual(d.busca.disponivel, false);
+  const p = (await chamar('POST', '/api/spy/bibliotecas/' + bib.id + '/processar', { token: lucas })).dados;
+  assert.match(p.motivo, /navegador/);
 });
