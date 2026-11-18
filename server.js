@@ -23953,16 +23953,31 @@ function _dominiosConhecidos(db) {
 // DNS esta apontando pra ca — nao basta resolver, tem de cair NESTE servidor.
 // Um dominio que resolve pra outro lugar passaria num teste de DNS simples e
 // mesmo assim o link quebraria.
+// Domínio da hospedagem de páginas da SCALROI (18/11/2026): a hospedagem (Cloudflare) só repassa pra cá o que
+// os links e o pixel usam (/r/, /l/, /q/, /px.js), não o /api/versao, e o "checar" dava "respondeu 404" num
+// domínio que funciona. Se o /px.js dele vem DESTE servidor (o cabeçalho X-TMX-Versao é o desta execução),
+// os links funcionam. O ?checar= passa por cima de qualquer cópia guardada no caminho.
+const _URL_DOMINIO_TESTE = process.env.TMX_DOMINIO_TESTE_URL || '';   // só nos testes: troca o https://domínio
+async function _dominioDaHospedagem(raiz, signal) {
+  try {
+    const r = await fetch(raiz + '/px.js?checar=' + Date.now(), { signal, redirect: 'manual' });
+    return r.ok && r.headers.get('x-tmx-versao') === TMX_VERSAO;
+  } catch (e) { return false; }
+}
 async function _checarDominio(dominio) {
   const d = _dominioLimpo(dominio);
   if (!DOMINIO_RE.test(d)) return { ok: false, erro: 'endereço inválido' };
   const corta = new AbortController();
   const t = setTimeout(() => corta.abort(), 6000);
+  const raiz = _URL_DOMINIO_TESTE || ('https://' + d);
   try {
-    const r = await fetch('https://' + d + '/api/versao', { signal: corta.signal, redirect: 'manual' });
-    if (!r.ok) return { ok: false, erro: 'respondeu ' + r.status + ' — o DNS aponta pra outro servidor' };
+    const r = await fetch(raiz + '/api/versao', { signal: corta.signal, redirect: 'manual' });
+    if (!r.ok) {
+      if (r.status === 404 && await _dominioDaHospedagem(raiz, corta.signal)) return { ok: true, hospedagem: true };
+      return { ok: false, erro: 'respondeu ' + r.status + ' — o DNS aponta pra outro servidor' };
+    }
     const j = await r.json().catch(() => null);
-    if (!j || j.versao !== versaoApp()) return { ok: false, erro: 'aponta pra outro servidor, não pro Central TMX' };
+    if (!j || j.versao !== versaoApp()) return { ok: false, erro: 'aponta pra outro servidor, não pra SCALROI' };
     return { ok: true };
   } catch (e) {
     const m = e.name === 'AbortError' ? 'não respondeu em 6s'
