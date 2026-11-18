@@ -52,6 +52,7 @@ Production runs on Railway. Code/comments/UI are in pt-BR; keep new work in pt-B
 - `PORT` — HTTP port (default 3001)
 - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` — optional, enables hosted pages (see "Hospedagem própria"). Without all three, the client only sees FTP. `HOSPEDAGEM_ALVO` defaults to `paginas.paginasnoar.com`.
 - `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID` — optional, turn on the "Continuar com Facebook" button in Configurações › Conexões and in Projetos › Integrações (Facebook Login for Business, TMX only for now; `/api/meta/login` trades the code for the token)
+- `ASSEMBLYAI_API_KEY` — optional, transcription with time for the Spy videos (see "Spy de anúncios"). The Thiago puts it on Railway; never in code or chat.
 - `GITHUB_BACKUP_TOKEN`, `GITHUB_BACKUP_REPO` — optional, enables daily off-site backup of `db.json` to a GitHub repo (`owner/repo`, PAT with `repo` scope)
 - When `/data` exists (Railway volume), `DATA_DIR = /data` and that's where `db.json` + `backups/` live. Locally they live next to `server.js`.
 
@@ -161,6 +162,19 @@ Cada domínio é de um de dois jeitos, escolhido ao cadastrar em Projetos › Cr
 - **Domínio esperando DNS também é cobrado:** depois de 7 dias sai da Cloudflare (`est='parado'`, "Conferir de novo" cadastra outra vez).
 - O Workers grátis aguenta só 100 mil pedidos/dia; passou disso, a página dá erro. Antes de anúncio de verdade, assinar o plano pago (US$ 5/mês).
 - `test/hospedagem.test.js` (Cloudflare falsa rodando o programa de verdade) e `test/worker-paginas.test.js`.
+
+### Spy de anúncios (18/11/2026)
+
+Especificação: `SPEC-spy-central-tmx.md` (fora do repo, Downloads do Thiago), com as decisões dele no mesmo dia. Mora em `spy.js`; a leitura do link da Biblioteca de Anúncios e as listas fechadas de ângulo e formato ficam em `public/spy-link.js` (o mesmo arquivo no app e no servidor, como o `arq-faixa.js`).
+
+- **Quem coleta é o Claude**, numa tarefa agendada com o Chrome do Thiago: abre a Biblioteca de Anúncios e manda pelo MCP (`spy_registrar_coleta`). **Sem ScrapeCreators** (decisão do Thiago). O servidor nunca abre o Facebook: só baixa o vídeo pelo link que veio na coleta (fbcdn, expira), tira a impressão digital, junta os iguais, guarda e transcreve (AssemblyAI, plano grátis: uma vez por vídeo único; sem chave ou sem cota fica `aguardando` e nada trava). O julgamento (etiquetas, cortes, família, não modelar, sugestões, leitura do funil, resumo da rodada) é do Claude, pelas 12 ferramentas `spy_*`. Nenhuma chamada a modelo de IA parte do servidor.
+- **Tudo em `spy.sqlite`** no DATA_DIR (nada no db.json). Anúncio, criativo, vídeo e transcrição são guardados uma vez e servem a qualquer empresa no futuro; bibliotecas, nichos, regras, etiquetas, funis e rodadas levam a coluna `empresa` (hoje só `tmx`). **Nada é apagado:** anúncio que sai do ar ganha `fim_veiculacao`, criativo repetido ganha `mesclado_em`, versão de funil e foto do dia ficam.
+- **"Saiu do ar" só com a lista inteira:** `completa:true`, ou a soma das `quantidade` ("N anúncios usam esse criativo") chega no `total_ativos`. Foto do dia por biblioteca (`spy_snapshot`, uma por dia, refeita se coletar de novo no mesmo dia): é dela que saem a variação diária da lista e o gráfico. Status do criativo: parou, escalando (mais que na foto anterior), novo (entrou no ar há 7 dias ou menos), estável.
+- **Vídeos:** Cloudflare R2 da hospedagem, pasta `spy-midia/`, guardados pelo sha256 (o mesmo arquivo nunca sobe duas vezes). **Nunca no volume do Railway:** em produção sem o R2 o vídeo fica `aguardando`; só rodando local, sem `/data`, vai pra pasta `spy_midia/`. Os temporários ficam no tmp do sistema. O worker lê só `spy-midia/`, com o segredo e em pedaços (Range); `/api/spy/midia/<v|i>/<sha256>.<ext>` é aberto (endereço impossível de adivinhar) pro `<video>` funcionar. Mesmo vídeo noutra página (recodificado): duração, 10 quadros em dHash e o desenho do volume do áudio (`mesmoVideo`, com `ffmpeg-static`).
+- **Quem vê:** só na TMX (rotas 404 e ferramentas `soTmx` nas empresas). Na TMX a Ad Library é só o Spy (as abas AdLib e Spy Automático somem dali, mas `adlib`, `sl_spy_auto` e `sl_spy_auto_nichos` ficam como estão; nas empresas a Ad Library antiga continua). Toda a equipe vê, cadastra biblioteca e corrige etiqueta (a correção fica protegida da rotina, com o nome de quem corrigiu em `por`). **⚙ Configurações (rotina, nichos, regras) é só da conta do Thiago** (`ehDono`, a mesma regra do Meu Protocolo), com 403 no servidor; o MCP continua podendo, o token é dele.
+- Telas (`spy*` no `ScaleLab.html`, CSS `#spy-css`): Bibliotecas (filtro por nicho, variação de 3 a 30 dias), Biblioteca (gráfico diário, Criativos/Famílias/Saíram do ar), Criativo (player, transcrição em gancho/corpo/CTA), Funis vigiados, Busca na fala (por palavra), Mercado × Eu (só o lado do mercado; o "Eu" precisa etiquetar os anúncios da TMX) e Configurações. Radar da semana e Modelar saíram (decisão do Thiago).
+- Base inicial uma vez (`semente_v2`): os nichos e as 9 bibliotecas da especificação (Navarro em Investimentos, ABRAhub "A definir"); as 110 do Spy Automático antigo não entram.
+- `test/spy.test.js` (núcleo, dois dias de coleta com vídeos gerados pelo ffmpeg), `test/spy-servidor.test.js` (rotas, permissões e MCP) e `test/spy-worker.test.js`.
 
 ### Planos e cobrança (09/11/2026)
 

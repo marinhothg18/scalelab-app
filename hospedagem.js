@@ -148,6 +148,21 @@ module.exports = function montarHospedagem({ platPrep }) {
     return { ok: true };
   }
 
+  // Spy de anúncios (18/11/2026): os vídeos dos concorrentes ficam no mesmo armazenamento, na pasta spy-midia/.
+  // O nome não tem ponto, então nunca é o domínio de um cliente, e a página pública nunca chega nela.
+  // Só o servidor da TMX chama: não passa pelo atender() das empresas.
+  const midiaOk = k => /^spy-midia\/[A-Za-z0-9._\/-]+$/.test(k) && !k.includes('..');
+  async function midiaGuardar(k, buf, tipo) {
+    if (!midiaOk(k)) throw new Error('Endereço de mídia inválido.');
+    await admin('PUT', 'objeto', 'k=' + encodeURIComponent(k), buf, { 'Content-Type': String(tipo || 'application/octet-stream'), 'X-TMX-Cache': 'public, max-age=31536000, immutable' });
+  }
+  // devolve a resposta crua (o vídeo vai em pedaços pro player)
+  function midiaLer(k, faixa, metodo) {
+    if (!midiaOk(k)) throw new Error('Endereço de mídia inválido.');
+    return fetch(adminBase() + '/_tmx-admin/objeto?k=' + encodeURIComponent(k), { method: metodo || 'GET',
+      headers: Object.assign({ Authorization: 'Bearer ' + segredo() }, faixa ? { Range: faixa } : {}), signal: AbortSignal.timeout(120000) });
+  }
+
   // o que a empresa pode pedir; quem é a empresa vem do canal, nunca do pedido
   function atender(empresa, cmd, d) {
     if (cmd === 'hosp-info') return { ok: true, ligada: ligada(), alvo: cfg().alvo };
@@ -160,5 +175,5 @@ module.exports = function montarHospedagem({ platPrep }) {
     if (cmd === 'hosp-apagar-pagina') return apagarPagina(empresa, d);
     return { ok: false, erro: 'Pedido desconhecido.' };
   }
-  return { atender, instalar, ligada };
+  return { atender, instalar, ligada, midiaGuardar, midiaLer };
 };

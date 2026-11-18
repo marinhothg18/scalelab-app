@@ -153,6 +153,28 @@ async function admin(req, env, url) {
       return json({ ok: true });
     }
     if (req.method === 'DELETE') { await env.PAGINAS.delete(k); return json({ ok: true }); }
+    // ler só os vídeos do Spy (18/11/2026), em pedaços: o player pula pro meio sem baixar tudo
+    if ((req.method === 'GET' || req.method === 'HEAD') && k.startsWith('spy-midia/')) {
+      const cab = await env.PAGINAS.head(k);
+      if (!cab) return json({ ok: false, erro: 'não achei' }, 404);
+      const tam = cab.size;
+      const h = new Headers({ 'Content-Type': (cab.httpMetadata && cab.httpMetadata.contentType) || 'application/octet-stream', 'Accept-Ranges': 'bytes', 'X-TMX-Tamanho': String(tam) });
+      if (req.method === 'HEAD') { h.set('Content-Length', String(tam)); return new Response(null, { status: 200, headers: h }); }
+      const m = String(req.headers.get('Range') || '').match(/^bytes=(\d*)-(\d*)$/);
+      if (m && (m[1] || m[2])) {
+        let ini = m[1] ? Number(m[1]) : Math.max(0, tam - Number(m[2])), fim = m[1] && m[2] ? Math.min(Number(m[2]), tam - 1) : tam - 1;
+        if (ini >= tam || ini > fim) { h.set('Content-Range', 'bytes */' + tam); return new Response(null, { status: 416, headers: h }); }
+        const o = await env.PAGINAS.get(k, { range: { offset: ini, length: fim - ini + 1 } });
+        if (!o) return json({ ok: false, erro: 'não achei' }, 404);
+        h.set('Content-Range', 'bytes ' + ini + '-' + fim + '/' + tam);
+        h.set('Content-Length', String(fim - ini + 1));
+        return new Response(o.body, { status: 206, headers: h });
+      }
+      const o = await env.PAGINAS.get(k);
+      if (!o) return json({ ok: false, erro: 'não achei' }, 404);
+      h.set('Content-Length', String(tam));
+      return new Response(o.body, { status: 200, headers: h });
+    }
   }
   if (acao === 'pasta' && req.method === 'DELETE') {
     const p = String(url.searchParams.get('p') || '');

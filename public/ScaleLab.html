@@ -22,6 +22,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="/arq-faixa.js"></script>
+<script src="/spy-link.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -4081,6 +4082,142 @@ body.light-mode .btn-primary,body.light-mode .login-btn{box-shadow:0 6px 18px rg
 .login-logo-text.scal{background:none !important;-webkit-text-fill-color:#fff !important;color:#fff;font-weight:900}
 .login-logo-text.scal span{color:#22D94A;-webkit-text-fill-color:#22D94A}
 </style>
+<style id="spy-css">
+/* ── Spy de anúncios (18/11/2026): a Ad Library da TMX. Visual da prévia aprovada pelo Thiago: o padrão da SCALROI,
+   claro e escuro pelos tokens do sistema. Tudo dentro de #spy-app. ── */
+#spy-app{--sp-line:var(--border);--sp-ink:var(--text);--sp-mut:var(--text2);--sp-soft:var(--bg3);--sp-card:var(--card);--sp-roxo:#A78BFA;--sp-verde:#4ADE80;--sp-verm:#F87171;--sp-amb:#FBBF24;color:var(--text);font-size:13.5px}
+body.light-mode #spy-app{--sp-roxo:#7C3AED;--sp-verde:#16A34A;--sp-verm:#DC2626;--sp-amb:#B45309}
+#spy-app *{box-sizing:border-box}
+#spy-app .sp-abas{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--sp-line);padding-bottom:10px;margin-bottom:18px}
+#spy-app .sp-aba{height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--sp-line);background:var(--sp-card);color:var(--sp-mut);font:600 12.5px Inter,sans-serif;cursor:pointer}
+#spy-app .sp-aba:hover:not(.on){color:var(--sp-ink);background:var(--sp-soft)}
+#spy-app .sp-aba.on{background:linear-gradient(135deg,#22D94A,#7CFF5A);border-color:transparent;color:#04210E;font-weight:800}
+#spy-app .sp-aba.cfg{margin-left:auto}
+#spy-app .sp-col{display:flex;flex-direction:column;gap:16px}
+#spy-app .sp-lin{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#spy-app .sp-entre{justify-content:space-between}
+#spy-app .sp-crumb{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--sp-mut)}
+#spy-app .sp-crumb a{color:var(--sp-mut);text-decoration:none;cursor:pointer}#spy-app .sp-crumb a:hover{color:var(--sp-verde)}
+#spy-app .sp-tit{font-size:22px;font-weight:800;letter-spacing:-.01em;margin:4px 0 0;line-height:1.2}
+#spy-app .sp-sub{font-size:12.5px;color:var(--sp-mut);margin-top:4px;line-height:18px}
+#spy-app .sp-card{background:var(--sp-card);border:1px solid var(--sp-line);border-radius:14px;padding:18px 20px}
+#spy-app .sp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+#spy-app .sp-kpi .l{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--sp-mut)}
+#spy-app .sp-kpi .v{font-size:26px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+#spy-app .sp-kpi .s{font-size:12px;color:var(--sp-mut);margin-top:2px}
+#spy-app .sp-btn{height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--sp-line);background:var(--sp-soft);color:var(--sp-ink);font:700 13px Inter,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;white-space:nowrap}
+#spy-app .sp-btn:hover{border-color:#22D94A;color:var(--sp-verde)}
+#spy-app .sp-btn.pri{background:linear-gradient(135deg,#22D94A,#7CFF5A);border-color:transparent;color:#04210E;font-weight:800}
+#spy-app .sp-btn.pri:hover{filter:brightness(1.05);color:#04210E}
+#spy-app .sp-btn.sm{height:30px;padding:0 10px;font-size:12px}
+#spy-app .sp-btn:disabled{opacity:.5;cursor:not-allowed}
+#spy-app .sp-tabs{display:flex;flex-wrap:wrap;gap:6px}
+#spy-app .sp-tab{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--sp-line);background:var(--sp-card);color:var(--sp-mut);font:600 12.5px Inter,sans-serif;cursor:pointer;display:inline-flex;align-items:center}
+#spy-app .sp-tab.on{background:var(--sp-ink);border-color:var(--sp-ink);color:var(--sp-card);font-weight:700}
+#spy-app .sp-tab .n{margin-left:6px;font-size:11px;font-weight:800;padding:0 6px;border-radius:99px;background:var(--sp-soft);color:var(--sp-mut)}
+#spy-app .sp-tab.on .n{background:rgba(127,127,127,.25);color:inherit}
+#spy-app input[type=text],#spy-app input[type=number],#spy-app input[type=time],#spy-app input:not([type]),#spy-app select,#spy-app textarea{height:36px;border:1px solid var(--sp-line);border-radius:8px;padding:0 11px;background:var(--sp-card);color:var(--sp-ink);font:500 13px Inter,sans-serif;min-width:0}
+#spy-app textarea{height:auto;padding:8px 11px}
+#spy-app input:focus,#spy-app select:focus,#spy-app textarea:focus{outline:none;border-color:#22D94A;box-shadow:0 0 0 3px rgba(34,217,74,.18)}
+#spy-app .sp-f{display:flex;flex-direction:column;gap:6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--sp-mut);min-width:0}
+#spy-app .sp-f > span.rot{display:flex;justify-content:space-between;gap:6px;align-items:center}
+#spy-app .sp-tw{background:var(--sp-card);border:1px solid var(--sp-line);border-radius:14px;overflow-x:auto}
+#spy-app table{width:100%;border-collapse:collapse}
+#spy-app th{text-align:left;text-transform:uppercase;font-size:10.5px;letter-spacing:.08em;color:var(--sp-mut);font-weight:700;padding:12px 14px;border-bottom:1px solid var(--sp-line);white-space:nowrap;background:transparent}
+#spy-app td{padding:12px 14px;border-top:1px solid var(--sp-line);font-variant-numeric:tabular-nums;vertical-align:middle;font-size:13px}
+#spy-app tbody tr:first-child td{border-top:0}
+#spy-app tbody tr:hover td{background:var(--sp-soft)}
+#spy-app tr.sp-apagada td{opacity:.55}
+#spy-app .sp-pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+#spy-app .p-novo,#spy-app .p-ok{background:rgba(34,197,94,.16);color:var(--sp-verde)}
+#spy-app .p-esc{background:rgba(245,158,11,.18);color:var(--sp-amb)}
+#spy-app .p-par,#spy-app .p-erro{background:rgba(239,68,68,.15);color:var(--sp-verm)}
+#spy-app .p-est,#spy-app .p-fila{background:rgba(148,163,184,.16);color:var(--sp-mut)}
+#spy-app .p-ouro{background:rgba(234,179,8,.18);color:var(--sp-amb)}
+#spy-app .p-sug{background:rgba(139,92,246,.16);color:var(--sp-roxo)}
+#spy-app .sp-tag{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11.5px;font-weight:600}
+#spy-app .t-ang{background:rgba(139,92,246,.16);color:var(--sp-roxo)}
+#spy-app .t-fmt{background:rgba(14,165,233,.16);color:#0EA5E9}
+#spy-app .t-x{background:rgba(239,68,68,.14);color:var(--sp-verm)}
+#spy-app .sp-origem{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;text-transform:none;letter-spacing:0;white-space:nowrap}
+#spy-app .sp-origem.claude{background:rgba(124,58,237,.12);color:var(--sp-roxo)}
+#spy-app .sp-origem.voce{background:rgba(22,163,74,.13);color:var(--sp-verde)}
+#spy-app .sp-nota{background:rgba(22,163,74,.07);border:1px solid rgba(22,163,74,.22);border-left:4px solid #22D94A;border-radius:10px;padding:10px 14px;font-size:13px;line-height:19px}
+#spy-app .sp-aviso{background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.3);border-left:4px solid #F59E0B;border-radius:10px;padding:10px 14px;font-size:13px;line-height:19px}
+#spy-app .sp-vazio{padding:26px;text-align:center;color:var(--sp-mut);border:1px dashed var(--sp-line);border-radius:12px;background:var(--sp-soft);line-height:20px}
+#spy-app .sp-mut{color:var(--sp-mut)}#spy-app .sp-pq{font-size:12px}
+#spy-app .sobe{color:var(--sp-verde)}#spy-app .desce{color:var(--sp-verm)}#spy-app .igual{color:var(--sp-mut)}
+/* formulário de colar o link: tudo numa linha, mesma altura, a dica embaixo */
+#spy-app .sp-form-link{display:grid;grid-template-columns:minmax(240px,1fr) 190px 170px auto auto;align-items:end;gap:12px 14px}
+#spy-app .sp-form-link .chk{height:36px;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:13px;font-weight:600;cursor:pointer}
+#spy-app .sp-form-link .dica{grid-column:1/-1;margin-top:-4px;font-size:12px;color:var(--sp-mut)}
+@media (max-width:900px){#spy-app .sp-form-link{grid-template-columns:1fr 1fr}#spy-app .sp-form-link .sp-f:first-child{grid-column:1/-1}}
+/* filtros da lista */
+#spy-app .sp-filtros{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between}
+#spy-app .sp-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#spy-app .sp-chips .rot{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--sp-mut);margin-right:4px}
+#spy-app .sp-chip{height:30px;padding:0 12px;border-radius:99px;border:1px solid var(--sp-line);background:var(--sp-card);color:var(--sp-ink);font:600 12.5px Inter,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+#spy-app .sp-chip:hover{border-color:#22D94A}
+#spy-app .sp-chip .n{font-size:11px;font-weight:800;color:var(--sp-mut)}
+#spy-app .sp-chip.on{background:var(--sp-ink);border-color:var(--sp-ink);color:var(--sp-card)}#spy-app .sp-chip.on .n{color:inherit;opacity:.75}
+#spy-app .sp-periodo{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--sp-line);border-radius:10px;background:var(--sp-soft)}
+#spy-app .sp-periodo button{height:26px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--sp-mut);font:700 12px Inter,sans-serif;cursor:pointer}
+#spy-app .sp-periodo button.on{background:var(--sp-card);color:var(--sp-ink);box-shadow:0 1px 2px rgba(15,23,42,.15)}
+#spy-app .sp-var{display:flex;align-items:center;gap:8px;white-space:nowrap}
+#spy-app .sp-var svg{display:block}
+#spy-app .sp-var .d{font-size:12px;font-weight:800}
+#spy-app .sp-nome{font-weight:700;color:var(--sp-ink);text-decoration:none;cursor:pointer}#spy-app .sp-nome:hover{color:var(--sp-verde)}
+/* gráfico de anúncios ativos por dia */
+#spy-app .sp-serie .resumo{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--sp-mut);margin:6px 0 8px}
+#spy-app .sp-serie .resumo b{color:var(--sp-ink);font-size:13px}
+#spy-app .sp-serie svg{width:100%;height:auto;display:block;overflow:visible}
+#spy-app .sp-serie .eixo{font-size:10.5px;fill:var(--sp-mut)}
+#spy-app .sp-serie .rot{font-size:11.5px;font-weight:800;fill:var(--sp-ink)}
+#spy-app .sp-serie .alvo{fill:transparent}
+/* cartão do criativo: miniatura de vídeo */
+#spy-app .sp-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+#spy-app .sp-cc{background:var(--sp-card);border:1px solid var(--sp-line);border-radius:14px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0;color:inherit;font:inherit;transition:transform .14s,box-shadow .14s,border-color .14s}
+#spy-app .sp-cc:hover{border-color:#22D94A;box-shadow:0 8px 22px rgba(15,23,42,.18);transform:translateY(-2px)}
+#spy-app .sp-th{position:relative;aspect-ratio:1/1;background:linear-gradient(165deg,var(--c1),var(--c2));background-size:cover;background-position:center;color:#fff;overflow:hidden}
+#spy-app .sp-th::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.3) 0,rgba(0,0,0,0) 30%,rgba(0,0,0,.05) 50%,rgba(0,0,0,.72) 100%)}
+#spy-app .sp-th .st{position:absolute;left:10px;top:10px;z-index:2}
+#spy-app .sp-th .nads{position:absolute;right:10px;top:10px;z-index:2;background:rgba(0,0,0,.6);border-radius:99px;padding:3px 9px;font-size:11.5px;font-weight:800}
+#spy-app .sp-th .play{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:2;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.3);transition:transform .14s}
+#spy-app .sp-cc:hover .play{transform:translate(-50%,-50%) scale(1.07)}
+#spy-app .sp-th .play i{width:0;height:0;border-left:16px solid #0F172A;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px}
+#spy-app .sp-th .fala{position:absolute;left:12px;right:12px;bottom:32px;z-index:2;font-size:12.5px;font-weight:700;line-height:17px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+#spy-app .sp-th .dias{position:absolute;left:12px;right:12px;bottom:10px;z-index:2;font-size:11.5px;font-weight:700;opacity:.95;display:flex;justify-content:space-between}
+#spy-app .sp-cc .b{padding:12px 14px 14px;display:flex;flex-direction:column;gap:7px}
+#spy-app .sp-cc .fam{font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:800;color:var(--sp-roxo)}
+#spy-app .sp-cc .pg{font-size:12.5px;color:var(--sp-mut)}
+/* criativo */
+#spy-app .sp-split{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+#spy-app .sp-player{width:100%;max-height:72vh;border-radius:12px;background:#000;display:block}
+#spy-app .sp-sem-video{aspect-ratio:9/16;max-height:72vh;border-radius:12px;background:linear-gradient(165deg,#0B1426,#1E293B);color:#CBD5E1;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:13px;line-height:19px}
+#spy-app .sp-transc{display:flex;flex-direction:column;gap:14px}
+#spy-app .sp-transc .resumo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--sp-mut)}
+#spy-app .sp-transc .barra{display:flex;height:8px;border-radius:99px;overflow:hidden;gap:2px}
+#spy-app .sp-transc .barra span{display:block;height:8px}
+#spy-app .sp-transc .parte{display:flex;flex-direction:column;gap:2px}
+#spy-app .sp-transc .cab{display:flex;align-items:center;gap:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;margin-bottom:4px;color:var(--sp-mut)}
+#spy-app .sp-transc .cab i{font-style:normal;font-weight:600;letter-spacing:0;text-transform:none;color:var(--sp-mut)}
+#spy-app .sp-transc .cab .bol{width:8px;height:8px;border-radius:50%;background:var(--sp-mut)}
+#spy-app .sp-transc .gancho .cab{color:#7C3AED}#spy-app .sp-transc .gancho .bol{background:#7C3AED}
+#spy-app .sp-transc .corpo .cab{color:#0284C7}#spy-app .sp-transc .corpo .bol{background:#0284C7}
+#spy-app .sp-transc .cta .cab{color:#16A34A}#spy-app .sp-transc .cta .bol{background:#16A34A}
+#spy-app .sp-transc .linha{display:flex;gap:12px;align-items:baseline;padding:7px 10px;border-radius:8px;cursor:pointer;border:0;border-left:3px solid var(--sp-line);font:400 13.5px/20px Inter,sans-serif;background:none;text-align:left;color:var(--sp-ink);width:100%}
+#spy-app .sp-transc .gancho .linha{border-left-color:rgba(124,58,237,.4)}#spy-app .sp-transc .corpo .linha{border-left-color:rgba(2,132,199,.4)}#spy-app .sp-transc .cta .linha{border-left-color:rgba(22,163,74,.45)}
+#spy-app .sp-transc .linha:hover{background:var(--sp-soft)}
+#spy-app .sp-transc .linha.on{background:rgba(34,217,74,.13)}
+#spy-app .sp-transc .linha .ts{flex:none;width:40px;font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--sp-mut)}
+#spy-app mark{background:rgba(250,204,21,.45);color:inherit;border-radius:3px;padding:0 2px}
+#spy-app .sp-kw{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:99px;background:rgba(139,92,246,.14);color:var(--sp-roxo);font-size:12.5px;font-weight:600}
+#spy-app .sp-kw button{border:0;background:none;color:inherit;cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+#spy-app .sp-passo{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--sp-line)}
+#spy-app .sp-passo .num{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:var(--sp-soft);color:var(--sp-mut)}
+#spy-app .sp-mono{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;padding:2px 7px;border-radius:6px;background:rgba(34,197,94,.14);color:var(--sp-verde)}
+@media (max-width:640px){#spy-app .sp-tit{font-size:19px}#spy-app .sp-card{padding:14px}#spy-app .sp-aba.cfg{margin-left:0}}
+</style>
 </head>
 <body>
 
@@ -6091,6 +6228,8 @@ body.light-mode .btn-primary,body.light-mode .login-btn{box-shadow:0 6px 18px rg
     </div>
 
     <div class="page" id="page-adlibrary">
+      <!-- Spy de anúncios (18/11/2026): na TMX, a Ad Library é só o Spy; nas empresas continua o AdLib e o Spy Automático -->
+      <div id="spy-app" style="display:none"></div>
 
       <!-- Sub-tabs: AdLib · Spy Automático -->
       <div id="adlib-subtabs" style="display:flex;gap:6px;margin-bottom:18px;border-bottom:1px solid var(--border);padding-bottom:8px;flex-wrap:wrap;">
@@ -8070,7 +8209,8 @@ function _rerenderCurrentPage(chaves){
   }
   else if(cur === 'adsmetrics') safe(window.renderAdsMetrics);
   else if(cur === 'adlibrary') {
-    if(_spyAutoTab === 'spyauto') renderSpyAuto();
+    if(_spyEhTmx()) { /* o Spy busca os dados dele no servidor */ }
+    else if(_spyAutoTab === 'spyauto') renderSpyAuto();
     else { try{ renderAdlib(); }catch(e){} }
   }
   else if(cur === 'edu' || cur === 'educacional') safe(window.renderEdu);
@@ -8878,6 +9018,7 @@ const titles={
   arquivos:{t:'Arquivos por projeto',s:'Central de arquivos por projeto.'},educacional:{t:'Educacional',s:'Conteúdos de aprendizagem da equipe'},
   iacopy:{t:'IA',s:'Copy de Direct Response + Análise preditiva de ads'},
   notificacoes:{t:'Notificações',s:''},configuracoes:{t:'Configurações',s:''},
+  adlibrary:{t:'Ad Library',s:'Anúncios dos concorrentes e o Spy'},
   adsmetrics:{t:'Análise de tráfego',s:'Gasto, cliques e vendas por campanha e por anúncio'},
   funis:{t:'Projetos',s:'Funil, quiz, VSL, pixel e testes de cada projeto'},
   quiz:{t:'Quiz',s:'Quizzes de funil: montar, publicar e ver onde abandonam'},
@@ -9039,7 +9180,7 @@ function goTo(id){
   if(id==='educacional')renderEdu();
   if(id==='configuracoes')loadCfg();
   if(id==='roi')renderRoi();
-  if(id==='adlibrary')renderAdlib();
+  if(id==='adlibrary'){ if(_spyEhTmx()) spyAbrir(); else renderAdlib(); }
   if(id==='fila')renderFila();
   if(id==='adsmetrics')renderAdsMetrics();
   if(id==='funis'){ renderFunis(); try{ fnEsconderAbasDaEmpresa(); }catch(e){} }
@@ -9671,6 +9812,554 @@ function _spyHorasAtras(ts){
   if(diff < 3600) return 'há '+Math.floor(diff/60)+'min';
   if(diff < 86400) return 'há '+Math.floor(diff/3600)+'h';
   return 'há '+Math.floor(diff/86400)+'d';
+}
+
+// ══════════════════════════════════════════════
+// SPY DE ANÚNCIOS (18/11/2026): na TMX, a Ad Library é só o Spy (decisão do Thiago). As abas antigas AdLib e Spy
+// Automático somem da TMX, mas os dados delas (adlib, sl_spy_auto) ficam como estão; nas empresas clientes nada muda.
+// Quem coleta é o Claude no Chrome, pelo MCP (spy.js). Aqui a equipe vê, cadastra biblioteca e corrige etiqueta;
+// ⚙ Configurações (rotina, nichos e regras) é só da conta do Thiago, e o servidor confere.
+// ══════════════════════════════════════════════
+var _spy = { aba:'bibliotecas', vista:'lista', bib:null, cri:null, nicho:'*', dias:7, bibAba:'criativos', fAng:'', fSt:'', ord:'ads',
+  cfgAba:'rotina', q:'', parte:'todas', parados:true, mdim:'angulo', mnicho:'', funil:null, volta:null };
+var _spyPainel = null, _spyDet = null, _spyCri = null, _spyFunis = null, _spyCfg = null, _spyBusca = null, _spyMerc = null, _spyPollT = null;
+var SPY_ST = { novo:['Novo','p-novo','#16A34A'], escalando:['Escalando','p-esc','#EA580C'], estavel:['Estável','p-est','rgba(15,23,42,.8)'], parou:['Parou','p-par','#DC2626'] };
+var SPY_BIB = { na_fila:['Na fila','p-fila'], coletada:['Coletada','p-ok'], erro:['Erro','p-erro'], sugerida:['Sugerida','p-sug'], ignorada:['Ignorada','p-fila'] };
+var SPY_PARTE = { gancho:['Gancho','#7C3AED'], corpo:['Corpo','#0284C7'], cta:['CTA','#16A34A'] };
+var SPY_CORES = [['#0E9F35','#0B3D1E'],['#7C3AED','#2E1065'],['#0284C7','#0C2D48'],['#EA580C','#431407'],['#DB2777','#500724'],['#0891B2','#083344']];
+var SPY_PROVAS = ['Demonstração','Depoimento','Autoridade','Número','Nenhuma'], SPY_CTAS = ['Live','VSL','Quiz','Direto'];
+var SPY_CAMPOS_FUNIL = [['promessa','Promessa (manchete)'],['formato_oferta','Formato da oferta'],['preco','Preço'],['ancoragem','Ancoragem'],['parcelamento','Parcelamento'],['lote','Lote / escassez'],['bonus','Bônus'],['video','VSL / vídeo'],['checkout','Checkout'],['rastreio','Rastreio'],['url','Endereço da página'],['fora_do_ar','Página fora do ar']];
+
+function _spyEhTmx(){ return typeof tmxEhTmx === 'function' && tmxEhTmx() && typeof SpyLink !== 'undefined'; }
+function _spyDono(){ return !!(_spyPainel ? _spyPainel.dono : (typeof _ehDonoDoProtocolo === 'function' && _ehDonoDoProtocolo(currentUser))); }
+function _spyE(s){ return _esc(s); }
+function _spyEl(){ return document.getElementById('spy-app'); }
+function _spyAqui(){ return cur === 'adlibrary' && _spyEhTmx(); }
+async function _spyJson(url, metodo, corpo){
+  var r = await fetch(API_BASE+url, metodo ? { method:metodo, headers:{'Content-Type':'application/json'}, body: corpo ? JSON.stringify(corpo) : undefined } : undefined);
+  var d = null; try{ d = await r.json(); }catch(e){}
+  if(!r.ok) throw new Error((d && d.error) || ('O servidor respondeu '+r.status));
+  return d || {};
+}
+function _spyPill(st, mapa){ var x = (mapa || SPY_ST)[st]; return x ? '<span class="sp-pill '+x[1]+'">'+_spyE(x[0])+'</span>' : ''; }
+function _spyDM(iso){ if(!iso) return '—'; var p = String(iso).slice(0,10).split('-'); return p[2]+'/'+p[1]; }
+function _spyDataCurta(iso){ if(!iso) return '—'; var d = new Date(String(iso).slice(0,10)+'T12:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.',''); }
+function _spyQuando(ms){ if(!ms) return '—'; var d = new Date(ms); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function _spyMidia(ch){ return ch ? API_BASE+'/api/spy/midia/'+ch : ''; }
+function _spyTempo(s){ s = Math.max(0, Math.floor(Number(s)||0)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function _spySinal(n){ return n > 0 ? '▲ +'+n : n < 0 ? '▼ '+n : '= 0'; }
+function _spyClasse(n){ return n > 0 ? 'sobe' : n < 0 ? 'desce' : 'igual'; }
+function _spyNicho(id){ var n = ((_spyPainel && _spyPainel.nichos) || []).find(function(x){ return x.id === id; }); return n || null; }
+function _spyEtq(c, campo){ var l = (c.etiquetas||{})[campo] || []; return l.find(function(e){ return e.parte === 'todo'; }) || l[0] || null; }
+function _spyOrigem(e){
+  if(!e) return '';
+  if(e.origem === 'thiago'){ var eu = currentUser && (!e.por || e.por === currentUser.nome); return '<span class="sp-origem voce">✎ corrigido por '+(eu ? 'você' : _spyE(e.por))+'</span>'; }
+  return '<span class="sp-origem claude">✦ sugerido pelo Claude</span>';
+}
+function _spyCor(fid){ if(!fid) return ['#334155','#0F172A']; var h = 0; for(var i = 0; i < fid.length; i++) h = (h * 31 + fid.charCodeAt(i)) >>> 0; return SPY_CORES[h % SPY_CORES.length]; }
+function _spyAgendar(fn, ms){ clearTimeout(_spyPollT); _spyPollT = setTimeout(function(){ if(_spyAqui()) fn(); }, ms); }
+
+// ── abrir a Ad Library na TMX ──
+function spyAbrir(){
+  var app = _spyEl(); if(!app) return;
+  ['adlib-subtabs','adlib-content-adlib','adlib-content-spyauto'].forEach(function(id){ var x = document.getElementById(id); if(x) x.style.display = 'none'; });
+  app.style.display = '';
+  spyRender();
+}
+function spyIr(aba){ _spy.aba = aba; _spy.vista = 'lista'; clearTimeout(_spyPollT); spyRender(); window.scrollTo(0,0); }
+function spyRender(){
+  var app = _spyEl(); if(!app) return;
+  var abas = [['bibliotecas','Bibliotecas'],['funis','Funis vigiados'],['busca','Busca na fala'],['mercado','Mercado × Eu']];
+  var html = '<div class="sp-abas" role="tablist">'+abas.map(function(a){ return '<button class="sp-aba'+(_spy.aba===a[0]?' on':'')+'" onclick="spyIr(\''+a[0]+'\')">'+a[1]+'</button>'; }).join('')+
+    (_spyDono() ? '<button class="sp-aba cfg'+(_spy.aba==='config'?' on':'')+'" onclick="spyIr(\'config\')">⚙ Configurações</button>' : '')+'</div><div id="spy-vista"></div>';
+  app.innerHTML = html;
+  var v = document.getElementById('spy-vista');
+  if(_spy.vista === 'criativo') return spyVistaCriativo(v);
+  if(_spy.aba === 'bibliotecas'){ if(_spy.vista === 'biblioteca') return spyVistaBiblioteca(v); if(_spy.vista === 'criativo') return spyVistaCriativo(v); return spyVistaLista(v); }
+  if(_spy.aba === 'funis') return spyVistaFunis(v);
+  if(_spy.aba === 'busca') return spyVistaBusca(v);
+  if(_spy.aba === 'mercado') return spyVistaMercado(v);
+  if(_spy.aba === 'config') return spyVistaConfig(v);
+}
+function _spyVista(){ return document.getElementById('spy-vista'); }
+function _spyCarregando(v, txt){ v.innerHTML = '<div class="sp-vazio">'+(txt || 'Carregando…')+'</div>'; }
+function _spyFalhou(v, e){ v.innerHTML = '<div class="sp-vazio">Não consegui abrir: '+_spyE(e.message)+'</div>'; }
+
+// ── minilinha e gráfico dos anúncios ativos por dia ──
+function _spySerie(sr, dias){ return (sr || []).slice(-(dias + 1)); }
+function spyMinilinha(sr){
+  if(!sr || sr.length < 2) return '';
+  var W = 84, H = 26, vs = sr.map(function(x){ return x.ads; }), mn = Math.min.apply(null, vs), mx = Math.max.apply(null, vs), amp = mx - mn || 1;
+  var pts = sr.map(function(x, i){ return [2 + i * (W - 4) / (sr.length - 1), H - 3 - (x.ads - mn) / amp * (H - 6)]; });
+  var dl = vs[vs.length - 1] - vs[0], cor = dl > 0 ? '#16A34A' : dl < 0 ? '#DC2626' : '#94A3B8', u = pts[pts.length - 1];
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Anúncios ativos por dia"><polyline points="'+pts.map(function(p){ return p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ')+'" fill="none" stroke="'+cor+'" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round"/><circle cx="'+u[0]+'" cy="'+u[1]+'" r="2.6" fill="'+cor+'"/></svg>';
+}
+function spyGrafico(sr){
+  var W = 720, H = 200, E = 38, D = 14, T = 22, B = 26, vs = sr.map(function(x){ return x.ads; }), mn = Math.min.apply(null, vs), mx = Math.max.apply(null, vs);
+  var lo = Math.max(0, Math.floor((mn - (mx - mn) * 0.25 - 1) / 5) * 5), hi = Math.ceil((mx + (mx - mn) * 0.15 + 1) / 5) * 5;
+  var X = function(i){ return sr.length < 2 ? (E + W - D) / 2 : E + i * (W - E - D) / (sr.length - 1); }, Y = function(n){ return T + (hi - n) / (hi - lo || 1) * (H - T - B); };
+  var grade = '', passo = Math.max(5, Math.ceil((hi - lo) / 4 / 5) * 5);
+  for(var g = lo; g <= hi; g += passo) grade += '<line x1="'+E+'" x2="'+(W - D)+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--border)" stroke-width="1"/><text class="eixo" x="'+(E - 6)+'" y="'+(Y(g) + 3.5)+'" text-anchor="end">'+g+'</text>';
+  var linha = sr.map(function(x, i){ return X(i).toFixed(1)+','+Y(x.ads).toFixed(1); }).join(' ');
+  var area = sr.length > 1 ? '<path d="M'+X(0)+','+(H - B)+' L'+linha.split(' ').join(' L')+' L'+X(sr.length - 1)+','+(H - B)+' Z" fill="url(#spyArea)"/>' : '';
+  var cada = Math.ceil(sr.length / 10);
+  var pts = sr.map(function(x, i){ var dl = i ? x.ads - sr[i - 1].ads : null, rot = i === 0 || i === sr.length - 1;
+    return '<circle class="alvo" cx="'+X(i)+'" cy="'+Y(x.ads)+'" r="12"><title>'+_spyDM(x.dia)+': '+x.ads+' anúncios ativos'+(dl === null ? '' : ' ('+(dl > 0 ? '+' : '')+dl+' vs. dia anterior)')+'</title></circle>'+
+      '<circle cx="'+X(i)+'" cy="'+Y(x.ads)+'" r="4" fill="var(--card)" stroke="#16A34A" stroke-width="2" pointer-events="none"/>'+
+      (rot ? '<text class="rot" x="'+X(i)+'" y="'+(Y(x.ads) - 10)+'" text-anchor="middle">'+x.ads+'</text>' : '')+
+      (i % cada === 0 || i === sr.length - 1 ? '<text class="eixo" x="'+X(i)+'" y="'+(H - 8)+'" text-anchor="middle">'+_spyDM(x.dia)+'</text>' : ''); }).join('');
+  return '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Anúncios ativos por dia"><defs><linearGradient id="spyArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22D94A" stop-opacity=".22"/><stop offset="1" stop-color="#22D94A" stop-opacity="0"/></linearGradient></defs>'+
+    grade+area+(sr.length > 1 ? '<polyline points="'+linha+'" fill="none" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' : '')+pts+'</svg>';
+}
+function _spyPeriodo(){ return '<div class="sp-periodo" role="group" aria-label="Período">'+[3,5,7,14,30].map(function(n){ return '<button type="button" class="'+(_spy.dias===n?'on':'')+'" onclick="_spy.dias='+n+';spyRender()">'+n+' dias</button>'; }).join('')+'</div>'; }
+
+// ══ Bibliotecas (lista) ══
+function spyCarregarPainel(){ return _spyJson('/api/spy/painel').then(function(d){ _spyPainel = d; return d; }); }
+function spyVistaLista(v){
+  if(!_spyPainel) _spyCarregando(v);
+  else v.innerHTML = spyHtmlLista();
+  spyCarregarPainel().then(function(){ if(_spy.aba === 'bibliotecas' && _spy.vista === 'lista' && _spyVista()){ var abasDono = !!document.querySelector('#spy-app .sp-aba.cfg'); if(abasDono !== _spyDono()) return spyRender(); _spyVista().innerHTML = spyHtmlLista(); } })
+    .catch(function(e){ if(!_spyPainel) _spyFalhou(v, e); });
+}
+function spyHtmlLista(){
+  var p = _spyPainel, k = p.kpis || {}, cfg = p.config || {};
+  var bibs = p.bibliotecas || [];
+  var cont = { '*': bibs.filter(function(b){ return b.status !== 'ignorada'; }).length, '': 0 };
+  bibs.forEach(function(b){ if(b.status === 'ignorada') return; var id = b.nicho_id || ''; cont[id] = (cont[id] || 0) + 1; });
+  var nichos = (p.nichos || []).filter(function(n){ return cont[n.id]; });
+  var chip = function(id, nome){ return '<button type="button" class="sp-chip'+(_spy.nicho === id ? ' on' : '')+'" onclick="_spy.nicho=\''+_spyE(id)+'\';spyRender()">'+_spyE(nome)+' <span class="n">'+(cont[id] || 0)+'</span></button>'; };
+  var lista = bibs.filter(function(b){ return _spy.nicho === '*' ? true : (b.nicho_id || '') === _spy.nicho; });
+  lista.sort(function(a, b){ return (a.status === 'ignorada') - (b.status === 'ignorada') || (a.status === 'sugerida') - (b.status === 'sugerida') || b.ouro - a.ouro || b.ads_ativos - a.ads_ativos; });
+  var avisos = [];
+  if(!cfg.assemblyai) avisos.push('Falta a chave da AssemblyAI no Railway (ASSEMBLYAI_API_KEY). Sem ela, os vídeos ficam guardados e esperam a transcrição.');
+  if(cfg.midia === 'nenhum') avisos.push('O armazenamento dos vídeos (Cloudflare R2) não está ligado: os anúncios entram, os vídeos esperam.');
+  if(k.aguardando_transcricao) avisos.push(k.aguardando_transcricao+' vídeo(s) aguardando transcrição (chave ou cota da AssemblyAI).');
+  var linhas = lista.map(function(b){
+    var n = _spyNicho(b.nicho_id), sr = _spySerie(b.serie, _spy.dias), dl = sr.length > 1 ? sr[sr.length - 1].ads - sr[0].ads : null;
+    var st = _spyPill(b.status, SPY_BIB);
+    if(b.status === 'sugerida') st += (b.motivo ? '<div class="sp-pq sp-mut" style="margin-top:4px;max-width:200px;">'+_spyE(b.motivo)+'</div>' : '')+
+      '<div class="sp-lin" style="gap:4px;margin-top:6px;"><button class="sp-btn sm pri" onclick="spyMudarBib(\''+b.id+'\',{ouro:true,status:\'na_fila\'})">Virar ouro</button><button class="sp-btn sm" onclick="spyMudarBib(\''+b.id+'\',{status:\'ignorada\'})">Ignorar</button></div>';
+    else if(b.status === 'ignorada') st += ' <button class="sp-btn sm" style="margin-left:4px;" onclick="spyMudarBib(\''+b.id+'\',{status:\'na_fila\'})">Voltar</button>';
+    if(b.erro) st += '<div class="sp-pq" style="color:var(--sp-amb);margin-top:4px;max-width:220px;" title="'+_spyE(b.erro)+'">'+_spyE(b.erro.slice(0, 80))+'</div>';
+    return '<tr class="'+(b.status === 'ignorada' ? 'sp-apagada' : '')+'"><td><a class="sp-nome" onclick="spyAbrirBib(\''+b.id+'\')">'+_spyE(b.nome)+'</a><div class="sp-pq sp-mut">'+_spyE(b.referencia)+(b.pais !== 'BR' ? ' · '+_spyE(b.pais) : '')+'</div></td>'+
+      '<td>'+SpyLink.rotuloTipo(b.tipo)+'</td><td>'+(n ? _spyE(n.nome) : '<span class="sp-mut">A definir</span>')+'</td>'+
+      '<td><b>'+(b.ultima_coleta_em ? b.ads_ativos : '—')+'</b></td>'+
+      '<td>'+(dl === null ? '<span class="sp-pq sp-mut">'+(sr.length === 1 ? '1ª coleta' : '—')+'</span>' : '<div class="sp-var">'+spyMinilinha(sr)+'<span class="d '+_spyClasse(dl)+'">'+_spySinal(dl)+'</span></div>')+'</td>'+
+      '<td>'+(b.criativos || '—')+'</td><td style="white-space:nowrap;">'+(b.mais_antigo_dias != null ? b.mais_antigo_dias+' dias' : '—')+'</td>'+
+      '<td><button onclick="spyMudarBib(\''+b.id+'\',{ouro:'+(!b.ouro)+'})" title="'+(b.ouro ? 'Tirar do ouro' : 'Marcar como ouro: coleta todo dia')+'" aria-label="Alternar ouro" style="background:none;border:0;font-size:18px;cursor:pointer;color:'+(b.ouro ? '#F59E0B' : 'var(--text3)')+';">'+(b.ouro ? '★' : '☆')+'</button></td>'+
+      '<td>'+st+'</td></tr>';
+  }).join('');
+  var porNicho = '<option value="">A definir</option>'+(p.nichos || []).map(function(n){ return '<option value="'+_spyE(n.id)+'"'+(n.id === 'nic-concurso' ? ' selected' : '')+'>'+_spyE(n.nome)+'</option>'; }).join('');
+  return '<div class="sp-col">'+
+    '<div><div class="sp-crumb">Ad Library › Spy</div><h2 class="sp-tit">Bibliotecas</h2>'+
+      '<div class="sp-sub">A rotina do Claude abre cada biblioteca ouro no Chrome todo dia e manda o que está no ar pra cá. Anúncio que sai do ar continua no acervo.</div></div>'+
+    avisos.map(function(a){ return '<div class="sp-aviso">'+_spyE(a)+'</div>'; }).join('')+
+    '<div class="sp-card"><div class="sp-form-link">'+
+      '<label class="sp-f">Colar link da Biblioteca de Anúncios<input id="spy-link" placeholder="https://www.facebook.com/ads/library/?...view_all_page_id=... ou ?q=dominio.com" oninput="spyLinkDigitado()" onkeydown="if(event.key===\'Enter\')spyAddBib()"></label>'+
+      '<label class="sp-f">Nome<input id="spy-link-nome" placeholder="Concorrente"></label>'+
+      '<label class="sp-f">Nicho<select id="spy-link-nicho">'+porNicho+'</select></label>'+
+      '<label class="chk"><input type="checkbox" id="spy-link-ouro" checked> Ouro (coleta todo dia)</label>'+
+      '<button class="sp-btn pri" id="spy-link-btn" onclick="spyAddBib()">Adicionar biblioteca</button>'+
+      '<div class="dica" id="spy-link-tipo">Aceita view_all_page_id (página), busca por domínio ou por palavra (q=). A próxima coleta da rotina puxa os anúncios.</div>'+
+    '</div></div>'+
+    '<div class="sp-kpis">'+
+      '<div class="sp-card sp-kpi"><div class="l">Bibliotecas</div><div class="v">'+bibs.filter(function(b){ return b.status !== 'ignorada' && b.status !== 'sugerida'; }).length+'</div><div class="s">'+bibs.filter(function(b){ return b.ouro; }).length+' ouro · '+bibs.filter(function(b){ return b.status === 'sugerida'; }).length+' sugeridas</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Criativos no acervo</div><div class="v">'+(k.criativos || 0)+'</div><div class="s">vídeos iguais contam uma vez</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Transcritos</div><div class="v">'+(k.transcritos || 0)+'</div><div class="s">'+(k.aguardando_transcricao ? k.aguardando_transcricao+' aguardando' : 'AssemblyAI')+'</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Última coleta</div><div class="v" style="font-size:20px;">'+(k.ultima_coleta_em ? _spyQuando(k.ultima_coleta_em) : '—')+'</div><div class="s">pela rotina do Claude</div></div>'+
+    '</div>'+
+    '<div class="sp-filtros"><div class="sp-chips"><span class="rot">Nicho</span>'+chip('*', 'Todos')+nichos.map(function(n){ return chip(n.id, n.nome); }).join('')+(cont[''] ? chip('', 'A definir') : '')+'</div>'+
+      '<div class="sp-chips"><span class="rot">Variação em</span>'+_spyPeriodo()+'</div></div>'+
+    (lista.length ? '<div class="sp-tw"><table><thead><tr><th>Concorrente</th><th>Tipo</th><th>Nicho</th><th>Ads ativos</th><th>Variação · '+_spy.dias+' dias</th><th>Criativos</th><th>Mais antigo</th><th>Ouro</th><th>Status</th></tr></thead><tbody>'+linhas+'</tbody></table></div>'
+      : '<div class="sp-vazio">Nenhuma biblioteca neste nicho.</div>')+
+  '</div>';
+}
+function spyLinkDigitado(){
+  var v = (document.getElementById('spy-link')||{}).value || '', el = document.getElementById('spy-link-tipo');
+  if(!el) return;
+  var l = SpyLink.ler(v);
+  el.textContent = !v.trim() ? 'Aceita view_all_page_id (página), busca por domínio ou por palavra (q=). A próxima coleta da rotina puxa os anúncios.' :
+    !l ? 'Não reconheci esse link.' : (l.tipo === 'pagina' ? 'Página · id '+l.referencia : (l.tipo === 'dominio' ? 'Domínio · ' : 'Palavra-chave · ')+l.referencia)+' · '+l.pais;
+  el.style.color = v.trim() && !l ? '#DC2626' : '';
+}
+async function spyAddBib(){
+  var link = ((document.getElementById('spy-link')||{}).value || '').trim();
+  if(!SpyLink.ler(link)){ tmxAviso('Cole um link da Biblioteca de Anúncios.\n\nCom view_all_page_id= (página) ou q= (domínio ou palavra).'); return; }
+  var btn = document.getElementById('spy-link-btn'); if(btn) btn.disabled = true;
+  try{
+    var d = await _spyJson('/api/spy/bibliotecas', 'POST', { link:link, nome:(document.getElementById('spy-link-nome')||{}).value || '',
+      nicho_id:(document.getElementById('spy-link-nicho')||{}).value || '', ouro:!!(document.getElementById('spy-link-ouro')||{}).checked });
+    _avisoTela(d.existente ? 'Essa biblioteca já estava cadastrada' : 'Biblioteca cadastrada: a próxima coleta da rotina puxa os anúncios');
+    await spyCarregarPainel();
+    spyAbrirBib(d.biblioteca.id);
+  }catch(e){ tmxAviso('Não consegui cadastrar.\n\n'+e.message); }
+  finally{ if(btn) btn.disabled = false; }
+}
+async function spyMudarBib(id, campos){
+  try{
+    await _spyJson('/api/spy/bibliotecas/'+encodeURIComponent(id), 'POST', campos);
+    _avisoTela(campos.status === 'ignorada' ? 'Sugestão ignorada' : campos.ouro === true ? 'Marcada como ouro: coleta todo dia' : campos.ouro === false ? 'Tirada do ouro' : 'Salvo');
+    await spyCarregarPainel(); _spyDet = null; spyRender();
+  }catch(e){ tmxAviso('Não consegui salvar.\n\n'+e.message); }
+}
+
+// ══ Biblioteca (detalhe) ══
+function spyAbrirBib(id){ _spy.aba = 'bibliotecas'; _spy.vista = 'biblioteca'; _spy.bibAba = 'criativos'; _spy.fAng = ''; _spy.fSt = '';
+  if(!_spyDet || _spyDet.biblioteca.id !== id) _spyDet = null; _spy.bib = id; spyRender(); window.scrollTo(0,0); }
+function spyVistaBiblioteca(v){
+  var id = _spy.bib;
+  if(_spyDet && _spyDet.biblioteca.id === id) v.innerHTML = spyHtmlBiblioteca(_spyDet); else _spyCarregando(v, 'Carregando a biblioteca…');
+  _spyJson('/api/spy/bibliotecas/'+encodeURIComponent(id)).then(function(d){
+    if(_spy.vista !== 'biblioteca' || _spy.bib !== id || !_spyVista()) return;
+    var mudou = JSON.stringify(_spyDet) !== JSON.stringify(d);
+    _spyDet = d;
+    if(mudou) _spyVista().innerHTML = spyHtmlBiblioteca(d);
+    if((d.processamento || {}).pendentes) _spyAgendar(function(){ if(_spy.vista === 'biblioteca' && _spy.bib === id) spyVistaBiblioteca(_spyVista()); }, 8000);
+  }).catch(function(e){ _spyFalhou(v, e); });
+}
+function spyFiltro(k, val){ _spy[k] = val; if(_spyDet && _spyVista()) _spyVista().innerHTML = spyHtmlBiblioteca(_spyDet); }
+function spyCartao(c){
+  var ang = _spyEtq(c, 'angulo'), fmt = _spyEtq(c, 'formato'), k = _spyCor(c.familia && c.familia.id), st = SPY_ST[c.status] || SPY_ST.estavel;
+  var fundo = c.thumb ? 'background-image:url('+_spyMidia(c.thumb)+')' : '';
+  var fala = c.fala || c.copy || '';
+  return '<button class="sp-cc" onclick="spyAbrirCri(\''+c.id+'\')" aria-label="Abrir criativo">'+
+    '<div class="sp-th" style="--c1:'+k[0]+';--c2:'+k[1]+';'+fundo+'"><span class="st"><span class="sp-pill" style="background:'+st[2]+';color:#fff;">'+st[0]+'</span></span>'+
+    '<span class="nads">'+c.anuncios_ativos+' '+(c.anuncios_ativos === 1 ? 'anúncio' : 'anúncios')+'</span>'+(c.tipo === 'video' ? '<span class="play"><i></i></span>' : '')+
+    (fala ? '<span class="fala">“'+_spyE(fala.slice(0, 120))+(fala.length > 120 ? '…' : '')+'”</span>' : '')+
+    '<span class="dias"><span>'+(c.status === 'parou' ? 'ficou '+(c.dias_no_ar || 0)+' dias no ar' : 'no ar há '+(c.dias_no_ar != null ? c.dias_no_ar : '—')+' dias')+' · desde '+_spyDataCurta(c.inicio)+'</span>'+(c.duracao_s ? '<span>'+_spyTempo(c.duracao_s)+'</span>' : '')+'</span></div>'+
+    '<div class="b"><div class="fam">'+(c.familia ? _spyE(c.familia.nome) : '<span class="sp-mut" style="font-weight:600;">Sem família</span>')+'</div><div class="pg">'+_spyE(c.pagina || '—')+'</div>'+
+    '<div class="sp-lin" style="gap:6px;">'+(ang && ang.valor ? '<span class="sp-tag t-ang">'+_spyE(ang.valor)+'</span>' : '')+(fmt && fmt.valor ? '<span class="sp-tag t-fmt">'+_spyE(fmt.valor)+'</span>' : '')+(c.nao_modelar ? '<span class="sp-tag t-x">Não modelar</span>' : '')+'</div>'+
+    '<div>'+(function(){ var tds = []; Object.keys(c.etiquetas || {}).forEach(function(k){ tds = tds.concat(c.etiquetas[k] || []); });
+      var gente = tds.filter(function(e){ return e.origem === 'thiago'; });
+      return gente.length ? _spyOrigem(gente[0]) : tds.length ? _spyOrigem(tds[0]) : '<span class="sp-pq sp-mut">sem etiqueta ainda</span>'; })()+'</div></div></button>';
+}
+function spyHtmlBiblioteca(d){
+  var b = d.biblioteca, k = d.kpis || {}, p = d.processamento || {}, n = _spyNicho(b.nicho_id);
+  var todos = d.criativos.slice(), ativos = todos.filter(function(c){ return c.anuncios_ativos > 0; }), parados = todos.filter(function(c){ return c.anuncios_ativos === 0; });
+  var fams = {}; ativos.forEach(function(c){ if(c.familia) fams[c.familia.id] = 1; });
+  var cs = _spy.bibAba === 'saiu' ? parados : ativos.slice();
+  if(_spy.fAng) cs = cs.filter(function(c){ var e = _spyEtq(c, 'angulo'); return e && e.valor === _spy.fAng; });
+  if(_spy.fSt) cs = cs.filter(function(c){ return c.status === _spy.fSt; });
+  cs.sort(function(a, c){ return _spy.ord === 'antigo' ? (c.dias_no_ar||0) - (a.dias_no_ar||0) : _spy.ord === 'novo' ? String(c.inicio||'').localeCompare(String(a.inicio||'')) : (c.anuncios_ativos - a.anuncios_ativos) || ((c.dias_no_ar||0) - (a.dias_no_ar||0)); });
+  var sr = _spySerie(d.serie, _spy.dias), ult = sr.length ? sr[sr.length - 1] : null, ont = sr.length > 1 ? sr[sr.length - 2] : null;
+  var serie = '';
+  if(sr.length){
+    var ini = sr[0], dl = ult.ads - ini.ads, mx = sr.reduce(function(a, x){ return x.ads > a.ads ? x : a; }, sr[0]);
+    serie = '<div class="sp-card sp-serie"><div class="sp-lin sp-entre"><b style="font-size:14px;">Anúncios ativos por dia</b>'+_spyPeriodo()+'</div>'+
+      '<div class="resumo">'+(sr.length > 1 ? '<span>Em '+(sr.length - 1)+' '+(sr.length === 2 ? 'dia' : 'dias')+': <b class="'+_spyClasse(dl)+'">'+_spySinal(dl)+(ini.ads ? ' ('+(dl > 0 ? '+' : '')+Math.round(dl / ini.ads * 100)+'%)' : '')+'</b></span><span>De <b>'+ini.ads+'</b> em '+_spyDM(ini.dia)+' para <b>'+ult.ads+'</b> em '+_spyDM(ult.dia)+'</span><span>Maior: <b>'+mx.ads+'</b> em '+_spyDM(mx.dia)+'</span>' : '<span>Só uma coleta até agora ('+_spyDM(ult.dia)+'): a linha aparece a partir da segunda.</span>')+'</div>'+
+      spyGrafico(sr)+'</div>';
+  }
+  var doms = Object.keys(d.dominios || {});
+  var grade;
+  if(!b.ultima_coleta_em) grade = '<div class="sp-vazio">Ainda sem coleta. A rotina do Claude abre esta biblioteca no Chrome e manda os anúncios'+(b.ouro ? ' (ouro: todo dia)' : '')+'.<br>Pra coletar agora, peça no chat do Claude: “coleta a biblioteca '+_spyE(b.nome)+' no Spy”.</div>';
+  else if(_spy.bibAba === 'familias'){
+    var g = {}; ativos.forEach(function(c){ var nm = c.familia ? c.familia.nome : ''; (g[nm] = g[nm] || []).push(c); });
+    var nomes = Object.keys(g).sort(function(a, c){ return (a === '') - (c === '') || g[c].length - g[a].length; });
+    grade = nomes.length ? nomes.map(function(nm){ var l = g[nm];
+      return '<div class="sp-card"><div class="sp-lin sp-entre"><b>'+(nm ? 'Família '+_spyE(nm) : 'Sem família ainda')+'</b><span class="sp-pq sp-mut">'+l.length+' criativos · '+l.reduce(function(s, c){ return s + c.anuncios_ativos; }, 0)+' anúncios · mais antigo '+Math.max.apply(null, l.map(function(c){ return c.dias_no_ar || 0; }))+' dias</span></div>'+
+        (nm ? '' : '<div class="sp-pq sp-mut" style="margin-top:4px;">A família (mesmo corpo, gancho diferente) quem define é o Claude, depois de ler a transcrição.</div>')+
+        '<div class="sp-grade" style="margin-top:12px;">'+l.map(spyCartao).join('')+'</div></div>'; }).join('') : '<div class="sp-vazio">Nenhum criativo ativo.</div>';
+  } else grade = cs.length ? '<div class="sp-grade">'+cs.map(spyCartao).join('')+'</div>' : '<div class="sp-vazio">'+(_spy.bibAba === 'saiu' ? 'Nenhum criativo saiu do ar ainda. Aparece a partir da segunda coleta.' : 'Nenhum criativo com esses filtros.')+'</div>';
+  var aba = function(id, t, nn){ return '<button class="sp-tab'+(_spy.bibAba === id ? ' on' : '')+'" onclick="spyFiltro(\'bibAba\',\''+id+'\')">'+t+'<span class="n">'+nn+'</span></button>'; };
+  var dOnt = ult && ont ? ult.ads - ont.ads : null;
+  return '<div class="sp-col">'+
+    '<div class="sp-lin sp-entre" style="align-items:flex-start;"><div style="flex:999 1 320px;min-width:0;"><div class="sp-crumb"><a onclick="spyIr(\'bibliotecas\')">Bibliotecas</a> › '+_spyE(b.nome)+'</div>'+
+      '<h2 class="sp-tit">'+_spyE(b.nome)+'</h2><div class="sp-sub">Busca por '+SpyLink.rotuloTipo(b.tipo).toLowerCase()+': '+_spyE(b.referencia)+' · '+_spyE(b.pais)+' · Nicho: '+(n ? _spyE(n.nome) : 'A definir')+
+      ((d.paginas || []).length ? ' · Páginas: '+d.paginas.map(function(x){ return _spyE(x.nome)+' ('+x.n+')'; }).join(', ') : '')+'</div></div>'+
+      '<div class="sp-lin">'+(b.ouro ? '<span class="sp-pill p-ouro">★ Ouro · coleta todo dia</span>' : '<button class="sp-btn sm" onclick="spyMudarBib(\''+b.id+'\',{ouro:true})">☆ Virar ouro</button>')+
+      '<a class="sp-btn" href="'+_spyE(b.link)+'" target="_blank" rel="noopener">Abrir na Biblioteca</a></div></div>'+
+    (b.erro ? '<div class="sp-aviso">'+_spyE(b.erro)+'</div>' : '')+
+    '<div class="sp-kpis">'+
+      '<div class="sp-card sp-kpi"><div class="l">Anúncios ativos</div><div class="v">'+(b.ultima_coleta_em ? k.ads_ativos : '—')+'</div><div class="s">'+(dOnt !== null ? '<b class="'+_spyClasse(dOnt)+'">'+_spySinal(dOnt)+' vs. ontem</b> · ' : '')+(b.ultima_coleta_em ? 'coleta '+_spyQuando(b.ultima_coleta_em) : 'ainda não coletou')+'</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Criativos únicos</div><div class="v">'+(k.criativos || 0)+'</div><div class="s">vídeos iguais contam uma vez</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Famílias de roteiro</div><div class="v">'+(k.familias || 0)+'</div><div class="s">mesmo corpo, gancho diferente</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Mais antigo no ar</div><div class="v">'+(k.mais_antigo_dias != null ? k.mais_antigo_dias+' dias' : '—')+'</div><div class="s">criativo ainda ativo</div></div>'+
+    '</div>'+serie+
+    (b.ultima_coleta_em ? '<div class="sp-card sp-lin" style="gap:22px;">'+
+      '<div style="flex:1 1 240px;min-width:0;"><div class="sp-pq sp-mut">Funil (domínio mais usado)</div><b style="word-break:break-all;">'+(doms[0] ? _spyE(doms[0])+' <span class="sp-pq sp-mut">('+d.dominios[doms[0]]+' anúncios)</span>' : '—')+'</b>'+
+        (doms.length > 1 ? '<div class="sp-pq sp-mut">Também: '+doms.slice(1, 5).map(function(x){ return _spyE(x)+' ('+d.dominios[x]+')'; }).join(', ')+'</div>' : '')+'</div>'+
+      '<div style="flex:1 1 240px;"><div class="sp-pq sp-mut">Vídeos</div><b>'+p.guardados+' de '+p.total+' guardados · '+p.transcritos+' transcritos</b>'+
+        (p.pendentes ? '<div class="sp-pq sp-mut">Baixando e transcrevendo '+p.pendentes+'… a tela atualiza sozinha.</div>' : '')+
+        (p.aguardando_transcricao ? '<div class="sp-pq" style="color:var(--sp-amb);">'+p.aguardando_transcricao+' aguardando transcrição (chave ou cota da AssemblyAI).</div>' : '')+
+        (p.erros ? '<div class="sp-pq" style="color:var(--sp-verm);">'+p.erros+' com erro. <a style="cursor:pointer;color:var(--sp-verde);" onclick="spyProcessarBib(\''+b.id+'\')">Tentar de novo</a></div>' : '')+'</div>'+
+      (d.funil_id ? '<a class="sp-pq" style="font-weight:700;cursor:pointer;color:var(--sp-verde);" onclick="_spy.funil=\''+d.funil_id+'\';spyIr(\'funis\')">ver funil vigiado ›</a>' : '')+
+    '</div>' : '')+
+    (b.ultima_coleta_em ? '<div class="sp-lin">'+'<div class="sp-tabs">'+aba('criativos', 'Criativos', ativos.length)+aba('familias', 'Famílias', Object.keys(fams).length)+aba('saiu', 'Saíram do ar', parados.length)+'</div><span style="flex:1 1 10px;"></span>'+
+      '<select aria-label="Filtrar ângulo" onchange="spyFiltro(\'fAng\',this.value)"><option value="">Todos os ângulos</option>'+SpyLink.ANGULOS.map(function(a){ return '<option'+(_spy.fAng === a ? ' selected' : '')+'>'+_spyE(a)+'</option>'; }).join('')+'</select>'+
+      '<select aria-label="Filtrar status" onchange="spyFiltro(\'fSt\',this.value)"><option value="">Todos os status</option>'+['novo','escalando','estavel'].map(function(s){ return '<option value="'+s+'"'+(_spy.fSt === s ? ' selected' : '')+'>'+SPY_ST[s][0]+'</option>'; }).join('')+'</select>'+
+      '<select aria-label="Ordenar" onchange="spyFiltro(\'ord\',this.value)">'+[['ads','Mais anúncios'],['antigo','Há mais tempo no ar'],['novo','Mais novos']].map(function(o){ return '<option value="'+o[0]+'"'+(_spy.ord === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select></div>' : '')+
+    grade+'</div>';
+}
+async function spyProcessarBib(id){
+  try{ var d = await _spyJson('/api/spy/bibliotecas/'+encodeURIComponent(id)+'/processar', 'POST', {}); _avisoTela(d.na_fila ? d.na_fila+' na fila' : 'Nada pendente'); spyRender(); }
+  catch(e){ tmxAviso('Não consegui.\n\n'+e.message); }
+}
+
+// ══ Criativo ══
+function spyAbrirCri(id){ _spy.volta = { aba:_spy.aba }; if(_spy.aba !== 'busca') _spy.aba = 'bibliotecas';
+  _spy.vista = 'criativo'; _spy.cri = id; _spyCri = null; spyRender(); window.scrollTo(0,0); }
+function spyVoltar(){ var v = _spy.volta; if(v && v.aba === 'busca'){ spyIr('busca'); return; } if(_spy.bib){ _spy.aba = 'bibliotecas'; _spy.vista = 'biblioteca'; spyRender(); } else spyIr('bibliotecas'); }
+function spyVistaCriativo(v){
+  var id = _spy.cri;
+  if(!_spyCri) _spyCarregando(v, 'Carregando o criativo…');
+  _spyJson('/api/spy/criativos/'+encodeURIComponent(id)).then(function(d){
+    if(_spy.vista !== 'criativo' || _spy.cri !== id || !_spyVista()) return;
+    var c = d.criativo, antes = _spyCri;
+    var est = function(x){ return x ? [x.midia_status, x.transcricao_status, !!x.transcricao, JSON.stringify(x.etiquetas), x.nao_modelar, JSON.stringify(x.partes), x.familia && x.familia.id].join('|') : ''; };
+    var form = document.getElementById('spy-form-etq'), ocupado = form && form.contains(document.activeElement);
+    var pl = document.getElementById('spy-player'), tocando = pl && !pl.paused;
+    if(!antes || (est(antes) !== est(c) && !ocupado && !tocando)){ _spyCri = c; _spyVista().innerHTML = spyHtmlCriativo(c); spyLigarPlayer(); }
+    var pend = ['pendente','baixando'].indexOf(c.midia_status) >= 0 || c.transcricao_status === 'rodando' || (c.midia_status === 'ok' && c.tipo === 'video' && !c.transcricao && !c.transcricao_status);
+    if(pend) _spyAgendar(function(){ if(_spy.vista === 'criativo' && _spy.cri === id) spyVistaCriativo(_spyVista()); }, 6000);
+  }).catch(function(e){ _spyFalhou(v, e); });
+}
+function spyPular(t, el){
+  document.querySelectorAll('#spy-app .sp-transc .linha').forEach(function(x){ x.classList.toggle('on', x === el); });
+  var p = document.getElementById('spy-player'); if(!p) return;
+  p.currentTime = Number(t) || 0; try{ p.play(); }catch(e){}
+}
+function spyLigarPlayer(){
+  var p = document.getElementById('spy-player'); if(!p) return;
+  p.addEventListener('timeupdate', function(){ var t = p.currentTime;
+    document.querySelectorAll('#spy-app .sp-transc .linha').forEach(function(x){ x.classList.toggle('on', t >= Number(x.dataset.ini) && t < Number(x.dataset.fim)); }); });
+}
+function _spyHtmlTranscricao(c){
+  if(c.transcricao && (c.transcricao.segmentos || []).length){
+    var segs = c.transcricao.segmentos, dur = c.duracao_s || segs[segs.length - 1].fim_s, partes = c.partes || [];
+    var linha = function(s){ return '<button type="button" class="linha" data-ini="'+s.inicio_s+'" data-fim="'+s.fim_s+'" onclick="spyPular('+s.inicio_s+',this)" title="Pular pra '+_spyTempo(s.inicio_s)+'"><span class="ts">'+_spyTempo(s.inicio_s)+'</span><span>'+_spyE(s.texto)+'</span></button>'; };
+    var resumo = '<div class="resumo">'+_spyTempo(dur)+' · transcrito pela '+(c.transcricao.provedor === 'assemblyai' ? 'AssemblyAI' : _spyE(c.transcricao.provedor))+' · '+(partes.length ? 'cortes feitos '+(c.partes_origem === 'thiago' ? 'por você' : 'pelo Claude') : 'sem cortes ainda')+'</div>';
+    if(!partes.length) return '<div class="sp-transc">'+resumo+'<div class="parte"><div class="cab"><span class="bol"></span>Fala <i>0:00 a '+_spyTempo(dur)+'</i></div>'+segs.map(linha).join('')+'</div>'+
+      '<div class="sp-pq sp-mut">O corte em gancho, corpo e CTA aparece quando o Claude estudar este vídeo.</div></div>';
+    // cada fala vai pra uma parte só: a que contém o meio dela
+    var parteDe = function(s){ var m = (s.inicio_s + s.fim_s) / 2; return partes.find(function(p){ return m >= p.inicio_s && m < p.fim_s; }) || null; };
+    var grupos = partes.map(function(p){ return { p:p, segs:segs.filter(function(s){ return parteDe(s) === p; }) }; });
+    var soltas = segs.filter(function(s){ return !grupos.some(function(g){ return g.segs.indexOf(s) >= 0; }); });
+    return '<div class="sp-transc">'+resumo+'<div class="barra" aria-hidden="true">'+partes.map(function(p){ return '<span style="flex:'+Math.max(0.1, p.fim_s - p.inicio_s)+';background:'+SPY_PARTE[p.parte][1]+'"></span>'; }).join('')+'</div>'+
+      grupos.map(function(g){ var p = g.p; return '<div class="parte '+p.parte+'"><div class="cab"><span class="bol"></span>'+SPY_PARTE[p.parte][0]+' <i>'+_spyTempo(p.inicio_s)+' a '+_spyTempo(p.fim_s)+' · '+Math.round(p.fim_s - p.inicio_s)+' s</i></div>'+g.segs.map(linha).join('')+'</div>'; }).join('')+
+      (soltas.length ? '<div class="parte"><div class="cab"><span class="bol"></span>Fora dos cortes</div>'+soltas.map(linha).join('')+'</div>' : '')+'</div>';
+  }
+  if(c.transcricao && c.transcricao.texto) return '<div style="font-size:13.5px;line-height:21px;white-space:pre-wrap;">'+_spyE(c.transcricao.texto)+'</div>';
+  var msg = c.tipo !== 'video' ? 'Só vídeo tem transcrição.'
+    : c.transcricao_status === 'aguardando' ? 'Aguardando transcrição: '+_spyE(c.transcricao_erro || 'chave ou cota da AssemblyAI')+'.'
+    : c.transcricao_status === 'erro' ? 'A transcrição falhou: '+_spyE(c.transcricao_erro || 'erro')+'.'
+    : c.midia_status !== 'ok' ? 'A transcrição sai depois que o vídeo for guardado.' : 'Transcrevendo… cada fala aparece aqui com o tempo.';
+  return '<div class="sp-vazio" style="text-align:left;">'+msg+(c.tipo === 'video' && c.midia_status === 'ok' && ['aguardando','erro'].indexOf(c.transcricao_status) >= 0 ? '<br><br><button class="sp-btn sm" onclick="spyProcessarCri()">Transcrever agora</button>' : '')+'</div>';
+}
+function spyHtmlCriativo(c){
+  var midia;
+  if(c.midia_status === 'ok' && c.tipo === 'video') midia = '<video id="spy-player" class="sp-player" controls playsinline preload="metadata"'+(c.thumb ? ' poster="'+_spyMidia(c.thumb)+'"' : '')+' src="'+_spyMidia(c.arquivo)+'"></video>';
+  else if(c.midia_status === 'ok') midia = '<img src="'+_spyMidia(c.arquivo)+'" style="width:100%;border-radius:12px;display:block;" alt="Criativo">';
+  else midia = '<div class="sp-sem-video">'+(c.midia_status === 'erro' ? 'Não consegui guardar o vídeo: '+_spyE(c.midia_erro || 'erro')+'<br><br><button class="sp-btn sm" onclick="spyProcessarCri()">Tentar de novo</button>'
+    : c.midia_status === 'aguardando' ? _spyE(c.midia_erro || 'O vídeo espera o armazenamento.') : c.midia_status === 'sem_midia' ? 'Anúncio só de texto: não tem vídeo nem imagem.' : 'Baixando o vídeo pro acervo…')+'</div>';
+  var campos = [['angulo','Ângulo','select',SpyLink.ANGULOS],['dor','Dor'],['persona','Persona'],['formato','Formato','select',SpyLink.FORMATOS],['mecanismo','Mecanismo'],['nome_chiclete','Nome chiclete'],['prova','Prova','lista',SPY_PROVAS],['cta','CTA','lista',SPY_CTAS]];
+  var valores = {};
+  var form = campos.map(function(f){
+    var e = _spyEtq(c, f[0]), val = e ? (e.valor || '') : '';
+    valores[f[0]] = val;
+    var ctrl = f[2] === 'select' ? '<select data-spy-etq="'+f[0]+'"><option value="">—</option>'+f[3].map(function(o){ return '<option'+(o === val ? ' selected' : '')+'>'+_spyE(o)+'</option>'; }).join('')+'</select>'
+      : '<input data-spy-etq="'+f[0]+'" value="'+_spyE(val)+'"'+(f[2] === 'lista' ? ' list="spy-l-'+f[0]+'"' : '')+(f[0] === 'nome_chiclete' ? ' placeholder="se houver"' : '')+'>'+(f[2] === 'lista' ? '<datalist id="spy-l-'+f[0]+'">'+f[3].map(function(o){ return '<option value="'+_spyE(o)+'">'; }).join('')+'</datalist>' : '');
+    return '<label class="sp-f"><span class="rot"><span>'+f[1]+'</span>'+_spyOrigem(e)+'</span>'+ctrl+'</label>';
+  }).join('');
+  c._form = valores;
+  var porParte = [];
+  Object.keys(c.etiquetas || {}).forEach(function(k){ (c.etiquetas[k] || []).forEach(function(e){ if(e.parte !== 'todo' && e.valor) porParte.push('<b>'+(SPY_PARTE[e.parte] ? SPY_PARTE[e.parte][0] : e.parte)+'</b> · '+_spyE(k.replace('_',' '))+': '+_spyE(e.valor)); }); });
+  var ads = (c.anuncios || []).map(function(a){
+    var ini = a.inicio_veiculacao ? new Date(a.inicio_veiculacao * 1000).toISOString().slice(0,10) : null, fim = a.fim_veiculacao ? new Date(a.fim_veiculacao * 1000).toISOString().slice(0,10) : null;
+    return '<tr><td>'+_spyE(a.page_name)+(a.quantidade > 1 ? ' <span class="sp-pq sp-mut">×'+a.quantidade+'</span>' : '')+'</td><td style="white-space:nowrap;">'+_spyDataCurta(ini)+'</td><td>'+(a.ativo ? '<span class="sp-pill p-novo">No ar</span>' : 'saiu em '+_spyDataCurta(fim))+'</td>'+
+      '<td class="sp-pq sp-mut">'+_spyE((a.plataformas || []).join(', '))+'</td><td><a href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(a.ad_archive_id)+'" target="_blank" rel="noopener" style="color:var(--sp-verde);">ver</a></td></tr>';
+  }).join('');
+  var bibNome = ((c.bibliotecas || []).find(function(b){ return b.id === _spy.bib; }) || (c.bibliotecas || [])[0] || {}).nome || 'Biblioteca';
+  var volta = _spy.volta && _spy.volta.aba === 'busca' ? '<a onclick="spyVoltar()">Busca na fala</a>' : '<a onclick="spyIr(\'bibliotecas\')">Bibliotecas</a> › <a onclick="spyVoltar()">'+_spyE(bibNome)+'</a>';
+  return '<div class="sp-col">'+
+    '<div class="sp-lin sp-entre" style="align-items:flex-start;"><div style="flex:999 1 400px;min-width:0;"><div class="sp-crumb">'+volta+' › criativo</div>'+
+      '<h2 class="sp-tit" style="font-size:19px;line-height:25px;">“'+_spyE((c.fala || c.copy || '(sem texto)').slice(0, 120))+((c.fala || c.copy || '').length > 120 ? '…' : '')+'”</h2>'+
+      '<div class="sp-sub sp-lin" style="gap:6px;">'+(c.familia ? '<b style="color:var(--sp-roxo);">Família '+_spyE(c.familia.nome)+'</b><span>·</span>' : '')+'<span>'+_spyE((c.paginas && c.paginas.length ? c.paginas : [c.pagina]).join(', '))+'</span><span>· no ar desde '+_spyDataCurta(c.inicio)+' ('+(c.dias_no_ar != null ? c.dias_no_ar : '—')+' dias) · '+c.anuncios_ativos_total+' '+(c.anuncios_ativos_total === 1 ? 'anúncio ativo' : 'anúncios ativos')+(c.anuncios_antes != null && c.anuncios_antes !== c.anuncios_ativos_total ? ' (eram '+c.anuncios_antes+')' : '')+'</span>'+_spyPill(c.status)+'</div></div>'+
+      '<div class="sp-lin"><button class="sp-btn" onclick="spyCopiarCopy()">Copiar copy</button></div></div>'+
+    '<div class="sp-split">'+
+      '<div style="flex:1 1 260px;max-width:340px;display:flex;flex-direction:column;gap:12px;min-width:0;">'+midia+
+        '<div class="sp-card"><b>Copy do anúncio</b><p style="margin:8px 0 0;line-height:20px;white-space:pre-wrap;">'+_spyE(c.copy || '(sem texto)')+'</p>'+(c.titulo ? '<p class="sp-pq sp-mut" style="margin:8px 0 0;">Título: '+_spyE(c.titulo)+'</p>' : '')+
+        '<p class="sp-pq sp-mut" style="margin:8px 0 0;word-break:break-all;">Destino: '+(c.destino ? '<a href="'+_spyE(c.destino)+'" target="_blank" rel="noopener" style="color:var(--sp-verde);">'+_spyE(c.dominio || c.destino)+'</a>' : '—')+'</p></div></div>'+
+      '<div class="sp-card" style="flex:999 1 380px;min-width:0;display:flex;flex-direction:column;gap:12px;">'+
+        '<div class="sp-lin sp-entre"><b>Transcrição com tempo</b>'+(c.transcricao && c.midia_status === 'ok' ? '<span class="sp-pq sp-mut">clique numa fala pra pular no vídeo</span>' : '')+'</div>'+
+        '<div style="max-height:460px;overflow-y:auto;">'+_spyHtmlTranscricao(c)+'</div>'+
+        '<b style="margin-top:6px;">Outros da mesma família</b>'+((c.irmaos || []).length ? '<div class="sp-grade">'+c.irmaos.map(spyCartao).join('')+'</div>' : '<div class="sp-pq sp-mut">'+(c.familia ? 'Nenhum outro.' : 'Ainda sem família.')+'</div>')+
+        '<b style="margin-top:6px;">Anúncios que usam este '+(c.tipo === 'video' ? 'vídeo' : 'criativo')+' ('+(c.anuncios || []).length+')</b>'+
+        '<div class="sp-tw"><table><thead><tr><th>Página</th><th>Início</th><th>Situação</th><th>Onde</th><th></th></tr></thead><tbody>'+ads+'</tbody></table></div></div>'+
+      '<div id="spy-form-etq" class="sp-card" style="flex:1 1 280px;max-width:360px;display:flex;flex-direction:column;gap:12px;">'+
+        '<b>Etiquetas</b>'+form+
+        (porParte.length ? '<div class="sp-pq sp-mut" style="line-height:18px;border-top:1px solid var(--sp-line);padding-top:10px;">Por parte, do Claude:<br>'+porParte.join('<br>')+'</div>' : '')+
+        '<div style="border-top:1px solid var(--sp-line);padding-top:12px;display:flex;flex-direction:column;gap:8px;">'+
+          '<label style="display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer;"><input type="checkbox" id="spy-nao-modelar"'+(c.nao_modelar ? ' checked' : '')+'> Não modelar'+(c.nao_modelar_origem ? ' '+_spyOrigem({ origem:c.nao_modelar_origem, por:c.nao_modelar_por }) : '')+'</label>'+
+          '<input id="spy-nao-motivo" value="'+_spyE(c.nao_modelar_motivo || '')+'" placeholder="Motivo">'+
+          '<div class="sp-pq sp-mut" style="line-height:17px;">Marque quando há perfil falso, link disfarçado de portal de notícia, número prometido sem prova ou personagem com direito autoral.</div></div>'+
+        '<button class="sp-btn pri" onclick="spySalvarEtiquetas()">Salvar correções</button>'+
+        '<div class="sp-pq sp-mut" style="line-height:17px;">O que você corrigir fica protegido: a rotina do Claude não muda mais.</div></div>'+
+    '</div></div>';
+}
+async function spySalvarEtiquetas(){
+  var c = _spyCri; if(!c) return;
+  var campos = {}, mudou = false;
+  document.querySelectorAll('#spy-app [data-spy-etq]').forEach(function(el){ var k = el.getAttribute('data-spy-etq'), v = String(el.value || '').trim(); if(v !== String((c._form || {})[k] || '')){ campos[k] = v; mudou = true; } });
+  var corpo = { campos:campos }, nm = !!(document.getElementById('spy-nao-modelar') || {}).checked, mot = ((document.getElementById('spy-nao-motivo') || {}).value || '').trim();
+  if(nm !== !!c.nao_modelar || (nm && mot !== (c.nao_modelar_motivo || ''))){ corpo.nao_modelar = nm; corpo.nao_modelar_motivo = mot; mudou = true; }
+  if(!mudou){ _avisoTela('Nada mudou'); return; }
+  try{
+    var d = await _spyJson('/api/spy/criativos/'+encodeURIComponent(c.id)+'/etiquetas', 'POST', corpo);
+    _spyCri = d.criativo; _spyDet = null;
+    if(_spyVista()){ _spyVista().innerHTML = spyHtmlCriativo(d.criativo); spyLigarPlayer(); }
+    _avisoTela('Salvo: a rotina não muda mais o que você corrigiu');
+  }catch(e){ tmxAviso('Não consegui salvar.\n\n'+e.message); }
+}
+async function spyProcessarCri(){
+  var c = _spyCri; if(!c) return;
+  try{ await _spyJson('/api/spy/criativos/'+encodeURIComponent(c.id)+'/processar', 'POST', {}); _avisoTela('Na fila: a tela atualiza sozinha'); _spyCri = null; spyRender(); }
+  catch(e){ tmxAviso('Não consegui.\n\n'+e.message); }
+}
+function spyCopiarCopy(){ var c = _spyCri; if(!c) return; try{ navigator.clipboard.writeText(c.copy || '').then(function(){ _avisoTela('Copy copiada'); }, function(){ tmxAviso('Não deu pra copiar aqui.'); }); }catch(e){ tmxAviso('Não deu pra copiar aqui.'); } }
+
+// ══ Funis vigiados ══
+function spyVistaFunis(v){
+  if(!_spyFunis) _spyCarregando(v); else v.innerHTML = spyHtmlFunis();
+  _spyJson('/api/spy/funis').then(function(d){ _spyFunis = d; if(_spy.aba === 'funis' && _spyVista()) _spyVista().innerHTML = spyHtmlFunis(); }).catch(function(e){ if(!_spyFunis) _spyFalhou(v, e); });
+}
+function _spyVigiar(){ var v = (_spyFunis && _spyFunis.vigiar) || null; var o = {}; SPY_CAMPOS_FUNIL.forEach(function(c){ o[c[0]] = !v || v[c[0]] !== false; }); return o; }
+function _spyRotFunil(k){ var x = SPY_CAMPOS_FUNIL.find(function(c){ return c[0] === k; }); return x ? x[1] : k; }
+function spyHtmlFunis(){
+  var fs = (_spyFunis && _spyFunis.funis) || [], vig = _spyVigiar();
+  var cab = '<div><div class="sp-crumb">Ad Library › Spy</div><h2 class="sp-tit">Funis vigiados</h2><div class="sp-sub">Todo dia a rotina do Claude abre a página de destino de cada concorrente no Chrome, manda os campos e o texto, e aqui fica a foto do dia e o que mudou. Mudança de preço, lote, promessa ou checkout costuma ser teste.</div></div>';
+  if(!fs.length) return '<div class="sp-col">'+cab+'<div class="sp-vazio">Nenhum funil ainda. Eles aparecem quando a rotina mandar a primeira foto de uma página (spy_registrar_funil).</div></div>';
+  var sel = fs.find(function(f){ return f.id === _spy.funil; }) || fs[0];
+  var vs = sel.versoes || [], atual = vs[vs.length - 1] || { campos:{}, diff:[] };
+  var dif = (atual.diff || []).filter(function(x){ return vig[x.campo] !== false; });
+  var linhas = fs.map(function(f){ var a = (f.versoes || [])[f.versoes.length - 1] || { campos:{} }, n = (f.versoes || []).filter(function(x){ return (x.diff || []).length; }).length;
+    return '<tr><td><a class="sp-nome" onclick="_spy.funil=\''+f.id+'\';spyRender()">'+_spyE(f.biblioteca ? f.biblioteca.nome : f.dominio)+'</a></td><td class="sp-pq">'+_spyE(a.url || f.dominio)+'</td><td>'+_spyE((a.campos.formato_oferta || '—').split(',')[0])+'</td>'+
+      '<td>'+_spyE((a.campos.preco || '—').split(' (')[0])+'</td><td>'+_spyE((a.campos.checkout || '—').split(' (')[0])+'</td><td>'+(n ? '<span class="sp-pill p-esc">'+n+' '+(n === 1 ? 'mudança' : 'mudanças')+'</span>' : '<span class="sp-pill p-est">nenhuma</span>')+'</td><td class="sp-pq">'+_spyQuando(a.em)+'</td></tr>'; }).join('');
+  var ficha = SPY_CAMPOS_FUNIL.filter(function(c){ return c[0] !== 'fora_do_ar'; }).map(function(c){ var val = c[0] === 'url' ? atual.url : atual.campos[c[0]];
+    return val ? '<div class="sp-lin" style="flex-wrap:nowrap;gap:14px;padding:9px 0;border-top:1px solid var(--sp-line);align-items:flex-start;"><span class="sp-pq sp-mut" style="width:140px;flex:none;">'+c[1]+'</span><span style="min-width:0;word-break:break-word;">'+_spyE(val)+'</span></div>' : ''; }).join('');
+  return '<div class="sp-col">'+cab+
+    '<div class="sp-card sp-lin" style="gap:14px;"><b>O que vigiar</b>'+SPY_CAMPOS_FUNIL.map(function(c){ return '<label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" onchange="spyVigiar(\''+c[0]+'\',this.checked)"'+(vig[c[0]] ? ' checked' : '')+'> '+c[1]+'</label>'; }).join('')+'</div>'+
+    '<div class="sp-tw"><table><thead><tr><th>Concorrente</th><th>Página</th><th>Oferta</th><th>Preço atual</th><th>Checkout</th><th>Mudanças</th><th>Última foto</th></tr></thead><tbody>'+linhas+'</tbody></table></div>'+
+    (dif.length ? '<div class="sp-card" style="border-color:rgba(234,88,12,.45);display:flex;flex-direction:column;gap:10px;"><b>O funil de '+_spyE(sel.biblioteca ? sel.biblioteca.nome : sel.dominio)+' mudou · '+_spyDM(atual.dia)+'</b>'+
+      '<div class="sp-tw"><table><thead><tr><th>O que mudou</th><th>Antes</th><th>Depois</th></tr></thead><tbody>'+dif.map(function(x){ return '<tr><td><b>'+_spyRotFunil(x.campo)+'</b></td><td style="color:var(--sp-verm);">'+_spyE(x.antes || '—')+'</td><td style="color:var(--sp-verde);">'+_spyE(x.depois || '—')+'</td></tr>'; }).join('')+'</tbody></table></div>'+
+      (atual.leitura ? '<div><b>Leitura do Claude:</b> '+_spyE(atual.leitura)+'</div>' : '')+'</div>' : '')+
+    '<div class="sp-split"><div class="sp-card" style="flex:999 1 420px;min-width:0;"><div class="sp-lin sp-entre"><b>Ficha atual · '+_spyE(sel.biblioteca ? sel.biblioteca.nome : sel.dominio)+'</b><span class="sp-pq sp-mut">foto de '+_spyDM(atual.dia)+(atual.fora_do_ar ? ' · fora do ar' : '')+'</span></div>'+(ficha || '<div class="sp-pq sp-mut" style="margin-top:8px;">Sem campos nesta foto.</div>')+
+      (atual.leitura && !dif.length ? '<div class="sp-nota" style="margin-top:10px;">'+_spyE(atual.leitura)+'</div>' : '')+'</div>'+
+      '<div class="sp-card" style="flex:1 1 280px;display:flex;flex-direction:column;gap:10px;"><b>Linha do tempo</b>'+vs.slice().reverse().map(function(x, i){ var d0 = (x.diff || []).filter(function(y){ return vig[y.campo] !== false; });
+        return '<div style="border-left:3px solid '+(d0.length ? '#EA580C' : 'var(--sp-line)')+';padding:4px 0 4px 12px;"><b class="sp-pq">'+_spyDM(x.dia)+'</b><div class="sp-pq sp-mut">'+(i === vs.length - 1 ? 'primeira foto da página' : d0.length ? d0.map(function(y){ return _spyRotFunil(y.campo); }).join(', ')+' mudou' : 'sem mudança')+'</div></div>'; }).join('')+
+      '<div class="sp-pq sp-mut">Cada foto guarda os campos e o texto da página. Nada é apagado.</div></div></div></div>';
+}
+async function spyVigiar(k, on){ var v = _spyVigiar(); v[k] = on; try{ var d = await _spyJson('/api/spy/funis/vigiar', 'POST', { vigiar:v }); _spyFunis.vigiar = d.vigiar; _spyVista().innerHTML = spyHtmlFunis(); }catch(e){ tmxAviso('Não consegui salvar.\n\n'+e.message); } }
+
+// ══ Busca na fala ══
+function spyVistaBusca(v){ v.innerHTML = spyHtmlBusca(); }
+function spyHtmlBusca(){
+  var r = _spyBusca, termos = (r && r.termos) || [];
+  var hl = function(t){ var s = _spyE(t); termos.forEach(function(x){ s = s.replace(new RegExp('('+x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')+')', 'gi'), '<mark>$1</mark>'); }); return s; };
+  return '<div class="sp-col"><div><div class="sp-crumb">Ad Library › Spy</div><h2 class="sp-tit">Busca na fala</h2><div class="sp-sub">Procura nas transcrições (com o tempo) e na copy de todos os criativos do acervo.</div></div>'+
+    '<div class="sp-card sp-col" style="gap:12px;"><div class="sp-lin"><input id="spy-q" value="'+_spyE(_spy.q)+'" placeholder="Ex.: edital, IA, live, depois dos 40" style="flex:999 1 320px;height:42px;" onkeydown="if(event.key===\'Enter\')spyBuscar()"><button class="sp-btn pri" onclick="spyBuscar()">Buscar</button></div>'+
+      '<div class="sp-lin sp-pq"><span class="sp-mut">Exemplos:</span>'+['edital','inteligência artificial','live','método de estudo','depois dos 40'].map(function(e){ return '<button class="sp-btn sm" onclick="document.getElementById(\'spy-q\').value=\''+e+'\';spyBuscar()">'+e+'</button>'; }).join('')+'</div>'+
+      '<div class="sp-lin sp-pq"><span class="sp-mut">Parte:</span><div class="sp-tabs">'+[['todas','Tudo'],['gancho','Gancho'],['corpo','Corpo'],['cta','CTA']].map(function(p){ return '<button class="sp-tab'+(_spy.parte === p[0] ? ' on' : '')+'" onclick="_spy.parte=\''+p[0]+'\';spyBuscar()">'+p[1]+'</button>'; }).join('')+'</div>'+
+        '<label style="display:flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox"'+(_spy.parados ? ' checked' : '')+' onchange="_spy.parados=this.checked;spyBuscar()"> incluir os que saíram do ar</label></div>'+
+      '<div class="sp-pq sp-mut">Por enquanto a busca é por palavra: “edital” acha “edital”, não “banca”.</div></div>'+
+    (!r ? '' : !r.resultados.length ? '<div class="sp-vazio">Nada encontrado'+(termos.length ? ' com '+termos.map(_spyE).join(', ') : '')+'.</div>' :
+      '<div class="sp-pq sp-mut">'+r.resultados.length+' resultado(s)</div>'+r.resultados.map(function(x){ var c = x.criativo;
+        return '<div class="sp-card sp-lin" style="align-items:flex-start;flex-wrap:nowrap;"><div style="width:56px;height:80px;border-radius:8px;flex:none;background:#1f2937'+(c.thumb ? ' url('+_spyMidia(c.thumb)+') center/cover' : '')+';"></div>'+
+          '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;"><div class="sp-pq sp-mut">'+_spyE(c.pagina)+' · '+(x.onde === 'fala' ? (x.parte ? '<b style="color:'+SPY_PARTE[x.parte][1]+';">'+SPY_PARTE[x.parte][0]+'</b> · ' : '')+'fala em '+_spyTempo(x.inicio_s) : 'copy')+' · '+_spyPill(c.status)+'</div>'+
+          '<div style="line-height:21px;">'+hl(x.trecho)+'</div><div class="sp-pq sp-mut">'+c.anuncios_ativos+' anúncio(s) · '+(c.status === 'parou' ? 'ficou '+(c.dias_no_ar || 0)+' dias no ar' : 'no ar há '+(c.dias_no_ar || 0)+' dias')+(c.familia ? ' · Família '+_spyE(c.familia.nome) : '')+'</div></div>'+
+          '<button class="sp-btn sm" onclick="spyAbrirCri(\''+c.id+'\')">Abrir</button></div>'; }).join(''))+
+    '</div>';
+}
+async function spyBuscar(){
+  var el = document.getElementById('spy-q'); if(el) _spy.q = el.value;
+  if(!String(_spy.q).trim()){ _spyBusca = null; spyRender(); return; }
+  try{ _spyBusca = await _spyJson('/api/spy/busca?q='+encodeURIComponent(_spy.q)+'&parte='+encodeURIComponent(_spy.parte)+'&parados='+(_spy.parados ? 1 : 0)); }
+  catch(e){ tmxAviso('A busca falhou.\n\n'+e.message); }
+  if(_spy.aba === 'busca') spyRender();
+}
+
+// ══ Mercado × Eu (o lado do mercado; o lado "Eu" entra quando os anúncios da TMX forem etiquetados) ══
+function spyVistaMercado(v){
+  if(!_spyMerc) _spyCarregando(v); else v.innerHTML = spyHtmlMercado();
+  var ped = function(){ return _spyJson('/api/spy/mercado?dim='+_spy.mdim+'&nicho='+encodeURIComponent(_spy.mnicho)); };
+  (_spyPainel ? ped() : spyCarregarPainel().then(ped)).then(function(d){ _spyMerc = d; if(_spy.aba === 'mercado' && _spyVista()) _spyVista().innerHTML = spyHtmlMercado(); }).catch(function(e){ if(!_spyMerc) _spyFalhou(v, e); });
+}
+function spyHtmlMercado(){
+  var d = _spyMerc, dim = _spy.mdim, mx = Math.max.apply(null, [1].concat(d.linhas.map(function(l){ return l.criativos; })));
+  return '<div class="sp-col"><div><div class="sp-crumb">Ad Library › Spy</div><h2 class="sp-tit">Mercado × Eu</h2><div class="sp-sub">Quais '+(dim === 'angulo' ? 'ângulos' : 'formatos')+' os concorrentes usam e há quanto tempo. O lado “Eu” (seus anúncios, vendas e ROAS) entra quando os seus anúncios forem etiquetados pelo gancho e pelo corpo.</div></div>'+
+    '<div class="sp-lin"><div class="sp-tabs">'+[['angulo','Por ângulo'],['formato','Por formato']].map(function(x){ return '<button class="sp-tab'+(dim === x[0] ? ' on' : '')+'" onclick="_spy.mdim=\''+x[0]+'\';_spyMerc=null;spyRender()">'+x[1]+'</button>'; }).join('')+'</div>'+
+      '<select onchange="_spy.mnicho=this.value;_spyMerc=null;spyRender()"><option value="">Todos os nichos</option>'+((_spyPainel && _spyPainel.nichos) || []).map(function(n){ return '<option value="'+_spyE(n.id)+'"'+(_spy.mnicho === n.id ? ' selected' : '')+'>'+_spyE(n.nome)+'</option>'; }).join('')+'</select>'+
+      '<span class="sp-pq sp-mut">'+d.etiquetados+' criativo(s) etiquetado(s)</span></div>'+
+    '<div class="sp-tw"><table><thead><tr><th>'+(dim === 'angulo' ? 'Ângulo' : 'Formato')+'</th><th>Mercado</th><th></th><th>Concorrentes</th><th>Mais antigo no ar</th><th>Eu</th></tr></thead><tbody>'+
+      d.linhas.map(function(l){ return '<tr><td><b>'+_spyE(l.valor)+'</b></td><td style="white-space:nowrap;">'+(l.criativos ? l.criativos+' criativos · '+l.ativos+' no ar' : '<span class="sp-mut">—</span>')+'</td>'+
+        '<td style="width:30%;min-width:120px;"><div style="height:10px;border-radius:6px;background:var(--sp-soft);"><i style="display:block;height:10px;border-radius:6px;background:'+(dim === 'angulo' ? '#7C3AED' : '#0284C7')+';width:'+Math.round(l.criativos / mx * 100)+'%"></i></div></td>'+
+        '<td>'+(l.concorrentes || '<span class="sp-mut">—</span>')+'</td><td>'+(l.criativos ? l.mais_antigo_dias+' dias' : '<span class="sp-mut">—</span>')+'</td><td class="sp-pq sp-mut">em breve</td></tr>'; }).join('')+
+    '</tbody></table></div></div>';
+}
+
+// ══ ⚙ Configurações (só a conta do Thiago; o servidor confere) ══
+function spyVistaConfig(v){
+  if(!_spyCfg) _spyCarregando(v); else v.innerHTML = spyHtmlConfig();
+  _spyJson('/api/spy/config').then(function(d){ _spyCfg = d; if(_spy.aba === 'config' && _spyVista()) _spyVista().innerHTML = spyHtmlConfig(); }).catch(function(e){ _spyFalhou(v, e); });
+}
+var SPY_PASSOS = [['Lê as regras','spy_ler_regras','nichos ativos, palavras-chave, bibliotecas ouro e limites de alerta'],
+  ['Busca por palavra-chave','Chrome','cada palavra de cada nicho ativo na Biblioteca de Anúncios, anúncios ativos, por país'],
+  ['Acha anunciantes novos','spy_sugerir_biblioteca','quem passou do mínimo de anúncios e ainda não está cadastrado vira sugestão'],
+  ['Verifica as bibliotecas ouro','spy_registrar_coleta','abre cada uma no Chrome e manda o que está no ar: o que entrou, o que saiu, o que multiplicou'],
+  ['Estuda os novos','spy_salvar_criativo','lê a transcrição, etiqueta ângulo, dor, formato, mecanismo, corta gancho, corpo e CTA e marca não modelar'],
+  ['Confere os funis','spy_registrar_funil','abre a página de destino de cada concorrente e manda os campos; aqui fica a foto e a diferença'],
+  ['Registra a rodada','spy_registrar_rodada','resumo do dia e alertas no seu sininho']];
+function spyHtmlConfig(){
+  var c = _spyCfg, r = c.regras || {}, ult = (c.rodadas || [])[0];
+  var abas = '<div class="sp-tabs">'+[['rotina','Rotina diária'],['nichos','Nichos e palavras']].map(function(a){ return '<button class="sp-tab'+(_spy.cfgAba === a[0] ? ' on' : '')+'" onclick="_spy.cfgAba=\''+a[0]+'\';spyRender()">'+a[1]+'</button>'; }).join('')+'</div>';
+  var topo = '<div><div class="sp-crumb">Spy › Configurações</div><h2 class="sp-tit">Configurações</h2><div class="sp-sub">Só você vê. São as regras que o Claude lê toda manhã pelo MCP.</div></div>'+abas;
+  if(_spy.cfgAba === 'nichos'){
+    return '<div class="sp-col">'+topo+
+      '<div class="sp-card sp-lin" style="gap:18px;"><b>Quando avisar</b>'+
+        '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox"'+(r.avisar_criativo_novo_em_ouro ? ' checked' : '')+' onchange="spySalvarRegra(\'avisar_criativo_novo_em_ouro\',this.checked)"> criativo novo em biblioteca ouro</label>'+
+        '<label style="display:flex;gap:8px;align-items:center;">biblioteca nova com <input type="number" min="1" value="'+r.biblioteca_nova_min_anuncios+'" style="width:76px;" onchange="spySalvarRegra(\'biblioteca_nova_min_anuncios\',+this.value)"> + anúncios</label>'+
+        '<label style="display:flex;gap:8px;align-items:center;">criativo que multiplicou <input type="number" min="1" value="'+r.multiplicador_escala+'" style="width:64px;" onchange="spySalvarRegra(\'multiplicador_escala\',+this.value)">x em uma semana</label></div>'+
+      '<div class="sp-lin sp-entre"><span class="sp-pq sp-mut">As palavras são o ponto de partida: edite, tire e coloque as suas.</span><button class="sp-btn pri" onclick="spyNovoNicho()">+ Novo nicho</button></div>'+
+      (c.nichos || []).map(function(n){ var bs = ((_spyPainel && _spyPainel.bibliotecas) || []).filter(function(b){ return b.nicho_id === n.id && b.status !== 'ignorada'; });
+        return '<div class="sp-card sp-col" style="gap:12px;'+(n.ativo ? '' : 'opacity:.65;')+'">'+
+          '<div class="sp-lin sp-entre"><div class="sp-lin"><b style="font-size:16px;">'+_spyE((n.icone ? n.icone+' ' : '')+n.nome)+'</b><span class="sp-pill p-est">'+_spyE(n.pais)+'</span>'+(n.ativo ? '<span class="sp-pill p-ok">na rotina</span>' : '<span class="sp-pill p-fila">pausado</span>')+'</div>'+
+            '<div class="sp-lin"><label class="sp-pq" style="display:flex;gap:6px;align-items:center;">vira biblioteca com <input type="number" min="1" value="'+n.min_anuncios+'" style="width:70px;height:32px;" onchange="spySalvarNicho(\''+n.id+'\',{min_anuncios:+this.value})"> + anúncios</label>'+
+            '<select style="height:32px;" onchange="spySalvarNicho(\''+n.id+'\',{pais:this.value})">'+['BR','US','PT','ES','MX'].map(function(p){ return '<option'+(n.pais === p ? ' selected' : '')+'>'+p+'</option>'; }).join('')+'</select>'+
+            '<button class="sp-btn sm" onclick="spySalvarNicho(\''+n.id+'\',{ativo:'+(!n.ativo)+'})">'+(n.ativo ? 'Pausar' : 'Ativar')+'</button></div></div>'+
+          '<div class="sp-lin" style="gap:6px;">'+n.palavras.map(function(k, j){ return '<span class="sp-kw">'+_spyE(k)+'<button aria-label="Tirar '+_spyE(k)+'" onclick="spyTirarPalavra(\''+n.id+'\','+j+')">×</button></span>'; }).join('')+
+            '<span class="sp-lin" style="gap:6px;"><input id="spy-kw-'+n.id+'" placeholder="+ palavra-chave" style="height:30px;width:190px;" onkeydown="if(event.key===\'Enter\')spyPorPalavra(\''+n.id+'\')"><button class="sp-btn sm" onclick="spyPorPalavra(\''+n.id+'\')">Adicionar</button></span></div>'+
+          '<div class="sp-pq sp-mut">Bibliotecas deste nicho: '+(bs.length ? bs.map(function(b){ return '<b style="color:var(--sp-ink);">'+_spyE(b.nome)+'</b>'+(b.ouro ? ' ★' : ''); }).join(', ') : 'nenhuma ainda. A rotina sugere as primeiras.')+'</div></div>'; }).join('')+
+    '</div>';
+  }
+  var ativos = (c.nichos || []).filter(function(n){ return n.ativo; });
+  var desc = (ult ? (ult.alertas || []).map(function(a){ return '<div class="sp-lin sp-entre" style="border-top:1px solid var(--sp-line);padding-top:10px;align-items:flex-start;"><div style="flex:999 1 300px;min-width:0;"><span class="sp-pill p-novo">'+_spyE(a.tipo || 'Alerta')+'</span> <b>'+_spyE(a.titulo)+'</b>'+(a.texto ? '<div class="sp-pq sp-mut" style="margin-top:4px;">'+_spyE(a.texto)+'</div>' : '')+'</div></div>'; }).join('') : '')+
+    (c.sugeridas || []).map(function(b){ return '<div class="sp-lin sp-entre" style="border-top:1px solid var(--sp-line);padding-top:10px;align-items:flex-start;"><div style="flex:999 1 300px;min-width:0;"><span class="sp-pill p-sug">Biblioteca sugerida</span> <b>'+_spyE(b.nome)+'</b>'+
+      '<div class="sp-pq sp-mut" style="margin-top:4px;">'+SpyLink.rotuloTipo(b.tipo)+': '+_spyE(b.referencia)+(b.motivo ? ' · '+_spyE(b.motivo) : '')+'</div></div>'+
+      '<div class="sp-lin"><button class="sp-btn sm pri" onclick="spyMudarBib(\''+b.id+'\',{ouro:true,status:\'na_fila\'}).then(function(){_spyCfg=null;spyRender();})">Virar ouro</button><button class="sp-btn sm" onclick="spyMudarBib(\''+b.id+'\',{status:\'ignorada\'}).then(function(){_spyCfg=null;spyRender();})">Ignorar</button></div></div>'; }).join('');
+  return '<div class="sp-col">'+topo+
+    '<div class="sp-kpis">'+
+      '<div class="sp-card sp-kpi"><div class="l">Horário</div><div class="v"><input type="time" value="'+_spyE(r.horario_rotina)+'" style="font-size:20px;font-weight:800;height:44px;" onchange="spySalvarRegra(\'horario_rotina\',this.value)"></div><div class="s">todo dia, horário de Fortaleza</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Nichos na rotina</div><div class="v">'+ativos.length+'</div><div class="s">'+ativos.reduce(function(s, n){ return s + n.palavras.length; }, 0)+' palavras-chave</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Bibliotecas verificadas</div><div class="v">'+(c.ouro || 0)+'</div><div class="s">as ouro, todo dia</div></div>'+
+      '<div class="sp-card sp-kpi"><div class="l">Última rodada</div><div class="v" style="font-size:20px;">'+(ult ? _spyQuando(ult.terminada_em) : '—')+'</div><div class="s">'+(ult ? (ult.erros.length ? ult.erros.length+' erro(s)' : 'sem erros') : 'ainda não rodou')+'</div></div></div>'+
+    '<div class="sp-nota">Quem roda é uma tarefa agendada do Claude, com o Chrome aberto no seu Mac. O horário aqui é o que ela lê em spy_ler_regras; a tarefa em si fica no Claude.</div>'+
+    '<div class="sp-card"><b>O que o Claude faz a cada manhã</b><div class="sp-pq sp-mut" style="margin:2px 0 8px;">Em verde, a ferramenta do MCP da SCALROI que ele usa em cada passo.</div>'+
+      SPY_PASSOS.map(function(p, i){ return '<div class="sp-passo"><span class="num">'+(i + 1)+'</span><div style="flex:1;min-width:0;"><b>'+p[0]+'</b> <span class="sp-mono">'+p[1]+'</span><div class="sp-pq sp-mut">'+p[2]+'</div></div></div>'; }).join('')+'</div>'+
+    '<div class="sp-card sp-col" style="gap:10px;"><b>Descobertas'+(ult ? ' da última rodada · '+_spyQuando(ult.terminada_em) : '')+'</b>'+(ult && ult.resumo ? '<div style="line-height:20px;white-space:pre-wrap;">'+_spyE(ult.resumo)+'</div>' : '')+(desc || '<div class="sp-pq sp-mut">Nada novo por aqui.</div>')+'</div>'+
+    '<div class="sp-tw"><table><thead><tr><th>Dia</th><th>Bibliotecas</th><th>Anúncios novos</th><th>Saíram</th><th>Sugestões</th><th>Funis que mudaram</th><th>Erros</th></tr></thead><tbody>'+
+      ((c.rodadas || []).length ? c.rodadas.map(function(x){ var n = x.numeros || {}; return '<tr><td>'+_spyQuando(x.terminada_em)+'</td><td>'+(n.bibliotecas_verificadas != null ? n.bibliotecas_verificadas : '—')+'</td><td>'+(n.anuncios_novos != null ? n.anuncios_novos : '—')+'</td><td>'+(n.parados != null ? n.parados : '—')+'</td><td>'+(n.sugestoes != null ? n.sugestoes : '—')+'</td><td>'+(n.funis_mudaram != null ? n.funis_mudaram : '—')+'</td><td>'+(x.erros.length ? '<span class="sp-pill p-erro" title="'+_spyE(x.erros.join('\n'))+'">'+x.erros.length+'</span>' : '<span class="sp-pill p-ok">0</span>')+'</td></tr>'; }).join('')
+        : '<tr><td colspan="7" class="sp-mut">Nenhuma rodada ainda.</td></tr>')+'</tbody></table></div></div>';
+}
+async function spySalvarRegra(k, v){ var c = {}; c[k] = v; try{ var d = await _spyJson('/api/spy/regras', 'POST', c); _spyCfg.regras = d.regras; _avisoTela('Salvo'); }catch(e){ tmxAviso('Não consegui salvar.\n\n'+e.message); } }
+async function spySalvarNicho(id, campos){
+  try{ await _spyJson('/api/spy/nichos', 'POST', Object.assign({ id:id }, campos)); _spyCfg = await _spyJson('/api/spy/config'); _spyPainel = null; spyCarregarPainel().catch(function(){}); if(_spy.aba === 'config') _spyVista().innerHTML = spyHtmlConfig(); }
+  catch(e){ tmxAviso('Não consegui salvar.\n\n'+e.message); }
+}
+function spyPorPalavra(id){ var el = document.getElementById('spy-kw-'+id), v = el ? el.value.trim() : ''; if(!v) return; var n = (_spyCfg.nichos || []).find(function(x){ return x.id === id; }); spySalvarNicho(id, { palavras:n.palavras.concat([v]) }); }
+function spyTirarPalavra(id, j){ var n = (_spyCfg.nichos || []).find(function(x){ return x.id === id; }); var l = n.palavras.slice(); l.splice(j, 1); spySalvarNicho(id, { palavras:l }); }
+async function spyNovoNicho(){
+  var nome = await tmxPerguntar('Nome do nicho novo', ''); if(!nome || !String(nome).trim()) return;
+  try{ await _spyJson('/api/spy/nichos', 'POST', { nome:String(nome).trim(), pais:'BR', ativo:true, palavras:[] }); _spyCfg = await _spyJson('/api/spy/config'); spyCarregarPainel().catch(function(){}); spyRender(); _avisoTela('Nicho criado: coloque as palavras'); }
+  catch(e){ tmxAviso('Não consegui criar.\n\n'+e.message); }
 }
 
 // Gera plano de spy completo — abre N tabs na Meta Ad Library com keywords inteligentes

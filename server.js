@@ -25018,6 +25018,7 @@ async function _mcpMeta(nome, a, tk) {
 
 async function _mcpExecutar(nome, a, tk) {
   a = a || {};
+  if (nome.indexOf('spy_') === 0 && typeof _spyApi !== 'undefined' && _spyApi) { const r = await _spyApi.mcp(nome, a, tk); if (r !== null) return r; }
   if (tk && ['campanhas_da_meta', 'estrutura_da_campanha', 'pausar_ou_ativar', 'mudar_orcamento'].includes(nome)) {
     try { return await _mcpMeta(nome, a, tk); }
     catch (e) { throw new Error(e.httpTela ? e.message : _metaErroTxt(e)); }
@@ -25367,7 +25368,8 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
       return res.json({ jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOLO,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: _mcpNomeServidor(), version: '1.0.0' },
-        instructions: 'Dados da operação ' + quem + ': vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. ' + (tk.podeMeta ? 'Este token também pausa, ativa e muda orçamento na Meta: antes de qualquer mudança, confirme com a pessoa exatamente o que vai mudar.' : 'Somente leitura.') + ' Todos os valores em reais e as datas no fuso de Brasília.' } });
+        instructions: 'Dados da operação ' + quem + ': vendas, anúncios, funis, quizzes, VSLs e a Central de Arquivos. ' + (tk.podeMeta ? 'Este token também pausa, ativa e muda orçamento na Meta: antes de qualquer mudança, confirme com a pessoa exatamente o que vai mudar.' : 'Somente leitura.') +
+          (SOU_TMX ? ' Exceção: no Spy de anúncios (ferramentas spy_*) você grava o que leu na Biblioteca de Anúncios (coletas, funis, rodadas), etiquetas, bibliotecas e nichos.' : '') + ' Todos os valores em reais e as datas no fuso de Brasília.' } });
     }
     if (metodo.indexOf('notifications/') === 0) return res.status(202).end();
     if (metodo === 'ping') return res.json({ jsonrpc: '2.0', id, result: {} });
@@ -25423,6 +25425,19 @@ try {
       _notificarViaWhatsApp(destId, titulo, texto).catch(() => {});
     } });
 } catch (e) { console.error('[REGRAS] não subiu:', e.message); }
+
+// Spy de anúncios (18/11/2026): mora em spy.js. Só na TMX; as ferramentas spy_* entram no MCP com soTmx.
+// A coleta chega pelo MCP (o Claude lê a Biblioteca de Anúncios no Chrome). Vídeos no R2 da hospedagem, nunca no volume.
+var _spyApi = null;
+try {
+  _spyApi = require('./spy')({ app, authUsuario, SOU_TMX, DATA_DIR, hosp: _hosp,
+    // ⚙ Configurações do Spy: só a conta do Thiago (a mesma regra do Meu Protocolo)
+    ehDono: req => { const u = req.user || {}; return SOU_TMX && u.cargo === 'Diretoria' && (u.id === PROTOCOLO_DONO_ID || String(u.email || '').toLowerCase() === PROTOCOLO_DONO_EMAIL); },
+    // alertas da rotina do Spy: sininho só do Thiago
+    avisar: (titulo, texto) => { const db = readDB(), dono = (db.store['sl_usuarios'] || []).find(u => u && (u.id === PROTOCOLO_DONO_ID || String(u.email || '').toLowerCase() === PROTOCOLO_DONO_EMAIL));
+      _avisarDiretoria(db, titulo, texto, dono ? dono.id : PROTOCOLO_DONO_ID); if (!db.timestamps) db.timestamps = {}; db.timestamps['sl_notifs'] = now(); writeDB(db); } });
+  _spyApi.ferramentasMcp.forEach(f => { if (!MCP_FERRAMENTAS.some(x => x.name === f.name)) MCP_FERRAMENTAS.push(f); });
+} catch (e) { console.error('[SPY] não subiu:', e.message); }
 
 // ── Não perder métrica no deploy ────────────────────────────────────────────
 // Os contadores ficam em buffer na memória e só descem pro disco a cada 30–45s.
