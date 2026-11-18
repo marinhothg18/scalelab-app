@@ -4193,7 +4193,8 @@ body.light-mode #spy-app{--sp-roxo:#7C3AED;--sp-verde:#16A34A;--sp-verm:#DC2626;
 /* criativo */
 #spy-app .sp-split{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
 #spy-app .sp-player{width:100%;max-height:72vh;border-radius:12px;background:#000;display:block}
-#spy-app .sp-sem-video{aspect-ratio:9/16;max-height:72vh;border-radius:12px;background:linear-gradient(165deg,#0B1426,#1E293B);color:#CBD5E1;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:13px;line-height:19px}
+#spy-app .sp-sem-video{aspect-ratio:9/16;max-height:72vh;border-radius:12px;background:linear-gradient(165deg,#0B1426,#1E293B);color:#CBD5E1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;font-size:13px;line-height:19px}
+#spy-app .sp-sem-video .sp-btn{width:100%;max-width:220px}
 #spy-app .sp-transc{display:flex;flex-direction:column;gap:14px}
 #spy-app .sp-transc .resumo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--sp-mut)}
 #spy-app .sp-transc .barra{display:flex;height:8px;border-radius:99px;overflow:hidden;gap:2px}
@@ -10176,10 +10177,18 @@ function spyHtmlCriativo(c){
   var midia;
   if(c.midia_status === 'ok' && c.tipo === 'video') midia = '<video id="spy-player" class="sp-player" controls playsinline preload="metadata"'+(c.thumb ? ' poster="'+_spyMidia(c.thumb)+'"' : '')+' src="'+_spyMidia(c.arquivo)+'"></video>';
   else if(c.midia_status === 'ok') midia = '<img src="'+_spyMidia(c.arquivo)+'" style="width:100%;border-radius:12px;display:block;" alt="Criativo">';
-  else midia = '<div class="sp-sem-video">'+(c.midia_status === 'erro' ? 'Não consegui guardar o vídeo: '+_spyE(c.midia_erro || 'erro')+'<br><br><button class="sp-btn sm" onclick="spyProcessarCri()">Tentar de novo</button>'
-    : c.midia_status === 'aguardando' ? _spyE(c.midia_erro || 'O vídeo espera o armazenamento.') : c.midia_status === 'sem_midia' ? 'Anúncio só de texto: não tem vídeo nem imagem.'
-    : c.midia_status === 'sem_link' ? 'Vídeo não baixado ainda.'+(c.midia_erro ? '<br><span style="opacity:.8">'+_spyE(c.midia_erro)+'</span>' : '')+'<br><br><button class="sp-btn sm" onclick="spyProcessarCri()">Buscar de novo</button>' : 'Baixando o vídeo pro acervo…')+
-    ((c.anuncios || [])[0] && c.midia_status !== 'ok' && c.midia_status !== 'pendente' && c.midia_status !== 'baixando' ? '<br><br><a href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(c.anuncios[0].ad_archive_id)+'" target="_blank" rel="noopener" style="color:#7CFF5A;font-weight:700;">Abrir no Facebook</a>' : '')+'</div>';
+  else {
+    var semVideo = c.midia_status === 'erro' ? '<b>Não consegui guardar o vídeo.</b><span style="opacity:.8">'+_spyE(c.midia_erro || 'erro')+'</span>'
+      : c.midia_status === 'aguardando' ? '<span>'+_spyE(c.midia_erro || 'O vídeo espera o armazenamento.')+'</span>'
+      : c.midia_status === 'sem_midia' ? '<span>Anúncio só de texto: não tem vídeo nem imagem.</span>'
+      : c.midia_status === 'sem_link' ? '<b>Vídeo não baixado ainda.</b>'+(c.midia_erro ? '<span style="opacity:.8">'+_spyE(c.midia_erro)+'</span>' : '<span style="opacity:.8">O servidor busca o vídeo no Facebook, um anúncio por vez.</span>')
+      : '<b>Baixando o vídeo pro acervo…</b>';
+    var podeBuscar = ['sem_link','erro','aguardando'].indexOf(c.midia_status) >= 0;
+    var ad0 = (c.anuncios || [])[0];
+    midia = '<div class="sp-sem-video">'+semVideo+
+      (podeBuscar ? '<button class="sp-btn sm pri" onclick="spyProcessarCri()">Baixar os vídeos da biblioteca</button>' : '')+
+      (ad0 && podeBuscar ? '<a class="sp-btn sm" href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(ad0.ad_archive_id)+'" target="_blank" rel="noopener">Abrir no Facebook</a>' : '')+'</div>';
+  }
   var campos = [['angulo','Ângulo','select',SpyLink.ANGULOS],['dor','Dor'],['persona','Persona'],['formato','Formato','select',SpyLink.FORMATOS],['mecanismo','Mecanismo'],['nome_chiclete','Nome chiclete'],['prova','Prova','lista',SPY_PROVAS],['cta','CTA','lista',SPY_CTAS]];
   var valores = {};
   var form = campos.map(function(f){
@@ -10241,7 +10250,7 @@ async function spySalvarEtiquetas(){
 }
 async function spyProcessarCri(){
   var c = _spyCri; if(!c) return;
-  try{ await _spyJson('/api/spy/criativos/'+encodeURIComponent(c.id)+'/processar', 'POST', {}); _avisoTela('Na fila: a tela atualiza sozinha'); _spyCri = null; spyRender(); }
+  try{ await _spyJson('/api/spy/criativos/'+encodeURIComponent(c.id)+'/processar', 'POST', {}); _avisoTela(c.midia_status === 'sem_link' ? 'Buscando os vídeos da biblioteca no Facebook, um por um: acompanhe na tela da biblioteca' : 'Na fila: a tela atualiza sozinha'); _spyCri = null; spyRender(); }
   catch(e){ tmxAviso('Não consegui.\n\n'+e.message); }
 }
 function spyCopiarCopy(){ var c = _spyCri; if(!c) return; try{ navigator.clipboard.writeText(c.copy || '').then(function(){ _avisoTela('Copy copiada'); }, function(){ tmxAviso('Não deu pra copiar aqui.'); }); }catch(e){ tmxAviso('Não deu pra copiar aqui.'); } }

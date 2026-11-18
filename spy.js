@@ -482,10 +482,14 @@ function criarNucleo(o) {
             const l = paraBuscar(bib, forcar).slice(0, o.limiteBusca || 150);
             Object.assign(busca, { bib, total: l.length, feitos: 0, achados: 0, erro: '' });
             if (!l.length) continue;
+            console.log('[SPY] busca de vídeos (' + bib + '): começou, ' + l.length + ' anúncio(s)');
+            let primeiroErro = '';
             const r = await o.buscador.buscar(l.map(x => x.ad), async (adId, res) => {
               busca.feitos++;
               const cid = aplicarLink(adId, res);
               if (cid) { busca.achados++; enfileirar([cid]); }
+              else if (!primeiroErro && res && res.erro) { primeiroErro = res.erro; console.log('[SPY] busca de vídeos: anúncio ' + adId + ' sem vídeo: ' + String(res.erro).slice(0, 200)); }
+              if (busca.feitos % 10 === 0) console.log('[SPY] busca de vídeos: ' + busca.feitos + ' de ' + l.length + ' (' + busca.achados + ' achados)');
             });
             // no log, pra dar pra ver o que aconteceu no servidor
             console.log('[SPY] busca de vídeos (' + bib + '): ' + busca.achados + ' de ' + l.length + ' achados' + (r.erro ? ' · ' + String(r.erro).split('\n')[0].slice(0, 300) : ''));
