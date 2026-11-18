@@ -500,11 +500,12 @@ function criarNucleo(o) {
   const estadoBusca = () => Object.assign({ disponivel: !!(o.buscador && o.buscador.disponivel()) }, busca);
   // Coleta registrada antes de 18/11 sem o link juntava os anúncios pela copy (a mesma copy roda com vídeos diferentes).
   // Separa uma vez: o 1º anúncio fica no criativo, cada um dos outros ganha o seu, com as mesmas etiquetas e família.
+  // v2: a v1 só olhava tipo 'texto', mas a coleta real mandou midia.tipo 'video' sem link (criativo 'video' + 'sem_midia').
   function dividirPorCopy() {
-    if (cfgLer('dividido_por_copy_v1')) return 0;
+    if (cfgLer('dividido_por_copy_v2')) return 0;
     let n = 0;
     tx(() => {
-      for (const c of q("SELECT * FROM spy_criativo WHERE mesclado_em IS NULL AND midia_status='sem_midia' AND tipo='texto'").all()) {
+      for (const c of q("SELECT * FROM spy_criativo WHERE mesclado_em IS NULL AND midia_status='sem_midia'").all()) {
         const ads = q('SELECT ad_archive_id, midia_url FROM spy_anuncio WHERE criativo_id=? ORDER BY inicio_veiculacao, ad_archive_id').all(c.id);
         if (!ads.length || ads.some(a => a.midia_url)) continue;
         const ets = q("SELECT * FROM spy_etiqueta WHERE alvo_tipo='spy_criativo' AND alvo_id=?").all(c.id);
@@ -525,7 +526,7 @@ function criarNucleo(o) {
         recalcular(c.id, agora());
       }
     });
-    cfgGravar('dividido_por_copy_v1', new Date(agora()).toISOString());
+    cfgGravar('dividido_por_copy_v2', new Date(agora()).toISOString());
     return n;
   }
   function adsConhecidos(bibId) { return q('SELECT ad_archive_id FROM spy_anuncio_bib WHERE biblioteca_id=? AND ativo=1').all(bibId).map(r => r.ad_archive_id); }

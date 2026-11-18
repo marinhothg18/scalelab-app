@@ -299,6 +299,9 @@ test('coleta antiga juntada pela copy: separa uma vez, cada anúncio com as etiq
   Nd.registrarColeta(b.id, { completa: true, anuncios: [velho('9101'), velho('9102'), velho('9103')] });
   const c0 = Nd.detalheBiblioteca(b.id).criativos;
   assert.strictEqual(c0.length, 1);
+  // a coleta real mandou midia.tipo 'video' sem o link: o criativo ficou 'video' + 'sem_midia', e é esse caso que tem que separar
+  Nd.q("UPDATE spy_criativo SET tipo='video' WHERE id=?").run(c0[0].id);
+  Nd.cfgGravar('dividido_por_copy_v1', 'rodou na 67763c5 sem pegar nada');
   Nd.salvarDoClaude({ criativo_id: c0[0].id, etiquetas: [{ campo: 'angulo', valor: 'Notícia' }], familia: 'B · Live privada' });
   assert.strictEqual(Nd.dividirPorCopy(), 2);
   assert.strictEqual(Nd.dividirPorCopy(), 0, 'uma vez só');
