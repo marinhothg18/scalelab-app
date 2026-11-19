@@ -11199,14 +11199,26 @@ var _homeKPICacheUt = { ts: 0, data: null };
 // Os quatro cartões do topo saem do MESMO lugar que a aba Métricas de Ads usa
 // (panorama da Utmify + vendas do webhook). Antes vinham do roi_ofertas, que
 // quase ninguém preenche, e por isso a Home vivia mostrando R$ 0.
+// De onde vem o gasto (19/11/2026): com a Meta conectada, da Meta; senão, da Utmify. O servidor decide.
+var _fonteGastoP = null;
+function _fonteGasto(){
+  if(_fonteGastoP) return _fonteGastoP;
+  var tok = ''; try { tok = localStorage.getItem('sl_session_token') || ''; } catch(e){}
+  _fonteGastoP = fetch(API_BASE + '/api/metricas/fonte', { headers: tok ? { 'Authorization':'Bearer ' + tok } : {} })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ if(!d){ _fonteGastoP = null; return 'utmify'; } setTimeout(function(){ _fonteGastoP = null; }, 10 * 60 * 1000); return d.fonte === 'meta' ? 'meta' : 'utmify'; })
+    .catch(function(){ _fonteGastoP = null; return 'utmify'; });
+  return _fonteGastoP;
+}
 async function _homeCalcKPIsDaUtmify(){
   if(_homeKPICacheUt.data && (Date.now() - _homeKPICacheUt.ts) < 4*60*1000) return _homeKPICacheUt.data;
   var hoje = hojeBR(0), ontem = hojeBR(1);
   var tok = '';
   try { tok = localStorage.getItem('sl_session_token') || ''; } catch(e){}
   if(!tok) return null;
+  var fonte = await _fonteGasto();
   function buscar(dia){
-    return fetch(API_BASE + '/api/metricas/utmify/panorama?de=' + dia + '&ate=' + dia, { headers:{ 'Authorization':'Bearer ' + tok } })
+    return fetch(API_BASE + '/api/metricas/' + fonte + '/panorama?de=' + dia + '&ate=' + dia, { headers:{ 'Authorization':'Bearer ' + tok } })
       .then(function(r){ return r.ok ? r.json() : null; })
       .catch(function(){ return null; });
   }
@@ -11223,7 +11235,7 @@ async function _homeCalcKPIsDaUtmify(){
       lucro:        { atual: Number(ka.lucro) || 0,        var: kb ? variacao(ka.lucro, kb.lucro) : null },
       roas:         { atual: Number(ka.roas) || 0,         var: kb ? variacao(ka.roas, kb.roas) : null },
       vendas: vendas,
-      fonte: a.fonteReceita === 'tmx' ? 'tmx' : 'utmify'
+      fonte: a.fonteReceita === 'tmx' ? 'tmx' : 'utmify', gasto: fonte
     };
     // dia ainda zerado (madrugada, ou Utmify fora do ar) não vale sobrescrever
     if(!resultado.investimento.atual && !resultado.faturamento.atual && !vendas) return null;
@@ -11428,7 +11440,7 @@ function renderHome(){
           var rodape = document.getElementById('home-kpi-fonte');
           if(rodape){
             var nVendas = rtK.vendas ? ' · ' + rtK.vendas + ' venda' + (rtK.vendas > 1 ? 's' : '') + ' aprovada' + (rtK.vendas > 1 ? 's' : '') : '';
-            rodape.textContent = (rtK.fonte === 'tmx' ? 'Hoje: faturamento da SCALROI, investimento da Utmify' + nVendas
+            rodape.textContent = (rtK.fonte === 'tmx' ? 'Hoje: faturamento da SCALROI, investimento da ' + (rtK.gasto === 'meta' ? 'Meta' : 'Utmify') + nVendas
               : rtK.fonte === 'utmify' ? 'Hoje, pela Utmify' + nVendas
               : 'Hoje, pelo RedTrack') + ' · a variação compara com ontem';
           }
@@ -32277,7 +32289,7 @@ function vsCriativos(v){
     // no fim (AD03|5256...) e assim nunca casava com o nome que vem da Utmify
     fetch('/api/vturb/origem?player='+encodeURIComponent(v.id)+'&campo=utm_content&de='+p.de+'&ate='+p.ate)
       .then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }),
-    fetch('/api/metricas/utmify/anuncios?de='+p.de+'&ate='+p.ate)
+    _fonteGasto().then(function(f){ return fetch('/api/metricas/'+f+'/anuncios?de='+p.de+'&ate='+p.ate); })
       .then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; })
   ]).then(function(res){
     var origens=(res[0]&&res[0].linhas)||[];
@@ -32308,7 +32320,7 @@ function vsCobertura(){
   if(vsCobBuscando) return;
   vsCobBuscando=true;
   var p=vsPeriodo();
-  fetch('/api/metricas/utmify/cobertura-utm?de='+p.de+'&ate='+p.ate)
+  _fonteGasto().then(function(f){ return fetch('/api/metricas/'+f+'/cobertura-utm?de='+p.de+'&ate='+p.ate); })
     .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
     .then(function(x){
       vsCobBuscando=false;
@@ -32386,7 +32398,7 @@ function vsPintarCriativos(v){
   if(tb){
     var comCusto=lista.filter(function(c){ return c.inv>0; });
     if(!comCusto.length){ tb.innerHTML='<tbody><tr><td style="padding:14px;color:var(--text2);font-size:12.5px">'+
-      'Sem custo por anúncio no período — a Utmify não devolveu anúncios com gasto.</td></tr></tbody>'; }
+      'Sem custo por anúncio no período: nenhum anúncio com gasto.</td></tr></tbody>'; }
     else {
       var pitchDe=function(c){
         if(c.retPitch != null) return c.retPitch*100;      // quem passou do pitch ÷ plays únicos
@@ -45713,10 +45725,13 @@ async function _carregarProjetosMeta(){
 
 // Três fontes: Utmify, RedTrack e Meta (12/11/2026). Sem escolha guardada, a TMX abre na Utmify e as
 // empresas clientes na Meta, que é o que elas conectam (Utmify é opcional no cadastro).
+// 19/11/2026 ("pode passar tudo pra Meta"): sem escolha guardada, todo mundo abre na Meta; na TMX, uma vez em cada
+// aparelho a escolha antiga volta pra Meta (quem quiser a Utmify troca no seletor e fica a escolha).
 function _adsFonte(){
+  try{ if(typeof tmxEhTmx === 'function' && tmxEhTmx() && !localStorage.getItem('ads_fonte_meta_1911')){ localStorage.setItem('ads_fonte_meta_1911', '1'); localStorage.setItem('ads_fonte', 'meta'); } }catch(e){}
   var f = localStorage.getItem('ads_fonte');
   if(f === 'utmify' || f === 'redtrack' || f === 'meta') return f;
-  return (typeof tmxEhTmx === 'function' && !tmxEhTmx()) ? 'meta' : 'utmify';
+  return 'meta';
 }
 
 // Resumo, Por Anúncio e Tempo Real: a Meta responde no mesmo formato da Utmify (19/11/2026)

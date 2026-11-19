@@ -5769,12 +5769,44 @@ function _metaDoProjetoFn(db, projeto) {
   const dono = _projetoDaCampanhaFn(db), nomes = _metaNomesCamp();
   return (conta, camp, nome) => dono(conta, nome || nomes[String(camp)] || '') === projeto;
 }
+// ── A Meta no lugar da Utmify (19/11/2026, "pode passar tudo pra Meta") ──
+// Com a Meta conectada e com números guardados, o gasto e as métricas de anúncio de todo o sistema saem dela:
+// Dashboard, Canais, Assinaturas, cliques do funil, o gasto das campanhas dos Resultados (camp_dia), Auditoria IA,
+// Análise de VSL e as ferramentas do Claude. Sem a Meta, continua a Utmify. A Análise de tráfego mantém o seletor.
+function _gastoPelaMeta() {
+  const c = _metaCfg();
+  return !!(c && c.accessToken && c.tipo === 'sistema' && _metaTemDados());
+}
+// o projeto pedido (id do dashboard da Utmify ou o nome) vira o de Projetos › Integrações, que usa o mesmo nome
+function _metaProjDe(db, x) {
+  x = String(x || '').trim();
+  if (!x) return '';
+  const ps = Object.keys(_projMetaCfg(db)), achar = n => ps.find(p => _nrm(p) === _nrm(n)) || '';
+  const direto = achar(x);
+  if (direto) return direto;
+  const d = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(y => String(y.id) === x);
+  return d ? achar(String(d.nome || '').trim()) : '';
+}
+const _META_NENHUM = '\u0000nenhum';   // projeto pedido que a Meta não tem: nada (não soma o de todos)
+const _metaProjOuNada = (db, x) => (x ? (_metaProjDe(db, x) || _META_NENHUM) : '');
+// o nome do projeto pedido (id do dashboard ou o próprio nome), pra filtrar as vendas
+function _nomeDoProjeto(db, x) {
+  x = String(x || '').trim();
+  const d = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(y => String(y.id) === x);
+  return d ? String(d.nome || '').trim() : x;
+}
+// o panorama (o que a Utmify chamava de resumo) do período, de onde estiver o gasto
+async function _panoramaFonte(de, ate, projetoId, filtros, u) {
+  if (!_gastoPelaMeta()) return _utmifyPanorama(de, ate, projetoId, filtros);
+  const db = readDB(), hoje = _diaBR(Date.now());
+  return _metaPanorama(db, de || hoje, ate || hoje, _metaProjOuNada(db, projetoId), filtros, u);
+}
 function _metaPanorama(db, de, ate, projeto, filtros, u) {
   const fil = filtros || {}, doProj = _metaDoProjetoFn(db, projeto), dono = _projetoDaCampanhaFn(db), nomes = _metaNomesCamp();
   const passa = (conta, camp, nome) => doProj(conta, camp, nome) && (!fil.conta || String(conta) === String(fil.conta));
   const tot = { investimento: 0, receita: 0, lucro: 0, cliques: 0, visitas: 0, ics: 0, reembolsoValor: 0, pendenteValor: 0,
     pedidos: { total: 0, aprovadas: 0, pendentes: 0, reembolsadas: 0, recusadas: 0 } };
-  const projetos = projeto ? [projeto] : _metaProjetosDaFonte(db, u), porProj = {};
+  const projetos = projeto ? (projeto === _META_NENHUM ? [] : [projeto]) : _metaProjetosDaFonte(db, u), porProj = {};
   projetos.forEach(p => { porProj[p] = 0; });
   _q('SELECT conta, id, nome, gasto, link_cliques, lpv, ic FROM meta_camp_dia WHERE dia BETWEEN ? AND ?').all(de, ate).forEach(l => {
     if (!passa(l.conta, l.id, l.nome)) return;
@@ -5955,6 +5987,34 @@ app.get('/api/metricas/meta/anuncio', authUsuario, (req, res) => {
     Object.keys(periodos).forEach(k => { const x = periodos[k]; x.rec = tmx[k].rec; x.v = tmx[k].v; x.ic = px[k].checkout; x.lpv = px[k].visitas; delete x.ids; });
     res.json({ ok: true, nome, dashboard: String(req.query.dashboard || ''), periodos, pixel: { d3: px.d3, d7: px.d7 }, ids: ids.slice(0, 60), fonte: 'meta' });
   } catch (e) { res.status(400).json({ error: e.message }); }
+});
+// de onde vem o gasto agora: as telas sem seletor de fonte (Dashboard, Análise de VSL) perguntam aqui
+app.get('/api/metricas/fonte', authUsuario, (req, res) => { res.json({ ok: true, fonte: _gastoPelaMeta() ? 'meta' : 'utmify' }); });
+// Quanto do gasto chega na página com o anúncio na UTM (utm_content), pela Meta e pelo pixel da SCALROI: o anúncio que
+// gastou e ninguém chegou na página com ele (pelo id ou pelo nome) entra na lista dos sem UTM. Mesmo formato da Utmify.
+app.get('/api/metricas/meta/cobertura-utm', authUsuario, (req, res) => {
+  const p = _metaRotaPeriodo(req, res); if (!p) return;
+  try {
+    const db = readDB(), pj = _metaProjOuNada(db, p.projeto), doProj = _metaDoProjetoFn(db, pj), nomeConta = _contaNomes(), per = _periodoMs(p.de, p.ate);
+    const ids = new Set(), nomes = new Set();
+    _q("SELECT DISTINCT cont FROM sessoes WHERE inicio BETWEEN ? AND ? AND cont IS NOT NULL AND cont<>''").all(per.ini, per.fim).forEach(x => {
+      const id = _idDaCampUtm(x.cont); if (id) ids.add(id);
+      nomes.add(_anuncioChave(_contSemId(x.cont)));
+    });
+    let gastoTotal = 0, gastoComUtm = 0;
+    const semUtm = {};
+    _q('SELECT conta, camp, id, nome, SUM(gasto) g, SUM(link_cliques) c FROM meta_ad_dia WHERE dia BETWEEN ? AND ? GROUP BY id').all(p.de, p.ate).forEach(a => {
+      const g = Number(a.g) || 0;
+      if (!g || !doProj(a.conta, a.camp, '')) return;
+      gastoTotal += g;
+      if (ids.has(String(a.id)) || nomes.has(_anuncioChave(a.nome))) { gastoComUtm += g; return; }
+      const nome = String(a.nome || '(sem nome)').trim(), k = nome.toLowerCase();
+      const x = semUtm[k] || (semUtm[k] = { nome, dashboard: pj === _META_NENHUM ? '' : pj, conta: nomeConta[a.conta] || a.conta || '—', gasto: 0, cliques: 0, veiculacoes: 0 });
+      x.gasto += g; x.cliques += Number(a.c) || 0; x.veiculacoes++;
+    });
+    res.json({ ok: true, de: p.de, ate: p.ate, fonte: 'meta', gastoTotal, gastoComUtm, gastoSemUtm: gastoTotal - gastoComUtm,
+      cobertura: gastoTotal > 0 ? gastoComUtm / gastoTotal * 100 : 0, semUtm: Object.values(semUtm).sort((a, b) => b.gasto - a.gasto), erros: [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/metricas/meta/tempo-real', authUsuario, (req, res) => {
   try {
@@ -7089,11 +7149,23 @@ app.get('/api/funil/cliques', authUsuario, async (req, res) => {
   const pronto = _vivoGet(chave, 60 * 1000);
   if (pronto) return res.json(Object.assign({ doCache: true }, pronto));
   try {
-    const pano = await _utmifyPanorama(de, ate, projeto);
+    let pano, mapa = {}, erros = [];
+    if (_gastoPelaMeta()) {
+      // pela Meta: as campanhas do período juntas pelo nome, como a Utmify fazia
+      const db = readDB(), pj = _metaProjOuNada(db, projeto), doProj = _metaDoProjetoFn(db, pj);
+      pano = _metaPanorama(db, de, ate, pj, {}, req.user);
+      _q('SELECT conta, id, nome, gasto, link_cliques FROM meta_camp_dia WHERE dia BETWEEN ? AND ?').all(de, ate).forEach(c => {
+        if (!doProj(c.conta, c.id, c.nome)) return;
+        const nome = String(c.nome || '(sem nome)').trim(), k = nome.toLowerCase().replace(/\s+/g, ' ');
+        if (!mapa[k]) mapa[k] = { nome, cliques: 0, investimento: 0 };
+        mapa[k].cliques += Number(c.link_cliques) || 0; mapa[k].investimento += Number(c.gasto) || 0;
+      });
+      pano = _panoramaComTmx(pano, de, ate, '', {}, { nomeProj: _nomeDoProjeto(db, projeto), meta: true });
+    } else {
+    pano = await _utmifyPanorama(de, ate, projeto);
     const achado = await _utmifyDashboardsAtivos();
     const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, projeto);
-    const mapa = {};
-    const erros = (pano.erros || []).slice();
+    erros = (pano.erros || []).slice();
     for (const d of lista) {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
@@ -7112,6 +7184,7 @@ app.get('/api/funil/cliques', authUsuario, async (req, res) => {
           mapa[k].investimento += (Number(c.spend) || 0) / 100;
         });
       } catch (e) { erros.push((d.nome || d.id) + ': ' + e.message); }
+    }
     }
     const k = pano.kpis || {};
     const saida = {
@@ -9551,18 +9624,67 @@ function _audIntervalo(d, dia) {
   return { from: dia + 'T00:00:00' + off, to: dia + 'T23:59:59' + off };
 }
 async function _audNivel(cfg, d, nivel, dia) {
+  if (_gastoPelaMeta()) return _audNivelMeta(d, nivel, dia);
   const r = await _utmifyChamarTool(cfg.token, 'get_meta_ad_objects', { dashboardId: d.id, level: nivel, dateRange: _audIntervalo(d, dia) });
   return (r && r.results) || [];
 }
 
-// O resumo de um dia: gasto e métricas da Utmify; faturamento e vendas do TMX (o mesmo número do painel), ou da Utmify se o TMX não tiver venda
+// Pela Meta (19/11/2026): as mesmas linhas que a Utmify devolvia (em centavos), montadas das tabelas da Meta. "Vendas" e
+// "pixel" são as compras que o pixel da Meta atribuiu; checkouts por anúncio vêm do pixel da SCALROI (pessoas únicas).
+function _pixelIcsDoDia(dia) {
+  const porId = {}, porNome = {}, vistos = new Set();
+  try {
+    const per = _periodoMs(dia, dia);
+    _q('SELECT visitante, cont FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0 AND checkout=1').all(per.ini, per.fim).forEach(x => {
+      if (!x.cont) return;
+      const id = _idDaCampUtm(x.cont), k = id ? 'i' + id : 'n' + _anuncioChave(_contSemId(x.cont));
+      if (vistos.has(k + '|' + x.visitante)) return;
+      vistos.add(k + '|' + x.visitante);
+      if (id) porId[id] = (porId[id] || 0) + 1; else porNome[k.slice(1)] = (porNome[k.slice(1)] || 0) + 1;
+    });
+  } catch (e) {}
+  return { porId, porNome };
+}
+function _audNivelMeta(d, nivel, dia) {
+  const db = readDB(), pj = _metaProjOuNada(db, d.id || d.nome), doProj = _metaDoProjetoFn(db, pj), nomeConta = _contaNomes();
+  const c = v => Math.round((Number(v) || 0) * 100), iso = ms => (ms ? new Date(Number(ms)).toISOString() : '');
+  const camps = _q('SELECT * FROM meta_camp_dia WHERE dia=?').all(dia).filter(x => doProj(x.conta, x.id, x.nome));
+  const nums = x => ({ spend: c(x.gasto), impressions: Number(x.imp) || 0, inlineLinkClicks: Number(x.link_cliques) || 0, approvedOrdersCount: Number(x.compras) || 0,
+    salesFromFacebook: Number(x.compras) || 0, grossRevenue: 0, pendingOrdersCount: 0 });
+  if (nivel === 'account') {
+    const m = {};
+    camps.forEach(x => { const o = m[x.conta] || (m[x.conta] = { name: nomeConta[x.conta] || x.conta, ca: nomeConta[x.conta] || x.conta, gasto: 0, imp: 0, link_cliques: 0, compras: 0, lpv: 0, ic: 0 });
+      ['gasto', 'imp', 'link_cliques', 'compras', 'lpv', 'ic'].forEach(k => { o[k] += Number(x[k]) || 0; }); });
+    return Object.values(m).map(o => Object.assign({ name: o.name, ca: o.ca, landingPageViews: o.lpv, initiateCheckout: o.ic }, nums(o)));
+  }
+  if (nivel === 'campaign') {
+    const est = {};
+    _q('SELECT id, status, efetivo, orc, criado FROM meta_camp').all().forEach(x => { est[x.id] = x; });
+    return camps.map(x => { const e = est[x.id] || {};
+      return Object.assign({ id: x.id, campaignId: x.id, name: x.nome, ca: nomeConta[x.conta] || x.conta, status: e.status || x.status || '', effectiveStatus: e.efetivo || x.status || '',
+        dailyBudget: c(e.orc != null ? e.orc : x.orc), bidCap: c(x.lance), createdTime: iso(e.criado || x.criada),
+        landingPageViews: Number(x.lpv) || 0, initiateCheckout: Number(x.ic) || 0, videoViews3Seconds: Number(x.v3) || 0, video75Watched: Number(x.v75) || 0 }, nums(x)); });
+  }
+  const est = {}, ics = _pixelIcsDoDia(dia), usado = new Set();
+  _q('SELECT id, status, efetivo FROM meta_ad').all().forEach(x => { est[x.id] = x; });
+  return _q('SELECT * FROM meta_ad_dia WHERE dia=?').all(dia).filter(x => doProj(x.conta, x.camp, '')).map(x => {
+    const e = est[x.id] || {}, kn = _anuncioChave(x.nome);
+    let ic = ics.porId[x.id] || 0;
+    if (!usado.has(kn)) { ic += ics.porNome[kn] || 0; usado.add(kn); }   // pelo nome conta uma vez só, na primeira cópia
+    return Object.assign({ id: x.id, adId: x.id, campaignId: x.camp, name: x.nome, ca: nomeConta[x.conta] || x.conta, status: e.status || '', effectiveStatus: e.efetivo || '',
+      initiateCheckout: ic, landingPageViews: 0, videoViews3Seconds: 0, video75Watched: 0 }, nums(x));
+  });
+}
+
+// O resumo de um dia: gasto e métricas da Meta (ou da Utmify); faturamento e vendas do TMX (o mesmo número do painel), ou da fonte se o TMX não tiver venda
 async function _audLerDia(dash, de, ate) {
-  const u = await _utmifyPanorama(de, ate, dash.id);
-  const t = _panoramaComTmx(u, de, ate, dash.id);
-  const base = (t && t.fonteReceita === 'tmx' && Number(t.kpis.receita) > 0) ? t : u;
+  const meta = _gastoPelaMeta();
+  const u = await _panoramaFonte(de, ate, dash.id);
+  const t = _panoramaComTmx(u, de, ate, dash.id, null, { nomeProj: String(dash.nome || '').trim(), meta });
+  const base = (t && t.fonteReceita === 'tmx' && (meta || Number(t.kpis.receita) > 0)) ? t : u;
   const k = base.kpis || {}, ped = k.pedidos || {}, inv = Number(u.kpis.investimento) || 0, fat = Number(k.receita) || 0;
   const cart = (base.aprovacao || {}).cartao || { a: 0, t: 0 };
-  return { fonte: base === u ? 'Utmify' : 'TMX', inv, fat, fatUtmify: Number(u.kpis.receita) || 0, lucro: fat - inv, n: Number(ped.aprovadas) || 0, pedidos: Number(ped.total) || 0,
+  return { fonte: base === u ? (meta ? 'Meta' : 'Utmify') : 'TMX', inv, fat, fatUtmify: meta ? null : (Number(u.kpis.receita) || 0), lucro: fat - inv, n: Number(ped.aprovadas) || 0, pedidos: Number(ped.total) || 0,
     reemb: Number(ped.reembolsadas) || 0, reembV: Number(k.reembolsoValor) || 0, pend: Number(ped.pendentes) || 0, pendV: Number(k.pendenteValor) || 0,
     recusados: Math.max(0, cart.t - cart.a), tentativas: cart.t, recusadoV: Number(k.recusadoValor) || 0,
     produtos: base.produtos || [], vendasHora: base.vendasHora || [], cliques: Number(u.kpis.cliques) || 0, lpv: Number(u.kpis.visitas) || 0, ic: Number(u.kpis.ics) || 0,
@@ -9622,10 +9744,20 @@ async function _audJuntarDados(job, b) {
   const dbIni = readDB(), metas = _audMetas(dbIni, b.projeto), nomesConta = _contaNomes();
   const nomeConta = c => nomesConta[c] || c || '-';
 
-  job.etapa = 'Conectando na Utmify…';
-  const achado = await _utmifyDashboardsAtivos();
-  const dash = achado.lista.find(d => String(d.id) === String(b.projeto));
-  if (!dash) throw new Error('Esse projeto não está ligado na Utmify.');
+  // pela Meta (19/11/2026): o projeto vem pelo nome (id do dashboard guardado ou o projeto da fonte Meta), sem perguntar à Utmify
+  const meta = _gastoPelaMeta();
+  let achado = { cfg: null }, dash;
+  if (meta) {
+    job.etapa = 'Lendo os números da Meta…';
+    const nomeP = _nomeDoProjeto(dbIni, b.projeto) || String(b.projetoNome || '').trim();
+    if (!_metaProjDe(dbIni, nomeP)) throw new Error('Esse projeto não tem conta de anúncio marcada em Projetos › Integrações.');
+    dash = { id: String(b.projeto), nome: nomeP };
+  } else {
+    job.etapa = 'Conectando na Utmify…';
+    achado = await _utmifyDashboardsAtivos();
+    dash = achado.lista.find(d => String(d.id) === String(b.projeto));
+    if (!dash) throw new Error('Esse projeto não está ligado na Utmify.');
+  }
   const nomeProj = String(dash.nome || b.projetoNome || '').trim();
 
   job.etapa = 'Lendo o resumo do dia…';
@@ -9669,7 +9801,7 @@ async function _audJuntarDados(job, b) {
       m.investimento += n.gasto;
       if (aid && m.ids.indexOf(aid) < 0 && m.ids.length < 30) m.ids.push(aid);
     });
-    const com = _anunciosComTmx({ anuncios: Object.values(doDia) }, dia, dia, dash.id);
+    const com = _anunciosComTmx({ anuncios: Object.values(doDia) }, dia, dia, dash.id, { nomeProj, meta });
     if (com && com.fonteReceita === 'tmx') {
       conc[dia] = com.conciliacao;
       com.anuncios.forEach(a => {
@@ -9680,7 +9812,7 @@ async function _audJuntarDados(job, b) {
       });
     } else semTmx = true;
   }
-  if (!Object.keys(ads).length) throw new Error(erroDia ? 'A Utmify não respondeu os anúncios: ' + erroDia : 'A Utmify não devolveu nenhum anúncio desse projeto nos últimos 7 dias.');
+  if (!Object.keys(ads).length) throw new Error(erroDia ? (meta ? 'A Meta' : 'A Utmify') + ' não respondeu os anúncios: ' + erroDia : (meta ? 'A Meta não tem' : 'A Utmify não devolveu') + ' nenhum anúncio desse projeto nos últimos 7 dias.');
   if (semTmx) faltou.push('vendas da SCALROI por anúncio em algum dia: a coluna SCALROI pode estar incompleta');
 
   // ── contexto e metas ──
@@ -9732,7 +9864,7 @@ async function _audJuntarDados(job, b) {
   partes.push('=== RESUMO: D x D-1 (já calculado) ===\n' + _audTab(['Métrica', 'D' + (parcial ? ' (' + parcial + ')' : ''), 'D-1 (fechado)'], [
     ['Investimento', fm.r(rD.inv), fm.r(rD1.inv)],
     ['Faturamento', fm.r(rD.fat), fm.r(rD1.fat)],
-    ['Faturamento pela Utmify', fm.r(rD.fatUtmify), fm.r(rD1.fatUtmify)],
+    ...(rD.fatUtmify != null ? [['Faturamento pela Utmify', fm.r(rD.fatUtmify), fm.r(rD1.fatUtmify)]] : []),
     ['ROAS geral', rD.inv ? fm.x(rD.fat / rD.inv) : '-', rD1.inv ? fm.x(rD1.fat / rD1.inv) : '-'],
     ['ROAS dos anúncios', rD.inv ? fm.x(recAd(cD, aD) / rD.inv) : '-', rD1.inv ? fm.x(recAd(cD1, aD1) / rD1.inv) : '-'],
     ['Vendas aprovadas', rD.n, rD1.n], ...linhaProdutos(),
@@ -9811,7 +9943,7 @@ async function _audJuntarDados(job, b) {
   partes.push('=== ANÚNCIOS, por nome (já calculado). Vendas = SCALROI / Utmify / pixel. Janelas = gasto · vendas · ROAS ===\n' + _audTab(
     ['Anúncio', 'Status', 'Camp. D', 'Gasto D', 'Vendas D', 'Pix pend. D', 'IC D', 'Custo IC D', '3 dias', '7 dias', 'Custo IC 3d', 'Custo IC 7d', 'Taxa IC 3d', 'Taxa IC 7d', 'Hook 3d', 'Body 3d', 'CPM 3d', 'CTR 3d'],
     relevantes.slice(0, 70).map(l => [l.a.nome, l.a.ativo ? 'ativo' : 'pausado', campsD(l), fm.r(l.h.gasto), _audTrio(l.h), l.h.pend || 0, l.h.ic || 0, _audCustoIc(l.h), _audJanelaTxt(l.t3), _audJanelaTxt(l.t7),
-      _audCustoIc(l.t3), _audCustoIc(l.t7), fm.p(l.t3.ic, l.t3.lpv, 1), fm.p(l.t7.ic, l.t7.lpv, 1), fm.p(l.t3.v3, l.t3.imp), fm.p(l.t3.v75, l.t3.v3), l.t3.imp ? fm.r(l.t3.gasto / l.t3.imp * 1000) : '-', fm.p(l.t3.cliques, l.t3.imp, 2)])) +
+      _audCustoIc(l.t3), _audCustoIc(l.t7), fm.p(l.t3.ic, l.t3.lpv, 1), fm.p(l.t7.ic, l.t7.lpv, 1), meta ? '-' : fm.p(l.t3.v3, l.t3.imp), meta ? '-' : fm.p(l.t3.v75, l.t3.v3), l.t3.imp ? fm.r(l.t3.gasto / l.t3.imp * 1000) : '-', fm.p(l.t3.cliques, l.t3.imp, 2)])) +
     (relevantes.length > 70 ? '\n(os 70 de maior gasto, de ' + relevantes.length + ')' : ''));
 
   const historico = lista.filter(l => (l.t7.gasto || 0) > 0).sort((x, y) => (y.t7.gasto || 0) - (x.t7.gasto || 0)).slice(0, 30);
@@ -9877,7 +10009,10 @@ async function _audJuntarDados(job, b) {
     } catch (e) {}
   }
   if (faltou.length) partes.push('=== O QUE NÃO VEIO ===\n' + faltou.map(x => '- ' + x).join('\n'));
-  return { texto: partes.join('\n\n'), faltou, dia: D, parcial };
+  // pela Meta, o texto fala da Meta: a coluna do meio e a do pixel trazem as compras que o pixel da Meta atribuiu
+  let texto = partes.join('\n\n');
+  if (meta) texto = texto.replace(/Utmify/g, 'Meta').replace('=== CONTEXTO ===\n', '=== CONTEXTO ===\nFonte do gasto: Meta, direto das contas de anúncio. Nas vendas "SCALROI / Meta / pixel", Meta e pixel são o mesmo número: as compras que o pixel da Meta atribuiu ao anúncio. Os anúncios não trazem vídeo (hook, hold), visitas nem faturamento por anúncio; os checkouts de cada anúncio vêm do pixel da SCALROI.\n');
+  return { texto, faltou, dia: D, parcial, meta };
 }
 
 const AUD_SISTEMA = `Você é o analista de tráfego pago de uma operação brasileira de direct response: infoproduto vendido por VSL, anúncios na Meta. Você recebe os números reais de um projeto, já somados e calculados pelo sistema, e devolve o relatório de fechamento que o dono usa pra decidir o que duplicar, reativar, pausar e corrigir.
@@ -10000,7 +10135,7 @@ const AUD_SCHEMA = { type: 'object', additionalProperties: false, required: ['ma
 async function _audRodar(job, b) {
   const inicio = Date.now();
   try {
-    const { texto, faltou, dia, parcial } = await _audJuntarDados(job, b);
+    const { texto, faltou, dia, parcial, meta } = await _audJuntarDados(job, b);
     job.etapa = 'O Claude está analisando e escrevendo o relatório (leva alguns minutos)…';
     const cliente = new AnthropicAud({ apiKey: _getAIKey(), timeout: 12 * 60 * 1000, maxRetries: 1 });
     const stream = cliente.beta.messages.stream({
@@ -10008,7 +10143,7 @@ async function _audRodar(job, b) {
       output_config: { effort: 'high', format: { type: 'json_schema', schema: AUD_SCHEMA } },
       // se um filtro de segurança recusar, a própria API tenta outro modelo no mesmo pedido
       betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
-      system: AUD_SISTEMA, messages: [{ role: 'user', content: texto }]
+      system: meta ? AUD_SISTEMA.replace(/Utmify/g, 'Meta') : AUD_SISTEMA, messages: [{ role: 'user', content: texto }]
     });
     const r = await stream.finalMessage();
     if (r.stop_reason === 'refusal') throw new Error('O Claude recusou esta análise. Tente de novo em instantes.');
@@ -10043,9 +10178,20 @@ function _audSalva(id) {
   return { id: x.id, projeto: x.projeto, projetoNome: x.projeto_nome, em: x.em, por: x.por, duracaoMs: x.duracao_ms, custoUS: x.custo_us, modelo: x.modelo, n,
     relatorio: JSON.parse(x.relatorio), contexto: JSON.parse(x.contexto || '{}') };
 }
+// O projeto da Auditoria é guardado pelo id do dashboard (como era com a Utmify). A fonte Meta manda o nome: vira o mesmo id,
+// e o histórico e as metas continuam no lugar (19/11/2026).
+function _audChave(x) {
+  x = String(x || '').trim().slice(0, 60);
+  if (!x) return '';
+  const ds = (_utmifyMcpCfg(readDB()) || {}).dashboards || [];
+  if (ds.some(d => String(d.id) === x)) return x;
+  const d = ds.find(y => _nrm(y.nome) === _nrm(x));
+  return d ? String(d.id) : x;
+}
 app.post('/api/ia/auditoria', authUsuario, _audPode, _audLimiter, (req, res) => {
   if (!_getAIKey()) return res.status(400).json({ error: 'A chave da Anthropic ainda não está cadastrada.' });
-  const b = req.body || {};
+  const b = Object.assign({}, req.body || {});
+  b.projeto = _audChave(b.projeto);
   const projeto = String(b.projeto || '').slice(0, 60);
   if (!projeto) return res.status(400).json({ error: 'Escolha um projeto: a análise é sempre de um projeto só.' });
   const projetoNome = String(b.projetoNome || '').slice(0, 80);
@@ -10068,7 +10214,7 @@ app.get('/api/ia/auditoria/:id', authUsuario, _audPode, (req, res) => {
 });
 app.get('/api/ia/auditorias', authUsuario, _audPode, (req, res) => {
   _audTabela();
-  const projeto = String(req.query.projeto || '').slice(0, 60);
+  const projeto = _audChave(req.query.projeto);
   const lista = _q('SELECT id, projeto_nome, em, por, custo_us, relatorio, contexto FROM ia_auditorias WHERE projeto=? ORDER BY em DESC LIMIT 30').all(projeto).map(x => {
     let m = '', c = {};
     try { m = JSON.parse(x.relatorio).manchete || ''; c = JSON.parse(x.contexto || '{}'); } catch (e) {}
@@ -10084,10 +10230,10 @@ app.get('/api/ia/auditorias/:id', authUsuario, _audPode, (req, res) => {
   res.json(a);
 });
 app.get('/api/ia/auditoria-metas', authUsuario, _audPode, (req, res) => {
-  res.json({ metas: _audMetas(readDB(), String(req.query.projeto || '').slice(0, 60)) });
+  res.json({ metas: _audMetas(readDB(), _audChave(req.query.projeto)) });
 });
 app.post('/api/ia/auditoria-metas', authUsuario, _audPode, (req, res) => {
-  const b = req.body || {}, projeto = String(b.projeto || '').slice(0, 60), m = b.metas || {};
+  const b = req.body || {}, projeto = _audChave(b.projeto), m = b.metas || {};
   if (!projeto) return res.status(400).json({ error: 'Diga o projeto.' });
   const n = v => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : 0; };
   const db = readDB();
@@ -16980,6 +17126,22 @@ async function _campDia(dia, projetoId, podeBuscar) {
   const precisa = !ok || (recente && Date.now() - ok.em > 10 * 60000);
   const arquivo = () => _q('SELECT * FROM camp_dia WHERE dia=? AND projeto=?').all(dia, proj);
   if (!precisa) return { linhas: arquivo(), buscou: false };
+  if (_gastoPelaMeta()) {
+    // pela Meta é uma leitura daqui mesmo: não gasta busca nem depende da Utmify
+    try {
+      const db = readDB(), pj = _metaProjOuNada(db, proj), doProj = _metaDoProjetoFn(db, pj), dbP = _pessoas();
+      const linhas = _q('SELECT id, nome, conta, gasto, imp, link_cliques FROM meta_camp_dia WHERE dia=?').all(dia).filter(c => doProj(c.conta, c.id, c.nome));
+      dbP.exec('BEGIN');
+      try {
+        _q('DELETE FROM camp_dia WHERE dia=? AND projeto=?').run(dia, proj);
+        linhas.forEach(x => _q('INSERT INTO camp_dia(dia, projeto, id, nome, conta, gasto, imp, cliques) VALUES(?,?,?,?,?,?,?,?)')
+          .run(dia, proj, String(x.id), String(x.nome || '').slice(0, 160), String(x.conta || ''), Number(x.gasto) || 0, Number(x.imp) || 0, Number(x.link_cliques) || 0));
+        _q('INSERT INTO camp_dia_ok(dia, projeto, em) VALUES(?,?,?) ON CONFLICT(dia, projeto) DO UPDATE SET em=excluded.em').run(dia, proj, Date.now());
+        dbP.exec('COMMIT');
+      } catch (e) { try { dbP.exec('ROLLBACK'); } catch (e2) {} throw e; }
+      return { linhas: arquivo(), buscou: false };
+    } catch (e) { return { linhas: arquivo(), buscou: false, erro: e.message, faltou: !ok }; }
+  }
   if (!podeBuscar) return { linhas: arquivo(), buscou: false, faltou: !ok };
   try {
     const achado = await _utmifyDashboardsAtivos();
@@ -17077,6 +17239,12 @@ function _descRegra(f) {
   return '';
 }
 async function _projetoIdDoFunil(f) {
+  if (_gastoPelaMeta()) {
+    // pela Meta não pergunta à Utmify: o id guardado do dashboard (o mesmo de antes) ou, sem dashboard, o nome do projeto da Meta
+    const db = readDB(), nome = String(f.projeto || '').trim();
+    const d = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.nome || '').trim() === nome);
+    return d ? String(d.id) : _metaProjDe(db, nome);
+  }
   try {
     const { lista } = await _utmifyDashboardsAtivos();
     const d = lista.find(x => String((x.nome || '').trim()) === String(f.projeto || '').trim());
@@ -19399,9 +19567,9 @@ app.get('/api/canais/resumo', authUsuario, async (req, res) => {
     try {
       const hojeBRT = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
       const deBRT = new Date(corte - 3 * 3600000).toISOString().slice(0, 10);
-      const pano = await _utmifyPanorama(deBRT, hojeBRT, '');
+      const pano = await _panoramaFonte(deBRT, hojeBRT, '', null, req.user);
       investimento = Number((pano.kpis || {}).investimento) || 0;
-    } catch (e) { avisoGasto = 'Sem o gasto da Utmify agora: ' + e.message; }
+    } catch (e) { avisoGasto = 'Sem o gasto agora: ' + e.message; }
     const alvoGasto = canais.find(c => c.anuncios && c.id === 'meta') || canais.find(c => c.anuncios);
     const lista = Object.values(por).map(c => Object.assign(c, {
       investimento: (alvoGasto && c.id === alvoGasto.id) ? investimento : null,
@@ -20600,7 +20768,8 @@ app.get('/api/assinaturas', authUsuario, async (req, res) => {
     let cpa30 = null;
     try {
       const fim = new Date(agora - 3 * 3600000).toISOString().slice(0, 10), ini = new Date(agora - 30 * 86400000 - 3 * 3600000).toISOString().slice(0, 10);
-      const pano = await _utmifyPanorama(ini, fim, '');
+      // o CPA com as vendas da SCALROI (o gasto vem da Meta ou da Utmify)
+      const pano = _panoramaComTmx(await _panoramaFonte(ini, fim, '', null, req.user), ini, fim, '');
       const k = pano.kpis || {};
       if (Number(k.cpa) > 0) cpa30 = Number(k.cpa);
     } catch (e) {}
@@ -25242,7 +25411,9 @@ async function _mcpExecutar(nome, a, tk) {
   }
 
   if (nome === 'como_esta_hoje') {
-    const d = await _utmifyPanorama(per.de, per.ate, String(a.projeto || ''));
+    // o gasto vem da Meta (ou da Utmify, sem a Meta); faturamento e vendas são os da SCALROI, como na tela
+    const d = _panoramaComTmx(await _panoramaFonte(per.de, per.ate, String(a.projeto || '')), per.de, per.ate, String(a.projeto || ''), null,
+      _gastoPelaMeta() ? { nomeProj: _nomeDoProjeto(readDB(), String(a.projeto || '')), meta: true } : undefined);
     const k = d.kpis || {}, p = k.pedidos || {};
     let t = 'COMO ESTÁ ' + per.rotulo.toUpperCase() + '\n\n' +
       'Investido:    ' + _mcpBrl(k.investimento) + '\n' +
@@ -25267,9 +25438,15 @@ async function _mcpExecutar(nome, a, tk) {
   }
 
   if (nome === 'criativos_que_vendem') {
+    const porNome = {};
+    if (_gastoPelaMeta()) {
+      // pela Meta: o gasto de cada anúncio e as vendas da SCALROI (o mesmo da aba Por Anúncio)
+      const db = readDB(), pj = _metaProjOuNada(db, String(a.projeto || ''));
+      const r = _anunciosComTmx(_metaAnuncios(db, per.de, per.ate, pj), per.de, per.ate, '', { nomeProj: pj === _META_NENHUM ? _META_NENHUM : pj, meta: true });
+      (r.anuncios || []).forEach(x => { porNome[(x.dashboard || '') + ' | ' + x.nome] = { nome: x.nome, projeto: x.dashboard || '', vendas: x.vendas || 0, receita: x.receita || 0, gasto: x.investimento || 0 }; });
+    } else {
     const achado = await _utmifyDashboardsAtivos();
     const cfg = achado.cfg, lista = _filtrarProjeto(achado.lista, String(a.projeto || ''));
-    const porNome = {};
     for (const d of lista) {
       const tz = (d.tz === undefined || d.tz === null) ? -3 : d.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
@@ -25288,6 +25465,7 @@ async function _mcpExecutar(nome, a, tk) {
         porNome[k].receita += (Number(x.grossRevenue) || 0) / 100;
         porNome[k].gasto += (Number(x.spend) || 0) / 100;
       });
+    }
     }
     const todos = Object.values(porNome);
     if (!todos.length) return 'Nenhum anúncio com dados ' + per.rotulo + '.';

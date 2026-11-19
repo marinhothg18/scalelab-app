@@ -16,7 +16,8 @@ const RAIZ = path.join(__dirname, '..');
 const TOKEN = 'EAAtokenDaFonteMetaDeTesteNaAnaliseDeTrafego1234567890abcdefghijkl';
 const espera = ms => new Promise(r => setTimeout(r, ms));
 const hoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
-let meta, srv, dir, base, log = '', dono;
+let meta, srv, dir, base, log = '', dono, ia;
+const pedidosIA = [];   // o que a Auditoria IA mandaria pro Claude (uma Anthropic de mentira guarda e recusa)
 const ate = async (cond, ms, oQue) => { const fim = Date.now() + ms; for (;;) { try { if (await cond()) return; } catch (e) {} if (Date.now() > fim) throw new Error('demorou demais: ' + oQue + '\n' + log.slice(-2000)); await espera(150); } };
 
 const C = { cbo: '1000000000100', abo: '1000000000200', nova: '1000000000300', velha: '1000000000400', recente: '1000000000500' };
@@ -74,6 +75,9 @@ const per = () => '?de=' + hoje() + '&ate=' + hoje();
 
 before(async () => {
   meta = await new Promise(r => { const s = http.createServer(falsa).listen(0, '127.0.0.1', () => r(s)); });
+  ia = await new Promise(r => { const s = http.createServer((req, res) => { let b = ''; req.on('data', x => { b += x; }); req.on('end', () => {
+    try { pedidosIA.push(JSON.parse(b)); } catch (e) {}
+    res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'teste' } })); }); }).listen(0, '127.0.0.1', () => r(s)); });
   dir = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'tmx-meta-fonte-'));
   // os dois projetos dividem a conta 111 pela palavra no nome da campanha
   fs.writeFileSync(path.join(dir, 'db.json'), JSON.stringify({ store: { sl_projetos_meta: { CONCURSO: { contas: ['111'], regra: 'CONCURSO' }, RENDA: { contas: ['111'], regra: 'RENDA' } } },
@@ -81,7 +85,8 @@ before(async () => {
   const porta = 47000 + Math.floor(Math.random() * 1500);
   base = 'http://127.0.0.1:' + porta;
   srv = spawn(process.execPath, [path.join(RAIZ, 'server.js')], { cwd: RAIZ, env: { PATH: process.env.PATH, HOME: process.env.HOME, PORT: String(porta), TMX_DATA_DIR: dir,
-    META_API_BASE_TESTE: 'http://127.0.0.1:' + meta.address().port + '/v25.0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    META_API_BASE_TESTE: 'http://127.0.0.1:' + meta.address().port + '/v25.0',
+    ANTHROPIC_API_KEY: 'chave-de-teste', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + ia.address().port }, stdio: ['ignore', 'pipe', 'pipe'] });
   srv.stdout.on('data', b => { log += b; }); srv.stderr.on('data', b => { log += b; });
   await ate(async () => (await fetch(base + '/api/ping')).ok, 20000, 'servidor subir');
   await ate(() => /sessões derrubadas/.test(log), 40000, 'a rotina das sessões rodar');
@@ -108,6 +113,7 @@ after(async () => {
   if (srv && srv.exitCode === null) { srv.kill('SIGTERM'); await Promise.race([new Promise(r => srv.once('exit', r)), espera(10000)]); }
   if (dir) fs.rmSync(dir, { recursive: true, force: true });
   if (meta) meta.close();
+  if (ia) ia.close();
 });
 
 test('sem sessão não entra', async () => {
@@ -230,6 +236,50 @@ test('Tempo Real pela Meta: cada venda de hoje vira um evento (19/11)', async ()
   assert.ok(r.dados.eventos.every(e => e.tipo === 'venda' && e.momento));
   assert.ok(r.dados.eventos.some(e => e.anuncio === 'AD226.1 | TESTE' && Math.round(e.valor * 100) === 83976));
   assert.ok(r.dados.eventos.some(e => e.anuncio === 'sem anúncio'));
+});
+
+test('tudo pela Meta: funil, vendas por canal, cobertura de UTM e as perguntas ao Claude (19/11)', async () => {
+  assert.strictEqual((await chamar('GET', '/api/metricas/fonte', { token: dono })).dados.fonte, 'meta');
+  // cliques do funil
+  const f = await chamar('GET', '/api/funil/cliques' + per(), { token: dono });
+  assert.strictEqual(f.status, 200, JSON.stringify(f.dados));
+  assert.deepStrictEqual([f.dados.total, f.dados.visitas, f.dados.vendas], [50, 30, 2]);
+  assert.ok(f.dados.campanhas.some(c => c.nome === objetos[C.cbo].name && c.cliques === 40));
+  // o gasto das campanhas de cada dia (Resultados, Canais, vendas por canal) sai da Meta
+  const vc = await chamar('GET', '/api/vendas/por-canal' + per(), { token: dono });
+  assert.strictEqual(vc.status, 200, JSON.stringify(vc.dados));
+  assert.strictEqual(Math.round(vc.dados.gasto * 100) / 100, 112.1);
+  // cobertura de UTM: os três anúncios tiveram visita com o anúncio na UTM; no projeto RENDA, só o dele
+  const cb = await chamar('GET', '/api/metricas/meta/cobertura-utm' + per(), { token: dono });
+  assert.strictEqual(cb.status, 200, JSON.stringify(cb.dados));
+  assert.deepStrictEqual([Math.round(cb.dados.gastoTotal * 100) / 100, Math.round(cb.dados.cobertura), cb.dados.semUtm.length], [112.1, 100, 0]);
+  assert.strictEqual((await chamar('GET', '/api/metricas/meta/cobertura-utm' + per() + '&projeto=RENDA', { token: dono })).dados.gastoTotal, 40);
+  // as ferramentas do Claude
+  const tk = (await chamar('POST', '/api/tokens/generate', { token: dono, corpo: { nome: 'teste da Meta' } })).dados.token;
+  const mcp = async (name, args) => { const r = await (await fetch(base + '/mcp?token=' + tk, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args || {} } }) })).json(); return r.result.content[0].text; };
+  const como = await mcp('como_esta_hoje');
+  assert.match(como, /Investido:\s+R\$\s*112,10/);
+  assert.match(como, /Faturamento:\s+R\$\s*1\.679,52/);
+  assert.match(como, /Vendas:\s+2 aprovadas/);
+  const cri = await mcp('criativos_que_vendem');
+  assert.match(cri, /QUEM VENDE[\s\S]*AD226\.1 \| TESTE/);
+  assert.match(cri, /Total: 1 vendas?/);
+});
+
+test('Auditoria IA pela Meta: o texto pro Claude leva os números da Meta e não fala da Utmify (19/11)', async () => {
+  const r = await chamar('POST', '/api/ia/auditoria', { token: dono, corpo: { projeto: 'CONCURSO', projetoNome: 'CONCURSO', dia: 'hoje' } });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  await ate(() => pedidosIA.length > 0, 30000, 'a Auditoria montar o texto e chamar o Claude');
+  const corpo = pedidosIA[0], texto = corpo.messages[0].content, sistema = JSON.stringify(corpo.system);
+  assert.match(texto, /Fonte do gasto: Meta/);
+  { const i = texto.indexOf('Utmify'); assert.ok(i < 0, 'o texto não cita a Utmify: …' + texto.slice(Math.max(0, i - 200), i + 100)); }
+  assert.ok(!/Utmify/.test(sistema), 'as regras também não');
+  assert.match(texto, /AD226\.1/);
+  assert.ok(!/AD88\.1/.test(texto), 'o anúncio do outro projeto (RENDA) fica de fora');
+  assert.match(texto, /\| Investimento \| R\$ 72 \|/);
+  assert.match(texto, /vêm de: TMX/, 'a Meta não tem faturamento: o resumo é sempre o da SCALROI');
+  assert.match(texto, /\| AD226\.1 \/ TESTE \|[^\n]*\| - \| - \| R\$ 62 \|/, 'hook e body sem dado, não 0%');
 });
 
 test('pausar pela tela aparece na hora, sem esperar a próxima puxada', async () => {
