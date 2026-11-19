@@ -47431,7 +47431,7 @@ function cpNvTabela(nv, l){
       '<td class="f3">'+(r.campanhaId && _podeMexerNaMeta() ? '<button onclick="event.stopPropagation();rgtAtalhoNv(\''+nv+'\',\''+fnEsc(r.id)+'\')" title="'+regra+'" aria-label="'+regra+'">⚡</button>' : '')+'</td></tr>';
   }).join('');
   var somas = cpTotais(l, true), tot = somas.tot;
-  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f0">'+cpCkTodos(nv, l.map(function(r){ return r.id; }))+'</th><th class="f1">Status</th>'+
+  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f0">'+cpCkTodos(nv, l.map(function(r){ return r.id; }))+'</th>'+cpThStatus()+''+
     '<th class="f2">'+nome[2]+'<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna '+nome[2]+'" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
     (linhas || '<tr><td colspan="'+(cs.length + 4)+'" class="cp-vazio">Nenhum '+nome[0]+' neste filtro.</td></tr>')+'</tbody>'+
     '<tfoot><tr><td class="f0"></td><td class="f1"></td><td class="f2"><b>'+cpPl(l.length, nome[0], nome[1])+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+
@@ -47454,7 +47454,7 @@ function cpNvCards(nv, l){
       '<div class="cpc-acoes">'+cpSelCel(sk, r.id)+'<button class="cpc-ver" onclick="cpcAbertos[\''+fnEsc(id)+'\']=!cpcAbertos[\''+fnEsc(id)+'\'];cpPintar()">'+(aberto ? 'Ver menos' : 'Ver todas as métricas')+'</button></div></article>';
   }).join('');
   var soma = function(k){ return l.reduce(function(a, c){ return a + (Number(c[k]) || 0); }, 0); }, g = soma('investimento'), f = soma('faturamento'), lu = soma('lucro');
-  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()">'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpExportarPdf(this)" aria-label="Exportar PDF">PDF</button><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
+  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()"><option value="status"'+(cpEst.ord === 'status' ? ' selected' : '')+'>Ordenar: Status (ativas em cima)</option>'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpExportarPdf(this)" aria-label="Exportar PDF">PDF</button><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
     '<div class="cpc-fixos"><div class="cpc-chips">'+est('on','Ativas')+est('off','Pausadas')+cpFiltrosMarca()+'</div></div>'+
     '<div class="cpc-soma"><div><span>Gasto</span><b>'+fmtAds(g)+'</b></div><div><span>Lucro</span><b class="'+(lu >= 0 ? 'pos' : 'neg')+'">'+fmtAds(lu)+'</b></div><div><span>ROAS</span><b>'+(g ? (f/g).toFixed(2).replace('.',',')+'x' : '—')+'</b></div></div>'+
     (cards ? '<div class="cpc-lista">'+cards+'</div>' : '<div class="cp-vazio">Nenhum '+(nv === 'conjuntos' ? 'conjunto' : 'anúncio')+' neste filtro.</div>')+cpNvNotas(nv);
@@ -47724,9 +47724,17 @@ function cpBarra(){
     '<span class="cp-rolar"><button onclick="cpRolar(-1)" aria-label="Rolar pra esquerda">‹</button><button onclick="cpRolar(1)" aria-label="Rolar pra direita">›</button></span></div>';
 }
 function cpFixa(c){ return (cpMarcas[cpIdMarca(c)] || {}).fixa ? 1 : 0; }
+function cpThStatus(){
+  if(cpEst.moverCols) return '<th class="f1">Status</th>';
+  var on = cpEst.ord === 'status';
+  return '<th class="f1 ord'+(on ? ' on' : '')+'" onclick="cpOrdenar(\'status\')" title="'+(on && cpEst.desc ? 'Clique de novo: as pausadas em cima' : 'Clique: as ativas em cima')+'">Status'+(on ? (cpEst.desc ? ' ↓' : ' ↑') : '')+'</th>';
+}
 function cpOrdenadas(l){
   var porK = {}; CP_COLS.forEach(function(x){ porK[x.k] = x; });
-  var val = function(c, k){ if(k === 'vtmx') k = 'aprovadas'; var col = porK[k];
+  var val = function(c, k){ if(k === 'vtmx') k = 'aprovadas';
+    // 19/11/2026: clicar em STATUS põe as ativas em cima, como na Utmify; dentro de cada grupo, quem mais gastou
+    if(k === 'status') return (cpStatus(c.efetivo || c.status)[1] === 'on' ? 1e12 : 0) + (Number(c.investimento) || 0);
+    var col = porK[k];
     var v = col && col.s ? col.s(c) : c[k]; return v == null || isNaN(v) ? -Infinity : v; };
   // as fixadas ficam no topo, em qualquer ordenação
   return l.slice().sort(function(a, b){ if(cpFixa(a) !== cpFixa(b)) return cpFixa(b) - cpFixa(a); var x = val(a, cpEst.ord), y = val(b, cpEst.ord); return cpEst.desc ? y - x : x - y; });
@@ -47772,7 +47780,7 @@ function cpCards(lista){
     '<div class="cpc-nums"><div><span>Vendas</span><b>'+n+'</b></div><div><span>Faturamento</span><b>'+fmtAds(fat)+'</b></div></div>'+(clique ? '<div class="cpc-acoes"><span></span><button class="cpc-ana" onclick="'+clique+'">Ver as vendas ›</button></div>' : '')+'</article>'; };
   cards += so.extras.map(function(x){ return extra(x.nome, 'sem gasto no período', x.vendas, x.faturamento, ''); }).join('');
   if(so.sem.length) cards += extra('Sem campanha', 'orgânico, bio, sem rastreio', so.sem.length, semFat, 'cpAbrirSemCampanha()');
-  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()">'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpExportarPdf(this)" aria-label="Exportar PDF">PDF</button><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
+  return '<div class="cpc-barra"><select aria-label="Ordenar por" onchange="cpEst.ord=this.value;cpEst.desc=true;cpPintar()"><option value="status"'+(cpEst.ord === 'status' ? ' selected' : '')+'>Ordenar: Status (ativas em cima)</option>'+CP_COLS.map(function(c){ return '<option value="'+c.k+'"'+(cpEst.ord === c.k ? ' selected' : '')+'>Ordenar: '+c.t+'</option>'; }).join('')+'</select><button class="cpc-ana" onclick="cpExportarPdf(this)" aria-label="Exportar PDF">PDF</button><button class="cpc-ana" onclick="cpcMetricas()">Métricas</button></div>'+
     '<div class="cpc-fixos"><div class="cpc-chips">'+est('on','Ativas')+est('off','Pausadas')+cpFiltrosMarca()+'</div></div>'+
     '<div class="cpc-soma"><div><span>Gasto</span><b>'+fmtAds(g)+'</b></div><div><span>Lucro</span><b class="'+(lu + fatExtra >= 0 ? 'pos' : 'neg')+'">'+fmtAds(lu + fatExtra)+'</b></div><div><span>ROAS</span><b>'+(g ? ((f + fatExtra)/g).toFixed(2).replace('.',',')+'x' : '—')+'</b></div></div>'+
     (cards ? '<div class="cpc-lista">'+cards+'</div>' : '<div class="cp-vazio">Nenhuma campanha neste filtro.</div>');
@@ -48100,7 +48108,7 @@ function cpTabela(l){
     'Vendas pagas que não vieram de anúncio: link da bio, visita direta, renovação e as que chegaram sem o código da SCALROI. Clique pra ver cada uma.',
     so.sem.length, semFat, 'cpAbrirSemCampanha()');
   var idsCamp = l.filter(function(c){ return c.campanhaId; }).map(function(c){ return String(c.campanhaId); });
-  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f0">'+cpCkTodos('campanhas', idsCamp)+'</th><th class="f1">Status</th><th class="f2">Campanha<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna Campanha" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
+  return '<div class="cp-rolo"><table class="cp-tab'+(cpLarg < 210 ? ' fina' : '')+'" id="cp-tabela" style="--cp-larg:'+cpLarg+'px"><thead><tr><th class="f0">'+cpCkTodos('campanhas', idsCamp)+'</th>'+cpThStatus()+'<th class="f2">Campanha<span class="cp-pega" aria-hidden="true">⋮⋮</span><i class="cp-alca" data-cp-alca="1" role="separator" aria-orientation="vertical" aria-label="Largura da coluna Campanha" aria-valuemin="'+CP_LARG_MIN+'" aria-valuemax="'+CP_LARG_MAX+'" aria-valuenow="'+cpLarg+'" tabindex="0" title="Arraste pra encolher ou alargar. Dois cliques voltam ao normal."></i></th>'+cs.map(th).join('')+'<th class="f3"></th></tr></thead><tbody>'+
     (linhas || '<tr><td colspan="'+(cs.length + 4)+'" class="cp-vazio">Nenhuma campanha neste filtro.</td></tr>')+'</tbody>'+
     '<tfoot><tr><td class="f0"></td><td class="f1"></td><td class="f2"><b>'+nCamp+' campanha'+(nCamp === 1 ? '' : 's')+'</b><i class="cp-alca" data-cp-alca="1"></i></td>'+cs.map(function(c){ return '<td><b'+(c.k === 'lucro' ? ' class="'+(lucroTot >= 0 ? 'pos' : 'neg')+'"' : '')+'>'+(tot[c.k] != null ? tot[c.k] : '')+'</b></td>'; }).join('')+'<td class="f3"></td></tr></tfoot></table></div>';
 }
