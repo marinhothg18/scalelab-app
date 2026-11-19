@@ -37,8 +37,12 @@ async function abrirNavegador() {
 }
 
 // lê o card do anúncio na página aberta
-async function lerCard(pg, id, ms, base) {
-  await pg.goto(base + '/ads/library/?id=' + encodeURIComponent(id), { waitUntil: 'domcontentloaded', timeout: ms }).catch(() => {});
+async function lerCard(pg, id, ms, base, pais) {
+  // o país vai explícito: a Biblioteca filtra pelo país de quem acessa (o servidor do Railway fica fora do Brasil),
+  // e um anúncio que só roda no BR não aparece com o filtro de outro país
+  // o mesmo formato pro qual o próprio Facebook redireciona o ?id= (com "all" ou media_type a lista não abre o anúncio)
+  const q = 'active_status=active&ad_type=all&country=' + encodeURIComponent(pais || 'BR') + '&id=' + encodeURIComponent(id);
+  await pg.goto(base + '/ads/library/?' + q, { waitUntil: 'domcontentloaded', timeout: ms }).catch(() => {});
   // a verificação anti-robô do Facebook recarrega a página uma vez: espera o id e um vídeo aparecerem
   const fim = Date.now() + ms;
   let ultimo = null;
@@ -47,12 +51,14 @@ async function lerCard(pg, id, ms, base) {
       ultimo = await pg.evaluate(id => {
         const txt = (document.body && document.body.innerText) || '';
         if (/\/login/.test(location.pathname)) return { login: true };
+        // o próprio Facebook avisa quando o anúncio saiu: não adianta esperar
+        if ([...document.querySelectorAll('[role=dialog]')].some(d => /não está na Biblioteca de Anúncios|isn.t in the Ad Library|not in the Ad Library/i.test(d.innerText || ''))) return { saiu: true };
         const RE = new RegExp('(?:Identifica[çc][ãa]o da biblioteca|ID da biblioteca|Library ID)\\s*:?\\s*' + id + '(?!\\d)');
         const RE_G = /(?:Identifica[çc][ãa]o da biblioteca|ID da biblioteca|Library ID)\s*:?\s*\d{6,}/gi;
         const conta = el => ((el.textContent || '').match(RE_G) || []).length;
         let rot = null;
         for (const el of document.querySelectorAll('body *')) { if (RE.test(el.textContent || '') && ![...el.children].some(f => RE.test(f.textContent || ''))) { rot = el; break; } }
-        if (!rot) return { achou: false, txt: txt.slice(0, 2000) };
+        if (!rot) return { achou: false, txt: txt.slice(0, 2000), titulo: document.title, onde: location.pathname + location.search };
         let card = rot;
         while (card.parentElement && card.parentElement !== document.body && conta(card.parentElement) <= 1) card = card.parentElement;
         const v = card.querySelector('video');
@@ -62,13 +68,16 @@ async function lerCard(pg, id, ms, base) {
         return { achou: true, video: /^https?:/.test(video) ? video : '', capa: v && v.poster ? v.poster : '', imagem: !video && imgs.length ? (imgs[0].currentSrc || imgs[0].src) : '', temVideo: !!v };
       }, String(id));
     } catch (e) { ultimo = null; }   // a página recarregou no meio
-    if (ultimo && (ultimo.login || (ultimo.achou && (ultimo.video || ultimo.imagem)))) break;
+    if (ultimo && (ultimo.login || ultimo.saiu || (ultimo.achou && (ultimo.video || ultimo.imagem)))) break;
     if (ultimo && !ultimo.achou && RE_LOGIN.test(ultimo.txt || '')) { ultimo = { login: true }; break; }
     await espera(700);
   }
   if (!ultimo) return { erro: 'a página não carregou' };
   if (ultimo.login) return { login: true, erro: 'o Facebook pediu login' };
-  if (!ultimo.achou) return { erro: 'o anúncio não apareceu na página (pode ter saído do ar)' };
+  if (ultimo.saiu) return { saiu: true, erro: 'o Facebook diz que este anúncio não está mais na Biblioteca (saiu do ar)' };
+  // o que o Facebook mostrou, pra dar pra entender pelo log
+  if (!ultimo.achou) return { naoApareceu: true, erro: 'o anúncio não apareceu na página (pode ter saído do ar)',
+    diag: 'título "' + String(ultimo.titulo || '').slice(0, 80) + '" · ' + String(ultimo.onde || '').slice(0, 160) + ' · "' + String(ultimo.txt || '').replace(/\s+/g, ' ').slice(0, 220) + '"' };
   if (!ultimo.video && !ultimo.imagem) return { erro: ultimo.temVideo ? 'o vídeo deste anúncio não tem link direto' : 'o anúncio não tem vídeo nem imagem' };
   return { video: ultimo.video, capa: ultimo.capa, imagem: ultimo.imagem };
 }
@@ -82,10 +91,11 @@ module.exports = function criarBuscador(opc) {
   return {
     disponivel: () => !!chromium,
     // busca uma lista de ids; aoAchar(id, resultado) é chamado a cada um. Para se o Facebook pedir login duas vezes seguidas.
-    async buscar(ids, aoAchar) {
+    async buscar(ids, aoAchar, extra) {
+      extra = extra || {};
       const res = { tentados: 0, achados: 0, erros: 0, bloqueado: false, erro: '' };
       if (!ids.length) return res;
-      let nav = null, logins = 0;
+      let nav = null, logins = 0, seguidos = 0;
       // trava de segurança: se algo travar, o navegador morre em no máximo 20 min
       const trava = setTimeout(() => { try { nav && nav.close(); } catch (e) {} }, opc.limiteMs || 20 * 60000);
       try {
@@ -93,14 +103,22 @@ module.exports = function criarBuscador(opc) {
         abertoEm = Date.now();
         const ctx = await nav.newContext({ locale: 'pt-BR', viewport: { width: 1280, height: 900 } });
         const pg = await ctx.newPage();
+        // aquecimento: a verificação anti-robô do Facebook recarrega a primeira página aberta e o anúncio pedido se perde;
+        // passa por ela antes, na página inicial da Biblioteca
+        try { await pg.goto(base + '/ads/library/', { waitUntil: 'domcontentloaded', timeout: porPagina }); await espera(4000); } catch (e) {}
         for (let i = 0; i < ids.length; i++) {
           const id = ids[i];
           res.tentados++;
           let r;
-          try { r = await lerCard(pg, id, porPagina, base); } catch (e) { r = { erro: e.message }; }
+          try { r = await lerCard(pg, id, porPagina, base, extra.pais); } catch (e) { r = { erro: e.message }; }
+          // não apareceu (sem o aviso de que saiu): tenta de novo uma vez, a página às vezes recarrega no meio
+          if (r.naoApareceu) { await espera(2000); try { const r2 = await lerCard(pg, id, porPagina, base, extra.pais); if (!r2.naoApareceu) r = r2; } catch (e) {} }
           if (r.login) { logins++; if (logins >= 2) { res.bloqueado = true; res.erro = 'O Facebook pediu login ao servidor.'; try { aoAchar(id, r); } catch (e) {} break; } }
           else logins = 0;
           if (r.video || r.imagem) res.achados++; else res.erros++;
+          // 3 seguidos sem aparecer e sem o aviso de que saíram: o Facebook não está mostrando os anúncios pro servidor; para
+          seguidos = r.naoApareceu ? seguidos + 1 : 0;
+          if (!res.achados && seguidos >= 3) { res.erro = 'O Facebook não mostrou os anúncios pro servidor (3 seguidos). ' + (r.diag || ''); try { await aoAchar(id, r); } catch (e) {} break; }
           try { await aoAchar(id, r); } catch (e) {}
           if (i < ids.length - 1) await espera(pausa + Math.floor(Math.random() * pausa / 2));
         }

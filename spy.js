@@ -484,13 +484,15 @@ function criarNucleo(o) {
             if (!l.length) continue;
             console.log('[SPY] busca de vídeos (' + bib + '): começou, ' + l.length + ' anúncio(s)');
             let primeiroErro = '';
+            const bibR = bibRow(bib) || {};
             const r = await o.buscador.buscar(l.map(x => x.ad), async (adId, res) => {
               busca.feitos++;
               const cid = aplicarLink(adId, res);
               if (cid) { busca.achados++; enfileirar([cid]); }
               else if (!primeiroErro && res && res.erro) { primeiroErro = res.erro; console.log('[SPY] busca de vídeos: anúncio ' + adId + ' sem vídeo: ' + String(res.erro).slice(0, 200)); }
               if (busca.feitos % 10 === 0) console.log('[SPY] busca de vídeos: ' + busca.feitos + ' de ' + l.length + ' (' + busca.achados + ' achados)');
-            });
+              if (res && res.diag && busca.feitos <= 3) console.log('[SPY] busca de vídeos: o Facebook mostrou ' + res.diag);
+            }, { pais: bibR.pais || 'BR' });
             // no log, pra dar pra ver o que aconteceu no servidor
             console.log('[SPY] busca de vídeos (' + bib + '): ' + busca.achados + ' de ' + l.length + ' achados' + (r.erro ? ' · ' + String(r.erro).split('\n')[0].slice(0, 300) : ''));
             if (r.erro) console.error('[SPY] busca de vídeos, erro completo:', String(r.erro).slice(0, 2000));
