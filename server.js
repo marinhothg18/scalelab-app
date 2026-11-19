@@ -5641,9 +5641,18 @@ function _metaNomesCamp() {
   } catch (e) {}
   return nomes;
 }
+// Quais campanhas aparecem (19/11/2026, pedido do Thiago: "igual na Utmify"): a que gastou no período, a que está no ar,
+// a criada no período e a que mudou de status ou orçamento no período. A pausada antiga sem gasto e sem mudança fica de
+// fora (antes entrava toda campanha criada nos últimos 30 dias, e a lista enchia de pausada sem gasto).
+function _metaMudouNoPeriodo(de, ate) {
+  const s = new Set();
+  try { const per = _periodoMs(de, ate);
+    _q("SELECT DISTINCT camp FROM camp_mudancas WHERE em BETWEEN ? AND ? AND campo NOT IN ('status_conjunto','status_anuncio','orc_conjunto')").all(per.ini, per.fim).forEach(x => s.add(String(x.camp))); } catch (e) {}
+  return s;
+}
+const _metaCriadoNoPeriodo = (ms, de, ate) => { if (!ms) return false; const d = _diaBR(Number(ms)); return d >= de && d <= ate; };
 function _metaPainel(db, de, ate, projeto) {
-  const nomeConta = _contaNomes(), dono = projeto ? _projetoDaCampanhaFn(db) : null;
-  const desde30 = _diaBR(Date.parse(ate + 'T15:00:00Z') - 30 * 86400000), recente = ms => !!ms && _diaBR(Number(ms)) >= desde30;
+  const nomeConta = _contaNomes(), dono = projeto ? _projetoDaCampanhaFn(db) : null, mudou = _metaMudouNoPeriodo(de, ate);
   const camps = {};
   _q('SELECT id, conta, nome, status, efetivo, orc, orc_vida, criado, em FROM meta_camp').all().forEach(c => { camps[c.id] = c; });
   const fresca = _metaFrescoFn('meta_camp');
@@ -5666,7 +5675,7 @@ function _metaPainel(db, de, ate, projeto) {
     x._orcDia = l.orc; x._orcVida = l.orc_vida; if (l.lance != null) x.bid = l.lance; if (l.criada) x._criado = l.criada;
   });
   Object.values(camps).forEach(c => {
-    if (m[c.id] || !fresca(c) || !(_META_NO_AR.test(c.efetivo || '') || recente(c.criado))) return;
+    if (m[c.id] || !fresca(c) || !(_META_NO_AR.test(c.efetivo || '') || _metaCriadoNoPeriodo(c.criado, de, ate) || mudou.has(String(c.id)))) return;
     m[c.id] = Object.assign(nova(c.id, c.conta), { nome: c.nome || '' });
   });
   const lista = Object.values(m).map(x => {
@@ -5709,8 +5718,7 @@ function _metaPainel(db, de, ate, projeto) {
 }
 // conjuntos e anúncios no mesmo formato de /api/metricas/utmify/niveis, pra tabela não saber de onde veio
 function _metaNiveis(db, de, ate, projeto) {
-  const nomeConta = _contaNomes(), dono = projeto ? _projetoDaCampanhaFn(db) : null;
-  const desde30 = _diaBR(Date.parse(ate + 'T15:00:00Z') - 30 * 86400000), recente = ms => !!ms && _diaBR(Number(ms)) >= desde30;
+  const nomeConta = _contaNomes(), dono = projeto ? _projetoDaCampanhaFn(db) : null, recente = ms => _metaCriadoNoPeriodo(ms, de, ate);
   const nomeCamp = {};
   _q('SELECT id, conta, nome FROM meta_camp').all().forEach(c => { nomeCamp[c.id] = c.nome; });
   const doProj = (conta, camp) => !dono || dono(conta, nomeCamp[camp] || '') === projeto;
@@ -5751,6 +5759,133 @@ function _metaNiveis(db, de, ate, projeto) {
   anuncios.forEach(a => { const s = porCj[a.conjuntoId]; if (s) { s.investimento += a.investimento; s.impressoes += a.impressoes; s.cliques += a.cliques; } });
   return _niveisComTmx({ de, ate, conjuntos, anuncios, erros: [] }, de, ate, '', { nomeProj: projeto, nomes: _metaNomesCamp() });
 }
+// ── Resumo, Por Anúncio e Tempo Real pela Meta (19/11/2026) ──
+// Pedido do Thiago: com a fonte Meta tem que ficar tudo igual na Utmify. As telas são as mesmas e as respostas têm o mesmo
+// formato das rotas da Utmify; o gasto e as métricas saem do que a sincronização da Meta guarda a cada 15 min, e o
+// faturamento e as vendas da SCALROI entram pelas mesmas funções da Utmify (_panoramaComTmx, _anunciosComTmx).
+// O que a Meta não guarda por anúncio (hook e hold do vídeo) vai como semVideo, e a tela mostra "—" em vez de zero.
+function _metaDoProjetoFn(db, projeto) {
+  if (!projeto) return () => true;
+  const dono = _projetoDaCampanhaFn(db), nomes = _metaNomesCamp();
+  return (conta, camp, nome) => dono(conta, nome || nomes[String(camp)] || '') === projeto;
+}
+function _metaPanorama(db, de, ate, projeto, filtros, u) {
+  const fil = filtros || {}, doProj = _metaDoProjetoFn(db, projeto), dono = _projetoDaCampanhaFn(db), nomes = _metaNomesCamp();
+  const passa = (conta, camp, nome) => doProj(conta, camp, nome) && (!fil.conta || String(conta) === String(fil.conta));
+  const tot = { investimento: 0, receita: 0, lucro: 0, cliques: 0, visitas: 0, ics: 0, reembolsoValor: 0, pendenteValor: 0,
+    pedidos: { total: 0, aprovadas: 0, pendentes: 0, reembolsadas: 0, recusadas: 0 } };
+  const projetos = projeto ? [projeto] : _metaProjetosDaFonte(db, u), porProj = {};
+  projetos.forEach(p => { porProj[p] = 0; });
+  _q('SELECT conta, id, nome, gasto, link_cliques, lpv, ic FROM meta_camp_dia WHERE dia BETWEEN ? AND ?').all(de, ate).forEach(l => {
+    if (!passa(l.conta, l.id, l.nome)) return;
+    const g = Number(l.gasto) || 0;
+    tot.investimento += g; tot.cliques += Number(l.link_cliques) || 0; tot.visitas += Number(l.lpv) || 0; tot.ics += Number(l.ic) || 0;
+    const pj = projeto || dono(l.conta, l.nome || nomes[String(l.id)] || '');
+    if (pj && porProj[pj] !== undefined) porProj[pj] += g;
+  });
+  tot.lucro = -tot.investimento;
+  // o gasto de cada hora (os gráficos do Resumo): só quando as horas fecham com o total dos dias
+  const hora = Array(24).fill(0);
+  _q('SELECT hora, conta, id, gasto FROM meta_camp_hora WHERE dia BETWEEN ? AND ?').all(de, ate).forEach(h => {
+    const i = Number(h.hora);
+    if (i >= 0 && i < 24 && passa(h.conta, h.id, '')) hora[i] += Number(h.gasto) || 0;
+  });
+  const somaH = hora.reduce((a, v) => a + v, 0), acum = { fat: Array(24).fill(0), inv: Array(24).fill(0), luc: Array(24).fill(0), tem: false };
+  if (somaH > 0 && Math.abs(somaH - tot.investimento) <= Math.max(1, tot.investimento * 0.03)) {
+    let g = 0;
+    for (let i = 0; i < 24; i++) { g += hora[i]; acum.inv[i] = g; acum.luc[i] = -g; }
+    acum.tem = true;
+  }
+  // origem das vendas (utm_term) e produtos: das vendas da SCALROI do projeto
+  const doPed = projeto ? _pedidoDoProjetoFn(db, projeto) : null, porUtm = {}, porProduto = {}, vistos = new Set();
+  _q('SELECT id, pedido, valor, produto, funil, termo FROM pedidos WHERE pago=1 AND estorno=0 AND dia BETWEEN ? AND ? ORDER BY em').all(de, ate).forEach(p => {
+    const k = p.pedido || p.id;
+    if (vistos.has(k) || (doPed && !doPed(p))) return;
+    vistos.add(k);
+    const t = String(p.termo || '').trim() || '(sem origem)';
+    porUtm[t] = (porUtm[t] || 0) + 1;
+    const nome = String(p.produto || '(sem nome)').trim() || '(sem nome)', pr = porProduto[nome] || (porProduto[nome] = { produto: nome, vendas: 0, receita: 0 });
+    pr.vendas++; pr.receita += Number(p.valor) || 0;
+  });
+  const pl = _planosDoPanorama(db, de, ate, porProduto), custos = _custosCfg(db);
+  return {
+    ok: true, momento: new Date().toISOString(), fonte: 'meta',
+    kpis: Object.assign({}, tot, { roas: 0, ticket: 0, cpa: 0 }),
+    margem: _margem(0, tot.investimento, 0, custos), custos,
+    porHora: hora.map((g, h) => ({ hora: h, lucro: -g })), acum, vendasHora: Array(24).fill(0),
+    aprovacao: { cartao: { a: 0, t: 0 }, pix: { a: 0, t: 0 }, boleto: { a: 0, t: 0 } },
+    planos: pl.planos, planosFonte: pl.planosFonte, planosCfg: pl.planosCfg, vendasIndividuais: pl.vendasIndividuais,
+    produtos: Object.values(porProduto).sort((a, b) => b.receita - a.receita),
+    porUtm: Object.entries(porUtm).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd),
+    porDashboard: projetos.map(p => ({ nome: p, investimento: porProj[p], lucro: -porProj[p], receita: 0, vendas: 0, roas: 0 })).sort((a, b) => b.investimento - a.investimento),
+    erros: []
+  };
+}
+// checkouts iniciados de cada anúncio, pelo pixel da SCALROI (a Meta não guarda IC por anúncio): pessoas únicas no período
+function _metaIcsDosAnuncios(anuncios, de, ate) {
+  try {
+    const per = _periodoMs(de, ate), porId = {}, porNome = {}, vistos = new Set();
+    anuncios.forEach(m => { (m.ids || []).forEach(id => { porId[id] = m; }); const k = _anuncioChave(m.nome); if (!porNome[k]) porNome[k] = m; });
+    _q('SELECT visitante, cont FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0 AND checkout=1').all(per.ini, per.fim).forEach(x => {
+      if (!x.cont) return;
+      const id = _idDaCampUtm(x.cont), m = (id && porId[id]) || porNome[_anuncioChave(_contSemId(x.cont))];
+      if (!m) return;
+      const k = m.nome + '|' + m.dashboard + '|' + x.visitante;
+      if (vistos.has(k)) return;
+      vistos.add(k); m.ics++;
+      const c = Object.keys(m.porConta || {})[0]; if (c && Object.keys(m.porConta).length === 1) m.porConta[c].ics++;
+    });
+  } catch (e) {}
+}
+function _metaAnuncios(db, de, ate, projeto) {
+  const doProj = _metaDoProjetoFn(db, projeto), dono = _projetoDaCampanhaFn(db), nomes = _metaNomesCamp(), nomeConta = _contaNomes();
+  const mapa = {}, diag = { dashboards: 1, linhas: 0, semGasto: 0 };
+  _q('SELECT conta, camp, id, nome, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c FROM meta_ad_dia WHERE dia BETWEEN ? AND ? GROUP BY id').all(de, ate).forEach(a => {
+    if (!doProj(a.conta, a.camp, '')) return;
+    diag.linhas++;
+    const inv = Number(a.g) || 0;
+    if (!inv) { diag.semGasto++; return; }
+    // a mesma nomenclatura roda em várias campanhas e contas: junta pelo nome dentro do projeto, como na Utmify
+    const nome = String(a.nome || '').trim() || '(sem nome)', pj = projeto || dono(a.conta, nomes[String(a.camp)] || '') || '';
+    const k = nome.toLowerCase().replace(/\s+/g, ' ') + '|' + pj;
+    const m = mapa[k] || (mapa[k] = { nome, dashboard: pj, veiculacoes: 0, investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0, porConta: {}, ids: [] });
+    const cl = Number(a.c) || 0, im = Number(a.i) || 0, ct = nomeConta[a.conta] || String(a.conta || '—');
+    m.veiculacoes++; m.investimento += inv; m.cliques += cl; m.impressoes += im;
+    const pc = m.porConta[ct] || (m.porConta[ct] = { investimento: 0, receita: 0, lucro: 0, vendas: 0, ics: 0, cliques: 0, impressoes: 0 });
+    pc.investimento += inv; pc.cliques += cl; pc.impressoes += im; pc.lucro -= inv;
+    if (m.ids.length < 30) m.ids.push(String(a.id));
+  });
+  const anuncios = Object.values(mapa);
+  _metaIcsDosAnuncios(anuncios, de, ate);
+  anuncios.forEach(m => Object.assign(m, {
+    roas: 0, cpa: 0, lucro: -m.investimento, semVideo: true,
+    cpc: m.cliques > 0 ? m.investimento / m.cliques : 0, cpm: m.impressoes > 0 ? m.investimento / m.impressoes * 1000 : 0,
+    ctr: m.impressoes > 0 ? m.cliques / m.impressoes * 100 : 0, custoPorIc: m.ics > 0 ? m.investimento / m.ics : 0 }));
+  anuncios.sort((a, b) => b.investimento - a.investimento);
+  return { ok: true, de, ate, anuncios, erros: [], diag, fonte: 'meta',
+    conciliacao: { vendasAnuncios: 0, vendasConta: null, receitaAnuncios: 0, receitaConta: null, vendasSemAnuncio: null, receitaSemAnuncio: null } };
+}
+// o detalhe de um anúncio (3 e 7 dias): gasto, cliques e impressões da Meta; checkouts e visitas pelo pixel; vendas da SCALROI
+function _metaAnuncioLinhas(nome, de, ate, efetivo) {
+  const alvo = _anuncioChave(nome), s = { veic: 0, ativos: 0, inv: 0, rec: 0, v: 0, ic: 0, cl: 0, imp: 0, lpv: 0, vv: 0, v3: 0, v75: 0, ids: [], semVideo: true };
+  _q('SELECT id, nome, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c FROM meta_ad_dia WHERE dia BETWEEN ? AND ? GROUP BY id').all(de, ate).forEach(a => {
+    if (_anuncioChave(a.nome) !== alvo || !(Number(a.g) > 0)) return;
+    s.veic++; if (efetivo[a.id] === 'ACTIVE') s.ativos++;
+    s.inv += Number(a.g) || 0; s.cl += Number(a.c) || 0; s.imp += Number(a.i) || 0;
+    if (s.ids.indexOf(String(a.id)) < 0) s.ids.push(String(a.id));
+  });
+  return s;
+}
+// Tempo Real: cada venda paga de hoje vira um evento, a mais nova primeiro (a Utmify só via a diferença a cada 45 s)
+function _metaEventosHoje(db, projeto) {
+  const doPed = projeto ? _pedidoDoProjetoFn(db, projeto) : null, porPed = {};
+  _q('SELECT id, pedido, valor, produto, funil, cred_camp, cred_cont, em FROM pedidos WHERE pago=1 AND estorno=0 AND dia=? ORDER BY em DESC').all(_diaBR(Date.now())).forEach(p => {
+    const k = p.pedido || p.id;
+    if (!porPed[k] && (!doPed || doPed(p))) porPed[k] = p;
+  });
+  return Object.values(porPed).sort((a, b) => b.em - a.em).slice(0, 60).map(p => ({ momento: new Date(Number(p.em)).toISOString(), tipo: 'venda', qtd: 1,
+    valor: Number(p.valor) || 0, anuncio: _semId(p.cred_cont) || _semId(p.cred_camp) || 'sem anúncio', dashboard: projeto || String(p.produto || '') }));
+}
 app.get('/api/metricas/meta/projetos', authUsuario, (req, res) => {
   try { res.json({ ok: true, projetos: _metaProjetosDaFonte(readDB(), req.user).map(p => ({ id: p, nome: p })) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
@@ -5772,6 +5907,61 @@ app.get('/api/metricas/meta/niveis', authUsuario, (req, res) => {
   const p = _metaRotaPeriodo(req, res); if (!p) return;
   try { res.json(Object.assign({ ok: true }, _metaNiveis(readDB(), p.de, p.ate, p.projeto))); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const _metaFiltrosDe = q => ({ conta: String(q.conta || '').slice(0, 40), plataforma: String(q.plataforma || '').slice(0, 60), produto: String(q.produto || '').slice(0, 160) });
+app.get('/api/metricas/meta/panorama', authUsuario, (req, res) => {
+  const p = _metaRotaPeriodo(req, res); if (!p) return;
+  try {
+    const db = readDB(), fil = _metaFiltrosDe(req.query);
+    res.json(_panoramaComTmx(_metaPanorama(db, p.de, p.ate, p.projeto, fil, req.user), p.de, p.ate, '', fil, { nomeProj: p.projeto, meta: true }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// o que dá pra filtrar no Resumo: as contas do projeto (Projetos › Integrações) e as plataformas e produtos das vendas
+app.get('/api/metricas/meta/filtros', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const db = readDB(), projeto = String(req.query.projeto || '').slice(0, 80), cfg = _projMetaCfg(db), nomes = _contaNomes();
+    const ps = projeto ? [projeto] : _metaProjetosDaFonte(db, req.user);
+    let ids = [...new Set(ps.flatMap(x => (cfg[x] && cfg[x].contas) || []).map(String))];
+    if (!ids.length) ids = _q('SELECT DISTINCT conta FROM meta_camp_dia WHERE dia>=?').all(_diaBR(Date.now() - 29 * 86400000)).map(x => String(x.conta)).filter(Boolean);
+    const doPed = projeto ? _pedidoDoProjetoFn(db, projeto) : null, plats = new Set(), prods = new Set();
+    _q('SELECT produto, funil, plataforma FROM pedidos WHERE pago=1 AND dia>=?').all(_diaBR(Date.now() - 89 * 86400000)).forEach(x => {
+      if (doPed && !doPed(x)) return;
+      plats.add(String(x.plataforma || 'Payt')); if (x.produto) prods.add(String(x.produto));
+    });
+    res.json({ ok: true, contas: ids.map(id => ({ id, nome: nomes[id] || id })).sort((a, b) => String(a.nome).localeCompare(String(b.nome))),
+      plataformas: [...plats].sort(), produtos: [...prods].sort() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/metricas/meta/anuncios', authUsuario, (req, res) => {
+  const p = _metaRotaPeriodo(req, res); if (!p) return;
+  try { res.json(_anunciosComTmx(_metaAnuncios(readDB(), p.de, p.ate, p.projeto), p.de, p.ate, '', { nomeProj: p.projeto, meta: true })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/metricas/meta/anuncio', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const nome = String(req.query.nome || '').trim().slice(0, 200);
+    if (!nome) return res.status(400).json({ error: 'Diga o anúncio.' });
+    const de = String(req.query.de || '').slice(0, 10), ate = String(req.query.ate || '').slice(0, 10);
+    const ok = /^\d{4}-\d{2}-\d{2}$/.test(de) && /^\d{4}-\d{2}-\d{2}$/.test(ate);
+    const faixas = _anuncioFaixas(ok ? de : '', ok ? ate : ''), efetivo = {}, periodos = {};
+    _q('SELECT id, efetivo FROM meta_ad').all().forEach(a => { efetivo[a.id] = a.efetivo; });
+    Object.keys(faixas).forEach(k => { periodos[k] = Object.assign({ de: faixas[k].de, ate: faixas[k].ate }, _metaAnuncioLinhas(nome, faixas[k].de, faixas[k].ate, efetivo)); });
+    const ids = [...new Set(Object.values(periodos).flatMap(x => x.ids))];
+    const px = _anuncioPixel(nome, ids, faixas), tmx = _anuncioVendasTmx(nome, ids, faixas);
+    // checkouts e visitas pelo pixel da SCALROI: a Meta não guarda isso por anúncio
+    Object.keys(periodos).forEach(k => { const x = periodos[k]; x.rec = tmx[k].rec; x.v = tmx[k].v; x.ic = px[k].checkout; x.lpv = px[k].visitas; delete x.ids; });
+    res.json({ ok: true, nome, dashboard: String(req.query.dashboard || ''), periodos, pixel: { d3: px.d3, d7: px.d7 }, ids: ids.slice(0, 60), fonte: 'meta' });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get('/api/metricas/meta/tempo-real', authUsuario, (req, res) => {
+  try {
+    if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
+    const db = readDB(), projeto = String(req.query.projeto || '').slice(0, 80), hoje = _diaBR(Date.now());
+    res.json(Object.assign({ eventos: _metaEventosHoje(db, projeto) }, _panoramaComTmx(_metaPanorama(db, hoje, hoje, projeto, {}, req.user), hoje, hoje, '', {}, { nomeProj: projeto, meta: true })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Anuncios do periodo, agregados entre os dashboards
@@ -6220,6 +6410,82 @@ setTimeout(_tickEventosUtmify, 40 * 1000);   // no boot ja monta a base de compa
 // Panorama de um periodo (sem data = hoje). Serve o Resumo e o Tempo Real.
 // filtros (opcional): { conta, plataforma, produto }. Um projeto que não tem aquela
 // conta, plataforma ou produto fica de fora da soma.
+// Vendas por plano do Resumo: as duas fontes (Utmify e Meta) usam a mesma conta. porProduto só vale quando não há venda
+// individual do webhook (é o que a Utmify mandava por nome de produto).
+function _planosDoPanorama(dbPl, deQuery, ateQuery, porProduto) {
+    const cfgPl = _planosCfg(dbPl);
+    const vendasInd = (Array.isArray(dbPl.store[KEY_VENDAS]) ? dbPl.store[KEY_VENDAS] : [])
+      .filter(v => {
+        const dia = String(v.recebidoEm || '').slice(0, 10);
+        if (deQuery && dia < deQuery) return false;
+        if (ateQuery && dia > ateQuery) return false;
+        // so venda que entrou de fato; pendente, carrinho perdido e reembolso nao sao faturamento
+        return _vendaPaga(v);
+      });
+    const temPrecos = cfgPl.planos.some(p => Number(p.preco) > 0);
+    // basta ter venda individual: o nome ja classifica sozinho na maioria dos casos
+    let porValor = null;
+    if (vendasInd.length) {
+      const acc = {};
+      cfgPl.planos.forEach(p => { acc[p.chave] = {
+        chave: p.chave, rotulo: p.rotulo, meses: p.meses, preco: Number(p.preco) || 0,
+        vendas: 0, receita: 0, produtos: [] }; });
+      acc['fora'] = { chave: 'fora', rotulo: 'Fora das faixas', meses: null, preco: 0,
+                      vendas: 0, receita: 0, produtos: [], valores: [] };
+      vendasInd.forEach(v => {
+        // O nome do produto manda: na Payt ele vem "Apostilai - mensal", e nome
+        // nao muda com cupom nem promocao. O preco entra so quando o nome cala.
+        const porNome = _planoPorNome(v.produto);
+        const pl = porNome || _planoPorValor(v.valor, cfgPl);
+        const alvo = (pl && acc[pl.chave]) ? acc[pl.chave] : acc['fora'];
+        alvo.vendas += 1;
+        alvo.receita += Number(v.valor) || 0;
+        if (!pl && Number(v.valor) > 0 && alvo.valores.length < 12) alvo.valores.push(Number(v.valor));
+      });
+      porValor = Object.values(acc).filter(p => p.vendas > 0);
+    }
+
+    // O nome do produto e quem diz o plano. Adivinhar pelo VALOR quebra no dia
+    // que voce roda promocao, cupom ou order bump — dois planos com o mesmo
+    // preco viram um so. Se o nome nao disser, fica "outros" em vez de chutar.
+    // Alternancia solta com \b no fim so aplicava a fronteira na ULTIMA opcao —
+    // "tres meses" passava e "três meses" nao, porque "mes\b" nao casa dentro de
+    // "meses". Agrupado, cada numero vale pra todas as escritas.
+    // A ordem tambem importa: "12 meses" tem que virar anual antes de bater em mensal.
+    const PLANOS = [
+      { chave: 'anual',      re: /anual|(?:12)\s*mes|(?:1|um)\s*ano/i,          rotulo: 'Anual',      meses: 12 },
+      { chave: 'semestral',  re: /semestral|(?:6|seis)\s*mes/i,                  rotulo: 'Semestral',  meses: 6 },
+      { chave: 'trimestral', re: /trimestral|(?:3|tres|três)\s*mes/i,            rotulo: 'Trimestral', meses: 3 },
+      { chave: 'mensal',     re: /mensal|(?:1|um)\s*mes(?!\s*es\b)/i,            rotulo: 'Mensal',     meses: 1 }
+    ];
+    function _planoDe(nome) {
+      for (const p of PLANOS) if (p.re.test(nome)) return p;
+      return null;
+    }
+    const porPlano = {};
+    Object.values(porProduto).forEach(pr => {
+      const pl = _planoDe(pr.produto);
+      const k = pl ? pl.chave : 'outros';
+      if (!porPlano[k]) porPlano[k] = {
+        chave: k, rotulo: pl ? pl.rotulo : 'Não identificado',
+        meses: pl ? pl.meses : null, vendas: 0, receita: 0, produtos: []
+      };
+      porPlano[k].vendas  += pr.vendas;
+      porPlano[k].receita += pr.receita;
+      porPlano[k].produtos.push(pr.produto);
+    });
+    const ordem = { anual: 1, semestral: 2, trimestral: 3, mensal: 4, outros: 5, fora: 6 };
+    const planos = (porValor || Object.values(porPlano))
+      .map(p => Object.assign(p, {
+        ticket: p.vendas > 0 ? p.receita / p.vendas : 0,
+        // quanto essa venda vale por mes de contrato — compara plano com plano
+        porMes: (p.meses && p.vendas > 0) ? (p.receita / p.vendas / p.meses) : null
+      }))
+      .sort((a, b) => (ordem[a.chave] || 9) - (ordem[b.chave] || 9));
+  return { planos, planosFonte: porValor ? 'valor' : 'nome',
+    planosCfg: { tolerancia: cfgPl.tolerancia, precos: cfgPl.planos.map(p => ({ chave: p.chave, rotulo: p.rotulo, meses: p.meses, preco: Number(p.preco) || 0 })) },
+    vendasIndividuais: vendasInd.length };
+}
 async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
   {
     const achado = await _utmifyDashboardsAtivos();
@@ -6315,75 +6581,7 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
     // _utmifyPanorama nao lia o banco — eu usei `db` aqui sem ele existir e
     // derrubei a aba Tempo Real inteira com "db is not defined".
     const dbPl = readDB();
-    const cfgPl = _planosCfg(dbPl);
-    const vendasInd = (Array.isArray(dbPl.store[KEY_VENDAS]) ? dbPl.store[KEY_VENDAS] : [])
-      .filter(v => {
-        const dia = String(v.recebidoEm || '').slice(0, 10);
-        if (deQuery && dia < deQuery) return false;
-        if (ateQuery && dia > ateQuery) return false;
-        // so venda que entrou de fato; pendente, carrinho perdido e reembolso nao sao faturamento
-        return _vendaPaga(v);
-      });
-    const temPrecos = cfgPl.planos.some(p => Number(p.preco) > 0);
-    // basta ter venda individual: o nome ja classifica sozinho na maioria dos casos
-    let porValor = null;
-    if (vendasInd.length) {
-      const acc = {};
-      cfgPl.planos.forEach(p => { acc[p.chave] = {
-        chave: p.chave, rotulo: p.rotulo, meses: p.meses, preco: Number(p.preco) || 0,
-        vendas: 0, receita: 0, produtos: [] }; });
-      acc['fora'] = { chave: 'fora', rotulo: 'Fora das faixas', meses: null, preco: 0,
-                      vendas: 0, receita: 0, produtos: [], valores: [] };
-      vendasInd.forEach(v => {
-        // O nome do produto manda: na Payt ele vem "Apostilai - mensal", e nome
-        // nao muda com cupom nem promocao. O preco entra so quando o nome cala.
-        const porNome = _planoPorNome(v.produto);
-        const pl = porNome || _planoPorValor(v.valor, cfgPl);
-        const alvo = (pl && acc[pl.chave]) ? acc[pl.chave] : acc['fora'];
-        alvo.vendas += 1;
-        alvo.receita += Number(v.valor) || 0;
-        if (!pl && Number(v.valor) > 0 && alvo.valores.length < 12) alvo.valores.push(Number(v.valor));
-      });
-      porValor = Object.values(acc).filter(p => p.vendas > 0);
-    }
-
-    // O nome do produto e quem diz o plano. Adivinhar pelo VALOR quebra no dia
-    // que voce roda promocao, cupom ou order bump — dois planos com o mesmo
-    // preco viram um so. Se o nome nao disser, fica "outros" em vez de chutar.
-    // Alternancia solta com \b no fim so aplicava a fronteira na ULTIMA opcao —
-    // "tres meses" passava e "três meses" nao, porque "mes\b" nao casa dentro de
-    // "meses". Agrupado, cada numero vale pra todas as escritas.
-    // A ordem tambem importa: "12 meses" tem que virar anual antes de bater em mensal.
-    const PLANOS = [
-      { chave: 'anual',      re: /anual|(?:12)\s*mes|(?:1|um)\s*ano/i,          rotulo: 'Anual',      meses: 12 },
-      { chave: 'semestral',  re: /semestral|(?:6|seis)\s*mes/i,                  rotulo: 'Semestral',  meses: 6 },
-      { chave: 'trimestral', re: /trimestral|(?:3|tres|três)\s*mes/i,            rotulo: 'Trimestral', meses: 3 },
-      { chave: 'mensal',     re: /mensal|(?:1|um)\s*mes(?!\s*es\b)/i,            rotulo: 'Mensal',     meses: 1 }
-    ];
-    function _planoDe(nome) {
-      for (const p of PLANOS) if (p.re.test(nome)) return p;
-      return null;
-    }
-    const porPlano = {};
-    Object.values(porProduto).forEach(pr => {
-      const pl = _planoDe(pr.produto);
-      const k = pl ? pl.chave : 'outros';
-      if (!porPlano[k]) porPlano[k] = {
-        chave: k, rotulo: pl ? pl.rotulo : 'Não identificado',
-        meses: pl ? pl.meses : null, vendas: 0, receita: 0, produtos: []
-      };
-      porPlano[k].vendas  += pr.vendas;
-      porPlano[k].receita += pr.receita;
-      porPlano[k].produtos.push(pr.produto);
-    });
-    const ordem = { anual: 1, semestral: 2, trimestral: 3, mensal: 4, outros: 5, fora: 6 };
-    const planos = (porValor || Object.values(porPlano))
-      .map(p => Object.assign(p, {
-        ticket: p.vendas > 0 ? p.receita / p.vendas : 0,
-        // quanto essa venda vale por mes de contrato — compara plano com plano
-        porMes: (p.meses && p.vendas > 0) ? (p.receita / p.vendas / p.meses) : null
-      }))
-      .sort((a, b) => (ordem[a.chave] || 9) - (ordem[b.chave] || 9));
+    const pl = _planosDoPanorama(dbPl, deQuery, ateQuery, porProduto);
 
     const saida = {
       ok: true, momento: new Date().toISOString(),
@@ -6395,13 +6593,8 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
       margem: _margem(tot.receita, tot.investimento, tot.pedidos.aprovadas, _custosCfg(dbPl)),
       custos: _custosCfg(dbPl),
       porHora, acum, vendasHora, aprovacao,
-      planos,
-      // a tela precisa saber DE ONDE veio a classificacao pra nao mentir
-      planosFonte: porValor ? 'valor' : 'nome',
-      planosCfg: { tolerancia: cfgPl.tolerancia,
-                   precos: cfgPl.planos.map(p => ({ chave: p.chave, rotulo: p.rotulo,
-                                                    meses: p.meses, preco: Number(p.preco) || 0 })) },
-      vendasIndividuais: vendasInd.length,
+      // a tela precisa saber DE ONDE veio a classificacao pra nao mentir (planosFonte)
+      planos: pl.planos, planosFonte: pl.planosFonte, planosCfg: pl.planosCfg, vendasIndividuais: pl.vendasIndividuais,
       produtos: Object.values(porProduto).sort((a, b) => b.receita - a.receita),
       porUtm: Object.entries(porUtm).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd),
       porDashboard: porDash.sort((a, b) => b.investimento - a.investimento),
@@ -6423,9 +6616,9 @@ async function _utmifyPanorama(deQuery, ateQuery, projeto, filtros) {
 const _PED_PENDENTE = /(waiting|pending|aguard|process)/i;
 const _PED_RECUSADO = /(cancel|refus|recus|denied|negad|fail|expir)/i;
 // A conta de anúncio de cada venda: pela campanha que levou o crédito.
-function _contaDoPedidoFn() {
-  const contaPorId = {}, contaPorNome = {};
-  _q("SELECT id, nome, conta FROM camp_dia WHERE conta IS NOT NULL AND conta<>'' GROUP BY id, conta").all().forEach(c => {
+function _contaDoPedidoFn(tabela) {
+  const contaPorId = {}, contaPorNome = {}, t = tabela === 'meta_camp_dia' ? 'meta_camp_dia' : 'camp_dia';
+  _q("SELECT id, nome, conta FROM " + t + " WHERE conta IS NOT NULL AND conta<>'' GROUP BY id, conta").all().forEach(c => {
     contaPorId[String(c.id)] = c.conta;
     const n = _campNorm(c.nome); if (n) contaPorNome[n] = contaPorNome[n] === undefined || contaPorNome[n] === c.conta ? c.conta : null;
   });
@@ -6435,14 +6628,21 @@ function _contaDoPedidoFn() {
 // Por Anúncio: receita e vendas de cada anúncio saem do TMX, pelo crédito da venda (id ou nome
 // do anúncio na UTM). Da Utmify ficam o gasto e as métricas. Anúncio que vendeu sem gasto no
 // período entra também. A conciliação compara com o total do TMX, igual ao Resumo.
-function _anunciosComTmx(saida, de, ate, projetoId) {
+// opc.nomeProj: a fonte Meta já manda o projeto pelo nome (o de Projetos › Integrações); opc.meta: a conta de cada venda sai da Meta
+function _projetoDoPainel(db, projetoId, opc) {
+  if (opc && opc.nomeProj !== undefined) return { ok: true, nome: String(opc.nomeProj || '').trim() };
+  const d = ((_utmifyMcpCfg(db) || {}).dashboards || []).find(x => String(x.id) === String(projetoId));
+  if (projetoId && !d) return { ok: false };
+  return { ok: true, nome: d ? String(d.nome || '').trim() : '' };
+}
+function _anunciosComTmx(saida, de, ate, projetoId, opc) {
   if (!saida || !Array.isArray(saida.anuncios) || !_pessoas()) return saida;
   try {
-    const db = readDB(), cfg = _utmifyMcpCfg(db) || {};
-    const nomeDash = (cfg.dashboards || []).find(x => String(x.id) === String(projetoId));
-    if (projetoId && !nomeDash) return saida;
-    const doProjeto = nomeDash ? _pedidoDoProjetoFn(db, String(nomeDash.nome || '').trim()) : null;
-    const contaDe = _contaDoPedidoFn(), nomesConta = _contaNomes();
+    const db = readDB(), pj = _projetoDoPainel(db, projetoId, opc);
+    if (!pj.ok) return saida;
+    const nomeDash = pj.nome ? { nome: pj.nome } : null;
+    const doProjeto = nomeDash ? _pedidoDoProjetoFn(db, pj.nome) : null;
+    const contaDe = _contaDoPedidoFn(opc && opc.meta ? 'meta_camp_dia' : ''), nomesConta = _contaNomes();
     const anuncios = saida.anuncios.map(a => {
       const pc = {};
       Object.keys(a.porConta || {}).forEach(k => { const x = a.porConta[k]; pc[k] = Object.assign({}, x, { receita: 0, vendas: 0, lucro: -(Number(x.investimento) || 0) }); });
@@ -6537,15 +6737,15 @@ function _visitasDoPeriodo(de, ate) {
   if (_visCache.size > 40) _visCache.delete(_visCache.keys().next().value);
   return v;
 }
-function _panoramaComTmx(pano, de, ate, projetoId, filtros) {
+function _panoramaComTmx(pano, de, ate, projetoId, filtros, opc) {
   if (!pano || !pano.kpis || !_pessoas()) return pano;
   try {
-    const db = readDB(), fil = filtros || {}, cfg = _utmifyMcpCfg(db) || {};
+    const db = readDB(), fil = filtros || {};
     const hoje = _diaBR(Date.now()), ini = de || hoje, fim = ate || hoje;
-    const nomeDash = (cfg.dashboards || []).find(x => String(x.id) === String(projetoId));
-    if (projetoId && !nomeDash) return pano;
-    const doProjeto = nomeDash ? _pedidoDoProjetoFn(db, String(nomeDash.nome || '').trim()) : null;
-    const contaDe = _contaDoPedidoFn();
+    const pj = _projetoDoPainel(db, projetoId, opc);
+    if (!pj.ok) return pano;
+    const doProjeto = pj.nome ? _pedidoDoProjetoFn(db, pj.nome) : null;
+    const contaDe = _contaDoPedidoFn(opc && opc.meta ? 'meta_camp_dia' : '');
     const nomesConta = _contaNomes();
     const linhas = _q('SELECT id, pedido, status, pago, estorno, valor, produto, metodo, plataforma, funil, cred_camp, camp, em FROM pedidos WHERE dia BETWEEN ? AND ? ORDER BY em').all(ini, fim);
     const passaFiltros = p => (!fil.plataforma || _nrm(p.plataforma || 'payt') === _nrm(fil.plataforma)) &&

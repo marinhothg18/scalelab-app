@@ -19,13 +19,15 @@ const hoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
 let meta, srv, dir, base, log = '', dono;
 const ate = async (cond, ms, oQue) => { const fim = Date.now() + ms; for (;;) { try { if (await cond()) return; } catch (e) {} if (Date.now() > fim) throw new Error('demorou demais: ' + oQue + '\n' + log.slice(-2000)); await espera(150); } };
 
-const C = { cbo: '1000000000100', abo: '1000000000200', nova: '1000000000300', velha: '1000000000400' };
+const C = { cbo: '1000000000100', abo: '1000000000200', nova: '1000000000300', velha: '1000000000400', recente: '1000000000500' };
 const agoraIso = new Date().toISOString().replace('Z', '+0000');
+const ha10dias = new Date(Date.now() - 10 * 86400000).toISOString().replace('Z', '+0000');
 const objetos = {
   [C.cbo]: { id: C.cbo, name: 'CBO 1-1-3 | CONCURSO | ' + C.cbo, status: 'ACTIVE', effective_status: 'ACTIVE', daily_budget: '50000', created_time: '2026-11-01T10:00:00-0300', account_id: '111' },
   [C.abo]: { id: C.abo, name: 'ABO | RENDA | ' + C.abo, status: 'ACTIVE', effective_status: 'ACTIVE', created_time: '2026-11-01T10:00:00-0300', account_id: '111' },
   [C.nova]: { id: C.nova, name: 'TESTE NOVA | CONCURSO', status: 'PAUSED', effective_status: 'PAUSED', created_time: agoraIso, account_id: '111' },
   [C.velha]: { id: C.velha, name: 'VELHA PAUSADA | CONCURSO', status: 'PAUSED', effective_status: 'PAUSED', created_time: '2025-01-10T10:00:00-0300', account_id: '111' },
+  [C.recente]: { id: C.recente, name: 'PAUSADA HA 10 DIAS | CONCURSO', status: 'PAUSED', effective_status: 'PAUSED', created_time: ha10dias, account_id: '111' },
   '101': { id: '101', name: 'Aberto', campaign_id: C.cbo, status: 'ACTIVE', effective_status: 'ACTIVE', account_id: '111' },
   '201': { id: '201', name: 'Conjunto ABO', campaign_id: C.abo, status: 'ACTIVE', effective_status: 'ACTIVE', daily_budget: '3000', account_id: '111' },
   '102': { id: '102', name: 'AD226.1 | TESTE', campaign_id: C.cbo, adset_id: '101', status: 'ACTIVE', effective_status: 'ACTIVE', account_id: '111' },
@@ -50,6 +52,10 @@ function falsa(req, res) {
   if (p === 'act_111/ads') return ok({ data: lista(o => o.adset_id).map(a => Object.assign({ created_time: '2026-10-01T10:00:00-0300' }, a)) });
   if (p === 'act_111/insights' && q.get('level') === 'ad') return ok({ data: Object.keys(GASTO_AD).map(id => ({ ad_id: id, ad_name: objetos[id].name, adset_id: objetos[id].adset_id,
     campaign_id: objetos[id].campaign_id, date_start: hoje(), spend: GASTO_AD[id], impressions: '1000', inline_link_clicks: '20' })) });
+  if (p === 'act_111/insights' && /^hourly/.test(q.get('breakdowns') || '')) return ok({ data: [
+    { campaign_id: C.cbo, spend: '30.00', impressions: '800', inline_link_clicks: '15', hourly_stats_aggregated_by_advertiser_time_zone: '09:00:00 - 09:59:59' },
+    { campaign_id: C.cbo, spend: '42.10', impressions: '1200', inline_link_clicks: '25', hourly_stats_aggregated_by_advertiser_time_zone: '10:00:00 - 10:59:59' },
+    { campaign_id: C.abo, spend: '40.00', impressions: '1000', inline_link_clicks: '10', hourly_stats_aggregated_by_advertiser_time_zone: '11:00:00 - 11:59:59' }] });
   if (p === 'act_111/insights' && q.get('time_increment') && !q.get('breakdowns')) return ok({ data: [
     { campaign_id: C.cbo, campaign_name: objetos[C.cbo].name, date_start: hoje(), spend: '72.10', impressions: '2000', inline_link_clicks: '40', frequency: '1.5',
       actions: [{ action_type: 'landing_page_view', value: '30' }, { action_type: 'video_view', value: '600' }], video_play_actions: [{ action_type: 'video_view', value: '900' }],
@@ -105,7 +111,7 @@ after(async () => {
 });
 
 test('sem sessão não entra', async () => {
-  for (const r of ['painel', 'niveis', 'projetos']) assert.strictEqual((await chamar('GET', '/api/metricas/meta/' + r + per())).status, 401, r);
+  for (const r of ['painel', 'niveis', 'projetos', 'panorama', 'filtros', 'anuncios', 'tempo-real']) assert.strictEqual((await chamar('GET', '/api/metricas/meta/' + r + per())).status, 401, r);
 });
 
 test('campanhas da Meta com as vendas da SCALROI', async () => {
@@ -115,6 +121,7 @@ test('campanhas da Meta com as vendas da SCALROI', async () => {
   assert.strictEqual(d.conectada, true);
   assert.ok(c(C.cbo) && c(C.abo) && c(C.nova), 'as duas que gastaram e a nova sem gasto');
   assert.ok(!c(C.velha), 'a pausada antiga sem gasto fica de fora');
+  assert.ok(!c(C.recente), 'pausada há 10 dias, sem gasto e sem mudança: fora, como na Utmify (antes entrava por ser dos últimos 30 dias)');
   const k = c(C.cbo);
   assert.deepStrictEqual([k.investimento, k.impressoes, k.cliques, k.lpv, k.status, k.conta, k.contaId, k.orc, k.orcVida], [72.1, 2000, 40, 30, 'ACTIVE', 'ca 2', '111', 500, false]);
   // a venda veio com o nome antigo na UTM: entra pela id da campanha
@@ -171,6 +178,60 @@ test('visitas da SCALROI por campanha, conjunto e anúncio (18/11)', async () =>
   assert.deepStrictEqual([ad('102').visitas, ad('103').visitas, cj('101').visitas, ad('202').visitas, cj('201').visitas], [1, 1, 2, 0, 0]);
 });
 
+test('Resumo pela Meta no formato da Utmify, com o faturamento da SCALROI (19/11)', async () => {
+  const r = await chamar('GET', '/api/metricas/meta/panorama' + per(), { token: dono });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  const d = r.dados, k = d.kpis, cent = v => Math.round(v * 100) / 100;
+  assert.strictEqual(d.fonteReceita, 'tmx');
+  assert.deepStrictEqual([cent(k.investimento), k.cliques, k.visitas, k.pedidos.aprovadas, cent(k.receita), cent(k.lucro)], [112.1, 50, 30, 2, 1679.52, cent(1679.52 - 112.1)]);
+  // o gasto hora a hora fecha com o do dia: os gráficos do Resumo aparecem
+  assert.deepStrictEqual([d.acum.tem, d.acum.inv[8], d.acum.inv[9], cent(d.acum.inv[10]), cent(d.acum.inv[23])], [true, 0, 30, 72.1, 112.1]);
+  assert.deepStrictEqual(d.porDashboard.map(x => [x.nome, cent(x.investimento)]), [['CONCURSO', 72.1], ['RENDA', 40]]);
+  assert.ok(d.produtos.some(x => x.produto === 'Apostilai Foco' && x.vendas === 2));
+  assert.ok(Array.isArray(d.planos) && Array.isArray(d.porUtm));
+  const renda = await chamar('GET', '/api/metricas/meta/panorama' + per() + '&projeto=RENDA', { token: dono });
+  assert.deepStrictEqual([cent(renda.dados.kpis.investimento), renda.dados.porDashboard.map(x => x.nome)], [40, ['RENDA']]);
+  // os filtros: contas dos projetos (Projetos › Integrações) e produtos das vendas
+  const f = await chamar('GET', '/api/metricas/meta/filtros', { token: dono });
+  assert.strictEqual(f.status, 200, JSON.stringify(f.dados));
+  assert.deepStrictEqual(f.dados.contas, [{ id: '111', nome: 'ca 2' }]);
+  assert.ok(f.dados.produtos.includes('Apostilai Foco'));
+  // filtro de conta: o gasto é o da conta, e a venda vai pra conta pela campanha que a Meta conhece
+  const pc = await chamar('GET', '/api/metricas/meta/panorama' + per() + '&conta=111', { token: dono });
+  assert.deepStrictEqual([cent(pc.dados.kpis.investimento), pc.dados.kpis.pedidos.aprovadas], [112.1, 1]);
+  const outra = await chamar('GET', '/api/metricas/meta/panorama' + per() + '&conta=999', { token: dono });
+  assert.deepStrictEqual([outra.dados.kpis.investimento, outra.dados.kpis.pedidos.aprovadas], [0, 0]);
+});
+
+test('Por Anúncio pela Meta: junta pelo nome, com as vendas da SCALROI e sem fingir hook (19/11)', async () => {
+  const r = await chamar('GET', '/api/metricas/meta/anuncios' + per(), { token: dono });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  const ad = n => r.dados.anuncios.find(x => x.nome === n);
+  assert.deepStrictEqual(r.dados.anuncios.map(x => x.nome), ['AD226.1 | TESTE', 'AD88.1', 'AD231.3 | TESTE']);
+  const a = ad('AD226.1 | TESTE');
+  assert.deepStrictEqual([a.investimento, a.vendas, a.receita, a.dashboard, a.veiculacoes, a.ctr, a.semVideo], [62.1, 1, 839.76, 'CONCURSO', 1, 2, true]);
+  assert.deepStrictEqual(Object.keys(a.porConta), ['ca 2']);
+  assert.deepStrictEqual([r.dados.conciliacao.vendasConta, r.dados.conciliacao.vendasAnuncios, r.dados.conciliacao.vendasSemAnuncio], [2, 1, 1]);
+  const so = await chamar('GET', '/api/metricas/meta/anuncios' + per() + '&projeto=RENDA', { token: dono });
+  assert.deepStrictEqual(so.dados.anuncios.map(x => [x.nome, x.dashboard]), [['AD88.1', 'RENDA']]);
+  // o detalhe (3 e 7 dias)
+  const det = await chamar('GET', '/api/metricas/meta/anuncio?nome=' + encodeURIComponent('AD226.1 | TESTE') + '&de=' + hoje() + '&ate=' + hoje(), { token: dono });
+  assert.strictEqual(det.status, 200, JSON.stringify(det.dados));
+  const t = det.dados.periodos.tela;
+  assert.deepStrictEqual([t.inv, t.v, t.rec, t.veic, t.ativos, t.cl, t.imp, t.semVideo], [62.1, 1, 839.76, 1, 1, 20, 1000, true]);
+  assert.deepStrictEqual(det.dados.ids, ['102']);
+  assert.ok(det.dados.pixel.d7 && det.dados.periodos.d7.inv === 62.1);
+});
+
+test('Tempo Real pela Meta: cada venda de hoje vira um evento (19/11)', async () => {
+  const r = await chamar('GET', '/api/metricas/meta/tempo-real?x=1', { token: dono });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  assert.deepStrictEqual([r.dados.kpis.pedidos.aprovadas, Math.round(r.dados.kpis.investimento * 100) / 100, r.dados.eventos.length], [2, 112.1, 2]);
+  assert.ok(r.dados.eventos.every(e => e.tipo === 'venda' && e.momento));
+  assert.ok(r.dados.eventos.some(e => e.anuncio === 'AD226.1 | TESTE' && Math.round(e.valor * 100) === 83976));
+  assert.ok(r.dados.eventos.some(e => e.anuncio === 'sem anúncio'));
+});
+
 test('pausar pela tela aparece na hora, sem esperar a próxima puxada', async () => {
   const x = await chamar('POST', '/api/meta/status', { token: dono, corpo: { nivel: 'campanha', id: C.cbo, ativo: false, nome: objetos[C.cbo].name } });
   assert.strictEqual(x.status, 200, JSON.stringify(x.dados));
@@ -180,4 +241,14 @@ test('pausar pela tela aparece na hora, sem esperar a próxima puxada', async ()
   assert.strictEqual(y.status, 200, JSON.stringify(y.dados));
   const n = await chamar('GET', '/api/metricas/meta/niveis' + per(), { token: dono });
   assert.strictEqual(n.dados.anuncios.find(a => a.id === '103').status, 'PAUSED');
+});
+
+test('a lista igual à da Utmify: a pausada sem gasto entra quando mudou no período (19/11)', async () => {
+  const lista = async () => (await chamar('GET', '/api/metricas/meta/painel' + per(), { token: dono })).dados.porCampanha.map(x => x.campanhaId);
+  assert.ok(!(await lista()).includes(C.recente));
+  for (const ativo of [true, false]) {
+    const x = await chamar('POST', '/api/meta/status', { token: dono, corpo: { nivel: 'campanha', id: C.recente, ativo, nome: objetos[C.recente].name } });
+    assert.strictEqual(x.status, 200, JSON.stringify(x.dados));
+  }
+  assert.ok((await lista()).includes(C.recente), 'ligou e pausou hoje: aparece, com a mudança');
 });

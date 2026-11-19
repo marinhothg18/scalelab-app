@@ -6566,7 +6566,7 @@ body.light-mode #spy-app{--sp-roxo:#7C3AED;--sp-verde:#16A34A;--sp-verm:#DC2626;
         <div id="ads-tab-anuncio" class="ads-tab-panel" style="display:none;">
           <!-- busca em cima: embaixo dos cards ninguém achava -->
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-            <input id="anuncio-search" type="search" placeholder="🔍  Buscar anúncio pelo nome (ex.: AD210)" aria-label="Buscar anúncio pelo nome" oninput="_adsFonte()==='utmify' ? pintarAnunciosUtmify() : renderAnuncios()" style="flex:1;min-width:220px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
+            <input id="anuncio-search" type="search" placeholder="🔍  Buscar anúncio pelo nome (ex.: AD210)" aria-label="Buscar anúncio pelo nome" oninput="_adsFonte()!=='redtrack' ? pintarAnunciosUtmify() : renderAnuncios()" style="flex:1;min-width:220px;box-sizing:border-box;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:13px;outline:none;" />
             <select id="anuncio-conta" onchange="pintarAnunciosUtmify()" aria-label="Conta de anúncio" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12.5px"><option value="">Todas as contas</option></select>
             <span id="anuncio-qtd" style="font-size:12px;color:var(--text2);white-space:nowrap"></span>
             <button class="cp-pdf" onclick="anExportarPdf(this)" title="Baixa um PDF com os anúncios, o filtro e a ordem desta tela" style="white-space:nowrap">⬇ Exportar PDF</button>
@@ -44796,12 +44796,7 @@ function switchAdsTab(tab, btn){
   document.querySelectorAll('.ads-tab-panel').forEach(p=>p.style.display='none');
   if(btn) btn.classList.add('active');
   if(btn && innerWidth <= 768){ try{ btn.scrollIntoView({ inline:'center', block:'nearest' }); }catch(e){} }
-  const utmify = _adsFonte()==='utmify';
-  if(_adsFonte()==='meta' && (tab==='anuncio' || tab==='realtime')){
-    document.getElementById('ads-tab-meta-nota').style.display='block';
-    switchAdsTabRealtime(false);
-    return;
-  }
+  const utmify = _adsFonte()!=='redtrack';   // Utmify e Meta: as mesmas telas
   document.getElementById('ads-tab-'+tab).style.display='block';
   if(tab==='anuncio')   utmify ? carregarAnunciosUtmify() : renderAnuncios();
   if(tab==='ofertas' && _adsFonte()==='redtrack') renderResumo();
@@ -44880,7 +44875,7 @@ async function carregarTempoRealUtmify(){
   const feed  = document.getElementById('rt-feed');
   const stats = document.getElementById('rt-stats');
   try{
-    const r = await fetch('/api/metricas/utmify/tempo-real?x=1'+_qsProjeto());
+    const r = await fetch('/api/metricas/'+_adsApiFonte()+'/tempo-real?x=1'+_qsProjeto());
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     const k = d.kpis||{}, p = k.pedidos||{};
@@ -44921,7 +44916,7 @@ async function carregarTempoRealUtmify(){
       cartao('⚡ Acontecendo agora', _feedEventos(d.eventos||[])) +
       cartao('🧾 Situação dos pedidos', status) +
       cartao('🎯 Origem das vendas', origem) +
-      cartao('🏦 Por dashboard', contas || '<div style="color:var(--text2);font-size:13px;">Sem dados.</div>');
+      cartao(_adsFonte()==='meta' ? '🏦 Por projeto' : '🏦 Por dashboard', contas || '<div style="color:var(--text2);font-size:13px;">Sem dados.</div>');
 
     if(d.erros && d.erros.length){
       feed.innerHTML += '<div style="color:var(--red);font-size:12px;">Alguns dashboards falharam: '+_esc(d.erros.join(' | '))+'</div>';
@@ -45014,7 +45009,7 @@ async function _painelResumoUtmify(forcar, silencioso){
   const meu = ++trsPedido, alvo = document.getElementById('trs-funil');
   if(alvo && !trsUlt) alvo.innerHTML = '<div class="trs-vazio">Carregando…</div>';
   try{
-    const r = await fetch('/api/metricas/utmify/panorama?de='+from+'&ate='+to+_qsProjeto()+trsQsFiltros()+(forcar?'&forcar=1':''));
+    const r = await fetch('/api/metricas/'+_adsApiFonte()+'/panorama?de='+from+'&ate='+to+_qsProjeto()+trsQsFiltros()+(forcar?'&forcar=1':''));
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     if(meu !== trsPedido) return;
@@ -45262,8 +45257,7 @@ function _rtNum(rotulo, valor, cor){
 }
 
 async function loadRealtime(reset){
-  if(_adsFonte()==='meta') return;
-  if(_adsFonte()==='utmify') return carregarTempoRealUtmify();
+  if(_adsFonte()!=='redtrack') return carregarTempoRealUtmify();
   const key = getRtApiKey();
   if(!key) return;
   const { from, to, isLive } = rtPeriodInfo();
@@ -45646,8 +45640,8 @@ function setAdsProjeto(id){
   localStorage.setItem(_adsFonte() === 'meta' ? 'ads_projeto_meta' : 'ads_projeto', id || '');
   _adsPeriodoCarregado = '';     // obriga releitura com o novo recorte
   _anunciosPeriodo = '';
-  if(_adsFonte() === 'meta') return loadAdsMetricsMeta(false);
-  loadAdsMetricsUtmify(false);
+  if(_adsFonte() === 'meta') loadAdsMetricsMeta(false);
+  else loadAdsMetricsUtmify(false);
   _adsRecarregarAba();
 }
 
@@ -45656,7 +45650,7 @@ function setAdsProjeto(id){
 // os da ultima vez que a aba foi aberta — 'Hoje', 'Ontem' e uma data digitada
 // mostravam os mesmos numeros.
 function _adsRecarregarAba(agora){
-  if(_adsFonte() !== 'utmify') return;
+  if(_adsFonte() === 'redtrack') return;
   const aba = document.querySelector('.ads-tab.active');
   const nome = aba ? aba.textContent : '';
   if(/Anúncio/i.test(nome))    return carregarAnunciosUtmify(true, agora);
@@ -45696,6 +45690,19 @@ async function _carregarProjetosMeta(){
     sel.innerHTML = (soMeus ? '' : '<option value="">Todos os projetos</option>') +
       d.projetos.map(function(p){ return '<option value="'+_esc(p.id)+'">'+_esc(typeof fnProjNome === 'function' ? fnProjNome(p.nome) : p.nome)+'</option>'; }).join('');
     if(soMeus && d.projetos[0] && !d.projetos.some(function(p){ return String(p.id) === _adsProjeto(); })) localStorage.setItem('ads_projeto_meta', d.projetos[0].id);
+    // primeira vez na Meta: começa no projeto de mesmo nome do que estava escolhido na Utmify (CONCURSO → Concurso)
+    if(localStorage.getItem('ads_projeto_meta') === null && localStorage.getItem('ads_projeto')){
+      var igual = null;
+      try{
+        var u = await fetch('/api/metricas/utmify/projetos').then(function(r){ return r.ok ? r.json() : null; });
+        var du = u && (u.projetos || []).find(function(p){ return String(p.id) === localStorage.getItem('ads_projeto'); });
+        var nn = function(x){ return String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); };
+        igual = du ? d.projetos.find(function(p){ return nn(p.nome) === nn(du.nome); }) : null;
+      }catch(e){}
+      if(_adsFonte() !== 'meta') return;
+      localStorage.setItem('ads_projeto_meta', igual ? igual.id : '');
+      if(igual){ _adsPeriodoCarregado = ''; _anunciosPeriodo = ''; loadAdsMetricsMeta(false); _adsRecarregarAba(); }
+    }
     // projeto guardado que não existe mais: volta pra todos
     if(_adsProjeto() && !d.projetos.some(function(p){ return String(p.id) === _adsProjeto(); })){ localStorage.setItem('ads_projeto_meta', ''); _adsPeriodoCarregado = ''; loadAdsMetricsMeta(false); }
     sel.value = _adsProjeto();
@@ -45712,6 +45719,9 @@ function _adsFonte(){
   return (typeof tmxEhTmx === 'function' && !tmxEhTmx()) ? 'meta' : 'utmify';
 }
 
+// Resumo, Por Anúncio e Tempo Real: a Meta responde no mesmo formato da Utmify (19/11/2026)
+function _adsApiFonte(){ return _adsFonte() === 'meta' ? 'meta' : 'utmify'; }
+
 function setAdsFonte(f){
   f = f === 'utmify' || f === 'meta' ? f : 'redtrack';
   localStorage.setItem('ads_fonte', f);
@@ -45719,9 +45729,8 @@ function setAdsFonte(f){
   _adsPeriodoCarregado = ''; _anunciosPeriodo = '';
   cpDados = []; adsCampanhasData = []; cpNv = { chave:'', d:null, carregando:'', erro:'', em:0 };
   _pintarFonteAds();
-  // a aba que só existe numa fonte volta pra Por Campanha
   var aba = document.querySelector('.ads-tab.active');
-  if(aba && f==='meta' && /Anúncio|Tempo Real/i.test(aba.textContent)) switchAdsTab('campanhas', document.querySelector('.ads-tab[onclick*="\'campanhas\'"]'));
+  if(aba && f!=='redtrack' && /Anúncio|Tempo Real/i.test(aba.textContent)) setTimeout(function(){ _adsRecarregarAba(true); }, 0);
   if(typeof cpPintar === 'function') cpPintar();
   loadAdsMetrics();
 }
@@ -45744,11 +45753,12 @@ function _pintarFonteAds(){
   const tit = document.getElementById('ads-titulo-conta');
   if(tit) tit.textContent = (f==='utmify') ? 'Resultado por projeto' : 'Resultado por conta de anúncio';
   const nv = document.getElementById('trs-novo'), av = document.getElementById('trs-antigo'), dc = document.getElementById('trs-det-conta');
-  if(nv) nv.style.display = (f==='utmify') ? '' : 'none';
-  if(av) av.style.display = (f==='utmify') ? 'none' : '';
-  if(dc && dc.dataset.fonte !== f){ dc.dataset.fonte = f; dc.open = f!=='utmify'; }
+  // a Meta usa o mesmo Resumo da Utmify (19/11/2026); o antigo fica só pro RedTrack
+  if(nv) nv.style.display = (f!=='redtrack') ? '' : 'none';
+  if(av) av.style.display = (f!=='redtrack') ? 'none' : '';
+  if(dc && dc.dataset.fonte !== f){ dc.dataset.fonte = f; dc.open = f==='redtrack'; }
   const cx = document.getElementById('ads-contaads-box');
-  if(cx && f!=='utmify') cx.style.display='none';
+  if(cx && f==='redtrack') cx.style.display='none';
   if(f==='utmify') _carregarProjetosUtmify();
   if(f==='meta') _carregarProjetosMeta();
 }
@@ -45876,6 +45886,11 @@ async function loadAdsMetricsMeta(forcar, silencioso){
     cpDados = lista; cpPintar();
     adsTmxCarregar(from, to);
     _seloMetaPintar();
+    // o Resumo igual ao da Utmify: cards, funil, gráficos por hora, contas, planos e margem
+    if(!jaTem) trsContasTmx = {};
+    _contasDeAnuncio((d.porConta||[]).map(x=>({ nome: x.nome || x.contaId, investimento: x.investimento })));
+    _painelResumoUtmify(!!forcar, silencioso);
+    if(forcar) _adsRecarregarAba(true);
     if(!lista.length){
       showAdsError(!d.conectada ? 'A Meta não está conectada. Conecte em Configurações › Conexões › Meta e as campanhas aparecem aqui.'
         : 'Nenhuma campanha da Meta nesse período. A SCALROI busca os números a cada 15 minutos; campanha criada agora aparece na próxima busca.');
@@ -45995,8 +46010,8 @@ function adsAtualizarSozinho(){
   if(Date.now() < _mexendoAte || tag === 'INPUT' || tag === 'TEXTAREA' || (a && a.isContentEditable)) return;
   const pop = document.getElementById('cpm-pop');
   if((pop && pop.style.display === 'block') || document.querySelector('#cp-tabela.arrasta')) return;
-  if(_adsFonte() === 'meta'){ loadAdsMetricsMeta(false, true); if(cpNvNivel() || cpTem(cpEst.sel.camp)) cpNvCarregar(true); return; }
-  loadAdsMetricsUtmify(false, true);
+  if(_adsFonte() === 'meta'){ loadAdsMetricsMeta(false, true); if(cpNvNivel() || cpTem(cpEst.sel.camp)) cpNvCarregar(true); }
+  else loadAdsMetricsUtmify(false, true);
   const aba = document.querySelector('.ads-tab.active');
   if(aba && /Anúncio/i.test(aba.textContent)) carregarAnunciosUtmify(true);
 }
@@ -46014,15 +46029,15 @@ async function carregarAnunciosUtmify(forcar, agora){
   const { from, to } = getAdsDates();
   const corpo = document.getElementById('ads-anuncio-body');
   if(_anunciosCarregando) return;
-  const mesmos = _anunciosUtmify.length > 0 && _anunciosPeriodo === from+'|'+to+'|'+_adsProjeto();
+  const mesmos = _anunciosUtmify.length > 0 && _anunciosPeriodo === _adsApiFonte()+'|'+from+'|'+to+'|'+_adsProjeto();
   if(!forcar && mesmos){ pintarAnunciosUtmify(); return; }
 
   _anunciosCarregando = true;
   const g = document.getElementById('ads-anuncio-cards');
   // atualizando o mesmo período, os cards ficam na tela até os novos chegarem
-  if(g && !mesmos){ g.style.display='block'; g.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2);">⏳ Buscando anúncios na Utmify...</div>'; }
+  if(g && !mesmos){ g.style.display='block'; g.innerHTML='<div style="text-align:center;padding:30px;color:var(--text2);">⏳ Buscando anúncios '+(_adsFonte()==='meta' ? 'da Meta' : 'na Utmify')+'...</div>'; }
   try{
-    const r = await fetch('/api/metricas/utmify/anuncios?de='+from+'&ate='+to+_qsProjeto()+(agora?'&forcar=1':''));
+    const r = await fetch('/api/metricas/'+_adsApiFonte()+'/anuncios?de='+from+'&ate='+to+_qsProjeto()+(agora?'&forcar=1':''));
     const d = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || ('servidor respondeu '+r.status));
     if(mesmos && !(d.anuncios||[]).length && (d.erros||[]).length) return;   // tropeço: os cards de antes continuam
@@ -46031,7 +46046,7 @@ async function carregarAnunciosUtmify(forcar, agora){
     _anunciosArquivo = d.doArquivo ? (d.avisoArquivo || 'Números guardados aqui.') : '';
     _anunciosConc = d.conciliacao || null;
     _anunciosErros = d.erros || [];
-    _anunciosPeriodo = from+'|'+to+'|'+_adsProjeto();
+    _anunciosPeriodo = _adsApiFonte()+'|'+from+'|'+to+'|'+_adsProjeto();
     pintarAnunciosUtmify();
   }catch(e){
     if(mesmos) return;   // tropeço: os cards de antes continuam
@@ -46060,16 +46075,19 @@ function _vazioAnuncios(termo){
   const d = _anunciosDiag;
   let porque;
   if(_anunciosErros && _anunciosErros.length){
-    porque = '<div style="color:var(--red);font-weight:700;margin-bottom:6px">A Utmify não respondeu</div>'+
+    porque = '<div style="color:var(--red);font-weight:700;margin-bottom:6px">'+(_adsFonte()==='meta' ? 'Não consegui ler os anúncios da Meta' : 'A Utmify não respondeu')+'</div>'+
              '<div style="font-size:12px;color:var(--text2)">'+_esc(_anunciosErros.join(' · '))+'</div>';
   } else if(d && d.linhas > 0){
     porque = '<div style="font-weight:700;margin-bottom:6px">Nenhum anúncio com gasto no período</div>'+
-             '<div style="font-size:12px;color:var(--text2)">A Utmify devolveu '+d.linhas+
+             '<div style="font-size:12px;color:var(--text2)">'+(_adsFonte()==='meta' ? 'A Meta tem ' : 'A Utmify devolveu ')+d.linhas+
              ' anúncio(s), mas todos estavam sem investimento e sem receita.</div>';
   } else if(d){
-    porque = '<div style="font-weight:700;margin-bottom:6px">A Utmify não devolveu nenhum anúncio</div>'+
-             '<div style="font-size:12px;color:var(--text2)">Consultei '+d.dashboards+
-             ' projeto(s) nesse período e a resposta veio vazia.</div>';
+    porque = _adsFonte()==='meta'
+      ? '<div style="font-weight:700;margin-bottom:6px">Nenhum anúncio da Meta nesse período</div>'+
+        '<div style="font-size:12px;color:var(--text2)">A SCALROI busca os números da Meta a cada 15 minutos; anúncio que começou agora aparece na próxima busca.</div>'
+      : '<div style="font-weight:700;margin-bottom:6px">A Utmify não devolveu nenhum anúncio</div>'+
+        '<div style="font-size:12px;color:var(--text2)">Consultei '+d.dashboards+
+        ' projeto(s) nesse período e a resposta veio vazia.</div>';
   } else {
     porque = '<div style="font-weight:700;margin-bottom:6px">Nenhum anúncio com movimento no período</div>';
   }
@@ -46671,10 +46689,10 @@ var trsFiltro = { conta:'', plataforma:'', produto:'' }, trsProjFiltros = null, 
 function trsTemFiltro(){ return !!(trsFiltro.conta || trsFiltro.plataforma || trsFiltro.produto); }
 function trsQsFiltros(){ return ['conta','plataforma','produto'].map(function(k){ return trsFiltro[k] ? '&'+k+'='+encodeURIComponent(trsFiltro[k]) : ''; }).join(''); }
 function trsPrepararFiltros(){
-  var p = _adsProjeto();
+  var p = _adsApiFonte()+'|'+_adsProjeto();
   if(trsProjFiltros === p) return;
   trsProjFiltros = p; trsFiltro = { conta:'', plataforma:'', produto:'' };
-  v2Json('/api/metricas/utmify/filtros?x=1'+_qsProjeto()).then(function(d){
+  v2Json('/api/metricas/'+_adsApiFonte()+'/filtros?x=1'+_qsProjeto()).then(function(d){
     if(trsProjFiltros !== p) return;
     trsContasNomes = {}; (d.contas || []).forEach(function(c){ trsContasNomes[c.id] = c.nome; });
     var enche = function(id, l){ var s = document.getElementById(id); if(!s) return; s.innerHTML = '<option value="">Qualquer</option>'+l.map(function(o){ return '<option value="'+fnEsc(o[0])+'">'+fnEsc(o[1])+'</option>'; }).join(''); };
@@ -46864,9 +46882,9 @@ var ANP_LINHAS = [
   ['CTR', function(p){ return p.imp ? trsPct(p.cl/p.imp, 2) : '—'; }],
   ['CPC', function(p){ return p.cl ? fmtAds(p.inv/p.cl) : '—'; }],
   ['CPM', function(p){ return p.imp ? fmtAds(p.inv/p.imp*1000) : '—'; }],
-  ['Hook', function(p){ return p.imp ? trsPct(p.v3/p.imp) : '—'; }, null, 'Assistiram 3 s ÷ impressões'],
-  ['Hold rate', function(p){ return p.imp ? trsPct(p.v75/p.imp, 2) : '—'; }, null, 'Assistiram 75% ÷ impressões'],
-  ['CTA', function(p){ return p.v75 ? (p.cl/p.v75).toFixed(2).replace('.',',') : '—'; }, null, 'Cliques ÷ assistiram 75%'],
+  ['Hook', function(p){ return p.imp && !p.semVideo ? trsPct(p.v3/p.imp) : '—'; }, null, 'Assistiram 3 s ÷ impressões'],
+  ['Hold rate', function(p){ return p.imp && !p.semVideo ? trsPct(p.v75/p.imp, 2) : '—'; }, null, 'Assistiram 75% ÷ impressões'],
+  ['CTA', function(p){ return p.v75 && !p.semVideo ? (p.cl/p.v75).toFixed(2).replace('.',',') : '—'; }, null, 'Cliques ÷ assistiram 75%'],
   ['Taxa de conexão', function(p){ return p.cl ? trsPct(p.lpv/p.cl, 0) : '—'; }, null, 'Visualizações da página ÷ cliques']
 ];
 function anpAbrir(i){
@@ -46876,7 +46894,7 @@ function anpAbrir(i){
   ov.id = 'anp-ov';
   anpEst = { nome:a.nome, janela:'d7', d:null, vsl:null, vslErro:null };
   var est = anpEst;
-  v2Json('/api/metricas/utmify/anuncio?nome='+encodeURIComponent(a.nome)+'&dashboard='+encodeURIComponent(a.dashboard||'')+'&de='+dt.from+'&ate='+dt.to)
+  v2Json('/api/metricas/'+_adsApiFonte()+'/anuncio?nome='+encodeURIComponent(a.nome)+'&dashboard='+encodeURIComponent(a.dashboard||'')+'&de='+dt.from+'&ate='+dt.to)
     .then(function(d){ if(anpEst !== est) return; est.d = d; anpPintar();
       return v2Json('/api/metricas/utmify/anuncio-vsl?nome='+encodeURIComponent(a.nome)+'&ids='+encodeURIComponent((d.ids||[]).join(','))).then(function(v){ if(anpEst !== est) return; est.vsl = v; anpPintarVsl(); })
         .catch(function(e){ if(anpEst !== est) return; est.vslErro = e.message; anpPintarVsl(); }); })
