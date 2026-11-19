@@ -949,6 +949,61 @@ function criarNucleo(o) {
   // o que tem link e cumpre a regra (baixar) + o que falta transcrever; tudo=true é o botão (tenta de novo quem falhou 3 vezes)
   function pendentesDaBiblioteca(bibId, tudo) { return selecaoDeVideos(bibId, !!tudo).baixar.concat(paraTranscrever(bibId)); }
 
+  // ── Folha de quadros (19/11): 8 quadros do vídeo numa imagem só (4×2), pro Claude ver o formato (rosto, tela dividida,
+  // caixinha de pergunta, inserts de IA…), que a copy não diz. Feita uma vez por vídeo e guardada junto do vídeo. ──
+  const QUADROS_EM = [0, 0.12, 0.25, 0.38, 0.5, 0.62, 0.75, 0.9];
+  function temposDosQuadros(d) {
+    d = d || 0;
+    return QUADROS_EM.map((f, i) => i === 0 ? Math.min(0.5, d * 0.04) : f * d).map(t => Math.round(Math.min(t, Math.max(0, d - 0.08)) * 10) / 10);
+  }
+  async function folhaDeQuadros(cid0) {
+    const cid = resolver(cid0);
+    const c = q('SELECT * FROM spy_criativo WHERE id=?').get(cid);
+    if (!c) throw erroHttp('Criativo não encontrado: ' + cid0, 404);
+    if (c.midia_status !== 'ok' || !c.arquivo || !midia) return null;
+    if (c.tipo !== 'video') {
+      // imagem: a própria imagem, no máximo 1200 px
+      const chaveI = 'q/' + (c.impressao_digital || sha256(c.arquivo)) + '-img.jpg';
+      let img = await midia.buffer(chaveI);
+      if (!img) {
+        const orig = await midia.buffer(c.arquivo);
+        if (!orig) throw new Error('a imagem guardada não foi encontrada');
+        const tmpI = path.join(tmpDir, cid + '-qi.' + c.arquivo.split('.').pop()), tmpO = path.join(tmpDir, cid + '-qo.jpg');
+        try {
+          fs.writeFileSync(tmpI, orig);
+          await ff(['-y', '-i', tmpI, '-frames:v', '1', '-vf', 'scale=w=1200:h=1200:force_original_aspect_ratio=decrease', '-q:v', '4', tmpO], { ms: 30000 });
+          img = fs.existsSync(tmpO) ? fs.readFileSync(tmpO) : null;
+          if (!img || !img.length) throw new Error('não consegui ler a imagem');
+          await midia.guardar(chaveI, img);
+        } finally { for (const f of [tmpI, tmpO]) { try { fs.unlinkSync(f); } catch (e) {} } }
+      }
+      return { imagem: img, tempos: [] };
+    }
+    const tempos = temposDosQuadros(c.duracao_s);
+    const chave = 'q/' + (c.impressao_digital || sha256(c.arquivo)) + '-8.jpg';
+    const guardada = await midia.buffer(chave);
+    if (guardada) return { imagem: guardada, tempos };
+    if (!FFMPEG) throw new Error('ffmpeg não está instalado neste servidor');
+    const buf = await midia.buffer(c.arquivo);
+    if (!buf) throw new Error('o vídeo guardado não foi encontrado');
+    const tmpV = path.join(tmpDir, cid + '-q.mp4'), tmpF = tempos.map((t, i) => path.join(tmpDir, cid + '-q' + i + '.jpg')), tmpG = path.join(tmpDir, cid + '-qg.jpg');
+    try {
+      fs.writeFileSync(tmpV, buf);
+      // cada quadro cabe numa caixa de 400×400 (vertical fica 225×400), todos do mesmo tamanho
+      for (let i = 0; i < tempos.length; i++) {
+        await ff(['-y', '-ss', tempos[i].toFixed(2), '-i', tmpV, '-frames:v', '1', '-vf', 'scale=w=400:h=400:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2', '-q:v', '3', tmpF[i]], { ms: 30000 });
+        if (!fs.existsSync(tmpF[i]) || !fs.statSync(tmpF[i]).size) throw new Error('não consegui tirar o quadro de ' + tempos[i] + 's');
+      }
+      const ent = []; tmpF.forEach(f => ent.push('-i', f));
+      await ff(['-y'].concat(ent, ['-filter_complex', tmpF.map((f, i) => '[' + i + ']').join('') + 'xstack=inputs=8:layout=0_0|w0_0|w0+w1_0|w0+w1+w2_0|0_h0|w0_h0|w0+w1_h0|w0+w1+w2_h0',
+        '-frames:v', '1', '-q:v', '4', tmpG]), { ms: 30000 });
+      const img = fs.existsSync(tmpG) ? fs.readFileSync(tmpG) : null;
+      if (!img || !img.length) throw new Error('não consegui montar a folha de quadros');
+      await midia.guardar(chave, img);
+      return { imagem: img, tempos };
+    } finally { for (const f of [tmpV, tmpG].concat(tmpF)) { try { fs.unlinkSync(f); } catch (e) {} } }
+  }
+
   // ── Etiquetas (por empresa; spy_criativo hoje, meu_modulo depois) ──
   const FECHADOS = { angulo: SpyLink.ANGULOS, formato: SpyLink.FORMATOS };
   function validarEtiqueta(e) {
@@ -1240,7 +1295,7 @@ function criarNucleo(o) {
 
   return { db, q, EMP, cfgLer, cfgGravar, nichos, salvarNicho, regras, salvarRegras, bibRow, bibPub, criarBiblioteca, mudarBiblioteca, listarBibliotecas, adsConhecidos,
     registrarColeta, enfileirar, processar, pendentesDaBiblioteca, selecaoDeVideos, baixarDaBiblioteca, pedirVideo, regraTexto, salvarDoClaude, salvarDaTela, detalheBiblioteca, detalheCriativo, registrarFunil, funis,
-    registrarRodada, rodadas, buscar, mercado, kpis, resolver, statusDe, midiasFaltando, buscarVideos, estadoBusca, dividirPorCopy, aplicarLink, fila: () => ({ fila: fila.length, rodando }), agora };
+    registrarRodada, rodadas, buscar, mercado, kpis, resolver, statusDe, folhaDeQuadros, temposDosQuadros, midiasFaltando, buscarVideos, estadoBusca, dividirPorCopy, aplicarLink, fila: () => ({ fila: fila.length, rodando }), agora };
 }
 
 // ══════════════════════════════════════════════
@@ -1330,8 +1385,13 @@ const FERRAMENTAS = [
     description: 'Spy: os criativos de uma biblioteca (vídeos iguais contam uma vez), com status (novo, escalando, estavel, parou), anúncios ativos, dias no ar, família, etiquetas, se já tem vídeo e transcrição. Com transcricao:true traz as falas com o tempo, pra você etiquetar e cortar. Devolve JSON.',
     inputSchema: { type: 'object', properties: {
       biblioteca_id: { type: 'string' }, status: { type: 'string', enum: ['novo', 'escalando', 'estavel', 'parou'] },
-      sem_etiqueta: { type: 'boolean', description: 'true: só os que ainda não têm ângulo' }, transcricao: { type: 'boolean' },
+      sem_etiqueta: { type: 'boolean', description: 'true: só os que ainda não têm ângulo' },
+      sem_formato: { type: 'boolean', description: 'true: só os que já têm o vídeo (ou a imagem) guardado e ainda não têm formato. Veja cada um com spy_ver_criativo' },
+      transcricao: { type: 'boolean' },
       limite: { type: 'number', description: 'Padrão 50' } }, required: ['biblioteca_id'] } },
+  { name: 'spy_ver_criativo', soTmx: true,
+    description: 'Spy: mostra UM criativo pra você classificar o formato: uma imagem com 8 quadros do vídeo (da esquerda pra direita, de cima pra baixo, com os segundos de cada um no texto), a fala com o tempo, a copy e as etiquetas que ele já tem. Olhe os quadros e a fala e grave o formato com spy_salvar_criativo (campo formato). Formato aceita só: ' + SpyLink.FORMATOS.join(', ') + '. Criativo sem vídeo guardado volta sem imagem (peça com spy_processar_midia).',
+    inputSchema: { type: 'object', properties: { criativo_id: { type: 'string' } }, required: ['criativo_id'] } },
   { name: 'spy_processar_midia', soTmx: true,
     description: 'Spy: AÇÃO NO SERVIDOR. Baixa, junta e transcreve os criativos pedidos, mesmo os abaixo da regra dos vídeos (a coleta já baixa sozinha os que cumprem a regra; use pra quem ficou com erro, aguardando, ou um específico que o Thiago pediu). Espera até uns 100 segundos e devolve o status e a transcrição de cada um. Devolve JSON.',
     inputSchema: { type: 'object', properties: { criativo_ids: { type: 'array', items: { type: 'string' }, description: 'Até 20' } }, required: ['criativo_ids'] } },
@@ -1507,6 +1567,7 @@ module.exports = function montarSpy(d) {
       let l = det.criativos;
       if (a.status) l = l.filter(c => c.status === a.status);
       if (a.sem_etiqueta) l = l.filter(c => !c.etiquetas.angulo);
+      if (a.sem_formato) l = l.filter(c => !c.etiquetas.formato && c.midia_status === 'ok' && c.tipo !== 'texto');
       l.sort((x, y) => y.anuncios_ativos - x.anuncios_ativos || (y.dias_no_ar || 0) - (x.dias_no_ar || 0));
       const lim = Math.min(Math.max(Number(a.limite) || 50, 1), 200);
       return J({ biblioteca: det.biblioteca.nome, total: l.length, criativos: l.slice(0, lim).map(c => {
@@ -1529,6 +1590,25 @@ module.exports = function montarSpy(d) {
           transcricao_status: c.transcricao_status, transcricao_erro: c.transcricao_erro || undefined,
           transcricao: c.transcricao ? { provedor: c.transcricao.provedor, idioma: c.transcricao.idioma, segmentos: c.transcricao.segmentos } : null };
       }), ainda_na_fila: N.fila() });
+    }
+    if (nome === 'spy_ver_criativo') {
+      const c = N.detalheCriativo(String(a.criativo_id || ''));
+      if (!c) throw new Error('criativo não encontrado');
+      let folha = null, erroFolha = '';
+      try { folha = await N.folhaDeQuadros(c.id); } catch (e) { erroFolha = e.message; }
+      const vertical = c.altura && c.largura ? (c.altura > c.largura ? 'vertical' : c.altura === c.largura ? 'quadrado' : 'horizontal') : '';
+      const info = { criativo_id: c.id, juntado_em: c.juntado ? c.id : undefined, tipo: c.tipo, pagina: c.pagina, status: c.status, anuncios_ativos: c.anuncios_ativos, dias_no_ar: c.dias_no_ar,
+        duracao_s: c.duracao_s, tela: vertical || undefined, copy: (c.copy || '').slice(0, 1500), titulo: c.titulo || undefined,
+        quadros: folha && folha.tempos.length ? 'A imagem tem ' + folha.tempos.length + ' quadros, da esquerda pra direita e de cima pra baixo, nos segundos: ' + folha.tempos.join(', ') : undefined,
+        sem_imagem: folha ? undefined : (erroFolha ? 'Não consegui montar a imagem: ' + erroFolha : c.midia_status === 'ok' ? 'O armazenamento dos vídeos não está ligado.'
+          : 'O vídeo ainda não está guardado (' + (c.midia_status || 'pendente') + (c.midia_erro ? ': ' + c.midia_erro : '') + '). Peça com spy_processar_midia ou classifique só pela fala e pela copy, com confianca baixa.'),
+        falas: c.transcricao ? c.transcricao.segmentos : null, transcricao: c.transcricao_status || 'pendente', partes: c.partes,
+        etiquetas: Object.fromEntries(Object.entries(c.etiquetas).map(([k, v]) => [k, v.map(e => ({ valor: e.valor, parte: e.parte, origem: e.origem === 'thiago' ? 'corrigido por ' + (e.por || 'alguém') : 'claude' }))])),
+        formatos_aceitos: SpyLink.FORMATOS };
+      const content = [];
+      if (folha) content.push({ type: 'image', data: folha.imagem.toString('base64'), mimeType: 'image/jpeg' });
+      content.push({ type: 'text', text: J(info) });
+      return { content };
     }
     if (nome === 'spy_sugerir_biblioteca') {
       const r = N.criarBiblioteca({ tipo: a.tipo, referencia: a.referencia, pais: a.pais, nome: a.nome, nicho_id: a.nicho_id, ouro: false, origem: 'sugerida_pela_rotina',

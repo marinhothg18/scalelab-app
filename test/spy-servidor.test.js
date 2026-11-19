@@ -1,7 +1,7 @@
 // Spy de anúncios (18/11/2026), pelo servidor de verdade. A coleta chega pelo MCP (o Claude lê a Biblioteca de Anúncios
 // no Chrome); o servidor baixa o vídeo pelo link, guarda, transcreve e mostra. Confere: a base inicial, a equipe cadastrando
 // biblioteca e corrigindo etiqueta (com o nome de quem corrigiu), ⚙ Configurações só da conta do Thiago (403 pros outros),
-// as 12 ferramentas spy_*, o alerta da rodada no sininho dele e o vídeo tocando em pedaços (Range).
+// as 13 ferramentas spy_* (a folha de quadros do spy_ver_criativo incluída), o alerta da rodada no sininho dele e o vídeo tocando em pedaços (Range).
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { spawn, execFileSync } = require('child_process');
@@ -90,7 +90,7 @@ let criativoId;
 test('MCP: a coleta entra, o vídeo fica guardado, toca em pedaços e é transcrito', async () => {
   const nomes = (await mcp('tools/list')).result.tools.map(t => t.name).filter(n => n.startsWith('spy_'));
   assert.deepStrictEqual(nomes.sort(), ['spy_ler_regras', 'spy_listar_bibliotecas', 'spy_listar_criativos', 'spy_processar_midia', 'spy_registrar_coleta', 'spy_registrar_funil',
-    'spy_registrar_rodada', 'spy_salvar_biblioteca', 'spy_salvar_criativo', 'spy_salvar_nicho', 'spy_salvar_regras', 'spy_sugerir_biblioteca']);
+    'spy_registrar_rodada', 'spy_salvar_biblioteca', 'spy_salvar_criativo', 'spy_salvar_nicho', 'spy_salvar_regras', 'spy_sugerir_biblioteca', 'spy_ver_criativo']);
   const regras = await ferramenta('spy_ler_regras', {});
   assert.strictEqual(regras.regras.horario_rotina, '07:40');
   assert.ok(regras.bibliotecas_ouro.some(b => b.id === evandro.id && /q=concursa-paginas/.test(b.link)));
@@ -113,6 +113,40 @@ test('MCP: a coleta entra, o vídeo fica guardado, toca em pedaços e é transcr
   assert.strictEqual((await fetch(base + '/api/spy/midia/' + c.arquivo, { headers: { Range: 'bytes=' + (tam + 5) + '-' } })).status, 416);
   const pm = await ferramenta('spy_processar_midia', { criativo_ids: [criativoId] });
   assert.strictEqual(pm.criativos[0].transcricao.segmentos.length, 2);
+});
+
+// largura × altura de um JPEG (marcador SOF)
+function tamanhoJpeg(b) {
+  for (let i = 2; i < b.length - 9;) {
+    if (b[i] !== 0xFF) { i++; continue; }
+    const m = b[i + 1], len = b.readUInt16BE(i + 2);
+    if (m >= 0xC0 && m <= 0xC3) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+    i += 2 + len;
+  }
+  return null;
+}
+test('MCP mostra os 8 quadros do vídeo numa imagem, pro Claude classificar o formato (19/11)', async () => {
+  const fila = await ferramenta('spy_listar_criativos', { biblioteca_id: evandro.id, sem_formato: true });
+  assert.deepStrictEqual(fila.criativos.map(c => c.id), [criativoId], 'tem o vídeo e ainda não tem formato');
+  const r = (await mcp('tools/call', { name: 'spy_ver_criativo', arguments: { criativo_id: criativoId } })).result;
+  assert.ok(!r.isError, JSON.stringify(r).slice(0, 300));
+  assert.deepStrictEqual(r.content.map(c => c.type), ['image', 'text']);
+  assert.strictEqual(r.content[0].mimeType, 'image/jpeg');
+  const img = Buffer.from(r.content[0].data, 'base64');
+  assert.deepStrictEqual([img[0], img[1]], [0xFF, 0xD8]);
+  assert.deepStrictEqual(tamanhoJpeg(img), [896, 800], 'vídeo vertical: 4×2 quadros de 224×400');
+  const info = JSON.parse(r.content[1].text);
+  assert.strictEqual(info.tela, 'vertical');
+  assert.match(info.quadros, /8 quadros.*0\.1, 0\.4, 0\.8, 1\.1, 1\.5, 1\.9, 2\.3, 2\.7/);
+  assert.strictEqual(info.falas.length, 2);
+  assert.deepStrictEqual(info.formatos_aceitos.slice(0, 2), ['Rosto / teleprompter', 'Caixinha de pergunta']);
+  // feita uma vez: a segunda vem da folha guardada, igual
+  const guardadas = fs.readdirSync(path.join(dir, 'tmx', 'spy_midia')).filter(f => /^q_.*-8\.jpg$/.test(f));
+  assert.strictEqual(guardadas.length, 1);
+  const r2 = (await mcp('tools/call', { name: 'spy_ver_criativo', arguments: { criativo_id: criativoId } })).result;
+  assert.strictEqual(r2.content[0].data, r.content[0].data);
+  const nada = (await mcp('tools/call', { name: 'spy_ver_criativo', arguments: { criativo_id: 'cr_naoexiste' } })).result;
+  assert.ok(nada.isError);
 });
 
 test('MCP grava etiqueta; a correção de alguém da equipe fica protegida e com o nome', async () => {

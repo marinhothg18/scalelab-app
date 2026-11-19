@@ -25379,6 +25379,8 @@ app.post('/mcp', express.json({ limit: '1mb' }), async (req, res) => {
       if (!ferramentas.some(f => f.name === nome)) return erro(-32602, 'Ferramenta desconhecida: ' + nome);
       try {
         const texto = await _mcpExecutar(nome, (corpo.params || {}).arguments || {}, tk);
+        // a ferramenta pode devolver imagem junto (spy_ver_criativo manda os quadros do vídeo): { content: [...] }
+        if (texto && typeof texto === 'object' && Array.isArray(texto.content)) return res.json({ jsonrpc: '2.0', id, result: { content: texto.content } });
         return res.json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: String(texto) }] } });
       } catch (e) {
         // erro da ferramenta volta como resultado, não como falha do protocolo:
