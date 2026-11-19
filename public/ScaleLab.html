@@ -10025,9 +10025,9 @@ function spyCartao(c){
   var fala = c.fala || c.copy || '';
   return '<button class="sp-cc" onclick="spyAbrirCri(\''+c.id+'\')" aria-label="Abrir criativo">'+
     '<div class="sp-th" style="--c1:'+k[0]+';--c2:'+k[1]+';'+fundo+'"><span class="st"><span class="sp-pill" style="background:'+st[2]+';color:#fff;">'+st[0]+'</span></span>'+
-    '<span class="nads">'+c.anuncios_ativos+' '+(c.anuncios_ativos === 1 ? 'anúncio' : 'anúncios')+'</span>'+(c.tipo === 'video' ? '<span class="play"><i></i></span>' : '')+
+    '<span class="nads">'+c.anuncios_ativos+' '+(c.anuncios_ativos === 1 ? 'anúncio' : 'anúncios')+'</span>'+(c.tipo === 'video' && c.midia_status === 'ok' ? '<span class="play"><i></i></span>' : '')+
     (fala ? '<span class="fala">“'+_spyE(fala.slice(0, 120))+(fala.length > 120 ? '…' : '')+'”</span>' : '')+
-    '<span class="dias"><span>'+(c.status === 'parou' ? 'ficou '+(c.dias_no_ar || 0)+' dias no ar' : 'no ar há '+(c.dias_no_ar != null ? c.dias_no_ar : '—')+' dias')+' · desde '+_spyDataCurta(c.inicio)+'</span>'+(c.duracao_s ? '<span>'+_spyTempo(c.duracao_s)+'</span>' : '')+'</span></div>'+
+    '<span class="dias"><span>'+(c.status === 'parou' ? 'ficou '+(c.dias_no_ar || 0)+' dias no ar' : 'no ar há '+(c.dias_no_ar != null ? c.dias_no_ar : '—')+' dias')+' · desde '+_spyDataCurta(c.inicio)+'</span>'+(c.duracao_s ? '<span>'+_spyTempo(c.duracao_s)+'</span>' : c.tipo === 'video' && c.midia_status !== 'ok' ? '<span>'+(c.regra_video === '' ? 'abaixo da regra' : 'sem vídeo')+'</span>' : '')+'</span></div>'+
     '<div class="b"><div class="fam">'+(c.familia ? _spyE(c.familia.nome) : '<span class="sp-mut" style="font-weight:600;">Sem família</span>')+'</div><div class="pg">'+_spyE(c.pagina || '—')+'</div>'+
     '<div class="sp-lin" style="gap:6px;">'+(ang && ang.valor ? '<span class="sp-tag t-ang">'+_spyE(ang.valor)+'</span>' : '')+(fmt && fmt.valor ? '<span class="sp-tag t-fmt">'+_spyE(fmt.valor)+'</span>' : '')+(c.nao_modelar ? '<span class="sp-tag t-x">Não modelar</span>' : '')+'</div>'+
     '<div>'+(function(){ var tds = []; Object.keys(c.etiquetas || {}).forEach(function(k){ tds = tds.concat(c.etiquetas[k] || []); });
@@ -10062,7 +10062,7 @@ function spyHtmlBiblioteca(d){
         '<td class="sp-pq" style="max-width:380px;line-height:17px;">'+_spyE((a.copy || '').slice(0, 120))+((a.copy || '').length > 120 ? '…' : '')+'</td>'+
         '<td>'+(c ? '<a class="sp-nome sp-pq" onclick="spyAbrirCri(\''+c.id+'\')" style="display:flex;gap:8px;align-items:center;">'+
           '<span style="width:30px;height:42px;border-radius:5px;flex:none;background:#1f2937'+(c.thumb ? ' url('+_spyMidia(c.thumb)+') center/cover' : '')+';"></span>'+
-          '<span>'+(c.familia ? _spyE(c.familia.nome)+'<br>' : '')+(c.midia_status === 'ok' ? (c.tipo === 'video' ? 'Vídeo '+_spyTempo(c.duracao_s) : 'Imagem') : '<span class="sp-mut">sem vídeo ainda</span>')+(c.anuncios_ativos > 1 ? ' <span class="sp-mut">· '+c.anuncios_ativos+' anúncios</span>' : '')+'</span></a>' : '—')+'</td>'+
+          '<span>'+(c.familia ? _spyE(c.familia.nome)+'<br>' : '')+(c.midia_status === 'ok' ? (c.tipo === 'video' ? 'Vídeo '+_spyTempo(c.duracao_s) : 'Imagem') : '<span class="sp-mut">'+(c.regra_video === '' ? 'sem vídeo (abaixo da regra)' : 'sem vídeo ainda')+'</span>')+(c.anuncios_ativos > 1 ? ' <span class="sp-mut">· '+c.anuncios_ativos+' anúncios</span>' : '')+'</span></a>' : '—')+'</td>'+
         '<td>'+(a.ativo ? '<span class="sp-pill p-novo">Ativo</span>' : '<span class="sp-pill p-par">Parou</span>'+(a.fim ? '<div class="sp-pq sp-mut">'+_spyDataCurta(a.fim)+'</div>' : ''))+'</td>'+
         '<td><a href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(a.id)+'" target="_blank" rel="noopener" style="color:var(--sp-verde);white-space:nowrap;">Abrir no Facebook</a></td></tr>';
     }).join('')+'</tbody></table></div>' : '<div class="sp-vazio">Nenhum anúncio ainda.</div>';
@@ -10097,7 +10097,8 @@ function spyHtmlBiblioteca(d){
       '<div style="flex:1 1 240px;"><div class="sp-pq sp-mut">Vídeos</div><b>'+p.guardados+' de '+p.total+' guardados · '+p.transcritos+' transcritos</b>'+
         (p.pendentes ? '<div class="sp-pq sp-mut">Baixando e transcrevendo '+p.pendentes+'… a tela atualiza sozinha.</div>' : '')+
         (d.busca && d.busca.rodando && d.busca.desta ? '<div class="sp-pq sp-mut">Buscando no Facebook: '+d.busca.feitos+' de '+d.busca.total+' ('+d.busca.achados+' achados)… a tela atualiza sozinha.</div>'
-          : p.aguardando_link ? '<div class="sp-pq sp-mut">'+p.aguardando_link+' sem vídeo ainda. O servidor busca depois de cada coleta, ou clique em Baixar vídeos.</div>' : '')+
+          : p.aguardando_link ? '<div class="sp-pq sp-mut">'+p.aguardando_link+' cumprem a regra e estão sem vídeo ainda. O servidor busca depois de cada coleta'+(d.regra_video ? ' (até '+d.regra_video.video_teto+' por vez)' : '')+', ou clique em Baixar vídeos.</div>' : '')+
+        (p.abaixo_da_regra ? '<div class="sp-pq sp-mut">'+p.abaixo_da_regra+' abaixo da regra'+(d.regra_video ? ' (menos de '+d.regra_video.video_min_dias+' dias no ar e menos de '+d.regra_video.video_min_copias+' cópias)' : '')+' ficam sem o vídeo. Dá pra baixar um no botão Baixar este, dentro do criativo.</div>' : '')+
         (d.busca && !d.busca.rodando && d.busca.erro && !d.busca.bloqueado_em ? '<div class="sp-pq" style="color:var(--sp-amb);">A última busca de vídeos falhou: '+_spyE(d.busca.erro)+'</div>' : '')+
         (d.busca && d.busca.bloqueado_em ? '<div class="sp-pq" style="color:var(--sp-amb);">O Facebook pediu login ao servidor em '+_spyQuando(d.busca.bloqueado_em)+': os vídeos não foram baixados. Dá pra abrir cada anúncio no Facebook.</div>'
           : d.busca && !d.busca.disponivel && p.aguardando_link ? '<div class="sp-pq" style="color:var(--sp-amb);">O navegador do servidor não está instalado: os vídeos não são buscados.</div>' : '')+
@@ -10114,7 +10115,7 @@ function spyHtmlBiblioteca(d){
 async function spyBaixarVideos(id){
   try{
     var d = await _spyJson('/api/spy/bibliotecas/'+encodeURIComponent(id)+'/processar', 'POST', {});
-    _avisoTela(d.motivo ? d.motivo : d.a_buscar ? 'Buscando '+d.a_buscar+' vídeo(s) no Facebook, um por um' : d.na_fila ? d.na_fila+' na fila' : 'Nenhum vídeo faltando');
+    _avisoTela(d.motivo ? d.motivo : d.a_buscar ? 'Buscando '+d.a_buscar+' vídeo(s) que cumprem a regra no Facebook, um por um' : d.na_fila ? d.na_fila+' na fila' : d.abaixo_da_regra ? 'Nenhum vídeo faltando dentro da regra ('+d.abaixo_da_regra+' abaixo dela)' : 'Nenhum vídeo faltando');
     spyRender();
   }catch(e){ tmxAviso('Não consegui.\n\n'+e.message); }
 }
@@ -10178,7 +10179,9 @@ function spyHtmlCriativo(c){
   if(c.midia_status === 'ok' && c.tipo === 'video') midia = '<video id="spy-player" class="sp-player" controls playsinline preload="metadata"'+(c.thumb ? ' poster="'+_spyMidia(c.thumb)+'"' : '')+' src="'+_spyMidia(c.arquivo)+'"></video>';
   else if(c.midia_status === 'ok') midia = '<img src="'+_spyMidia(c.arquivo)+'" style="width:100%;border-radius:12px;display:block;" alt="Criativo">';
   else {
-    var semVideo = c.midia_status === 'erro' ? '<b>Não consegui guardar o vídeo.</b><span style="opacity:.8">'+_spyE(c.midia_erro || 'erro')+'</span>'
+    var abaixo = c.regra_video === '' && ['sem_link','pendente','aguardando','erro'].indexOf(c.midia_status) >= 0;
+    var semVideo = abaixo ? '<b>Vídeo não baixado (abaixo da regra).</b><span style="opacity:.8">No ar há '+(c.dias_no_ar || 0)+' '+(c.dias_no_ar === 1 ? 'dia' : 'dias')+', '+(c.anuncios_ativos_total || 0)+' '+(c.anuncios_ativos_total === 1 ? 'cópia' : 'cópias')+'. O sistema só baixa sozinho o que está '+_spyE(c.regra_texto || '')+'.</span>'
+      : c.midia_status === 'erro' ? '<b>Não consegui guardar o vídeo.</b><span style="opacity:.8">'+_spyE(c.midia_erro || 'erro')+'</span>'
       : c.midia_status === 'aguardando' ? '<span>'+_spyE(c.midia_erro || 'O vídeo espera o armazenamento.')+'</span>'
       : c.midia_status === 'sem_midia' ? '<span>Anúncio só de texto: não tem vídeo nem imagem.</span>'
       : c.midia_status === 'sem_link' ? '<b>Vídeo não baixado ainda.</b>'+(c.midia_erro ? '<span style="opacity:.8">'+_spyE(c.midia_erro)+'</span>' : '<span style="opacity:.8">O servidor busca o vídeo no Facebook, um anúncio por vez.</span>')
@@ -10186,8 +10189,8 @@ function spyHtmlCriativo(c){
     var podeBuscar = ['sem_link','erro','aguardando'].indexOf(c.midia_status) >= 0;
     var ad0 = (c.anuncios || [])[0];
     midia = '<div class="sp-sem-video">'+semVideo+
-      (podeBuscar ? '<button class="sp-btn sm pri" onclick="spyProcessarCri()">Baixar os vídeos da biblioteca</button>' : '')+
-      (ad0 && podeBuscar ? '<a class="sp-btn sm" href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(ad0.ad_archive_id)+'" target="_blank" rel="noopener">Abrir no Facebook</a>' : '')+'</div>';
+      (podeBuscar || abaixo ? '<button class="sp-btn sm pri" onclick="spyProcessarCri()">Baixar este</button>' : '')+
+      (ad0 && (podeBuscar || abaixo) ? '<a class="sp-btn sm" href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(ad0.ad_archive_id)+'" target="_blank" rel="noopener">Abrir no Facebook</a>' : '')+'</div>';
   }
   var campos = [['angulo','Ângulo','select',SpyLink.ANGULOS],['dor','Dor'],['persona','Persona'],['formato','Formato','select',SpyLink.FORMATOS],['mecanismo','Mecanismo'],['nome_chiclete','Nome chiclete'],['prova','Prova','lista',SPY_PROVAS],['cta','CTA','lista',SPY_CTAS]];
   var valores = {};
@@ -10250,7 +10253,7 @@ async function spySalvarEtiquetas(){
 }
 async function spyProcessarCri(){
   var c = _spyCri; if(!c) return;
-  try{ await _spyJson('/api/spy/criativos/'+encodeURIComponent(c.id)+'/processar', 'POST', {}); _avisoTela(c.midia_status === 'sem_link' ? 'Buscando os vídeos da biblioteca no Facebook, um por um: acompanhe na tela da biblioteca' : 'Na fila: a tela atualiza sozinha'); _spyCri = null; spyRender(); }
+  try{ var d = await _spyJson('/api/spy/criativos/'+encodeURIComponent(c.id)+'/processar', 'POST', {}); _avisoTela(d.motivo ? d.motivo : d.a_buscar ? 'Buscando este vídeo no Facebook: leva uns segundos' : 'Na fila: a tela atualiza sozinha'); _spyCri = null; spyRender(); }
   catch(e){ tmxAviso('Não consegui.\n\n'+e.message); }
 }
 function spyCopiarCopy(){ var c = _spyCri; if(!c) return; try{ navigator.clipboard.writeText(c.copy || '').then(function(){ _avisoTela('Copy copiada'); }, function(){ tmxAviso('Não deu pra copiar aqui.'); }); }catch(e){ tmxAviso('Não deu pra copiar aqui.'); } }
@@ -10380,6 +10383,12 @@ function spyHtmlConfig(){
       '<div class="sp-card sp-kpi"><div class="l">Bibliotecas verificadas</div><div class="v">'+(c.ouro || 0)+'</div><div class="s">as ouro, todo dia</div></div>'+
       '<div class="sp-card sp-kpi"><div class="l">Última rodada</div><div class="v" style="font-size:20px;">'+(ult ? _spyQuando(ult.terminada_em) : '—')+'</div><div class="s">'+(ult ? (ult.erros.length ? ult.erros.length+' erro(s)' : 'sem erros') : 'ainda não rodou')+'</div></div></div>'+
     '<div class="sp-nota">Quem roda é uma tarefa agendada do Claude, com o Chrome aberto no seu Mac. O horário aqui é o que ela lê em spy_ler_regras; a tarefa em si fica no Claude.</div>'+
+    '<div class="sp-card sp-col" style="gap:10px;"><b>Vídeos que entram no acervo</b><div class="sp-pq sp-mut">Depois de cada coleta o servidor só baixa o vídeo do criativo que cumpre uma destas. O resto fica com copy, datas e link, sem o vídeo, até cumprir; dentro do criativo tem o botão Baixar este.</div>'+
+      '<div class="sp-lin" style="gap:18px;">'+
+        '<label style="display:flex;gap:8px;align-items:center;">no ar há <input type="number" min="0" value="'+(r.video_min_dias != null ? r.video_min_dias : 7)+'" style="width:70px;" onchange="spySalvarRegra(\'video_min_dias\',+this.value)"> dias ou mais</label>'+
+        '<label style="display:flex;gap:8px;align-items:center;">ou com <input type="number" min="0" value="'+(r.video_min_copias != null ? r.video_min_copias : 5)+'" style="width:70px;" onchange="spySalvarRegra(\'video_min_copias\',+this.value)"> cópias ou mais</label>'+
+        '<label style="display:flex;gap:8px;align-items:center;">até <input type="number" min="1" value="'+(r.video_teto != null ? r.video_teto : 10)+'" style="width:70px;" onchange="spySalvarRegra(\'video_teto\',+this.value)"> por biblioteca a cada coleta</label></div>'+
+      '<div class="sp-pq sp-mut">Cópias = anúncios usando o mesmo criativo (o “N anúncios usam esse criativo” do Facebook). Os mais antigos no ar entram primeiro, depois os com mais cópias. 0 em dias ou cópias deixa passar todos.</div></div>'+
     '<div class="sp-card"><b>O que o Claude faz a cada manhã</b><div class="sp-pq sp-mut" style="margin:2px 0 8px;">Em verde, a ferramenta do MCP da SCALROI que ele usa em cada passo.</div>'+
       SPY_PASSOS.map(function(p, i){ return '<div class="sp-passo"><span class="num">'+(i + 1)+'</span><div style="flex:1;min-width:0;"><b>'+p[0]+'</b> <span class="sp-mono">'+p[1]+'</span><div class="sp-pq sp-mut">'+p[2]+'</div></div></div>'; }).join('')+'</div>'+
     '<div class="sp-card sp-col" style="gap:10px;"><b>Descobertas'+(ult ? ' da última rodada · '+_spyQuando(ult.terminada_em) : '')+'</b>'+(ult && ult.resumo ? '<div style="line-height:20px;white-space:pre-wrap;">'+_spyE(ult.resumo)+'</div>' : '')+(desc || '<div class="sp-pq sp-mut">Nada novo por aqui.</div>')+'</div>'+

@@ -158,7 +158,9 @@ test('coleta sem link: os anúncios entram, a aba Anúncios lista todos, e sem o
   assert.deepStrictEqual([col.anuncios_ativos, col.criativos_ativos, col.videos_a_buscar], [2, 2, 0]);
   const d = (await chamar('GET', '/api/spy/bibliotecas/' + bib.id, { token: lucas })).dados;
   assert.deepStrictEqual(d.anuncios.map(a => [a.id, a.ativo]).sort(), [['6001', true], ['6002', true]]);
-  assert.strictEqual(d.processamento.aguardando_link, 2);
+  // 6001 está no ar desde 01/11 (cumpre a regra dos 7 dias); 6002 veio sem data e com 1 cópia: fica sem o vídeo, abaixo da regra
+  assert.deepStrictEqual([d.processamento.aguardando_link, d.processamento.abaixo_da_regra], [1, 1]);
+  assert.strictEqual(col.videos_abaixo_da_regra, 1);
   assert.strictEqual(d.busca.disponivel, false);
   const p = (await chamar('POST', '/api/spy/bibliotecas/' + bib.id + '/processar', { token: lucas })).dados;
   assert.match(p.motivo, /navegador/);

@@ -57,6 +57,8 @@ before(async () => {
   base = 'http://127.0.0.1:' + srv.address().port;
   N = Spy.criarNucleo({ dir, agora: () => relogio, midia: Spy.midiaDisco(path.join(dir, 'spy_midia')), tmpDir: path.join(dir, 'tmp'), baixarQualquer: true,
     transcritor: () => Spy.transcritorAssembly('chave-aai', base) });
+  // estes testes cobrem juntar, guardar e transcrever: a regra dos vídeos (dias/cópias/teto) tem teste próprio, aqui baixa todos
+  N.salvarRegras({ video_min_dias: 0 });
 });
 after(() => { if (srv) srv.close(); try { N.db.close(); } catch (e) {} if (dir) fs.rmSync(dir, { recursive: true, force: true }); });
 
@@ -238,7 +240,8 @@ test('rodada, busca na fala, mercado, nichos e regras', () => {
   assert.deepStrictEqual([n.palavras, n.min_anuncios], [['renda fixa', 'tesouro direto'], 15]);
   assert.strictEqual(N.salvarNicho({ nome: 'Odonto', pais: 'br' }).pais, 'BR');
   assert.throws(() => N.salvarNicho({}), /nome/);
-  assert.deepStrictEqual(N.salvarRegras({ multiplicador_escala: 4, horario_rotina: '07:40' }), { avisar_criativo_novo_em_ouro: true, biblioteca_nova_min_anuncios: 30, multiplicador_escala: 4, horario_rotina: '07:40' });
+  assert.deepStrictEqual(N.salvarRegras({ multiplicador_escala: 4, horario_rotina: '07:40' }), { avisar_criativo_novo_em_ouro: true, biblioteca_nova_min_anuncios: 30, multiplicador_escala: 4, horario_rotina: '07:40',
+    video_min_dias: 0, video_min_copias: 5, video_teto: 10 });
   assert.strictEqual(N.salvarRegras({ horario_rotina: '25:99' }).horario_rotina, '07:40', 'horário inválido não entra');
 });
 
@@ -250,6 +253,7 @@ test('sem o link na coleta: cada anúncio vira um criativo, o servidor busca o v
   const buscador = { disponivel: () => true, async buscar(ids, cb) { pedidos.push(ids.slice()); for (const id of ids) await cb(id, achados[id] || { erro: 'x' }); return { tentados: ids.length }; } };
   const Nb = Spy.criarNucleo({ dir: fs.mkdtempSync(path.join(dir, 'nb-')), agora: () => relogio, midia: Spy.midiaDisco(path.join(dir, 'mb')), tmpDir: path.join(dir, 'tmpb'), baixarQualquer: true,
     transcritor: () => Spy.transcritorAssembly('chave-aai', base), buscador });
+  Nb.salvarRegras({ video_min_dias: 0 });   // a regra dos vídeos tem teste próprio
   const b = Nb.criarBiblioteca({ tipo: 'dominio', referencia: 'busca.com.br' }).biblioteca;
   const semLink = (id, p) => ({ ad_archive_id: id, page_id: p[0], page_name: p[1], copy: 'A mesma copy em vídeos diferentes', inicio_veiculacao: '2026-11-10' });
   const r = Nb.registrarColeta(b.id, { completa: true, anuncios: [semLink('7001', PA), semLink('7002', PA), semLink('7003', PB), semLink('7004', PB)] });
@@ -278,11 +282,65 @@ test('sem o link na coleta: cada anúncio vira um criativo, o servidor busca o v
   Nb.db.close();
 });
 
+test('regra dos vídeos: só baixa quem está no ar há mais tempo ou tem mais cópias, até o teto; o resto fica no acervo sem o vídeo', async () => {
+  const D = Date.parse('2026-11-30T15:00:00Z');
+  let rel = D;
+  const dia = n => new Date(D - n * DIA).toISOString().slice(0, 10);
+  const vid = n => base + '/cdn/' + n + '?oe=FFFFFFFF';
+  const achados = { '601': { video: vid('v1.mp4') }, '602': { video: vid('v2.mp4') }, '603': { video: vid('v3.mp4') }, '604': { imagem: base + '/cdn/img1.jpg' }, '605': { imagem: base + '/cdn/img2.jpg' } };
+  const pedidos = [];
+  const buscador = { disponivel: () => true, async buscar(ids, cb) { pedidos.push(ids.slice()); for (const id of ids) await cb(id, achados[id] || { erro: 'o vídeo não apareceu' }); return { tentados: ids.length }; } };
+  const Nr = Spy.criarNucleo({ dir: fs.mkdtempSync(path.join(dir, 'nr-')), agora: () => rel, midia: Spy.midiaDisco(path.join(dir, 'mr')), tmpDir: path.join(dir, 'tmpr'), baixarQualquer: true, buscador });
+  const esperar = async () => { for (let i = 0; i < 400 && (Nr.estadoBusca().rodando || Nr.fila().fila || Nr.fila().rodando); i++) await new Promise(x => setTimeout(x, 25)); };
+  assert.deepStrictEqual([Nr.regras().video_min_dias, Nr.regras().video_min_copias, Nr.regras().video_teto], [7, 5, 10], 'o padrão: 7 dias, 5 cópias, 10 por coleta');
+  Nr.salvarRegras({ video_teto: 3 });
+  const b = Nr.criarBiblioteca({ tipo: 'dominio', referencia: 'regra.com.br' }).biblioteca;
+  const a = (id, ini, qtd) => ({ ad_archive_id: id, page_id: '1', page_name: 'P', copy: 'copy ' + id, inicio_veiculacao: dia(ini), quantidade: qtd || 1 });
+  // 601..603 no ar há 30/20/15 dias; 604 só 2 dias mas com 6 cópias; 605 e 606 novos e com poucas cópias (abaixo da regra)
+  Nr.registrarColeta(b.id, { completa: true, anuncios: [a('601', 30), a('602', 20), a('603', 15), a('604', 2, 6), a('605', 3), a('606', 1, 2)] });
+  const r = Nr.baixarDaBiblioteca(b.id, false);
+  assert.deepStrictEqual([r.a_buscar, r.abaixo_da_regra, r.esperando], [3, 2, 1], 'teto 3: os mais antigos no ar primeiro; 604 espera a próxima');
+  await esperar();
+  assert.deepStrictEqual(pedidos, [['601', '602', '603']]);
+  let det = Nr.detalheBiblioteca(b.id);
+  const de = id => det.criativos.find(c => c.id === Nr.resolver(Nr.q('SELECT criativo_id FROM spy_anuncio WHERE ad_archive_id=?').get(id).criativo_id));
+  assert.strictEqual(['601', '602', '603'].filter(id => de(id).midia_status === 'ok').length, 3);
+  assert.deepStrictEqual([de('604').regra_video, de('605').regra_video, de('606').regra_video], ['copias', '', '']);
+  assert.deepStrictEqual([det.processamento.aguardando_link, det.processamento.abaixo_da_regra], [1, 2]);
+  assert.match(det.regra_video.texto, /7 dias.*5 cópias.*até 3/);
+  // a coleta seguinte pega o que cumpre e ficou pro teto
+  Nr.baixarDaBiblioteca(b.id, false);
+  await esperar();
+  assert.deepStrictEqual(pedidos[1], ['604']);
+  det = Nr.detalheBiblioteca(b.id);
+  assert.strictEqual(de('604').midia_status, 'ok');
+  assert.deepStrictEqual(Nr.baixarDaBiblioteca(b.id, true).a_buscar, 0, 'o botão Baixar vídeos também respeita a regra');
+  // "Baixar este": passa por cima da regra e busca só ele
+  const c5 = de('605').id;
+  assert.deepStrictEqual(Nr.pedirVideo(c5).a_buscar, 1);
+  await esperar();
+  assert.deepStrictEqual(pedidos[2], ['605']);
+  assert.strictEqual(Nr.detalheCriativo(c5).midia_status, 'ok');
+  // o tempo passa: 606 faz 7 dias no ar e entra sozinho na próxima coleta
+  rel = D + 5 * DIA;
+  assert.strictEqual(Nr.baixarDaBiblioteca(b.id, false).a_buscar, 0, '6 dias: ainda não');
+  rel = D + 6 * DIA;
+  assert.strictEqual(Nr.baixarDaBiblioteca(b.id, false).a_buscar, 1);
+  await esperar();
+  assert.deepStrictEqual(pedidos[3], ['606']);
+  // o que o Facebook disse que saiu do ar não volta nem pelo botão
+  Nr.q("UPDATE spy_criativo SET midia_tentativas=3, midia_erro='o Facebook diz que este anúncio não está mais na Biblioteca (saiu do ar)' WHERE id=?").run(de('606').id);
+  assert.strictEqual(Nr.baixarDaBiblioteca(b.id, true).a_buscar, 0);
+  // os números ficam nos limites
+  assert.deepStrictEqual((({ video_min_dias, video_min_copias, video_teto }) => [video_min_dias, video_min_copias, video_teto])(Nr.salvarRegras({ video_min_dias: -3, video_min_copias: 'x', video_teto: 0 })), [0, 5, 1]);
+  Nr.db.close();
+});
+
 test('o Facebook pedindo login: a busca para e avisa', async () => {
   const buscador = { disponivel: () => true, async buscar(ids, cb) { await cb(ids[0], { login: true, erro: 'o Facebook pediu login' }); return { bloqueado: true, erro: 'O Facebook pediu login ao servidor.' }; } };
   const Nl = Spy.criarNucleo({ dir: fs.mkdtempSync(path.join(dir, 'nl-')), agora: () => relogio, midia: Spy.midiaDisco(path.join(dir, 'ml')), tmpDir: path.join(dir, 'tmpl'), buscador });
   const b = Nl.criarBiblioteca({ tipo: 'dominio', referencia: 'login.com.br' }).biblioteca;
-  Nl.registrarColeta(b.id, { anuncios: [{ ad_archive_id: '8101', copy: 'x' }] });
+  Nl.registrarColeta(b.id, { anuncios: [{ ad_archive_id: '8101', copy: 'x', inicio_veiculacao: '2026-10-01' }] });
   Nl.buscarVideos(b.id);
   for (let i = 0; i < 200 && Nl.estadoBusca().rodando; i++) await new Promise(x => setTimeout(x, 25));
   assert.ok(Nl.estadoBusca().bloqueado_em > 0);
