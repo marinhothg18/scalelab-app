@@ -1277,14 +1277,25 @@ function criarNucleo(o) {
       const bibs = q(`SELECT DISTINCT b.id, b.nicho_id FROM spy_anuncio_bib ab JOIN spy_anuncio a ON a.ad_archive_id=ab.ad_archive_id JOIN spy_biblioteca b ON b.id=ab.biblioteca_id
         WHERE a.criativo_id=? AND b.empresa=?`).all(cid, EMP);
       if (f.nicho_id && !bibs.some(b => b.nicho_id === f.nicho_id)) continue;
-      const l = linhas[r.v] || (linhas[r.v] = { valor: r.v, criativos: new Set(), ativos: 0, concorrentes: new Set(), mais_antigo: 0 });
+      const l = linhas[r.v] || (linhas[r.v] = { valor: r.v, criativos: new Set(), ativos: 0, concorrentes: new Set(), mais_antigo: 0, bibsDe: {} });
+      if (l.criativos.has(cid)) continue;   // o mesmo criativo etiquetado em duas partes conta uma vez
       l.criativos.add(cid); if (c.anuncios_ativos) l.ativos++;
       bibs.forEach(b => l.concorrentes.add(b.id));
+      l.bibsDe[cid] = bibs.map(b => b.id);
       l.mais_antigo = Math.max(l.mais_antigo, diasDe(c, agoraMs) || 0);
     }
     const lista = (dim === 'formato' ? SpyLink.FORMATOS : SpyLink.ANGULOS).map(v => linhas[v] || { valor: v, criativos: new Set(), ativos: 0, concorrentes: new Set(), mais_antigo: 0 });
-    return { dim, linhas: lista.map(l => ({ valor: l.valor, criativos: l.criativos.size, ativos: l.ativos, concorrentes: l.concorrentes.size, mais_antigo_dias: l.mais_antigo })),
+    const out = { dim, linhas: lista.map(l => ({ valor: l.valor, criativos: l.criativos.size, ativos: l.ativos, concorrentes: l.concorrentes.size, mais_antigo_dias: l.mais_antigo })),
       etiquetados: new Set(rows.map(r => resolver(r.cid))).size };
+    // clicou numa linha da tela: os criativos daquele ângulo/formato, com a biblioteca (concorrente) de cada um
+    if (f.valor) {
+      const l = linhas[f.valor], nomes = {};
+      q('SELECT id, nome FROM spy_biblioteca WHERE empresa=?').all(EMP).forEach(b => { nomes[b.id] = b.nome; });
+      out.valor = f.valor;
+      out.criativos = l ? [...l.criativos].map(cid => Object.assign(cartao(q('SELECT * FROM spy_criativo WHERE id=?').get(cid), agoraMs),
+        { bibliotecas: (l.bibsDe[cid] || []).map(id => ({ id, nome: nomes[id] || id })) })) : [];
+    }
+    return out;
   }
   function kpis() {
     const meus = `SELECT DISTINCT a.criativo_id FROM spy_anuncio a JOIN spy_anuncio_bib ab ON ab.ad_archive_id=a.ad_archive_id JOIN spy_biblioteca b ON b.id=ab.biblioteca_id WHERE b.empresa=?`;
@@ -1504,7 +1515,7 @@ module.exports = function montarSpy(d) {
     N.cfgGravar('vigiar', JSON.stringify(v)); return { vigiar: v };
   }));
   app.get('/api/spy/busca', authUsuario, (req, res) => resp(res, () => N.buscar({ texto: req.query.q, parte: req.query.parte, incluir_parados: req.query.parados === '1' })));
-  app.get('/api/spy/mercado', authUsuario, (req, res) => resp(res, () => N.mercado({ dim: req.query.dim, nicho_id: req.query.nicho || '' })));
+  app.get('/api/spy/mercado', authUsuario, (req, res) => resp(res, () => N.mercado({ dim: req.query.dim, nicho_id: req.query.nicho || '', valor: String(req.query.valor || '') })));
   // ══ Configurações: só o Thiago ══
   app.get('/api/spy/config', soDono, (req, res) => resp(res, () => ({ nichos: N.nichos(), regras: N.regras(), rodadas: N.rodadas(30),
     sugeridas: N.listarBibliotecas({ status: 'sugerida' }), ouro: N.listarBibliotecas({ ouro: true }).length })));

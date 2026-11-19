@@ -184,6 +184,7 @@ test('MCP configura (biblioteca, nicho, sugestão), registra funil e rodada; o a
   const busca = (await chamar('GET', '/api/spy/busca?q=tchau', { token: lucas })).dados;
   assert.strictEqual(busca.resultados[0].inicio_s, 0.9);
   assert.strictEqual((await chamar('GET', '/api/spy/mercado?dim=angulo', { token: lucas })).dados.linhas.find(l => l.valor === 'Prova').criativos, 1);
+  assert.strictEqual((await chamar('GET', '/api/spy/mercado?dim=angulo&valor=' + encodeURIComponent('Prova'), { token: lucas })).dados.criativos.length, 1, 'a linha clicada abre os criativos dela');
 });
 
 test('coleta sem link: os anúncios entram, a aba Anúncios lista todos, e sem o navegador a tela avisa', async () => {

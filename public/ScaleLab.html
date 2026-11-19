@@ -4175,6 +4175,7 @@ body.light-mode #spy-app{--sp-roxo:#7C3AED;--sp-verde:#16A34A;--sp-verm:#DC2626;
 #spy-app .sp-serie .rot{font-size:11.5px;font-weight:800;fill:var(--sp-ink)}
 #spy-app .sp-serie .alvo{fill:transparent}
 /* cartão do criativo: miniatura de vídeo */
+#spy-app tr.sp-clic{cursor:pointer}#spy-app tr.sp-clic:hover td,#spy-app tr.sp-clic:focus-visible td{background:var(--sp-soft)}#spy-app tr.sp-clic:focus-visible{outline:2px solid var(--sp-verde);outline-offset:-2px}
 #spy-app .sp-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
 #spy-app .sp-cc{background:var(--sp-card);border:1px solid var(--sp-line);border-radius:14px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0;color:inherit;font:inherit;transition:transform .14s,box-shadow .14s,border-color .14s}
 #spy-app .sp-cc:hover{border-color:#22D94A;box-shadow:0 8px 22px rgba(15,23,42,.18);transform:translateY(-2px)}
@@ -9822,8 +9823,8 @@ function _spyHorasAtras(ts){
 // ⚙ Configurações (rotina, nichos e regras) é só da conta do Thiago, e o servidor confere.
 // ══════════════════════════════════════════════
 var _spy = { aba:'bibliotecas', vista:'lista', bib:null, cri:null, nicho:'*', dias:7, bibAba:'criativos', fAng:'', fSt:'', ord:'ads',
-  cfgAba:'rotina', q:'', parte:'todas', parados:true, mdim:'angulo', mnicho:'', funil:null, volta:null };
-var _spyPainel = null, _spyDet = null, _spyCri = null, _spyFunis = null, _spyCfg = null, _spyBusca = null, _spyMerc = null, _spyPollT = null;
+  cfgAba:'rotina', q:'', parte:'todas', parados:true, mdim:'angulo', mnicho:'', mval:'', mbib:'', mst:'', mord:'ads', funil:null, volta:null };
+var _spyPainel = null, _spyDet = null, _spyCri = null, _spyFunis = null, _spyCfg = null, _spyBusca = null, _spyMerc = null, _spyMercCri = null, _spyPollT = null;
 var SPY_ST = { novo:['Novo','p-novo','#16A34A'], escalando:['Escalando','p-esc','#EA580C'], estavel:['Estável','p-est','rgba(15,23,42,.8)'], parou:['Parou','p-par','#DC2626'] };
 var SPY_BIB = { na_fila:['Na fila','p-fila'], coletada:['Coletada','p-ok'], erro:['Erro','p-erro'], sugerida:['Sugerida','p-sug'], ignorada:['Ignorada','p-fila'] };
 var SPY_PARTE = { gancho:['Gancho','#7C3AED'], corpo:['Corpo','#0284C7'], cta:['CTA','#16A34A'] };
@@ -9867,7 +9868,7 @@ function spyAbrir(){
   app.style.display = '';
   spyRender();
 }
-function spyIr(aba){ _spy.aba = aba; _spy.vista = 'lista'; clearTimeout(_spyPollT); spyRender(); window.scrollTo(0,0); }
+function spyIr(aba){ if(aba === 'mercado'){ _spy.mval = ''; _spy.mbib = ''; } _spy.aba = aba; _spy.vista = 'lista'; clearTimeout(_spyPollT); spyRender(); window.scrollTo(0,0); }
 function spyRender(){
   var app = _spyEl(); if(!app) return;
   var abas = [['bibliotecas','Bibliotecas'],['funis','Funis vigiados'],['busca','Busca na fala'],['mercado','Mercado × Eu']];
@@ -10125,9 +10126,9 @@ async function spyProcessarBib(id){
 }
 
 // ══ Criativo ══
-function spyAbrirCri(id){ _spy.volta = { aba:_spy.aba }; if(_spy.aba !== 'busca') _spy.aba = 'bibliotecas';
+function spyAbrirCri(id){ _spy.volta = { aba:_spy.aba }; if(_spy.aba !== 'busca' && _spy.aba !== 'mercado') _spy.aba = 'bibliotecas';
   _spy.vista = 'criativo'; _spy.cri = id; _spyCri = null; spyRender(); window.scrollTo(0,0); }
-function spyVoltar(){ var v = _spy.volta; if(v && v.aba === 'busca'){ spyIr('busca'); return; } if(_spy.bib){ _spy.aba = 'bibliotecas'; _spy.vista = 'biblioteca'; spyRender(); } else spyIr('bibliotecas'); }
+function spyVoltar(){ var v = _spy.volta; if(v && v.aba === 'busca'){ spyIr('busca'); return; } if(v && v.aba === 'mercado' && _spy.mval){ _spy.aba = 'mercado'; _spy.vista = 'lista'; spyRender(); window.scrollTo(0,0); return; } if(_spy.bib){ _spy.aba = 'bibliotecas'; _spy.vista = 'biblioteca'; spyRender(); } else spyIr('bibliotecas'); }
 function spyVistaCriativo(v){
   var id = _spy.cri;
   if(!_spyCri) _spyCarregando(v, 'Carregando o criativo…');
@@ -10210,7 +10211,7 @@ function spyHtmlCriativo(c){
       '<td class="sp-pq sp-mut">'+_spyE((a.plataformas || []).join(', '))+'</td><td><a href="https://www.facebook.com/ads/library/?id='+encodeURIComponent(a.ad_archive_id)+'" target="_blank" rel="noopener" style="color:var(--sp-verde);">ver</a></td></tr>';
   }).join('');
   var bibNome = ((c.bibliotecas || []).find(function(b){ return b.id === _spy.bib; }) || (c.bibliotecas || [])[0] || {}).nome || 'Biblioteca';
-  var volta = _spy.volta && _spy.volta.aba === 'busca' ? '<a onclick="spyVoltar()">Busca na fala</a>' : '<a onclick="spyIr(\'bibliotecas\')">Bibliotecas</a> › <a onclick="spyVoltar()">'+_spyE(bibNome)+'</a>';
+  var volta = _spy.volta && _spy.volta.aba === 'busca' ? '<a onclick="spyVoltar()">Busca na fala</a>' : _spy.volta && _spy.volta.aba === 'mercado' && _spy.mval ? '<a onclick="spyIr(\'mercado\')">Mercado × Eu</a> › <a onclick="spyVoltar()">'+_spyE(_spy.mval)+'</a>' : '<a onclick="spyIr(\'bibliotecas\')">Bibliotecas</a> › <a onclick="spyVoltar()">'+_spyE(bibNome)+'</a>';
   return '<div class="sp-col">'+
     '<div class="sp-lin sp-entre" style="align-items:flex-start;"><div style="flex:999 1 400px;min-width:0;"><div class="sp-crumb">'+volta+' › criativo</div>'+
       '<h2 class="sp-tit" style="font-size:19px;line-height:25px;">“'+_spyE((c.fala || c.copy || '(sem texto)').slice(0, 120))+((c.fala || c.copy || '').length > 120 ? '…' : '')+'”</h2>'+
@@ -10320,6 +10321,7 @@ async function spyBuscar(){
 
 // ══ Mercado × Eu (o lado do mercado; o lado "Eu" entra quando os anúncios da TMX forem etiquetados) ══
 function spyVistaMercado(v){
+  if(_spy.mval) return spyVistaMercCri(v);
   if(!_spyMerc) _spyCarregando(v); else v.innerHTML = spyHtmlMercado();
   var ped = function(){ return _spyJson('/api/spy/mercado?dim='+_spy.mdim+'&nicho='+encodeURIComponent(_spy.mnicho)); };
   (_spyPainel ? ped() : spyCarregarPainel().then(ped)).then(function(d){ _spyMerc = d; if(_spy.aba === 'mercado' && _spyVista()) _spyVista().innerHTML = spyHtmlMercado(); }).catch(function(e){ if(!_spyMerc) _spyFalhou(v, e); });
@@ -10331,10 +10333,38 @@ function spyHtmlMercado(){
       '<select onchange="_spy.mnicho=this.value;_spyMerc=null;spyRender()"><option value="">Todos os nichos</option>'+((_spyPainel && _spyPainel.nichos) || []).map(function(n){ return '<option value="'+_spyE(n.id)+'"'+(_spy.mnicho === n.id ? ' selected' : '')+'>'+_spyE(n.nome)+'</option>'; }).join('')+'</select>'+
       '<span class="sp-pq sp-mut">'+d.etiquetados+' criativo(s) etiquetado(s)</span></div>'+
     '<div class="sp-tw"><table><thead><tr><th>'+(dim === 'angulo' ? 'Ângulo' : 'Formato')+'</th><th>Mercado</th><th></th><th>Concorrentes</th><th>Mais antigo no ar</th><th>Eu</th></tr></thead><tbody>'+
-      d.linhas.map(function(l){ return '<tr><td><b>'+_spyE(l.valor)+'</b></td><td style="white-space:nowrap;">'+(l.criativos ? l.criativos+' criativos · '+l.ativos+' no ar' : '<span class="sp-mut">—</span>')+'</td>'+
+      d.linhas.map(function(l, i){ return '<tr'+(l.criativos ? ' class="sp-clic" tabindex="0" title="Ver os '+l.criativos+' criativos" onclick="spyMercAbrir('+i+')" onkeydown="if(event.key===\'Enter\')spyMercAbrir('+i+')"' : '')+'><td>'+(l.criativos ? '<a class="sp-nome">'+_spyE(l.valor)+' ›</a>' : '<b>'+_spyE(l.valor)+'</b>')+'</td><td style="white-space:nowrap;">'+(l.criativos ? l.criativos+' criativos · '+l.ativos+' no ar' : '<span class="sp-mut">—</span>')+'</td>'+
         '<td style="width:30%;min-width:120px;"><div style="height:10px;border-radius:6px;background:var(--sp-soft);"><i style="display:block;height:10px;border-radius:6px;background:'+(dim === 'angulo' ? '#7C3AED' : '#0284C7')+';width:'+Math.round(l.criativos / mx * 100)+'%"></i></div></td>'+
         '<td>'+(l.concorrentes || '<span class="sp-mut">—</span>')+'</td><td>'+(l.criativos ? l.mais_antigo_dias+' dias' : '<span class="sp-mut">—</span>')+'</td><td class="sp-pq sp-mut">em breve</td></tr>'; }).join('')+
     '</tbody></table></div></div>';
+}
+function spyMercAbrir(i){ var l = _spyMerc && _spyMerc.linhas[i]; if(!l || !l.criativos) return; _spy.mval = l.valor; _spy.mbib = ''; _spy.mst = ''; spyRender(); window.scrollTo(0,0); }
+function _spyMercChave(){ return [_spy.mdim, _spy.mnicho, _spy.mval].join('|'); }
+function spyVistaMercCri(v){
+  var chave = _spyMercChave();
+  if(_spyMercCri && _spyMercCri.chave === chave) v.innerHTML = spyHtmlMercCri(); else _spyCarregando(v, 'Carregando os criativos…');
+  var ped = function(){ return _spyJson('/api/spy/mercado?dim='+_spy.mdim+'&nicho='+encodeURIComponent(_spy.mnicho)+'&valor='+encodeURIComponent(_spy.mval)); };
+  (_spyPainel ? ped() : spyCarregarPainel().then(ped)).then(function(d){
+    if(_spy.aba !== 'mercado' || _spy.vista === 'criativo' || _spyMercChave() !== chave || !_spyVista()) return;
+    d.chave = chave; _spyMercCri = d; _spyVista().innerHTML = spyHtmlMercCri();
+  }).catch(function(e){ if(!_spyMercCri || _spyMercCri.chave !== chave) _spyFalhou(v, e); });
+}
+function spyMercFiltro(k, val){ _spy[k] = val; if(_spyMercCri && _spyVista()) _spyVista().innerHTML = spyHtmlMercCri(); }
+function spyHtmlMercCri(){
+  var d = _spyMercCri, todos = d.criativos || [], dim = d.dim, n = _spy.mnicho ? _spyNicho(_spy.mnicho) : null;
+  var bibs = {}; todos.forEach(function(c){ (c.bibliotecas || []).forEach(function(b){ bibs[b.id] = bibs[b.id] || { nome:b.nome, n:0 }; bibs[b.id].n++; }); });
+  var ids = Object.keys(bibs).sort(function(a, b){ return bibs[b].n - bibs[a].n; });
+  var cs = todos.filter(function(c){ return (!_spy.mbib || (c.bibliotecas || []).some(function(b){ return b.id === _spy.mbib; })) && (!_spy.mst || c.status === _spy.mst); });
+  cs.sort(function(a, c){ return _spy.mord === 'antigo' ? (c.dias_no_ar||0) - (a.dias_no_ar||0) : _spy.mord === 'novo' ? String(c.inicio||'').localeCompare(String(a.inicio||'')) : (c.anuncios_ativos - a.anuncios_ativos) || ((c.dias_no_ar||0) - (a.dias_no_ar||0)); });
+  var noAr = todos.filter(function(c){ return c.anuncios_ativos > 0; }).length;
+  return '<div class="sp-col"><div><div class="sp-crumb">Ad Library › Spy › <a onclick="spyIr(\'mercado\')">Mercado × Eu</a></div><h2 class="sp-tit">'+_spyE(d.valor)+'</h2>'+
+      '<div class="sp-sub">'+(dim === 'angulo' ? 'Ângulo' : 'Formato')+' · '+todos.length+' criativo(s) · '+noAr+' no ar · '+ids.length+' concorrente(s)'+(n ? ' · Nicho: '+_spyE(n.nome) : '')+'</div></div>'+
+    '<div class="sp-lin">'+
+      '<select aria-label="Filtrar concorrente" onchange="spyMercFiltro(\'mbib\',this.value)"><option value="">Todos os concorrentes</option>'+ids.map(function(id){ return '<option value="'+_spyE(id)+'"'+(_spy.mbib === id ? ' selected' : '')+'>'+_spyE(bibs[id].nome)+' ('+bibs[id].n+')</option>'; }).join('')+'</select>'+
+      '<select aria-label="Filtrar status" onchange="spyMercFiltro(\'mst\',this.value)"><option value="">Todos os status</option>'+['novo','escalando','estavel','parou'].map(function(s){ return '<option value="'+s+'"'+(_spy.mst === s ? ' selected' : '')+'>'+SPY_ST[s][0]+'</option>'; }).join('')+'</select>'+
+      '<select aria-label="Ordenar" onchange="spyMercFiltro(\'mord\',this.value)">'+[['ads','Mais anúncios'],['antigo','Há mais tempo no ar'],['novo','Mais novos']].map(function(o){ return '<option value="'+o[0]+'"'+(_spy.mord === o[0] ? ' selected' : '')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
+      '<span class="sp-pq sp-mut">'+cs.length+' na tela</span></div>'+
+    (cs.length ? '<div class="sp-grade">'+cs.map(spyCartao).join('')+'</div>' : '<div class="sp-vazio">Nenhum criativo com esses filtros.</div>')+'</div>';
 }
 
 // ══ ⚙ Configurações (só a conta do Thiago; o servidor confere) ══

@@ -236,6 +236,14 @@ test('rodada, busca na fala, mercado, nichos e regras', () => {
   const m = N.mercado({ dim: 'angulo' });
   assert.strictEqual(m.linhas.find(l => l.valor === 'Prova').criativos, 1);
   assert.strictEqual(m.linhas.length, SpyLink.ANGULOS.length);
+  assert.strictEqual(m.criativos, undefined, 'sem linha escolhida não manda os criativos');
+  // clicou na linha "Prova" da tela: vêm os criativos dela, cada um com a biblioteca (concorrente)
+  const mp = N.mercado({ dim: 'angulo', valor: 'Prova' });
+  assert.strictEqual(mp.valor, 'Prova');
+  assert.strictEqual(mp.criativos.length, 1);
+  assert.ok(mp.criativos[0].etiquetas.angulo.some(e => e.valor === 'Prova'));
+  assert.ok(mp.criativos[0].bibliotecas.length >= 1 && mp.criativos[0].bibliotecas.every(b => b.id && b.nome));
+  assert.deepStrictEqual(N.mercado({ dim: 'angulo', valor: 'Inimigo' }).criativos, []);
   const n = N.salvarNicho({ id: 'nic-investimentos', palavras: ['renda fixa', 'renda fixa', ' tesouro direto '], min_anuncios: 15 });
   assert.deepStrictEqual([n.palavras, n.min_anuncios], [['renda fixa', 'tesouro direto'], 15]);
   assert.strictEqual(N.salvarNicho({ nome: 'Odonto', pais: 'br' }).pais, 'BR');
