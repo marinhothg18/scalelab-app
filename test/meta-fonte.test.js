@@ -229,11 +229,18 @@ test('Por Anúncio pela Meta: junta pelo nome, com as vendas da SCALROI e sem fi
   assert.ok(det.dados.pixel.d7 && det.dados.periodos.d7.inv === 62.1);
 });
 
-test('Tempo Real pela Meta: cada venda de hoje vira um evento (19/11)', async () => {
+test('Tempo Real pela Meta: cada venda e cada checkout de hoje viram um evento (19/11)', async () => {
+  // uma pessoa chega no checkout vinda do AD226.1, duas vezes (conta uma), pelo pixel da SCALROI
+  const ck = () => chamar('POST', '/api/funil/evento', { corpo: { id: 'ck1', funil: 'f1', etapa: 'e1', tipo: 'checkout', pg: 'site.com/checkout', sid: 'sck1',
+    aqui: { utm_source: 'FB', utm_campaign: 'CBO 1-1-3 | CONCURSO | ' + C.cbo, utm_content: 'AD226.1 | TESTE' } } });
+  await ck(); await ck(); await espera(300);
   const r = await chamar('GET', '/api/metricas/meta/tempo-real?x=1', { token: dono });
   assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
-  assert.deepStrictEqual([r.dados.kpis.pedidos.aprovadas, Math.round(r.dados.kpis.investimento * 100) / 100, r.dados.eventos.length], [2, 112.1, 2]);
-  assert.ok(r.dados.eventos.every(e => e.tipo === 'venda' && e.momento));
+  assert.deepStrictEqual([r.dados.kpis.pedidos.aprovadas, Math.round(r.dados.kpis.investimento * 100) / 100, r.dados.eventos.length], [2, 112.1, 3]);
+  assert.deepStrictEqual(r.dados.eventos.map(e => e.tipo).sort(), ['ic', 'venda', 'venda']);
+  assert.ok(r.dados.eventos.some(e => e.tipo === 'ic' && e.anuncio === 'AD226.1 | TESTE' && e.momento));
+  // a Meta falsa não conta IC: o número de cima vem do pixel da SCALROI
+  assert.deepStrictEqual([r.dados.kpis.ics, r.dados.kpis.icsDoPixel], [1, true]);
   assert.ok(r.dados.eventos.some(e => e.anuncio === 'AD226.1 | TESTE' && Math.round(e.valor * 100) === 83976));
   assert.ok(r.dados.eventos.some(e => e.anuncio === 'sem anúncio'));
 });

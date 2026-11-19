@@ -5816,6 +5816,12 @@ function _metaPanorama(db, de, ate, projeto, filtros, u) {
     if (pj && porProj[pj] !== undefined) porProj[pj] += g;
   });
   tot.lucro = -tot.investimento;
+  // checkouts: os da Meta; se ela não contou nenhum (pixel sem o evento de checkout), as pessoas que chegaram no checkout
+  // pelo pixel da SCALROI (sem filtro de conta: o pixel não sabe a conta)
+  if (!(tot.ics > 0) && !fil.conta && projeto !== _META_NENHUM) {
+    const n = _metaChecks(db, de, ate, projeto).length;
+    if (n) { tot.ics = n; tot.icsDoPixel = true; }
+  }
   // o gasto de cada hora (os gráficos do Resumo): só quando as horas fecham com o total dos dias
   const hora = Array(24).fill(0);
   _q('SELECT hora, conta, id, gasto FROM meta_camp_hora WHERE dia BETWEEN ? AND ?').all(de, ate).forEach(h => {
@@ -5908,15 +5914,32 @@ function _metaAnuncioLinhas(nome, de, ate, efetivo) {
   });
   return s;
 }
-// Tempo Real: cada venda paga de hoje vira um evento, a mais nova primeiro (a Utmify só via a diferença a cada 45 s)
+// Tempo Real: cada venda paga de hoje e cada pessoa que chegou no checkout (pelo pixel da SCALROI) vira um evento,
+// o mais novo primeiro. Na Utmify o "Acontecendo agora" mostrava os dois; a Meta não manda o checkout um por um.
+function _metaChecks(db, de, ate, projeto) {
+  const projDoFunil = {};
+  (Array.isArray(db.store[KEY_FUNIS]) ? db.store[KEY_FUNIS] : []).forEach(f => { if (f && f.id) projDoFunil[f.id] = String(f.projeto || ''); });
+  const per = _periodoMs(de, ate), vistos = new Set(), out = [];
+  _q('SELECT visitante, funil, cont, camp, inicio, fim FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0 AND checkout=1 ORDER BY inicio DESC').all(per.ini, per.fim).forEach(x => {
+    if (vistos.has(x.visitante)) return;   // a mesma pessoa voltando ao checkout conta uma vez
+    const pj = projDoFunil[x.funil] || '';
+    if (projeto && _nrm(pj) !== _nrm(projeto)) return;
+    vistos.add(x.visitante);
+    out.push({ momento: new Date(Number(x.fim || x.inicio)).toISOString(), tipo: 'ic', qtd: 1, valor: 0,
+      anuncio: _semId(_contSemId(x.cont)) || _semId(x.camp) || 'sem anúncio', dashboard: projeto || pj });
+  });
+  return out;
+}
+const _metaChecksHoje = (db, projeto) => _metaChecks(db, _diaBR(Date.now()), _diaBR(Date.now()), projeto);
 function _metaEventosHoje(db, projeto) {
   const doPed = projeto ? _pedidoDoProjetoFn(db, projeto) : null, porPed = {};
   _q('SELECT id, pedido, valor, produto, funil, cred_camp, cred_cont, em FROM pedidos WHERE pago=1 AND estorno=0 AND dia=? ORDER BY em DESC').all(_diaBR(Date.now())).forEach(p => {
     const k = p.pedido || p.id;
     if (!porPed[k] && (!doPed || doPed(p))) porPed[k] = p;
   });
-  return Object.values(porPed).sort((a, b) => b.em - a.em).slice(0, 60).map(p => ({ momento: new Date(Number(p.em)).toISOString(), tipo: 'venda', qtd: 1,
+  const vendas = Object.values(porPed).map(p => ({ momento: new Date(Number(p.em)).toISOString(), tipo: 'venda', qtd: 1,
     valor: Number(p.valor) || 0, anuncio: _semId(p.cred_cont) || _semId(p.cred_camp) || 'sem anúncio', dashboard: projeto || String(p.produto || '') }));
+  return vendas.concat(_metaChecksHoje(db, projeto)).sort((a, b) => (a.momento < b.momento ? 1 : a.momento > b.momento ? -1 : 0)).slice(0, 60);
 }
 app.get('/api/metricas/meta/projetos', authUsuario, (req, res) => {
   try { res.json({ ok: true, projetos: _metaProjetosDaFonte(readDB(), req.user).map(p => ({ id: p, nome: p })) }); }
@@ -6020,7 +6043,9 @@ app.get('/api/metricas/meta/tempo-real', authUsuario, (req, res) => {
   try {
     if (!_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const db = readDB(), projeto = String(req.query.projeto || '').slice(0, 80), hoje = _diaBR(Date.now());
-    res.json(Object.assign({ eventos: _metaEventosHoje(db, projeto) }, _panoramaComTmx(_metaPanorama(db, hoje, hoje, projeto, {}, req.user), hoje, hoje, '', {}, { nomeProj: projeto, meta: true })));
+    // os ICs de cima: os da Meta ou, sem nenhum, os do pixel da SCALROI (o _metaPanorama já decide)
+    const pano = _panoramaComTmx(_metaPanorama(db, hoje, hoje, projeto, {}, req.user), hoje, hoje, '', {}, { nomeProj: projeto, meta: true });
+    res.json(Object.assign({ eventos: _metaEventosHoje(db, projeto) }, pano));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
