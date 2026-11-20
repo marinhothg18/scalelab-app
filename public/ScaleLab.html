@@ -32202,7 +32202,18 @@ var vsConv={};
 // abandono, não a curva de quem continua. Tratar um como o outro dava uma curva
 // que despencava e depois SUBIA no fim (o pico de quem assistiu tudo).
 // A retenção real é a soma de todo mundo que parou naquele segundo ou depois.
-function vsCurvaDe(bruto){
+// total: quantas pessoas deram play (plays únicos), quando se sabe. Por origem a VTurb manda o segundo em que cada
+// pessoa parou; com pouca gente vinha tudo "1" e parecia curva pronta: o AD302.HK2 (8 plays) saía uma linha reta em
+// 100% (20/11/2026). Se os pontos somam o total e o primeiro é bem menor que ele, é onde cada um parou.
+// por origem, com pouca gente: em degraus (reta até alguém sair, e desce quando a pessoa sai), senão a linha passava o
+// pitch em 35% e a tabela dizia 25%
+function vsDegraus(c){
+  if(!c || c.length < 2) return c;
+  var o = [c[0]];
+  for(var i = 1; i < c.length; i++){ o.push({ t:c[i-1].t, y:c[i].y, n:c[i].n }); o.push(c[i]); }
+  return o;
+}
+function vsCurvaDe(bruto, total){
   var pts=(bruto||[]).map(function(x){ return { t:Number(x.timed)||0, n:Number(x.total_users)||0 }; })
     .sort(function(a,b){ return a.t-b.t; });
   if(!pts.length) return [];
@@ -32214,16 +32225,21 @@ function vsCurvaDe(bruto){
   for(var i=1;i<pts.length;i++){
     if(pts[i].n > pts[i-1].n*1.02 + 1){ ehSobrevivencia = false; break; }
   }
+  var soma = pts.reduce(function(a, p){ return a + p.n; }, 0);
+  if(total > 0 && pts.length > 1 && Math.abs(soma - total) <= Math.max(1, total*0.1) && pts[0].n < total*0.9) ehSobrevivencia = false;
   if(ehSobrevivencia){
     var topo=pts[0].n||1;
     return pts.map(function(p){ return { t:p.t, y:Math.min(100,p.n/topo*100), n:p.n }; });
   }
 
-  // histograma: soma de trás pra frente
+  // histograma: soma de trás pra frente (quem ainda assistia em cada segundo); começa em 100% no zero
   var acum=0, saida=[];
   for(var j=pts.length-1;j>=0;j--){ acum+=pts[j].n; saida.unshift({ t:pts[j].t, n:acum }); }
-  var total=saida[0].n||1;
-  return saida.map(function(p){ return { t:p.t, y:p.n/total*100, n:p.n }; });
+  if(saida[0].t > 0) saida.unshift({ t:0, n:saida[0].n });
+  var tot=saida[0].n||1;
+  var curva = saida.map(function(p){ return { t:p.t, y:p.n/tot*100, n:p.n }; });
+  curva.hist = true;
+  return curva;
 }
 
 function vsDesenhar(){
@@ -32625,7 +32641,10 @@ function vsOrigBuscarCurvas(){
   fetch('/api/vturb/origem-curvas?player='+encodeURIComponent(v.id)+'&campo='+vsOrigCampo+'&de='+p.de+'&ate='+p.ate+
         '&nomes='+encodeURIComponent(JSON.stringify(falta)))
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){ ((d && d.curvas) || []).forEach(function(c){ cur[c.nome] = vsCurvaDe(c.pontos); }); fim(); })
+    .then(function(d){
+      var dl = vsOrigDados[k], pu = {};
+      ((dl && dl.linhas) || []).forEach(function(l){ pu[l.nome] = l.playsUnicos; });
+      ((d && d.curvas) || []).forEach(function(c){ var cv = vsCurvaDe(c.pontos, pu[c.nome]); cur[c.nome] = cv.hist ? vsDegraus(cv) : cv; }); fim(); })
     .catch(fim);
 }
 function vsOrigMarcar(i){
