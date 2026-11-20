@@ -37313,12 +37313,12 @@ function fnNoCorpo(n, b, vt){
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Conversão', pc(b.conversao));
   } else if(n.tipo === 'split'){
     sub = b.slug ? 'link /r/'+b.slug+(b.nomeTeste ? ' · '+b.nomeTeste : '') : 'escolha o teste no painel ao lado';
-    // "Vendas pelo link" é a conta do teste A/B; "Vendas na página" junta quem chegou na página
-    // da variante por outro caminho (da VSL, por exemplo), que não é venda do link
+    // "Vendas pelo link" é a conta do teste A/B; "Vendas na página" junta quem comprou na página da
+    // variante e não entra nessa conta (veio de anúncio, ou chegou por outro caminho)
     var vLink = b.vendasOrigem != null ? b.vendasOrigem : b.vendas, vFora = b.vendasForaDoLink || 0;
     grade = m('Cliques no link', fnNum(b.cliques)) + m('Chegaram', fnNum(b.pessoas)) +
       m('Checkouts', fnNum(b.checkout)) + m('Vendas pelo link', fnNum(vLink), vLink ? verde : '', 'igual ao teste A/B') +
-      (vFora ? m('Vendas na página', fnNum(b.vendas), '', fnNum(vFora)+' não passaram pelo link') : '');
+      (vFora ? m('Vendas na página', fnNum(b.vendas), '', fnNum(vFora)+' fora da conta do teste') : '');
     if(b.divisao && b.divisao.length) pe = '<div class="fn-div" style="flex-direction:column;align-items:stretch;gap:3px">'+b.divisao.map(function(d){
       var vl = d.vendasLink != null ? d.vendasLink : (d.vendas||0);
       return '<span style="display:flex;justify-content:space-between;gap:8px"><span>'+fnEsc(fnNomeVariante(d))+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'+
@@ -37328,7 +37328,7 @@ function fnNoCorpo(n, b, vt){
       var paginasFora = (b.divisao||[]).filter(function(d){ return !d.temBloco && (d.vendas||0) > (d.vendasLink||0); }).map(function(d){ return fnEsc(fnNomeVariante(d)); }).join(' e ');
       var ents = lstFn(b.foraEntradas);
       pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">'+fnNum(vFora)+' venda'+(vFora===1?'':'s')+' na página'+(paginasFora ? ' '+paginasFora : '')+
-        ' de quem não passou pelo link: '+(vFora===1?'veio':'vieram')+' de '+lstFn(b.foraOrigens)+(ents ? ', entrando por '+ents : '')+'. '+(vFora===1?'Conta':'Contam')+' lá, não no teste.</div>';
+        ' fora da conta do teste A/B: '+(vFora===1?'veio':'vieram')+' de '+lstFn(b.foraOrigens)+(ents ? ', entrando por '+ents+' sem ver o vídeo' : '')+'.</div>';
     }
     if(b.vendasDeAnuncio || b.pessoasDeAnuncio) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">'+
       fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link também vieram de anúncio'+
@@ -38344,7 +38344,7 @@ function mpLeitura(n){
     h += linha('Vendas pelo link', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendasOrigem)+'</b>');
     if(b.faturamentoLink != null) h += linha('Faturamento pelo link', v2Din(b.faturamentoLink));
     if(b.pessoas) h += linha('Conversão pelo link', v2Pct(b.vendasOrigem / b.pessoas, 2));
-    if(b.vendasForaDoLink) h += linha('Vendas na página', fnNum(b.vendas)+' ('+fnNum(b.vendasForaDoLink)+' sem passar pelo link)') + (b.faturamento != null ? linha('Faturamento na página', v2Din(b.faturamento)) : '');
+    if(b.vendasForaDoLink) h += linha('Vendas na página', fnNum(b.vendas)+' ('+fnNum(b.vendasForaDoLink)+' fora da conta do teste)') + (b.faturamento != null ? linha('Faturamento na página', v2Din(b.faturamento)) : '');
   } else {
     if(b.vendas != null) h += linha('Vendas', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendas)+'</b>');
     if(b.faturamento != null) h += linha('Faturamento', v2Din(b.faturamento));

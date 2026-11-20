@@ -20020,8 +20020,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         let path = ''; try { const ex = JSON.parse(x.extra || '{}') || {}; path = ex.dest || (String(ex.destino || '').indexOf('/') > 0 ? _normPg(ex.destino) : ''); } catch (er) {}
         (ckCompra[x.visitante] = ckCompra[x.visitante] || []).push({ em: x.em, path });
       });
-      _q(`SELECT visitante, pg, etapa, em FROM paginas WHERE em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
-        const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0, pg: x.pg });
+      _q(`SELECT visitante, pg, etapa, em, video FROM paginas WHERE em <= ? AND visitante IN (` + _ph(lote.length) + `)`).all(per.fim + 3600000, ...lote).forEach(x => {
+        const et = _etapaDaLinha(esc, x.pg, x.etapa); if (et) (evDe[x.visitante] = evDe[x.visitante] || []).push({ em: x.em, et, ck: 0, pg: x.pg, video: x.video || 0 });
       });
     }
     // A venda é da página onde a pessoa clicou em comprar: quem passou pela 697
@@ -20033,10 +20033,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const vendaDaEtapa = {}, vendaEntrada = {}, salvasDaEtapa = {}, levouDaEtapa = {};
     const donaDe = new Map();   // venda -> página dona (o Obrigado diz de qual página veio cada compra)
     const paginaDe = new Map(); // venda -> a página exata (o bloco do teste separa as variantes dele)
-    // quem passou pelo link do teste (/r/<slug>) nos 7 dias antes da compra: a mesma base da tela do teste
-    const slugDoBloco = {}; (f.etapas || []).forEach(e => { if (e.tipo === 'split' && e.slug) slugDoBloco[e.id] = String(e.slug).toLowerCase(); });
-    const _passouPeloLink = (v, bloco, em) => !!slugDoBloco[bloco] && !!_q('SELECT 1 FROM sessoes WHERE visitante=? AND lower(teste)=? AND inicio BETWEEN ? AND ? LIMIT 1')
-      .get(v, slugDoBloco[bloco], (em || 0) - 7 * 86400000, (em || 0) + 10 * 60000);
+    // quanto da VSL de entrada a pessoa precisa ter assistido pra venda feita na variante do teste ser da VSL
+    const VIU_VSL_SEG = 60;
     vendas.forEach(o => {
       if (!o.visitante) return;
       const lim = (o.em || 0) + 10 * 60000, desde = (o.em || 0) - 7 * 86400000;
@@ -20049,12 +20047,14 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       const entrada = pags.length ? pags[0].et : (cliques.length ? cliques[cliques.length - 1].et : null);
       const clique = cliques.length ? cliques[0].et : null;
       const viaBack = !!clique && esc.tipoEtapa[clique] === 'backredirect';
-      // Clique numa variante de teste A/B sem bloco próprio (a raiox6 da bio) de quem NÃO passou pelo
-      // link do teste: a pessoa entrou pela VSL do anúncio e a oferta levou pra variante. A venda é da
-      // VSL de entrada; antes ia pro bloco do teste e a VSL que vendeu ficava com zero (20/11).
-      const ofertaDoTeste = !!clique && !viaBack && esc.tipoEtapa[clique] === 'split' && !!entrada && entrada !== clique &&
-        !_passouPeloLink(o.visitante, clique, o.em);
-      const peloClique = !!clique && !viaBack && !ofertaDoTeste;
+      // Compra numa variante de teste A/B sem bloco próprio (a raiox6 da bio) de quem entrou por outra
+      // página: a pessoa veio do anúncio pra VSL e, pelo perfil do Instagram, foi pro link da bio. Se
+      // assistiu a VSL (1 min ou mais), a venda é da VSL; se só passou por ela, é do teste. Em 20/11 uma
+      // assistiu 1min42 da Página de Vendas 2 e outra ficou 22 s na vsl 3 milhão sem dar play: a primeira
+      // é da VSL, a segunda da bio. Nos 7 dias antes, das 14 assim, 9 viram no máximo 3 s e 5, de 77 s pra cima.
+      const naVariante = !!clique && !viaBack && esc.tipoEtapa[clique] === 'split' && !!entrada && entrada !== clique;
+      const viuEntrada = naVariante && pags.some(x => x.et === entrada && (x.video || 0) >= VIU_VSL_SEG);
+      const peloClique = !!clique && !viaBack && !viuEntrada;
       const dona = peloClique ? clique : entrada;
       if (entrada) (vendaEntrada[entrada] = vendaEntrada[entrada] || []).push(o);
       if (dona) {
@@ -20062,7 +20062,8 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         const evDona = (peloClique ? cliques : pags).find(x => x.et === dona);
         if (evDona) paginaDe.set(o, evDona.pg);
       }
-      if (clique && entrada && clique !== entrada && !ofertaDoTeste) {
+      // a VSL não tem link pra bio: quem foi pro teste por fora não é venda "levada" nem "salva"
+      if (clique && entrada && clique !== entrada && !naVariante) {
         const x = salvasDaEtapa[clique] || (salvasDaEtapa[clique] = { n: 0, de: {} });
         x.n++; x.de[entrada] = (x.de[entrada] || 0) + 1;
         if (!viaBack) { const y = levouDaEtapa[entrada] || (levouDaEtapa[entrada] = { n: 0, para: {} }); y.n++; y.para[clique] = (y.para[clique] || 0) + 1; }
