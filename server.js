@@ -7430,18 +7430,61 @@ function _idDaCampUtm(s) { const m = String(s || '').match(/(\d{10,})\s*$/); ret
 // à venda (Meta até o clique, TMX daí pra frente, com o pitch no meio), as taxas,
 // resultado por dia, vendas por hora com as mudanças de orçamento marcadas e os
 // anúncios dela. Os números da Meta vêm da Utmify (60 s guardado em memória).
-app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
+// Na fonte Meta (20/11/2026, pedido do Thiago: "igual era antes") a mesma análise sai do que a
+// sincronização da Meta guarda a cada 15 min: /api/metricas/meta/campanha.
+app.get('/api/metricas/campanha', authUsuario, (req, res) => _rotaCampanha(req, res, false));
+app.get('/api/metricas/meta/campanha', authUsuario, (req, res) => _rotaCampanha(req, res, true));
+// a campanha pela Meta, no formato que a Utmify devolve: o estado de agora (meta_camp) por cima do dia mais recente
+function _metaCampanhaNums(id, de, ate) {
+  const ls = _q(`SELECT dia, conta, nome, status, orc, orc_vida, lance, gasto, imp, freq, link_cliques, ic, plays, v3, v75, criada
+                 FROM meta_camp_dia WHERE id=? AND dia BETWEEN ? AND ? ORDER BY dia`).all(id, de, ate);
+  const c = _q('SELECT conta, nome, status, efetivo, orc, orc_vida, criado FROM meta_camp WHERE id=?').get(id);
+  const ult = ls[ls.length - 1] || _q('SELECT conta, nome, status, orc, orc_vida, lance, criada FROM meta_camp_dia WHERE id=? ORDER BY dia DESC LIMIT 1').get(id) || {};
+  const s = k => ls.reduce((a, l) => a + (Number(l[k]) || 0), 0), imp = s('imp');
+  // frequência não soma: média pelas impressões de cada dia, como no painel
+  const fi = ls.reduce((a, l) => a + (Number(l.freq) || 0) * (Number(l.imp) || 0), 0);
+  const video = ls.some(l => Number(l.plays) || Number(l.v3));
+  // orçamento como a Meta mostra: o da campanha (CBO), o total, ou a soma dos conjuntos no ar (ABO)
+  let orc = null, orcVida = false;
+  const vida = Number(c ? c.orc_vida : ult.orc_vida);
+  if (c && c.orc != null) orc = Number(c.orc);
+  else if (vida > 0) { orc = vida; orcVida = true; }
+  else {
+    const abo = _q("SELECT SUM(orc) orc FROM meta_conj WHERE camp=? AND efetivo='ACTIVE' AND orc IS NOT NULL").get(id);
+    orc = abo && abo.orc != null ? Number(abo.orc) : (ult.orc != null ? Number(ult.orc) : null);
+  }
+  const conta = String((c && c.conta) || ult.conta || ''), criado = (c && c.criado) || ult.criada;
+  return { nome: (c && c.nome) || ult.nome || '', id, dashboard: '', conta: _contaNomes()[conta] || conta,
+    status: (c && (c.efetivo || c.status)) || ult.status || '', orc, orcVida, bid: ult.lance != null ? Number(ult.lance) : null,
+    criada: criado ? _diaBR(Number(criado)) : '', gasto: s('gasto'), faturamento: null, fatLiquido: null, lucro: null, vendas: 0,
+    imp, cliques: s('link_cliques'), vv: video ? s('plays') : null, v3: video ? s('v3') : null, v75: video ? s('v75') : null,
+    ic: s('ic'), freq: fi && imp > 0 ? fi / imp : null, fonte: 'meta' };
+}
+// os anúncios da campanha pela Meta: gasto, impressões e cliques. O vídeo por anúncio a Meta não manda (hook e CTA ficam "—")
+function _metaCampanhaAds(id, de, ate) {
+  const ef = {};
+  _q('SELECT id, status, efetivo FROM meta_ad WHERE camp=?').all(id).forEach(a => { ef[a.id] = a.efetivo || a.status || ''; });
+  return _q('SELECT id, MAX(nome) nome, SUM(gasto) g, SUM(imp) i, SUM(link_cliques) c FROM meta_ad_dia WHERE camp=? AND dia BETWEEN ? AND ? GROUP BY id').all(id, de, ate)
+    .map(a => {
+      const imp = Number(a.i) || 0, cl = Number(a.c) || 0;
+      return { id: String(a.id), nome: String(a.nome || ''), status: ef[a.id] || '', gasto: Number(a.g) || 0, faturamento: null, lucro: null,
+        vendas: 0, imp, cliques: cl, ctr: imp ? cl / imp : null, hook: null, hold: null, cta: null };
+    }).filter(a => a.gasto > 0);
+}
+async function _rotaCampanha(req, res, pelaMeta) {
   try {
     const id = String(req.query.id || '').replace(/\D/g, '').slice(0, 40);
     const nome = String(req.query.nome || '').slice(0, 200);
     if (!id && !nome) return res.status(400).json({ error: 'Diga a campanha.' });
+    if (pelaMeta && !id) return res.status(400).json({ error: 'Esta campanha veio sem o id da Meta.' });
+    if (pelaMeta && !_pessoas()) return res.status(503).json({ error: 'A base de pessoas não abriu neste servidor.' });
     const per = _periodoMs(String(req.query.de || ''), String(req.query.ate || ''));
     const dir = _ehDir(req);
     // so=anuncios: só a tabela de anúncios, pra trocar o período dela sem refazer a análise toda
     const soAds = req.query.so === 'anuncios';
     const db = readDB();
     const dias7 = []; for (let i = 6; i >= 0; i--) dias7.push(_diaBR(per.fim - i * 86400000));
-    const todas = (Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [])
+    const todas = pelaMeta ? [] : (Array.isArray(db.store[KEY_METRICAS]) ? db.store[KEY_METRICAS] : [])
       .filter(l => l.fonte === 'utmify' && l.nivel !== 'conta' && (id ? String(l.campanhaId) === id : String(l.campanha) === nome));
     const doPer = todas.filter(l => l.data >= per.de && l.data <= per.ate).sort((a, b) => String(a.data).localeCompare(String(b.data)));
     const ult = doPer[doPer.length - 1] || todas.slice().sort((a, b) => String(a.data).localeCompare(String(b.data))).pop() || {};
@@ -7456,10 +7499,11 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
       ic: temVideo ? s('ic') : null, freq: ult.freq || null, fonte: 'arquivo'
     };
     // ao vivo na Utmify: o período inteiro de uma vez, com o vídeo e o estado de agora
-    const cfg = _utmifyMcpCfg(db) || {};
+    const cfg = pelaMeta ? {} : (_utmifyMcpCfg(db) || {});
     const dash = (cfg.dashboards || []).find(d => String(d.nome || '').trim() === String(m.dashboard || '').trim());
     let anuncios = [], erroAoVivo = null;
-    if (cfg.token && dash && m.id) {
+    if (pelaMeta) { if (!soAds) m = _metaCampanhaNums(id, per.de, per.ate); anuncios = _metaCampanhaAds(id, per.de, per.ate); }
+    else if (cfg.token && dash && m.id) {
       const tz = (dash.tz === undefined || dash.tz === null) ? -3 : dash.tz;
       const off = (tz < 0 ? '-' : '+') + String(Math.abs(tz)).padStart(2, '0') + ':00';
       const faixa = { from: per.de + 'T00:00:00' + off, to: per.ate + 'T23:59:59' + off };
@@ -7547,7 +7591,8 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
     }
     // resultado por dia: os 7 dias até o fim do período (gasto da Utmify, venda pela Utmify e pelo TMX)
     const campDia = {};
-    if (_pessoas() && m.id) _q('SELECT dia, SUM(gasto) g FROM ' + _campDiaUnica('c.id=? AND c.dia BETWEEN ? AND ?') + ' GROUP BY dia').all(m.id, dias7[0], dias7[6]).forEach(x => { campDia[x.dia] = x.g; });
+    if (pelaMeta) _q('SELECT dia, SUM(gasto) g FROM meta_camp_dia WHERE id=? AND dia BETWEEN ? AND ? GROUP BY dia').all(m.id, dias7[0], dias7[6]).forEach(x => { campDia[x.dia] = Number(x.g) || 0; });
+    else if (_pessoas() && m.id) _q('SELECT dia, SUM(gasto) g FROM ' + _campDiaUnica('c.id=? AND c.dia BETWEEN ? AND ?') + ' GROUP BY dia').all(m.id, dias7[0], dias7[6]).forEach(x => { campDia[x.dia] = x.g; });
     const porDia = dias7.map(d => {
       const ls = todas.filter(l => l.data === d);
       const g = ls.length ? ls.reduce((a, l) => a + (Number(l.investimento) || 0), 0) : (campDia[d] || 0);
@@ -7557,10 +7602,11 @@ app.get('/api/metricas/campanha', authUsuario, async (req, res) => {
     });
     const mudancas = (_pessoas() && m.id) ? _q('SELECT campo, nome, de, para, em, desde, fonte FROM camp_mudancas WHERE camp=? AND em BETWEEN ? AND ? ORDER BY em').all(m.id, per.ini - 86400000, per.fim) : [];
     if (!dir) { m.faturamento = null; m.fatLiquido = null; m.lucro = null; tmx.faturamento = null; tmx.fatHora = null; porDia.forEach(x => { x.fatUtmify = null; x.lucroUtmify = null; x.fatTmx = null; }); anuncios.forEach(a => { a.faturamento = null; a.lucro = null; a.fatTmx = null; a.lucroTmx = null; }); }
+    // pela Meta as mudanças vêm do histórico da conta, com a hora exata: não há "desde quando a SCALROI anota"
     res.json({ ok: true, de: per.de, ate: per.ate, campanha: m, tmx, porDia, mudancas, anuncios, erroAoVivo,
-      registroDesde: _pessoas() ? ((_q('SELECT MIN(em) em FROM camp_estado').get() || {}).em || null) : null });
+      registroDesde: !pelaMeta && _pessoas() ? ((_q('SELECT MIN(em) em FROM camp_estado').get() || {}).em || null) : null });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
 
 // ── Vendas do TMX por campanha, pra pôr do lado da Utmify ──
 // A Utmify diz QUANTAS vendas cada campanha teve; o TMX diz QUAIS, pela regra

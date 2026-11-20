@@ -143,6 +143,32 @@ test('campanhas da Meta com as vendas da SCALROI', async () => {
   assert.deepStrictEqual(d.porConta.map(x => [x.nome, x.campanhas]), [['ca 2', 3]]);
 });
 
+test('a análise da campanha pela Meta: os números da Meta e as vendas da SCALROI (20/11)', async () => {
+  assert.strictEqual((await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.cbo)).status, 401);
+  const r = await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.cbo + '&nome=x', { token: dono });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  const d = r.dados, m = d.campanha, cent = v => Math.round(v * 100) / 100;
+  assert.deepStrictEqual([m.fonte, m.id, m.nome, m.conta, m.status, m.orc, m.orcVida], ['meta', C.cbo, objetos[C.cbo].name, 'ca 2', 'ACTIVE', 500, false]);
+  assert.deepStrictEqual([cent(m.gasto), m.imp, m.cliques, m.freq, m.vv, m.v3, m.v75], [72.1, 2000, 40, 1.5, 900, 600, 50]);
+  // do clique em diante, pela SCALROI: v1 e v2 (com o nome antigo e o id no fim); a visita da equipe não conta
+  assert.deepStrictEqual([d.tmx.visitas, d.tmx.vendas, cent(d.tmx.faturamento)], [2, 1, 839.76]);
+  assert.strictEqual(d.porDia.length, 7);
+  assert.deepStrictEqual([d.porDia[6].dia, cent(d.porDia[6].gasto), d.porDia[6].vendasTmx], [hoje(), 72.1, 1]);
+  assert.strictEqual(d.erroAoVivo, null);
+  // os anúncios: gasto da Meta, a venda no anúncio pelo nome, hook sem dado (a Meta não manda vídeo por anúncio)
+  const ad = id => d.anuncios.find(a => a.id === id);
+  assert.deepStrictEqual([cent(ad('102').gasto), ad('102').vendasTmx, ad('102').ctr, ad('102').hook, ad('102').status], [62.1, 1, 0.02, null, 'ACTIVE']);
+  assert.deepStrictEqual([cent(ad('103').gasto), ad('103').vendasTmx], [10, 0]);
+  assert.ok(!ad('202'), 'o anúncio de outra campanha fica de fora');
+  // só a tabela de anúncios, pra trocar o período dela
+  const so = await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.cbo + '&so=anuncios', { token: dono });
+  assert.deepStrictEqual(so.dados.anuncios.map(a => a.id).sort(), ['102', '103']);
+  // ABO sem vídeo: o orçamento é a soma dos conjuntos no ar e o vídeo vai vazio (não zero)
+  const abo = (await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.abo, { token: dono })).dados.campanha;
+  assert.deepStrictEqual([abo.orc, abo.v3, abo.vv, cent(abo.gasto)], [30, null, null, 40]);
+  assert.strictEqual((await chamar('GET', '/api/metricas/meta/campanha' + per() + '&nome=sem-id', { token: dono })).status, 400);
+});
+
 test('o projeto de Projetos › Integrações corta campanhas e vendas', async () => {
   const lp = await chamar('GET', '/api/metricas/meta/projetos', { token: dono });
   assert.deepStrictEqual(lp.dados.projetos.map(p => p.id), ['CONCURSO', 'RENDA']);
