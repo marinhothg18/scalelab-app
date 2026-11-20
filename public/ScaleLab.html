@@ -37313,11 +37313,23 @@ function fnNoCorpo(n, b, vt){
       m('Vendas', fnNum(b.vendas), b.vendas ? verde : '') + m('Conversão', pc(b.conversao));
   } else if(n.tipo === 'split'){
     sub = b.slug ? 'link /r/'+b.slug+(b.nomeTeste ? ' · '+b.nomeTeste : '') : 'escolha o teste no painel ao lado';
+    // "Vendas pelo link" é a conta do teste A/B; "Vendas na página" junta quem chegou na página
+    // da variante por outro caminho (da VSL, por exemplo), que não é venda do link
+    var vLink = b.vendasOrigem != null ? b.vendasOrigem : b.vendas, vFora = b.vendasForaDoLink || 0;
     grade = m('Cliques no link', fnNum(b.cliques)) + m('Chegaram', fnNum(b.pessoas)) +
-      m('Checkouts', fnNum(b.checkout)) + m('Vendas', fnNum(b.vendas), b.vendas ? verde : '');
+      m('Checkouts', fnNum(b.checkout)) + m('Vendas pelo link', fnNum(vLink), vLink ? verde : '', 'igual ao teste A/B') +
+      (vFora ? m('Vendas na página', fnNum(b.vendas), '', fnNum(vFora)+' não passaram pelo link') : '');
     if(b.divisao && b.divisao.length) pe = '<div class="fn-div" style="flex-direction:column;align-items:stretch;gap:3px">'+b.divisao.map(function(d){
+      var vl = d.vendasLink != null ? d.vendasLink : (d.vendas||0);
       return '<span style="display:flex;justify-content:space-between;gap:8px"><span>'+fnEsc(fnNomeVariante(d))+' <b>'+(d.pct == null ? '—' : v2Pct(d.pct, 0))+'</b></span>'+
-        (d.temBloco ? '<span title="Esta página tem bloco próprio: as vendas dela contam lá">no bloco dela</span>' : '<b>'+fnNum(d.vendas||0)+' venda'+(d.vendas===1?'':'s')+'</b>')+'</span>'; }).join('')+'</div>';
+        (d.temBloco ? '<span title="Esta página tem bloco próprio: as vendas dela contam lá">no bloco dela</span>' : '<b title="Vendas de quem chegou pelo link">'+fnNum(vl)+' venda'+(vl===1?'':'s')+'</b>')+'</span>'; }).join('')+'</div>';
+    if(vFora){
+      var lstFn = function(o){ return Object.keys(o||{}).sort(function(x, y){ return o[y]-o[x]; }).map(function(k){ return fnEsc(k)+(Object.keys(o).length > 1 ? ' ('+o[k]+')' : ''); }).join(', '); };
+      var paginasFora = (b.divisao||[]).filter(function(d){ return !d.temBloco && (d.vendas||0) > (d.vendasLink||0); }).map(function(d){ return fnEsc(fnNomeVariante(d)); }).join(' e ');
+      var ents = lstFn(b.foraEntradas);
+      pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">'+fnNum(vFora)+' venda'+(vFora===1?'':'s')+' na página'+(paginasFora ? ' '+paginasFora : '')+
+        ' de quem não passou pelo link: '+(vFora===1?'veio':'vieram')+' de '+lstFn(b.foraOrigens)+(ents ? ', entrando por '+ents : '')+'. '+(vFora===1?'Conta':'Contam')+' lá, não no teste.</div>';
+    }
     if(b.vendasDeAnuncio || b.pessoasDeAnuncio) pe += '<div class="fx-c-url" style="margin-top:6px;line-height:1.45;white-space:normal">'+
       fnNum(b.pessoasDeAnuncio)+' pessoa(s) que passaram pelo link também vieram de anúncio'+
       (b.vendasDeAnuncio ? ' ('+b.vendasDeAnuncio+' venda'+(b.vendasDeAnuncio===1?'':'s')+')' : '')+'. Na origem, contam no Tráfego pago.</div>';
@@ -38326,10 +38338,21 @@ function mpLeitura(n){
   if(b.pessoas != null) h += linha(n.tipo === 'checkout' && b.viaClique ? 'Abriram o checkout' : n.tipo === 'fonte' ? 'Chegaram' : 'Pessoas', fnNum(b.pessoas));
   if(b.checkout != null && n.tipo !== 'checkout') h += linha('Checkouts', fnNum(b.checkout));
   if(b.pitch) h += linha('Passaram do pitch', fnNum(b.pitch));
-  if(b.vendas != null) h += linha('Vendas', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendas)+'</b>');
-  if(b.faturamento != null) h += linha('Faturamento', v2Din(b.faturamento));
-  if(b.conversao != null && b.pessoas) h += linha('Conversão', v2Pct(b.conversao, 2));
-  if(b.divisao) h += '<div class="gv-grp">Divisão real e vendas</div>'+b.divisao.map(function(d){ return linha(fnEsc(fnNomeVariante(d)), (d.pct == null ? '—' : v2Pct(d.pct, 0))+(d.temBloco ? ' · no bloco dela' : ' · '+fnNum(d.vendas||0)+' venda'+(d.vendas===1?'':'s')+(d.faturamento != null ? ' · '+v2Din(d.faturamento) : ''))); }).join('');
+  // teste A/B: as vendas pelo link (a conta do teste) separadas das feitas na página por quem veio de outro caminho
+  var ehSplit = n.tipo === 'split' && b.vendasOrigem != null;
+  if(ehSplit){
+    h += linha('Vendas pelo link', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendasOrigem)+'</b>');
+    if(b.faturamentoLink != null) h += linha('Faturamento pelo link', v2Din(b.faturamentoLink));
+    if(b.pessoas) h += linha('Conversão pelo link', v2Pct(b.vendasOrigem / b.pessoas, 2));
+    if(b.vendasForaDoLink) h += linha('Vendas na página', fnNum(b.vendas)+' ('+fnNum(b.vendasForaDoLink)+' sem passar pelo link)') + (b.faturamento != null ? linha('Faturamento na página', v2Din(b.faturamento)) : '');
+  } else {
+    if(b.vendas != null) h += linha('Vendas', '<b style="color:var(--v2-verde,#22C55E)">'+fnNum(b.vendas)+'</b>');
+    if(b.faturamento != null) h += linha('Faturamento', v2Din(b.faturamento));
+    if(b.conversao != null && b.pessoas) h += linha('Conversão', v2Pct(b.conversao, 2));
+  }
+  if(b.divisao) h += '<div class="gv-grp">Divisão real e vendas'+(ehSplit ? ' pelo link' : '')+'</div>'+b.divisao.map(function(d){
+    var nv = ehSplit && d.vendasLink != null ? d.vendasLink : (d.vendas||0), naPag = ehSplit && (d.vendas||0) > nv ? ' · '+fnNum(d.vendas)+' na página' : '';
+    return linha(fnEsc(fnNomeVariante(d)), (d.pct == null ? '—' : v2Pct(d.pct, 0))+(d.temBloco ? ' · no bloco dela' : ' · '+fnNum(nv)+' venda'+(nv===1?'':'s')+naPag+(!ehSplit && d.faturamento != null ? ' · '+v2Din(d.faturamento) : ''))); }).join('');
   h += mpCaminhos(n);
   if(b.pessoas && n.tipo !== 'obrigado') h += '<button class="fn-btn g sm" style="width:100%;margin-top:12px" onclick="ldIrPara('+(n.tipo === 'fonte' || n.tipo === 'split' ? '{}' : '{etapa:\''+n.id+'\'}')+')">👥 Ver essas pessoas nos Leads</button>';
   h += '<button class="fn-btn g sm" style="width:100%;margin-top:8px" onclick="mpEditar()">✏️ Editar o desenho</button>';

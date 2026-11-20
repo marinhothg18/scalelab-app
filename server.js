@@ -20228,9 +20228,10 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       const temPagina = porEtapa[e.id] && porEtapa[e.id].size;
       if (e.tipo === 'split') {
         const slug = String(e.slug || '').toLowerCase();
-        const s = new Set();
-        if (slug) _q('SELECT DISTINCT visitante FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ?')
-          .all(slug, per.ini, per.fim).forEach(r => s.add(r.visitante));
+        const s = new Set(), varDe = {};
+        // a variante de cada pessoa é a da primeira visita com o teste, igual à tela do teste
+        if (slug) _q('SELECT visitante, variante, MIN(inicio) ini FROM sessoes WHERE lower(teste)=? AND interno=0 AND inicio BETWEEN ? AND ? GROUP BY visitante')
+          .all(slug, per.ini, per.fim).forEach(r => { s.add(r.visitante); varDe[r.visitante] = String(r.variante || ''); });
         const r = redirs.find(x => String(x.slug || '').toLowerCase() === slug);
         const sorteio = {};
         abst.filter(l => l.teste === slug && l.data >= per.de && l.data <= per.ate).forEach(l => { sorteio[l.variante] = (sorteio[l.variante] || 0) + (l.sorteios || 0); });
@@ -20247,12 +20248,26 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
         // páginas do Mapa somavam 10 de 15. A conta de origem continua em vendasOrigem.
         const vendasAqui = vendaDaEtapa[e.id] || [], pessoasAqui = (porEtapa[e.id] || new Set()).size, mOrigem = medir(s);
         const somaLiq = l => l.reduce((a, o) => a + liq(o), 0);
+        // Vendas pelo link (a conta do teste A/B) x vendas feitas nas páginas das variantes. A página
+        // também recebe gente da VSL: em 19/11 a raiox4 teve 3 vendas de anúncio, ninguém pelo link,
+        // e o bloco dizia "3 vendas" como se a bio tivesse vendido. As de fora dizem de onde vieram.
+        const vendasLinkVar = {};
+        s.forEach(v => { const id = varDe[v] || ''; vendasLinkVar[id] = (vendasLinkVar[id] || 0) + (vendaPor[v] || []).length; });
+        const entradaDe = new Map();
+        Object.keys(vendaEntrada).forEach(et => vendaEntrada[et].forEach(o => entradaDe.set(o, et)));
+        const foraDoLink = vendasAqui.filter(o => !s.has(o.visitante)), conta = (m, k) => { if (k) m[k] = (m[k] || 0) + 1; };
+        const foraOrigens = {}, foraEntradas = {};
+        foraDoLink.forEach(o => {
+          conta(foraOrigens, o.visitante && dono[o.visitante] ? nomeOrigem[dono[o.visitante]] : 'sem origem no mapa');
+          const et = entradaDe.get(o); if (et && et !== e.id) conta(foraEntradas, esc.nomeEtapa[et] || '');
+        });
         nos[e.id] = Object.assign({ tipo: 'split', slug, nomeTeste: r ? (r.nome || r.slug) : '', cliques: tot, vendasDeAnuncio: deAnuncio, pessoasDeAnuncio: pessoasAnuncio,
           vendasEntrada: (vendaEntrada[e.id] || []).length,
           divisao: ((r && r.destinos) || []).map((d, i) => {
             const id = String(d.id || ('v' + i)), u = _normPg(d.url), dela = vendasAqui.filter(o => paginaDe.get(o) === u);
-            return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null, temBloco: !!(esc.etapaDeUrl[u] && esc.etapaDeUrl[u] !== e.id), vendas: dela.length, faturamento: dir ? somaLiq(dela) : null };
-          }) }, mOrigem, { vendasOrigem: mOrigem.vendas, vendas: vendasAqui.length, faturamento: dir ? somaLiq(vendasAqui) : null, conversao: pessoasAqui ? vendasAqui.length / pessoasAqui : 0, produtos: topProd(vendasAqui) });
+            return { nome: d.nome || ('Variante ' + (i + 1)), url: d.url || '', pct: tot ? (sorteio[id] || 0) / tot : null, temBloco: !!(esc.etapaDeUrl[u] && esc.etapaDeUrl[u] !== e.id), vendas: dela.length,
+              vendasLink: vendasLinkVar[id] || 0, faturamento: dir ? somaLiq(dela) : null };
+          }) }, mOrigem, { vendasOrigem: mOrigem.vendas, faturamentoLink: mOrigem.faturamento, vendasForaDoLink: foraDoLink.length, foraOrigens, foraEntradas, vendas: vendasAqui.length, faturamento: dir ? somaLiq(vendasAqui) : null, conversao: pessoasAqui ? vendasAqui.length / pessoasAqui : 0, produtos: topProd(vendasAqui) });
       } else if (e.tipo === 'cktest') {
         // Teste de checkout: a página é a mesma, o que muda é o checkout do
         // botão. O bloco põe as versões lado a lado com a MESMA conta da tela
