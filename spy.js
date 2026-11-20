@@ -1213,7 +1213,7 @@ function criarNucleo(o) {
         ativo: !!x.ativo, quantidade: x.quantidade, criativo_id: resolver(x.cid) }));
     return { biblioteca: bibPub(b), kpis: { ads_ativos: b.ads_ativos || 0, criativos: ativos.length, familias: fam.size,
       mais_antigo_dias: ativos.length ? Math.max.apply(null, ativos.map(c => c.dias_no_ar || 0)) : null },
-      serie: serieDe(bibId, 31), dominios: dom, paginas, funil_id: funil ? funil.id : null, processamento: proc, criativos, anuncios,
+      serie: serieDe(bibId, 31), dominios: dom, paginas, funil_id: funil ? funil.id : null, processamento: proc, criativos, anuncios, raiox: raioxDe(criativos, diaBR(agoraMs)),
       busca: Object.assign(estadoBusca(), { desta: busca.bib === bibId }), regra_video: (rg => ({ video_min_dias: rg.video_min_dias, video_min_copias: rg.video_min_copias, video_teto: rg.video_teto, texto: regraTexto() }))(regras()) };
   }
   function detalheCriativo(cid0) {
@@ -1307,6 +1307,101 @@ function criarNucleo(o) {
   return { db, q, EMP, cfgLer, cfgGravar, nichos, salvarNicho, regras, salvarRegras, bibRow, bibPub, criarBiblioteca, mudarBiblioteca, listarBibliotecas, adsConhecidos,
     registrarColeta, enfileirar, processar, pendentesDaBiblioteca, selecaoDeVideos, baixarDaBiblioteca, pedirVideo, regraTexto, salvarDoClaude, salvarDaTela, detalheBiblioteca, detalheCriativo, registrarFunil, funis,
     registrarRodada, rodadas, buscar, mercado, kpis, resolver, statusDe, folhaDeQuadros, temposDosQuadros, midiasFaltando, buscarVideos, estadoBusca, dividirPorCopy, aplicarLink, fila: () => ({ fila: fila.length, rodando }), agora };
+}
+
+// ══════════════════════════════════════════════
+// "O que mais estão fazendo" (20/11/2026, pedido do Thiago): o raio-x de uma biblioteca, abaixo do gráfico dela. Formatos e
+// ângulos (em % dos criativos no ar que já têm a etiqueta), o que entrou no ar a cada dia e a cada semana, as combinações
+// formato + ângulo, idade, cópias, famílias e frases de leitura. Só conta, sem IA: muda sozinho a cada coleta. Recebe os
+// cartões do detalheBiblioteca (anuncios_ativos é o desta biblioteca).
+// ══════════════════════════════════════════════
+const _etqValor = (c, campo) => { const l = (c.etiquetas || {})[campo] || []; const e = l.find(x => x.parte === 'todo') || l[0]; return e && e.valor ? String(e.valor) : ''; };
+const _dm = dia => dia.slice(8, 10) + '/' + dia.slice(5, 7);
+const _somaDia = (dia, n) => new Date(Date.parse(dia + 'T12:00:00Z') + n * DIA).toISOString().slice(0, 10);
+const _segunda = dia => { const d = new Date(dia + 'T12:00:00Z'); return _somaDia(dia, -((d.getUTCDay() + 6) % 7)); };
+const _pct = (n, t) => t ? Math.round(n / t * 100) : 0;
+function _tempoTxt(s) { s = Math.round(s); const m = Math.floor(s / 60), r = s % 60; return m ? m + 'min' + (r ? String(r).padStart(2, '0') : '') : r + 's'; }
+function raioxDe(criativos, hoje) {
+  const todos = (criativos || []).filter(c => c && c.tipo !== 'texto'), no_ar = todos.filter(c => c.anuncios_ativos > 0);
+  const dim = (campo, lista) => {
+    const m = {}; let marcados = 0;
+    no_ar.forEach(c => { const v = _etqValor(c, campo); if (!v) return; marcados++; const x = m[v] || (m[v] = { valor: v, criativos: 0, _d: 0 }); x.criativos++; x._d += c.dias_no_ar || 0; });
+    const ordem = v => { const i = lista.indexOf(v); return i < 0 ? 99 : i; };
+    const linhas = lista.filter(v => !m[v]).map(v => ({ valor: v, criativos: 0 })).concat(Object.values(m))
+      .map(x => ({ valor: x.valor, criativos: x.criativos, pct: _pct(x.criativos, marcados), dias_medio: x.criativos ? Math.round(x._d / x.criativos) : null }))
+      .sort((a, b) => b.criativos - a.criativos || ordem(a.valor) - ordem(b.valor));
+    return { marcados, linhas };
+  };
+  const formato = dim('formato', SpyLink.FORMATOS), angulo = dim('angulo', SpyLink.ANGULOS);
+  const cmb = {};
+  no_ar.forEach(c => { const f = _etqValor(c, 'formato'), a = _etqValor(c, 'angulo'); if (!f || !a) return; const k = f + '\u0000' + a; (cmb[k] = cmb[k] || { formato: f, angulo: a, criativos: 0 }).criativos++; });
+  const combos = Object.values(cmb).sort((a, b) => b.criativos - a.criativos).slice(0, 8);
+  // o que entrou no ar (os que já saíram também contam: é o histórico), pelo dia de início do anúncio mais antigo do criativo
+  const porDia = {};
+  todos.forEach(c => { if (c.inicio && c.inicio <= hoje) porDia[c.inicio] = (porDia[c.inicio] || 0) + 1; });
+  const primeiro = Object.keys(porDia).sort()[0] || hoje, ini30 = _somaDia(hoje, -29);
+  const dias = [];
+  for (let d = primeiro > ini30 ? primeiro : ini30; d <= hoje; d = _somaDia(d, 1)) dias.push({ dia: d, novos: porDia[d] || 0 });
+  // semanas de segunda a domingo: as 6 últimas; o que entrou antes fica em "antes"
+  const semIni = _somaDia(_segunda(hoje), -35), sems = {};
+  let antes = 0;
+  todos.forEach(c => {
+    if (!c.inicio || c.inicio > hoje) return;
+    if (c.inicio < semIni) { antes++; return; }
+    const s = _segunda(c.inicio), x = sems[s] || (sems[s] = { de: s, ate: _somaDia(s, 6) > hoje ? hoje : _somaDia(s, 6), novos: 0, formato: {}, angulo: {}, marcados_formato: 0, marcados_angulo: 0 });
+    x.novos++;
+    const f = _etqValor(c, 'formato'), a = _etqValor(c, 'angulo');
+    if (f) { x.formato[f] = (x.formato[f] || 0) + 1; x.marcados_formato++; }
+    if (a) { x.angulo[a] = (x.angulo[a] || 0) + 1; x.marcados_angulo++; }
+  });
+  const semanas = Object.values(sems).sort((a, b) => a.de.localeCompare(b.de));
+  const faixas = (lim, rot, val) => lim.map((l, i) => ({ faixa: rot[i], n: no_ar.filter(c => { const v = val(c); return v >= l && (i === lim.length - 1 || v < lim[i + 1]); }).length }));
+  const idade = faixas([0, 3, 7, 14, 21, 30], ['0–2 dias', '3–6', '7–13', '14–20', '21–29', '30+'], c => c.dias_no_ar || 0);
+  const copias = faixas([1, 2, 5, 10], ['1', '2–4', '5–9', '10+'], c => c.anuncios_ativos);
+  const durs = no_ar.filter(c => c.duracao_s > 0).map(c => c.duracao_s);
+  const duracao = { n: durs.length, media_s: durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : null };
+  const fam = {};
+  no_ar.forEach(c => { if (c.familia && c.familia.id) (fam[c.familia.id] = fam[c.familia.id] || { id: c.familia.id, nome: c.familia.nome, criativos: 0 }).criativos++; });
+  const familias = { total: Object.keys(fam).length, top: Object.values(fam).sort((a, b) => b.criativos - a.criativos).slice(0, 6) };
+
+  // leitura rápida: cada frase só entra quando o número sustenta ({ b: o destaque, t: o resto })
+  const leitura = [];
+  const f1 = formato.linhas[0];
+  if (formato.marcados >= 3 && f1 && f1.criativos) {
+    const c1 = combos.find(x => x.formato === f1.valor);
+    let t = ': ' + f1.pct + '% dos que têm formato marcado (' + f1.criativos + ' de ' + formato.marcados + ')';
+    if (c1 && c1.criativos >= 3 && c1.criativos / f1.criativos >= 0.6) t += ', quase sempre com o ângulo ' + c1.angulo + ' (' + c1.criativos + ' vezes)';
+    else if (c1 && c1.criativos >= 2) t += ', mais vezes com o ângulo ' + c1.angulo + ' (' + c1.criativos + ')';
+    leitura.push({ b: f1.valor + ' é o formato que mais aparece', t: t + '.' });
+  }
+  const a1 = angulo.linhas[0], a2 = angulo.linhas[1];
+  if (angulo.marcados >= 3 && a1 && a1.criativos) leitura.push({ b: a1.valor + ' é o ângulo mais usado', t: ': ' + a1.pct + '% (' + a1.criativos + ' de ' + angulo.marcados + ')' +
+    (a2 && a2.criativos && a2.pct >= 20 ? ', seguido de ' + a2.valor + ' (' + a2.pct + '%)' : '') + '.' });
+  // ondas: dias com muito lançamento seguidos viram uma onda só
+  const pico = Math.max(10, 0.4 * Math.max(0, ...dias.map(x => x.novos))), ondas = [];
+  dias.forEach((x, i) => {
+    if (x.novos < pico) return;
+    const u = ondas[ondas.length - 1];
+    if (u && dias[i - 1] && dias[i - 1].dia === u.ate) { u.ate = x.dia; u.n += x.novos; } else ondas.push({ de: x.dia, ate: x.dia, n: x.novos });
+  });
+  if (ondas.length >= 2) {
+    const ult = ondas.slice(-5), min = Math.min(...ondas.map(o => o.n)), max = Math.max(...ondas.map(o => o.n));
+    const nome = o => o.de === o.ate ? _dm(o.de) : (o.de.slice(5, 7) === o.ate.slice(5, 7) ? o.de.slice(8, 10) : _dm(o.de)) + '–' + _dm(o.ate);
+    const gap = Math.round((Date.parse(ondas[ondas.length - 1].de) - Date.parse(ondas[0].de)) / DIA / (ondas.length - 1));
+    const fim = ondas[ondas.length - 1].ate, depois = dias.filter(x => x.dia > fim).reduce((a, x) => a + x.novos, 0);
+    leitura.push({ b: 'Lançam em ondas', t: ' de ' + (min === max ? min : min + ' a ' + max) + ' criativos' + (gap >= 2 ? ', a cada ' + gap + ' dias em média' : '') + ' (' + ult.map(nome).join(', ') + ').' +
+      (fim < hoje ? ' Desde ' + _dm(_somaDia(fim, 1)) + ' entraram ' + (depois < min / 2 ? 'só ' : '') + depois + '.' : '') });
+  } else if (dias.length >= 14) {
+    const n7 = dias.slice(-7).reduce((a, x) => a + x.novos, 0), p7 = dias.slice(-14, -7).reduce((a, x) => a + x.novos, 0);
+    leitura.push({ b: n7 + ' criativo' + (n7 === 1 ? ' novo' : 's novos') + ' nos últimos 7 dias', t: ' (' + p7 + ' nos 7 dias antes).' });
+  }
+  if (no_ar.length >= 10) {
+    const um = copias[0].n, cinco = copias[2].n + copias[3].n, p1 = _pct(um, no_ar.length);
+    if (p1 >= 70) leitura.push({ b: p1 + '% rodam com 1 anúncio só', t: ': testam em massa.' + (cinco ? ' ' + (cinco / no_ar.length < 0.1 ? 'Só ' : '') + cinco + (cinco === 1 ? ' criativo tem' : ' criativos têm') + ' 5 cópias ou mais: são os que estão empurrando.' : '') });
+    else leitura.push({ b: (100 - p1) + '% têm mais de um anúncio no ar', t: ': repetem o mesmo vídeo em várias cópias.' + (cinco ? ' ' + cinco + (cinco === 1 ? ' tem' : ' têm') + ' 5 ou mais.' : '') });
+  }
+  if (duracao.n >= 5) leitura.push({ b: 'Vídeos de ' + _tempoTxt(duracao.media_s) + ' em média', t: ' (dos ' + duracao.n + ' baixados).' });
+  return { no_ar: no_ar.length, formato, angulo, combos, dias, semanas, antes, idade, copias, duracao, familias, leitura };
 }
 
 // ══════════════════════════════════════════════
@@ -1648,4 +1743,5 @@ module.exports.transcritorAssembly = transcritorAssembly;
 module.exports.semente = semente;
 module.exports.FERRAMENTAS = FERRAMENTAS;
 module.exports.FFMPEG = FFMPEG;
+module.exports.raioxDe = raioxDe;
 module.exports.criarBuscador = require('./spy-navegador');
