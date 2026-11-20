@@ -31922,7 +31922,7 @@ function vsPintar(){
     el.innerHTML='<div class="vs-dc" style="border-left-color:var(--red)"><div class="t">A VTurb recusou</div>'+
       '<div class="d">'+vsEsc(vsDados.erros.join(' | '))+'</div></div>'; return;
   }
-  el.innerHTML = vsAbaAtual==='painel' ? vsHtmlPainel() : vsHtmlAnalise();
+  el.innerHTML = vsHtmlNovas() + (vsAbaAtual==='painel' ? vsHtmlPainel() : vsHtmlAnalise());
   if(vsAbaAtual==='painel') vsCurvasDoPainel();
   if(vsAbaAtual==='painel') vsTabelaPainel(); else vsDesenhar();
 }
@@ -32951,8 +32951,8 @@ function vsAbrirVsls(){
   // corrida não dá pra achar nada.
   var pastas={}, ordem=[];
   // dentro do projeto: as dele e as sem projeto (as de outro projeto ficam de fora)
-  var deOutro = 0, projs = (typeof fnProjetos !== 'undefined' ? fnProjetos : []).filter(Boolean);
-  (vsDados.todos||vsDados.vsls).filter(function(v){ if(!vsProjeto) return true; var p = vsProjetoDe(v); if(p && p !== vsProjeto){ deOutro++; return false; } return true; }).forEach(function(v){
+  var deOutro = 0, fora = [], projs = (typeof fnProjetos !== 'undefined' ? fnProjetos : []).filter(Boolean);
+  (vsDados.todos||vsDados.vsls).filter(function(v){ if(!vsProjeto) return true; var p = vsProjetoDe(v); if(p && p !== vsProjeto){ deOutro++; fora.push(v); return false; } return true; }).forEach(function(v){
     var k=vsGrupoDe(v);
     if(!pastas[k]){ pastas[k]=[]; ordem.push(k); }
     pastas[k].push(v);
@@ -32982,18 +32982,18 @@ function vsAbrirVsls(){
       lista.map(function(v){
         // vendas só vem das VSLs consultadas no período; nas outras ficava "undefined venda(s)"
         return '<div class="vs-lreg" data-busca="'+vsEsc(vsBuscaNorm(v.nome+' '+k))+'" data-id="'+vsEsc(v.id)+'"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
-          '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+(v.vendas != null ? ' · '+v.vendas+' venda(s)' : '')+'</small></div>'+
+          '<small>'+vsMmss(v.duracao||0)+' · pitch '+vsMmss(v.pitch||0)+(v.vendas != null ? ' · '+v.vendas+' venda(s)' : '')+vsSeloNova(v)+'</small></div>'+
           '<input list="vs-grupos" value="'+vsEsc(vsGrupoDe(v))+'" title="Grupo desta VSL" '+
             'onchange="vsDefinirGrupo(\''+v.id+'\',this.value)" '+
             'style="width:112px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;'+
             'padding:5px 8px;color:var(--text);font-size:11.5px;outline:none;font-family:inherit">'+
           (vsProjeto ? '<select title="Projeto desta VSL" onchange="vsDefinirProjeto(\''+v.id+'\',this.value)" style="width:118px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:5px 6px;color:var(--text);font-size:11.5px;outline:none;font-family:inherit">'+
-            '<option value="">Sem projeto</option>'+projs.map(function(p){ return '<option'+(vsProjetoDe(v)===p?' selected':'')+'>'+vsEsc(p)+'</option>'; }).join('')+'</select>' : '')+
+            '<option value="">Sem projeto</option>'+vsOpcoesProjeto(projs, vsProjetoDe(v))+'</select>' : '')+
           '<div class="vs-sw '+(v.rodando?'on':'')+'" onclick="vsLigar(\''+v.id+'\',this)"><i></i></div></div>';
       }).join('')+'</div>';
-  }).join('') +
+  }).join('') + vsHtmlFora(fora) +
   '<datalist id="vs-grupos">'+todosGrupos.map(function(k){ return '<option value="'+vsEsc(k)+'">'; }).join('')+'</datalist>'+
-  (vsProjeto ? '<div class="vs-nota" style="margin-top:14px">Aqui aparecem as VSLs de <b>'+vsEsc(vsProjeto)+'</b> e as sem projeto'+(deOutro ? ' ('+deOutro+' de outro projeto ficam de fora)' : '')+'. O projeto de cada uma sai do nome do vídeo; corrija no seletor ao lado dela.</div>' : '')+
+  (vsProjeto ? '<div class="vs-nota" style="margin-top:14px">Aqui aparecem as VSLs de <b>'+vsEsc(vsProjeto)+'</b> e as sem projeto'+(deOutro ? ' ('+deOutro+' de outro projeto ficam de fora e aparecem quando você busca pelo nome)' : '')+'. O projeto de cada uma sai do nome do vídeo; corrija no seletor ao lado dela. Ligar uma VSL sem projeto aqui dentro já a coloca em '+vsEsc(vsProjeto)+'.</div>' : '')+
   '<div class="vs-nota" style="margin-top:14px">A VTurb não entrega as pastas pela API — só nome, duração e '+
   'pitch. O agrupamento acima é feito pelo nome do vídeo, e você pode corrigir digitando ao lado de cada um. '+
   '<a href="#" onclick="vsReagrupar();return false" style="color:var(--accent)">Refazer pelos nomes</a> · '+
@@ -33014,10 +33014,12 @@ function vsFiltrarVsls(q){
   var lista = document.getElementById('vs-lista-vsls'), res = document.getElementById('vs-busca-res'); if(!lista) return;
   var termos = vsBuscaNorm(vsBuscaVsls).split(/\s+/).filter(Boolean);
   var achadas = [];
+  var achadasFora = 0;
   lista.querySelectorAll('.vs-lreg').forEach(function(l){
-    var ok = !termos.length || termos.every(function(t){ return (l.getAttribute('data-busca')||'').indexOf(t) >= 0; });
+    var foraDele = l.hasAttribute('data-fora');
+    var ok = (!termos.length && !foraDele) || (termos.length && termos.every(function(t){ return (l.getAttribute('data-busca')||'').indexOf(t) >= 0; }));
     l.style.display = ok ? '' : 'none';
-    if(ok) achadas.push(l.getAttribute('data-id'));
+    if(ok && foraDele) achadasFora++; else if(ok) achadas.push(l.getAttribute('data-id'));
   });
   lista.querySelectorAll('.vs-pasta').forEach(function(p){
     var algum = [].some.call(p.querySelectorAll('.vs-lreg'), function(l){ return l.style.display !== 'none'; });
@@ -33028,20 +33030,23 @@ function vsFiltrarVsls(q){
   var base = (vsDados && (vsDados.todos || vsDados.vsls)) || [];
   var ligadas = base.filter(function(v){ return achadas.indexOf(String(v.id)) >= 0 && v.rodando; }).length;
   res.style.display = '';
+  var maisFora = achadasFora ? ' · '+achadasFora+' de outro projeto, lá embaixo' : '';
   res.innerHTML = achadas.length
-    ? '<span><b>'+achadas.length+'</b> VSL'+(achadas.length === 1 ? '' : 's')+' com “'+vsEsc(vsBuscaVsls.trim())+'” · '+ligadas+' ligada'+(ligadas === 1 ? '' : 's')+'</span>'+
+    ? '<span><b>'+achadas.length+'</b> VSL'+(achadas.length === 1 ? '' : 's')+' com “'+vsEsc(vsBuscaVsls.trim())+'” · '+ligadas+' ligada'+(ligadas === 1 ? '' : 's')+maisFora+'</span>'+
       '<button class="vs-btn g sm" onclick="vsLigarBusca()">'+(ligadas === achadas.length ? 'Desligar as encontradas' : 'Ligar as encontradas')+'</button>'
+    : achadasFora ? '<span>Nenhuma VSL deste projeto com “'+vsEsc(vsBuscaVsls.trim())+'”. '+achadasFora+' de outro projeto, lá embaixo: dá pra trazer pra cá.</span>'
     : '<span>Nenhuma VSL com “'+vsEsc(vsBuscaVsls.trim())+'” no nome.</span>';
 }
 // liga (ou desliga, se todas já estão ligadas) só as que a busca encontrou
 function vsLigarBusca(){
   var lista = document.getElementById('vs-lista-vsls'); if(!lista || !vsDados) return;
-  var ids = [].filter.call(lista.querySelectorAll('.vs-lreg'), function(l){ return l.style.display !== 'none'; })
+  var ids = [].filter.call(lista.querySelectorAll('.vs-lreg'), function(l){ return l.style.display !== 'none' && !l.hasAttribute('data-fora'); })
     .map(function(l){ return l.getAttribute('data-id'); });
   var base = vsDados.todos || vsDados.vsls;
   var achadas = base.filter(function(v){ return ids.indexOf(String(v.id)) >= 0; });
   var ligar = achadas.some(function(v){ return !v.rodando; });
   achadas.forEach(function(v){ v.rodando = ligar; });
+  if(ligar) vsAdotar(achadas);
   var lig = base.filter(function(v){ return v.rodando; }).map(function(v){ return v.id; });
   s('sl_vsl_ativas', lig);
   vsSel = vsSel.filter(function(id){ return lig.indexOf(id) >= 0; });
@@ -33053,6 +33058,7 @@ function vsLigarPasta(k){
   var lista=(vsDados.todos||vsDados.vsls).filter(function(v){ return vsGrupoDe(v)===pasta; });
   var ligar = lista.some(function(v){ return !v.rodando; });
   lista.forEach(function(v){ v.rodando=ligar; });
+  if(ligar) vsAdotar(lista);
   var lig=(vsDados.todos||vsDados.vsls).filter(function(v){return v.rodando;}).map(function(v){return v.id;});
   s('sl_vsl_ativas',lig);
   vsSel=vsSel.filter(function(id){ return lig.indexOf(id)>=0; });
@@ -33063,6 +33069,7 @@ function vsLigar(id,el){
   var base=vsDados.todos||vsDados.vsls;
   var v=base.filter(function(x){return x.id===id;})[0]; if(!v) return;
   v.rodando=!v.rodando; el.classList.toggle('on',v.rodando);
+  if(v.rodando && vsAdotar([v])){ var sel=el.parentNode && el.parentNode.querySelector('select'); if(sel) sel.value=vsProjeto; }
   if(!v.rodando){ var i=vsSel.indexOf(id); if(i>=0) vsSel.splice(i,1); }
   var lig=base.filter(function(x){return x.rodando;}).map(function(x){return x.id;});
   s('sl_vsl_ativas',lig);
@@ -33505,6 +33512,77 @@ function vsProjetoAuto(v){
     if(vt.some(function(a){ return ps.some(function(b){ return a === b || (b.length >= 3 && a.indexOf(b) === 0) || (a.length >= 5 && b.indexOf(a) === 0 && b.length - a.length <= 1); }); })) achou.push(p);
   });
   return achou.length === 1 ? achou[0] : '';
+}
+// ── VSLs novas na VTurb (20/11/2026) ──
+// Vídeo novo nunca entrava sozinho na análise: o LEAD 2, 7 e 8 de R$ 397 subiram na VTurb e não apareciam. O aviso no
+// topo mostra as criadas nos últimos 7 dias que estão desligadas (e não são de outro projeto), com um botão pra ligar.
+// "Agora não" esconde aquelas neste aparelho. Ligar dentro de um projeto já coloca a VSL sem projeto nele.
+function vsDispensadas(){ try{ var a = JSON.parse(localStorage.getItem('vs_novas_dispensadas') || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+function vsCriadaEm(v){ var t = Date.parse(String(v && v.criadoEm || '').replace(' ', 'T')); return isFinite(t) ? t : 0; }
+function vsNovas(){
+  var lig = vsAtivas(); if(!vsDados || !lig) return [];   // sem lista guardada, todas já estão ligadas
+  var lim = Date.now() - 7*86400000, fora = vsDispensadas();
+  return (vsDados.todos || vsDados.vsls || []).filter(function(v){
+    if(vsCriadaEm(v) < lim || lig.indexOf(v.id) >= 0 || fora.indexOf(v.id) >= 0) return false;
+    var p = vsProjeto ? vsProjetoDe(v) : '';
+    return !p || p === vsProjeto;
+  });
+}
+function vsSeloNova(v){ var t = vsCriadaEm(v); return t >= Date.now() - 7*86400000 ? ' · <span style="color:var(--accent);font-weight:700">nova ('+new Date(t).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+')</span>' : ''; }
+function vsHtmlNovas(){ try{ return _vsHtmlNovas(); }catch(e){ return ''; } }   // o aviso nunca derruba a tela
+function _vsHtmlNovas(){
+  var ns = vsNovas(); if(!ns.length) return '';
+  var nome = function(v){ return '<b>'+vsEsc(String(v.nome).replace(/\.mp4$/i, ''))+'</b>'; };
+  var lista = ns.slice(0, 5).map(nome).join(', ')+(ns.length > 5 ? ' e mais '+(ns.length - 5) : '');
+  return '<div class="vs-dc" style="border-left-color:var(--green);margin-bottom:14px"><div class="t">'+(ns.length === 1 ? '1 VSL nova na VTurb' : ns.length+' VSLs novas na VTurb')+'</div>'+
+    '<div class="d">'+lista+'. '+(ns.length === 1 ? 'Subiu' : 'Subiram')+' nos últimos 7 dias e '+(ns.length === 1 ? 'está' : 'estão')+' fora desta análise.</div>'+
+    '<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap"><button class="vs-btn sm" onclick="vsLigarNovas()">'+(ns.length === 1 ? 'Ligar esta' : 'Ligar as '+ns.length)+'</button>'+
+    '<button class="vs-btn g sm" onclick="vsDispensarNovas()">Agora não</button></div></div>';
+}
+function vsLigarNovas(){
+  var ns = vsNovas(); if(!ns.length) return;
+  var lig = (vsAtivas() || []).slice();
+  ns.forEach(function(v){ if(lig.indexOf(v.id) < 0) lig.push(v.id); });
+  vsAdotar(ns);
+  s('sl_vsl_ativas', lig);
+  if(typeof toastFn === 'function') toastFn(ns.length === 1 ? 'VSL ligada' : ns.length+' VSLs ligadas');
+  vsCarregar(true);
+}
+function vsDispensarNovas(){
+  var fora = vsDispensadas(); vsNovas().forEach(function(v){ if(fora.indexOf(v.id) < 0) fora.push(v.id); });
+  try{ localStorage.setItem('vs_novas_dispensadas', JSON.stringify(fora.slice(-300))); }catch(e){}
+  vsPintar();
+}
+// ligou dentro de um projeto: a VSL sem projeto passa a ser dele (senão ficava ligada e fora da análise do projeto)
+function vsAdotar(lista){
+  if(!vsProjeto || !lista || !lista.length) return false;
+  var m = Object.assign({}, vsProjetosSalvos()), mudou = false;
+  lista.forEach(function(v){ if(v && !vsProjetoDe(v)){ m[v.id] = vsProjeto; mudou = true; } });
+  if(mudou) s('sl_vsl_projetos', m);
+  return mudou;
+}
+// o seletor de projeto mostra o projeto da VSL mesmo quando ele não está mais na lista de projetos
+function vsOpcoesProjeto(projs, atual){
+  var l = projs.slice(); if(atual && l.indexOf(atual) < 0) l.push(atual);
+  return l.map(function(p){ return '<option'+(atual === p ? ' selected' : '')+'>'+vsEsc(p)+'</option>'; }).join('');
+}
+// as de outro projeto: escondidas, aparecem só quando a busca acha, com o botão de trazer pra cá
+function vsHtmlFora(fora){
+  if(!vsProjeto || !fora.length) return '';
+  return '<div class="vs-pasta" style="margin-bottom:14px;display:none"><div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">'+
+    '<span style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">📁 De outro projeto</span></div>'+
+    fora.map(function(v){
+      return '<div class="vs-lreg" data-fora="1" style="display:none" data-busca="'+vsEsc(vsBuscaNorm(v.nome))+'" data-id="'+vsEsc(v.id)+'"><div class="info"><b>'+vsEsc(v.nome)+'</b>'+
+        '<small>está em '+vsEsc(vsProjetoDe(v))+' · '+vsMmss(v.duracao||0)+vsSeloNova(v)+'</small></div>'+
+        '<button class="vs-btn g sm" onclick="vsTrazer(\''+vsEsc(v.id)+'\')">Trazer pra '+vsEsc(vsProjeto)+'</button></div>';
+    }).join('')+'</div>';
+}
+function vsTrazer(id){
+  var base = vsDados.todos || vsDados.vsls, v = base.filter(function(x){ return x.id === id; })[0]; if(!v) return;
+  var m = Object.assign({}, vsProjetosSalvos()); m[id] = vsProjeto; s('sl_vsl_projetos', m);
+  if(!v.rodando){ v.rodando = true; s('sl_vsl_ativas', base.filter(function(x){ return x.rodando; }).map(function(x){ return x.id; })); }
+  if(typeof toastFn === 'function') toastFn('Trazida pra '+vsProjeto+' e ligada');
+  vsAbrirVsls();
 }
 function vsProjetosSalvos(){ var m = g('sl_vsl_projetos', null); return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {}; }
 function vsProjetoDe(v){ var m = vsProjetosSalvos(); return m[v.id] !== undefined ? m[v.id] : vsProjetoAuto(v); }
