@@ -1,8 +1,9 @@
-// Bloco do teste A/B no Mapa (19/11/2026). A página da variante (raiox4) também recebe gente da VSL:
+// Bloco do teste A/B no Mapa (19 e 20/11/2026). A página da variante (raiox4) também recebe gente da VSL:
 // em 19/11 o bloco "Teste bio" mostrava 3 vendas e a tela do teste mostrava 0. As três eram de
-// anúncio, entraram pela VSL e compraram na raiox4 sem passar pelo /r/bio. Agora o bloco separa
+// anúncio, entraram pela VSL e compraram na raiox4 sem passar pelo /r/bio. O bloco separa
 // "vendas pelo link" (a mesma conta da tela do teste) das "vendas na página", e diz de onde vieram
-// as que não passaram pelo link.
+// as que não passaram pelo link. Desde 20/11 a venda de quem entrou pela VSL e clicou na oferta da
+// variante é da VSL: o mapa mostrava a VSL que vendeu com zero.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { spawn } = require('child_process');
@@ -66,19 +67,28 @@ test('o bloco do teste separa as vendas pelo link das feitas na página da varia
   await ev('vidbiocompra', 'sb1', 'checkout', 'https://site.test/raiox4/', { teste: 'bio', variante: 'va', destino: 'payt.com.br', dest: 'payt.com.br/link697', aqui: bio });
   // C: chegou pelo /r/bio (Variante 2) e não comprou
   await ev('vidbiosemcompra', 'sc1', 'entrou', 'https://site.test/raiox6/', { teste: 'bio', variante: 'vb', aqui: bio });
+  // D: o anúncio levou direto pra raiox4 (sem VSL e sem o link) e comprou lá
+  await ev('vidanuncio2', 'sd1', 'entrou', 'https://site.test/raiox4/', { aqui: anuncio });
+  await ev('vidanuncio2', 'sd1', 'checkout', 'https://site.test/raiox4/', { destino: 'payt.com.br', dest: 'payt.com.br/link697', aqui: anuncio });
   await espera(300);
   assert.strictEqual((await venda('VA1', 'vidanuncio1')).status, 200);
   assert.strictEqual((await venda('VB1', 'vidbiocompra')).status, 200);
+  assert.strictEqual((await venda('VD1', 'vidanuncio2')).status, 200);
 
   const q = '&de=' + hoje() + '&ate=' + hoje();
-  let sp;
-  await ate(async () => { sp = (await chamar('GET', '/api/funil/blocos?funil=f1' + q, { token: tmx })).dados.nos.sp; return sp && sp.vendas === 2; }, 8000, 'as vendas chegarem no mapa', () => log + '\n' + JSON.stringify(sp));
+  let nos;
+  await ate(async () => { nos = (await chamar('GET', '/api/funil/blocos?funil=f1' + q, { token: tmx })).dados.nos; return nos && nos.sp && (nos.sp.vendas + nos.vsl.vendas) === 3; }, 8000,
+    'as vendas chegarem no mapa', () => log + '\n' + JSON.stringify(nos));
+  const sp = nos.sp;
 
-  assert.strictEqual(sp.vendas, 2, 'na página: as duas compras foram na raiox4');
+  // A entrou pela VSL e clicou na oferta da raiox4: a venda é da VSL, não do teste
+  assert.strictEqual(nos.vsl.vendas, 1, 'a VSL de entrada fica com a venda');
+  assert.ok(!nos.vsl.levou, 'e não aparece como "levou pro teste"');
+  assert.strictEqual(sp.vendas, 2, 'na página: a de quem veio pelo link e a de quem o anúncio levou direto pra raiox4');
   assert.strictEqual(sp.vendasOrigem, 1, 'pelo link: só a de quem veio pelo /r/bio');
   assert.strictEqual(sp.vendasForaDoLink, 1);
   assert.deepStrictEqual(sp.foraOrigens, { 'Tráfego pago': 1 });
-  assert.deepStrictEqual(sp.foraEntradas, { 'VSL 697': 1 });
+  assert.deepStrictEqual(sp.foraEntradas, {}, 'entrou direto na raiox4: não tem outra página de entrada');
   assert.ok(sp.faturamentoLink > 0 && sp.faturamentoLink < sp.faturamento);
   assert.deepStrictEqual(sp.divisao.map(d => [d.nome, d.vendas, d.vendasLink]), [['Variante 1', 2, 1], ['Variante 2', 0, 0]]);
 

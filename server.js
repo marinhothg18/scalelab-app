@@ -16978,6 +16978,14 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
     const funis = Array.isArray(dbj.store[KEY_FUNIS]) ? dbj.store[KEY_FUNIS] : [];
     const nomeEtapa = {}; funis.forEach(f => (f.etapas || []).forEach(e => { nomeEtapa[e.id] = e.nome; }));
     const funil = funis.find(f => f.id === v.funil) || null;
+    // O nome da página vem do endereço quando ele é um bloco do mapa (ou variante de um teste do mapa),
+    // igual à conta do mapa. A etapa que o pixel manda pode ser a do código colado de outro bloco: em
+    // 20/11 a raiox6 tinha o pixel do Obrigado e o histórico dizia "Chegou em Obrigado".
+    let escP = null; try { escP = funil ? _escopoFunil(dbj, funil.id) : null; } catch (e) {}
+    const rotEtapa = e => { const u = e.pg ? _normPg(e.pg) : ''; const et = escP && u ? escP.etapaDeUrl[u] : null;
+      if (!et) return nomeEtapa[e.etapa] || '';
+      const nm = escP.nomeEtapa[et] || nomeEtapa[et] || '';
+      return escP.tipoEtapa[et] === 'split' ? nm + ' · ' + String(u).replace(/^[^/]*\//, '/') : nm; };
     // contato completo só pra Diretoria e Sócio: a lista mostra o e-mail mascarado
     let contato = null;
     if (_ehDir(req) && lead) {
@@ -17000,13 +17008,13 @@ app.get('/api/pessoa/:id', authUsuario, (req, res) => {
       teste: s.teste, variante: s.variante, pitch: !!s.pitch, checkout: !!s.checkout, video: s.video, interno: !!s.interno,
       eventos: evs.filter(e => e.sessao === s.id).map(e => {
         let x = {}; try { x = JSON.parse(e.extra || '{}'); } catch (er) {}
-        return { tipo: e.tipo, em: e.em, pg: e.pg, rot: dir ? e.rot : _semValor(e.rot), etapa: nomeEtapa[e.etapa] || '', extra: x };
+        return { tipo: e.tipo, em: e.em, pg: e.pg, rot: dir ? e.rot : _semValor(e.rot), etapa: rotEtapa(e), extra: x };
       })
     }));
     // eventos sem sessão (venda que chegou quando a pessoa não estava no site)
     const soltos = evs.filter(e => !e.sessao || !sessoes.some(s => s.id === e.sessao)).map(e => {
       let x = {}; try { x = JSON.parse(e.extra || '{}'); } catch (er) {}
-      return { tipo: e.tipo, em: e.em, pg: e.pg, rot: dir ? e.rot : _semValor(e.rot), etapa: nomeEtapa[e.etapa] || '', extra: x };
+      return { tipo: e.tipo, em: e.em, pg: e.pg, rot: dir ? e.rot : _semValor(e.rot), etapa: rotEtapa(e), extra: x };
     });
     res.json({ ok: true,
       pessoa: { id: v.id, nome: (contato && contato.nome) ? _iniciais(contato.nome) : (lead && lead.nome) || '',
@@ -19435,11 +19443,18 @@ function _produtosVendidos() {
   if (!_pessoas()) return {};
   const linhas = _q(`SELECT COALESCE(NULLIF(plataforma,''),'payt') pl, produto, plano, ck_nome, ck_link, pago, estorno, renovacao, COUNT(*) n
                      FROM pedidos WHERE produto IS NOT NULL AND produto<>'' GROUP BY pl, produto, plano, ck_nome, ck_link, pago, estorno, renovacao`).all();
+  // O nome do checkout. Assinatura paga da Payt vem com o título "Assinatura": aí o nome certo é o do
+  // plano (subscription.plan_name), ou o de outro aviso do mesmo link. Em 20/11 o checkout da Black
+  // Friday (R$ 397) aparecia como "Assinatura · …vcgovb" e parecia que não estava na lista.
+  const generico = n => !String(n || '').trim() || /^assinatura$/i.test(String(n).trim());
+  const nomeDe = x => !generico(x.ck_nome) ? String(x.ck_nome).trim()
+    : (!generico(x.plano) && _nrm(x.plano) !== _nrm(x.produto) ? String(x.plano).trim() : '');
   const nomeReal = {};
   linhas.forEach(x => {
-    if (!x.ck_link || !x.ck_nome || /^assinatura$/i.test(String(x.ck_nome).trim())) return;
+    const real = nomeDe(x);
+    if (!x.ck_link || !real) return;
     const k = x.pl + '|' + x.ck_link, a = nomeReal[k] || (nomeReal[k] = {});
-    a[x.ck_nome] = (a[x.ck_nome] || 0) + x.n;
+    a[real] = (a[real] || 0) + x.n;
   });
   const melhor = (pl, link) => { const a = nomeReal[pl + '|' + link]; return a ? Object.keys(a).sort((p, q) => a[q] - a[p])[0] : ''; };
   const porPl = {};
@@ -19447,7 +19462,7 @@ function _produtosVendidos() {
     if (!x.pago || x.estorno || x.renovacao) return;
     const lp = porPl[x.pl] || (porPl[x.pl] = {}), p = lp[x.produto] || (lp[x.produto] = { nome: x.produto, vendas: 0, ck: {} });
     p.vendas += x.n;
-    const nome = String((x.ck_link && melhor(x.pl, x.ck_link)) || x.ck_nome || x.plano || '').trim();
+    const nome = String((x.ck_link && melhor(x.pl, x.ck_link)) || nomeDe(x) || x.ck_nome || x.plano || '').trim();
     // sem link e com o nome igual ao do produto, a venda não diz de qual checkout veio
     if (!x.ck_link && (!nome || _nrm(nome) === _nrm(x.produto))) return;
     const k = x.ck_link || ('n:' + _nrm(nome)), c = p.ck[k] || (p.ck[k] = { nome, link: x.ck_link || '', vendas: 0 });
@@ -20018,6 +20033,10 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
     const vendaDaEtapa = {}, vendaEntrada = {}, salvasDaEtapa = {}, levouDaEtapa = {};
     const donaDe = new Map();   // venda -> página dona (o Obrigado diz de qual página veio cada compra)
     const paginaDe = new Map(); // venda -> a página exata (o bloco do teste separa as variantes dele)
+    // quem passou pelo link do teste (/r/<slug>) nos 7 dias antes da compra: a mesma base da tela do teste
+    const slugDoBloco = {}; (f.etapas || []).forEach(e => { if (e.tipo === 'split' && e.slug) slugDoBloco[e.id] = String(e.slug).toLowerCase(); });
+    const _passouPeloLink = (v, bloco, em) => !!slugDoBloco[bloco] && !!_q('SELECT 1 FROM sessoes WHERE visitante=? AND lower(teste)=? AND inicio BETWEEN ? AND ? LIMIT 1')
+      .get(v, slugDoBloco[bloco], (em || 0) - 7 * 86400000, (em || 0) + 10 * 60000);
     vendas.forEach(o => {
       if (!o.visitante) return;
       const lim = (o.em || 0) + 10 * 60000, desde = (o.em || 0) - 7 * 86400000;
@@ -20030,14 +20049,20 @@ app.get('/api/funil/blocos', authUsuario, async (req, res) => {
       const entrada = pags.length ? pags[0].et : (cliques.length ? cliques[cliques.length - 1].et : null);
       const clique = cliques.length ? cliques[0].et : null;
       const viaBack = !!clique && esc.tipoEtapa[clique] === 'backredirect';
-      const dona = clique && !viaBack ? clique : entrada;
+      // Clique numa variante de teste A/B sem bloco próprio (a raiox6 da bio) de quem NÃO passou pelo
+      // link do teste: a pessoa entrou pela VSL do anúncio e a oferta levou pra variante. A venda é da
+      // VSL de entrada; antes ia pro bloco do teste e a VSL que vendeu ficava com zero (20/11).
+      const ofertaDoTeste = !!clique && !viaBack && esc.tipoEtapa[clique] === 'split' && !!entrada && entrada !== clique &&
+        !_passouPeloLink(o.visitante, clique, o.em);
+      const peloClique = !!clique && !viaBack && !ofertaDoTeste;
+      const dona = peloClique ? clique : entrada;
       if (entrada) (vendaEntrada[entrada] = vendaEntrada[entrada] || []).push(o);
       if (dona) {
         (vendaDaEtapa[dona] = vendaDaEtapa[dona] || []).push(o); donaDe.set(o, dona);
-        const evDona = (clique && !viaBack ? cliques : pags).find(x => x.et === dona);
+        const evDona = (peloClique ? cliques : pags).find(x => x.et === dona);
         if (evDona) paginaDe.set(o, evDona.pg);
       }
-      if (clique && entrada && clique !== entrada) {
+      if (clique && entrada && clique !== entrada && !ofertaDoTeste) {
         const x = salvasDaEtapa[clique] || (salvasDaEtapa[clique] = { n: 0, de: {} });
         x.n++; x.de[entrada] = (x.de[entrada] || 0) + 1;
         if (!viaBack) { const y = levouDaEtapa[entrada] || (levouDaEtapa[entrada] = { n: 0, para: {} }); y.n++; y.para[clique] = (y.para[clique] || 0) + 1; }

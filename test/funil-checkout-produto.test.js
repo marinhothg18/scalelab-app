@@ -123,3 +123,16 @@ test('a lista de produtos, os checkouts e a separação nos blocos', async (t) =
     assert.ok(!fios['pag|cnovo'] || fios['pag|cnovo'].n === 0);
   });
 });
+
+test('assinatura da Payt com título "Assinatura" leva o nome do plano (20/11)', async () => {
+  // o checkout da Black Friday: a Payt manda link.title "Assinatura" e o nome certo em subscription.plan_name
+  const bf = (id, extra = {}) => payt(id, 'Curso Promo', 'Assinatura', 'linkbf', Object.assign({ subscription: { plan_name: 'FOCO - BLACK FRIDAY - R$ 397', charges: 1 } }, extra));
+  await enviar(bf('bf1'));
+  await enviar(bf('bf2'));
+  // plano igual ao nome do produto não é nome de checkout: fica "Assinatura" com o final do link
+  await enviar(payt('bf3', 'Curso Promo', 'Assinatura', 'linkgen', { subscription: { plan_name: 'Curso Promo', charges: 1 } }));
+  const promo = (await chamar('GET', '/api/produtos', { token: tmx })).dados.vendidos.payt.find(p => p.nome === 'Curso Promo');
+  assert.ok(promo, 'o produto aparece');
+  assert.deepStrictEqual(promo.checkouts.map(c => [c.nome, c.link, c.vendas]),
+    [['FOCO - BLACK FRIDAY - R$ 397', 'payt.com.br/linkbf', 2], ['Assinatura', 'payt.com.br/linkgen', 1]]);
+});
