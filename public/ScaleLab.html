@@ -46044,7 +46044,7 @@ async function carregarAnunciosUtmify(forcar, agora){
   const { from, to } = getAdsDates();
   const corpo = document.getElementById('ads-anuncio-body');
   if(_anunciosCarregando) return;
-  const mesmos = _anunciosUtmify.length > 0 && _anunciosPeriodo === _adsApiFonte()+'|'+from+'|'+to+'|'+_adsProjeto();
+  const mesmos = _anunciosUtmify.length > 0 && _anunciosPeriodo === _anunciosChave(from, to);
   if(!forcar && mesmos){ pintarAnunciosUtmify(); return; }
 
   _anunciosCarregando = true;
@@ -46061,7 +46061,7 @@ async function carregarAnunciosUtmify(forcar, agora){
     _anunciosArquivo = d.doArquivo ? (d.avisoArquivo || 'Números guardados aqui.') : '';
     _anunciosConc = d.conciliacao || null;
     _anunciosErros = d.erros || [];
-    _anunciosPeriodo = _adsApiFonte()+'|'+from+'|'+to+'|'+_adsProjeto();
+    _anunciosPeriodo = _anunciosChave(from, to);
     pintarAnunciosUtmify();
   }catch(e){
     if(mesmos) return;   // tropeço: os cards de antes continuam
@@ -46071,6 +46071,8 @@ async function carregarAnunciosUtmify(forcar, agora){
   }finally{ _anunciosCarregando = false; }
 }
 let _anunciosPeriodo = '', _anunciosDiag = null, _anunciosErros = [], _anunciosConc = null;
+// fonte, período e projeto dos anúncios que estão na tela (o PDF confere a mesma etiqueta)
+function _anunciosChave(de, ate){ return _adsApiFonte()+'|'+de+'|'+ate+'|'+_adsProjeto(); }
 
 // Alterna entre a tabela (RedTrack) e a grade de cards (Utmify)
 function _tabelaAnuncio(mostrar){
@@ -47890,7 +47892,7 @@ function pdfInicio(titulo, filtros, kpis){
   var p = getAdsDates(), sel = document.getElementById('ads-projeto'), proj = sel && sel.options[sel.selectedIndex] ? cpPdfTxt(sel.options[sel.selectedIndex].text) : 'Todos os projetos';
   var periodo = p.from === p.to ? cpPdfData(p.from) : cpPdfData(p.from)+' a '+cpPdfData(p.to);
   var agora = new Date(), quando = agora.toLocaleDateString('pt-BR')+' às '+agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  var selo = document.getElementById('ads-selo-utmify'), fonte = (selo ? cpPdfTxt(selo.textContent) : '').replace(/\s*·?\s*atualiza.*$/i,'') || 'Faturamento e vendas da SCALROI · gasto e métricas da Utmify';
+  var selo = document.getElementById('ads-selo-utmify'), fonte = (selo ? cpPdfTxt(selo.textContent) : '').replace(/\s*·?\s*(a tela )?atualiza.*$/i,'') || 'Faturamento e vendas da SCALROI · gasto e métricas da '+(_adsFonte() === 'meta' ? 'Meta' : 'Utmify');
 
   doc.setFillColor(C.ROXO[0],C.ROXO[1],C.ROXO[2]); doc.rect(0,0,LARG,2.2,'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(C.ROXO[0],C.ROXO[1],C.ROXO[2]); doc.text('SCALROI', MG, 10);
@@ -48059,7 +48061,7 @@ function anPdfMontar(){
 function anExportarPdf(bt){
   var p = getAdsDates();
   // trocou o período e os anúncios não chegaram: o PDF sairia com a lista antiga e a data nova
-  if(_anunciosPeriodo !== p.from+'|'+p.to+'|'+_adsProjeto()){ toastFn('Os anúncios deste período ainda não chegaram'); return; }
+  if(_anunciosPeriodo !== _anunciosChave(p.from, p.to)){ toastFn('Os anúncios deste período ainda não chegaram'); return; }
   if(!_anunciosVisiveis.length){ toastFn('Nenhum anúncio neste filtro'); return; }
   pdfExportar(bt, anPdfMontar);
 }
