@@ -169,6 +169,22 @@ test('a análise da campanha pela Meta: os números da Meta e as vendas da SCALR
   assert.strictEqual((await chamar('GET', '/api/metricas/meta/campanha' + per() + '&nome=sem-id', { token: dono })).status, 400);
 });
 
+test('o Sócio de um projeto abre a análise das campanhas dele pela Meta, e só delas (20/11)', async () => {
+  const agora = Date.now();
+  assert.strictEqual((await chamar('PUT', '/api/store/sl_usuarios', { token: dono, corpo: [{ id: 'u-socio', nome: 'Sócia', email: 'socia@tmx.test', senha: 'senha-socia-1',
+    cargo: 'Sócio', ativo: true, projetos: ['CONCURSO'], _updatedAt: agora }] })).status, 200);
+  const socia = (await chamar('POST', '/api/auth/login', { corpo: { email: 'socia@tmx.test', senha: 'senha-socia-1' } })).dados.token;
+  assert.ok(socia);
+  const r = await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.cbo, { token: socia });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.dados));
+  assert.strictEqual(r.dados.campanha.nome, objetos[C.cbo].name);
+  assert.strictEqual(r.dados.tmx.vendas, 1);
+  assert.strictEqual((await chamar('GET', '/api/metricas/campanha/agora?id=' + C.cbo, { token: socia })).status, 200, 'o "ao vivo" da análise também');
+  // a campanha do outro projeto (RENDA, mesma conta) fica fechada
+  assert.strictEqual((await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.abo, { token: socia })).status, 403);
+  assert.strictEqual((await chamar('GET', '/api/metricas/campanha/agora?id=' + C.abo, { token: socia })).status, 403);
+});
+
 test('o projeto de Projetos › Integrações corta campanhas e vendas', async () => {
   const lp = await chamar('GET', '/api/metricas/meta/projetos', { token: dono });
   assert.deepStrictEqual(lp.dados.projetos.map(p => p.id), ['CONCURSO', 'RENDA']);

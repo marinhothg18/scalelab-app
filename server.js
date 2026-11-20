@@ -10746,7 +10746,13 @@ const _limFunil = (req, e) => e.funis.has(String(req.query.funil || ''));
 const _limUltimo = req => decodeURIComponent(req.path.split('/').pop() || '');
 function _limCampanha(id, nome, e, db) {
   if (!id && !nome) return false;
-  return _listaSe(db.store[KEY_METRICAS]).some(l => l && l.fonte === 'utmify' && (id ? String(l.campanhaId) === id : String(l.campanha) === nome) && e.nomes.has(_nrm(l.dashboard)));
+  if (_listaSe(db.store[KEY_METRICAS]).some(l => l && l.fonte === 'utmify' && (id ? String(l.campanhaId) === id : String(l.campanha) === nome) && e.nomes.has(_nrm(l.dashboard)))) return true;
+  // campanha que a SCALROI conhece pela Meta (20/11/2026, pedido do Thiago): o projeto vem da conta e da regra de
+  // Projetos › Integrações, como no painel da fonte Meta. Só pelo id.
+  if (!id || !_pessoas()) return false;
+  const c = _q('SELECT conta, nome FROM meta_camp WHERE id=?').get(id) || _q('SELECT conta, nome FROM meta_camp_dia WHERE id=? ORDER BY dia DESC LIMIT 1').get(id);
+  const pj = c ? _projetoDaCampanhaFn(db)(c.conta, c.nome) : '';
+  return !!pj && e.nomes.has(_nrm(pj));
 }
 const _ROTAS_DO_LIMITADO = [
   // o próprio app: nessas, o corte é feito dentro da rota
@@ -10767,6 +10773,7 @@ const _ROTAS_DO_LIMITADO = [
   ['GET', /^\/api\/metricas\/utmify\/anuncio$/, (req, e) => { const v = String(req.query.dashboard || ''); return e.dashs.has(v) || e.nomes.has(_nrm(v)); }],
   ['GET', /^\/api\/metricas\/campanha$/, (req, e, db) => _limCampanha(String(req.query.id || '').replace(/\D/g, ''), String(req.query.nome || ''), e, db)],
   ['GET', /^\/api\/metricas\/campanha\/agora$/, (req, e, db) => _limCampanha(String(req.query.id || '').replace(/\D/g, ''), String(req.query.nome || ''), e, db)],
+  ['GET', /^\/api\/metricas\/meta\/campanha$/, (req, e, db) => _limCampanha(String(req.query.id || '').replace(/\D/g, ''), '', e, db)],
   ['GET', /^\/api\/metricas\/campanhas\/marcas$/],
   ['POST', /^\/api\/metricas\/campanhas\/marca$/, (req, e, db) => _limCampanha(String((req.body || {}).id || ''), '', e, db)],
   ['POST', /^\/api\/ia\/auditoria$/, _limDash('projeto', true)],
