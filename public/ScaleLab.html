@@ -37010,9 +37010,13 @@ function mpAgoraBuscar(){
 function mpAgoraDados(){ var f = fnAtual(); return (mpAgora && f && mpAgora.funil === f.id) ? mpAgora : null; }
 // o que o selo do bloco mostra: null = bloco sem selo
 function fnAgoraInfo(n, b){
-  if(!n || n.tipo === 'fonte' || n.tipo === 'recuperacao' || n.tipo === 'cktest' || (b && b.viaVenda)) return null;
+  if(!n || n.tipo === 'fonte' || n.tipo === 'recuperacao' || n.tipo === 'cktest') return null;
+  // upsell e downsell com o link da página: quem está com ela aberta agora (24/11/2026, pedido do Thiago).
+  // O servidor já contava pelo endereço do bloco; a tela é que escondia o selo dos blocos de venda.
+  var temPg = !!(n.url || (Array.isArray(n.urls) && n.urls.some(Boolean)));
+  if(b && b.viaVenda && !((n.tipo === 'upsell' || n.tipo === 'downsell') && temPg)) return null;
   var ck = n.tipo === 'checkout' && b && b.viaClique;
-  if(!ck && !(n.tipo === 'split' ? n.slug : n.url)) return null;
+  if(!ck && !(n.tipo === 'split' ? n.slug : temPg)) return null;
   var d = mpAgoraDados(); if(!d) return { pronto: false };
   var q = (d.blocos && d.blocos[n.id]) || 0;
   return { pronto: true, n: q, ck: ck,
