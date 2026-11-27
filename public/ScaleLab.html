@@ -3541,6 +3541,11 @@ a.cp-pdf{text-decoration:none;display:inline-flex;align-items:center}
 .cp-tab .f3 button{background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font:inherit;font-size:12px;font-weight:650;padding:4px 9px;cursor:pointer}
 .cp-tab-ads td:first-child,.cp-tab-ads th:first-child{text-align:left}
 .cp-tab-ads tbody tr{cursor:default}
+/* anúncios da campanha: o nome fica parado enquanto as métricas rolam pro lado (27/11/2026) */
+.cp-rolo-ads{min-height:0}
+.cp-tab-ads-m td:first-child,.cp-tab-ads-m th:first-child{position:sticky;left:0;z-index:2;white-space:normal;min-width:180px;max-width:280px;box-shadow:6px 0 8px -6px rgba(0,0,0,.3)}
+.cp-tab-ads-m thead th:first-child,.cp-tab-ads-m tfoot td:first-child{z-index:5;background:var(--bg3)}
+.cp-tab-ads-m tfoot td{position:static}
 .cp-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .cp-chips span{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--bg3);color:var(--text2)}
 .cp-chips span.mu{background:rgba(139,92,246,.16);color:#a78bfa}
@@ -48469,11 +48474,38 @@ function cpPintarAnalise(){
       '<div class="sub">'+(x.fonte === 'utmify' ? 'feito pela Utmify, na hora exata' : x.fonte === 'meta' ? 'feito na Meta às '+hm(x.em) : (x.desde ? 'entre '+hm(x.desde)+' e '+hm(x.em)+' (a SCALROI confere a cada sincronização)' : x.fonte === 'tmx' ? 'feito pela SCALROI às '+hm(x.em) : 'visto às '+hm(x.em)))+'</div></div><span class="h">'+dm(x.em)+' '+hm(x.em)+'</span></div>'; }).join('');
   var desde = d.registroDesde ? ' A SCALROI anota as mudanças desde '+dm(d.registroDesde)+' '+hm(d.registroDesde)+'.' : '';
   var adsSel = cpAdsDias ? cpAdsCache[cpAdsDias] || {} : d;
-  var ads = (adsSel.anuncios || []).map(function(a){
-    var vt = a.vendasTmx || 0;
-    return '<tr'+(a.soTmx ? ' class="cp-so-tmx" title="Vendeu pela SCALROI sem gasto neste período (a pessoa clicou neste anúncio em outro dia)"' : '')+'><td>'+fnEsc(a.nome)+(a.soTmx ? ' <small class="cp-tmx">sem gasto no período</small>' : '')+'</td><td>'+fmtAds(a.gasto)+'</td><td>'+vt+'</td>'+
-      '<td class="'+(a.lucroTmx == null ? '' : a.lucroTmx >= 0 ? 'pos' : 'neg')+'">'+din(a.lucroTmx)+'</td>'+
-      '<td>'+pct(a.ctr, 2)+'</td><td>'+pct(a.hook, 0)+'</td><td>'+pct(a.cta, 0)+'</td></tr>'; }).join('');
+  // as métricas de cada anúncio, como na tabela de campanhas (27/11/2026, pedido do Thiago): a tabela rola pro lado
+  // com o nome parado. Visitas e checkouts vêm do pixel da SCALROI (a Meta não manda o IC por anúncio).
+  var lsAds = adsSel.anuncios || [];
+  var sinalCls = function(v){ return v == null ? '' : v >= 0 ? 'pos' : 'neg'; };
+  var colsAd = [
+    ['Gasto', function(a){ return fmtAds(a.gasto); }],
+    ['Vendas', function(a){ return fnNum(a.vendasTmx || 0); }, 'Vendas que a SCALROI deu a este anúncio (último anúncio que a pessoa clicou)'],
+    ['Faturamento', function(a){ return din(a.fatTmx); }, 'Faturamento das vendas da SCALROI'],
+    ['Lucro', function(a){ return '<span class="'+sinalCls(a.lucroTmx)+'">'+din(a.lucroTmx)+'</span>'; }, 'Faturamento da SCALROI menos o gasto'],
+    ['ROAS', function(a){ return a.gasto && a.fatTmx != null ? (a.fatTmx/a.gasto).toFixed(2).replace('.',',')+'x' : '—'; }, 'Faturamento ÷ gasto'],
+    ['Custo por venda', function(a){ return a.vendasTmx ? fmtAds(a.gasto/a.vendasTmx) : '—'; }, 'Gasto ÷ vendas (CPA)'],
+    ['Impressões', function(a){ return fnNum(a.imp || 0); }],
+    ['Cliques', function(a){ return fnNum(a.cliques || 0); }, 'Cliques no link (Meta)'],
+    ['CTR', function(a){ return pct(a.ctr, 2); }, CP_EXPLICA.CTR],
+    ['CPC', function(a){ return a.cliques ? fmtAds(a.gasto/a.cliques) : '—'; }, CP_EXPLICA.CPC],
+    ['CPM', function(a){ return a.imp ? fmtAds(a.gasto/a.imp*1000) : '—'; }, CP_EXPLICA.CPM],
+    ['Visitas', function(a){ return fnNum(a.visitas || 0); }, 'Pessoas que chegaram na página por este anúncio (pixel da SCALROI)'],
+    ['Checkouts', function(a){ return fnNum(a.checkouts || 0); }, 'Pessoas vindas deste anúncio que clicaram em comprar (pixel da SCALROI)'],
+    ['Custo por checkout', function(a){ return a.checkouts ? fmtAds(a.gasto/a.checkouts) : '—'; }, 'Gasto ÷ checkouts'],
+    ['Conv. do checkout', function(a){ return a.checkouts ? pct(Math.min(1, (a.vendasTmx || 0)/a.checkouts), 0) : '—'; }, 'Vendas ÷ checkouts']
+  ].concat(pelaMeta ? [] : [['Hook', function(a){ return pct(a.hook, 0); }, CP_EXPLICA.Hook], ['CTA', function(a){ return pct(a.cta, 0); }, CP_EXPLICA.CTA]]);
+  var ads = lsAds.map(function(a){
+    return '<tr'+(a.soTmx ? ' class="cp-so-tmx" title="Vendeu pela SCALROI sem gasto neste período (a pessoa clicou neste anúncio em outro dia)"' : '')+'><td>'+fnEsc(a.nome)+(a.soTmx ? ' <small class="cp-tmx">sem gasto no período</small>' : '')+'</td>'+
+      colsAd.map(function(c){ return '<td>'+c[1](a)+'</td>'; }).join('')+'</tr>'; }).join('');
+  // linha do total: as somas e as taxas sobre as somas
+  var somaAd = function(k){ return lsAds.reduce(function(t, a){ return t + (Number(a[k]) || 0); }, 0); };
+  var totAd = { gasto: somaAd('gasto'), vendasTmx: somaAd('vendasTmx'), imp: somaAd('imp'), cliques: somaAd('cliques'), visitas: somaAd('visitas'), checkouts: somaAd('checkouts'),
+    fatTmx: lsAds.some(function(a){ return a.fatTmx != null; }) ? somaAd('fatTmx') : null };
+  totAd.lucroTmx = totAd.fatTmx == null ? null : totAd.fatTmx - totAd.gasto;
+  totAd.ctr = totAd.imp ? totAd.cliques/totAd.imp : null; totAd.hook = null; totAd.cta = null;
+  var cabAds = '<thead><tr><th>Anúncio</th>'+colsAd.map(function(c){ return '<th'+(c[2] ? ' title="'+fnEsc(c[2])+'"' : '')+'>'+c[0]+'</th>'; }).join('')+'</tr></thead>';
+  var peAds = lsAds.length > 1 ? '<tfoot><tr><td><b>Total</b></td>'+colsAd.map(function(c){ return '<td><b>'+c[1](totAd)+'</b></td>'; }).join('')+'</tr></tfoot>' : '';
   ov.querySelector('.v2-mod').innerHTML =
     '<div class="v2-cab"><div><h2>'+fnEsc(cpNomeCurto(m.nome))+'</h2><div class="cp-chips" style="margin-top:6px"><span class="cp-st '+st[1]+'">'+st[0]+'</span>'+(m.conta ? '<span>'+fnEsc(m.conta)+'</span>' : '')+
       (cpCtrl[campCtrl] && cpCtrl[campCtrl].d && cpCtrl[campCtrl].d.campanha.orc ? '<span>'+cpOrcTxt(cpCtrl[campCtrl].d.campanha.orc, cpCtrl[campCtrl].d.moeda)+'</span>' : m.orc != null ? '<span>'+fmtAds(m.orc)+(m.orcVida ? ' total' : '/dia')+'</span>' : '')+(m.bid != null ? '<span>bid cap '+fmtAds(m.bid)+'</span>' : '')+(m.criada ? '<span>criada em '+m.criada.slice(8,10)+'/'+m.criada.slice(5,7)+'</span>' : '')+'</div></div>'+
@@ -48497,11 +48529,11 @@ function cpPintarAnalise(){
         return '<button class="'+(cpAdsDias === x[0] ? 'on' : '')+'" onclick="cpAdsPeriodo('+x[0]+')">'+x[1]+'</button>'; }).join('')+'</span></div>'+
     (function(){
       var f = cpAdsDias ? cpAdsFaixa(cpAdsDias) : { de: d.de, ate: d.ate }, dd = function(s){ return s.slice(8)+'/'+s.slice(5,7); };
-      return '<div class="cp-nota">'+(f.de === f.ate ? 'Só '+dd(f.ate) : 'De '+dd(f.de)+' a '+dd(f.ate))+'. Gasto da '+fonteGasto+'; vendas e lucro da SCALROI.'+(pelaMeta ? ' Hook e CTA por anúncio ficam “—”: a Meta não manda o vídeo de cada anúncio.' : '')+'</div>';
+      return '<div class="cp-nota">'+(f.de === f.ate ? 'Só '+dd(f.ate) : 'De '+dd(f.de)+' a '+dd(f.ate))+'. Gasto, impressões e cliques da '+fonteGasto+'; vendas, lucro, visitas e checkouts da SCALROI. Role a tabela pro lado pra ver todas as colunas.</div>';
     })()+
     (adsSel.carregando ? '<div class="cp-nota">Buscando os anúncios'+(pelaMeta ? '' : ' na Utmify')+'…</div>'
       : adsSel.erro ? '<div class="v2-alerta warn"><div><b>Não buscou os anúncios</b><span>'+fnEsc(adsSel.erro)+'</span></div></div>'
-      : ads ? '<div class="cp-rolo" style="max-height:none"><table class="cp-tab cp-tab-ads"><thead><tr><th>Anúncio</th><th>Gasto</th><th title="Vendas que a SCALROI deu a este anúncio (último anúncio que a pessoa clicou)">Vendas</th><th title="Faturamento das vendas da SCALROI menos o gasto">Lucro</th><th>CTR</th><th>Hook</th><th>CTA</th></tr></thead><tbody>'+ads+'</tbody></table></div>'
+      : ads ? '<div class="cp-rolo cp-rolo-ads" style="max-height:none"><table class="cp-tab cp-tab-ads cp-tab-ads-m">'+cabAds+'<tbody>'+ads+'</tbody>'+peAds+'</table></div>'
       : '<div class="cp-nota">Nenhum anúncio com gasto nesses dias'+(adsSel.erroAoVivo ? ' (a Utmify não respondeu)' : '')+'.</div>');
   var cA = cpDados[cpAnaliseIdx]; if(cA) cpVivoLigar(cA.campanhaId, cA.nome);
 }

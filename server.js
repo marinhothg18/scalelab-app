@@ -7541,12 +7541,18 @@ async function _rotaCampanha(req, res, pelaMeta) {
     // do clique em diante, pelo pixel do TMX (a UTM traz o id da campanha no fim)
     const tmx = { visitas: 0, pitch: 0, ck: 0, vendas: 0, faturamento: 0, horas: Array(24).fill(0), fatHora: Array(24).fill(0) };
     const tmxAd = {};   // anúncio -> { id, nome, vendas, faturamento }
+    // visitas e checkouts de cada anúncio pelo pixel (27/11/2026, pedido do Thiago): a Meta não manda o IC por anúncio
+    const pxAd = {};    // anúncio -> { id, nome, vis, ck }
     const porDiaTmx = {};
     if (_pessoas() && m.id) {
       const vis = new Set(), pit = new Set(), ck = new Set();
-      if (!soAds) _q('SELECT visitante, camp, pitch, checkout FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0').all(per.ini, per.fim).forEach(x => {
+      _q('SELECT visitante, camp, cont, pitch, checkout FROM sessoes WHERE inicio BETWEEN ? AND ? AND interno=0').all(per.ini, per.fim).forEach(x => {
         if (_idDaCampUtm(x.camp) !== m.id) return;
         vis.add(x.visitante); if (x.pitch) pit.add(x.visitante); if (x.checkout) ck.add(x.visitante);
+        const cont = String(x.cont || '').trim(), aid = _idDaCampUtm(cont), anome = cont.replace(/\|\s*\d{10,}\s*$/, '').trim();
+        if (!aid && !anome) return;
+        const k = aid || ('n:' + _nrm(anome)), a = pxAd[k] || (pxAd[k] = { id: aid, nome: anome, vis: new Set(), ck: new Set() });
+        a.vis.add(x.visitante); if (x.checkout) a.ck.add(x.visitante);
       });
       tmx.visitas = vis.size; tmx.pitch = pit.size; tmx.ck = ck.size;
       const ini7 = Date.parse(dias7[0] + 'T00:00:00-03:00'), diaHora = per.ate;
@@ -7582,6 +7588,15 @@ async function _rotaCampanha(req, res, pelaMeta) {
         const x = tmxAd[k];
         anuncios.push({ id: x.id, nome: x.nome, status: '', gasto: 0, faturamento: null, lucro: null, vendas: 0, imp: 0, cliques: 0, ctr: null, hook: null, hold: null, cta: null,
           vendasTmx: x.vendas, fatTmx: x.faturamento, lucroTmx: x.faturamento, soTmx: true });
+      });
+      // visitas e checkouts: a mesma regra das vendas (pelo id do anúncio; sem id, pelo nome, uma vez só)
+      const pxNome = {}, pxUsados = new Set(); Object.keys(pxAd).forEach(k => { const n = _nrm(pxAd[k].nome); (pxNome[n] = pxNome[n] || []).push(k); });
+      anuncios.forEach(a => {
+        const ks = [], vis = new Set(), ck = new Set();
+        if (a.id && pxAd[a.id] && !pxUsados.has(a.id)) ks.push(a.id);
+        (pxNome[_nrm(a.nome)] || []).forEach(k => { if (!pxUsados.has(k) && ks.indexOf(k) < 0 && (!pxAd[k].id || !idsUtm.has(pxAd[k].id))) ks.push(k); });
+        ks.forEach(k => { pxUsados.add(k); pxAd[k].vis.forEach(v => vis.add(v)); pxAd[k].ck.forEach(v => ck.add(v)); });
+        a.visitas = vis.size; a.checkouts = ck.size;
       });
       anuncios.sort((a, b) => (b.vendasTmx + b.vendas) - (a.vendasTmx + a.vendas) || (b.lucro || 0) - (a.lucro || 0) || b.gasto - a.gasto);
     }

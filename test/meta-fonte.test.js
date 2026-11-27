@@ -159,6 +159,8 @@ test('a análise da campanha pela Meta: os números da Meta e as vendas da SCALR
   const ad = id => d.anuncios.find(a => a.id === id);
   assert.deepStrictEqual([cent(ad('102').gasto), ad('102').vendasTmx, ad('102').ctr, ad('102').hook, ad('102').status], [62.1, 1, 0.02, null, 'ACTIVE']);
   assert.deepStrictEqual([cent(ad('103').gasto), ad('103').vendasTmx], [10, 0]);
+  // visitas e checkouts de cada anúncio pelo pixel (27/11): pelo nome no utm_content, a equipe não conta
+  assert.deepStrictEqual([ad('102').visitas, ad('103').visitas, ad('102').checkouts, ad('102').imp, ad('102').cliques], [1, 1, 0, 1000, 20]);
   assert.ok(!ad('202'), 'o anúncio de outra campanha fica de fora');
   // só a tabela de anúncios, pra trocar o período dela
   const so = await chamar('GET', '/api/metricas/meta/campanha' + per() + '&id=' + C.cbo + '&so=anuncios', { token: dono });
